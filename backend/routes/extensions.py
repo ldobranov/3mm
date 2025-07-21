@@ -36,9 +36,11 @@ def upload_extension(file: UploadFile, db: Session = Depends(get_db)):
         frontend_path = "/tmp/extracted_extension/frontend"
 
         if os.path.exists(backend_path):
+            os.makedirs("extensions/backend", exist_ok=True)
             os.system(f"mv {backend_path}/* extensions/backend/")
 
         if os.path.exists(frontend_path):
+            os.makedirs("extensions/frontend", exist_ok=True)
             os.system(f"mv {frontend_path}/* extensions/frontend/")
 
         return {"message": "Extension uploaded and registered successfully"}

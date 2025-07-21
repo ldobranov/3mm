@@ -1,91 +1,79 @@
-2025-07-21 09:27:23,491 - backend_debug - DEBUG - Test log: Logging setup verification.
-2025-07-21 09:27:23,494 - root - DEBUG - Route: /menu/create, Operation ID: create_menu_21e9728c
-2025-07-21 09:27:23,494 - root - DEBUG - Route: /menu/read, Operation ID: read_menu_1247196e
-2025-07-21 09:27:23,494 - root - DEBUG - Route: /menu/update, Operation ID: update_menu_600e7504
-2025-07-21 09:27:23,494 - root - DEBUG - Route: /menu/delete/{item_id}, Operation ID: delete_menu_c07d7553
-2025-07-21 09:27:23,494 - root - DEBUG - Route: /pages/create, Operation ID: create_pages_c4183b16
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /pages/read, Operation ID: read_pages_9746c204
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /pages/update, Operation ID: update_pages_2f5e07cd
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /pages/delete/{item_id}, Operation ID: delete_pages_fc821bd2
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /settings/create, Operation ID: create_settings_883e065e
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /settings/read, Operation ID: read_settings_6b66bc53
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /settings/update, Operation ID: update_settings_00ee938b
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /settings/delete/{item_id}, Operation ID: delete_settings_975e0422
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /user/create, Operation ID: create_user_9050fd45
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /user/read, Operation ID: read_user_66a62877
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /user/update, Operation ID: update_user_d9fd4862
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /user/delete/{item_id}, Operation ID: delete_user_4bc3a7e6
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /role/create, Operation ID: create_role_ebc05fb0
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /role/read, Operation ID: read_role_5fd88725
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /role/update, Operation ID: update_role_35342b50
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /role/delete/{item_id}, Operation ID: delete_role_6c789da5
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /extensions/create, Operation ID: create_extensions_f8ef589e
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /extensions/read, Operation ID: read_extensions_e0d31d03
-2025-07-21 09:27:23,495 - root - DEBUG - Route: /extensions/update, Operation ID: update_extensions_14430824
-2025-07-21 09:27:23,500 - root - DEBUG - Route: /extensions/delete/{item_id}, Operation ID: delete_extensions_4fdaf94a
-2025-07-21 09:27:23,500 - root - DEBUG - Route: /settings/update, Operation ID: None
-2025-07-21 09:27:23,500 - root - DEBUG - Route: /upload, Operation ID: extensions_upload_extension
-2025-07-21 09:27:23,500 - root - DEBUG - Route: /generate, Operation ID: extensions_generate_extension
-2025-07-21 09:27:23,500 - root - DEBUG - Route: /user/register, Operation ID: None
-2025-07-21 09:27:23,500 - root - DEBUG - Route: /user/login, Operation ID: None
-2025-07-21 09:27:23,503 - root - DEBUG - Route: /user/profile, Operation ID: None
-2025-07-21 09:27:23,503 - root - DEBUG - Route: /user/profile/update, Operation ID: None
-2025-07-21 09:27:23,503 - root - DEBUG - Route: /user/logout, Operation ID: None
-2025-07-21 09:27:23,503 - root - DEBUG - Route: /pages/{slug}, Operation ID: None
-2025-07-21 09:27:23,503 - backend_debug - DEBUG - Registered route: /openapi.json
-2025-07-21 09:27:23,503 - backend_debug - DEBUG - Registered route: /docs
-2025-07-21 09:27:23,503 - backend_debug - DEBUG - Registered route: /docs/oauth2-redirect
-2025-07-21 09:27:23,503 - backend_debug - DEBUG - Registered route: /redoc
-2025-07-21 09:27:23,503 - backend_debug - DEBUG - Registered route: /menu/create
-2025-07-21 09:27:23,503 - backend_debug - DEBUG - Registered route: /menu/read
-2025-07-21 09:27:23,503 - backend_debug - DEBUG - Registered route: /menu/update
-2025-07-21 09:27:23,503 - backend_debug - DEBUG - Registered route: /menu/delete/{item_id}
-2025-07-21 09:27:23,503 - backend_debug - DEBUG - Registered route: /pages/create
-2025-07-21 09:27:23,503 - backend_debug - DEBUG - Registered route: /pages/read
-2025-07-21 09:27:23,503 - backend_debug - DEBUG - Registered route: /pages/update
-2025-07-21 09:27:23,503 - backend_debug - DEBUG - Registered route: /pages/delete/{item_id}
-2025-07-21 09:27:23,503 - backend_debug - DEBUG - Registered route: /settings/create
-2025-07-21 09:27:23,503 - backend_debug - DEBUG - Registered route: /settings/read
-2025-07-21 09:27:23,503 - backend_debug - DEBUG - Registered route: /settings/update
-2025-07-21 09:27:23,503 - backend_debug - DEBUG - Registered route: /settings/delete/{item_id}
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /user/create
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /user/read
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /user/update
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /user/delete/{item_id}
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /role/create
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /role/read
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /role/update
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /role/delete/{item_id}
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /extensions/create
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /extensions/read
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /extensions/update
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /extensions/delete/{item_id}
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /settings/update
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /upload
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /generate
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /user/register
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /user/login
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /user/profile
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /user/profile/update
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /user/logout
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Registered route: /pages/{slug}
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Extensions Route: /upload, Operation ID: extensions_upload_extension
-2025-07-21 09:27:23,504 - backend_debug - DEBUG - Extensions Route: /generate, Operation ID: extensions_generate_extension
-2025-07-21 09:27:23,512 - uvicorn.error - INFO - Started server process [161642]
-2025-07-21 09:27:23,512 - uvicorn.error - INFO - Started server process [161642]
-2025-07-21 09:27:23,512 - uvicorn.error - INFO - Waiting for application startup.
-2025-07-21 09:27:23,512 - uvicorn.error - INFO - Waiting for application startup.
-2025-07-21 09:27:23,512 - uvicorn.error - INFO - Application startup complete.
-2025-07-21 09:27:23,512 - uvicorn.error - INFO - Application startup complete.
-2025-07-21 09:28:27,071 - uvicorn.access - INFO - 127.0.0.1:41452 - "GET /docs/oauth2-redirect HTTP/1.1" 200
-2025-07-21 09:28:27,071 - uvicorn.access - INFO - 127.0.0.1:41452 - "GET /docs/oauth2-redirect HTTP/1.1" 200
-2025-07-21 09:28:27,419 - uvicorn.access - INFO - 127.0.0.1:41452 - "GET /favicon.ico HTTP/1.1" 404
-2025-07-21 09:28:27,419 - uvicorn.access - INFO - 127.0.0.1:41452 - "GET /favicon.ico HTTP/1.1" 404
-2025-07-21 09:28:35,169 - uvicorn.access - INFO - 127.0.0.1:41444 - "GET /docs HTTP/1.1" 200
-2025-07-21 09:28:35,169 - uvicorn.access - INFO - 127.0.0.1:41444 - "GET /docs HTTP/1.1" 200
-2025-07-21 09:28:35,575 - uvicorn.access - INFO - 127.0.0.1:41444 - "GET /openapi.json HTTP/1.1" 200
-2025-07-21 09:28:35,575 - uvicorn.access - INFO - 127.0.0.1:41444 - "GET /openapi.json HTTP/1.1" 200
-2025-07-21 09:28:53,001 - uvicorn.access - INFO - 127.0.0.1:41460 - "GET /redoc HTTP/1.1" 200
-2025-07-21 09:28:53,001 - uvicorn.access - INFO - 127.0.0.1:41460 - "GET /redoc HTTP/1.1" 200
-2025-07-21 09:28:53,455 - uvicorn.access - INFO - 127.0.0.1:41460 - "GET /openapi.json HTTP/1.1" 200
-2025-07-21 09:28:53,455 - uvicorn.access - INFO - 127.0.0.1:41460 - "GET /openapi.json HTTP/1.1" 200
+2025-07-21 09:39:07,505 - backend_debug - DEBUG - Test log: Logging setup verification.
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /menu/create, Operation ID: create_menu_6cc77798
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /menu/read, Operation ID: read_menu_7f4b7733
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /menu/update, Operation ID: update_menu_1fdc1001
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /menu/delete/{item_id}, Operation ID: delete_menu_f2414eab
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /pages/create, Operation ID: create_pages_b896b43f
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /pages/read, Operation ID: read_pages_b8f69647
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /pages/update, Operation ID: update_pages_ced7e65e
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /pages/delete/{item_id}, Operation ID: delete_pages_3a176cf5
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /settings/create, Operation ID: create_settings_d136e26b
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /settings/read, Operation ID: read_settings_13ab1fe7
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /settings/update, Operation ID: update_settings_eb7048fd
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /settings/delete/{item_id}, Operation ID: delete_settings_e3726506
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /user/create, Operation ID: create_user_3ebb3759
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /user/read, Operation ID: read_user_a748dca1
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /user/update, Operation ID: update_user_a0f32be1
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /user/delete/{item_id}, Operation ID: delete_user_0d801472
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /role/create, Operation ID: create_role_17cfc114
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /role/read, Operation ID: read_role_d40260c5
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /role/update, Operation ID: update_role_71cc9de2
+2025-07-21 09:39:07,510 - root - DEBUG - Route: /role/delete/{item_id}, Operation ID: delete_role_1fd13f0d
+2025-07-21 09:39:07,514 - root - DEBUG - Route: /extensions/create, Operation ID: create_extensions_0f4940df
+2025-07-21 09:39:07,514 - root - DEBUG - Route: /extensions/read, Operation ID: read_extensions_4a1078cb
+2025-07-21 09:39:07,514 - root - DEBUG - Route: /extensions/update, Operation ID: update_extensions_f0c5c842
+2025-07-21 09:39:07,514 - root - DEBUG - Route: /extensions/delete/{item_id}, Operation ID: delete_extensions_6d1b74bb
+2025-07-21 09:39:07,515 - root - DEBUG - Route: /settings/update, Operation ID: None
+2025-07-21 09:39:07,515 - root - DEBUG - Route: /upload, Operation ID: extensions_upload_extension
+2025-07-21 09:39:07,515 - root - DEBUG - Route: /generate, Operation ID: extensions_generate_extension
+2025-07-21 09:39:07,515 - root - DEBUG - Route: /user/register, Operation ID: None
+2025-07-21 09:39:07,515 - root - DEBUG - Route: /user/login, Operation ID: None
+2025-07-21 09:39:07,515 - root - DEBUG - Route: /user/profile, Operation ID: None
+2025-07-21 09:39:07,515 - root - DEBUG - Route: /user/profile/update, Operation ID: None
+2025-07-21 09:39:07,515 - root - DEBUG - Route: /user/logout, Operation ID: None
+2025-07-21 09:39:07,515 - root - DEBUG - Route: /pages/{slug}, Operation ID: None
+2025-07-21 09:39:07,515 - backend_debug - DEBUG - Registered route: /openapi.json
+2025-07-21 09:39:07,515 - backend_debug - DEBUG - Registered route: /docs
+2025-07-21 09:39:07,515 - backend_debug - DEBUG - Registered route: /docs/oauth2-redirect
+2025-07-21 09:39:07,515 - backend_debug - DEBUG - Registered route: /redoc
+2025-07-21 09:39:07,515 - backend_debug - DEBUG - Registered route: /menu/create
+2025-07-21 09:39:07,515 - backend_debug - DEBUG - Registered route: /menu/read
+2025-07-21 09:39:07,515 - backend_debug - DEBUG - Registered route: /menu/update
+2025-07-21 09:39:07,515 - backend_debug - DEBUG - Registered route: /menu/delete/{item_id}
+2025-07-21 09:39:07,515 - backend_debug - DEBUG - Registered route: /pages/create
+2025-07-21 09:39:07,515 - backend_debug - DEBUG - Registered route: /pages/read
+2025-07-21 09:39:07,515 - backend_debug - DEBUG - Registered route: /pages/update
+2025-07-21 09:39:07,515 - backend_debug - DEBUG - Registered route: /pages/delete/{item_id}
+2025-07-21 09:39:07,522 - backend_debug - DEBUG - Registered route: /settings/create
+2025-07-21 09:39:07,522 - backend_debug - DEBUG - Registered route: /settings/read
+2025-07-21 09:39:07,522 - backend_debug - DEBUG - Registered route: /settings/update
+2025-07-21 09:39:07,522 - backend_debug - DEBUG - Registered route: /settings/delete/{item_id}
+2025-07-21 09:39:07,522 - backend_debug - DEBUG - Registered route: /user/create
+2025-07-21 09:39:07,522 - backend_debug - DEBUG - Registered route: /user/read
+2025-07-21 09:39:07,522 - backend_debug - DEBUG - Registered route: /user/update
+2025-07-21 09:39:07,522 - backend_debug - DEBUG - Registered route: /user/delete/{item_id}
+2025-07-21 09:39:07,522 - backend_debug - DEBUG - Registered route: /role/create
+2025-07-21 09:39:07,522 - backend_debug - DEBUG - Registered route: /role/read
+2025-07-21 09:39:07,522 - backend_debug - DEBUG - Registered route: /role/update
+2025-07-21 09:39:07,522 - backend_debug - DEBUG - Registered route: /role/delete/{item_id}
+2025-07-21 09:39:07,522 - backend_debug - DEBUG - Registered route: /extensions/create
+2025-07-21 09:39:07,522 - backend_debug - DEBUG - Registered route: /extensions/read
+2025-07-21 09:39:07,522 - backend_debug - DEBUG - Registered route: /extensions/update
+2025-07-21 09:39:07,523 - backend_debug - DEBUG - Registered route: /extensions/delete/{item_id}
+2025-07-21 09:39:07,523 - backend_debug - DEBUG - Registered route: /settings/update
+2025-07-21 09:39:07,523 - backend_debug - DEBUG - Registered route: /upload
+2025-07-21 09:39:07,523 - backend_debug - DEBUG - Registered route: /generate
+2025-07-21 09:39:07,523 - backend_debug - DEBUG - Registered route: /user/register
+2025-07-21 09:39:07,523 - backend_debug - DEBUG - Registered route: /user/login
+2025-07-21 09:39:07,525 - backend_debug - DEBUG - Registered route: /user/profile
+2025-07-21 09:39:07,525 - backend_debug - DEBUG - Registered route: /user/profile/update
+2025-07-21 09:39:07,525 - backend_debug - DEBUG - Registered route: /user/logout
+2025-07-21 09:39:07,525 - backend_debug - DEBUG - Registered route: /pages/{slug}
+2025-07-21 09:39:07,525 - backend_debug - DEBUG - Extensions Route: /upload, Operation ID: extensions_upload_extension
+2025-07-21 09:39:07,528 - backend_debug - DEBUG - Extensions Route: /generate, Operation ID: extensions_generate_extension
+2025-07-21 09:39:07,528 - uvicorn.error - INFO - Started server process [162167]
+2025-07-21 09:39:07,528 - uvicorn.error - INFO - Started server process [162167]
+2025-07-21 09:39:07,528 - uvicorn.error - INFO - Waiting for application startup.
+2025-07-21 09:39:07,528 - uvicorn.error - INFO - Waiting for application startup.
+2025-07-21 09:39:07,529 - uvicorn.error - INFO - Application startup complete.
+2025-07-21 09:39:07,529 - uvicorn.error - INFO - Application startup complete.
