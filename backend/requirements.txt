@@ -1,0 +1,7 @@
+fastapi
+sqlalchemy
+passlib[bcrypt]
+pytest
+uvicorn
+alembic
+PyJWT
