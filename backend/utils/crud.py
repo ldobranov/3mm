@@ -43,13 +43,8 @@ def create_crud_routes(model: Any, model_name: str, input_model: Type[BaseModel]
     def read_items(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
         try:
             items = db.query(model).offset(skip).limit(limit).all()
-            return [
-                {
-                    column.name: getattr(item, column.name)
-                    for column in item.__table__.columns
-                }
-                for item in items
-            ]
+            key = "roles" if model_name == "role" else "items"  # Use "roles" for the role model
+            return {key: items}  # Wrap the response in an object with the appropriate key
         except Exception as e:
             logging.error(f"Error reading {model_name}: {e}")
             raise HTTPException(status_code=500, detail=f"Error reading {model_name}: {e}")

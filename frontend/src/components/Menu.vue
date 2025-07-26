@@ -39,8 +39,11 @@ export default defineComponent({
     }
     const menuItems = ref<MenuItem[]>([]);
     const errorMessage = ref('');
+    let isFetching = false;
 
     const fetchMenuItems = async () => {
+      if (isFetching) return; // Prevent duplicate API calls
+      isFetching = true;
       try {
         const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/menu/read`);
         menuItems.value = response.data.items.sort((a: { order: number }, b: { order: number }) => a.order - b.order);
@@ -48,10 +51,13 @@ export default defineComponent({
       } catch (error) {
         errorMessage.value = 'Failed to fetch menu items.';
         console.error(error);
+      } finally {
+        isFetching = false;
       }
     };
 
     onMounted(() => {
+      console.log('Menu component mounted');
       fetchMenuItems();
     });
 

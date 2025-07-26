@@ -23,8 +23,14 @@ class MenuUpdate(BaseModel):
         "from_attributes": True
     }
 
+class PageCreate(BaseModel):
+    title: str
+    content: str
+
+    model_config = ConfigDict(from_attributes=True)
+
 class PageUpdate(BaseModel):
-    id: int  # Added id field to support updates
+    id: int  # Used for updates
     title: str
     content: str
 
@@ -55,7 +61,7 @@ class RoleCreate(BaseModel):
 # Consolidated dynamic CRUD route registration
 def register_crud_routes():
     menu_crud_router = create_crud_routes(Menu, "menu", MenuCreateSchema, MenuUpdate, MenuUpdate)
-    page_crud_router = create_crud_routes(Page, "pages", PageUpdate)
+    page_crud_router = create_crud_routes(Page, "pages", PageCreate, PageUpdate)
     settings_crud_router = create_crud_routes(Settings, "settings", SettingsSchema)
     user_crud_router = create_crud_routes(User, "user", UserSchema)
     role_crud_router = create_crud_routes(Role, "role", RoleCreate)

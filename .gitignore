@@ -1,0 +1,48 @@
+# Logs
+*.log
+backend_debug.log
+
+# Python bytecode
+*.pyc
+__pycache__/
+
+# Virtual environment
+venv/
+
+# Alembic
+alembic/versions/*.pyc
+
+# Temporary files
+/tmp/
+
+# Extensions
+extensions/backend/
+extensions/frontend/
+
+# Test artifacts
+*.zip
+
+# IDE files
+.vscode/
+.idea/
+
+# Node.js
+node_modules/
+dist/
+dist-ssr/
+
+# Coverage
+coverage/
+
+# Cypress
+/cypress/videos/
+/cypress/screenshots/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# OS generated files
+.DS_Store
+Thumbs.db

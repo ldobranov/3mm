@@ -1,7 +1,8 @@
 <template>
   <div>
-    <h1>{{ page.title }}</h1>
-    <div v-html="page.content"></div>
+    <h1 v-if="page">{{ page.title }}</h1>
+    <div v-if="page" v-html="page.content"></div>
+    <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
   </div>
 </template>
 
@@ -17,22 +18,31 @@ export default defineComponent({
     },
   },
   setup(props) {
-    const page = ref({ title: '', content: '' });
+    const page = ref<{ title: string; content: string } | null>(null);
+    const errorMessage = ref('');
 
-    onMounted(async () => {
+    const fetchPage = async () => {
       try {
-        const response = await axios.get(`/pages/${props.slug}`); // Corrected the endpoint
+        const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/pages/${props.slug}`);
         page.value = response.data;
+        errorMessage.value = '';
       } catch (error) {
-        console.error('Failed to fetch page:', error);
+        console.error('Error fetching page:', error);
+        errorMessage.value = 'Failed to fetch page content.';
       }
-    });
+    };
 
-    return { page };
+    onMounted(fetchPage);
+
+    return { page, errorMessage };
   },
 });
 </script>
 
 <style scoped>
+.error {
+  color: red;
+  font-weight: bold;
+}
 /* Add any specific styles for the page view here */
 </style>

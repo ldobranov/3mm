@@ -93,7 +93,10 @@ export default defineComponent({
       }
     };
 
-    onMounted(fetchSettings);
+    onMounted(() => {
+      console.log('Settings component mounted');
+      fetchSettings();
+    });
 
     return { settings, updateSettings, errorMessage };
   },

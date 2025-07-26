@@ -19,7 +19,9 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_and_teardown():
-    # Setup: Create tables before tests
+    # Drop all tables to avoid duplicate index errors
+    Base.metadata.drop_all(bind=engine)
+    # Create tables before tests
     Base.metadata.create_all(bind=engine)
 
     # Reset auto-increment counters for tables

@@ -18,6 +18,7 @@ from backend.db.menu import Menu
 from backend.db.notification import Notification
 from backend.db.role import Role
 from backend.db.user import User
+from backend.extensions.hiveos.models import HiveOSKey
 from backend.utils.db_utils import get_db
 from backend.db.base import Base
 
@@ -143,3 +144,16 @@ def test_user_model(db_session, username, email, hashed_password):
     assert user.username == username
     assert user.email == email
     assert user.hashed_password == hashed_password
+
+# Test HiveOSKey model
+@pytest.mark.parametrize("user_id, api_key", [
+    (1, "test_api_key_123"),
+    (2, "another_api_key_456"),
+])
+def test_hiveos_key_model(db_session, user_id, api_key):
+    hiveos_key = HiveOSKey(user_id=user_id, api_key=api_key)
+    db_session.add(hiveos_key)
+    db_session.commit()
+    assert hiveos_key.id is not None
+    assert hiveos_key.user_id == user_id
+    assert hiveos_key.api_key == api_key

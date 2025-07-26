@@ -11,7 +11,8 @@ import backend.db.settings
 import backend.db.extension
 import backend.db.notification
 import backend.db.audit_log
+import backend.db.hiveos
 
 __all__ = [
-    "User", "Role", "Menu", "Page", "Settings", "Extension", "Notification", "AuditLog"
+    "User", "Role", "Menu", "Page", "Settings", "Extension", "Notification", "AuditLog", "HiveOSKey"
 ]

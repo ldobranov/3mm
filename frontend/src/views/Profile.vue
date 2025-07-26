@@ -83,6 +83,7 @@ export default defineComponent({
     };
 
     onMounted(() => {
+      console.log('Profile component mounted');
       fetchProfile();
     });
 

@@ -62,12 +62,21 @@ export default defineComponent({
       }
     };
 
+    const generateSlug = (title: string) => {
+      return title
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '');
+    };
+
     const createPage = async () => {
       try {
         isLoading.value = true;
+        const slug = generateSlug(pageTitle.value);
         await axios.post(`${import.meta.env.VITE_API_BASE_URL}/pages/create`, {
           title: pageTitle.value,
           content: editor.getHTML(),
+          slug: slug,
         });
         pageTitle.value = '';
         editor.commands.setContent('');

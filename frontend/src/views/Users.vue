@@ -84,6 +84,7 @@ export default defineComponent({
     };
 
     onMounted(() => {
+      console.log('Users component mounted');
       fetchUsers();
     });
 

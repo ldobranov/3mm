@@ -47,5 +47,35 @@ def test_extensions_generate():
     assert "name" in response.json(), "Response should contain a name"
     assert response.json()["name"] == "AI Generated Extension", "Name should match"
 
+def test_configure_mqtt():
+    response = client.post(
+        "/extensions/mqtt/configure",
+        json={
+            "broker": "test.mqtt.broker",
+            "port": 1883,
+            "username": "testuser",
+            "password": "testpassword"
+        }
+    )
+    assert response.status_code == 200, f"Unexpected status code: {response.status_code}"
+    assert response.json()["message"] == "MQTT configured successfully", "Message should confirm successful configuration"
+
+def test_send_command():
+    response = client.post(
+        "/extensions/mqtt/send",
+        json={
+            "topic": "test/topic",
+            "payload": "test payload"
+        }
+    )
+    assert response.status_code == 200, f"Unexpected status code: {response.status_code}"
+    assert response.json()["message"] == "Command sent successfully", "Message should confirm successful command"
+
+def test_fetch_status():
+    response = client.get("/extensions/mqtt/status")
+    assert response.status_code == 200, f"Unexpected status code: {response.status_code}"
+    assert "status" in response.json(), "Response should contain a status"
+    assert response.json()["status"] == "OK", "Status should be OK"
+
 # Moved the test file to the backend folder as per the updated instructions
 # Ensure all backend-related tests are located within the backend folder

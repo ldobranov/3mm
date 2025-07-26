@@ -6,12 +6,29 @@ from backend.utils.db_utils import get_db
 import zipfile
 import os
 import logging
+from paho.mqtt import client as mqtt_client
+import requests
+from backend.extensions.hiveos.routes import router as hiveos_router
+import importlib.util
+from sqlalchemy import MetaData
+from backend.db.base import Base
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("route_debug")
 
 router = APIRouter()
+
+# Include the HiveOS router dynamically
+router.include_router(hiveos_router, prefix="/extensions/hiveos")
+
+mqtt_client_instance = None
+
+def connect_mqtt(broker, port, username, password):
+    global mqtt_client_instance
+    mqtt_client_instance = mqtt_client.Client()
+    mqtt_client_instance.username_pw_set(username, password)
+    mqtt_client_instance.connect(broker, port)
 
 @router.post("/upload", operation_id="extensions_upload_extension")
 def upload_extension(file: UploadFile, db: Session = Depends(get_db)):
@@ -33,15 +50,27 @@ def upload_extension(file: UploadFile, db: Session = Depends(get_db)):
         os.remove(temp_path)
 
         backend_path = "/tmp/extracted_extension/backend"
-        frontend_path = "/tmp/extracted_extension/frontend"
-
         if os.path.exists(backend_path):
-            os.makedirs("extensions/backend", exist_ok=True)
-            os.system(f"mv {backend_path}/* extensions/backend/")
+            models_file = os.path.join(backend_path, "models.py")
+            routes_file = os.path.join(backend_path, "routes.py")
 
-        if os.path.exists(frontend_path):
-            os.makedirs("extensions/frontend", exist_ok=True)
-            os.system(f"mv {frontend_path}/* extensions/frontend/")
+            # Dynamically load models
+            if os.path.exists(models_file):
+                spec = importlib.util.spec_from_file_location("models", models_file)
+                models_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(models_module)
+
+                if hasattr(models_module, "Base"):
+                    models_module.Base.metadata.create_all(bind=db.get_bind())
+
+            # Dynamically load routes
+            if os.path.exists(routes_file):
+                spec = importlib.util.spec_from_file_location("routes", routes_file)
+                routes_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(routes_module)
+
+                if hasattr(routes_module, "router"):
+                    router.include_router(routes_module.router, prefix=f"/extensions/{os.path.basename(backend_path)}")
 
         return {"message": "Extension uploaded and registered successfully"}
     except Exception as e:
@@ -73,3 +102,20 @@ def generate_extension(description: str, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error during extension generation: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@router.post("/extensions/mqtt/configure")
+def configure_mqtt(broker: str, port: int, username: str, password: str):
+    connect_mqtt(broker, port, username, password)
+    return {"message": "MQTT configured successfully"}
+
+@router.post("/extensions/mqtt/send")
+def send_command(topic: str, payload: str):
+    if mqtt_client_instance:
+        mqtt_client_instance.publish(topic, payload)
+        return {"message": "Command sent successfully"}
+    return {"error": "MQTT client not configured"}
+
+@router.get("/extensions/mqtt/status")
+def fetch_status():
+    # Implement logic to fetch status updates
+    return {"status": "OK"}

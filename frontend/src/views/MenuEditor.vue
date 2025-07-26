@@ -120,7 +120,10 @@ export default defineComponent({
       });
     };
 
-    onMounted(fetchMenuItems);
+    onMounted(() => {
+      console.log('MenuEditor component mounted');
+      fetchMenuItems();
+    });
 
     return { menuItems, newMenuItem, addMenuItem, editMenuItem, deleteMenuItem, updateOrderOnDrag };
   },

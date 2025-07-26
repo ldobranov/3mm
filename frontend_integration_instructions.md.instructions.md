@@ -85,3 +85,30 @@ A complete list of all backend API endpoints, including their HTTP methods:
   - Full access to all routes.
 - **User**:
   - Access to `/dashboard` and `/profile` only.
+
+## Instructions for HiveOS Extension Development
+
+#### Allowed Folders for Changes
+When working on the HiveOS extension, you are only allowed to make changes in the following folders:
+
+1. `/home/laz/3mm/backend/extensions/hiveos`
+2. `/home/laz/3mm/frontend/src/extensions/hiveos`
+
+#### Backend Utility for HiveOS API
+A utility file `hiveos_api.py` has been created in the `utils` folder. This file provides a class `HiveOSAPI` that handles GET and POST requests to the HiveOS API with retry logic for `521` errors. This utility should be used for all API interactions to ensure consistent error handling and retry logic.
+
+#### Backend Changes
+- Refactor backend routes to use the `HiveOSAPI` utility for API requests.
+- Ensure all API requests include retry logic to handle `521` errors.
+
+#### Frontend Changes
+- Update the frontend to send the correct payloads for worker-level actions (`reboot`, `shutdown`) and miner-level actions (`start`, `stop`).
+- Ensure the frontend handles errors gracefully and provides clear feedback to the user.
+
+#### Testing
+- Verify that all endpoints work as expected with the updated utility.
+- Test both worker-level and miner-level actions to ensure proper functionality.
+
+#### Notes
+- Do not make changes outside the allowed folders.
+- Follow best practices for error handling and logging.

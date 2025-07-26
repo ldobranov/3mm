@@ -14,12 +14,26 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@/extensions': fileURLToPath(new URL('./src/extensions', import.meta.url)),
     },
   },
   build: {
     rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+      },
       external: ['@vueup/vue-quill'],
+    },
+  },
+  server: {
+    proxy: {
+      '/extensions/hiveos/api': {
+        target: 'http://localhost:8887',
+        changeOrigin: false,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/extensions\/hiveos\/api/, '/extensions/hiveos')
+      },
     },
   },
 })

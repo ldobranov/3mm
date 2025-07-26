@@ -18,4 +18,8 @@ class Page(Base):
 
     @staticmethod
     def get_by_slug(session, slug):
-        return session.query(Page).filter_by(slug=slug).first()
+        page = session.query(Page).filter_by(slug=slug).first()
+        if not page:
+            # Dynamically generate slug from title if not found
+            page = session.query(Page).filter(Page.title.ilike(slug.replace('-', ' '))).first()
+        return page

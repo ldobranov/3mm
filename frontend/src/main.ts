@@ -1,14 +1,14 @@
-import './assets/main.css';
-
-// Removed Bulma integration
 import { createApp } from 'vue';
-import { createPinia } from 'pinia';
 import App from './App.vue';
-import router from './router';
+import routerPromise from './router';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import 'bootstrap/dist/js/bootstrap.bundle.min.js';
 
-const app = createApp(App);
+async function bootstrap() {
+  const app = createApp(App);
+  const router = await routerPromise; // Wait for the router to be initialized
+  app.use(router);
+  app.mount('#app');
+}
 
-app.use(createPinia());
-app.use(router);
-
-app.mount('#app');
+bootstrap();
