@@ -4,6 +4,16 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
+from backend.db.base import Base  # Import the Base metadata from your models
+
+# Explicitly import all model modules to populate Base.metadata and avoid lazy import cycles
+import backend.db.user  # noqa: F401
+import backend.db.role  # noqa: F401
+import backend.db.page  # noqa: F401
+import backend.db.settings  # noqa: F401
+import backend.db.audit_log  # noqa: F401
+import backend.db.display  # noqa: F401
+import backend.db.widget  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -14,10 +24,10 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Import the Base object from the SQLAlchemy models
-from backend.db.base import Base
-
-# Assign Base.metadata to target_metadata for Alembic autogenerate support
+# add your model's MetaData object here
+# for 'autogenerate' support
+# from myapp import mymodel
+# target_metadata = mymodel.Base.metadata
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
@@ -76,11 +86,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-
-import sys
-import os
-
-# Add the project directory to the Python path
-dir_path = os.path.dirname(os.path.abspath(__file__))
-project_path = os.path.join(dir_path, '../../')
-sys.path.append(project_path)

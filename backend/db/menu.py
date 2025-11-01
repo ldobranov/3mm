@@ -1,31 +1,26 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, Boolean, JSON
 from .base import Base
 from pydantic import BaseModel, ConfigDict
 
 class Menu(Base):
     __tablename__ = "menus"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True)
-    path = Column(String)
-    order = Column(Integer)
+    name = Column(String, nullable=False)
+    items = Column(JSON, nullable=True)
+    is_active = Column(Boolean, nullable=True, default=False)
 
-class Page(Base):
-    __tablename__ = "pages"
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, unique=True)
-    content = Column(String)
 
 class MenuSchema(BaseModel):
     id: int
     name: str
-    path: str
-    order: int
+    items: list | None = []
+    is_active: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
 class MenuCreateSchema(BaseModel):
     name: str
-    path: str
-    order: int
+    items: list | None = []
+    is_active: bool = False
 
     model_config = ConfigDict(from_attributes=True)

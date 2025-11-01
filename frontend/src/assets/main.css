@@ -1,17 +1,174 @@
-@import 'bootstrap/dist/css/bootstrap.min.css';
+/* Token-based design system and utilities */
+@import '@/assets/tailwind.css';
 
-/* Your custom styles */
+:root {
+  /* core colors */
+  --color-background: #ffffff;
+  --color-background-soft: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f9fafb;
+  --color-card-bg: #ffffff;
+  --color-text: #0f172a;
+  --color-muted: #64748b;
+  --color-link: #2563eb;
+  --color-link-hover: #1d4ed8;
+  --color-border: #e5e7eb;
+  --color-border-hover: #d1d5db;
+  --color-overlay: rgba(0,0,0,0.5);
+  --color-shadow: rgba(0,0,0,0.25);
+
+  --accent: #10b981; /* emerald */
+  --accent-contrast: #ffffff;
+  --danger: #ef4444;
+  --danger-contrast: #ffffff;
+
+  /* radii */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* typography */
+  --fs-xs: 12px;
+  --fs-sm: 14px;
+  --fs-md: 16px;
+  --fs-lg: 18px;
+  --fs-xl: 22px;
+
+  /* shadows */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 2px 8px rgba(0,0,0,0.10);
+  --shadow-lg: 0 25px 50px -12px var(--color-shadow);
+}
+
+:root.dark-mode {
+  --color-background: #0b1220;
+  --color-background-soft: #0f172a;
+  --color-surface: #111827;
+  --color-surface-alt: #0f172a;
+  --color-card-bg: #111827;
+  --color-text: #e5e7eb;
+  --color-muted: #a3a3a3;
+  --color-link: #60a5fa;
+  --color-link-hover: #93c5fd;
+  --color-border: #374151;
+  --color-border-hover: #4b5563;
+  --color-overlay: rgba(0,0,0,0.6);
+  --color-shadow: rgba(0,0,0,0.4);
+
+  --accent: #10b981;
+  --accent-contrast: #052e2b;
+  --danger: #ef4444;
+  --danger-contrast: #3b0b0b;
+}
+
+/* App shell */
 #app {
   max-width: 1280px;
   margin: 0 auto;
   padding: 2rem;
   font-weight: normal;
+  background-color: var(--color-background);
+  color: var(--color-text);
+  min-height: 100vh;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 a,
 .green {
   text-decoration: none;
-  color: hsla(160, 100%, 37%, 1);
-  transition: 0.4s;
+  color: var(--color-link);
+  transition: color 0.2s ease;
   padding: 3px;
 }
+
+a:hover,
+.green:hover {
+  color: var(--color-link-hover);
+}
+
+/* Components */
+.button { 
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 0.5rem; padding: 0.5rem 0.9rem; border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text);
+  font-size: var(--fs-sm); line-height: 1.2; cursor: pointer;
+  transition: background-color .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.button:hover { border-color: var(--color-border-hover); box-shadow: var(--shadow-sm); }
+.button:disabled { opacity: 0.6; cursor: not-allowed; }
+.button-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+.button-primary:hover { filter: brightness(0.95); }
+.button-secondary { background: var(--color-surface-alt); }
+.button-outline { background: transparent; }
+.button-danger { background: var(--danger); border-color: var(--danger); color: var(--danger-contrast); }
+.button-sm { padding: 0.25rem 0.5rem; font-size: 12px; }
+
+.card {
+  background: var(--color-card-bg); color: var(--color-text);
+  border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  padding: var(--space-4); box-shadow: var(--shadow-sm);
+}
+
+.grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--space-4);
+}
+
+/* Views */
+.view { padding: 20px; }
+.view-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+.view-title { font-size: 2rem; font-weight: 700; color: var(--color-text); }
+.view-subtitle { font-size: 1.25rem; font-weight: 600; color: var(--color-text); opacity: 0.9; }
+.card-hover:hover { box-shadow: var(--shadow-md); }
+.meta { margin: 6px 0; color: var(--color-text); opacity: 0.85; }
+.slug { font-size: 0.875rem; color: var(--color-text); opacity: 0.8; margin: 0.5rem 0; }
+.actions-row { display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
+
+/* small spacing utilities */
+.mt-1 { margin-top: var(--space-1); }
+.mt-2 { margin-top: var(--space-2); }
+.mb-1 { margin-bottom: var(--space-1); }
+.mb-2 { margin-bottom: var(--space-2); }
+.pt-2 { padding-top: var(--space-2); }
+.pb-2 { padding-bottom: var(--space-2); }
+.gap-sm { gap: var(--space-2); }
+
+.alert {
+  border: 1px solid var(--color-border); background: var(--color-background-soft); color: var(--color-text);
+  padding: var(--space-3) var(--space-4); border-radius: var(--radius-sm);
+}
+.alert-info { border-color: var(--color-border); }
+
+.spinner { width: 2rem; height: 2rem; border-radius: 9999px; border: 2px solid var(--color-border); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.chip { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; margin-right: 8px; }
+.chip-public { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+.chip-private { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+
+.modal-backdrop { position: fixed; inset: 0; background-color: var(--color-overlay); z-index: 9998; }
+.modal-container { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 9999; pointer-events: none; }
+.modal-surface { position: relative; pointer-events: auto; background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); }
+.modal-lg { width: min(90vw, 50rem); max-height: 90vh; overflow: auto; padding: 1.25rem; }
+.modal-sm { width: min(90vw, 28rem); padding: 1.25rem; }
+
+.input, .select, .textarea {
+  background: var(--color-surface); color: var(--color-text);
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  padding: 0.5rem; width: 100%;
+}
+.input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--color-link); box-shadow: 0 0 0 0.2rem rgba(96, 165, 250, 0.25); }
+
+.hr { border: 0; border-top: 1px solid var(--color-border); }
+
+/* Scrollbars (WebKit) */
+::-webkit-scrollbar { width: 10px; height: 10px; background: var(--color-background); }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-border-hover); }

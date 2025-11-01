@@ -3,9 +3,17 @@
 	"tasks": [
 		{
 			"type": "shell",
-			"label": "Run Mega Monitor Backend with Logging",
-			"command": "uvicorn main:app --reload --log-level debug --log-config backend_debug.log",
-			"isBackground": true
+			"label": "Run Backend Tests",
+			"command": "pytest",
+			"args": [
+				"--maxfail=5",
+				"--disable-warnings"
+			],
+			"group": "test",
+			"isBackground": false,
+			"problemMatcher": [
+				"$pytest"
+			]
 		}
 	]
 }

@@ -9,15 +9,12 @@ import Users from '../views/Users.vue';
 import Profile from '../views/Profile.vue';
 import Pages from '@/views/Pages.vue';
 import PageView from '@/views/PageView.vue';
-import axios from 'axios';
-import RaspberryController from '@/views/RaspberryController.vue';
-import hiveosRoutes from '@/extensions/hiveos';
-import ManagerRouter from '../extensions/manager';
+import http from '@/utils/http';
 
 async function fetchDynamicRoutesForPages() {
   try {
     console.log('Fetching dynamic routes for pages...');
-    const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/pages/read`);
+    const response = await http.get(`/pages/read`);
     console.log('Dynamic routes response:', response.data);
 
     const pages = Array.isArray(response.data.items) ? response.data.items : [];
@@ -36,15 +33,17 @@ async function fetchDynamicRoutesForPages() {
 
 async function createRouterWithDynamicRoutes() {
   const routes: RouteRecordRaw[] = [
-    { path: '/login', component: Login },
-    { path: '/register', component: Register },
-    { path: '/settings', name: 'Settings', component: Settings },
-    { path: '/settings-editor', name: 'SettingsEditor', component: SettingsEditor },
-    { path: '/menu-editor', name: 'MenuEditor', component: MenuEditor },
-    { path: '/users', name: 'Users', component: Users },
-    { path: '/profile', name: 'Profile', component: Profile },
-    { path: '/raspberry-controller', name: 'RaspberryController', component: RaspberryController },
-    { path: '/pages', name: 'Pages', component: Pages },
+    { path: '/user/login', name: 'Login', component: Login },
+    { path: '/user/register', name: 'Register', component: Register },
+    
+    { path: '/user/profile', name: 'Profile', component: Profile, meta: { requiresAuth: true } },
+    { path: '/user/logout', name: 'Logout', component: () => import('../views/Logout.vue') },
+    { path: '/settings', name: 'Settings', component: Settings, meta: { requiresAuth: true } },
+    { path: '/security', name: 'Security', component: () => import('../views/Security.vue'), meta: { requiresAuth: true } },
+    { path: '/settings-editor', name: 'SettingsEditor', component: SettingsEditor, meta: { requiresAuth: true } },
+    { path: '/menu-editor', name: 'MenuEditor', component: MenuEditor, meta: { requiresAuth: true } },
+    { path: '/users', name: 'Users', component: Users, meta: { requiresAuth: true } },
+        { path: '/pages', name: 'Pages', component: Pages, meta: { requiresAuth: true } },
     {
       path: '/pages/:slug',
       name: 'PageView',
@@ -56,32 +55,56 @@ async function createRouterWithDynamicRoutes() {
           next();
           return;
         }
-
-        const dynamicRoutes = await fetchDynamicRoutesForPages();
-        console.log('Dynamic routes:', dynamicRoutes);
-        console.log('Requested slug:', to.params.slug);
-
-        const matchingRoute = dynamicRoutes.find((route: { slug: string }) => route.slug === to.params.slug);
-        if (matchingRoute) {
-          console.log('Matching route found:', matchingRoute);
+        const incoming = String(to.params.slug).toLowerCase();
+        try {
+          await http.get(`/pages/${incoming}`);
           next();
-        } else {
-          console.warn('No matching route found for slug:', to.params.slug);
-          next('/404');
-        }
+        } catch (e: any) { 
+          const status = e?.response?.status; 
+          if (status === 404) { next('/404'); 
+
+          } else if (status === 401 || status === 403) { 
+            next('/user/login'); } 
+            else { next('/404'); 
+
+            } 
+          }
       },
     },
+    { path: '/dashboard', name: 'DashboardList', component: () => import('@/views/DashboardList.vue'), meta: { requiresAuth: true } },
+    { path: '/dashboard/:id/edit', name: 'DisplayEditor', component: () => import('@/views/DisplayEditor.vue'), meta: { requiresAuth: true } },
+    { path: '/@:username/:slug', name: 'PublicDisplay', component: () => import('@/views/PublicDisplay.vue') },
     { path: '/:pathMatch(.*)*', name: 'NotFound', component: () => import('../views/NotFound.vue') },
-    ...hiveosRoutes,
-    ...ManagerRouter.getRoutes(),
   ];
 
-  return createRouter({
+  const router = createRouter({
     history: createWebHistory(),
     routes,
   });
+
+  router.beforeEach((to, from, next) => {
+    const requiresAuth = to.matched.some((record) => record.meta && record.meta.requiresAuth === true);
+    if (!requiresAuth) {
+      return next();
+    }
+
+    const token = localStorage.getItem('authToken');
+    if (!token || token === 'null' || token === 'undefined') {
+      return next('/user/login');
+    }
+
+    const requiredRole = to.matched.find((r) => r.meta && (r.meta as any).requiresRole)?.meta?.requiresRole as string | undefined;
+    if (requiredRole) {
+      const currentRole = localStorage.getItem('role');
+      if (!currentRole || currentRole !== requiredRole) {
+        return next('/user/profile');
+      }
+    }
+
+    next();
+  });
+
+  return router;
 }
 
-const routerPromise = createRouterWithDynamicRoutes();
-
-export default routerPromise;
+export default await createRouterWithDynamicRoutes();

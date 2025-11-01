@@ -34,10 +34,49 @@
   --color-text: var(--vt-c-text-light-1);
 
   --section-gap: 160px;
+  
+  /* Additional theme colors */
+  --color-card-bg: #ffffff;
+  --surface-card: #ffffff;
+  --color-input-bg: #ffffff;
+  --color-input-border: #d1d5db;
+  --color-button-bg: #4CAF50;
+  --color-button-text: #ffffff;
+  --color-button-hover: #45a049;
+  --color-link: hsla(160, 100%, 37%, 1);
+  --color-link-hover: hsla(160, 100%, 30%, 1);
+  --color-shadow: rgba(0, 0, 0, 0.1);
+  --color-overlay: rgba(0, 0, 0, 0.5);
+}
+
+/* Dark mode styles - applied via class */
+.dark-mode {
+  --color-background: var(--vt-c-black);
+  --color-background-soft: var(--vt-c-black-soft);
+  --color-background-mute: var(--vt-c-black-mute);
+
+  --color-border: var(--vt-c-divider-dark-2);
+  --color-border-hover: var(--vt-c-divider-dark-1);
+
+  --color-heading: var(--vt-c-text-dark-1);
+  --color-text: var(--vt-c-text-dark-2);
+  
+  /* Additional dark theme colors */
+  --color-card-bg: #1f2937;
+  --surface-card: #1f2937;
+  --color-input-bg: #374151;
+  --color-input-border: #4b5563;
+  --color-button-bg: #10b981;
+  --color-button-text: #ffffff;
+  --color-button-hover: #059669;
+  --color-link: #34d399;
+  --color-link-hover: #6ee7b7;
+  --color-shadow: rgba(0, 0, 0, 0.3);
+  --color-overlay: rgba(0, 0, 0, 0.7);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.dark-mode):not(.light-mode) {
     --color-background: var(--vt-c-black);
     --color-background-soft: var(--vt-c-black-soft);
     --color-background-mute: var(--vt-c-black-mute);
@@ -47,6 +86,17 @@
 
     --color-heading: var(--vt-c-text-dark-1);
     --color-text: var(--vt-c-text-dark-2);
+    
+    --color-card-bg: #1f2937;
+    --color-input-bg: #374151;
+    --color-input-border: #4b5563;
+    --color-button-bg: #10b981;
+    --color-button-text: #ffffff;
+    --color-button-hover: #059669;
+    --color-link: #34d399;
+    --color-link-hover: #6ee7b7;
+    --color-shadow: rgba(0, 0, 0, 0.3);
+    --color-overlay: rgba(0, 0, 0, 0.7);
   }
 }
 

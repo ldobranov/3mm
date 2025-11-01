@@ -1,6 +1,8 @@
-from sqlalchemy import Column, Integer, String, Text
+from sqlalchemy import Column, Integer, String, Text, Boolean, ForeignKey
+from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from backend.db.base import Base
 
 class Page(Base):
@@ -11,6 +13,12 @@ class Page(Base):
     title = Column(String, unique=True)
     content = Column(Text)  # Updated to support HTML content
     slug = Column(String, unique=True, nullable=False, default="")
+    is_public = Column(Boolean, nullable=False, default=True)
+    allowed_roles = Column(JSON, nullable=False, default=list)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    # Relationship to User
+    owner = relationship("User", backref="pages", lazy="joined")
 
     def generate_slug(self):
         if not self.slug and self.title:

@@ -17,7 +17,6 @@ logging.basicConfig(level=logging.INFO)
 # Explicit imports for User and Role models
 from backend.db.user import User
 from backend.db.role import Role
-from backend.db.extension import Extension
 from backend.db.menu import Menu  # Import Menu model
 from backend.db.page import Page  # Import Page model
 
@@ -88,20 +87,7 @@ def seed_test_data(db):
     for role_name in roles:
         role = get_role_model()(name=role_name)
         db.add(role)
-
-    # Seed extensions
-    extensions = [
-        {"name": "Test Extension", "version": "1.0.0", "description": "A test extension", "enabled": True}
-    ]
-    for ext_data in extensions:
-        extension = Extension(
-            name=ext_data["name"],
-            version=ext_data["version"],
-            description=ext_data["description"],
-            enabled=ext_data["enabled"]
-        )
-        db.add(extension)
-
+    
     db.commit()
     print("Test data seeded.")
 
@@ -175,18 +161,6 @@ def seed_menu(db):
     db.commit()
     print("Menu seeded successfully.")
 
-def seed_extensions(db):
-    initial_extensions = [
-        {"name": "Test Extension", "version": "1.0.0", "description": "A test extension", "enabled": True}
-    ]
-    for ext in initial_extensions:
-        extension = db.query(Extension).filter_by(name=ext["name"]).first()
-        if not extension:
-            extension = Extension(**ext)
-            db.add(extension)
-    db.commit()
-    print("Extensions seeded successfully.")
-
 def populate_initial_data():
     """Populate the database with initial data."""
     db: Session = SessionLocal()
@@ -230,7 +204,6 @@ if __name__ == "__main__":
         seed_roles_and_users(db)
         seed_settings(db)
         seed_menu(db)
-        seed_extensions(db)
         populate_initial_data()
     finally:
         db.close()

@@ -1,64 +1,346 @@
 <template>
-  <div class="pages">
-    <h1>Pages Management</h1>
-    <form @submit.prevent="createPage">
-      <input v-model="pageTitle" type="text" placeholder="Page Title" required />
-      <EditorContent :editor="editor" />
-      <button type="submit" :disabled="isLoading">{{ isLoading ? 'Creating...' : 'Create Page' }}</button>
-    </form>
+  <div class="view">
+    <div class="view-header">
+      <h1 class="view-title">Pages Management</h1>
+      <button
+        class="button button-primary"
+        @click="openCreateModal"
+      >
+        <i class="bi bi-plus-circle" style="margin-right: 0.5rem;"></i>Create New Page
+      </button>
+    </div>
 
-    <h2>Existing Pages</h2>
-    <ul>
-      <li v-for="page in pages" :key="page.id">
-        <h3>{{ page.title }}</h3>
-        <button @click="editPage(page)">Edit</button>
-        <button @click="deletePage(page.id)" :disabled="isLoading">Delete</button>
-      </li>
-    </ul>
+    <div v-if="isLoading" class="text-center" style="padding: 2rem 0;">
+      <div class="spinner" role="status" aria-label="Loading"></div>
+    </div>
 
-    <div v-if="editingPage">
-      <h2>Edit Page</h2>
-      <form @submit.prevent="updatePage">
-        <input v-model="editingPage.title" type="text" required />
-        <EditorContent :editor="editor" />
-        <button type="submit" :disabled="isLoading">{{ isLoading ? 'Updating...' : 'Update Page' }}</button>
-      </form>
+    <div v-else class="grid">
+      <div class="card" :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
+        <div style="padding: 1rem;">
+          <h2>Existing Pages</h2>
+          <div v-if="pages.length === 0" class="alert alert-info">
+            <i class="bi bi-info-circle" style="margin-right: 0.5rem;"></i>
+            No pages found.
+          </div>
+          <div v-else class="pages-grid">
+            <div v-for="page in pages" :key="page.id" class="page-card card" :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
+              <h3>
+                {{ page.title }}
+                <span v-if="page.owner_id !== currentUserId && !isAdmin" class="text-sm" style="color: var(--text-secondary);">
+                  (Shared with you)
+                </span>
+              </h3>
+              <div class="meta">
+                <span class="chip" :class="page.is_public ? 'chip-public' : 'chip-private'">
+                  {{ page.is_public ? 'Public' : 'Private' }}
+                </span>
+                <span v-if="!page.is_public && page.allowed_roles && page.allowed_roles.length" class="roles-list" style="color: var(--text-secondary);">
+                  Roles: {{ page.allowed_roles.join(', ') }}
+                </span>
+              </div>
+              <div class="page-slug" style="color: var(--text-muted);">Slug: /pages/{{ page.slug }}</div>
+              <div class="actions">
+                <button
+                  class="button button-outline button-sm"
+                  @click="openEditModal(page)"
+                >
+                  <i class="bi bi-pencil" style="margin-right: 0.25rem;"></i>Edit
+                </button>
+                <button
+                  class="button button-outline button-sm"
+                  style="--accent: var(--button-danger-bg); --accent-contrast: var(--button-danger-text); border-color: var(--button-danger-bg); color: var(--button-danger-bg);"
+                  @click="confirmDelete(page)"
+                  :disabled="isLoading"
+                  v-if="page.owner_id === currentUserId || isAdmin"
+                >
+                  <i class="bi bi-trash" style="margin-right: 0.25rem;"></i>Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
+
+    <!-- Create/Edit Page Modal -->
+    <teleport to="body">
+      <div v-if="showModal">
+        <!-- backdrop -->
+        <div 
+          class="modal-backdrop"
+          @click="closeModal"
+        ></div>
+        
+        <!-- dialog centered -->
+        <div class="modal-container">
+          <div
+            class="modal-surface modal-lg"
+            role="dialog"
+            aria-modal="true"
+            @click.stop
+            :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }"
+          >
+            <div class="flex items-center justify-between" style="padding-bottom: 0.5rem; border-bottom: 1px solid var(--card-border);">
+              <div class="text-lg font-bold" style="color: var(--text-primary);">
+                {{ editingPage ? 'Edit Page' : 'Create New Page' }}
+              </div>
+              <button
+                class="button button-outline button-sm"
+                type="button"
+                @click.stop="closeModal"
+              >
+                ×
+              </button>
+            </div>
+
+            <form @submit.prevent="editingPage ? updatePage() : createPage()" class="py-4 space-y-3">
+              <div>
+                <label for="page-title" class="block">
+                  <span class="text-sm font-medium" style="color: var(--text-primary);">Title</span>
+                  <input
+                    id="page-title"
+                    type="text"
+                    class="input"
+                    v-model="modalData.title"
+                    placeholder="Page title"
+                    required
+                  />
+                </label>
+              </div>
+
+              <div>
+                <label for="page-slug" class="block">
+                  <span class="text-sm font-medium" style="color: var(--text-primary);">Slug</span>
+                  <input
+                    id="page-slug"
+                    type="text"
+                    class="input"
+                    v-model="modalData.slug"
+                    placeholder="page-slug"
+                  />
+                  <p class="text-xs" style="color: var(--text-muted); margin-top: 0.25rem;">URL: /pages/{{ modalData.slug || generateSlug(modalData.title) }}</p>
+                </label>
+              </div>
+
+              <div class="privacy-section">
+                <label for="page-public" class="inline-flex items-center gap-2">
+                  <input
+                    id="page-public"
+                    type="checkbox"
+                    class="input"
+                    v-model="modalData.isPublic"
+                  />
+                  <span style="color: var(--text-primary);">Make page public</span>
+                </label>
+                
+                <div v-if="!modalData.isPublic && isAdmin" class="mt-2">
+                  <label for="page-roles" class="block">
+                    <span class="text-sm font-medium" style="color: var(--text-primary);">Allowed roles (optional):</span>
+                    <select
+                      id="page-roles"
+                      multiple
+                      v-model="modalData.selectedRoles"
+                      class="select"
+                    >
+                      <option v-if="roles.length === 0" disabled>No roles available</option>
+                      <option v-for="role in roles" :key="role.id" :value="role.name">
+                        {{ role.name }}
+                      </option>
+                    </select>
+                  </label>
+                  <p v-if="roles.length === 0" class="text-xs mt-1" style="color: var(--badge-warning-bg);">⚠️ No roles found. Please create roles first.</p>
+                  <p class="text-xs mt-1" style="color: var(--text-secondary);">Admin only: Restrict access to specific roles</p>
+                </div>
+                <div v-else-if="!modalData.isPublic && !isAdmin" class="mt-2">
+                  <p class="text-sm" style="color: var(--text-secondary);">
+                    <i class="bi bi-info-circle me-1"></i>
+                    This page will be private and only accessible to you.
+                  </p>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="page-content" class="d-block mb-1" style="color: var(--text-primary); font-weight: 500; font-size: 0.875rem;">Content</label>
+                <div class="editor-container card" style="padding: 0.75rem; margin-top: 0.25rem;" :style="{ backgroundColor: styleSettings.cardBg, borderColor: styleSettings.cardBorder }" @click="editor && editor.commands.focus('end')">
+                  <EditorContent :editor="editor" />
+                </div>
+              </div>
+
+              <div class="flex" style="justify-content: end; gap: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--card-border);">
+                <button 
+                  type="button"
+                  class="button button-secondary"
+                  @click.stop="closeModal"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  class="button button-primary"
+                  :disabled="isLoading"
+                >
+                  <i class="bi bi-save" style="margin-right: 0.25rem;"></i>{{ isLoading ? 'Saving...' : (editingPage ? 'Update' : 'Create') }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </teleport>
+
+    <!-- Delete Confirmation Modal -->
+    <teleport to="body">
+      <div v-if="showDeleteModal">
+        <div 
+          class="modal-backdrop"
+          @click="showDeleteModal = false"
+        ></div>
+        
+        <div class="modal-container">
+          <div
+            class="modal-surface modal-sm"
+            role="dialog"
+            aria-modal="true"
+            @click.stop
+            :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }"
+          >
+            <div class="text-lg font-bold mb-3" style="color: var(--text-primary);">Confirm Delete</div>
+            <p class="mb-4" style="color: var(--text-primary); opacity: 0.9;">
+              Are you sure you want to delete the page "{{ pageToDelete?.title }}"?
+            </p>
+            <div class="d-flex justify-content-end gap-2">
+              <button 
+                class="button button-secondary"
+                @click="showDeleteModal = false"
+              >
+                Cancel
+              </button>
+              <button 
+                class="button button-danger"
+                @click="deletePage"
+                :disabled="isLoading"
+              >
+                <i class="bi bi-trash" style="margin-right: 0.25rem;"></i>{{ isLoading ? 'Deleting...' : 'Delete' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, onBeforeUnmount } from 'vue';
-import axios from 'axios';
+import { defineComponent, ref, onMounted, onBeforeUnmount, computed, reactive, watch, nextTick } from 'vue';
+import http from '@/utils/http';
 import { Editor, EditorContent } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
+import { useThemeStore } from '@/stores/theme';
+import { useSettingsStore } from '@/stores/settings';
 
 export default defineComponent({
   components: { EditorContent },
   setup() {
-    const pages = ref<{ id: number; title: string; content: string }[]>([]);
-    const pageTitle = ref('');
-    const pageContent = ref('');
-    const editingPage = ref<{ id: number; title: string; content: string } | null>(null);
+    const themeStore = useThemeStore();
+    const settingsStore = useSettingsStore();
+    const isDark = computed(() => themeStore.isDark());
+    const styleSettings = computed(() => settingsStore.styleSettings);
+    interface Page {
+      id: number;
+      title: string;
+      content: string;
+      slug?: string;
+      is_public?: boolean;
+      allowed_roles?: string[];
+      owner_id?: number;
+      owner_username?: string;
+    }
+
+    const pages = ref<Page[]>([]);
+    const roles = ref<{ id: number; name: string }[]>([]);
     const isLoading = ref(false);
     const errorMessage = ref('');
+    const isAdmin = ref(localStorage.getItem('role') === 'admin');
+    const currentUserId = ref(parseInt(localStorage.getItem('user_id') || '0'));
+    
+    // Modal states
+    const showModal = ref(false);
+    const showDeleteModal = ref(false);
+    const editingPage = ref<Page | null>(null);
+    const pageToDelete = ref<{ id: number; title: string } | null>(null);
+    
+    // Modal form data
+    const modalData = reactive({
+      title: '',
+      slug: '',
+      isPublic: true,
+      selectedRoles: [] as string[]
+    });
 
     const editor = new Editor({
       extensions: [StarterKit],
-      content: '',
+      content: '<p><br/></p>',
+      autofocus: false,
+      editable: true,
     });
 
     const fetchPages = async () => {
       try {
         isLoading.value = true;
-        const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/pages/read`);
-        pages.value = response.data.items;
-      } catch (error) {
-        errorMessage.value = 'Failed to fetch pages.';
+        const response = await http.get('/pages/read');
+        pages.value = response.data.items || [];
+      } catch (error: any) {
+        console.error('Failed to fetch pages:', error?.response || error);
+        const status = error?.response?.status;
+        errorMessage.value = status ? `Failed to fetch pages (HTTP ${status}).` : 'Failed to fetch pages.';
       } finally {
         isLoading.value = false;
+      }
+    };
+
+    const fetchRoles = async () => {
+      try {
+        // 1) Try dedicated roles endpoint
+        const response = await http.get('/role/read');
+        const data = response.data;
+        let list: any[] = [];
+        if (Array.isArray(data)) list = data;
+        else if (Array.isArray(data?.items)) list = data.items;
+        else if (Array.isArray(data?.roles)) list = data.roles;
+        else if (data?.data && Array.isArray(data.data)) list = data.data;
+        roles.value = list.map((r: any, idx: number) => ({ id: r.id ?? idx + 1, name: r.name ?? r.role ?? r.title ?? String(r) })).filter(r => !!r.name);
+
+        // 2) If empty, derive from users endpoint (admin-only)
+        if (roles.value.length === 0) {
+          try {
+            const usersRes = await http.get('/user/read');
+            const users = (usersRes.data?.items ?? []) as Array<{ role?: string | null }>;
+            const unique = Array.from(
+              new Set(
+                users
+                  .map(u => (typeof u.role === 'string' ? u.role : ''))
+                  .filter((r): r is string => r.length > 0)
+              )
+            );
+            if (unique.length > 0) {
+              roles.value = unique.map((name, idx) => ({ id: idx + 1, name: String(name) }));
+            }
+          } catch (e) {
+            // Ignore, fallback below will handle
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to fetch roles via /role/read', error);
+      }
+
+      // 3) Final fallback defaults
+      if (roles.value.length === 0) {
+        roles.value = [
+          { id: 1, name: 'admin' },
+          { id: 2, name: 'user' },
+        ];
       }
     };
 
@@ -69,17 +351,89 @@ export default defineComponent({
         .replace(/[^a-z0-9-]/g, '');
     };
 
+    const ensureHtml = (val?: string | null) => {
+      const s = (val ?? '').trim();
+      if (!s) return '<p><br/></p>';
+      if (s.includes('<')) return s;
+      const escaped = s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+      return `<p>${escaped}</p>`;
+    };
+
+    // Modal functions
+    const openCreateModal = async () => {
+      editingPage.value = null;
+      modalData.title = '';
+      modalData.slug = '';
+      modalData.isPublic = true;
+      modalData.selectedRoles = [];
+      showModal.value = true;
+      await nextTick();
+      editor.commands.setContent(ensureHtml(''));
+      if (roles.value.length === 0) await fetchRoles();
+    };
+
+    const openEditModal = async (page: { id: number; title: string; content: string; slug?: string; is_public?: boolean; allowed_roles?: string[] }) => {
+      // Prime modal state
+      editingPage.value = { ...page };
+      modalData.title = page.title;
+      modalData.slug = page.slug || '';
+      modalData.isPublic = page.is_public ?? true;
+      modalData.selectedRoles = Array.isArray(page.allowed_roles) ? [...page.allowed_roles] : [];
+
+      // Open modal first so layout exists
+      showModal.value = true;
+      await nextTick();
+
+      // Default to any content we already have (might be empty from /pages/read)
+      editor.commands.setContent(ensureHtml(page.content));
+
+      // Load full content from backend by slug (source of truth)
+      try {
+        const slug = modalData.slug;
+        if (slug) {
+          const res = await http.get(`/pages/${slug}`);
+          const content = res.data?.content ?? '';
+          // Update title from backend too in case it changed
+          if (res.data?.title) modalData.title = res.data.title;
+          editor.commands.setContent(ensureHtml(content));
+        }
+      } catch (e) {
+        // Keep whatever we set initially; do not break editing
+        console.warn('Failed to load page content by slug, using existing content', e);
+      }
+
+      // Ensure roles are ready for private pages
+      if (!modalData.isPublic && roles.value.length === 0) await fetchRoles();
+    };
+
+    const closeModal = () => {
+      showModal.value = false;
+      editingPage.value = null;
+      errorMessage.value = '';
+    };
+
+    const confirmDelete = (page: { id: number; title: string }) => {
+      pageToDelete.value = page;
+      showDeleteModal.value = true;
+    };
+
     const createPage = async () => {
       try {
         isLoading.value = true;
-        const slug = generateSlug(pageTitle.value);
-        await axios.post(`${import.meta.env.VITE_API_BASE_URL}/pages/create`, {
-          title: pageTitle.value,
+        const slug = modalData.slug || generateSlug(modalData.title);
+        await http.post('/pages/create', {
+          title: modalData.title,
           content: editor.getHTML(),
           slug: slug,
+          is_public: modalData.isPublic,
+          allowed_roles: modalData.isPublic ? [] : modalData.selectedRoles,
         });
-        pageTitle.value = '';
-        editor.commands.setContent('');
+        closeModal();
         fetchPages();
       } catch (error) {
         errorMessage.value = 'Failed to create page.';
@@ -88,21 +442,19 @@ export default defineComponent({
       }
     };
 
-    const editPage = (page: { id: number; title: string; content: string }) => {
-      editingPage.value = { ...page };
-      editor.commands.setContent(page.content);
-    };
-
     const updatePage = async () => {
       try {
         isLoading.value = true;
         if (editingPage.value) {
-          await axios.put(`${import.meta.env.VITE_API_BASE_URL}/pages/update`, {
-            ...editingPage.value,
+          const slug = modalData.slug || generateSlug(modalData.title);
+          await http.put(`/pages/${editingPage.value.id}`, {
+            title: modalData.title,
+            slug: slug,
             content: editor.getHTML(),
+            is_public: modalData.isPublic,
+            allowed_roles: modalData.isPublic ? [] : modalData.selectedRoles,
           });
-          editingPage.value = null;
-          editor.commands.setContent('');
+          closeModal();
           fetchPages();
         }
       } catch (error) {
@@ -112,10 +464,13 @@ export default defineComponent({
       }
     };
 
-    const deletePage = async (id: number) => {
+    const deletePage = async () => {
+      if (!pageToDelete.value) return;
       try {
         isLoading.value = true;
-        await axios.delete(`${import.meta.env.VITE_API_BASE_URL}/pages/delete/${id}`);
+        await http.delete(`/pages/${pageToDelete.value.id}`);
+        showDeleteModal.value = false;
+        pageToDelete.value = null;
         fetchPages();
       } catch (error) {
         errorMessage.value = 'Failed to delete page.';
@@ -124,36 +479,218 @@ export default defineComponent({
       }
     };
 
-    onMounted(fetchPages);
+    // Keyboard handlers
+    const handleModalKeydown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showModal.value) {
+          e.stopPropagation();
+          closeModal();
+        } else if (showDeleteModal.value) {
+          e.stopPropagation();
+          showDeleteModal.value = false;
+        }
+      } else if (e.key === 'Enter' && !e.shiftKey) {
+        if (showModal.value) {
+          const target = e.target as HTMLElement;
+          if (target.tagName !== 'TEXTAREA') {
+            e.preventDefault();
+            if (editingPage.value) {
+              updatePage();
+            } else {
+              createPage();
+            }
+          }
+        }
+      }
+    };
+
+    onMounted(async () => {
+      // Fetch pages first (required)
+      await fetchPages();
+      // Preload roles (with fallback) so they're ready when needed
+      await fetchRoles();
+      window.addEventListener('keydown', handleModalKeydown);
+    });
+
+    // Load roles when toggling from public -> private
+    watch(() => modalData.isPublic, async (val) => {
+      if (val === false && roles.value.length === 0) {
+        await fetchRoles();
+      }
+    });
 
     onBeforeUnmount(() => {
       editor.destroy();
+      window.removeEventListener('keydown', handleModalKeydown);
     });
 
     return {
       pages,
-      pageTitle,
-      pageContent,
+      roles,
       editingPage,
       isLoading,
       errorMessage,
+      isAdmin,
+      currentUserId,
+      showModal,
+      showDeleteModal,
+      pageToDelete,
+      modalData,
+      generateSlug,
+      openCreateModal,
+      openEditModal,
+      closeModal,
+      confirmDelete,
       createPage,
-      editPage,
       updatePage,
       deletePage,
       editor,
+      isDark,
+      styleSettings,
     };
   },
 });
 </script>
 
 <style scoped>
-.pages {
-  padding: 20px;
+/* Pages-specific styles */
+
+/* Modal styles */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--color-overlay);
+  z-index: 9998;
 }
 
-.error {
-  color: red;
-  margin-top: 10px;
+.modal-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.modal-surface {
+  background-color: var(--modal-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--modal-border);
+  border-radius: var(--border-radius-md);
+  box-shadow: 0 25px 50px -12px var(--card-shadow);
+  padding: 1.25rem;
+  width: min(90vw, 50rem);
+  max-height: 90vh;
+  overflow: auto;
+  pointer-events: auto;
+}
+
+/* Pages grid */
+.pages-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.page-card {
+  padding: 1rem;
+  border-radius: var(--border-radius-md);
+  box-shadow: var(--card-shadow);
+  transition: box-shadow 0.2s ease;
+}
+
+.page-card:hover {
+  box-shadow: var(--card-hover-shadow);
+}
+
+.page-card h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.page-card .meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.page-card .chip {
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--border-radius-sm);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.page-card .chip-public {
+  background-color: var(--badge-success-bg);
+  color: var(--badge-success-text);
+}
+
+.page-card .chip-private {
+  background-color: var(--badge-warning-bg);
+  color: var(--badge-warning-text);
+}
+
+.page-card .page-slug {
+  font-size: 0.875rem;
+  margin-bottom: 0.75rem;
+}
+
+.page-card .actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Editor container */
+.editor-container {
+  min-height: 300px;
+  max-height: 400px;
+  overflow-y: auto;
+  width: 100%;
+  display: block;
+  box-sizing: border-box;
+}
+
+/* TipTap editor styles */
+.ProseMirror {
+  min-height: 280px;
+  outline: none;
+  padding: 0.5rem 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ProseMirror p {
+  margin: 0.5rem 0;
+}
+
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3 {
+  margin: 1rem 0 0.5rem 0;
+}
+
+.ProseMirror ul,
+.ProseMirror ol {
+  padding-left: 1.5rem;
+}
+
+.ProseMirror blockquote {
+  border-left: 3px solid var(--card-border);
+  padding-left: 1rem;
+  margin: 1rem 0;
 }
 </style>

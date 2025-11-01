@@ -1,10 +1,10 @@
 <template>
   <div class="container py-5">
     <!-- Page Header -->
-    <header class="text-center mb-5">
+    <!-- <header class="text-center mb-5">
       <h1 class="display-4">Menu Editor</h1>
       <p class="lead text-muted">Manage your menu items</p>
-    </header>
+    </header> -->
 
     <div class="row">
       <!-- Menu Editor Section -->
@@ -27,7 +27,16 @@
             </form>
             <vue-draggable v-model="menuItems" class="list-group" @end="updateOrderOnDrag">
               <div v-for="item in menuItems" :key="item.id" class="list-group-item d-flex justify-content-between align-items-center">
-                <span>{{ item.name }} ({{ item.path }})</span>
+                <span>
+                  <template v-if="item.path === '/auth-action'">
+                    <button class="btn btn-primary" @click="handleAuthAction">
+                      {{ isLoggedIn ? 'Logout' : 'Login' }}
+                    </button>
+                  </template>
+                  <template v-else>
+                    {{ item.name }} ({{ item.path }})
+                  </template>
+                </span>
                 <div>
                   <button @click="editMenuItem(item)" class="btn btn-warning btn-sm">Edit</button>
                   <button @click="deleteMenuItem(item.id)" class="btn btn-danger btn-sm">Delete</button>
@@ -42,8 +51,8 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted } from 'vue';
-import axios from 'axios';
+import { defineComponent, ref, onMounted, computed } from 'vue';
+import http from '@/utils/http';
 import { VueDraggable } from 'vue-draggable-plus';
 
 export default defineComponent({
@@ -53,9 +62,24 @@ export default defineComponent({
     const menuItems = ref<{ id: number; name: string; path: string; order: number }[]>([]);
     const newMenuItem = ref({ name: '', path: '', order: 1 });
 
+    // Computed property to check login status
+    const isLoggedIn = computed(() => {
+      const token = localStorage.getItem('authToken');
+      return !!token && token !== 'null' && token !== 'undefined';
+    });
+
+    // Function to handle login/logout action
+    const handleAuthAction = () => {
+      if (isLoggedIn.value) {
+        window.location.href = '/user/logout';
+      } else {
+        window.location.href = '/user/login';
+      }
+    };
+
     const fetchMenuItems = async () => {
       try {
-        const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/menu/read`);
+        const res = await http.get(`${import.meta.env.VITE_API_BASE_URL}/menu/read`);
         menuItems.value = res.data.items.sort((a: { order: number }, b: { order: number }) => a.order - b.order);
       } catch (err) {
         console.error('Error loading menu:', err);
@@ -66,7 +90,7 @@ export default defineComponent({
       const payload = { ...newMenuItem.value }; // Convert to plain object
       console.log('Payload being sent:', payload);
       try {
-        const res = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/menu/create`, payload);
+        const res = await http.post(`${import.meta.env.VITE_API_BASE_URL}/menu/create`, payload);
         menuItems.value.push(res.data);
         newMenuItem.value = { name: '', path: '', order: menuItems.value.length + 1 };
       } catch (err) {
@@ -80,7 +104,7 @@ export default defineComponent({
       const updatedOrder = parseInt(prompt('New order:', item.order.toString()) || item.order.toString(), 10);
       if (updatedName && updatedPath && !isNaN(updatedOrder)) {
         try {
-          await axios.put(`${import.meta.env.VITE_API_BASE_URL}/menu/update`, {
+          await http.put(`${import.meta.env.VITE_API_BASE_URL}/menu/update`, {
             id: item.id,
             name: updatedName,
             path: updatedPath,
@@ -97,7 +121,7 @@ export default defineComponent({
 
     const deleteMenuItem = async (id: number) => {
       try {
-        await axios.delete(`${import.meta.env.VITE_API_BASE_URL}/menu/delete/${id}`);
+        await http.delete(`${import.meta.env.VITE_API_BASE_URL}/menu/delete/${id}`);
         menuItems.value = menuItems.value.filter((i) => i.id !== id);
       } catch (err) {
         console.error('Error deleting menu item:', err);
@@ -108,7 +132,7 @@ export default defineComponent({
       menuItems.value.forEach((item, index) => {
         item.order = index + 1;
         try {
-          axios.put(`${import.meta.env.VITE_API_BASE_URL}/menu/update`, {
+          http.put(`${import.meta.env.VITE_API_BASE_URL}/menu/update`, {
             id: item.id,
             name: item.name,
             path: item.path,
@@ -125,7 +149,7 @@ export default defineComponent({
       fetchMenuItems();
     });
 
-    return { menuItems, newMenuItem, addMenuItem, editMenuItem, deleteMenuItem, updateOrderOnDrag };
+    return { menuItems, newMenuItem, addMenuItem, editMenuItem, deleteMenuItem, updateOrderOnDrag, isLoggedIn, handleAuthAction };
   },
 });
 </script>

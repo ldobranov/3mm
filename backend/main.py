@@ -3,7 +3,6 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 from backend.routes.settings import router as settings_router
-from backend.routes.extensions import router as extensions_router
 from backend.database import init_db
 from backend.routes.user import router as user_router
 from backend.routes.page_routes import router as page_router
@@ -11,10 +10,13 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 import sys
 import os
-import importlib
-from pathlib import Path
-from backend.extensions.raspberry_pi_controller.routes import router as raspberry_pi_controller_router
-from backend.extensions.manager.routes import router as manager_router
+import backend.db.user  # noqa: F401
+import backend.db.audit_log  # noqa: F401
+from backend.routes.display_routes import router as display_router
+from backend.routes.auth_refresh import router as refresh_router
+from backend.routes.session_routes import router as session_router
+from backend.routes.audit_routes import router as audit_router
+from backend.routes.permission_routes import router as permission_router
 
 # Add backend directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -61,11 +63,13 @@ app.add_middleware(
 )
 
 app.include_router(settings_router)
-app.include_router(extensions_router)
 app.include_router(user_router, prefix="/user")
 app.include_router(page_router, prefix="/pages")
-app.include_router(raspberry_pi_controller_router, prefix="/extensions/raspberry_pi_controller")
-app.include_router(manager_router, prefix="/extensions/manager")
+app.include_router(display_router)
+app.include_router(refresh_router, prefix="/api")
+app.include_router(session_router, prefix="/api")
+app.include_router(audit_router, prefix="/api")
+app.include_router(permission_router, prefix="/api")
 
 # Initialize the database schema
 init_db()
@@ -88,23 +92,7 @@ for route in app.routes:
     if hasattr(route, 'path'):
         logger.debug(f"Registered route: {route.path}")
 
-# Log routes specifically for extensions_router
-for route in extensions_router.routes:
-    logger.debug(f"Extensions Route: {route.path}, Operation ID: {route.operation_id}")
-
-# Dynamically register routes for extensions
-extensions_path = Path(__file__).parent / "extensions"
-for extension_dir in extensions_path.iterdir():
-    if extension_dir.is_dir():
-        init_file = extension_dir / "__init__.py"
-        if init_file.exists():
-            try:
-                module_name = f"backend.extensions.{extension_dir.name}"
-                module = importlib.import_module(module_name)
-                if hasattr(module, "router"):
-                    app.include_router(module.router, prefix=f"/extensions/{extension_dir.name}")
-            except Exception as e:
-                logger.error(f"Failed to register extension {extension_dir.name}: {e}")
+# Extensions removed for MVP cleanup
 
 if __name__ == "__main__":
     import uvicorn

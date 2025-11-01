@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 
 # Add the backend directory to the system path for resolving imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -9,8 +10,25 @@ from sqlalchemy.orm import sessionmaker, Session
 from backend.db.base import Base
 from typing import Generator
 
-# Ensure the database file is created inside the backend folder
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///backend/mega_monitor.db")
+# Import all models to ensure they're registered with SQLAlchemy
+from backend.db.user import User
+from backend.db.session import UserSession
+from backend.db.audit_log import AuditLog
+from backend.db.permission import Permission
+from backend.db.page import Page
+from backend.db.display import Display
+from backend.db.widget import Widget
+from backend.db.menu import Menu
+from backend.db.settings import Settings
+from backend.db.role import Role
+from backend.db.notification import Notification
+
+# Get the absolute path to the backend directory
+BACKEND_DIR = Path(__file__).parent.absolute()
+DB_PATH = BACKEND_DIR / "mega_monitor.db"
+
+# Use absolute path for the database
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -25,4 +43,3 @@ def get_db():
         yield db
     finally:
         db.close()
-

@@ -1,4 +1,4 @@
-#!/home/laz/3mm/backend/venv/bin/python3
+#!/home/laz/3mm/backend/venv/bin/python
 # -*- coding: utf-8 -*-
 import re
 import sys

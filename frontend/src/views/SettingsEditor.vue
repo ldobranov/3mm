@@ -23,7 +23,7 @@
 </template>
 
 <script>
-import axios from 'axios';
+import http from '@/utils/http';
 
 export default {
   data() {
@@ -42,7 +42,7 @@ export default {
     async updateSettings() {
       try {
         const parsedData = JSON.parse(this.settings.data);
-        const response = await axios.put(`${import.meta.env.VITE_API_BASE_URL}/settings/update`, {
+        const response = await http.put(`${import.meta.env.VITE_API_BASE_URL}/settings/update`, {
           id: this.settings.id,
           name: this.settings.name,
           language: this.settings.language,
