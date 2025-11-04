@@ -4,9 +4,7 @@ import { GridStack, type GridStackNode } from 'gridstack';
 import 'gridstack/dist/gridstack.min.css';
 
 import { createApp, type App as VueApp } from 'vue';
-import ClockWidget from '@/components/widgets/ClockWidget.vue';
-import TextWidget from '@/components/widgets/TextWidget.vue';
-import RSSWidget from '@/components/widgets/RSSWidget.vue';
+import ExtensionWidget from '@/components/widgets/ExtensionWidget.vue';
 
 interface Item {
   id: number;
@@ -14,7 +12,7 @@ interface Item {
   y: number;
   width: number;
   height: number;
-  type: 'CLOCK' | 'TEXT' | 'RSS';
+  type: string; // Allow extension types
   config: any;
 }
 
@@ -39,21 +37,13 @@ let updating = false;
 const mountedApps = new Map<number, VueApp>();
 
 function widgetComponentFor(type: Item['type']) {
-  switch (type) {
-    case 'CLOCK': return ClockWidget;
-    case 'TEXT':  return TextWidget;
-    case 'RSS':   return RSSWidget;
-    default:      return TextWidget;
-  }
+  // All widgets are now extensions
+  return ExtensionWidget;
 }
 
 function minConstraintsFor(type: Item['type']) {
-  switch (type) {
-    case 'CLOCK': return { minW: 2, minH: 1 };
-    case 'TEXT':  return { minW: 2, minH: 2 };
-    case 'RSS':   return { minW: 3, minH: 3 };
-    default:      return { minW: 2, minH: 1 };
-  }
+  // Default constraints for all widgets
+  return { minW: 2, minH: 1 };
 }
 
 function cleanupMounted() {
@@ -115,6 +105,8 @@ function renderItems() {
         if (!content) {
           content = document.createElement('div');
           content.className = 'grid-stack-item-content bg-gray-800 rounded p-2 text-black relative grid-no-drag';
+          content.style.overflow = 'hidden'; // Prevent scrollbars
+          content.style.borderRadius = 'var(--border-radius-md)'; // Ensure border radius
           el.appendChild(content);
         }
 
@@ -155,7 +147,25 @@ function renderItems() {
 
         // Mount Vue widget component
         const Comp = widgetComponentFor(widget.type);
-        const app = createApp(Comp, { config: widget.config });
+        const componentProps: any = { config: widget.config };
+
+        // All widgets are now extensions
+        if (widget.type.startsWith('extension:')) {
+          const extensionId = parseInt(widget.type.split(':')[1]);
+          componentProps.extensionId = extensionId;
+          componentProps.extensionName = widget.type; // This is the full type like "extension:1"
+          componentProps.width = widget.width;
+          componentProps.height = widget.height;
+        } else {
+          // Legacy widget types - map to extension IDs (will be set after installation)
+          // For now, treat as extension widgets
+          componentProps.extensionId = 0; // Placeholder
+          componentProps.extensionName = widget.type;
+          componentProps.width = widget.width;
+          componentProps.height = widget.height;
+        }
+
+        const app = createApp(Comp, componentProps);
         app.mount(root);
         mountedApps.set(widget.id, app);
       }
