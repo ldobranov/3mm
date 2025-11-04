@@ -1,38 +1,56 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
+import { useWidgetsStore } from '@/stores/widgets';
+import type { ExtensionWidget } from '@/stores/widgets';
 
 const settingsStore = useSettingsStore();
+const widgetsStore = useWidgetsStore();
 const styleSettings = computed(() => settingsStore.styleSettings);
 
-const emit = defineEmits<{ (e: 'add', type: 'CLOCK' | 'TEXT' | 'RSS'): void }>();
+const extensionWidgets = ref<ExtensionWidget[]>([]);
 
-function setDragData(ev: DragEvent, type: 'CLOCK' | 'TEXT' | 'RSS') {
+const emit = defineEmits<{ (e: 'add', type: string): void }>();
+
+onMounted(async () => {
+  try {
+    extensionWidgets.value = await widgetsStore.fetchAvailableExtensions();
+  } catch (error) {
+    console.error('Failed to load extension widgets:', error);
+  }
+});
+
+function setDragData(ev: DragEvent, type: string) {
   if (!ev.dataTransfer) return;
   ev.dataTransfer.effectAllowed = 'copyMove';
   // minimal data so GridStack recognizes a drag
   ev.dataTransfer.setData('text/plain', type);
 }
+
+function getWidgetIcon(name: string): string {
+  const iconMap: Record<string, string> = {
+    'ClockWidget': 'bi-clock',
+    'TextWidget': 'bi-textarea-t',
+    'RSSWidget': 'bi-rss',
+    'SystemMonitor': 'bi-cpu'
+  };
+  return iconMap[name] || 'bi-puzzle-piece'; // Default icon for extensions
+}
 </script>
 
 <template>
   <div class="widget-palette">
-    <div class="palette-item" draggable="true" @dragstart="setDragData($event, 'CLOCK')">
-      <button class="palette-button" @click="emit('add','CLOCK')">
-        <i class="bi bi-clock"></i>
-        <span>Clock</span>
-      </button>
-    </div>
-    <div class="palette-item" draggable="true" @dragstart="setDragData($event, 'TEXT')">
-      <button class="palette-button" @click="emit('add','TEXT')">
-        <i class="bi bi-textarea-t"></i>
-        <span>Text</span>
-      </button>
-    </div>
-    <div class="palette-item" draggable="true" @dragstart="setDragData($event, 'RSS')">
-      <button class="palette-button" @click="emit('add','RSS')">
-        <i class="bi bi-rss"></i>
-        <span>RSS Feed</span>
+    <!-- Extension widgets only -->
+    <div
+      v-for="ext in extensionWidgets"
+      :key="ext.id"
+      class="palette-item"
+      draggable="true"
+      @dragstart="setDragData($event, `extension:${ext.id}`)"
+    >
+      <button class="palette-button" @click="emit('add', `extension:${ext.id}`)">
+        <i :class="getWidgetIcon(ext.name)"></i>
+        <span>{{ ext.name }}</span>
       </button>
     </div>
   </div>

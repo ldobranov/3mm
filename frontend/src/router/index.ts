@@ -9,6 +9,7 @@ import Users from '../views/Users.vue';
 import Profile from '../views/Profile.vue';
 import Pages from '@/views/Pages.vue';
 import PageView from '@/views/PageView.vue';
+import Extensions from '@/views/Extensions.vue';
 import http from '@/utils/http';
 
 async function fetchDynamicRoutesForPages() {
@@ -73,6 +74,7 @@ async function createRouterWithDynamicRoutes() {
     },
     { path: '/dashboard', name: 'DashboardList', component: () => import('@/views/DashboardList.vue'), meta: { requiresAuth: true } },
     { path: '/dashboard/:id/edit', name: 'DisplayEditor', component: () => import('@/views/DisplayEditor.vue'), meta: { requiresAuth: true } },
+    { path: '/extensions', name: 'Extensions', component: Extensions, meta: { requiresAuth: true } },
     { path: '/@:username/:slug', name: 'PublicDisplay', component: () => import('@/views/PublicDisplay.vue') },
     { path: '/:pathMatch(.*)*', name: 'NotFound', component: () => import('../views/NotFound.vue') },
   ];

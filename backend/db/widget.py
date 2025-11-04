@@ -15,7 +15,7 @@ class Widget(Base):
     __tablename__ = "widgets"
     id = Column(Integer, primary_key=True)
     display_id = Column(Integer, ForeignKey("displays.id", ondelete="CASCADE"), nullable=False)
-    type = Column(String, nullable=False)  # CLOCK | TEXT | RSS
+    type = Column(String, nullable=False)  # CLOCK | TEXT | RSS | extension:extension_id
     config = Column(JSON, nullable=False, default=dict)
     x = Column(Integer, nullable=False, default=0)
     y = Column(Integer, nullable=False, default=0)

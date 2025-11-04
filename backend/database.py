@@ -22,6 +22,7 @@ from backend.db.menu import Menu
 from backend.db.settings import Settings
 from backend.db.role import Role
 from backend.db.notification import Notification
+from backend.db.extension import Extension
 
 # Get the absolute path to the backend directory
 BACKEND_DIR = Path(__file__).parent.absolute()
@@ -34,7 +35,10 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     """Initialize the database schema."""
+    print("DEBUG: Creating database tables...")
+    print(f"DEBUG: Tables to create: {list(Base.metadata.tables.keys())}")
     Base.metadata.create_all(bind=engine)
+    print("DEBUG: Database tables created successfully")
 
 # Fixed the `get_db` function to work correctly with FastAPI's `Depends`.
 def get_db():

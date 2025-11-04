@@ -1,0 +1,38 @@
+{
+  "name": "TextWidget",
+  "version": "1.0.0",
+  "type": "widget",
+  "description": "A simple text widget with customizable styling",
+  "author": "Kilo Code",
+  "frontend_entry": "TextWidget.vue",
+  "frontend_editor": "TextWidgetEditor.vue",
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "content": {
+        "type": "string",
+        "title": "Content",
+        "default": "TEXT"
+      },
+      "color": {
+        "type": "string",
+        "title": "Text Color",
+        "format": "color",
+        "default": "#333333"
+      },
+      "fontSize": {
+        "type": "number",
+        "title": "Font Size",
+        "minimum": 8,
+        "maximum": 72,
+        "default": 16
+      },
+      "align": {
+        "type": "string",
+        "title": "Text Alignment",
+        "enum": ["left", "center", "right", "justify"],
+        "default": "left"
+      }
+    }
+  }
+}

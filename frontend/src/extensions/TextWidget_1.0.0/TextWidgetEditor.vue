@@ -5,11 +5,11 @@ import { useSettingsStore } from '@/stores/settings';
 const settingsStore = useSettingsStore();
 const styleSettings = computed(() => settingsStore.styleSettings);
 
-const props = defineProps<{ modelValue: any }>();
+const props = defineProps<{ config: any; modelValue?: any }>();
 const emit = defineEmits<{ (e: 'update:modelValue', v: any): void }>();
 
 const cfg = computed({
-  get: () => props.modelValue || {},
+  get: () => props.config || props.modelValue || {},
   set: (v) => emit('update:modelValue', { ...(v || {}) }),
 });
 </script>

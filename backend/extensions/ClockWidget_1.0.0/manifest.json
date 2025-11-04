@@ -1,0 +1,24 @@
+{
+  "name": "ClockWidget",
+  "version": "1.0.0",
+  "type": "widget",
+  "description": "A simple clock widget with timezone support",
+  "author": "Kilo Code",
+  "frontend_entry": "ClockWidget.vue",
+  "frontend_editor": "ClockWidgetEditor.vue",
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "timezone": {
+        "type": "string",
+        "title": "Timezone",
+        "default": "UTC"
+      },
+      "format": {
+        "type": "string",
+        "title": "Time Format",
+        "default": "HH:mm:ss"
+      }
+    }
+  }
+}

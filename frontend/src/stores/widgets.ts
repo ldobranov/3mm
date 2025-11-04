@@ -1,11 +1,23 @@
 import { defineStore } from 'pinia';
 import http from '@/utils/http';
 
-export interface Widget {
-  id: number; display_id: number; type: 'CLOCK' | 'TEXT' | 'RSS';
-  config: Record<string, any>;
-  x: number; y: number; width: number; height: number; z_index: number;
+export interface ExtensionWidget {
+  id: number;
+  name: string;
+  version: string;
+  description?: string;
+  author?: string;
+  frontend_entry: string;
+  frontend_editor?: string;
+  config_schema: Record<string, any>;
+  file_path: string;
 }
+
+export interface Widget {
+   id: number; display_id: number; type: 'CLOCK' | 'TEXT' | 'RSS' | string; // Allow extension types
+   config: Record<string, any>;
+   x: number; y: number; width: number; height: number; z_index: number;
+ }
 
 export const useWidgetsStore = defineStore('widgets', {
   state: () => ({
@@ -16,6 +28,10 @@ export const useWidgetsStore = defineStore('widgets', {
       const token = localStorage.getItem('authToken') || '';
       return token ? { Authorization: `Bearer ${token}` } : {};
     },
+    async fetchAvailableExtensions(): Promise<ExtensionWidget[]> {
+      const res = await http.get('/api/extensions/widgets');
+      return res.data.items || [];
+    },
     list(displayId: number) {
       return this.byDisplayId[displayId] || [];
     },
@@ -25,6 +41,16 @@ export const useWidgetsStore = defineStore('widgets', {
       return this.byDisplayId[displayId];
     },
     async create(displayId: number, payload: { type: Widget['type']; config: Record<string, any>; x: number; y: number; width: number; height: number; z_index: number; }) {
+      // Validate extension widget types
+      if (typeof payload.type === 'string' && payload.type.startsWith('extension:')) {
+        const extensionId = payload.type.split(':')[1];
+        // Check if extension is available (this will be validated on backend too)
+        const availableExtensions = await this.fetchAvailableExtensions();
+        const extension = availableExtensions.find(ext => ext.id === parseInt(extensionId));
+        if (!extension) {
+          throw new Error('Extension widget not available');
+        }
+      }
       const res = await http.post(`${import.meta.env.VITE_API_BASE_URL}/api/displays/${displayId}/widgets`, payload, { headers: this.authHeaders() });
       this.byDisplayId[displayId] = [...(this.byDisplayId[displayId] || []), res.data];
       return res.data as Widget;

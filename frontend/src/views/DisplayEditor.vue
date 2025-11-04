@@ -112,7 +112,9 @@ function openEditor(id: number) {
   const w = items.value.find(x => x.id === id) || null;
   selectedWidget.value = w;
   if (w) {
-    originalConfigs.set(w.id, JSON.parse(JSON.stringify(w.config || {})));
+    // Store the current config from the store, not the potentially modified local config
+    const currentWidget = widgets.byDisplayId[displayId]?.find(wgt => wgt.id === id);
+    originalConfigs.set(w.id, JSON.parse(JSON.stringify(currentWidget?.config || {})));
   }
   showEditor.value = !!w;
 }
@@ -122,12 +124,13 @@ async function handleLayoutChanged(changes: Array<{ id: number; x: number; y: nu
 }
 
 async function addWidget(type: Widget['type']) {
-  const defaults: Record<string, any> = {
-    CLOCK: { timezone: 'UTC', format: 'HH:mm:ss' },
-    TEXT: { content: 'New text', fontSize: 16, color: '#ffffff', align: 'left' },
-    RSS: { feed_url: 'https://example.com/rss', refresh_interval: 300, items_limit: 5 },
-  };
-  await widgets.create(displayId, { type, config: defaults[type], x: 0, y: 0, width: 3, height: 2, z_index: 1 });
+  // For extension widgets, use default config from extension or empty object
+  let config = {};
+  if (type.startsWith('extension:')) {
+    config = {}; // Extensions can define their own defaults in manifest
+  }
+
+  await widgets.create(displayId, { type, config, x: 0, y: 0, width: 3, height: 2, z_index: 1 });
 }
 
 async function handleDeleteWidget(id: number) {
@@ -171,11 +174,12 @@ function handleCancelEdit(id: number) {
 }
 
 function handleAddFromDrop(payload: { type: Widget['type']; x: number; y: number; width: number; height: number }) {
-  const defaults: Record<Widget['type'], any> = {
-    CLOCK: { timezone: 'UTC', format: 'HH:mm:ss' },
-    TEXT: { content: 'New text', fontSize: 16, color: '#ffffff', align: 'left' },
-    RSS: { feed_url: 'https://example.com/rss', refresh_interval: 300, items_limit: 5 },
-  };
+  // For extension widgets, use default config from extension or empty object
+  let config = {};
+  if (payload.type.startsWith('extension:')) {
+    config = {}; // Extensions can define their own defaults in manifest
+  }
+
   return widgets.create(displayId, {
     type: payload.type,
     x: payload.x,
@@ -183,7 +187,7 @@ function handleAddFromDrop(payload: { type: Widget['type']; x: number; y: number
     width: payload.width,
     height: payload.height,
     z_index: 1,
-    config: defaults[payload.type],
+    config,
   });
 }
 </script>

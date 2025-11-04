@@ -5,35 +5,38 @@ import { useSettingsStore } from '@/stores/settings';
 const settingsStore = useSettingsStore();
 const styleSettings = computed(() => settingsStore.styleSettings);
 
-const props = defineProps<{ modelValue: any }>();
+const props = defineProps<{ config: any; modelValue?: any }>();
 const emit = defineEmits<{ (e: 'update:modelValue', v: any): void }>();
 
-const cfg = computed({
-  get: () => props.modelValue || {},
-  set: (v) => emit('update:modelValue', { ...(v || {}) }),
+const timezone = computed({
+  get: () => (props.config || props.modelValue)?.timezone || 'UTC',
+  set: (val) => emit('update:modelValue', { ...(props.config || props.modelValue), timezone: val })
+});
+
+const format = computed({
+  get: () => (props.config || props.modelValue)?.format || 'HH:mm:ss',
+  set: (val) => emit('update:modelValue', { ...(props.config || props.modelValue), format: val })
 });
 </script>
 
 <template>
   <div class="widget-editor">
     <div class="form-group">
-      <label class="form-label">Feed URL</label>
+      <label class="form-label">Timezone</label>
       <input
-        type="url"
+        type="text"
         class="input"
-        v-model="cfg.feed_url"
-        placeholder="https://example.com/feed.xml"
+        v-model="timezone"
+        placeholder="UTC or e.g. Europe/Sofia"
       />
     </div>
     <div class="form-group">
-      <label class="form-label">Items Limit</label>
+      <label class="form-label">Format</label>
       <input
-        type="number"
+        type="text"
         class="input"
-        v-model.number="cfg.items_limit"
-        placeholder="5"
-        min="1"
-        max="20"
+        v-model="format"
+        placeholder="HH:mm:ss"
       />
     </div>
   </div>

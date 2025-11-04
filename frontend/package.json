@@ -20,6 +20,8 @@
     "@vueup/vue-quill": "^1.2.0",
     "axios": "^1.10.0",
     "bootstrap": "^5.3.7",
+    "chart.js": "^4.5.1",
+    "chartjs-adapter-date-fns": "^3.0.0",
     "dayjs": "^1.11.18",
     "gridstack": "^12.3.3",
     "pinia": "^3.0.3",

@@ -2,9 +2,8 @@
 import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import type { Widget } from '@/stores/widgets';
-import ClockWidgetEditor from '@/components/widgets/ClockWidgetEditor.vue';
-import TextWidgetEditor from '@/components/widgets/TextWidgetEditor.vue';
-import RSSWidgetEditor from '@/components/widgets/RSSWidgetEditor.vue';
+import { useWidgetsStore } from '@/stores/widgets';
+import { markRaw } from 'vue';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -18,20 +17,77 @@ const emit = defineEmits<{
 }>();
 
 const settingsStore = useSettingsStore();
+const widgetsStore = useWidgetsStore();
 const styleSettings = computed(() => settingsStore.styleSettings);
 const localConfig = ref<any>({});
 const widgetId = computed(() => props.widget?.id ?? 0);
 const widgetType = computed(() => props.widget?.type || 'TEXT');
-const editorMap = {
-  CLOCK: ClockWidgetEditor,
-  TEXT: TextWidgetEditor,
-  RSS: RSSWidgetEditor,
-} as const;
-const CurrentEditor = computed(() => editorMap[widgetType.value as keyof typeof editorMap] || TextWidgetEditor);
+const extensionEditor = ref<any>(null);
+
+
+const CurrentEditor = computed(() => {
+  return extensionEditor.value || null; // All editors loaded dynamically
+});
+
+// Load editor when widget changes
+watch(() => props.widget, async (widget) => {
+  if (!widget) {
+    extensionEditor.value = null;
+    return;
+  }
+
+  extensionEditor.value = null; // Reset while loading
+
+  try {
+    if (widget.type.startsWith('extension:')) {
+      const extensionId = widget.type.split(':')[1];
+      const extensions = await widgetsStore.fetchAvailableExtensions();
+      const extension = extensions.find(ext => ext.id === parseInt(extensionId));
+
+      if (extension && extension.frontend_editor) {
+        // Load the extension editor component dynamically
+        const editorUrl = `/src/extensions/${extension.name}_${extension.version}/${extension.frontend_editor}`;
+        const module = await import(/* @vite-ignore */ editorUrl);
+        extensionEditor.value = markRaw(module.default);
+      }
+    } else {
+      // Built-in widgets: load from extensions directory
+      const builtInMap: Record<string, string> = {
+        CLOCK: 'ClockWidget_1.0.0',
+        TEXT: 'TextWidget_1.0.0',
+        RSS: 'RSSWidget_1.0.0'
+      };
+      const extensionName = builtInMap[widget.type] || `${widget.type}Widget_1.0.0`;
+      const editorUrl = `/src/extensions/${extensionName}/${widget.type.charAt(0) + widget.type.slice(1).toLowerCase()}WidgetEditor.vue`;
+      const module = await import(/* @vite-ignore */ editorUrl);
+      extensionEditor.value = markRaw(module.default);
+    }
+  } catch (error) {
+    console.error('Failed to load editor:', error);
+    // Fallback to a simple text editor or null
+    extensionEditor.value = null;
+  }
+}, { immediate: true });
 
 watch(() => props.widget, (w) => {
-  localConfig.value = w ? JSON.parse(JSON.stringify(w.config || {})) : {};
+  const newConfig = w ? JSON.parse(JSON.stringify(w.config || {})) : {};
+  // Only update if config actually changed
+  if (JSON.stringify(localConfig.value) !== JSON.stringify(newConfig)) {
+    localConfig.value = newConfig;
+  }
 }, { immediate: true });
+
+// Update local config when extension editor loads
+watch(() => extensionEditor.value, (newEditor) => {
+  if (newEditor && props.widget && props.widget.config) {
+    // Re-trigger config loading when editor is ready
+    const configToLoad = props.widget.config;
+    // Only update if config actually changed
+    if (JSON.stringify(localConfig.value) !== JSON.stringify(configToLoad)) {
+      localConfig.value = JSON.parse(JSON.stringify(configToLoad));
+    }
+  }
+});
 
 // Debounce preview emits
 let previewTimer: number | null = null;
@@ -115,7 +171,13 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="modal-content">
-            <component :is="CurrentEditor" v-model="localConfig" />
+            <div v-if="CurrentEditor" class="editor-content">
+              <component :is="CurrentEditor" :config="localConfig" @update:modelValue="localConfig = $event" />
+            </div>
+            <div v-else class="loading-editor">
+              <div class="loading-spinner"></div>
+              <span>Loading editor...</span>
+            </div>
           </div>
 
           <div class="modal-actions">
@@ -215,5 +277,29 @@ onBeforeUnmount(() => {
   gap: 0.5rem;
   padding-top: 1rem;
   border-top: 1px solid var(--card-border);
+}
+
+.loading-editor {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  gap: 1rem;
+  color: var(--text-secondary);
+}
+
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  border-top: 2px solid var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 </style>

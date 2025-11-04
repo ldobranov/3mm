@@ -1,0 +1,48 @@
+{
+  "name": "CalendarWidget",
+  "version": "1.0.0",
+  "type": "widget",
+  "description": "A fully functional calendar widget for displaying dates and events",
+  "author": "Kilo Code",
+  "frontend_entry": "CalendarWidget.vue",
+  "frontend_editor": "CalendarWidgetEditor.vue",
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "title": "Calendar Title",
+        "default": "My Calendar"
+      },
+      "showWeekNumbers": {
+        "type": "boolean",
+        "title": "Show Week Numbers",
+        "default": false
+      },
+      "highlightToday": {
+        "type": "boolean",
+        "title": "Highlight Today",
+        "default": true
+      },
+      "backgroundColor": {
+        "type": "string",
+        "title": "Background Color",
+        "format": "color",
+        "default": "#ffffff"
+      },
+      "textColor": {
+        "type": "string",
+        "title": "Text Color",
+        "format": "color",
+        "default": "#333333"
+      },
+      "headerColor": {
+        "type": "string",
+        "title": "Header Color",
+        "format": "color",
+        "default": "#f8f9fa"
+      }
+    }
+  },
+  "permissions": []
+}

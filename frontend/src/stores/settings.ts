@@ -121,7 +121,7 @@ export const useSettingsStore = defineStore('settings', () => {
       const darkBorderRadiusLg = items.find((s: any) => s.key === 'dark_border_radius_lg')
 
       // Load light theme settings
-      console.log('Loading light theme settings from backend')
+      // console.log('Loading light theme settings from backend')
       lightStyleSettings.buttonPrimaryBg = lightButtonPrimaryBg?.value || '#007bff'
       lightStyleSettings.buttonSecondaryBg = lightButtonSecondaryBg?.value || '#6c757d'
       lightStyleSettings.buttonDangerBg = lightButtonDangerBg?.value || '#dc3545'
@@ -136,10 +136,10 @@ export const useSettingsStore = defineStore('settings', () => {
       lightStyleSettings.borderRadiusSm = parseInt(lightBorderRadiusSm?.value) || 4
       lightStyleSettings.borderRadiusMd = parseInt(lightBorderRadiusMd?.value) || 8
       lightStyleSettings.borderRadiusLg = parseInt(lightBorderRadiusLg?.value) || 12
-      console.log('Light theme settings loaded:', lightStyleSettings)
+      // console.log('Light theme settings loaded:', lightStyleSettings)
 
       // Load dark theme settings
-      console.log('Loading dark theme settings from backend')
+      // console.log('Loading dark theme settings from backend')
       darkStyleSettings.buttonPrimaryBg = darkButtonPrimaryBg?.value || '#3b82f6'
       darkStyleSettings.buttonSecondaryBg = darkButtonSecondaryBg?.value || '#6b7280'
       darkStyleSettings.buttonDangerBg = darkButtonDangerBg?.value || '#ef4444'
@@ -154,7 +154,7 @@ export const useSettingsStore = defineStore('settings', () => {
       darkStyleSettings.borderRadiusSm = parseInt(darkBorderRadiusSm?.value) || 4
       darkStyleSettings.borderRadiusMd = parseInt(darkBorderRadiusMd?.value) || 8
       darkStyleSettings.borderRadiusLg = parseInt(darkBorderRadiusLg?.value) || 12
-      console.log('Dark theme settings loaded:', darkStyleSettings)
+      // console.log('Dark theme settings loaded:', darkStyleSettings)
 
       // For backward compatibility, also load old settings into current theme
       // Commented out to prevent overwriting theme-specific settings
@@ -195,7 +195,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
       // Apply CSS variables immediately after loading
       updateCSSVariables()
-      console.log('Initial CSS variables applied on mount')
+      // console.log('Initial CSS variables applied on mount')
     } catch (err) {
       console.error('Failed to load settings:', err)
       error.value = 'Failed to load settings'
@@ -209,7 +209,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const root = document.documentElement
     const currentSettings = themeStore.theme === 'dark' ? darkStyleSettings : lightStyleSettings
 
-    console.log('Updating CSS variables for theme:', themeStore.theme, 'with settings:', currentSettings)
+    // console.log('Updating CSS variables for theme:', themeStore.theme, 'with settings:', currentSettings)
 
     // Force immediate update by clearing and re-setting
     const allVars = [
@@ -291,7 +291,7 @@ export const useSettingsStore = defineStore('settings', () => {
     root.style.setProperty('--card-shadow', themeStore.theme === 'dark' ? 'rgba(0, 0, 0, 0.3)' : 'rgba(0, 0, 0, 0.1)')
     root.style.setProperty('--card-hover-shadow', themeStore.theme === 'dark' ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.15)')
 
-    console.log('CSS variables updated')
+    // console.log('CSS variables updated')
   }
 
   // Helper function to adjust color brightness

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 import sys
 import os
+import asyncio
 import backend.db.user  # noqa: F401
 import backend.db.audit_log  # noqa: F401
 from backend.routes.display_routes import router as display_router
@@ -17,7 +18,10 @@ from backend.routes.auth_refresh import router as refresh_router
 from backend.routes.session_routes import router as session_router
 from backend.routes.audit_routes import router as audit_router
 from backend.routes.permission_routes import router as permission_router
-
+from backend.routes.extension_routes import router as extension_router
+from backend.routes.marketplace_routes import router as marketplace_router
+from backend.routes.monitoring_routes import router as monitoring_router
+from backend.utils.extension_updates import update_manager
 # Add backend directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
@@ -70,9 +74,18 @@ app.include_router(refresh_router, prefix="/api")
 app.include_router(session_router, prefix="/api")
 app.include_router(audit_router, prefix="/api")
 app.include_router(permission_router, prefix="/api")
-
+app.include_router(extension_router)
+app.include_router(marketplace_router)
+app.include_router(monitoring_router)
 # Initialize the database schema
 init_db()
+
+# Start extension update manager
+asyncio.create_task(update_manager.start_update_worker())
+
+# Start extension performance monitoring
+from backend.utils.extension_monitoring import performance_monitor
+asyncio.create_task(performance_monitor.start_monitoring())
 
 logger.debug("Test log: Logging setup verification.")
 

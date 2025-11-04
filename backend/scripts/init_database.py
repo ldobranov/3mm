@@ -14,6 +14,7 @@ from backend.db.display import Display
 from backend.db.widget import Widget
 from backend.db.settings import Settings
 from backend.db.role import Role
+from backend.db.extension import Extension
 from backend.utils.auth import hash_password
 import json
 

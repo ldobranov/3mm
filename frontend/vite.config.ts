@@ -27,12 +27,15 @@ export default defineConfig({
     },
   },
   server: {
+    fs: {
+      allow: ['..'], // Allow serving files from parent directories
+    },
     proxy: {
-      '/extensions/hiveos/api': {
+      '/api/extensions/hiveos/api': {
         target: 'http://localhost:8887',
         changeOrigin: false,
         secure: true,
-        rewrite: (path) => path.replace(/^\/extensions\/hiveos\/api/, '/extensions/hiveos')
+        rewrite: (path) => path.replace(/^\/api\/extensions\/hiveos\/api/, '/api')
       },
     },
   },

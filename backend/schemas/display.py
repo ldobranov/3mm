@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Literal, List, Dict, Any
+from typing import Optional, Union, List, Dict, Any, Literal
 
 
 class DisplayCreate(BaseModel):
@@ -14,7 +14,7 @@ class DisplayUpdate(BaseModel):
 
 
 class WidgetCreate(BaseModel):
-    type: Literal["CLOCK", "TEXT", "RSS"]
+    type: Union[str, Literal["CLOCK", "TEXT", "RSS"]]  # Allow extension types like "extension:123"
     config: Dict[str, Any] = Field(default_factory=dict)
     x: int = 0
     y: int = 0

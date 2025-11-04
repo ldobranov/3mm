@@ -20,6 +20,7 @@ class User(Base):
     sessions = relationship("UserSession", back_populates="user", lazy="dynamic")
     audit_logs = relationship("AuditLog", back_populates="user", lazy="dynamic")
     permissions = relationship("Permission", foreign_keys="Permission.user_id", back_populates="user", lazy="dynamic")
+    extensions = relationship("Extension", back_populates="user", lazy="dynamic")
 
     __table_args__ = (
         UniqueConstraint("username", "email", name="unique_user_email"),

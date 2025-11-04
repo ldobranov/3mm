@@ -5,3 +5,4 @@ pytest
 uvicorn
 alembic
 PyJWT
+psutil>=5.9.0
