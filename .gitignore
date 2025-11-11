@@ -67,3 +67,7 @@ tmp/
 temp/
 *.tmp
 *.temp
+
+# Extension archive files
+*.zip
+!frontend/package-lock.json
