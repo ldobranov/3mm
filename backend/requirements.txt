@@ -6,3 +6,6 @@ uvicorn
 alembic
 PyJWT
 psutil>=5.9.0
+user-agents
+python-multipart
+requests
