@@ -1,22 +1,29 @@
+import sys
+import os
+from pathlib import Path
+
+# Fix path inconsistency - use the same approach as database.py
+# Add project root to sys.path FIRST - before any imports
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
-from backend.routes.settings import router as settings_router
-from backend.database import init_db
-from backend.routes.user import router as user_router
-# Page routes removed - will be provided by PagesExtension
-# from backend.routes.page_routes import router as page_router
 from fastapi.middleware.cors import CORSMiddleware
 import logging
-import sys
-import os
 import asyncio
-from pathlib import Path
+
+# Import database and models first
+from backend.database import init_db, get_db
 import backend.db.user  # noqa: F401
 import backend.db.audit_log  # noqa: F401
 import backend.db.role  # noqa: F401 - Import to ensure tables are created
 import backend.db.association_tables  # noqa: F401 - Import to ensure tables are created
+
+# Import all route routers
+from backend.routes.settings import router as settings_router
+from backend.routes.user import router as user_router
 from backend.routes.display_routes import router as display_router
 from backend.routes.auth_refresh import router as refresh_router
 from backend.routes.session_routes import router as session_router
@@ -27,9 +34,12 @@ from backend.routes.marketplace_routes import router as marketplace_router
 from backend.routes.monitoring_routes import router as monitoring_router
 from backend.routes.role_routes import router as role_router
 from backend.routes.group_routes import router as group_router
+
+# Import extension utilities
 from backend.utils.extension_updates import update_manager
-# Add backend directory to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from backend.utils.extension_monitoring import performance_monitor
+from backend.utils.extension_manager import extension_manager
+from backend.db.extension import Extension
 
 # Configure logging to file
 logging.basicConfig(
@@ -86,25 +96,23 @@ app.include_router(group_router)
 app.include_router(extension_router)
 app.include_router(marketplace_router)
 app.include_router(monitoring_router)
+
 # Initialize the database schema
 init_db()
 
-# Start extension update manager
+# Start extension update manager (non-blocking)
 asyncio.create_task(update_manager.start_update_worker())
 
-# Start extension performance monitoring
-from backend.utils.extension_monitoring import performance_monitor
+# Start extension performance monitoring (non-blocking)
 asyncio.create_task(performance_monitor.start_monitoring())
 
-# Load enabled extensions at startup
-from backend.utils.extension_manager import extension_manager
-from backend.db.extension import Extension
-from backend.database import get_db
-
-def load_enabled_extensions():
-    """Load all enabled extensions at startup"""
+# Load enabled extensions at startup (non-blocking)
+async def load_enabled_extensions():
+    """Load all enabled extensions at startup - non-blocking"""
     db = None
     try:
+        # Wait a moment for database to be fully initialized
+        await asyncio.sleep(0.1)
         db = next(get_db())
         enabled_extensions = db.query(Extension).filter(
             Extension.is_enabled == True
@@ -116,16 +124,19 @@ def load_enabled_extensions():
             
             if extension_path.exists():
                 print(f"Loading enabled extension: {extension_id}")
-                success = extension_manager.initialize_extension(
-                    extension_id=extension_id,
-                    extension_path=extension_path,
-                    app=app,
-                    db=db
-                )
-                if success:
-                    print(f"✅ Extension {extension_id} loaded successfully")
-                else:
-                    print(f"❌ Failed to load extension {extension_id}")
+                try:
+                    success = extension_manager.initialize_extension(
+                        extension_id=extension_id,
+                        extension_path=extension_path,
+                        app=app,
+                        db=db
+                    )
+                    if success:
+                        print(f"✅ Extension {extension_id} loaded successfully")
+                    else:
+                        print(f"❌ Failed to load extension {extension_id}")
+                except Exception as e:
+                    print(f"❌ Error loading extension {extension_id}: {e}")
             else:
                 print(f"⚠️ Extension path not found: {extension_path}")
         
@@ -137,8 +148,8 @@ def load_enabled_extensions():
         if db:
             db.close()
 
-# Load extensions after database is initialized
-load_enabled_extensions()
+# Start extension loading as background task
+asyncio.create_task(load_enabled_extensions())
 
 logger.debug("Test log: Logging setup verification.")
 

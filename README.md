@@ -94,10 +94,25 @@ If you encounter errors like "cannot execute: required file not found" when acti
 
 ## 🚀 Running the Application
 
-### Backend
+### Backend - Quick Start (Recommended)
 
-From the project root directory:
+**Option 1: Automated Setup (First Time)**
+```bash
+./start_backend.sh
+```
+This script will:
+- Create virtual environment if it doesn't exist
+- Install all dependencies
+- Start the server with hot reload
+- Display helpful status messages
 
+**Option 2: Quick Start (Subsequent Runs)**
+```bash
+./quick_start.sh
+```
+Use this after initial setup to quickly start the server.
+
+**Option 3: Manual Setup**
 ```bash
 # Activate virtual environment if not already active
 source backend/venv/bin/activate  # Linux/Mac
@@ -125,14 +140,59 @@ The frontend will typically run on `http://localhost:5173` (Vite default) and is
 
 Open two terminal windows/tabs:
 
-1. Terminal 1: Run the backend as above
-2. Terminal 2: Run the frontend as above
+1. Terminal 1: Run `./start_backend.sh` (or manual setup)
+2. Terminal 2: Run `cd frontend && npm run dev`
 
 The application should now be accessible at the frontend URL, communicating with the backend API.
 
-## 🛠 Alternative Backend Start
+## 🔧 Development Tools
 
-You can also use the provided script (Linux/Mac only):
+For development, you can install additional tools:
 ```bash
-./start_backend.sh
+source backend/venv/bin/activate
+pip install -r backend/requirements-dev.txt
 ```
+
+This includes tools like:
+- `httpx` - API testing
+- `debugpy` - VSCode remote debugging
+- `ipython` - Enhanced Python shell
+- `black`, `isort` - Code formatting
+- `pytest` - Testing framework
+
+## 🛠 Common Issues and Solutions
+
+### Python Import Issues
+If you get `ModuleNotFoundError: No module named 'backend'`:
+- The startup scripts automatically fix this
+- Manually: ensure you're running from project root and virtual environment is active
+- Run `export PYTHONPATH="${PYTHONPATH}:$(pwd)"` if needed
+
+### Virtual Environment Issues
+If `python3 -m venv` fails:
+- Ubuntu/Debian: `sudo apt install python3-venv`
+- Make sure you have Python 3.8+: `python3 --version`
+
+### Permission Issues (Linux/Mac)
+```bash
+# Make scripts executable
+chmod +x start_backend.sh
+chmod +x quick_start.sh
+```
+
+### Port Already in Use
+If port 8887 is busy:
+```bash
+# Find process using the port
+lsof -i :8887
+# Kill the process
+kill -9 <PID>
+# Or use a different port
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8888
+```
+
+## 📡 Server Endpoints
+
+- **Backend API:** http://0.0.0.0:8887
+- **API Documentation:** http://0.0.0.0:8887/docs
+- **Frontend:** http://localhost:5173 (typically)
