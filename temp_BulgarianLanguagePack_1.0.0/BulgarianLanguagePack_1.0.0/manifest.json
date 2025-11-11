@@ -1,0 +1,41 @@
+{
+  "name": "BulgarianLanguagePack",
+  "version": "1.0.0",
+  "type": "language",
+  "description": "Bulgarian language pack for complete UI translation - Български езиков пакет за пълна локализация",
+  "author": "Kilo Code & Bulgarian Language Community",
+  "language": {
+    "code": "bg",
+    "name": "Bulgarian",
+    "nativeName": "Български",
+    "direction": "ltr",
+    "locale": "bg-BG",
+    "dateFormat": "DD.MM.YYYY",
+    "timeFormat": "24h",
+    "currency": "BGN",
+    "numberFormat": {
+      "decimal": ",",
+      "thousands": " ",
+      "decimals": 2
+    }
+  },
+  "translations": {
+    "frontend": "translations/frontend.json",
+    "backend": "translations/backend.json",
+    "extensions": "translations/extensions.json"
+  },
+  "dependencies": {},
+  "permissions": [],
+  "coverage": {
+    "frontend": 95,
+    "backend": 80,
+    "extensions": 70
+  },
+  "maintainers": [
+    {
+      "name": "Bulgarian Language Community",
+      "email": "languages@example.com",
+      "role": "maintainer"
+    }
+  ]
+}

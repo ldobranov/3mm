@@ -116,7 +116,22 @@ class ExtensionDatabaseManager:
         try:
             result = session.execute(text(query), params or {})
             if result.returns_rows:
-                return [dict(row) for row in result.fetchall()]
+                # Convert SQLAlchemy result rows to dictionaries safely
+                rows = []
+                for row in result.fetchall():
+                    try:
+                        # Handle different row types
+                        if hasattr(row, '_mapping'):
+                            rows.append(dict(row._mapping))
+                        elif hasattr(row, 'items'):
+                            rows.append(dict(row.items()))
+                        else:
+                            # Fallback for named tuples
+                            rows.append({key: getattr(row, key) for key in row._fields})
+                    except Exception as e:
+                        print(f"Error converting row to dict: {e}")
+                        rows.append({})
+                return rows
             else:
                 session.commit()
                 return []

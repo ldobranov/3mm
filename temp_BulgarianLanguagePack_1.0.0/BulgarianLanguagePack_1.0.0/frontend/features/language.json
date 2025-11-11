@@ -1,0 +1,8 @@
+{
+  "select_language": "Избери език",
+  "current_language": "Текущ език", 
+  "install_languages": "Инсталирай езици",
+  "no_languages_available": "Няма налични езици",
+  "language_pack": "Езиков пакет",
+  "language_packs": "Езикови пакети"
+}

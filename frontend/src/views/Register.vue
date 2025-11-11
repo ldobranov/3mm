@@ -4,64 +4,66 @@
       <h1 class="view-title">Register</h1>
     </div>
 
-    <div class="card" style="max-width: 400px; margin: 2rem auto;">
-      <div style="padding: 2rem;">
-        <form @submit.prevent="register" style="display: grid; gap: 1rem;">
-          <div>
-            <label class="form-label">Username</label>
-            <input
-              v-model="username"
-              type="text"
-              class="input"
-              placeholder="Choose a username"
-              required
-            />
+    <div class="auth-container">
+      <div class="card auth-card card-hover">
+        <div class="card-content">
+          <form @submit.prevent="register" class="auth-form">
+            <div class="form-group">
+              <label class="form-label">Username</label>
+              <input
+                v-model="username"
+                type="text"
+                class="input"
+                placeholder="Choose a username"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input
+                v-model="email"
+                type="email"
+                class="input"
+                placeholder="Enter your email"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <input
+                v-model="password"
+                type="password"
+                class="input"
+                placeholder="Create a password"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Confirm Password</label>
+              <input
+                v-model="confirmPassword"
+                type="password"
+                class="input"
+                placeholder="Confirm your password"
+                required
+              />
+            </div>
+
+            <button type="submit" class="button button-primary auth-button">
+              <i class="bi bi-person-plus auth-icon"></i>Register
+            </button>
+          </form>
+
+          <div v-if="errorMessage" class="alert alert-danger auth-alert">
+            {{ errorMessage }}
           </div>
 
-          <div>
-            <label class="form-label">Email</label>
-            <input
-              v-model="email"
-              type="email"
-              class="input"
-              placeholder="Enter your email"
-              required
-            />
+          <div v-if="successMessage" class="alert alert-success auth-alert">
+            {{ successMessage }}
           </div>
-
-          <div>
-            <label class="form-label">Password</label>
-            <input
-              v-model="password"
-              type="password"
-              class="input"
-              placeholder="Create a password"
-              required
-            />
-          </div>
-
-          <div>
-            <label class="form-label">Confirm Password</label>
-            <input
-              v-model="confirmPassword"
-              type="password"
-              class="input"
-              placeholder="Confirm your password"
-              required
-            />
-          </div>
-
-          <button type="submit" class="button button-primary" style="width: 100%;">
-            <i class="bi bi-person-plus" style="margin-right: 0.5rem;"></i>Register
-          </button>
-        </form>
-
-        <div v-if="errorMessage" class="alert alert-danger" style="margin-top: 1rem;">
-          {{ errorMessage }}
-        </div>
-
-        <div v-if="successMessage" class="alert alert-success" style="margin-top: 1rem;">
-          {{ successMessage }}
         </div>
       </div>
     </div>
@@ -69,13 +71,17 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref } from 'vue';
+import { defineComponent, ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
+import { useSettingsStore } from '@/stores/settings';
 import http from '@/utils/http';
 import type { AxiosError } from 'axios';
 
 export default defineComponent({
   setup() {
+    const settingsStore = useSettingsStore();
+    const styleSettings = computed(() => settingsStore.styleSettings);
+    
     const username = ref('');
     const email = ref('');
     const password = ref('');
@@ -152,11 +158,134 @@ export default defineComponent({
       }
     };
 
-    return { username, email, password, confirmPassword, register, errorMessage, successMessage };
+    return {
+      username,
+      email,
+      password,
+      confirmPassword,
+      register,
+      errorMessage,
+      successMessage,
+      styleSettings
+    };
   },
 });
 </script>
 
 <style scoped>
-/* Register-specific styles if needed */
+/* Auth container - shared styling that uses CSS variables */
+.auth-container {
+  max-width: 400px;
+  margin: 2rem auto;
+}
+
+.auth-card {
+  background-color: var(--card-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--card-border);
+  border-radius: var(--border-radius-md);
+  box-shadow: var(--card-shadow);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.auth-card:hover {
+  box-shadow: var(--card-hover-shadow);
+}
+
+.card-content {
+  padding: 2rem;
+}
+
+.auth-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.input {
+  padding: 0.5rem;
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  background-color: var(--input-bg);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--input-focus-border);
+  box-shadow: 0 0 0 1px var(--input-focus-border);
+}
+
+.auth-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: var(--button-primary-bg);
+  color: var(--button-primary-text);
+  border: 1px solid var(--button-primary-bg);
+  border-radius: var(--border-radius-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.auth-button:hover {
+  background-color: var(--button-primary-hover);
+  border-color: var(--button-primary-hover);
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.auth-button:active {
+  transform: translateY(0);
+}
+
+.auth-icon {
+  font-size: 1rem;
+}
+
+.auth-alert {
+  margin-top: 1rem;
+}
+
+/* Alert styling using CSS variables */
+.alert-danger {
+  background-color: var(--color-background-soft);
+  color: var(--danger);
+  border: 1px solid var(--color-border);
+}
+
+.alert-success {
+  background-color: var(--color-background-soft);
+  color: var(--accent);
+  border: 1px solid var(--color-border);
+}
+
+@media (max-width: 480px) {
+  .auth-container {
+    max-width: 100%;
+    margin: 1rem;
+  }
+  
+  .card-content {
+    padding: 1.5rem;
+  }
+}
 </style>

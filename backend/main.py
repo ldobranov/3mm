@@ -5,14 +5,18 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from backend.routes.settings import router as settings_router
 from backend.database import init_db
 from backend.routes.user import router as user_router
-from backend.routes.page_routes import router as page_router
+# Page routes removed - will be provided by PagesExtension
+# from backend.routes.page_routes import router as page_router
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 import sys
 import os
 import asyncio
+from pathlib import Path
 import backend.db.user  # noqa: F401
 import backend.db.audit_log  # noqa: F401
+import backend.db.role  # noqa: F401 - Import to ensure tables are created
+import backend.db.association_tables  # noqa: F401 - Import to ensure tables are created
 from backend.routes.display_routes import router as display_router
 from backend.routes.auth_refresh import router as refresh_router
 from backend.routes.session_routes import router as session_router
@@ -21,6 +25,8 @@ from backend.routes.permission_routes import router as permission_router
 from backend.routes.extension_routes import router as extension_router
 from backend.routes.marketplace_routes import router as marketplace_router
 from backend.routes.monitoring_routes import router as monitoring_router
+from backend.routes.role_routes import router as role_router
+from backend.routes.group_routes import router as group_router
 from backend.utils.extension_updates import update_manager
 # Add backend directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -68,12 +74,15 @@ app.add_middleware(
 
 app.include_router(settings_router)
 app.include_router(user_router, prefix="/user")
-app.include_router(page_router, prefix="/pages")
+# Page routes removed - will be provided by PagesExtension
+# app.include_router(page_router, prefix="/pages")
 app.include_router(display_router)
 app.include_router(refresh_router, prefix="/api")
 app.include_router(session_router, prefix="/api")
 app.include_router(audit_router, prefix="/api")
 app.include_router(permission_router, prefix="/api")
+app.include_router(role_router)
+app.include_router(group_router)
 app.include_router(extension_router)
 app.include_router(marketplace_router)
 app.include_router(monitoring_router)
@@ -86,6 +95,50 @@ asyncio.create_task(update_manager.start_update_worker())
 # Start extension performance monitoring
 from backend.utils.extension_monitoring import performance_monitor
 asyncio.create_task(performance_monitor.start_monitoring())
+
+# Load enabled extensions at startup
+from backend.utils.extension_manager import extension_manager
+from backend.db.extension import Extension
+from backend.database import get_db
+
+def load_enabled_extensions():
+    """Load all enabled extensions at startup"""
+    db = None
+    try:
+        db = next(get_db())
+        enabled_extensions = db.query(Extension).filter(
+            Extension.is_enabled == True
+        ).all()
+        
+        for extension in enabled_extensions:
+            extension_id = f"{extension.name}_{extension.version}"
+            extension_path = Path(extension.file_path)
+            
+            if extension_path.exists():
+                print(f"Loading enabled extension: {extension_id}")
+                success = extension_manager.initialize_extension(
+                    extension_id=extension_id,
+                    extension_path=extension_path,
+                    app=app,
+                    db=db
+                )
+                if success:
+                    print(f"✅ Extension {extension_id} loaded successfully")
+                else:
+                    print(f"❌ Failed to load extension {extension_id}")
+            else:
+                print(f"⚠️ Extension path not found: {extension_path}")
+        
+    except Exception as e:
+        print(f"Error loading extensions: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        if db:
+            db.close()
+
+# Load extensions after database is initialized
+load_enabled_extensions()
 
 logger.debug("Test log: Logging setup verification.")
 

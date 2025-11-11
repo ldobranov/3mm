@@ -70,7 +70,12 @@ If you encounter errors like "cannot execute: required file not found" when acti
    pip install -r requirements.txt
    ```
 
-5. (Optional) Deactivate the virtual environment when done:
+5. Initialize the database (creates admin user and initial data):
+   ```bash
+   python backend/scripts/init_database.py
+   ```
+
+6. (Optional) Deactivate the virtual environment when done:
    ```bash
    deactivate
    ```
@@ -112,7 +117,9 @@ cd frontend
 npm run dev
 ```
 
-The frontend will typically run on `http://localhost:5173` (Vite default).
+The frontend will typically run on `http://localhost:5173` (Vite default) and is configured to connect to the backend at `http://localhost:8887`.
+
+**Note:** The frontend's API base URL is set in `frontend/.env`. For local development, it should point to `http://localhost:8887`. If you need to connect to a different backend (e.g., production), update the `VITE_API_BASE_URL` variable in that file.
 
 ### Running Both
 

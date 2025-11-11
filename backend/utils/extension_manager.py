@@ -14,6 +14,7 @@ from backend.database import get_db
 from backend.utils.extension_security import security_manager
 from backend.utils.extension_database import extension_db_manager
 from backend.utils.extension_communication import event_bus, service_registry, data_sharing
+from backend.utils.i18n import i18n_manager
 
 
 class ExtensionContext:
@@ -98,12 +99,43 @@ class ExtensionManager:
     def initialize_extension(self, extension_id: str, extension_path: Path, app: FastAPI, db: Session) -> bool:
         """Initialize an extension"""
         try:
-            # Load the module if not already loaded
-            module = self.extension_modules.get(extension_id)
-            if not module:
-                module = self.load_extension_module(extension_path, extension_id)
+            # Load manifest to check type
+            manifest_path = extension_path / "manifest.json"
+            manifest = {}
+            if manifest_path.exists():
+                with open(manifest_path, 'r') as f:
+                    manifest = json.load(f)
+
+            extension_type = manifest.get('type', 'widget')
+
+            # Load the module if not already loaded (for non-language extensions)
+            module = None
+            if extension_type != 'language':
+                module = self.extension_modules.get(extension_id)
                 if not module:
-                    return False
+                    module = self.load_extension_module(extension_path, extension_id)
+                    if not module:
+                        return False
+
+            # Handle language packs
+            if extension_type == 'language':
+                language_info = manifest.get('language', {})
+                language_code = language_info.get('code', extension_id.lower())
+                translations = manifest.get('translations', {})
+
+                # Load backend translations
+                backend_translations = translations.get('backend')
+                if backend_translations:
+                    translations_dir = extension_path / backend_translations
+                    if translations_dir.exists() and translations_dir.is_dir():
+                        i18n_manager.load_language_pack(language_code, translations_dir)
+                    elif translations_dir.exists() and translations_dir.is_file():
+                        # Single file
+                        i18n_manager.load_language_pack(language_code, translations_dir.parent)
+
+                print(f"Language pack {extension_id} loaded for {language_code}")
+                # Language packs don't need further initialization
+                return True
 
             # Initialize extension database if needed
             db_initialized = extension_db_manager.initialize_extension_database(extension_path, extension_id)
@@ -115,7 +147,7 @@ class ExtensionManager:
                 app=app,
                 db=db,
                 extension_id=extension_id,
-                version="1.0.0"  # TODO: Get from manifest
+                version=manifest.get('version', '1.0.0')
             )
 
             # Add database session to context

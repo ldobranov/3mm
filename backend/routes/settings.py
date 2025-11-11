@@ -9,6 +9,7 @@ from backend.utils.db_utils import get_db
 from backend.utils.crud import create_crud_routes
 from backend.utils.jwt_utils import decode_token
 from backend.utils.auth_dep import require_user
+from backend.utils.i18n import set_language, get_current_language, i18n_manager
 from pydantic import BaseModel, field_validator, ConfigDict
 import json
 
@@ -190,3 +191,23 @@ def delete_setting(setting_id: int, user = Depends(require_user), db: Session = 
 def handle_settings():
     """Placeholder implementation for handle_settings."""
     return {"message": "Settings endpoint is under construction."}
+
+# Language management routes
+
+@router.get("/language/current")
+def get_current_language():
+    """Get the current language"""
+    return {"language": get_current_language()}
+
+@router.get("/language/available")
+def get_available_languages():
+    """Get available languages"""
+    return {"languages": i18n_manager.get_available_languages()}
+
+@router.post("/language/set")
+def set_current_language(language: str, user = Depends(require_user)):
+    """Set the current language - requires authentication"""
+    if language not in i18n_manager.get_available_languages():
+        raise HTTPException(status_code=400, detail="Language not available")
+    set_language(language)
+    return {"message": f"Language set to {language}"}

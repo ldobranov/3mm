@@ -1,10 +1,14 @@
-from sqlalchemy import Column, Integer, String, UniqueConstraint, DateTime
+from sqlalchemy import Column, Integer, String, UniqueConstraint, DateTime, Table, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from backend.db.base import Base
-# from backend.db.association_tables import user_roles  # Commented out for now
+from backend.db.association_tables import user_roles, user_groups
 from pydantic import BaseModel  # Import BaseModel from pydantic
 from passlib.context import CryptContext
+from typing import List, Optional
+
+# Import association tables properly
+from backend.db.association_tables import user_roles, user_groups
 
 class User(Base):
     __tablename__ = "users"
@@ -14,13 +18,16 @@ class User(Base):
     hashed_password = Column(String)
     role = Column(String, nullable=True, default="user")  # Simple role field
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    # roles = relationship("Role", secondary=user_roles, back_populates="users", lazy="dynamic")  # Commented out
     
     # New relationships for security features
     sessions = relationship("UserSession", back_populates="user", lazy="dynamic")
     audit_logs = relationship("AuditLog", back_populates="user", lazy="dynamic")
     permissions = relationship("Permission", foreign_keys="Permission.user_id", back_populates="user", lazy="dynamic")
     extensions = relationship("Extension", back_populates="user", lazy="dynamic")
+    
+    # New relationships for enhanced role/group management
+    roles = relationship("Role", secondary=user_roles, back_populates="users")
+    groups = relationship("Group", secondary=user_groups, back_populates="users")
 
     __table_args__ = (
         UniqueConstraint("username", "email", name="unique_user_email"),

@@ -52,6 +52,57 @@ def check_permission(
     
     return level_hierarchy.get(permission.permission_level, 0) >= level_hierarchy.get(required_level, 0)
 
+def check_extension_permission(
+    db: DBSession,
+    user_id: int,
+    extension_name: str,
+    required_level: PermissionLevel
+) -> bool:
+    """Check if user has required permission level for an extension"""
+    
+    # Get extension by name
+    from backend.db.extension import Extension
+    extension = db.query(Extension).filter(Extension.name == extension_name).first()
+    if not extension:
+        return False
+    
+    # Check if extension is enabled
+    if not extension.is_enabled:
+        return False
+    
+    return check_permission(db, user_id, "extension", extension.id, required_level)
+
+def get_user_extension_permissions(
+    db: DBSession,
+    user_id: int
+) -> List[dict]:
+    """Get all extension permissions for a user"""
+    
+    from backend.db.extension import Extension
+    
+    # Get all extension permissions for the user
+    extension_perms = db.query(Permission).filter(
+        Permission.user_id == user_id,
+        Permission.entity_type == "extension"
+    ).all()
+    
+    result = []
+    for perm in extension_perms:
+        extension = db.query(Extension).filter(Extension.id == perm.entity_id).first()
+        if extension:
+            result.append({
+                "permission_id": perm.id,
+                "extension_id": extension.id,
+                "extension_name": extension.name,
+                "extension_version": extension.version,
+                "extension_type": extension.type,
+                "permission_level": perm.permission_level.value if hasattr(perm.permission_level, 'value') else str(perm.permission_level),
+                "granted_at": perm.granted_at,
+                "expires_at": perm.expires_at
+            })
+    
+    return result
+
 @router.post("/permissions")
 def grant_permission(
     permission_data: PermissionCreateSchema,
@@ -311,10 +362,102 @@ def get_all_permissions(
             if dashboard:
                 perm_data["entity_name"] = dashboard.title  # Use title instead of name
                 perm_data["entity_slug"] = dashboard.slug
+        elif perm.entity_type == "extension":
+            from backend.db.extension import Extension
+            extension = db.query(Extension).filter(Extension.id == perm.entity_id).first()
+            if extension:
+                perm_data["entity_name"] = f"{extension.name} v{extension.version}"
+                perm_data["entity_slug"] = extension.name
+                perm_data["extension_type"] = extension.type
+                perm_data["description"] = extension.description
         
         result.append(perm_data)
     
     return result
+
+@router.get("/permissions/entities")
+def get_available_entities(
+    entity_type: str,
+    claims: dict = Depends(require_user),
+    db: DBSession = Depends(get_db)
+):
+    """Get available entities for permission assignment (admin only)"""
+    
+    user_id = claims.get("sub") or claims.get("user_id")
+    user = db.query(User).filter(User.id == user_id).first()
+    
+    if not user or user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    entities = []
+    
+    if entity_type == "page":
+        from backend.db.page import Page
+        pages = db.query(Page).all()
+        for page in pages:
+            entities.append({
+                "id": page.id,
+                "name": page.title,
+                "slug": page.slug,
+                "description": page.description
+            })
+    elif entity_type == "dashboard":
+        from backend.db.display import Display
+        dashboards = db.query(Display).all()
+        for dashboard in dashboards:
+            entities.append({
+                "id": dashboard.id,
+                "name": dashboard.title,
+                "slug": dashboard.slug,
+                "description": dashboard.description
+            })
+    elif entity_type == "extension":
+        from backend.db.extension import Extension
+        extensions = db.query(Extension).all()
+        for ext in extensions:
+            entities.append({
+                "id": ext.id,
+                "name": f"{ext.name} v{ext.version}",
+                "slug": ext.name,
+                "description": ext.description,
+                "type": ext.type,
+                "status": ext.status,
+                "is_enabled": ext.is_enabled
+            })
+    
+    return entities
+
+@router.get("/permissions/extension-types")
+def get_extension_types(
+    claims: dict = Depends(require_user),
+    db: DBSession = Depends(get_db)
+):
+    """Get all available extension types (admin only)"""
+    
+    user_id = claims.get("sub") or claims.get("user_id")
+    user = db.query(User).filter(User.id == user_id).first()
+    
+    if not user or user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    from backend.db.extension import Extension
+    
+    # Get distinct extension types
+    extension_types = db.query(Extension.type).distinct().all()
+    types = [ext_type[0] for ext_type in extension_types if ext_type[0]]
+    
+    return {"types": types}
+
+@router.get("/permissions/my/extensions")
+def get_my_extension_permissions(
+    claims: dict = Depends(require_user),
+    db: DBSession = Depends(get_db)
+):
+    """Get all extension permissions for the current user"""
+    
+    user_id = claims.get("sub") or claims.get("user_id")
+    
+    return get_user_extension_permissions(db, user_id)
 
 @router.get("/permissions/check")
 def check_user_permission(

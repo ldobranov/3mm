@@ -55,7 +55,7 @@ def validate_extension_file(file_path: Path) -> ExtensionManifest:
                 raise HTTPException(status_code=400, detail=f"Invalid manifest.json: {str(e)}")
 
         # Validate extension type
-        if manifest.type not in ['widget', 'theme', 'backend-api']:
+        if manifest.type not in ['widget', 'theme', 'backend-api', 'extension']:
             raise HTTPException(status_code=400, detail=f"Unsupported extension type: {manifest.type}")
 
         # Validate version format
@@ -289,8 +289,8 @@ async def upload_extension(
                     # Extract other files normally (like manifest.json)
                     zip_ref.extract(file_info, extension_dir)
 
-        # For widget extensions, also copy to frontend extensions directory
-        if manifest.type == 'widget':
+        # For widget and extension type, also copy to frontend extensions directory
+        if manifest.type in ['widget', 'extension']:
             frontend_extensions_dir = Path("frontend/src/extensions")
             frontend_extensions_dir.mkdir(exist_ok=True)
 
@@ -495,8 +495,8 @@ def delete_extension(
     if extension_path.exists():
         shutil.rmtree(extension_path)
 
-    # Remove extension files from frontend if it's a widget
-    if extension.type == 'widget':
+    # Remove extension files from frontend if it's a widget or extension
+    if extension.type in ['widget', 'extension']:
         frontend_extensions_dir = Path("frontend/src/extensions")
         frontend_extension_dir = frontend_extensions_dir / f"{extension.name}_{extension.version}"
         if frontend_extension_dir.exists():
