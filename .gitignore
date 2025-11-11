@@ -1,48 +1,69 @@
-# Logs
-*.log
-backend_debug.log
+# Backend virtual environment
+backend/venv/
+backend/venv3/
+backend/venv/
+backend/env/
 
-# Python bytecode
-*.pyc
+# Python cache files
 __pycache__/
-
-# Virtual environment
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
 venv/
+ENV/
+env.bak/
+venv.bak/
 
-# Alembic
-alembic/versions/*.pyc
+# Node modules for frontend
+frontend/node_modules/
+node_modules/
+*/node_modules/
 
-# Temporary files
-/tmp/
+# Build outputs
+frontend/dist/
+frontend/dist-ssr/
+*.local
 
-# Extensions
-extensions/backend/
-extensions/frontend/
-
-# Test artifacts
-*.zip
-
-# IDE files
+# IDE and editor files
 .vscode/
 .idea/
-
-# Node.js
-node_modules/
-dist/
-dist-ssr/
-
-# Coverage
-coverage/
-
-# Cypress
-/cypress/videos/
-/cypress/screenshots/
-
-# Environment files
-.env
-.env.local
-.env.*.local
+*.swp
+*.swo
+*~
 
 # OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Log files
+*.log
+logs/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
