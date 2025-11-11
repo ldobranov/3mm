@@ -18,8 +18,21 @@
 Before installing, ensure you have the following installed on your system:
 
 - **Python 3.8 or higher** (check with `python --version` or `python3 --version`)
+  - On Ubuntu/Debian: `sudo apt update && sudo apt install python3 python3-venv python3-pip`
+  - On macOS: Install from python.org or use Homebrew: `brew install python`
+  - On Windows: Download from python.org (ensure "Add Python to PATH" during installation)
 - **Node.js 16 or higher** (check with `node --version`)
+  - Download from nodejs.org or use package manager
 - **npm** (comes with Node.js, check with `npm --version`)
+
+### Troubleshooting Python Virtual Environment
+
+If you encounter errors like "cannot execute: required file not found" when activating venv or running pip:
+
+1. Ensure Python 3.8+ is installed: `python3 --version`
+2. On Linux systems, install the venv module: `sudo apt install python3-venv` (Ubuntu/Debian)
+3. Try recreating the virtual environment: `rm -rf backend/venv && python3 -m venv backend/venv`
+4. If `python3` doesn't work, try `python` (but ensure it's Python 3)
 
 ## 📦 Installation
 
