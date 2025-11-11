@@ -21,9 +21,11 @@ Before installing, ensure you have the following installed on your system:
   - On Ubuntu/Debian: `sudo apt update && sudo apt install python3 python3-venv python3-pip`
   - On macOS: Install from python.org or use Homebrew: `brew install python`
   - On Windows: Download from python.org (ensure "Add Python to PATH" during installation)
-- **Node.js 16 or higher** (check with `node --version`)
+- **Node.js 20 or higher** (check with `node --version`)
   - Download from nodejs.org or use package manager
-- **npm** (comes with Node.js, check with `npm --version`)
+  - Update npm if needed: `npm install -g npm@latest`
+- **npm 10 or higher** (check with `npm --version`)
+  - Comes with Node.js 20+, or update with the command above
 
 ### Troubleshooting Python Virtual Environment
 
