@@ -1,11 +1,11 @@
 <script setup>
 import { onMounted } from 'vue';
-import http from '@/utils/http';
+import http from '@/utils/dynamic-http';
 
 onMounted(async () => {
   const token = localStorage.getItem('authToken');
   if (token) {
-    await http.post(`${import.meta.env.VITE_API_BASE_URL}/user/logout`, {}, {
+    await http.post('/api/user/logout', {}, {
       headers: { Authorization: `Bearer ${token}` }
     });
   }

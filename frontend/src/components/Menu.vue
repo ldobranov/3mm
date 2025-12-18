@@ -1,25 +1,25 @@
 <template>
-  <nav 
+  <nav
     class="navbar navbar-expand-lg"
     :style="{
-      backgroundColor: headerBgColor,
-      color: headerTextColor
+      backgroundColor: settingsStore.headerSettings.backgroundColor,
+      color: settingsStore.headerSettings.textColor
     }"
   >
     <div class="container-fluid">
-      <router-link 
-        class="navbar-brand d-flex align-items-center" 
+      <router-link
+        class="navbar-brand d-flex align-items-center"
         to="/"
-        :style="{ color: headerTextColor }"
+        :style="{ color: settingsStore.headerSettings.textColor }"
       >
-        <img 
-          v-if="logoUrl" 
-          :src="logoUrl" 
-          alt="Logo" 
+        <img
+          v-if="settingsStore.headerSettings.logoUrl"
+          :src="settingsStore.headerSettings.logoUrl"
+          alt="Logo"
           class="me-2"
           style="max-height: 40px;"
         />
-        {{ siteName }}
+        {{ settingsStore.headerSettings.siteName }}
       </router-link>
       <button
         class="navbar-toggler"
@@ -35,49 +35,65 @@
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav me-auto">
           <li v-for="item in visibleMenuItems" :key="item.path" class="nav-item">
-            <router-link 
-              :to="item.path" 
+            <router-link
+              :to="item.path"
               class="nav-link"
-              :style="{ color: headerTextColor }"
+              :style="{ color: settingsStore.headerSettings.textColor }"
             >
-              {{ item.label }}
+              {{ getMenuItemLabel(item) }}
             </router-link>
           </li>
         </ul>
         <ul class="navbar-nav">
-          <li class="nav-item">
+          <li v-if="showLanguageSwitcher" class="nav-item me-2">
+            <select
+              v-model="selectedLanguage"
+              @change="changeLanguage"
+              :style="{ color: settingsStore.headerSettings.textColor, backgroundColor: 'transparent', border: '1px solid ' + settingsStore.headerSettings.textColor, borderRadius: '8px', padding: '10px 12px', height: 'auto', cursor: 'pointer' }"
+            >
+              <option
+                v-for="lang in availableLanguages"
+                :key="lang"
+                :value="lang"
+                :style="{ backgroundColor: settingsStore.headerSettings.backgroundColor, color: settingsStore.headerSettings.textColor }"
+              >
+                {{ lang.toUpperCase() }}
+              </option>
+            </select>
+          </li>
+          <li class="nav-item me-2">
             <ThemeToggle />
           </li>
           <li class="nav-item">
-            <button 
+            <button
               class="nav-link btn btn-link"
               @click="openCommandPalette"
-              :style="{ color: headerTextColor }"
+              :style="{ color: settingsStore.headerSettings.textColor }"
               title="Press Ctrl+K to open"
             >
-              <i class="bi bi-command"></i> Ctrl+K
+              <i class="bi bi-command"></i><span class="d-lg-inline"> Ctrl+K</span>
             </button>
           </li>
           <template v-if="isLoggedIn">
             <li class="nav-item">
-              <button 
-                class="nav-link btn btn-link" 
+              <button
+                class="nav-link btn btn-link"
                 @click="handleLogout"
-                :style="{ color: headerTextColor }"
+                :style="{ color: settingsStore.headerSettings.textColor }"
               >
-                Logout
+                {{ t('menu.logout', 'Logout') }}
               </button>
             </li>
           </template>
           <template v-else>
             <li class="nav-item me-2">
-              <router-link to="/user/register" class="nav-link btn btn-link" :style="{ color: headerTextColor }">
-                Register
+              <router-link to="/user/register" class="nav-link btn btn-link" :style="{ color: settingsStore.headerSettings.textColor }">
+                {{ t('menu.register', 'Register') }}
               </router-link>
             </li>
             <li class="nav-item">
-              <router-link to="/user/login" class="nav-link btn btn-link" :style="{ color: headerTextColor }">
-                Login
+              <router-link to="/user/login" class="nav-link btn btn-link" :style="{ color: settingsStore.headerSettings.textColor }">
+                {{ t('menu.login', 'Login') }}
               </router-link>
             </li>
           </template>
@@ -89,9 +105,11 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, computed, onUnmounted } from 'vue';
-import http from '@/utils/http';
+import { defineComponent, ref, onMounted, computed, onUnmounted, watch } from 'vue';
+import http from '@/utils/dynamic-http';
 import { useRouter } from 'vue-router';
+import { useI18n } from '@/utils/i18n';
+import { useSettingsStore } from '@/stores/settings';
 import ThemeToggle from './ThemeToggle.vue';
 
 export default defineComponent({
@@ -101,20 +119,20 @@ export default defineComponent({
   },
   setup() {
     interface MenuItem {
-      label: string;
+      label: string | { [key: string]: string };
       path: string;
       icon?: string;
     }
-    
+
     const menuItems = ref<MenuItem[]>([]);
     const errorMessage = ref('');
     const authToken = ref(localStorage.getItem('authToken'));
-    const siteName = ref('Mega Monitor');
-    const logoUrl = ref('');
-    const headerBgColor = ref('#f8f9fa');
-    const headerTextColor = ref('#212529');
-    
+    const settingsStore = useSettingsStore();
+
     const router = useRouter();
+    const { t, currentLanguage, setLanguage } = useI18n();
+    const availableLanguages = ref<string[]>(['en', 'bg']);
+    const selectedLanguage = ref<string>('en');
 
     // Update auth token ref
     const updateAuthToken = () => {
@@ -128,6 +146,37 @@ export default defineComponent({
 
     const currentRole = computed(() => localStorage.getItem('role') || '');
 
+
+    const getMenuItemLabel = (item: MenuItem): string => {
+      if (typeof item.label === 'string') {
+        // Direct string label - assume it's English
+        return item.label;
+      }
+
+      if (typeof item.label === 'object' && item.label) {
+        // Object with language keys
+        const langLabel = item.label[currentLanguage.value];
+        if (langLabel) {
+          return langLabel;
+        }
+
+        // Fallback to English
+        const enLabel = item.label['en'];
+        if (enLabel) {
+          return enLabel;
+        }
+
+        // Use any available label
+        const anyLabel = Object.values(item.label)[0] as string;
+        if (anyLabel) {
+          return anyLabel;
+        }
+      }
+
+      // Final fallback
+      return 'Menu Item';
+    };
+
     const visibleMenuItems = computed(() => {
       // Filter menu items based on authentication and role
       return menuItems.value.filter((item) => {
@@ -135,19 +184,23 @@ export default defineComponent({
         if (item.path === '/user/login' || item.path === '/user/logout') {
           return false;
         }
-        
+
         // Check route requirements
         const route = router.getRoutes().find((r) => r.path === item.path);
         if (!route) return true; // Show if route not found (external link)
-        
+
         const requiresAuth = route.meta?.requiresAuth === true;
         if (requiresAuth && !isLoggedIn.value) return false;
-        
+
         const requiredRole = route.meta?.requiresRole as string | undefined;
         if (requiredRole && currentRole.value !== requiredRole) return false;
-        
+
         return true;
       });
+    });
+
+    const showLanguageSwitcher = computed(() => {
+      return availableLanguages.value.length > 1;
     });
 
     // Function to handle logout
@@ -170,70 +223,66 @@ export default defineComponent({
       menuItems.value = baseItems;
     };
 
-    const fetchHeaderSettings = async () => {
-      try {
-        const res = await http.get('/settings/read');
-        const items = res.data.items || [];
-        
-        // Fetch all header settings
-        const siteNameSetting = items.find((s: any) => s.key === 'site_name');
-        const logoSetting = items.find((s: any) => s.key === 'logo_url');
-        const bgColorSetting = items.find((s: any) => s.key === 'header_bg_color');
-        const textColorSetting = items.find((s: any) => s.key === 'header_text_color');
-        
-        siteName.value = siteNameSetting?.value || 'Mega Monitor';
-        logoUrl.value = logoSetting?.value || '';
-        headerBgColor.value = bgColorSetting?.value || '#f8f9fa';
-        headerTextColor.value = textColorSetting?.value || '#212529';
-      } catch (e) {
-        console.error('Failed to fetch header settings:', e);
-        siteName.value = 'Mega Monitor';
-        headerBgColor.value = '#f8f9fa';
-        headerTextColor.value = '#212529';
-      }
-    };
 
     const fetchMenuItems = async () => {
       try {
-        // Fetch active menu
-        const response = await http.get('/menu/read');
+        // Load language-specific settings for header
+        const langSettingsResponse = await http.get(`/settings/language/${currentLanguage.value}`);
+        const langSettings = langSettingsResponse.data.items || [];
+
+        // Update header settings for current language
+        const siteName = langSettings.find((s: any) => s.key === 'site_name');
+        const headerMessage = langSettings.find((s: any) => s.key === 'header_message');
+        const logoUrl = langSettings.find((s: any) => s.key === 'logo_url');
+        const bgColor = langSettings.find((s: any) => s.key === 'header_bg_color');
+        const textColor = langSettings.find((s: any) => s.key === 'header_text_color');
+
+        settingsStore.headerSettings.siteName = siteName?.value || 'Mega Monitor';
+        settingsStore.headerSettings.headerMessage = headerMessage?.value || 'Welcome to Mega Monitor';
+        settingsStore.headerSettings.logoUrl = logoUrl?.value || '';
+        settingsStore.headerSettings.backgroundColor = bgColor?.value || '#4CAF50';
+        settingsStore.headerSettings.textColor = textColor?.value || '#ffffff';
+
+        // Load menu for current language - uses items field with translation support
+        const response = await http.get(`/menu/read/${currentLanguage.value}`);
         const menus = response.data.items || [];
-        
-        // Find the active menu
-        const activeMenu = menus.find((m: any) => m.is_active) || menus[0];
-        
+
+        // Prioritize main menu (ID 1) for header display, fallback to first active menu
+        const activeMenu = menus.find((m: any) => m.id === 1) || menus.find((m: any) => m.is_active) || menus[0];
+
         if (activeMenu && activeMenu.items) {
+          // Use translated items for current language
           menuItems.value = [...activeMenu.items];
         } else {
-          // Fallback menu items
-          menuItems.value = [
-            { label: 'Home', path: '/' },
-            { label: 'Dashboard', path: '/dashboard' },
-            { label: 'Pages', path: '/pages' },
-            { label: 'Settings', path: '/settings' },
-            { label: 'Profile', path: '/user/profile' },
-          ];
+          // No menu available - use empty menu
+          menuItems.value = [];
         }
-        
+
         errorMessage.value = '';
       } catch (error) {
         console.error('Failed to fetch menu:', error);
-        // Use fallback menu on error
-        menuItems.value = [
-          { label: 'Home', path: '/' },
-          { label: 'Dashboard', path: '/dashboard' },
-          { label: 'Pages', path: '/pages' },
-        ];
+        // Use empty menu on error
+        menuItems.value = [];
       }
-      
+
       buildMenuItems();
+    };
+
+    const fetchAvailableLanguages = async () => {
+      try {
+        const response = await http.get('/language/available');
+        availableLanguages.value = response.data.languages || ['en'];
+      } catch (error) {
+        console.error('Failed to fetch available languages:', error);
+        availableLanguages.value = ['en']; // Fallback to English only
+      }
     };
 
     // Global refresh function
     const refreshMenu = () => {
       updateAuthToken();
       fetchMenuItems();
-      fetchHeaderSettings();
+      settingsStore.loadSettings();
     };
     
     const openCommandPalette = () => {
@@ -242,18 +291,48 @@ export default defineComponent({
       }
     };
 
+    const changeLanguage = async (event: Event) => {
+      const target = event.target as HTMLSelectElement;
+      const newLang = target.value;
+      selectedLanguage.value = newLang;
+      await setLanguage(newLang);
+
+      // Save user preference if logged in
+      const isAuthenticated = !!localStorage.getItem('authToken')
+      if (isAuthenticated) {
+        try {
+          await http.post('/settings/create', {
+            key: 'user_language',
+            value: newLang,
+            description: 'User language preference'
+          })
+          console.log('User language preference saved:', newLang)
+        } catch (e) {
+          console.error('Failed to save user language preference:', e)
+        }
+      }
+
+      // Don't fetch menu items here - let the watch handle it
+      // This prevents overwriting Bulgarian translations with English data
+    };
+
     // Make refreshMenu available globally
     (window as any).refreshMenu = refreshMenu;
 
     onMounted(() => {
       fetchMenuItems();
-      fetchHeaderSettings();
-      
+      settingsStore.loadSettings();
+      fetchAvailableLanguages();
+      // Initialize selected language
+      selectedLanguage.value = currentLanguage.value;
+
       // Listen for custom menu refresh event
       window.addEventListener('menu-refresh', refreshMenu);
       // Listen when settings saved to update header settings instantly
-      window.addEventListener('settings-updated', fetchHeaderSettings);
-      
+      window.addEventListener('settings-updated', () => settingsStore.loadSettings());
+      // Listen for language changes
+      window.addEventListener('language-changed', refreshMenu);
+
       // Listen for storage events (when localStorage changes in another tab)
       window.addEventListener('storage', (e) => {
         if (e.key === 'authToken') {
@@ -262,24 +341,37 @@ export default defineComponent({
       });
     });
 
+    // Watch for language changes from other components
+    watch(currentLanguage, async (newLang) => {
+      selectedLanguage.value = newLang;
+      // Refresh menu items and header settings when language changes externally
+      await fetchMenuItems();
+      await settingsStore.loadSettings();
+    });
+
     onUnmounted(() => {
       window.removeEventListener('menu-refresh', refreshMenu);
-      window.removeEventListener('settings-updated', fetchHeaderSettings);
+      window.removeEventListener('settings-updated', () => settingsStore.loadSettings());
+      window.removeEventListener('language-changed', refreshMenu);
       delete (window as any).refreshMenu;
     });
 
-    return { 
-      menuItems, 
-      visibleMenuItems, 
-      errorMessage, 
-      isLoggedIn, 
+    return {
+      menuItems,
+      visibleMenuItems,
+      errorMessage,
+      isLoggedIn,
       handleLogout,
       refreshMenu,
-      siteName,
-      logoUrl,
-      headerBgColor,
-      headerTextColor,
-      openCommandPalette
+      settingsStore,
+      openCommandPalette,
+      getMenuItemLabel,
+      selectedLanguage,
+      availableLanguages,
+      changeLanguage,
+      showLanguageSwitcher,
+      currentLanguage,
+      t
     };
   },
 });

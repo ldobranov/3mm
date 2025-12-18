@@ -1,0 +1,178 @@
+{
+  "name": "StoreExtension",
+  "version": "1.0.0",
+  "type": "extension",
+  "description": "Full-featured e-commerce store with products, orders, and payments",
+  "author": "Kilo Code",
+  "backend_entry": "store_extension.py",
+  "frontend_entry": "StoreFront.vue",
+  "frontend_components": [
+    "ProductCard.vue",
+    "StoreAdmin.vue",
+    "ProductForm.vue",
+    "CategoryForm.vue",
+    "ShoppingCart.vue",
+    "ProductDetail.vue"
+  ],
+  "frontend_routes": [
+    {
+      "path": "/store",
+      "component": "StoreFront.vue",
+      "name": "Store",
+      "meta": {
+        "requiresAuth": false
+      }
+    },
+    {
+      "path": "/store/admin",
+      "component": "StoreAdmin.vue",
+      "name": "Store Admin",
+      "meta": {
+        "requiresAuth": true
+      }
+    },
+    {
+      "path": "/store/cart",
+      "component": "ShoppingCart.vue",
+      "name": "Cart",
+      "meta": {
+        "requiresAuth": false
+      }
+    },
+    {
+      "path": "/store/product/:slug",
+      "component": "ProductDetail.vue",
+      "name": "ProductDetail",
+      "props": true
+    }
+  ],
+  "locales": {
+    "supported": ["en", "bg"],
+    "default": "en",
+    "directory": "locales/"
+  },
+  "multilingual": {
+    "content_fields": ["name", "description", "short_description"],
+    "fallback_language": "en"
+  },
+  "public_endpoints": [
+    "/api/store/products",
+    "/api/store/products/*",
+    "/api/store/categories",
+    "/api/store/categories/*",
+    "/api/store/settings",
+    "/api/store/settings/translations",
+    "/api/store/cart",
+    "/api/store/cart/add",
+    "/api/store/upload-image"
+  ],
+  "dependencies": {},
+  "apis": {
+    "get_products": {
+      "description": "Get products with filtering and pagination",
+      "parameters": {
+        "category": {"type": "string", "optional": true},
+        "search": {"type": "string", "optional": true},
+        "limit": {"type": "integer", "default": 20},
+        "offset": {"type": "integer", "default": 0},
+        "language": {"type": "string", "optional": true}
+      },
+      "returns": {"type": "object", "description": "Products list with metadata"}
+    },
+    "get_product": {
+      "description": "Get single product by ID",
+      "parameters": {
+        "product_id": {"type": "integer", "required": true},
+        "language": {"type": "string", "optional": true}
+      },
+      "returns": {"type": "object", "description": "Product data"}
+    },
+    "get_categories": {
+      "description": "Get all product categories",
+      "parameters": {
+        "language": {"type": "string", "optional": true}
+      },
+      "returns": {"type": "array", "description": "Categories list"}
+    },
+    "get_cart": {
+      "description": "Get shopping cart contents",
+      "parameters": {
+        "session_id": {"type": "string", "optional": true},
+        "language": {"type": "string", "optional": true}
+      },
+      "returns": {"type": "object", "description": "Cart contents"}
+    },
+    "add_to_cart": {
+      "description": "Add item to shopping cart",
+      "parameters": {
+        "product_id": {"type": "integer", "required": true},
+        "quantity": {"type": "integer", "default": 1},
+        "session_id": {"type": "string", "optional": true}
+      },
+      "returns": {"type": "object", "description": "Cart update result"}
+    },
+    "format_product_html": {
+      "description": "Format products as HTML for embedding in content",
+      "parameters": {
+        "products": {"type": "array", "required": true, "description": "Array of product objects"},
+        "language": {"type": "string", "optional": true, "description": "Language code for translations"}
+      },
+      "returns": {"type": "object", "description": "HTML formatted products"}
+    },
+    "get_ui_translations": {
+      "description": "Get UI translation strings for store-related functionality",
+      "parameters": {
+        "language": {"type": "string", "optional": true, "description": "Language code for translations"}
+      },
+      "returns": {"type": "object", "description": "UI translation strings"}
+    }
+  },
+  "provides": {
+    "content_embedders": {
+      "product": {
+        "label": "store.productSelector.title",
+        "component": "ProductSelector",
+        "format_api": "format_product_html",
+        "ui_translations_api": "get_ui_translations",
+        "description": "Embed products from the store"
+      }
+    }
+  },
+  "permissions": ["database_read", "database_write", "file_upload"],
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "storeName": {
+        "type": "string",
+        "title": "extensions.store.settings.storeName",
+        "default": "My Store"
+      },
+      "currency": {
+        "type": "string",
+        "title": "extensions.store.settings.currency",
+        "default": "USD"
+      },
+      "taxRate": {
+        "type": "number",
+        "title": "extensions.store.settings.taxRate",
+        "minimum": 0,
+        "maximum": 100,
+        "default": 0
+      },
+      "shippingEnabled": {
+        "type": "boolean",
+        "title": "extensions.store.settings.shippingEnabled",
+        "default": true
+      },
+      "paymentMethods": {
+        "type": "array",
+        "title": "extensions.store.settings.paymentMethods",
+        "items": {
+          "type": "string",
+          "enum": ["stripe", "paypal", "bank_transfer"]
+        },
+        "default": ["stripe"]
+      }
+    }
+  }
+}

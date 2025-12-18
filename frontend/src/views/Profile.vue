@@ -1,6 +1,6 @@
 <template>
   <div class="view">
-    <h1 class="view-title">My Profile</h1>
+    <h1 class="view-title">{{ t('profile.title') }}</h1>
 
     <div v-if="loadError" class="alert mt-2">{{ loadError }}</div>
     <div v-if="saveMessage" class="alert mt-2" :style="{ borderColor: saveIsError ? 'var(--danger)' : 'var(--accent)', color: saveIsError ? 'var(--danger)' : 'var(--color-text)' }">
@@ -15,18 +15,18 @@
       <!-- Summary card -->
       <div class="card profile-card" :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
         <div class="card-content">
-          <h5 class="card-title">Account</h5>
+          <h5 class="card-title">{{ t('profile.account') }}</h5>
           <div class="profile-meta">
             <div class="meta-item">
-              <span class="meta-label">Username:</span>
+              <span class="meta-label">{{ t('profile.username') }}:</span>
               <strong class="meta-value">{{ user.username }}</strong>
             </div>
             <div class="meta-item">
-              <span class="meta-label">Email:</span>
+              <span class="meta-label">{{ t('profile.email') }}:</span>
               <span class="meta-value">{{ user.email }}</span>
             </div>
             <div class="meta-item">
-              <span class="meta-label">Role:</span>
+              <span class="meta-label">{{ t('profile.role') }}:</span>
               <span class="chip" :class="user.role === 'admin' ? 'chip-admin' : 'chip-user'">{{ user.role || 'user' }}</span>
             </div>
           </div>
@@ -36,11 +36,11 @@
       <!-- Edit form -->
       <div class="card profile-card" :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
         <div class="card-content">
-          <h5 class="card-title">Edit Profile</h5>
+          <h5 class="card-title">{{ t('profile.edit_profile') }}</h5>
 
           <form @submit.prevent="onSubmit" novalidate style="display:grid; gap: 0.75rem;">
             <div>
-              <label class="text-sm" style="display:block; margin-bottom: 0.25rem; color: var(--color-text);">Username</label>
+              <label class="text-sm" style="display:block; margin-bottom: 0.25rem; color: var(--color-text);">{{ t('profile.username') }}</label>
               <input
                 v-model.trim="form.username"
                 type="text"
@@ -52,7 +52,7 @@
             </div>
 
             <div>
-              <label class="text-sm" style="display:block; margin-bottom: 0.25rem; color: var(--color-text);">Email</label>
+              <label class="text-sm" style="display:block; margin-bottom: 0.25rem; color: var(--color-text);">{{ t('profile.email') }}</label>
               <input
                 v-model.trim="form.email"
                 type="email"
@@ -64,7 +64,7 @@
             </div>
 
             <div>
-              <label class="text-sm" style="display:block; margin-bottom: 0.25rem; color: var(--color-text);">New Password (optional)</label>
+              <label class="text-sm" style="display:block; margin-bottom: 0.25rem; color: var(--color-text);">{{ t('profile.new_password') }}</label>
               <input
                 v-model="form.password"
                 type="password"
@@ -76,10 +76,10 @@
             </div>
 
             <div class="actions-row" style="justify-content: end;">
-              <button type="button" class="button button-secondary" @click="resetForm" :disabled="loading">Cancel</button>
+              <button type="button" class="button button-secondary" @click="resetForm" :disabled="loading">{{ t('common.cancel') }}</button>
               <button type="submit" class="button button-primary" :disabled="loading">
                 <span v-if="loading" class="spinner" role="status" aria-hidden="true" style="width: 1rem; height: 1rem; margin-right: 0.5rem;"></span>
-                Save Changes
+                {{ t('profile.save_changes') }}
               </button>
             </div>
           </form>
@@ -87,14 +87,15 @@
       </div>
     </div>
 
-    <div v-else class="muted">No profile data found.</div>
+    <div v-else class="muted">{{ t('profile.no_data_found') }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue';
-import http from '@/utils/http';
+import http from '@/utils/dynamic-http';
 import { useSettingsStore } from '@/stores/settings';
+import { useI18n } from '@/utils/i18n';
 
 interface Profile {
   id?: number;
@@ -105,6 +106,7 @@ interface Profile {
 
 const settingsStore = useSettingsStore();
 const styleSettings = computed(() => settingsStore.styleSettings);
+const { t } = useI18n();
 const user = ref<Profile | null>(null);
 const form = reactive({ username: '', email: '', password: '' });
 const loadError = ref('');
@@ -118,7 +120,7 @@ async function fetchProfile() {
   profileLoading.value = true;
   try {
     // Authorization header is automatically injected by http interceptor
-    const res = await http.get('/user/profile');
+    const res = await http.get('/api/user/profile');
     user.value = res.data as Profile;
     form.username = res.data.username || '';
     form.email = res.data.email || '';
@@ -145,7 +147,7 @@ async function onSubmit() {
       payload.password = form.password;
     }
 
-    await http.put('/user/profile/update', payload);
+    await http.put('/api/user/profile/update', payload);
     saveMessage.value = 'Profile updated successfully!';
     saveIsError.value = false;
     await fetchProfile();

@@ -1,12 +1,42 @@
 import { defineStore } from 'pinia'
 import { ref, reactive, computed } from 'vue'
 import { useThemeStore } from '@/stores/theme'
-import http from '@/utils/http'
+import http from '@/utils/dynamic-http'
+import { useI18n } from '@/utils/i18n'
 
 export const useSettingsStore = defineStore('settings', () => {
   const themeStore = useThemeStore()
+  const { currentLanguage } = useI18n()
 
   const loaded = ref(false)
+  const currentLanguageCode = ref('en') // Default to English
+
+  // Track language-specific settings
+  const languageSettings = reactive(new Map<string, any[]>())
+  
+  // Settings that should be language-specific (text-based)
+  const languageSpecificKeys = [
+    'site_name',
+    'header_message',
+    'header_bg_color',
+    'header_text_color',
+    'page_title_',
+    'widget_title_'
+  ]
+  
+  // Settings that should remain global (visual/technical)
+  const globalKeys = [
+    'logo_url',
+    'light_body_bg', 'light_content_bg', 'light_button_primary_bg',
+    'light_button_secondary_bg', 'light_button_danger_bg', 'light_card_bg',
+    'light_card_border', 'light_panel_bg', 'light_text_primary',
+    'light_text_secondary', 'light_text_muted', 'light_border_radius_sm',
+    'light_border_radius_md', 'light_border_radius_lg', 'dark_body_bg',
+    'dark_content_bg', 'dark_button_primary_bg', 'dark_button_secondary_bg',
+    'dark_button_danger_bg', 'dark_card_bg', 'dark_card_border', 'dark_panel_bg',
+    'dark_text_primary', 'dark_text_secondary', 'dark_text_muted', 'dark_border_radius_sm',
+    'dark_border_radius_md', 'dark_border_radius_lg'
+  ]
 
   // Header settings
   const headerSettings = reactive({
@@ -69,8 +99,15 @@ export const useSettingsStore = defineStore('settings', () => {
   const loadSettings = async () => {
     try {
       loading.value = true
-      const response = await http.get('/settings/read')
+      const languageCode = currentLanguage.value || 'en'
+      currentLanguageCode.value = languageCode
+      
+      // Load language-specific settings
+      const response = await http.get(`/settings/read?language=${languageCode}`)
       const items = response.data.items || []
+      
+      // Cache language-specific settings
+      languageSettings.set(languageCode, items)
 
       // Load header settings
       const siteName = items.find((s: any) => s.key === 'site_name')
@@ -133,9 +170,9 @@ export const useSettingsStore = defineStore('settings', () => {
       lightStyleSettings.textPrimary = lightTextPrimary?.value || '#222222'
       lightStyleSettings.textSecondary = lightTextSecondary?.value || '#666666'
       lightStyleSettings.textMuted = lightTextMuted?.value || '#999999'
-      lightStyleSettings.borderRadiusSm = parseInt(lightBorderRadiusSm?.value) || 4
-      lightStyleSettings.borderRadiusMd = parseInt(lightBorderRadiusMd?.value) || 8
-      lightStyleSettings.borderRadiusLg = parseInt(lightBorderRadiusLg?.value) || 12
+      lightStyleSettings.borderRadiusSm = Math.min(parseInt(lightBorderRadiusSm?.value) || 4, 20)
+      lightStyleSettings.borderRadiusMd = Math.min(parseInt(lightBorderRadiusMd?.value) || 8, 30)
+      lightStyleSettings.borderRadiusLg = Math.min(parseInt(lightBorderRadiusLg?.value) || 12, 50)
       // console.log('Light theme settings loaded:', lightStyleSettings)
 
       // Load dark theme settings
@@ -151,9 +188,9 @@ export const useSettingsStore = defineStore('settings', () => {
       darkStyleSettings.textPrimary = darkTextPrimary?.value || '#e5e7eb'
       darkStyleSettings.textSecondary = darkTextSecondary?.value || '#9ca3af'
       darkStyleSettings.textMuted = darkTextMuted?.value || '#6b7280'
-      darkStyleSettings.borderRadiusSm = parseInt(darkBorderRadiusSm?.value) || 4
-      darkStyleSettings.borderRadiusMd = parseInt(darkBorderRadiusMd?.value) || 8
-      darkStyleSettings.borderRadiusLg = parseInt(darkBorderRadiusLg?.value) || 12
+      darkStyleSettings.borderRadiusSm = Math.min(parseInt(darkBorderRadiusSm?.value) || 4, 20)
+      darkStyleSettings.borderRadiusMd = Math.min(parseInt(darkBorderRadiusMd?.value) || 8, 30)
+      darkStyleSettings.borderRadiusLg = Math.min(parseInt(darkBorderRadiusLg?.value) || 12, 50)
       // console.log('Dark theme settings loaded:', darkStyleSettings)
 
       // For backward compatibility, also load old settings into current theme
@@ -304,21 +341,129 @@ export const useSettingsStore = defineStore('settings', () => {
     return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
   }
 
-  // Save header settings
+  // Language-aware helper functions
+  const isLanguageSpecific = (key: string): boolean => {
+    return languageSpecificKeys.some(prefix => key.startsWith(prefix))
+  }
+
+  const isGlobal = (key: string): boolean => {
+    return globalKeys.includes(key)
+  }
+
+  const shouldSaveAsLanguageSpecific = (key: string): boolean => {
+    // Text-based settings should be language-specific
+    return isLanguageSpecific(key)
+  }
+
+  // Process settings for a specific language
+  const processSettingsForLanguage = (items: any[], languageCode: string) => {
+    // Find language-specific settings first
+    const langSpecificItems = items.filter(item =>
+      item.language_code === languageCode ||
+      (shouldSaveAsLanguageSpecific(item.key) && !item.language_code)
+    )
+    
+    // Update header settings with language-specific values
+    const siteName = items.find((s: any) => s.key === 'site_name')
+    const headerMessage = items.find((s: any) => s.key === 'header_message')
+    const logoUrl = items.find((s: any) => s.key === 'logo_url')
+    const bgColor = items.find((s: any) => s.key === 'header_bg_color')
+    const textColor = items.find((s: any) => s.key === 'header_text_color')
+
+    // Use language-specific values if available, otherwise global
+    headerSettings.siteName = siteName?.value || 'Mega Monitor'
+    headerSettings.headerMessage = headerMessage?.value || 'Welcome to Mega Monitor'
+    headerSettings.logoUrl = logoUrl?.value || ''
+    headerSettings.backgroundColor = bgColor?.value || '#4CAF50'
+    headerSettings.textColor = textColor?.value || '#ffffff'
+  }
+
+  // Language-aware save method
+  const saveSettingWithLanguage = async (key: string, value: string, description?: string) => {
+    const languageCode = currentLanguageCode.value
+    const saveAsLanguageSpecific = shouldSaveAsLanguageSpecific(key)
+    
+    const settingData = {
+      key,
+      value,
+      description: description || `${key} setting`,
+      language_code: saveAsLanguageSpecific ? languageCode : null
+    }
+
+    // Check if setting exists
+    const response = await http.get('/settings/read')
+    const existingSettings = response.data.items || []
+    const existing = existingSettings.find((s: any) =>
+      s.key === key && s.language_code === (saveAsLanguageSpecific ? languageCode : null)
+    )
+
+    if (existing) {
+      await http.put('/settings/update', {
+        id: existing.id,
+        ...settingData
+      })
+    } else {
+      await http.post('/settings/create', settingData)
+    }
+
+    // Update cache
+    const currentItems = languageSettings.get(languageCode) || []
+    const updatedItems = currentItems.filter(item => item.key !== key)
+    updatedItems.push({ id: existing?.id, ...settingData })
+    languageSettings.set(languageCode, updatedItems)
+  }
+
+  // Sync setting across multiple languages
+  const syncSettingAcrossLanguages = async (key: string, values: Record<string, string>, description?: string) => {
+    try {
+      await http.post('/settings/sync', {
+        key,
+        values,
+        description: description || `${key} setting`
+      })
+      
+      // Refresh settings for all affected languages
+      for (const langCode of Object.keys(values)) {
+        languageSettings.delete(langCode) // Clear cache
+      }
+      
+      // Reload current language settings
+      await loadSettings()
+      
+      window.dispatchEvent(new Event('settings-updated'))
+    } catch (err) {
+      console.error('Failed to sync setting across languages:', err)
+      throw err
+    }
+  }
+
+  // Get setting variations across languages
+  const getSettingVariations = async (key: string) => {
+    try {
+      const response = await http.get(`/settings/keys/${key}`)
+      return response.data.variations || {}
+    } catch (err) {
+      console.error('Failed to get setting variations:', err)
+      return {}
+    }
+  }
+
+  // Save header settings (only logo is global now)
   const saveHeaderSettings = async () => {
     try {
-      const headerSettingsToSave = [
-        { key: 'site_name', value: headerSettings.siteName, description: 'Site name displayed in header' },
-        { key: 'header_message', value: headerSettings.headerMessage, description: 'Header welcome message or tagline' },
-        { key: 'logo_url', value: headerSettings.logoUrl, description: 'Logo URL or base64 data' },
-        { key: 'header_bg_color', value: headerSettings.backgroundColor, description: 'Header background color' },
-        { key: 'header_text_color', value: headerSettings.textColor, description: 'Header text color' }
+      // Debug: log the logo URL being saved
+      console.log('Saving header settings. Logo URL:', headerSettings.logoUrl);
+
+      // Save global settings
+      const globalSettingsToSave = [
+        { key: 'logo_url', value: headerSettings.logoUrl, description: 'Logo URL or base64 data' }
       ]
 
       const response = await http.get('/settings/read')
       const existingSettings = response.data.items || []
 
-      for (const setting of headerSettingsToSave) {
+      // Save global settings
+      for (const setting of globalSettingsToSave) {
         const existing = existingSettings.find((s: any) => s.key === setting.key)
 
         if (existing) {
@@ -517,11 +662,20 @@ export const useSettingsStore = defineStore('settings', () => {
     loading,
     error,
     loaded,
+    currentLanguageCode,
+    languageSettings,
     loadSettings,
     updateCSSVariables,
     saveHeaderSettings,
     saveStyleSettings,
     saveLightStyleSettings,
-    saveDarkStyleSettings
+    saveDarkStyleSettings,
+    // New language-aware functions
+    isLanguageSpecific,
+    isGlobal,
+    shouldSaveAsLanguageSpecific,
+    saveSettingWithLanguage,
+    syncSettingAcrossLanguages,
+    getSettingVariations
   }
 })

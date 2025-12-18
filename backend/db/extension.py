@@ -14,7 +14,7 @@ else:
 class Extension(Base):
     __tablename__ = "extensions"
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     name = Column(String, nullable=False)
     type = Column(String, nullable=False)  # 'widget', 'theme', 'backend-api', etc.
     version = Column(String, nullable=False)
@@ -31,3 +31,9 @@ class Extension(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     user = relationship("User", back_populates="extensions")
+    # language_pack = relationship("LanguagePack", back_populates="extension", uselist=False)
+    
+    # Universal translation relationships
+    tables = relationship("ExtensionTable", back_populates="extension", cascade="all, delete-orphan")
+    fields = relationship("ExtensionField", back_populates="extension", cascade="all, delete-orphan")
+    table_translations = relationship("TableTranslation", back_populates="extension", cascade="all, delete-orphan")

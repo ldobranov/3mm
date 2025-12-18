@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import http from '@/utils/http';
+import http from '@/utils/dynamic-http';
 import DisplayCanvas from '@/components/DisplayCanvas.vue';
 
 const route = useRoute();
@@ -11,7 +11,7 @@ const error = ref<string | null>(null);
 
 onMounted(async () => {
   try {
-    const res = await http.get(`${import.meta.env.VITE_API_BASE_URL}/api/public/@${route.params.username}/${route.params.slug}`);
+    const res = await http.get(`/api/public/@${route.params.username}/${route.params.slug}`);
     data.value = res.data;
   } catch (e: any) {
     error.value = e?.response?.data?.detail || 'Failed to load';

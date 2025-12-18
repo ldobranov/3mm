@@ -2,30 +2,86 @@
   "name": "PagesExtension",
   "version": "1.0.0",
   "type": "extension",
-  "description": "A pages management extension for creating, editing, and managing custom pages",
+  "description": "A multilingual pages management extension for creating, editing, and managing custom pages",
   "author": "Kilo Code",
   "backend_entry": "pages_extension.py",
   "frontend_entry": "PagesExtension.vue",
   "frontend_editor": "PagesExtensionEditor.vue",
-  "frontend_components": ["PageView.vue"],
-  "dependencies": {},
+  "frontend_components": ["PageView.vue", "PageEditor.vue"],
+  "frontend_routes": [
+    {
+      "path": "/pages",
+      "component": "PagesExtension.vue",
+      "name": "Pages",
+      "meta": {
+        "requiresAuth": true
+      }
+    },
+    {
+      "path": "/pages/new",
+      "component": "PageEditor.vue",
+      "name": "PageEditorNew",
+      "meta": {
+        "requiresAuth": true
+      }
+    },
+    {
+      "path": "/pages/:id/edit",
+      "component": "PageEditor.vue",
+      "name": "PageEditorEdit",
+      "props": true,
+      "meta": {
+        "requiresAuth": true
+      }
+    },
+    {
+      "path": "/pages/:slug",
+      "component": "PageView.vue",
+      "name": "PageView",
+      "props": true
+    }
+  ],
+  "locales": {
+    "supported": ["en", "bg", "es"],
+    "default": "en",
+    "directory": "locales/"
+  },
+  "multilingual": {
+    "content_fields": ["title", "content"],
+    "fallback_language": "en"
+  },
+  "consumes": {
+    "StoreExtension": {
+      "components": ["product_selector"],
+      "apis": ["get_products", "get_product", "get_categories"]
+    }
+  },
+  "dependencies": {
+    "extensions": {
+      "StoreExtension": {
+        "version": ">=1.0.0",
+        "optional": true,
+        "description": "Allows embedding store products and shopping cart in pages"
+      }
+    }
+  },
   "permissions": ["database_read", "database_write"],
   "config_schema": {
     "type": "object",
     "properties": {
       "title": {
         "type": "string",
-        "title": "Extension Title",
+        "title": "extensions.pagesextension.settings.title",
         "default": "Pages Management"
       },
       "defaultPublic": {
         "type": "boolean",
-        "title": "Default to Public Pages",
+        "title": "extensions.pagesextension.settings.defaultPublic",
         "default": true
       },
       "maxPages": {
         "type": "number",
-        "title": "Maximum Pages per User",
+        "title": "extensions.pagesextension.settings.maxPages",
         "minimum": 1,
         "maximum": 1000,
         "default": 100

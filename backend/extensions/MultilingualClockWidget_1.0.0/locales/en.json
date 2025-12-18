@@ -1,0 +1,12 @@
+{
+  "settings": {
+    "timezone": "Timezone",
+    "format": "Time Format",
+    "showCustomMessage": "Show Custom Message",
+    "customMessage": "Custom Message"
+  },
+  "messages": {
+    "currentTime": "Current Time",
+    "customMessage": "Custom Message"
+  }
+}

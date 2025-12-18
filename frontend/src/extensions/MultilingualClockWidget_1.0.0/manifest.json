@@ -1,0 +1,43 @@
+{
+  "name": "MultilingualClockWidget",
+  "version": "1.0.0",
+  "type": "widget",
+  "description": "A multilingual clock widget with timezone support and localized labels",
+  "author": "Kilo Code",
+  "frontend_entry": "MultilingualClockWidget.vue",
+  "frontend_editor": "MultilingualClockWidgetEditor.vue",
+  "locales": {
+    "supported": ["en", "bg", "es"],
+    "default": "en",
+    "directory": "locales/"
+  },
+  "multilingual": {
+    "content_fields": ["customMessage"],
+    "fallback_language": "en"
+  },
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "timezone": {
+        "type": "string",
+        "title": "extensions.multilingualclockwidget.settings.timezone",
+        "default": "UTC"
+      },
+      "format": {
+        "type": "string",
+        "title": "extensions.multilingualclockwidget.settings.format",
+        "default": "HH:mm:ss"
+      },
+      "showCustomMessage": {
+        "type": "boolean",
+        "title": "extensions.multilingualclockwidget.settings.showCustomMessage",
+        "default": false
+      },
+      "customMessage": {
+        "type": "string",
+        "title": "extensions.multilingualclockwidget.settings.customMessage",
+        "default": ""
+      }
+    }
+  }
+}

@@ -12,13 +12,30 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useThemeStore } from '@/stores/theme'
+import http from '@/utils/dynamic-http'
 
 const themeStore = useThemeStore()
 
 const isDark = computed(() => themeStore.isDark())
 
-const toggleTheme = () => {
+const toggleTheme = async () => {
   themeStore.toggleTheme()
+  const newTheme = themeStore.theme
+
+  // Save user preference if logged in
+  const isAuthenticated = !!localStorage.getItem('authToken')
+  if (isAuthenticated) {
+    try {
+      await http.post('/settings/create', {
+        key: 'user_theme',
+        value: newTheme,
+        description: 'User theme preference'
+      })
+      console.log('User theme preference saved:', newTheme)
+    } catch (e) {
+      console.error('Failed to save user theme preference:', e)
+    }
+  }
 }
 </script>
 

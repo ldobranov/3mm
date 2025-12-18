@@ -1,0 +1,12 @@
+{
+  "settings": {
+    "timezone": "Часова зона",
+    "format": "Формат на часа",
+    "showCustomMessage": "Показване на персонално съобщение",
+    "customMessage": "Персонално съобщение"
+  },
+  "messages": {
+    "currentTime": "Текущо време",
+    "customMessage": "Персонално съобщение"
+  }
+}

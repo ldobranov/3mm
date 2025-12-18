@@ -1,32 +1,32 @@
 {
-  "tables": {
-    "pages": {
-      "columns": {
-        "title": {
-          "type": "string",
-          "nullable": false
-        },
-        "content": {
-          "type": "text",
-          "nullable": true
-        },
-        "slug": {
-          "type": "string",
-          "nullable": false
-        },
-        "is_public": {
-          "type": "boolean",
-          "nullable": false
-        },
-        "allowed_roles": {
-          "type": "text",
-          "nullable": false
-        },
-        "owner_id": {
-          "type": "integer",
-          "nullable": true
-        }
-      }
-    }
+  "id": {
+    "type": "integer",
+    "primary_key": true
+  },
+  "title": {
+    "type": "text",
+    "multilingual": true
+  },
+  "content": {
+    "type": "text",
+    "multilingual": true
+  },
+  "slug": {
+    "type": "text"
+  },
+  "is_public": {
+    "type": "boolean"
+  },
+  "allowed_roles": {
+    "type": "text"
+  },
+  "owner_id": {
+    "type": "integer"
+  },
+  "created_at": {
+    "type": "timestamp"
+  },
+  "updated_at": {
+    "type": "timestamp"
   }
 }

@@ -1,0 +1,102 @@
+/* 
+ * Minimal Tailwind CSS imports
+ * This file provides basic Tailwind functionality without conflicting with existing custom styles
+ */
+
+/* Only import essential Tailwind utilities that don't conflict with custom CSS */
+/* Base layer for font settings and sensible defaults */
+@layer base {
+  /* Font family variables are already defined in other CSS files */
+  /* We won't override existing font settings */
+}
+
+/* Component layer for button and form styles */
+@layer components {
+  /* Basic utility classes that complement existing styles */
+  .container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 1rem;
+  }
+  
+  /* Enhanced focus styles for accessibility */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50;
+  }
+}
+
+/* Utility layer for spacing and layout utilities */
+@layer utilities {
+  /* Basic spacing utilities */
+  .mt-auto { margin-top: auto; }
+  .mb-auto { margin-bottom: auto; }
+  .ml-auto { margin-left: auto; }
+  .mr-auto { margin-right: auto; }
+  
+  /* Display utilities that complement existing styles */
+  .block { display: block; }
+  .inline-block { display: inline-block; }
+  .hidden { display: none; }
+  .flex { display: flex; }
+  .grid { display: grid; }
+  
+  /* Justify content utilities */
+  .justify-center { justify-content: center; }
+  .justify-between { justify-content: space-between; }
+  .justify-start { justify-content: flex-start; }
+  .justify-end { justify-content: flex-end; }
+  
+  /* Align items utilities */
+  .items-center { align-items: center; }
+  .items-start { align-items: flex-start; }
+  .items-end { align-items: flex-end; }
+  
+  /* Text alignment utilities */
+  .text-center { text-align: center; }
+  .text-left { text-align: left; }
+  .text-right { text-align: right; }
+  
+  /* Font weight utilities */
+  .font-normal { font-weight: 400; }
+  .font-medium { font-weight: 500; }
+  .font-semibold { font-weight: 600; }
+  .font-bold { font-weight: 700; }
+  
+  /* Text size utilities */
+  .text-xs { font-size: 0.75rem; }
+  .text-sm { font-size: 0.875rem; }
+  .text-base { font-size: 1rem; }
+  .text-lg { font-size: 1.125rem; }
+  .text-xl { font-size: 1.25rem; }
+  
+  /* Border radius utilities that complement existing styles */
+  .rounded { border-radius: 0.25rem; }
+  .rounded-md { border-radius: 0.375rem; }
+  .rounded-lg { border-radius: 0.5rem; }
+  .rounded-xl { border-radius: 0.75rem; }
+  .rounded-2xl { border-radius: 1rem; }
+  
+  /* Width and height utilities */
+  .w-full { width: 100%; }
+  .w-auto { width: auto; }
+  .h-full { height: 100%; }
+  .h-auto { height: auto; }
+  
+  /* Position utilities */
+  .relative { position: relative; }
+  .absolute { position: absolute; }
+  .fixed { position: fixed; }
+  .sticky { position: sticky; }
+  
+  /* Overflow utilities */
+  .overflow-hidden { overflow: hidden; }
+  .overflow-auto { overflow: auto; }
+  .overflow-scroll { overflow: scroll; }
+  
+  /* Z-index utilities */
+  .z-10 { z-index: 10; }
+  .z-20 { z-index: 20; }
+  .z-30 { z-index: 30; }
+  .z-40 { z-index: 40; }
+  .z-50 { z-index: 50; }
+}

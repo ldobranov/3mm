@@ -1,307 +1,379 @@
-<template>
-  <div class="page-view-container" v-if="!isLoading">
-    <div class="page-content card" v-if="page" :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
-      <div class="page-header">
-        <h1 class="page-title">{{ page.title }}</h1>
-        <div class="page-meta">
-          <span class="chip" :class="page.is_public ? 'chip-public' : 'chip-private'">
-            {{ page.is_public ? 'Public' : 'Private' }}
-          </span>
-          <span v-if="page.owner_username" class="page-owner">
-            by {{ page.owner_username }}
-          </span>
-        </div>
-      </div>
-      
-      <div 
-        class="page-body" 
-        v-html="page.content"
-        @click="handleContentClick"
-      ></div>
-    </div>
+<script setup lang="ts">
+import { ref, onMounted, watch, computed, defineAsyncComponent } from 'vue';
+import { useRoute } from 'vue-router';
+import { useI18n } from '@/utils/i18n';
+import http from '@/utils/dynamic-http';
+import { extensionRelationships } from '@/utils/extension-relationships';
 
-    <div v-else class="not-found text-center" style="padding: 2rem 0;">
-      <h2>Page Not Found</h2>
-      <p>The page you're looking for doesn't exist or you don't have access to view it.</p>
-      <button 
-        class="button button-primary" 
-        @click="$router.push('/pages')"
-      >
-        Back to Pages
-      </button>
-    </div>
+// Dynamically load ProductCard from StoreExtension using extension relationships
+const ProductCard = ref(null);
 
-    <div v-if="errorMessage" class="error-alert" style="padding: 1rem; margin: 1rem 0; border: 1px solid var(--danger); background-color: var(--danger-bg); color: var(--danger-text); border-radius: var(--border-radius-sm);">
-      {{ errorMessage }}
-    </div>
-  </div>
+const loadProductCard = async () => {
+  if (!ProductCard.value) {
+    ProductCard.value = await extensionRelationships.getComponent('StoreExtension', 'ProductCard');
+    console.log('ProductCard component loaded for PageView');
+  }
+};
 
-  <div v-else class="text-center" style="padding: 2rem 0;">
-    <div class="spinner" role="status" aria-label="Loading"></div>
-    <p>Loading page...</p>
-  </div>
-</template>
+const route = useRoute();
+const { currentLanguage } = useI18n();
 
-<script lang="ts">
-import { defineComponent, ref, onMounted, computed } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import http from '@/utils/http';
-import { useThemeStore } from '@/stores/theme';
-import { useSettingsStore } from '@/stores/settings';
+// Store settings (used for product card currency)
+const storeCurrency = ref('USD');
+const storeCurrencyFormats = ref<Record<string, { label: string; position: 'prefix' | 'suffix' }>>({});
+
+const loadStoreSettings = async () => {
+  try {
+    const response = await http.get('/api/store/settings');
+    storeCurrency.value = response.data.currency || 'USD';
+    storeCurrencyFormats.value = response.data.currencies || {};
+  } catch (error) {
+    console.warn('Failed to load store settings for currency, falling back to USD:', error);
+    storeCurrency.value = 'USD';
+    storeCurrencyFormats.value = {};
+  }
+};
 
 interface Page {
   title: string;
   content: string;
-  is_public?: boolean;
-  owner_username?: string;
 }
 
-export default defineComponent({
-  setup() {
-    const route = useRoute();
-    const router = useRouter();
-    const themeStore = useThemeStore();
-    const settingsStore = useSettingsStore();
-    
-    const isDark = computed(() => themeStore.isDark());
-    const styleSettings = computed(() => settingsStore.styleSettings);
-    
-    const page = ref<Page | null>(null);
-    const isLoading = ref(true);
-    const errorMessage = ref('');
-    
-    const fetchPage = async () => {
-      const slug = route.params.slug as string;
-      if (!slug) {
-        errorMessage.value = 'Invalid page slug';
-        isLoading.value = false;
-        return;
-      }
+interface ContentBlock {
+  type: 'html' | 'product' | 'embedded_product';
+  content: string;
+  productId?: string | null;
+  productData?: any;
+}
 
-      try {
-        isLoading.value = true;
-        errorMessage.value = '';
-        
-        const response = await http.get(`/api/pages/${slug}`);
-        page.value = response.data;
-        
-      } catch (error: any) {
-        console.error('Failed to fetch page:', error);
-        const status = error?.response?.status;
-        
-        if (status === 404) {
-          page.value = null; // Page not found
-        } else if (status === 401) {
-          errorMessage.value = 'You need to be logged in to view this page.';
-        } else if (status === 403) {
-          errorMessage.value = 'You do not have permission to view this page.';
-        } else {
-          errorMessage.value = 'Failed to load page. Please try again later.';
-        }
-      } finally {
-        isLoading.value = false;
-      }
-    };
+const page = ref<Page | null>(null);
+const loading = ref(true);
+const error = ref<string | null>(null);
 
-    const handleContentClick = (event: MouseEvent) => {
-      // Handle any custom click events in the content if needed
-      // For example, external links, etc.
-      const target = event.target as HTMLElement;
-      if (target.tagName === 'A') {
-        const link = target as HTMLAnchorElement;
-        if (link.href?.startsWith('http')) {
-          // Open external links in new tab
-          window.open(link.href, '_blank');
-          event.preventDefault();
-        }
-      }
-    };
+// Prevent races when language switches during initial load (or rapid toggles)
+let loadPageRequestId = 0;
 
-    onMounted(() => {
-      fetchPage();
+const loadPage = async () => {
+  try {
+    loading.value = true;
+    error.value = null;
+
+    const requestId = ++loadPageRequestId;
+    const language = currentLanguage.value;
+
+    const slug = route.params.slug as string;
+    // Use the new endpoint that supports translations
+    const response = await http.get(`/api/pages/by-slug/${slug}`, {
+      params: { language }
     });
 
-    return {
-      page,
-      isLoading,
-      errorMessage,
-      styleSettings,
-      handleContentClick,
-      isDark,
-    };
-  },
+    // Ignore stale responses
+    if (requestId !== loadPageRequestId) return;
+
+    page.value = response.data;
+
+    // Load product data for any embedded products
+    await loadProductData(language);
+  } catch (err: any) {
+    error.value = err.response?.data?.detail || 'Page not found';
+  } finally {
+    loading.value = false;
+  }
+};
+
+// Parse content to separate HTML and product components
+const parsedContent = computed(() => {
+  if (!page.value?.content) return [];
+
+  const blocks: ContentBlock[] = [];
+  let content = page.value.content;
+
+  // Fix double /uploads/store/ paths in the content
+  content = content.replace(/\/uploads\/store\/\/uploads\/store\//g, '/uploads/store/');
+
+  // Parse embedded product HTML
+  const productRegex = /<div class="embedded-product"[^>]*>([\s\S]*?)<\/div>/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = productRegex.exec(content)) !== null) {
+    // Add HTML before the product
+    if (match.index > lastIndex) {
+      const htmlContent = content.substring(lastIndex, match.index);
+      if (htmlContent.trim()) {
+        blocks.push({
+          type: 'html',
+          content: htmlContent
+        });
+      }
+    }
+
+    // Extract product info from the embedded HTML
+    const productHtml = match[0]; // Full match including the div tag
+    const productIdMatch = productHtml.match(/data-product-id="([^"]+)"/);
+
+    if (productIdMatch) {
+      // Product ID found in data attribute - use it directly
+      const productId = productIdMatch[1];
+
+      blocks.push({
+        type: 'embedded_product',
+        content: match[0], // Keep original HTML as fallback
+        productId: productId,
+        productData: {
+          id: productId,
+          // Mark as needing translation - will be populated by loadProductData
+          needsTranslation: true
+        }
+      });
+    } else {
+      // Fallback for old embedded products without data-product-id
+      const titleMatch = productHtml.match(/<h3[^>]*>([^<]+)<\/h3>/);
+      // Extract the first <p> after </h3> as price (supports any currency prefix/suffix)
+      const priceTextMatch = productHtml.match(/<\/h3>\s*<p[^>]*>([^<]+)<\/p>/);
+      const skuMatch = productHtml.match(/SKU:\s*([^<]+)/);
+      const descMatch = productHtml.match(/<p[^>]*>([^<]+)<\/p>\s*$/);
+      const imgMatch = productHtml.match(/<img[^>]+src="([^"]+)"/);
+
+      if (titleMatch) {
+        // Try to find product by name/SKU to get the actual product ID
+        const productName = titleMatch[1].trim();
+        const sku = skuMatch ? skuMatch[1].trim() : '';
+
+        // Create a block that will be populated with real product data
+        blocks.push({
+          type: 'embedded_product',
+          content: match[0], // Keep original HTML as fallback
+          productId: null,
+          productData: {
+            id: Date.now() + Math.random(), // Temporary ID
+            name: productName,
+            price: (() => {
+              const priceText = priceTextMatch ? priceTextMatch[1] : '';
+              const numeric = priceText.match(/([0-9]+(?:[\.,][0-9]{1,2})?)/);
+              if (!numeric) return 0;
+              return parseFloat(numeric[1].replace(',', '.'));
+            })(),
+            stock_quantity: 1,
+            images: imgMatch ? [imgMatch[1]] : [],
+            sku: sku,
+            description: descMatch ? descMatch[1] : '',
+            // Mark as needing translation
+            needsTranslation: true
+          }
+        });
+      }
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining HTML
+  if (lastIndex < content.length) {
+    const remainingContent = content.substring(lastIndex);
+    if (remainingContent.trim()) {
+      blocks.push({
+        type: 'html',
+        content: remainingContent
+      });
+    }
+  }
+
+  return blocks;
+});
+
+// Load product data for all product blocks
+const loadProductData = async (language: string = currentLanguage.value) => {
+  const embeddedProductBlocks = parsedContent.value.filter(block => block.type === 'embedded_product');
+  if (embeddedProductBlocks.length === 0) return;
+
+  // Load product data for each embedded product block
+  const loadPromises = embeddedProductBlocks.map(async (block) => {
+    if (block.productData?.needsTranslation) {
+      try {
+        let matchedProduct = null;
+
+        // If we have a product ID from the data attribute, use it directly
+        if (block.productId) {
+          try {
+            const productResponse = await http.get(`/api/store/products/${block.productId}`, {
+              params: { language }
+            });
+            block.productData = productResponse.data;
+            console.log(`Loaded translated product by ID: ${block.productData.name} (${language})`);
+            console.log('Product data:', block.productData);
+            return;
+          } catch (error) {
+            console.warn(`Could not load product by ID ${block.productId}, falling back to matching:`, error);
+          }
+        }
+
+        // Fallback: Get all products and find the best match (for legacy embedded products)
+        const allProductsResponse = await http.get('/api/store/products', {
+          params: {
+            limit: 100, // Get more products to find matches
+            language
+          }
+        });
+
+        const allProducts = allProductsResponse.data.items || [];
+
+        // Try different matching strategies
+        if (block.productData.sku) {
+          // Exact SKU match (most reliable)
+          matchedProduct = allProducts.find((p: any) => p.sku === block.productData.sku);
+        }
+
+        if (!matchedProduct && block.productData.name) {
+          // Name match - try exact match first
+          matchedProduct = allProducts.find((p: any) =>
+            p.name.toLowerCase() === block.productData.name.toLowerCase()
+          );
+
+          // If no exact match, try partial match
+          if (!matchedProduct) {
+            matchedProduct = allProducts.find((p: any) =>
+              p.name.toLowerCase().includes(block.productData.name.toLowerCase()) ||
+              block.productData.name.toLowerCase().includes(p.name.toLowerCase())
+            );
+          }
+        }
+
+        if (matchedProduct) {
+          // Get full product details with translations
+          const productResponse = await http.get(`/api/store/products/${matchedProduct.id}`, {
+            params: { language }
+          });
+          block.productData = productResponse.data;
+          console.log(`Loaded translated product by matching: ${block.productData.name} (${language})`);
+          console.log('Product data:', block.productData);
+        } else {
+          console.warn(`Could not find matching product for: ${block.productData.name} (SKU: ${block.productData.sku})`);
+          // Keep the extracted data but mark as untranslated
+          delete block.productData.needsTranslation;
+        }
+      } catch (error) {
+        console.error(`Error loading product data for ${block.productData?.name}:`, error);
+        // Keep the extracted data
+        delete block.productData.needsTranslation;
+      }
+    }
+  });
+
+  await Promise.all(loadPromises);
+};
+
+const handleAddToCart = (product: any) => {
+  // Handle add to cart functionality
+  console.log('Add to cart:', product);
+  // You could emit an event or call a cart API here
+};
+
+onMounted(async () => {
+  await loadProductCard();
+  await loadStoreSettings();
+  loadPage();
+});
+
+// Watch for language changes and reload page with new language
+watch(currentLanguage, async () => {
+  await loadPage();
 });
 </script>
 
+<template>
+  <div class="page-view">
+    <div v-if="loading" class="loading">
+      Loading page...
+    </div>
+
+    <div v-else-if="error" class="error">
+      {{ error }}
+    </div>
+
+    <div v-else-if="page" class="page-content">
+      <h1>{{ page.title }}</h1>
+      <div class="content">
+        <template v-for="(block, index) in parsedContent" :key="index">
+          <div v-if="block.type === 'html'" v-html="block.content"></div>
+          <component
+             v-else-if="block.type === 'embedded_product' && block.productData && ProductCard"
+             :is="ProductCard"
+             :product="block.productData"
+             :currency="storeCurrency"
+             :currency-formats="storeCurrencyFormats"
+             @add-to-cart="handleAddToCart"
+             :key="`${block.productData.id}-${currentLanguage}`"
+           />
+        </template>
+      </div>
+    </div>
+
+    <div v-else class="not-found">
+      Page not found
+    </div>
+  </div>
+</template>
+
 <style scoped>
-.page-view-container {
+.page-view {
   max-width: 800px;
   margin: 0 auto;
-  padding: 1rem;
-}
-
-.page-content {
   padding: 2rem;
-  border-radius: var(--border-radius-md);
-  box-shadow: var(--card-shadow);
 }
 
-.page-header {
-  margin-bottom: 2rem;
-  border-bottom: 1px solid var(--card-border);
-  padding-bottom: 1rem;
-}
-
-.page-title {
-  margin: 0 0 0.5rem 0;
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.page-meta {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+.loading, .error, .not-found {
+  text-align: center;
+  padding: 2rem;
   color: var(--text-secondary);
 }
 
-.chip {
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--border-radius-sm);
-  font-size: 0.75rem;
-  font-weight: 500;
-  text-transform: uppercase;
+.error {
+  color: var(--error-text);
 }
 
-.chip-public {
-  background-color: var(--badge-success-bg);
-  color: var(--badge-success-text);
+.page-content h1 {
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+  font-size: 2rem;
 }
 
-.chip-private {
-  background-color: var(--badge-warning-bg);
-  color: var(--badge-warning-text);
-}
-
-.page-owner {
-  font-size: 0.875rem;
-}
-
-.page-body {
+.content {
   color: var(--text-primary);
   line-height: 1.6;
 }
 
-/* Content styling for the page body */
-.page-body :deep(h1) {
+.content :deep(p) {
+  margin-bottom: 1rem;
+}
+
+.content :deep(h2) {
+  color: var(--text-primary);
+  margin: 1.5rem 0 0.5rem 0;
   font-size: 1.5rem;
-  margin: 1.5rem 0 1rem 0;
-  color: var(--text-primary);
 }
 
-.page-body :deep(h2) {
+.content :deep(h3) {
+  color: var(--text-primary);
+  margin: 1.25rem 0 0.5rem 0;
   font-size: 1.25rem;
-  margin: 1.25rem 0 0.75rem 0;
-  color: var(--text-primary);
 }
 
-.page-body :deep(h3) {
-  font-size: 1.125rem;
-  margin: 1rem 0 0.5rem 0;
-  color: var(--text-primary);
+.content :deep(ul), .content :deep(ol) {
+  margin-bottom: 1rem;
+  padding-left: 2rem;
 }
 
-.page-body :deep(p) {
-  margin: 1rem 0;
-  color: var(--text-primary);
+.content :deep(li) {
+  margin-bottom: 0.25rem;
 }
 
-.page-body :deep(ul),
-.page-body :deep(ol) {
-  margin: 1rem 0;
-  padding-left: 1.5rem;
-  color: var(--text-primary);
-}
-
-.page-body :deep(li) {
-  margin: 0.25rem 0;
-}
-
-.page-body :deep(blockquote) {
-  border-left: 3px solid var(--card-border);
-  padding-left: 1rem;
-  margin: 1rem 0;
-  font-style: italic;
-  color: var(--text-secondary);
-}
-
-.page-body :deep(code) {
-  background-color: var(--code-bg);
-  color: var(--code-text);
-  padding: 0.125rem 0.25rem;
-  border-radius: var(--border-radius-sm);
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 0.875em;
-}
-
-.page-body :deep(pre) {
-  background-color: var(--code-bg);
-  color: var(--code-text);
-  padding: 1rem;
-  border-radius: var(--border-radius-sm);
-  overflow-x: auto;
-  margin: 1rem 0;
-}
-
-.page-body :deep(pre code) {
-  background: none;
-  padding: 0;
-}
-
-.page-body :deep(a) {
+.content :deep(a) {
   color: var(--link-color);
   text-decoration: none;
 }
 
-.page-body :deep(a:hover) {
-  color: var(--link-hover-color);
+.content :deep(a:hover) {
   text-decoration: underline;
-}
-
-.not-found {
-  text-align: center;
-  color: var(--text-primary);
-}
-
-.not-found h2 {
-  color: var(--text-primary);
-  margin-bottom: 1rem;
-}
-
-.not-found p {
-  color: var(--text-secondary);
-  margin-bottom: 2rem;
-}
-
-.error-alert {
-  background-color: var(--danger-bg);
-  color: var(--danger-text);
-  border: 1px solid var(--danger);
-  border-radius: var(--border-radius-sm);
-}
-
-@media (max-width: 768px) {
-  .page-view-container {
-    padding: 0.5rem;
-  }
-  
-  .page-content {
-    padding: 1.5rem;
-  }
-  
-  .page-title {
-    font-size: 1.5rem;
-  }
 }
 </style>

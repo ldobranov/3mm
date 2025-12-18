@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import http from '@/utils/http';
+import http from '@/utils/dynamic-http';
 
 export interface ExtensionWidget {
   id: number;
@@ -36,7 +36,7 @@ export const useWidgetsStore = defineStore('widgets', {
       return this.byDisplayId[displayId] || [];
     },
     async fetchForDisplay(displayId: number) {
-      const res = await http.get(`${import.meta.env.VITE_API_BASE_URL}/api/displays/${displayId}/widgets`, { headers: this.authHeaders() });
+      const res = await http.get(`/api/displays/${displayId}/widgets`);
       this.byDisplayId[displayId] = res.data.items || [];
       return this.byDisplayId[displayId];
     },
@@ -51,12 +51,12 @@ export const useWidgetsStore = defineStore('widgets', {
           throw new Error('Extension widget not available');
         }
       }
-      const res = await http.post(`${import.meta.env.VITE_API_BASE_URL}/api/displays/${displayId}/widgets`, payload, { headers: this.authHeaders() });
+      const res = await http.post(`/api/displays/${displayId}/widgets`, payload);
       this.byDisplayId[displayId] = [...(this.byDisplayId[displayId] || []), res.data];
       return res.data as Widget;
     },
     async update(widgetId: number, payload: Partial<Widget>) {
-      const res = await http.patch(`${import.meta.env.VITE_API_BASE_URL}/api/widgets/${widgetId}`, payload, { headers: this.authHeaders() });
+      const res = await http.patch(`/api/widgets/${widgetId}`, payload);
       const dId = res.data.display_id;
       const arr = this.byDisplayId[dId] || [];
       const idx = arr.findIndex(w => w.id === widgetId);
@@ -70,12 +70,12 @@ export const useWidgetsStore = defineStore('widgets', {
         const f = arr.find(w => w.id === widgetId);
         if (f) { dId = Number(key); break; }
       }
-      await http.delete(`${import.meta.env.VITE_API_BASE_URL}/api/widgets/${widgetId}`, { headers: this.authHeaders() });
+      await http.delete(`/api/widgets/${widgetId}`);
       if (dId !== null) this.byDisplayId[dId] = this.byDisplayId[dId].filter(w => w.id !== widgetId);
     },
     async bulkLayout(items: Array<{ id: number; x: number; y: number; width: number; height: number; z_index: number }>) {
       if (!items.length) return { updated: 0 };
-      const res = await http.post(`${import.meta.env.VITE_API_BASE_URL}/api/widgets/bulk-layout`, { widgets: items }, { headers: this.authHeaders() });
+      const res = await http.post(`/api/widgets/bulk-layout`, { widgets: items });
       return res.data;
     },
   },

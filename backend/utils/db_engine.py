@@ -1,4 +1,5 @@
 from sqlalchemy import create_engine
+import os
 
-DATABASE_URL = "sqlite:///backend/mega_monitor.db"  # Updated to match the application's configuration
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://lazar:admin@localhost:5432/mega_monitor")
+engine = create_engine(DATABASE_URL)

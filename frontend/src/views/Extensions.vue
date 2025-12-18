@@ -1,14 +1,16 @@
 <template>
-  <div class="extensions-view">
-    <div class="container">
-      <h1>Extensions</h1>
+  <div class="view" :key="currentLanguage">
+    <div class="view-header">
+      <h1 class="view-title">{{ t('extensions.title', 'Extensions') }}</h1>
+    </div>
 
-      <!-- Upload Section -->
-      <div class="upload-section">
-        <h2>Upload Extension</h2>
+    <!-- Upload Section -->
+    <div class="card upload-section" :style="{ backgroundColor: settingsStore.styleSettings.cardBg, color: settingsStore.styleSettings.textPrimary, borderColor: settingsStore.styleSettings.cardBorder }">
+      <div class="card-content">
+        <h2>{{ t('extensions.uploadExtension', 'Upload Extension') }}</h2>
         <form @submit.prevent="uploadExtension" class="upload-form">
           <div class="form-group">
-            <label for="extension-file">Extension File (.zip)</label>
+            <label for="extension-file">{{ t('extensions.extensionFile', 'Extension File (.zip)') }}</label>
             <input
               id="extension-file"
               type="file"
@@ -18,38 +20,41 @@
             />
           </div>
           <button type="submit" :disabled="!selectedFile || uploading" class="upload-btn">
-            {{ uploading ? 'Uploading...' : 'Upload Extension' }}
+            {{ uploading ? t('extensions.uploading', 'Uploading...') : t('extensions.uploadExtensionButton', 'Upload Extension') }}
           </button>
         </form>
         <div v-if="uploadError" class="error-message">{{ uploadError }}</div>
         <div v-if="uploadSuccess" class="success-message">{{ uploadSuccess }}</div>
       </div>
+    </div>
 
-      <!-- Extensions List -->
-      <div class="extensions-list">
-        <h2>Installed Extensions</h2>
-        <div v-if="loading" class="loading">Loading extensions...</div>
+    <!-- Extensions List -->
+    <div class="card extensions-list" :style="{ backgroundColor: settingsStore.styleSettings.cardBg, color: settingsStore.styleSettings.textPrimary, borderColor: settingsStore.styleSettings.cardBorder }">
+      <div class="card-content">
+        <h2>{{ t('extensions.installedExtensions', 'Installed Extensions') }}</h2>
+        <div v-if="loading" class="loading">{{ t('extensions.loadingExtensions', 'Loading extensions...') }}</div>
         <div v-else-if="extensions.length === 0" class="no-extensions">
-          No extensions installed yet.
+          {{ t('extensions.noExtensionsInstalled', 'No extensions installed yet.') }}
         </div>
         <div v-else class="extensions-grid">
           <div
             v-for="ext in extensions"
             :key="ext.id"
             class="extension-card"
+            :style="{ backgroundColor: settingsStore.styleSettings.cardBg, color: settingsStore.styleSettings.textPrimary, borderColor: settingsStore.styleSettings.cardBorder }"
           >
             <div class="extension-header">
               <h3>{{ ext.name }}</h3>
-              <span class="extension-version">v{{ ext.version }}</span>
+              <span class="extension-version">{{ t('extensions.version', 'v') }}{{ ext.version }}</span>
             </div>
             <div class="extension-meta">
               <span class="extension-type">{{ ext.type }}</span>
-              <span v-if="ext.author" class="extension-author">by {{ ext.author }}</span>
+              <span v-if="ext.author" class="extension-author">{{ t('extensions.by', 'by') }} {{ ext.author }}</span>
             </div>
             <p v-if="ext.description" class="extension-description">{{ ext.description }}</p>
             <div class="extension-status">
               <span :class="['status-badge', ext.status]">
-                {{ ext.status }}
+                {{ t(`extensions.${ext.status}`, ext.status) }}
               </span>
               <label class="toggle-switch">
                 <input
@@ -61,10 +66,53 @@
               </label>
             </div>
             <div class="extension-actions">
-              <button @click="deleteExtension(ext.id)" class="delete-btn">
-                Delete
-              </button>
+               <button @click="deleteExtension(ext)" class="delete-btn">
+                 {{ t('extensions.delete', 'Delete') }}
+               </button>
+             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete Extension Modal -->
+    <div v-if="showDeleteModal" class="modal-backdrop" @click="cancelDeleteExtension">
+      <div class="modal-container">
+        <div class="modal-surface" @click.stop>
+          <div class="modal-header">
+            <h2>{{ t('extensions.deleteExtension', 'Delete Extension') }}</h2>
+          </div>
+
+          <div class="modal-body">
+            <p>{{ t('extensions.deleteConfirm', 'Are you sure you want to delete this extension?') }}</p>
+            <p><strong>{{ extensionToDelete?.name }} v{{ extensionToDelete?.version }}</strong></p>
+
+            <!-- Database data deletion checkbox - only show if extension has tables -->
+            <div v-if="extensionToDelete?.type === 'extension'" class="form-field">
+              <label class="checkbox-label">
+                <input type="checkbox" v-model="deleteDatabaseData" />
+                {{ t('extensions.deleteDatabaseData', 'Also delete all database tables and data created by this extension') }}
+              </label>
+              <small class="help-text">{{ t('extensions.deleteDatabaseDataWarning', 'This action cannot be undone. All data will be permanently lost.') }}</small>
             </div>
+
+            <!-- Uploaded files deletion checkbox - only show if extension uploads files -->
+            <div v-if="extensionToDelete?.type === 'extension'" class="form-field">
+              <label class="checkbox-label">
+                <input type="checkbox" v-model="deleteUploadedFiles" />
+                {{ t('extensions.deleteUploadedFiles', 'Also delete all uploaded files (images, documents, etc.) for this extension') }}
+              </label>
+              <small class="help-text">{{ t('extensions.deleteUploadedFilesWarning', 'This will remove all files uploaded by this extension from the server.') }}</small>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button @click="cancelDeleteExtension" class="button button-secondary">
+              {{ t('extensions.cancel', 'Cancel') }}
+            </button>
+            <button @click="confirmDeleteExtension" class="button button-danger">
+              {{ t('extensions.delete', 'Delete') }}
+            </button>
           </div>
         </div>
       </div>
@@ -73,8 +121,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import http from '@/utils/http';
+import { ref, onMounted, watch } from 'vue';
+import http from '@/utils/dynamic-http';
+import { useI18n, i18n } from '@/utils/i18n';
+import { useSettingsStore } from '@/stores/settings';
+import { useThemeStore } from '@/stores/theme';
+
+const { t, currentLanguage } = useI18n();
+const settingsStore = useSettingsStore();
+const themeStore = useThemeStore();
+
 
 interface Extension {
   id: number;
@@ -94,6 +150,10 @@ const uploading = ref(false);
 const selectedFile = ref<File | null>(null);
 const uploadError = ref('');
 const uploadSuccess = ref('');
+const showDeleteModal = ref(false);
+const extensionToDelete = ref<Extension | null>(null);
+const deleteDatabaseData = ref(false);
+const deleteUploadedFiles = ref(false);
 
 const authHeaders = () => {
   const token = localStorage.getItem('authToken') || '';
@@ -105,6 +165,13 @@ const loadExtensions = async () => {
   try {
     const res = await http.get('/api/extensions');
     extensions.value = res.data.items || [];
+
+    // Load translations for enabled extensions
+    for (const ext of extensions.value) {
+      if (ext.is_enabled) {
+        await i18n.loadExtensionTranslationsForExtension(ext.name, currentLanguage.value);
+      }
+    }
   } catch (error) {
     console.error('Failed to load extensions:', error);
   } finally {
@@ -135,7 +202,7 @@ const uploadExtension = async () => {
       formData
     );
 
-    uploadSuccess.value = `Extension "${res.data.name}" uploaded successfully!`;
+    uploadSuccess.value = t('extensions.uploadSuccess', 'Extension "{name}" uploaded successfully!', { name: res.data.name });
     selectedFile.value = null;
     // Reset file input
     const fileInput = document.getElementById('extension-file') as HTMLInputElement;
@@ -144,7 +211,7 @@ const uploadExtension = async () => {
     // Reload extensions list
     await loadExtensions();
   } catch (error: any) {
-    uploadError.value = error.response?.data?.detail || 'Failed to upload extension';
+    uploadError.value = error.response?.data?.detail || t('extensions.uploadError', 'Failed to upload extension');
   } finally {
     uploading.value = false;
   }
@@ -165,6 +232,11 @@ const toggleExtension = async (extensionId: number, event: Event) => {
     if (ext) {
       ext.is_enabled = isEnabled;
       ext.status = isEnabled ? 'active' : 'inactive';
+
+      // Reload translations if extension was enabled
+      if (isEnabled) {
+        await i18n.loadExtensionTranslationsForExtension(ext.name, currentLanguage.value);
+      }
     }
   } catch (error) {
     console.error('Failed to toggle extension:', error);
@@ -173,48 +245,71 @@ const toggleExtension = async (extensionId: number, event: Event) => {
   }
 };
 
-const deleteExtension = async (extensionId: number) => {
-  if (!confirm('Are you sure you want to delete this extension?')) return;
+const deleteExtension = (extension: Extension) => {
+  extensionToDelete.value = extension;
+  deleteDatabaseData.value = false;
+  deleteUploadedFiles.value = false;
+  showDeleteModal.value = true;
+};
+
+const confirmDeleteExtension = async () => {
+  if (!extensionToDelete.value) return;
 
   try {
-    await http.delete(`/api/extensions/${extensionId}`);
+    await http.delete(`/api/extensions/${extensionToDelete.value.id}`, {
+      params: {
+        deleteData: deleteDatabaseData.value,
+        deleteFiles: deleteUploadedFiles.value
+      }
+    });
 
     // Remove from local state
-    extensions.value = extensions.value.filter(e => e.id !== extensionId);
+    extensions.value = extensions.value.filter(e => e.id !== extensionToDelete.value!.id);
+    showDeleteModal.value = false;
+    extensionToDelete.value = null;
   } catch (error) {
     console.error('Failed to delete extension:', error);
   }
 };
 
-onMounted(() => {
-  loadExtensions();
+const cancelDeleteExtension = () => {
+  showDeleteModal.value = false;
+  extensionToDelete.value = null;
+  deleteDatabaseData.value = false;
+  deleteUploadedFiles.value = false;
+};
+
+onMounted(async () => {
+  await loadExtensions();
+
+  // Load settings and apply CSS variables
+  await settingsStore.loadSettings();
+  settingsStore.updateCSSVariables();
+});
+
+// Watch for theme changes and update CSS variables
+watch(() => themeStore.theme, async () => {
+  await settingsStore.loadSettings();
+  settingsStore.updateCSSVariables();
+});
+
+// Watch for language changes and reload extension translations
+watch(currentLanguage, async (newLang) => {
+  for (const ext of extensions.value) {
+    if (ext.is_enabled) {
+      await i18n.loadExtensionTranslationsForExtension(ext.name, newLang);
+    }
+  }
 });
 </script>
 
 <style scoped>
-.extensions-view {
-  padding: 2rem;
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  min-height: 100vh;
-}
-
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-h1 {
-  color: var(--text-primary);
-  margin-bottom: 2rem;
-}
-
 .upload-section {
-  background-color: var(--card-bg);
-  padding: 2rem;
-  border-radius: var(--border-radius-lg);
-  box-shadow: var(--card-shadow);
   margin-bottom: 2rem;
+}
+
+.card-content {
+  padding: 1.5rem;
 }
 
 .upload-form {
@@ -281,44 +376,50 @@ h1 {
 }
 
 .extensions-list {
-  background-color: var(--card-bg);
-  padding: 2rem;
-  border-radius: var(--border-radius-lg);
-  box-shadow: var(--card-shadow);
+  margin-top: 2rem;
 }
 
 .extensions-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
   gap: 1.5rem;
   margin-top: 1.5rem;
 }
 
 .extension-card {
-  background-color: var(--bg-secondary);
   padding: 1.5rem;
   border-radius: var(--border-radius-md);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--card-shadow);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .extension-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 0.5rem;
+  gap: 1rem;
 }
 
 .extension-header h3 {
   margin: 0;
   color: var(--text-primary);
+  word-break: break-word;
+  flex: 1;
+  min-width: 0;
 }
 
 .extension-version {
   font-size: 0.875rem;
   color: var(--text-secondary);
-  background-color: var(--bg-tertiary);
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
   padding: 0.25rem 0.5rem;
   border-radius: var(--border-radius-sm);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .extension-meta {
@@ -333,6 +434,8 @@ h1 {
   color: var(--text-secondary);
   margin-bottom: 1rem;
   font-size: 0.875rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .extension-status {
@@ -340,6 +443,8 @@ h1 {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .status-badge {
@@ -385,7 +490,7 @@ h1 {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: var(--bg-tertiary);
+  background-color: var(--card-border);
   transition: 0.4s;
   border-radius: 24px;
 }
@@ -397,7 +502,7 @@ h1 {
   width: 18px;
   left: 3px;
   bottom: 3px;
-  background-color: white;
+  background-color: var(--text-primary);
   transition: 0.4s;
   border-radius: 50%;
 }

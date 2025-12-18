@@ -27,19 +27,6 @@ def create_crud_routes(model: Any, model_name: str, input_model: Type[BaseModel]
             # Validate and convert item to pydantic_model instance
             validated_item = input_model(**item.model_dump()) if hasattr(item, "model_dump") else input_model(**item)
             db_item = model(**validated_item.model_dump())
-
-            # Fetch MQTT data for the new controller
-            if model_name == "controllers":
-                from backend.extensions.raspberry_pi_controller.mqtt_client import get_received_messages
-                controller_id = validated_item.name  # Assuming 'name' is unique and used as an identifier
-                messages = [msg for msg in get_received_messages() if msg.get("controller_id") == controller_id]
-                if messages:
-                    latest_message = messages[-1]
-                    db_item.attributes = {
-                        "pins": latest_message.get("pins", []),
-                        "masteron": latest_message.get("MasterOn", False)
-                    }
-
             db.add(db_item)
             db.commit()
             db.refresh(db_item)

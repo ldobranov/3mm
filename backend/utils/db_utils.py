@@ -9,3 +9,7 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def get_db_session():
+    """Get a database session (synchronous)"""
+    return SessionLocal()

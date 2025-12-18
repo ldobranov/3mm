@@ -1,7 +1,7 @@
 <template>
   <div class="view">
     <div class="view-header">
-      <h1 class="view-title">Security & Permissions</h1>
+      <h1 class="view-title">{{ t('security.title') }}</h1>
     </div>
 
     <!-- Navigation Tabs -->
@@ -12,14 +12,14 @@
           :class="{ 'active': activeTab === 'sessions' }"
           @click="activeTab = 'sessions'"
         >
-          Active Sessions
+          {{ t('security.tabs.sessions') }}
         </button>
         <button
           class="tab-button"
           :class="{ 'active': activeTab === 'audit' }"
           @click="activeTab = 'audit'"
         >
-          Audit Logs
+          {{ t('security.tabs.audit') }}
         </button>
         <button
           v-if="isAdmin"
@@ -27,7 +27,7 @@
           :class="{ 'active': activeTab === 'roles' }"
           @click="activeTab = 'roles'"
         >
-          Roles
+          {{ t('security.tabs.roles') }}
         </button>
         <button
           v-if="isAdmin"
@@ -35,7 +35,7 @@
           :class="{ 'active': activeTab === 'groups' }"
           @click="activeTab = 'groups'"
         >
-          Groups
+          {{ t('security.tabs.groups') }}
         </button>
         <button
           v-if="isAdmin"
@@ -43,7 +43,7 @@
           :class="{ 'active': activeTab === 'permissions' }"
           @click="activeTab = 'permissions'"
         >
-          Permissions
+          {{ t('security.tabs.permissions') }}
         </button>
       </div>
     </div>
@@ -52,22 +52,23 @@
     <div v-if="activeTab === 'sessions'">
       <div class="card security-card" :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
         <div class="card-header">
-          <h3 class="card-title">Your Active Sessions</h3>
+          <h3 class="card-title">{{ t('security.sessions.title') }}</h3>
           <button
             class="button button-danger button-sm"
             @click="logoutAllSessions"
             :disabled="sessions.length <= 1"
           >
-            Logout All Other Sessions
+            {{ t('security.sessions.logoutAll') }}
           </button>
         </div>
         <div class="card-content">
           <div v-if="loadingSessions" class="text-center loading-state">
             <div class="spinner" role="status" aria-label="Loading"></div>
+            {{ t('security.sessions.loading') }}
           </div>
 
           <div v-else-if="sessions.length === 0" class="text-center empty-state">
-            <p>No active sessions found</p>
+            <p>{{ t('security.sessions.noSessions') }}</p>
           </div>
 
           <div v-else class="sessions-list">
@@ -81,15 +82,15 @@
                 <div class="session-info">
                   <h4 class="session-title">
                     <i class="bi bi-laptop"></i>
-                    {{ session.device_name || 'Unknown Device' }}
-                    <span v-if="session.is_current" class="session-current">Current</span>
+                    {{ session.device_name || t('security.common.unknownDevice') }}
+                    <span v-if="session.is_current" class="session-current">{{ t('security.sessions.current') }}</span>
                   </h4>
                   <p class="session-location">
                     <i class="bi bi-geo-alt"></i>
-                    {{ session.location || session.ip_address || 'Unknown Location' }}
+                    {{ session.location || session.ip_address || t('security.common.unknownLocation') }}
                   </p>
                   <small class="session-last-active">
-                    Last active: {{ formatDate(session.last_activity) }}
+                    {{ t('security.sessions.lastActive') }}: {{ formatDate(session.last_activity) }}
                   </small>
                 </div>
                 <button
@@ -97,7 +98,7 @@
                   class="button button-outline button-sm button-danger"
                   @click="revokeSession(session.id)"
                 >
-                  Revoke
+                  {{ t('security.sessions.revoke') }}
                 </button>
               </div>
             </div>
@@ -110,37 +111,37 @@
     <div v-if="activeTab === 'audit'">
       <div class="card security-card" :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
         <div class="card-header">
-          <h3 class="card-title">Activity History</h3>
+          <h3 class="card-title">{{ t('security.audit.title') }}</h3>
 
           <!-- Filters -->
           <div class="filters-grid">
             <select v-model="auditFilters.action" class="select">
-              <option value="">All Actions</option>
-              <option value="CREATE">Create</option>
-              <option value="UPDATE">Update</option>
-              <option value="DELETE">Delete</option>
-              <option value="LOGIN">Login</option>
-              <option value="LOGOUT">Logout</option>
+              <option value="">{{ t('security.audit.filters.allActions') }}</option>
+              <option value="CREATE">{{ t('security.audit.actions.create') }}</option>
+              <option value="UPDATE">{{ t('security.audit.actions.update') }}</option>
+              <option value="DELETE">{{ t('security.audit.actions.delete') }}</option>
+              <option value="LOGIN">{{ t('security.audit.actions.login') }}</option>
+              <option value="LOGOUT">{{ t('security.audit.actions.logout') }}</option>
             </select>
             <select v-model="auditFilters.entity_type" class="select">
-              <option value="">All Types</option>
-              <option value="page">Pages</option>
-              <option value="dashboard">Dashboards</option>
-              <option value="widget">Widgets</option>
-              <option value="settings">Settings</option>
-              <option value="user">Users</option>
+              <option value="">{{ t('security.audit.filters.allTypes') }}</option>
+              <option value="page">{{ t('security.audit.types.page') }}</option>
+              <option value="dashboard">{{ t('security.audit.types.dashboard') }}</option>
+              <option value="widget">{{ t('security.audit.types.widget') }}</option>
+              <option value="settings">{{ t('security.audit.types.settings') }}</option>
+              <option value="user">{{ t('security.audit.types.user') }}</option>
             </select>
             <input
               type="date"
               v-model="auditFilters.start_date"
               class="input"
-              placeholder="Start Date"
+              :placeholder="t('security.audit.filters.startDate')"
             >
             <button
               class="button button-primary"
               @click="loadAuditLogs"
             >
-              Apply Filters
+              {{ t('security.audit.filters.applyFilters') }}
             </button>
           </div>
         </div>
@@ -151,7 +152,7 @@
           </div>
 
           <div v-else-if="auditLogs.length === 0" class="text-center empty-state">
-            <p>No audit logs found</p>
+            <p>{{ t('security.audit.noLogs') }}</p>
           </div>
 
           <div v-else>
@@ -159,12 +160,12 @@
               <table class="table audit-table">
                 <thead>
                   <tr>
-                    <th>Time</th>
-                    <th>Action</th>
-                    <th>Type</th>
-                    <th>Entity</th>
-                    <th v-if="isAdmin">User</th>
-                    <th>IP Address</th>
+                    <th>{{ t('security.audit.table.time') }}</th>
+                    <th>{{ t('security.audit.table.action') }}</th>
+                    <th>{{ t('security.audit.table.type') }}</th>
+                    <th>{{ t('security.audit.table.entity') }}</th>
+                    <th v-if="isAdmin">{{ t('security.audit.table.user') }}</th>
+                    <th>{{ t('security.audit.table.ipAddress') }}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -192,10 +193,10 @@
               @click="loadMoreAuditLogs"
               :disabled="!hasMoreAuditLogs"
             >
-              Load More
+              {{ t('security.audit.loadMore') }}
             </button>
             <small class="records-count">
-              Showing {{ auditLogs.length }} records
+              {{ t('security.audit.showingRecords') }} {{ auditLogs.length }} {{ t('security.audit.records') }}
             </small>
           </div>
         </div>
@@ -204,31 +205,31 @@
       <!-- Audit Statistics (Admin Only) -->
       <div v-if="isAdmin && auditStats" class="card security-card stats-card" :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
         <div class="card-header">
-          <h5 class="card-title">Activity Statistics (Last 7 Days)</h5>
+          <h5 class="card-title">{{ t('security.audit.stats.title') }}</h5>
         </div>
         <div class="card-content">
           <div class="stats-grid">
             <div class="stat-item">
               <div class="stat-number">{{ auditStats.total_actions }}</div>
-              <div class="stat-label">Total Actions</div>
+              <div class="stat-label">{{ t('security.audit.stats.totalActions') }}</div>
             </div>
             <div class="stat-item">
               <div class="stat-number">{{ auditStats.actions_by_type?.create || 0 }}</div>
-              <div class="stat-label">Created</div>
+              <div class="stat-label">{{ t('security.audit.stats.created') }}</div>
             </div>
             <div class="stat-item">
               <div class="stat-number">{{ auditStats.actions_by_type?.update || 0 }}</div>
-              <div class="stat-label">Updated</div>
+              <div class="stat-label">{{ t('security.audit.stats.updated') }}</div>
             </div>
             <div class="stat-item">
               <div class="stat-number">{{ auditStats.actions_by_type?.delete || 0 }}</div>
-              <div class="stat-label">Deleted</div>
+              <div class="stat-label">{{ t('security.audit.stats.deleted') }}</div>
             </div>
           </div>
 
           <div class="stats-divider"></div>
 
-          <h6 class="active-users-title">Most Active Users</h6>
+          <h6 class="active-users-title">{{ t('security.audit.stats.mostActiveUsers') }}</h6>
           <ul class="active-users-list">
             <li v-for="user in auditStats.most_active_users" :key="user.username" class="active-user-item">
               {{ user.username }}: {{ user.actions }} actions
@@ -242,18 +243,18 @@
     <div v-if="activeTab === 'roles' && isAdmin">
       <div class="card security-card" :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
         <div class="card-header">
-          <h3 class="card-title">Role Management</h3>
+          <h3 class="card-title">{{ t('security.roles.title') }}</h3>
           <button
             class="button button-primary"
             @click="showCreateRoleForm = true"
           >
             <i class="bi bi-plus-lg"></i>
-            Create Role
+            {{ t('security.roles.createRole') }}
           </button>
         </div>
         <div class="card-content">
           <p class="roles-description">
-            Define and manage user roles to control system access and permissions.
+            {{ t('security.roles.description') }}
           </p>
 
           <!-- Roles List -->
@@ -267,12 +268,12 @@
               >
                 <div class="role-header">
                   <h4 class="role-name">{{ role.name }}</h4>
-                  <span v-if="role.is_system_role" class="system-badge">System</span>
+                  <span v-if="role.is_system_role" class="system-badge">{{ t('security.roles.system') }}</span>
                 </div>
-                <p class="role-description">{{ role.description || 'No description' }}</p>
+                <p class="role-description">{{ role.description || t('security.roles.noDescription') }}</p>
                 <div class="role-meta">
-                  <small>Created: {{ formatDate(role.created_at) }}</small>
-                  <small v-if="role.updated_at">Updated: {{ formatDate(role.updated_at) }}</small>
+                  <small>{{ t('security.roles.created') }}: {{ formatDate(role.created_at) }}</small>
+                  <small v-if="role.updated_at">{{ t('security.roles.updated') }}: {{ formatDate(role.updated_at) }}</small>
                 </div>
                 <div class="role-actions">
                   <button
@@ -281,7 +282,7 @@
                     @click="editRole(role)"
                   >
                     <i class="bi bi-pencil"></i>
-                    Edit
+                    {{ t('security.roles.edit') }}
                   </button>
                   <button
                     v-if="!role.is_system_role"
@@ -289,14 +290,14 @@
                     @click="deleteRole(role)"
                   >
                     <i class="bi bi-trash"></i>
-                    Delete
+                    {{ t('security.roles.delete') }}
                   </button>
                   <button
                     class="button button-outline button-sm"
                     @click="manageRoleUsers(role)"
                   >
                     <i class="bi bi-people"></i>
-                    Users ({{ getRoleUserCount(role.id) }})
+                    {{ t('security.roles.manageUsers') }} ({{ getRoleUserCount(role.id) }})
                   </button>
                 </div>
               </div>
@@ -304,7 +305,7 @@
           </div>
           <div v-else class="empty-roles">
             <i class="bi bi-shield-check"></i>
-            No roles have been created yet. Create your first role to get started.
+            {{ t('security.roles.empty') }}
           </div>
         </div>
       </div>
@@ -314,18 +315,18 @@
     <div v-if="activeTab === 'groups' && isAdmin">
       <div class="card security-card" :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
         <div class="card-header">
-          <h3 class="card-title">Group Management</h3>
+          <h3 class="card-title">{{ t('security.groups.title') }}</h3>
           <button
             class="button button-primary"
             @click="showCreateGroupForm = true"
           >
             <i class="bi bi-plus-lg"></i>
-            Create Group
+            {{ t('security.groups.createGroup') }}
           </button>
         </div>
         <div class="card-content">
           <p class="groups-description">
-            Organize users into groups to manage permissions and access more efficiently.
+            {{ t('security.groups.description') }}
           </p>
 
           <!-- Groups List -->
@@ -339,10 +340,10 @@
                 <div class="group-header">
                   <h4 class="group-name">{{ group.name }}</h4>
                 </div>
-                <p class="group-description">{{ group.description || 'No description' }}</p>
+                <p class="group-description">{{ group.description || t('security.groups.noDescription') }}</p>
                 <div class="group-meta">
-                  <small>Created: {{ formatDate(group.created_at) }}</small>
-                  <small v-if="group.updated_at">Updated: {{ formatDate(group.updated_at) }}</small>
+                  <small>{{ t('security.groups.created') }}: {{ formatDate(group.created_at) }}</small>
+                  <small v-if="group.updated_at">{{ t('security.groups.updated') }}: {{ formatDate(group.updated_at) }}</small>
                 </div>
                 <div class="group-actions">
                   <button
@@ -350,21 +351,21 @@
                     @click="editGroup(group)"
                   >
                     <i class="bi bi-pencil"></i>
-                    Edit
+                    {{ t('security.groups.edit') }}
                   </button>
                   <button
                     class="button button-outline button-sm button-danger"
                     @click="deleteGroup(group)"
                   >
                     <i class="bi bi-trash"></i>
-                    Delete
+                    {{ t('security.groups.delete') }}
                   </button>
                   <button
                     class="button button-outline button-sm"
                     @click="manageGroupUsers(group)"
                   >
                     <i class="bi bi-people"></i>
-                    Members ({{ getGroupUserCount(group.id) }})
+                    {{ t('security.groups.manageMembers') }} ({{ getGroupUserCount(group.id) }})
                   </button>
                 </div>
               </div>
@@ -372,7 +373,7 @@
           </div>
           <div v-else class="empty-groups">
             <i class="bi bi-collection"></i>
-            No groups have been created yet. Create your first group to get started.
+            {{ t('security.groups.empty') }}
           </div>
         </div>
       </div>
@@ -382,32 +383,32 @@
     <div v-if="activeTab === 'permissions' && isAdmin">
       <div class="card security-card" :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
         <div class="card-header">
-          <h3 class="card-title">Permission Management</h3>
+          <h3 class="card-title">{{ t('security.permissions.title') }}</h3>
         </div>
         <div class="card-content">
           <p class="permissions-description">
-            Grant or revoke access to specific dashboards, extensions, and widgets for users.
+            {{ t('security.permissions.description') }}
           </p>
 
           <!-- Add Permission Form -->
           <div class="permission-form-grid">
             <div class="form-group">
-              <label class="form-label">Type</label>
+              <label class="form-label">{{ t('security.permissions.type') }}</label>
               <select
                 v-model="newPermission.entity_type"
                 class="select"
                 @change="onEntityTypeChange"
               >
-                <option value="">Select Type</option>
-                <option value="dashboard">Dashboard</option>
-                <option value="extension">Extension</option>
+                <option value="">{{ t('security.permissions.selectType') }}</option>
+                <option value="dashboard">{{ t('security.permissions.dashboard') }}</option>
+                <option value="extension">{{ t('security.permissions.extension') }}</option>
               </select>
             </div>
             <div class="form-group">
               <label class="form-label">
-                {{ newPermission.entity_type === 'dashboard' ? 'Dashboard' :
-                   newPermission.entity_type === 'extension' ? 'Extension' :
-                   'Entity' }}
+                {{ newPermission.entity_type === 'dashboard' ? t('security.permissions.dashboard') :
+                   newPermission.entity_type === 'extension' ? t('security.permissions.extension') :
+                   t('security.permissions.entity') }}
               </label>
               <select
                 v-model="newPermission.entity_id"
@@ -416,8 +417,8 @@
                 :disabled="!newPermission.entity_type"
               >
                 <option value="">
-                  {{ !newPermission.entity_type ? 'Select type first' :
-                     `Select ${newPermission.entity_type}` }}
+                  {{ !newPermission.entity_type ? t('security.permissions.selectType').toLowerCase() :
+                     `${t('security.permissions.selectEntity')} ${newPermission.entity_type}` }}
                 </option>
                 <option
                   v-for="entity in availableEntities"
@@ -433,21 +434,21 @@
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">User</label>
+              <label class="form-label">{{ t('security.permissions.user') }}</label>
               <select v-model="newPermission.user_id" class="select">
-                <option value="">Select User</option>
+                <option value="">{{ t('security.permissions.selectUser') }}</option>
                 <option v-for="user in users" :key="user.id" :value="user.id">
                   {{ user.username }} ({{ user.email }})
                 </option>
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Permission</label>
+              <label class="form-label">{{ t('security.permissions.level') }}</label>
               <select v-model="newPermission.permission_level" class="select">
-                <option value="view">View</option>
-                <option value="edit">Edit</option>
-                <option value="delete">Delete</option>
-                <option value="admin">Admin</option>
+                <option value="view">{{ t('security.permissions.view') }}</option>
+                <option value="edit">{{ t('security.permissions.edit') }}</option>
+                <option value="delete">{{ t('security.permissions.delete') }}</option>
+                <option value="admin">{{ t('security.permissions.admin') }}</option>
               </select>
             </div>
             <div class="form-group">
@@ -456,46 +457,46 @@
                 class="button button-primary"
                 @click="grantPermission"
                 :disabled="!canGrantPermission"
-                title="Grant Permission"
+                :title="t('security.permissions.grant')"
               >
                 <i class="bi bi-plus-lg"></i>
-                Grant
+                {{ t('security.permissions.grant') }}
               </button>
             </div>
           </div>
           
           <!-- Selected Entity Info -->
           <div v-if="selectedEntity" class="selected-entity-info">
-            <strong>Selected:</strong>
-            {{ 
+            <strong>{{ t('settings.current') }}:</strong>
+            {{
                newPermission.entity_type === 'dashboard' ? selectedEntity.title :
                newPermission.entity_type === 'extension' ? selectedEntity.name :
                selectedEntity.name }}
             <span v-if="selectedEntity.slug" class="entity-slug">
-              (Slug: {{ selectedEntity.slug }})
+              ({{ t('settings.path') }}: {{ selectedEntity.slug }})
             </span>
             <span v-if="selectedEntity.description" class="entity-description">
               - {{ selectedEntity.description }}
             </span>
             <span v-if="selectedEntity.extension_type" class="entity-extension-type">
-              - Type: {{ selectedEntity.extension_type }}
+              - {{ t('security.permissions.type') }}: {{ selectedEntity.extension_type }}
             </span>
           </div>
 
           <!-- Permissions List -->
           <div v-if="permissions.length > 0">
-            <h4 class="permissions-title">Active Permissions</h4>
+            <h4 class="permissions-title">{{ t('security.permissions.activePermissions') }}</h4>
             <div class="permissions-table-container">
               <table class="table permissions-table">
                 <thead>
                   <tr>
-                    <th>User</th>
-                    <th>Type</th>
-                    <th>Entity</th>
-                    <th>Level</th>
-                    <th>Granted</th>
-                    <th>Expires</th>
-                    <th>Actions</th>
+                    <th>{{ t('security.permissions.user') }}</th>
+                    <th>{{ t('security.permissions.type') }}</th>
+                    <th>{{ t('security.permissions.entity') }}</th>
+                    <th>{{ t('security.permissions.level') }}</th>
+                    <th>{{ t('security.permissions.granted') }}</th>
+                    <th>{{ t('security.permissions.expires') }}</th>
+                    <th>{{ t('security.permissions.actions') }}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -528,16 +529,16 @@
                     </td>
                     <td>
                       <small v-if="perm.expires_at">{{ formatDate(perm.expires_at) }}</small>
-                      <span v-else class="never-expires">Never</span>
+                      <span v-else class="never-expires">{{ t('security.permissions.never') }}</span>
                     </td>
                     <td>
                       <button
                         class="button button-outline button-sm button-danger"
                         @click="revokePermission(perm.id)"
-                        title="Revoke Permission"
+                        :title="t('security.permissions.revoke')"
                       >
                         <i class="bi bi-trash"></i>
-                        Revoke
+                        {{ t('security.permissions.revoke') }}
                       </button>
                     </td>
                   </tr>
@@ -547,7 +548,7 @@
           </div>
           <div v-else class="empty-permissions">
             <i class="bi bi-info-circle"></i>
-            No permissions have been granted yet. Use the form above to grant permissions to users.
+            {{ t('security.permissions.empty') }}
           </div>
         </div>
       </div>
@@ -563,37 +564,37 @@
   </div>
 
   <!-- Create/Edit Role Modal -->
-  <div 
-    v-if="showCreateRoleForm || showEditRoleForm" 
-    class="modal-overlay" 
+  <div
+    v-if="showCreateRoleForm || showEditRoleForm"
+    class="modal-overlay"
     @click="closeRoleModals"
     @keyup.esc="closeRoleModals"
     ref="roleModal"
   >
     <div class="modal-content" @click.stop>
       <div class="modal-header">
-        <h3>{{ showCreateRoleForm ? 'Create New Role' : 'Edit Role' }}</h3>
+        <h3>{{ showCreateRoleForm ? t('security.roles.createNew') : t('security.roles.editRole') }}</h3>
         <button class="button-close" @click="closeRoleModals">×</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label class="form-label">Role Name</label>
+          <label class="form-label">{{ t('security.roles.name') }}</label>
           <input
             v-model="editingRole.name"
             type="text"
             class="input"
-            placeholder="Enter role name"
+            :placeholder="t('security.roles.namePlaceholder')"
             ref="roleNameInput"
             @keyup.enter="saveRole"
             required
           >
         </div>
         <div class="form-group">
-          <label class="form-label">Description</label>
+          <label class="form-label">{{ t('security.roles.descriptionField') }}</label>
           <textarea
             v-model="editingRole.description"
             class="textarea"
-            placeholder="Enter role description"
+            :placeholder="t('security.roles.descriptionPlaceholder')"
             rows="3"
             @keyup.enter="saveRole"
           ></textarea>
@@ -604,51 +605,51 @@
           class="button button-secondary"
           @click="closeRoleModals"
         >
-          Cancel
+          {{ t('security.roles.cancel') }}
         </button>
         <button
           class="button button-primary"
           @click="saveRole"
           :disabled="!editingRole.name"
         >
-          {{ showCreateRoleForm ? 'Create Role' : 'Save Changes' }}
+          {{ showCreateRoleForm ? t('security.roles.create') : t('security.roles.save') }}
         </button>
       </div>
     </div>
   </div>
 
   <!-- Create/Edit Group Modal -->
-  <div 
-    v-if="showCreateGroupForm || showEditGroupForm" 
-    class="modal-overlay" 
+  <div
+    v-if="showCreateGroupForm || showEditGroupForm"
+    class="modal-overlay"
     @click="closeGroupModals"
     @keyup.esc="closeGroupModals"
     ref="groupModal"
   >
     <div class="modal-content" @click.stop>
       <div class="modal-header">
-        <h3>{{ showCreateGroupForm ? 'Create New Group' : 'Edit Group' }}</h3>
+        <h3>{{ showCreateGroupForm ? t('security.groups.createNew') : t('security.groups.editGroup') }}</h3>
         <button class="button-close" @click="closeGroupModals">×</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label class="form-label">Group Name</label>
+          <label class="form-label">{{ t('security.groups.name') }}</label>
           <input
             v-model="editingGroup.name"
             type="text"
             class="input"
-            placeholder="Enter group name"
+            :placeholder="t('security.groups.namePlaceholder')"
             ref="groupNameInput"
             @keyup.enter="saveGroup"
             required
           >
         </div>
         <div class="form-group">
-          <label class="form-label">Description</label>
+          <label class="form-label">{{ t('security.groups.descriptionField') }}</label>
           <textarea
             v-model="editingGroup.description"
             class="textarea"
-            placeholder="Enter group description"
+            :placeholder="t('security.groups.descriptionPlaceholder')"
             rows="3"
             @keyup.enter="saveGroup"
           ></textarea>
@@ -659,14 +660,14 @@
           class="button button-secondary"
           @click="closeGroupModals"
         >
-          Cancel
+          {{ t('security.groups.cancel') }}
         </button>
         <button
           class="button button-primary"
           @click="saveGroup"
           :disabled="!editingGroup.name"
         >
-          {{ showCreateGroupForm ? 'Create Group' : 'Save Changes' }}
+          {{ showCreateGroupForm ? t('security.groups.create') : t('security.groups.save') }}
         </button>
       </div>
     </div>
@@ -682,56 +683,56 @@
   >
     <div class="modal-content modal-large" @click.stop>
       <div class="modal-header">
-        <h3>Manage Users for Role: {{ selectedRole?.name }}</h3>
+        <h3>{{ t('security.roles.manageUsers') }}: {{ selectedRole?.name }}</h3>
         <button class="button-close" @click="closeManageRoleUsers">×</button>
       </div>
       <div class="modal-body">
         <div class="user-management">
           <div class="user-list-section">
-            <h4>Current Members</h4>
+            <h4>{{ t('security.common.currentMembers') }}</h4>
             <div v-if="roleUsers.length > 0" class="user-list">
-              <div 
-                v-for="user in roleUsers" 
-                :key="user.id" 
+              <div
+                v-for="user in roleUsers"
+                :key="user.id"
                 class="user-item"
               >
                 <div class="user-info">
                   <strong>{{ user.username }}</strong>
                   <small>{{ user.email }}</small>
                 </div>
-                <button 
+                <button
                   class="button button-outline button-sm button-danger"
                   @click="removeUserFromRole(user.id)"
                 >
-                  Remove
+                  {{ t('security.common.remove') }}
                 </button>
               </div>
             </div>
             <div v-else class="empty-state">
-              <p>No users assigned to this role</p>
+              <p>{{ t('security.common.noUsers') }}</p>
             </div>
           </div>
-          
+
           <div class="user-list-section">
-            <h4>Add User</h4>
+            <h4>{{ t('security.common.addUser') }}</h4>
             <div class="form-group">
               <select v-model="selectedUserToAdd" class="select">
-                <option value="">Select a user</option>
-                <option 
-                  v-for="user in availableUsers" 
-                  :key="user.id" 
+                <option value="">{{ t('security.common.selectUser') }}</option>
+                <option
+                  v-for="user in availableUsers"
+                  :key="user.id"
                   :value="user.id"
                 >
                   {{ user.username }} ({{ user.email }})
                 </option>
               </select>
             </div>
-            <button 
+            <button
               class="button button-primary"
               @click="addUserToRole"
               :disabled="!selectedUserToAdd"
             >
-              Add User to Role
+              {{ t('security.common.add') }} {{ t('security.roles.users').toLowerCase() }}
             </button>
           </div>
         </div>
@@ -741,7 +742,7 @@
           class="button button-secondary"
           @click="closeManageRoleUsers"
         >
-          Close
+          {{ t('security.common.close') }}
         </button>
       </div>
     </div>
@@ -757,56 +758,56 @@
   >
     <div class="modal-content modal-large" @click.stop>
       <div class="modal-header">
-        <h3>Manage Members for Group: {{ selectedGroup?.name }}</h3>
+        <h3>{{ t('security.groups.manageMembers') }}: {{ selectedGroup?.name }}</h3>
         <button class="button-close" @click="closeManageGroupUsers">×</button>
       </div>
       <div class="modal-body">
         <div class="user-management">
           <div class="user-list-section">
-            <h4>Current Members</h4>
+            <h4>{{ t('security.common.currentMembers') }}</h4>
             <div v-if="groupUsers.length > 0" class="user-list">
-              <div 
-                v-for="user in groupUsers" 
-                :key="user.id" 
+              <div
+                v-for="user in groupUsers"
+                :key="user.id"
                 class="user-item"
               >
                 <div class="user-info">
                   <strong>{{ user.username }}</strong>
                   <small>{{ user.email }}</small>
                 </div>
-                <button 
+                <button
                   class="button button-outline button-sm button-danger"
                   @click="removeUserFromGroup(user.id)"
                 >
-                  Remove
+                  {{ t('security.common.remove') }}
                 </button>
               </div>
             </div>
             <div v-else class="empty-state">
-              <p>No users in this group</p>
+              <p>{{ t('security.common.noUsers') }}</p>
             </div>
           </div>
-          
+
           <div class="user-list-section">
-            <h4>Add User</h4>
+            <h4>{{ t('security.common.addUser') }}</h4>
             <div class="form-group">
               <select v-model="selectedUserToAdd" class="select">
-                <option value="">Select a user</option>
-                <option 
-                  v-for="user in availableUsers" 
-                  :key="user.id" 
+                <option value="">{{ t('security.common.selectUser') }}</option>
+                <option
+                  v-for="user in availableUsers"
+                  :key="user.id"
                   :value="user.id"
                 >
                   {{ user.username }} ({{ user.email }})
                 </option>
               </select>
             </div>
-            <button 
+            <button
               class="button button-primary"
               @click="addUserToGroup"
               :disabled="!selectedUserToAdd"
             >
-              Add User to Group
+              {{ t('security.common.add') }} {{ t('security.groups.members').toLowerCase() }}
             </button>
           </div>
         </div>
@@ -816,7 +817,7 @@
           class="button button-secondary"
           @click="closeManageGroupUsers"
         >
-          Close
+          {{ t('security.common.close') }}
         </button>
       </div>
     </div>
@@ -825,13 +826,15 @@
 
 <script lang="ts">
 import { defineComponent, ref, onMounted, computed, nextTick } from 'vue';
-import http from '@/utils/http';
+import http from '@/utils/dynamic-http';
 import { useSettingsStore } from '@/stores/settings';
+import { useI18n } from '@/utils/i18n';
 
 export default defineComponent({
   name: 'Security',
   setup() {
     const settingsStore = useSettingsStore();
+    const { t } = useI18n();
     const styleSettings = computed(() => settingsStore.styleSettings);
     const activeTab = ref('sessions');
     const sessions = ref<any[]>([]);
@@ -953,18 +956,18 @@ export default defineComponent({
       // Load user counts for all roles
       for (const role of roles.value) {
         try {
-          const response = await http.get(`/roles/${role.id}/count`);
+          const response = await http.get(`/api/roles/${role.id}/count`);
           roleUserCounts.value[role.id] = response.data.user_count;
         } catch (error) {
           console.error(`Failed to load user count for role ${role.id}:`, error);
           roleUserCounts.value[role.id] = 0;
         }
       }
-      
+
       // Load user counts for all groups
       for (const group of groups.value) {
         try {
-          const response = await http.get(`/groups/${group.id}/count`);
+          const response = await http.get(`/api/groups/${group.id}/count`);
           groupUserCounts.value[group.id] = response.data.user_count;
         } catch (error) {
           console.error(`Failed to load user count for group ${group.id}:`, error);
@@ -1044,9 +1047,9 @@ export default defineComponent({
     
     const loadUsers = async () => {
       if (!isAdmin.value) return;
-      
+
       try {
-        const response = await http.get('/user/read');
+        const response = await http.get('/api/user/read');
         users.value = response.data.items || [];
       } catch (error) {
         console.error('Failed to load users:', error);
@@ -1083,9 +1086,9 @@ export default defineComponent({
     
     const loadRoles = async () => {
       if (!isAdmin.value) return;
-      
+
       try {
-        const response = await http.get('/roles');
+        const response = await http.get('/api/roles');
         roles.value = response.data || [];
         // Load user counts for roles
         await loadUserCounts();
@@ -1098,9 +1101,9 @@ export default defineComponent({
     
     const loadGroups = async () => {
       if (!isAdmin.value) return;
-      
+
       try {
-        const response = await http.get('/groups');
+        const response = await http.get('/api/groups');
         groups.value = response.data || [];
         // Load user counts for groups
         await loadUserCounts();
@@ -1141,7 +1144,7 @@ export default defineComponent({
     // Role management methods
     const createRole = async () => {
       try {
-        await http.post('/roles', editingRole.value);
+        await http.post('/api/roles', editingRole.value);
         successMessage.value = 'Role created successfully';
         editingRole.value = { id: null, name: '', description: '' };
         showCreateRoleForm.value = false;
@@ -1166,7 +1169,7 @@ export default defineComponent({
     
     const updateRole = async () => {
       try {
-        await http.put(`/roles/${editingRole.value.id}`, {
+        await http.put(`/api/roles/${editingRole.value.id}`, {
           name: editingRole.value.name,
           description: editingRole.value.description
         });
@@ -1182,9 +1185,9 @@ export default defineComponent({
     
     const deleteRole = async (role: any) => {
       if (!confirm(`Are you sure you want to delete the role "${role.name}"?`)) return;
-      
+
       try {
-        await http.delete(`/roles/${role.id}`);
+        await http.delete(`/api/roles/${role.id}`);
         successMessage.value = 'Role deleted successfully';
         await loadRoles();
       } catch (error) {
@@ -1201,7 +1204,7 @@ export default defineComponent({
     
     const loadRoleUsers = async (roleId: number) => {
       try {
-        const response = await http.get(`/roles/${roleId}/users`);
+        const response = await http.get(`/api/roles/${roleId}/users`);
         roleUsers.value = response.data || [];
       } catch (error) {
         console.error('Failed to load role users:', error);
@@ -1211,9 +1214,9 @@ export default defineComponent({
     
     const addUserToRole = async () => {
       if (!selectedRole.value || !selectedUserToAdd.value) return;
-      
+
       try {
-        await http.post(`/roles/${selectedRole.value.id}/assign/${selectedUserToAdd.value}`);
+        await http.post(`/api/roles/${selectedRole.value.id}/assign/${selectedUserToAdd.value}`);
         successMessage.value = 'User added to role successfully';
         selectedUserToAdd.value = null;
         await loadRoleUsers(selectedRole.value.id);
@@ -1227,9 +1230,9 @@ export default defineComponent({
     
     const removeUserFromRole = async (userId: number) => {
       if (!selectedRole.value) return;
-      
+
       try {
-        await http.delete(`/roles/${selectedRole.value.id}/unassign/${userId}`);
+        await http.delete(`/api/roles/${selectedRole.value.id}/unassign/${userId}`);
         successMessage.value = 'User removed from role successfully';
         await loadRoleUsers(selectedRole.value.id);
         // Refresh the user count for this role
@@ -1243,7 +1246,7 @@ export default defineComponent({
     // Group management methods
     const createGroup = async () => {
       try {
-        await http.post('/groups', editingGroup.value);
+        await http.post('/api/groups', editingGroup.value);
         successMessage.value = 'Group created successfully';
         editingGroup.value = { id: null, name: '', description: '' };
         showCreateGroupForm.value = false;
@@ -1268,7 +1271,7 @@ export default defineComponent({
     
     const updateGroup = async () => {
       try {
-        await http.put(`/groups/${editingGroup.value.id}`, {
+        await http.put(`/api/groups/${editingGroup.value.id}`, {
           name: editingGroup.value.name,
           description: editingGroup.value.description
         });
@@ -1284,9 +1287,9 @@ export default defineComponent({
     
     const deleteGroup = async (group: any) => {
       if (!confirm(`Are you sure you want to delete the group "${group.name}"?`)) return;
-      
+
       try {
-        await http.delete(`/groups/${group.id}`);
+        await http.delete(`/api/groups/${group.id}`);
         successMessage.value = 'Group deleted successfully';
         await loadGroups();
       } catch (error) {
@@ -1303,7 +1306,7 @@ export default defineComponent({
     
     const loadGroupUsers = async (groupId: number) => {
       try {
-        const response = await http.get(`/groups/${groupId}/users`);
+        const response = await http.get(`/api/groups/${groupId}/users`);
         groupUsers.value = response.data || [];
       } catch (error) {
         console.error('Failed to load group users:', error);
@@ -1313,9 +1316,9 @@ export default defineComponent({
     
     const addUserToGroup = async () => {
       if (!selectedGroup.value || !selectedUserToAdd.value) return;
-      
+
       try {
-        await http.post(`/groups/${selectedGroup.value.id}/add/${selectedUserToAdd.value}`);
+        await http.post(`/api/groups/${selectedGroup.value.id}/add/${selectedUserToAdd.value}`);
         successMessage.value = 'User added to group successfully';
         selectedUserToAdd.value = null;
         await loadGroupUsers(selectedGroup.value.id);
@@ -1329,9 +1332,9 @@ export default defineComponent({
     
     const removeUserFromGroup = async (userId: number) => {
       if (!selectedGroup.value) return;
-      
+
       try {
-        await http.delete(`/groups/${selectedGroup.value.id}/remove/${userId}`);
+        await http.delete(`/api/groups/${selectedGroup.value.id}/remove/${userId}`);
         successMessage.value = 'User removed from group successfully';
         await loadGroupUsers(selectedGroup.value.id);
         // Refresh the user count for this group
@@ -1345,7 +1348,7 @@ export default defineComponent({
     // Refresh individual role/group user counts
     const refreshRoleUserCount = async (roleId: number) => {
       try {
-        const response = await http.get(`/roles/${roleId}/count`);
+        const response = await http.get(`/api/roles/${roleId}/count`);
         roleUserCounts.value[roleId] = response.data.user_count;
       } catch (error) {
         console.error(`Failed to refresh user count for role ${roleId}:`, error);
@@ -1355,7 +1358,7 @@ export default defineComponent({
 
     const refreshGroupUserCount = async (groupId: number) => {
       try {
-        const response = await http.get(`/groups/${groupId}/count`);
+        const response = await http.get(`/api/groups/${groupId}/count`);
         groupUserCounts.value[groupId] = response.data.user_count;
       } catch (error) {
         console.error(`Failed to refresh user count for group ${groupId}:`, error);
@@ -1539,6 +1542,7 @@ export default defineComponent({
     });
     
     return {
+      t,
       activeTab,
       sessions,
       auditLogs,

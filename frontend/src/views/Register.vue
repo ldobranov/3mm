@@ -1,7 +1,7 @@
 <template>
-  <div class="view">
+  <div class="view" :key="currentLanguage">
     <div class="view-header">
-      <h1 class="view-title">Register</h1>
+      <h1 class="view-title">{{ t('register.title', 'Register') }}</h1>
     </div>
 
     <div class="auth-container">
@@ -9,51 +9,51 @@
         <div class="card-content">
           <form @submit.prevent="register" class="auth-form">
             <div class="form-group">
-              <label class="form-label">Username</label>
+              <label class="form-label">{{ t('register.username', 'Username') }}</label>
               <input
                 v-model="username"
                 type="text"
                 class="input"
-                placeholder="Choose a username"
+                :placeholder="t('register.usernamePlaceholder', 'Choose a username')"
                 required
               />
             </div>
 
             <div class="form-group">
-              <label class="form-label">Email</label>
+              <label class="form-label">{{ t('register.email', 'Email') }}</label>
               <input
                 v-model="email"
                 type="email"
                 class="input"
-                placeholder="Enter your email"
+                :placeholder="t('register.emailPlaceholder', 'Enter your email')"
                 required
               />
             </div>
 
             <div class="form-group">
-              <label class="form-label">Password</label>
+              <label class="form-label">{{ t('register.password', 'Password') }}</label>
               <input
                 v-model="password"
                 type="password"
                 class="input"
-                placeholder="Create a password"
+                :placeholder="t('register.passwordPlaceholder', 'Create a password')"
                 required
               />
             </div>
 
             <div class="form-group">
-              <label class="form-label">Confirm Password</label>
+              <label class="form-label">{{ t('register.confirmPassword', 'Confirm Password') }}</label>
               <input
                 v-model="confirmPassword"
                 type="password"
                 class="input"
-                placeholder="Confirm your password"
+                :placeholder="t('register.confirmPasswordPlaceholder', 'Confirm your password')"
                 required
               />
             </div>
 
             <button type="submit" class="button button-primary auth-button">
-              <i class="bi bi-person-plus auth-icon"></i>Register
+              <i class="bi bi-person-plus auth-icon"></i>{{ t('register.register', 'Register') }}
             </button>
           </form>
 
@@ -74,12 +74,14 @@
 import { defineComponent, ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSettingsStore } from '@/stores/settings';
-import http from '@/utils/http';
+import { useI18n } from '@/utils/i18n';
+import http from '@/utils/dynamic-http';
 import type { AxiosError } from 'axios';
 
 export default defineComponent({
   setup() {
     const settingsStore = useSettingsStore();
+    const { t, currentLanguage } = useI18n();
     const styleSettings = computed(() => settingsStore.styleSettings);
     
     const username = ref('');
@@ -92,24 +94,24 @@ export default defineComponent({
 
     const register = async () => {
       if (password.value !== confirmPassword.value) {
-        errorMessage.value = 'Passwords do not match';
+        errorMessage.value = t('register.passwordsDoNotMatch', 'Passwords do not match');
         return;
       }
 
       try {
         // Register the user
-        const response = await http.post('/user/register', {
+        const response = await http.post('/api/user/register', {
           username: username.value,
           email: email.value,
           password: password.value,
         });
-        
-        successMessage.value = 'Registration successful! Logging you in...';
+
+        successMessage.value = t('register.registrationSuccessful', 'Registration successful! Logging you in...');
         errorMessage.value = '';
         
         // Try to automatically log in the user
         try {
-          const loginResponse = await http.post('/user/login', {
+          const loginResponse = await http.post('/api/user/login', {
             email: email.value,
             password: password.value,
           });
@@ -120,7 +122,7 @@ export default defineComponent({
             
             // Fetch profile to get role and username
             try {
-              const profileRes = await http.get('/user/profile');
+              const profileRes = await http.get('/api/user/profile');
               const role = profileRes.data?.role ?? '';
               const username = profileRes.data?.username ?? '';
               localStorage.setItem('role', role);
@@ -148,11 +150,11 @@ export default defineComponent({
         const error = err as AxiosError<any>;
         const status = error.response?.status;
         if (status === 422) {
-          errorMessage.value = 'Invalid input. Please check your details.';
+          errorMessage.value = t('register.invalidInput', 'Invalid input. Please check your details.');
         } else if (status === 409) {
-          errorMessage.value = 'User with this email or username already exists.';
+          errorMessage.value = t('register.userExists', 'User with this email or username already exists.');
         } else {
-          errorMessage.value = error.response?.data?.detail || 'An error occurred. Please try again.';
+          errorMessage.value = error.response?.data?.detail || t('register.errorOccurred', 'An error occurred. Please try again.');
         }
         successMessage.value = '';
       }
@@ -166,7 +168,9 @@ export default defineComponent({
       register,
       errorMessage,
       successMessage,
-      styleSettings
+      styleSettings,
+      currentLanguage,
+      t
     };
   },
 });

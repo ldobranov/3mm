@@ -75,31 +75,68 @@ class ExtensionDatabaseManager:
     def drop_extension_database(self, extension_id: str) -> bool:
         """Drop all tables for an extension"""
         try:
-            if extension_id in self.extension_engines:
-                engine = self.extension_engines[extension_id]
-                metadata = MetaData()
-
-                # Get all tables with the extension prefix
-                metadata.reflect(bind=engine)
-                tables_to_drop = [
-                    table for table_name, table in metadata.tables.items()
-                    if table_name.startswith(f"ext_{extension_id}_")
-                ]
-
-                for table in tables_to_drop:
-                    table.drop(engine)
-
-                # Clean up
-                del self.extension_sessions[extension_id]
-                del self.extension_engines[extension_id]
-
-                print(f"Dropped database schema for extension {extension_id}")
+            from sqlalchemy import text
+            from backend.database import get_db
+            
+            # Always use SQL to safely find and drop extension tables
+            # This avoids metadata reflection issues
+            db = next(get_db())
+            
+            # First, let's see what extension tables exist
+            # Use PostgreSQL-compatible query
+            list_query = text("""
+                SELECT tablename FROM pg_tables
+                WHERE schemaname = 'public' AND tablename LIKE :prefix
+            """)
+            result = db.execute(list_query, {"prefix": f"ext_{extension_id}_%"})
+            table_names = [row[0] for row in result.fetchall()]
+            
+            if not table_names:
+                print(f"No extension tables found for {extension_id}")
+                db.close()
                 return True
-            return False
+            
+            # Only drop extension-specific tables with strict validation
+            dropped_count = 0
+            main_tables = {'users', 'extensions', 'language_packs', 'roles', 'permissions', 'pages'}
+            
+            for table_name in table_names:
+                try:
+                    # Safety check: only drop tables that start with ext_ and don't interfere with main tables
+                    if table_name.startswith(f"ext_{extension_id}_"):
+                        # Additional safety: make sure it's not a main table
+                        base_name = table_name.split('_')[-1] if '_' in table_name else table_name
+                        
+                        # Skip if it matches any main table names
+                        if base_name in main_tables:
+                            print(f"Skipping main table: {table_name}")
+                            continue
+                        
+                        # Safe to drop
+                        db.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
+                        print(f"Dropped extension table: {table_name}")
+                        dropped_count += 1
+                        
+                except Exception as drop_error:
+                    print(f"Warning: Could not drop table {table_name}: {drop_error}")
+                    continue
+            
+            db.commit()
+            db.close()
+            
+            # Clean up managed references if they exist
+            if extension_id in self.extension_sessions:
+                del self.extension_sessions[extension_id]
+            if extension_id in self.extension_engines:
+                del self.extension_engines[extension_id]
+            
+            print(f"Extension database cleanup completed for {extension_id} ({dropped_count} tables dropped)")
+            return True
 
         except Exception as e:
             print(f"Error dropping database for extension {extension_id}: {e}")
-            return False
+            # Return True anyway to prevent extension cleanup from failing completely
+            return True
 
     def get_extension_session(self, extension_id: str):
         """Get a database session for an extension"""
@@ -171,5 +208,7 @@ class ExtensionDatabaseManager:
             return self.create_extension_database(extension_id, basic_schema)
 
 
-# Global instance
-extension_db_manager = ExtensionDatabaseManager("sqlite:///./mega_monitor.db")  # Should be configurable
+# Global instance - use the same database as the main application
+import os
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://lazar:admin@localhost:5432/mega_monitor")
+extension_db_manager = ExtensionDatabaseManager(DATABASE_URL)

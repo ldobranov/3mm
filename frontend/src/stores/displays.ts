@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import http from '@/utils/http';
+import http from '@/utils/dynamic-http';
 
 export interface Display {
   id: number;

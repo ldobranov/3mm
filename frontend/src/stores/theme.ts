@@ -9,16 +9,14 @@ export const useThemeStore = defineStore('theme', () => {
     if (stored === 'light' || stored === 'dark') {
       return stored
     }
-    
+
     // Check system preference
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
       return 'dark'
     }
-    
+
     return 'light'
   }
-
-  const theme = ref<'light' | 'dark'>(getInitialTheme())
 
   // Apply theme to document
   const applyTheme = (newTheme: 'light' | 'dark') => {
@@ -31,15 +29,27 @@ export const useThemeStore = defineStore('theme', () => {
     }
   }
 
+  const initialTheme = getInitialTheme()
+  const theme = ref<'light' | 'dark'>(initialTheme)
+
+  // Apply initial theme without setting localStorage
+  applyTheme(initialTheme)
+
   // Watch for theme changes
   watch(theme, (newTheme) => {
     localStorage.setItem('theme', newTheme)
     applyTheme(newTheme)
 
-    // Update CSS variables when theme changes
-    const settingsStore = useSettingsStore()
-    settingsStore.updateCSSVariables()
-  }, { immediate: true })
+    // Update CSS variables when theme changes (defensive check)
+    try {
+      const settingsStore = useSettingsStore()
+      if (settingsStore && typeof settingsStore.updateCSSVariables === 'function') {
+        settingsStore.updateCSSVariables()
+      }
+    } catch (error) {
+      console.warn('Settings store not ready for CSS variables update:', error)
+    }
+  })
 
   // Toggle between light and dark
   const toggleTheme = () => {

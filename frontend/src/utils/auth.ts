@@ -1,4 +1,5 @@
 import axios from 'axios';
+import http from '@/utils/dynamic-http';
 
 export function getToken(): string {
   return localStorage.getItem('authToken') || '';
@@ -29,7 +30,8 @@ export async function refreshToken(): Promise<boolean> {
   const token = getToken();
   if (!token) return false;
   try {
-    const res = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/user/refresh`, {}, {
+    const backendUrl = await http.getCurrentBackendUrl();
+    const res = await axios.post(`${backendUrl}/api/user/refresh`, {}, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const newToken = res.data?.token;

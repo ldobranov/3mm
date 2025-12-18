@@ -134,7 +134,7 @@ npm run dev
 
 The frontend will typically run on `http://localhost:5173` (Vite default) and is configured to connect to the backend at `http://localhost:8887`.
 
-**Note:** The frontend's API base URL is set in `frontend/.env`. For local development, it should point to `http://localhost:8887`. If you need to connect to a different backend (e.g., production), update the `VITE_API_BASE_URL` variable in that file.
+**Note:** The frontend and backend URLs are configured in the root `config.json` file. For local development, the defaults are `http://localhost:8887` for backend and `http://localhost:5173` for frontend. If you need to connect to different URLs (e.g., production), update the `config.json` file before starting the application.
 
 ### Running Both
 

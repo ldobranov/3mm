@@ -1,6 +1,65 @@
 /* CSS Variables for customizable styling - defaults will be overridden by JavaScript */
 :root {
-  /* These will be dynamically set by the settings store */
+  /* Core theme variables - will be dynamically set by the settings store */
+  /* Background colors */
+  --body-bg: #ffffff;
+  --content-bg: #ffffff;
+  --card-bg: #ffffff;
+  --panel-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --input-bg: #ffffff;
+
+  /* Text colors */
+  --text-primary: #222222;
+  --text-secondary: #666666;
+  --text-muted: #999999;
+
+  /* Border colors */
+  --card-border: #e3e3e3;
+  --input-border: #d1d5db;
+  --input-focus-border: #007bff;
+  --color-border: #e5e7eb;
+  --color-border-hover: #d1d5db;
+  --modal-border: #e3e3e3;
+
+  /* Button colors */
+  --button-primary-bg: #007bff;
+  --button-primary-text: #ffffff;
+  --button-primary-hover: #0056b3;
+  --button-secondary-bg: #6c757d;
+  --button-secondary-text: #ffffff;
+  --button-secondary-hover: #545b62;
+  --button-danger-bg: #dc3545;
+  --button-danger-text: #ffffff;
+  --button-danger-hover: #c82333;
+
+  /* Link colors */
+  --color-link: hsla(160, 100%, 37%, 1);
+  --color-link-hover: hsla(160, 100%, 30%, 1);
+
+  /* Shadow colors */
+  --card-shadow: rgba(0, 0, 0, 0.1);
+
+  /* Border radius */
+  --border-radius-sm: 4px;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+
+  /* Overlay colors */
+  --color-overlay: rgba(0, 0, 0, 0.5);
+  --modal-backdrop: rgba(0, 0, 0, 0.7);
+
+  /* Chip colors */
+  --chip-public-bg: rgba(16, 185, 129, 0.15);
+  --chip-public-text: #10b981;
+  --chip-private-bg: rgba(239, 68, 68, 0.15);
+  --chip-private-text: #ef4444;
+
+  /* Additional theme colors */
+  --color-background: #ffffff;
+  --color-background-soft: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f9fafb;
 }
 
 /* Dark mode overrides - removed static values to allow dynamic theming */
@@ -276,6 +335,11 @@ nav a:hover {
   opacity: 0.7;
 }
 
+.text-muted-theme {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
 /* Alert styles */
 .alert {
   padding: 0.75rem 1rem;
@@ -468,6 +532,193 @@ a:hover {
   margin: 1rem 0;
 }
 
+/* Settings-specific utility classes for reusable styling */
+
+/* Settings card - replaces repetitive card styling */
+.settings-card {
+  background-color: var(--card-bg, #ffffff);
+  color: var(--text-primary, #222222);
+  border: 1px solid var(--card-border, #e3e3e3);
+  border-radius: var(--border-radius-md, 8px);
+  padding: 1rem;
+  box-shadow: 0 2px 4px var(--card-shadow, rgba(0, 0, 0, 0.1));
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Color input group - for color picker + text input pairs */
+.color-input-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.color-input-group .color-picker {
+  width: 60px;
+  height: 40px;
+  border: none;
+  border-radius: var(--border-radius-sm, 4px);
+  cursor: pointer;
+  background: none;
+  padding: 0;
+}
+
+.color-input-group .color-text-input {
+  flex: 1;
+  max-width: 150px;
+  padding: 0.5rem;
+  border: 1px solid var(--input-border, var(--card-border, #e3e3e3));
+  border-radius: var(--border-radius-sm, 4px);
+  background-color: var(--input-bg, var(--card-bg, #ffffff));
+  color: var(--text-primary, #222222);
+  font-size: 0.875rem;
+}
+
+.color-input-group .color-text-input:focus {
+  outline: none;
+  border-color: var(--input-focus-border, var(--button-primary-bg, #007bff));
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+/* Form sections with consistent spacing */
+.form-section {
+  margin-bottom: 1.5rem;
+}
+
+.form-section h4 {
+  margin-bottom: 0.75rem;
+  color: var(--text-primary, #222222);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.form-field {
+  margin-bottom: 1rem;
+}
+
+/* Range input with value display */
+.range-input-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.range-input-group input[type="range"] {
+  flex: 1;
+  max-width: 200px;
+}
+
+.range-input-group .range-value {
+  min-width: 2rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-primary, #222222);
+}
+
+/* Preview card styling */
+.preview-card {
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border, #e3e3e3);
+  background-color: var(--card-bg, #ffffff);
+  color: var(--text-primary, #222222);
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+.preview-card h5 {
+  margin: 0 0 1rem 0;
+  color: var(--text-primary, #222222);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.preview-card p {
+  margin: 0 0 1rem 0;
+  opacity: 0.8;
+  color: var(--text-secondary, #666666);
+}
+
+/* Button preview styling */
+.preview-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.preview-buttons button {
+  padding: 0.5rem 1rem;
+  border: none;
+  cursor: pointer;
+  border-radius: var(--border-radius-sm, 4px);
+  font-size: 0.875rem;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Theme-aware preview buttons */
+.preview-button-primary {
+  background-color: var(--button-primary-bg, #007bff);
+  color: var(--button-primary-text, #ffffff);
+}
+
+.preview-button-secondary {
+  background-color: var(--button-secondary-bg, #6c757d);
+  color: var(--button-secondary-text, #ffffff);
+}
+
+.preview-button-danger {
+  background-color: var(--button-danger-bg, #dc3545);
+  color: var(--button-danger-text, #ffffff);
+}
+
+/* Settings grid layout */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+/* Help text styling */
+.help-text {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--text-muted, #666666);
+  opacity: 0.8;
+}
+
+/* Additional utility classes for consistent styling */
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+.text-right { text-align: right; }
+
+.font-normal { font-weight: 400; }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+
+.relative { position: relative; }
+.absolute { position: absolute; }
+.fixed { position: fixed; }
+
+.hidden { display: none; }
+.block { display: block; }
+.inline-block { display: inline-block; }
+.flex { display: flex; }
+.grid { display: grid; }
+
+.items-center { align-items: center; }
+.items-start { align-items: flex-start; }
+.items-end { align-items: flex-end; }
+
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.justify-start { justify-content: flex-start; }
+.justify-end { justify-content: flex-end; }
+
+.overflow-hidden { overflow: hidden; }
+.overflow-auto { overflow: auto; }
+.overflow-scroll { overflow: scroll; }
+
 /* Responsive tweaks */
 @media (max-width: 768px) {
   .view-header {
@@ -478,7 +729,7 @@ a:hover {
   .view-header .button {
     width: 100%;
   }
-  .grid {
+  .settings-grid {
     grid-template-columns: 1fr;
   }
 }

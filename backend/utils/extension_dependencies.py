@@ -1,182 +1,269 @@
 """
-Extension Dependencies and Version Management
+Extension Dependency Management System
+
+This module provides functionality for managing extension dependencies and inter-extension communication.
+Extensions can declare dependencies on other extensions and access their APIs.
 """
 
+import json
 import re
-from typing import Dict, List, Optional, Set, Tuple
-from packaging import version
-import requests
+from typing import Dict, List, Any, Optional, Callable
+from backend.database import get_db
+from sqlalchemy import text
 
-class DependencyResolver:
-    """Resolves extension dependencies and version conflicts"""
 
-    def __init__(self):
-        self.installed_packages: Dict[str, str] = {}
-        self.extension_dependencies: Dict[str, Dict[str, str]] = {}
-
-    def add_installed_package(self, package_name: str, version_spec: str):
-        """Add an installed package to the resolver"""
-        self.installed_packages[package_name] = version_spec
-
-    def parse_version_spec(self, version_spec: str) -> Tuple[str, str]:
-        """Parse version specification like '>=1.0.0', '==2.1.0'"""
-        operators = ['>=', '<=', '>', '<', '==', '!=', '~=', '===']
-        for op in operators:
-            if version_spec.startswith(op):
-                return op, version_spec[len(op):].strip()
-        # No operator means exact version
-        return '==', version_spec.strip()
-
-    def check_version_compatibility(self, installed_version: str, required_spec: str) -> bool:
-        """Check if installed version satisfies the requirement"""
-        try:
-            op, req_version = self.parse_version_spec(required_spec)
-            installed = version.parse(installed_version)
-            required = version.parse(req_version)
-
-            if op == '>=':
-                return installed >= required
-            elif op == '<=':
-                return installed <= required
-            elif op == '>':
-                return installed > required
-            elif op == '<':
-                return installed < required
-            elif op == '==':
-                return installed == required
-            elif op == '!=':
-                return installed != required
-            elif op == '~=':
-                # Compatible release (e.g., ~=2.2 is equivalent to >=2.2, ==2.*)
-                return installed >= required and installed.major == required.major
-            else:
-                return False
-        except Exception:
-            return False
-
-    def resolve_dependencies(self, extension_id: str, dependencies: Dict[str, str]) -> Dict[str, str]:
-        """Resolve dependencies for an extension"""
-        unresolved = {}
-        conflicts = {}
-
-        for dep_name, version_spec in dependencies.items():
-            # Check if package is available (simplified check - in real implementation would check pip)
-            # For now, assume common packages are available
-            if dep_name in ['psutil', 'requests', 'fastapi', 'sqlalchemy', 'pydantic']:
-                # These are common packages that should be available
-                pass  # Allow installation
-            elif dep_name in self.installed_packages:
-                installed_version = self.installed_packages[dep_name]
-                if not self.check_version_compatibility(installed_version, version_spec):
-                    conflicts[dep_name] = {
-                        'required': version_spec,
-                        'installed': installed_version
-                    }
-            else:
-                unresolved[dep_name] = version_spec
-
-        return {
-            'unresolved': unresolved,
-            'conflicts': conflicts,
-            'can_install': len(unresolved) == 0 and len(conflicts) == 0
-        }
-
-    def install_missing_dependencies(self, unresolved: Dict[str, str]) -> List[str]:
-        """Attempt to install missing dependencies (would integrate with pip)"""
-        installed = []
-        failed = []
-
-        for package, version_spec in unresolved.items():
-            try:
-                # This would normally use pip or another package manager
-                # For now, we'll simulate installation
-                print(f"Installing {package}{version_spec}")
-                self.installed_packages[package] = version_spec.replace('>=', '').replace('==', '')
-                installed.append(package)
-            except Exception as e:
-                print(f"Failed to install {package}: {e}")
-                failed.append(package)
-
-        return installed
-
-class ExtensionVersionManager:
-    """Manages extension versions and updates"""
+class ExtensionDependencyManager:
+    """Manages extension dependencies and API access"""
 
     def __init__(self):
-        self.installed_versions: Dict[str, str] = {}
-        self.available_updates: Dict[str, str] = {}
+        self._api_registry: Dict[str, Dict[str, Any]] = {}
+        self._extension_contexts: Dict[str, Any] = {}
 
-    def register_extension(self, extension_id: str, version: str):
-        """Register an installed extension version"""
-        self.installed_versions[extension_id] = version
+    def register_extension_context(self, extension_id: str, context: Any):
+        """Register an extension's context for dependency access"""
+        self._extension_contexts[extension_id] = context
 
-    def check_for_updates(self, extension_id: str, current_version: str) -> Optional[str]:
-        """Check if updates are available for an extension"""
-        # This would typically query a repository or marketplace
-        # For now, return None (no updates available)
+    def unregister_extension_context(self, extension_id: str):
+        """Unregister an extension's context"""
+        if extension_id in self._extension_contexts:
+            del self._extension_contexts[extension_id]
+
+    def register_api(self, extension_id: str, api_name: str, api_function: Callable):
+        """Register an API function that other extensions can call"""
+        if extension_id not in self._api_registry:
+            self._api_registry[extension_id] = {}
+
+        self._api_registry[extension_id][api_name] = api_function
+
+    def get_api(self, extension_id: str, api_name: str):
+        """Get an API function from another extension"""
+        if extension_id in self._api_registry and api_name in self._api_registry[extension_id]:
+            return self._api_registry[extension_id][api_name]
         return None
 
-    def is_compatible_update(self, current_version: str, new_version: str) -> bool:
-        """Check if an update is backward compatible"""
+    def check_dependencies(self, extension_manifest: dict) -> Dict[str, Any]:
+        """Check if all dependencies for an extension are satisfied"""
+        dependencies = extension_manifest.get("dependencies", {})
+        extension_deps = dependencies.get("extensions", {})
+
+        results = {
+            "satisfied": True,
+            "missing": [],
+            "version_conflicts": [],
+            "available_apis": {}
+        }
+
+        # Check extension dependencies
+        for dep_name, dep_config in extension_deps.items():
+            dep_result = self._check_extension_dependency(dep_name, dep_config)
+            if not dep_result["available"]:
+                results["satisfied"] = False
+                if dep_result["reason"] == "missing":
+                    results["missing"].append({
+                        "name": dep_name,
+                        "required_version": dep_config.get("version", "any"),
+                        "optional": dep_config.get("optional", False)
+                    })
+                elif dep_result["reason"] == "version_conflict":
+                    results["version_conflicts"].append({
+                        "name": dep_name,
+                        "required_version": dep_config.get("version", "any"),
+                        "installed_version": dep_result.get("installed_version")
+                    })
+
+            # Collect available APIs
+            if dep_result["available"] and dep_result.get("apis"):
+                results["available_apis"][dep_name] = dep_result["apis"]
+
+        return results
+
+    def _check_extension_dependency(self, extension_name: str, dep_config: dict) -> Dict[str, Any]:
+        """Check if a specific extension dependency is satisfied"""
         try:
-            current = version.parse(current_version)
-            new = version.parse(new_version)
+            # Query the database for installed extensions
+            db = next(get_db())
+            result = db.execute(text("""
+                SELECT id, name, version, is_enabled
+                FROM extensions
+                WHERE name = :name
+            """), {"name": extension_name}).fetchone()
 
-            # Major version changes are potentially breaking
-            if new.major > current.major:
-                return False
+            if not result:
+                return {
+                    "available": False,
+                    "reason": "missing",
+                    "apis": []
+                }
 
-            # Minor version changes are usually safe
+            # Safely extract values from result
+            try:
+                # Try dictionary access first
+                installed_version = result["version"]
+                is_enabled = result["is_enabled"]
+            except (TypeError, KeyError):
+                # Fallback to index access
+                installed_version = result[2]  # version is the 3rd column (0-indexed)
+                is_enabled = result[3]  # is_enabled is the 4th column (0-indexed)
+
+            if not is_enabled:
+                return {
+                    "available": False,
+                    "reason": "disabled",
+                    "installed_version": installed_version,
+                    "apis": []
+                }
+
+            # Check version constraint
+            required_version = dep_config.get("version", "*")
+            if not self._check_version_constraint(installed_version, required_version):
+                return {
+                    "available": False,
+                    "reason": "version_conflict",
+                    "installed_version": installed_version,
+                    "apis": []
+                }
+
+            # Get available APIs for this extension
+            apis = list(self._api_registry.get(extension_name, {}).keys())
+
+            return {
+                "available": True,
+                "installed_version": installed_version,
+                "apis": apis
+            }
+
+        except Exception as e:
+            print(f"Error checking extension dependency {extension_name}: {e}")
+            return {
+                "available": False,
+                "reason": "error",
+                "error": str(e),
+                "apis": []
+            }
+
+    def _check_version_constraint(self, installed_version: str, required_version: str) -> bool:
+        """Check if installed version satisfies the version constraint"""
+        if required_version == "*" or required_version == "any":
             return True
-        except Exception:
+
+        try:
+            # Simple version comparison (can be enhanced with semver library)
+            if required_version.startswith(">="):
+                min_version = required_version[2:]
+                return self._compare_versions(installed_version, min_version) >= 0
+            elif required_version.startswith(">"):
+                min_version = required_version[1:]
+                return self._compare_versions(installed_version, min_version) > 0
+            elif required_version.startswith("<="):
+                max_version = required_version[2:]
+                return self._compare_versions(installed_version, max_version) <= 0
+            elif required_version.startswith("<"):
+                max_version = required_version[1:]
+                return self._compare_versions(installed_version, max_version) < 0
+            elif required_version.startswith("~"):
+                # Compatible version range (patch-level)
+                base_version = required_version[1:]
+                return installed_version.startswith(base_version.rsplit(".", 1)[0])
+            elif required_version.startswith("^"):
+                # Compatible version range (minor-level)
+                base_version = required_version[1:]
+                return installed_version.startswith(base_version.split(".", 1)[0])
+            else:
+                # Exact version match
+                return installed_version == required_version
+
+        except Exception as e:
+            print(f"Error parsing version constraint {required_version}: {e}")
             return False
 
-    def validate_extension_version(self, version_string: str) -> bool:
-        """Validate that a version string follows semantic versioning"""
-        semver_pattern = r'^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$'
-        return bool(re.match(semver_pattern, version_string))
+    def _compare_versions(self, version1: str, version2: str) -> int:
+        """Compare two version strings"""
+        v1_parts = [int(x) for x in version1.split(".")]
+        v2_parts = [int(x) for x in version2.split(".")]
 
-class ExtensionRepository:
-    """Manages extension repositories and marketplaces"""
+        # Pad shorter version with zeros
+        max_len = max(len(v1_parts), len(v2_parts))
+        v1_parts.extend([0] * (max_len - len(v1_parts)))
+        v2_parts.extend([0] * (max_len - len(v2_parts)))
 
-    def __init__(self, repository_url: str = None):
-        self.repository_url = repository_url or "https://extensions.megamonitor.dev"
-        self.cache: Dict[str, dict] = {}
+        for i in range(max_len):
+            if v1_parts[i] > v2_parts[i]:
+                return 1
+            elif v1_parts[i] < v2_parts[i]:
+                return -1
 
-    def search_extensions(self, query: str) -> List[Dict]:
-        """Search for extensions in the repository"""
-        # This would query the actual repository
-        # For now, return empty list
-        return []
+        return 0
 
-    def get_extension_info(self, extension_id: str) -> Optional[Dict]:
-        """Get detailed information about an extension"""
-        if extension_id in self.cache:
-            return self.cache[extension_id]
+    def get_extension_context(self, extension_id: str):
+        """Get the context of another extension"""
+        return self._extension_contexts.get(extension_id)
 
+    def call_extension_api(self, extension_id: str, api_name: str, *args, **kwargs):
+        """Call an API function from another extension"""
+        api_func = self.get_api(extension_id, api_name)
+        if api_func:
+            return api_func(*args, **kwargs)
+        else:
+            raise ValueError(f"API '{api_name}' not found in extension '{extension_id}'")
+
+
+class VersionManager:
+    """Manages extension version checking and compatibility"""
+
+    def is_compatible_update(self, current_version: str, new_version: str) -> bool:
+        """Check if an update is compatible (no breaking changes)"""
         try:
-            # This would make an HTTP request to the repository
-            # response = requests.get(f"{self.repository_url}/extensions/{extension_id}")
-            # return response.json()
+            current_parts = [int(x) for x in current_version.split('.')]
+            new_parts = [int(x) for x in new_version.split('.')]
 
-            # For now, return None
-            return None
-        except Exception:
-            return None
+            # Pad shorter versions
+            max_len = max(len(current_parts), len(new_parts))
+            current_parts.extend([0] * (max_len - len(current_parts)))
+            new_parts.extend([0] * (max_len - len(new_parts)))
 
-    def download_extension(self, extension_id: str, version: str) -> Optional[bytes]:
-        """Download an extension package"""
+            # Major version change is potentially breaking
+            if new_parts[0] > current_parts[0]:
+                return False
+
+            # Minor version changes are usually compatible
+            return True
+        except:
+            return False
+
+    def check_for_updates(self, extension_id: str, current_version: str) -> Optional[str]:
+        """Check if there's a newer version available (mock implementation)"""
+        # This would integrate with marketplace API
+        # For now, return None (no update available)
+        return None
+
+    def compare_versions(self, version1: str, version2: str) -> int:
+        """Compare two version strings. Returns -1 if v1 < v2, 0 if equal, 1 if v1 > v2"""
         try:
-            # This would download the extension ZIP file
-            # response = requests.get(f"{self.repository_url}/extensions/{extension_id}/{version}/download")
-            # return response.content
+            v1_parts = [int(x) for x in version1.split('.')]
+            v2_parts = [int(x) for x in version2.split('.')]
 
-            # For now, return None
-            return None
-        except Exception:
-            return None
+            max_len = max(len(v1_parts), len(v2_parts))
+            v1_parts.extend([0] * (max_len - len(v1_parts)))
+            v2_parts.extend([0] * (max_len - len(v2_parts)))
+
+            for i in range(max_len):
+                if v1_parts[i] > v2_parts[i]:
+                    return 1
+                elif v1_parts[i] < v2_parts[i]:
+                    return -1
+            return 0
+        except:
+            return 0
+
 
 # Global instances
-dependency_resolver = DependencyResolver()
-version_manager = ExtensionVersionManager()
-extension_repository = ExtensionRepository()
+extension_dependency_manager = ExtensionDependencyManager()
+version_manager = VersionManager()
+
+# Backward compatibility alias
+extension_repository = extension_dependency_manager
+
+
+def get_extension_dependency_manager():
+    """Get the global extension dependency manager instance"""
+    return extension_dependency_manager

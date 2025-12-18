@@ -11,8 +11,16 @@ from pydantic import BaseModel
 import logging
 import traceback
 import jwt
+
+logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
 import user_agents
+
+# Initialize logger
+logger = logging.getLogger(__name__)
+
+class LanguagePreference(BaseModel):
+    language: str
 
 router = APIRouter()
 
@@ -25,9 +33,6 @@ class LoginPayload(BaseModel):
     email: str
     password: str
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger("route_debug")
 token_blacklist = set()
 
 @router.post("/register")
@@ -394,3 +399,94 @@ def logout_user(
     except Exception as e:
         logger.error(f"Error during logout: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@router.post("/language")
+def save_user_language(
+    preference: LanguagePreference,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db)
+):
+    """Save user's language preference (supports guest users)"""
+    try:
+        # Handle both authenticated and guest users
+        if authorization and authorization.startswith("Bearer "):
+            # Authenticated user - save to backend
+            token = authorization.split("Bearer ")[1]
+            payload = decode_token(token)
+            user_id = payload.get("sub") or payload.get("user_id")
+
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found")
+            
+            return {
+                "message": "Language preference saved successfully", 
+                "language": preference.language,
+                "storage": "backend"
+            }
+        else:
+            # Guest user - allow but don't save to backend
+            return {
+                "message": "Language preference saved locally", 
+                "language": preference.language,
+                "storage": "localStorage",
+                "guest": True
+            }
+
+    except HTTPException:
+        return {
+            "message": "Language preference saved locally", 
+            "language": preference.language,
+            "storage": "localStorage",
+            "guest": True
+        }
+    except Exception as e:
+        logger.error(f"Error saving language preference: {e}")
+        # For guest users, still return success with localStorage
+        return {
+            "message": "Language preference saved locally", 
+            "language": preference.language,
+            "storage": "localStorage",
+            "guest": True
+        }
+
+@router.get("/language")
+def get_user_language(
+    authorization: str = Header(...),
+    db: Session = Depends(get_db)
+):
+    """Get user's language preference"""
+    try:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
+
+        token = authorization.split("Bearer ")[1]
+        payload = decode_token(token)
+        user_id = payload.get("sub") or payload.get("user_id")
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Get language preference from settings - try with fallback to "en"
+        try:
+            from backend.db.settings import Settings
+
+            setting = db.query(Settings).filter(
+                Settings.key == "language",
+                Settings.user_id == user_id
+            ).first()
+
+            language = setting.value if setting else "en"
+        except Exception as settings_error:
+            # If Settings table doesn't exist, fallback to "en"
+            logger.warn(f"Settings table not available, defaulting to 'en': {settings_error}")
+            language = "en"
+
+        return {"language": language}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving language preference: {e}")
+        return {"language": "en"}  # Fallback to English

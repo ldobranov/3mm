@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test - Multi-Language Settings</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; text-align: center; }
+        .section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .section h2 { color: #555; margin-top: 0; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        button.success { background: #28a745; }
+        button.danger { background: #dc3545; }
+        input, select { padding: 8px; margin: 5px; width: 200px; border: 1px solid #ddd; border-radius: 4px; }
+        textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        .result { background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 4px; border: 1px solid #dee2e6; font-family: monospace; white-space: pre-wrap; }
+        .success { border-left: 4px solid #28a745; }
+        .error { border-left: 4px solid #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Multi-Language Settings API Test</h1>
+        
+        <!-- Language Settings Test -->
+        <div class="section">
+            <h2>🌍 Language-Specific Settings Test</h2>
+            
+            <label>Setting Key:</label>
+            <input type="text" id="settingKey" value="site_name" placeholder="e.g., site_name">
+            <br>
+            
+            <label>Language:</label>
+            <select id="settingLanguage">
+                <option value="bg">Bulgarian (bg)</option>
+                <option value="en">English (en)</option>
+            </select>
+            <br>
+            
+            <label>Value:</label>
+            <input type="text" id="settingValue" placeholder="Setting value">
+            <br>
+            
+            <label>Description:</label>
+            <input type="text" id="settingDescription" placeholder="Setting description">
+            <br>
+            
+            <button onclick="createLanguageSetting()" class="success">Create/Update Language Setting</button>
+            <button onclick="getLanguageSettings()">Get Language Settings</button>
+            <button onclick="getAllSettings()">Get All Settings</button>
+            
+            <div id="languageResult" class="result"></div>
+        </div>
+
+        <!-- Language Persistence Test -->
+        <div class="section">
+            <h2>💾 Language Persistence Test</h2>
+            
+            <button onclick="testLanguagePersistence()" class="success">Test Bulgarian Persistence</button>
+            <button onclick="checkStoredLanguage()">Check Stored Language</button>
+            
+            <div id="persistenceResult" class="result"></div>
+        </div>
+
+        <!-- Direct API Test -->
+        <div class="section">
+            <h2>🚀 Direct API Test</h2>
+            
+            <label>API Endpoint:</label>
+            <input type="text" id="apiEndpoint" value="/settings/read" placeholder="API endpoint">
+            <br>
+            
+            <label>Method:</label>
+            <select id="apiMethod">
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+                <option value="DELETE">DELETE</option>
+            </select>
+            <br>
+            
+            <label>Request Body (JSON):</label>
+            <textarea id="apiBody" placeholder='{"key": "test", "value": "test_value"}'></textarea>
+            <br>
+            
+            <button onclick="callAPI()">Call API</button>
+            
+            <div id="apiResult" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8887';
+
+        // Test 1: Create Language-Specific Setting
+        async function createLanguageSetting() {
+            const key = document.getElementById('settingKey').value;
+            const language = document.getElementById('settingLanguage').value;
+            const value = document.getElementById('settingValue').value;
+            const description = document.getElementById('settingDescription').value;
+
+            if (!key || !value) {
+                showResult('languageResult', 'Error: Please enter both key and value', true);
+                return;
+            }
+
+            const requestData = {
+                key: key,
+                value: value,
+                description: description || `${key} setting`,
+                language_code: language
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/settings/create`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('languageResult', `✅ SUCCESS: Created/Updated ${key} for ${language}\n${JSON.stringify(data, null, 2)}`, false);
+                } else {
+                    showResult('languageResult', `❌ ERROR: ${response.status}\n${JSON.stringify(data, null, 2)}`, true);
+                }
+            } catch (error) {
+                showResult('languageResult', `❌ NETWORK ERROR: ${error.message}`, true);
+            }
+        }
+
+        // Test 2: Get Language Settings
+        async function getLanguageSettings() {
+            const language = document.getElementById('settingLanguage').value;
+            
+            try {
+                const response = await fetch(`${API_BASE}/settings/language/${language}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('languageResult', `✅ SUCCESS: Retrieved ${data.items?.length || 0} settings for ${language}\n${JSON.stringify(data, null, 2)}`, false);
+                } else {
+                    showResult('languageResult', `❌ ERROR: ${response.status}\n${JSON.stringify(data, null, 2)}`, true);
+                }
+            } catch (error) {
+                showResult('languageResult', `❌ NETWORK ERROR: ${error.message}`, true);
+            }
+        }
+
+        // Test 3: Get All Settings
+        async function getAllSettings() {
+            try {
+                const response = await fetch(`${API_BASE}/settings/read`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('languageResult', `✅ SUCCESS: Retrieved ${data.items?.length || 0} total settings\n${JSON.stringify(data, null, 2)}`, false);
+                } else {
+                    showResult('languageResult', `❌ ERROR: ${response.status}\n${JSON.stringify(data, null, 2)}`, true);
+                }
+            } catch (error) {
+                showResult('languageResult', `❌ NETWORK ERROR: ${error.message}`, true);
+            }
+        }
+
+        // Test 4: Language Persistence
+        async function testLanguagePersistence() {
+            // Set Bulgarian as preferred language in localStorage
+            localStorage.setItem('preferredLanguage', 'bg');
+            
+            // Also save to backend
+            try {
+                await fetch(`${API_BASE}/language/set`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + (localStorage.getItem('authToken') || 'test_token')
+                    },
+                    body: JSON.stringify({ language: 'bg' })
+                });
+            } catch (error) {
+                console.log('Backend language save failed:', error);
+            }
+            
+            showResult('persistenceResult', `✅ SUCCESS: Set Bulgarian as preferred language\n\nLocalStorage: ${localStorage.getItem('preferredLanguage')}\nNow refresh the page and check if it stays Bulgarian!`, false);
+        }
+
+        function checkStoredLanguage() {
+            const storedLang = localStorage.getItem('preferredLanguage');
+            showResult('persistenceResult', `Current stored language: ${storedLang || 'Not set'}\n\nThis should be "bg" (Bulgarian) if the persistence is working correctly.`, false);
+        }
+
+        // Test 5: Direct API Call
+        async function callAPI() {
+            const endpoint = document.getElementById('apiEndpoint').value;
+            const method = document.getElementById('apiMethod').value;
+            const bodyText = document.getElementById('apiBody').value;
+            
+            const options = {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            };
+            
+            if (bodyText.trim()) {
+                try {
+                    options.body = JSON.stringify(JSON.parse(bodyText));
+                } catch (error) {
+                    showResult('apiResult', `❌ JSON PARSE ERROR: ${error.message}`, true);
+                    return;
+                }
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`, options);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('apiResult', `✅ SUCCESS: ${method} ${endpoint}\n${JSON.stringify(data, null, 2)}`, false);
+                } else {
+                    showResult('apiResult', `❌ ERROR: ${response.status}\n${JSON.stringify(data, null, 2)}`, true);
+                }
+            } catch (error) {
+                showResult('apiResult', `❌ NETWORK ERROR: ${error.message}`, true);
+            }
+        }
+
+        // Helper function to show results
+        function showResult(elementId, message, isError) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `result ${isError ? 'error' : 'success'}`;
+        }
+
+        // Initialize page
+        window.onload = function() {
+            document.getElementById('settingValue').value = 'Test Bulgarian Site Name';
+            document.getElementById('settingDescription').value = 'Site name in Bulgarian';
+        };
+    </script>
+</body>
+</html>

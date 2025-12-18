@@ -66,7 +66,7 @@
 import { defineComponent, ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { useThemeStore } from '@/stores/theme';
-import http from '@/utils/http';
+import http from '@/utils/dynamic-http';
 
 interface Command {
   id: string;

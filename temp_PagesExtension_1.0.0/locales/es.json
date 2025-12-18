@@ -1,0 +1,26 @@
+{
+  "settings": {
+    "title": "Título de la extensión",
+    "defaultPublic": "Por defecto páginas públicas",
+    "maxPages": "Máximo de páginas por usuario"
+  },
+  "pages": {
+    "title": "Páginas",
+    "createNew": "Crear nueva página",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "view": "Ver",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "titleLabel": "Título de la página",
+    "contentLabel": "Contenido de la página",
+    "slugLabel": "Slug URL",
+    "publicLabel": "Hacer pública",
+    "loading": "Cargando...",
+    "noPages": "No se encontraron páginas. ¡Crea tu primera página!",
+    "confirmDelete": "Confirmar eliminación",
+    "deleteMessage": "¿Estás seguro de que quieres eliminar esta página? Esta acción no se puede deshacer.",
+    "pageSaved": "Página guardada exitosamente",
+    "pageDeleted": "Página eliminada exitosamente"
+  }
+}

@@ -1,12 +1,12 @@
 <template>
-  <div class="view">
+  <div class="view" :key="currentLanguage">
     <div class="view-header">
-      <h1 class="view-title">User Management</h1>
-      <button 
+      <h1 class="view-title">{{ t('users.title', 'User Management') }}</h1>
+      <button
         class="button button-primary"
         @click="openCreateModal"
       >
-        <i class="bi bi-person-plus" style="margin-right: 0.5rem;"></i>Create New User
+        <i class="bi bi-person-plus" style="margin-right: 0.5rem;"></i>{{ t('users.createNew', 'Create New User') }}
       </button>
     </div>
 
@@ -180,8 +180,9 @@
 
 <script lang="ts">
 import { defineComponent, ref, onMounted, computed } from 'vue';
-import http from '@/utils/http';
+import http from '@/utils/dynamic-http';
 import { useSettingsStore } from '@/stores/settings';
+import { useI18n } from '@/utils/i18n';
 
 interface User {
   id: number;
@@ -194,6 +195,7 @@ interface User {
 export default defineComponent({
   name: 'Users',
   setup() {
+    const { t, currentLanguage } = useI18n();
     const settingsStore = useSettingsStore();
     const styleSettings = computed(() => settingsStore.styleSettings);
     const users = ref<User[]>([]);
@@ -324,6 +326,8 @@ export default defineComponent({
     });
 
     return {
+      t,
+      currentLanguage,
       users,
       loading,
       errorMessage,

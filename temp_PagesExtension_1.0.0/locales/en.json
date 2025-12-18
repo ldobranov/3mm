@@ -1,0 +1,50 @@
+{
+  "settings": {
+    "title": "Extension Title",
+    "defaultPublic": "Default to Public Pages",
+    "maxPages": "Maximum Pages per User"
+  },
+  "pages": {
+    "title": "Pages",
+    "createNew": "Create New Page",
+    "edit": "Edit",
+    "delete": "Delete",
+    "view": "View",
+    "save": "Save",
+    "cancel": "Cancel",
+    "titleLabel": "Page Title",
+    "contentLabel": "Page Content",
+    "slugLabel": "URL Slug",
+    "publicLabel": "Make Public",
+    "loading": "Loading...",
+    "noPages": "No pages found. Create your first page!",
+    "confirmDelete": "Confirm Delete",
+    "deleteMessage": "Are you sure you want to delete this page? This action cannot be undone.",
+    "pageSaved": "Page saved successfully",
+    "pageDeleted": "Page deleted successfully",
+    "titleRequired": "Title is required",
+    "pageCreated": "Page created successfully!",
+    "creating": "Creating...",
+    "create": "Create Page",
+    "editPage": "Edit Page",
+    "pageUpdated": "Page updated successfully!",
+    "updating": "Updating...",
+    "update": "Update Page",
+    "slug": "Slug",
+    "content": "Content",
+    "isPublic": "Make page public",
+    "titlePlaceholder": "Enter page title",
+    "slugPlaceholder": "auto-generated-from-title",
+    "contentPlaceholder": "Enter page content (HTML supported)"
+  },
+  "pageView": {
+    "loading": "Loading page...",
+    "error": "Error",
+    "pageNotFound": "Page Not Found",
+    "pageNotFoundDesc": "The page you are looking for does not exist or has been moved.",
+    "retry": "Try Again",
+    "backToPages": "← Back to Pages"
+  },
+  "extensionNotEnabled": "Pages Extension Not Enabled",
+  "enableExtensionMessage": "Please enable the Pages extension in the Extensions panel to manage pages."
+}

@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router';
 import { useDisplaysStore } from '../stores/displays';
 import { useWidgetsStore, type Widget } from '@/stores/widgets';
 import { useSettingsStore } from '@/stores/settings';
+import { useI18n } from '@/utils/i18n';
 import DisplayCanvas from '@/components/DisplayCanvas.vue';
 import WidgetPalette from '@/components/WidgetPalette.vue';
 import EditorPanel from '@/components/EditorPanel.vue';
@@ -13,10 +14,12 @@ const displayId = Number(route.params.id);
 const displays = useDisplaysStore();
 const widgets = useWidgetsStore();
 const settingsStore = useSettingsStore();
+const { t } = useI18n();
 const styleSettings = computed(() => settingsStore.styleSettings);
 
 const items = computed(() => widgets.list(displayId));
 const loading = ref(true);
+const error = ref<string | null>(null);
 
 // Preview route params - use the dashboard owner's username, not the current user's
 const previewUsername = computed(() => {
@@ -92,12 +95,25 @@ const originalConfigs = new Map<number, any>();
 onMounted(async () => {
   try {
     loading.value = true;
+    error.value = null;
+
+    // Validate displayId
+    if (!displayId || isNaN(displayId) || displayId <= 0) {
+      throw new Error(`Invalid display ID: ${route.params.id}`);
+    }
+
+    console.log('Loading display:', displayId);
     await displays.getById(displayId);
+    console.log('Display loaded, loading widgets...');
     await widgets.fetchForDisplay(displayId);
+    console.log('Widgets loaded successfully');
+  } catch (err: any) {
+    console.error('Error loading display editor:', err);
+    error.value = err.message || 'Failed to load display';
   } finally {
     loading.value = false;
   }
-  
+
   // Add keyboard listener for settings modal
   window.addEventListener('keydown', handleSettingsKeydown);
 });
@@ -196,6 +212,14 @@ function handleAddFromDrop(payload: { type: Widget['type']; x: number; y: number
   <div class="view">
     <div v-if="loading" class="text-center" style="padding: 2rem 0;">
       <div class="spinner" role="status" aria-label="Loading"></div>
+      {{ t('dashboard.editor.loading') }}
+    </div>
+
+    <div v-else-if="error" class="text-center" style="padding: 2rem 0;">
+      <div class="alert alert-error">
+        <i class="bi bi-exclamation-triangle"></i>
+        {{ t('dashboard.editor.errorLoading') }}: {{ error }}
+      </div>
     </div>
 
     <div v-else>
@@ -205,16 +229,16 @@ function handleAddFromDrop(payload: { type: Widget['type']; x: number; y: number
           <div class="header-info">
             <h1 class="view-title">
               <i class="bi bi-pencil-square"></i>
-              Edit: {{ displays.active?.title }}
+              {{ t('dashboard.editor.editTitle') }}: {{ displays.active?.title }}
             </h1>
             <div class="header-meta">
               <span class="meta-item">
                 <i class="bi bi-link-45deg"></i>
-                <strong>Slug:</strong> /{{ displays.active?.slug }}
+                <strong>{{ t('dashboard.editor.slugLabel') }}</strong> /{{ displays.active?.slug }}
               </span>
               <span class="meta-item">
                 <i :class="displays.active?.is_public ? 'bi bi-globe' : 'bi bi-lock'"></i>
-                {{ displays.active?.is_public ? 'Public' : 'Private' }}
+                {{ displays.active?.is_public ? t('dashboard.editor.publicLabel') : t('dashboard.editor.privateLabel') }}
               </span>
             </div>
           </div>
@@ -226,14 +250,14 @@ function handleAddFromDrop(payload: { type: Widget['type']; x: number; y: number
               target="_blank"
             >
               <i class="bi bi-eye"></i>
-              Preview
+              {{ t('dashboard.editor.previewButton') }}
             </RouterLink>
             <button
               class="button button-outline"
               @click="openSettings"
             >
               <i class="bi bi-gear"></i>
-              Settings
+              {{ t('dashboard.editor.settingsButton') }}
             </button>
           </div>
         </div>
@@ -243,7 +267,7 @@ function handleAddFromDrop(payload: { type: Widget['type']; x: number; y: number
     <div class="card palette-card" :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }" style="margin-bottom: 1.5rem;">
       <h5 class="card-title">
         <i class="bi bi-plus-square"></i>
-        Add Widgets
+        {{ t('dashboard.editor.addWidgetsTitle') }}
       </h5>
       <WidgetPalette @add="addWidget" />
     </div>
@@ -289,7 +313,7 @@ function handleAddFromDrop(payload: { type: Widget['type']; x: number; y: number
           :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }"
         >
           <div style="display:flex; align-items:center; justify-content:space-between; padding-bottom:0.5rem; border-bottom:1px solid var(--card-border);">
-            <div class="view-subtitle" style="margin:0;">Dashboard Settings</div>
+            <div class="view-subtitle" style="margin:0;">{{ t('dashboard.editor.dashboardSettingsTitle') }}</div>
             <button
               class="button button-outline button-sm"
               type="button"
@@ -301,21 +325,21 @@ function handleAddFromDrop(payload: { type: Widget['type']; x: number; y: number
 
           <div class="modal-content">
             <div class="form-group">
-              <label class="form-label">Title</label>
+              <label class="form-label">{{ t('dashboard.editor.titleField') }}</label>
               <input
                 type="text"
                 class="input"
                 v-model="settings.title"
-                placeholder="Dashboard title"
+                :placeholder="t('dashboard.titlePlaceholder')"
               />
             </div>
             <div class="form-group">
-              <label class="form-label">Slug</label>
+              <label class="form-label">{{ t('dashboard.editor.slugField') }}</label>
               <input
                 type="text"
                 class="input"
                 v-model="settings.slug"
-                placeholder="dashboard-slug"
+                :placeholder="t('dashboard.slugPlaceholder')"
               />
             </div>
             <div class="form-group">
@@ -325,7 +349,7 @@ function handleAddFromDrop(payload: { type: Widget['type']; x: number; y: number
                   class="input"
                   v-model="settings.is_public"
                 />
-                <span>Make dashboard public</span>
+                <span>{{ t('dashboard.editor.makePublicCheckbox') }}</span>
               </label>
             </div>
           </div>
@@ -336,14 +360,14 @@ function handleAddFromDrop(payload: { type: Widget['type']; x: number; y: number
               type="button"
               @click.stop="showSettings=false"
             >
-              Cancel
+              {{ t('dashboard.editor.cancelButton') }}
             </button>
             <button
               class="button button-primary"
               type="button"
               @click.stop="saveSettings"
             >
-              Save
+              {{ t('dashboard.editor.saveButton') }}
             </button>
           </div>
         </div>

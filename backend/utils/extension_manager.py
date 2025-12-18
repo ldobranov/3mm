@@ -14,6 +14,7 @@ from backend.database import get_db
 from backend.utils.extension_security import security_manager
 from backend.utils.extension_database import extension_db_manager
 from backend.utils.extension_communication import event_bus, service_registry, data_sharing
+from backend.utils.extension_dependencies import get_extension_dependency_manager
 from backend.utils.i18n import i18n_manager
 
 
@@ -157,6 +158,25 @@ class ExtensionManager:
             context.event_bus = event_bus
             context.service_registry = service_registry
             context.data_sharing = data_sharing
+
+            # Check extension dependencies before initialization
+            dependency_manager = get_extension_dependency_manager()
+            dependency_check = dependency_manager.check_dependencies(manifest)
+
+            if not dependency_check["satisfied"]:
+                print(f"⚠️  Extension {extension_id} dependencies not satisfied:")
+                for missing in dependency_check["missing"]:
+                    if not missing["optional"]:
+                        print(f"❌ Required dependency missing: {missing['name']} {missing['required_version']}")
+                        return False  # Fail initialization for required missing dependencies
+                    else:
+                        print(f"ℹ️  Optional dependency not available: {missing['name']} {missing['required_version']}")
+
+                for conflict in dependency_check["version_conflicts"]:
+                    print(f"❌ Version conflict: {conflict['name']} (required: {conflict['required_version']}, installed: {conflict['installed_version']})")
+                    return False  # Fail initialization for version conflicts
+            else:
+                print(f"✅ Extension {extension_id} dependencies satisfied")
 
             # Call initialization function
             if hasattr(module, 'initialize_extension'):

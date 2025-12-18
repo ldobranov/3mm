@@ -9,6 +9,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from backend.db.base import Base
 from typing import Generator
+import json
+
+# Load config from root config.json
+config_path = os.path.join(os.path.dirname(__file__), '..', 'config.json')
+with open(config_path, 'r') as f:
+    config = json.load(f)
 
 # Import all models to ensure they're registered with SQLAlchemy
 from backend.db.user import User
@@ -18,27 +24,36 @@ from backend.db.permission import Permission
 from backend.db.page import Page
 from backend.db.display import Display
 from backend.db.widget import Widget
-from backend.db.menu import Menu
+from backend.db.universal_translation import Menu
 from backend.db.settings import Settings
 from backend.db.role import Role
 from backend.db.notification import Notification
 from backend.db.extension import Extension
+import logging
 
-# Get the absolute path to the backend directory
-BACKEND_DIR = Path(__file__).parent.absolute()
-DB_PATH = BACKEND_DIR / "mega_monitor.db"
+logger = logging.getLogger(__name__)
 
-# Use absolute path for the database
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+# PostgreSQL connection string with proper Unicode support
+DATABASE_URL = os.getenv("DATABASE_URL", config['backend']['database_url'])
+
+def get_db_url():
+    """Get database URL for async operations"""
+    return DATABASE_URL
+
+# Configure engine with proper Unicode support
+engine = create_engine(
+    DATABASE_URL,
+    json_serializer=lambda obj: json.dumps(obj, ensure_ascii=False),
+    json_deserializer=lambda obj: json.loads(obj)
+)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     """Initialize the database schema."""
-    print("DEBUG: Creating database tables...")
-    print(f"DEBUG: Tables to create: {list(Base.metadata.tables.keys())}")
+    logger.info("Creating database tables...")
     Base.metadata.create_all(bind=engine)
-    print("DEBUG: Database tables created successfully")
+    logger.info("Database tables created successfully")
 
 # Fixed the `get_db` function to work correctly with FastAPI's `Depends`.
 def get_db():

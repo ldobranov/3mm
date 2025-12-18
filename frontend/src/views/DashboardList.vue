@@ -2,7 +2,10 @@
 import { ref, onMounted, computed } from 'vue';
 import { useDisplaysStore } from '@/stores/displays';
 import { useSettingsStore } from '@/stores/settings';
-import http from '@/utils/http';
+import { useI18n } from '@/utils/i18n';
+import http from '@/utils/dynamic-http';
+
+const { t, currentLanguage } = useI18n();
 
 const store = useDisplaysStore();
 const settingsStore = useSettingsStore();
@@ -78,7 +81,7 @@ async function createDisplay() {
     await loadDisplays();
   } catch (error) {
     console.error('Failed to create display:', error);
-    alert('Failed to create dashboard. Please try again.');
+    alert(t('dashboard.createError', 'Failed to create dashboard. Please try again.'));
   }
 }
 
@@ -98,7 +101,7 @@ async function deleteDisplay() {
     await loadDisplays();
   } catch (error) {
     console.error('Failed to delete display:', error);
-    alert('Failed to delete dashboard. Please try again.');
+    alert(t('dashboard.deleteError', 'Failed to delete dashboard. Please try again.'));
   }
 }
 
@@ -123,21 +126,21 @@ function getOwnerUsername(display: any): string {
 </script>
 
 <template>
-  <div class="view">
+  <div class="view" :key="currentLanguage">
     <div class="view-header">
-      <h1 class="view-title">Dashboard Management</h1>
-      <button 
+      <h1 class="view-title">{{ t('dashboard.title', 'Dashboard Management') }}</h1>
+      <button
         class="button button-primary"
         @click="openCreateModal"
       >
-        <i class="bi bi-plus-circle" style="margin-right: 0.5rem;"></i>Create New Dashboard
+        <i class="bi bi-plus-circle" style="margin-right: 0.5rem;"></i>{{ t('dashboard.createNew', 'Create New Dashboard') }}
       </button>
     </div>
 
-    <h2 class="view-subtitle">Existing Dashboards</h2>
+    <h2 class="view-subtitle">{{ t('dashboard.existingDashboards', 'Existing Dashboards') }}</h2>
     <div v-if="allDisplays.length === 0" class="alert alert-info">
       <i class="bi bi-info-circle" style="margin-right: 0.5rem;"></i>
-      No dashboards available. Create your first dashboard using the button above!
+      {{ t('dashboard.noDashboards', 'No dashboards available. Create your first dashboard using the button above!') }}
     </div>
     
     <div v-else class="grid">
@@ -145,35 +148,35 @@ function getOwnerUsername(display: any): string {
         <h3 class="dashboard-title">
           {{ d.title || d.name }}
           <span v-if="!isOwner(d)" class="shared-indicator">
-            (Shared with you)
+            ({{ t('dashboard.sharedWithYou', 'Shared with you') }})
           </span>
         </h3>
         <div class="dashboard-meta">
           <span class="chip" :class="d.is_public ? 'chip-public' : 'chip-private'">
-            {{ d.is_public ? 'Public' : 'Private' }}
+            {{ d.is_public ? t('dashboard.public', 'Public') : t('dashboard.private', 'Private') }}
           </span>
         </div>
-        <div class="dashboard-slug">Slug: /{{ d.slug }}</div>
+        <div class="dashboard-slug">{{ t('dashboard.slug', 'Slug') }}: /{{ d.slug }}</div>
         <div class="dashboard-actions">
           <router-link
             v-if="d.slug"
             class="button button-outline button-sm"
             :to="{ name: 'PublicDisplay', params: { username: getOwnerUsername(d), slug: d.slug } }"
           >
-            <i class="bi bi-eye"></i>Preview
+            <i class="bi bi-eye"></i>{{ t('dashboard.preview', 'Preview') }}
           </router-link>
           <router-link
             class="button button-outline button-sm"
             :to="`/dashboard/${d.id}/edit`"
           >
-            <i class="bi bi-pencil"></i>{{ isOwner(d) ? 'Edit' : 'View' }}
+            <i class="bi bi-pencil"></i>{{ isOwner(d) ? t('dashboard.edit', 'Edit') : t('dashboard.view', 'View') }}
           </router-link>
           <button
             v-if="isOwner(d)"
             class="button button-outline button-sm button-danger"
             @click="confirmDelete(d)"
           >
-            <i class="bi bi-trash"></i>Delete
+            <i class="bi bi-trash"></i>{{ t('dashboard.delete', 'Delete') }}
           </button>
         </div>
       </div>
@@ -187,34 +190,34 @@ function getOwnerUsername(display: any): string {
         <div class="modal-container">
           <div class="modal-surface modal-lg" role="dialog" aria-modal="true" @click.stop :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
             <div style="display:flex; align-items:center; justify-content:space-between; padding-bottom:0.5rem; border-bottom:1px solid var(--card-border);">
-              <h5 class="view-subtitle" style="margin:0;">Create New Dashboard</h5>
+              <h5 class="view-subtitle" style="margin:0;">{{ t('dashboard.createNew', 'Create New Dashboard') }}</h5>
               <button type="button" class="button button-outline button-sm" @click="closeModal">×</button>
             </div>
-  
+
             <form @submit.prevent="createDisplay" class="modal-form">
               <div class="form-group">
-                <label class="form-label">Title</label>
+                <label class="form-label">{{ t('dashboard.titleLabel', 'Title') }}</label>
                 <input
                   type="text"
                   class="input"
                   v-model="title"
-                  placeholder="Dashboard title"
+                  :placeholder="t('dashboard.titlePlaceholder', 'Dashboard title')"
                   required
                 />
               </div>
-  
+
               <div class="form-group">
-                <label class="form-label">Slug</label>
+                <label class="form-label">{{ t('dashboard.slugLabel', 'Slug') }}</label>
                 <input
                   type="text"
                   class="input"
                   v-model="slug"
-                  placeholder="dashboard-slug"
+                  :placeholder="t('dashboard.slugPlaceholder', 'dashboard-slug')"
                   required
                 />
-                <div class="form-help">URL: /@{{ currentUsername }}/{{ slug || 'dashboard-slug' }}</div>
+                <div class="form-help">{{ t('dashboard.urlLabel', 'URL') }}: /@{{ currentUsername }}/{{ slug || 'dashboard-slug' }}</div>
               </div>
-  
+
               <div class="form-group">
                 <label class="checkbox-label">
                   <input
@@ -223,16 +226,16 @@ function getOwnerUsername(display: any): string {
                     id="isPublic"
                     v-model="isPublic"
                   />
-                  <span>Make dashboard public</span>
+                  <span>{{ t('dashboard.makePublic', 'Make dashboard public') }}</span>
                 </label>
               </div>
-  
+
               <div class="modal-actions">
                 <button type="button" class="button button-secondary" @click="closeModal">
-                  Cancel
+                  {{ t('common.cancel', 'Cancel') }}
                 </button>
                 <button type="submit" class="button button-primary">
-                  <i class="bi bi-save"></i>Create
+                  <i class="bi bi-save"></i>{{ t('dashboard.create', 'Create') }}
                 </button>
               </div>
             </form>
@@ -249,22 +252,22 @@ function getOwnerUsername(display: any): string {
         <div class="modal-container">
           <div class="modal-surface modal-sm" role="dialog" aria-modal="true" @click.stop :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
             <div style="display:flex; align-items:center; justify-content:space-between; padding-bottom:0.5rem; border-bottom:1px solid var(--card-border);">
-              <h5 class="view-subtitle" style="margin:0;">Confirm Delete</h5>
+              <h5 class="view-subtitle" style="margin:0;">{{ t('dashboard.confirmDelete', 'Confirm Delete') }}</h5>
               <button type="button" class="button button-outline button-sm" @click="showDeleteModal = false">×</button>
             </div>
             <div class="modal-content">
-              <p>Are you sure you want to delete the dashboard "{{ dashboardToDelete?.title || dashboardToDelete?.name }}"?</p>
+              <p>{{ t('dashboard.confirmDeleteMessage', 'Are you sure you want to delete the dashboard') }} "{{ dashboardToDelete?.title || dashboardToDelete?.name }}"?</p>
               <p class="warning-text">
                 <i class="bi bi-exclamation-triangle"></i>
-                This action cannot be undone. All widgets in this dashboard will be deleted.
+                {{ t('dashboard.deleteWarning', 'This action cannot be undone. All widgets in this dashboard will be deleted.') }}
               </p>
             </div>
             <div class="modal-actions">
               <button class="button button-secondary" @click="showDeleteModal = false">
-                Cancel
+                {{ t('common.cancel', 'Cancel') }}
               </button>
               <button class="button button-danger" @click="deleteDisplay">
-                <i class="bi bi-trash"></i>Delete
+                <i class="bi bi-trash"></i>{{ t('dashboard.delete', 'Delete') }}
               </button>
             </div>
           </div>

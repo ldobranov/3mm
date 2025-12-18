@@ -1,0 +1,11 @@
+{
+  "frontend": {
+    "backend_url": "http://localhost:8887",
+    "frontend_url": "http://localhost:5173"
+  },
+  "backend": {
+    "database_url": "postgresql://lazar:admin@localhost:5432/mega_monitor",
+    "host": "0.0.0.0",
+    "port": 8887
+  }
+}

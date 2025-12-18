@@ -1,7 +1,7 @@
 <template>
-  <div class="view">
+  <div class="view" :key="currentLanguage">
     <div class="view-header">
-      <h1 class="view-title">Login</h1>
+      <h1 class="view-title">{{ t('login.title', 'Login') }}</h1>
     </div>
 
     <div class="auth-container">
@@ -9,23 +9,23 @@
         <div class="card-content">
           <form @submit.prevent="login" class="auth-form">
             <div class="form-group">
-              <label class="form-label">Email</label>
+              <label class="form-label">{{ t('login.email', 'Email') }}</label>
               <input
                 v-model="email"
                 type="email"
                 class="input"
-                placeholder="Enter your email"
+                :placeholder="t('login.emailPlaceholder', 'Enter your email')"
                 required
               />
             </div>
 
             <div class="form-group">
-              <label class="form-label">Password</label>
+              <label class="form-label">{{ t('login.password', 'Password') }}</label>
               <input
                 v-model="password"
                 type="password"
                 class="input"
-                placeholder="Enter your password"
+                :placeholder="t('login.passwordPlaceholder', 'Enter your password')"
                 required
               />
             </div>
@@ -34,7 +34,7 @@
               type="submit"
               class="button button-primary auth-button"
             >
-              <i class="bi bi-box-arrow-in-right auth-icon"></i>Login
+              <i class="bi bi-box-arrow-in-right auth-icon"></i>{{ t('login.login', 'Login') }}
             </button>
           </form>
 
@@ -51,24 +51,33 @@
 import { defineComponent, ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSettingsStore } from '@/stores/settings';
-import http from '@/utils/http';
+import { useI18n } from '@/utils/i18n';
+import http from '@/utils/dynamic-http';
 
 export default defineComponent({
   setup() {
     const settingsStore = useSettingsStore();
+    const { t, currentLanguage } = useI18n();
     const styleSettings = computed(() => settingsStore.styleSettings);
-    
+
     const email = ref('');
     const password = ref('');
     const errorMessage = ref('');
     const router = useRouter();
 
     const login = async () => {
+      console.log('=== LOGIN FUNCTION CALLED ===');
+      console.log('Login attempt started');
+      console.log('Email:', email.value);
+      console.log('Password length:', password.value.length);
+
       try {
-        const response = await http.post('/user/login', {
+        console.log('Making HTTP request to /api/user/login');
+        const response = await http.post('/api/user/login', {
           email: email.value,
           password: password.value,
         });
+        console.log('HTTP response received:', response);
 
         // Store the token first
         const token = response.data.token;
@@ -81,7 +90,7 @@ export default defineComponent({
 
         // Fetch profile to get role, username, and user_id, then store them
         try {
-          const profileRes = await http.get('/user/profile');
+          const profileRes = await http.get('/api/user/profile');
           const role = profileRes.data?.role ?? '';
           const username = profileRes.data?.username ?? '';
           const userId = profileRes.data?.id ?? '';
@@ -109,11 +118,11 @@ export default defineComponent({
       } catch (err) {
         const error = err as any;
         if (error.response && error.response.status === 422) {
-          errorMessage.value = 'Invalid email or password';
+          errorMessage.value = t('login.invalidEmailPassword', 'Invalid email or password');
         } else if (error.response && error.response.status === 401) {
-          errorMessage.value = 'Invalid credentials';
+          errorMessage.value = t('login.invalidCredentials', 'Invalid credentials');
         } else {
-          errorMessage.value = 'An error occurred. Please try again.';
+          errorMessage.value = t('login.errorOccurred', 'An error occurred. Please try again.');
         }
       }
     };
@@ -123,7 +132,9 @@ export default defineComponent({
       password,
       login,
       errorMessage,
-      styleSettings
+      styleSettings,
+      currentLanguage,
+      t
     };
   },
 });
