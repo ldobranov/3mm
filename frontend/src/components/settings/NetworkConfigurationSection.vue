@@ -292,9 +292,12 @@ export default defineComponent({
         };
         
         // Update form
-        configForm.backend_url = response.data.backend_url;
-        configForm.frontend_url = response.data.frontend_url;
+        configForm.backend_url = backendUrl;
+        configForm.frontend_url = frontendUrl;
         configForm.description = currentConfig.value.description || '';
+
+        // Apply to the running app immediately (no reload)
+        await http.setBackendUrlOverride(backendUrl);
         
         // Emit event to parent
         emit('config-updated', currentConfig.value);
@@ -348,6 +351,9 @@ export default defineComponent({
           description: response.data.config.description,
           is_default: false
         };
+
+        // Apply to the running app immediately (no reload)
+        await http.setBackendUrlOverride(backendUrl);
         
         // Emit event to parent
         emit('config-updated', currentConfig.value);
@@ -372,6 +378,9 @@ export default defineComponent({
       saving.value = true;
       
       try {
+        // Remove any persistent override so the app returns to normal detection/default logic
+        await http.clearBackendUrlOverride();
+
         // Update form to default values
         configForm.backend_url = defaultBackendUrl;
         configForm.frontend_url = defaultFrontendUrl;

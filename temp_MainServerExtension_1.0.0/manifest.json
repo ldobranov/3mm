@@ -1,0 +1,24 @@
+{
+  "name": "MainServerExtension",
+  "version": "1.0.0",
+  "type": "extension",
+  "description": "Manages and distributes updates to Raspberry Pi devices",
+  "author": "Kilo Code",
+  "backend_entry": "main_server_extension.py",
+  "frontend_entry": "MainServerExtension.vue",
+  "frontend_routes": [
+    {
+      "path": "/main-server",
+      "component": "MainServerExtension.vue",
+      "name": "MainServerExtension",
+      "meta": { "requiresAuth": true }
+    }
+  ],
+  "locales": {
+    "supported": ["en", "bg"],
+    "default": "en",
+    "directory": "locales/"
+  },
+  "permissions": ["database_read", "database_write", "network_access"],
+  "public_endpoints": ["/api/main-server/updates"]
+}

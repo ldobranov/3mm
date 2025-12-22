@@ -1,0 +1,56 @@
+{
+  "language": {
+    "current_language": "Текущ език: Български",
+    "language_switched": "Езикът е променен",
+    "bulgarian": "Български",
+    "english": "Английски"
+  },
+  "extensions": {
+    "title": "Разширения",
+    "installed": "Инсталирани",
+    "available": "Достъпни",
+    "enabled": "Активни",
+    "disabled": "Неактивни",
+    "install": "Инсталирай",
+    "uninstall": "Деинсталирай",
+    "enable": "Активирай",
+    "disable": "Деактивирай",
+    "settings": "Настройки",
+    "description": "Описание",
+    "version": "Версия",
+    "author": "Автор"
+  },
+  "common": {
+    "login": "Влез",
+    "register": "Регистрирай се",
+    "logout": "Излез",
+    "save": "Запази",
+    "cancel": "Отказ",
+    "success": "Успешно",
+    "error": "Грешка",
+    "loading": "Зареждане",
+    "confirm": "Потвърди",
+    "delete": "Изтрий",
+    "edit": "Редактирай",
+    "add": "Добави",
+    "search": "Търси",
+    "filter": "Филтър",
+    "export": "Експортирай",
+    "import": "Импортирай"
+  },
+  "navigation": {
+    "dashboard": "Табло",
+    "displays": "Дисплеи",
+    "extensions": "Разширения",
+    "settings": "Настройки",
+    "users": "Потребители",
+    "profile": "Профил",
+    "logout": "Излез"
+  },
+  "i18n": {
+    "error_loading_translations": "Грешка при зареждане на преводите",
+    "translation_not_found": "Преводът не е намерен",
+    "invalid_language": "Невалиден език",
+    "language_not_supported": "Езикът не се поддържа"
+  }
+}

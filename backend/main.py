@@ -45,6 +45,7 @@ from backend.routes.monitoring_routes import router as monitoring_router
 from backend.routes.role_routes import router as role_router
 from backend.routes.group_routes import router as group_router
 from backend.routes.language_routes import router as language_router
+from backend.routes.ai_extension_builder_routes import router as ai_extension_builder_router
 
 # Import extension utilities
 from backend.utils.extension_updates import update_manager
@@ -148,6 +149,7 @@ app.include_router(extension_router)
 app.include_router(marketplace_router)
 app.include_router(monitoring_router)
 app.include_router(language_router, prefix="/api")
+app.include_router(ai_extension_builder_router)
 
 # Initialize the database schema
 init_db()

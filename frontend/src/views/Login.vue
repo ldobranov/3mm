@@ -38,6 +38,15 @@
             </button>
           </form>
 
+          <div class="auth-help">
+            <button type="button" class="button button-secondary" @click="resetNetwork">
+              {{ t('login.resetNetwork', 'Reset network settings') }}
+            </button>
+            <p v-if="resetMessage" class="help-text" style="margin: 0.5rem 0 0;">
+              {{ resetMessage }}
+            </p>
+          </div>
+
           <div v-if="errorMessage" class="alert alert-danger auth-alert">
             {{ errorMessage }}
           </div>
@@ -63,6 +72,7 @@ export default defineComponent({
     const email = ref('');
     const password = ref('');
     const errorMessage = ref('');
+    const resetMessage = ref('');
     const router = useRouter();
 
     const login = async () => {
@@ -127,11 +137,25 @@ export default defineComponent({
       }
     };
 
+    const resetNetwork = async () => {
+      resetMessage.value = '';
+      try {
+        await http.clearBackendUrlOverride();
+        resetMessage.value = t('login.resetNetworkDone', 'Network override cleared. Reloading…');
+        window.location.reload();
+      } catch (e) {
+        console.error('Failed to reset network override:', e);
+        resetMessage.value = t('login.resetNetworkFailed', 'Failed to reset network override');
+      }
+    };
+
     return {
       email,
       password,
       login,
       errorMessage,
+      resetMessage,
+      resetNetwork,
       styleSettings,
       currentLanguage,
       t

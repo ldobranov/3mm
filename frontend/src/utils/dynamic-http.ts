@@ -2,6 +2,15 @@ import axios from 'axios';
 import type { AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 import { getToken, refreshToken, clearAuth } from '@/utils/auth';
 
+const STORAGE_KEY_BACKEND_URL_OVERRIDE = 'mm_backend_url_override';
+
+function normalizeBaseUrl(url: string): string {
+  // Allow "" (proxy routing) explicitly.
+  const trimmed = (url ?? '').trim();
+  if (trimmed === '') return '';
+  return trimmed.replace(/\/+$/, '');
+}
+
 // Custom JSON stringify that preserves Unicode characters
 function stringifyPreserveUnicode(obj: any): string {
   if (obj === null || obj === undefined) {
@@ -10,7 +19,21 @@ function stringifyPreserveUnicode(obj: any): string {
 
   if (typeof obj === 'string') {
     // For strings, wrap in quotes but don't escape Unicode
-    return '"' + obj.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+    // Must still escape JSON control characters (newlines, tabs, etc.)
+    // otherwise we can produce invalid JSON (causing backend 422 json_invalid).
+    return (
+      '"' +
+      obj
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+        .replace(/\t/g, '\\t')
+        .replace(/\f/g, '\\f')
+        // Backspace (U+0008) must be escaped; use a character class because /\b/ is a word-boundary regex.
+        .replace(/[\b]/g, '\\b') +
+      '"'
+    );
   }
 
   if (typeof obj === 'number' || typeof obj === 'boolean') {
@@ -68,8 +91,10 @@ async function getPublicEndpoints(): Promise<string[]> {
   }
 
   try {
-    // Load installed extensions
-    const response = await fetch('/api/extensions/public');
+    // Load installed extensions (use resolved backend URL, not always same-origin)
+    const baseURL = await getBackendUrl();
+    const url = baseURL ? `${baseURL}/api/extensions/public` : '/api/extensions/public';
+    const response = await fetch(url);
     if (response.ok) {
       const data = await response.json();
       const extensions = data.items || data; // Handle both {items: [...]} and [...] formats
@@ -126,6 +151,37 @@ async function getPublicEndpoints(): Promise<string[]> {
 async function getBackendUrl(): Promise<string> {
   const now = Date.now();
 
+  // 1) Runtime config (frontend-hosted) - preferred for split-origin production deployments.
+  // Served from the frontend host, so it is available even when the backend URL is unknown.
+  try {
+    const res = await fetch('/runtime-config.json', { cache: 'no-store' });
+    if (res.ok) {
+      const cfg = await res.json();
+      if (cfg?.backend_url) {
+        const normalized = normalizeBaseUrl(String(cfg.backend_url));
+        backendUrlCache = normalized;
+        cacheTimestamp = now;
+        return normalized;
+      }
+    }
+  } catch {
+    // Ignore runtime-config load errors and continue with fallbacks.
+  }
+
+  // 2) User override (safe-mode fallback)
+  // Note: localStorage returns string | null; empty string is a valid value (proxy routing).
+  try {
+    const override = localStorage.getItem(STORAGE_KEY_BACKEND_URL_OVERRIDE);
+    if (override !== null) {
+      const normalized = normalizeBaseUrl(override);
+      backendUrlCache = normalized;
+      cacheTimestamp = now;
+      return normalized;
+    }
+  } catch {
+    // Ignore localStorage access errors (private mode / denied)
+  }
+
   // Return cached URL if still valid
   if (backendUrlCache && (now - cacheTimestamp) < CACHE_DURATION) {
     // console.log('Using cached backend URL:', backendUrlCache);
@@ -142,9 +198,9 @@ async function getBackendUrl(): Promise<string> {
       const config = await response.json();
       if (config.backend_url) {
         // console.log('Using backend URL from settings:', config.backend_url);
-        backendUrlCache = config.backend_url;
+        backendUrlCache = normalizeBaseUrl(String(config.backend_url));
         cacheTimestamp = now;
-        return config.backend_url;
+        return backendUrlCache;
       }
     }
   } catch (error) {
@@ -530,6 +586,46 @@ export default {
     backendUrlCache = null;
     cacheTimestamp = 0;
     return await getBackendUrl();
+  },
+
+  /**
+   * Persistently overrides the backend URL (stored in localStorage) and immediately updates
+   * the currently cached Axios instance (so the change takes effect without reload).
+   *
+   * Pass "" to use proxy/same-origin routing.
+   */
+  async setBackendUrlOverride(url: string): Promise<string> {
+    const normalized = normalizeBaseUrl(url);
+    try {
+      localStorage.setItem(STORAGE_KEY_BACKEND_URL_OVERRIDE, normalized);
+    } catch {
+      // Ignore
+    }
+    backendUrlCache = normalized;
+    cacheTimestamp = Date.now();
+    if (httpInstance) {
+      httpInstance.defaults.baseURL = normalized;
+    }
+    return normalized;
+  },
+
+  /**
+   * Clears any persistent backend URL override and re-detects the backend URL.
+   * Also updates the currently cached Axios instance.
+   */
+  async clearBackendUrlOverride(): Promise<string> {
+    try {
+      localStorage.removeItem(STORAGE_KEY_BACKEND_URL_OVERRIDE);
+    } catch {
+      // Ignore
+    }
+    backendUrlCache = null;
+    cacheTimestamp = 0;
+    const resolved = await getBackendUrl();
+    if (httpInstance) {
+      httpInstance.defaults.baseURL = resolved;
+    }
+    return resolved;
   },
 
   async getPublicEndpoints(): Promise<string[]> {

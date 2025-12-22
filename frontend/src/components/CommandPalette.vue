@@ -288,7 +288,7 @@ export default defineComponent({
       const groups = groupedCommands.value;
       if (groups.length === 0) return;
       
-      let catIndex = groups.findIndex(g => g.category === selectedCategory.value);
+      const catIndex = groups.findIndex(g => g.category === selectedCategory.value);
       
       if (catIndex === -1) {
         // Select last item
@@ -315,7 +315,7 @@ export default defineComponent({
       const groups = groupedCommands.value;
       if (groups.length === 0) return;
       
-      let catIndex = groups.findIndex(g => g.category === selectedCategory.value);
+      const catIndex = groups.findIndex(g => g.category === selectedCategory.value);
       
       if (catIndex === -1) {
         // Select first item

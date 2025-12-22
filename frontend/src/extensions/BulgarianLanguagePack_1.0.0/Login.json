@@ -1,0 +1,13 @@
+{
+  "login": {
+    "title": "Вход",
+    "email": "Имейл",
+    "emailPlaceholder": "Въведете вашия имейл",
+    "password": "Парола",
+    "passwordPlaceholder": "Въведете вашата парола",
+    "login": "Вход",
+    "invalidEmailPassword": "Невалиден имейл или парола",
+    "invalidCredentials": "Невалидни данни",
+    "errorOccurred": "Възникна грешка. Моля, опитайте отново."
+  }
+}

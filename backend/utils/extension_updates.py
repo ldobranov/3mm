@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import zipfile
 import tempfile
 import shutil
+import json
 
 from backend.database import get_db
 from backend.db.extension import Extension
@@ -134,6 +135,58 @@ class ExtensionUpdateManager:
         # For now, return None (would need actual implementation)
         return None
 
+    async def _package_update_for_device(self, extension_id: int, version: str, device_id: str) -> Optional[Path]:
+        """Package an update for a specific device"""
+        try:
+            # Get extension from database
+            db = next(get_db())
+            extension = db.query(Extension).filter(Extension.id == extension_id).first()
+            
+            if not extension:
+                return None
+            
+            # Create a temporary directory for the package
+            temp_dir = Path(f"/tmp/update_{device_id}_{extension.name}_{version}")
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Copy extension files to temp directory
+            extension_path = Path(extension.file_path)
+            if extension_path.exists():
+                # Copy the entire extension directory
+                import shutil
+                shutil.copytree(extension_path, temp_dir / f"{extension.name}_{version}")
+                
+                # Create a manifest for the device
+                device_manifest = {
+                    "device_id": device_id,
+                    "extension_id": extension_id,
+                    "extension_name": extension.name,
+                    "version": version,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "instructions": "Extract to extensions directory and restart service"
+                }
+                
+                with open(temp_dir / "device_update.json", "w") as f:
+                    json.dump(device_manifest, f, indent=2)
+                
+                # Create a zip file
+                zip_path = Path(f"/tmp/{device_id}_update_{extension.name}_{version}.zip")
+                with zipfile.ZipFile(zip_path, 'w') as zipf:
+                    for file in temp_dir.rglob('*'):
+                        if file.is_file():
+                            zipf.write(file, file.relative_to(temp_dir))
+                
+                # Clean up temp directory
+                shutil.rmtree(temp_dir)
+                
+                return zip_path
+            
+        except Exception as e:
+            print(f"Error packaging update for device {device_id}: {e}")
+            return None
+        
+        return None
+
     async def _create_backup(self, extension: Extension) -> Optional[Path]:
         """Create a backup of the current extension"""
         try:
@@ -189,9 +242,37 @@ class ExtensionUpdateManager:
             "user_id": user_id,
             "scheduled_at": datetime.utcnow()
         }
-
+        
         await self.update_queue.put(update_request)
         return {"message": "Update scheduled", "extension_id": extension_id}
+
+    async def deploy_update_to_device(self, device_id: str, extension_id: int, version: str):
+        """Deploy an update to a specific device"""
+        try:
+            # Package the update for the device
+            update_package = await self._package_update_for_device(extension_id, version, device_id)
+            
+            if not update_package:
+                return {"status": "error", "message": "Failed to package update"}
+            
+            # In a real implementation, this would:
+            # 1. Transfer the package to the device via SSH/SCP
+            # 2. Trigger the update process on the device
+            # 3. Monitor the update status
+            
+            # For now, return a mock response
+            return {
+                "status": "queued",
+                "message": f"Update deployment queued for device {device_id}",
+                "device_id": device_id,
+                "extension_id": extension_id,
+                "version": version,
+                "package_path": str(update_package)
+            }
+            
+        except Exception as e:
+            print(f"Error deploying update to device {device_id}: {e}")
+            return {"status": "error", "message": str(e)}
 
     def get_update_status(self, extension_id: str) -> Optional[Dict[str, Any]]:
         """Get the status of an ongoing update"""

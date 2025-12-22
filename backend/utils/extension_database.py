@@ -8,12 +8,27 @@ from sqlalchemy.sql import text
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import json
+import re
 
 # Extension-specific base for models
 ExtensionBase = declarative_base()
 
 class ExtensionDatabaseManager:
     """Manages database operations for extensions"""
+
+    @staticmethod
+    def _sanitize_extension_base(extension_id: str) -> str:
+        """Derive a stable, versionless identifier for table prefixes.
+
+        Examples:
+          - GrowDiary_1.0.4 -> GrowDiary
+          - simple clock_1.0.1 -> simple_clock
+
+        Note: preserves original case, but replaces spaces/symbols with underscores.
+        """
+        base = (extension_id or '').split('_')[0]
+        base = re.sub(r"[^A-Za-z0-9]+", "_", base).strip("_")
+        return base or "Extension"
 
     def __init__(self, main_db_url: str):
         self.main_db_url = main_db_url
@@ -34,8 +49,13 @@ class ExtensionDatabaseManager:
             # Create tables based on schema definition
             metadata = MetaData()
 
+            # Use a stable, versionless prefix for table names.
+            # This prevents version numbers leaking into table names and keeps upgrades cleaner.
+            base_prefix = self._sanitize_extension_base(extension_id)
+
             for table_name, table_schema in schema_definition.get('tables', {}).items():
-                prefixed_table_name = f"ext_{extension_id}_{table_name}"
+                safe_table = re.sub(r"[^A-Za-z0-9]+", "_", str(table_name)).strip("_")
+                prefixed_table_name = f"ext_{base_prefix}_{safe_table}"
 
                 columns = []
                 for col_name, col_def in table_schema.get('columns', {}).items():
@@ -82,13 +102,23 @@ class ExtensionDatabaseManager:
             # This avoids metadata reflection issues
             db = next(get_db())
             
-            # First, let's see what extension tables exist
-            # Use PostgreSQL-compatible query
+            # First, let's see what extension tables exist.
+            # Back-compat: match both the *legacy* prefix (ext_<extension_id>_*) and
+            # the *stable* prefix (ext_<base>_*).
+            base_prefix = self._sanitize_extension_base(extension_id)
+
             list_query = text("""
                 SELECT tablename FROM pg_tables
-                WHERE schemaname = 'public' AND tablename LIKE :prefix
+                WHERE schemaname = 'public'
+                  AND (tablename LIKE :prefix1 OR tablename LIKE :prefix2)
             """)
-            result = db.execute(list_query, {"prefix": f"ext_{extension_id}_%"})
+            result = db.execute(
+                list_query,
+                {
+                    "prefix1": f"ext_{extension_id}_%",
+                    "prefix2": f"ext_{base_prefix}_%",
+                },
+            )
             table_names = [row[0] for row in result.fetchall()]
             
             if not table_names:
@@ -103,7 +133,9 @@ class ExtensionDatabaseManager:
             for table_name in table_names:
                 try:
                     # Safety check: only drop tables that start with ext_ and don't interfere with main tables
-                    if table_name.startswith(f"ext_{extension_id}_"):
+                    if table_name.startswith(f"ext_{extension_id}_") or table_name.startswith(
+                        f"ext_{base_prefix}_"
+                    ):
                         # Additional safety: make sure it's not a main table
                         base_name = table_name.split('_')[-1] if '_' in table_name else table_name
                         

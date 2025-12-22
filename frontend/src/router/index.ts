@@ -7,7 +7,9 @@ import SettingsEditor from '../views/SettingsEditor.vue';
 import Users from '../views/Users.vue';
 import Profile from '../views/Profile.vue';
 import Extensions from '@/views/Extensions.vue';
+import AiExtensionBuilder from '@/views/AiExtensionBuilder.vue';
 import { getAvailableExtensions } from '@/utils/extension-relationships';
+import http from '@/utils/dynamic-http';
 
 // Component resolver for dynamic imports
 function createComponentResolver(extensionName: string, extensionVersion: string) {
@@ -31,39 +33,80 @@ async function loadExtensionRoutes(): Promise<RouteRecordRaw[]> {
     return pendingExtensionRoutes;
   }
 
-  // Check if extension system is ready - try to get extensions, fallback to known ones if not ready
-  let extensionNames = getAvailableExtensions();
-  if (extensionNames.length === 0) {
+  // Preferred: query enabled extensions with real versions from backend (public endpoint).
+  // Fallback: filesystem discovery.
+  const enabledExtensions: Array<{ name: string; version: string }> = [];
+
+  try {
+    const response = await http.get('/api/extensions/public');
+    const items = response.data?.items || [];
+    for (const item of items) {
+      if (item?.name && item?.version) {
+        enabledExtensions.push({ name: item.name, version: item.version });
+      }
+    }
+  } catch (error) {
+    console.warn('Router: failed to fetch /api/extensions/public, falling back to filesystem discovery:', error);
+  }
+
+  if (enabledExtensions.length === 0) {
     // Fallback: dynamically discover extensions that have frontend routes
     try {
-      // Use Vite's import.meta.glob to find extensions with frontend routes
       const manifestModules = import.meta.glob('../extensions/*/manifest.json', { eager: true });
-      extensionNames = [];
+      const candidates: Array<{ name: string; version: string; hasRoutes: boolean }> = [];
 
       for (const path in manifestModules) {
-        const match = path.match(/\/extensions\/([^\/]+)_[^\/]+\/manifest\.json$/);
+        const match = path.match(/\/extensions\/([^\/]+)_([^\/]+)\/manifest\.json$/);
         if (match) {
           const extensionName = match[1];
+          const extensionVersion = match[2];
           const manifest = (manifestModules[path] as any).default;
-
-          // Only include extensions that have frontend routes
-          if (manifest && manifest.frontend_routes && Array.isArray(manifest.frontend_routes)) {
-            extensionNames.push(extensionName);
-          }
+          const hasRoutes = Boolean(manifest && Array.isArray(manifest.frontend_routes));
+          candidates.push({ name: extensionName, version: extensionVersion, hasRoutes });
         }
       }
+
+      // Pick one version per name (highest semver-ish) that has routes
+      const byName: Record<string, { name: string; version: string }> = {};
+      const compareVersions = (a: string, b: string) => {
+        const pa = a.split('.').map(n => Number(n));
+        const pb = b.split('.').map(n => Number(n));
+        if (pa.some(Number.isNaN) || pb.some(Number.isNaN) || pa.length < 3 || pb.length < 3) {
+          return a.localeCompare(b);
+        }
+        for (let i = 0; i < 3; i++) {
+          if (pa[i] !== pb[i]) return pa[i] < pb[i] ? -1 : 1;
+        }
+        return 0;
+      };
+
+      for (const c of candidates) {
+        if (!c.hasRoutes) continue;
+        const existing = byName[c.name];
+        if (!existing || compareVersions(existing.version, c.version) < 0) {
+          byName[c.name] = { name: c.name, version: c.version };
+        }
+      }
+
+      enabledExtensions.push(...Object.values(byName));
     } catch (error) {
-      console.warn('Router: Fallback discovery failed:', error);
-      extensionNames = [];
+      console.warn('Router: filesystem discovery failed:', error);
     }
   }
 
   const extensionRoutes: RouteRecordRaw[] = [];
 
-  for (const extensionName of extensionNames) {
+  // If extension system is ready, prefer its discovery list as a filter, but keep versions from enabledExtensions.
+  const discoveredNames = getAvailableExtensions();
+  const filteredEnabled = discoveredNames.length > 0
+    ? enabledExtensions.filter(e => discoveredNames.includes(e.name))
+    : enabledExtensions;
+
+  for (const { name: extensionName, version: extensionVersion } of filteredEnabled) {
     try {
       // Load manifest directly from file
-      const manifestModule = await import(`../extensions/${extensionName}_1.0.0/manifest.json`);
+      const manifestPath = `../extensions/${extensionName}_${extensionVersion}/manifest.json`;
+      const manifestModule = await import(/* @vite-ignore */ manifestPath);
       const manifest = manifestModule.default;
 
       if (!manifest) {
@@ -71,7 +114,7 @@ async function loadExtensionRoutes(): Promise<RouteRecordRaw[]> {
         continue;
       }
 
-      const resolver = createComponentResolver(extensionName, '1.0.0'); // Assuming version 1.0.0
+      const resolver = createComponentResolver(extensionName, extensionVersion);
 
       if (manifest.frontend_routes && Array.isArray(manifest.frontend_routes)) {
         for (const routeConfig of manifest.frontend_routes) {
@@ -166,6 +209,7 @@ async function createRouterWithDynamicRoutes() {
     { path: '/dashboard', name: 'DashboardList', component: () => import('@/views/DashboardList.vue'), meta: { requiresAuth: true } },
     { path: '/dashboard/:id/edit', name: 'DisplayEditor', component: () => import('@/views/DisplayEditor.vue'), meta: { requiresAuth: true } },
     { path: '/extensions', name: 'Extensions', component: Extensions, meta: { requiresAuth: true } },
+    { path: '/extensions/ai-builder', name: 'AiExtensionBuilder', component: AiExtensionBuilder, meta: { requiresAuth: true, requiresRole: 'admin' } },
     { path: '/@:username/:slug', name: 'PublicDisplay', component: () => import('@/views/PublicDisplay.vue') },
     { path: '/:pathMatch(.*)*', name: 'NotFound', component: () => import('../views/NotFound.vue') },
   ];

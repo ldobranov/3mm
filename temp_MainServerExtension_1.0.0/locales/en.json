@@ -1,0 +1,32 @@
+{
+  "mainServer": {
+    "title": "Main Server Extension",
+    "description": "Manage and distribute updates to Raspberry Pi devices",
+    "health": {
+      "ok": "System is healthy",
+      "error": "System error detected"
+    },
+    "updates": {
+      "title": "Available Updates",
+      "none": "No updates available",
+      "schedule": "Schedule Update",
+      "deploy": "Deploy Update",
+      "status": "Update Status"
+    },
+    "devices": {
+      "title": "Connected Devices",
+      "none": "No devices connected",
+      "online": "Online",
+      "offline": "Offline",
+      "deployTo": "Deploy to Device"
+    },
+    "settings": {
+      "title": "Update Settings",
+      "autoUpdate": "Auto Update",
+      "updateInterval": "Update Interval",
+      "notifyDevices": "Notify Devices",
+      "backupBeforeUpdate": "Backup Before Update",
+      "save": "Save Settings"
+    }
+  }
+}

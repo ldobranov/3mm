@@ -2,6 +2,12 @@
   <div class="view" :key="currentLanguage">
     <div class="view-header">
       <h1 class="view-title">{{ t('extensions.title', 'Extensions') }}</h1>
+
+      <div v-if="isAdmin" class="header-actions">
+        <router-link class="ai-builder-link" to="/extensions/ai-builder">
+          {{ t('extensions.aiBuilder.open', 'Open AI Builder') }}
+        </router-link>
+      </div>
     </div>
 
     <!-- Upload Section -->
@@ -121,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import http from '@/utils/dynamic-http';
 import { useI18n, i18n } from '@/utils/i18n';
 import { useSettingsStore } from '@/stores/settings';
@@ -154,6 +160,8 @@ const showDeleteModal = ref(false);
 const extensionToDelete = ref<Extension | null>(null);
 const deleteDatabaseData = ref(false);
 const deleteUploadedFiles = ref(false);
+
+const isAdmin = computed(() => (localStorage.getItem('role') || '') === 'admin');
 
 const authHeaders = () => {
   const token = localStorage.getItem('authToken') || '';
@@ -306,6 +314,23 @@ watch(currentLanguage, async (newLang) => {
 <style scoped>
 .upload-section {
   margin-bottom: 2rem;
+}
+
+.header-actions {
+  margin-top: 0.5rem;
+}
+
+.ai-builder-link {
+  display: inline-block;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--card-border);
+  text-decoration: none;
+  color: var(--text-primary);
+}
+
+.ai-builder-link:hover {
+  opacity: 0.9;
 }
 
 .card-content {

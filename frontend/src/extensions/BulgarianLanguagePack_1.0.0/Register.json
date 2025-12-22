@@ -1,0 +1,19 @@
+{
+  "register": {
+    "title": "Регистрация",
+    "username": "Потребителско име",
+    "usernamePlaceholder": "Изберете потребителско име",
+    "email": "Имейл",
+    "emailPlaceholder": "Въведете вашия имейл",
+    "password": "Парола",
+    "passwordPlaceholder": "Създайте парола",
+    "confirmPassword": "Потвърди парола",
+    "confirmPasswordPlaceholder": "Потвърдете паролата си",
+    "register": "Регистрирай се",
+    "passwordsDoNotMatch": "Паролите не съвпадат",
+    "registrationSuccessful": "Регистрацията е успешна! Влизане...",
+    "invalidInput": "Невалидни данни. Моля, проверете детайлите си.",
+    "userExists": "Потребител с този имейл или потребителско име вече съществува.",
+    "errorOccurred": "Възникна грешка. Моля, опитайте отново."
+  }
+}

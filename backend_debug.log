@@ -1,3 +1,3 @@
-2025-12-18 11:31:14,990 - backend.database - INFO - Creating database tables...
-2025-12-18 11:31:15,057 - backend.database - INFO - Database tables created successfully
-2025-12-18 11:31:15,287 - backend_debug - INFO - No enabled extensions to load
+2025-12-22 10:35:08,042 - backend.database - INFO - Creating database tables...
+2025-12-22 10:35:08,107 - backend.database - INFO - Database tables created successfully
+2025-12-22 10:35:08,269 - backend_debug - INFO - ✅ Extension BulgarianLanguagePack_1.0.0 loaded successfully

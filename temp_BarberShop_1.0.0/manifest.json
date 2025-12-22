@@ -1,0 +1,133 @@
+{
+  "name": "BarberShop",
+  "version": "1.0.0",
+  "type": "extension",
+  "description": "A complete barbershop management system with reservation functionality",
+  "author": "Kilo Code",
+  "backend_entry": "barbershop_extension.py",
+  "frontend_entry": "BarberShopExtension.vue",
+  "frontend_editor": "BarberShopEditor.vue",
+  "frontend_components": [
+    "ReservationForm.vue",
+    "ReservationCalendar.vue",
+    "BarberManagement.vue",
+    "ServiceManagement.vue",
+    "WorkingHoursManagement.vue",
+    "BarbershopWidget.vue"
+  ],
+  "frontend_routes": [
+    {
+      "path": "/barbershop",
+      "component": "BarberShopExtension.vue",
+      "name": "Barbershop",
+      "meta": {
+        "requiresAuth": true
+      }
+    },
+    {
+      "path": "/barbershop/reservations",
+      "component": "ReservationCalendar.vue",
+      "name": "BarbershopReservations",
+      "meta": {
+        "requiresAuth": true
+      }
+    },
+    {
+      "path": "/barbershop/barbers",
+      "component": "BarberManagement.vue",
+      "name": "BarbershopBarbers",
+      "meta": {
+        "requiresAuth": true
+      }
+    },
+    {
+      "path": "/barbershop/services",
+      "component": "ServiceManagement.vue",
+      "name": "BarbershopServices",
+      "meta": {
+        "requiresAuth": true
+      }
+    },
+    {
+      "path": "/barbershop/book",
+      "component": "ReservationForm.vue",
+      "name": "BarbershopBook",
+      "meta": {
+        "requiresAuth": false
+      }
+    },
+    {
+      "path": "/barbershop/my-reservations",
+      "component": "MyReservations.vue",
+      "name": "BarbershopMyReservations",
+      "meta": {
+        "requiresAuth": true
+      }
+    }
+  ],
+  "locales": {
+    "supported": ["en", "bg"],
+    "default": "en",
+    "directory": "locales/"
+  },
+  "multilingual": {
+    "content_fields": ["name", "description", "bio"],
+    "fallback_language": "en"
+  },
+  "consumes": {
+    "PagesExtension": {
+      "components": ["page_view"],
+      "apis": ["get_pages", "get_page_by_slug"]
+    }
+  },
+  "dependencies": {
+    "extensions": {
+      "PagesExtension": {
+        "version": ">=1.0.0",
+        "optional": false,
+        "description": "Required for contact and information pages"
+      }
+    }
+  },
+  "permissions": ["database_read", "database_write"],
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "businessName": {
+        "type": "string",
+        "title": "barbershop.settings.businessName",
+        "default": "My Barbershop"
+      },
+      "defaultReservationDuration": {
+        "type": "number",
+        "title": "barbershop.settings.defaultReservationDuration",
+        "minimum": 15,
+        "maximum": 180,
+        "default": 30
+      },
+      "maxReservationsPerDay": {
+        "type": "number",
+        "title": "barbershop.settings.maxReservationsPerDay",
+        "minimum": 10,
+        "maximum": 100,
+        "default": 50
+      },
+      "businessHours": {
+        "type": "object",
+        "title": "barbershop.settings.businessHours",
+        "properties": {
+          "opens": {
+            "type": "string",
+            "title": "barbershop.settings.opens",
+            "default": "09:00"
+          },
+          "closes": {
+            "type": "string",
+            "title": "barbershop.settings.closes",
+            "default": "18:00"
+          }
+        }
+      }
+    }
+  }
+}

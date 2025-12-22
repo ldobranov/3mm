@@ -1,0 +1,327 @@
+{
+  "tables": {
+    "barbers": {
+      "name": "ext_barbershopextension_barbers",
+      "fields": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "auto_increment": true
+        },
+        "name": {
+          "type": "text",
+          "nullable": false,
+          "multilingual": true
+        },
+        "email": {
+          "type": "text",
+          "nullable": true
+        },
+        "phone": {
+          "type": "text",
+          "nullable": true
+        },
+        "bio": {
+          "type": "text",
+          "nullable": true,
+          "multilingual": true
+        },
+        "image_url": {
+          "type": "text",
+          "nullable": true
+        },
+        "is_active": {
+          "type": "boolean",
+          "nullable": false,
+          "default": true
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      }
+    },
+    "services": {
+      "name": "ext_barbershopextension_services",
+      "fields": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "auto_increment": true
+        },
+        "name": {
+          "type": "text",
+          "nullable": false,
+          "multilingual": true
+        },
+        "description": {
+          "type": "text",
+          "nullable": true,
+          "multilingual": true
+        },
+        "duration_minutes": {
+          "type": "integer",
+          "nullable": false
+        },
+        "price": {
+          "type": "decimal",
+          "nullable": false,
+          "precision": 10,
+          "scale": 2
+        },
+        "image_url": {
+          "type": "text",
+          "nullable": true
+        },
+        "is_active": {
+          "type": "boolean",
+          "nullable": false,
+          "default": true
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      }
+    },
+    "working_hours": {
+      "name": "ext_barbershopextension_working_hours",
+      "fields": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "auto_increment": true
+        },
+        "barber_id": {
+          "type": "integer",
+          "nullable": false,
+          "foreign_key": {
+            "table": "ext_barbershopextension_barbers",
+            "field": "id"
+          }
+        },
+        "day_of_week": {
+          "type": "integer",
+          "nullable": false,
+          "comment": "0=Monday, 6=Sunday"
+        },
+        "start_time": {
+          "type": "time",
+          "nullable": false
+        },
+        "end_time": {
+          "type": "time",
+          "nullable": false
+        },
+        "is_active": {
+          "type": "boolean",
+          "nullable": false,
+          "default": true
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      }
+    },
+    "reservations": {
+      "name": "ext_barbershopextension_reservations",
+      "fields": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "auto_increment": true
+        },
+        "customer_id": {
+          "type": "integer",
+          "nullable": true,
+          "comment": "User ID from main system"
+        },
+        "customer_name": {
+          "type": "text",
+          "nullable": false
+        },
+        "customer_email": {
+          "type": "text",
+          "nullable": true
+        },
+        "customer_phone": {
+          "type": "text",
+          "nullable": false
+        },
+        "barber_id": {
+          "type": "integer",
+          "nullable": false,
+          "foreign_key": {
+            "table": "ext_barbershopextension_barbers",
+            "field": "id"
+          }
+        },
+        "service_id": {
+          "type": "integer",
+          "nullable": false,
+          "foreign_key": {
+            "table": "ext_barbershopextension_services",
+            "field": "id"
+          }
+        },
+        "reservation_date": {
+          "type": "date",
+          "nullable": false
+        },
+        "start_time": {
+          "type": "time",
+          "nullable": false
+        },
+        "end_time": {
+          "type": "time",
+          "nullable": false
+        },
+        "status": {
+          "type": "text",
+          "nullable": false,
+          "default": "pending",
+          "comment": "pending, confirmed, completed, cancelled"
+        },
+        "notes": {
+          "type": "text",
+          "nullable": true
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      }
+    },
+    "services_translations": {
+      "name": "ext_barbershopextension_services_translations",
+      "fields": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "auto_increment": true
+        },
+        "record_id": {
+          "type": "integer",
+          "nullable": false
+        },
+        "language_code": {
+          "type": "text",
+          "nullable": false
+        },
+        "translation_data": {
+          "type": "jsonb",
+          "nullable": false
+        },
+        "translation_coverage": {
+          "type": "decimal",
+          "nullable": true,
+          "precision": 5,
+          "scale": 2,
+          "default": 0
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "unique_constraints": [
+        ["record_id", "language_code"]
+      ]
+    },
+    "barbers_translations": {
+      "name": "ext_barbershopextension_barbers_translations",
+      "fields": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "auto_increment": true
+        },
+        "record_id": {
+          "type": "integer",
+          "nullable": false
+        },
+        "language_code": {
+          "type": "text",
+          "nullable": false
+        },
+        "translation_data": {
+          "type": "jsonb",
+          "nullable": false
+        },
+        "translation_coverage": {
+          "type": "decimal",
+          "nullable": true,
+          "precision": 5,
+          "scale": 2,
+          "default": 0
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "unique_constraints": [
+        ["record_id", "language_code"]
+      ]
+    }
+  },
+  "indexes": [
+    {
+      "table": "ext_barbershopextension_barbers",
+      "fields": ["name", "is_active"]
+    },
+    {
+      "table": "ext_barbershopextension_services",
+      "fields": ["name", "is_active", "price"]
+    },
+    {
+      "table": "ext_barbershopextension_working_hours",
+      "fields": ["barber_id", "day_of_week"]
+    },
+    {
+      "table": "ext_barbershopextension_reservations",
+      "fields": ["barber_id", "reservation_date", "start_time", "status"]
+    },
+    {
+      "table": "ext_barbershopextension_reservations",
+      "fields": ["customer_id", "reservation_date"]
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "barbershop": {
+    "title": "Barbershop",
+    "description": "Complete barbershop management system",
+    "reservations": {
+      "title": "Reservations",
+      "newReservation": "New Reservation",
+      "myReservations": "My Reservations",
+      "availableSlots": "Available Time Slots",
+      "noSlotsAvailable": "No available slots for this day",
+      "selectDate": "Select Date",
+      "selectBarber": "Select Barber",
+      "selectService": "Select Service",
+      "customerName": "Your Name",
+      "customerPhone": "Your Phone",
+      "customerEmail": "Your Email (optional)",
+      "notes": "Additional Notes",
+      "confirmReservation": "Confirm Reservation",
+      "reservationConfirmed": "Reservation Confirmed!",
+      "status": {
+        "pending": "Pending",
+        "confirmed": "Confirmed",
+        "completed": "Completed",
+        "cancelled": "Cancelled"
+      }
+    },
+    "services": {
+      "title": "Services",
+      "newService": "New Service",
+      "editService": "Edit Service",
+      "serviceName": "Service Name",
+      "description": "Description",
+      "duration": "Duration (minutes)",
+      "price": "Price",
+      "image": "Image",
+      "isActive": "Is Active",
+      "haircut": "Haircut",
+      "shave": "Shave",
+      "beardTrim": "Beard Trim",
+      "hairWash": "Hair Wash",
+      "hairColor": "Hair Color",
+      "hairTreatment": "Hair Treatment"
+    },
+    "barbers": {
+      "title": "Barbers",
+      "newBarber": "New Barber",
+      "editBarber": "Edit Barber",
+      "barberName": "Barber Name",
+      "email": "Email",
+      "phone": "Phone",
+      "bio": "Bio",
+      "image": "Image",
+      "isActive": "Is Active",
+      "availableBarbers": "Available Barbers",
+      "workingHours": "Working Hours"
+    },
+    "workingHours": {
+      "title": "Working Hours",
+      "newWorkingHours": "New Working Hours",
+      "editWorkingHours": "Edit Working Hours",
+      "barber": "Barber",
+      "dayOfWeek": "Day of Week",
+      "startTime": "Start Time",
+      "endTime": "End Time",
+      "isActive": "Is Active",
+      "days": {
+        "0": "Monday",
+        "1": "Tuesday",
+        "2": "Wednesday",
+        "3": "Thursday",
+        "4": "Friday",
+        "5": "Saturday",
+        "6": "Sunday"
+      }
+    },
+    "dashboard": {
+      "title": "Barbershop Dashboard",
+      "todayReservations": "Today's Reservations",
+      "upcomingReservations": "Upcoming Reservations",
+      "totalBarbers": "Total Barbers",
+      "totalServices": "Total Services",
+      "revenueToday": "Revenue Today",
+      "revenueThisWeek": "Revenue This Week"
+    },
+    "settings": {
+      "title": "Barbershop Settings",
+      "businessName": "Business Name",
+      "defaultReservationDuration": "Default Reservation Duration",
+      "maxReservationsPerDay": "Max Reservations Per Day",
+      "businessHours": "Business Hours",
+      "opens": "Opens At",
+      "closes": "Closes At"
+    },
+    "reservationWidget": "Reservation Widget",
+    "bookNow": "Book Now",
+    "viewDetails": "View Details",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "back": "Back",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "noData": "No data available",
+    "actions": "Actions"
+  }
+}

@@ -59,6 +59,29 @@ class FrontendExtensionRelationships {
   private eventListeners = new Map<string, Function[]>()
   private manifestCache = ref<Record<string, ManifestCapabilities>>({})
   private discoveredExtensions: string[] = []
+  private extensionVersions: Record<string, string> = {}
+
+  private compareVersions(versionA: string, versionB: string): number {
+    // Very small semver-ish compare for `x.y.z`.
+    // Falls back to string compare if format is unexpected.
+    const parse = (v: string) => v.split('.').map(n => Number(n))
+    const a = parse(versionA)
+    const b = parse(versionB)
+    if (a.some(Number.isNaN) || b.some(Number.isNaN) || a.length < 3 || b.length < 3) {
+      return versionA.localeCompare(versionB)
+    }
+    for (let i = 0; i < 3; i++) {
+      if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1
+    }
+    return 0
+  }
+
+  private setExtensionVersion(extensionName: string, version: string) {
+    const current = this.extensionVersions[extensionName]
+    if (!current || this.compareVersions(current, version) < 0) {
+      this.extensionVersions[extensionName] = version
+    }
+  }
 
   // Component Registry
   registerComponent(extensionName: string, componentName: string,
@@ -206,6 +229,10 @@ class FrontendExtensionRelationships {
     return this.discoveredExtensions
   }
 
+  getExtensionVersion(extensionName: string): string | undefined {
+    return this.extensionVersions[extensionName]
+  }
+
   // Get cached manifest for an extension
   getManifest(extensionName: string) {
     return this.manifestCache.value[extensionName]
@@ -214,8 +241,14 @@ class FrontendExtensionRelationships {
   // Dynamic Component Loading
   async loadComponentFromExtension(extensionName: string, componentName: string): Promise<any> {
     try {
+      const version = this.getExtensionVersion(extensionName)
+      if (!version) {
+        console.warn(`No version known for ${extensionName}; cannot load component ${componentName}`)
+        return null
+      }
       // Try to dynamically import the component
-      const module = await import(`../extensions/${extensionName}_1.0.0/${componentName}.vue`)
+      const componentPath = `../extensions/${extensionName}_${version}/${componentName}.vue`
+      const module = await import(/* @vite-ignore */ componentPath)
       return module.default
     } catch (error) {
       console.warn(`Failed to load component ${extensionName}.${componentName}:`, error)
@@ -254,9 +287,16 @@ class FrontendExtensionRelationships {
     }
 
     try {
+      const version = this.getExtensionVersion(extensionName)
+      if (!version) {
+        console.warn(`preloadManifest(${extensionName}): no version known; skipping`)
+        this.manifestCache.value[extensionName] = {}
+        return
+      }
 
       // Load manifest from file
-      const manifestModule = await import(`../extensions/${extensionName}_1.0.0/manifest.json`)
+      const manifestPath = `../extensions/${extensionName}_${version}/manifest.json`
+      const manifestModule = await import(/* @vite-ignore */ manifestPath)
       const manifest = manifestModule.default
 
       if (manifest) {
@@ -290,7 +330,14 @@ class FrontendExtensionRelationships {
 
       // Load the actual manifest file
       console.log(`🔍 Loading manifest file for ${extensionName}...`)
-      const manifestModule = await import(`../extensions/${extensionName}_1.0.0/manifest.json`)
+      const version = this.getExtensionVersion(extensionName)
+      if (!version) {
+        console.log(`❌ No version known for ${extensionName}`)
+        return false
+      }
+
+      const manifestPath = `../extensions/${extensionName}_${version}/manifest.json`
+      const manifestModule = await import(/* @vite-ignore */ manifestPath)
       const manifest = manifestModule.default
 
       if (!manifest) {
@@ -340,9 +387,12 @@ class FrontendExtensionRelationships {
 
       for (const path in manifestModules) {
         // Extract extension name from path: '../extensions/ExtensionName_1.0.0/manifest.json' -> 'ExtensionName'
-        const match = path.match(/\/extensions\/([^\/]+)_[^\/]+\/manifest\.json$/)
+        const match = path.match(/\/extensions\/([^\/]+)_([^\/]+)\/manifest\.json$/)
         if (match) {
-          filesystemExtensions.push(match[1])
+          const extensionName = match[1]
+          const extensionVersion = match[2]
+          filesystemExtensions.push(extensionName)
+          this.setExtensionVersion(extensionName, extensionVersion)
         }
       }
 
@@ -355,25 +405,24 @@ class FrontendExtensionRelationships {
         return filesystemExtensions
       }
 
-      // Now check which extensions are installed and enabled in the database
+      // Preferred: use public endpoint to get enabled extensions + versions
       const enabledExtensions: string[] = []
-
       try {
-        const response = await http.get('/api/extensions')
-        const installedExtensions = response.data.items || []
-
-        for (const ext of filesystemExtensions) {
-          const installedExt = installedExtensions.find((installed: any) =>
-            installed.name === ext && installed.is_enabled
-          )
-          if (installedExt) {
-            enabledExtensions.push(ext)
+        const response = await http.get('/api/extensions/public')
+        const publicExtensions = response.data.items || []
+        for (const ext of publicExtensions) {
+          if (ext?.name && ext?.version) {
+            enabledExtensions.push(ext.name)
+            this.setExtensionVersion(ext.name, ext.version)
           }
         }
 
+        // If API returns nothing (unexpected), fall back to filesystem.
+        if (enabledExtensions.length === 0) {
+          enabledExtensions.push(...filesystemExtensions)
+        }
       } catch (error) {
-        console.warn('Failed to check extension status from database, falling back to filesystem discovery:', error)
-        // Fallback to filesystem discovery if database check fails
+        console.warn('Failed to fetch /api/extensions/public, falling back to filesystem discovery:', error)
         enabledExtensions.push(...filesystemExtensions)
       }
 

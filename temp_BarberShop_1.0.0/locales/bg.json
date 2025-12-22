@@ -1,0 +1,109 @@
+{
+  "barbershop": {
+    "title": "Фризьорски салон",
+    "description": "Пълна система за управление на фризьорски салон",
+    "reservations": {
+      "title": "Резервации",
+      "newReservation": "Нова резервация",
+      "myReservations": "Моите резервации",
+      "availableSlots": "Налични часове",
+      "noSlotsAvailable": "Няма налични часове за този ден",
+      "selectDate": "Избери дата",
+      "selectBarber": "Избери фризьор",
+      "selectService": "Избери услуга",
+      "customerName": "Вашето име",
+      "customerPhone": "Вашият телефон",
+      "customerEmail": "Вашият имейл (по избор)",
+      "notes": "Дополнителни бележки",
+      "confirmReservation": "Потвърди резервация",
+      "reservationConfirmed": "Резервацията е потвърдена!",
+      "status": {
+        "pending": "В изчакване",
+        "confirmed": "Потвърдена",
+        "completed": "Завършена",
+        "cancelled": "Отказана"
+      }
+    },
+    "services": {
+      "title": "Услуги",
+      "newService": "Нова услуга",
+      "editService": "Редактирай услуга",
+      "serviceName": "Име на услугата",
+      "description": "Описание",
+      "duration": "Продължителност (минути)",
+      "price": "Цена",
+      "image": "Снимка",
+      "isActive": "Активна",
+      "haircut": "Подстригване",
+      "shave": "Бръснене",
+      "beardTrim": "Подравняване на брада",
+      "hairWash": "Миене на коса",
+      "hairColor": "Боядисване на коса",
+      "hairTreatment": "Лечение на коса"
+    },
+    "barbers": {
+      "title": "Фризьори",
+      "newBarber": "Нов фризьор",
+      "editBarber": "Редактирай фризьор",
+      "barberName": "Име на фризьора",
+      "email": "Имейл",
+      "phone": "Телефон",
+      "bio": "Биография",
+      "image": "Снимка",
+      "isActive": "Активен",
+      "availableBarbers": "Налични фризьори",
+      "workingHours": "Работно време"
+    },
+    "workingHours": {
+      "title": "Работно време",
+      "newWorkingHours": "Ново работно време",
+      "editWorkingHours": "Редактирай работно време",
+      "barber": "Фризьор",
+      "dayOfWeek": "Ден от седмицата",
+      "startTime": "Начален час",
+      "endTime": "Краен час",
+      "isActive": "Активно",
+      "days": {
+        "0": "Понеделник",
+        "1": "Вторник",
+        "2": "Сряда",
+        "3": "Четвъртък",
+        "4": "Петък",
+        "5": "Събота",
+        "6": "Неделя"
+      }
+    },
+    "dashboard": {
+      "title": "Табло на фризьорския салон",
+      "todayReservations": "Днешни резервации",
+      "upcomingReservations": "Предстоящи резервации",
+      "totalBarbers": "Общо фризьори",
+      "totalServices": "Общо услуги",
+      "revenueToday": "Приходи днес",
+      "revenueThisWeek": "Приходи тази седмица"
+    },
+    "settings": {
+      "title": "Настройки на фризьорския салон",
+      "businessName": "Име на бизнеса",
+      "defaultReservationDuration": "Продължителност на резервация по подразбиране",
+      "maxReservationsPerDay": "Макс. резервации на ден",
+      "businessHours": "Работно време",
+      "opens": "Отваря в",
+      "closes": "Затваря в"
+    },
+    "reservationWidget": "Уиджет за резервации",
+    "bookNow": "Резервирай сега",
+    "viewDetails": "Виж детайли",
+    "edit": "Редактирай",
+    "delete": "Изтрий",
+    "save": "Запази",
+    "cancel": "Отмени",
+    "confirm": "Потвърди",
+    "back": "Назад",
+    "loading": "Зареждане...",
+    "error": "Грешка",
+    "success": "Успех",
+    "noData": "Няма налични данни",
+    "actions": "Действия"
+  }
+}
