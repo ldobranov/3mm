@@ -1,0 +1,33 @@
+{
+  "platform": "unknown",
+  "hostname": "3mm-server",
+  "network": {
+    "interface": "auto",
+    "ip_config": "dhcp",
+    "static_ip": "",
+    "gateway": "",
+    "dns": ""
+  },
+  "database": {
+    "type": "sqlite",
+    "postgresql_version": "14",
+    "username": "3mm_user",
+    "password": "",
+    "db_name": "3mm_db"
+  },
+  "services": {
+    "auto_start": true,
+    "enable_logging": true
+  },
+  "security": {
+    "firewall_enabled": true,
+    "allowed_ports": [80, 443, 8887]
+  },
+  "raspberry_pi": {
+    "wifi_enabled": false,
+    "wifi_ssid": "",
+    "wifi_password": "",
+    "mdns_enabled": true,
+    "power_saving": true
+  }
+}
