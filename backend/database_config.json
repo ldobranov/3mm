@@ -1,0 +1,8 @@
+{
+  "database_url": "postgresql://mm3_user:ciYW6ByZu2qLUb4x@localhost:5432/mm3_db",
+  "username": "mm3_user",
+  "password": "ciYW6ByZu2qLUb4x",
+  "database": "mm3_db",
+  "host": "localhost",
+  "port": 5432
+}

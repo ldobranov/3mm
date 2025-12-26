@@ -11,9 +11,9 @@
   "database": {
     "type": "sqlite",
     "postgresql_version": "14",
-    "username": "3mm_user",
+    "username": "mm3_user",
     "password": "",
-    "db_name": "3mm_db"
+    "db_name": "mm3_db"
   },
   "services": {
     "auto_start": true,
