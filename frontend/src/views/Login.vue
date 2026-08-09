@@ -98,10 +98,13 @@ export default defineComponent({
           throw new Error('No token received from server');
         }
 
+        let currentRole = '';
+
         // Fetch profile to get role, username, and user_id, then store them
         try {
           const profileRes = await http.get('/api/user/profile');
           const role = profileRes.data?.role ?? '';
+          currentRole = role;
           const username = profileRes.data?.username ?? '';
           const userId = profileRes.data?.id ?? '';
           localStorage.setItem('role', role);
@@ -123,8 +126,12 @@ export default defineComponent({
         // Also dispatch a custom event
         window.dispatchEvent(new Event('menu-refresh'));
         
-        // Navigate to profile page
-        router.push('/user/profile');
+        const defaultLanding = router.getRoutes().find((route) => {
+          if (route.meta?.defaultLanding !== true) return false;
+          const requiredRole = route.meta?.requiresRole as string | undefined;
+          return !requiredRole || requiredRole === currentRole;
+        });
+        router.push(defaultLanding?.path || '/user/profile');
       } catch (err) {
         const error = err as any;
         if (error.response && error.response.status === 422) {

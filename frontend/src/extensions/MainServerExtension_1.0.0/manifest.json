@@ -11,7 +11,15 @@
       "path": "/main-server",
       "component": "MainServerExtension.vue",
       "name": "MainServerExtension",
-      "meta": { "requiresAuth": true }
+      "meta": {
+        "requiresAuth": true,
+        "requiresRole": "admin",
+        "defaultLanding": true,
+        "menuLabel": {
+          "en": "Devices",
+          "bg": "Устройства"
+        }
+      }
     }
   ],
   "locales": {

@@ -182,33 +182,8 @@ onUnmounted(() => {
 
 <template>
   <div id="app" :style="{ backgroundColor: settingsStore.styleSettings.bodyBg }">
-    <header :style="{ backgroundColor: headerBgColor, color: headerTextColor }">
-      <img
-        v-if="showDefaultLogo"
-        alt="Vue logo"
-        class="logo"
-        src="@/assets/logo.svg"
-        width="125"
-        height="125"
-      />
-      <img
-        v-else-if="logoUrl"
-        :alt="siteName + ' logo'"
-        class="logo"
-        :src="logoUrl"
-        style="max-width: 200px; max-height: 125px; width: auto; height: auto;"
-      />
-
-      <div class="wrapper">
-        <div class="greetings">
-          <h1 :style="{ color: headerTextColor }">{{ siteName }}</h1>
-          <h3 :style="{ color: headerTextColor }">{{ headerMessage }}</h3>
-        </div>
-
-        <nav>
-          <Menu />
-        </nav>
-      </div>
+    <header class="app-header" :style="{ backgroundColor: headerBgColor, color: headerTextColor }">
+      <Menu />
     </header>
 
     <RouterView />
@@ -224,83 +199,31 @@ onUnmounted(() => {
 }
 
 header {
-  line-height: 1.5;
-  max-height: 100vh;
+  padding: 0;
 }
 
-.logo {
-  display: block;
-  margin: 0 auto 2rem;
-  object-fit: contain;
+.app-header :deep(.navbar) {
+  width: min(100% - 2rem, 1200px);
+  min-height: 64px;
+  margin: 0 auto;
+  padding: 0.5rem 0;
 }
 
-.greetings h1 {
-  font-weight: 500;
-  font-size: 2.6rem;
-  position: relative;
-  top: -10px;
-  text-align: center;
+.app-header :deep(.navbar-brand) {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
-.greetings h3 {
-  font-size: 1.2rem;
-  text-align: center;
+.app-header :deep(.nav-link) {
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.9rem;
 }
 
-nav {
-  width: 100%;
-  font-size: 12px;
-  text-align: center;
-  margin-top: 2rem;
-}
-
-nav a.router-link-exact-active {
-  color: var(--color-text);
-}
-
-nav a.router-link-exact-active:hover {
-  background-color: transparent;
-}
-
-nav a {
-  display: inline-block;
-  padding: 0 1rem;
-  border-left: 1px solid var(--color-border);
-}
-
-nav a:first-of-type {
-  border: 0;
-}
-
-@media (min-width: 1024px) {
-  header {
-    display: flex;
-    place-items: center;
-    padding-right: calc(var(--section-gap) / 2);
-  }
-
-  .logo {
-    margin: 0 2rem 0 0;
-  }
-
-  header .wrapper {
-    display: flex;
-    place-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .greetings h1,
-  .greetings h3 {
-    text-align: left;
-  }
-
-  nav {
-    text-align: left;
-    margin-left: -1rem;
-    font-size: 1rem;
-
-    padding: 1rem 0;
-    margin-top: 1rem;
+@media (max-width: 991px) {
+  .app-header :deep(.navbar-collapse) {
+    padding: 0.75rem 0 0.5rem;
   }
 }
 </style>

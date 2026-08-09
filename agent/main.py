@@ -7,13 +7,20 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel
 
 from agent import __version__
 from agent.config import AgentSettings
-from agent.hardware import create_hardware_driver
+from agent.core_client import (
+    CommandJournal, CorePublisher, DeviceCredentialStore, OutboxStore,
+    ReconciliationStore,
+)
+from agent.hardware import create_hardware_driver, create_mock_gpio_driver
+from agent.modules.gpio import GPIO_ENTRYPOINT, gpio_runtime_handler
 from agent.identity import AgentIdentity, AgentIdentityStore
 from agent.inventory import collect_inventory
+from agent.module_runtime import AgentModuleRuntime
 from agent.role import AgentRoleResolver
 from three_mm_protocol import AgentHealth, AgentHello, AgentInventory, AgentRole
 from three_mm_provisioning import FileProvisioningStore
@@ -26,6 +33,10 @@ class AgentRuntime:
     role: AgentRole
     started_at: datetime
     started_monotonic: float
+
+
+class MockGpioInputUpdate(BaseModel):
+    value: bool
 
 
 def _runtime(request: Request) -> AgentRuntime:
@@ -51,7 +62,37 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
             started_at=datetime.now(UTC),
             started_monotonic=time.monotonic(),
         )
+        publisher = None
+        app.state.module_event_sink = lambda _event: None
+        gpio = create_mock_gpio_driver(resolved_settings.hardware_profile)
+        app.state.mock_gpio = gpio
+        module_runtime = AgentModuleRuntime(
+            resolved_settings.data_dir,
+            architecture=app.state.agent_runtime.inventory.architecture,
+            runtime_handlers={GPIO_ENTRYPOINT: gpio_runtime_handler(gpio, lambda event: app.state.module_event_sink(event))} if gpio else {},
+        )
+        module_runtime.start_active()
+        if resolved_settings.core_url:
+            credential = DeviceCredentialStore(resolved_settings.data_dir).load()
+            if credential is not None:
+                if credential.device_id != identity.device_id:
+                    raise RuntimeError("Core credential does not match Agent identity")
+                publisher = CorePublisher(
+                    core_url=resolved_settings.core_url,
+                    credential=credential,
+                    inventory_provider=lambda: collect_inventory(identity.device_id, hardware),
+                    command_journal=CommandJournal(resolved_settings.data_dir),
+                    reconciliation_store=ReconciliationStore(resolved_settings.data_dir),
+                    outbox=OutboxStore(resolved_settings.data_dir),
+                    module_runtime=module_runtime,
+                    started_monotonic=app.state.agent_runtime.started_monotonic,
+                    interval_seconds=resolved_settings.heartbeat_interval_seconds,
+                )
+                publisher.start()
+                app.state.module_event_sink = publisher.publish_event
         yield
+        if publisher is not None:
+            publisher.stop()
 
     app = FastAPI(
         title="3mm Agent",
@@ -97,6 +138,26 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
     )
     def inventory(request: Request) -> AgentInventory:
         return _runtime(request).inventory
+
+    @app.get("/api/v1/agent/mock-gpio/state", tags=["diagnostics"])
+    def mock_gpio_state(request: Request) -> dict[str, dict[str, bool]]:
+        """Return isolated test GPIO state; the Agent service is loopback-only."""
+        gpio = request.app.state.mock_gpio
+        return {
+            "inputs": {"gpio.input.1": gpio.input("gpio.input.1").read()},
+            "outputs": {"gpio.output.1": gpio.output("gpio.output.1").read()},
+        }
+
+    @app.post("/api/v1/agent/mock-gpio/inputs/{capability_id}", tags=["diagnostics"])
+    def set_mock_gpio_input(
+        capability_id: str, payload: MockGpioInputUpdate, request: Request
+    ) -> dict[str, object]:
+        """Simulate a test input transition without exposing any real GPIO."""
+        try:
+            event = request.app.state.mock_gpio.set_input(capability_id, payload.value)
+        except KeyError as exc:
+            raise HTTPException(404, "Mock GPIO input was not found") from exc
+        return {"changed": event is not None, "sequence": event.sequence if event else None}
 
     return app
 

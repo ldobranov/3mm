@@ -37,6 +37,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=defaults.hardware_profile.value,
     )
     parser.add_argument("--log-level", default="info")
+    parser.add_argument("--core-url", default=defaults.core_url)
+    parser.add_argument(
+        "--heartbeat-interval-seconds",
+        type=int,
+        default=defaults.heartbeat_interval_seconds,
+    )
     return parser
 
 
@@ -50,6 +56,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         role=AgentRole(arguments.role),
         hardware_profile=HardwareProfile(arguments.hardware_profile),
         provisioning_data_dir=arguments.provisioning_data_dir,
+        core_url=arguments.core_url,
+        heartbeat_interval_seconds=arguments.heartbeat_interval_seconds,
     )
     uvicorn.run(
         create_app(settings),

@@ -61,3 +61,47 @@ class AgentInventory(ProtocolModel):
     network_manager_active: bool | None = None
     hardware_driver: str = Field(default="linux", min_length=1)
     capabilities: tuple[str, ...] = ()
+
+
+class AgentHeartbeat(ProtocolModel):
+    protocol_version: Literal["1.0"] = PROTOCOL_VERSION
+    device_id: DeviceId = Field(pattern=r"^dev_[0-9a-f]{32}$")
+    sent_at: datetime
+    uptime_seconds: float = Field(ge=0)
+    status: Literal["ready", "degraded"] = "ready"
+
+
+class AgentCommand(ProtocolModel):
+    protocol_version: Literal["1.0"] = PROTOCOL_VERSION
+    command_id: str = Field(pattern=r"^cmd_[0-9a-f]{32}$")
+    device_id: DeviceId = Field(pattern=r"^dev_[0-9a-f]{32}$")
+    command_type: str = Field(min_length=1, max_length=100)
+    payload: dict = Field(default_factory=dict)
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    created_at: datetime
+    expires_at: datetime
+
+
+class AgentCommandResult(ProtocolModel):
+    protocol_version: Literal["1.0"] = PROTOCOL_VERSION
+    command_id: str = Field(pattern=r"^cmd_[0-9a-f]{32}$")
+    device_id: DeviceId = Field(pattern=r"^dev_[0-9a-f]{32}$")
+    status: Literal["succeeded", "failed"]
+    completed_at: datetime
+    output: dict = Field(default_factory=dict)
+    error: str | None = Field(default=None, max_length=2000)
+
+
+class DeviceDesiredState(ProtocolModel):
+    device_id: DeviceId = Field(pattern=r"^dev_[0-9a-f]{32}$")
+    revision: int = Field(ge=0)
+    state: dict = Field(default_factory=dict)
+    updated_at: datetime
+
+
+class AgentReportedState(ProtocolModel):
+    device_id: DeviceId = Field(pattern=r"^dev_[0-9a-f]{32}$")
+    desired_revision: int = Field(ge=0)
+    applied_revision: int = Field(ge=0)
+    state: dict = Field(default_factory=dict)
+    reported_at: datetime

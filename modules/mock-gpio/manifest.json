@@ -1,0 +1,16 @@
+{
+  "manifest_version": 2,
+  "module_id": "org.3mm.mock-gpio",
+  "name": "Mock GPIO",
+  "version": "1.0.0",
+  "description": "Trusted deterministic digital GPIO module for development.",
+  "runtimes": ["agent"],
+  "entrypoints": {"agent": "builtin:gpio.digital.v1"},
+  "compatibility": {"protocol": "1.0", "agent": ">=0.1.0", "core": ">=0.1.0", "architectures": ["aarch64", "x86_64"]},
+  "capabilities": {"provides": ["gpio.digital.input", "gpio.digital.output"], "consumes": ["hardware.gpio.digital_input", "hardware.gpio.digital_output"]},
+  "permissions": ["hardware.gpio", "data.write", "events.publish"],
+  "configuration_schema": {"type": "object"},
+  "configuration_defaults": {"inputs": ["gpio.input.1"], "outputs": {"gpio.output.1": false}, "rules": [{"input": "gpio.input.1", "output": "gpio.output.1", "when": true, "set": true}]},
+  "health_check": {"type": "file_exists", "path": "health/ready"},
+  "registrations": [{"kind": "capability", "registration_id": "gpio.digital.control"}]
+}

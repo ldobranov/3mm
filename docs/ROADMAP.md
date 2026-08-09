@@ -1,6 +1,6 @@
 # 3mm Roadmap
 
-Status: active; Milestone 0 completed on 2026-08-09
+Status: active; Milestones 0–5 completed on 2026-08-09
 Planning style: sequential milestones with a runnable result after every milestone
 
 Dates are intentionally not assigned until the current baseline is reproducible. Progress is measured by acceptance criteria, not optimistic calendar estimates.
@@ -88,6 +88,8 @@ Acceptance criteria:
 
 Goal: make Core-to-Agent operations explicit, observable and resilient.
 
+Status: completed and accepted on the physical `rasp-3mm` baseline on 2026-08-09.
+
 Deliverables:
 
 - desired and reported state revisions;
@@ -108,6 +110,8 @@ Acceptance criteria:
 ## Milestone 4 — Module manifest v2 and runtime lifecycle
 
 Goal: provide one consistent module model across Core, Agent and UI.
+
+Status: completed and accepted on the physical `rasp-3mm` baseline on 2026-08-09.
 
 Deliverables:
 
@@ -131,12 +135,14 @@ Acceptance criteria:
 
 Goal: prove a complete useful module without Raspberry hardware.
 
+Status: completed and accepted on the physical `rasp-3mm` baseline on 2026-08-09. See [MILESTONE_5_REPORT.md](MILESTONE_5_REPORT.md).
+
 Deliverables:
 
 - digital input/output capability interfaces;
 - deterministic mock GPIO driver;
 - Agent GPIO module;
-- Core configuration UI generated from schema;
+- Core output controls derived from capability registrations;
 - input events and output commands;
 - local offline automation example;
 - protocol and integration tests.
@@ -292,6 +298,39 @@ These are the first concrete tasks after approval of this plan:
 - [x] Build the frontend off-device and validate the static artifact over LAN.
 - [x] Install and validate the Standalone Core, Web and Agent systemd services.
 - [x] Add a secret-free interactive bootstrap for the first Core administrator.
+- [x] Add the Device registry, credential, pairing, inventory and heartbeat schema.
+- [x] Add atomic single-use and expiring pairing-code domain services.
+- [x] Add versioned pairing-code, claim and explicit approval APIs.
+- [x] Issue a unique device credential once after explicit pairing approval.
+- [x] Authenticate Agent requests with unique revocable device credentials.
+- [x] Accept authenticated heartbeats with strict device identity matching.
+- [x] Accept authenticated inventory and expose a real admin device registry API.
+- [x] Derive online and offline status from the configured heartbeat window.
+- [x] Replace the Main Server mock device list with the real Core registry API.
+- [x] Persist the Agent credential locally and publish inventory plus periodic heartbeats to Core.
+- [x] Pair and validate the co-located Agent on the physical Standalone Raspberry Pi baseline.
+- [x] Add an expiring, idempotent Core command queue with structured results.
+- [x] Execute the first allowlisted Agent command and persist its idempotency journal.
+- [x] Redeliver unacknowledged commands after reconnect without repeating completed actions.
+- [x] Expose command submission, status, results and delivery attempts in the device registry UI.
+- [x] Reconcile the first allowlisted desired state revision on the physical Agent.
+- [x] Show desired/reported revisions and synchronization status in the device registry UI.
+- [x] Persist Agent events during Core downtime and replay them after reconnect.
+- [x] Add device diagnostics with inventory, state revisions and command history.
+- [x] Validate credential revocation, rejection and controlled replacement without changing device identity.
+- [x] Complete the Milestone 3 physical acceptance suite and report.
+- [x] Define the strict shared module manifest v2 contract and safe immutable ZIP validator.
+- [x] Add the Core module catalog, registration API and per-device installation records.
+- [x] Add transactional Agent staging, activation, health checking, rollback and disable.
+- [x] Enforce protocol, runtime, architecture, integrity and declared-permission compatibility.
+- [x] Derive frontend navigation from generic module registrations rather than module names.
+- [x] Complete the Milestone 4 automated and physical acceptance suite and report.
+- [x] Add portable digital GPIO interfaces and a deterministic in-memory driver.
+- [x] Activate the trusted mock GPIO module from manifest v2 registrations.
+- [x] Add capability-driven Core output controls and Agent state persistence.
+- [x] Run local GPIO rules while Core is offline and replay timestamped events.
+- [x] Verify duplicate event replay remains idempotent on physical `rasp-3mm`.
+- [x] Complete the Milestone 5 automated and physical acceptance suite and report.
 
 ## Explicitly deferred
 

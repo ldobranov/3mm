@@ -68,14 +68,23 @@ UPLOADS_DIR=/var/lib/3mm/core/uploads
 BACKEND_HOST=0.0.0.0
 BACKEND_PORT=8887
 CORS_ORIGINS=["$frontend_origin"]
+DEVICE_OFFLINE_AFTER_SECONDS=90
 THREE_MM_AGENT_HOST=127.0.0.1
 THREE_MM_AGENT_PORT=8890
 THREE_MM_AGENT_ROLE=standalone
 THREE_MM_AGENT_HARDWARE_PROFILE=native
+THREE_MM_CORE_URL=http://127.0.0.1:8887
+THREE_MM_HEARTBEAT_INTERVAL_SECONDS=30
 THREE_MM_PROVISIONING_DATA_DIR=/var/lib/3mm/provisioning
 EOF
 chown root:3mm /etc/3mm/3mm.env
 chmod 0640 /etc/3mm/3mm.env
+
+install -d -o 3mm -g 3mm -m 0750 /var/lib/3mm/core
+runuser -u 3mm -- env \
+  DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db \
+  PYTHONPATH="$release_dir" \
+  "$venv_dir/bin/python" "$release_dir/deployment/migrate_database.py"
 
 systemctl daemon-reload
 systemctl disable --now 3mm-setup.service >/dev/null 2>&1 || true

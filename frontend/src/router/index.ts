@@ -11,6 +11,9 @@ import AiExtensionBuilder from '@/views/AiExtensionBuilder.vue';
 import { getAvailableExtensions } from '@/utils/extension-relationships';
 import http from '@/utils/dynamic-http';
 
+const extensionManifests = import.meta.glob('../extensions/*/manifest.json', { eager: true });
+const extensionComponents = import.meta.glob('../extensions/*/*.vue');
+
 // Component resolver for dynamic imports
 function createComponentResolver(extensionName: string, extensionVersion: string) {
   return {
@@ -18,7 +21,11 @@ function createComponentResolver(extensionName: string, extensionVersion: string
       // Add .vue extension if not present
       const fullComponentName = componentName.endsWith('.vue') ? componentName : `${componentName}.vue`;
       const componentPath = `../extensions/${extensionName}_${extensionVersion}/${fullComponentName}`;
-      return () => import(/* @vite-ignore */ componentPath);
+      const componentLoader = extensionComponents[componentPath];
+      if (!componentLoader) {
+        throw new Error(`Component not bundled: ${componentPath}`);
+      }
+      return componentLoader;
     }
   };
 }
@@ -52,15 +59,14 @@ async function loadExtensionRoutes(): Promise<RouteRecordRaw[]> {
   if (enabledExtensions.length === 0) {
     // Fallback: dynamically discover extensions that have frontend routes
     try {
-      const manifestModules = import.meta.glob('../extensions/*/manifest.json', { eager: true });
       const candidates: Array<{ name: string; version: string; hasRoutes: boolean }> = [];
 
-      for (const path in manifestModules) {
+      for (const path in extensionManifests) {
         const match = path.match(/\/extensions\/([^\/]+)_([^\/]+)\/manifest\.json$/);
         if (match) {
           const extensionName = match[1];
           const extensionVersion = match[2];
-          const manifest = (manifestModules[path] as any).default;
+          const manifest = (extensionManifests[path] as any).default;
           const hasRoutes = Boolean(manifest && Array.isArray(manifest.frontend_routes));
           candidates.push({ name: extensionName, version: extensionVersion, hasRoutes });
         }
@@ -104,10 +110,9 @@ async function loadExtensionRoutes(): Promise<RouteRecordRaw[]> {
 
   for (const { name: extensionName, version: extensionVersion } of filteredEnabled) {
     try {
-      // Load manifest directly from file
       const manifestPath = `../extensions/${extensionName}_${extensionVersion}/manifest.json`;
-      const manifestModule = await import(/* @vite-ignore */ manifestPath);
-      const manifest = manifestModule.default;
+      const manifestModule = extensionManifests[manifestPath] as any;
+      const manifest = manifestModule?.default;
 
       if (!manifest) {
         console.warn(`No manifest found for ${extensionName}`);

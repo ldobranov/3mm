@@ -223,6 +223,16 @@ export default defineComponent({
       menuItems.value = baseItems;
     };
 
+    const getManifestMenuItems = (): MenuItem[] => {
+      return router
+        .getRoutes()
+        .filter((route) => route.meta?.menuLabel && route.path)
+        .map((route) => ({
+          label: route.meta.menuLabel as MenuItem['label'],
+          path: route.path,
+        }));
+    };
+
 
     const fetchMenuItems = async () => {
       try {
@@ -250,19 +260,36 @@ export default defineComponent({
         // Prioritize main menu (ID 1) for header display, fallback to first active menu
         const activeMenu = menus.find((m: any) => m.id === 1) || menus.find((m: any) => m.is_active) || menus[0];
 
-        if (activeMenu && activeMenu.items) {
+        if (activeMenu && Array.isArray(activeMenu.items) && activeMenu.items.length > 0) {
           // Use translated items for current language
           menuItems.value = [...activeMenu.items];
         } else {
-          // No menu available - use empty menu
-          menuItems.value = [];
+          // Extension navigation is declared by manifests and exposed as route metadata.
+          menuItems.value = getManifestMenuItems();
+        }
+
+        // Module v2 navigation is data-driven. A module name is never mapped here.
+        if (isLoggedIn.value) {
+          try {
+            const registrations = await http.get('/api/v1/modules/registrations');
+            for (const registration of registrations.data || []) {
+              if (registration.kind !== 'navigation') continue;
+              const path = registration.metadata?.path;
+              const label = registration.metadata?.label;
+              if (typeof path === 'string' && typeof label === 'string' &&
+                  !menuItems.value.some(item => item.path === path)) {
+                menuItems.value.push({ path, label });
+              }
+            }
+          } catch (registrationError) {
+            console.warn('Module navigation registry is unavailable:', registrationError);
+          }
         }
 
         errorMessage.value = '';
       } catch (error) {
         console.error('Failed to fetch menu:', error);
-        // Use empty menu on error
-        menuItems.value = [];
+        menuItems.value = getManifestMenuItems();
       }
 
       buildMenuItems();

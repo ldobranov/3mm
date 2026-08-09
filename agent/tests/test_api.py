@@ -41,7 +41,11 @@ def test_agent_exposes_versioned_health_hello_and_inventory(tmp_path):
     assert hello.device_id == health.device_id
     assert hello.display_name == "mock-pi3-01"
     assert hello.role is AgentRole.NODE
-    assert hello.capabilities == ("hardware.inventory",)
+    assert hello.capabilities == (
+        "hardware.inventory",
+        "hardware.gpio.digital_input",
+        "hardware.gpio.digital_output",
+    )
 
     inventory = AgentInventory.model_validate(inventory_response.json())
     assert inventory.device_id == health.device_id
@@ -96,3 +100,18 @@ def test_two_agents_have_independent_identities(tmp_path):
     assert (
         first_inventory["memory_total_bytes"] > second_inventory["memory_total_bytes"]
     )
+
+
+def test_loopback_mock_gpio_diagnostics_are_isolated_and_deterministic(tmp_path):
+    settings = AgentSettings(data_dir=tmp_path, hardware_profile=HardwareProfile.NATIVE)
+
+    with TestClient(create_app(settings)) as client:
+        initial = client.get("/api/v1/agent/mock-gpio/state")
+        changed = client.post(
+            "/api/v1/agent/mock-gpio/inputs/gpio.input.1", json={"value": True}
+        )
+        final = client.get("/api/v1/agent/mock-gpio/state")
+
+    assert initial.json()["inputs"]["gpio.input.1"] is False
+    assert changed.json() == {"changed": True, "sequence": 1}
+    assert final.json()["inputs"]["gpio.input.1"] is True

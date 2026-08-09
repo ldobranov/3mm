@@ -30,6 +30,7 @@ class BackendSettings(BaseModel):
     host: str = "0.0.0.0"
     port: int = Field(default=8887, ge=1, le=65535)
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    device_offline_after_seconds: int = Field(default=90, ge=5, le=3600)
 
 
 class AppSettings(BaseModel):
@@ -98,6 +99,8 @@ def get_settings() -> AppSettings:
         backend["port"] = int(backend_port)
     if cors_origins := os.getenv("CORS_ORIGINS"):
         backend["cors_origins"] = _parse_cors_origins(cors_origins)
+    if offline_after := os.getenv("DEVICE_OFFLINE_AFTER_SECONDS"):
+        backend["device_offline_after_seconds"] = int(offline_after)
     if frontend_backend_url := os.getenv("FRONTEND_BACKEND_URL"):
         frontend["backend_url"] = frontend_backend_url
     if frontend_url := os.getenv("FRONTEND_URL"):
