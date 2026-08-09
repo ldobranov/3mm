@@ -34,6 +34,7 @@ from backend.db.device import (
     DeviceCommand,
     DeviceState,
 )
+from backend.db.module import ModulePackage, ModuleInstallation
 import logging
 
 logger = logging.getLogger(__name__)

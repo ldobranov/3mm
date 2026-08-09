@@ -37,6 +37,7 @@ from backend.routes.group_routes import router as group_router
 from backend.routes.language_routes import router as language_router
 from backend.routes.marketplace_routes import router as marketplace_router
 from backend.routes.monitoring_routes import router as monitoring_router
+from backend.routes.modules import router as modules_router
 from backend.routes.permission_routes import router as permission_router
 from backend.routes.role_routes import router as role_router
 from backend.routes.session_routes import router as session_router
@@ -208,6 +209,7 @@ app.include_router(device_ingest_router)
 app.include_router(device_registry_router)
 app.include_router(device_commands_router)
 app.include_router(device_state_router)
+app.include_router(modules_router)
 app.include_router(refresh_router, prefix="/api")
 app.include_router(session_router, prefix="/api")
 app.include_router(audit_router, prefix="/api")

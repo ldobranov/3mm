@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.db.device import Device, DeviceCommand
+from backend.db.module import ModuleInstallation
 from backend.db.user import User
 from backend.services.device_commands import (
     DeviceCommandError,
@@ -125,4 +126,16 @@ def submit_command_result(
         command = record_command_result(db, device=device, result=payload)
     except DeviceCommandError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if command.command_type in {"module.install", "module.disable"}:
+        installation = db.scalar(select(ModuleInstallation).where(ModuleInstallation.command_id == command.command_id))
+        if installation is not None:
+            installation.status = command.status
+            installation.error = command.error
+            if command.status == "succeeded":
+                if command.command_type == "module.install":
+                    installation.installed_version = installation.desired_version
+                    installation.enabled = True
+                else:
+                    installation.enabled = False
+            db.commit()
     return CommandStatusResponse.model_validate(command, from_attributes=True)
