@@ -132,10 +132,36 @@
                       ? t('mainServer.commands.queueing', 'Queueing...')
                       : t('mainServer.commands.refreshInventory', 'Refresh inventory') }}
                   </button>
+                  <button class="btn-small" @click="selectedDiagnosticsDeviceId = device.device_id">
+                    {{ t('mainServer.devices.details', 'Details') }}
+                  </button>
                 </td>
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="selectedDiagnosticsDevice" class="diagnostics-panel">
+          <div class="section-title-row">
+            <h3>{{ selectedDiagnosticsDevice.display_name || selectedDiagnosticsDevice.device_id }}</h3>
+            <button class="btn-small" @click="selectedDiagnosticsDeviceId = ''">×</button>
+          </div>
+          <div class="diagnostics-grid">
+            <section>
+              <h4>{{ t('mainServer.diagnostics.inventory', 'Latest inventory') }}</h4>
+              <pre>{{ prettyJson(selectedDiagnosticsDevice.latest_inventory) }}</pre>
+            </section>
+            <section>
+              <h4>{{ t('mainServer.diagnostics.state', 'Desired / reported state') }}</h4>
+              <pre>{{ prettyJson(deviceStates[selectedDiagnosticsDevice.device_id] || null) }}</pre>
+            </section>
+          </div>
+          <h4>{{ t('mainServer.diagnostics.commands', 'Recent commands') }}</h4>
+          <ul class="diagnostics-events">
+            <li v-for="command in selectedDeviceCommands" :key="command.command_id">
+              <strong>{{ command.status }}</strong> · {{ command.command_type }} · {{ formatTimestamp(command.created_at) }}
+              <span v-if="command.error"> · {{ command.error }}</span>
+            </li>
+          </ul>
         </div>
       </div>
 
@@ -254,7 +280,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { useI18n } from '@/utils/i18n';
 import http from '@/utils/dynamic-http';
 
@@ -312,6 +338,13 @@ const commandsError = ref(false);
 const commandMessage = ref('');
 const queuedDeviceId = ref('');
 const deviceStates = ref<Record<string, DeviceStateSummary>>({});
+const selectedDiagnosticsDeviceId = ref('');
+const selectedDiagnosticsDevice = computed(() =>
+  devices.value.find((device) => device.device_id === selectedDiagnosticsDeviceId.value) || null
+);
+const selectedDeviceCommands = computed(() =>
+  commands.value.filter((command) => command.device_id === selectedDiagnosticsDeviceId.value).slice(0, 10)
+);
 const settings = ref({
   autoUpdate: false,
   updateInterval: 'daily',
@@ -412,6 +445,8 @@ const formatResult = (result: Record<string, unknown> | null) => {
   if (!result) return '-';
   return Object.entries(result).map(([key, value]) => `${key}: ${String(value)}`).join(', ');
 };
+
+const prettyJson = (value: unknown) => value ? JSON.stringify(value, null, 2) : '-';
 
 // Load connected devices
 const loadDevices = async () => {
@@ -641,6 +676,31 @@ const saveSettings = async () => {
 .status-badge.failed, .status-badge.expired {
   background: var(--error-surface);
   color: var(--error-color);
+}
+
+.diagnostics-panel {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--surface-2);
+  border-radius: 6px;
+}
+
+.diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.diagnostics-panel pre {
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diagnostics-events {
+  margin: 0;
+  padding-left: 1.25rem;
 }
 
 .devices-table code {
