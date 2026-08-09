@@ -3,6 +3,7 @@
 from three_mm_protocol.models import (
     PROTOCOL_VERSION,
     AgentHealth,
+    AgentHeartbeat,
     AgentHello,
     AgentInventory,
     AgentRole,
@@ -11,6 +12,7 @@ from three_mm_protocol.models import (
 __all__ = [
     "PROTOCOL_VERSION",
     "AgentHealth",
+    "AgentHeartbeat",
     "AgentHello",
     "AgentInventory",
     "AgentRole",

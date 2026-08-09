@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 import backend.database  # noqa: F401 - register complete model metadata
 from backend.db.audit_log import AuditLog
 from backend.db.base import Base
-from backend.db.device import DevicePairingRequest
+from backend.db.device import DeviceCredential, DevicePairingRequest
 from backend.db.user import User
 from backend.routes.device_pairing import router
 from backend.utils.auth import hash_password
@@ -201,5 +201,50 @@ def test_agent_completes_approved_pairing_and_secret_is_returned_once() -> None:
         replay = client.post("/api/v1/pairing/complete", json=completion_payload)
         assert replay.status_code == 409
         assert "credential_secret" not in replay.text
+    finally:
+        db.close()
+
+
+def test_admin_revokes_issued_device_credential_with_audit_record() -> None:
+    client, db, admin_token, _ = make_client()
+    try:
+        headers = {"Authorization": f"Bearer {admin_token}"}
+        device_id = "dev_0123456789abcdef0123456789abcdef"
+        issued = client.post("/api/v1/pairing-codes", headers=headers).json()
+        client.post(
+            "/api/v1/pairing/claim",
+            json={
+                "code": issued["code"],
+                "device_id": device_id,
+                "public_key": "ssh-ed25519 test-agent-public-key",
+                "display_name": "Test Agent",
+                "role": "node",
+                "protocol_version": "1.0",
+            },
+        )
+        client.post(
+            f"/api/v1/pairing/requests/{issued['request_id']}/approve",
+            headers=headers,
+        )
+        completed = client.post(
+            "/api/v1/pairing/complete",
+            json={"code": issued["code"], "device_id": device_id},
+        ).json()
+
+        endpoint = (
+            f"/api/v1/devices/{device_id}/credentials/"
+            f"{completed['credential_id']}/revoke"
+        )
+        revoked = client.post(endpoint, headers=headers)
+        assert revoked.status_code == 200
+        assert revoked.json()["status"] == "revoked"
+        credential = db.query(DeviceCredential).one()
+        assert credential.revoked_at is not None
+        assert (
+            db.query(AuditLog).filter_by(action="DEVICE_CREDENTIAL_REVOKED").count()
+            == 1
+        )
+
+        assert client.post(endpoint, headers=headers).status_code == 404
     finally:
         db.close()

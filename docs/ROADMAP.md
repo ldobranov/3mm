@@ -296,6 +296,8 @@ These are the first concrete tasks after approval of this plan:
 - [x] Add atomic single-use and expiring pairing-code domain services.
 - [x] Add versioned pairing-code, claim and explicit approval APIs.
 - [x] Issue a unique device credential once after explicit pairing approval.
+- [x] Authenticate Agent requests with unique revocable device credentials.
+- [x] Accept authenticated heartbeats with strict device identity matching.
 
 ## Explicitly deferred
 

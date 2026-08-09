@@ -29,6 +29,10 @@ class PairingCompletionError(RuntimeError):
     """The approved pairing request cannot issue a credential."""
 
 
+class DeviceCredentialRevocationError(RuntimeError):
+    """The selected active device credential cannot be revoked."""
+
+
 @dataclass(frozen=True)
 class IssuedPairingCode:
     request_id: int
@@ -227,3 +231,31 @@ def complete_pairing_request(
         credential_id=credential_id,
         secret=secret,
     )
+
+
+def revoke_device_credential(
+    db: Session,
+    *,
+    device_id: str,
+    credential_id: str,
+    now: datetime | None = None,
+) -> DeviceCredential:
+    revoked_at = now or datetime.now(timezone.utc)
+    if revoked_at.tzinfo is None:
+        raise ValueError("Credential timestamps must include a timezone")
+
+    credential = db.scalar(
+        select(DeviceCredential)
+        .join(Device)
+        .where(
+            Device.device_id == device_id,
+            DeviceCredential.credential_id == credential_id,
+            DeviceCredential.revoked_at.is_(None),
+        )
+    )
+    if credential is None:
+        raise DeviceCredentialRevocationError("Active device credential was not found")
+    credential.revoked_at = revoked_at
+    db.commit()
+    db.refresh(credential)
+    return credential

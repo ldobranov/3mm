@@ -61,3 +61,11 @@ class AgentInventory(ProtocolModel):
     network_manager_active: bool | None = None
     hardware_driver: str = Field(default="linux", min_length=1)
     capabilities: tuple[str, ...] = ()
+
+
+class AgentHeartbeat(ProtocolModel):
+    protocol_version: Literal["1.0"] = PROTOCOL_VERSION
+    device_id: DeviceId = Field(pattern=r"^dev_[0-9a-f]{32}$")
+    sent_at: datetime
+    uptime_seconds: float = Field(ge=0)
+    status: Literal["ready", "degraded"] = "ready"

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from backend.db.audit_log import AuditLog
 from backend.db.user import User
 from backend.services.device_pairing import (
+    DeviceCredentialRevocationError,
     PairingApprovalError,
     PairingCodeUnavailableError,
     PairingCompletionError,
@@ -17,6 +18,7 @@ from backend.services.device_pairing import (
     claim_pairing_code,
     complete_pairing_request,
     issue_pairing_code,
+    revoke_device_credential,
 )
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
@@ -69,6 +71,14 @@ class DeviceCredentialResponse(BaseModel):
     device_id: str
     credential_id: str
     credential_secret: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class CredentialRevocationResponse(BaseModel):
+    device_id: str
+    credential_id: str
+    status: str = "revoked"
 
     model_config = ConfigDict(extra="forbid")
 
@@ -186,4 +196,42 @@ def complete_pairing(
         device_id=credential.device_id,
         credential_id=credential.credential_id,
         credential_secret=credential.secret,
+    )
+
+
+@router.post(
+    "/devices/{device_id}/credentials/{credential_id}/revoke",
+    response_model=CredentialRevocationResponse,
+)
+def revoke_credential(
+    device_id: str,
+    credential_id: str,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> CredentialRevocationResponse:
+    try:
+        credential = revoke_device_credential(
+            db,
+            device_id=device_id,
+            credential_id=credential_id,
+        )
+    except DeviceCredentialRevocationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+
+    db.add(
+        AuditLog(
+            user_id=admin.id,
+            action="DEVICE_CREDENTIAL_REVOKED",
+            entity_type="device",
+            entity_id=credential.device_id,
+            entity_name=device_id,
+            changes={"credential_id": credential_id},
+        )
+    )
+    db.commit()
+    return CredentialRevocationResponse(
+        device_id=device_id,
+        credential_id=credential_id,
     )
