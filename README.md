@@ -111,6 +111,29 @@ queries only general service state and device interface/type/state fields; it
 does not query connection profiles, SSIDs, UUIDs, addresses or credentials.
 The mock adapter remains the only adapter authorized for configuration changes.
 
+The shared runtime planner maps the persisted device role to services without
+depending on systemd: an unprovisioned or interrupted device runs Setup, a Node
+runs Agent, and Hub or Standalone runs Core, Web plus the local Agent.
+Installers and service managers can consume this plan while keeping role policy
+in one tested location.
+
+Validated systemd templates for that layout live under `deployment/systemd`.
+Core is reachable from the trusted local network; Agent and Setup remain on
+loopback. The templates are not installed automatically and currently grant no
+NetworkManager write access to the setup prototype.
+
+For static-artifact smoke tests, `python -m three_mm_web --directory
+frontend/dist` serves the already built Vue application with history-route
+fallback. It is a dependency-free validation server, not the final production
+TLS or reverse-proxy boundary.
+
+For an explicitly prepared Linux release archive, the reviewed systemd
+installer is `deployment/install-systemd.sh`. It requires root, an immutable
+release ID and an exact frontend CORS origin. An existing Agent identity may be
+passed as the fourth argument for migration. The installer enables Core, Web
+and Agent for Standalone, keeps Setup disabled, and does not alter networking
+or firewall configuration.
+
 ## 📋 Prerequisites
 
 Before installing, ensure you have the following installed on your system:

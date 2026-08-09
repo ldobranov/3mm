@@ -1,65 +1,64 @@
 import asyncio
 import json
 import logging
-import os
-import sys
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
-# Fix path inconsistency - use the same approach as database.py
-# Add project root to sys.path FIRST - before any imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from fastapi.exceptions import RequestValidationError
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from backend.config import get_settings
-
-app_settings = get_settings()
-
-# Import database and models first
-from backend.database import init_db, get_db
-import backend.db.user  # noqa: F401
+import backend.db.association_tables  # noqa: F401 - Import to ensure tables are created
 import backend.db.audit_log  # noqa: F401
 import backend.db.role  # noqa: F401 - Import to ensure tables are created
-import backend.db.association_tables  # noqa: F401 - Import to ensure tables are created
-#import backend.db.language_pack  # noqa: F401 - Import to ensure tables are created
+import backend.db.user  # noqa: F401
+from backend.config import get_settings
+
+# Import database and models first
+from backend.database import get_db, init_db
+from backend.db.extension import Extension
+from backend.routes.ai_extension_builder_routes import (
+    router as ai_extension_builder_router,
+)
+from backend.routes.audit_routes import router as audit_router
+from backend.routes.auth_refresh import router as refresh_router
+from backend.routes.display_routes import router as display_router
+from backend.routes.extension_routes import router as extension_router
+from backend.routes.group_routes import router as group_router
+from backend.routes.language_routes import router as language_router
+from backend.routes.marketplace_routes import router as marketplace_router
+from backend.routes.monitoring_routes import router as monitoring_router
+from backend.routes.permission_routes import router as permission_router
+from backend.routes.role_routes import router as role_router
+from backend.routes.session_routes import router as session_router
 
 # Import all route routers
 from backend.routes.settings import router as settings_router
 from backend.routes.user import router as user_router
-from backend.routes.display_routes import router as display_router
-from backend.routes.auth_refresh import router as refresh_router
-from backend.routes.session_routes import router as session_router
-from backend.routes.audit_routes import router as audit_router
-from backend.routes.permission_routes import router as permission_router
-from backend.routes.extension_routes import router as extension_router
-from backend.routes.marketplace_routes import router as marketplace_router
-from backend.routes.monitoring_routes import router as monitoring_router
-from backend.routes.role_routes import router as role_router
-from backend.routes.group_routes import router as group_router
-from backend.routes.language_routes import router as language_router
-from backend.routes.ai_extension_builder_routes import router as ai_extension_builder_router
+from backend.utils.extension_manager import extension_manager
+from backend.utils.extension_monitoring import performance_monitor
 
 # Import extension utilities
 from backend.utils.extension_updates import update_manager
-from backend.utils.extension_monitoring import performance_monitor
-from backend.utils.extension_manager import extension_manager
-from backend.db.extension import Extension
+
+# import backend.db.language_pack  # noqa: F401 - Import to ensure tables are created
+
+app_settings = get_settings()
+
 
 # Configure logging. Service managers can redirect stdout/stderr to persistent
 # storage without the application mutating a tracked file at import time.
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
 )
 logger = logging.getLogger("backend_debug")
+
 
 # Custom JSON response class that preserves Unicode characters
 class UnicodeJSONResponse(JSONResponse):
@@ -72,14 +71,15 @@ class UnicodeJSONResponse(JSONResponse):
             separators=(",", ":"),
         ).encode("utf-8")
 
+
 async def load_enabled_extensions(app: FastAPI):
     """Load all enabled extensions after application startup."""
     db = None
     try:
         db = next(get_db())
-        enabled_extensions = db.query(Extension).filter(
-            Extension.is_enabled.is_(True)
-        ).all()
+        enabled_extensions = (
+            db.query(Extension).filter(Extension.is_enabled.is_(True)).all()
+        )
 
         if not enabled_extensions:
             logger.info("No enabled extensions to load")
@@ -135,6 +135,7 @@ async def lifespan(app: FastAPI):
 # Configure FastAPI to use Unicode-preserving JSON encoder
 app = FastAPI(default_response_class=UnicodeJSONResponse, lifespan=lifespan)
 
+
 class CustomErrorHandlerMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         try:
@@ -143,13 +144,14 @@ class CustomErrorHandlerMiddleware(BaseHTTPMiddleware):
         except RequestValidationError as exc:
             return UnicodeJSONResponse(
                 status_code=422,
-                content={"error": "Validation Error", "details": exc.errors()}
+                content={"error": "Validation Error", "details": exc.errors()},
             )
         except Exception as exc:
             return UnicodeJSONResponse(
                 status_code=500,
-                content={"error": "Internal Server Error", "details": str(exc)}
+                content={"error": "Internal Server Error", "details": str(exc)},
             )
+
 
 # Add middleware to FastAPI app
 app.add_middleware(CustomErrorHandlerMiddleware)
@@ -164,7 +166,7 @@ app.add_middleware(
 )
 
 # Mount static files for uploads
-uploads_dir = (Path(__file__).resolve().parent.parent / "uploads").resolve()
+uploads_dir = app_settings.backend.uploads_dir.resolve()
 uploads_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 
@@ -183,11 +185,13 @@ def readiness():
         db.close()
     return {"status": "ready"}
 
+
 # Add logging for static file requests
 @app.middleware("http")
 async def log_static_requests(request, call_next):
     response = await call_next(request)
     return response
+
 
 app.include_router(settings_router)
 app.include_router(user_router, prefix="/api/user")
@@ -213,6 +217,7 @@ app.include_router(ai_extension_builder_router)
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "backend.main:app",
         host=app_settings.backend.host,
