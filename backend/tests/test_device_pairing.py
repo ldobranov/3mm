@@ -17,7 +17,7 @@ from backend.services.device_pairing import (
     issue_replacement_device_credential,
     pairing_code_hash,
 )
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 
@@ -64,7 +64,9 @@ def test_replacement_credential_preserves_device_identity(db: Session) -> None:
     replacement = issue_replacement_device_credential(db, device_id=device_id)
     assert replacement.device_id == device_id
     assert replacement.credential_id.startswith("cred_")
-    stored = db.get(DeviceCredential, replacement.credential_id)
+    stored = db.scalar(select(DeviceCredential).where(
+        DeviceCredential.credential_id == replacement.credential_id
+    ))
     assert stored is not None
     assert stored.secret_hash == credential_secret_hash(replacement.secret)
     assert replacement.secret not in stored.secret_hash
