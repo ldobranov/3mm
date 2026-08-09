@@ -81,3 +81,15 @@ def test_heartbeat_rejects_negative_uptime_and_unknown_status():
 
     with pytest.raises(ValidationError):
         AgentHeartbeat.model_validate(payload)
+
+
+def test_command_contract_rejects_unknown_result_status():
+    from three_mm_protocol import AgentCommandResult
+
+    with pytest.raises(ValidationError):
+        AgentCommandResult(
+            command_id="cmd_0123456789abcdef0123456789abcdef",
+            device_id="dev_0123456789abcdef0123456789abcdef",
+            status="queued",
+            completed_at=datetime.now(UTC),
+        )

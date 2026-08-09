@@ -30,6 +30,7 @@ from backend.routes.display_routes import router as display_router
 from backend.routes.device_pairing import router as device_pairing_router
 from backend.routes.device_ingest import router as device_ingest_router
 from backend.routes.device_registry import router as device_registry_router
+from backend.routes.device_commands import router as device_commands_router
 from backend.routes.extension_routes import router as extension_router
 from backend.routes.group_routes import router as group_router
 from backend.routes.language_routes import router as language_router
@@ -204,6 +205,7 @@ app.include_router(display_router)
 app.include_router(device_pairing_router)
 app.include_router(device_ingest_router)
 app.include_router(device_registry_router)
+app.include_router(device_commands_router)
 app.include_router(refresh_router, prefix="/api")
 app.include_router(session_router, prefix="/api")
 app.include_router(audit_router, prefix="/api")

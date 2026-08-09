@@ -127,3 +127,26 @@ class DeviceHeartbeat(Base):
     __table_args__ = (
         Index("ix_heartbeat_device_received", "device_id", "received_at"),
     )
+
+
+class DeviceCommand(Base):
+    __tablename__ = "device_commands"
+
+    id = Column(Integer, primary_key=True)
+    command_id = Column(String(64), nullable=False, unique=True, index=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False, index=True)
+    command_type = Column(String(100), nullable=False)
+    payload = Column(JSON, nullable=False, default=dict)
+    idempotency_key = Column(String(128), nullable=False)
+    status = Column(String(32), nullable=False, default="queued", index=True)
+    result = Column(JSON, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_command_device_status_created", "device_id", "status", "created_at"),
+        Index("ux_command_device_idempotency", "device_id", "idempotency_key", unique=True),
+    )
