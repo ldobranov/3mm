@@ -308,6 +308,7 @@ These are the first concrete tasks after approval of this plan:
 - [x] Redeliver unacknowledged commands after reconnect without repeating completed actions.
 - [x] Expose command submission, status, results and delivery attempts in the device registry UI.
 - [x] Reconcile the first allowlisted desired state revision on the physical Agent.
+- [x] Show desired/reported revisions and synchronization status in the device registry UI.
 
 ## Explicitly deferred
 
