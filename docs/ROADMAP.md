@@ -1,11 +1,13 @@
 # 3mm Roadmap
 
-Status: draft for review  
+Status: active; Milestone 0 completed on 2026-08-09
 Planning style: sequential milestones with a runnable result after every milestone
 
 Dates are intentionally not assigned until the current baseline is reproducible. Progress is measured by acceptance criteria, not optimistic calendar estimates.
 
 ## Milestone 0 — Reproducible baseline
+
+Status: completed on 2026-08-09. See [MILESTONE_0_REPORT.md](MILESTONE_0_REPORT.md).
 
 Goal: make the existing project safe to start and evaluate on a new laptop without machine-specific services.
 
@@ -250,14 +252,15 @@ Candidate selection criteria:
 
 These are the first concrete tasks after approval of this plan:
 
-1. Record the current backend and frontend startup failures from a clean environment.
-2. Replace committed active PostgreSQL credentials with portable development defaults.
-3. Add typed configuration and `.env.example`.
-4. Make SQLite the verified default development database.
-5. Add one development launcher for backend and frontend.
-6. Establish backend and frontend quality gates.
-7. Document which existing tests are trustworthy.
-8. Design the shared protocol package and first `agent.hello` schema.
+- [x] Record the current backend and frontend startup failures from a clean environment.
+- [x] Replace committed active PostgreSQL credentials with portable development defaults.
+- [x] Add typed configuration and `.env.example`.
+- [x] Make SQLite the verified default development database.
+- [x] Add one development launcher for backend and frontend.
+- [x] Establish backend and frontend quality gates.
+- [x] Document which existing tests are trustworthy.
+- [ ] Design the shared protocol package and first `agent.hello` schema.
+- [ ] Add the minimal standalone Agent and a two-Agent laptop simulation.
 9. Create a minimal Agent with persistent local identity.
 10. Start two mock Agents on the laptop.
 
@@ -272,4 +275,3 @@ The following work does not begin before the relevant foundations are accepted:
 - Docker/Kubernetes fleet architecture;
 - large-scale telemetry storage;
 - visual redesign unrelated to the first device workflow.
-
