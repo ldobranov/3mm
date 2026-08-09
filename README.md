@@ -35,6 +35,35 @@ backend/.venv/bin/python -m pytest
 npm --prefix frontend run build
 ```
 
+### Standalone Agent development
+
+Run one Agent from the repository root with an isolated persistent identity:
+
+```bash
+backend/.venv/bin/python -m agent \
+  --data-dir .runtime/agent \
+  --name local-agent \
+  --role standalone
+```
+
+The Agent listens on `http://127.0.0.1:8890` by default. Its liveness,
+identity contract and privacy-conscious inventory are available at:
+
+- `/health`;
+- `/ready`;
+- `/api/v1/agent/hello`;
+- `/api/v1/agent/inventory`.
+
+Start two independent mock Agents with persistent, different identities:
+
+```bash
+./dev-agents.sh
+```
+
+The mock Agents listen on ports `8890` and `8891`. Their runtime data stays in
+the ignored `.runtime/agents` directory, so restarting the launcher preserves
+their device IDs. Press `Ctrl+C` to stop both processes.
+
 ## 📋 Prerequisites
 
 Before installing, ensure you have the following installed on your system:

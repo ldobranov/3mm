@@ -69,6 +69,7 @@ backend/data/
 # Temporary files
 tmp/
 temp/
+.runtime/
 *.tmp
 *.temp
 
