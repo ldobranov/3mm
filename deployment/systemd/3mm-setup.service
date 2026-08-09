@@ -1,0 +1,29 @@
+[Unit]
+Description=3mm headless setup prototype
+After=network.target
+Conflicts=3mm-core.service 3mm-web.service 3mm-agent.service
+
+[Service]
+Type=simple
+User=3mm
+Group=3mm
+WorkingDirectory=/opt/3mm/current
+EnvironmentFile=-/etc/3mm/3mm.env
+ExecStart=/opt/3mm/venv/bin/python -m setup_service --host 127.0.0.1 --port 8895 --data-dir /var/lib/3mm/provisioning
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+StateDirectory=3mm/provisioning
+RuntimeDirectory=3mm
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

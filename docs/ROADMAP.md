@@ -286,6 +286,11 @@ These are the first concrete tasks after approval of this plan:
 - [x] Validate a privacy-safe read-only NetworkManager adapter on Raspberry Pi.
 - [x] Hand off the provisioned device role to Agent startup without changing identity.
 - [x] Measure the Standalone Core plus local Agent footprint on Raspberry Pi 3B+.
+- [x] Add a shared device-role service planner for Setup, Core and Agent.
+- [x] Add hardened systemd templates with structural listener tests.
+- [x] Validate trusted-LAN Core access while keeping Agent loopback-only.
+- [x] Build the frontend off-device and validate the static artifact over LAN.
+- [x] Install and validate the Standalone Core, Web and Agent systemd services.
 
 ## Explicitly deferred
 

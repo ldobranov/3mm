@@ -198,6 +198,7 @@ export async function createRouterWithDynamicRoutes() {
 
   // Load base application routes
   const routes: RouteRecordRaw[] = [
+    { path: '/', redirect: '/user/login' },
     { path: '/user/login', name: 'Login', component: Login },
     { path: '/user/register', name: 'Register', component: Register },
     { path: '/user/profile', name: 'Profile', component: Profile, meta: { requiresAuth: true } },

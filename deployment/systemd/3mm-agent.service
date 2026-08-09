@@ -1,0 +1,29 @@
+[Unit]
+Description=3mm device Agent
+After=network.target
+Conflicts=3mm-setup.service
+
+[Service]
+Type=simple
+User=3mm
+Group=3mm
+WorkingDirectory=/opt/3mm/current
+EnvironmentFile=-/etc/3mm/3mm.env
+ExecStart=/opt/3mm/venv/bin/python -m agent --host 127.0.0.1 --port 8890 --data-dir /var/lib/3mm/agent --provisioning-data-dir /var/lib/3mm/provisioning --hardware-profile native
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+StateDirectory=3mm/agent 3mm/provisioning
+RuntimeDirectory=3mm
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

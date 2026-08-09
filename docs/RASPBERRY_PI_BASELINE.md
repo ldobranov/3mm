@@ -91,3 +91,45 @@ measurement; the Agent was left running.
 | Combined idle footprint | 136.3 MiB RSS; 118.0 MiB PSS |
 | Listener isolation | Pass: Core and Agent bound only to `127.0.0.1` |
 | NetworkManager state during measurement | `connected`; observed read-only |
+
+## Trusted local-network Core access
+
+Core was restarted manually with an all-interface listener on port `8887` and
+was reached successfully from the development laptop on the same trusted local
+network. Both `/health` and `/ready` returned HTTP 200. The Agent remained
+bound to `127.0.0.1:8890`; a connection attempt to its port through the device
+LAN address failed as intended. NetworkManager and firewall configuration were
+not changed, and no systemd unit was installed. This validates local-network
+development access only and does not authorize direct Internet exposure.
+
+## Laptop-built frontend LAN smoke test
+
+The Vue frontend was type-checked and built on the laptop, then copied to the
+device as static files; Node.js was not installed on Raspberry Pi. A manual,
+unprivileged stdlib SPA server exposed the artifact on LAN port `8080`, with a
+runtime-only Core URL and Core CORS restricted to that frontend origin.
+
+Browser validation confirmed that `/` redirects to the login screen, direct
+reload of `/user/login` succeeds, assets load, the browser console has no
+errors, and a missing asset remains HTTP 404. This server is suitable for the
+current LAN smoke test only and is not the final TLS/reverse-proxy boundary.
+
+## Standalone systemd installation
+
+The reviewed release installer was run interactively with sudo after the
+manual-process tests. It created the dedicated unprivileged `3mm` account,
+installed an immutable release under `/opt/3mm/releases`, created the shared
+virtual environment under `/opt/3mm/venv`, and stored runtime state under
+`/var/lib/3mm`. No password was written to a command or file.
+
+Core, Web and Agent are enabled and active. Setup is disabled and inactive.
+Core listens on LAN port `8887`, Web on LAN port `8080`, and Agent remains on
+`127.0.0.1:8890`. Health, readiness, SPA direct-route reload and missing-asset
+404 behavior pass locally and over LAN. The migrated Agent reports the same
+stable device ID as before installation. NetworkManager remains connected and
+no network or firewall configuration was changed.
+
+The first hardened Core start exposed an old writable-path assumption for the
+uploads directory. Core now has a typed `UPLOADS_DIR` setting and systemd
+places uploads under `/var/lib/3mm/core/uploads`; `ProtectSystem=strict` remains
+enabled rather than being weakened.

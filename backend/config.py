@@ -13,10 +13,10 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.json"
 DEFAULT_DATABASE_PATH = PROJECT_ROOT / "backend" / "data" / "3mm.db"
+DEFAULT_UPLOADS_PATH = PROJECT_ROOT / "uploads"
 
 
 class FrontendSettings(BaseModel):
@@ -26,11 +26,10 @@ class FrontendSettings(BaseModel):
 
 class BackendSettings(BaseModel):
     database_url: str = f"sqlite:///{DEFAULT_DATABASE_PATH.as_posix()}"
+    uploads_dir: Path = DEFAULT_UPLOADS_PATH
     host: str = "0.0.0.0"
     port: int = Field(default=8887, ge=1, le=65535)
-    cors_origins: list[str] = Field(
-        default_factory=lambda: ["http://localhost:5173"]
-    )
+    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
 
 
 class AppSettings(BaseModel):
@@ -91,6 +90,8 @@ def get_settings() -> AppSettings:
 
     if database_url := os.getenv("DATABASE_URL"):
         backend["database_url"] = database_url
+    if uploads_dir := os.getenv("UPLOADS_DIR"):
+        backend["uploads_dir"] = uploads_dir
     if backend_host := os.getenv("BACKEND_HOST"):
         backend["host"] = backend_host
     if backend_port := os.getenv("BACKEND_PORT"):
@@ -106,5 +107,7 @@ def get_settings() -> AppSettings:
         backend.get("database_url", BackendSettings().database_url)
     )
 
-    return AppSettings(frontend=frontend, backend=backend)
-
+    return AppSettings(
+        frontend=FrontendSettings.model_validate(frontend),
+        backend=BackendSettings.model_validate(backend),
+    )
