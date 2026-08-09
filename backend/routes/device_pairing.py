@@ -12,8 +12,10 @@ from backend.db.user import User
 from backend.services.device_pairing import (
     PairingApprovalError,
     PairingCodeUnavailableError,
+    PairingCompletionError,
     approve_pairing_request,
     claim_pairing_code,
+    complete_pairing_request,
     issue_pairing_code,
 )
 from backend.utils.auth_dep import require_admin
@@ -52,6 +54,21 @@ class PairingApprovalResponse(BaseModel):
     request_id: int
     device_id: str
     status: str = "approved"
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PairingCompletionRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=128)
+    device_id: str = Field(pattern=r"^dev_[0-9a-f]{32}$")
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DeviceCredentialResponse(BaseModel):
+    device_id: str
+    credential_id: str
+    credential_secret: str
 
     model_config = ConfigDict(extra="forbid")
 
@@ -144,3 +161,29 @@ def approve_pairing(
     )
     db.commit()
     return PairingApprovalResponse(request_id=request_id, device_id=device.device_id)
+
+
+@router.post(
+    "/pairing/complete",
+    response_model=DeviceCredentialResponse,
+)
+def complete_pairing(
+    payload: PairingCompletionRequest,
+    db: Session = Depends(get_db),
+) -> DeviceCredentialResponse:
+    try:
+        credential = complete_pairing_request(
+            db,
+            code=payload.code,
+            requested_device_id=payload.device_id,
+        )
+    except PairingCompletionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Pairing request is not ready for completion",
+        ) from exc
+    return DeviceCredentialResponse(
+        device_id=credential.device_id,
+        credential_id=credential.credential_id,
+        credential_secret=credential.secret,
+    )

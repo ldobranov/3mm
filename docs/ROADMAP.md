@@ -295,6 +295,7 @@ These are the first concrete tasks after approval of this plan:
 - [x] Add the Device registry, credential, pairing, inventory and heartbeat schema.
 - [x] Add atomic single-use and expiring pairing-code domain services.
 - [x] Add versioned pairing-code, claim and explicit approval APIs.
+- [x] Issue a unique device credential once after explicit pairing approval.
 
 ## Explicitly deferred
 

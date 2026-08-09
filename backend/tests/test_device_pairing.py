@@ -3,13 +3,16 @@ from datetime import datetime, timedelta, timezone
 import backend.database  # noqa: F401 - register complete model metadata
 import pytest
 from backend.db.base import Base
-from backend.db.device import DevicePairingRequest
+from backend.db.device import DeviceCredential, DevicePairingRequest
 from backend.db.user import User
 from backend.services.device_pairing import (
     PairingApprovalError,
     PairingCodeUnavailableError,
+    PairingCompletionError,
     approve_pairing_request,
     claim_pairing_code,
+    complete_pairing_request,
+    credential_secret_hash,
     issue_pairing_code,
     pairing_code_hash,
 )
@@ -157,3 +160,58 @@ def test_pending_pairing_request_requires_explicit_approval(db: Session) -> None
             approved_by_user_id=1,
             now=now + timedelta(seconds=3),
         )
+
+
+def test_approved_agent_receives_one_unique_credential_once(db: Session) -> None:
+    now = datetime(2026, 8, 9, 12, 0, tzinfo=timezone.utc)
+    device_id = "dev_0123456789abcdef0123456789abcdef"
+    issued = issue_pairing_code(db, created_by_user_id=1, now=now)
+    claim_pairing_code(
+        db,
+        code=issued.code,
+        requested_device_id=device_id,
+        public_key="agent-public-key",
+        requested_metadata={
+            "display_name": "Test Agent",
+            "role": "node",
+            "protocol_version": "1.0",
+        },
+        now=now + timedelta(seconds=1),
+    )
+
+    with pytest.raises(PairingCompletionError, match="not ready"):
+        complete_pairing_request(
+            db,
+            code=issued.code,
+            requested_device_id=device_id,
+            now=now + timedelta(seconds=2),
+        )
+
+    approve_pairing_request(
+        db,
+        request_id=issued.request_id,
+        approved_by_user_id=1,
+        now=now + timedelta(seconds=3),
+    )
+    credential = complete_pairing_request(
+        db,
+        code=issued.code,
+        requested_device_id=device_id,
+        now=now + timedelta(seconds=4),
+    )
+
+    stored = db.query(DeviceCredential).one()
+    assert credential.device_id == device_id
+    assert credential.credential_id.startswith("cred_")
+    assert len(credential.secret) >= 43
+    assert stored.secret_hash == credential_secret_hash(credential.secret)
+    assert stored.secret_hash != credential.secret
+
+    with pytest.raises(PairingCompletionError, match="not ready"):
+        complete_pairing_request(
+            db,
+            code=issued.code,
+            requested_device_id=device_id,
+            now=now + timedelta(seconds=5),
+        )
+    assert db.query(DeviceCredential).count() == 1

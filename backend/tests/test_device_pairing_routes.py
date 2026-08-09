@@ -161,3 +161,45 @@ def test_admin_explicitly_approves_pending_device_without_issuing_secret() -> No
         assert duplicate.status_code == 409
     finally:
         db.close()
+
+
+def test_agent_completes_approved_pairing_and_secret_is_returned_once() -> None:
+    client, db, admin_token, _ = make_client()
+    try:
+        headers = {"Authorization": f"Bearer {admin_token}"}
+        device_id = "dev_0123456789abcdef0123456789abcdef"
+        issued = client.post("/api/v1/pairing-codes", headers=headers).json()
+        claim_payload = {
+            "code": issued["code"],
+            "device_id": device_id,
+            "public_key": "ssh-ed25519 test-agent-public-key",
+            "display_name": "Test Agent",
+            "role": "node",
+            "protocol_version": "1.0",
+        }
+        assert (
+            client.post("/api/v1/pairing/claim", json=claim_payload).status_code == 202
+        )
+
+        completion_payload = {"code": issued["code"], "device_id": device_id}
+        premature = client.post("/api/v1/pairing/complete", json=completion_payload)
+        assert premature.status_code == 409
+
+        approval = client.post(
+            f"/api/v1/pairing/requests/{issued['request_id']}/approve",
+            headers=headers,
+        )
+        assert approval.status_code == 200
+
+        completion = client.post("/api/v1/pairing/complete", json=completion_payload)
+        assert completion.status_code == 200
+        credential = completion.json()
+        assert credential["device_id"] == device_id
+        assert credential["credential_id"].startswith("cred_")
+        assert len(credential["credential_secret"]) >= 43
+
+        replay = client.post("/api/v1/pairing/complete", json=completion_payload)
+        assert replay.status_code == 409
+        assert "credential_secret" not in replay.text
+    finally:
+        db.close()

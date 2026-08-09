@@ -10,10 +10,11 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from backend.db.device import Device, DevicePairingRequest
+from backend.db.device import Device, DeviceCredential, DevicePairingRequest
 
 DEFAULT_PAIRING_TTL = timedelta(minutes=10)
 PAIRING_TOKEN_BYTES = 18
+CREDENTIAL_SECRET_BYTES = 32
 
 
 class PairingCodeUnavailableError(RuntimeError):
@@ -24,6 +25,10 @@ class PairingApprovalError(RuntimeError):
     """The pending pairing request cannot be approved."""
 
 
+class PairingCompletionError(RuntimeError):
+    """The approved pairing request cannot issue a credential."""
+
+
 @dataclass(frozen=True)
 class IssuedPairingCode:
     request_id: int
@@ -31,8 +36,19 @@ class IssuedPairingCode:
     expires_at: datetime
 
 
+@dataclass(frozen=True)
+class IssuedDeviceCredential:
+    device_id: str
+    credential_id: str
+    secret: str
+
+
 def pairing_code_hash(code: str) -> str:
     return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+
+def credential_secret_hash(secret: str) -> str:
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
 
 
 def issue_pairing_code(
@@ -157,3 +173,57 @@ def approve_pairing_request(
     db.commit()
     db.refresh(device)
     return device
+
+
+def complete_pairing_request(
+    db: Session,
+    *,
+    code: str,
+    requested_device_id: str,
+    now: datetime | None = None,
+) -> IssuedDeviceCredential:
+    completed_at = now or datetime.now(timezone.utc)
+    if completed_at.tzinfo is None:
+        raise ValueError("Pairing timestamps must include a timezone")
+
+    statement = (
+        update(DevicePairingRequest)
+        .where(
+            DevicePairingRequest.code_hash == pairing_code_hash(code),
+            DevicePairingRequest.requested_device_id == requested_device_id,
+            DevicePairingRequest.claimed_at.is_not(None),
+            DevicePairingRequest.approved_at.is_not(None),
+            DevicePairingRequest.device_id.is_not(None),
+            DevicePairingRequest.completed_at.is_(None),
+        )
+        .values(completed_at=completed_at)
+    )
+    result = db.execute(statement)
+    if result.rowcount != 1:
+        db.rollback()
+        raise PairingCompletionError("Pairing request is not ready for completion")
+
+    request = db.scalar(
+        select(DevicePairingRequest).where(
+            DevicePairingRequest.code_hash == pairing_code_hash(code)
+        )
+    )
+    if request is None or request.device_id is None:
+        db.rollback()
+        raise PairingCompletionError("Pairing request is not ready for completion")
+
+    credential_id = f"cred_{secrets.token_hex(16)}"
+    secret = secrets.token_urlsafe(CREDENTIAL_SECRET_BYTES)
+    credential = DeviceCredential(
+        device_id=request.device_id,
+        credential_id=credential_id,
+        secret_hash=credential_secret_hash(secret),
+        created_at=completed_at,
+    )
+    db.add(credential)
+    db.commit()
+    return IssuedDeviceCredential(
+        device_id=requested_device_id,
+        credential_id=credential_id,
+        secret=secret,
+    )

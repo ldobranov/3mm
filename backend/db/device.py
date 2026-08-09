@@ -79,6 +79,7 @@ class DevicePairingRequest(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     claimed_at = Column(DateTime(timezone=True), nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
 
     device = relationship("Device", back_populates="pairing_requests")
 
