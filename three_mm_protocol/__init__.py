@@ -12,6 +12,10 @@ from three_mm_protocol.models import (
     AgentInventory,
     AgentRole,
 )
+from three_mm_protocol.module_manifest import (
+    ModuleCapabilities, ModuleCompatibility, ModuleHealthCheck,
+    ModuleManifestV2, ModuleRegistration,
+)
 
 __all__ = [
     "PROTOCOL_VERSION",
@@ -24,4 +28,9 @@ __all__ = [
     "AgentHello",
     "AgentInventory",
     "AgentRole",
+    "ModuleCapabilities",
+    "ModuleCompatibility",
+    "ModuleHealthCheck",
+    "ModuleManifestV2",
+    "ModuleRegistration",
 ]
