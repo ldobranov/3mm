@@ -40,4 +40,3 @@ The module manifest declares inputs, initial output values, and local rules in
 `configuration_defaults`. Agent validates capability names and Boolean values
 before activation. Unsupported capabilities or untrusted entrypoints fail
 closed, while failed module updates preserve the previously active release.
-

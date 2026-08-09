@@ -1,8 +1,11 @@
 # Milestone 5 Report
 
-Date: 2026-08-09  
-Baseline: Raspberry Pi `rasp-3mm` (`aarch64`, 4 logical CPUs)  
-Accepted runtime release: `782a4b9-m5`  
+Date: 2026-08-09
+
+Baseline: Raspberry Pi `rasp-3mm` (`aarch64`, 4 logical CPUs)
+
+Accepted runtime release: `782a4b9-m5`
+
 Device identity: `dev_a3ad5f8844f1466f847f5f8cf78d6fe3`
 
 ## Result
