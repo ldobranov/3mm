@@ -47,7 +47,7 @@ def test_trusted_gpio_entrypoint_activates_declared_capabilities(tmp_path):
     result = runtime.invoke("gpio.digital.control", "set_output", {"capability_id": "gpio.output.1", "value": False})
     assert result["outputs"]["gpio.output.1"] is False
     state=json.loads((tmp_path/"modules/data/org.3mm.gpio-test/gpio-runtime.json").read_text())
-    assert state["outputs"]=={"gpio.output.1":True}
+    assert state["outputs"]=={"gpio.output.1":False}
 
 def test_gpio_module_fails_closed_without_declared_capability_or_handler(tmp_path):
     gpio=MockDigitalGpioDriver()
