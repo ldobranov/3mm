@@ -13,11 +13,33 @@
   - Dynamic Menu Editor
   - Extension Generator (в разработка)
 
+## Local development
+
+On Linux, macOS or WSL, start the backend and frontend together from the
+repository root:
+
+```bash
+./dev.sh
+```
+
+The script creates an isolated Python environment, installs missing
+dependencies, starts the Core API on `http://localhost:8887`, waits for its
+health check and then starts the web interface on `http://localhost:5173`.
+Press `Ctrl+C` to stop both processes.
+
+Run the quality checks separately:
+
+```bash
+backend/.venv/bin/python -m pip install -r backend/requirements-dev.txt
+backend/.venv/bin/python -m pytest
+npm --prefix frontend run build
+```
+
 ## 📋 Prerequisites
 
 Before installing, ensure you have the following installed on your system:
 
-- **Python 3.8 or higher** (check with `python --version` or `python3 --version`)
+- **Python 3.10 or higher** (check with `python --version` or `python3 --version`)
   - On Ubuntu/Debian: `sudo apt update && sudo apt install python3 python3-venv python3-pip`
   - On macOS: Install from python.org or use Homebrew: `brew install python`
   - On Windows: Download from python.org (ensure "Add Python to PATH" during installation)

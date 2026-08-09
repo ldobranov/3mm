@@ -2,6 +2,7 @@
 backend/venv/
 backend/venv3/
 backend/venv/
+backend/.venv/
 backend/env/
 
 # Python cache files
