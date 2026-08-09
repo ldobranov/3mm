@@ -151,3 +151,16 @@ class DeviceCommand(Base):
         Index("ix_command_device_status_created", "device_id", "status", "created_at"),
         Index("ux_command_device_idempotency", "device_id", "idempotency_key", unique=True),
     )
+
+
+class DeviceState(Base):
+    __tablename__ = "device_states"
+
+    id = Column(Integer, primary_key=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    desired_revision = Column(Integer, nullable=False, default=0)
+    desired_state = Column(JSON, nullable=False, default=dict)
+    desired_updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    reported_revision = Column(Integer, nullable=False, default=0)
+    reported_state = Column(JSON, nullable=False, default=dict)
+    reported_at = Column(DateTime(timezone=True), nullable=True)

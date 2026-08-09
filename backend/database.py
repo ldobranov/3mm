@@ -32,6 +32,7 @@ from backend.db.device import (
     DeviceInventorySnapshot,
     DevicePairingRequest,
     DeviceCommand,
+    DeviceState,
 )
 import logging
 

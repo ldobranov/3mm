@@ -90,3 +90,18 @@ class AgentCommandResult(ProtocolModel):
     completed_at: datetime
     output: dict = Field(default_factory=dict)
     error: str | None = Field(default=None, max_length=2000)
+
+
+class DeviceDesiredState(ProtocolModel):
+    device_id: DeviceId = Field(pattern=r"^dev_[0-9a-f]{32}$")
+    revision: int = Field(ge=0)
+    state: dict = Field(default_factory=dict)
+    updated_at: datetime
+
+
+class AgentReportedState(ProtocolModel):
+    device_id: DeviceId = Field(pattern=r"^dev_[0-9a-f]{32}$")
+    desired_revision: int = Field(ge=0)
+    applied_revision: int = Field(ge=0)
+    state: dict = Field(default_factory=dict)
+    reported_at: datetime
