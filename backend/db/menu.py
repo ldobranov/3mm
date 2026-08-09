@@ -1,13 +1,5 @@
-from sqlalchemy import Column, Integer, String, Boolean, JSON
-from .base import Base
 from pydantic import BaseModel, ConfigDict
-
-class Menu(Base):
-    __tablename__ = "menus"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False)
-    items = Column(JSON, nullable=True)
-    is_active = Column(Boolean, nullable=True, default=False)
+from backend.db.universal_translation import Menu
 
 
 class MenuSchema(BaseModel):

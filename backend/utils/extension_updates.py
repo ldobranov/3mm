@@ -41,6 +41,10 @@ class ExtensionUpdateManager:
         with suppress(asyncio.CancelledError):
             await self._worker_task
         self._worker_task = None
+        # asyncio primitives are bound to the loop where they first wait.
+        # Recreate the empty queue so the app can be started again in a new
+        # event loop (tests, embedded servers and controlled reloads).
+        self.update_queue = asyncio.Queue()
 
     async def _process_updates(self):
         """Process extension updates from the queue"""
