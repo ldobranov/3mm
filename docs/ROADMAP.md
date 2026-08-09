@@ -307,6 +307,7 @@ These are the first concrete tasks after approval of this plan:
 - [x] Execute the first allowlisted Agent command and persist its idempotency journal.
 - [x] Redeliver unacknowledged commands after reconnect without repeating completed actions.
 - [x] Expose command submission, status, results and delivery attempts in the device registry UI.
+- [x] Reconcile the first allowlisted desired state revision on the physical Agent.
 
 ## Explicitly deferred
 
