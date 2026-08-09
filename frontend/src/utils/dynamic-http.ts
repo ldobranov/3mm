@@ -157,8 +157,14 @@ async function getBackendUrl(): Promise<string> {
     const res = await fetch('/runtime-config.json', { cache: 'no-store' });
     if (res.ok) {
       const cfg = await res.json();
-      if (cfg?.backend_url) {
+      if (typeof cfg?.backend_url === 'string' && cfg.backend_url.trim()) {
         const normalized = normalizeBaseUrl(String(cfg.backend_url));
+        backendUrlCache = normalized;
+        cacheTimestamp = now;
+        return normalized;
+      }
+      if (Number.isInteger(cfg?.backend_port) && cfg.backend_port > 0 && cfg.backend_port <= 65535) {
+        const normalized = `${window.location.protocol}//${window.location.hostname}:${cfg.backend_port}`;
         backendUrlCache = normalized;
         cacheTimestamp = now;
         return normalized;
