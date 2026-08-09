@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib, io, json, os, shutil, tempfile, zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Protocol
 from pydantic import ValidationError
 from three_mm_protocol import ModuleManifestV2, meets_minimum_version
 from agent import __version__
@@ -19,7 +19,10 @@ class ModuleRuntimeResult:
     status: str
     previous_version: str | None = None
 
-RuntimeHandler = Callable[[ModuleManifestV2, Path], None]
+class CapabilityService(Protocol):
+    def invoke(self, action: str, arguments: dict) -> dict: ...
+
+RuntimeHandler = Callable[[ModuleManifestV2, Path], dict[str, CapabilityService] | None]
 
 class AgentModuleRuntime:
     def __init__(self, data_dir: Path, *, architecture: str, protocol_version: str = "1.0", runtime_handlers: dict[str, RuntimeHandler] | None = None):
@@ -27,6 +30,7 @@ class AgentModuleRuntime:
         self.architecture = architecture
         self.protocol_version = protocol_version
         self.runtime_handlers = dict(runtime_handlers or {})
+        self._services: dict[str, CapabilityService] = {}
 
     def _state_path(self, module_id: str) -> Path:
         return self.root / "state" / f"{module_id}.json"
@@ -95,11 +99,26 @@ class AgentModuleRuntime:
         if handler is None:
             raise ModuleLifecycleError("unsupported Agent runtime entrypoint")
         try:
-            handler(manifest, data_dir)
+            services = handler(manifest, data_dir) or {}
         except ModuleLifecycleError:
             raise
         except Exception as exc:
             raise ModuleLifecycleError("module activation failed") from exc
+        declared = {item.registration_id for item in manifest.registrations if item.kind in {"capability", "service"}}
+        if not set(services).issubset(declared):
+            raise ModuleLifecycleError("runtime exposed an undeclared capability")
+        self._services.update(services)
+
+    def invoke(self, capability_id: str, action: str, arguments: dict) -> dict:
+        service = self._services.get(capability_id)
+        if service is None:
+            raise ModuleLifecycleError("capability is unavailable")
+        try:
+            return service.invoke(action, arguments)
+        except ModuleLifecycleError:
+            raise
+        except Exception as exc:
+            raise ModuleLifecycleError("capability invocation failed") from exc
 
     def start_active(self) -> None:
         """Restore enabled trusted modules without letting one failure stop Agent boot."""
@@ -123,6 +142,8 @@ class AgentModuleRuntime:
         state = self.state(module_id)
         if not state.get("active_version"): raise ModuleLifecycleError("module is not installed")
         state["enabled"] = False; self._save_state(module_id, state)
+        for registration in state.get("registrations", []):
+            self._services.pop(registration.get("registration_id"), None)
         return ModuleRuntimeResult(module_id, state["active_version"], "disabled")
 
     def registrations(self) -> list[dict]:

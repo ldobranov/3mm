@@ -257,13 +257,21 @@ class CorePublisher:
                     completed_at=datetime.now(UTC),
                     error=f"Inventory publish failed: {type(exc).__name__}",
                 )
-        elif command.command_type in {"module.install", "module.disable"} and self.module_runtime is not None:
+        elif command.command_type in {"module.install", "module.disable", "capability.invoke"} and self.module_runtime is not None:
             try:
                 if command.command_type == "module.install":
                     package = base64.b64decode(command.payload["package_base64"], validate=True)
                     lifecycle = self.module_runtime.install(package, expected_sha256=command.payload["sha256"])
-                else:
+                elif command.command_type == "module.disable":
                     lifecycle = self.module_runtime.disable(command.payload["module_id"])
+                else:
+                    output = self.module_runtime.invoke(
+                        command.payload["capability_id"], command.payload["action"], command.payload.get("arguments", {})
+                    )
+                    result = AgentCommandResult(command_id=command.command_id, device_id=self.credential.device_id, status="succeeded", completed_at=datetime.now(UTC), output=output)
+                    self.command_journal.save(command.idempotency_key, result)
+                    self._submit_result(result)
+                    return
                 result = AgentCommandResult(
                     command_id=command.command_id, device_id=self.credential.device_id,
                     status="succeeded", completed_at=datetime.now(UTC),

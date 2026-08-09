@@ -44,6 +44,8 @@ def test_trusted_gpio_entrypoint_activates_declared_capabilities(tmp_path):
     runtime=AgentModuleRuntime(tmp_path,architecture="aarch64",runtime_handlers={GPIO_ENTRYPOINT:gpio_runtime_handler(gpio)})
     install(runtime,gpio_package())
     assert gpio.output("gpio.output.1").read() is True
+    result = runtime.invoke("gpio.digital.control", "set_output", {"capability_id": "gpio.output.1", "value": False})
+    assert result["outputs"]["gpio.output.1"] is False
     state=json.loads((tmp_path/"modules/data/org.3mm.gpio-test/gpio-runtime.json").read_text())
     assert state["outputs"]=={"gpio.output.1":True}
 

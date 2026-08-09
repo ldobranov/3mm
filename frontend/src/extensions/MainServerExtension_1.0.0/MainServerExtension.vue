@@ -165,6 +165,31 @@
         </div>
       </div>
 
+      <div class="gpio-section">
+        <div class="section-title-row">
+          <div>
+            <h2>Mock GPIO</h2>
+            <p class="section-description">Capability-driven controls from enabled modules.</p>
+          </div>
+          <button class="btn-secondary" @click="loadGpioCapabilities">Reload</button>
+        </div>
+        <p v-if="gpioMessage" class="command-message">{{ gpioMessage }}</p>
+        <p v-if="!gpioDevices.length" class="no-devices">No enabled GPIO capability is installed.</p>
+        <div v-else class="gpio-grid">
+          <section v-for="item in gpioDevices" :key="item.deviceId" class="gpio-card">
+            <h3>{{ deviceName(item.deviceId) }}</h3>
+            <p class="text-muted-theme">{{ item.capability.capability_id }}</p>
+            <div class="gpio-control">
+              <span>Output</span>
+              <strong>{{ gpioOutput(item.deviceId) ? 'On' : 'Off' }}</strong>
+              <button class="btn-primary" :disabled="gpioPendingDeviceId === item.deviceId" @click="setGpioOutput(item.deviceId, item.capability.capability_id, !gpioOutput(item.deviceId))">
+                {{ gpioPendingDeviceId === item.deviceId ? 'Queueing…' : gpioOutput(item.deviceId) ? 'Turn off' : 'Turn on' }}
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+
       <div class="commands-section">
         <div class="section-title-row">
           <h2>{{ t('mainServer.commands.title', 'Command History') }}</h2>
@@ -329,6 +354,7 @@ interface DeviceStateSummary {
   reported_at: string | null;
   synchronized: boolean;
 }
+interface DeviceCapability { capability_id: string; module_id: string; version: string; metadata: Record<string, unknown>; }
 
 const devices = ref<RegistryDevice[]>([]);
 const isLoadingDevices = ref(false);
@@ -345,6 +371,15 @@ const selectedDiagnosticsDevice = computed(() =>
 const selectedDeviceCommands = computed(() =>
   commands.value.filter((command) => command.device_id === selectedDiagnosticsDeviceId.value).slice(0, 10)
 );
+const deviceCapabilities = ref<Record<string, DeviceCapability[]>>({});
+const gpioStates = ref<Record<string, boolean>>({});
+const gpioPendingDeviceId = ref('');
+const gpioMessage = ref('');
+const gpioDevices = computed(() => devices.value.flatMap((device) =>
+  (deviceCapabilities.value[device.device_id] || [])
+    .filter((capability) => capability.capability_id === 'gpio.digital.control')
+    .map((capability) => ({ deviceId: device.device_id, capability }))
+));
 const settings = ref({
   autoUpdate: false,
   updateInterval: 'daily',
@@ -365,6 +400,7 @@ onMounted(async () => {
   await loadDevices();
   await loadDeviceStates();
   await loadCommands();
+  await loadGpioCapabilities();
 });
 
 // Load available updates
@@ -392,9 +428,49 @@ const loadCommands = async () => {
           .map((command) => ({ ...command, device_id: deviceId }))
       )
       .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+    for (const command of commands.value.filter((item) => item.command_type === 'capability.invoke' && item.status === 'succeeded')) {
+      const outputs = command.result?.outputs;
+      if (outputs && typeof outputs === 'object') {
+        const value = Object.values(outputs as Record<string, unknown>)[0];
+        if (typeof value === 'boolean') gpioStates.value[command.device_id] = value;
+      }
+    }
   } catch (error) {
     console.error('Failed to load command history:', error);
     commandsError.value = true;
+  }
+};
+
+const loadGpioCapabilities = async () => {
+  const entries = await Promise.all(devices.value.map(async (device) => {
+    try {
+      const response = await http.get(`/api/v1/devices/${device.device_id}/capabilities`);
+      return [device.device_id, response.data as DeviceCapability[]] as const;
+    } catch {
+      return [device.device_id, []] as const;
+    }
+  }));
+  deviceCapabilities.value = Object.fromEntries(entries);
+};
+
+const gpioOutput = (deviceId: string) => gpioStates.value[deviceId] === true;
+
+const setGpioOutput = async (deviceId: string, capabilityId: string, value: boolean) => {
+  gpioPendingDeviceId.value = deviceId;
+  gpioMessage.value = '';
+  try {
+    await http.post(`/api/v1/devices/${deviceId}/capabilities/invoke`, {
+      capability_id: capabilityId,
+      action: 'set_output',
+      arguments: { capability_id: 'gpio.output.1', value },
+    });
+    gpioMessage.value = `GPIO output command queued for ${deviceName(deviceId)}`;
+    await loadCommands();
+  } catch (error) {
+    console.error('Failed to queue GPIO command:', error);
+    gpioMessage.value = 'GPIO command could not be queued';
+  } finally {
+    gpioPendingDeviceId.value = '';
   }
 };
 
@@ -626,7 +702,7 @@ const saveSettings = async () => {
   font-size: 0.9rem;
 }
 
-.updates-section, .devices-section, .commands-section, .settings-section {
+.updates-section, .devices-section, .commands-section, .settings-section, .gpio-section {
   margin-bottom: 2rem;
   padding: 1.5rem;
   background: var(--surface-1);
@@ -634,6 +710,13 @@ const saveSettings = async () => {
   border-radius: var(--border-radius-lg);
   overflow-x: auto;
 }
+
+.section-description { color: var(--text-secondary); margin: 0.25rem 0 0; }
+.gpio-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+.gpio-card { padding: 1rem; border: 1px solid var(--surface-border); border-radius: var(--border-radius-md); background: var(--surface-2); }
+.gpio-card h3 { margin: 0; color: var(--text-primary); }
+.gpio-control { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; }
+.gpio-control strong { color: var(--text-primary); min-width: 2rem; }
 
 .updates-section h2, .devices-section h2, .commands-section h2, .settings-section h2 {
   margin-bottom: 1rem;
