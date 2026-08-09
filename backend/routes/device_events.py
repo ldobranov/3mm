@@ -48,10 +48,20 @@ def list_events(
     device = db.scalar(select(Device).where(Device.device_id == device_id))
     if device is None:
         raise HTTPException(404, "Device was not found")
-    return list(
-        db.scalars(
-            select(DeviceEvent)
-            .where(DeviceEvent.device_id == device.id)
-            .order_by(DeviceEvent.occurred_at.desc())
-        )
+    events = db.scalars(
+        select(DeviceEvent)
+        .where(DeviceEvent.device_id == device.id)
+        .order_by(DeviceEvent.occurred_at.desc())
+        .limit(50)
     )
+    return [
+        DeviceEventResponse(
+            event_id=event.event_id,
+            device_id=device.device_id,
+            event_type=event.event_type,
+            payload=event.payload,
+            occurred_at=event.occurred_at,
+            received_at=event.received_at,
+        )
+        for event in events
+    ]

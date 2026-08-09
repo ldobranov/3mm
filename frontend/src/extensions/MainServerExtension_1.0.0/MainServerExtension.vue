@@ -162,6 +162,14 @@
               <span v-if="command.error"> · {{ command.error }}</span>
             </li>
           </ul>
+          <h4>Recent device events</h4>
+          <ul class="diagnostics-events">
+            <li v-for="event in selectedDeviceEvents" :key="event.event_id">
+              <strong>{{ event.event_type }}</strong> · {{ formatTimestamp(event.occurred_at) }}
+              · {{ formatResult(event.payload) }}
+            </li>
+            <li v-if="selectedDeviceEvents.length === 0">No events recorded.</li>
+          </ul>
         </div>
       </div>
 
@@ -347,6 +355,15 @@ interface DeviceCommand {
   error: string | null;
 }
 
+interface DeviceEvent {
+  event_id: string;
+  device_id: string;
+  event_type: string;
+  payload: Record<string, unknown>;
+  occurred_at: string;
+  received_at: string;
+}
+
 interface DeviceStateSummary {
   desired: { revision: number; state: Record<string, unknown>; updated_at: string };
   reported_revision: number;
@@ -360,6 +377,7 @@ const devices = ref<RegistryDevice[]>([]);
 const isLoadingDevices = ref(false);
 const devicesError = ref(false);
 const commands = ref<DeviceCommand[]>([]);
+const deviceEvents = ref<DeviceEvent[]>([]);
 const commandsError = ref(false);
 const commandMessage = ref('');
 const queuedDeviceId = ref('');
@@ -370,6 +388,9 @@ const selectedDiagnosticsDevice = computed(() =>
 );
 const selectedDeviceCommands = computed(() =>
   commands.value.filter((command) => command.device_id === selectedDiagnosticsDeviceId.value).slice(0, 10)
+);
+const selectedDeviceEvents = computed(() =>
+  deviceEvents.value.filter((event) => event.device_id === selectedDiagnosticsDeviceId.value).slice(0, 10)
 );
 const deviceCapabilities = ref<Record<string, DeviceCapability[]>>({});
 const gpioStates = ref<Record<string, boolean>>({});
@@ -400,6 +421,7 @@ onMounted(async () => {
   await loadDevices();
   await loadDeviceStates();
   await loadCommands();
+  await loadDeviceEvents();
   await loadGpioCapabilities();
 });
 
@@ -439,6 +461,22 @@ const loadCommands = async () => {
     console.error('Failed to load command history:', error);
     commandsError.value = true;
   }
+};
+
+const loadDeviceEvents = async () => {
+  const histories = await Promise.all(
+    devices.value.map(async (device) => {
+      try {
+        const response = await http.get(`/api/v1/devices/${device.device_id}/events`);
+        return response.data as DeviceEvent[];
+      } catch {
+        return [] as DeviceEvent[];
+      }
+    })
+  );
+  deviceEvents.value = histories
+    .flat()
+    .sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at));
 };
 
 const loadGpioCapabilities = async () => {
