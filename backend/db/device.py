@@ -128,6 +128,16 @@ class DeviceHeartbeat(Base):
         Index("ix_heartbeat_device_received", "device_id", "received_at"),
     )
 
+class DeviceEvent(Base):
+    __tablename__ = "device_events"
+    id = Column(Integer, primary_key=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_id = Column(String(64), nullable=False, unique=True, index=True)
+    event_type = Column(String(120), nullable=False)
+    payload = Column(JSON, nullable=False, default=dict)
+    occurred_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    received_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
 
 class DeviceCommand(Base):
     __tablename__ = "device_commands"

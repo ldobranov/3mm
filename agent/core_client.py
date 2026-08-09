@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import json
 import base64
+import uuid
 import os
 import threading
 import time
@@ -219,6 +220,10 @@ class CorePublisher:
             result.model_dump(mode="json"),
             f"command-result:{result.command_id}",
         )
+
+    def publish_event(self, event: dict) -> None:
+        payload = {"event_id": f"evt_{uuid.uuid4().hex}", "device_id": self.credential.device_id, "occurred_at": datetime.now(UTC).isoformat(), **event}
+        self._send_or_queue("events", payload, f"event:{payload['event_id']}")
 
     def _poll_command(self) -> None:
         response = requests.get(

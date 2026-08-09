@@ -143,7 +143,9 @@ class AgentModuleRuntime:
         if not state.get("active_version"): raise ModuleLifecycleError("module is not installed")
         state["enabled"] = False; self._save_state(module_id, state)
         for registration in state.get("registrations", []):
-            self._services.pop(registration.get("registration_id"), None)
+            service = self._services.pop(registration.get("registration_id"), None)
+            if service is not None and hasattr(service, "close"):
+                service.close()
         return ModuleRuntimeResult(module_id, state["active_version"], "disabled")
 
     def registrations(self) -> list[dict]:

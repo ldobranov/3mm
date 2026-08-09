@@ -32,6 +32,7 @@ from backend.db.device import (
     DeviceInventorySnapshot,
     DevicePairingRequest,
     DeviceCommand,
+    DeviceEvent,
     DeviceState,
 )
 from backend.db.module import ModulePackage, ModuleInstallation

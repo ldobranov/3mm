@@ -58,11 +58,12 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
             started_monotonic=time.monotonic(),
         )
         publisher = None
+        app.state.module_event_sink = lambda _event: None
         gpio = create_mock_gpio_driver(resolved_settings.hardware_profile)
         module_runtime = AgentModuleRuntime(
             resolved_settings.data_dir,
             architecture=app.state.agent_runtime.inventory.architecture,
-            runtime_handlers={GPIO_ENTRYPOINT: gpio_runtime_handler(gpio)} if gpio else {},
+            runtime_handlers={GPIO_ENTRYPOINT: gpio_runtime_handler(gpio, lambda event: app.state.module_event_sink(event))} if gpio else {},
         )
         module_runtime.start_active()
         if resolved_settings.core_url:
@@ -82,6 +83,7 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
                     interval_seconds=resolved_settings.heartbeat_interval_seconds,
                 )
                 publisher.start()
+                app.state.module_event_sink = publisher.publish_event
         yield
         if publisher is not None:
             publisher.stop()

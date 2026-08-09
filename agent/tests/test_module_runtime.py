@@ -32,8 +32,8 @@ def test_integrity_and_architecture_fail_closed(tmp_path):
     with pytest.raises(ModuleLifecycleError,match="integrity"): runtime.install(blob,expected_sha256="0"*64)
     with pytest.raises(ModuleLifecycleError,match="architecture"): install(runtime,blob)
 
-def gpio_package(*, outputs={"gpio.output.1": True}, entrypoint=GPIO_ENTRYPOINT):
-    manifest = {"manifest_version":2,"module_id":"org.3mm.gpio-test","name":"GPIO test","version":"1.0.0","runtimes":["agent"],"entrypoints":{"agent":entrypoint},"compatibility":{"protocol":"1.0","architectures":["aarch64"]},"permissions":["hardware.gpio","data.write"],"capabilities":{"provides":["gpio.digital.output"]},"configuration_defaults":{"inputs":["gpio.input.1"],"outputs":outputs},"health_check":{"type":"file_exists","path":"health/ready"},"registrations":[{"kind":"capability","registration_id":"gpio.digital.control"}]}
+def gpio_package(*, outputs={"gpio.output.1": True}, entrypoint=GPIO_ENTRYPOINT, rules=[]):
+    manifest = {"manifest_version":2,"module_id":"org.3mm.gpio-test","name":"GPIO test","version":"1.0.0","runtimes":["agent"],"entrypoints":{"agent":entrypoint},"compatibility":{"protocol":"1.0","architectures":["aarch64"]},"permissions":["hardware.gpio","data.write"],"capabilities":{"provides":["gpio.digital.output"]},"configuration_defaults":{"inputs":["gpio.input.1"],"outputs":outputs,"rules":rules},"health_check":{"type":"file_exists","path":"health/ready"},"registrations":[{"kind":"capability","registration_id":"gpio.digital.control"}]}
     out=io.BytesIO()
     with zipfile.ZipFile(out,"w") as z:
         z.writestr("manifest.json",json.dumps(manifest)); z.writestr("health/ready","ok")
@@ -66,3 +66,10 @@ def test_gpio_module_is_reactivated_after_agent_runtime_restart(tmp_path):
     restarted=AgentModuleRuntime(tmp_path,architecture="aarch64",runtime_handlers={GPIO_ENTRYPOINT:gpio_runtime_handler(restarted_gpio)})
     restarted.start_active()
     assert restarted_gpio.output("gpio.output.1").read() is True
+
+def test_gpio_local_rule_runs_and_emits_event_without_core(tmp_path):
+    gpio=MockDigitalGpioDriver(); events=[]
+    runtime=AgentModuleRuntime(tmp_path,architecture="aarch64",runtime_handlers={GPIO_ENTRYPOINT:gpio_runtime_handler(gpio,events.append)})
+    blob=gpio_package(outputs={"gpio.output.1":False},rules=[{"input":"gpio.input.1","output":"gpio.output.1","when":True,"set":True}])
+    install(runtime,blob); gpio.set_input("gpio.input.1",True)
+    assert gpio.output("gpio.output.1").read() is True and events[0]["event_type"]=="gpio.input.changed"
