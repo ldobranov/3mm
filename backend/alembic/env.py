@@ -4,6 +4,7 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
+from backend.config import get_settings
 from backend.db.base import Base  # Import the Base metadata from your models
 
 # Explicitly import all model modules to populate Base.metadata and avoid lazy import cycles
@@ -18,6 +19,7 @@ import backend.db.widget  # noqa: F401
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

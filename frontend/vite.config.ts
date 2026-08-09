@@ -20,7 +20,7 @@ try {
       frontend_url: 'http://localhost:5173'
     },
     backend: {
-      database_url: 'postgresql://lazar:admin@localhost:5432/mega_monitor',
+      database_url: 'sqlite:///backend/data/3mm.db',
       host: '0.0.0.0',
       port: 8887
     }

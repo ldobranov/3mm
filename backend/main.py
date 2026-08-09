@@ -18,10 +18,9 @@ import json
 from fastapi.encoders import jsonable_encoder
 import os
 
-# Load config from root config.json
-config_path = os.path.join(os.path.dirname(__file__), '..', 'config.json')
-with open(config_path, 'r') as f:
-    config = json.load(f)
+from backend.config import get_settings
+
+app_settings = get_settings()
 
 # Import database and models first
 from backend.database import init_db, get_db
@@ -216,4 +215,9 @@ asyncio.create_task(load_enabled_extensions())
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host=config['backend']['host'], port=config['backend']['port'], reload=True)
+    uvicorn.run(
+        "backend.main:app",
+        host=app_settings.backend.host,
+        port=app_settings.backend.port,
+        reload=True,
+    )

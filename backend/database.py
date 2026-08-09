@@ -10,16 +10,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from backend.db.base import Base
 from typing import Generator
 import json
-
-# Load config from database_config.json if it exists, otherwise use root config.json
-config_path = os.path.join(os.path.dirname(__file__), 'database_config.json')
-if os.path.exists(config_path):
-    with open(config_path, 'r') as f:
-        config = json.load(f)
-else:
-    config_path = os.path.join(os.path.dirname(__file__), '..', 'config.json')
-    with open(config_path, 'r') as f:
-        config = json.load(f)
+from backend.config import get_settings
 
 # Import all models to ensure they're registered with SQLAlchemy
 from backend.db.user import User
@@ -39,18 +30,25 @@ import logging
 logger = logging.getLogger(__name__)
 
 # PostgreSQL connection string with proper Unicode support
-DATABASE_URL = os.getenv("DATABASE_URL", config.get('database_url', config.get('backend', {}).get('database_url', 'sqlite:///backend/mega_monitor.db')))
+DATABASE_URL = get_settings().database_url
+
+if DATABASE_URL.startswith("sqlite:///") and not DATABASE_URL.endswith(":memory:"):
+    database_path = Path(DATABASE_URL.removeprefix("sqlite:///"))
+    database_path.parent.mkdir(parents=True, exist_ok=True)
 
 def get_db_url():
     """Get database URL for async operations"""
     return DATABASE_URL
 
 # Configure engine with proper Unicode support
-engine = create_engine(
-    DATABASE_URL,
-    json_serializer=lambda obj: json.dumps(obj, ensure_ascii=False),
-    json_deserializer=lambda obj: json.loads(obj)
-)
+engine_options = {
+    "json_serializer": lambda obj: json.dumps(obj, ensure_ascii=False),
+    "json_deserializer": lambda obj: json.loads(obj),
+}
+if DATABASE_URL.startswith("sqlite"):
+    engine_options["connect_args"] = {"check_same_thread": False}
+
+engine = create_engine(DATABASE_URL, **engine_options)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

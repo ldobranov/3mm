@@ -1,5 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, ForeignKey
-from sqlalchemy.dialects.sqlite import JSON
+from sqlalchemy import JSON, Column, Integer, String, Text, Boolean, ForeignKey
 from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship

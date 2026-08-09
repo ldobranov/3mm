@@ -52,6 +52,8 @@ Thumbs.db
 .env.development.local
 .env.test.local
 .env.production.local
+backend/database_config.json
+install_config.json
 
 # Log files
 *.log
@@ -61,6 +63,7 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+backend/data/
 
 # Temporary files
 tmp/

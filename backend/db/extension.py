@@ -1,15 +1,8 @@
 # backend/db/extension.py
-import os
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, Text
+from sqlalchemy import JSON, Column, Integer, String, ForeignKey, DateTime, Boolean, Text
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from backend.db.base import Base
-
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///backend/mega_monitor.db")
-if DATABASE_URL.startswith("postgresql"):
-    from sqlalchemy.dialects.postgresql import JSONB as JSON
-else:
-    from sqlalchemy.dialects.sqlite import JSON
 
 class Extension(Base):
     __tablename__ = "extensions"
