@@ -298,6 +298,8 @@ These are the first concrete tasks after approval of this plan:
 - [x] Issue a unique device credential once after explicit pairing approval.
 - [x] Authenticate Agent requests with unique revocable device credentials.
 - [x] Accept authenticated heartbeats with strict device identity matching.
+- [x] Accept authenticated inventory and expose a real admin device registry API.
+- [x] Derive online and offline status from the configured heartbeat window.
 
 ## Explicitly deferred
 

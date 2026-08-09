@@ -37,6 +37,7 @@ def test_environment_overrides_file_configuration(monkeypatch, tmp_path):
     monkeypatch.setenv("UPLOADS_DIR", str(tmp_path / "uploads"))
     monkeypatch.setenv("BACKEND_PORT", "9001")
     monkeypatch.setenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
+    monkeypatch.setenv("DEVICE_OFFLINE_AFTER_SECONDS", "120")
     get_settings.cache_clear()
 
     settings = get_settings()
@@ -48,3 +49,4 @@ def test_environment_overrides_file_configuration(monkeypatch, tmp_path):
         "http://localhost:3000",
         "http://localhost:5173",
     ]
+    assert settings.backend.device_offline_after_seconds == 120
