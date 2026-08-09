@@ -564,20 +564,23 @@ const saveSettings = async () => {
 
 <style scoped>
 .main-server-extension {
-  max-width: 1200px;
+  width: min(100% - 2rem, 1200px);
   margin: 0 auto;
-  padding: 2rem;
+  padding: 2rem 0 3rem;
+  color: var(--text-primary);
 }
 
 .extension-header {
   margin-bottom: 2rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--surface-border);
 }
 
 .extension-header h1 {
   color: var(--text-primary);
-  font-size: 1.8rem;
+  font-size: clamp(1.6rem, 3vw, 2rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
 }
 
 .extension-header p {
@@ -588,7 +591,8 @@ const saveSettings = async () => {
   margin-bottom: 2rem;
   padding: 1.5rem;
   background: var(--surface-1);
-  border-radius: 8px;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--border-radius-lg);
 }
 
 .dashboard-overview h2 {
@@ -607,6 +611,7 @@ const saveSettings = async () => {
   background: var(--surface-2);
   border-radius: 6px;
   text-align: center;
+  border: 1px solid var(--surface-border);
 }
 
 .stat-value {
@@ -625,7 +630,9 @@ const saveSettings = async () => {
   margin-bottom: 2rem;
   padding: 1.5rem;
   background: var(--surface-1);
-  border-radius: 8px;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--border-radius-lg);
+  overflow-x: auto;
 }
 
 .updates-section h2, .devices-section h2, .commands-section h2, .settings-section h2 {
@@ -766,6 +773,7 @@ const saveSettings = async () => {
 .devices-table td {
   padding: 0.75rem;
   border-bottom: 1px solid var(--surface-border);
+  color: var(--text-primary);
 }
 
 .devices-table tr:hover {
@@ -910,5 +918,20 @@ input[type="text"], select {
   border: 1px solid var(--surface-border);
   background: var(--surface-2);
   color: var(--text-primary);
+}
+
+@media (max-width: 768px) {
+  .main-server-extension {
+    width: min(100% - 1.25rem, 1200px);
+    padding-top: 1.25rem;
+  }
+
+  .dashboard-overview,
+  .updates-section,
+  .devices-section,
+  .commands-section,
+  .settings-section {
+    padding: 1rem;
+  }
 }
 </style>
