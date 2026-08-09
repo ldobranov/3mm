@@ -6,7 +6,9 @@ from backend.db.base import Base
 from backend.db.device import DevicePairingRequest
 from backend.db.user import User
 from backend.services.device_pairing import (
+    PairingApprovalError,
     PairingCodeUnavailableError,
+    approve_pairing_request,
     claim_pairing_code,
     issue_pairing_code,
     pairing_code_hash,
@@ -55,6 +57,11 @@ def test_pairing_code_can_be_claimed_exactly_once(db: Session) -> None:
         code=issued.code,
         requested_device_id="dev_0123456789abcdef0123456789abcdef",
         public_key="agent-public-key",
+        requested_metadata={
+            "display_name": "Test Agent",
+            "role": "node",
+            "protocol_version": "1.0",
+        },
         now=now + timedelta(seconds=5),
     )
 
@@ -66,6 +73,11 @@ def test_pairing_code_can_be_claimed_exactly_once(db: Session) -> None:
             code=issued.code,
             requested_device_id="dev_ffffffffffffffffffffffffffffffff",
             public_key="different-key",
+            requested_metadata={
+                "display_name": "Replay",
+                "role": "node",
+                "protocol_version": "1.0",
+            },
             now=now + timedelta(seconds=6),
         )
 
@@ -89,6 +101,11 @@ def test_expired_and_unknown_pairing_codes_fail_the_same_way(db: Session) -> Non
                 code=code,
                 requested_device_id="dev_0123456789abcdef0123456789abcdef",
                 public_key="agent-public-key",
+                requested_metadata={
+                    "display_name": "Test Agent",
+                    "role": "node",
+                    "protocol_version": "1.0",
+                },
                 now=now + timedelta(seconds=2),
             )
 
@@ -105,4 +122,38 @@ def test_pairing_requires_timezone_and_positive_ttl(db: Session) -> None:
             db,
             created_by_user_id=1,
             ttl=timedelta(0),
+        )
+
+
+def test_pending_pairing_request_requires_explicit_approval(db: Session) -> None:
+    now = datetime(2026, 8, 9, 12, 0, tzinfo=timezone.utc)
+    issued = issue_pairing_code(db, created_by_user_id=1, now=now)
+    claim_pairing_code(
+        db,
+        code=issued.code,
+        requested_device_id="dev_0123456789abcdef0123456789abcdef",
+        public_key="agent-public-key",
+        requested_metadata={
+            "display_name": "Test Agent",
+            "role": "node",
+            "protocol_version": "1.0",
+        },
+        now=now + timedelta(seconds=1),
+    )
+
+    device = approve_pairing_request(
+        db,
+        request_id=issued.request_id,
+        approved_by_user_id=1,
+        now=now + timedelta(seconds=2),
+    )
+
+    assert device.device_id == "dev_0123456789abcdef0123456789abcdef"
+    assert device.credentials == []
+    with pytest.raises(PairingApprovalError, match="not pending"):
+        approve_pairing_request(
+            db,
+            request_id=issued.request_id,
+            approved_by_user_id=1,
+            now=now + timedelta(seconds=3),
         )

@@ -294,6 +294,7 @@ These are the first concrete tasks after approval of this plan:
 - [x] Add a secret-free interactive bootstrap for the first Core administrator.
 - [x] Add the Device registry, credential, pairing, inventory and heartbeat schema.
 - [x] Add atomic single-use and expiring pairing-code domain services.
+- [x] Add versioned pairing-code, claim and explicit approval APIs.
 
 ## Explicitly deferred
 

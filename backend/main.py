@@ -27,6 +27,7 @@ from backend.routes.ai_extension_builder_routes import (
 from backend.routes.audit_routes import router as audit_router
 from backend.routes.auth_refresh import router as refresh_router
 from backend.routes.display_routes import router as display_router
+from backend.routes.device_pairing import router as device_pairing_router
 from backend.routes.extension_routes import router as extension_router
 from backend.routes.group_routes import router as group_router
 from backend.routes.language_routes import router as language_router
@@ -198,6 +199,7 @@ app.include_router(user_router, prefix="/api/user")
 # Page routes removed - will be provided by PagesExtension
 # app.include_router(page_router, prefix="/pages")
 app.include_router(display_router)
+app.include_router(device_pairing_router)
 app.include_router(refresh_router, prefix="/api")
 app.include_router(session_router, prefix="/api")
 app.include_router(audit_router, prefix="/api")

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from backend.db.device import DevicePairingRequest
+from backend.db.device import Device, DevicePairingRequest
 
 DEFAULT_PAIRING_TTL = timedelta(minutes=10)
 PAIRING_TOKEN_BYTES = 18
@@ -18,6 +18,10 @@ PAIRING_TOKEN_BYTES = 18
 
 class PairingCodeUnavailableError(RuntimeError):
     """The supplied code is invalid, expired or has already been claimed."""
+
+
+class PairingApprovalError(RuntimeError):
+    """The pending pairing request cannot be approved."""
 
 
 @dataclass(frozen=True)
@@ -68,6 +72,7 @@ def claim_pairing_code(
     code: str,
     requested_device_id: str,
     public_key: str,
+    requested_metadata: dict[str, str],
     now: datetime | None = None,
 ) -> DevicePairingRequest:
     claimed_at = now or datetime.now(timezone.utc)
@@ -87,6 +92,7 @@ def claim_pairing_code(
         .values(
             requested_device_id=requested_device_id.strip(),
             public_key=public_key.strip(),
+            requested_metadata=requested_metadata,
             claimed_at=claimed_at,
         )
     )
@@ -104,3 +110,50 @@ def claim_pairing_code(
     if request is None:  # Defensive: the successful update must still be readable.
         raise PairingCodeUnavailableError("Pairing code is invalid or unavailable")
     return request
+
+
+def approve_pairing_request(
+    db: Session,
+    *,
+    request_id: int,
+    approved_by_user_id: int,
+    now: datetime | None = None,
+) -> Device:
+    approved_at = now or datetime.now(timezone.utc)
+    if approved_at.tzinfo is None:
+        raise ValueError("Pairing timestamps must include a timezone")
+
+    request = db.get(DevicePairingRequest, request_id)
+    if (
+        request is None
+        or request.claimed_at is None
+        or request.approved_at is not None
+        or request.device_id is not None
+        or not request.requested_device_id
+    ):
+        raise PairingApprovalError("Pairing request is not pending approval")
+    existing = db.scalar(
+        select(Device).where(Device.device_id == request.requested_device_id)
+    )
+    if existing is not None:
+        raise PairingApprovalError("Device identity is already registered")
+
+    metadata = request.requested_metadata or {}
+    required_metadata = {"display_name", "role", "protocol_version"}
+    if not required_metadata.issubset(metadata):
+        raise PairingApprovalError("Pairing request metadata is incomplete")
+
+    device = Device(
+        device_id=request.requested_device_id,
+        display_name=metadata["display_name"],
+        role=metadata["role"],
+        protocol_version=metadata["protocol_version"],
+        approved_at=approved_at,
+    )
+    request.device = device
+    request.approved_by_user_id = approved_by_user_id
+    request.approved_at = approved_at
+    db.add(device)
+    db.commit()
+    db.refresh(device)
+    return device

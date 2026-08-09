@@ -69,6 +69,7 @@ class DevicePairingRequest(Base):
     code_hash = Column(String(255), nullable=False, unique=True, index=True)
     requested_device_id = Column(String(64), nullable=True, index=True)
     public_key = Column(Text, nullable=True)
+    requested_metadata = Column(JSON, nullable=False, default=dict)
     device_id = Column(Integer, ForeignKey("devices.id"), nullable=True, index=True)
     created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     approved_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)

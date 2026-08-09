@@ -78,6 +78,7 @@ def upgrade() -> None:
         sa.Column("code_hash", sa.String(255), nullable=False),
         sa.Column("requested_device_id", sa.String(64), nullable=True),
         sa.Column("public_key", sa.Text(), nullable=True),
+        sa.Column("requested_metadata", sa.JSON(), nullable=False),
         sa.Column(
             "device_id", sa.Integer(), sa.ForeignKey("devices.id"), nullable=True
         ),
