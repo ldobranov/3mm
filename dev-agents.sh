@@ -34,7 +34,9 @@ echo "Starting mock-pi3-01 on http://127.0.0.1:8890 ..."
   --host 127.0.0.1 \
   --port 8890 \
   --data-dir "$runtime_root/agent-1" \
+  --provisioning-data-dir "$runtime_root/agent-1/provisioning" \
   --name mock-pi3-01 \
+  --hardware-profile mock-pi3 \
   --role node &
 pids+=("$!")
 
@@ -43,7 +45,9 @@ echo "Starting mock-zero2-01 on http://127.0.0.1:8891 ..."
   --host 127.0.0.1 \
   --port 8891 \
   --data-dir "$runtime_root/agent-2" \
+  --provisioning-data-dir "$runtime_root/agent-2/provisioning" \
   --name mock-zero2-01 \
+  --hardware-profile mock-zero2 \
   --role node &
 pids+=("$!")
 

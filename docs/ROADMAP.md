@@ -276,10 +276,16 @@ These are the first concrete tasks after approval of this plan:
 - [x] Add one development launcher for backend and frontend.
 - [x] Establish backend and frontend quality gates.
 - [x] Document which existing tests are trustworthy.
-- [ ] Design the shared protocol package and first `agent.hello` schema.
-- [ ] Add the minimal standalone Agent and a two-Agent laptop simulation.
-9. Create a minimal Agent with persistent local identity.
-10. Start two mock Agents on the laptop.
+- [x] Design the shared protocol package and first `agent.hello` schema.
+- [x] Add the minimal standalone Agent and a two-Agent laptop simulation.
+- [x] Add the hardware inventory driver contract and deterministic mock profiles.
+- [x] Validate the minimal Agent on Raspberry Pi 3B+ without network changes or a systemd unit.
+- [x] Add the provisioning state machine and mock network adapter.
+- [x] Add the first headless captive-portal prototype.
+- [x] Persist secret-free provisioning state and recover interrupted setup after restart.
+- [x] Validate a privacy-safe read-only NetworkManager adapter on Raspberry Pi.
+- [x] Hand off the provisioned device role to Agent startup without changing identity.
+- [x] Measure the Standalone Core plus local Agent footprint on Raspberry Pi 3B+.
 
 ## Explicitly deferred
 

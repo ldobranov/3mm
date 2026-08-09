@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>3mm device setup</title>
+    <style>
+      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+      body { margin: 0; background: #111827; color: #f9fafb; }
+      main { max-width: 36rem; margin: 0 auto; padding: 2rem 1rem; }
+      form { display: grid; gap: 1rem; background: #1f2937; padding: 1.5rem; border-radius: 1rem; }
+      label { display: grid; gap: .35rem; font-weight: 600; }
+      input, select, button { box-sizing: border-box; width: 100%; padding: .75rem; border-radius: .5rem; border: 1px solid #4b5563; }
+      button { background: #2563eb; color: white; border: 0; font-weight: 700; cursor: pointer; }
+      #status { min-height: 1.5rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Set up this 3mm device</h1>
+      <p>Connect the device to a network and select its initial role.</p>
+      <form id="setup-form">
+        <label>Network name <input name="network_name" maxlength="32" required></label>
+        <label>Network passphrase <input name="passphrase" type="password" minlength="8" maxlength="63" required autocomplete="new-password"></label>
+        <label>Device name <input name="device_name" value="3mm-device" maxlength="63" required></label>
+        <label>Locale <input name="locale" value="en-US" maxlength="35" required></label>
+        <label>Administrator name <input name="administrator_name" value="admin" maxlength="64" required></label>
+        <label>Role
+          <select name="role">
+            <option value="standalone">Standalone</option>
+            <option value="hub">Hub / Server</option>
+            <option value="node">Node / Client</option>
+          </select>
+        </label>
+        <label>Hub address (Node only) <input name="hub_endpoint" type="url" placeholder="https://hub.local"></label>
+        <button type="submit">Apply setup</button>
+        <output id="status" aria-live="polite"></output>
+      </form>
+    </main>
+    <script>
+      const form = document.querySelector('#setup-form');
+      const status = document.querySelector('#status');
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        status.textContent = 'Applying setup…';
+        const values = Object.fromEntries(new FormData(form).entries());
+        if (!values.hub_endpoint) delete values.hub_endpoint;
+        const response = await fetch('/api/v1/setup/configure', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(values),
+        });
+        const outcome = await response.json();
+        if (response.ok && !outcome.recovery_required) {
+          form.reset();
+          status.textContent = 'Setup complete.';
+        } else if (outcome.recovery_required) {
+          status.textContent = 'Connection failed. Setup mode is still available.';
+        } else {
+          status.textContent = 'Setup could not be applied.';
+        }
+      });
+    </script>
+  </body>
+</html>

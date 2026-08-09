@@ -1,4 +1,5 @@
 import json
+import os
 import stat
 
 import pytest
@@ -15,7 +16,8 @@ def test_identity_is_persistent_and_private(tmp_path):
     assert second == first
     assert first.device_id.startswith("dev_")
     assert len(first.device_id) == 36
-    assert stat.S_IMODE(store.path.stat().st_mode) == 0o600
+    if os.name == "posix":
+        assert stat.S_IMODE(store.path.stat().st_mode) == 0o600
 
 
 def test_separate_data_directories_get_different_identities(tmp_path):

@@ -40,3 +40,54 @@ This report intentionally excludes hostname, IP address, machine identifiers, cr
 7. Test setup access-point creation and rollback only after the recovery path is implemented.
 
 No network configuration change is authorized by this baseline capture.
+
+## Minimal Agent validation
+
+Validation date: 2026-08-09
+
+The Agent from commit `bc2353c` was installed as the regular device user in
+an isolated virtual environment under `$HOME/3mm-agent-test`. The test did not
+install system packages, change NetworkManager or create a systemd unit.
+
+| Check | Result |
+|---|---|
+| Python 3.13 / ARM64 dependency installation | Pass |
+| Loopback-only listener | Pass: `127.0.0.1:8890`; unreachable through the LAN address |
+| `/health`, `/ready`, `agent.hello`, `agent.inventory` | Pass: HTTP 200 |
+| Stable identity across a process restart | Pass; identity file mode `0600` |
+| Stable identity across a full device reboot | Pass; device ID and identity-file SHA-256 unchanged after manual Agent restart |
+| Startup to successful health response | 2.635 seconds |
+| Idle memory | 46.1 MiB RSS; 40.7 MiB PSS |
+| Idle CPU | 0.20% of one CPU core over 10 seconds |
+| NetworkManager state | Still active; observed read-only |
+| Agent systemd unit | Not created |
+| Provisioned role handoff | Pass: Standalone to Hub to fallback Node across process restarts |
+| Identity during role changes | Preserved across every tested role restart |
+
+The reboot validation left the Agent under manual process control and did not
+create a systemd unit. The read-only NetworkManager adapter was
+validated on this device without reading connection names, SSIDs, UUIDs, IP
+addresses or credentials. The general state and active-connection-set hash
+were unchanged before and after inspection. Access point creation and network
+mutation remain unauthorized until a separate hardware recovery plan is
+approved.
+
+## Standalone Core plus local Agent validation
+
+Core was copied into its own test directory and installed into a separate
+virtual environment using only the production Python requirements. It used a
+dedicated SQLite database and was started manually on `127.0.0.1:8887` while
+the local Agent continued on `127.0.0.1:8890`. No system packages, systemd
+units or NetworkManager settings were changed. Core was stopped after the
+measurement; the Agent was left running.
+
+| Check | Result |
+|---|---|
+| Core dependency installation on Python 3.13 / ARM64 | Pass |
+| Core startup to successful readiness response | 8.370 seconds |
+| Core health and readiness | Pass: HTTP 200 |
+| Core idle footprint | 89.9 MiB RSS; 80.4 MiB PSS; 0.10% of one CPU core |
+| Agent idle footprint during combined test | 46.4 MiB RSS; 37.6 MiB PSS; 0.20% of one CPU core |
+| Combined idle footprint | 136.3 MiB RSS; 118.0 MiB PSS |
+| Listener isolation | Pass: Core and Agent bound only to `127.0.0.1` |
+| NetworkManager state during measurement | `connected`; observed read-only |

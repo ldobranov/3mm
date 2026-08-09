@@ -7,7 +7,9 @@ import socket
 from dataclasses import dataclass
 from pathlib import Path
 
+from agent.hardware import HardwareProfile
 from three_mm_protocol import AgentRole
+from three_mm_provisioning import default_provisioning_data_dir
 
 
 def default_data_dir() -> Path:
@@ -24,6 +26,8 @@ class AgentSettings:
     port: int = 8890
     display_name: str = "3mm-agent"
     role: AgentRole = AgentRole.NODE
+    hardware_profile: HardwareProfile = HardwareProfile.NATIVE
+    provisioning_data_dir: Path | None = None
 
     def __post_init__(self) -> None:
         if not 1 <= self.port <= 65535:
@@ -43,4 +47,15 @@ class AgentSettings:
                 "THREE_MM_AGENT_NAME", socket.gethostname() or "3mm-agent"
             ),
             role=AgentRole(os.getenv("THREE_MM_AGENT_ROLE", AgentRole.NODE.value)),
+            hardware_profile=HardwareProfile(
+                os.getenv(
+                    "THREE_MM_AGENT_HARDWARE_PROFILE",
+                    HardwareProfile.NATIVE.value,
+                )
+            ),
+            provisioning_data_dir=Path(
+                os.getenv("THREE_MM_PROVISIONING_DATA_DIR")
+                or os.getenv("THREE_MM_SETUP_DATA_DIR")
+                or str(default_provisioning_data_dir())
+            ),
         )

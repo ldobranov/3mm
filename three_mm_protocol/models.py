@@ -59,3 +59,5 @@ class AgentInventory(ProtocolModel):
     root_total_bytes: int = Field(ge=1)
     root_free_bytes: int = Field(ge=0)
     network_manager_active: bool | None = None
+    hardware_driver: str = Field(default="linux", min_length=1)
+    capabilities: tuple[str, ...] = ()

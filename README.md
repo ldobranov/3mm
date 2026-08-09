@@ -62,7 +62,54 @@ Start two independent mock Agents with persistent, different identities:
 
 The mock Agents listen on ports `8890` and `8891`. Their runtime data stays in
 the ignored `.runtime/agents` directory, so restarting the launcher preserves
-their device IDs. Press `Ctrl+C` to stop both processes.
+their device IDs. The first Agent reports the deterministic `mock-pi3` hardware
+profile and the second reports `mock-zero2`; neither profile imports Raspberry
+libraries. Press `Ctrl+C` to stop both processes.
+
+Select a profile for an individual development Agent with
+`--hardware-profile native|mock-pi3|mock-zero2|mock-linux` or the
+`THREE_MM_AGENT_HARDWARE_PROFILE` environment variable. The default is
+`native`. Mock profiles currently provide only the implemented
+`hardware.inventory` capability; GPIO capabilities are introduced in their
+own later milestone.
+
+### Headless setup prototype
+
+Start the browser-based setup service from the repository root:
+
+```bash
+backend/.venv/bin/python -m setup_service
+```
+
+On Windows, use `backend/.venv/Scripts/python -m setup_service`. The prototype
+listens on `http://127.0.0.1:8895` by default and exposes the setup page at
+`/setup`. It uses the deterministic mock network adapter: it exercises setup,
+validation, commit and rollback behavior but does not inspect or change the
+host's NetworkManager configuration.
+
+The setup service also responds to common Android, Apple and Windows captive
+portal probe paths by redirecting the browser to `/setup`. Its public API is
+limited to versioned status and configuration endpoints under `/api/v1/setup`.
+
+Provisioning state is written atomically under the shared provisioning data
+directory (`$XDG_DATA_HOME/3mm/setup` or `$HOME/.local/share/3mm/setup` by
+default). Use setup's `--data-dir`, Agent's `--provisioning-data-dir` or the
+shared `THREE_MM_PROVISIONING_DATA_DIR` variable to override it. The older
+`THREE_MM_SETUP_DATA_DIR` variable remains a compatibility fallback. The
+journal never stores the network name or passphrase. A completed setup is
+restored after a service restart; an interrupted attempt rolls back through
+the network adapter and returns to setup mode.
+
+At Agent startup, a completed provisioning snapshot overrides the fallback
+`--role`. Changing the snapshot from Standalone to Hub or Node does not alter
+the Agent data directory or its persistent device identity. Missing or
+incomplete provisioning state leaves the explicit fallback role unchanged;
+corrupt state fails startup instead of being silently replaced.
+
+The Linux platform layer includes a read-only NetworkManager inspector. It
+queries only general service state and device interface/type/state fields; it
+does not query connection profiles, SSIDs, UUIDs, addresses or credentials.
+The mock adapter remains the only adapter authorized for configuration changes.
 
 ## 📋 Prerequisites
 
