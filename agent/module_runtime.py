@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib, io, json, os, shutil, tempfile, zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 from pydantic import ValidationError
 from three_mm_protocol import ModuleManifestV2, meets_minimum_version
 from agent import __version__
@@ -18,11 +19,14 @@ class ModuleRuntimeResult:
     status: str
     previous_version: str | None = None
 
+RuntimeHandler = Callable[[ModuleManifestV2, Path], None]
+
 class AgentModuleRuntime:
-    def __init__(self, data_dir: Path, *, architecture: str, protocol_version: str = "1.0"):
+    def __init__(self, data_dir: Path, *, architecture: str, protocol_version: str = "1.0", runtime_handlers: dict[str, RuntimeHandler] | None = None):
         self.root = data_dir / "modules"
         self.architecture = architecture
         self.protocol_version = protocol_version
+        self.runtime_handlers = dict(runtime_handlers or {})
 
     def _state_path(self, module_id: str) -> Path:
         return self.root / "state" / f"{module_id}.json"
@@ -67,7 +71,9 @@ class AgentModuleRuntime:
             self._health_check(stage, manifest)
             if release.exists(): shutil.rmtree(release)
             os.replace(stage, release)
-            (self.root / "data" / manifest.module_id).mkdir(parents=True, exist_ok=True)
+            data_dir = self.root / "data" / manifest.module_id
+            data_dir.mkdir(parents=True, exist_ok=True)
+            self._activate(manifest, data_dir)
             self._save_state(manifest.module_id, {"active_version": manifest.version, "enabled": True, "permissions": list(manifest.permissions), "capabilities": list(manifest.capabilities.provides), "registrations": [item.model_dump() for item in manifest.registrations]})
         except Exception:
             shutil.rmtree(stage, ignore_errors=True)
@@ -80,6 +86,38 @@ class AgentModuleRuntime:
         if manifest.health_check.type == "json_file":
             try: json.loads(target.read_text())
             except (OSError, json.JSONDecodeError) as exc: raise ModuleLifecycleError("module health check failed") from exc
+
+    def _activate(self, manifest: ModuleManifestV2, data_dir: Path) -> None:
+        entrypoint = manifest.entrypoints.get("agent")
+        if entrypoint is None:
+            return
+        handler = self.runtime_handlers.get(entrypoint)
+        if handler is None:
+            raise ModuleLifecycleError("unsupported Agent runtime entrypoint")
+        try:
+            handler(manifest, data_dir)
+        except ModuleLifecycleError:
+            raise
+        except Exception as exc:
+            raise ModuleLifecycleError("module activation failed") from exc
+
+    def start_active(self) -> None:
+        """Restore enabled trusted modules without letting one failure stop Agent boot."""
+        state_dir = self.root / "state"
+        if not state_dir.exists():
+            return
+        for state_path in state_dir.glob("*.json"):
+            state = json.loads(state_path.read_text())
+            if not state.get("enabled") or not state.get("active_version"):
+                continue
+            module_id = state_path.stem
+            manifest_path = self.root / "releases" / module_id / state["active_version"] / "manifest.json"
+            try:
+                manifest = ModuleManifestV2.model_validate_json(manifest_path.read_text())
+                self._activate(manifest, self.root / "data" / module_id)
+            except (OSError, ValidationError, ModuleLifecycleError) as exc:
+                state["runtime_error"] = str(exc)
+                self._save_state(module_id, state)
 
     def disable(self, module_id: str) -> ModuleRuntimeResult:
         state = self.state(module_id)

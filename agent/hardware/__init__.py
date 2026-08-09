@@ -17,6 +17,12 @@ def create_hardware_driver(
     return MockHardwareDriver.for_profile(profile)
 
 
+def create_mock_gpio_driver(profile: HardwareProfile) -> MockDigitalGpioDriver | None:
+    if profile is HardwareProfile.NATIVE:
+        return None
+    return MockDigitalGpioDriver()
+
+
 __all__ = [
     "HardwareInventoryDriver",
     "HardwareProfile",
@@ -24,6 +30,7 @@ __all__ = [
     "LinuxHardwareDriver",
     "MockHardwareDriver",
     "create_hardware_driver",
+    "create_mock_gpio_driver",
     "DigitalGpioDriver",
     "DigitalInput",
     "DigitalInputEvent",

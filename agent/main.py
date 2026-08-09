@@ -15,7 +15,8 @@ from agent.core_client import (
     CommandJournal, CorePublisher, DeviceCredentialStore, OutboxStore,
     ReconciliationStore,
 )
-from agent.hardware import create_hardware_driver
+from agent.hardware import create_hardware_driver, create_mock_gpio_driver
+from agent.modules.gpio import GPIO_ENTRYPOINT, gpio_runtime_handler
 from agent.identity import AgentIdentity, AgentIdentityStore
 from agent.inventory import collect_inventory
 from agent.module_runtime import AgentModuleRuntime
@@ -57,6 +58,13 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
             started_monotonic=time.monotonic(),
         )
         publisher = None
+        gpio = create_mock_gpio_driver(resolved_settings.hardware_profile)
+        module_runtime = AgentModuleRuntime(
+            resolved_settings.data_dir,
+            architecture=app.state.agent_runtime.inventory.architecture,
+            runtime_handlers={GPIO_ENTRYPOINT: gpio_runtime_handler(gpio)} if gpio else {},
+        )
+        module_runtime.start_active()
         if resolved_settings.core_url:
             credential = DeviceCredentialStore(resolved_settings.data_dir).load()
             if credential is not None:
@@ -69,10 +77,7 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
                     command_journal=CommandJournal(resolved_settings.data_dir),
                     reconciliation_store=ReconciliationStore(resolved_settings.data_dir),
                     outbox=OutboxStore(resolved_settings.data_dir),
-                    module_runtime=AgentModuleRuntime(
-                        resolved_settings.data_dir,
-                        architecture=app.state.agent_runtime.inventory.architecture,
-                    ),
+                    module_runtime=module_runtime,
                     started_monotonic=app.state.agent_runtime.started_monotonic,
                     interval_seconds=resolved_settings.heartbeat_interval_seconds,
                 )

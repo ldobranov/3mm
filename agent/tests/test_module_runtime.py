@@ -1,6 +1,8 @@
 import hashlib, io, json, zipfile
 import pytest
 from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
+from agent.hardware import MockDigitalGpioDriver
+from agent.modules.gpio import GPIO_ENTRYPOINT, gpio_runtime_handler
 
 def package(version="1.0.0", healthy=True):
     manifest = {"manifest_version":2,"module_id":"org.3mm.demo","name":"Demo","version":version,"runtimes":["agent"],"compatibility":{"protocol":"1.0","architectures":["aarch64"]},"permissions":["data.write"],"capabilities":{"provides":["demo.ready"]},"health_check":{"type":"file_exists","path":"health/ready"},"registrations":[{"kind":"capability","registration_id":"demo.ready"}]}
@@ -29,3 +31,27 @@ def test_integrity_and_architecture_fail_closed(tmp_path):
     runtime=AgentModuleRuntime(tmp_path,architecture="x86_64"); blob=package()
     with pytest.raises(ModuleLifecycleError,match="integrity"): runtime.install(blob,expected_sha256="0"*64)
     with pytest.raises(ModuleLifecycleError,match="architecture"): install(runtime,blob)
+
+def gpio_package(*, outputs={"gpio.output.1": True}, entrypoint=GPIO_ENTRYPOINT):
+    manifest = {"manifest_version":2,"module_id":"org.3mm.gpio-test","name":"GPIO test","version":"1.0.0","runtimes":["agent"],"entrypoints":{"agent":entrypoint},"compatibility":{"protocol":"1.0","architectures":["aarch64"]},"permissions":["hardware.gpio","data.write"],"capabilities":{"provides":["gpio.digital.output"]},"configuration_defaults":{"inputs":["gpio.input.1"],"outputs":outputs},"health_check":{"type":"file_exists","path":"health/ready"},"registrations":[{"kind":"capability","registration_id":"gpio.digital.control"}]}
+    out=io.BytesIO()
+    with zipfile.ZipFile(out,"w") as z:
+        z.writestr("manifest.json",json.dumps(manifest)); z.writestr("health/ready","ok")
+    return out.getvalue()
+
+def test_trusted_gpio_entrypoint_activates_declared_capabilities(tmp_path):
+    gpio=MockDigitalGpioDriver()
+    runtime=AgentModuleRuntime(tmp_path,architecture="aarch64",runtime_handlers={GPIO_ENTRYPOINT:gpio_runtime_handler(gpio)})
+    install(runtime,gpio_package())
+    assert gpio.output("gpio.output.1").read() is True
+    state=json.loads((tmp_path/"modules/data/org.3mm.gpio-test/gpio-runtime.json").read_text())
+    assert state["outputs"]=={"gpio.output.1":True}
+
+def test_gpio_module_fails_closed_without_declared_capability_or_handler(tmp_path):
+    gpio=MockDigitalGpioDriver()
+    runtime=AgentModuleRuntime(tmp_path,architecture="aarch64",runtime_handlers={GPIO_ENTRYPOINT:gpio_runtime_handler(gpio)})
+    with pytest.raises(ModuleLifecycleError,match="capability"):
+        install(runtime,gpio_package(outputs={"missing":True}))
+    no_handler=AgentModuleRuntime(tmp_path/"other",architecture="aarch64")
+    with pytest.raises(ModuleLifecycleError,match="entrypoint"):
+        install(no_handler,gpio_package())
