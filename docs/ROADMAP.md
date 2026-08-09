@@ -88,6 +88,8 @@ Acceptance criteria:
 
 Goal: make Core-to-Agent operations explicit, observable and resilient.
 
+Status: completed and accepted on the physical `rasp-3mm` baseline on 2026-08-09.
+
 Deliverables:
 
 - desired and reported state revisions;
@@ -309,6 +311,10 @@ These are the first concrete tasks after approval of this plan:
 - [x] Expose command submission, status, results and delivery attempts in the device registry UI.
 - [x] Reconcile the first allowlisted desired state revision on the physical Agent.
 - [x] Show desired/reported revisions and synchronization status in the device registry UI.
+- [x] Persist Agent events during Core downtime and replay them after reconnect.
+- [x] Add device diagnostics with inventory, state revisions and command history.
+- [x] Validate credential revocation, rejection and controlled replacement without changing device identity.
+- [x] Complete the Milestone 3 physical acceptance suite and report.
 
 ## Explicitly deferred
 
