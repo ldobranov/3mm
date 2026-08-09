@@ -291,6 +291,7 @@ These are the first concrete tasks after approval of this plan:
 - [x] Validate trusted-LAN Core access while keeping Agent loopback-only.
 - [x] Build the frontend off-device and validate the static artifact over LAN.
 - [x] Install and validate the Standalone Core, Web and Agent systemd services.
+- [x] Add a secret-free interactive bootstrap for the first Core administrator.
 
 ## Explicitly deferred
 

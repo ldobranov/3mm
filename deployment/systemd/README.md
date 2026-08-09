@@ -31,3 +31,22 @@ not stop already deployed local Agent workloads.
 run explicitly as root and requires the archive path, an immutable release ID
 and the exact frontend origin allowed by Core CORS. It does not install system
 packages, change networking or configure a firewall.
+
+## First administrator
+
+After Core is healthy, create the first administrator from an interactive
+terminal. The command reads the password without echoing it and runs with the
+same unprivileged account that owns the Core database:
+
+```bash
+sudo -u 3mm env \
+  PYTHONPATH=/opt/3mm/current \
+  DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db \
+  /opt/3mm/venv/bin/python -m backend.scripts.bootstrap_admin
+```
+
+If the same username and email were already registered through the web UI,
+that account is promoted and its password is replaced. The command refuses to
+change anything when an administrator already exists or when the username and
+email belong to different accounts. Passwords shorter than 12 characters are
+rejected unless the explicit development-only override is supplied.
