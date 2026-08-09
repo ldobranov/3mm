@@ -18,6 +18,7 @@ from agent.core_client import (
 from agent.hardware import create_hardware_driver
 from agent.identity import AgentIdentity, AgentIdentityStore
 from agent.inventory import collect_inventory
+from agent.module_runtime import AgentModuleRuntime
 from agent.role import AgentRoleResolver
 from three_mm_protocol import AgentHealth, AgentHello, AgentInventory, AgentRole
 from three_mm_provisioning import FileProvisioningStore
@@ -68,6 +69,10 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
                     command_journal=CommandJournal(resolved_settings.data_dir),
                     reconciliation_store=ReconciliationStore(resolved_settings.data_dir),
                     outbox=OutboxStore(resolved_settings.data_dir),
+                    module_runtime=AgentModuleRuntime(
+                        resolved_settings.data_dir,
+                        architecture=app.state.agent_runtime.inventory.architecture,
+                    ),
                     started_monotonic=app.state.agent_runtime.started_monotonic,
                     interval_seconds=resolved_settings.heartbeat_interval_seconds,
                 )

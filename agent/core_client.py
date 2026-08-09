@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import json
+import base64
 import os
 import threading
 import time
@@ -11,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable
+from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
 
 import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -156,6 +158,7 @@ class CorePublisher:
     reconciliation_store: ReconciliationStore
     outbox: OutboxStore
     started_monotonic: float
+    module_runtime: AgentModuleRuntime | None = None
     interval_seconds: int = 30
     _stop: threading.Event = field(init=False, repr=False)
     _thread: threading.Thread | None = field(init=False, default=None, repr=False)
@@ -253,6 +256,23 @@ class CorePublisher:
                     status="failed",
                     completed_at=datetime.now(UTC),
                     error=f"Inventory publish failed: {type(exc).__name__}",
+                )
+        elif command.command_type in {"module.install", "module.disable"} and self.module_runtime is not None:
+            try:
+                if command.command_type == "module.install":
+                    package = base64.b64decode(command.payload["package_base64"], validate=True)
+                    lifecycle = self.module_runtime.install(package, expected_sha256=command.payload["sha256"])
+                else:
+                    lifecycle = self.module_runtime.disable(command.payload["module_id"])
+                result = AgentCommandResult(
+                    command_id=command.command_id, device_id=self.credential.device_id,
+                    status="succeeded", completed_at=datetime.now(UTC),
+                    output={"module_id": lifecycle.module_id, "version": lifecycle.version, "status": lifecycle.status, "previous_version": lifecycle.previous_version},
+                )
+            except (KeyError, ValueError, ModuleLifecycleError) as exc:
+                result = AgentCommandResult(
+                    command_id=command.command_id, device_id=self.credential.device_id,
+                    status="failed", completed_at=datetime.now(UTC), error=str(exc),
                 )
         else:
             result = AgentCommandResult(
