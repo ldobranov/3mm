@@ -303,6 +303,8 @@ These are the first concrete tasks after approval of this plan:
 - [x] Replace the Main Server mock device list with the real Core registry API.
 - [x] Persist the Agent credential locally and publish inventory plus periodic heartbeats to Core.
 - [x] Pair and validate the co-located Agent on the physical Standalone Raspberry Pi baseline.
+- [x] Add an expiring, idempotent Core command queue with structured results.
+- [x] Execute the first allowlisted Agent command and persist its idempotency journal.
 
 ## Explicitly deferred
 
