@@ -68,7 +68,8 @@ def deliver_next_command(
             DeviceCommand.status == "queued",
             DeviceCommand.expires_at <= delivered_at,
         )
-        .values(status="expired")
+        .values(status="expired"),
+        execution_options={"synchronize_session": False},
     )
     command = db.scalar(
         select(DeviceCommand)
