@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import psutil
 import threading
+from contextlib import suppress
 
 @dataclass
 class PerformanceMetrics:
@@ -40,6 +41,7 @@ class ExtensionPerformanceMonitor:
         self.stats: Dict[str, ExtensionStats] = {}
         self.alerts: Dict[str, List[Dict[str, Any]]] = {}
         self.monitoring_active = False
+        self._monitoring_task: Optional[asyncio.Task] = None
         self.collection_interval = 60  # seconds
         self.alert_thresholds = {
             'cpu_usage': 80.0,  # percent
@@ -50,12 +52,22 @@ class ExtensionPerformanceMonitor:
 
     async def start_monitoring(self):
         """Start the performance monitoring system"""
+        if self._monitoring_task and not self._monitoring_task.done():
+            return
         self.monitoring_active = True
-        asyncio.create_task(self._monitoring_loop())
+        self._monitoring_task = asyncio.create_task(
+            self._monitoring_loop(), name="extension-performance-monitor"
+        )
 
     async def stop_monitoring(self):
         """Stop the performance monitoring system"""
         self.monitoring_active = False
+        if not self._monitoring_task:
+            return
+        self._monitoring_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await self._monitoring_task
+        self._monitoring_task = None
 
     def register_extension(self, extension_id: str):
         """Register an extension for monitoring"""
@@ -112,6 +124,8 @@ class ExtensionPerformanceMonitor:
 
     async def _collect_system_metrics(self):
         """Collect system-level metrics for extensions"""
+        if not self.metrics:
+            return
         try:
             # Get process information (simplified - would need more sophisticated tracking)
             current_process = psutil.Process()
