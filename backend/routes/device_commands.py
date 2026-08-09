@@ -37,6 +37,7 @@ class CommandStatusResponse(BaseModel):
     status: str
     created_at: datetime
     expires_at: datetime
+    delivery_attempts: int
     model_config = ConfigDict(extra="forbid")
 
 

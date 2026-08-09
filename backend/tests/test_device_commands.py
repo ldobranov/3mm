@@ -54,6 +54,7 @@ def test_command_lifecycle_and_idempotent_queueing() -> None:
         delivered = deliver_next_command(db, device=device, now=now + timedelta(seconds=1))
         assert delivered is not None
         assert delivered.status == "delivered"
+        assert delivered.delivery_attempts == 1
         assert command_envelope(delivered, DEVICE_ID).command_type == "agent.refresh_inventory"
 
         completed = record_command_result(
@@ -69,6 +70,41 @@ def test_command_lifecycle_and_idempotent_queueing() -> None:
         )
         assert completed.status == "succeeded"
         assert completed.result == {"published": True}
+    engine.dispose()
+
+
+def test_unacknowledged_command_is_redelivered_after_lease() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    now = datetime(2026, 8, 9, 12, 0, tzinfo=timezone.utc)
+    with Session(engine) as db:
+        device = Device(
+            device_id=DEVICE_ID,
+            display_name="test-pi",
+            role="node",
+            protocol_version="1.0",
+            approved_at=now,
+        )
+        db.add(device)
+        db.commit()
+        queue_command(
+            db,
+            device=device,
+            command_type="agent.refresh_inventory",
+            payload={},
+            idempotency_key="redelivery-1",
+            ttl_seconds=300,
+            now=now,
+        )
+
+        first = deliver_next_command(db, device=device, now=now)
+        assert first is not None
+        assert deliver_next_command(db, device=device, now=now + timedelta(seconds=29)) is None
+
+        redelivered = deliver_next_command(db, device=device, now=now + timedelta(seconds=30))
+        assert redelivered is not None
+        assert redelivered.command_id == first.command_id
+        assert redelivered.delivery_attempts == 2
     engine.dispose()
 
 

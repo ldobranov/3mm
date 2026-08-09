@@ -144,6 +144,7 @@ class DeviceCommand(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     delivered_at = Column(DateTime(timezone=True), nullable=True)
+    delivery_attempts = Column(Integer, nullable=False, default=0)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (

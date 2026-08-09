@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from backend.db.device import Device, DeviceCommand
@@ -58,14 +58,19 @@ def queue_command(
 
 
 def deliver_next_command(
-    db: Session, *, device: Device, now: datetime | None = None
+    db: Session,
+    *,
+    device: Device,
+    now: datetime | None = None,
+    delivery_lease_seconds: int = 30,
 ) -> DeviceCommand | None:
     delivered_at = now or datetime.now(timezone.utc)
+    lease_expired_at = delivered_at - timedelta(seconds=delivery_lease_seconds)
     db.execute(
         update(DeviceCommand)
         .where(
             DeviceCommand.device_id == device.id,
-            DeviceCommand.status == "queued",
+            DeviceCommand.status.in_(("queued", "delivered")),
             DeviceCommand.expires_at <= delivered_at,
         )
         .values(status="expired"),
@@ -75,7 +80,13 @@ def deliver_next_command(
         select(DeviceCommand)
         .where(
             DeviceCommand.device_id == device.id,
-            DeviceCommand.status == "queued",
+            or_(
+                DeviceCommand.status == "queued",
+                (
+                    (DeviceCommand.status == "delivered")
+                    & (DeviceCommand.delivered_at <= lease_expired_at)
+                ),
+            ),
             DeviceCommand.expires_at > delivered_at,
         )
         .order_by(DeviceCommand.created_at, DeviceCommand.id)
@@ -86,6 +97,7 @@ def deliver_next_command(
         return None
     command.status = "delivered"
     command.delivered_at = delivered_at
+    command.delivery_attempts = (command.delivery_attempts or 0) + 1
     db.commit()
     db.refresh(command)
     return command
