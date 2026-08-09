@@ -89,12 +89,14 @@ class CorePublisher:
         response.raise_for_status()
 
     def _run(self) -> None:
-        try:
-            self._post("inventory", self.inventory.model_dump(mode="json"))
-        except requests.RequestException as exc:
-            logger.warning("Core inventory publish failed: %s", exc)
-
+        inventory_published = False
         while not self._stop.is_set():
+            if not inventory_published:
+                try:
+                    self._post("inventory", self.inventory.model_dump(mode="json"))
+                    inventory_published = True
+                except requests.RequestException as exc:
+                    logger.warning("Core inventory publish failed: %s", exc)
             heartbeat = AgentHeartbeat(
                 device_id=self.credential.device_id,
                 sent_at=datetime.now(UTC),
