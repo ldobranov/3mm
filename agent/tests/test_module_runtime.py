@@ -55,3 +55,12 @@ def test_gpio_module_fails_closed_without_declared_capability_or_handler(tmp_pat
     no_handler=AgentModuleRuntime(tmp_path/"other",architecture="aarch64")
     with pytest.raises(ModuleLifecycleError,match="entrypoint"):
         install(no_handler,gpio_package())
+
+def test_gpio_module_is_reactivated_after_agent_runtime_restart(tmp_path):
+    first_gpio=MockDigitalGpioDriver()
+    runtime=AgentModuleRuntime(tmp_path,architecture="aarch64",runtime_handlers={GPIO_ENTRYPOINT:gpio_runtime_handler(first_gpio)})
+    install(runtime,gpio_package())
+    restarted_gpio=MockDigitalGpioDriver(outputs={"gpio.output.1":False})
+    restarted=AgentModuleRuntime(tmp_path,architecture="aarch64",runtime_handlers={GPIO_ENTRYPOINT:gpio_runtime_handler(restarted_gpio)})
+    restarted.start_active()
+    assert restarted_gpio.output("gpio.output.1").read() is True
