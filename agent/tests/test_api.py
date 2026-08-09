@@ -41,7 +41,11 @@ def test_agent_exposes_versioned_health_hello_and_inventory(tmp_path):
     assert hello.device_id == health.device_id
     assert hello.display_name == "mock-pi3-01"
     assert hello.role is AgentRole.NODE
-    assert hello.capabilities == ("hardware.inventory",)
+    assert hello.capabilities == (
+        "hardware.inventory",
+        "hardware.gpio.digital_input",
+        "hardware.gpio.digital_output",
+    )
 
     inventory = AgentInventory.model_validate(inventory_response.json())
     assert inventory.device_id == health.device_id
