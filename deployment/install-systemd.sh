@@ -80,6 +80,12 @@ EOF
 chown root:3mm /etc/3mm/3mm.env
 chmod 0640 /etc/3mm/3mm.env
 
+install -d -o 3mm -g 3mm -m 0750 /var/lib/3mm/core
+runuser -u 3mm -- env \
+  DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db \
+  PYTHONPATH="$release_dir" \
+  "$venv_dir/bin/python" "$release_dir/deployment/migrate_database.py"
+
 systemctl daemon-reload
 systemctl disable --now 3mm-setup.service >/dev/null 2>&1 || true
 systemctl enable --now 3mm-agent.service 3mm-core.service 3mm-web.service
