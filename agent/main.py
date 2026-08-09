@@ -7,7 +7,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel
 
 from agent import __version__
 from agent.config import AgentSettings
@@ -32,6 +33,10 @@ class AgentRuntime:
     role: AgentRole
     started_at: datetime
     started_monotonic: float
+
+
+class MockGpioInputUpdate(BaseModel):
+    value: bool
 
 
 def _runtime(request: Request) -> AgentRuntime:
@@ -60,6 +65,7 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
         publisher = None
         app.state.module_event_sink = lambda _event: None
         gpio = create_mock_gpio_driver(resolved_settings.hardware_profile)
+        app.state.mock_gpio = gpio
         module_runtime = AgentModuleRuntime(
             resolved_settings.data_dir,
             architecture=app.state.agent_runtime.inventory.architecture,
@@ -132,6 +138,26 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
     )
     def inventory(request: Request) -> AgentInventory:
         return _runtime(request).inventory
+
+    @app.get("/api/v1/agent/mock-gpio/state", tags=["diagnostics"])
+    def mock_gpio_state(request: Request) -> dict[str, dict[str, bool]]:
+        """Return isolated test GPIO state; the Agent service is loopback-only."""
+        gpio = request.app.state.mock_gpio
+        return {
+            "inputs": {"gpio.input.1": gpio.input("gpio.input.1").read()},
+            "outputs": {"gpio.output.1": gpio.output("gpio.output.1").read()},
+        }
+
+    @app.post("/api/v1/agent/mock-gpio/inputs/{capability_id}", tags=["diagnostics"])
+    def set_mock_gpio_input(
+        capability_id: str, payload: MockGpioInputUpdate, request: Request
+    ) -> dict[str, object]:
+        """Simulate a test input transition without exposing any real GPIO."""
+        try:
+            event = request.app.state.mock_gpio.set_input(capability_id, payload.value)
+        except KeyError as exc:
+            raise HTTPException(404, "Mock GPIO input was not found") from exc
+        return {"changed": event is not None, "sequence": event.sequence if event else None}
 
     return app
 

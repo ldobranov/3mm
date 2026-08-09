@@ -6,6 +6,7 @@ from agent.hardware import (
     LinuxHardwareDriver,
     MockHardwareDriver,
     create_hardware_driver,
+    create_mock_gpio_driver,
 )
 
 
@@ -26,6 +27,14 @@ def test_native_profile_uses_generic_linux_driver():
 
     assert isinstance(driver, LinuxHardwareDriver)
     assert driver.collect().driver_id == "linux"
+
+
+def test_native_profile_has_an_isolated_mock_gpio_driver():
+    gpio = create_mock_gpio_driver(HardwareProfile.NATIVE)
+
+    gpio.output("gpio.output.1").write(True)
+
+    assert gpio.output("gpio.output.1").read() is True
 
 
 def test_native_profile_is_not_accepted_as_a_mock():

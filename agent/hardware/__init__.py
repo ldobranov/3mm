@@ -17,9 +17,13 @@ def create_hardware_driver(
     return MockHardwareDriver.for_profile(profile)
 
 
-def create_mock_gpio_driver(profile: HardwareProfile) -> MockDigitalGpioDriver | None:
-    if profile is HardwareProfile.NATIVE:
-        return None
+def create_mock_gpio_driver(_profile: HardwareProfile) -> MockDigitalGpioDriver:
+    """Create the isolated test GPIO driver for every Agent profile.
+
+    This driver is never mapped to Linux GPIO pins.  Keeping it available on
+    native hardware lets an approved mock module be acceptance-tested on a
+    real device without granting it access to physical hardware.
+    """
     return MockDigitalGpioDriver()
 
 
