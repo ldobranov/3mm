@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.db.device import Device
+from backend.db.device import Device, DeviceCommand
 from backend.db.user import User
 from backend.services.device_commands import (
     DeviceCommandError,
@@ -38,6 +38,18 @@ class CommandStatusResponse(BaseModel):
     created_at: datetime
     expires_at: datetime
     delivery_attempts: int
+    command_type: str
+    idempotency_key: str
+    delivered_at: datetime | None
+    completed_at: datetime | None
+    result: dict | None
+    error: str | None
+    model_config = ConfigDict(extra="forbid")
+
+
+class CommandHistoryResponse(BaseModel):
+    items: list[CommandStatusResponse]
+    total: int
     model_config = ConfigDict(extra="forbid")
 
 
@@ -56,6 +68,31 @@ def create_command(
     except DeviceCommandError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return CommandStatusResponse.model_validate(command, from_attributes=True)
+
+
+@router.get("/{device_id}/commands", response_model=CommandHistoryResponse)
+def list_commands(
+    device_id: str,
+    limit: int = 50,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> CommandHistoryResponse:
+    device = db.scalar(select(Device).where(Device.device_id == device_id))
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device was not found")
+    bounded_limit = max(1, min(limit, 200))
+    commands = list(
+        db.scalars(
+            select(DeviceCommand)
+            .where(DeviceCommand.device_id == device.id)
+            .order_by(DeviceCommand.created_at.desc())
+            .limit(bounded_limit)
+        )
+    )
+    return CommandHistoryResponse(
+        items=[CommandStatusResponse.model_validate(item, from_attributes=True) for item in commands],
+        total=len(commands),
+    )
 
 
 @router.get("/{device_id}/commands/next", response_model=AgentCommand)

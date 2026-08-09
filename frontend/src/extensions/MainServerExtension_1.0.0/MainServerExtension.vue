@@ -86,6 +86,7 @@
                 <th>{{ t('mainServer.devices.hardware', 'Hardware') }}</th>
                 <th>{{ t('mainServer.devices.deviceStatus', 'Status') }}</th>
                 <th>{{ t('mainServer.devices.lastSeen', 'Last seen') }}</th>
+                <th>{{ t('mainServer.devices.actions', 'Actions') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -102,6 +103,55 @@
                   </span>
                 </td>
                 <td>{{ formatTimestamp(device.last_seen_at) }}</td>
+                <td>
+                  <button
+                    class="btn-small"
+                    :disabled="queuedDeviceId === device.device_id"
+                    @click="refreshInventory(device.device_id)"
+                  >
+                    {{ queuedDeviceId === device.device_id
+                      ? t('mainServer.commands.queueing', 'Queueing...')
+                      : t('mainServer.commands.refreshInventory', 'Refresh inventory') }}
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="commands-section">
+        <div class="section-title-row">
+          <h2>{{ t('mainServer.commands.title', 'Command History') }}</h2>
+          <button class="btn-secondary" @click="loadCommands">
+            {{ t('mainServer.commands.reload', 'Reload') }}
+          </button>
+        </div>
+        <p v-if="commandMessage" class="command-message">{{ commandMessage }}</p>
+        <p v-if="commandsError" class="devices-error">
+          {{ t('mainServer.commands.loadError', 'Command history could not be loaded') }}
+        </p>
+        <p v-else-if="commands.length === 0" class="no-devices">
+          {{ t('mainServer.commands.none', 'No commands yet') }}
+        </p>
+        <div v-else class="devices-list">
+          <table class="devices-table">
+            <thead><tr>
+              <th>{{ t('mainServer.commands.command', 'Command') }}</th>
+              <th>{{ t('mainServer.devices.deviceName', 'Device') }}</th>
+              <th>{{ t('mainServer.commands.status', 'Status') }}</th>
+              <th>{{ t('mainServer.commands.attempts', 'Attempts') }}</th>
+              <th>{{ t('mainServer.commands.created', 'Created') }}</th>
+              <th>{{ t('mainServer.commands.result', 'Result') }}</th>
+            </tr></thead>
+            <tbody>
+              <tr v-for="command in commands" :key="command.command_id">
+                <td>{{ command.command_type }}</td>
+                <td>{{ deviceName(command.device_id) }}</td>
+                <td><span :class="['status-badge', command.status]">{{ command.status }}</span></td>
+                <td>{{ command.delivery_attempts }}</td>
+                <td>{{ formatTimestamp(command.created_at) }}</td>
+                <td>{{ command.error || formatResult(command.result) }}</td>
               </tr>
             </tbody>
           </table>
@@ -216,9 +266,24 @@ interface DeviceRegistryResponse {
   total: number;
 }
 
+interface DeviceCommand {
+  command_id: string;
+  device_id: string;
+  command_type: string;
+  status: string;
+  delivery_attempts: number;
+  created_at: string;
+  result: Record<string, unknown> | null;
+  error: string | null;
+}
+
 const devices = ref<RegistryDevice[]>([]);
 const isLoadingDevices = ref(false);
 const devicesError = ref(false);
+const commands = ref<DeviceCommand[]>([]);
+const commandsError = ref(false);
+const commandMessage = ref('');
+const queuedDeviceId = ref('');
 const settings = ref({
   autoUpdate: false,
   updateInterval: 'daily',
@@ -233,10 +298,11 @@ const selectedExtensionId = ref<number | null>(null);
 const selectedVersion = ref('');
 
 // Fetch data on mount
-onMounted(() => {
+onMounted(async () => {
   loadAvailableUpdates();
-  loadDevices();
   loadSettings();
+  await loadDevices();
+  await loadCommands();
 });
 
 // Load available updates
@@ -247,6 +313,58 @@ const loadAvailableUpdates = async () => {
   } catch (error) {
     console.error('Failed to load available updates:', error);
   }
+};
+
+const loadCommands = async () => {
+  commandsError.value = false;
+  try {
+    const histories = await Promise.all(
+      devices.value.map(async (device) => ({
+        deviceId: device.device_id,
+        response: await http.get(`/api/v1/devices/${device.device_id}/commands?limit=20`),
+      }))
+    );
+    commands.value = histories
+      .flatMap(({ deviceId, response }) =>
+        (response.data.items as Omit<DeviceCommand, 'device_id'>[])
+          .map((command) => ({ ...command, device_id: deviceId }))
+      )
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  } catch (error) {
+    console.error('Failed to load command history:', error);
+    commandsError.value = true;
+  }
+};
+
+const refreshInventory = async (deviceId: string) => {
+  queuedDeviceId.value = deviceId;
+  commandMessage.value = '';
+  try {
+    const idempotencyKey = `refresh-${deviceId}-${crypto.randomUUID()}`;
+    await http.post(`/api/v1/devices/${deviceId}/commands`, {
+      command_type: 'agent.refresh_inventory',
+      payload: {},
+      idempotency_key: idempotencyKey,
+      ttl_seconds: 300,
+    });
+    commandMessage.value = t('mainServer.commands.queued', 'Inventory refresh queued');
+    await loadCommands();
+  } catch (error) {
+    console.error('Failed to queue inventory refresh:', error);
+    commandMessage.value = t('mainServer.commands.queueError', 'Command could not be queued');
+  } finally {
+    queuedDeviceId.value = '';
+  }
+};
+
+const deviceName = (deviceId: string) => {
+  const device = devices.value.find((item) => item.device_id === deviceId);
+  return device?.display_name || deviceId;
+};
+
+const formatResult = (result: Record<string, unknown> | null) => {
+  if (!result) return '-';
+  return Object.entries(result).map(([key, value]) => `${key}: ${String(value)}`).join(', ');
 };
 
 // Load connected devices
@@ -422,14 +540,14 @@ const saveSettings = async () => {
   font-size: 0.9rem;
 }
 
-.updates-section, .devices-section, .settings-section {
+.updates-section, .devices-section, .commands-section, .settings-section {
   margin-bottom: 2rem;
   padding: 1.5rem;
   background: var(--surface-1);
   border-radius: 8px;
 }
 
-.updates-section h2, .devices-section h2, .settings-section h2 {
+.updates-section h2, .devices-section h2, .commands-section h2, .settings-section h2 {
   margin-bottom: 1rem;
   color: var(--text-primary);
 }
@@ -448,6 +566,35 @@ const saveSettings = async () => {
 
 .devices-error .btn-secondary {
   margin-top: 0.75rem;
+}
+
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.command-message {
+  padding: 0.75rem;
+  background: var(--success-surface);
+  color: var(--success-color);
+  border-radius: 6px;
+}
+
+.status-badge.queued, .status-badge.delivered {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+
+.status-badge.succeeded {
+  background: var(--success-surface);
+  color: var(--success-color);
+}
+
+.status-badge.failed, .status-badge.expired {
+  background: var(--error-surface);
+  color: var(--error-color);
 }
 
 .devices-table code {
