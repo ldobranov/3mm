@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import logging
+import json
 import os
 import threading
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Callable
 
 import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from three_mm_protocol import AgentHeartbeat, AgentInventory
+from three_mm_protocol import AgentCommand, AgentCommandResult, AgentHeartbeat, AgentInventory
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +52,46 @@ class DeviceCredentialStore:
         os.replace(temporary, self.path)
 
 
+class CommandJournal:
+    """Small persistent cache preventing repeated idempotent actions."""
+
+    def __init__(self, data_dir: Path) -> None:
+        self.path = data_dir / "command-journal.json"
+        self._results: dict[str, AgentCommandResult] = {}
+        if self.path.exists():
+            try:
+                raw = json.loads(self.path.read_text(encoding="utf-8"))
+                self._results = {
+                    key: AgentCommandResult.model_validate(value)
+                    for key, value in raw.items()
+                }
+            except (OSError, ValueError, ValidationError) as exc:
+                raise RuntimeError(f"Cannot load command journal from {self.path}") from exc
+
+    def get(self, idempotency_key: str) -> AgentCommandResult | None:
+        return self._results.get(idempotency_key)
+
+    def save(self, idempotency_key: str, result: AgentCommandResult) -> None:
+        self._results[idempotency_key] = result
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        temporary = self.path.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps(
+                {key: value.model_dump(mode="json") for key, value in self._results.items()},
+                indent=2,
+            ) + "\n",
+            encoding="utf-8",
+        )
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, self.path)
+
+
 @dataclass(slots=True)
 class CorePublisher:
     core_url: str
     credential: DeviceCredential
-    inventory: AgentInventory
+    inventory_provider: Callable[[], AgentInventory]
+    command_journal: CommandJournal
     started_monotonic: float
     interval_seconds: int = 30
     _stop: threading.Event = field(init=False, repr=False)
@@ -88,12 +125,69 @@ class CorePublisher:
         )
         response.raise_for_status()
 
+    def _publish_inventory(self) -> None:
+        self._post("inventory", self.inventory_provider().model_dump(mode="json"))
+
+    def _submit_result(self, result: AgentCommandResult) -> None:
+        self._post(
+            f"commands/{result.command_id}/result",
+            result.model_dump(mode="json"),
+        )
+
+    def _poll_command(self) -> None:
+        response = requests.get(
+            f"{self.core_url}/api/v1/devices/{self.credential.device_id}/commands/next",
+            headers=self.headers,
+            timeout=10,
+        )
+        if response.status_code == 204:
+            return
+        response.raise_for_status()
+        command = AgentCommand.model_validate(response.json())
+        cached = self.command_journal.get(command.idempotency_key)
+        if cached is not None:
+            replay = cached.model_copy(update={"command_id": command.command_id})
+            self._submit_result(replay)
+            return
+
+        completed_at = datetime.now(UTC)
+        if command.expires_at <= completed_at:
+            return
+        if command.command_type == "agent.refresh_inventory":
+            try:
+                self._publish_inventory()
+                result = AgentCommandResult(
+                    command_id=command.command_id,
+                    device_id=self.credential.device_id,
+                    status="succeeded",
+                    completed_at=datetime.now(UTC),
+                    output={"inventory_published": True},
+                )
+            except requests.RequestException as exc:
+                result = AgentCommandResult(
+                    command_id=command.command_id,
+                    device_id=self.credential.device_id,
+                    status="failed",
+                    completed_at=datetime.now(UTC),
+                    error=f"Inventory publish failed: {type(exc).__name__}",
+                )
+        else:
+            result = AgentCommandResult(
+                command_id=command.command_id,
+                device_id=self.credential.device_id,
+                status="failed",
+                completed_at=completed_at,
+                error="Unsupported command type",
+            )
+        self.command_journal.save(command.idempotency_key, result)
+        self._submit_result(result)
+
     def _run(self) -> None:
         inventory_published = False
         while not self._stop.is_set():
             if not inventory_published:
                 try:
-                    self._post("inventory", self.inventory.model_dump(mode="json"))
+                    self._publish_inventory()
                     inventory_published = True
                 except requests.RequestException as exc:
                     logger.warning("Core inventory publish failed: %s", exc)
@@ -106,4 +200,8 @@ class CorePublisher:
                 self._post("heartbeat", heartbeat.model_dump(mode="json"))
             except requests.RequestException as exc:
                 logger.warning("Core heartbeat publish failed: %s", exc)
+            try:
+                self._poll_command()
+            except (requests.RequestException, ValidationError) as exc:
+                logger.warning("Core command poll failed: %s", exc)
             self._stop.wait(self.interval_seconds)

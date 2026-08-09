@@ -11,7 +11,7 @@ from fastapi import FastAPI, Request
 
 from agent import __version__
 from agent.config import AgentSettings
-from agent.core_client import CorePublisher, DeviceCredentialStore
+from agent.core_client import CommandJournal, CorePublisher, DeviceCredentialStore
 from agent.hardware import create_hardware_driver
 from agent.identity import AgentIdentity, AgentIdentityStore
 from agent.inventory import collect_inventory
@@ -61,7 +61,8 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
                 publisher = CorePublisher(
                     core_url=resolved_settings.core_url,
                     credential=credential,
-                    inventory=app.state.agent_runtime.inventory,
+                    inventory_provider=lambda: collect_inventory(identity.device_id, hardware),
+                    command_journal=CommandJournal(resolved_settings.data_dir),
                     started_monotonic=app.state.agent_runtime.started_monotonic,
                     interval_seconds=resolved_settings.heartbeat_interval_seconds,
                 )
