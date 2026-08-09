@@ -340,7 +340,9 @@ const refreshInventory = async (deviceId: string) => {
   queuedDeviceId.value = deviceId;
   commandMessage.value = '';
   try {
-    const idempotencyKey = `refresh-${deviceId}-${crypto.randomUUID()}`;
+    const randomBytes = crypto.getRandomValues(new Uint8Array(16));
+    const randomId = Array.from(randomBytes, (value) => value.toString(16).padStart(2, '0')).join('');
+    const idempotencyKey = `refresh-${deviceId}-${randomId}`;
     await http.post(`/api/v1/devices/${deviceId}/commands`, {
       command_type: 'agent.refresh_inventory',
       payload: {},
