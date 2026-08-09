@@ -3,13 +3,15 @@
 
 from alembic import command
 from alembic.config import Config
+from pathlib import Path
 from sqlalchemy import inspect
 
 from backend.database import engine
 
 
 def main() -> None:
-    config = Config("alembic.ini")
+    release_root = Path(__file__).resolve().parents[1]
+    config = Config(str(release_root / "alembic.ini"))
     tables = set(inspect(engine).get_table_names())
     if "alembic_version" not in tables:
         if "device_commands" in tables:
