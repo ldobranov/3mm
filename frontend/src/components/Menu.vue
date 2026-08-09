@@ -268,6 +268,24 @@ export default defineComponent({
           menuItems.value = getManifestMenuItems();
         }
 
+        // Module v2 navigation is data-driven. A module name is never mapped here.
+        if (isLoggedIn.value) {
+          try {
+            const registrations = await http.get('/api/v1/modules/registrations');
+            for (const registration of registrations.data || []) {
+              if (registration.kind !== 'navigation') continue;
+              const path = registration.metadata?.path;
+              const label = registration.metadata?.label;
+              if (typeof path === 'string' && typeof label === 'string' &&
+                  !menuItems.value.some(item => item.path === path)) {
+                menuItems.value.push({ path, label });
+              }
+            }
+          } catch (registrationError) {
+            console.warn('Module navigation registry is unavailable:', registrationError);
+          }
+        }
+
         errorMessage.value = '';
       } catch (error) {
         console.error('Failed to fetch menu:', error);
