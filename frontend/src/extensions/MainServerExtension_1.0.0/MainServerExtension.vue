@@ -86,6 +86,8 @@
                 <th>{{ t('mainServer.devices.hardware', 'Hardware') }}</th>
                 <th>{{ t('mainServer.devices.deviceStatus', 'Status') }}</th>
                 <th>{{ t('mainServer.devices.lastSeen', 'Last seen') }}</th>
+                <th>{{ t('mainServer.state.status', 'State') }}</th>
+                <th>{{ t('mainServer.state.revisions', 'Revisions') }}</th>
                 <th>{{ t('mainServer.devices.actions', 'Actions') }}</th>
               </tr>
             </thead>
@@ -103,6 +105,23 @@
                   </span>
                 </td>
                 <td>{{ formatTimestamp(device.last_seen_at) }}</td>
+                <td>
+                  <span
+                    v-if="deviceStates[device.device_id]"
+                    :class="['status-badge', deviceStates[device.device_id].synchronized ? 'succeeded' : 'failed']"
+                  >
+                    {{ deviceStates[device.device_id].synchronized
+                      ? t('mainServer.state.synchronized', 'Synchronized')
+                      : t('mainServer.state.drifted', 'Drifted') }}
+                  </span>
+                  <span v-else>-</span>
+                </td>
+                <td>
+                  <span v-if="deviceStates[device.device_id]">
+                    {{ deviceStates[device.device_id].reported_revision }} / {{ deviceStates[device.device_id].desired.revision }}
+                  </span>
+                  <span v-else>-</span>
+                </td>
                 <td>
                   <button
                     class="btn-small"
@@ -277,6 +296,14 @@ interface DeviceCommand {
   error: string | null;
 }
 
+interface DeviceStateSummary {
+  desired: { revision: number; state: Record<string, unknown>; updated_at: string };
+  reported_revision: number;
+  reported_state: Record<string, unknown>;
+  reported_at: string | null;
+  synchronized: boolean;
+}
+
 const devices = ref<RegistryDevice[]>([]);
 const isLoadingDevices = ref(false);
 const devicesError = ref(false);
@@ -284,6 +311,7 @@ const commands = ref<DeviceCommand[]>([]);
 const commandsError = ref(false);
 const commandMessage = ref('');
 const queuedDeviceId = ref('');
+const deviceStates = ref<Record<string, DeviceStateSummary>>({});
 const settings = ref({
   autoUpdate: false,
   updateInterval: 'daily',
@@ -302,6 +330,7 @@ onMounted(async () => {
   loadAvailableUpdates();
   loadSettings();
   await loadDevices();
+  await loadDeviceStates();
   await loadCommands();
 });
 
@@ -334,6 +363,21 @@ const loadCommands = async () => {
     console.error('Failed to load command history:', error);
     commandsError.value = true;
   }
+};
+
+const loadDeviceStates = async () => {
+  const entries = await Promise.all(
+    devices.value.map(async (device) => {
+      try {
+        const response = await http.get(`/api/v1/devices/${device.device_id}/state`);
+        return [device.device_id, response.data as DeviceStateSummary] as const;
+      } catch (error) {
+        console.error(`Failed to load state for ${device.device_id}:`, error);
+        return null;
+      }
+    })
+  );
+  deviceStates.value = Object.fromEntries(entries.filter((entry) => entry !== null));
 };
 
 const refreshInventory = async (deviceId: string) => {
