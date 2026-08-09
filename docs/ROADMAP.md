@@ -306,6 +306,7 @@ These are the first concrete tasks after approval of this plan:
 - [x] Add an expiring, idempotent Core command queue with structured results.
 - [x] Execute the first allowlisted Agent command and persist its idempotency journal.
 - [x] Redeliver unacknowledged commands after reconnect without repeating completed actions.
+- [x] Expose command submission, status, results and delivery attempts in the device registry UI.
 
 ## Explicitly deferred
 
