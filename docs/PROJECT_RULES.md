@@ -1,0 +1,160 @@
+# 3mm Project Rules
+
+Status: active; approved on 2026-08-09
+These rules apply to Core, Agent, modules, documentation and AI-generated changes.
+
+## 1. Architecture
+
+1. Core must never know a concrete optional module by name.
+2. Routes, navigation, services, widgets, permissions and settings contributed by a module come from its manifest and runtime registration.
+3. Agent must not contain special cases for concrete modules. It operates through capabilities and lifecycle contracts.
+4. Core and Agent are separate deployable applications and may use different release cadences.
+5. Domain logic must not depend directly on FastAPI, Vue, SQLAlchemy, gpiozero or a specific transport.
+6. Hardware-specific code belongs only in driver adapters.
+7. A module cannot reach another module's database or files directly. It uses a declared service/capability contract.
+8. Every external or cross-component contract is versioned.
+9. Breaking protocol or manifest changes require a documented migration path.
+10. Mock behavior must use the same public interfaces as real hardware behavior.
+
+## 2. Repository and configuration
+
+1. The default branch must always represent an installable state.
+2. Work is performed on focused branches and integrated through reviewed commits.
+3. A commit must represent one coherent change and include its tests/documentation.
+4. Generated files, virtual environments, build output, local databases, logs and uploads are not committed.
+5. Credentials, API keys, Wi-Fi passwords, tokens and private keys are never committed.
+6. Repository defaults are non-secret and portable.
+7. Local configuration is provided through environment variables or ignored local files generated from checked-in examples.
+8. A clean checkout cannot require Lazar's username, paths, database or network.
+9. Production configuration and development configuration are explicit and separate.
+10. Every supported configuration key has a type, default, description and validation rule.
+
+## 3. Core
+
+1. Core exposes versioned APIs under `/api/v1` or a later explicit version.
+2. Core validates all input at its boundary.
+3. Core stores desired state; Agent reports actual state.
+4. Core never treats delivery of a command as successful execution.
+5. Commands have explicit lifecycle states: queued, delivered, running, succeeded, failed, expired or cancelled.
+6. Background workers start and stop through application lifecycle hooks.
+7. Long-running or blocking work does not execute inside a request handler.
+8. Database access uses migrations; startup `create_all()` is not the production migration strategy.
+9. SQLite remains supported for small installations and tests.
+10. PostgreSQL-specific features require an adapter or explicit optional mode.
+
+## 4. Agent
+
+1. Agent uses a stable generated device ID independent of hostname and IP address.
+2. Agent initiates its connection to Core.
+3. Normal management must not require SSH or a shared password.
+4. Agent stores the last valid desired state locally.
+5. Agent continues deployed local workloads while Core is offline.
+6. Agent applies commands idempotently where possible.
+7. Agent rejects expired, replayed, incorrectly signed or unsupported commands.
+8. Agent enforces disk limits for logs, events, downloads and rollback packages.
+9. Agent reports structured errors; it does not hide failed actions behind a successful response.
+10. Agent update must include health verification and automatic rollback.
+
+## 5. Device roles and provisioning
+
+1. The project ships one universal installation image, not separate Hub and Node codebases.
+2. A Hub always runs a local Agent and can use its own hardware capabilities.
+3. Standalone mode is a Hub preset and can accept additional devices later without reinstallation.
+4. Changing role must preserve stable identity, user data and compatible module data.
+5. An unprovisioned headless device provides a browser-based setup path that does not require a mobile application.
+6. Failed network configuration must return to a recoverable setup state.
+7. The setup access point shuts down after successful provisioning.
+8. Shared fleet-wide bootstrap passwords are forbidden for production devices.
+9. Network secrets are never returned through inventory, logs, diagnostics or AI context.
+10. Provisioning domain logic uses a network adapter and remains testable without Raspberry hardware.
+
+## 6. Modules and manifests
+
+1. Every module has a stable globally unique ID and semantic version.
+2. Every module declares target runtime, architecture support, permissions, dependencies and health check.
+3. Undeclared file, network, hardware, process or database access is forbidden.
+4. Module installation is transactional: validate, stage, activate, health-check, commit or rollback.
+5. A failed module cannot prevent Core or Agent from starting.
+6. Disabling a module must stop its runtime behavior without deleting user data.
+7. Uninstall and data deletion are separate explicit operations.
+8. Module database migrations are forward versioned and tested against backup restoration.
+9. Frontend contributions are loaded from a validated registry, not hardcoded imports in Core navigation.
+10. Module packages are immutable after publication.
+
+## 7. AI behavior
+
+1. AI output is untrusted until validated.
+2. AI receives only the minimum context required for the task.
+3. Secrets and raw credentials never enter AI prompts.
+4. AI first prefers existing capabilities over generating new code.
+5. Configuration generated by AI must conform to a typed schema.
+6. The user sees a human-readable plan and diff before a material change.
+7. Generated code is built and tested outside the running Core process.
+8. Generated code cannot bypass manifest permissions.
+9. AI may not silently install system packages, alter networking, delete data or elevate privileges.
+10. Every AI-created or AI-applied change records model/provider metadata, input intent, resulting artifact version and approval actor.
+11. AI is optional; lack of subscription, credit, provider availability or internet must not stop deployed local behavior.
+12. AI prefers configuration and composition before new code generation.
+13. Every paid AI job has an estimate, an explicit approved maximum and bounded retries.
+14. Platform provider keys remain in the AI gateway and are never deployed to managed devices.
+15. Reusing an unchanged generated artifact on another authorized device does not trigger regeneration.
+
+## 8. Security
+
+1. Deny by default.
+2. Least privilege applies to users, devices, modules and processes.
+3. Authentication and authorization are separate checks.
+4. Device credentials are unique and revocable; shared fleet secrets are forbidden.
+5. Sensitive values are encrypted at rest where appropriate and redacted from logs.
+6. Public endpoints are explicitly enumerated and security-tested.
+7. CORS is restricted to configured origins in production.
+8. Uploaded archives are size-limited and protected against path traversal, zip bombs and executable surprises.
+9. Python import filtering is not a security sandbox.
+10. Security-relevant failures fail closed and appear in the audit log.
+
+## 9. Reliability and observability
+
+1. Every service exposes liveness and readiness separately.
+2. Logs are structured and include timestamp, level, component and correlation ID.
+3. Metrics have bounded cardinality.
+4. Retries use backoff and do not retry permanent errors indefinitely.
+5. Queues and local buffers have explicit size and retention limits.
+6. Timestamps are stored in UTC and rendered in the user's timezone.
+7. Device online/offline status is derived from heartbeat policy, not a manually stored flag.
+8. Network interruption, process restart and power-loss behavior are tested.
+9. An update is complete only after its health check succeeds.
+10. Backup restoration is tested, not merely documented.
+
+## 10. Tests and quality gates
+
+1. New behavior requires automated tests at the narrowest useful level.
+2. Protocol schemas have contract tests shared by Core and Agent.
+3. Database changes include migration tests.
+4. Mock drivers have deterministic tests; hardware drivers have a documented hardware test matrix.
+5. Critical flows have integration tests: pairing, reconnect, desired state, command result, update and rollback.
+6. Frontend type-check and production build must pass before merge.
+7. Backend tests, formatting and static checks must pass before merge.
+8. Tests cannot depend on the public internet or a developer's local services.
+9. Skipped tests require a reason and tracking issue.
+10. A feature is not complete until its failure path is tested.
+
+## 11. Documentation and claims
+
+1. Documentation describes implemented behavior or explicitly labels planned behavior.
+2. No feature is called production-ready while it still returns mock data.
+3. API examples must match executable endpoints and current schemas.
+4. Each module documents purpose, permissions, configuration, health check and recovery.
+5. Each release documents migrations, compatibility and rollback.
+6. Setup instructions are verified from a clean environment.
+
+## 12. Definition of Done
+
+A task is done only when:
+
+- acceptance criteria are satisfied;
+- implementation and automated tests pass;
+- security and failure behavior were considered;
+- relevant documentation is updated;
+- configuration remains portable and secret-free;
+- no unrelated behavior was changed;
+- the result can be demonstrated from a clean checkout.

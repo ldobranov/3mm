@@ -194,7 +194,7 @@ export async function reloadExtensionRoutes(router: any) {
   }
 }
 
-async function createRouterWithDynamicRoutes() {
+export async function createRouterWithDynamicRoutes() {
 
   // Load base application routes
   const routes: RouteRecordRaw[] = [
@@ -252,6 +252,3 @@ async function createRouterWithDynamicRoutes() {
 
   return router;
 }
-
-const router = await createRouterWithDynamicRoutes();
-export default router;

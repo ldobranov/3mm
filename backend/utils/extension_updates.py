@@ -10,6 +10,7 @@ import zipfile
 import tempfile
 import shutil
 import json
+from contextlib import suppress
 
 from backend.database import get_db
 from backend.db.extension import Extension
@@ -22,20 +23,43 @@ class ExtensionUpdateManager:
     def __init__(self):
         self.update_queue: asyncio.Queue = asyncio.Queue()
         self.updating: Dict[str, bool] = {}
+        self._worker_task: Optional[asyncio.Task] = None
 
     async def start_update_worker(self):
         """Start the background update worker"""
-        asyncio.create_task(self._process_updates())
+        if self._worker_task and not self._worker_task.done():
+            return
+        self._worker_task = asyncio.create_task(
+            self._process_updates(), name="extension-update-worker"
+        )
+
+    async def stop_update_worker(self):
+        """Stop and await the background update worker."""
+        if not self._worker_task:
+            return
+        self._worker_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await self._worker_task
+        self._worker_task = None
+        # asyncio primitives are bound to the loop where they first wait.
+        # Recreate the empty queue so the app can be started again in a new
+        # event loop (tests, embedded servers and controlled reloads).
+        self.update_queue = asyncio.Queue()
 
     async def _process_updates(self):
         """Process extension updates from the queue"""
         while True:
+            update_request = None
             try:
                 update_request = await self.update_queue.get()
                 await self._perform_update(update_request)
-                self.update_queue.task_done()
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 print(f"Error processing update: {e}")
+            finally:
+                if update_request is not None:
+                    self.update_queue.task_done()
 
     async def _perform_update(self, update_request: Dict[str, Any]):
         """Perform an extension update"""

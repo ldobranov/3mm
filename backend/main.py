@@ -1,27 +1,26 @@
-import sys
+import asyncio
+import json
+import logging
 import os
+import sys
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 # Fix path inconsistency - use the same approach as database.py
 # Add project root to sys.path FIRST - before any imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from fastapi.exceptions import RequestValidationError
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.middleware.cors import CORSMiddleware
-import logging
-import asyncio
-import json
-from fastapi.encoders import jsonable_encoder
-import os
+from sqlalchemy import text
+from starlette.middleware.base import BaseHTTPMiddleware
 
-# Load config from root config.json
-config_path = os.path.join(os.path.dirname(__file__), '..', 'config.json')
-with open(config_path, 'r') as f:
-    config = json.load(f)
+from backend.config import get_settings
+
+app_settings = get_settings()
 
 # Import database and models first
 from backend.database import init_db, get_db
@@ -53,14 +52,12 @@ from backend.utils.extension_monitoring import performance_monitor
 from backend.utils.extension_manager import extension_manager
 from backend.db.extension import Extension
 
-# Configure logging to file
+# Configure logging. Service managers can redirect stdout/stderr to persistent
+# storage without the application mutating a tracked file at import time.
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("backend_debug.log", mode="w"),
-        logging.StreamHandler()
-    ]
+    handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger("backend_debug")
 
@@ -75,8 +72,68 @@ class UnicodeJSONResponse(JSONResponse):
             separators=(",", ":"),
         ).encode("utf-8")
 
+async def load_enabled_extensions(app: FastAPI):
+    """Load all enabled extensions after application startup."""
+    db = None
+    try:
+        db = next(get_db())
+        enabled_extensions = db.query(Extension).filter(
+            Extension.is_enabled.is_(True)
+        ).all()
+
+        if not enabled_extensions:
+            logger.info("No enabled extensions to load")
+            return
+
+        for extension in enabled_extensions:
+            extension_id = f"{extension.name}_{extension.version}"
+            extension_path = Path(extension.file_path)
+
+            if extension_path.exists():
+                success = extension_manager.initialize_extension(
+                    extension_id=extension_id,
+                    extension_path=extension_path,
+                    app=app,
+                    db=db,
+                )
+                if success:
+                    logger.info("Extension %s loaded successfully", extension_id)
+                else:
+                    logger.warning("Failed to load extension %s", extension_id)
+            elif extension_path != Path("system"):
+                logger.warning("Extension path not found: %s", extension_path)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("Error loading enabled extensions")
+    finally:
+        if db:
+            db.close()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Own all application startup and shutdown work."""
+    init_db()
+    await update_manager.start_update_worker()
+    await performance_monitor.start_monitoring()
+    extension_loader_task = asyncio.create_task(
+        load_enabled_extensions(app), name="enabled-extension-loader"
+    )
+
+    try:
+        yield
+    finally:
+        if not extension_loader_task.done():
+            extension_loader_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await extension_loader_task
+        await performance_monitor.stop_monitoring()
+        await update_manager.stop_update_worker()
+
+
 # Configure FastAPI to use Unicode-preserving JSON encoder
-app = FastAPI(default_response_class=UnicodeJSONResponse)
+app = FastAPI(default_response_class=UnicodeJSONResponse, lifespan=lifespan)
 
 class CustomErrorHandlerMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -99,7 +156,7 @@ app.add_middleware(CustomErrorHandlerMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Frontend origin
+    allow_origins=app_settings.backend.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
@@ -107,25 +164,24 @@ app.add_middleware(
 )
 
 # Mount static files for uploads
-uploads_dir = os.path.join(os.path.dirname(__file__), '..', 'uploads')
-os.makedirs(uploads_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+uploads_dir = (Path(__file__).resolve().parent.parent / "uploads").resolve()
+uploads_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 
-# Debug: log the uploads directory path
-print(f"DEBUG: Uploads directory mounted at: {uploads_dir}")
-print(f"DEBUG: Uploads directory exists: {os.path.exists(uploads_dir)}")
-print(f"DEBUG: Uploads/settings directory exists: {os.path.exists(os.path.join(uploads_dir, 'settings'))}")
 
-# List files in uploads/settings for debugging
-settings_dir = os.path.join(uploads_dir, 'settings')
-if os.path.exists(settings_dir):
+@app.get("/health", tags=["system"])
+def health():
+    return {"status": "ok"}
+
+
+@app.get("/ready", tags=["system"])
+def readiness():
+    db = next(get_db())
     try:
-        files = os.listdir(settings_dir)
-        print(f"DEBUG: Files in uploads/settings: {files}")
-    except Exception as e:
-        print(f"DEBUG: Error listing files in uploads/settings: {e}")
-else:
-    print("DEBUG: uploads/settings directory does not exist")
+        db.execute(text("SELECT 1"))
+    finally:
+        db.close()
+    return {"status": "ready"}
 
 # Add logging for static file requests
 @app.middleware("http")
@@ -151,69 +207,15 @@ app.include_router(monitoring_router)
 app.include_router(language_router, prefix="/api")
 app.include_router(ai_extension_builder_router)
 
-# Initialize the database schema
-init_db()
-
-# Start extension update manager (non-blocking)
-asyncio.create_task(update_manager.start_update_worker())
-
-# Start extension performance monitoring (non-blocking)
-asyncio.create_task(performance_monitor.start_monitoring())
-
-# Load enabled extensions at startup (non-blocking)
-async def load_enabled_extensions():
-    """Load all enabled extensions at startup - non-blocking"""
-    db = None
-    try:
-        # Wait a moment for database to be fully initialized
-        await asyncio.sleep(0.1)
-        db = next(get_db())
-        enabled_extensions = db.query(Extension).filter(
-            Extension.is_enabled == True
-        ).all()
-        
-        if not enabled_extensions:
-            logger.info("No enabled extensions to load")
-            return
-
-        for extension in enabled_extensions:
-            extension_id = f"{extension.name}_{extension.version}"
-            extension_path = Path(extension.file_path)
-
-            if extension_path.exists():
-                try:
-                    success = extension_manager.initialize_extension(
-                        extension_id=extension_id,
-                        extension_path=extension_path,
-                        app=app,
-                        db=db
-                    )
-                    if success:
-                        logger.info(f"✅ Extension {extension_id} loaded successfully")
-                    else:
-                        logger.warning(f"❌ Failed to load extension {extension_id}")
-                except Exception as e:
-                    logger.error(f"❌ Error loading extension {extension_id}: {e}")
-            else:
-                # Skip warning for system extension (core functionality)
-                if extension_path != Path("system"):
-                    logger.warning(f"⚠️ Extension path not found: {extension_path}")
-
-    except Exception as e:
-        print(f"Error loading extensions: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        if db:
-            db.close()
-
-# Start extension loading as background task
-asyncio.create_task(load_enabled_extensions())
-
 # Removed excessive debug logging for cleaner startup
 
 # Extensions removed for MVP cleanup
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host=config['backend']['host'], port=config['backend']['port'], reload=True)
+    uvicorn.run(
+        "backend.main:app",
+        host=app_settings.backend.host,
+        port=app_settings.backend.port,
+        reload=True,
+    )

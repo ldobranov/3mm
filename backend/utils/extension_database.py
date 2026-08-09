@@ -241,6 +241,7 @@ class ExtensionDatabaseManager:
 
 
 # Global instance - use the same database as the main application
-import os
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://lazar:admin@localhost:5432/mega_monitor")
+from backend.config import get_settings
+
+DATABASE_URL = get_settings().database_url
 extension_db_manager = ExtensionDatabaseManager(DATABASE_URL)

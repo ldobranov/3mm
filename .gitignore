@@ -2,6 +2,7 @@
 backend/venv/
 backend/venv3/
 backend/venv/
+backend/.venv/
 backend/env/
 
 # Python cache files
@@ -52,6 +53,8 @@ Thumbs.db
 .env.development.local
 .env.test.local
 .env.production.local
+backend/database_config.json
+install_config.json
 
 # Log files
 *.log
@@ -61,10 +64,12 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+backend/data/
 
 # Temporary files
 tmp/
 temp/
+.runtime/
 *.tmp
 *.temp
 

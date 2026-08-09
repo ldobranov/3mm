@@ -5,11 +5,9 @@ from backend.db.universal_translation import Menu
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict as PydanticConfigDict
 import os
 import json
+from backend.config import get_settings
 
-# Load config from root config.json
-config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'config.json')
-with open(config_path, 'r') as f:
-    app_config = json.load(f)
+app_config = get_settings().model_dump()
 
 class MenuCreateSchema(PydanticBaseModel):
     name: str
