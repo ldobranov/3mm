@@ -28,12 +28,16 @@ class AgentSettings:
     role: AgentRole = AgentRole.NODE
     hardware_profile: HardwareProfile = HardwareProfile.NATIVE
     provisioning_data_dir: Path | None = None
+    core_url: str | None = None
+    heartbeat_interval_seconds: int = 30
 
     def __post_init__(self) -> None:
         if not 1 <= self.port <= 65535:
             raise ValueError("Agent port must be between 1 and 65535")
         if not self.display_name.strip():
             raise ValueError("Agent display name cannot be empty")
+        if self.heartbeat_interval_seconds < 5:
+            raise ValueError("Heartbeat interval must be at least 5 seconds")
 
     @classmethod
     def from_env(cls) -> "AgentSettings":
@@ -57,5 +61,9 @@ class AgentSettings:
                 os.getenv("THREE_MM_PROVISIONING_DATA_DIR")
                 or os.getenv("THREE_MM_SETUP_DATA_DIR")
                 or str(default_provisioning_data_dir())
+            ),
+            core_url=os.getenv("THREE_MM_CORE_URL") or None,
+            heartbeat_interval_seconds=int(
+                os.getenv("THREE_MM_HEARTBEAT_INTERVAL_SECONDS", "30")
             ),
         )

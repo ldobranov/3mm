@@ -11,6 +11,7 @@ from fastapi import FastAPI, Request
 
 from agent import __version__
 from agent.config import AgentSettings
+from agent.core_client import CorePublisher, DeviceCredentialStore
 from agent.hardware import create_hardware_driver
 from agent.identity import AgentIdentity, AgentIdentityStore
 from agent.inventory import collect_inventory
@@ -51,7 +52,23 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
             started_at=datetime.now(UTC),
             started_monotonic=time.monotonic(),
         )
+        publisher = None
+        if resolved_settings.core_url:
+            credential = DeviceCredentialStore(resolved_settings.data_dir).load()
+            if credential is not None:
+                if credential.device_id != identity.device_id:
+                    raise RuntimeError("Core credential does not match Agent identity")
+                publisher = CorePublisher(
+                    core_url=resolved_settings.core_url,
+                    credential=credential,
+                    inventory=app.state.agent_runtime.inventory,
+                    started_monotonic=app.state.agent_runtime.started_monotonic,
+                    interval_seconds=resolved_settings.heartbeat_interval_seconds,
+                )
+                publisher.start()
         yield
+        if publisher is not None:
+            publisher.stop()
 
     app = FastAPI(
         title="3mm Agent",
