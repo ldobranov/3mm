@@ -111,6 +111,8 @@ Acceptance criteria:
 
 Goal: provide one consistent module model across Core, Agent and UI.
 
+Status: completed and accepted on the physical `rasp-3mm` baseline on 2026-08-09.
+
 Deliverables:
 
 - manifest v2 JSON schema;
@@ -315,6 +317,12 @@ These are the first concrete tasks after approval of this plan:
 - [x] Add device diagnostics with inventory, state revisions and command history.
 - [x] Validate credential revocation, rejection and controlled replacement without changing device identity.
 - [x] Complete the Milestone 3 physical acceptance suite and report.
+- [x] Define the strict shared module manifest v2 contract and safe immutable ZIP validator.
+- [x] Add the Core module catalog, registration API and per-device installation records.
+- [x] Add transactional Agent staging, activation, health checking, rollback and disable.
+- [x] Enforce protocol, runtime, architecture, integrity and declared-permission compatibility.
+- [x] Derive frontend navigation from generic module registrations rather than module names.
+- [x] Complete the Milestone 4 automated and physical acceptance suite and report.
 
 ## Explicitly deferred
 
