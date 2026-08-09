@@ -10,8 +10,8 @@ class StrictModel(BaseModel):
 
 class ModuleCompatibility(StrictModel):
     protocol: str = Field(pattern=r"^\d+\.\d+$")
-    agent: str = Field(default=">=0.1.0", min_length=1)
-    core: str = Field(default=">=0.1.0", min_length=1)
+    agent: str = Field(default=">=0.1.0", pattern=r"^>=\d+\.\d+\.\d+$")
+    core: str = Field(default=">=0.1.0", pattern=r"^>=\d+\.\d+\.\d+$")
     architectures: tuple[str, ...] = Field(min_length=1)
 
 class ModuleCapabilities(StrictModel):
@@ -28,6 +28,15 @@ class ModuleHealthCheck(StrictModel):
         if self.path.startswith(("/", "\\")) or ".." in parts:
             raise ValueError("health check path must stay inside module data")
         return self
+
+def meets_minimum_version(current: str, requirement: str) -> bool:
+    """Evaluate the deliberately small manifest-v2 `>=x.y.z` contract."""
+    required = requirement.removeprefix(">=")
+    def parts(value: str) -> tuple[int, int, int]:
+        clean = value.split("-", 1)[0].split("+", 1)[0]
+        major, minor, patch = clean.split(".")
+        return int(major), int(minor), int(patch)
+    return parts(current) >= parts(required)
 
 class ModuleRegistration(StrictModel):
     kind: Literal["navigation", "service", "widget", "capability"]

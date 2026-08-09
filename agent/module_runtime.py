@@ -4,7 +4,8 @@ import hashlib, io, json, os, shutil, tempfile, zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from pydantic import ValidationError
-from three_mm_protocol import ModuleManifestV2
+from three_mm_protocol import ModuleManifestV2, meets_minimum_version
+from agent import __version__
 
 AGENT_ALLOWED_PERMISSIONS = {"data.read", "data.write", "events.publish", "network.outbound", "process.spawn", "hardware.inventory", "hardware.gpio"}
 
@@ -47,6 +48,8 @@ class AgentModuleRuntime:
             raise ModuleLifecycleError("package does not target Agent")
         if manifest.compatibility.protocol != self.protocol_version:
             raise ModuleLifecycleError("incompatible protocol")
+        if not meets_minimum_version(__version__, manifest.compatibility.agent):
+            raise ModuleLifecycleError("incompatible Agent runtime version")
         if self.architecture not in manifest.compatibility.architectures and "any" not in manifest.compatibility.architectures:
             raise ModuleLifecycleError("incompatible architecture")
         if set(manifest.permissions) - AGENT_ALLOWED_PERMISSIONS:

@@ -15,6 +15,7 @@ from three_mm_protocol.models import (
 from three_mm_protocol.module_manifest import (
     ModuleCapabilities, ModuleCompatibility, ModuleHealthCheck,
     ModuleManifestV2, ModuleRegistration,
+    meets_minimum_version,
 )
 
 __all__ = [
@@ -33,4 +34,5 @@ __all__ = [
     "ModuleHealthCheck",
     "ModuleManifestV2",
     "ModuleRegistration",
+    "meets_minimum_version",
 ]

@@ -20,6 +20,8 @@ def test_valid_package_has_stable_integrity_and_contract():
 def test_incompatible_package_is_rejected_before_install():
     with pytest.raises(ModulePackageError, match="architecture"):
         validate_module_package(package(), architecture="x86_64")
+    with pytest.raises(ModulePackageError, match="Core runtime"):
+        validate_module_package(package(manifest(runtimes=["core"], compatibility={"protocol":"1.0","architectures":["any"],"core":">=9.0.0"})))
 
 def test_package_rejects_undeclared_permission_and_traversal():
     with pytest.raises(ModulePackageError, match="unsupported permissions"):
