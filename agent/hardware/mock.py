@@ -21,6 +21,7 @@ _MOCK_PROFILES = {
         architecture="aarch64",
         logical_cpu_count=4,
         memory_total_bytes=1_073_741_824,
+        capabilities=("hardware.inventory", "hardware.gpio.digital_input", "hardware.gpio.digital_output"),
     ),
     HardwareProfile.MOCK_ZERO2: HardwareSnapshot(
         driver_id="mock",
@@ -28,6 +29,7 @@ _MOCK_PROFILES = {
         architecture="aarch64",
         logical_cpu_count=4,
         memory_total_bytes=536_870_912,
+        capabilities=("hardware.inventory", "hardware.gpio.digital_input", "hardware.gpio.digital_output"),
     ),
     HardwareProfile.MOCK_LINUX: HardwareSnapshot(
         driver_id="mock",
@@ -35,6 +37,7 @@ _MOCK_PROFILES = {
         architecture="x86_64",
         logical_cpu_count=4,
         memory_total_bytes=4_294_967_296,
+        capabilities=("hardware.inventory", "hardware.gpio.digital_input", "hardware.gpio.digital_output"),
     ),
 }
 

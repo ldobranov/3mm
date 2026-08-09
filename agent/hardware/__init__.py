@@ -3,6 +3,10 @@
 from agent.hardware.base import HardwareInventoryDriver, HardwareSnapshot
 from agent.hardware.linux import LinuxHardwareDriver
 from agent.hardware.mock import HardwareProfile, MockHardwareDriver
+from agent.hardware.gpio import (
+    DigitalGpioDriver, DigitalInput, DigitalInputEvent, DigitalOutput,
+    MockDigitalGpioDriver,
+)
 
 
 def create_hardware_driver(
@@ -20,4 +24,9 @@ __all__ = [
     "LinuxHardwareDriver",
     "MockHardwareDriver",
     "create_hardware_driver",
+    "DigitalGpioDriver",
+    "DigitalInput",
+    "DigitalInputEvent",
+    "DigitalOutput",
+    "MockDigitalGpioDriver",
 ]
