@@ -32,6 +32,8 @@ Acceptance criteria:
 
 ## Milestone 1 — Core and Agent foundations
 
+Status: in progress; first Raspberry Pi 3B+ baseline captured on 2026-08-09. See [RASPBERRY_PI_BASELINE.md](RASPBERRY_PI_BASELINE.md).
+
 Goal: introduce a real Agent, shared contracts and the universal device-role foundation.
 
 Deliverables:
