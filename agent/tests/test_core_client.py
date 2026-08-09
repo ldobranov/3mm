@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 from agent.core_client import (
     CommandJournal, DeviceCredential, DeviceCredentialStore,
-    ReconciliationState, ReconciliationStore,
+    OutboxEntry, OutboxStore, ReconciliationState, ReconciliationStore,
 )
 from three_mm_protocol import AgentCommandResult
 
@@ -45,3 +45,11 @@ def test_reconciliation_state_survives_restart(tmp_path: Path) -> None:
     store.save(state)
     assert ReconciliationStore(tmp_path / "agent").load() == state
     assert store.path.stat().st_mode & 0o777 == 0o600
+
+
+def test_outbox_deduplicates_replaceable_events(tmp_path: Path) -> None:
+    outbox = OutboxStore(tmp_path / "agent")
+    outbox.enqueue(OutboxEntry(suffix="heartbeat", payload={"sequence": 1}, deduplication_key="heartbeat"))
+    outbox.enqueue(OutboxEntry(suffix="heartbeat", payload={"sequence": 2}, deduplication_key="heartbeat"))
+    assert [entry.payload for entry in outbox.load()] == [{"sequence": 2}]
+    assert outbox.path.stat().st_mode & 0o777 == 0o600

@@ -115,6 +115,38 @@ class ReconciliationStore:
         os.replace(temporary, self.path)
 
 
+class OutboxEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    suffix: str
+    payload: dict
+    deduplication_key: str
+
+
+class OutboxStore:
+    def __init__(self, data_dir: Path) -> None:
+        self.path = data_dir / "outbox.json"
+
+    def load(self) -> list[OutboxEntry]:
+        if not self.path.exists():
+            return []
+        try:
+            return [OutboxEntry.model_validate(item) for item in json.loads(self.path.read_text(encoding="utf-8"))]
+        except (OSError, ValueError, ValidationError) as exc:
+            raise RuntimeError(f"Cannot load Agent outbox from {self.path}") from exc
+
+    def save(self, entries: list[OutboxEntry]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        temporary = self.path.with_suffix(".tmp")
+        temporary.write_text(json.dumps([entry.model_dump(mode="json") for entry in entries], indent=2) + "\n", encoding="utf-8")
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, self.path)
+
+    def enqueue(self, entry: OutboxEntry) -> None:
+        entries = [item for item in self.load() if item.deduplication_key != entry.deduplication_key]
+        entries.append(entry)
+        self.save(entries[-500:])
+
+
 @dataclass(slots=True)
 class CorePublisher:
     core_url: str
@@ -122,6 +154,7 @@ class CorePublisher:
     inventory_provider: Callable[[], AgentInventory]
     command_journal: CommandJournal
     reconciliation_store: ReconciliationStore
+    outbox: OutboxStore
     started_monotonic: float
     interval_seconds: int = 30
     _stop: threading.Event = field(init=False, repr=False)
@@ -158,10 +191,30 @@ class CorePublisher:
     def _publish_inventory(self) -> None:
         self._post("inventory", self.inventory_provider().model_dump(mode="json"))
 
+    def _send_or_queue(self, suffix: str, payload: dict, deduplication_key: str) -> bool:
+        try:
+            self._post(suffix, payload)
+            return True
+        except requests.RequestException:
+            self.outbox.enqueue(OutboxEntry(suffix=suffix, payload=payload, deduplication_key=deduplication_key))
+            return False
+
+    def _flush_outbox(self) -> None:
+        remaining: list[OutboxEntry] = []
+        entries = self.outbox.load()
+        for index, entry in enumerate(entries):
+            try:
+                self._post(entry.suffix, entry.payload)
+            except requests.RequestException:
+                remaining.extend(entries[index:])
+                break
+        self.outbox.save(remaining)
+
     def _submit_result(self, result: AgentCommandResult) -> None:
-        self._post(
+        self._send_or_queue(
             f"commands/{result.command_id}/result",
             result.model_dump(mode="json"),
+            f"command-result:{result.command_id}",
         )
 
     def _poll_command(self) -> None:
@@ -252,11 +305,15 @@ class CorePublisher:
                 reported_at=datetime.now(UTC),
                 state={"inventory_generation": current.inventory_generation},
             )
-        self._post("reported-state", reported.model_dump(mode="json"))
+        self._send_or_queue("reported-state", reported.model_dump(mode="json"), "reported-state")
 
     def _run(self) -> None:
         inventory_published = False
         while not self._stop.is_set():
+            try:
+                self._flush_outbox()
+            except RuntimeError as exc:
+                logger.warning("Agent outbox flush failed: %s", exc)
             if not inventory_published:
                 try:
                     self._publish_inventory()
@@ -269,7 +326,7 @@ class CorePublisher:
                 uptime_seconds=max(0.0, time.monotonic() - self.started_monotonic),
             )
             try:
-                self._post("heartbeat", heartbeat.model_dump(mode="json"))
+                self._send_or_queue("heartbeat", heartbeat.model_dump(mode="json"), "heartbeat")
             except requests.RequestException as exc:
                 logger.warning("Core heartbeat publish failed: %s", exc)
             try:
