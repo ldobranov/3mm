@@ -64,7 +64,10 @@ def test_replacement_credential_preserves_device_identity(db: Session) -> None:
     replacement = issue_replacement_device_credential(db, device_id=device_id)
     assert replacement.device_id == device_id
     assert replacement.credential_id.startswith("cred_")
-    assert issued.code not in stored.code_hash
+    stored = db.get(DeviceCredential, replacement.credential_id)
+    assert stored is not None
+    assert stored.secret_hash == credential_secret_hash(replacement.secret)
+    assert replacement.secret not in stored.secret_hash
 
 
 def test_pairing_code_can_be_claimed_exactly_once(db: Session) -> None:
