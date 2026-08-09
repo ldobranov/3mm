@@ -305,6 +305,7 @@ These are the first concrete tasks after approval of this plan:
 - [x] Pair and validate the co-located Agent on the physical Standalone Raspberry Pi baseline.
 - [x] Add an expiring, idempotent Core command queue with structured results.
 - [x] Execute the first allowlisted Agent command and persist its idempotency journal.
+- [x] Redeliver unacknowledged commands after reconnect without repeating completed actions.
 
 ## Explicitly deferred
 
