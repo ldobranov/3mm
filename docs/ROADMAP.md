@@ -301,6 +301,8 @@ These are the first concrete tasks after approval of this plan:
 - [x] Accept authenticated inventory and expose a real admin device registry API.
 - [x] Derive online and offline status from the configured heartbeat window.
 - [x] Replace the Main Server mock device list with the real Core registry API.
+- [x] Persist the Agent credential locally and publish inventory plus periodic heartbeats to Core.
+- [x] Pair and validate the co-located Agent on the physical Standalone Raspberry Pi baseline.
 
 ## Explicitly deferred
 
