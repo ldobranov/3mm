@@ -259,3 +259,22 @@ def revoke_device_credential(
     db.commit()
     db.refresh(credential)
     return credential
+
+
+def issue_replacement_device_credential(
+    db: Session, *, device_id: str, now: datetime | None = None
+) -> IssuedDeviceCredential:
+    issued_at = now or datetime.now(timezone.utc)
+    device = db.scalar(select(Device).where(Device.device_id == device_id))
+    if device is None or device.revoked_at is not None:
+        raise DeviceCredentialRevocationError("Active device was not found")
+    credential_id = f"cred_{secrets.token_hex(16)}"
+    secret = secrets.token_urlsafe(CREDENTIAL_SECRET_BYTES)
+    db.add(DeviceCredential(
+        device_id=device.id,
+        credential_id=credential_id,
+        secret_hash=credential_secret_hash(secret),
+        created_at=issued_at,
+    ))
+    db.commit()
+    return IssuedDeviceCredential(device_id=device_id, credential_id=credential_id, secret=secret)

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import backend.database  # noqa: F401 - register complete model metadata
 import pytest
 from backend.db.base import Base
-from backend.db.device import DeviceCredential, DevicePairingRequest
+from backend.db.device import Device, DeviceCredential, DevicePairingRequest
 from backend.db.user import User
 from backend.services.device_pairing import (
     PairingApprovalError,
@@ -14,6 +14,7 @@ from backend.services.device_pairing import (
     complete_pairing_request,
     credential_secret_hash,
     issue_pairing_code,
+    issue_replacement_device_credential,
     pairing_code_hash,
 )
 from sqlalchemy import create_engine
@@ -48,6 +49,21 @@ def test_pairing_code_is_high_entropy_and_only_its_hash_is_stored(db: Session) -
     assert issued.expires_at == now + timedelta(minutes=10)
     assert stored is not None
     assert stored.code_hash == pairing_code_hash(issued.code)
+
+
+def test_replacement_credential_preserves_device_identity(db: Session) -> None:
+    device_id = "dev_0123456789abcdef0123456789abcdef"
+    db.add(Device(
+        device_id=device_id,
+        display_name="pi",
+        role="node",
+        protocol_version="1.0",
+        approved_at=datetime.now(timezone.utc),
+    ))
+    db.commit()
+    replacement = issue_replacement_device_credential(db, device_id=device_id)
+    assert replacement.device_id == device_id
+    assert replacement.credential_id.startswith("cred_")
     assert issued.code not in stored.code_hash
 
 

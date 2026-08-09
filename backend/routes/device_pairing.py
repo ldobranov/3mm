@@ -18,6 +18,7 @@ from backend.services.device_pairing import (
     claim_pairing_code,
     complete_pairing_request,
     issue_pairing_code,
+    issue_replacement_device_credential,
     revoke_device_credential,
 )
 from backend.utils.auth_dep import require_admin
@@ -234,4 +235,32 @@ def revoke_credential(
     return CredentialRevocationResponse(
         device_id=device_id,
         credential_id=credential_id,
+    )
+
+
+@router.post(
+    "/devices/{device_id}/credentials/replace",
+    response_model=DeviceCredentialResponse,
+)
+def replace_credential(
+    device_id: str,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> DeviceCredentialResponse:
+    try:
+        credential = issue_replacement_device_credential(db, device_id=device_id)
+    except DeviceCredentialRevocationError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    db.add(AuditLog(
+        user_id=admin.id,
+        action="DEVICE_CREDENTIAL_REPLACED",
+        entity_type="device",
+        entity_name=device_id,
+        changes={"credential_id": credential.credential_id},
+    ))
+    db.commit()
+    return DeviceCredentialResponse(
+        device_id=device_id,
+        credential_id=credential.credential_id,
+        credential_secret=credential.secret,
     )
