@@ -61,7 +61,18 @@
       <div class="devices-section">
         <h2>{{ t('mainServer.devices.title', 'Connected Devices') }}</h2>
         
-        <div v-if="devices.length === 0" class="no-devices">
+        <div v-if="isLoadingDevices" class="no-devices">
+          <p>{{ t('mainServer.devices.loading', 'Loading devices...') }}</p>
+        </div>
+
+        <div v-else-if="devicesError" class="devices-error">
+          <p>{{ t('mainServer.devices.loadError', 'Devices could not be loaded') }}</p>
+          <button @click="loadDevices" class="btn-secondary">
+            {{ t('mainServer.devices.retry', 'Retry') }}
+          </button>
+        </div>
+
+        <div v-else-if="devices.length === 0" class="no-devices">
           <p>{{ t('mainServer.devices.none', 'No devices connected') }}</p>
         </div>
         
@@ -70,27 +81,27 @@
             <thead>
               <tr>
                 <th>{{ t('mainServer.devices.deviceName', 'Device Name') }}</th>
-                <th>{{ t('mainServer.devices.deviceIP', 'IP Address') }}</th>
+                <th>{{ t('mainServer.devices.deviceId', 'Device ID') }}</th>
+                <th>{{ t('mainServer.devices.role', 'Role') }}</th>
+                <th>{{ t('mainServer.devices.hardware', 'Hardware') }}</th>
                 <th>{{ t('mainServer.devices.deviceStatus', 'Status') }}</th>
-                <th>{{ t('mainServer.devices.actions', 'Actions') }}</th>
+                <th>{{ t('mainServer.devices.lastSeen', 'Last seen') }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="device in devices" :key="device.id">
-                <td>{{ device.name }}</td>
-                <td>{{ device.ip }}</td>
+              <tr v-for="device in devices" :key="device.device_id">
+                <td>{{ device.display_name || device.latest_inventory?.hostname || device.device_id }}</td>
+                <td><code>{{ device.device_id }}</code></td>
+                <td>{{ device.role }}</td>
+                <td>{{ device.latest_inventory?.model || device.latest_inventory?.architecture || '-' }}</td>
                 <td>
-                  <span :class="['status-badge', device.status]">
-                    {{ device.status === 'online' 
+                  <span :class="['status-badge', device.online ? 'online' : 'offline']">
+                    {{ device.online
                        ? t('mainServer.devices.online', 'Online') 
                        : t('mainServer.devices.offline', 'Offline') }}
                   </span>
                 </td>
-                <td>
-                  <button @click="openDeployDialog(device.id)" class="btn-small">
-                    {{ t('mainServer.devices.deployTo', 'Deploy to Device') }}
-                  </button>
-                </td>
+                <td>{{ formatTimestamp(device.last_seen_at) }}</td>
               </tr>
             </tbody>
           </table>
@@ -182,7 +193,32 @@ const { t } = useI18n();
 
 // State
 const availableUpdates = ref<any[]>([]);
-const devices = ref<any[]>([]);
+interface DeviceInventory {
+  hostname?: string;
+  model?: string | null;
+  architecture?: string;
+}
+
+interface RegistryDevice {
+  device_id: string;
+  display_name: string | null;
+  role: string;
+  protocol_version: string;
+  approved_at: string;
+  revoked_at: string | null;
+  online: boolean;
+  last_seen_at: string | null;
+  latest_inventory: DeviceInventory | null;
+}
+
+interface DeviceRegistryResponse {
+  items: RegistryDevice[];
+  total: number;
+}
+
+const devices = ref<RegistryDevice[]>([]);
+const isLoadingDevices = ref(false);
+const devicesError = ref(false);
 const settings = ref({
   autoUpdate: false,
   updateInterval: 'daily',
@@ -215,12 +251,29 @@ const loadAvailableUpdates = async () => {
 
 // Load connected devices
 const loadDevices = async () => {
+  isLoadingDevices.value = true;
+  devicesError.value = false;
   try {
-    const response = await http.get('/api/main-server/devices');
-    devices.value = response.data.devices || [];
+    const response = await http.get('/api/v1/devices');
+    const registry = response.data as DeviceRegistryResponse;
+    devices.value = registry.items;
   } catch (error) {
     console.error('Failed to load devices:', error);
+    devices.value = [];
+    devicesError.value = true;
+  } finally {
+    isLoadingDevices.value = false;
   }
+};
+
+const formatTimestamp = (value: string | null) => {
+  if (!value) {
+    return t('mainServer.devices.neverSeen', 'Never');
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'short',
+    timeStyle: 'medium'
+  }).format(new Date(value));
 };
 
 // Load settings
@@ -381,12 +434,25 @@ const saveSettings = async () => {
   color: var(--text-primary);
 }
 
-.no-updates, .no-devices {
+.no-updates, .no-devices, .devices-error {
   padding: 1rem;
   text-align: center;
   color: var(--text-secondary);
   background: var(--surface-2);
   border-radius: 6px;
+}
+
+.devices-error {
+  color: var(--error-color);
+}
+
+.devices-error .btn-secondary {
+  margin-top: 0.75rem;
+}
+
+.devices-table code {
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
 }
 
 .updates-list {

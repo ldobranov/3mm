@@ -300,6 +300,7 @@ These are the first concrete tasks after approval of this plan:
 - [x] Accept authenticated heartbeats with strict device identity matching.
 - [x] Accept authenticated inventory and expose a real admin device registry API.
 - [x] Derive online and offline status from the configured heartbeat window.
+- [x] Replace the Main Server mock device list with the real Core registry API.
 
 ## Explicitly deferred
 

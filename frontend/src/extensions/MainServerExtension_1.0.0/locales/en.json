@@ -16,8 +16,17 @@
     "devices": {
       "title": "Connected Devices",
       "none": "No devices connected",
+      "loading": "Loading devices...",
+      "loadError": "Devices could not be loaded",
+      "retry": "Retry",
       "online": "Online",
       "offline": "Offline",
+      "deviceId": "Device ID",
+      "role": "Role",
+      "hardware": "Hardware",
+      "deviceStatus": "Status",
+      "lastSeen": "Last seen",
+      "neverSeen": "Never",
       "deployTo": "Deploy to Device"
     },
     "settings": {
