@@ -15,7 +15,10 @@ from typing import Callable
 import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from three_mm_protocol import AgentCommand, AgentCommandResult, AgentHeartbeat, AgentInventory
+from three_mm_protocol import (
+    AgentCommand, AgentCommandResult, AgentHeartbeat, AgentInventory,
+    AgentReportedState, DeviceDesiredState,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,12 +89,39 @@ class CommandJournal:
         os.replace(temporary, self.path)
 
 
+class ReconciliationState(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    applied_revision: int = Field(default=0, ge=0)
+    inventory_generation: int = Field(default=0, ge=0)
+
+
+class ReconciliationStore:
+    def __init__(self, data_dir: Path) -> None:
+        self.path = data_dir / "reconciliation-state.json"
+
+    def load(self) -> ReconciliationState:
+        if not self.path.exists():
+            return ReconciliationState()
+        try:
+            return ReconciliationState.model_validate_json(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValidationError) as exc:
+            raise RuntimeError(f"Cannot load reconciliation state from {self.path}") from exc
+
+    def save(self, state: ReconciliationState) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        temporary = self.path.with_suffix(".tmp")
+        temporary.write_text(state.model_dump_json(indent=2) + "\n", encoding="utf-8")
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, self.path)
+
+
 @dataclass(slots=True)
 class CorePublisher:
     core_url: str
     credential: DeviceCredential
     inventory_provider: Callable[[], AgentInventory]
     command_journal: CommandJournal
+    reconciliation_store: ReconciliationStore
     started_monotonic: float
     interval_seconds: int = 30
     _stop: threading.Event = field(init=False, repr=False)
@@ -182,6 +212,48 @@ class CorePublisher:
         self.command_journal.save(command.idempotency_key, result)
         self._submit_result(result)
 
+    def _reconcile_state(self) -> None:
+        response = requests.get(
+            f"{self.core_url}/api/v1/devices/{self.credential.device_id}/desired-state",
+            headers=self.headers,
+            timeout=10,
+        )
+        response.raise_for_status()
+        desired = DeviceDesiredState.model_validate(response.json())
+        current = self.reconciliation_store.load()
+        if desired.revision <= current.applied_revision:
+            return
+        supported_keys = {"inventory_generation"}
+        unsupported = sorted(set(desired.state) - supported_keys)
+        generation = desired.state.get("inventory_generation", current.inventory_generation)
+        if unsupported or not isinstance(generation, int) or generation < 0:
+            reported = AgentReportedState(
+                device_id=self.credential.device_id,
+                desired_revision=desired.revision,
+                applied_revision=current.applied_revision,
+                reported_at=datetime.now(UTC),
+                state={
+                    "inventory_generation": current.inventory_generation,
+                    "reconciliation_error": "Unsupported or invalid desired state",
+                },
+            )
+        else:
+            if generation != current.inventory_generation:
+                self._publish_inventory()
+            current = ReconciliationState(
+                applied_revision=desired.revision,
+                inventory_generation=generation,
+            )
+            self.reconciliation_store.save(current)
+            reported = AgentReportedState(
+                device_id=self.credential.device_id,
+                desired_revision=desired.revision,
+                applied_revision=current.applied_revision,
+                reported_at=datetime.now(UTC),
+                state={"inventory_generation": current.inventory_generation},
+            )
+        self._post("reported-state", reported.model_dump(mode="json"))
+
     def _run(self) -> None:
         inventory_published = False
         while not self._stop.is_set():
@@ -204,4 +276,8 @@ class CorePublisher:
                 self._poll_command()
             except (requests.RequestException, ValidationError) as exc:
                 logger.warning("Core command poll failed: %s", exc)
+            try:
+                self._reconcile_state()
+            except (requests.RequestException, ValidationError) as exc:
+                logger.warning("Core state reconciliation failed: %s", exc)
             self._stop.wait(self.interval_seconds)

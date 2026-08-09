@@ -2,7 +2,10 @@ from pathlib import Path
 
 from datetime import UTC, datetime
 
-from agent.core_client import CommandJournal, DeviceCredential, DeviceCredentialStore
+from agent.core_client import (
+    CommandJournal, DeviceCredential, DeviceCredentialStore,
+    ReconciliationState, ReconciliationStore,
+)
 from three_mm_protocol import AgentCommandResult
 
 
@@ -34,3 +37,11 @@ def test_command_journal_round_trip_is_private(tmp_path: Path) -> None:
 
     assert CommandJournal(tmp_path / "agent").get("refresh-1") == result
     assert journal.path.stat().st_mode & 0o777 == 0o600
+
+
+def test_reconciliation_state_survives_restart(tmp_path: Path) -> None:
+    store = ReconciliationStore(tmp_path / "agent")
+    state = ReconciliationState(applied_revision=3, inventory_generation=2)
+    store.save(state)
+    assert ReconciliationStore(tmp_path / "agent").load() == state
+    assert store.path.stat().st_mode & 0o777 == 0o600
