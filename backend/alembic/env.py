@@ -15,6 +15,7 @@ import backend.db.settings  # noqa: F401
 import backend.db.audit_log  # noqa: F401
 import backend.db.display  # noqa: F401
 import backend.db.widget  # noqa: F401
+import backend.db.device  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

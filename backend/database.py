@@ -25,6 +25,13 @@ from backend.db.settings import Settings
 from backend.db.role import Role
 from backend.db.notification import Notification
 from backend.db.extension import Extension
+from backend.db.device import (
+    Device,
+    DeviceCredential,
+    DeviceHeartbeat,
+    DeviceInventorySnapshot,
+    DevicePairingRequest,
+)
 import logging
 
 logger = logging.getLogger(__name__)
