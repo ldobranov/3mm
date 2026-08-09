@@ -1,6 +1,6 @@
 # 3mm Project Rules
 
-Status: draft for review  
+Status: active; approved on 2026-08-09
 These rules apply to Core, Agent, modules, documentation and AI-generated changes.
 
 ## 1. Architecture
@@ -55,7 +55,20 @@ These rules apply to Core, Agent, modules, documentation and AI-generated change
 9. Agent reports structured errors; it does not hide failed actions behind a successful response.
 10. Agent update must include health verification and automatic rollback.
 
-## 5. Modules and manifests
+## 5. Device roles and provisioning
+
+1. The project ships one universal installation image, not separate Hub and Node codebases.
+2. A Hub always runs a local Agent and can use its own hardware capabilities.
+3. Standalone mode is a Hub preset and can accept additional devices later without reinstallation.
+4. Changing role must preserve stable identity, user data and compatible module data.
+5. An unprovisioned headless device provides a browser-based setup path that does not require a mobile application.
+6. Failed network configuration must return to a recoverable setup state.
+7. The setup access point shuts down after successful provisioning.
+8. Shared fleet-wide bootstrap passwords are forbidden for production devices.
+9. Network secrets are never returned through inventory, logs, diagnostics or AI context.
+10. Provisioning domain logic uses a network adapter and remains testable without Raspberry hardware.
+
+## 6. Modules and manifests
 
 1. Every module has a stable globally unique ID and semantic version.
 2. Every module declares target runtime, architecture support, permissions, dependencies and health check.
@@ -68,7 +81,7 @@ These rules apply to Core, Agent, modules, documentation and AI-generated change
 9. Frontend contributions are loaded from a validated registry, not hardcoded imports in Core navigation.
 10. Module packages are immutable after publication.
 
-## 6. AI behavior
+## 7. AI behavior
 
 1. AI output is untrusted until validated.
 2. AI receives only the minimum context required for the task.
@@ -80,8 +93,13 @@ These rules apply to Core, Agent, modules, documentation and AI-generated change
 8. Generated code cannot bypass manifest permissions.
 9. AI may not silently install system packages, alter networking, delete data or elevate privileges.
 10. Every AI-created or AI-applied change records model/provider metadata, input intent, resulting artifact version and approval actor.
+11. AI is optional; lack of subscription, credit, provider availability or internet must not stop deployed local behavior.
+12. AI prefers configuration and composition before new code generation.
+13. Every paid AI job has an estimate, an explicit approved maximum and bounded retries.
+14. Platform provider keys remain in the AI gateway and are never deployed to managed devices.
+15. Reusing an unchanged generated artifact on another authorized device does not trigger regeneration.
 
-## 7. Security
+## 8. Security
 
 1. Deny by default.
 2. Least privilege applies to users, devices, modules and processes.
@@ -94,7 +112,7 @@ These rules apply to Core, Agent, modules, documentation and AI-generated change
 9. Python import filtering is not a security sandbox.
 10. Security-relevant failures fail closed and appear in the audit log.
 
-## 8. Reliability and observability
+## 9. Reliability and observability
 
 1. Every service exposes liveness and readiness separately.
 2. Logs are structured and include timestamp, level, component and correlation ID.
@@ -107,7 +125,7 @@ These rules apply to Core, Agent, modules, documentation and AI-generated change
 9. An update is complete only after its health check succeeds.
 10. Backup restoration is tested, not merely documented.
 
-## 9. Tests and quality gates
+## 10. Tests and quality gates
 
 1. New behavior requires automated tests at the narrowest useful level.
 2. Protocol schemas have contract tests shared by Core and Agent.
@@ -120,7 +138,7 @@ These rules apply to Core, Agent, modules, documentation and AI-generated change
 9. Skipped tests require a reason and tracking issue.
 10. A feature is not complete until its failure path is tested.
 
-## 10. Documentation and claims
+## 11. Documentation and claims
 
 1. Documentation describes implemented behavior or explicitly labels planned behavior.
 2. No feature is called production-ready while it still returns mock data.
@@ -129,7 +147,7 @@ These rules apply to Core, Agent, modules, documentation and AI-generated change
 5. Each release documents migrations, compatibility and rollback.
 6. Setup instructions are verified from a clean environment.
 
-## 11. Definition of Done
+## 12. Definition of Done
 
 A task is done only when:
 
@@ -140,4 +158,3 @@ A task is done only when:
 - configuration remains portable and secret-free;
 - no unrelated behavior was changed;
 - the result can be demonstrated from a clean checkout.
-

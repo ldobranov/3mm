@@ -1,6 +1,6 @@
 # 3mm Architecture Plan
 
-Status: draft for review  
+Status: active; initial architecture approved on 2026-08-09
 Scope: transformation of the existing 3mm repository into a web-based edge device platform  
 Primary targets: Linux PC/server, Raspberry Pi 3B/4/5, Raspberry Pi Zero 2 W and future compatible devices
 
@@ -18,6 +18,8 @@ The platform must support these primary use cases:
 - dashboards and user-facing applications assembled from modules;
 - AI-assisted creation of configurations, automations and new modules;
 - operation on a single Raspberry Pi as well as migration to a more powerful PC;
+- one universal installation image with first-boot role selection;
+- headless network and role provisioning from a phone browser;
 - continued Agent operation during a temporary loss of connection to Core.
 
 ## 2. Architectural principles
@@ -32,6 +34,8 @@ The platform must support these primary use cases:
 8. The laptop development environment and real Raspberry Pi environment use the same contracts and tests.
 9. SQLite is the default for development and small installations; database-specific behavior is forbidden in domain code.
 10. A clean installation must not depend on credentials, paths or services from a developer's machine.
+11. Local operation and already installed modules must not depend on an active AI subscription or cloud availability.
+12. A Hub is also a managed local device and therefore always runs its own Agent.
 
 ## 3. Target system
 
@@ -126,6 +130,32 @@ Initial driver implementations:
 - `linux`: generic OS information and process controls;
 - `raspberrypi`: GPIO and Raspberry-specific peripherals, added when hardware is available.
 
+### 3.5 Device roles
+
+All supported devices use one installation image. The user selects a product-facing mode during provisioning, while the runtime remains composed from the same Core and Agent services.
+
+| User-facing mode | Runtime services | Behavior |
+|---|---|---|
+| Standalone | Core + local Agent | Operates one device and initially hides fleet-management complexity |
+| Hub / Server | Core + local Agent | Operates its own hardware and accepts additional paired Agents |
+| Node / Client | Agent | Connects to a selected Hub and continues approved local workloads while disconnected |
+
+Standalone is a Hub preset, not a separate software edition. Enabling additional devices later must not require reinstallation. A Node may be promoted to Hub without losing its stable device identity or local module data.
+
+### 3.6 Headless provisioning
+
+An unprovisioned device runs a minimal setup service and exposes a temporary Wi-Fi access point plus captive portal. The setup flow configures:
+
+- interface and network credentials;
+- locale, device name and administrator credentials;
+- Standalone, Hub or Node mode;
+- Hub discovery and pairing bootstrap for a Node;
+- recovery behavior when the selected network cannot be reached.
+
+The temporary setup network shuts down after successful provisioning. Failed network configuration rolls back to setup mode instead of leaving the device unreachable. Production devices use a unique bootstrap QR/code or proof-of-physical-access mechanism; a shared fleet-wide setup credential is forbidden.
+
+Network management is behind an adapter so the state machine and portal are testable on a laptop. Raspberry-specific NetworkManager, access-point and captive-portal integration belongs in the platform adapter, not in the provisioning domain logic.
+
 ## 4. Core-Agent protocol
 
 The protocol is transport-independent at the domain level. The first implementation will use HTTPS REST for pairing/bootstrap and WebSocket for live bidirectional messages. Long polling remains a fallback for restricted networks.
@@ -202,6 +232,24 @@ AI generates a new module in a dedicated build workspace. Static checks, tests, 
 
 AI may execute pre-approved, narrowly scoped operations. Destructive or security-sensitive operations always require explicit approval.
 
+### 5.1 AI service and billing boundary
+
+AI is optional and is not part of the local runtime availability boundary. Core, Agent, installed modules and deployed automations continue operating without an AI account, available credit or internet access.
+
+The recommended commercial model combines:
+
+- a site/service subscription for optional cloud features, updates and support;
+- an included limited AI allowance;
+- prepaid top-up credit for additional AI jobs;
+- an advanced bring-your-own-provider-key mode;
+- explicit project budgets or quotations for unusually large module builds.
+
+Users approve a maximum job budget after seeing the proposed plan and estimated range. The platform reserves that maximum and settles recorded usage after completion. Provider tokens and prices remain internal implementation details; user-facing estimates use stable product credits or currency.
+
+AI requests using platform credentials pass through a provider-independent gateway. Provider keys are never deployed to managed Raspberry Pi devices. Every job records its estimate, approved limit, actual usage, artifact hashes and outcome. A generated artifact may be deployed to all authorized devices owned by the same customer without paying to generate identical code again.
+
+Cost control follows the AI trust levels: prefer schema configuration, then declarative composition, and generate new code only when registered capabilities cannot satisfy the request. Model routing, template reuse, incremental diffs, bounded repair attempts and cached validated artifacts are mandatory controls.
+
 ## 6. Security model
 
 - No credentials or private keys are committed to Git.
@@ -235,7 +283,10 @@ The existing user, role, session, audit, display and extension data is retained 
 - `CommandResult`;
 - `DeviceEvent`;
 - `Automation`;
-- `SecretReference`.
+- `SecretReference`;
+- `AiJob`;
+- `AiUsageLedgerEntry`;
+- `AiBudgetReservation`.
 
 High-frequency telemetry must not be stored indefinitely in the main relational tables. Retention and aggregation policies are mandatory.
 
@@ -308,4 +359,3 @@ The architecture is proven when all of the following work on one laptop:
 10. Agent reconnects, flushes bounded events and reconciles state.
 11. A failed module update rolls back automatically.
 12. Audit log explains who changed what and what happened.
-

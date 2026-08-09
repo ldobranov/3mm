@@ -32,7 +32,7 @@ Acceptance criteria:
 
 ## Milestone 1 — Core and Agent foundations
 
-Goal: introduce a real Agent as a separate application and establish shared contracts.
+Goal: introduce a real Agent, shared contracts and the universal device-role foundation.
 
 Deliverables:
 
@@ -42,7 +42,12 @@ Deliverables:
 - mock hardware driver interface;
 - Agent CLI and health endpoint;
 - laptop launcher for two or more mock Agents;
-- lifecycle-managed Core background services.
+- lifecycle-managed Core background services;
+- common service layout for Core, Agent and setup;
+- Standalone, Hub and Node role model without separate images;
+- provisioning state machine with a mock network adapter;
+- first headless captive-portal prototype;
+- Raspberry Pi inventory report and resource baseline.
 
 Acceptance criteria:
 
@@ -50,7 +55,10 @@ Acceptance criteria:
 - they have stable, different identities;
 - restarting either Agent preserves its identity;
 - Core and Agent contract tests use the same schemas;
-- no Raspberry-specific import is required on the laptop.
+- no Raspberry-specific import is required on the laptop;
+- a Hub runs its own Agent and exposes local capabilities;
+- Standalone can later accept Nodes without reinstallation;
+- failed first-boot network configuration returns to setup mode.
 
 ## Milestone 2 — Secure pairing and device registry
 
@@ -138,7 +146,7 @@ Acceptance criteria:
 - a local input-to-output rule continues while Core is stopped;
 - reconnect does not duplicate already acknowledged events.
 
-## Milestone 6 — AI configuration and automation
+## Milestone 6 — AI configuration, usage and automation
 
 Goal: let users describe behavior in natural language using existing trusted capabilities.
 
@@ -149,7 +157,11 @@ Deliverables:
 - plan, validation and diff workflow;
 - explicit approval before apply;
 - simulator/dry run;
-- audit record linking intent, proposal and applied revision.
+- audit record linking intent, proposal and applied revision;
+- provider-independent AI gateway contract;
+- AI job estimate, budget reservation and usage ledger;
+- prepaid credit and bring-your-own-key integration boundaries;
+- guarantee that billing state cannot disable deployed local behavior.
 
 Acceptance criteria:
 
@@ -157,7 +169,10 @@ Acceptance criteria:
 - impossible hardware requests are rejected or clarified;
 - invalid AI output cannot be applied;
 - user can inspect exactly which devices and settings will change;
-- rollback restores the previous configuration revision.
+- rollback restores the previous configuration revision;
+- every paid job has an approved maximum and recorded actual usage;
+- an exhausted AI balance blocks only new paid AI work;
+- reusing an unchanged artifact does not generate it again.
 
 ## Milestone 7 — Real Raspberry Pi validation
 
