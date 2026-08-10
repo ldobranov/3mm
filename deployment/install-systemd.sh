@@ -43,6 +43,7 @@ if [[ -n $identity_source && ! -e /var/lib/3mm/agent/identity.json ]]; then
 fi
 
 systemctl stop 3mm-agent.service 3mm-core.service 3mm-web.service \
+  3mm-setup.service 3mm-setup-ap.service 3mm-network-helper.service \
   >/dev/null 2>&1 || true
 rm -rf -- "$release_dir"
 install -d -o root -g root -m 0755 "$release_dir"
@@ -55,12 +56,13 @@ fi
   -r "$release_dir/backend/requirements.txt"
 
 ln -sfn "$release_dir" "$install_root/current"
-install -o root -g root -m 0644 \
+install -o root -g root -m 0644 -t /etc/systemd/system \
   "$release_dir/deployment/systemd/3mm-agent.service" \
   "$release_dir/deployment/systemd/3mm-core.service" \
   "$release_dir/deployment/systemd/3mm-web.service" \
   "$release_dir/deployment/systemd/3mm-setup.service" \
-  /etc/systemd/system/
+  "$release_dir/deployment/systemd/3mm-setup-ap.service" \
+  "$release_dir/deployment/systemd/3mm-network-helper.service"
 
 cat > /etc/3mm/3mm.env <<EOF
 DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db
@@ -87,14 +89,17 @@ runuser -u 3mm -- env \
   "$venv_dir/bin/python" "$release_dir/deployment/migrate_database.py"
 
 systemctl daemon-reload
-systemctl disable --now 3mm-setup.service >/dev/null 2>&1 || true
-systemctl enable --now 3mm-agent.service 3mm-core.service 3mm-web.service
+PYTHONPATH="$release_dir" "$venv_dir/bin/python" -m three_mm_runtime.activate
 
-for endpoint in \
-  http://127.0.0.1:8890/ready \
-  http://127.0.0.1:8887/ready \
-  http://127.0.0.1:8080/user/login
+for service_endpoint in \
+  '3mm-agent.service|http://127.0.0.1:8890/ready' \
+  '3mm-core.service|http://127.0.0.1:8887/ready' \
+  '3mm-web.service|http://127.0.0.1:8080/user/login' \
+  '3mm-setup.service|http://127.0.0.1:8895/ready'
 do
+  service=${service_endpoint%%|*}
+  endpoint=${service_endpoint#*|}
+  systemctl is-active --quiet "$service" || continue
   for _ in $(seq 1 60); do
     curl -fsS "$endpoint" >/dev/null 2>&1 && break
     sleep 0.5
@@ -103,4 +108,6 @@ do
 done
 
 systemctl --no-pager --full status \
-  3mm-agent.service 3mm-core.service 3mm-web.service
+  3mm-agent.service 3mm-core.service 3mm-web.service \
+  3mm-setup.service 3mm-setup-ap.service 3mm-network-helper.service \
+  2>/dev/null || true

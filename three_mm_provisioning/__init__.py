@@ -14,6 +14,23 @@ from three_mm_provisioning.network_inspection import (
     NetworkManagerStatus,
 )
 from three_mm_provisioning.network_manager import NetworkManagerReadOnlyAdapter
+from three_mm_provisioning.network_manager_provisioning import (
+    NetworkManagerProvisioningPlan,
+    NetworkManagerProvisioningPlanner,
+)
+from three_mm_provisioning.network_manager_mutation import (
+    MutationCommandResult,
+    NetworkManagerMutationBoundary,
+)
+from three_mm_provisioning.network_manager_temporary import (
+    TemporaryNetworkManagerAdapter,
+)
+from three_mm_provisioning.network_manager_persistent import (
+    PersistentNetworkManagerAdapter,
+)
+from three_mm_provisioning.network_helper_client import (
+    NetworkHelperClientAdapter,
+)
 from three_mm_provisioning.persistence import (
     FileProvisioningStore,
     MemoryProvisioningStore,
@@ -32,6 +49,13 @@ __all__ = [
     "NetworkInspectionAdapter",
     "NetworkInspectionError",
     "NetworkManagerReadOnlyAdapter",
+    "NetworkManagerProvisioningPlan",
+    "NetworkManagerProvisioningPlanner",
+    "MutationCommandResult",
+    "NetworkManagerMutationBoundary",
+    "TemporaryNetworkManagerAdapter",
+    "PersistentNetworkManagerAdapter",
+    "NetworkHelperClientAdapter",
     "NetworkManagerStatus",
     "FileProvisioningStore",
     "MemoryProvisioningStore",

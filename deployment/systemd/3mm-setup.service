@@ -1,6 +1,7 @@
 [Unit]
 Description=3mm headless setup prototype
-After=network.target
+After=network.target 3mm-network-helper.service 3mm-setup-ap.service
+Requires=3mm-network-helper.service 3mm-setup-ap.service
 Conflicts=3mm-core.service 3mm-web.service 3mm-agent.service
 
 [Service]
@@ -9,7 +10,7 @@ User=3mm
 Group=3mm
 WorkingDirectory=/opt/3mm/current
 EnvironmentFile=-/etc/3mm/3mm.env
-ExecStart=/opt/3mm/venv/bin/python -m setup_service --host 127.0.0.1 --port 8895 --data-dir /var/lib/3mm/provisioning
+ExecStart=/opt/3mm/venv/bin/python -m setup_service --host 0.0.0.0 --port 8895 --data-dir /var/lib/3mm/provisioning --network-helper-socket /run/3mm/network-helper.sock
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=20s

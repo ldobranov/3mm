@@ -14,6 +14,11 @@ import http from '@/utils/dynamic-http';
 const extensionManifests = import.meta.glob('../extensions/*/manifest.json', { eager: true });
 const extensionComponents = import.meta.glob('../extensions/*/*.vue');
 
+const HomeRedirect = {
+  name: 'HomeRedirect',
+  render: () => null,
+};
+
 // Component resolver for dynamic imports
 function createComponentResolver(extensionName: string, extensionVersion: string) {
   return {
@@ -203,7 +208,7 @@ export async function createRouterWithDynamicRoutes() {
 
   // Load base application routes
   const routes: RouteRecordRaw[] = [
-    { path: '/', redirect: '/user/login' },
+    { path: '/', name: 'Home', component: HomeRedirect },
     { path: '/user/login', name: 'Login', component: Login },
     { path: '/user/register', name: 'Register', component: Register },
     { path: '/user/profile', name: 'Profile', component: Profile, meta: { requiresAuth: true } },
@@ -234,14 +239,31 @@ export async function createRouterWithDynamicRoutes() {
   });
 
   router.beforeEach((to, from, next) => {
+    const token = localStorage.getItem('authToken');
+    const isAuthenticated = Boolean(token && token !== 'null' && token !== 'undefined');
+
+    if (to.path === '/') {
+      if (!isAuthenticated) {
+        return next('/user/login');
+      }
+
+      const currentRole = localStorage.getItem('role') || '';
+      const defaultLanding = router.getRoutes().find((route) => {
+        if (route.path === '/' || route.meta?.defaultLanding !== true) return false;
+        const requiredRole = route.meta?.requiresRole as string | undefined;
+        return !requiredRole || requiredRole === currentRole;
+      });
+
+      return next(defaultLanding?.path || '/user/profile');
+    }
+
     const requiresAuth = to.matched.some((record) => record.meta && record.meta.requiresAuth === true);
      
     if (!requiresAuth) {
       return next();
     }
 
-    const token = localStorage.getItem('authToken');
-    if (!token || token === 'null' || token === 'undefined') {
+    if (!isAuthenticated) {
       return next('/user/login');
     }
 

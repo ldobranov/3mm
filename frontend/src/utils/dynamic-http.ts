@@ -616,22 +616,26 @@ export default {
   },
 
   /**
-   * Clears any persistent backend URL override and re-detects the backend URL.
-   * Also updates the currently cached Axios instance.
+   * Clears any persistent backend URL override and invalidates the current client.
+   * Detection is deliberately deferred until the next request so this recovery
+   * action cannot hang while trying to contact an unreachable backend.
    */
   async clearBackendUrlOverride(): Promise<string> {
     try {
       localStorage.removeItem(STORAGE_KEY_BACKEND_URL_OVERRIDE);
-    } catch {
-      // Ignore
+      if (localStorage.getItem(STORAGE_KEY_BACKEND_URL_OVERRIDE) !== null) {
+        throw new Error('Backend URL override could not be removed');
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? `: ${error.message}` : '';
+      throw new Error(`Backend URL override could not be cleared${detail}`);
     }
     backendUrlCache = null;
     cacheTimestamp = 0;
-    const resolved = await getBackendUrl();
-    if (httpInstance) {
-      httpInstance.defaults.baseURL = resolved;
-    }
-    return resolved;
+    publicEndpointsCache = [];
+    publicEndpointsTimestamp = 0;
+    httpInstance = null;
+    return '';
   },
 
   async getPublicEndpoints(): Promise<string[]> {

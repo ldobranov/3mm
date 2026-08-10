@@ -18,6 +18,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default=defaults.host)
     parser.add_argument("--port", type=int, default=defaults.port)
     parser.add_argument("--data-dir", type=Path, default=defaults.data_dir)
+    parser.add_argument(
+        "--network-helper-socket",
+        type=Path,
+        default=defaults.network_helper_socket,
+    )
     parser.add_argument("--log-level", default="info")
     return parser
 
@@ -28,6 +33,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         data_dir=arguments.data_dir,
         host=arguments.host,
         port=arguments.port,
+        network_helper_socket=arguments.network_helper_socket,
     )
     uvicorn.run(
         create_app(settings=settings),

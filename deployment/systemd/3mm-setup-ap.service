@@ -1,0 +1,28 @@
+[Unit]
+Description=3mm open setup-only access point
+After=NetworkManager.service
+Requires=NetworkManager.service
+Before=3mm-setup.service
+Conflicts=3mm-core.service 3mm-web.service 3mm-agent.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/3mm/current
+Environment=PYTHONPATH=/opt/3mm/current
+ExecStart=/opt/3mm/venv/bin/python -m three_mm_provisioning.setup_access_point start --data-dir /var/lib/3mm/provisioning --interface wlan0
+ExecStop=/opt/3mm/venv/bin/python -m three_mm_provisioning.setup_access_point stop
+RemainAfterExit=true
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

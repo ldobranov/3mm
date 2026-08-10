@@ -331,6 +331,8 @@ These are the first concrete tasks after approval of this plan:
 - [x] Run local GPIO rules while Core is offline and replay timestamped events.
 - [x] Verify duplicate event replay remains idempotent on physical `rasp-3mm`.
 - [x] Complete the Milestone 5 automated and physical acceptance suite and report.
+- [ ] Validate the open setup-only access point and persistent NetworkManager profile across a Raspberry Pi reboot.
+- [ ] Validate automatic transition from setup services to the selected runtime role on physical `rasp-3mm`.
 
 ## Explicitly deferred
 

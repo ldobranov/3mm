@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
@@ -26,6 +26,9 @@ from three_mm_provisioning import (
     ProvisioningStoreError,
 )
 from three_mm_provisioning.mock_network import MockNetworkAdapter
+from three_mm_provisioning.network_helper_client import (
+    NetworkHelperClientAdapter,
+)
 
 SETUP_PAGE = Path(__file__).with_name("static") / "setup.html"
 
@@ -62,7 +65,11 @@ def create_app(
     settings: SetupSettings | None = None,
 ) -> FastAPI:
     resolved_settings = settings or SetupSettings.from_env()
-    resolved_network = network or MockNetworkAdapter()
+    resolved_network = network or (
+        NetworkHelperClientAdapter(resolved_settings.network_helper_socket)
+        if resolved_settings.network_helper_socket is not None
+        else MockNetworkAdapter()
+    )
     resolved_store = store or FileProvisioningStore(resolved_settings.data_dir)
 
     @asynccontextmanager
@@ -164,6 +171,7 @@ def create_app(
     def configure(
         configuration: SetupConfiguration,
         request: Request,
+        background_tasks: BackgroundTasks,
     ) -> SetupOutcome:
         runtime = _runtime(request)
         provisioning_request = ProvisioningRequest(
@@ -224,6 +232,8 @@ def create_app(
                         status_code=503,
                         detail="setup_persistence_failed",
                     ) from exc
+                if isinstance(resolved_network, NetworkHelperClientAdapter):
+                    background_tasks.add_task(resolved_network.activate_runtime)
         return SetupOutcome(
             state=result.state,
             role=result.role,

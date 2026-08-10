@@ -2,6 +2,22 @@
   <div class="view" :key="currentLanguage">
     <div class="view-header">
       <h1 class="view-title">{{ t('login.title', 'Login') }}</h1>
+      <div class="network-recovery">
+        <button
+          type="button"
+          class="button button-secondary network-recovery-button"
+          :disabled="resettingNetwork"
+          @click="resetNetwork"
+        >
+          <i class="bi bi-link-45deg network-recovery-icon" aria-hidden="true"></i>
+          {{ resettingNetwork
+            ? t('login.resetConnectionWorking', 'Resetting…')
+            : t('login.resetConnection', 'Reset connection address') }}
+        </button>
+        <p v-if="resetMessage" class="help-text reset-message">
+          {{ resetMessage }}
+        </p>
+      </div>
     </div>
 
     <div class="auth-container">
@@ -38,15 +54,6 @@
             </button>
           </form>
 
-          <div class="auth-help">
-            <button type="button" class="button button-secondary" @click="resetNetwork">
-              {{ t('login.resetNetwork', 'Reset network settings') }}
-            </button>
-            <p v-if="resetMessage" class="help-text" style="margin: 0.5rem 0 0;">
-              {{ resetMessage }}
-            </p>
-          </div>
-
           <div v-if="errorMessage" class="alert alert-danger auth-alert">
             {{ errorMessage }}
           </div>
@@ -73,6 +80,7 @@ export default defineComponent({
     const password = ref('');
     const errorMessage = ref('');
     const resetMessage = ref('');
+    const resettingNetwork = ref(false);
     const router = useRouter();
 
     const login = async () => {
@@ -146,13 +154,15 @@ export default defineComponent({
 
     const resetNetwork = async () => {
       resetMessage.value = '';
+      resettingNetwork.value = true;
       try {
         await http.clearBackendUrlOverride();
         resetMessage.value = t('login.resetNetworkDone', 'Network override cleared. Reloading…');
-        window.location.reload();
+        window.setTimeout(() => window.location.reload(), 350);
       } catch (e) {
         console.error('Failed to reset network override:', e);
         resetMessage.value = t('login.resetNetworkFailed', 'Failed to reset network override');
+        resettingNetwork.value = false;
       }
     };
 
@@ -162,6 +172,7 @@ export default defineComponent({
       login,
       errorMessage,
       resetMessage,
+      resettingNetwork,
       resetNetwork,
       styleSettings,
       currentLanguage,
@@ -264,6 +275,27 @@ export default defineComponent({
   margin-top: 1rem;
 }
 
+.network-recovery {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.network-recovery-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.network-recovery-icon {
+  font-size: 0.95rem;
+}
+
+.reset-message {
+  margin: 0.5rem 0 0;
+  text-align: right;
+}
+
 /* Alert styling using CSS variables */
 .alert-danger {
   background-color: var(--color-background-soft);
@@ -285,6 +317,14 @@ export default defineComponent({
   
   .card-content {
     padding: 1.5rem;
+  }
+
+  .network-recovery {
+    align-items: stretch;
+  }
+
+  .reset-message {
+    text-align: left;
   }
 }
 </style>

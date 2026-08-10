@@ -67,6 +67,8 @@ These rules apply to Core, Agent, modules, documentation and AI-generated change
 8. Shared fleet-wide bootstrap passwords are forbidden for production devices.
 9. Network secrets are never returned through inventory, logs, diagnostics or AI context.
 10. Provisioning domain logic uses a network adapter and remains testable without Raspberry hardware.
+11. The production setup access point is open only while the device is unprovisioned or after an authenticated/physical network reset, and it exposes only the setup portal.
+12. NetworkManager may persist the selected Wi-Fi secret only in its root-owned system connection profile; 3mm state, databases, diagnostics, environment files, APIs and logs remain secret-free.
 
 ## 6. Modules and manifests
 

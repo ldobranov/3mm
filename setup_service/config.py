@@ -14,6 +14,7 @@ class SetupSettings:
     data_dir: Path = field(default_factory=default_provisioning_data_dir)
     host: str = "127.0.0.1"
     port: int = 8895
+    network_helper_socket: Path | None = None
 
     def __post_init__(self) -> None:
         if not self.host.strip():
@@ -31,4 +32,9 @@ class SetupSettings:
             ),
             host=os.getenv("THREE_MM_SETUP_HOST", "127.0.0.1"),
             port=int(os.getenv("THREE_MM_SETUP_PORT", "8895")),
+            network_helper_socket=(
+                Path(os.environ["THREE_MM_NETWORK_HELPER_SOCKET"])
+                if os.getenv("THREE_MM_NETWORK_HELPER_SOCKET")
+                else None
+            ),
         )

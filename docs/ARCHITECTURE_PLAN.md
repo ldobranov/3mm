@@ -152,7 +152,21 @@ An unprovisioned device runs a minimal setup service and exposes a temporary Wi-
 - Hub discovery and pairing bootstrap for a Node;
 - recovery behavior when the selected network cannot be reached.
 
-The temporary setup network shuts down after successful provisioning. Failed network configuration rolls back to setup mode instead of leaving the device unreachable. Production devices use a unique bootstrap QR/code or proof-of-physical-access mechanism; a shared fleet-wide setup credential is forbidden.
+The temporary setup network is open so a new owner can reach it without first
+discovering a device-specific password. It exists only while the device is
+unprovisioned or after an authenticated/physical network reset, exposes only
+the captive setup portal, and shuts down after successful provisioning. This
+deliberately trades nearby-network confidentiality during setup for simple
+recovery; the portal must therefore never expose the normal application or
+stored settings. Failed network configuration rolls back to setup mode instead
+of leaving the device unreachable. A shared fleet-wide setup credential is
+forbidden.
+
+Submitted Wi-Fi credentials cross a root-owned local Unix-socket boundary only
+in memory. NetworkManager stores the selected network secret in its root-only
+system connection profile so the device can reconnect after reboot. The secret
+is not copied into the provisioning journal, Core database, diagnostics,
+environment configuration, command arguments or logs.
 
 Network management is behind an adapter so the state machine and portal are testable on a laptop. Raspberry-specific NetworkManager, access-point and captive-portal integration belongs in the platform adapter, not in the provisioning domain logic.
 

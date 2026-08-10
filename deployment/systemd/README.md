@@ -1,27 +1,31 @@
 # systemd service templates
 
-Status: validated templates; not an installer and not installed on the test
-Raspberry Pi.
+Status: validated service templates installed by the immutable release installer.
 
-All services run as the dedicated unprivileged `3mm` user from an immutable
+Application and setup-portal services run as the dedicated unprivileged `3mm`
+user from an immutable
 release link at `/opt/3mm/current`. Persistent state is under `/var/lib/3mm`,
 optional non-secret overrides are read from `/etc/3mm/3mm.env`. Core binds to
 all interfaces so a Hub can be reached from its trusted local network. Agent
-and the setup prototype remain loopback-only. Internet exposure still requires
+remains loopback-only. The setup portal binds only while setup mode owns the
+Wi-Fi interface. Internet exposure still requires
 an authenticated reverse proxy and a separate security review.
 
 The shared runtime planner determines which units an installer enables:
 
 | Device state or role | Enabled services |
 |---|---|
-| Unprovisioned or interrupted setup | `3mm-setup.service` |
+| Unprovisioned or interrupted setup | `3mm-network-helper.service`, `3mm-setup-ap.service`, `3mm-setup.service` |
 | Node | `3mm-agent.service` |
 | Hub or Standalone | `3mm-core.service`, `3mm-web.service`, `3mm-agent.service` |
 
-The setup service still uses the deterministic mock network adapter. Its unit
-has no root user, Linux capabilities or NetworkManager write access. A future
-network mutation adapter requires a separately reviewed privileged boundary;
-these templates must not be expanded silently to grant it.
+The setup portal remains unprivileged and talks through a root-owned Unix
+socket to a narrowly scoped NetworkManager helper. The open `3mm Setup XXXX`
+access point exists only in unprovisioned or explicit network-reset mode,
+exposes only the captive setup portal and is removed after successful setup.
+The submitted Wi-Fi secret travels only in memory and is stored solely by
+NetworkManager in its root-only system connection profile. It is never written
+to the provisioning journal, application database, environment file or logs.
 
 The templates intentionally use `Restart=on-failure`, not unconditional
 restart, and do not couple Core and Agent process lifetimes. A failed Core must

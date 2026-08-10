@@ -8,6 +8,10 @@ UNITS = {
     "agent": SYSTEMD_DIR / "3mm-agent.service",
     "setup": SYSTEMD_DIR / "3mm-setup.service",
 }
+PRIVILEGED_UNITS = {
+    "helper": SYSTEMD_DIR / "3mm-network-helper.service",
+    "setup_ap": SYSTEMD_DIR / "3mm-setup-ap.service",
+}
 
 
 def _directives(path: Path) -> dict[str, str]:
@@ -45,7 +49,7 @@ def test_core_is_lan_accessible_while_device_services_stay_on_loopback() -> None
     assert "--host 0.0.0.0 --port 8887" in core_command
     assert "--host 0.0.0.0 --port 8080" in web_command
     assert "--host 127.0.0.1 --port 8890" in agent_command
-    assert "--host 127.0.0.1 --port 8895" in setup_command
+    assert "--host 0.0.0.0 --port 8895" in setup_command
 
 
 def test_setup_unit_has_no_network_mutation_privileges() -> None:
@@ -54,6 +58,20 @@ def test_setup_unit_has_no_network_mutation_privileges() -> None:
     assert unit["User"] != "root"
     assert "AmbientCapabilities" not in unit
     assert "CapabilityBoundingSet" not in unit
+    assert "--network-helper-socket /run/3mm/network-helper.sock" in unit["ExecStart"]
+
+
+def test_privileged_network_units_are_narrowly_scoped() -> None:
+    helper = _directives(PRIVILEGED_UNITS["helper"])
+    setup_ap = _directives(PRIVILEGED_UNITS["setup_ap"])
+
+    assert helper["User"] == "root"
+    assert setup_ap["User"] == "root"
+    assert "network_helper" in helper["ExecStart"]
+    assert "setup_access_point start" in setup_ap["ExecStart"]
+    assert setup_ap["RemainAfterExit"] == "true"
+    assert helper["ProtectSystem"] == "strict"
+    assert setup_ap["ProtectSystem"] == "strict"
 
 
 def test_units_use_the_shared_provisioning_directory() -> None:
@@ -71,14 +89,14 @@ def test_example_environment_contains_no_secret_values() -> None:
     assert not any(marker in example.upper() for marker in forbidden)
 
 
-def test_installer_preserves_identity_and_avoids_network_mutation() -> None:
+def test_installer_preserves_identity_and_delegates_network_mutation() -> None:
     installer = INSTALLER.read_text(encoding="utf-8")
 
     assert "identity.json" in installer
     assert "install -o 3mm -g 3mm -m 0600" in installer
-    assert (
-        "enable --now 3mm-agent.service 3mm-core.service 3mm-web.service" in installer
-    )
+    assert "three_mm_runtime.activate" in installer
+    assert "3mm-network-helper.service" in installer
+    assert "3mm-setup-ap.service" in installer
     assert "NetworkManager" not in installer
     assert "nmcli" not in installer
     assert "iptables" not in installer
