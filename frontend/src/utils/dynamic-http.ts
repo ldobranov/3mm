@@ -556,8 +556,8 @@ export default {
       console.error('Error details:', {
         message: error.message,
         code: error.code,
-        response: error.response,
-        config: error.config
+        status: error.response?.status,
+        url: error.config?.url
       });
       throw error;
     }

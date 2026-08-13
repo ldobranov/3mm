@@ -492,8 +492,12 @@ def create_setting(setting: SettingsCreateSchema, db: Session = Depends(get_db),
         raise HTTPException(status_code=500, detail=f"Error creating setting: {str(e)}")
 
 @router.put("/settings/update")
-def update_settings(settings: SettingsUpdateSchema, db: Session = Depends(get_db)):
-    """Update settings - temporarily without authentication for testing"""
+def update_settings(
+    settings: SettingsUpdateSchema,
+    db: Session = Depends(get_db),
+    user=Depends(admin_required),
+):
+    """Update settings - admin only"""
     try:
         query = db.query(Settings).filter(Settings.id == settings.id)
         db_settings = query.first()
@@ -653,7 +657,11 @@ def set_current_language(language: str, user = Depends(require_user)):
 # Frontend configuration endpoints
 
 @router.post("/frontend-config")
-def set_frontend_config(config: FrontendConfigRequest, db: Session = Depends(get_db)):
+def set_frontend_config(
+    config: FrontendConfigRequest,
+    db: Session = Depends(get_db),
+    user=Depends(admin_required),
+):
     """Set frontend backend URL configuration - admin only"""
     try:
         # Store both frontend and backend URLs as JSON
@@ -731,6 +739,24 @@ def get_frontend_config(db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting frontend config: {e}")
 
+@router.delete("/frontend-config")
+def delete_frontend_config(
+    db: Session = Depends(get_db),
+    user=Depends(admin_required),
+):
+    """Remove the saved frontend backend URL configuration so defaults are used again."""
+    try:
+        config = db.query(Settings).filter(Settings.key == "frontend_backend_url").first()
+        if not config:
+            return {"message": "Frontend configuration already reset", "deleted": False}
+
+        db.delete(config)
+        db.commit()
+        return {"message": "Frontend configuration reset to defaults", "deleted": True}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error resetting frontend config: {e}")
+
 # Custom menu routes with proper multilingual support
 @router.get("/menu/read")
 def read_menus(db: Session = Depends(get_db)):
@@ -807,9 +833,19 @@ def update_menu(menu_data: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error updating menu: {e}")
 
 @router.post("/frontend-config/detect")
-def detect_frontend_config(request: Request, db: Session = Depends(get_db)):
+def detect_frontend_config(
+    request: Request,
+    db: Session = Depends(get_db),
+    user=Depends(admin_required),
+):
     """Auto-detect frontend configuration based on request origin with improved IP detection"""
     try:
+        def build_frontend_url(protocol: str, host_value: str) -> str:
+            return f"{protocol}://{host_value}"
+
+        def build_backend_url(protocol: str, hostname: str) -> str:
+            return f"{protocol}://{hostname}:8887"
+
         # Get the host and protocol from the request
         forwarded_for = request.headers.get("x-forwarded-for")
         real_ip = request.headers.get("x-real-ip")
@@ -844,27 +880,13 @@ def detect_frontend_config(request: Request, db: Session = Depends(get_db)):
             
             # If we have a valid hostname and it's not localhost, use it
             if hostname and hostname not in ["localhost", "127.0.0.1"]:
-                # For external IPs, detect the correct ports
-                if is_external_ip or hostname not in ["localhost", "127.0.0.1"]:
-                    # Try to determine if this is a different port
-                    if ":" in host:
-                        actual_port = host.split(":")[1]
-                        # If accessing on port 5173, backend should be on 8887
-                        if actual_port == "5173":
-                            frontend_url = f"{protocol}://{hostname}:5173"
-                            backend_url = f"{protocol}://{hostname}:8887"
-                        # If accessing on port 8887, set both to the same host/port
-                        elif actual_port == "8887":
-                            frontend_url = f"{protocol}://{hostname}:5173"
-                            backend_url = f"{protocol}://{hostname}:8887"
-                        # For other ports, use the detected port
-                        else:
-                            frontend_url = f"{protocol}://{host}"
-                            backend_url = f"{protocol}://{hostname}:8887"
-                    else:
-                        # No port in host header, use default ports
-                        frontend_url = f"{protocol}://{hostname}:5173"
-                        backend_url = f"{protocol}://{hostname}:8887"
+                # Use the actual request host for the frontend, and keep backend on 8887.
+                if ":" in host:
+                    frontend_url = build_frontend_url(protocol, host)
+                else:
+                    frontend_port = request.url.port or 8080
+                    frontend_url = build_frontend_url(protocol, f"{hostname}:{frontend_port}")
+                backend_url = build_backend_url(protocol, hostname)
             else:
                 # Localhost fallback
                 frontend_url = app_config['frontend']['frontend_url']
@@ -873,7 +895,7 @@ def detect_frontend_config(request: Request, db: Session = Depends(get_db)):
             # No host header, check if we can determine from client IP
             if client_ip != "unknown" and is_external_ip:
                 # Use the client IP as the hostname
-                frontend_url = f"http://{client_ip}:5173"
+                frontend_url = f"http://{client_ip}:{request.url.port or 8080}"
                 backend_url = f"http://{client_ip}:8887"
         
         return {
@@ -888,7 +910,12 @@ def detect_frontend_config(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error detecting frontend config: {e}")
 
 @router.post("/settings/auto-configure")
-def auto_configure_frontend(config_request: dict = None, request: Request = None, db: Session = Depends(get_db)):
+def auto_configure_frontend(
+    config_request: dict = None,
+    request: Request = None,
+    db: Session = Depends(get_db),
+    user=Depends(admin_required),
+):
     """Auto-configure frontend with detected backend URL"""
     try:
         # Get detected configuration

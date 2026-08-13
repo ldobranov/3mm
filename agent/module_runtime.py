@@ -120,6 +120,22 @@ class AgentModuleRuntime:
         except Exception as exc:
             raise ModuleLifecycleError("capability invocation failed") from exc
 
+    def activate_automation(self, automation_id: str, definition) -> None:
+        trigger_service = self._services.get(definition.trigger.capability_id)
+        if trigger_service is None or not hasattr(trigger_service, "subscribe"):
+            raise ModuleLifecycleError("trigger capability does not support automation events")
+
+        def execute_actions() -> None:
+            for action in definition.actions:
+                self.invoke(action.capability_id, action.action, action.arguments)
+
+        trigger_service.subscribe(automation_id, definition.trigger.event, definition.trigger.conditions, execute_actions)
+
+    def remove_automation(self, automation_id: str) -> None:
+        for capability_service in self._services.values():
+            if hasattr(capability_service, "unsubscribe"):
+                capability_service.unsubscribe(automation_id)
+
     def start_active(self) -> None:
         """Restore enabled trusted modules without letting one failure stop Agent boot."""
         state_dir = self.root / "state"

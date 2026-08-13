@@ -221,6 +221,16 @@ export async function createRouterWithDynamicRoutes() {
     { path: '/dashboard/:id/edit', name: 'DisplayEditor', component: () => import('@/views/DisplayEditor.vue'), meta: { requiresAuth: true } },
     { path: '/extensions', name: 'Extensions', component: Extensions, meta: { requiresAuth: true } },
     { path: '/extensions/ai-builder', name: 'AiExtensionBuilder', component: AiExtensionBuilder, meta: { requiresAuth: true, requiresRole: 'admin' } },
+    {
+      path: '/automations/proposals',
+      name: 'AutomationProposals',
+      component: () => import('@/views/AutomationProposals.vue'),
+      meta: {
+        requiresAuth: true,
+        requiresRole: 'admin',
+        menuLabel: { en: 'Automations', bg: 'Автоматизации' },
+      },
+    },
     { path: '/@:username/:slug', name: 'PublicDisplay', component: () => import('@/views/PublicDisplay.vue') },
     { path: '/:pathMatch(.*)*', name: 'NotFound', component: () => import('../views/NotFound.vue') },
   ];

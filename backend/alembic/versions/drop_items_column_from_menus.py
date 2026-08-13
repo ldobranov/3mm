@@ -19,12 +19,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Drop the unused items column from menus table."""
-    # Drop the items column from menus table
-    op.drop_column('menus', 'items')
+    """Preserve Menu.items, which remains part of the active model and API."""
+    pass
 
 
 def downgrade() -> None:
-    """Add back the items column to menus table."""
-    # Add back the items column
-    op.add_column('menus', sa.Column('items', sa.JSON(), nullable=True))
+    """The corrected upgrade is intentionally schema-neutral."""
+    pass

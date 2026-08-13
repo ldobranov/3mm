@@ -24,6 +24,7 @@ from backend.db.extension import Extension
 from backend.routes.ai_extension_builder_routes import (
     router as ai_extension_builder_router,
 )
+from backend.routes.ai_automations import router as ai_automations_router
 from backend.routes.audit_routes import router as audit_router
 from backend.routes.auth_refresh import router as refresh_router
 from backend.routes.display_routes import router as display_router
@@ -214,6 +215,7 @@ app.include_router(device_state_router)
 app.include_router(device_capabilities_router)
 app.include_router(device_events_router)
 app.include_router(modules_router)
+app.include_router(ai_automations_router)
 app.include_router(refresh_router, prefix="/api")
 app.include_router(session_router, prefix="/api")
 app.include_router(audit_router, prefix="/api")

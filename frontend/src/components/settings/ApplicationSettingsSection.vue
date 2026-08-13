@@ -260,13 +260,14 @@ export default defineComponent({
 <style scoped>
 /* Uses existing .form-group, .form-label, .input, .help-text, .button, .button-primary classes */
 
-.user-preferences-info,
 .admin-info,
+.user-preferences-info,
 .guest-info {
   padding: 1rem;
   background-color: var(--color-background-soft);
   border-radius: var(--border-radius-sm);
   margin-bottom: 1rem;
+  border: 1px solid var(--card-border, #e3e3e3);
 }
 
 .user-preferences-info p,
@@ -284,5 +285,34 @@ export default defineComponent({
 .guest-info {
   background-color: var(--color-background-soft);
   border-left: 3px solid var(--color-warning);
+}
+
+.admin-info {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-info h3 {
+  font-size: 0.98rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text-primary, #222222);
+}
+
+.admin-info .form-group {
+  margin-bottom: 0;
+}
+
+.admin-info button {
+  min-height: 2.3rem;
+}
+
+:root[data-theme="dark"] .user-preferences-info,
+:root[data-theme="dark"] .admin-info,
+:root[data-theme="dark"] .guest-info,
+.dark .user-preferences-info,
+.dark .admin-info,
+.dark .guest-info {
+  border-color: var(--card-border, #4b5563);
 }
 </style>

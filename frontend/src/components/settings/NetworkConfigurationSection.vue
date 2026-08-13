@@ -378,6 +378,9 @@ export default defineComponent({
       saving.value = true;
       
       try {
+        // Remove the saved backend URL configuration first so the app can fall back to defaults.
+        await http.delete('/frontend-config');
+
         // Remove any persistent override so the app returns to normal detection/default logic
         await http.clearBackendUrlOverride();
 
@@ -389,7 +392,7 @@ export default defineComponent({
         // Clear current config to trigger default loading
         currentConfig.value = null;
         
-        // Reload to get default configuration
+        // Reload to get default configuration from the server
         await loadCurrentConfiguration();
         
         emit('config-updated', currentConfig.value);

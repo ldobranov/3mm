@@ -158,6 +158,8 @@ Acceptance criteria:
 
 Goal: let users describe behavior in natural language using existing trusted capabilities.
 
+Status: completed on 2026-08-13. See [MILESTONE_6_REPORT.md](MILESTONE_6_REPORT.md).
+
 Deliverables:
 
 - capability-aware AI context builder;

@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable
 from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
+from agent.automation_store import AutomationStore, StoredAutomation
 
 import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -160,6 +161,7 @@ class CorePublisher:
     outbox: OutboxStore
     started_monotonic: float
     module_runtime: AgentModuleRuntime | None = None
+    automation_store: AutomationStore | None = None
     interval_seconds: int = 30
     _stop: threading.Event = field(init=False, repr=False)
     _thread: threading.Thread | None = field(init=False, default=None, repr=False)
@@ -261,6 +263,26 @@ class CorePublisher:
                     status="failed",
                     completed_at=datetime.now(UTC),
                     error=f"Inventory publish failed: {type(exc).__name__}",
+                )
+        elif command.command_type in {"automation.apply", "automation.remove"} and self.automation_store is not None:
+            try:
+                if command.command_type == "automation.apply":
+                    output = self.automation_store.apply(
+                        StoredAutomation.model_validate(command.payload),
+                        device_id=self.credential.device_id,
+                    )
+                else:
+                    output = self.automation_store.remove(
+                        command.payload["automation_id"], command.payload["revision"]
+                    )
+                result = AgentCommandResult(
+                    command_id=command.command_id, device_id=self.credential.device_id,
+                    status="succeeded", completed_at=datetime.now(UTC), output=output,
+                )
+            except (KeyError, ValueError, RuntimeError, ValidationError) as exc:
+                result = AgentCommandResult(
+                    command_id=command.command_id, device_id=self.credential.device_id,
+                    status="failed", completed_at=datetime.now(UTC), error=str(exc),
                 )
         elif command.command_type in {"module.install", "module.disable", "capability.invoke"} and self.module_runtime is not None:
             try:

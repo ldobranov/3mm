@@ -12,5 +12,8 @@
   "configuration_schema": {"type": "object"},
   "configuration_defaults": {"inputs": ["gpio.input.1"], "outputs": {"gpio.output.1": false}, "rules": [{"input": "gpio.input.1", "output": "gpio.output.1", "when": true, "set": true}]},
   "health_check": {"type": "file_exists", "path": "health/ready"},
-  "registrations": [{"kind": "capability", "registration_id": "gpio.digital.control"}]
+  "registrations": [
+    {"kind": "capability", "registration_id": "gpio.digital.input"},
+    {"kind": "capability", "registration_id": "gpio.digital.control"}
+  ]
 }

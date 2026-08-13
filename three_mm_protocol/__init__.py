@@ -17,6 +17,15 @@ from three_mm_protocol.module_manifest import (
     ModuleManifestV2, ModuleRegistration,
     meets_minimum_version,
 )
+from three_mm_protocol.automation import (
+    AutomationCapabilityContextV1,
+    AutomationDefinitionV1,
+    AutomationValidationIssue,
+    CapabilityCommandAction,
+    CapabilityContextEntry,
+    CapabilityEventTrigger,
+    validate_automation_capabilities,
+)
 
 __all__ = [
     "PROTOCOL_VERSION",
@@ -35,4 +44,11 @@ __all__ = [
     "ModuleManifestV2",
     "ModuleRegistration",
     "meets_minimum_version",
+    "AutomationCapabilityContextV1",
+    "AutomationDefinitionV1",
+    "AutomationValidationIssue",
+    "CapabilityCommandAction",
+    "CapabilityContextEntry",
+    "CapabilityEventTrigger",
+    "validate_automation_capabilities",
 ]

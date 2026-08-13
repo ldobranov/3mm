@@ -1,15 +1,17 @@
 <template>
   <SettingsSection :title="t('settings.menuConfiguration', 'Menu Configuration')">
-    <LanguageSelector
-      :model-value="menuLanguage"
-      :available-languages="availableLanguages"
-      @update:model-value="handleMenuLanguageChange"
-      :label="t('settings.menuLanguage', 'Menu Language')"
-    />
+    <div class="menu-meta-row">
+      <LanguageSelector
+        :model-value="menuLanguage"
+        :available-languages="availableLanguages"
+        @update:model-value="handleMenuLanguageChange"
+        :label="t('settings.menuLanguage', 'Menu Language')"
+      />
 
-    <small class="help-text">
-      {{ t('settings.menuLanguageHelp', 'Configure complete menu structure for the selected language') }}
-    </small>
+      <small class="help-text menu-help">
+        {{ t('settings.menuLanguageHelp', 'Configure complete menu structure for the selected language') }}
+      </small>
+    </div>
 
     <div v-if="menus.length > 0">
       <div class="form-group">
@@ -35,12 +37,18 @@
         :settings-store="settingsStore"
       />
 
-      <button @click="saveMenu" class="button button-primary" style="margin-top: 1rem;" :disabled="savingMenu">
-        {{ savingMenu ? t('settings.saving', 'Saving...') : t('settings.saveMenu', 'Save Menu') }}
-      </button>
+      <div class="menu-actions">
+        <button @click="saveMenu" class="button button-primary" :disabled="savingMenu">
+          {{ savingMenu ? t('settings.saving', 'Saving...') : t('settings.saveMenu', 'Save Menu') }}
+        </button>
+      </div>
     </div>
-    <div v-else>
-      <p>{{ t('settings.noMenusAvailable', 'No menus available') }}</p>
+    <div v-else class="menu-empty-state">
+      <i class="bi bi-list-nested" aria-hidden="true"></i>
+      <div>
+        <strong>{{ t('settings.noMenusAvailable', 'No custom menus configured') }}</strong>
+        <p>{{ t('settings.noMenusHelp', 'The current navigation is generated dynamically from enabled modules. A custom menu must exist before its items can be edited here.') }}</p>
+      </div>
     </div>
   </SettingsSection>
 </template>
@@ -206,5 +214,50 @@ export default defineComponent({
 </script>
 
 <style scoped>
-/* Uses existing classes from styles.css */
+.menu-meta-row {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.menu-help {
+  margin-top: 0;
+}
+
+.menu-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.menu-empty-state {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px dashed var(--card-border, #e3e3e3);
+  border-radius: var(--border-radius-sm, 4px);
+  color: var(--text-secondary, #666666);
+  background: var(--panel-bg, #f8f9fa);
+}
+
+.menu-empty-state i {
+  font-size: 1.25rem;
+  color: var(--text-muted, #6b7280);
+}
+
+.menu-empty-state strong {
+  display: block;
+  color: var(--text-primary, #222222);
+}
+
+.menu-empty-state p {
+  margin: 0.3rem 0 0;
+}
+
+:root[data-theme="dark"] .menu-empty-state,
+.dark .menu-empty-state {
+  border-color: var(--card-border, #4b5563);
+  background: var(--panel-bg, #374151);
+}
 </style>

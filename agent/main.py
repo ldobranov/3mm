@@ -18,6 +18,7 @@ from agent.core_client import (
 )
 from agent.hardware import create_hardware_driver, create_mock_gpio_driver
 from agent.modules.gpio import GPIO_ENTRYPOINT, gpio_runtime_handler
+from agent.automation_store import AutomationStore
 from agent.identity import AgentIdentity, AgentIdentityStore
 from agent.inventory import collect_inventory
 from agent.module_runtime import AgentModuleRuntime
@@ -72,6 +73,8 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
             runtime_handlers={GPIO_ENTRYPOINT: gpio_runtime_handler(gpio, lambda event: app.state.module_event_sink(event))} if gpio else {},
         )
         module_runtime.start_active()
+        automation_store = AutomationStore(resolved_settings.data_dir, module_runtime)
+        automation_store.activate_all(device_id=identity.device_id)
         if resolved_settings.core_url:
             credential = DeviceCredentialStore(resolved_settings.data_dir).load()
             if credential is not None:
@@ -85,6 +88,7 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
                     reconciliation_store=ReconciliationStore(resolved_settings.data_dir),
                     outbox=OutboxStore(resolved_settings.data_dir),
                     module_runtime=module_runtime,
+                    automation_store=automation_store,
                     started_monotonic=app.state.agent_runtime.started_monotonic,
                     interval_seconds=resolved_settings.heartbeat_interval_seconds,
                 )

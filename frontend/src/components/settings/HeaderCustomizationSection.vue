@@ -330,6 +330,7 @@ export default defineComponent({
   display: flex;
   align-items: center;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .logo-preview {
@@ -339,11 +340,15 @@ export default defineComponent({
 
 .preview-card {
   padding: 1rem;
-  border-radius: 8px;
+  border-radius: var(--border-radius-md, 8px);
   text-align: center;
   background-color: v-bind('headerSettings.backgroundColor');
   color: v-bind('headerSettings.textColor');
   border: 1px solid var(--color-border);
+  min-height: 120px;
+  display: grid;
+  gap: 0.4rem;
+  place-items: center;
 }
 
 .preview-logo {
@@ -362,6 +367,15 @@ export default defineComponent({
 
 .preview-message {
   font-size: 0.875rem;
+  opacity: 0.9;
+}
+
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.form-group:last-of-type {
+  margin-bottom: 0;
 }
 </style>
 
@@ -371,6 +385,17 @@ export default defineComponent({
   flex-direction: column;
   gap: 0.5rem;
   margin-top: 0.5rem;
+}
+
+.upload-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+:root[data-theme="dark"] .preview-card,
+.dark .preview-card {
+  border-color: var(--card-border, #4b5563);
 }
 
 </style>

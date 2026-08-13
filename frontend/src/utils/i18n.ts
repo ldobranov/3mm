@@ -19,6 +19,15 @@ class FrontendI18n {
     this.translations.set('en', {})
   }
 
+  private getBundledLanguageCodes(): string[] {
+    const modules = import.meta.glob('../extensions/**/manifest.json', { eager: true }) as Record<string, any>
+
+    return Object.values(modules)
+      .map(module => module?.default)
+      .filter(manifest => manifest?.type === 'language' && typeof manifest.language?.code === 'string')
+      .map(manifest => manifest.language.code)
+  }
+
   // Load translations from local extension files using dynamic scanning
   private async loadLocalTranslations(languageCode: string): Promise<Translations> {
     let allTranslations: Translations = {}
@@ -228,7 +237,10 @@ class FrontendI18n {
 
   // Set current language
   async setLanguage(languageCode: string) {
-    if (languageCode === this.currentLanguage.value) return
+    const existingTranslations = this.translations.get(languageCode)
+    const needsLoading = !existingTranslations || Object.keys(existingTranslations).length === 0
+
+    if (languageCode === this.currentLanguage.value && !needsLoading) return
 
     localStorage.setItem('preferredLanguage', languageCode)
     this.currentLanguage.value = languageCode
@@ -260,7 +272,10 @@ class FrontendI18n {
 
   // Get available languages
   getAvailableLanguages() {
-    const available = Array.from(this.translations.keys())
+    const available = Array.from(new Set([
+      ...this.translations.keys(),
+      ...this.getBundledLanguageCodes()
+    ]))
     // Always include English
     if (!available.includes('en')) available.push('en')
     return available
@@ -313,7 +328,7 @@ class FrontendI18n {
 
   // Check if language is available
   isLanguageAvailable(languageCode: string): boolean {
-    return this.translations.has(languageCode)
+    return this.translations.has(languageCode) || this.getBundledLanguageCodes().includes(languageCode)
   }
 }
 

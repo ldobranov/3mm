@@ -1,74 +1,99 @@
 <template>
   <div class="view" :key="currentLanguage">
     <div class="view-header">
-      <h1 class="view-title">{{ t('settings.title') }}</h1>
+      <h1 class="view-title">{{ t('settings.title', 'Settings') }}</h1>
     </div>
 
     <div v-if="loading" class="text-center" style="padding: 2rem 0;">
       <div class="spinner" role="status" aria-label="Loading"></div>
     </div>
 
-    <div v-else class="settings-grid">
-      <!-- Application Settings Section -->
-      <ApplicationSettingsSection
-        :available-languages="availableLanguages"
-      />
+    <div v-else class="settings-shell">
+      <aside class="settings-nav" aria-label="Settings sections">
+        <button
+          v-for="section in settingsSections"
+          :key="section.id"
+          type="button"
+          class="settings-nav-item"
+          :class="{ active: activeSection === section.id }"
+          @click="activeSection = section.id"
+        >
+          <i :class="section.icon" aria-hidden="true"></i>
+          <span>{{ section.label }}</span>
+        </button>
+      </aside>
 
-      <!-- Theme Customization Sections -->
-      <ThemeCustomizationSection
-        v-for="themeType in ['light', 'dark']"
-        :key="themeType"
-        :theme-type="themeType"
-        :settings="themeType === 'light' ? lightStyleSettings : darkStyleSettings"
-        :saving="themeType === 'light' ? savingLightStyle : savingDarkStyle"
-        :t="t"
-        :settings-store="settingsStore"
-        :section-title="themeType === 'light' ? t('settings.lightThemeCustomization') : t('settings.darkThemeCustomization')"
-        @save="themeType === 'light' ? saveLightStyleSettings() : saveDarkStyleSettings()"
-      />
+      <section class="settings-content">
+        <div v-show="activeSection === 'application'" id="application-settings" class="settings-anchor">
+          <ApplicationSettingsSection
+            :available-languages="availableLanguages"
+          />
+        </div>
 
-      <!-- Header Customization Section -->
-      <HeaderCustomizationSection
-        :header-language="headerLanguage"
-        :available-languages="availableLanguages"
-        :current-site-name="currentSiteName"
-        :current-header-message="currentHeaderMessage"
-        :header-settings="headerSettings"
-        :saving-header="savingHeader"
-        :language-settings-map="languageSettingsMap"
-        @update:header-language="headerLanguage = $event"
-        @update:current-site-name="currentSiteName = $event"
-        @update:current-header-message="currentHeaderMessage = $event"
-        @header-language-change="onHeaderLanguageChange"
-        @save-header-settings="saveHeaderSettings"
-        @logo-upload="handleLogoUpload"
-        @logo-remove="removeLogo"
-      />
+        <div v-show="activeSection === 'theme'" id="theme-settings" class="settings-anchor">
+          <div class="section-cluster">
+            <ThemeCustomizationSection
+              v-for="themeType in ['light', 'dark']"
+              :key="themeType"
+              :theme-type="themeType"
+              :settings="themeType === 'light' ? lightStyleSettings : darkStyleSettings"
+              :saving="themeType === 'light' ? savingLightStyle : savingDarkStyle"
+              :t="t"
+              :settings-store="settingsStore"
+              :section-title="themeType === 'light'
+                ? t('settings.lightThemeCustomization', 'Light Theme Customization')
+                : t('settings.darkThemeCustomization', 'Dark Theme Customization')"
+              @save="themeType === 'light' ? saveLightStyleSettings() : saveDarkStyleSettings()"
+            />
+          </div>
+        </div>
 
-      <!-- Menu Configuration Section -->
-      <MenuConfigurationSection
-        :menu-language="menuLanguage"
-        :available-languages="availableLanguages"
-        :menus="menus"
-        :active-menu-id="activeMenuId"
-        :current-menu-items="currentMenuItems"
-        :saving-menu="savingMenu"
-        :settings-store="settingsStore"
-        @update:menu-language="handleMenuLanguageChange"
-        @update:active-menu-id="activeMenuId = $event"
-        @update:current-menu-items="currentMenuItems = $event"
-        @set-active-menu="setActiveMenu"
-        @add-menu-item="addMenuItem"
-        @edit-menu-item="editMenuItem"
-        @remove-menu-item="removeMenuItem"
-        @save-menu="saveMenu"
-        @drag-end="onDragEnd"
-      />
+        <div v-show="activeSection === 'header'" id="header-settings" class="settings-anchor">
+          <HeaderCustomizationSection
+            :header-language="headerLanguage"
+            :available-languages="availableLanguages"
+            :current-site-name="currentSiteName"
+            :current-header-message="currentHeaderMessage"
+            :header-settings="headerSettings"
+            :saving-header="savingHeader"
+            :language-settings-map="languageSettingsMap"
+            @update:header-language="headerLanguage = $event"
+            @update:current-site-name="currentSiteName = $event"
+            @update:current-header-message="currentHeaderMessage = $event"
+            @header-language-change="onHeaderLanguageChange"
+            @save-header-settings="saveHeaderSettings"
+            @logo-upload="handleLogoUpload"
+            @logo-remove="removeLogo"
+          />
+        </div>
 
-      <!-- Network Configuration Section -->
-      <NetworkConfigurationSection
-        @config-updated="onNetworkConfigUpdated"
-      />
+        <div v-show="activeSection === 'menu'" id="menu-settings" class="settings-anchor">
+          <MenuConfigurationSection
+            :menu-language="menuLanguage"
+            :available-languages="availableLanguages"
+            :menus="menus"
+            :active-menu-id="activeMenuId"
+            :current-menu-items="currentMenuItems"
+            :saving-menu="savingMenu"
+            :settings-store="settingsStore"
+            @update:menu-language="handleMenuLanguageChange"
+            @update:active-menu-id="activeMenuId = $event"
+            @update:current-menu-items="currentMenuItems = $event"
+            @set-active-menu="setActiveMenu"
+            @add-menu-item="addMenuItem"
+            @edit-menu-item="editMenuItem"
+            @remove-menu-item="removeMenuItem"
+            @save-menu="saveMenu"
+            @drag-end="onDragEnd"
+          />
+        </div>
+
+        <div v-show="activeSection === 'network'" id="network-settings" class="settings-anchor">
+          <NetworkConfigurationSection
+            @config-updated="onNetworkConfigUpdated"
+          />
+        </div>
+      </section>
     </div>
 
     <div v-if="errorMessage" class="alert alert-danger" style="margin-top: 1rem;">{{ errorMessage }}</div>
@@ -114,6 +139,7 @@ export default defineComponent({
     
     // Reactive state
     const availableLanguages = ref<string[]>(['en', 'bg']);
+    const activeSection = ref('application');
     const languageKey = ref(0);
     const settings = ref<Setting[]>([]);
     const menus = ref<any[]>([]);
@@ -150,6 +176,14 @@ export default defineComponent({
       if (!activeMenu.value) return null;
       return { ...activeMenu.value, items: currentMenuItems.value };
     });
+
+    const settingsSections = computed(() => [
+      { id: 'application', icon: 'bi bi-sliders', label: t('applicationSettings', 'Application Settings') },
+      { id: 'theme', icon: 'bi bi-palette', label: t('settings.themeCustomization', 'Theme Customization') },
+      { id: 'header', icon: 'bi bi-window', label: t('settings.headerCustomization', 'Header Customization') },
+      { id: 'menu', icon: 'bi bi-list-nested', label: t('settings.menuConfiguration', 'Menu Configuration') },
+      { id: 'network', icon: 'bi bi-router', label: t('settings.networkConfiguration', 'Network Configuration') }
+    ]);
 
     const filteredSettings = computed(() => {
       const excludedKeys = [
@@ -210,7 +244,7 @@ export default defineComponent({
         const response = await http.get('/language/available');
         const languages = response.data.languages || ['en', 'bg'];
         // Ensure 'en' is first
-        availableLanguages.value = ['en', ...languages.filter((lang: string) => lang !== 'en')];
+        availableLanguages.value = Array.from(new Set(['en', 'bg', ...languages]));
       } catch (error) {
         console.error('Failed to fetch available languages:', error);
         availableLanguages.value = ['en', 'bg'];
@@ -666,6 +700,8 @@ export default defineComponent({
       headerLanguage,
       menuLanguage,
       availableLanguages,
+      activeSection,
+      settingsSections,
       languageKey,
       languageSettingsMap,
       currentSiteName,
@@ -704,5 +740,86 @@ export default defineComponent({
 </script>
 
 <style scoped>
-/* Uses existing CSS classes from styles.css */
+.settings-shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.settings-nav {
+  position: sticky;
+  top: 1rem;
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid var(--card-border, #e3e3e3);
+  border-radius: var(--border-radius-md, 8px);
+  background: var(--card-bg, #ffffff);
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--border-radius-sm, 4px);
+  text-decoration: none;
+  color: var(--text-primary, #222222);
+  background: transparent;
+  border: 1px solid transparent;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-nav-item:hover,
+.settings-nav-item:focus {
+  background: var(--panel-bg, #f8f9fa);
+  border-color: var(--card-border, #e3e3e3);
+}
+
+.settings-nav-item.active {
+  color: var(--button-primary-bg, #2563eb);
+  background: color-mix(in srgb, var(--button-primary-bg, #2563eb) 10%, transparent);
+  border-color: color-mix(in srgb, var(--button-primary-bg, #2563eb) 24%, transparent);
+}
+
+.settings-nav-item i {
+  width: 1.1rem;
+  text-align: center;
+}
+
+.settings-content {
+  min-width: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.settings-anchor {
+  scroll-margin-top: 1rem;
+}
+
+.section-cluster {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (max-width: 1024px) {
+  .settings-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-nav {
+    position: static;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .settings-nav {
+    padding: 0.75rem;
+  }
+}
 </style>

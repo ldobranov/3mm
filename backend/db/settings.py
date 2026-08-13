@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, JSON, Index
 from sqlalchemy.orm import relationship
 from backend.db.base import Base
 from pydantic import BaseModel, ConfigDict
@@ -17,6 +17,10 @@ class Settings(Base):
 
     # Translation relationships
     translations = relationship("SettingTranslation", back_populates="setting", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("idx_settings_key_lang", "key", "language_code"),
+    )
 
 class SettingsSchema(BaseModel):
     id: int
