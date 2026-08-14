@@ -17,8 +17,8 @@ class OpenRouterClient:
         self,
         api_key: Optional[str] = None,
         base_url: str = "https://openrouter.ai/api/v1",
-        # Note: OpenRouter free model availability changes; this is a commonly available free default.
-        default_model: str = "meta-llama/llama-3.1-8b-instruct:free",
+        # OpenRouter selects an available free model that matches request capabilities.
+        default_model: str = "openrouter/free",
         timeout_seconds: int = 60,
     ):
         self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")

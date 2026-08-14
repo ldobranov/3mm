@@ -17,6 +17,7 @@ from backend.schemas.ai_extension_builder import (
 )
 from backend.utils.ai_extension_builder.openrouter_client import OpenRouterClient
 from backend.utils.ai_extension_builder.groq_client import GroqClient
+from backend.utils.ai_extension_builder.free_provider_client import FreeProviderFallbackClient
 from backend.utils.ai_extension_builder.validators import validate_extension_package
 
 
@@ -88,7 +89,7 @@ def _ai_refine_files(
     # Provider selection:
     # 1) If ai_provider is set (from Application Settings) it wins.
     # 2) Else fall back to environment AI_PROVIDER.
-    # 3) Else auto: prefer Groq when key exists.
+    # 3) Else auto: OpenRouter Free first, then Groq Free on failure.
 
     groq = GroqClient(api_key=groq_api_key)
     openrouter = OpenRouterClient(api_key=openrouter_api_key)
@@ -110,12 +111,8 @@ def _ai_refine_files(
         client = openrouter
         provider_name = "openrouter"
     else:
-        if groq.is_configured():
-            client = groq
-            provider_name = "groq"
-        else:
-            client = openrouter
-            provider_name = "openrouter"
+        client = FreeProviderFallbackClient(openrouter, groq)
+        provider_name = "openrouter/free -> groq"
 
     if not getattr(client, "is_configured")():
         warnings.append(

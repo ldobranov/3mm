@@ -11,8 +11,9 @@ from sqlalchemy.pool import StaticPool
 from backend.db.base import Base
 from backend.db.device import Device
 from backend.db.module import ModuleInstallation, ModulePackage
+from backend.db.settings import Settings
 from backend.db.user import User
-from backend.routes.ai_automations import router
+from backend.routes.ai_automations import _server_managed_provider_key, router
 from backend.utils import jwt_utils
 from backend.utils.auth import hash_password
 from backend.utils.db_utils import get_db
@@ -185,6 +186,27 @@ def test_admin_reads_trusted_capability_context_and_regular_user_is_denied():
     assert invalid.status_code == 200
     assert invalid.json()["status"] == "invalid"
     assert invalid.json()["validation_issues"][0]["code"] == "capability.unavailable"
+
+    db.close()
+    engine.dispose()
+
+
+def test_server_managed_provider_key_comes_from_global_encrypted_settings(monkeypatch):
+    monkeypatch.delenv("AI_SETTINGS_MASTER_KEY", raising=False)
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    db.add(Settings(
+        key="ai_openrouter_api_key",
+        value="stored-test-key",
+        language_code=None,
+        user_id=None,
+    ))
+    db.commit()
+
+    assert _server_managed_provider_key(db, "openrouter") == "stored-test-key"
+    assert _server_managed_provider_key(db, "groq") is None
+    assert _server_managed_provider_key(db, "unsupported") is None
 
     db.close()
     engine.dispose()

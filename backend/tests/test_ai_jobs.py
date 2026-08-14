@@ -11,7 +11,7 @@ from backend.db.automation import AiJob, AiUsageLedger
 from backend.db.base import Base
 from backend.db.user import User
 from backend.services.ai_gateway import AiCompletion
-from backend.services.ai_jobs import AiJobError, estimate_job, execute_job, grant_credit
+from backend.services.ai_jobs import AiJobError, _parse_automation_definition, estimate_job, execute_job, grant_credit
 from backend.utils.auth import hash_password
 from three_mm_protocol.automation import AutomationCapabilityContextV1, CapabilityContextEntry
 
@@ -48,19 +48,19 @@ def db():
     session.close(); engine.dispose()
 
 
-def test_prepaid_job_reserves_settles_and_reuses_unchanged_artifact(db, monkeypatch):
+def test_free_tier_job_needs_no_credit_and_reuses_unchanged_artifact(db, monkeypatch):
     session, user = db; monkeypatch.setenv("GROQ_API_KEY", "server-secret")
     job = estimate_job(session, user_id=user.id, intent="Mirror it", context=context(), provider="groq", model=None, payment_mode="prepaid", max_output_tokens=500)
-    with pytest.raises(AiJobError, match="Insufficient"):
-        execute_job(session, job=job, intent="Mirror it", context=context(), approved_max=job.estimated_max_microcredits, gateway=FakeGateway(), api_key=None)
-    account = grant_credit(session, user_id=user.id, microcredits=10_000, actor_user_id=user.id)
+    assert job.estimated_max_microcredits == 0
+    account = grant_credit(session, user_id=user.id, microcredits=100, actor_user_id=user.id)
     before = account.available_microcredits
     gateway = FakeGateway()
     completed = execute_job(session, job=job, intent="Mirror it", context=context(), approved_max=job.estimated_max_microcredits, gateway=gateway, api_key=None)
     assert completed.status == "completed" and completed.proposal_id
     assert completed.actual_input_tokens == 120 and completed.actual_output_tokens == 80
     assert account.reserved_microcredits == 0
-    assert account.available_microcredits == before - min(completed.actual_microcredits, job.approved_max_microcredits)
+    assert account.available_microcredits == before
+    assert completed.actual_microcredits == 0
     reused = estimate_job(session, user_id=user.id, intent="Mirror it", context=context(), provider="groq", model=None, payment_mode="prepaid", max_output_tokens=500)
     assert reused.status == "reused" and reused.proposal_id == completed.proposal_id
     assert execute_job(session, job=reused, intent="Mirror it", context=context(), approved_max=0, gateway=gateway, api_key=None).status == "reused"
@@ -77,4 +77,16 @@ def test_byok_key_is_ephemeral_and_does_not_touch_prepaid_balance(db):
     persisted = " ".join(str(value) for row in session.scalars(select(AiUsageLedger)).all() for value in (row.details, row.entry_type))
     persisted += " " + " ".join(str(row.__dict__) for row in session.scalars(select(AiJob)).all())
     assert "temporary-super-secret" not in persisted
-    assert completed.actual_microcredits > 0
+    assert completed.actual_microcredits == 0
+
+
+def test_provider_wrapper_is_unwrapped_before_strict_validation():
+    candidate = {
+        "schema_version": 1, "name": "Wrapped", "description": "", "execution": "local", "enabled": True,
+        "trigger": {"kind": "capability_event", "device_id": DEVICE_ID, "capability_id": "gpio.digital.input", "event": "changed", "conditions": {}},
+        "actions": [{"kind": "capability_command", "device_id": DEVICE_ID, "capability_id": "gpio.digital.control", "action": "set_output", "arguments": {}}],
+    }
+
+    parsed = _parse_automation_definition(json.dumps({"AutomationDefinitionV1": candidate}))
+
+    assert parsed.name == "Wrapped"

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.db.automation import AiJob, AiUsageLedger, AutomationAuditEvent, AutomationProposal, AutomationRevision
+from backend.db.settings import Settings
 from backend.db.user import User
 from backend.services.ai_capability_context import build_automation_capability_context
 from backend.services.ai_gateway import AiProviderGateway, get_ai_gateway
@@ -27,6 +28,7 @@ from backend.services.automation_execution import (
 )
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
+from backend.utils.secure_settings import SecureSettingsError, decrypt_secret
 from three_mm_protocol.automation import (
     AutomationCapabilityContextV1,
     AutomationDefinitionV1,
@@ -34,6 +36,21 @@ from three_mm_protocol.automation import (
 
 
 router = APIRouter(prefix="/api/v1/ai", tags=["ai-automations"])
+
+
+def _server_managed_provider_key(db: Session, provider: str) -> str | None:
+    setting_key = {
+        "groq": "ai_groq_api_key",
+        "openrouter": "ai_openrouter_api_key",
+    }.get(provider)
+    if setting_key is None:
+        return None
+    row = db.scalar(select(Settings).where(
+        Settings.key == setting_key,
+        Settings.language_code.is_(None),
+        Settings.user_id.is_(None),
+    ))
+    return decrypt_secret(row.value) if row and row.value else None
 
 
 class CreateAutomationProposalRequest(BaseModel):
@@ -329,7 +346,12 @@ def execute_ai_job(
     if job is None:
         raise HTTPException(status_code=404, detail="AI job was not found")
     try:
-        return execute_job(db, job=job, intent=payload.intent, context=build_automation_capability_context(db), approved_max=payload.approved_max_microcredits, gateway=gateway, api_key=temporary_provider_key)
+        provider_key = temporary_provider_key
+        if job.payment_mode == "prepaid":
+            provider_key = _server_managed_provider_key(db, job.provider)
+        return execute_job(db, job=job, intent=payload.intent, context=build_automation_capability_context(db), approved_max=payload.approved_max_microcredits, gateway=gateway, api_key=provider_key)
+    except SecureSettingsError as exc:
+        raise HTTPException(status_code=500, detail="Server-managed provider key could not be decrypted") from exc
     except AiJobError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
