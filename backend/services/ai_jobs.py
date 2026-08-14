@@ -108,7 +108,11 @@ def execute_job(db: Session, *, job: AiJob, intent: str, context: AutomationCapa
         "Return exactly one AutomationDefinitionV1 JSON object at the top level. "
         "Do not wrap it in AutomationDefinitionV1, automation, definition, markdown, or prose. "
         "Required top-level fields are schema_version, name, description, execution, enabled, "
-        "trigger, and actions. Use only the supplied device_id and capability_id values; never generate code."
+        "trigger, and actions. Use only the supplied device_id and capability_id values; never generate code. "
+        "Capability metadata is authoritative: automation_role selects trigger or action, automation_events "
+        "and automation_actions list allowed operations, automation_channels lists allowed channel values, "
+        "automation_required_fields lists required conditions or arguments, and automation_value_type defines "
+        "the JSON type for value. Use JSON booleans true/false when that type is boolean."
     )
     messages = [{"role": "system", "content": prompt}, {"role": "user", "content": json.dumps({
         "intent": intent,

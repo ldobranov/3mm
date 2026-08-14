@@ -158,7 +158,7 @@ Acceptance criteria:
 
 Goal: let users describe behavior in natural language using existing trusted capabilities.
 
-Status: completed on 2026-08-13. See [MILESTONE_6_REPORT.md](MILESTONE_6_REPORT.md).
+Status: completed and Raspberry-validated on 2026-08-14. See [MILESTONE_6_REPORT.md](MILESTONE_6_REPORT.md).
 
 Deliverables:
 
@@ -171,6 +171,8 @@ Deliverables:
 - provider-independent AI gateway contract;
 - AI job estimate, budget reservation and usage ledger;
 - prepaid credit and bring-your-own-key integration boundaries;
+- free-provider routing with OpenRouter-to-Groq fallback;
+- device-reported deployment status and revision-based enable/disable controls;
 - guarantee that billing state cannot disable deployed local behavior.
 
 Acceptance criteria:
@@ -180,6 +182,8 @@ Acceptance criteria:
 - invalid AI output cannot be applied;
 - user can inspect exactly which devices and settings will change;
 - rollback restores the previous configuration revision;
+- enable/disable survives Agent restart and changes local trigger behavior;
+- failed Agent commands are shown as failed rather than merely applied;
 - every paid job has an approved maximum and recorded actual usage;
 - an exhausted AI balance blocks only new paid AI work;
 - reusing an unchanged artifact does not generate it again.

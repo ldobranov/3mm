@@ -1,5 +1,7 @@
 """Side-effect-free simulation and audited deployment of approved automations."""
 
+import hashlib
+import json
 from uuid import uuid4
 
 from sqlalchemy import func, select
@@ -138,3 +140,67 @@ def rollback(db: Session, *, current: AutomationRevision, actor_user_id: int) ->
     db.commit()
     db.refresh(restored)
     return restored
+
+
+def set_enabled(
+    db: Session,
+    *,
+    current: AutomationRevision,
+    enabled: bool,
+    actor_user_id: int,
+) -> AutomationRevision:
+    if not current.active or current.definition is None:
+        raise AutomationExecutionError("Only an active automation can be enabled or disabled")
+    definition = AutomationDefinitionV1.model_validate(current.definition)
+    if definition.enabled is enabled:
+        raise AutomationExecutionError("Automation already has the requested state")
+    updated = definition.model_copy(update={"enabled": enabled})
+    definition_json = updated.model_dump(mode="json")
+    device = db.scalar(select(Device).where(Device.device_id == updated.trigger.device_id))
+    if device is None or device.revoked_at is not None:
+        raise AutomationExecutionError("Target device is unavailable")
+    next_number = (db.scalar(select(func.max(AutomationRevision.revision)).where(
+        AutomationRevision.automation_id == current.automation_id
+    )) or 0) + 1
+    revision_id = f"ar_{uuid4().hex}"
+    command = queue_command(
+        db,
+        device=device,
+        command_type="automation.apply",
+        payload={
+            "automation_id": current.automation_id,
+            "revision": next_number,
+            "revision_id": revision_id,
+            "definition": definition_json,
+        },
+        idempotency_key=f"automation:{current.automation_id}:revision:{next_number}",
+        ttl_seconds=300,
+    )
+    current.active = False
+    revision = AutomationRevision(
+        revision_id=revision_id,
+        automation_id=current.automation_id,
+        revision=next_number,
+        proposal_id=current.proposal_id,
+        definition=definition_json,
+        definition_hash=hashlib.sha256(json.dumps(
+            definition_json, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+        ).encode()).hexdigest(),
+        active=True,
+        operation="enable" if enabled else "disable",
+        command_ids=[command.command_id],
+        applied_by_user_id=actor_user_id,
+    )
+    db.add(revision)
+    _audit(
+        db,
+        automation_id=current.automation_id,
+        proposal_id=current.proposal_id,
+        revision_id=revision_id,
+        actor_user_id=actor_user_id,
+        event_type="automation.enabled" if enabled else "automation.disabled",
+        details={"from_revision_id": current.revision_id, "command_ids": [command.command_id]},
+    )
+    db.commit()
+    db.refresh(revision)
+    return revision

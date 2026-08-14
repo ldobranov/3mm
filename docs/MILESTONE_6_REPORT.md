@@ -1,6 +1,6 @@
 # Milestone 6 Report
 
-Date: 2026-08-13
+Date: 2026-08-14
 
 ## Result
 
@@ -41,16 +41,38 @@ BYOK mode, inspect an estimate, approve the maximum, and generate a proposal.
 The same screen then supports readable review, explicit approval, simulation,
 dry-run, apply and rollback. Invalid capability references cannot be applied.
 
+The deployment view distinguishes the Core revision from the Agent result. It
+shows queued, installed and failed delivery states, the configured enabled or
+disabled state, and the last Agent error. Applied proposals are hidden from the
+review queue by default and remain available through the completed-history
+filter.
+
+Enable and disable operations create immutable revisions and use the same
+idempotent `automation.apply` command boundary. A disabled revision removes its
+runtime subscription while retaining the declarative automation on disk.
+
 ## Automated verification
 
-- 23 focused Core, Agent and shared-protocol tests pass for the Milestone 6
-  workflow and its existing command/module boundaries.
+- Focused Core, Agent and shared-protocol tests pass for proposal validation,
+  deployment status, revision-based enable/disable and restart restoration.
 - The migration test builds a clean database to the new head, verifies Alembic
   consistency, repeats the upgrade, and downgrades to base.
 - Tests cover prepaid reservation and settlement, insufficient balance, BYOK
   secret non-persistence, artifact reuse, simulation purity, audited rollback,
-  local offline execution and restart restoration.
+  local offline execution, disabled-subscription removal and restart restoration.
 - Frontend TypeScript checking and the production Vite build pass.
 
-No live paid provider request was made during this verification; provider calls
-are tested through the same injectable gateway contract used by production.
+## Raspberry acceptance result
+
+The workflow was deployed to `rasp-3mm` as an immutable working release. Live
+Groq and OpenRouter requests both produced proposals. The capability metadata
+contract rejected unsupported trigger/action combinations and non-Boolean GPIO
+values before deployment.
+
+Mock GPIO module `1.0.4` was installed on the Agent. The accepted automation was
+applied, persisted unchanged across Agent restart, disabled through revision 3,
+and enabled again through revision 4. With the automation disabled, changing
+`gpio.input.1` to `true` left `gpio.output.1` at `false`. After enabling and
+restarting the Agent, the same input transition changed the output to `true`.
+The behavior therefore runs locally without an AI provider in the execution
+path.

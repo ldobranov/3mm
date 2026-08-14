@@ -99,5 +99,35 @@ def validate_automation_capabilities(
                     f"device {reference.device_id!r}"
                 ),
             ))
+        else:
+            entry = next(item for item in context.capabilities if (
+                item.device_id == reference.device_id and item.capability_id == reference.capability_id
+            ))
+            metadata = entry.metadata
+            expected_role = "trigger" if path == "trigger" else "action"
+            declared_role = metadata.get("automation_role")
+            operation = automation.trigger.event if path == "trigger" else reference.action
+            allowed_key = "automation_events" if path == "trigger" else "automation_actions"
+            allowed = {item.strip() for item in str(metadata.get(allowed_key, "")).split(",") if item.strip()}
+            values = automation.trigger.conditions if path == "trigger" else reference.arguments
+            required = {item.strip() for item in str(metadata.get("automation_required_fields", "")).split(",") if item.strip()}
+            channels = {item.strip() for item in str(metadata.get("automation_channels", "")).split(",") if item.strip()}
+            reason = None
+            if declared_role and declared_role != expected_role:
+                reason = f"Capability {reference.capability_id!r} cannot be used as an automation {expected_role}"
+            elif allowed and operation not in allowed:
+                reason = f"Operation {operation!r} is not supported by capability {reference.capability_id!r}"
+            elif required - values.keys():
+                reason = f"Capability {reference.capability_id!r} requires fields {sorted(required)}"
+            elif channels and values.get("channel") not in channels:
+                reason = f"Channel {values.get('channel')!r} is not supported by capability {reference.capability_id!r}"
+            elif metadata.get("automation_value_type") == "boolean" and not isinstance(values.get("value"), bool):
+                reason = f"Capability {reference.capability_id!r} requires a Boolean value"
+            if reason:
+                issues.append(AutomationValidationIssue(
+                    path=path,
+                    code="capability.unavailable",
+                    message=reason,
+                ))
 
     return tuple(issues)

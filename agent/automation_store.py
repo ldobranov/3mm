@@ -50,7 +50,10 @@ class AutomationStore:
             raise ValueError("Automation revision is older than the active revision")
         items[automation.automation_id] = automation
         if self.runtime is not None:
-            self.runtime.activate_automation(automation.automation_id, automation.definition)
+            if automation.definition.enabled:
+                self.runtime.activate_automation(automation.automation_id, automation.definition)
+            else:
+                self.runtime.remove_automation(automation.automation_id)
         self._save(items)
         return {"automation_id": automation.automation_id, "revision": automation.revision, "active": True}
 
@@ -72,4 +75,5 @@ class AutomationStore:
             targets = {automation.definition.trigger.device_id, *(action.device_id for action in automation.definition.actions)}
             if targets != {device_id}:
                 raise RuntimeError("Stored automation targets a different device")
-            self.runtime.activate_automation(automation.automation_id, automation.definition)
+            if automation.definition.enabled:
+                self.runtime.activate_automation(automation.automation_id, automation.definition)

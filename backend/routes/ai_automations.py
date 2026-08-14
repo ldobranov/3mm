@@ -24,6 +24,7 @@ from backend.services.automation_execution import (
     apply_proposal,
     dry_run,
     rollback,
+    set_enabled,
     simulate,
 )
 from backend.utils.auth_dep import require_admin
@@ -86,6 +87,11 @@ ProposalStatus = Literal["validated", "invalid", "approved", "applied"]
 
 class SimulationRequest(BaseModel):
     event: dict | None = None
+    model_config = ConfigDict(extra="forbid")
+
+
+class SetAutomationEnabledRequest(BaseModel):
+    enabled: bool
     model_config = ConfigDict(extra="forbid")
 
 
@@ -293,6 +299,25 @@ def rollback_revision(
         raise HTTPException(status_code=404, detail="Automation revision was not found")
     try:
         return rollback(db, current=current, actor_user_id=admin.id)
+    except AutomationExecutionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/automation-revisions/{revision_id}/enabled",
+    response_model=AutomationRevisionResponse,
+)
+def change_automation_enabled(
+    revision_id: str,
+    payload: SetAutomationEnabledRequest,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> AutomationRevision:
+    current = db.scalar(select(AutomationRevision).where(AutomationRevision.revision_id == revision_id))
+    if current is None:
+        raise HTTPException(status_code=404, detail="Automation revision was not found")
+    try:
+        return set_enabled(db, current=current, enabled=payload.enabled, actor_user_id=admin.id)
     except AutomationExecutionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
