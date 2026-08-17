@@ -7,6 +7,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from '@/utils/i18n'
 import http from '@/utils/dynamic-http'
+import { readSettings } from '@/utils/settings-api'
 import '@/assets/styles.css';
 
 // Initialize stores
@@ -28,8 +29,7 @@ const authInterval = ref<ReturnType<typeof setInterval> | null>(null)
 
 const loadDefaults = async () => {
   try {
-    const response = await http.get('/settings/read')
-    const items = response.data.items || []
+    const items = await readSettings()
 
     const userThemeSetting = items.find((s: any) => s.key === 'user_theme')
     const userLanguageSetting = items.find((s: any) => s.key === 'user_language')
@@ -113,8 +113,7 @@ const loadDefaults = async () => {
 const fetchHeaderSettings = async () => {
   try {
     // Fetch header settings for current language (merged global + language-specific)
-    const response = await http.get(`/settings/read?language=${currentLanguage.value}`)
-    const items = response.data.items || []
+    const items = await readSettings(currentLanguage.value)
 
     // Update local refs with merged settings
     const siteNameSetting = items.find((s: any) => s.key === 'site_name')

@@ -114,7 +114,9 @@ import { useThemeStore } from '@/stores/theme';
 import { useSettingsStore } from '@/stores/settings';
 import { useI18n, i18n } from '@/utils/i18n';
 import http from '@/utils/dynamic-http';
-import { isMenuRouteEligible, normalizeAvailableLanguages } from '@/utils/menu-navigation';
+import { isMenuRouteEligible } from '@/utils/menu-navigation';
+import { readSettings, upsertSettings } from '@/utils/settings-api';
+import { readAvailableLanguages, readLanguageSettings } from '@/utils/language-api';
 
 // Import extracted components
 import ApplicationSettingsSection from '@/components/settings/ApplicationSettingsSection.vue';
@@ -228,10 +230,6 @@ export default defineComponent({
         'dark_body_bg', 'dark_content_bg', 'dark_button_primary_bg', 'dark_button_secondary_bg', 'dark_button_danger_bg',
         'dark_card_bg', 'dark_card_border', 'dark_panel_bg', 'dark_text_primary', 'dark_text_secondary', 'dark_text_muted',
         'dark_border_radius_sm', 'dark_border_radius_md', 'dark_border_radius_lg',
-        // Old theme settings (deprecated)
-        'theme', 'button_primary_bg', 'button_secondary_bg', 'card_bg', 'card_border', 'body_bg', 'content_bg',
-        'button_danger_bg', 'panel_bg', 'text_primary', 'text_secondary', 'text_muted',
-        'border_radius_sm', 'border_radius_md', 'border_radius_lg',
         // Network configuration
         'frontend_backend_url'
       ];
@@ -246,8 +244,10 @@ export default defineComponent({
     // API Functions
     const fetchSettings = async () => {
       try {
-        const response = await http.get('/settings/read');
-        settings.value = response.data.items || [];
+        settings.value = (await readSettings()).map(setting => ({
+          ...setting,
+          language_code: setting.language_code ?? undefined
+        }));
         await settingsStore.loadSettings();
       } catch (error) {
         console.error('Failed to fetch settings:', error);
@@ -276,8 +276,7 @@ export default defineComponent({
 
     const fetchAvailableLanguages = async () => {
       try {
-        const response = await http.get('/language/available');
-        availableLanguages.value = normalizeAvailableLanguages(response.data.languages);
+        availableLanguages.value = await readAvailableLanguages();
         if (!availableLanguages.value.includes(menuLanguage.value)) {
           menuLanguage.value = 'en';
           localStorage.setItem('settingsMenuLanguage', 'en');
@@ -298,14 +297,7 @@ export default defineComponent({
       successMessage.value = '';
       
       try {
-        for (const setting of filteredSettings.value) {
-          await http.put('/settings/update', {
-            id: setting.id,
-            key: setting.key,
-            value: setting.value,
-            description: setting.description
-          });
-        }
+        await upsertSettings(filteredSettings.value);
         successMessage.value = 'Settings saved successfully!';
         setTimeout(() => successMessage.value = '', 3000);
         window.dispatchEvent(new Event('settings-updated'));
@@ -602,8 +594,7 @@ export default defineComponent({
 
     const loadLanguageSettings = async (languageCode: string) => {
       try {
-        const response = await http.get(`/settings/language/${languageCode}`);
-        const items = response.data.items || [];
+        const items = await readLanguageSettings(languageCode);
         languageSettingsMap.value.set(languageCode, items);
         return items;
       } catch (error) {
@@ -621,25 +612,12 @@ export default defineComponent({
           language_code: languageCode
         };
 
-        const response = await http.get('/settings/read');
-        const existingSettings = response.data.items || [];
-        const existing = existingSettings.find((s: Setting) =>
-          s.key === key && s.language_code === languageCode
-        );
-
-        if (existing) {
-          await http.put('/settings/update', {
-            id: existing.id,
-            ...settingData
-          });
-        } else {
-          await http.post('/settings/create', settingData);
-        }
+        await upsertSettings([settingData]);
 
         // Update the language settings map for the current language
         const langSettings = languageSettingsMap.value.get(languageCode) || [];
         const updatedSettings = langSettings.filter((item: Setting) => item.key !== key);
-        updatedSettings.push({ id: existing?.id, ...settingData });
+        updatedSettings.push(settingData);
         languageSettingsMap.value.set(languageCode, updatedSettings);
 
       } catch (error) {

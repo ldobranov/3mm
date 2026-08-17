@@ -3,7 +3,6 @@ import type { RouteRecordRaw } from 'vue-router';
 import Login from '../views/Login.vue';
 import Register from '../views/Register.vue';
 import Settings from '../views/Settings.vue';
-import SettingsEditor from '../views/SettingsEditor.vue';
 import Users from '../views/Users.vue';
 import Profile from '../views/Profile.vue';
 import Extensions from '@/views/Extensions.vue';
@@ -215,7 +214,6 @@ export async function createRouterWithDynamicRoutes() {
     { path: '/user/logout', name: 'Logout', component: () => import('../views/Logout.vue') },
     { path: '/settings', name: 'Settings', component: Settings, meta: { requiresAuth: true } },
     { path: '/security', name: 'Security', component: () => import('../views/Security.vue'), meta: { requiresAuth: true } },
-    { path: '/settings-editor', name: 'SettingsEditor', component: SettingsEditor, meta: { requiresAuth: true } },
     { path: '/users', name: 'Users', component: Users, meta: { requiresAuth: true } },
     { path: '/dashboard', name: 'DashboardList', component: () => import('@/views/DashboardList.vue'), meta: { requiresAuth: true } },
     { path: '/dashboard/:id/edit', name: 'DisplayEditor', component: () => import('@/views/DisplayEditor.vue'), meta: { requiresAuth: true } },

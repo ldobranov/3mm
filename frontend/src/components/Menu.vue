@@ -112,6 +112,7 @@ import { useI18n } from '@/utils/i18n';
 import { useSettingsStore } from '@/stores/settings';
 import ThemeToggle from './ThemeToggle.vue';
 import { mergeNavigationItems } from '@/utils/menu-navigation';
+import { readAvailableLanguages, readLanguageSettings } from '@/utils/language-api';
 
 export default defineComponent({
   name: 'Menu',
@@ -132,7 +133,7 @@ export default defineComponent({
 
     const router = useRouter();
     const { t, currentLanguage, setLanguage } = useI18n();
-    const availableLanguages = ref<string[]>(['en', 'bg']);
+    const availableLanguages = ref<string[]>(['en']);
     const selectedLanguage = ref<string>('en');
 
     // Update auth token ref
@@ -238,8 +239,7 @@ export default defineComponent({
     const fetchMenuItems = async () => {
       try {
         // Load language-specific settings for header
-        const langSettingsResponse = await http.get(`/settings/language/${currentLanguage.value}`);
-        const langSettings = langSettingsResponse.data.items || [];
+        const langSettings = await readLanguageSettings(currentLanguage.value);
 
         // Update header settings for current language
         const siteName = langSettings.find((s: any) => s.key === 'site_name');
@@ -299,8 +299,7 @@ export default defineComponent({
 
     const fetchAvailableLanguages = async () => {
       try {
-        const response = await http.get('/language/available');
-        availableLanguages.value = response.data.languages || ['en'];
+        availableLanguages.value = await readAvailableLanguages();
       } catch (error) {
         console.error('Failed to fetch available languages:', error);
         availableLanguages.value = ['en']; // Fallback to English only

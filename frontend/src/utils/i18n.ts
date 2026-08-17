@@ -3,7 +3,7 @@
  */
 
 import { ref, computed } from 'vue'
-import http from '@/utils/dynamic-http'
+import { readFrontendTranslations, saveCurrentUserLanguage } from '@/utils/language-api'
 
 interface Translations {
   [key: string]: any
@@ -91,11 +91,7 @@ class FrontendI18n {
   // Load translations from backend API
   private async loadBackendTranslations(languageCode: string): Promise<Translations> {
     try {
-      // Import http dynamically to avoid circular dependency
-      const { default: http } = await import('@/utils/dynamic-http')
-      const response = await http.get(`/api/translations/${languageCode}`)
-      const data = response.data
-      return data.frontend || {}
+      return await readFrontendTranslations(languageCode)
     } catch (error) {
       console.error(`Failed to load backend translations for ${languageCode}:`, error)
       return {}
@@ -252,7 +248,7 @@ class FrontendI18n {
 
     // Save to backend (async)
     try {
-      await http.post('/api/user/language', { language: languageCode })
+      await saveCurrentUserLanguage(languageCode)
     } catch (error) {
       // Ignore backend errors
     }
