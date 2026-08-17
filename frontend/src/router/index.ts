@@ -41,9 +41,11 @@ async function loadExtensionRoutes(): Promise<RouteRecordRaw[]> {
   // Preferred: query enabled extensions with real versions from backend (public endpoint).
   // Fallback: filesystem discovery.
   const enabledExtensions: Array<{ name: string; version: string }> = [];
+  let extensionApiAvailable = false;
 
   try {
     const response = await http.get('/api/extensions/public');
+    extensionApiAvailable = true;
     const items = response.data?.items || [];
     for (const item of items) {
       if (item?.name && item?.version) {
@@ -54,7 +56,7 @@ async function loadExtensionRoutes(): Promise<RouteRecordRaw[]> {
     console.warn('Router: failed to fetch /api/extensions/public, falling back to filesystem discovery:', error);
   }
 
-  if (enabledExtensions.length === 0) {
+  if (!extensionApiAvailable) {
     // Fallback: dynamically discover extensions that have frontend routes
     try {
       const candidates: Array<{ name: string; version: string; hasRoutes: boolean }> = [];

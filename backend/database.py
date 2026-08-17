@@ -36,6 +36,7 @@ from backend.db.device import (
     DeviceState,
 )
 from backend.db.module import ModulePackage, ModuleInstallation
+from backend.db.runtime_extension import RuntimeEntityRecord, RuntimeExtensionDefinition
 from backend.db.automation import (
     AiCreditAccount, AiJob, AiUsageLedger, AutomationAuditEvent,
     AutomationProposal, AutomationRevision,

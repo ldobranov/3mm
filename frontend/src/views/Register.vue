@@ -1,5 +1,5 @@
 <template>
-  <div class="view" :key="currentLanguage">
+  <div class="view">
     <div class="view-header">
       <h1 class="view-title">{{ t('register.title', 'Register') }}</h1>
     </div>
@@ -71,18 +71,15 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed } from 'vue';
+import { defineComponent, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useSettingsStore } from '@/stores/settings';
 import { useI18n } from '@/utils/i18n';
 import http from '@/utils/dynamic-http';
 import type { AxiosError } from 'axios';
 
 export default defineComponent({
   setup() {
-    const settingsStore = useSettingsStore();
-    const { t, currentLanguage } = useI18n();
-    const styleSettings = computed(() => settingsStore.styleSettings);
+    const { t } = useI18n();
     
     const username = ref('');
     const email = ref('');
@@ -131,10 +128,7 @@ export default defineComponent({
               console.error('Failed to fetch profile after registration', e);
             }
             
-            // Trigger menu refresh
-            if ((window as any).refreshMenu) {
-              (window as any).refreshMenu();
-            }
+            // Notify the application shell that authentication state changed.
             window.dispatchEvent(new Event('menu-refresh'));
             
             // Navigate to profile
@@ -168,8 +162,6 @@ export default defineComponent({
       register,
       errorMessage,
       successMessage,
-      styleSettings,
-      currentLanguage,
       t
     };
   },

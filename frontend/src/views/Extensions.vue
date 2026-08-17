@@ -11,7 +11,7 @@
     </div>
 
     <!-- Upload Section -->
-    <div class="card upload-section" :style="{ backgroundColor: settingsStore.styleSettings.cardBg, color: settingsStore.styleSettings.textPrimary, borderColor: settingsStore.styleSettings.cardBorder }">
+    <div v-if="isAdmin" class="card upload-section" :style="{ backgroundColor: settingsStore.styleSettings.cardBg, color: settingsStore.styleSettings.textPrimary, borderColor: settingsStore.styleSettings.cardBorder }">
       <div class="card-content">
         <h2>{{ t('extensions.uploadExtension', 'Upload Extension') }}</h2>
         <form @submit.prevent="uploadExtension" class="upload-form">
@@ -38,6 +38,7 @@
     <div class="card extensions-list" :style="{ backgroundColor: settingsStore.styleSettings.cardBg, color: settingsStore.styleSettings.textPrimary, borderColor: settingsStore.styleSettings.cardBorder }">
       <div class="card-content">
         <h2>{{ t('extensions.installedExtensions', 'Installed Extensions') }}</h2>
+        <div v-if="operationError" class="error-message">{{ operationError }}</div>
         <div v-if="loading" class="loading">{{ t('extensions.loadingExtensions', 'Loading extensions...') }}</div>
         <div v-else-if="extensions.length === 0" class="no-extensions">
           {{ t('extensions.noExtensionsInstalled', 'No extensions installed yet.') }}
@@ -55,6 +56,7 @@
             </div>
             <div class="extension-meta">
               <span class="extension-type">{{ ext.type }}</span>
+              <span v-if="ext.source === 'runtime'" class="runtime-badge">Runtime</span>
               <span v-if="ext.author" class="extension-author">{{ t('extensions.by', 'by') }} {{ ext.author }}</span>
             </div>
             <p v-if="ext.description" class="extension-description">{{ ext.description }}</p>
@@ -66,14 +68,52 @@
                 <input
                   type="checkbox"
                   :checked="ext.is_enabled"
-                  @change="toggleExtension(ext.id, $event)"
+                  :disabled="!ext.can_manage || !ext.is_installed || operationBusy === ext.id"
+                  @change="toggleExtension(ext, $event)"
                 />
                 <span class="slider"></span>
               </label>
             </div>
             <div class="extension-actions">
-               <button @click="deleteExtension(ext)" class="delete-btn">
-                 {{ t('extensions.delete', 'Delete') }}
+               <div v-if="ext.source === 'runtime' && ext.is_installed" class="version-controls">
+                 <label :for="`version-${ext.id}`">{{ t('extensions.version', 'Version') }}</label>
+                 <select :id="`version-${ext.id}`" v-model="selectedVersions[ext.id]">
+                   <option v-for="version in ext.available_versions" :key="version" :value="version">
+                     {{ version }}
+                   </option>
+                 </select>
+                 <button
+                   class="version-btn"
+                   :disabled="!ext.can_manage || selectedVersions[ext.id] === ext.version || operationBusy === ext.id"
+                   @click="activateVersion(ext)"
+                 >
+                   {{ activatingVersion === ext.id
+                     ? t('extensions.activatingVersion', 'Activating...')
+                     : t('extensions.activateVersion', 'Activate version') }}
+                 </button>
+               </div>
+               <span v-if="ext.source === 'runtime' && ext.is_installed" class="managed-note">
+                 {{ t('extensions.runtimeDataPreserved', 'Data is preserved when disabled') }}
+               </span>
+               <button
+                 v-if="ext.source === 'runtime' && !ext.is_installed && ext.can_manage"
+                 class="version-btn"
+                 :disabled="operationBusy === ext.id"
+                 @click="reinstallExtension(ext)"
+               >
+                 {{ operationBusy === ext.id
+                   ? t('extensions.reinstalling', 'Reinstalling...')
+                   : t('extensions.reinstall', 'Reinstall') }}
+               </button>
+               <button
+                 v-if="ext.source === 'legacy' || (ext.is_installed && ext.can_manage)"
+                 @click="deleteExtension(ext)"
+                 class="delete-btn"
+                 :disabled="operationBusy === ext.id"
+               >
+                 {{ ext.source === 'runtime'
+                   ? t('extensions.uninstall', 'Uninstall')
+                   : t('extensions.delete', 'Delete') }}
                </button>
              </div>
           </div>
@@ -86,20 +126,30 @@
       <div class="modal-container">
         <div class="modal-surface" @click.stop>
           <div class="modal-header">
-            <h2>{{ t('extensions.deleteExtension', 'Delete Extension') }}</h2>
+            <h2>{{ extensionToDelete?.source === 'runtime'
+              ? t('extensions.uninstallExtension', 'Uninstall Extension')
+              : t('extensions.deleteExtension', 'Delete Extension') }}</h2>
           </div>
 
           <div class="modal-body">
-            <p>{{ t('extensions.deleteConfirm', 'Are you sure you want to delete this extension?') }}</p>
+            <p>{{ extensionToDelete?.source === 'runtime'
+              ? t('extensions.uninstallConfirm', 'Uninstall this runtime extension? Its routes and menu entries will be removed.')
+              : t('extensions.deleteConfirm', 'Are you sure you want to delete this extension?') }}</p>
             <p><strong>{{ extensionToDelete?.name }} v{{ extensionToDelete?.version }}</strong></p>
 
             <!-- Database data deletion checkbox - only show if extension has tables -->
-            <div v-if="extensionToDelete?.type === 'extension'" class="form-field">
+            <div v-if="extensionToDelete?.type === 'extension' || extensionToDelete?.source === 'runtime'" class="form-field">
               <label class="checkbox-label">
                 <input type="checkbox" v-model="deleteDatabaseData" />
-                {{ t('extensions.deleteDatabaseData', 'Also delete all database tables and data created by this extension') }}
+                {{ extensionToDelete?.source === 'runtime'
+                  ? t('extensions.deleteRuntimeData', 'Also permanently delete all data created by this extension')
+                  : t('extensions.deleteDatabaseData', 'Also delete all database tables and data created by this extension') }}
               </label>
-              <small class="help-text">{{ t('extensions.deleteDatabaseDataWarning', 'This action cannot be undone. All data will be permanently lost.') }}</small>
+              <small class="help-text">{{ extensionToDelete?.source === 'runtime'
+                ? (deleteDatabaseData
+                  ? t('extensions.deleteDatabaseDataWarning', 'This action cannot be undone. All data will be permanently lost.')
+                  : t('extensions.preserveRuntimeData', 'Data will be preserved and becomes available after reinstalling the extension.'))
+                : t('extensions.deleteDatabaseDataWarning', 'This action cannot be undone. All selected data will be permanently lost.') }}</small>
             </div>
 
             <!-- Uploaded files deletion checkbox - only show if extension uploads files -->
@@ -113,11 +163,13 @@
           </div>
 
           <div class="modal-footer">
-            <button @click="cancelDeleteExtension" class="button button-secondary">
+            <button @click="cancelDeleteExtension" class="button button-secondary" :disabled="operationBusy !== null">
               {{ t('extensions.cancel', 'Cancel') }}
             </button>
-            <button @click="confirmDeleteExtension" class="button button-danger">
-              {{ t('extensions.delete', 'Delete') }}
+            <button @click="confirmDeleteExtension" class="button button-danger" :disabled="operationBusy !== null">
+              {{ extensionToDelete?.source === 'runtime'
+                ? t('extensions.uninstall', 'Uninstall')
+                : t('extensions.delete', 'Delete') }}
             </button>
           </div>
         </div>
@@ -132,14 +184,18 @@ import http from '@/utils/dynamic-http';
 import { useI18n, i18n } from '@/utils/i18n';
 import { useSettingsStore } from '@/stores/settings';
 import { useThemeStore } from '@/stores/theme';
+import { useRouter } from 'vue-router';
+import { reloadRuntimeExtensionRoutes } from '@/utils/runtime-extensions';
 
 const { t, currentLanguage } = useI18n();
 const settingsStore = useSettingsStore();
 const themeStore = useThemeStore();
+const router = useRouter();
 
 
 interface Extension {
-  id: number;
+  id: string;
+  source: 'legacy' | 'runtime';
   name: string;
   type: string;
   version: string;
@@ -148,6 +204,10 @@ interface Extension {
   status: string;
   is_enabled: boolean;
   created_at: string;
+  can_manage: boolean;
+  available_versions: string[];
+  package_sha256?: string | null;
+  is_installed: boolean;
 }
 
 const extensions = ref<Extension[]>([]);
@@ -160,6 +220,10 @@ const showDeleteModal = ref(false);
 const extensionToDelete = ref<Extension | null>(null);
 const deleteDatabaseData = ref(false);
 const deleteUploadedFiles = ref(false);
+const selectedVersions = ref<Record<string, string>>({});
+const activatingVersion = ref<string | null>(null);
+const operationBusy = ref<string | null>(null);
+const operationError = ref('');
 
 const isAdmin = computed(() => (localStorage.getItem('role') || '') === 'admin');
 
@@ -171,12 +235,17 @@ const authHeaders = () => {
 const loadExtensions = async () => {
   loading.value = true;
   try {
-    const res = await http.get('/api/extensions');
-    extensions.value = res.data.items || [];
+    const res = await http.get('/api/v1/runtime-extensions/catalog', {
+      params: { language: currentLanguage.value }
+    });
+    extensions.value = res.data || [];
+    selectedVersions.value = Object.fromEntries(
+      extensions.value.map(extension => [extension.id, extension.version])
+    );
 
     // Load translations for enabled extensions
     for (const ext of extensions.value) {
-      if (ext.is_enabled) {
+      if (ext.source === 'legacy' && ext.is_enabled) {
         await i18n.loadExtensionTranslationsForExtension(ext.name, currentLanguage.value);
       }
     }
@@ -225,31 +294,46 @@ const uploadExtension = async () => {
   }
 };
 
-const toggleExtension = async (extensionId: number, event: Event) => {
+const toggleExtension = async (extension: Extension, event: Event) => {
   const target = event.target as HTMLInputElement;
   const isEnabled = target.checked;
+  operationBusy.value = extension.id;
+  operationError.value = '';
 
   try {
-    await http.patch(
-      `/api/extensions/${extensionId}`,
-      { is_enabled: isEnabled }
-    );
+    if (extension.source === 'runtime') {
+      const moduleId = extension.id.replace('runtime:', '');
+      await http.patch(
+        `/api/v1/runtime-extensions/definitions/${encodeURIComponent(moduleId)}`,
+        { enabled: isEnabled }
+      );
+      await reloadRuntimeExtensionRoutes(router);
+      window.dispatchEvent(new Event('menu-refresh'));
+    } else {
+      await http.patch(
+        `/api/extensions/${extension.id.replace('legacy:', '')}`,
+        { is_enabled: isEnabled }
+      );
+    }
 
     // Update local state
-    const ext = extensions.value.find(e => e.id === extensionId);
+    const ext = extensions.value.find(e => e.id === extension.id);
     if (ext) {
       ext.is_enabled = isEnabled;
       ext.status = isEnabled ? 'active' : 'inactive';
 
       // Reload translations if extension was enabled
-      if (isEnabled) {
+      if (extension.source === 'legacy' && isEnabled) {
         await i18n.loadExtensionTranslationsForExtension(ext.name, currentLanguage.value);
       }
     }
   } catch (error) {
     console.error('Failed to toggle extension:', error);
+    operationError.value = errorMessage(error, t('extensions.toggleError', 'Could not change the extension status.'));
     // Revert checkbox
     target.checked = !isEnabled;
+  } finally {
+    operationBusy.value = null;
   }
 };
 
@@ -260,23 +344,81 @@ const deleteExtension = (extension: Extension) => {
   showDeleteModal.value = true;
 };
 
+const activateVersion = async (extension: Extension) => {
+  const version = selectedVersions.value[extension.id];
+  if (extension.source !== 'runtime' || !version || version === extension.version) return;
+
+  activatingVersion.value = extension.id;
+  operationBusy.value = extension.id;
+  operationError.value = '';
+  try {
+    const moduleId = extension.id.replace('runtime:', '');
+    await http.post(
+      `/api/v1/runtime-extensions/definitions/${encodeURIComponent(moduleId)}/versions/${encodeURIComponent(version)}/activate`
+    );
+    await reloadRuntimeExtensionRoutes(router);
+    window.dispatchEvent(new Event('menu-refresh'));
+    await loadExtensions();
+  } catch (error) {
+    console.error('Failed to activate runtime extension version:', error);
+    operationError.value = errorMessage(error, t('extensions.versionError', 'Could not activate the selected version.'));
+  } finally {
+    activatingVersion.value = null;
+    operationBusy.value = null;
+  }
+};
+
+const errorMessage = (error: any, fallback: string): string =>
+  error?.response?.data?.detail || error?.response?.data?.error || fallback;
+
+const reinstallExtension = async (extension: Extension) => {
+  if (!extension.package_sha256 || !extension.can_manage) return;
+  operationBusy.value = extension.id;
+  operationError.value = '';
+  try {
+    await http.post(`/api/v1/runtime-extensions/packages/${extension.package_sha256}/activate`);
+    await reloadRuntimeExtensionRoutes(router);
+    window.dispatchEvent(new Event('menu-refresh'));
+    await loadExtensions();
+  } catch (error) {
+    console.error('Failed to reinstall runtime extension:', error);
+    operationError.value = errorMessage(error, t('extensions.reinstallError', 'Could not reinstall the extension.'));
+  } finally {
+    operationBusy.value = null;
+  }
+};
+
 const confirmDeleteExtension = async () => {
   if (!extensionToDelete.value) return;
+  operationBusy.value = extensionToDelete.value.id;
+  operationError.value = '';
 
   try {
-    await http.delete(`/api/extensions/${extensionToDelete.value.id}`, {
-      params: {
-        deleteData: deleteDatabaseData.value,
-        deleteFiles: deleteUploadedFiles.value
-      }
-    });
+    if (extensionToDelete.value.source === 'runtime') {
+      const moduleId = extensionToDelete.value.id.replace('runtime:', '');
+      await http.delete(
+        `/api/v1/runtime-extensions/definitions/${encodeURIComponent(moduleId)}`,
+        { params: { delete_data: deleteDatabaseData.value } }
+      );
+      await reloadRuntimeExtensionRoutes(router);
+      window.dispatchEvent(new Event('menu-refresh'));
+    } else {
+      await http.delete(`/api/extensions/${extensionToDelete.value.id.replace('legacy:', '')}`, {
+        params: {
+          deleteData: deleteDatabaseData.value,
+          deleteFiles: deleteUploadedFiles.value
+        }
+      });
+    }
 
-    // Remove from local state
-    extensions.value = extensions.value.filter(e => e.id !== extensionToDelete.value!.id);
+    await loadExtensions();
     showDeleteModal.value = false;
     extensionToDelete.value = null;
   } catch (error) {
     console.error('Failed to delete extension:', error);
+    operationError.value = errorMessage(error, t('extensions.uninstallError', 'Could not remove the extension.'));
+  } finally {
+    operationBusy.value = null;
   }
 };
 
@@ -302,12 +444,8 @@ watch(() => themeStore.theme, async () => {
 });
 
 // Watch for language changes and reload extension translations
-watch(currentLanguage, async (newLang) => {
-  for (const ext of extensions.value) {
-    if (ext.is_enabled) {
-      await i18n.loadExtensionTranslationsForExtension(ext.name, newLang);
-    }
-  }
+watch(currentLanguage, async () => {
+  await loadExtensions();
 });
 </script>
 
@@ -455,6 +593,24 @@ watch(currentLanguage, async (newLang) => {
   color: var(--text-secondary);
 }
 
+.runtime-badge {
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.managed-note {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.toggle-switch input:disabled + .slider {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .extension-description {
   color: var(--text-secondary);
   margin-bottom: 1rem;
@@ -543,6 +699,37 @@ input:checked + .slider:before {
 .extension-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.version-controls {
+  display: flex;
+  align-items: end;
+  gap: 0.5rem;
+  margin-right: auto;
+}
+
+.version-controls label {
+  align-self: center;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.version-controls select,
+.version-btn {
+  min-height: 2.25rem;
+  border: 1px solid var(--card-border);
+  border-radius: var(--border-radius-md);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  padding: 0.375rem 0.625rem;
+}
+
+.version-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .delete-btn {

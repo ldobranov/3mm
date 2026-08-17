@@ -25,7 +25,6 @@ const showDefaultLogo = computed(() => !logoUrl.value)
 
 // Authentication status
 const isAuthenticated = ref(!!localStorage.getItem('authToken'))
-const authInterval = ref<ReturnType<typeof setInterval> | null>(null)
 
 const loadDefaults = async () => {
   try {
@@ -138,19 +137,22 @@ const fetchHeaderSettings = async () => {
   }
 }
 
-// Poll for auth token changes (since localStorage changes don't trigger watchers)
-const checkAuth = () => {
+const syncAuthState = () => {
   const currentAuth = !!localStorage.getItem('authToken')
   if (currentAuth !== isAuthenticated.value) {
     isAuthenticated.value = currentAuth
   }
 }
 
+const handleAuthStorageChange = (event: StorageEvent) => {
+  if (event.key === 'authToken') {
+    syncAuthState()
+  }
+}
+
 // Watch for authentication changes
 watch(isAuthenticated, async (newVal, oldVal) => {
-  console.log('auth watcher triggered: newVal', newVal, 'oldVal', oldVal)
   if (newVal && !oldVal) {
-    console.log('user logged in, calling loadDefaults')
     // User just logged in, reload defaults to save preferences
     await loadDefaults()
   }
@@ -162,20 +164,20 @@ onMounted(async () => {
   window.addEventListener('settings-updated', fetchHeaderSettings)
   // Listen for language changes
   window.addEventListener('language-changed', fetchHeaderSettings)
+  // Same-tab auth changes use the application event; other tabs use storage.
+  window.addEventListener('menu-refresh', syncAuthState)
+  window.addEventListener('storage', handleAuthStorageChange)
 
   // Load default theme and language for new users
   await loadDefaults()
 
-  // Start polling for auth changes
-  authInterval.value = setInterval(checkAuth, 1000)
 })
 
 onUnmounted(() => {
   window.removeEventListener('settings-updated', fetchHeaderSettings)
   window.removeEventListener('language-changed', fetchHeaderSettings)
-  if (authInterval.value) {
-    clearInterval(authInterval.value)
-  }
+  window.removeEventListener('menu-refresh', syncAuthState)
+  window.removeEventListener('storage', handleAuthStorageChange)
 })
 </script>
 

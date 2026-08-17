@@ -41,6 +41,7 @@ from backend.routes.language_routes import router as language_router
 from backend.routes.marketplace_routes import router as marketplace_router
 from backend.routes.monitoring_routes import router as monitoring_router
 from backend.routes.modules import router as modules_router
+from backend.routes.runtime_extensions import router as runtime_extensions_router
 from backend.routes.permission_routes import router as permission_router
 from backend.routes.role_routes import router as role_router
 from backend.routes.session_routes import router as session_router
@@ -215,6 +216,7 @@ app.include_router(device_state_router)
 app.include_router(device_capabilities_router)
 app.include_router(device_events_router)
 app.include_router(modules_router)
+app.include_router(runtime_extensions_router)
 app.include_router(ai_automations_router)
 app.include_router(refresh_router, prefix="/api")
 app.include_router(session_router, prefix="/api")

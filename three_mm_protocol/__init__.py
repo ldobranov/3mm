@@ -26,6 +26,14 @@ from three_mm_protocol.automation import (
     CapabilityEventTrigger,
     validate_automation_capabilities,
 )
+from three_mm_protocol.runtime_extension import (
+    LocalizedTextV1,
+    RuntimeEntityV1,
+    RuntimeExtensionV1,
+    RuntimeFieldV1,
+    RuntimeNavigationItemV1,
+    RuntimePageV1,
+)
 
 __all__ = [
     "PROTOCOL_VERSION",
@@ -51,4 +59,10 @@ __all__ = [
     "CapabilityContextEntry",
     "CapabilityEventTrigger",
     "validate_automation_capabilities",
+    "LocalizedTextV1",
+    "RuntimeEntityV1",
+    "RuntimeExtensionV1",
+    "RuntimeFieldV1",
+    "RuntimeNavigationItemV1",
+    "RuntimePageV1",
 ]

@@ -1,6 +1,6 @@
 # 3mm Roadmap
 
-Status: active; Milestones 0–5 completed on 2026-08-09
+Status: active; Milestones 0–6 completed
 Planning style: sequential milestones with a runnable result after every milestone
 
 Dates are intentionally not assigned until the current baseline is reproducible. Progress is measured by acceptance criteria, not optimistic calendar estimates.
@@ -188,7 +188,36 @@ Acceptance criteria:
 - an exhausted AI balance blocks only new paid AI work;
 - reusing an unchanged artifact does not generate it again.
 
-## Milestone 7 — Real Raspberry Pi validation
+## Milestone 7 — AI-generated runtime extensions
+
+Goal: make the AI Extension Builder publish useful extensions that become available immediately, without rebuilding the Core frontend or executing arbitrary generated code.
+
+Status: in progress; runtime-extension v1 contract started on 2026-08-17.
+
+Deliverables:
+
+- versioned `runtime-extension v1` declarative contract;
+- strict validation with deny-by-default fields and actions;
+- generic Core storage and CRUD boundary for runtime entities;
+- precompiled Vue renderer for runtime pages, tables, forms and navigation;
+- one hand-written reference CRUD extension proving install-to-use behavior;
+- AI generation constrained to the runtime contract;
+- draft persistence, validation report and preview in Extension Builder;
+- transactional publish, activation and rollback;
+- explicit separation between immediately runnable `runtime` extensions and externally built `compiled` extensions.
+
+Acceptance criteria:
+
+- a new runtime extension is installed and opened without rebuilding or restarting the frontend;
+- routes and navigation are derived from the validated package rather than a concrete extension name;
+- invalid fields, undeclared actions and executable frontend/backend content are rejected;
+- a hand-written CRUD reference extension can create, list, edit and delete records;
+- AI can generate the same valid reference capability from a natural-language request;
+- the user previews the manifest, pages, permissions and validation report before publish;
+- failed activation restores the prior version and leaves no partially enabled extension;
+- installed runtime behavior continues without AI availability or provider credit.
+
+## Milestone 8 — Real Raspberry Pi validation
 
 Goal: replace mock hardware with real Raspberry adapters while preserving contracts.
 
@@ -209,7 +238,7 @@ Acceptance criteria:
 - CPU, memory and storage remain within documented limits;
 - clean device installation can be repeated from the guide.
 
-## Milestone 8 — Safe AI module builder
+## Milestone 9 — Safe compiled AI module builder
 
 Goal: evolve the existing AI Extension Builder into a controlled module development pipeline.
 
@@ -231,7 +260,7 @@ Acceptance criteria:
 - installed artifact corresponds exactly to the reviewed hash;
 - removal and rollback are verified.
 
-## Milestone 9 — Production operations
+## Milestone 10 — Production operations
 
 Goal: make small real installations supportable.
 
@@ -253,7 +282,7 @@ Acceptance criteria:
 - storage cannot grow without configured bounds;
 - release and rollback procedures are repeatable.
 
-## Milestone 10 — Ecosystem expansion
+## Milestone 11 — Ecosystem expansion
 
 Goal: expand capabilities without weakening Core architecture.
 
@@ -337,6 +366,12 @@ These are the first concrete tasks after approval of this plan:
 - [x] Run local GPIO rules while Core is offline and replay timestamped events.
 - [x] Verify duplicate event replay remains idempotent on physical `rasp-3mm`.
 - [x] Complete the Milestone 5 automated and physical acceptance suite and report.
+- [x] Define and test the strict `runtime-extension v1` declarative contract.
+- [x] Add generic Core storage and a versioned, contract-validated runtime CRUD API.
+- [x] Implement the generic runtime page renderer and route registration.
+- [x] Add a hand-written Contacts CRUD runtime package and transactional catalog activation.
+- [ ] Prove Contacts install-to-use behavior in the browser on Raspberry Pi.
+- [ ] Constrain AI Extension Builder generation to the runtime contract.
 - [ ] Validate the open setup-only access point and persistent NetworkManager profile across a Raspberry Pi reboot.
 - [ ] Validate automatic transition from setup services to the selected runtime role on physical `rasp-3mm`.
 

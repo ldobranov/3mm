@@ -73,5 +73,7 @@ def disable_module(module_id:str,device_id:str,_admin:User=Depends(require_admin
 def registrations(_admin:User=Depends(require_admin),db:Session=Depends(get_db)):
     result=[]
     for package in db.scalars(select(ModulePackage)):
+        if (package.manifest.get("entrypoints") or {}).get("ui") == "runtime-extension.json":
+            continue
         for item in package.registrations or []: result.append({"module_id":package.module_id,"version":package.version,**item})
     return result

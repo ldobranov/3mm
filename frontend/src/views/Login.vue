@@ -1,5 +1,5 @@
 <template>
-  <div class="view" :key="currentLanguage">
+  <div class="view">
     <div class="view-header">
       <h1 class="view-title">{{ t('login.title', 'Login') }}</h1>
       <div class="network-recovery">
@@ -64,17 +64,14 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed } from 'vue';
+import { defineComponent, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useSettingsStore } from '@/stores/settings';
 import { useI18n } from '@/utils/i18n';
 import http from '@/utils/dynamic-http';
 
 export default defineComponent({
   setup() {
-    const settingsStore = useSettingsStore();
-    const { t, currentLanguage } = useI18n();
-    const styleSettings = computed(() => settingsStore.styleSettings);
+    const { t } = useI18n();
 
     const email = ref('');
     const password = ref('');
@@ -84,18 +81,11 @@ export default defineComponent({
     const router = useRouter();
 
     const login = async () => {
-      console.log('=== LOGIN FUNCTION CALLED ===');
-      console.log('Login attempt started');
-      console.log('Email:', email.value);
-      console.log('Password length:', password.value.length);
-
       try {
-        console.log('Making HTTP request to /api/user/login');
         const response = await http.post('/api/user/login', {
           email: email.value,
           password: password.value,
         });
-        console.log('HTTP response received:', response);
 
         // Store the token first
         const token = response.data.token;
@@ -127,11 +117,7 @@ export default defineComponent({
 
         errorMessage.value = '';
         
-        // Trigger menu refresh
-        if ((window as any).refreshMenu) {
-          (window as any).refreshMenu();
-        }
-        // Also dispatch a custom event
+        // Notify the application shell that authentication state changed.
         window.dispatchEvent(new Event('menu-refresh'));
         
         const defaultLanding = router.getRoutes().find((route) => {
@@ -174,8 +160,6 @@ export default defineComponent({
       resetMessage,
       resettingNetwork,
       resetNetwork,
-      styleSettings,
-      currentLanguage,
       t
     };
   },

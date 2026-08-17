@@ -113,6 +113,7 @@ import { useSettingsStore } from '@/stores/settings';
 import ThemeToggle from './ThemeToggle.vue';
 import { mergeNavigationItems } from '@/utils/menu-navigation';
 import { readAvailableLanguages, readLanguageSettings } from '@/utils/language-api';
+import { reloadRuntimeExtensionRoutes } from '@/utils/runtime-extensions';
 
 export default defineComponent({
   name: 'Menu',
@@ -212,6 +213,7 @@ export default defineComponent({
       localStorage.removeItem('username');
       updateAuthToken(); // Update the ref
       buildMenuItems(); // Rebuild menu
+      window.dispatchEvent(new Event('menu-refresh'));
       router.push('/user/login');
     };
 
@@ -306,11 +308,15 @@ export default defineComponent({
       }
     };
 
-    // Global refresh function
-    const refreshMenu = () => {
+    const refreshMenu = async () => {
       updateAuthToken();
-      fetchMenuItems();
-      settingsStore.loadSettings();
+      try {
+        await reloadRuntimeExtensionRoutes(router);
+      } catch (error) {
+        console.warn('Runtime extension routes could not be refreshed:', error);
+      }
+      await fetchMenuItems();
+      await settingsStore.loadSettings();
     };
 
     const handleSettingsUpdated = () => {
@@ -354,9 +360,6 @@ export default defineComponent({
       // This prevents overwriting Bulgarian translations with English data
     };
 
-    // Make refreshMenu available globally
-    (window as any).refreshMenu = refreshMenu;
-
     onMounted(() => {
       fetchMenuItems();
       settingsStore.loadSettings();
@@ -384,7 +387,6 @@ export default defineComponent({
       window.removeEventListener('menu-refresh', refreshMenu);
       window.removeEventListener('settings-updated', handleSettingsUpdated);
       window.removeEventListener('storage', handleStorageChange);
-      delete (window as any).refreshMenu;
     });
 
     return {
