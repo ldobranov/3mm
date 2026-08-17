@@ -199,20 +199,6 @@ def create_menus(db: Session, system_extension: Extension):
                 "order": 2,
                 "translatable_fields": ["label", "tooltip"]
             },
-            {
-                "id": "settings-editor", 
-                "path": "/settings-editor",
-                "icon": "tune",
-                "order": 3,
-                "translatable_fields": ["label", "tooltip"]
-            },
-            {
-                "id": "translations",
-                "path": "/translations",
-                "icon": "language",
-                "order": 4,
-                "translatable_fields": ["label", "tooltip"]
-            }
         ],
         "is_active": False
     }
@@ -674,9 +660,8 @@ def init_database():
             print("  GET/POST /api/extensions/* - Extension management")
             print("  POST /api/extensions/install - Install extensions")
             print("\nNext Steps:")
-            print("  1. Visit /translations to manage translations")
-            print("  2. Install additional language packs via Extensions")
-            print("  3. Create custom extensions with multilingual support")
+            print("  1. Install additional language packs via Extensions")
+            print("  2. Create custom extensions with multilingual support")
             
     except Exception as e:
         print(f"\n❌ Database initialization failed: {str(e)}")

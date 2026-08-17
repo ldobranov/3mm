@@ -17,6 +17,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch, markRaw } from 'vue';
 import http from '@/utils/dynamic-http';
+import { loadBundledExtensionComponentByPath } from '@/utils/extension-components';
 
 interface Props {
   config: Record<string, any>;
@@ -98,9 +99,11 @@ const loadExtensionComponent = async () => {
       console.log('Loading extension component from:', componentUrl);
     }
 
-    const module = await import(/* @vite-ignore */ componentUrl);
-    // Mark as raw to prevent Vue reactivity warnings
-    extensionComponent.value = markRaw(module.default);
+    const component = await loadBundledExtensionComponentByPath(componentUrl);
+    if (!component) {
+      throw new Error(`Component is not bundled: ${componentUrl}`);
+    }
+    extensionComponent.value = markRaw(component);
   } catch (error) {
     console.error(`Failed to load extension component ${props.extensionName}:`, error);
     // Fallback to a generic component or error display

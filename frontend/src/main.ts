@@ -2,14 +2,15 @@ import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
 import 'bootstrap/dist/css/bootstrap.min.css';
-import 'bootstrap/dist/js/bootstrap.bundle.min.js';
+import 'bootstrap/js/dist/collapse';
 // If using Tailwind, ensure the file exists and Tailwind is configured
 // import '@/assets/tailwind.css';
 
 import { initAuthLifecycle } from '@/utils/auth';
 import { initializeI18n, i18n } from '@/utils/i18n';
 import { extensionRelationships } from '@/utils/extension-relationships';
-import { createRouterWithDynamicRoutes, reloadExtensionRoutes } from '@/router';
+import { createRouterWithDynamicRoutes } from '@/router';
+import { reloadRuntimeExtensionRoutes } from '@/utils/runtime-extensions';
 
 async function bootstrap() {
   const app = createApp(App);
@@ -27,8 +28,7 @@ async function bootstrap() {
   const router = await createRouterWithDynamicRoutes();
   app.use(router);
 
-  // Reload extension routes with full dynamic discovery now that extensions are initialized
-  await reloadExtensionRoutes(router);
+  await reloadRuntimeExtensionRoutes(router);
 
   // Start auth lifecycle (activity-aware refresh + auto-logout on expiry)
   initAuthLifecycle();

@@ -825,7 +825,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, computed, nextTick } from 'vue';
+import { defineComponent, ref, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import http from '@/utils/dynamic-http';
 import { useSettingsStore } from '@/stores/settings';
 import { useI18n } from '@/utils/i18n';
@@ -1521,6 +1521,8 @@ export default defineComponent({
       const user = users.value.find(u => u.id === userId);
       return user ? user.username : `User ${userId}`;
     };
+
+    let messageClearInterval: ReturnType<typeof setInterval> | undefined;
     
     onMounted(() => {
       loadSessions();
@@ -1535,10 +1537,16 @@ export default defineComponent({
       loadPermissions();
       
       // Clear messages after 5 seconds
-      setInterval(() => {
+      messageClearInterval = setInterval(() => {
         if (successMessage.value) successMessage.value = '';
         if (errorMessage.value) errorMessage.value = '';
       }, 5000);
+    });
+
+    onUnmounted(() => {
+      if (messageClearInterval) {
+        clearInterval(messageClearInterval);
+      }
     });
     
     return {

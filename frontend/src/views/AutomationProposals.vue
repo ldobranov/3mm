@@ -55,24 +55,69 @@
       </div>
     </section>
 
+    <section class="deployments-card card" aria-live="polite">
+      <div class="list-heading">
+        <div>
+          <p class="eyebrow">{{ t('automations.deployments.eyebrow', 'Device state') }}</p>
+          <h2>{{ t('automations.deployments.title', 'Device automations') }}</h2>
+        </div>
+        <span class="count">{{ deployments.length }}</span>
+      </div>
+      <div v-if="deployments.length === 0" class="deployment-empty">
+        {{ t('automations.deployments.empty', 'No automation revisions have been sent to a device.') }}
+      </div>
+      <div v-else class="deployment-grid">
+        <article v-for="deployment in deployments" :key="deployment.revision_id" class="deployment-item">
+          <div class="deployment-heading">
+            <div>
+              <strong>{{ deployment.definition?.name || deployment.automation_id }}</strong>
+              <span>{{ deployment.device_id }}</span>
+            </div>
+            <span class="status" :class="`status-${deployment.deliveryStatus}`">
+              {{ deploymentStatusLabel(deployment.deliveryStatus) }}
+            </span>
+          </div>
+          <p v-if="deployment.error" class="deployment-error">{{ deployment.error }}</p>
+          <dl>
+            <div><dt>{{ t('automations.deployments.revision', 'Revision') }}</dt><dd>{{ deployment.revision }}</dd></div>
+            <div><dt>{{ t('automations.deployments.configuration', 'Configuration') }}</dt><dd>{{ deployment.definition?.enabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled') }}</dd></div>
+          </dl>
+          <button
+            v-if="deployment.deliveryStatus === 'installed'"
+            class="button button-secondary deployment-toggle"
+            :disabled="working"
+            @click="setDeploymentEnabled(deployment, !deployment.definition!.enabled)"
+          >
+            {{ deployment.definition?.enabled ? t('automations.deployments.disable', 'Disable') : t('automations.deployments.enable', 'Enable') }}
+          </button>
+        </article>
+      </div>
+    </section>
+
     <section class="review-layout" aria-live="polite">
       <aside class="proposal-list card" aria-label="Automation proposals">
         <div class="list-heading">
-          <h2>{{ t('automations.proposals.queue', 'Review queue') }}</h2>
-          <span class="count">{{ proposals.length }}</span>
+          <div>
+            <h2>{{ t('automations.proposals.queue', 'Review queue') }}</h2>
+            <label class="history-toggle">
+              <input v-model="showCompleted" type="checkbox" />
+              <span>{{ t('automations.proposals.showCompleted', 'Show completed') }}</span>
+            </label>
+          </div>
+          <span class="count">{{ visibleProposals.length }}</span>
         </div>
 
-        <div v-if="loading && proposals.length === 0" class="empty-state">
+        <div v-if="loading && visibleProposals.length === 0" class="empty-state">
           {{ t('automations.proposals.loading', 'Loading proposals…') }}
         </div>
-        <div v-else-if="proposals.length === 0" class="empty-state">
+        <div v-else-if="visibleProposals.length === 0" class="empty-state">
           <i class="bi bi-inbox" aria-hidden="true"></i>
           <strong>{{ t('automations.proposals.emptyTitle', 'Nothing to review') }}</strong>
           <span>{{ t('automations.proposals.emptyText', 'New AI proposals will appear here after validation.') }}</span>
         </div>
 
         <button
-          v-for="proposal in proposals"
+          v-for="proposal in visibleProposals"
           :key="proposal.proposal_id"
           class="proposal-item"
           :class="{ selected: selected?.proposal_id === proposal.proposal_id }"
@@ -204,7 +249,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
 
@@ -243,6 +288,25 @@ interface AutomationRevision {
   active: boolean
   operation: string
   command_ids: string[]
+  definition: {
+    name: string
+    enabled: boolean
+    trigger: { device_id: string }
+  } | null
+}
+
+type DeliveryStatus = 'queued' | 'installed' | 'failed'
+
+interface DeviceCommand {
+  command_id: string
+  status: string
+  error: string | null
+}
+
+interface AutomationDeployment extends AutomationRevision {
+  device_id: string
+  deliveryStatus: DeliveryStatus
+  error: string | null
 }
 
 interface AiJob {
@@ -255,6 +319,10 @@ interface AiJob {
 
 const { t } = useI18n()
 const proposals = ref<AutomationProposal[]>([])
+const showCompleted = ref(false)
+const visibleProposals = computed(() => showCompleted.value
+  ? proposals.value
+  : proposals.value.filter(proposal => proposal.status !== 'applied'))
 const selected = ref<AutomationProposal | null>(null)
 const loading = ref(false)
 const approving = ref(false)
@@ -263,6 +331,7 @@ const approvalConfirmed = ref(false)
 const errorMessage = ref('')
 const executionResult = ref('')
 const activeRevision = ref<AutomationRevision | null>(null)
+const deployments = ref<AutomationDeployment[]>([])
 const plannerIntent = ref('')
 const plannerProvider = ref<'groq' | 'openrouter'>('groq')
 const paymentMode = ref<'prepaid' | 'byok'>('prepaid')
@@ -286,6 +355,43 @@ function statusLabel(status: ProposalStatus): string {
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+}
+
+function deploymentStatusLabel(status: DeliveryStatus): string {
+  return {
+    queued: t('automations.deployments.statusQueued', 'Queued'),
+    installed: t('automations.deployments.statusInstalled', 'Installed'),
+    failed: t('automations.deployments.statusFailed', 'Failed'),
+  }[status]
+}
+
+async function loadDeployments() {
+  const revisionResponse = await http.get('/api/v1/ai/automation-revisions')
+  const revisions = (revisionResponse.data as AutomationRevision[]).filter(item => item.active && item.definition)
+  const deviceIds = [...new Set(revisions.map(item => item.definition!.trigger.device_id))]
+  const commandResponses = await Promise.all(deviceIds.map(async deviceId => ({
+    deviceId,
+    response: await http.get(`/api/v1/devices/${deviceId}/commands?limit=100`),
+  })))
+  const commands = new Map<string, DeviceCommand>()
+  for (const { response } of commandResponses) {
+    for (const command of response.data.items as DeviceCommand[]) commands.set(command.command_id, command)
+  }
+  deployments.value = revisions.map(revision => {
+    const command = revision.command_ids.map(id => commands.get(id)).find(Boolean)
+    return {
+      ...revision,
+      device_id: revision.definition!.trigger.device_id,
+      deliveryStatus: command?.status === 'succeeded' ? 'installed' : command?.status === 'failed' ? 'failed' : 'queued',
+      error: command?.error || null,
+    }
+  })
+}
+
+async function setDeploymentEnabled(deployment: AutomationDeployment, enabled: boolean) {
+  const result = await runAction(`/api/v1/ai/automation-revisions/${deployment.revision_id}/enabled`, { enabled })
+  if (!result) return
+  await loadDeployments()
 }
 
 function selectProposal(proposal: AutomationProposal) {
@@ -314,11 +420,12 @@ async function loadProposals() {
     const response = await http.get('/api/v1/ai/automation-proposals')
     proposals.value = response.data
     if (selected.value) {
-      selected.value = proposals.value.find(item => item.proposal_id === selected.value?.proposal_id) || proposals.value[0] || null
+      selected.value = visibleProposals.value.find(item => item.proposal_id === selected.value?.proposal_id) || visibleProposals.value[0] || null
     } else {
-      selected.value = proposals.value[0] || null
+      selected.value = visibleProposals.value[0] || null
     }
     await loadActiveRevision()
+    await loadDeployments()
   } catch (error) {
     errorMessage.value = errorText(error)
   } finally {
@@ -407,6 +514,7 @@ async function applySelected() {
   selected.value.status = 'applied'
   proposals.value = proposals.value.map(item => item.proposal_id === selected.value?.proposal_id ? selected.value : item) as AutomationProposal[]
   executionResult.value = t('automations.proposals.applyQueued', 'The approved revision was queued for the device.')
+  await loadDeployments()
 }
 
 async function rollbackSelected() {
@@ -448,6 +556,24 @@ onMounted(() => Promise.all([loadProposals(), loadCredits()]))
 .intro { max-width: 680px; margin: .5rem 0 0; color: var(--color-muted); }
 .review-layout { display: grid; grid-template-columns: minmax(250px, 340px) minmax(0, 1fr); gap: 1rem; align-items: start; }
 .planner-card { margin-bottom: 1rem; padding: 1.25rem; }
+.deployments-card { margin-bottom: 1rem; overflow: hidden; }
+.deployments-card .list-heading h2 { margin: 0; font-size: 1rem; }
+.deployments-card .eyebrow { margin-bottom: .2rem; }
+.deployment-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: .75rem; padding: 1rem; }
+.deployment-item { padding: .9rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-background-soft); }
+.deployment-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+.deployment-heading > div { display: flex; min-width: 0; flex-direction: column; }
+.deployment-heading span:not(.status) { overflow: hidden; color: var(--color-muted); font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
+.deployment-item dl { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin: .8rem 0 0; }
+.deployment-item dl div { display: flex; flex-direction: column; }
+.deployment-item dt { color: var(--color-muted); font-size: .68rem; text-transform: uppercase; }
+.deployment-item dd { margin: .15rem 0 0; font-size: .82rem; font-weight: 650; }
+.deployment-error { margin: .7rem 0 0; color: var(--danger); font-size: .78rem; }
+.deployment-toggle { width: 100%; margin-top: .8rem; }
+.deployment-empty { padding: 1rem; color: var(--color-muted); }
+.status-installed { background: rgba(16, 185, 129, .14); color: var(--accent); }
+.status-queued { background: rgba(37, 99, 235, .13); color: var(--color-link); }
+.status-failed { background: rgba(239, 68, 68, .13); color: var(--danger); }
 .planner-heading { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .planner-heading h2 { margin: 0; font-size: 1.15rem; }
 .planner-heading p:not(.eyebrow) { margin: .3rem 0 0; color: var(--color-muted); }
@@ -465,6 +591,8 @@ onMounted(() => Promise.all([loadProposals(), loadCredits()]))
 .proposal-list, .proposal-detail { padding: 0; overflow: hidden; }
 .list-heading { display: flex; align-items: center; justify-content: space-between; padding: 1rem; border-bottom: 1px solid var(--color-border); }
 .list-heading h2 { margin: 0; font-size: 1rem; }
+.history-toggle { display: flex; align-items: center; gap: .4rem; margin-top: .35rem; color: var(--color-muted); font-size: .72rem; cursor: pointer; }
+.history-toggle input { accent-color: var(--accent); }
 .count { min-width: 1.6rem; padding: .15rem .4rem; border-radius: 999px; background: var(--color-background-soft); color: var(--color-muted); text-align: center; font-size: .75rem; }
 .proposal-item { display: flex; width: 100%; flex-direction: column; gap: .35rem; padding: .9rem 1rem; border: 0; border-bottom: 1px solid var(--color-border); background: transparent; color: var(--color-text); text-align: left; cursor: pointer; }
 .proposal-item:hover { background: var(--color-background-soft); }

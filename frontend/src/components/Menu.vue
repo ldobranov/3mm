@@ -111,6 +111,9 @@ import { useRouter } from 'vue-router';
 import { useI18n } from '@/utils/i18n';
 import { useSettingsStore } from '@/stores/settings';
 import ThemeToggle from './ThemeToggle.vue';
+import { mergeNavigationItems } from '@/utils/menu-navigation';
+import { readAvailableLanguages, readLanguageSettings } from '@/utils/language-api';
+import { reloadRuntimeExtensionRoutes } from '@/utils/runtime-extensions';
 
 export default defineComponent({
   name: 'Menu',
@@ -131,7 +134,7 @@ export default defineComponent({
 
     const router = useRouter();
     const { t, currentLanguage, setLanguage } = useI18n();
-    const availableLanguages = ref<string[]>(['en', 'bg']);
+    const availableLanguages = ref<string[]>(['en']);
     const selectedLanguage = ref<string>('en');
 
     // Update auth token ref
@@ -210,6 +213,7 @@ export default defineComponent({
       localStorage.removeItem('username');
       updateAuthToken(); // Update the ref
       buildMenuItems(); // Rebuild menu
+      window.dispatchEvent(new Event('menu-refresh'));
       router.push('/user/login');
     };
 
@@ -237,8 +241,7 @@ export default defineComponent({
     const fetchMenuItems = async () => {
       try {
         // Load language-specific settings for header
-        const langSettingsResponse = await http.get(`/settings/language/${currentLanguage.value}`);
-        const langSettings = langSettingsResponse.data.items || [];
+        const langSettings = await readLanguageSettings(currentLanguage.value);
 
         // Update header settings for current language
         const siteName = langSettings.find((s: any) => s.key === 'site_name');
@@ -257,16 +260,17 @@ export default defineComponent({
         const response = await http.get(`/menu/read/${currentLanguage.value}`);
         const menus = response.data.items || [];
 
-        // Prioritize main menu (ID 1) for header display, fallback to first active menu
-        const activeMenu = menus.find((m: any) => m.id === 1) || menus.find((m: any) => m.is_active) || menus[0];
+        // The selected active menu augments dynamic navigation. Legacy data may
+        // not have an active flag yet, so keep a deterministic fallback.
+        const activeMenu = menus.find((m: any) => m.is_active) || menus.find((m: any) => m.id === 1) || menus[0];
 
-        if (activeMenu && Array.isArray(activeMenu.items) && activeMenu.items.length > 0) {
-          // Use translated items for current language
-          menuItems.value = [...activeMenu.items];
-        } else {
-          // Extension navigation is declared by manifests and exposed as route metadata.
-          menuItems.value = getManifestMenuItems();
-        }
+        const customItems = activeMenu && Array.isArray(activeMenu.items)
+          ? activeMenu.items
+          : [];
+
+        // Custom navigation augments the data-driven route registry. It must not
+        // hide routes contributed by Core, extensions, or modules.
+        menuItems.value = mergeNavigationItems(customItems, getManifestMenuItems());
 
         // Module v2 navigation is data-driven. A module name is never mapped here.
         if (isLoggedIn.value) {
@@ -297,19 +301,32 @@ export default defineComponent({
 
     const fetchAvailableLanguages = async () => {
       try {
-        const response = await http.get('/language/available');
-        availableLanguages.value = response.data.languages || ['en'];
+        availableLanguages.value = await readAvailableLanguages();
       } catch (error) {
         console.error('Failed to fetch available languages:', error);
         availableLanguages.value = ['en']; // Fallback to English only
       }
     };
 
-    // Global refresh function
-    const refreshMenu = () => {
+    const refreshMenu = async () => {
       updateAuthToken();
-      fetchMenuItems();
+      try {
+        await reloadRuntimeExtensionRoutes(router);
+      } catch (error) {
+        console.warn('Runtime extension routes could not be refreshed:', error);
+      }
+      await fetchMenuItems();
+      await settingsStore.loadSettings();
+    };
+
+    const handleSettingsUpdated = () => {
       settingsStore.loadSettings();
+    };
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'authToken') {
+        refreshMenu();
+      }
     };
     
     const openCommandPalette = () => {
@@ -343,9 +360,6 @@ export default defineComponent({
       // This prevents overwriting Bulgarian translations with English data
     };
 
-    // Make refreshMenu available globally
-    (window as any).refreshMenu = refreshMenu;
-
     onMounted(() => {
       fetchMenuItems();
       settingsStore.loadSettings();
@@ -356,16 +370,9 @@ export default defineComponent({
       // Listen for custom menu refresh event
       window.addEventListener('menu-refresh', refreshMenu);
       // Listen when settings saved to update header settings instantly
-      window.addEventListener('settings-updated', () => settingsStore.loadSettings());
-      // Listen for language changes
-      window.addEventListener('language-changed', refreshMenu);
-
+      window.addEventListener('settings-updated', handleSettingsUpdated);
       // Listen for storage events (when localStorage changes in another tab)
-      window.addEventListener('storage', (e) => {
-        if (e.key === 'authToken') {
-          refreshMenu();
-        }
-      });
+      window.addEventListener('storage', handleStorageChange);
     });
 
     // Watch for language changes from other components
@@ -378,9 +385,8 @@ export default defineComponent({
 
     onUnmounted(() => {
       window.removeEventListener('menu-refresh', refreshMenu);
-      window.removeEventListener('settings-updated', () => settingsStore.loadSettings());
-      window.removeEventListener('language-changed', refreshMenu);
-      delete (window as any).refreshMenu;
+      window.removeEventListener('settings-updated', handleSettingsUpdated);
+      window.removeEventListener('storage', handleStorageChange);
     });
 
     return {

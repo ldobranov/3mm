@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "module_id": "org.3mm.mock-gpio",
   "name": "Mock GPIO",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "description": "Trusted deterministic digital GPIO module for development.",
   "runtimes": ["agent"],
   "entrypoints": {"agent": "builtin:gpio.digital.v1"},
@@ -10,10 +10,30 @@
   "capabilities": {"provides": ["gpio.digital.input", "gpio.digital.output"], "consumes": ["hardware.gpio.digital_input", "hardware.gpio.digital_output"]},
   "permissions": ["hardware.gpio", "data.write", "events.publish"],
   "configuration_schema": {"type": "object"},
-  "configuration_defaults": {"inputs": ["gpio.input.1"], "outputs": {"gpio.output.1": false}, "rules": [{"input": "gpio.input.1", "output": "gpio.output.1", "when": true, "set": true}]},
+  "configuration_defaults": {"inputs": ["gpio.input.1"], "outputs": {"gpio.output.1": false}, "rules": []},
   "health_check": {"type": "file_exists", "path": "health/ready"},
   "registrations": [
-    {"kind": "capability", "registration_id": "gpio.digital.input"},
-    {"kind": "capability", "registration_id": "gpio.digital.control"}
+    {
+      "kind": "capability",
+      "registration_id": "gpio.digital.input",
+      "metadata": {
+        "automation_role": "trigger",
+        "automation_events": "changed,input.changed,gpio.input.changed",
+        "automation_channels": "gpio.input.1",
+        "automation_required_fields": "channel,value",
+        "automation_value_type": "boolean"
+      }
+    },
+    {
+      "kind": "capability",
+      "registration_id": "gpio.digital.control",
+      "metadata": {
+        "automation_role": "action",
+        "automation_actions": "set_output",
+        "automation_channels": "gpio.output.1",
+        "automation_required_fields": "channel,value",
+        "automation_value_type": "boolean"
+      }
+    }
   ]
 }

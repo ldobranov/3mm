@@ -23,6 +23,13 @@ def context() -> AutomationCapabilityContextV1:
             capability_id="gpio.digital.input",
             module_id="org.3mm.mock-gpio",
             module_version="1.0.0",
+            metadata={
+                "automation_role": "trigger",
+                "automation_events": "changed,input.changed,gpio.input.changed",
+                "automation_channels": "gpio.input.1",
+                "automation_required_fields": "channel,value",
+                "automation_value_type": "boolean",
+            },
         ),
         CapabilityContextEntry(
             device_id=DEVICE_ID,
@@ -31,6 +38,13 @@ def context() -> AutomationCapabilityContextV1:
             capability_id="gpio.digital.control",
             module_id="org.3mm.mock-gpio",
             module_version="1.0.0",
+            metadata={
+                "automation_role": "action",
+                "automation_actions": "set_output",
+                "automation_channels": "gpio.output.1",
+                "automation_required_fields": "channel,value",
+                "automation_value_type": "boolean",
+            },
         ),
     ))
 
@@ -70,6 +84,34 @@ def test_unknown_capability_is_rejected_before_apply():
     assert [(issue.path, issue.code) for issue in issues] == [
         ("actions.0", "capability.unavailable")
     ]
+
+
+def test_declared_automation_contract_rejects_wrong_role_and_operation():
+    candidate = mock_gpio_automation().model_copy(update={
+        "trigger": mock_gpio_automation().trigger.model_copy(update={
+            "capability_id": "gpio.digital.control",
+            "event": "state_changed",
+            "conditions": {},
+        })
+    })
+
+    issues = validate_automation_capabilities(candidate, context())
+
+    assert issues[0].path == "trigger"
+    assert "cannot be used" in issues[0].message
+
+
+def test_declared_automation_contract_rejects_string_boolean():
+    candidate = mock_gpio_automation().model_copy(update={
+        "trigger": mock_gpio_automation().trigger.model_copy(update={
+            "conditions": {"channel": "gpio.input.1", "value": "true"},
+        })
+    })
+
+    issues = validate_automation_capabilities(candidate, context())
+
+    assert issues[0].path == "trigger"
+    assert "Boolean value" in issues[0].message
 
 
 def test_local_automation_cannot_span_devices():

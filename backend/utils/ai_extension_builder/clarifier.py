@@ -12,6 +12,7 @@ from backend.schemas.ai_extension_builder import (
 )
 from backend.utils.ai_extension_builder.groq_client import GroqClient
 from backend.utils.ai_extension_builder.openrouter_client import OpenRouterClient
+from backend.utils.ai_extension_builder.free_provider_client import FreeProviderFallbackClient
 
 
 def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
@@ -63,11 +64,10 @@ def _select_ai_client(
     if provider == "openrouter":
         return openrouter, "openrouter", warnings if openrouter.is_configured() else warnings
 
-    # auto
-    if groq.is_configured():
-        return groq, "groq", warnings
-    if openrouter.is_configured():
-        return openrouter, "openrouter", warnings
+    # Auto uses the free OpenRouter router first and falls back to Groq.
+    fallback = FreeProviderFallbackClient(openrouter, groq)
+    if fallback.is_configured():
+        return fallback, "openrouter/free -> groq", warnings
     return None, None, warnings
 
 

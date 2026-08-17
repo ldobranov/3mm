@@ -59,3 +59,23 @@ def test_deployed_automation_runs_locally_and_restores_after_restart(tmp_path):
     AutomationStore(tmp_path, restarted).activate_all(device_id=DEVICE_ID)
     restarted_gpio.set_input("gpio.input.1", True)
     assert restarted_gpio.output("gpio.output.1").read() is True
+
+
+def test_disabled_revision_unsubscribes_and_stays_disabled_after_restart(tmp_path):
+    gpio = MockDigitalGpioDriver()
+    runtime = AgentModuleRuntime(tmp_path, architecture="aarch64", runtime_handlers={GPIO_ENTRYPOINT: gpio_runtime_handler(gpio)})
+    install(runtime, gpio_package(outputs={"gpio.output.1": False}))
+    store = AutomationStore(tmp_path, runtime)
+    store.apply(StoredAutomation(automation_id="ap_test", revision=1, revision_id="ar_one", definition=definition()), device_id=DEVICE_ID)
+    disabled = {**definition(), "enabled": False}
+    store.apply(StoredAutomation(automation_id="ap_test", revision=2, revision_id="ar_two", definition=disabled), device_id=DEVICE_ID)
+
+    gpio.set_input("gpio.input.1", True)
+    assert gpio.output("gpio.output.1").read() is False
+
+    restarted_gpio = MockDigitalGpioDriver()
+    restarted = AgentModuleRuntime(tmp_path, architecture="aarch64", runtime_handlers={GPIO_ENTRYPOINT: gpio_runtime_handler(restarted_gpio)})
+    restarted.start_active()
+    AutomationStore(tmp_path, restarted).activate_all(device_id=DEVICE_ID)
+    restarted_gpio.set_input("gpio.input.1", True)
+    assert restarted_gpio.output("gpio.output.1").read() is False

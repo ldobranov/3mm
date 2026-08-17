@@ -16,13 +16,25 @@ from backend.services.automation_proposals import create_automation_proposal
 from three_mm_protocol.automation import AutomationCapabilityContextV1, AutomationDefinitionV1
 
 
-PROVIDER_DEFAULTS = {"groq": "llama-3.1-8b-instant", "openrouter": "meta-llama/llama-3.1-8b-instruct:free"}
-# Conservative internal microcredit rates per 1K tokens; provider pricing can later be catalog-driven.
-RATES = {"groq": (50, 80), "openrouter": (100, 150)}
+PROVIDER_DEFAULTS = {"groq": "llama-3.1-8b-instant", "openrouter": "openrouter/free"}
+# The supported routes currently use provider free tiers and consume no 3mm credit.
+# Paid model pricing can later be added through a catalog without changing jobs.
+RATES = {"groq": (0, 0), "openrouter": (0, 0)}
 
 
 class AiJobError(ValueError):
     pass
+
+
+def _parse_automation_definition(content: str) -> AutomationDefinitionV1:
+    candidate = json.loads(content)
+    if isinstance(candidate, dict) and not {"name", "trigger", "actions"}.issubset(candidate):
+        for wrapper in ("AutomationDefinitionV1", "automation", "definition"):
+            wrapped = candidate.get(wrapper)
+            if isinstance(wrapped, dict):
+                candidate = wrapped
+                break
+    return AutomationDefinitionV1.model_validate(candidate)
 
 
 def _hash(value: dict) -> str:
@@ -92,11 +104,24 @@ def execute_job(db: Session, *, job: AiJob, intent: str, context: AutomationCapa
     job.approved_max_microcredits = approved_max
     job.status = "running"
     db.commit()
-    prompt = "Create one declarative AutomationDefinitionV1 JSON object. Use only the supplied capabilities; never generate code."
-    messages = [{"role": "system", "content": prompt}, {"role": "user", "content": json.dumps({"intent": intent, "context": context.model_dump(mode="json")}, ensure_ascii=False)}]
+    prompt = (
+        "Return exactly one AutomationDefinitionV1 JSON object at the top level. "
+        "Do not wrap it in AutomationDefinitionV1, automation, definition, markdown, or prose. "
+        "Required top-level fields are schema_version, name, description, execution, enabled, "
+        "trigger, and actions. Use only the supplied device_id and capability_id values; never generate code. "
+        "Capability metadata is authoritative: automation_role selects trigger or action, automation_events "
+        "and automation_actions list allowed operations, automation_channels lists allowed channel values, "
+        "automation_required_fields lists required conditions or arguments, and automation_value_type defines "
+        "the JSON type for value. Use JSON booleans true/false when that type is boolean."
+    )
+    messages = [{"role": "system", "content": prompt}, {"role": "user", "content": json.dumps({
+        "intent": intent,
+        "output_schema": AutomationDefinitionV1.model_json_schema(),
+        "context": context.model_dump(mode="json"),
+    }, ensure_ascii=False)}]
     try:
         completion = gateway.complete(provider=job.provider, model=job.model, messages=messages, max_tokens=job.estimated_output_tokens, api_key=api_key)
-        definition = AutomationDefinitionV1.model_validate(json.loads(completion.content))
+        definition = _parse_automation_definition(completion.content)
         proposal = create_automation_proposal(db, intent=intent, candidate=definition, context=context, created_by_user_id=job.user_id)
         input_rate, output_rate = RATES[job.provider]
         actual_cost = (completion.input_tokens * input_rate + completion.output_tokens * output_rate + 999) // 1000

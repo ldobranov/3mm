@@ -47,11 +47,22 @@
               <label class="form-label menu-item-field-label">
                 {{ t('settings.path', 'Path') }}
               </label>
+              <select
+                class="select menu-item-path-input"
+                :value="isKnownRoute(item.path) ? item.path : '__custom__'"
+                @change="updateMenuItemRoute(index, $event)"
+              >
+                <option v-for="route in routeOptions" :key="route.path" :value="route.path">
+                  {{ route.label }}{{ route.adminOnly ? ' · Admin' : '' }} — {{ route.path }}
+                </option>
+                <option value="__custom__">{{ t('settings.customPath', 'Custom path') }}</option>
+              </select>
               <input
+                v-if="!isKnownRoute(item.path)"
                 type="text"
                 class="input menu-item-path-input"
                 :value="item.path"
-                :placeholder="t('settings.path', 'Path')"
+                :placeholder="t('settings.customPathPlaceholder', '/custom-path')"
                 @input="updateMenuItemPath(index, $event)"
               />
             </div>
@@ -97,11 +108,19 @@
 
         <div class="menu-editor-field">
           <label class="form-label">{{ t('settings.path', 'Path') }}</label>
+          <select v-model="newItem.path" class="select menu-editor-input" @change="handleNewRouteChange">
+            <option disabled value="">{{ t('settings.chooseRoute', 'Choose a route') }}</option>
+            <option v-for="route in routeOptions" :key="route.path" :value="route.path">
+              {{ route.label }}{{ route.adminOnly ? ' · Admin' : '' }} — {{ route.path }}
+            </option>
+            <option value="__custom__">{{ t('settings.customPath', 'Custom path') }}</option>
+          </select>
           <input
+            v-if="newItem.path === '__custom__'"
+            v-model.trim="newItemCustomPath"
             type="text"
             class="input menu-editor-input"
-            :placeholder="t('settings.path', 'Path')"
-            v-model="newItem.path"
+            :placeholder="t('settings.customPathPlaceholder', '/custom-path')"
           />
         </div>
       </div>
@@ -128,6 +147,12 @@ interface MenuItem {
   path: string
 }
 
+interface MenuRouteOption {
+  path: string
+  label: string
+  adminOnly: boolean
+}
+
 export default defineComponent({
   name: 'MenuEditor',
   components: {
@@ -146,6 +171,10 @@ export default defineComponent({
       type: Array as PropType<string[]>,
       required: true
     },
+    routeOptions: {
+      type: Array as PropType<MenuRouteOption[]>,
+      required: true
+    },
     getMenuItemLabel: {
       type: Function,
       required: true
@@ -159,6 +188,9 @@ export default defineComponent({
   setup(props, { emit }) {
     const { t } = useI18n()
     const newItem = ref({ label: '', path: '' })
+    const newItemCustomPath = ref('')
+
+    const isKnownRoute = (path: string) => props.routeOptions.some(route => route.path === path)
 
     const normalizeMenuItemLabel = (item: MenuItem) => {
       if (typeof item.label === 'string') {
@@ -188,24 +220,44 @@ export default defineComponent({
       emit('update-items', items)
     }
 
+    const updateMenuItemRoute = (index: number, event: Event) => {
+      const target = event.target as HTMLSelectElement
+      const items = [...props.menu.items]
+      items[index] = {
+        ...items[index],
+        path: target.value === '__custom__' ? '' : target.value
+      }
+      emit('update-items', items)
+    }
+
+    const handleNewRouteChange = () => {
+      if (newItem.value.path === '__custom__') return
+      const route = props.routeOptions.find(item => item.path === newItem.value.path)
+      if (route && !newItem.value.label.trim()) newItem.value.label = route.label
+    }
+
     const handleItemsReorder = (items: MenuItem[]) => {
       emit('update-items', items)
       emit('drag-end')
     }
 
     const addMenuItem = () => {
-      if (!newItem.value.label || !newItem.value.path) return
+      const path = newItem.value.path === '__custom__'
+        ? newItemCustomPath.value.trim()
+        : newItem.value.path
+      if (!newItem.value.label || !path) return
 
       const labelObj: Record<string, string> = {}
       labelObj[props.menuLanguage] = newItem.value.label
 
       const items = [...props.menu.items, {
         label: labelObj,
-        path: newItem.value.path
+        path
       }]
 
       emit('update-items', items)
       newItem.value = { label: '', path: '' }
+      newItemCustomPath.value = ''
     }
 
     const duplicateMenuItem = (index: number) => {
@@ -228,8 +280,12 @@ export default defineComponent({
     return {
       t,
       newItem,
+      newItemCustomPath,
+      isKnownRoute,
       updateMenuItemLabel,
       updateMenuItemPath,
+      updateMenuItemRoute,
+      handleNewRouteChange,
       handleItemsReorder,
       addMenuItem,
       duplicateMenuItem,

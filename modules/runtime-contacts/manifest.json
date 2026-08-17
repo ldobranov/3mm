@@ -1,0 +1,23 @@
+{
+  "manifest_version": 2,
+  "module_id": "org.3mm.contacts",
+  "name": "Contacts",
+  "version": "1.0.0",
+  "description": "Reference declarative CRUD runtime extension.",
+  "runtimes": ["ui"],
+  "entrypoints": {"ui": "runtime-extension.json"},
+  "compatibility": {
+    "protocol": "1.0",
+    "agent": ">=0.1.0",
+    "core": ">=0.1.0",
+    "architectures": ["any"]
+  },
+  "capabilities": {"provides": [], "consumes": []},
+  "permissions": ["data.read", "data.write"],
+  "dependencies": {},
+  "conflicts": [],
+  "configuration_schema": {},
+  "configuration_defaults": {},
+  "health_check": {"type": "json_file", "path": "runtime-extension.json"},
+  "registrations": []
+}

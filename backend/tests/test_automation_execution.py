@@ -10,7 +10,7 @@ from backend.db.automation import AutomationAuditEvent, AutomationProposal
 from backend.db.base import Base
 from backend.db.device import Device, DeviceCommand
 from backend.db.user import User
-from backend.services.automation_execution import apply_proposal, dry_run, rollback, simulate
+from backend.services.automation_execution import apply_proposal, dry_run, rollback, set_enabled, simulate
 from backend.utils.auth import hash_password
 from three_mm_protocol.automation import AutomationDefinitionV1
 
@@ -51,11 +51,17 @@ def test_simulation_is_pure_and_apply_and_rollback_are_audited():
     assert command.command_type == "automation.apply"
     assert proposal.status == "applied"
 
-    removed = rollback(db, current=applied, actor_user_id=user.id)
+    disabled = set_enabled(db, current=applied, enabled=False, actor_user_id=user.id)
+    disable_command = db.scalar(select(DeviceCommand).where(DeviceCommand.command_id == disabled.command_ids[0]))
+    assert disabled.revision == 2 and disabled.operation == "disable"
+    assert disabled.definition["enabled"] is False
+    assert disable_command.command_type == "automation.apply"
+
+    removed = rollback(db, current=disabled, actor_user_id=user.id)
     rollback_command = db.scalar(select(DeviceCommand).where(DeviceCommand.command_id == removed.command_ids[0]))
-    assert removed.operation == "rollback" and removed.active is False
-    assert rollback_command.command_type == "automation.remove"
+    assert removed.operation == "rollback" and removed.active is True
+    assert rollback_command.command_type == "automation.apply"
     events = list(db.scalars(select(AutomationAuditEvent).order_by(AutomationAuditEvent.id)))
-    assert [event.event_type for event in events] == ["automation.applied", "automation.rolled_back"]
+    assert [event.event_type for event in events] == ["automation.applied", "automation.disabled", "automation.rolled_back"]
     assert events[0].details["intent"] == "Mirror it"
     db.close(); engine.dispose()

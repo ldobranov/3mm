@@ -70,6 +70,8 @@ backend/data/
 tmp/
 temp/
 .runtime/
+.codex-remote-attachments/
+screenshots/
 *.tmp
 *.temp
 

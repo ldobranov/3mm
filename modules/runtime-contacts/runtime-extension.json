@@ -1,0 +1,47 @@
+{
+  "runtime_extension_version": 1,
+  "module_id": "org.3mm.contacts",
+  "version": "1.0.0",
+  "name": {
+    "en": "Contacts",
+    "translations": {"bg": "Контакти"}
+  },
+  "description": {
+    "en": "Keep a small shared contact directory.",
+    "translations": {"bg": "Поддържайте малък споделен указател с контакти."}
+  },
+  "entities": [
+    {
+      "entity_id": "contact",
+      "label": {"en": "Contact", "translations": {"bg": "Контакт"}},
+      "fields": [
+        {"field_id": "name", "label": {"en": "Name", "translations": {"bg": "Име"}}, "kind": "text", "required": true},
+        {"field_id": "email", "label": {"en": "Email", "translations": {"bg": "Имейл"}}, "kind": "text"},
+        {"field_id": "phone", "label": {"en": "Phone", "translations": {"bg": "Телефон"}}, "kind": "text"},
+        {"field_id": "birthday", "label": {"en": "Birthday", "translations": {"bg": "Рожден ден"}}, "kind": "date"},
+        {"field_id": "notes", "label": {"en": "Notes", "translations": {"bg": "Бележки"}}, "kind": "multiline"},
+        {"field_id": "active", "label": {"en": "Active", "translations": {"bg": "Активен"}}, "kind": "boolean"}
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "page_id": "contacts",
+      "path": "/contacts",
+      "title": {"en": "Contacts", "translations": {"bg": "Контакти"}},
+      "entity_id": "contact",
+      "view": "table",
+      "actions": ["create", "read", "update", "delete"]
+    }
+  ],
+  "navigation": [
+    {
+      "navigation_id": "contacts_menu",
+      "page_id": "contacts",
+      "label": {"en": "Contacts", "translations": {"bg": "Контакти"}},
+      "icon": "bi-people",
+      "order": 40
+    }
+  ],
+  "permissions": ["runtime.data.read", "runtime.data.write"]
+}

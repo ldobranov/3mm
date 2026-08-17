@@ -27,6 +27,14 @@ fi
 install_root=/opt/3mm
 release_dir=$install_root/releases/$release_id
 venv_dir=$install_root/venv
+ai_master_key_file=/etc/3mm/ai-settings.key
+ai_master_key_line=""
+
+if [[ -s $ai_master_key_file ]]; then
+  ai_master_key_line="AI_SETTINGS_MASTER_KEY=$(cat "$ai_master_key_file")"
+elif [[ -f /etc/3mm/3mm.env ]]; then
+  ai_master_key_line=$(grep '^AI_SETTINGS_MASTER_KEY=' /etc/3mm/3mm.env | head -n 1 || true)
+fi
 
 if ! id -u 3mm >/dev/null 2>&1; then
   useradd --system --home-dir /var/lib/3mm --shell /usr/sbin/nologin 3mm
@@ -48,6 +56,13 @@ systemctl stop 3mm-agent.service 3mm-core.service 3mm-web.service \
 rm -rf -- "$release_dir"
 install -d -o root -g root -m 0755 "$release_dir"
 tar -xzf "$release_archive" -C "$release_dir"
+
+if [[ ! -f $release_dir/frontend/dist/index.html ]] || \
+   [[ ! -d $release_dir/frontend/dist/assets ]] || \
+   ! find "$release_dir/frontend/dist/assets" -maxdepth 1 -type f -name '*.js' -print -quit | grep -q .; then
+  echo "Frontend artifact is incomplete: index.html and dist/assets/*.js are required." >&2
+  exit 1
+fi
 
 if [[ ! -x $venv_dir/bin/python ]]; then
   python3 -m venv "$venv_dir"
@@ -79,6 +94,18 @@ THREE_MM_CORE_URL=http://127.0.0.1:8887
 THREE_MM_HEARTBEAT_INTERVAL_SECONDS=30
 THREE_MM_PROVISIONING_DATA_DIR=/var/lib/3mm/provisioning
 EOF
+if [[ ! -s $ai_master_key_file ]]; then
+  if [[ -n $ai_master_key_line ]]; then
+    printf '%s\n' "${ai_master_key_line#AI_SETTINGS_MASTER_KEY=}" > "$ai_master_key_file"
+  else
+    "$venv_dir/bin/python" -c \
+      'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())' \
+      > "$ai_master_key_file"
+  fi
+fi
+chown root:3mm "$ai_master_key_file"
+chmod 0640 "$ai_master_key_file"
+printf 'AI_SETTINGS_MASTER_KEY=%s\n' "$(cat "$ai_master_key_file")" >> /etc/3mm/3mm.env
 chown root:3mm /etc/3mm/3mm.env
 chmod 0640 /etc/3mm/3mm.env
 

@@ -3,6 +3,7 @@ import { ref, reactive, computed } from 'vue'
 import { useThemeStore } from '@/stores/theme'
 import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
+import { readSettings, upsertSettings } from '@/utils/settings-api'
 
 export const useSettingsStore = defineStore('settings', () => {
   const themeStore = useThemeStore()
@@ -103,8 +104,7 @@ export const useSettingsStore = defineStore('settings', () => {
       currentLanguageCode.value = languageCode
       
       // Load language-specific settings
-      const response = await http.get(`/settings/read?language=${languageCode}`)
-      const items = response.data.items || []
+      const items = await readSettings(languageCode)
       
       // Cache language-specific settings
       languageSettings.set(languageCode, items)
@@ -170,9 +170,9 @@ export const useSettingsStore = defineStore('settings', () => {
       lightStyleSettings.textPrimary = lightTextPrimary?.value || '#222222'
       lightStyleSettings.textSecondary = lightTextSecondary?.value || '#666666'
       lightStyleSettings.textMuted = lightTextMuted?.value || '#999999'
-      lightStyleSettings.borderRadiusSm = Math.min(parseInt(lightBorderRadiusSm?.value) || 4, 20)
-      lightStyleSettings.borderRadiusMd = Math.min(parseInt(lightBorderRadiusMd?.value) || 8, 30)
-      lightStyleSettings.borderRadiusLg = Math.min(parseInt(lightBorderRadiusLg?.value) || 12, 50)
+      lightStyleSettings.borderRadiusSm = Math.min(parseInt(lightBorderRadiusSm?.value ?? '') || 4, 20)
+      lightStyleSettings.borderRadiusMd = Math.min(parseInt(lightBorderRadiusMd?.value ?? '') || 8, 30)
+      lightStyleSettings.borderRadiusLg = Math.min(parseInt(lightBorderRadiusLg?.value ?? '') || 12, 50)
       // console.log('Light theme settings loaded:', lightStyleSettings)
 
       // Load dark theme settings
@@ -188,47 +188,10 @@ export const useSettingsStore = defineStore('settings', () => {
       darkStyleSettings.textPrimary = darkTextPrimary?.value || '#e5e7eb'
       darkStyleSettings.textSecondary = darkTextSecondary?.value || '#9ca3af'
       darkStyleSettings.textMuted = darkTextMuted?.value || '#6b7280'
-      darkStyleSettings.borderRadiusSm = Math.min(parseInt(darkBorderRadiusSm?.value) || 4, 20)
-      darkStyleSettings.borderRadiusMd = Math.min(parseInt(darkBorderRadiusMd?.value) || 8, 30)
-      darkStyleSettings.borderRadiusLg = Math.min(parseInt(darkBorderRadiusLg?.value) || 12, 50)
+      darkStyleSettings.borderRadiusSm = Math.min(parseInt(darkBorderRadiusSm?.value ?? '') || 4, 20)
+      darkStyleSettings.borderRadiusMd = Math.min(parseInt(darkBorderRadiusMd?.value ?? '') || 8, 30)
+      darkStyleSettings.borderRadiusLg = Math.min(parseInt(darkBorderRadiusLg?.value ?? '') || 12, 50)
       // console.log('Dark theme settings loaded:', darkStyleSettings)
-
-      // For backward compatibility, also load old settings into current theme
-      // Commented out to prevent overwriting theme-specific settings
-      /*
-      const buttonPrimaryBg = items.find((s: any) => s.key === 'button_primary_bg')
-      const buttonSecondaryBg = items.find((s: any) => s.key === 'button_secondary_bg')
-      const buttonDangerBg = items.find((s: any) => s.key === 'button_danger_bg')
-      const cardBg = items.find((s: any) => s.key === 'card_bg')
-      const cardBorder = items.find((s: any) => s.key === 'card_border')
-      const panelBg = items.find((s: any) => s.key === 'panel_bg')
-      const bodyBg = items.find((s: any) => s.key === 'body_bg')
-      const contentBg = items.find((s: any) => s.key === 'content_bg')
-      const textPrimary = items.find((s: any) => s.key === 'text_primary')
-      const textSecondary = items.find((s: any) => s.key === 'text_secondary')
-      const textMuted = items.find((s: any) => s.key === 'text_muted')
-      const borderRadiusSm = items.find((s: any) => s.key === 'border_radius_sm')
-      const borderRadiusMd = items.find((s: any) => s.key === 'border_radius_md')
-      const borderRadiusLg = items.find((s: any) => s.key === 'border_radius_lg')
-
-      // Load into the appropriate theme settings based on current theme (for backward compatibility)
-      const currentSettings = themeStore.theme === 'dark' ? darkStyleSettings : lightStyleSettings
-
-      if (buttonPrimaryBg?.value) currentSettings.buttonPrimaryBg = buttonPrimaryBg.value
-      if (buttonSecondaryBg?.value) currentSettings.buttonSecondaryBg = buttonSecondaryBg.value
-      if (buttonDangerBg?.value) currentSettings.buttonDangerBg = buttonDangerBg.value
-      if (cardBg?.value) currentSettings.cardBg = cardBg.value
-      if (cardBorder?.value) currentSettings.cardBorder = cardBorder.value
-      if (panelBg?.value) currentSettings.panelBg = panelBg.value
-      if (bodyBg?.value) currentSettings.bodyBg = bodyBg.value
-      if (contentBg?.value) currentSettings.contentBg = contentBg.value
-      if (textPrimary?.value) currentSettings.textPrimary = textPrimary.value
-      if (textSecondary?.value) currentSettings.textSecondary = textSecondary.value
-      if (textMuted?.value) currentSettings.textMuted = textMuted.value
-      if (borderRadiusSm?.value) currentSettings.borderRadiusSm = parseInt(borderRadiusSm.value)
-      if (borderRadiusMd?.value) currentSettings.borderRadiusMd = parseInt(borderRadiusMd.value)
-      if (borderRadiusLg?.value) currentSettings.borderRadiusLg = parseInt(borderRadiusLg.value)
-      */
 
       // Apply CSS variables immediately after loading
       updateCSSVariables()
@@ -399,26 +362,12 @@ export const useSettingsStore = defineStore('settings', () => {
       language_code: saveAsLanguageSpecific ? languageCode : null
     }
 
-    // Check if setting exists
-    const response = await http.get('/settings/read')
-    const existingSettings = response.data.items || []
-    const existing = existingSettings.find((s: any) =>
-      s.key === key && s.language_code === (saveAsLanguageSpecific ? languageCode : null)
-    )
-
-    if (existing) {
-      await http.put('/settings/update', {
-        id: existing.id,
-        ...settingData
-      })
-    } else {
-      await http.post('/settings/create', settingData)
-    }
+    await upsertSettings([settingData])
 
     // Update cache
     const currentItems = languageSettings.get(languageCode) || []
     const updatedItems = currentItems.filter(item => item.key !== key)
-    updatedItems.push({ id: existing?.id, ...settingData })
+    updatedItems.push(settingData)
     languageSettings.set(languageCode, updatedItems)
   }
 
@@ -468,91 +417,12 @@ export const useSettingsStore = defineStore('settings', () => {
         { key: 'logo_url', value: headerSettings.logoUrl, description: 'Logo URL or base64 data' }
       ]
 
-      const response = await http.get('/settings/read')
-      const existingSettings = response.data.items || []
-
-      // Save global settings
-      for (const setting of globalSettingsToSave) {
-        const existing = existingSettings.find((s: any) => s.key === setting.key)
-
-        if (existing) {
-          await http.put('/settings/update', {
-            id: existing.id,
-            key: setting.key,
-            value: setting.value,
-            description: setting.description
-          })
-        } else {
-          await http.post('/settings/create', {
-            key: setting.key,
-            value: setting.value,
-            description: setting.description
-          })
-        }
-      }
+      await upsertSettings(globalSettingsToSave)
 
       // Notify other components
       window.dispatchEvent(new Event('settings-updated'))
     } catch (err) {
       console.error('Failed to save header settings:', err)
-      throw err
-    }
-  }
-
-  // Save style settings
-  const saveStyleSettings = async () => {
-    try {
-      const currentSettings = themeStore.theme === 'dark' ? darkStyleSettings : lightStyleSettings
-      const styleSettingsToSave = [
-        { key: 'body_bg', value: currentSettings.bodyBg, description: 'Body background color' },
-        { key: 'content_bg', value: currentSettings.contentBg, description: 'Content background color' },
-        { key: 'button_primary_bg', value: currentSettings.buttonPrimaryBg, description: 'Primary button background color' },
-        { key: 'button_secondary_bg', value: currentSettings.buttonSecondaryBg, description: 'Secondary button background color' },
-        { key: 'button_danger_bg', value: currentSettings.buttonDangerBg, description: 'Danger button background color' },
-        { key: 'card_bg', value: currentSettings.cardBg, description: 'Card background color' },
-        { key: 'card_border', value: currentSettings.cardBorder, description: 'Card border color' },
-        { key: 'panel_bg', value: currentSettings.panelBg, description: 'Panel background color' },
-        { key: 'text_primary', value: currentSettings.textPrimary, description: 'Primary text color' },
-        { key: 'text_secondary', value: currentSettings.textSecondary, description: 'Secondary text color' },
-        { key: 'text_muted', value: currentSettings.textMuted, description: 'Muted text color' },
-        { key: 'border_radius_sm', value: currentSettings.borderRadiusSm.toString(), description: 'Small border radius' },
-        { key: 'border_radius_md', value: currentSettings.borderRadiusMd.toString(), description: 'Medium border radius' },
-        { key: 'border_radius_lg', value: currentSettings.borderRadiusLg.toString(), description: 'Large border radius' }
-      ]
-
-      const response = await http.get('/settings/read')
-      const existingSettings = response.data.items || []
-
-      for (const setting of styleSettingsToSave) {
-        const existing = existingSettings.find((s: any) => s.key === setting.key)
-
-        if (existing) {
-          await http.put('/settings/update', {
-            id: existing.id,
-            key: setting.key,
-            value: setting.value,
-            description: setting.description
-          })
-        } else {
-          await http.post('/settings/create', {
-            key: setting.key,
-            value: setting.value,
-            description: setting.description
-          })
-        }
-      }
-
-      // Update CSS variables immediately - but only if light theme is active
-      if (themeStore.theme === 'light') {
-        updateCSSVariables()
-      }
-
-      // Notify other components
-      window.dispatchEvent(new Event('settings-updated'))
-
-      console.log('Light style settings saved successfully')
-    } catch (err) {
-      console.error('Failed to save style settings:', err)
       throw err
     }
   }
@@ -577,27 +447,7 @@ export const useSettingsStore = defineStore('settings', () => {
         { key: 'light_border_radius_lg', value: lightStyleSettings.borderRadiusLg.toString(), description: 'Light theme large border radius' }
       ]
 
-      const response = await http.get('/settings/read')
-      const existingSettings = response.data.items || []
-
-      for (const setting of styleSettingsToSave) {
-        const existing = existingSettings.find((s: any) => s.key === setting.key)
-
-        if (existing) {
-          await http.put('/settings/update', {
-            id: existing.id,
-            key: setting.key,
-            value: setting.value,
-            description: setting.description
-          })
-        } else {
-          await http.post('/settings/create', {
-            key: setting.key,
-            value: setting.value,
-            description: setting.description
-          })
-        }
-      }
+      await upsertSettings(styleSettingsToSave)
 
       // Only update CSS variables if light theme is active
       if (themeStore.theme === 'light') {
@@ -630,27 +480,7 @@ export const useSettingsStore = defineStore('settings', () => {
         { key: 'dark_border_radius_lg', value: darkStyleSettings.borderRadiusLg.toString(), description: 'Dark theme large border radius' }
       ]
 
-      const response = await http.get('/settings/read')
-      const existingSettings = response.data.items || []
-
-      for (const setting of styleSettingsToSave) {
-        const existing = existingSettings.find((s: any) => s.key === setting.key)
-
-        if (existing) {
-          await http.put('/settings/update', {
-            id: existing.id,
-            key: setting.key,
-            value: setting.value,
-            description: setting.description
-          })
-        } else {
-          await http.post('/settings/create', {
-            key: setting.key,
-            value: setting.value,
-            description: setting.description
-          })
-        }
-      }
+      await upsertSettings(styleSettingsToSave)
 
       // Only update CSS variables if dark theme is active
       if (themeStore.theme === 'dark') {
@@ -676,7 +506,6 @@ export const useSettingsStore = defineStore('settings', () => {
     loadSettings,
     updateCSSVariables,
     saveHeaderSettings,
-    saveStyleSettings,
     saveLightStyleSettings,
     saveDarkStyleSettings,
     // New language-aware functions

@@ -25,11 +25,11 @@
           <label class="form-label">{{ t('settings.aiProvider.provider', 'Provider') }}</label>
           <select class="input" v-model="aiProvider">
             <option value="">{{ t('settings.aiProvider.auto', 'Auto') }}</option>
-            <option value="groq">Groq</option>
             <option value="openrouter">OpenRouter</option>
+            <option value="groq">Groq</option>
           </select>
           <small class="help-text">
-            {{ t('settings.aiProvider.providerHelp', 'Auto prefers Groq when configured, otherwise OpenRouter.') }}
+            {{ t('settings.aiProvider.providerHelp', 'Auto uses OpenRouter Free first and falls back to Groq Free.') }}
           </small>
         </div>
 
