@@ -4,6 +4,7 @@ import { useSettingsStore } from '@/stores/settings';
 import type { Widget } from '@/stores/widgets';
 import { useWidgetsStore } from '@/stores/widgets';
 import { markRaw } from 'vue';
+import { loadBundledExtensionComponentByPath } from '@/utils/extension-components';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -47,8 +48,8 @@ watch(() => props.widget, async (widget) => {
       if (extension && extension.frontend_editor) {
         // Load the extension editor component dynamically
         const editorUrl = `/src/extensions/${extension.name}_${extension.version}/${extension.frontend_editor}`;
-        const module = await import(/* @vite-ignore */ editorUrl);
-        extensionEditor.value = markRaw(module.default);
+        const component = await loadBundledExtensionComponentByPath(editorUrl);
+        extensionEditor.value = component ? markRaw(component) : null;
       }
     } else {
       // Built-in widgets: load from extensions directory
@@ -59,8 +60,8 @@ watch(() => props.widget, async (widget) => {
       };
       const extensionName = builtInMap[widget.type] || `${widget.type}Widget_1.0.0`;
       const editorUrl = `/src/extensions/${extensionName}/${widget.type.charAt(0) + widget.type.slice(1).toLowerCase()}WidgetEditor.vue`;
-      const module = await import(/* @vite-ignore */ editorUrl);
-      extensionEditor.value = markRaw(module.default);
+      const component = await loadBundledExtensionComponentByPath(editorUrl);
+      extensionEditor.value = component ? markRaw(component) : null;
     }
   } catch (error) {
     console.error('Failed to load editor:', error);

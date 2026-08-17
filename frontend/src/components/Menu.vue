@@ -312,6 +312,16 @@ export default defineComponent({
       fetchMenuItems();
       settingsStore.loadSettings();
     };
+
+    const handleSettingsUpdated = () => {
+      settingsStore.loadSettings();
+    };
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'authToken') {
+        refreshMenu();
+      }
+    };
     
     const openCommandPalette = () => {
       if ((window as any).openCommandPalette) {
@@ -357,16 +367,9 @@ export default defineComponent({
       // Listen for custom menu refresh event
       window.addEventListener('menu-refresh', refreshMenu);
       // Listen when settings saved to update header settings instantly
-      window.addEventListener('settings-updated', () => settingsStore.loadSettings());
-      // Listen for language changes
-      window.addEventListener('language-changed', refreshMenu);
-
+      window.addEventListener('settings-updated', handleSettingsUpdated);
       // Listen for storage events (when localStorage changes in another tab)
-      window.addEventListener('storage', (e) => {
-        if (e.key === 'authToken') {
-          refreshMenu();
-        }
-      });
+      window.addEventListener('storage', handleStorageChange);
     });
 
     // Watch for language changes from other components
@@ -379,8 +382,8 @@ export default defineComponent({
 
     onUnmounted(() => {
       window.removeEventListener('menu-refresh', refreshMenu);
-      window.removeEventListener('settings-updated', () => settingsStore.loadSettings());
-      window.removeEventListener('language-changed', refreshMenu);
+      window.removeEventListener('settings-updated', handleSettingsUpdated);
+      window.removeEventListener('storage', handleStorageChange);
       delete (window as any).refreshMenu;
     });
 

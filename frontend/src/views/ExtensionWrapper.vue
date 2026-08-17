@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { defineAsyncComponent, h, computed } from 'vue';
+import { loadBundledExtensionComponentByPath } from '@/utils/extension-components';
 
 // Props
 const props = defineProps<{
@@ -11,10 +12,11 @@ const props = defineProps<{
 const ExtensionComponent = defineAsyncComponent({
   loader: async () => {
     try {
-      // Convert @/ alias to relative path from views directory
-      const relativePath = props.componentPath.replace('@/', '../');
-      const module = await import(/* @vite-ignore */ relativePath);
-      return module.default;
+      const component = await loadBundledExtensionComponentByPath(props.componentPath);
+      if (!component) {
+        throw new Error(`Component is not bundled: ${props.componentPath}`);
+      }
+      return component;
     } catch (error) {
       console.warn(`Extension component not available: ${props.componentPath}`, error);
       // Return a fallback component

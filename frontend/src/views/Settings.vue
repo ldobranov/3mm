@@ -1,5 +1,5 @@
 <template>
-  <div class="view" :key="currentLanguage">
+  <div class="view">
     <div class="view-header">
       <h1 class="view-title">{{ t('settings.title', 'Settings') }}</h1>
     </div>
@@ -112,10 +112,10 @@ import { defineComponent, ref, onMounted, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useThemeStore } from '@/stores/theme';
 import { useSettingsStore } from '@/stores/settings';
-import { useI18n, i18n } from '@/utils/i18n';
+import { useI18n } from '@/utils/i18n';
 import http from '@/utils/dynamic-http';
 import { isMenuRouteEligible } from '@/utils/menu-navigation';
-import { readSettings, upsertSettings } from '@/utils/settings-api';
+import { upsertSettings } from '@/utils/settings-api';
 import { readAvailableLanguages, readLanguageSettings } from '@/utils/language-api';
 
 // Import extracted components
@@ -151,22 +151,17 @@ export default defineComponent({
     // Reactive state
     const availableLanguages = ref<string[]>(['en']);
     const activeSection = ref('application');
-    const languageKey = ref(0);
-    const settings = ref<Setting[]>([]);
     const menus = ref<any[]>([]);
     const loading = ref(false);
     const activeMenuId = ref<number | null>(null);
     const errorMessage = ref('');
     const successMessage = ref('');
-    const saving = ref(false);
     const savingMenu = ref(false);
     const creatingMenu = ref(false);
     const managingMenu = ref(false);
     const savingHeader = ref(false);
     const savingLightStyle = ref(false);
     const savingDarkStyle = ref(false);
-    const logoInput = ref<HTMLInputElement | null>(null);
-    const currentTheme = ref<'light' | 'dark'>(themeStore.theme);
     
     // Language selection refs - default to English
     const headerLanguage = ref<string>('en');
@@ -183,11 +178,6 @@ export default defineComponent({
     const activeMenu = computed(() => {
       if (!activeMenuId.value) return null;
       return menus.value.find(m => m.id === activeMenuId.value);
-    });
-
-    const menuProp = computed(() => {
-      if (!activeMenu.value) return null;
-      return { ...activeMenu.value, items: currentMenuItems.value };
     });
 
     const availableMenuRoutes = computed(() => {
@@ -219,42 +209,10 @@ export default defineComponent({
       { id: 'network', icon: 'bi bi-router', label: t('settings.networkConfiguration', 'Network Configuration') }
     ]);
 
-    const filteredSettings = computed(() => {
-      const excludedKeys = [
-        'site_name', 'header_message', 'logo_url', 'header_bg_color', 'header_text_color',
-        // Light theme settings
-        'light_body_bg', 'light_content_bg', 'light_button_primary_bg', 'light_button_secondary_bg', 'light_button_danger_bg',
-        'light_card_bg', 'light_card_border', 'light_panel_bg', 'light_text_primary', 'light_text_secondary', 'light_text_muted',
-        'light_border_radius_sm', 'light_border_radius_md', 'light_border_radius_lg',
-        // Dark theme settings
-        'dark_body_bg', 'dark_content_bg', 'dark_button_primary_bg', 'dark_button_secondary_bg', 'dark_button_danger_bg',
-        'dark_card_bg', 'dark_card_border', 'dark_panel_bg', 'dark_text_primary', 'dark_text_secondary', 'dark_text_muted',
-        'dark_border_radius_sm', 'dark_border_radius_md', 'dark_border_radius_lg',
-        // Network configuration
-        'frontend_backend_url'
-      ];
-      return settings.value.filter((s: Setting) => !excludedKeys.includes(s.key));
-    });
-
     // Theme-specific local state
     const currentSiteName = ref('')
     const currentHeaderMessage = ref('')
-    const originalMenuItems = ref<any[]>([])
-
     // API Functions
-    const fetchSettings = async () => {
-      try {
-        settings.value = (await readSettings()).map(setting => ({
-          ...setting,
-          language_code: setting.language_code ?? undefined
-        }));
-        await settingsStore.loadSettings();
-      } catch (error) {
-        console.error('Failed to fetch settings:', error);
-        errorMessage.value = 'Failed to fetch settings.';
-      }
-    };
-
     const fetchMenus = async (preferredMenuId: number | null = activeMenuId.value) => {
       try {
         const response = await http.get('/menu/read');
@@ -288,46 +246,6 @@ export default defineComponent({
         console.error('Failed to fetch available languages:', error);
         availableLanguages.value = ['en'];
       }
-    };
-
-    // Unified save function
-    const saveAllSettings = async () => {
-      saving.value = true;
-      errorMessage.value = '';
-      successMessage.value = '';
-      
-      try {
-        await upsertSettings(filteredSettings.value);
-        successMessage.value = 'Settings saved successfully!';
-        setTimeout(() => successMessage.value = '', 3000);
-        window.dispatchEvent(new Event('settings-updated'));
-      } catch (error) {
-        console.error('Failed to save settings:', error);
-        errorMessage.value = 'Failed to save settings.';
-      } finally {
-        saving.value = false;
-      }
-    };
-
-    // Helper function to normalize menu item labels to objects
-    const normalizeMenuItemLabel = (item: any) => {
-      if (typeof item.label === 'string') {
-        item.label = { en: item.label };
-      } else if (!item.label || typeof item.label !== 'object') {
-        item.label = { en: 'Menu Item' };
-      }
-      return item;
-    };
-
-    const getMenuItemLabel = (item: any, languageCode: string): string => {
-      // Ensure label is normalized
-      normalizeMenuItemLabel(item);
-
-      if (typeof item.label === 'object' && item.label) {
-        // Return the label for the current language, or fallback to English, or generic fallback
-        return item.label[languageCode] || item.label['en'] || 'Menu Item';
-      }
-      return 'Menu Item';
     };
 
     const addMenuItem = (newItem: any) => {
@@ -408,7 +326,6 @@ export default defineComponent({
         const createdMenuId = response.data.id as number;
         await fetchMenus(createdMenuId);
         currentMenuItems.value = [];
-        originalMenuItems.value = [];
         successMessage.value = `Menu "${name}" created. You can add its items now.`;
         setTimeout(() => successMessage.value = '', 3000);
       } catch (error: any) {
@@ -553,7 +470,6 @@ export default defineComponent({
         successMessage.value = 'Light style settings saved successfully!';
         setTimeout(() => successMessage.value = '', 3000);
 
-        await fetchSettings();
         await settingsStore.loadSettings();
 
         if (themeStore.theme === 'light') {
@@ -577,7 +493,6 @@ export default defineComponent({
         successMessage.value = 'Dark style settings saved successfully!';
         setTimeout(() => successMessage.value = '', 3000);
 
-        await fetchSettings();
         await settingsStore.loadSettings();
 
         if (themeStore.theme === 'dark') {
@@ -626,12 +541,6 @@ export default defineComponent({
       }
     };
 
-    const getSettingValueForLanguage = (key: string, languageCode: string): string => {
-      const langSettings = languageSettingsMap.value.get(languageCode) || [];
-      const setting = langSettings.find((s: Setting) => s.key === key);
-      return setting?.value || '';
-    };
-
     const onHeaderLanguageChange = async () => {
       try {
         const langSettings = await loadLanguageSettings(headerLanguage.value || 'en');
@@ -667,11 +576,6 @@ export default defineComponent({
       }
     };
 
-    const onMenuLanguageChange = async () => {
-      localStorage.setItem('settingsMenuLanguage', menuLanguage.value);
-      await safeLoadMenuForLanguage(menuLanguage.value);
-    };
-
     // Prevent recursive updates
     let isLoadingMenuLanguage = false;
     const safeLoadMenuForLanguage = async (languageCode: string) => {
@@ -695,31 +599,17 @@ export default defineComponent({
     onMounted(async () => {
       loading.value = true;
 
-      await Promise.all([fetchSettings(), fetchMenus(), fetchAvailableLanguages()]);
-
-      // Set original menu items from the menus table items field
-      if (activeMenu.value && activeMenu.value.items) {
-        originalMenuItems.value = JSON.parse(JSON.stringify(activeMenu.value.items));
-      } else {
-        originalMenuItems.value = [];
-      }
+      await Promise.all([settingsStore.loadSettings(), fetchMenus(), fetchAvailableLanguages()]);
 
       // Load the menu items for the current language
       await safeLoadMenuForLanguage(menuLanguage.value);
 
-      const currentLang = currentLanguage.value || 'en';
       await loadLanguageSettings('en');
 
       headerLanguage.value = 'en';
       menuLanguage.value = 'en';
 
       await safeLoadMenuForLanguage('en');
-
-      // Load default theme from settings
-      const defaultThemeSetting = settings.value.find((s: Setting) => s.key === 'default_theme');
-      if (defaultThemeSetting) {
-        currentTheme.value = defaultThemeSetting.value as 'light' | 'dark';
-      }
 
       // Initialize local variables
       const langSettings = languageSettingsMap.value.get('en') || [];
@@ -735,7 +625,6 @@ export default defineComponent({
     // Watch for theme changes
     watch(() => themeStore.theme, () => {
       settingsStore.updateCSSVariables();
-      languageKey.value++;
     });
 
 
@@ -749,14 +638,6 @@ export default defineComponent({
     // Watch for active menu changes and reload menu items
     watch(activeMenuId, async (newMenuId) => {
       if (newMenuId) {
-        // Set original menu items from the new active menu
-        const newActiveMenu = menus.value.find(m => m.id === newMenuId);
-        if (newActiveMenu && newActiveMenu.items) {
-          originalMenuItems.value = JSON.parse(JSON.stringify(newActiveMenu.items));
-        } else {
-          originalMenuItems.value = [];
-        }
-
         // Load menu items for the current language
         await safeLoadMenuForLanguage(menuLanguage.value);
       }
@@ -764,15 +645,12 @@ export default defineComponent({
 
     return {
       // State
-      settings,
-      filteredSettings,
       menus,
       loading,
       activeMenuId,
       activeMenu,
       errorMessage,
       successMessage,
-      saving,
       savingMenu,
       creatingMenu,
       managingMenu,
@@ -783,20 +661,16 @@ export default defineComponent({
       settingsStore,
       lightStyleSettings,
       darkStyleSettings,
-      logoInput,
-      currentTheme,
       headerLanguage,
       menuLanguage,
       availableLanguages,
       availableMenuRoutes,
       activeSection,
       settingsSections,
-      languageKey,
       languageSettingsMap,
       currentSiteName,
       currentHeaderMessage,
       currentMenuItems,
-      menuProp,
 
       // Current language for reactivity
       currentLanguage,
@@ -805,9 +679,7 @@ export default defineComponent({
       t,
       onHeaderLanguageChange,
       handleMenuLanguageChange,
-      onMenuLanguageChange,
       loadMenuForLanguage,
-      saveAllSettings,
       addMenuItem,
       editMenuItem,
       removeMenuItem,
@@ -822,9 +694,6 @@ export default defineComponent({
       saveHeaderSettings,
       saveLightStyleSettings,
       saveDarkStyleSettings,
-      getSettingValueForLanguage,
-      getMenuItemLabel,
-      normalizeMenuItemLabel,
       onNetworkConfigUpdated
     };
   },

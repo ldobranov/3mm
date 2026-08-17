@@ -7,8 +7,12 @@ import { ref, reactive, markRaw } from 'vue'
 import http from '@/utils/dynamic-http'
 import { i18n } from '@/utils/i18n'
 import { getToken } from '@/utils/auth'
+import { loadBundledExtensionComponent } from '@/utils/extension-components'
 
-// Extension manifests are loaded dynamically from files
+const bundledManifestModules = import.meta.glob('../extensions/*/manifest.json', {
+  eager: true,
+  import: 'default'
+}) as Record<string, ManifestCapabilities>
 
 // Function to get all available extensions (dynamically discovered)
 export function getAvailableExtensions(): string[] {
@@ -81,6 +85,10 @@ class FrontendExtensionRelationships {
     if (!current || this.compareVersions(current, version) < 0) {
       this.extensionVersions[extensionName] = version
     }
+  }
+
+  private getBundledManifest(extensionName: string, version: string): ManifestCapabilities | undefined {
+    return bundledManifestModules[`../extensions/${extensionName}_${version}/manifest.json`]
   }
 
   // Component Registry
@@ -246,10 +254,7 @@ class FrontendExtensionRelationships {
         console.warn(`No version known for ${extensionName}; cannot load component ${componentName}`)
         return null
       }
-      // Try to dynamically import the component
-      const componentPath = `../extensions/${extensionName}_${version}/${componentName}.vue`
-      const module = await import(/* @vite-ignore */ componentPath)
-      return module.default
+      return await loadBundledExtensionComponent(extensionName, version, componentName)
     } catch (error) {
       console.warn(`Failed to load component ${extensionName}.${componentName}:`, error)
       return null
@@ -294,10 +299,7 @@ class FrontendExtensionRelationships {
         return
       }
 
-      // Load manifest from file
-      const manifestPath = `../extensions/${extensionName}_${version}/manifest.json`
-      const manifestModule = await import(/* @vite-ignore */ manifestPath)
-      const manifest = manifestModule.default
+      const manifest = this.getBundledManifest(extensionName, version)
 
       if (manifest) {
         this.manifestCache.value[extensionName] = {
@@ -336,9 +338,7 @@ class FrontendExtensionRelationships {
         return false
       }
 
-      const manifestPath = `../extensions/${extensionName}_${version}/manifest.json`
-      const manifestModule = await import(/* @vite-ignore */ manifestPath)
-      const manifest = manifestModule.default
+      const manifest = this.getBundledManifest(extensionName, version)
 
       if (!manifest) {
         console.log(`❌ No manifest found for ${extensionName}`)
@@ -380,12 +380,9 @@ class FrontendExtensionRelationships {
   // Discover available extensions dynamically using Vite's import.meta.glob
   private async discoverExtensions(): Promise<string[]> {
     try {
-      // Use Vite's import.meta.glob to find all manifest.json files
-      const manifestModules = import.meta.glob('../extensions/*/manifest.json', { eager: true })
-
       const filesystemExtensions: string[] = []
 
-      for (const path in manifestModules) {
+      for (const path in bundledManifestModules) {
         // Extract extension name from path: '../extensions/ExtensionName_1.0.0/manifest.json' -> 'ExtensionName'
         const match = path.match(/\/extensions\/([^\/]+)_([^\/]+)\/manifest\.json$/)
         if (match) {
