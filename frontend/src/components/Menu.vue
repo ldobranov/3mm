@@ -111,6 +111,7 @@ import { useRouter } from 'vue-router';
 import { useI18n } from '@/utils/i18n';
 import { useSettingsStore } from '@/stores/settings';
 import ThemeToggle from './ThemeToggle.vue';
+import { mergeNavigationItems } from '@/utils/menu-navigation';
 
 export default defineComponent({
   name: 'Menu',
@@ -257,16 +258,17 @@ export default defineComponent({
         const response = await http.get(`/menu/read/${currentLanguage.value}`);
         const menus = response.data.items || [];
 
-        // Prioritize main menu (ID 1) for header display, fallback to first active menu
-        const activeMenu = menus.find((m: any) => m.id === 1) || menus.find((m: any) => m.is_active) || menus[0];
+        // The selected active menu augments dynamic navigation. Legacy data may
+        // not have an active flag yet, so keep a deterministic fallback.
+        const activeMenu = menus.find((m: any) => m.is_active) || menus.find((m: any) => m.id === 1) || menus[0];
 
-        if (activeMenu && Array.isArray(activeMenu.items) && activeMenu.items.length > 0) {
-          // Use translated items for current language
-          menuItems.value = [...activeMenu.items];
-        } else {
-          // Extension navigation is declared by manifests and exposed as route metadata.
-          menuItems.value = getManifestMenuItems();
-        }
+        const customItems = activeMenu && Array.isArray(activeMenu.items)
+          ? activeMenu.items
+          : [];
+
+        // Custom navigation augments the data-driven route registry. It must not
+        // hide routes contributed by Core, extensions, or modules.
+        menuItems.value = mergeNavigationItems(customItems, getManifestMenuItems());
 
         // Module v2 navigation is data-driven. A module name is never mapped here.
         if (isLoggedIn.value) {

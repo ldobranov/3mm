@@ -24,7 +24,7 @@ const showDefaultLogo = computed(() => !logoUrl.value)
 
 // Authentication status
 const isAuthenticated = ref(!!localStorage.getItem('authToken'))
-const authInterval = ref<number | null>(null)
+const authInterval = ref<ReturnType<typeof setInterval> | null>(null)
 
 const loadDefaults = async () => {
   try {

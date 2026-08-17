@@ -72,17 +72,23 @@
             :menu-language="menuLanguage"
             :available-languages="availableLanguages"
             :menus="menus"
+            :route-options="availableMenuRoutes"
             :active-menu-id="activeMenuId"
             :current-menu-items="currentMenuItems"
             :saving-menu="savingMenu"
+            :creating-menu="creatingMenu"
+            :managing-menu="managingMenu"
             :settings-store="settingsStore"
             @update:menu-language="handleMenuLanguageChange"
             @update:active-menu-id="activeMenuId = $event"
             @update:current-menu-items="currentMenuItems = $event"
-            @set-active-menu="setActiveMenu"
             @add-menu-item="addMenuItem"
             @edit-menu-item="editMenuItem"
             @remove-menu-item="removeMenuItem"
+            @create-menu="createMenu"
+            @activate-menu="activateMenu"
+            @rename-menu="renameMenu"
+            @delete-menu="deleteMenu"
             @save-menu="saveMenu"
             @drag-end="onDragEnd"
           />
@@ -103,10 +109,12 @@
 
 <script lang="ts">
 import { defineComponent, ref, onMounted, computed, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { useThemeStore } from '@/stores/theme';
 import { useSettingsStore } from '@/stores/settings';
 import { useI18n, i18n } from '@/utils/i18n';
 import http from '@/utils/dynamic-http';
+import { isMenuRouteEligible, normalizeAvailableLanguages } from '@/utils/menu-navigation';
 
 // Import extracted components
 import ApplicationSettingsSection from '@/components/settings/ApplicationSettingsSection.vue';
@@ -135,10 +143,11 @@ export default defineComponent({
   setup() {
     const themeStore = useThemeStore();
     const settingsStore = useSettingsStore();
+    const router = useRouter();
     const { t, currentLanguage } = useI18n();
     
     // Reactive state
-    const availableLanguages = ref<string[]>(['en', 'bg']);
+    const availableLanguages = ref<string[]>(['en']);
     const activeSection = ref('application');
     const languageKey = ref(0);
     const settings = ref<Setting[]>([]);
@@ -149,6 +158,8 @@ export default defineComponent({
     const successMessage = ref('');
     const saving = ref(false);
     const savingMenu = ref(false);
+    const creatingMenu = ref(false);
+    const managingMenu = ref(false);
     const savingHeader = ref(false);
     const savingLightStyle = ref(false);
     const savingDarkStyle = ref(false);
@@ -175,6 +186,27 @@ export default defineComponent({
     const menuProp = computed(() => {
       if (!activeMenu.value) return null;
       return { ...activeMenu.value, items: currentMenuItems.value };
+    });
+
+    const availableMenuRoutes = computed(() => {
+      const hiddenPaths = new Set(['/user/login', '/user/register', '/user/logout']);
+      const currentRole = localStorage.getItem('role') || '';
+
+      return router.getRoutes()
+        .filter(route => {
+          const requiredRole = route.meta?.requiresRole as string | undefined;
+          return !hiddenPaths.has(route.path) && isMenuRouteEligible(route.path, requiredRole, currentRole);
+        })
+        .map(route => {
+          const menuLabel = route.meta?.menuLabel as string | Record<string, string> | undefined;
+          const fallbackLabel = String(route.name || route.path).replace(/([a-z])([A-Z])/g, '$1 $2');
+          const label = typeof menuLabel === 'string'
+            ? menuLabel
+            : menuLabel?.[currentLanguage.value] || menuLabel?.en || fallbackLabel;
+          return { path: route.path, label, adminOnly: route.meta?.requiresRole === 'admin' };
+        })
+        .filter((route, index, routes) => routes.findIndex(item => item.path === route.path) === index)
+        .sort((a, b) => a.label.localeCompare(b.label));
     });
 
     const settingsSections = computed(() => [
@@ -223,15 +255,18 @@ export default defineComponent({
       }
     };
 
-    const fetchMenus = async () => {
+    const fetchMenus = async (preferredMenuId: number | null = activeMenuId.value) => {
       try {
         const response = await http.get('/menu/read');
         const allMenus = response.data.items || [];
         menus.value = allMenus;
 
-        // Always set the first menu as active for editing, regardless of is_active flag
         if (allMenus.length > 0) {
-          activeMenuId.value = allMenus[0].id;
+          const preferredMenu = allMenus.find((menu: any) => menu.id === preferredMenuId);
+          activeMenuId.value = preferredMenu?.id || allMenus[0].id;
+        } else {
+          activeMenuId.value = null;
+          currentMenuItems.value = [];
         }
       } catch (error) {
         console.error('Failed to fetch menus:', error);
@@ -242,12 +277,17 @@ export default defineComponent({
     const fetchAvailableLanguages = async () => {
       try {
         const response = await http.get('/language/available');
-        const languages = response.data.languages || ['en', 'bg'];
-        // Ensure 'en' is first
-        availableLanguages.value = Array.from(new Set(['en', 'bg', ...languages]));
+        availableLanguages.value = normalizeAvailableLanguages(response.data.languages);
+        if (!availableLanguages.value.includes(menuLanguage.value)) {
+          menuLanguage.value = 'en';
+          localStorage.setItem('settingsMenuLanguage', 'en');
+        }
+        if (!availableLanguages.value.includes(headerLanguage.value)) {
+          headerLanguage.value = 'en';
+        }
       } catch (error) {
         console.error('Failed to fetch available languages:', error);
-        availableLanguages.value = ['en', 'bg'];
+        availableLanguages.value = ['en'];
       }
     };
 
@@ -274,12 +314,6 @@ export default defineComponent({
         errorMessage.value = 'Failed to save settings.';
       } finally {
         saving.value = false;
-      }
-    };
-
-    const setActiveMenu = async () => {
-      for (const menu of menus.value) {
-        menu.is_active = menu.id === activeMenuId.value;
       }
     };
 
@@ -365,6 +399,80 @@ export default defineComponent({
         errorMessage.value = 'Failed to save menu.';
       } finally {
         savingMenu.value = false;
+      }
+    };
+
+    const createMenu = async (name: string) => {
+      creatingMenu.value = true;
+      errorMessage.value = '';
+      successMessage.value = '';
+
+      try {
+        const response = await http.post('/menu/create', {
+          name,
+          items: [],
+          is_active: menus.value.length === 0
+        });
+        const createdMenuId = response.data.id as number;
+        await fetchMenus(createdMenuId);
+        currentMenuItems.value = [];
+        originalMenuItems.value = [];
+        successMessage.value = `Menu "${name}" created. You can add its items now.`;
+        setTimeout(() => successMessage.value = '', 3000);
+      } catch (error: any) {
+        console.error('Failed to create menu:', error);
+        errorMessage.value = error?.response?.data?.detail || 'Failed to create menu.';
+      } finally {
+        creatingMenu.value = false;
+      }
+    };
+
+    const activateMenu = async (menuId: number) => {
+      managingMenu.value = true;
+      errorMessage.value = '';
+      try {
+        await http.post(`/menu/${menuId}/activate`);
+        await fetchMenus(menuId);
+        successMessage.value = 'Active menu updated.';
+        setTimeout(() => successMessage.value = '', 3000);
+        window.dispatchEvent(new Event('menu-refresh'));
+      } catch (error: any) {
+        errorMessage.value = error?.response?.data?.detail || 'Failed to activate menu.';
+      } finally {
+        managingMenu.value = false;
+      }
+    };
+
+    const renameMenu = async ({ id, name }: { id: number; name: string }) => {
+      managingMenu.value = true;
+      errorMessage.value = '';
+      try {
+        await http.patch(`/menu/${id}`, { name });
+        await fetchMenus(id);
+        successMessage.value = 'Menu renamed.';
+        setTimeout(() => successMessage.value = '', 3000);
+        window.dispatchEvent(new Event('menu-refresh'));
+      } catch (error: any) {
+        errorMessage.value = error?.response?.data?.detail || 'Failed to rename menu.';
+      } finally {
+        managingMenu.value = false;
+      }
+    };
+
+    const deleteMenu = async (menuId: number) => {
+      managingMenu.value = true;
+      errorMessage.value = '';
+      try {
+        await http.delete(`/menu/${menuId}`);
+        await fetchMenus(null);
+        await safeLoadMenuForLanguage(menuLanguage.value);
+        successMessage.value = 'Menu deleted.';
+        setTimeout(() => successMessage.value = '', 3000);
+        window.dispatchEvent(new Event('menu-refresh'));
+      } catch (error: any) {
+        errorMessage.value = error?.response?.data?.detail || 'Failed to delete menu.';
+      } finally {
+        managingMenu.value = false;
       }
     };
 
@@ -688,6 +796,8 @@ export default defineComponent({
       successMessage,
       saving,
       savingMenu,
+      creatingMenu,
+      managingMenu,
       savingHeader,
       savingLightStyle,
       savingDarkStyle,
@@ -700,6 +810,7 @@ export default defineComponent({
       headerLanguage,
       menuLanguage,
       availableLanguages,
+      availableMenuRoutes,
       activeSection,
       settingsSections,
       languageKey,
@@ -719,10 +830,13 @@ export default defineComponent({
       onMenuLanguageChange,
       loadMenuForLanguage,
       saveAllSettings,
-      setActiveMenu,
       addMenuItem,
       editMenuItem,
       removeMenuItem,
+      createMenu,
+      activateMenu,
+      renameMenu,
+      deleteMenu,
       saveMenu,
       onDragEnd,
       handleLogoUpload,

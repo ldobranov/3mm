@@ -15,6 +15,10 @@ class MenuCreateSchema(PydanticBaseModel):
     is_active: bool = False
 
     model_config = PydanticConfigDict(from_attributes=True)
+
+
+class MenuRenameSchema(PydanticBaseModel):
+    name: str
 from backend.db.page import Page
 from backend.db.settings import Settings
 from backend.db.user import User, UserSchema
@@ -790,8 +794,43 @@ def read_menus_for_language(language: str, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading menus for language {language}: {e}")
 
+@router.post("/menu/create")
+def create_menu(
+    menu_data: MenuCreateSchema,
+    db: Session = Depends(get_db),
+    user=Depends(admin_required),
+):
+    """Create an empty custom menu that can be populated by the menu editor."""
+    name = menu_data.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Menu name is required")
+
+    try:
+        menu_count = db.query(Menu).count()
+        db_menu = Menu(
+            name=name,
+            items=menu_data.items or [],
+            structure={"config": {"position": "sidebar", "style": "vertical"}},
+            default_language="en",
+            has_translations=False,
+            is_active=menu_data.is_active or menu_count == 0,
+        )
+        db.add(db_menu)
+        db.commit()
+        db.refresh(db_menu)
+        return db_menu
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error creating menu: {e}")
+
 @router.put("/menu/update")
-def update_menu(menu_data: dict, db: Session = Depends(get_db)):
+def update_menu(
+    menu_data: dict,
+    db: Session = Depends(get_db),
+    user=Depends(admin_required),
+):
     """Update menu with multilingual support"""
     try:
         menu_id = menu_data.get("id")
@@ -828,9 +867,68 @@ def update_menu(menu_data: dict, db: Session = Depends(get_db)):
         db.refresh(db_menu)
 
         return db_menu
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error updating menu: {e}")
+
+
+@router.patch("/menu/{menu_id}")
+def rename_menu(
+    menu_id: int,
+    payload: MenuRenameSchema,
+    db: Session = Depends(get_db),
+    user=Depends(admin_required),
+):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Menu name is required")
+
+    db_menu = db.query(Menu).filter(Menu.id == menu_id).first()
+    if not db_menu:
+        raise HTTPException(status_code=404, detail="Menu not found")
+
+    db_menu.name = name
+    db.commit()
+    db.refresh(db_menu)
+    return db_menu
+
+
+@router.post("/menu/{menu_id}/activate")
+def activate_menu(
+    menu_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(admin_required),
+):
+    db_menu = db.query(Menu).filter(Menu.id == menu_id).first()
+    if not db_menu:
+        raise HTTPException(status_code=404, detail="Menu not found")
+
+    db.query(Menu).update({Menu.is_active: False}, synchronize_session=False)
+    db_menu.is_active = True
+    db.commit()
+    db.refresh(db_menu)
+    return db_menu
+
+
+@router.delete("/menu/{menu_id}")
+def delete_menu(
+    menu_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(admin_required),
+):
+    db_menu = db.query(Menu).filter(Menu.id == menu_id).first()
+    if not db_menu:
+        raise HTTPException(status_code=404, detail="Menu not found")
+    if db.query(Menu).count() <= 1:
+        raise HTTPException(status_code=400, detail="The only menu cannot be deleted")
+    if db_menu.is_active:
+        raise HTTPException(status_code=400, detail="Activate another menu before deleting this one")
+
+    db.delete(db_menu)
+    db.commit()
+    return {"deleted": True, "menu_id": menu_id}
 
 @router.post("/frontend-config/detect")
 def detect_frontend_config(
