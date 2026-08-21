@@ -66,6 +66,11 @@ class ExtensionSpec(BaseModel):
     public_endpoints: List[str] = Field(default_factory=list)
     dependencies: Dict[str, Any] = Field(default_factory=dict)
 
+    # Widget settings are persisted in the dashboard widget config. The schema
+    # lets the compiled editor render a useful form even when AI refinement is
+    # unavailable.
+    config_schema: Dict[str, Any] = Field(default_factory=dict)
+
     # Free-form description to guide the AI
     goal: Optional[str] = None
 

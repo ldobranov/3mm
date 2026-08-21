@@ -92,3 +92,69 @@ def test_reference_contacts_source_builds_as_a_valid_runtime_package():
     validated = validate_module_package(output.getvalue())
     assert validated.runtime_extension is not None
     assert validated.runtime_extension.module_id == "org.3mm.contacts"
+
+def compiled_ui_manifest(**changes):
+    value = manifest(
+        module_id="org.3mm.clock",
+        runtimes=["ui"],
+        entrypoints={"ui": "compiled-ui.json"},
+        compatibility={"protocol": "1.0", "architectures": ["any"]},
+        permissions=[],
+        registrations=[{
+            "kind": "widget",
+            "registration_id": "org.3mm.clock.widget",
+            "metadata": {"entrypoint_id": "clock"},
+        }],
+        health_check={"type": "json_file", "path": "compiled-ui.json"},
+    )
+    value.update(changes)
+    return value
+
+def compiled_ui_definition(**changes):
+    value = {
+        "compiled_ui_version": 1,
+        "module_id": "org.3mm.clock",
+        "version": "1.0.0",
+        "entrypoints": [{
+            "entrypoint_id": "clock",
+            "kind": "widget",
+            "source": "source/frontend/ClockWidget.vue",
+            "label": {"en": "Digital Clock"},
+        }],
+    }
+    value.update(changes)
+    return value
+
+def compiled_ui_package(*, definition=None, manifest_value=None, extra=None):
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest_value or compiled_ui_manifest()))
+        archive.writestr("compiled-ui.json", json.dumps(definition or compiled_ui_definition()))
+        archive.writestr("source/frontend/ClockWidget.vue", "<template><time>12:34:56</time></template>")
+        if extra:
+            archive.writestr(extra, "forbidden")
+    return output.getvalue()
+
+def test_compiled_ui_package_declares_generic_widget_source():
+    validated = validate_module_package(compiled_ui_package())
+    assert validated.compiled_ui is not None
+    assert validated.compiled_ui.entrypoints[0].entrypoint_id == "clock"
+
+def test_compiled_ui_package_rejects_backend_code_and_missing_sources():
+    with pytest.raises(ModulePackageError, match="forbidden files"):
+        validate_module_package(compiled_ui_package(extra="source/backend/clock.py"))
+    broken = compiled_ui_definition()
+    broken["entrypoints"][0]["source"] = "source/frontend/Missing.vue"
+    with pytest.raises(ModulePackageError, match="sources are missing"):
+        validate_module_package(compiled_ui_package(definition=broken))
+
+def test_reference_clock_source_builds_as_a_valid_compiled_ui_package():
+    root = Path(__file__).parents[2] / "modules" / "compiled-clock"
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        for path in root.rglob("*"):
+            if path.is_file():
+                archive.write(path, path.relative_to(root).as_posix())
+    validated = validate_module_package(output.getvalue())
+    assert validated.compiled_ui is not None
+    assert validated.compiled_ui.module_id == "org.3mm.clock"

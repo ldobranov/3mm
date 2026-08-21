@@ -347,7 +347,13 @@ log 'Installing release service definitions'
 install_units "$release_dir"
 
 log 'Running database migrations against persistent state'
-install -d -o 3mm -g 3mm -m 0750 "$core_state"
+install -d -o 3mm -g 3mm -m 0750 \
+  "$core_state" \
+  "$core_state/uploads" \
+  "$core_state/uploads/modules" \
+  "$core_state/extensions/backend" \
+  "$core_state/extensions/frontend" \
+  "$core_state/extensions/compiled"
 runuser -u 3mm -- env \
   DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db \
   UPLOADS_DIR=/var/lib/3mm/core/uploads \

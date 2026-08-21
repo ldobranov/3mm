@@ -34,6 +34,10 @@ from three_mm_protocol.runtime_extension import (
     RuntimeNavigationItemV1,
     RuntimePageV1,
 )
+from three_mm_protocol.compiled_extension import (
+    CompiledUiEntrypointV1,
+    CompiledUiExtensionV1,
+)
 
 __all__ = [
     "PROTOCOL_VERSION",
@@ -65,4 +69,6 @@ __all__ = [
     "RuntimeFieldV1",
     "RuntimeNavigationItemV1",
     "RuntimePageV1",
+    "CompiledUiEntrypointV1",
+    "CompiledUiExtensionV1",
 ]

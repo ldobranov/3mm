@@ -112,7 +112,7 @@ def _ai_refine_files(
         provider_name = "openrouter"
     else:
         client = FreeProviderFallbackClient(openrouter, groq)
-        provider_name = "openrouter/free -> groq"
+        provider_name = "groq -> openrouter/free"
 
     if not getattr(client, "is_configured")():
         warnings.append(
@@ -150,9 +150,9 @@ def _ai_refine_files(
     system = (
         "You are an expert developer for a FastAPI + Vue 3 extension system. "
         "You will receive an ExtensionSpec and a set of scaffold files. "
-        "Return STRICT JSON only (no markdown). Prefer BASE64 to avoid JSON escaping issues. "
-        "Shape: {\"files_b64\": {\"path\": \"BASE64_UTF8_CONTENT\", ...}}. "
-        "(Legacy accepted: {\"files\": {\"path\": \"content\", ...}}.) "
+        "Return STRICT JSON only, with no markdown, reasoning or explanation. "
+        "Use exactly this shape: {\"files\": {\"path\": \"complete UTF-8 file content\"}}. "
+        "Do not use Base64. If no file needs changes, return {\"files\": {}}. "
         "Only include files you changed. Only use paths from allowed_paths. "
         "Keep i18n keys namespaced and consistent with the JSON nesting. "
         "Do not change manifest.json structure (unless asked) and do not add new files.\n\n"
@@ -185,8 +185,9 @@ def _ai_refine_files(
                 kwargs["response_format"] = response_format
             return getattr(client, "chat_completions")(**kwargs)
 
+        used_response_format = True
         try:
-            resp = _call(True)
+            resp = _call(used_response_format)
         except Exception as e:
             # Some OpenRouter models reject response_format; retry without it.
             warnings.append(
@@ -195,13 +196,28 @@ def _ai_refine_files(
                     message=f"AI provider rejected response_format JSON mode ({type(e).__name__}); retrying without it.",
                 )
             )
-            resp = _call(False)
+            used_response_format = False
+            resp = _call(used_response_format)
         content = (
             resp.get("choices", [{}])[0]
             .get("message", {})
             .get("content", "")
         )
         data = _extract_json_object(content)
+        if not data and used_response_format:
+            warnings.append(
+                BuildWarning(
+                    code="ai.bad_response.retry",
+                    message="AI returned invalid JSON; retrying once without JSON mode.",
+                )
+            )
+            resp = _call(False)
+            content = (
+                resp.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+            )
+            data = _extract_json_object(content)
         if not data or not isinstance(data, dict):
             warnings.append(
                 BuildWarning(
@@ -524,6 +540,128 @@ def _default_locales(spec: ExtensionSpec) -> Tuple[Dict, Dict]:
     return en, bg
 
 
+def _compiled_module_id(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "widget"
+    return f"org.3mm.generated.{slug}"
+
+
+def _compiled_widget_component(spec: ExtensionSpec) -> str:
+    return f'''<template>
+  <section class="generated-widget">
+    <strong>{spec.name}</strong>
+    <dl v-if="entries.length">
+      <template v-for="([key, value]) in entries" :key="key">
+        <dt>{{{{ key }}}}</dt><dd>{{{{ value }}}}</dd>
+      </template>
+    </dl>
+    <span v-else>Ready</span>
+  </section>
+</template>
+
+<script setup lang="ts">
+import {{ computed }} from 'vue'
+const props = defineProps<{{ config?: Record<string, unknown> }}>()
+const entries = computed(() => Object.entries(props.config || {{}}))
+</script>
+
+<style scoped>
+.generated-widget {{ display:grid; min-height:100%; place-content:center; gap:.75rem; padding:1rem; color:inherit }}
+dl {{ display:grid; grid-template-columns:auto 1fr; gap:.35rem .75rem; margin:0 }}
+dt {{ font-weight:600 }} dd {{ margin:0 }}
+</style>
+'''
+
+
+def _compiled_widget_editor(spec: ExtensionSpec) -> str:
+    schema = json.dumps(spec.config_schema or {"type": "object", "properties": {}}, ensure_ascii=False)
+    return f'''<template>
+  <div class="generated-editor">
+    <label v-for="field in fields" :key="field.key">
+      <span>{{{{ field.title }}}}</span>
+      <input v-if="field.type === 'boolean'" type="checkbox" :checked="Boolean(value[field.key])" @change="setBoolean(field.key, $event)" />
+      <select v-else-if="field.options.length" :value="value[field.key] ?? ''" @change="setValue(field.key, $event)">
+        <option v-for="option in field.options" :key="String(option)" :value="option">{{{{ option }}}}</option>
+      </select>
+      <input v-else :type="field.type === 'integer' || field.type === 'number' ? 'number' : 'text'" :value="value[field.key] ?? ''" @input="setValue(field.key, $event)" />
+    </label>
+    <p v-if="!fields.length">This widget has no configurable fields.</p>
+  </div>
+</template>
+
+<script setup lang="ts">
+import {{ computed }} from 'vue'
+const schema = {schema} as any
+const props = defineProps<{{ config?: Record<string, unknown>; modelValue?: Record<string, unknown> }}>()
+const emit = defineEmits<{{ (event: 'update:modelValue', value: Record<string, unknown>): void }}>()
+const value = computed(() => props.config || props.modelValue || {{}})
+const fields = Object.entries(schema.properties || {{}}).map(([key, item]: [string, any]) => ({{ key, title: item.title || key, type: item.type || 'string', options: item.enum || [] }}))
+function setValue(key: string, event: Event) {{ const target = event.target as HTMLInputElement; const field = fields.find(item => item.key === key); const next = field?.type === 'integer' || field?.type === 'number' ? Number(target.value) : target.value; emit('update:modelValue', {{ ...value.value, [key]: next }}) }}
+function setBoolean(key: string, event: Event) {{ emit('update:modelValue', {{ ...value.value, [key]: (event.target as HTMLInputElement).checked }}) }}
+</script>
+
+<style scoped>
+.generated-editor {{ display:grid; gap:1rem }} label {{ display:grid; gap:.4rem }} span {{ font-weight:600 }} input,select {{ padding:.55rem .7rem; border:1px solid var(--input-border); border-radius:var(--border-radius-sm); background:var(--input-bg); color:var(--text-primary) }}
+</style>
+'''
+
+
+def _build_compiled_widget_zip(
+    spec: ExtensionSpec, instructions: Optional[str], use_ai: bool, model: Optional[str],
+    ai_provider: Optional[str], groq_api_key: Optional[str], openrouter_api_key: Optional[str],
+) -> Tuple[BuildReport, str, Dict[str, str]]:
+    module_id = _compiled_module_id(spec.name)
+    widget_id = "widget"
+    editor_id = "widget_editor"
+    contract = {
+        "compiled_ui_version": 1, "module_id": module_id, "version": spec.version,
+        "entrypoints": [
+            {"entrypoint_id": widget_id, "kind": "widget", "source": "source/frontend/Widget.vue", "label": {"en": spec.name, "translations": {"bg": spec.name}}},
+            {"entrypoint_id": editor_id, "kind": "editor", "source": "source/frontend/WidgetEditor.vue", "label": {"en": f"{spec.name} settings", "translations": {"bg": f"Настройки на {spec.name}"}}, "target_entrypoint_id": widget_id},
+        ],
+    }
+    manifest = {
+        "manifest_version": 2, "module_id": module_id, "name": spec.name, "version": spec.version,
+        "description": spec.description, "runtimes": ["ui"], "entrypoints": {"ui": "compiled-ui.json"},
+        "compatibility": {"protocol": "1.0", "agent": ">=0.1.0", "core": ">=0.1.0", "architectures": ["any"]},
+        "capabilities": {"provides": [], "consumes": []}, "permissions": [], "dependencies": {}, "conflicts": [],
+        "configuration_schema": spec.config_schema, "configuration_defaults": {},
+        "health_check": {"type": "json_file", "path": "compiled-ui.json"},
+        "registrations": [{"kind": "widget", "registration_id": f"{module_id}.widget", "metadata": {"entrypoint_id": widget_id}}],
+    }
+    files_text = {
+        "manifest.json": json.dumps(manifest, ensure_ascii=False, indent=2),
+        "compiled-ui.json": json.dumps(contract, ensure_ascii=False, indent=2),
+        "source/frontend/Widget.vue": _compiled_widget_component(spec),
+        "source/frontend/WidgetEditor.vue": _compiled_widget_editor(spec),
+    }
+    warnings: List[BuildWarning] = []
+    if use_ai and (instructions or spec.goal):
+        editable_sources = {
+            path: content for path, content in files_text.items()
+            if path.startswith("source/frontend/")
+        }
+        compiled_instructions = (
+            (instructions or spec.goal or "")
+            + "\n\nThis is a compiled Vue widget package. Modify the widget and editor source as needed. "
+              "Only import from 'vue' or relative source files. The widget receives a reactive config prop; "
+              "the editor must emit update:modelValue with the complete new config object."
+        )
+        updates, ai_warnings = _ai_refine_files(
+            spec, compiled_instructions, editable_sources, model,
+            ai_provider, groq_api_key, openrouter_api_key
+        )
+        warnings.extend(ai_warnings)
+        files_text.update(updates)
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for path, content in files_text.items():
+            zf.writestr(path, content.encode("utf-8"))
+    return (
+        BuildReport(extension_id=f"{module_id}_{spec.version}", files=sorted(files_text), warnings=warnings),
+        base64.b64encode(buf.getvalue()).decode("ascii"), files_text,
+    )
+
+
 def build_extension_zip(
     spec: ExtensionSpec,
     instructions: Optional[str] = None,
@@ -542,6 +680,11 @@ def build_extension_zip(
       - frontend/<extra components>
       - locales/<lang>.json
     """
+
+    if spec.type == "widget":
+        return _build_compiled_widget_zip(
+            spec, instructions, use_ai, model, ai_provider, groq_api_key, openrouter_api_key
+        )
 
     extension_id = f"{spec.name}_{spec.version}"
     warnings: List[BuildWarning] = []
@@ -752,11 +895,10 @@ def package_extension_zip(
             continue
         sanitized[path] = text
 
-    required = [
-        "manifest.json",
-        f"backend/{spec.backend_entry}",
-        f"frontend/{spec.frontend_entry}",
-    ]
+    is_compiled = "compiled-ui.json" in sanitized
+    required = (["manifest.json", "compiled-ui.json"] if is_compiled else [
+        "manifest.json", f"backend/{spec.backend_entry}", f"frontend/{spec.frontend_entry}",
+    ])
     for req in required:
         if req not in sanitized:
             warnings.append(
@@ -769,7 +911,8 @@ def package_extension_zip(
     files_bytes: Dict[str, bytes] = {p: t.encode("utf-8") for p, t in sanitized.items()}
 
     # Deterministic validations (surface issues early in UI)
-    warnings.extend(validate_extension_package(spec, sanitized))
+    if not is_compiled:
+        warnings.extend(validate_extension_package(spec, sanitized))
 
     buf = BytesIO()
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:

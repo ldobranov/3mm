@@ -5,6 +5,8 @@ import type { Widget } from '@/stores/widgets';
 import { useWidgetsStore } from '@/stores/widgets';
 import { markRaw } from 'vue';
 import { loadBundledExtensionComponentByPath } from '@/utils/extension-components';
+import { findCompiledEntrypoint, loadCompiledComponent } from '@/utils/compiled-ui';
+import { useI18n } from '@/utils/i18n';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -19,11 +21,14 @@ const emit = defineEmits<{
 
 const settingsStore = useSettingsStore();
 const widgetsStore = useWidgetsStore();
+const { t } = useI18n();
 const styleSettings = computed(() => settingsStore.styleSettings);
 const localConfig = ref<any>({});
 const widgetId = computed(() => props.widget?.id ?? 0);
 const widgetType = computed(() => props.widget?.type || 'TEXT');
 const extensionEditor = ref<any>(null);
+const editorState = ref<'idle' | 'loading' | 'ready' | 'missing' | 'error'>('idle');
+const editorError = ref('');
 
 
 const CurrentEditor = computed(() => {
@@ -34,13 +39,25 @@ const CurrentEditor = computed(() => {
 watch(() => props.widget, async (widget) => {
   if (!widget) {
     extensionEditor.value = null;
+    editorState.value = 'idle';
     return;
   }
 
   extensionEditor.value = null; // Reset while loading
+  editorState.value = 'loading';
+  editorError.value = '';
 
   try {
-    if (widget.type.startsWith('extension:')) {
+    if (widget.type.startsWith('compiled:')) {
+      const resolved = await findCompiledEntrypoint(widget.type);
+      const editor = resolved?.pkg.entrypoints.find(entrypoint =>
+        entrypoint.kind === 'editor' &&
+        entrypoint.target_entrypoint_id === resolved.entrypoint.entrypoint_id
+      );
+      extensionEditor.value = resolved && editor
+        ? await loadCompiledComponent(resolved.pkg, editor)
+        : null;
+    } else if (widget.type.startsWith('extension:')) {
       const extensionId = widget.type.split(':')[1];
       const extensions = await widgetsStore.fetchAvailableExtensions();
       const extension = extensions.find(ext => ext.id === parseInt(extensionId));
@@ -63,10 +80,12 @@ watch(() => props.widget, async (widget) => {
       const component = await loadBundledExtensionComponentByPath(editorUrl);
       extensionEditor.value = component ? markRaw(component) : null;
     }
+    editorState.value = extensionEditor.value ? 'ready' : 'missing';
   } catch (error) {
     console.error('Failed to load editor:', error);
-    // Fallback to a simple text editor or null
     extensionEditor.value = null;
+    editorError.value = error instanceof Error ? error.message : String(error);
+    editorState.value = 'error';
   }
 }, { immediate: true });
 
@@ -175,9 +194,19 @@ onBeforeUnmount(() => {
             <div v-if="CurrentEditor" class="editor-content">
               <component :is="CurrentEditor" :config="localConfig" @update:modelValue="localConfig = $event" />
             </div>
-            <div v-else class="loading-editor">
+            <div v-else-if="editorState === 'loading'" class="editor-status">
               <div class="loading-spinner"></div>
-              <span>Loading editor...</span>
+              <span>{{ t('dashboard.editor.loadingWidgetEditor', 'Loading editor...') }}</span>
+            </div>
+            <div v-else-if="editorState === 'error'" class="editor-status editor-status-error">
+              <i class="bi bi-exclamation-triangle"></i>
+              <strong>{{ t('dashboard.editor.widgetEditorFailed', 'The widget editor could not be loaded.') }}</strong>
+              <span>{{ editorError }}</span>
+            </div>
+            <div v-else class="editor-status">
+              <i class="bi bi-sliders"></i>
+              <strong>{{ t('dashboard.editor.noWidgetSettings', 'This widget does not provide editable settings.') }}</strong>
+              <span>{{ t('dashboard.editor.noWidgetSettingsHint', 'You can still move, resize, or remove it from the dashboard.') }}</span>
             </div>
           </div>
 
@@ -280,7 +309,7 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--card-border);
 }
 
-.loading-editor {
+.editor-status {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -288,6 +317,15 @@ onBeforeUnmount(() => {
   padding: 2rem;
   gap: 1rem;
   color: var(--text-secondary);
+}
+
+.editor-status i {
+  font-size: 1.5rem;
+}
+
+.editor-status-error {
+  color: var(--danger-color, #dc3545);
+  text-align: center;
 }
 
 .loading-spinner {

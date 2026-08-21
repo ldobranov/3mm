@@ -82,6 +82,9 @@ install -o root -g root -m 0644 -t /etc/systemd/system \
 cat > /etc/3mm/3mm.env <<EOF
 DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db
 UPLOADS_DIR=/var/lib/3mm/core/uploads
+BACKEND_EXTENSIONS_DIR=/var/lib/3mm/core/extensions/backend
+FRONTEND_EXTENSIONS_DIR=/var/lib/3mm/core/extensions/frontend
+COMPILED_UI_ARTIFACTS_DIR=/var/lib/3mm/core/extensions/compiled
 BACKEND_HOST=0.0.0.0
 BACKEND_PORT=8887
 CORS_ORIGINS=["$frontend_origin"]
@@ -109,7 +112,13 @@ printf 'AI_SETTINGS_MASTER_KEY=%s\n' "$(cat "$ai_master_key_file")" >> /etc/3mm/
 chown root:3mm /etc/3mm/3mm.env
 chmod 0640 /etc/3mm/3mm.env
 
-install -d -o 3mm -g 3mm -m 0750 /var/lib/3mm/core
+install -d -o 3mm -g 3mm -m 0750 \
+  /var/lib/3mm/core \
+  /var/lib/3mm/core/uploads \
+  /var/lib/3mm/core/uploads/modules \
+  /var/lib/3mm/core/extensions/backend \
+  /var/lib/3mm/core/extensions/frontend \
+  /var/lib/3mm/core/extensions/compiled
 runuser -u 3mm -- env \
   DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db \
   PYTHONPATH="$release_dir" \

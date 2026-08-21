@@ -9,6 +9,9 @@ User=3mm
 Group=3mm
 WorkingDirectory=/opt/3mm/current
 EnvironmentFile=-/etc/3mm/3mm.env
+Environment=BACKEND_EXTENSIONS_DIR=/var/lib/3mm/core/extensions/backend
+Environment=FRONTEND_EXTENSIONS_DIR=/var/lib/3mm/core/extensions/frontend
+Environment=COMPILED_UI_ARTIFACTS_DIR=/var/lib/3mm/core/extensions/compiled
 ExecStart=/opt/3mm/venv/bin/python -m uvicorn backend.main:app --host 0.0.0.0 --port 8887
 Restart=on-failure
 RestartSec=5s

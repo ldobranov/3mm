@@ -1,0 +1,13 @@
+{
+  "compiled_ui_version": 1,
+  "module_id": "org.3mm.clock",
+  "version": "1.0.0",
+  "entrypoints": [
+    {
+      "entrypoint_id": "clock",
+      "kind": "widget",
+      "source": "source/frontend/ClockWidget.vue",
+      "label": {"en": "Digital Clock", "translations": {"bg": "Дигитален часовник"}}
+    }
+  ]
+}

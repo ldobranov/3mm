@@ -4,6 +4,8 @@
 
 import { ref, computed } from 'vue'
 import { readFrontendTranslations, saveCurrentUserLanguage } from '@/utils/language-api'
+import coreEnglish from '@/locales/en.json'
+import coreBulgarian from '@/locales/bg.json'
 
 interface Translations {
   [key: string]: any
@@ -15,8 +17,8 @@ class FrontendI18n {
   private version = ref(0)
 
   constructor() {
-    // Initialize with empty English translations (will be populated by extensions)
-    this.translations.set('en', {})
+    this.translations.set('en', coreEnglish)
+    this.translations.set('bg', coreBulgarian)
   }
 
   private getBundledLanguageCodes(): string[] {
@@ -114,9 +116,13 @@ class FrontendI18n {
   // Load translations for a language
   async loadTranslations(languageCode: string) {
     try {
+      const coreTranslations = languageCode === 'bg' ? coreBulgarian : languageCode === 'en' ? coreEnglish : {}
       const localTranslations = await this.loadLocalTranslations(languageCode)
       const extensionTranslations = await this.loadExtensionTranslationsForLanguage(languageCode)
-      const allTranslations = this.deepMerge(localTranslations, extensionTranslations)
+      const allTranslations = this.deepMerge(
+        this.deepMerge(coreTranslations, localTranslations),
+        extensionTranslations
+      )
       this.translations.set(languageCode, allTranslations)
       this.version.value++
     } catch (error) {

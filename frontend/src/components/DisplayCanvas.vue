@@ -156,6 +156,11 @@ function renderItems() {
           componentProps.extensionName = widget.type; // This is the full type like "extension:1"
           componentProps.width = widget.width;
           componentProps.height = widget.height;
+        } else if (widget.type.startsWith('compiled:')) {
+          componentProps.extensionId = -1;
+          componentProps.extensionName = widget.type;
+          componentProps.width = widget.width;
+          componentProps.height = widget.height;
         } else {
           // Legacy widget types - map to extension IDs (will be set after installation)
           // For now, treat as extension widgets

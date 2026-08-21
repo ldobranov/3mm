@@ -38,6 +38,11 @@ POST_BASELINE_TABLES = {
     "ai_credit_accounts",
     "ai_jobs",
     "ai_usage_ledger",
+    "runtime_extension_definitions",
+    "runtime_entity_records",
+    "extension_projects",
+    "extension_project_files",
+    "extension_project_builds",
 }
 
 

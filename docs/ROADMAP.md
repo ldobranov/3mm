@@ -1,6 +1,6 @@
 # 3mm Roadmap
 
-Status: active; Milestones 0–6 completed
+Status: active; Milestones 0–7 completed, Milestone 8 in progress
 Planning style: sequential milestones with a runnable result after every milestone
 
 Dates are intentionally not assigned until the current baseline is reproducible. Progress is measured by acceptance criteria, not optimistic calendar estimates.
@@ -192,7 +192,7 @@ Acceptance criteria:
 
 Goal: make the AI Extension Builder publish useful extensions that become available immediately, without rebuilding the Core frontend or executing arbitrary generated code.
 
-Status: in progress; runtime-extension v1 contract started on 2026-08-17.
+Status: completed on 2026-08-17; compiled source execution remains explicitly separated into Milestone 8.
 
 Deliverables:
 
@@ -217,7 +217,45 @@ Acceptance criteria:
 - failed activation restores the prior version and leaves no partially enabled extension;
 - installed runtime behavior continues without AI availability or provider credit.
 
-## Milestone 8 — Real Raspberry Pi validation
+## Milestone 8 — Compiled Extension Runtime
+
+Goal: install reviewed Vue extension source as immutable browser-ready artifacts without rebuilding the complete Core frontend or running a Vite development server.
+
+Status: in progress; source contract, artifact compiler and generic browser loader completed on 2026-08-18.
+
+Deliverables:
+
+- versioned `compiled-ui v1` contract shared by Core, builder and frontend;
+- generic UI entrypoints for widgets, routes, editors and reusable components;
+- strict source-package validation and immutable package hashes;
+- isolated, offline install-time Vue compiler with CPU, memory and time limits;
+- stable Extension Host SDK instead of imports from arbitrary Core internals;
+- hashed JavaScript and CSS artifacts stored outside immutable application releases;
+- generic runtime asset loader and dynamic route/widget/editor registration;
+- transactional activation, version rollback and artifact cleanup;
+- explicit administrative review for executable UI packages;
+- reference Digital Clock widget and page-extension acceptance packages.
+
+Acceptance criteria:
+
+- the reference Clock `.vue` source compiles during installation on Raspberry Pi;
+- the installed Clock appears in Display Editor and updates once per second;
+- a compiled route extension opens without rebuilding or restarting the main frontend;
+- widget editors use the same compiled artifact pipeline;
+- invalid imports, missing entrypoints and compiler failures prevent activation;
+- the browser loads only the reviewed immutable artifact hash;
+- disabling and rollback do not delete extension data;
+- compilation cannot write into `/opt/3mm/current` or access the network;
+- Core contains no concrete extension or widget names.
+
+Stages:
+
+1. shared contract, validator and Clock source fixture;
+2. isolated install-time compiler and immutable artifact store;
+3. generic browser loader for widget, route, editor and component entrypoints;
+4. Raspberry acceptance, security limits, rollback and Builder integration.
+
+## Milestone 9 — Real Raspberry Pi validation
 
 Goal: replace mock hardware with real Raspberry adapters while preserving contracts.
 
@@ -238,7 +276,7 @@ Acceptance criteria:
 - CPU, memory and storage remain within documented limits;
 - clean device installation can be repeated from the guide.
 
-## Milestone 9 — Safe compiled AI module builder
+## Milestone 10 — Safe compiled AI module builder
 
 Goal: evolve the existing AI Extension Builder into a controlled module development pipeline.
 
@@ -260,7 +298,7 @@ Acceptance criteria:
 - installed artifact corresponds exactly to the reviewed hash;
 - removal and rollback are verified.
 
-## Milestone 10 — Production operations
+## Milestone 11 — Production operations
 
 Goal: make small real installations supportable.
 
@@ -282,7 +320,7 @@ Acceptance criteria:
 - storage cannot grow without configured bounds;
 - release and rollback procedures are repeatable.
 
-## Milestone 11 — Ecosystem expansion
+## Milestone 12 — Ecosystem expansion
 
 Goal: expand capabilities without weakening Core architecture.
 
@@ -370,6 +408,11 @@ These are the first concrete tasks after approval of this plan:
 - [x] Add generic Core storage and a versioned, contract-validated runtime CRUD API.
 - [x] Implement the generic runtime page renderer and route registration.
 - [x] Add a hand-written Contacts CRUD runtime package and transactional catalog activation.
+- [x] Define the shared `compiled-ui v1` source and entrypoint contract.
+- [x] Add strict compiled-source package validation and a reference Clock fixture.
+- [x] Build the install-time Vue compiler and immutable artifact store; production sandbox enforcement remains in Milestone 8 Stage 4.
+- [x] Add the generic browser loader and connect compiled widgets, routes, editors and components without rebuilding Core frontend.
+- [ ] Prove the compiled Clock artifact in Display Editor on Raspberry Pi.
 - [ ] Prove Contacts install-to-use behavior in the browser on Raspberry Pi.
 - [ ] Constrain AI Extension Builder generation to the runtime contract.
 - [ ] Validate the open setup-only access point and persistent NetworkManager profile across a Raspberry Pi reboot.

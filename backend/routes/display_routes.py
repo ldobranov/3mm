@@ -8,6 +8,8 @@ from backend.db.user import User
 from backend.db.display import Display
 from backend.db.widget import Widget
 from backend.db.extension import Extension
+from backend.db.module import ModulePackage
+from backend.services.module_packages import ModulePackageError, validate_module_package
 from backend.schemas.display import (
     DisplayCreate, DisplayUpdate,
     WidgetCreate, WidgetUpdate,
@@ -16,6 +18,7 @@ from backend.schemas.display import (
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+from pathlib import Path
 
 class DisplaySchema(BaseModel):
     id: int
@@ -274,6 +277,30 @@ def create_widget(display_id: int, payload: WidgetCreate, claims: dict = Depends
                 raise HTTPException(status_code=422, detail="Extension widget not found or not enabled")
         except (ValueError, IndexError):
             raise HTTPException(status_code=422, detail="Invalid extension widget type format")
+    elif payload.type.startswith("compiled:"):
+        try:
+            _, module_id, version, entrypoint_id = payload.type.split(":", 3)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid compiled widget type format") from exc
+        package = db.query(ModulePackage).filter(
+            ModulePackage.module_id == module_id,
+            ModulePackage.version == version,
+        ).first()
+        if package is None:
+            raise HTTPException(status_code=422, detail="Compiled widget package was not found")
+        try:
+            validated = validate_module_package(Path(package.file_path).read_bytes())
+        except (OSError, ModulePackageError) as exc:
+            raise HTTPException(status_code=422, detail="Compiled widget package is invalid") from exc
+        entrypoint = next(
+            (
+                item for item in (validated.compiled_ui.entrypoints if validated.compiled_ui else ())
+                if item.entrypoint_id == entrypoint_id and item.kind == "widget"
+            ),
+            None,
+        )
+        if entrypoint is None:
+            raise HTTPException(status_code=422, detail="Compiled widget entrypoint was not found")
     else:
         raise HTTPException(status_code=422, detail="Invalid widget type")
     

@@ -1,0 +1,24 @@
+{
+  "common": { "cancel": "Cancel", "error": "Error", "save": "Save" },
+  "profile": {
+    "title": "My profile", "account": "Account", "username": "Username", "email": "Email",
+    "role": "Role", "status": "Status", "active": "Active", "inactive": "Inactive",
+    "edit_profile": "Edit profile", "new_password": "New password (optional)",
+    "save_changes": "Save changes", "leave_empty_password": "Leave blank to keep your current password.",
+    "no_data_found": "No profile data found.", "failed_to_load": "Failed to load profile.",
+    "failed_to_update": "Failed to update profile.", "updated_successfully": "Profile updated successfully."
+  },
+  "dashboard": {
+    "titlePlaceholder": "Dashboard title", "slugPlaceholder": "dashboard-slug",
+    "editor": {
+      "editTitle": "Edit", "slugLabel": "Slug:", "publicLabel": "Public", "privateLabel": "Private",
+      "previewButton": "Preview", "settingsButton": "Settings", "addWidgetsTitle": "Add widgets",
+      "dashboardSettingsTitle": "Dashboard settings", "titleField": "Title", "slugField": "Slug",
+      "makePublicCheckbox": "Make this dashboard public", "cancelButton": "Cancel", "saveButton": "Save",
+      "loading": "Loading...", "errorLoading": "Failed to load dashboard",
+      "loadingWidgetEditor": "Loading editor...", "widgetEditorFailed": "The widget editor could not be loaded.",
+      "noWidgetSettings": "This widget does not provide editable settings.",
+      "noWidgetSettingsHint": "You can still move, resize, or remove it from the dashboard."
+    }
+  }
+}
