@@ -53,7 +53,7 @@ def _compiler_script() -> Path:
     configured = os.getenv("COMPILED_UI_COMPILER_SCRIPT")
     if configured:
         return Path(configured).resolve()
-    return Path(__file__).parents[2] / "frontend" / "scripts" / "compile-ui-extension.mjs"
+    return Path(__file__).parents[2] / "frontend" / "compiler" / "compile-ui-extension.mjs"
 
 
 def _validate_source_imports(workspace: Path) -> None:

@@ -129,3 +129,20 @@ class ClarifyExtensionResponse(BaseModel):
     suggested_spec: ExtensionSpec
     questions: List[ClarifyQuestion] = Field(default_factory=list)
     notes: List[str] = Field(default_factory=list)
+
+
+class PlanExtensionIntentRequest(BaseModel):
+    description: str = Field(min_length=10, max_length=10_000)
+    placement: Literal["auto", "dashboard", "page"] = "auto"
+    data_mode: Literal["auto", "none", "settings", "records"] = "auto"
+
+
+class ExtensionIntentPlan(BaseModel):
+    project_type: Literal["extension", "widget"]
+    template_key: Literal["simple", "crud"]
+    package_kind: Literal["compiled", "legacy"]
+    needs_database: bool
+    config_schema: Dict[str, Any] = Field(default_factory=dict)
+    summary: str
+    assumptions: List[str] = Field(default_factory=list)
+    questions: List[ClarifyQuestion] = Field(default_factory=list)

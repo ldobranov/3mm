@@ -104,7 +104,7 @@ function renderItems() {
         let content = el.querySelector('.grid-stack-item-content') as HTMLElement | null;
         if (!content) {
           content = document.createElement('div');
-          content.className = 'grid-stack-item-content bg-gray-800 rounded p-2 text-black relative grid-no-drag';
+          content.className = 'grid-stack-item-content widget-grid-content grid-no-drag';
           content.style.overflow = 'hidden'; // Prevent scrollbars
           content.style.borderRadius = 'var(--border-radius-md)'; // Ensure border radius
           el.appendChild(content);
@@ -116,12 +116,12 @@ function renderItems() {
           if (!toolbar) {
             toolbar = document.createElement('div');
             toolbar.setAttribute('data-toolbar', '1');
-            toolbar.className = 'absolute top-1 right-1 flex gap-1 items-center';
+            toolbar.className = 'widget-toolbar';
             // ensure toolbar is on top of resizable handles
             toolbar.style.zIndex = '5';
             toolbar.innerHTML = `
-              <button class="px-1 text-xs bg-yellow-600 rounded text-black" data-action="edit">✎</button>
-              <button class="px-1 text-xs bg-red-600 rounded text-black" data-action="delete">×</button>
+              <button class="widget-toolbar-button widget-toolbar-edit" type="button" data-action="edit" aria-label="Edit widget">✎</button>
+              <button class="widget-toolbar-button widget-toolbar-delete" type="button" data-action="delete" aria-label="Delete widget">×</button>
             `;
             content.appendChild(toolbar);
           }
@@ -287,3 +287,12 @@ onBeforeUnmount(() => {
 <template>
   <div ref="gridEl" class="grid-stack"></div>
 </template>
+
+<style>
+.widget-grid-content { position:relative; overflow:hidden; border-radius:var(--border-radius-md); }
+.widget-toolbar { position:absolute; top:.5rem; right:.5rem; z-index:20; display:flex; align-items:center; gap:.35rem; opacity:.2; transition:opacity .15s ease; }
+.widget-grid-content:hover .widget-toolbar, .widget-toolbar:focus-within { opacity:1; }
+.widget-toolbar-button { display:grid; width:2rem; height:2rem; place-items:center; padding:0; border:1px solid var(--border-color); border-radius:.5rem; background:var(--card-bg); color:var(--text-primary); box-shadow:0 4px 14px rgba(0,0,0,.16); cursor:pointer; font-size:1rem; line-height:1; }
+.widget-toolbar-button:hover { border-color:var(--primary-color); color:var(--primary-color); }
+.widget-toolbar-delete:hover { border-color:var(--danger-color, #dc3545); color:var(--danger-color, #dc3545); }
+</style>

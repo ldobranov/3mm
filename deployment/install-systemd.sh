@@ -70,6 +70,13 @@ fi
 "$venv_dir/bin/python" -m pip install --disable-pip-version-check \
   -r "$release_dir/backend/requirements.txt"
 
+if ! command -v npm >/dev/null 2>&1; then
+  echo "Node.js/npm is required for the compiled UI extension toolchain." >&2
+  exit 1
+fi
+npm install --prefix "$release_dir/frontend/compiler" \
+  --ignore-scripts --no-audit --no-fund
+
 ln -sfn "$release_dir" "$install_root/current"
 install -o root -g root -m 0644 -t /etc/systemd/system \
   "$release_dir/deployment/systemd/3mm-agent.service" \

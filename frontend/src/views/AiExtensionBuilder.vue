@@ -7,45 +7,127 @@
       </p>
     </div>
 
-    <div class="card project-card" :style="cardStyle">
+    <div class="card guided-builder" :style="cardStyle">
       <div class="card-content">
-        <div class="project-header">
+        <div class="project-switcher">
+          <label>
+            <span>{{ t('extensions.aiBuilder.projects.project', 'Project') }}</span>
+            <select :value="activeProject?.project_id || ''" :disabled="busy || projectsLoading" @change="openProject(($event.target as HTMLSelectElement).value)">
+              <option value="">{{ t('extensions.aiBuilder.projects.unsaved', 'New project') }}</option>
+              <option v-for="project in projects" :key="project.project_id" :value="project.project_id">
+                {{ project.name }} · {{ project.current_version }}
+              </option>
+            </select>
+          </label>
+          <button class="button" type="button" :disabled="busy || !activeProject" @click="newProject">
+            {{ t('extensions.aiBuilder.projects.new', 'New project') }}
+          </button>
+        </div>
+
+        <div class="guided-heading">
           <div>
-            <h2>{{ t('extensions.aiBuilder.projects.title', 'Extension projects') }}</h2>
-            <p class="muted">{{ t('extensions.aiBuilder.projects.hint', 'Continue an existing project or save this work as a reusable draft.') }}</p>
+            <span class="eyebrow">{{ t('extensions.aiBuilder.guided.eyebrow', 'Simple builder') }}</span>
+            <h2>{{ t('extensions.aiBuilder.guided.title', 'What do you want to create?') }}</h2>
+            <p class="muted">{{ t('extensions.aiBuilder.guided.hint', 'Describe the result in your own words. We will choose the technical structure for you.') }}</p>
           </div>
-          <div class="row project-actions">
-            <button class="button" type="button" :disabled="busy" @click="newProject">
-              {{ t('extensions.aiBuilder.projects.new', 'New project') }}
-            </button>
-            <button class="button button-primary" type="button" :disabled="busy || !spec.name.trim()" @click="saveProjectDraft">
-              {{ activeProject ? t('extensions.aiBuilder.projects.save', 'Save draft') : t('extensions.aiBuilder.projects.create', 'Create project') }}
+          <span class="guided-step">1 · {{ t('extensions.aiBuilder.guided.describe', 'Describe') }}</span>
+        </div>
+
+        <div class="guided-form">
+          <label>
+            <span>{{ t('extensions.aiBuilder.guided.name', 'Name') }}</span>
+            <input v-model="guidedName" :placeholder="t('extensions.aiBuilder.guided.namePlaceholder', 'For example: Clock')" />
+          </label>
+          <label class="guided-description">
+            <span>{{ t('extensions.aiBuilder.guided.description', 'Describe what it should do') }}</span>
+            <textarea
+              v-model="guidedDescription"
+              rows="5"
+              :placeholder="t('extensions.aiBuilder.guided.descriptionPlaceholder', 'For example: A clock on the dashboard with analog and digital views, timezone selection and 12/24 hour format.')"
+            ></textarea>
+          </label>
+          <label>
+            <span>{{ t('extensions.aiBuilder.guided.location', 'Where should it appear?') }}</span>
+            <select v-model="guidedPlacement">
+              <option value="auto">{{ t('extensions.aiBuilder.guided.auto', 'Decide for me') }}</option>
+              <option value="dashboard">{{ t('extensions.aiBuilder.guided.dashboard', 'On the dashboard') }}</option>
+              <option value="page">{{ t('extensions.aiBuilder.guided.page', 'As a separate page') }}</option>
+            </select>
+          </label>
+          <label>
+            <span>{{ t('extensions.aiBuilder.guided.data', 'What should be saved?') }}</span>
+            <select v-model="guidedDataMode">
+              <option value="auto">{{ t('extensions.aiBuilder.guided.auto', 'Decide for me') }}</option>
+              <option value="settings">{{ t('extensions.aiBuilder.guided.settings', 'Only user settings') }}</option>
+              <option value="records">{{ t('extensions.aiBuilder.guided.records', 'A list of editable records') }}</option>
+              <option value="none">{{ t('extensions.aiBuilder.guided.none', 'Nothing') }}</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="guided-actions">
+          <button class="button button-primary" type="button" :disabled="busy || guidedDescription.trim().length < 10" @click="prepareGuidedPlan">
+            {{ busy ? t('extensions.aiBuilder.guided.preparing', 'Preparing...') : t('extensions.aiBuilder.guided.review', 'Review the plan') }}
+          </button>
+        </div>
+
+        <div v-if="intentPlan" class="plan-review">
+          <div class="guided-heading">
+            <div>
+              <span class="eyebrow">2 · {{ t('extensions.aiBuilder.guided.confirm', 'Confirm') }}</span>
+              <h3>{{ t('extensions.aiBuilder.guided.planTitle', 'Here is what we will build') }}</h3>
+            </div>
+            <span class="plan-badge">{{ intentPlan.project_type === 'widget' ? t('extensions.aiBuilder.guided.widget', 'Dashboard widget') : t('extensions.aiBuilder.guided.pageExtension', 'Application page') }}</span>
+          </div>
+          <p>{{ intentPlan.summary }}</p>
+          <ul v-if="intentPlan.assumptions.length" class="plan-list">
+            <li v-for="assumption in intentPlan.assumptions" :key="assumption">{{ assumption }}</li>
+          </ul>
+          <div v-if="intentPlan.questions.length" class="plan-question">
+            <strong>{{ intentPlan.questions[0].question }}</strong>
+            <span class="muted">{{ t('extensions.aiBuilder.guided.chooseAbove', 'Choose an answer above, then review the plan again.') }}</span>
+          </div>
+          <div class="guided-actions">
+            <button class="button button-primary" type="button" :disabled="busy || intentPlan.questions.length > 0" @click="generateGuided">
+              {{ busy ? t('extensions.aiBuilder.generating', 'Generating...') : `3 · ${t('extensions.aiBuilder.guided.generate', 'Generate')}` }}
             </button>
           </div>
         </div>
 
-        <div class="project-grid">
-          <label>
-            <span>{{ t('extensions.aiBuilder.projects.project', 'Project') }}</span>
-            <select :value="activeProject?.project_id || ''" :disabled="busy || projectsLoading" @change="openProject(($event.target as HTMLSelectElement).value)">
-              <option value="">{{ t('extensions.aiBuilder.projects.unsaved', 'Unsaved project') }}</option>
-              <option v-for="project in projects" :key="project.project_id" :value="project.project_id">
-                {{ project.name }} · {{ project.current_version }} · {{ project.status }}
-              </option>
-            </select>
-          </label>
-          <label>
-            <span>{{ t('extensions.aiBuilder.projects.changeKind', 'Next change') }}</span>
-            <select v-model="changeKind" :disabled="busy">
-              <option value="patch">patch</option>
-              <option value="minor">minor</option>
-              <option value="major">major</option>
-              <option value="prerelease">prerelease</option>
-            </select>
-          </label>
-          <div class="project-version">
-            <span>{{ t('extensions.aiBuilder.projects.currentVersion', 'Current version') }}</span>
-            <strong>{{ activeProject?.current_version || '0.0.0' }}</strong>
+        <div v-if="generatedZipBase64" class="guided-result">
+          <div>
+            <strong>{{ t('extensions.aiBuilder.guided.ready', 'Ready to install') }}</strong>
+            <span class="muted">{{ report?.files.length || 0 }} {{ t('extensions.aiBuilder.guided.generatedFiles', 'generated files') }}</span>
+          </div>
+          <div class="guided-actions">
+            <button class="button" type="button" :disabled="busy" @click="downloadZip">
+              {{ t('extensions.aiBuilder.download', 'Download ZIP') }}
+            </button>
+            <button class="button button-primary" type="button" :disabled="busy" @click="install">
+              {{ busy ? t('extensions.aiBuilder.installing', 'Installing...') : t('extensions.aiBuilder.install', 'Install') }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="error" class="error">{{ error }}</div>
+        <div v-if="success" class="success">{{ success }}</div>
+      </div>
+    </div>
+
+    <div v-if="activeProject" class="card project-card" :style="cardStyle">
+      <div class="card-content">
+        <div class="project-header">
+          <div>
+            <span class="eyebrow">{{ t('extensions.aiBuilder.projects.currentProject', 'Current project') }}</span>
+            <h2>{{ activeProject.name }}</h2>
+            <p class="muted">
+              {{ t('extensions.aiBuilder.projects.version', 'Version') }} {{ activeProject.current_version }} · {{ projectStatusLabel(activeProject.status) }}
+            </p>
+          </div>
+          <div class="row project-actions">
+            <button class="button" type="button" :disabled="busy || !spec.name.trim()" @click="saveProjectDraft">
+              {{ t('extensions.aiBuilder.projects.save', 'Save draft') }}
+            </button>
           </div>
         </div>
 
@@ -58,8 +140,7 @@
           </div>
           <div v-for="build in projectBuilds" :key="build.build_id" class="build-row">
             <strong>{{ build.version }}</strong>
-            <span>{{ build.status }}</span>
-            <span>{{ build.change_kind }}</span>
+            <span>{{ buildStatusLabel(build.status) }}</span>
             <span class="muted">{{ new Date(build.created_at).toLocaleString() }}</span>
             <div class="row build-actions">
               <button v-if="build.has_artifact" class="button button-small" type="button" :disabled="busy" @click="downloadStoredBuild(build)">
@@ -83,11 +164,11 @@
 
         <div v-if="activeProject" class="modify-panel">
           <label>
-            <span>{{ t('extensions.aiBuilder.projects.changeRequest', 'Change request') }}</span>
+            <span>{{ t('extensions.aiBuilder.projects.changeRequest', 'What would you like to change?') }}</span>
             <textarea
               v-model="changeRequest"
               rows="3"
-              :placeholder="t('extensions.aiBuilder.projects.changePlaceholder', 'Describe only what should change, for example: Add a color option to the clock editor.')"
+              :placeholder="t('extensions.aiBuilder.projects.changePlaceholder', 'For example: Add a color option, but keep everything else unchanged.')"
             ></textarea>
           </label>
           <button
@@ -96,7 +177,7 @@
             :disabled="busy || !changeRequest.trim() || !filePaths.length"
             @click="proposeModification"
           >
-            {{ busy ? t('extensions.aiBuilder.projects.modifying', 'Preparing changes...') : t('extensions.aiBuilder.projects.modify', 'Modify existing') }}
+            {{ busy ? t('extensions.aiBuilder.projects.modifying', 'Preparing changes...') : t('extensions.aiBuilder.projects.modify', 'Review changes') }}
           </button>
         </div>
 
@@ -128,6 +209,15 @@
         </div>
       </div>
     </div>
+
+    <details class="advanced-workspace">
+      <summary class="advanced-summary">
+        <span>
+          <strong>{{ t('extensions.aiBuilder.guided.advanced', 'Advanced') }}</strong>
+          <small>{{ t('extensions.aiBuilder.guided.advancedHint', 'Technical structure, permissions, routes and source files') }}</small>
+        </span>
+        <span aria-hidden="true">⌄</span>
+      </summary>
 
     <div class="card" :style="cardStyle">
       <div class="card-content">
@@ -673,6 +763,8 @@
       </div>
     </div>
 
+    </details>
+
     <div v-if="report" v-show="currentStep === 5" class="card" :style="cardStyle">
       <div class="card-content">
         <h2>{{ t('extensions.aiBuilder.report', 'Build report') }}</h2>
@@ -796,6 +888,19 @@ const getHttpErrorMessage = (e: unknown): string => {
   return String(e)
 }
 
+const projectStatusLabel = (status: string): string => ({
+  draft: t('extensions.aiBuilder.projects.statusDraft', 'Draft'),
+  built: t('extensions.aiBuilder.projects.statusBuilt', 'Ready'),
+  installed: t('extensions.aiBuilder.projects.statusInstalled', 'Installed'),
+  failed: t('extensions.aiBuilder.projects.statusFailed', 'Needs attention')
+}[status] || status)
+
+const buildStatusLabel = (status: string): string => ({
+  built: t('extensions.aiBuilder.projects.buildAvailable', 'Available'),
+  installed: t('extensions.aiBuilder.projects.buildInstalledStatus', 'Installed'),
+  failed: t('extensions.aiBuilder.projects.statusFailed', 'Needs attention')
+}[status] || status)
+
 type ExtensionSpec = {
   name: string
   version: string
@@ -851,6 +956,17 @@ type ClarifyQuestion = {
   id: string
   question: string
   suggestions: string[]
+}
+
+type ExtensionIntentPlan = {
+  project_type: 'extension' | 'widget'
+  template_key: 'simple' | 'crud'
+  package_kind: 'compiled' | 'legacy'
+  needs_database: boolean
+  config_schema: Record<string, unknown>
+  summary: string
+  assumptions: string[]
+  questions: ClarifyQuestion[]
 }
 
 type CrudFieldType = 'text' | 'int' | 'bool' | 'json' | 'timestamp'
@@ -909,6 +1025,11 @@ const projectsLoading = ref(false)
 const changeKind = ref<ProjectChangeKind>('patch')
 const changeRequest = ref('')
 const modificationProposal = ref<ExtensionProjectModification | null>(null)
+const guidedName = ref('')
+const guidedDescription = ref('')
+const guidedPlacement = ref<'auto' | 'dashboard' | 'page'>('auto')
+const guidedDataMode = ref<'auto' | 'none' | 'settings' | 'records'>('auto')
+const intentPlan = ref<ExtensionIntentPlan | null>(null)
 
 const availablePermissions = [
   'database_read',
@@ -1184,6 +1305,11 @@ const hydrateProject = (project: ExtensionProject) => {
   installedOk.value = project.status === 'installed'
   changeRequest.value = ''
   modificationProposal.value = null
+  guidedName.value = project.name
+  guidedDescription.value = storedSpec.goal || ''
+  guidedPlacement.value = project.project_type === 'widget' ? 'dashboard' : 'page'
+  guidedDataMode.value = builderState.template_key === 'crud' ? 'records' : 'settings'
+  intentPlan.value = null
 }
 
 const openProject = async (projectId: string) => {
@@ -1229,6 +1355,62 @@ const newProject = () => {
   success.value = ''
   changeRequest.value = ''
   modificationProposal.value = null
+  guidedName.value = ''
+  guidedDescription.value = ''
+  guidedPlacement.value = 'auto'
+  guidedDataMode.value = 'auto'
+  intentPlan.value = null
+}
+
+const guidedProjectName = (): string => {
+  const source = guidedName.value.trim() || guidedDescription.value.trim().split(/\s+/).slice(0, 3).join(' ')
+  const words = source.match(/[A-Za-z0-9]+/g) || []
+  const result = words.map(word => `${word.charAt(0).toUpperCase()}${word.slice(1)}`).join('')
+  return result || 'GeneratedExtension'
+}
+
+const prepareGuidedPlan = async () => {
+  if (guidedDescription.value.trim().length < 10) return
+  busy.value = true
+  error.value = ''
+  success.value = ''
+  try {
+    const response = await http.post('/api/ai/extensions/plan', {
+      description: guidedDescription.value.trim(),
+      placement: guidedPlacement.value,
+      data_mode: guidedDataMode.value
+    })
+    intentPlan.value = response.data
+    const name = guidedProjectName()
+    spec.value.name = name
+    spec.value.goal = guidedDescription.value.trim()
+    spec.value.description = guidedDescription.value.trim().slice(0, 240)
+    spec.value.type = intentPlan.value!.project_type
+    spec.value.config_schema = intentPlan.value!.config_schema || {}
+    templateKey.value = intentPlan.value!.template_key
+    applyTemplate(templateKey.value)
+    if (intentPlan.value!.needs_database) {
+      spec.value.permissions = ['database_read', 'database_write']
+    } else {
+      spec.value.permissions = []
+      crudModel.fields.splice(0)
+    }
+    await nextTick()
+    if (spec.value.type === 'widget') {
+      spec.value.frontend_routes = []
+    } else if (!spec.value.frontend_routes.length) {
+      addRoute()
+    }
+  } catch (e: unknown) {
+    error.value = getHttpErrorMessage(e)
+  } finally {
+    busy.value = false
+  }
+}
+
+const generateGuided = async () => {
+  if (!intentPlan.value || intentPlan.value.questions.length) return
+  await generate()
 }
 
 const persistProject = async (): Promise<ExtensionProject> => {
@@ -1245,7 +1427,15 @@ const persistProject = async (): Promise<ExtensionProject> => {
       activeProject.value.revision,
       { name: spec.value.name.trim(), spec: projectSpecSnapshot(), status: 'draft' }
     )
-    project = await replaceExtensionProjectFiles(project.project_id, project.revision, filesText.value)
+    try {
+      project = await replaceExtensionProjectFiles(project.project_id, project.revision, filesText.value)
+    } catch (error) {
+      // The metadata update may already have advanced the server revision.
+      // Refresh local state so the next save does not cascade into 409s.
+      activeProject.value = await readExtensionProject(project.project_id)
+      projectBuilds.value = await listExtensionProjectBuilds(project.project_id)
+      throw error
+    }
     activeProject.value = project
   }
   await refreshProjects()
@@ -1894,22 +2084,6 @@ const openFromWarning = async (code: string, message: string) => {
 }
 
 const generate = async () => {
-  if (spec.value.type === 'widget') {
-    const properties: Record<string, Record<string, unknown>> = {}
-    const required: string[] = []
-    for (const field of crudModel.fields) {
-      const name = field.name.trim()
-      if (!name) continue
-      const type = field.type === 'int' ? 'integer' : field.type === 'bool' ? 'boolean' : field.type === 'json' ? 'object' : 'string'
-      properties[name] = { type, title: name.replace(/_/g, ' ') }
-      if (field.required) required.push(name)
-    }
-    spec.value.config_schema = {
-      type: 'object',
-      properties,
-      ...(required.length ? { required } : {})
-    }
-  }
   busy.value = true
   error.value = ''
   success.value = ''
@@ -2107,6 +2281,163 @@ const downloadZip = () => {
   opacity: 0.8;
 }
 
+.guided-builder {
+  border-color: color-mix(in srgb, var(--primary-color) 28%, var(--card-border));
+}
+
+.project-switcher {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: end;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.project-switcher label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.guided-heading,
+.guided-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.guided-heading h2,
+.guided-heading h3,
+.guided-heading p {
+  margin: 0;
+}
+
+.guided-heading p {
+  margin-top: 0.35rem;
+}
+
+.eyebrow,
+.guided-step,
+.plan-badge {
+  color: var(--primary-color);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.guided-step,
+.plan-badge {
+  padding: 0.4rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary-color) 9%, var(--card-bg));
+  white-space: nowrap;
+}
+
+.guided-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(180px, 1fr) minmax(180px, 1fr);
+  gap: 0.9rem;
+  margin-top: 1.25rem;
+}
+
+.guided-form label {
+  display: grid;
+  align-content: start;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.guided-description {
+  grid-column: 1 / -1;
+}
+
+.guided-description textarea {
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.guided-actions {
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.plan-review {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: var(--surface-3);
+}
+
+.plan-list {
+  margin: 0.75rem 0 0;
+}
+
+.plan-question {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.85rem;
+  padding: 0.75rem;
+  border-left: 3px solid var(--primary-color);
+  background: var(--card-bg);
+}
+
+.guided-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--success-color) 38%, var(--card-border));
+  border-radius: 12px;
+  background: var(--success-surface);
+}
+
+.guided-result > div:first-child {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.guided-result .guided-actions {
+  margin-top: 0;
+}
+
+.advanced-workspace {
+  margin-top: 1rem;
+}
+
+.advanced-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: var(--card-bg);
+  cursor: pointer;
+}
+
+.advanced-summary span:first-child {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.advanced-summary small {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.advanced-workspace[open] > .advanced-summary {
+  margin-bottom: 1rem;
+}
+
 .hint {
   font-size: 0.85rem;
   line-height: 1.25rem;
@@ -2239,7 +2570,7 @@ const downloadZip = () => {
 
 .build-row {
   display: grid;
-  grid-template-columns: 90px 90px 90px minmax(150px, 1fr) auto;
+  grid-template-columns: 90px 110px minmax(150px, 1fr) auto;
   align-items: center;
   gap: 0.75rem;
   padding: 0.65rem 0;
@@ -2632,6 +2963,24 @@ textarea.code {
   .project-grid,
   .build-row {
     grid-template-columns: 1fr;
+  }
+
+  .guided-heading,
+  .guided-form {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .guided-description {
+    grid-column: auto;
+  }
+
+  .project-switcher {
+    grid-template-columns: 1fr;
+  }
+
+  .guided-result {
+    display: grid;
   }
 
   .modify-panel {

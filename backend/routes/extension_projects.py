@@ -290,6 +290,10 @@ def replace_project_files(
     project = _project(db, project_id)
     _assert_revision(project, payload.expected_revision)
     project.files.clear()
+    # Flush orphan deletes before inserting replacement rows with the same
+    # (project_id, path) unique key. SQLite may otherwise insert first and
+    # reject an ordinary edit as a duplicate project file.
+    db.flush()
     for path, content, digest in _safe_files(payload.files):
         project.files.append(ExtensionProjectFile(path=path, content=content, sha256=digest))
     project.status = "draft"

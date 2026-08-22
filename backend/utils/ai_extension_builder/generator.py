@@ -24,6 +24,10 @@ from backend.utils.ai_extension_builder.validators import validate_extension_pac
 logger = logging.getLogger(__name__)
 
 
+class IncompleteAIGenerationError(RuntimeError):
+    """Raised when AI leaves a compiled widget as a non-functional scaffold."""
+
+
 def _extension_namespace(name: str) -> str:
     # StoreExtension -> store
     base = re.sub(r"extension$", "", name, flags=re.IGNORECASE)
@@ -156,6 +160,10 @@ def _ai_refine_files(
         "Only include files you changed. Only use paths from allowed_paths. "
         "Keep i18n keys namespaced and consistent with the JSON nesting. "
         "Do not change manifest.json structure (unless asked) and do not add new files.\n\n"
+        "For a compiled widget, source/frontend/Widget.vue must implement the requested visible behavior; "
+        "never leave the generic scaffold that only lists config values. Use reactive state and lifecycle "
+        "hooks when live updates are required. Named choices must use string enum settings, not booleans; "
+        "timezone settings use JSON Schema format 'timezone'.\n\n"
         + repo_context
     )
 
@@ -545,7 +553,54 @@ def _compiled_module_id(name: str) -> str:
     return f"org.3mm.generated.{slug}"
 
 
+def _normalize_widget_spec(spec: ExtensionSpec) -> ExtensionSpec:
+    """Upgrade common legacy setting shapes without knowing the widget identity."""
+    normalized = spec.model_copy(deep=True)
+    schema = normalized.config_schema or {}
+    original = schema.get("properties", {}) if isinstance(schema, dict) else {}
+    properties = dict(original) if isinstance(original, dict) else {}
+    intent = f"{normalized.description} {normalized.goal or ''}".casefold()
+
+    timezone_keys = [
+        key for key, item in properties.items()
+        if "timezone" in key.casefold()
+        or (isinstance(item, dict) and "timezone" in str(item.get("title", "")).casefold())
+    ]
+    if timezone_keys or any(term in intent for term in ("timezone", "time zone", "часова зона")):
+        for key in timezone_keys:
+            properties.pop(key, None)
+        properties["timezone"] = {
+            "type": "string", "title": "Timezone", "format": "timezone", "default": "UTC",
+        }
+
+    mode_keys = [key for key in properties if key.casefold() in {"mode", "displaymode", "display_mode"}]
+    if mode_keys or ("digital" in intent and "analog" in intent):
+        for key in mode_keys:
+            properties.pop(key, None)
+        properties["displayMode"] = {
+            "type": "string", "title": "Display", "enum": ["digital", "analog"], "default": "digital",
+        }
+
+    hour_keys = [key for key in properties if key.casefold() in {"ampm", "hourformat", "hour_format"}]
+    if hour_keys or any(term in intent for term in ("12/24", "am/pm", "ap or pm", "12 hour", "24 hour")):
+        for key in hour_keys:
+            properties.pop(key, None)
+        properties["hourFormat"] = {
+            "type": "string", "title": "Hour format", "enum": ["24", "12"], "default": "24",
+        }
+
+    normalized.config_schema = {"type": "object", "properties": properties} if properties else {}
+    return normalized
+
+
 def _compiled_widget_component(spec: ExtensionSpec) -> str:
+    properties = (spec.config_schema or {}).get("properties", {})
+    has_timezone = any(
+        isinstance(item, dict) and item.get("format") == "timezone"
+        for item in properties.values()
+    )
+    if has_timezone:
+        return _compiled_time_widget_component(spec)
     return f'''<template>
   <section class="generated-widget">
     <strong>{spec.name}</strong>
@@ -572,6 +627,66 @@ dt {{ font-weight:600 }} dd {{ margin:0 }}
 '''
 
 
+def _compiled_widget_has_functional_scaffold(spec: ExtensionSpec) -> bool:
+    properties = (spec.config_schema or {}).get("properties", {})
+    return any(
+        isinstance(item, dict) and item.get("format") == "timezone"
+        for item in properties.values()
+    )
+
+
+def _compiled_time_widget_component(spec: ExtensionSpec) -> str:
+    return f'''<template>
+  <section class="time-widget" :class="`time-widget--${{displayMode}}`">
+    <div v-if="displayMode === 'analog'" class="clock-face" aria-label="Analog clock">
+      <span class="hand hand--hour" :style="hourStyle"></span>
+      <span class="hand hand--minute" :style="minuteStyle"></span>
+      <span class="hand hand--second" :style="secondStyle"></span>
+      <span class="clock-dot"></span>
+    </div>
+    <time v-else :datetime="now.toISOString()">{{{{ formattedTime }}}}</time>
+    <small>{{{{ timezone }}}}</small>
+  </section>
+</template>
+
+<script setup lang="ts">
+import {{ computed, onBeforeUnmount, onMounted, ref }} from 'vue'
+const props = defineProps<{{ config?: Record<string, unknown> }}>()
+const now = ref(new Date())
+const timezone = computed(() => String(props.config?.timezone || 'UTC'))
+const displayMode = computed(() => String(props.config?.displayMode || 'digital'))
+const uses12Hours = computed(() => String(props.config?.hourFormat || '24') === '12')
+const parts = computed(() => {{
+  const values = new Intl.DateTimeFormat('en-GB', {{
+    timeZone: timezone.value, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  }}).formatToParts(now.value)
+  const read = (type: string) => Number(values.find(item => item.type === type)?.value || 0)
+  return {{ hour: read('hour'), minute: read('minute'), second: read('second') }}
+}})
+const formattedTime = computed(() => new Intl.DateTimeFormat(undefined, {{
+  timeZone: timezone.value, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: uses12Hours.value
+}}).format(now.value))
+const hourStyle = computed(() => ({{ transform: `rotate(${{(parts.value.hour % 12) * 30 + parts.value.minute * 0.5}}deg)` }}))
+const minuteStyle = computed(() => ({{ transform: `rotate(${{parts.value.minute * 6 + parts.value.second * 0.1}}deg)` }}))
+const secondStyle = computed(() => ({{ transform: `rotate(${{parts.value.second * 6}}deg)` }}))
+let timer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {{ timer = setInterval(() => {{ now.value = new Date() }}, 1000) }})
+onBeforeUnmount(() => {{ if (timer) clearInterval(timer) }})
+</script>
+
+<style scoped>
+.time-widget {{ display:grid; min-height:100%; place-content:center; justify-items:center; gap:.65rem; padding:1rem; color:inherit }}
+time {{ font-size:clamp(2rem, 8vw, 5rem); font-variant-numeric:tabular-nums; font-weight:650; letter-spacing:-.04em }}
+small {{ color:var(--text-secondary, currentColor); opacity:.72 }}
+.clock-face {{ position:relative; width:min(70%, 15rem); aspect-ratio:1; border:clamp(3px, .5vw, 6px) solid currentColor; border-radius:50%; background:color-mix(in srgb, currentColor 5%, transparent) }}
+.hand {{ position:absolute; left:50%; bottom:50%; width:3px; border-radius:99px; background:currentColor; transform-origin:50% 100% }}
+.hand--hour {{ height:27%; width:5px }} .hand--minute {{ height:38%; width:4px }}
+.hand--second {{ height:42%; width:2px; background:var(--accent-color, #4f7cff) }}
+.clock-dot {{ position:absolute; left:50%; top:50%; width:12px; aspect-ratio:1; border-radius:50%; background:currentColor; transform:translate(-50%, -50%) }}
+</style>
+'''
+
+
 def _compiled_widget_editor(spec: ExtensionSpec) -> str:
     schema = json.dumps(spec.config_schema or {"type": "object", "properties": {}}, ensure_ascii=False)
     return f'''<template>
@@ -579,7 +694,7 @@ def _compiled_widget_editor(spec: ExtensionSpec) -> str:
     <label v-for="field in fields" :key="field.key">
       <span>{{{{ field.title }}}}</span>
       <input v-if="field.type === 'boolean'" type="checkbox" :checked="Boolean(value[field.key])" @change="setBoolean(field.key, $event)" />
-      <select v-else-if="field.options.length" :value="value[field.key] ?? ''" @change="setValue(field.key, $event)">
+      <select v-else-if="field.options.length || field.format === 'timezone'" :value="value[field.key] ?? field.defaultValue ?? ''" @change="setValue(field.key, $event)">
         <option v-for="option in field.options" :key="String(option)" :value="option">{{{{ option }}}}</option>
       </select>
       <input v-else :type="field.type === 'integer' || field.type === 'number' ? 'number' : 'text'" :value="value[field.key] ?? ''" @input="setValue(field.key, $event)" />
@@ -594,7 +709,13 @@ const schema = {schema} as any
 const props = defineProps<{{ config?: Record<string, unknown>; modelValue?: Record<string, unknown> }}>()
 const emit = defineEmits<{{ (event: 'update:modelValue', value: Record<string, unknown>): void }}>()
 const value = computed(() => props.config || props.modelValue || {{}})
-const fields = Object.entries(schema.properties || {{}}).map(([key, item]: [string, any]) => ({{ key, title: item.title || key, type: item.type || 'string', options: item.enum || [] }}))
+const timezoneOptions = (() => {{
+  try {{ return Array.from(new Set(['UTC', ...((Intl as any).supportedValuesOf?.('timeZone') || [])])) }} catch {{ return ['UTC'] }}
+}})()
+const fields = Object.entries(schema.properties || {{}}).map(([key, item]: [string, any]) => ({{
+  key, title: item.title || key, type: item.type || 'string', format: item.format || '',
+  defaultValue: item.default, options: item.enum || (item.format === 'timezone' ? timezoneOptions : [])
+}}))
 function setValue(key: string, event: Event) {{ const target = event.target as HTMLInputElement; const field = fields.find(item => item.key === key); const next = field?.type === 'integer' || field?.type === 'number' ? Number(target.value) : target.value; emit('update:modelValue', {{ ...value.value, [key]: next }}) }}
 function setBoolean(key: string, event: Event) {{ emit('update:modelValue', {{ ...value.value, [key]: (event.target as HTMLInputElement).checked }}) }}
 </script>
@@ -619,12 +740,17 @@ def _build_compiled_widget_zip(
             {"entrypoint_id": editor_id, "kind": "editor", "source": "source/frontend/WidgetEditor.vue", "label": {"en": f"{spec.name} settings", "translations": {"bg": f"Настройки на {spec.name}"}}, "target_entrypoint_id": widget_id},
         ],
     }
+    schema_properties = (spec.config_schema or {}).get("properties", {})
+    config_defaults = {
+        key: value["default"] for key, value in schema_properties.items()
+        if isinstance(value, dict) and "default" in value
+    }
     manifest = {
         "manifest_version": 2, "module_id": module_id, "name": spec.name, "version": spec.version,
         "description": spec.description, "runtimes": ["ui"], "entrypoints": {"ui": "compiled-ui.json"},
         "compatibility": {"protocol": "1.0", "agent": ">=0.1.0", "core": ">=0.1.0", "architectures": ["any"]},
         "capabilities": {"provides": [], "consumes": []}, "permissions": [], "dependencies": {}, "conflicts": [],
-        "configuration_schema": spec.config_schema, "configuration_defaults": {},
+        "configuration_schema": spec.config_schema, "configuration_defaults": config_defaults,
         "health_check": {"type": "json_file", "path": "compiled-ui.json"},
         "registrations": [{"kind": "widget", "registration_id": f"{module_id}.widget", "metadata": {"entrypoint_id": widget_id}}],
     }
@@ -635,7 +761,12 @@ def _build_compiled_widget_zip(
         "source/frontend/WidgetEditor.vue": _compiled_widget_editor(spec),
     }
     warnings: List[BuildWarning] = []
-    if use_ai and (instructions or spec.goal):
+    if use_ai and (instructions or spec.goal) and _compiled_widget_has_functional_scaffold(spec):
+        warnings.append(BuildWarning(
+            code="template.functional",
+            message="A tested built-in capability template was used; AI could not replace its runtime behavior.",
+        ))
+    elif use_ai and (instructions or spec.goal):
         editable_sources = {
             path: content for path, content in files_text.items()
             if path.startswith("source/frontend/")
@@ -652,6 +783,12 @@ def _build_compiled_widget_zip(
         )
         warnings.extend(ai_warnings)
         files_text.update(updates)
+        widget_path = "source/frontend/Widget.vue"
+        if files_text[widget_path].strip() == editable_sources[widget_path].strip():
+            raise IncompleteAIGenerationError(
+                "The AI provider did not implement the widget itself. Nothing was installed. "
+                "Try again or make the description more specific."
+            )
     buf = BytesIO()
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for path, content in files_text.items():
@@ -682,6 +819,7 @@ def build_extension_zip(
     """
 
     if spec.type == "widget":
+        spec = _normalize_widget_spec(spec)
         return _build_compiled_widget_zip(
             spec, instructions, use_ai, model, ai_provider, groq_api_key, openrouter_api_key
         )

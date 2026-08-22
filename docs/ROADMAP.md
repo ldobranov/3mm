@@ -255,7 +255,50 @@ Stages:
 3. generic browser loader for widget, route, editor and component entrypoints;
 4. Raspberry acceptance, security limits, rollback and Builder integration.
 
-## Milestone 9 — Real Raspberry Pi validation
+## Milestone 9 — Capability-based AI Extension Builder
+
+Goal: make AI-generated widgets and extensions reliable by combining structured AI planning with tested platform capabilities and deterministic code generation.
+
+Deliverables:
+
+- plain-language intent translated into a versioned, reviewable capability plan;
+- reusable builder capabilities for live timers, configurable forms, HTTP/API data, persistent key-value settings, CRUD records, lists/tables and charts/metrics;
+- deterministic generation of lifecycle, configuration schema, editor, permissions, packaging and runtime integration;
+- AI customization limited to capability selection, presentation and genuinely extension-specific behavior;
+- incremental repair of existing projects and files instead of regeneration from zero;
+- automatic source validation, compilation and bounded runtime smoke tests before Install is enabled;
+- clear separation between provider failure, generation failure, compilation failure and installation failure;
+- capability-aware version increments and reuse of already validated artifacts;
+- GPIO Input capability spanning Agent, Core and compiled widget runtime;
+- generated GPIO status widget with editor fields for device, input pin, active-high/active-low behavior, labels, colors and refresh/event mode;
+- permission and ownership checks that prevent a widget from reading undeclared devices or pins.
+
+GPIO acceptance flow:
+
+`Digital input driver → Agent GPIO capability → authenticated Core state/event API → compiled dashboard widget`
+
+Acceptance criteria:
+
+- a non-technical user can describe a widget without entering routes, versions, schemas or source filenames;
+- a weak/free AI provider can select and configure existing capabilities without generating the trusted runtime foundation;
+- generated code cannot replace or weaken capability security and lifecycle boundaries;
+- invalid or incomplete AI output cannot be presented as an installable build;
+- a failed build can be repaired from the existing project without re-entering its complete description;
+- Install is enabled only for the exact artifact that passed validation and compilation;
+- on the mock driver, changing a selected input pin changes the dashboard lamp between red and green;
+- on `rasp-3mm`, the same widget reads a declared physical input pin through the Agent without browser, Core or generated code accessing GPIO directly;
+- changing pin or active-high/active-low in the widget editor persists and takes effect without regenerating the extension;
+- disconnecting Core shows a stale/offline state rather than a false red or green value;
+- Core and the generic frontend contain no concrete GPIO widget or generated extension name.
+
+Stages:
+
+1. capability-plan contract, project migration and deterministic generator foundation;
+2. common UI/data building blocks and incremental repair workflow;
+3. GPIO Input capability across Agent, Core and widget editor/runtime;
+4. compile/runtime validation, physical Raspberry acceptance and Builder UX cleanup.
+
+## Milestone 10 — Real Raspberry Pi validation
 
 Goal: replace mock hardware with real Raspberry adapters while preserving contracts.
 
@@ -276,9 +319,13 @@ Acceptance criteria:
 - CPU, memory and storage remain within documented limits;
 - clean device installation can be repeated from the guide.
 
-## Milestone 10 — Safe compiled AI module builder
+## Milestone 11 — Safe compiled AI module builder
 
 Goal: evolve the existing AI Extension Builder into a controlled module development pipeline.
+
+Boundary: Milestone 9 covers trusted capability composition and deterministic
+generation. This milestone covers genuinely new executable frontend/backend
+code that cannot be expressed through registered capabilities.
 
 Deliverables:
 
@@ -298,7 +345,7 @@ Acceptance criteria:
 - installed artifact corresponds exactly to the reviewed hash;
 - removal and rollback are verified.
 
-## Milestone 11 — Production operations
+## Milestone 12 — Production operations
 
 Goal: make small real installations supportable.
 
@@ -320,7 +367,7 @@ Acceptance criteria:
 - storage cannot grow without configured bounds;
 - release and rollback procedures are repeatable.
 
-## Milestone 12 — Ecosystem expansion
+## Milestone 13 — Ecosystem expansion
 
 Goal: expand capabilities without weakening Core architecture.
 

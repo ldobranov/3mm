@@ -139,6 +139,17 @@ def test_project_writes_require_admin_and_reject_stale_or_unsafe_updates():
         "expected_revision": 2, "files": [{"path": "../secret", "content": "no"}],
     })
     assert unsafe.status_code == 422
+
+    initial = client.put(f"/api/v1/extension-projects/{project['project_id']}/files", headers=admin_headers, json={
+        "expected_revision": 2, "files": [{"path": "manifest.json", "content": "first"}],
+    })
+    assert initial.status_code == 200
+    replacement = client.put(f"/api/v1/extension-projects/{project['project_id']}/files", headers=admin_headers, json={
+        "expected_revision": initial.json()["revision"],
+        "files": [{"path": "manifest.json", "content": "second"}],
+    })
+    assert replacement.status_code == 200
+    assert replacement.json()["files"][0]["content"] == "second"
     db.close()
 
 

@@ -5,7 +5,7 @@ import type { Widget } from '@/stores/widgets';
 import { useWidgetsStore } from '@/stores/widgets';
 import { markRaw } from 'vue';
 import { loadBundledExtensionComponentByPath } from '@/utils/extension-components';
-import { findCompiledEntrypoint, loadCompiledComponent } from '@/utils/compiled-ui';
+import { findCompiledEntrypoint, getCompiledUiCatalog, loadCompiledComponent } from '@/utils/compiled-ui';
 import { useI18n } from '@/utils/i18n';
 
 const props = defineProps<{
@@ -49,7 +49,11 @@ watch(() => props.widget, async (widget) => {
 
   try {
     if (widget.type.startsWith('compiled:')) {
-      const resolved = await findCompiledEntrypoint(widget.type);
+      let resolved = await findCompiledEntrypoint(widget.type);
+      if (!resolved) {
+        await getCompiledUiCatalog(true);
+        resolved = await findCompiledEntrypoint(widget.type);
+      }
       const editor = resolved?.pkg.entrypoints.find(entrypoint =>
         entrypoint.kind === 'editor' &&
         entrypoint.target_entrypoint_id === resolved.entrypoint.entrypoint_id
