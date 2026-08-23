@@ -14,6 +14,11 @@ from backend.utils.auth_dep import require_user
 from backend.db.extension import Extension
 from backend.db.extension_multilingual import ExtensionMultilingualContent
 from backend.schemas.extension import ExtensionSchema, ExtensionCreate, ExtensionUpdate, ExtensionManifest
+from backend.utils.extension_paths import (
+    backend_extensions_dir,
+    extension_quarantine_dir,
+    frontend_extensions_dir,
+)
 try:
     from backend.utils.extension_security import security_manager, permission_manager
     from backend.utils.extension_manager import extension_manager
@@ -42,9 +47,6 @@ except ImportError:
     dependency_resolver = DummyDependencyResolver()
 
 router = APIRouter()
-
-EXTENSIONS_DIR = Path("backend/extensions")
-EXTENSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 def validate_extension_file(file_path: Path) -> ExtensionManifest:
     """Validate extension file and extract manifest"""
@@ -222,8 +224,8 @@ def approve_extension(
         raise HTTPException(status_code=400, detail="Extension is not quarantined")
 
     # Move from quarantine back to user directory
-    quarantine_path = Path("backend/extensions/quarantine") / f"user_{extension.user_id}" / f"{extension.name}_{extension.version}"
-    user_path = Path("backend/extensions") / f"user_{extension.user_id}" / f"{extension.name}_{extension.version}"
+    quarantine_path = extension_quarantine_dir() / f"user_{extension.user_id}" / f"{extension.name}_{extension.version}"
+    user_path = backend_extensions_dir() / f"user_{extension.user_id}" / f"{extension.name}_{extension.version}"
 
     if quarantine_path.exists():
         user_path.parent.mkdir(parents=True, exist_ok=True)
@@ -288,7 +290,7 @@ def list_public_extensions(
     public_extensions = []
     for ext in extensions:
         # Try to read manifest from file system first (more up-to-date)
-        manifest_path = f"backend/extensions/{ext.name}_{ext.version}/manifest.json"
+        manifest_path = Path(ext.file_path) / "manifest.json"
         manifest_data = None
 
         try:
@@ -370,7 +372,7 @@ async def upload_extension(
             raise HTTPException(status_code=400, detail="Extension with this name and version already exists")
 
         # Create extension directory
-        extension_dir = EXTENSIONS_DIR / f"{manifest.name}_{manifest.version}"
+        extension_dir = backend_extensions_dir() / f"{manifest.name}_{manifest.version}"
         print(f"DEBUG: Creating extension directory: {extension_dir}")
         extension_dir.mkdir(parents=True, exist_ok=True)
 
@@ -428,11 +430,11 @@ async def upload_extension(
         # For widget and extension type, also copy to frontend extensions directory
         print(f"DEBUG: Copying to frontend extensions directory")
         if manifest.type in ['widget', 'extension', 'language']:
-            frontend_extensions_dir = Path("frontend/src/extensions")
-            frontend_extensions_dir.mkdir(exist_ok=True)
+            frontend_dir = frontend_extensions_dir()
+            frontend_dir.mkdir(parents=True, exist_ok=True)
 
             # Copy the extension files to frontend
-            frontend_extension_dir = frontend_extensions_dir / f"{manifest.name}_{manifest.version}"
+            frontend_extension_dir = frontend_dir / f"{manifest.name}_{manifest.version}"
             print(f"DEBUG: Frontend extension dir: {frontend_extension_dir}")
             if frontend_extension_dir.exists():
                 import shutil
@@ -912,8 +914,7 @@ def delete_extension(
 
         # Remove extension files from frontend if it's a widget, extension, or language
         if extension.type in ['widget', 'extension', 'language']:
-            frontend_extensions_dir = Path("frontend/src/extensions")
-            frontend_extension_dir = frontend_extensions_dir / f"{extension.name}_{extension.version}"
+            frontend_extension_dir = frontend_extensions_dir() / f"{extension.name}_{extension.version}"
             print(f"DEBUG: Checking frontend extension path: {frontend_extension_dir}")
             if frontend_extension_dir.exists():
                 print(f"DEBUG: Removing frontend extension files")
@@ -1060,7 +1061,7 @@ async def serve_extension_file(path: str):
 
     # Construct full path - extensions are stored in frontend/src/extensions/
     # The path is relative to the frontend directory for frontend extensions
-    full_path = Path(__file__).parent.parent.parent / "frontend" / "src" / "extensions" / path
+    full_path = frontend_extensions_dir() / path
 
     # Check if file exists
     if not full_path.exists() or not full_path.is_file():

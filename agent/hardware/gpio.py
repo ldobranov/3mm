@@ -33,6 +33,7 @@ class DigitalOutput(Protocol):
 class DigitalGpioDriver(Protocol):
     def input(self, capability_id: str) -> DigitalInput: ...
     def output(self, capability_id: str) -> DigitalOutput: ...
+    def close(self) -> None: ...
 
 
 class MockDigitalGpioDriver:
@@ -78,6 +79,10 @@ class MockDigitalGpioDriver:
             if callback in callbacks:
                 callbacks.remove(callback)
         return unsubscribe
+
+    def close(self) -> None:
+        for callbacks in self._callbacks.values():
+            callbacks.clear()
 
 
 @dataclass(frozen=True, slots=True)

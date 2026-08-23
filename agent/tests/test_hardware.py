@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 
 from agent.hardware import (
     HardwareProfile,
@@ -8,6 +9,7 @@ from agent.hardware import (
     create_hardware_driver,
     create_mock_gpio_driver,
 )
+from agent.hardware.gpiod import GpiodDigitalGpioDriver
 
 
 def test_mock_hardware_profiles_are_deterministic_and_distinct():
@@ -91,3 +93,76 @@ def test_mock_gpio_rejects_unknown_capabilities():
         gpio.input("missing")
     with pytest.raises(KeyError):
         gpio.output("missing")
+
+
+class _FakeLineRequest:
+    def __init__(self, config):
+        self.config = config
+        self.values = {
+            line: settings.output_value or "inactive"
+            for line, settings in config.items()
+        }
+        self.released = False
+
+    def get_value(self, line):
+        return self.values[line]
+
+    def set_value(self, line, value):
+        self.values[line] = value
+
+    def release(self):
+        self.released = True
+
+
+class _FakeLineSettings:
+    def __init__(self, **values):
+        self.__dict__.update(values)
+        self.output_value = values.get("output_value")
+
+
+class _FakeGpiod:
+    def __init__(self):
+        self.line = SimpleNamespace(
+            Direction=SimpleNamespace(INPUT="input", OUTPUT="output"),
+            Bias=SimpleNamespace(PULL_UP="pull-up"),
+            Value=SimpleNamespace(ACTIVE="active", INACTIVE="inactive"),
+        )
+        self.LineSettings = _FakeLineSettings
+        self.requests = []
+
+    def request_lines(self, _chip, *, consumer, config):
+        request = _FakeLineRequest(config)
+        request.consumer = consumer
+        self.requests.append(request)
+        return request
+
+
+def test_gpiod_driver_maps_active_low_input_and_output_then_releases_lines():
+    fake = _FakeGpiod()
+    gpio = GpiodDigitalGpioDriver(
+        chip="/dev/gpiochip0",
+        inputs={"gpio.input.1": 17},
+        outputs={"gpio.output.1": 27},
+        gpiod_module=fake,
+    )
+
+    assert gpio.input("gpio.input.1").read() is False
+    input_settings = fake.requests[0].config[17]
+    assert input_settings.bias == "pull-up"
+    assert input_settings.active_low is True
+
+    gpio.output("gpio.output.1").write(True)
+    assert gpio.output("gpio.output.1").read() is True
+
+    gpio.close()
+    assert all(request.released for request in fake.requests)
+
+
+def test_gpiod_driver_rejects_overlapping_line_mappings():
+    with pytest.raises(ValueError, match="both an input and an output"):
+        GpiodDigitalGpioDriver(
+            chip="/dev/gpiochip0",
+            inputs={"gpio.input.1": 17},
+            outputs={"gpio.output.1": 17},
+            gpiod_module=_FakeGpiod(),
+        )

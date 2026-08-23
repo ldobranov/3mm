@@ -7,9 +7,9 @@ from backend.utils.ai_extension_builder.openrouter_client import OpenRouterClien
 
 
 class FreeProviderFallbackClient:
-    """Use OpenRouter Free first and Groq Free when the first call fails."""
+    """Use the predictable Groq free model first, then OpenRouter Free."""
 
-    default_model = "openrouter/free -> llama-3.1-8b-instant"
+    default_model = "llama-3.1-8b-instant -> openrouter/free"
 
     def __init__(self, openrouter: OpenRouterClient, groq: GroqClient):
         self.openrouter = openrouter
@@ -29,8 +29,8 @@ class FreeProviderFallbackClient:
     ) -> Dict[str, Any]:
         errors: List[Exception] = []
         providers = (
-            ("openrouter", self.openrouter),
             ("groq", self.groq),
+            ("openrouter", self.openrouter),
         )
         for provider_name, client in providers:
             if not client.is_configured():

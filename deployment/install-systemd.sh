@@ -29,11 +29,21 @@ release_dir=$install_root/releases/$release_id
 venv_dir=$install_root/venv
 ai_master_key_file=/etc/3mm/ai-settings.key
 ai_master_key_line=""
+gpio_driver_line="THREE_MM_GPIO_DRIVER=mock"
+gpio_chip_line="THREE_MM_GPIO_CHIP=/dev/gpiochip0"
+gpio_inputs_line="THREE_MM_GPIO_INPUTS="
+gpio_outputs_line="THREE_MM_GPIO_OUTPUTS="
 
 if [[ -s $ai_master_key_file ]]; then
   ai_master_key_line="AI_SETTINGS_MASTER_KEY=$(cat "$ai_master_key_file")"
 elif [[ -f /etc/3mm/3mm.env ]]; then
   ai_master_key_line=$(grep '^AI_SETTINGS_MASTER_KEY=' /etc/3mm/3mm.env | head -n 1 || true)
+fi
+if [[ -f /etc/3mm/3mm.env ]]; then
+  gpio_driver_line=$(grep '^THREE_MM_GPIO_DRIVER=' /etc/3mm/3mm.env | head -n 1 || printf '%s' "$gpio_driver_line")
+  gpio_chip_line=$(grep '^THREE_MM_GPIO_CHIP=' /etc/3mm/3mm.env | head -n 1 || printf '%s' "$gpio_chip_line")
+  gpio_inputs_line=$(grep '^THREE_MM_GPIO_INPUTS=' /etc/3mm/3mm.env | head -n 1 || printf '%s' "$gpio_inputs_line")
+  gpio_outputs_line=$(grep '^THREE_MM_GPIO_OUTPUTS=' /etc/3mm/3mm.env | head -n 1 || printf '%s' "$gpio_outputs_line")
 fi
 
 if ! id -u 3mm >/dev/null 2>&1; then
@@ -70,6 +80,13 @@ fi
 "$venv_dir/bin/python" -m pip install --disable-pip-version-check \
   -r "$release_dir/backend/requirements.txt"
 
+if ! command -v npm >/dev/null 2>&1; then
+  echo "Node.js/npm is required for the compiled UI extension toolchain." >&2
+  exit 1
+fi
+npm install --prefix "$release_dir/frontend/compiler" \
+  --ignore-scripts --no-audit --no-fund
+
 ln -sfn "$release_dir" "$install_root/current"
 install -o root -g root -m 0644 -t /etc/systemd/system \
   "$release_dir/deployment/systemd/3mm-agent.service" \
@@ -82,6 +99,9 @@ install -o root -g root -m 0644 -t /etc/systemd/system \
 cat > /etc/3mm/3mm.env <<EOF
 DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db
 UPLOADS_DIR=/var/lib/3mm/core/uploads
+BACKEND_EXTENSIONS_DIR=/var/lib/3mm/core/extensions/backend
+FRONTEND_EXTENSIONS_DIR=/var/lib/3mm/core/extensions/frontend
+COMPILED_UI_ARTIFACTS_DIR=/var/lib/3mm/core/extensions/compiled
 BACKEND_HOST=0.0.0.0
 BACKEND_PORT=8887
 CORS_ORIGINS=["$frontend_origin"]
@@ -93,6 +113,10 @@ THREE_MM_AGENT_HARDWARE_PROFILE=native
 THREE_MM_CORE_URL=http://127.0.0.1:8887
 THREE_MM_HEARTBEAT_INTERVAL_SECONDS=30
 THREE_MM_PROVISIONING_DATA_DIR=/var/lib/3mm/provisioning
+$gpio_driver_line
+$gpio_chip_line
+$gpio_inputs_line
+$gpio_outputs_line
 EOF
 if [[ ! -s $ai_master_key_file ]]; then
   if [[ -n $ai_master_key_line ]]; then
@@ -109,7 +133,13 @@ printf 'AI_SETTINGS_MASTER_KEY=%s\n' "$(cat "$ai_master_key_file")" >> /etc/3mm/
 chown root:3mm /etc/3mm/3mm.env
 chmod 0640 /etc/3mm/3mm.env
 
-install -d -o 3mm -g 3mm -m 0750 /var/lib/3mm/core
+install -d -o 3mm -g 3mm -m 0750 \
+  /var/lib/3mm/core \
+  /var/lib/3mm/core/uploads \
+  /var/lib/3mm/core/uploads/modules \
+  /var/lib/3mm/core/extensions/backend \
+  /var/lib/3mm/core/extensions/frontend \
+  /var/lib/3mm/core/extensions/compiled
 runuser -u 3mm -- env \
   DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db \
   PYTHONPATH="$release_dir" \

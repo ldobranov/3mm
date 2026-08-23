@@ -18,28 +18,29 @@ class StubClient:
         return self.result
 
 
-def test_free_provider_prefers_openrouter():
-    openrouter = StubClient(result={"choices": []})
-    groq = StubClient(result={"unused": True})
+def test_free_provider_prefers_groq():
+    openrouter = StubClient(result={"unused": True})
+    groq = StubClient(result={"choices": []})
     client = FreeProviderFallbackClient(openrouter, groq)
 
     assert client.chat_completions([{"role": "user", "content": "test"}]) == {"choices": []}
-    assert client.last_provider == "openrouter"
-    assert len(openrouter.calls) == 1
-    assert groq.calls == []
+    assert client.last_provider == "groq"
+    assert openrouter.calls == []
+    assert len(groq.calls) == 1
 
 
-def test_free_provider_falls_back_to_groq_without_openrouter_model_override():
-    openrouter = StubClient(error=RuntimeError("rate limited"))
-    groq = StubClient(result={"choices": [{"message": {"content": "{}"}}]})
+def test_free_provider_falls_back_to_openrouter_with_model_override():
+    openrouter = StubClient(result={"choices": [{"message": {"content": "{}"}}]})
+    groq = StubClient(error=RuntimeError("rate limited"))
     client = FreeProviderFallbackClient(openrouter, groq)
 
     client.chat_completions([], model="openrouter/free")
 
-    assert client.last_provider == "groq"
+    assert client.last_provider == "openrouter"
     assert len(openrouter.calls) == 1
     assert len(groq.calls) == 1
     assert groq.calls[0][1]["model"] is None
+    assert openrouter.calls[0][1]["model"] == "openrouter/free"
 
 
 def test_free_provider_uses_configured_groq_when_openrouter_is_missing():

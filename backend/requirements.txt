@@ -13,3 +13,4 @@ requests==2.34.2
 pydantic==2.13.4
 psycopg2-binary==2.9.12
 cryptography==50.0.0
+gpiod==2.5.0; sys_platform == "linux"

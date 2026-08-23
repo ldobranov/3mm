@@ -34,6 +34,21 @@ from three_mm_protocol.runtime_extension import (
     RuntimeNavigationItemV1,
     RuntimePageV1,
 )
+from three_mm_protocol.compiled_extension import (
+    CompiledUiEntrypointV1,
+    CompiledUiExtensionV1,
+)
+from three_mm_protocol.capability_builder import (
+    BuilderSettingV1,
+    CapabilityBindingV1,
+    CapabilityPlanV1,
+    CapabilityPresentationV1,
+    PresentationStateV1,
+)
+from three_mm_protocol.capability_state import (
+    CapabilityStateReportV1,
+    CapabilityStateSnapshotV1,
+)
 
 __all__ = [
     "PROTOCOL_VERSION",
@@ -65,4 +80,13 @@ __all__ = [
     "RuntimeFieldV1",
     "RuntimeNavigationItemV1",
     "RuntimePageV1",
+    "CompiledUiEntrypointV1",
+    "CompiledUiExtensionV1",
+    "BuilderSettingV1",
+    "CapabilityBindingV1",
+    "CapabilityPlanV1",
+    "CapabilityPresentationV1",
+    "PresentationStateV1",
+    "CapabilityStateReportV1",
+    "CapabilityStateSnapshotV1",
 ]

@@ -1,0 +1,29 @@
+{
+  "manifest_version": 2,
+  "module_id": "org.3mm.clock",
+  "name": "Digital Clock",
+  "version": "1.0.0",
+  "description": "Reference install-time compiled UI extension.",
+  "runtimes": ["ui"],
+  "entrypoints": {"ui": "compiled-ui.json"},
+  "compatibility": {
+    "protocol": "1.0",
+    "agent": ">=0.1.0",
+    "core": ">=0.1.0",
+    "architectures": ["any"]
+  },
+  "capabilities": {"provides": [], "consumes": []},
+  "permissions": [],
+  "dependencies": {},
+  "conflicts": [],
+  "configuration_schema": {},
+  "configuration_defaults": {},
+  "health_check": {"type": "json_file", "path": "compiled-ui.json"},
+  "registrations": [
+    {
+      "kind": "widget",
+      "registration_id": "org.3mm.clock.widget",
+      "metadata": {"entrypoint_id": "clock"}
+    }
+  ]
+}

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import http from '@/utils/dynamic-http';
 
 export interface ExtensionWidget {
-  id: number;
+  id: number | string;
   name: string;
   version: string;
   description?: string;
@@ -11,6 +11,8 @@ export interface ExtensionWidget {
   frontend_editor?: string;
   config_schema: Record<string, any>;
   file_path: string;
+  widget_type?: string;
+  runtime?: 'legacy' | 'compiled';
 }
 
 export interface Widget {
@@ -29,8 +31,31 @@ export const useWidgetsStore = defineStore('widgets', {
       return token ? { Authorization: `Bearer ${token}` } : {};
     },
     async fetchAvailableExtensions(): Promise<ExtensionWidget[]> {
-      const res = await http.get('/api/extensions/widgets');
-      return res.data.items || [];
+      const [legacyResponse, compiledResponse] = await Promise.all([
+        http.get('/api/extensions/widgets'),
+        http.get('/api/v1/modules/compiled-ui/catalog'),
+      ]);
+      const legacy = (legacyResponse.data.items || []).map((item: ExtensionWidget) => ({
+        ...item,
+        widget_type: `extension:${item.id}`,
+        runtime: 'legacy' as const,
+      }));
+      const compiled = (compiledResponse.data.items || []).flatMap((pkg: any) =>
+        (pkg.entrypoints || [])
+          .filter((entrypoint: any) => entrypoint.kind === 'widget')
+          .map((entrypoint: any) => ({
+            id: `${pkg.module_id}:${pkg.version}:${entrypoint.entrypoint_id}`,
+            name: entrypoint.label?.en || pkg.name,
+            version: pkg.version,
+            description: pkg.name,
+            frontend_entry: entrypoint.asset_url,
+            config_schema: {},
+            file_path: '',
+            widget_type: `compiled:${pkg.module_id}:${pkg.version}:${entrypoint.entrypoint_id}`,
+            runtime: 'compiled' as const,
+          }))
+      );
+      return [...legacy, ...compiled];
     },
     list(displayId: number) {
       return this.byDisplayId[displayId] || [];
@@ -42,11 +67,10 @@ export const useWidgetsStore = defineStore('widgets', {
     },
     async create(displayId: number, payload: { type: Widget['type']; config: Record<string, any>; x: number; y: number; width: number; height: number; z_index: number; }) {
       // Validate extension widget types
-      if (typeof payload.type === 'string' && payload.type.startsWith('extension:')) {
-        const extensionId = payload.type.split(':')[1];
+      if (typeof payload.type === 'string' && (payload.type.startsWith('extension:') || payload.type.startsWith('compiled:'))) {
         // Check if extension is available (this will be validated on backend too)
         const availableExtensions = await this.fetchAvailableExtensions();
-        const extension = availableExtensions.find(ext => ext.id === parseInt(extensionId));
+        const extension = availableExtensions.find(ext => ext.widget_type === payload.type);
         if (!extension) {
           throw new Error('Extension widget not available');
         }

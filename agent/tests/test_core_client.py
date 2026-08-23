@@ -3,7 +3,7 @@ from pathlib import Path
 from datetime import UTC, datetime
 
 from agent.core_client import (
-    CommandJournal, DeviceCredential, DeviceCredentialStore,
+    CommandJournal, CorePublisher, DeviceCredential, DeviceCredentialStore,
     OutboxEntry, OutboxStore, ReconciliationState, ReconciliationStore,
 )
 from three_mm_protocol import AgentCommandResult
@@ -53,3 +53,43 @@ def test_outbox_deduplicates_replaceable_events(tmp_path: Path) -> None:
     outbox.enqueue(OutboxEntry(suffix="heartbeat", payload={"sequence": 2}, deduplication_key="heartbeat"))
     assert [entry.payload for entry in outbox.load()] == [{"sequence": 2}]
     assert outbox.path.stat().st_mode & 0o777 == 0o600
+
+
+def test_core_publisher_posts_current_capability_snapshots(monkeypatch, tmp_path: Path) -> None:
+    posted = []
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+    monkeypatch.setattr(
+        "agent.core_client.requests.post",
+        lambda url, **kwargs: posted.append((url, kwargs["json"])) or Response(),
+    )
+
+    class Runtime:
+        def capability_states(self):
+            return {"gpio.digital.input": {"gpio.input.1": True}}
+
+    credential = DeviceCredential(
+        device_id="dev_0123456789abcdef0123456789abcdef",
+        credential_id="cred_0123456789abcdef0123456789abcdef",
+        credential_secret="s" * 43,
+    )
+    publisher = CorePublisher(
+        core_url="http://core",
+        credential=credential,
+        inventory_provider=lambda: None,
+        command_journal=CommandJournal(tmp_path),
+        reconciliation_store=ReconciliationStore(tmp_path),
+        outbox=OutboxStore(tmp_path),
+        started_monotonic=0,
+        module_runtime=Runtime(),
+    )
+
+    publisher._publish_capability_states()
+
+    assert posted[0][0].endswith(
+        "/api/v1/devices/dev_0123456789abcdef0123456789abcdef/capabilities/gpio.digital.input/state"
+    )
+    assert posted[0][1]["values"] == {"gpio.input.1": True}

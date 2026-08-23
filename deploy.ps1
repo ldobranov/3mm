@@ -335,6 +335,13 @@ python3 -m venv "$release_dir/.venv"
   --disable-pip-version-check \
   --requirement "$release_dir/backend/requirements.txt"
 
+if ! command -v npm >/dev/null 2>&1; then
+  echo 'Node.js/npm is required for the compiled UI extension toolchain.' >&2
+  exit 1
+fi
+npm install --prefix "$release_dir/frontend/compiler" \
+  --ignore-scripts --no-audit --no-fund
+
 log 'Stopping services and backing up persistent database state'
 systemctl stop "${services[@]}"
 install -d -o root -g root -m 0700 "$backup_root"
@@ -347,7 +354,13 @@ log 'Installing release service definitions'
 install_units "$release_dir"
 
 log 'Running database migrations against persistent state'
-install -d -o 3mm -g 3mm -m 0750 "$core_state"
+install -d -o 3mm -g 3mm -m 0750 \
+  "$core_state" \
+  "$core_state/uploads" \
+  "$core_state/uploads/modules" \
+  "$core_state/extensions/backend" \
+  "$core_state/extensions/frontend" \
+  "$core_state/extensions/compiled"
 runuser -u 3mm -- env \
   DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db \
   UPLOADS_DIR=/var/lib/3mm/core/uploads \

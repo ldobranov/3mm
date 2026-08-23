@@ -38,13 +38,19 @@ def test_clean_database_migrates_to_head_and_back_to_base(tmp_path):
     _alembic(database_url, "check")
 
     engine = create_engine(database_url)
-    tables = set(inspect(engine).get_table_names())
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
     assert "settings" in tables
     assert "devices" in tables
     assert "automation_proposals" in tables
     assert "automation_revisions" in tables
     assert "ai_jobs" in tables
     assert "ai_usage_ledger" in tables
+    assert "extension_projects" in tables
+    assert "extension_project_files" in tables
+    assert "extension_project_builds" in tables
+    build_columns = {column["name"] for column in inspector.get_columns("extension_project_builds")}
+    assert {"artifact_path", "package_kind", "installed_at"} <= build_columns
     engine.dispose()
 
     _alembic(database_url, "upgrade", "head")

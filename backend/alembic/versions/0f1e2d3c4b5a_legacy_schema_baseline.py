@@ -30,6 +30,7 @@ POST_BASELINE_TABLES = {
     "device_commands",
     "device_states",
     "device_events",
+    "device_capability_states",
     "module_packages",
     "module_installations",
     "automation_proposals",
@@ -38,6 +39,11 @@ POST_BASELINE_TABLES = {
     "ai_credit_accounts",
     "ai_jobs",
     "ai_usage_ledger",
+    "runtime_extension_definitions",
+    "runtime_entity_records",
+    "extension_projects",
+    "extension_project_files",
+    "extension_project_builds",
 }
 
 

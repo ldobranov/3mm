@@ -21,6 +21,11 @@ class DigitalGpioCapabilityService:
     def state(self) -> dict:
         return {"inputs": {item: self.gpio.input(item).read() for item in self.inputs}, "outputs": {item: self.gpio.output(item).read() for item in self.outputs}}
 
+    def state_for(self, capability_id: str) -> dict:
+        if capability_id == "gpio.digital.input":
+            return {item: self.gpio.input(item).read() for item in self.inputs}
+        return {item: self.gpio.output(item).read() for item in self.outputs}
+
     def invoke(self, action: str, arguments: dict) -> dict:
         if action != "set_output":
             raise ModuleLifecycleError("unsupported GPIO capability action")
@@ -78,6 +83,18 @@ def gpio_runtime_handler(gpio: DigitalGpioDriver, event_sink=lambda _event: None
         if not isinstance(rules, list):
             raise ModuleLifecycleError("GPIO rules configuration is invalid")
         unsubscribers = []
+        for input_id in inputs:
+            unsubscribers.append(gpio.input(input_id).subscribe(
+                lambda event: event_sink({
+                    "event_type": "gpio.input.changed",
+                    "payload": {
+                        "capability_id": "gpio.digital.input",
+                        "channel": event.capability_id,
+                        "value": event.value,
+                        "sequence": event.sequence,
+                    },
+                })
+            ))
         for rule in rules:
             if not isinstance(rule, dict) or not all(key in rule for key in ("input", "output", "when", "set")):
                 raise ModuleLifecycleError("GPIO rule is invalid")
@@ -88,7 +105,6 @@ def gpio_runtime_handler(gpio: DigitalGpioDriver, event_sink=lambda _event: None
             def on_input(event, expected=rule["when"], target=output_id, target_value=rule["set"]):
                 if event.value == expected:
                     gpio.output(target).write(target_value)
-                    event_sink({"event_type":"gpio.input.changed","payload":{"capability_id":event.capability_id,"value":event.value,"sequence":event.sequence,"output":target,"output_value":target_value}})
             unsubscribers.append(gpio.input(input_id).subscribe(on_input))
         state = {"inputs": {item: gpio.input(item).read() for item in inputs}, "outputs": {item: gpio.output(item).read() for item in outputs}}
         (data_dir / "gpio-runtime.json").write_text(json.dumps(state, indent=2) + "\n")

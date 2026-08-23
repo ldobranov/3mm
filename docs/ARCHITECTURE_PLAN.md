@@ -242,6 +242,31 @@ AI connects existing capabilities into a workflow. Generated workflows use a res
 
 AI generates a new module in a dedicated build workspace. Static checks, tests, manifest validation and package signing happen before installation. Generated code is never loaded directly into the Core process.
 
+The Builder uses a hybrid capability-based pipeline rather than asking a model
+to create an entire extension from an empty scaffold:
+
+1. AI converts the user's description into a typed capability plan.
+2. Core validates requested capabilities, permissions and target devices.
+3. Deterministic generators create the trusted lifecycle, configuration,
+   editor, storage, API and packaging foundation.
+4. AI may customize presentation and extension-specific behavior without
+   replacing capability security boundaries.
+5. The exact source is compiled and smoke-tested in isolation.
+6. Only the reviewed artifact hash may be installed.
+7. Later changes repair the existing project and increment its version instead
+   of regenerating it from zero.
+
+Common capabilities begin with live timers, forms, HTTP data, key-value
+settings, CRUD records, lists, metrics and GPIO input. A GPIO dashboard widget
+never accesses hardware from Vue or Core. Its required data path is:
+
+`DigitalInput driver → Agent capability → authenticated Core state/event boundary → compiled widget`
+
+The widget editor selects a paired device and declared pin plus presentation
+settings. The Agent enforces hardware permissions, while the UI distinguishes
+HIGH, LOW, stale, offline and error states. This flow must work against the
+deterministic mock driver before using a physical Raspberry GPIO adapter.
+
 ### Level 5: Operate
 
 AI may execute pre-approved, narrowly scoped operations. Destructive or security-sensitive operations always require explicit approval.

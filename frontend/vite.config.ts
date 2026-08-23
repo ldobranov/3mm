@@ -1,5 +1,5 @@
 import { fileURLToPath, URL } from 'node:url'
-import { readFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { defineConfig } from 'vite'
@@ -8,7 +8,7 @@ import vueJsx from '@vitejs/plugin-vue-jsx'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 // Load config from root config.json
-const configPath = join(__dirname, '..', 'config.json')
+const configPath = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'config.json')
 let config
 try {
   config = JSON.parse(readFileSync(configPath, 'utf-8'))
@@ -27,6 +27,9 @@ try {
   }
 }
 const backendUrl = config.frontend.backend_url
+const vueBrowserRuntime = fileURLToPath(
+  new URL('./node_modules/vue/dist/vue.esm-browser.prod.js', import.meta.url)
+)
 
 // Define global constants for frontend
 const defineConstants = {
@@ -40,6 +43,15 @@ export default defineConfig({
     vue(),
     vueJsx(),
     vueDevTools(),
+    {
+      name: 'compiled-ui-vue-runtime',
+      writeBundle(options) {
+        if (!options.dir) return
+        const runtimeDirectory = join(options.dir, 'compiled-ui')
+        mkdirSync(runtimeDirectory, { recursive: true })
+        copyFileSync(vueBrowserRuntime, join(runtimeDirectory, 'vue-runtime.mjs'))
+      },
+    },
   ],
   define: defineConstants,
   resolve: {
@@ -53,7 +65,7 @@ export default defineConfig({
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
       },
-      external: ['@vueup/vue-quill'],
+      external: ['@vueup/vue-quill', 'vue'],
     },
   },
   server: {

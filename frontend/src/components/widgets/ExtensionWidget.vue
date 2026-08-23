@@ -7,9 +7,14 @@
       :width="width"
       :height="height"
     />
-    <div v-else class="loading-extension">
+    <div v-else-if="loadState === 'loading'" class="loading-extension">
       <i class="bi bi-puzzle-piece"></i>
       <span>Loading {{ extensionName }}...</span>
+    </div>
+    <div v-else class="loading-extension extension-error" role="alert">
+      <i class="bi bi-exclamation-triangle"></i>
+      <strong>Widget unavailable</strong>
+      <span>{{ loadError }}</span>
     </div>
   </div>
 </template>
@@ -18,6 +23,7 @@
 import { computed, ref, onMounted, watch, markRaw } from 'vue';
 import http from '@/utils/dynamic-http';
 import { loadBundledExtensionComponentByPath } from '@/utils/extension-components';
+import { loadCompiledComponentForType } from '@/utils/compiled-ui';
 
 interface Props {
   config: Record<string, any>;
@@ -39,6 +45,8 @@ const props = defineProps<Props>();
 
 const extensionComponent = ref<any>(null);
 const extensionData = ref<ExtensionData | null>(null);
+const loadState = ref<'loading' | 'ready' | 'error'>('loading');
+const loadError = ref('');
 const widgetStyle = computed(() => ({
   // Remove fixed width/height - let CSS handle sizing
 }));
@@ -69,7 +77,17 @@ const fetchExtensionData = async (extensionId: number): Promise<ExtensionData | 
 };
 
 const loadExtensionComponent = async () => {
+  loadState.value = 'loading';
+  loadError.value = '';
+  extensionComponent.value = null;
   try {
+    if (props.extensionName.startsWith('compiled:')) {
+      const component = await loadCompiledComponentForType(props.extensionName, 'widget');
+      if (!component) throw new Error(`Compiled widget is unavailable: ${props.extensionName}`);
+      extensionComponent.value = component;
+      loadState.value = 'ready';
+      return;
+    }
     const extensionId = props.extensionId;
     let componentUrl: string;
 
@@ -88,8 +106,7 @@ const loadExtensionComponent = async () => {
       const extData = await fetchExtensionData(extensionId);
       if (!extData) {
         console.error(`Extension with ID ${extensionId} not found`);
-        extensionComponent.value = null;
-        return;
+        throw new Error(`Extension with ID ${extensionId} was not found`);
       }
 
       extensionData.value = extData;
@@ -104,10 +121,13 @@ const loadExtensionComponent = async () => {
       throw new Error(`Component is not bundled: ${componentUrl}`);
     }
     extensionComponent.value = markRaw(component);
+    loadState.value = 'ready';
   } catch (error) {
     console.error(`Failed to load extension component ${props.extensionName}:`, error);
     // Fallback to a generic component or error display
     extensionComponent.value = null;
+    loadError.value = error instanceof Error ? error.message : String(error);
+    loadState.value = 'error';
   }
 };
 
@@ -126,7 +146,7 @@ onMounted(() => {
   loadExtensionComponent();
 });
 
-watch(() => props.extensionId, () => {
+watch(() => [props.extensionId, props.extensionName], () => {
   loadExtensionComponent();
 });
 </script>
@@ -156,5 +176,16 @@ watch(() => props.extensionId, () => {
   font-size: 2rem;
   margin-bottom: 0.5rem;
   opacity: 0.6;
+}
+
+.extension-error {
+  gap: 0.35rem;
+  padding: 1rem;
+  text-align: center;
+  color: var(--danger-color, #dc3545);
+}
+
+.extension-error span {
+  overflow-wrap: anywhere;
 }
 </style>

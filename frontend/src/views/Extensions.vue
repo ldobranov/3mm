@@ -56,7 +56,7 @@
             </div>
             <div class="extension-meta">
               <span class="extension-type">{{ ext.type }}</span>
-              <span v-if="ext.source === 'runtime'" class="runtime-badge">Runtime</span>
+              <span v-if="ext.source !== 'legacy'" class="runtime-badge">{{ ext.source === 'compiled' ? 'Compiled UI' : 'Runtime' }}</span>
               <span v-if="ext.author" class="extension-author">{{ t('extensions.by', 'by') }} {{ ext.author }}</span>
             </div>
             <p v-if="ext.description" class="extension-description">{{ ext.description }}</p>
@@ -68,7 +68,7 @@
                 <input
                   type="checkbox"
                   :checked="ext.is_enabled"
-                  :disabled="!ext.can_manage || !ext.is_installed || operationBusy === ext.id"
+                  :disabled="ext.source === 'compiled' || !ext.can_manage || !ext.is_installed || operationBusy === ext.id"
                   @change="toggleExtension(ext, $event)"
                 />
                 <span class="slider"></span>
@@ -186,6 +186,7 @@ import { useSettingsStore } from '@/stores/settings';
 import { useThemeStore } from '@/stores/theme';
 import { useRouter } from 'vue-router';
 import { reloadRuntimeExtensionRoutes } from '@/utils/runtime-extensions';
+import { getCompiledUiCatalog } from '@/utils/compiled-ui';
 
 const { t, currentLanguage } = useI18n();
 const settingsStore = useSettingsStore();
@@ -195,7 +196,7 @@ const router = useRouter();
 
 interface Extension {
   id: string;
-  source: 'legacy' | 'runtime';
+  source: 'legacy' | 'runtime' | 'compiled';
   name: string;
   type: string;
   version: string;
@@ -235,10 +236,26 @@ const authHeaders = () => {
 const loadExtensions = async () => {
   loading.value = true;
   try {
-    const res = await http.get('/api/v1/runtime-extensions/catalog', {
-      params: { language: currentLanguage.value }
-    });
-    extensions.value = res.data || [];
+    const [catalogResponse, compiledPackages] = await Promise.all([
+      http.get('/api/v1/runtime-extensions/catalog', { params: { language: currentLanguage.value } }),
+      getCompiledUiCatalog(true)
+    ]);
+    const compiled: Extension[] = compiledPackages.map(pkg => ({
+      id: `compiled:${pkg.module_id}:${pkg.version}`,
+      source: 'compiled',
+      name: pkg.name,
+      type: 'widget',
+      version: pkg.version,
+      description: t('extensions.compiledDescription', 'Install-time compiled UI extension'),
+      status: 'active',
+      is_enabled: true,
+      created_at: '',
+      can_manage: isAdmin.value,
+      available_versions: [pkg.version],
+      package_sha256: pkg.source_sha256,
+      is_installed: true
+    }));
+    extensions.value = [...(catalogResponse.data || []), ...compiled];
     selectedVersions.value = Object.fromEntries(
       extensions.value.map(extension => [extension.id, extension.version])
     );
@@ -270,16 +287,31 @@ const uploadExtension = async () => {
   uploadError.value = '';
   uploadSuccess.value = '';
 
-  const formData = new FormData();
-  formData.append('file', selectedFile.value);
-
   try {
-    const res = await http.post(
-      '/api/extensions/upload',
-      formData
-    );
+    const moduleForm = new FormData();
+    moduleForm.append('package', selectedFile.value);
+    let uploadedName = '';
+    try {
+      const moduleResponse = await http.post('/api/v1/modules/packages', moduleForm);
+      uploadedName = moduleResponse.data.module_id;
+      await getCompiledUiCatalog(true);
+    } catch (moduleError: any) {
+      const moduleStatus = moduleError.response?.status;
+      const moduleDetail = String(moduleError.response?.data?.detail || '').toLowerCase();
+      if (
+        moduleStatus !== 422 ||
+        moduleDetail.includes('compiled ui') ||
+        moduleDetail.includes('compiler')
+      ) {
+        throw moduleError;
+      }
+      const legacyForm = new FormData();
+      legacyForm.append('file', selectedFile.value);
+      const legacyResponse = await http.post('/api/extensions/upload', legacyForm);
+      uploadedName = legacyResponse.data.name;
+    }
 
-    uploadSuccess.value = t('extensions.uploadSuccess', 'Extension "{name}" uploaded successfully!', { name: res.data.name });
+    uploadSuccess.value = t('extensions.uploadSuccess', 'Extension "{name}" uploaded successfully!', { name: uploadedName });
     selectedFile.value = null;
     // Reset file input
     const fileInput = document.getElementById('extension-file') as HTMLInputElement;
@@ -301,7 +333,10 @@ const toggleExtension = async (extension: Extension, event: Event) => {
   operationError.value = '';
 
   try {
-    if (extension.source === 'runtime') {
+    if (extension.source === 'compiled') {
+      target.checked = true;
+      return;
+    } else if (extension.source === 'runtime') {
       const moduleId = extension.id.replace('runtime:', '');
       await http.patch(
         `/api/v1/runtime-extensions/definitions/${encodeURIComponent(moduleId)}`,
@@ -394,7 +429,11 @@ const confirmDeleteExtension = async () => {
   operationError.value = '';
 
   try {
-    if (extensionToDelete.value.source === 'runtime') {
+    if (extensionToDelete.value.source === 'compiled') {
+      const [, moduleId, version] = extensionToDelete.value.id.split(':');
+      await http.delete(`/api/v1/modules/compiled-ui/packages/${encodeURIComponent(moduleId)}/${encodeURIComponent(version)}`);
+      await getCompiledUiCatalog(true);
+    } else if (extensionToDelete.value.source === 'runtime') {
       const moduleId = extensionToDelete.value.id.replace('runtime:', '');
       await http.delete(
         `/api/v1/runtime-extensions/definitions/${encodeURIComponent(moduleId)}`,

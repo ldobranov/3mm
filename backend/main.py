@@ -25,6 +25,7 @@ from backend.routes.ai_extension_builder_routes import (
     router as ai_extension_builder_router,
 )
 from backend.routes.ai_automations import router as ai_automations_router
+from backend.routes.extension_projects import router as extension_projects_router
 from backend.routes.audit_routes import router as audit_router
 from backend.routes.auth_refresh import router as refresh_router
 from backend.routes.display_routes import router as display_router
@@ -34,6 +35,7 @@ from backend.routes.device_registry import router as device_registry_router
 from backend.routes.device_commands import router as device_commands_router
 from backend.routes.device_state import router as device_state_router
 from backend.routes.device_capabilities import router as device_capabilities_router
+from backend.routes.device_capability_state import router as device_capability_state_router
 from backend.routes.device_events import router as device_events_router
 from backend.routes.extension_routes import router as extension_router
 from backend.routes.group_routes import router as group_router
@@ -214,10 +216,12 @@ app.include_router(device_registry_router)
 app.include_router(device_commands_router)
 app.include_router(device_state_router)
 app.include_router(device_capabilities_router)
+app.include_router(device_capability_state_router)
 app.include_router(device_events_router)
 app.include_router(modules_router)
 app.include_router(runtime_extensions_router)
 app.include_router(ai_automations_router)
+app.include_router(extension_projects_router)
 app.include_router(refresh_router, prefix="/api")
 app.include_router(session_router, prefix="/api")
 app.include_router(audit_router, prefix="/api")

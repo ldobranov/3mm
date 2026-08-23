@@ -5,8 +5,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from backend.db.device import Device
-from backend.db.module import ModuleInstallation, ModulePackage
 from backend.db.user import User
+from backend.services.device_capability_registry import registered_capabilities
 from backend.services.device_commands import queue_command
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
@@ -31,13 +31,7 @@ def _device(db:Session,device_id:str)->Device:
     return device
 
 def _capabilities(db:Session,device:Device)->list[CapabilityRegistration]:
-    installations=db.scalars(select(ModuleInstallation).where(ModuleInstallation.device_id==device.id,ModuleInstallation.enabled.is_(True),ModuleInstallation.status=="succeeded"))
-    result=[]
-    for installation in installations:
-        package=db.get(ModulePackage,installation.module_package_id)
-        for item in package.registrations or []:
-            if item.get("kind")=="capability": result.append(CapabilityRegistration(capability_id=item["registration_id"],module_id=package.module_id,version=package.version,metadata=item.get("metadata",{})))
-    return result
+    return [CapabilityRegistration.model_validate(item) for item in registered_capabilities(db,device)]
 
 @router.get("/{device_id}/capabilities",response_model=list[CapabilityRegistration])
 def list_capabilities(device_id:str,_admin:User=Depends(require_admin),db:Session=Depends(get_db)):

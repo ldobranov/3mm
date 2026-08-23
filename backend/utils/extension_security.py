@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import re
 
+from backend.utils.extension_paths import extension_quarantine_dir
+
 class ExtensionSecurityManager:
     """Manages security for extension operations"""
 
@@ -109,8 +111,8 @@ class ExtensionSecurityManager:
 
     def quarantine_extension(self, extension_dir: Path, reason: str) -> None:
         """Move extension to quarantine directory"""
-        quarantine_dir = Path("backend/extensions/quarantine")
-        quarantine_dir.mkdir(exist_ok=True)
+        quarantine_dir = extension_quarantine_dir()
+        quarantine_dir.mkdir(parents=True, exist_ok=True)
 
         extension_name = extension_dir.name
         quarantine_path = quarantine_dir / extension_name

@@ -3,6 +3,7 @@ import type { RouteRecordRaw } from 'vue-router';
 import Login from '../views/Login.vue';
 import { getAvailableExtensions } from '@/utils/extension-relationships';
 import http from '@/utils/dynamic-http';
+import { getCompiledUiCatalog, loadCompiledComponent } from '@/utils/compiled-ui';
 
 const extensionManifests = import.meta.glob('../extensions/*/manifest.json', { eager: true });
 const extensionComponents = import.meta.glob('../extensions/*/*.vue');
@@ -232,9 +233,32 @@ export async function createRouterWithDynamicRoutes() {
   // Load extension routes synchronously during router creation
   try {
     const extensionRoutes = await loadExtensionRoutes();
-    routes.push(...extensionRoutes);
+    routes.splice(routes.length - 1, 0, ...extensionRoutes);
   } catch (error) {
     console.error('Failed to load extension routes during router creation:', error);
+  }
+
+  try {
+    const compiledRoutes: RouteRecordRaw[] = [];
+    for (const pkg of await getCompiledUiCatalog()) {
+      for (const entrypoint of pkg.entrypoints.filter(item => item.kind === 'route' && item.route)) {
+        compiledRoutes.push({
+          path: entrypoint.route!,
+          name: `compiled-${pkg.module_id}-${pkg.version}-${entrypoint.entrypoint_id}`,
+          component: () => loadCompiledComponent(pkg, entrypoint),
+          meta: {
+            requiresAuth: true,
+            requiresRole: entrypoint.requires_role || undefined,
+            isCompiledExtensionRoute: true,
+            compiledModuleId: pkg.module_id,
+            compiledSourceHash: pkg.source_sha256,
+          },
+        });
+      }
+    }
+    routes.splice(routes.length - 1, 0, ...compiledRoutes);
+  } catch (error) {
+    console.error('Failed to load compiled extension routes:', error);
   }
 
   const router = createRouter({

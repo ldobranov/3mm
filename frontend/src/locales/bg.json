@@ -1,0 +1,24 @@
+{
+  "common": { "cancel": "Отказ", "error": "Грешка", "save": "Запази" },
+  "profile": {
+    "title": "Моят профил", "account": "Акаунт", "username": "Потребителско име", "email": "Имейл",
+    "role": "Роля", "status": "Статус", "active": "Активен", "inactive": "Неактивен",
+    "edit_profile": "Редактирай профил", "new_password": "Нова парола (по желание)",
+    "save_changes": "Запази промените", "leave_empty_password": "Оставете празно, за да запазите текущата парола.",
+    "no_data_found": "Няма намерени данни за профила.", "failed_to_load": "Грешка при зареждане на профила.",
+    "failed_to_update": "Грешка при актуализиране на профила.", "updated_successfully": "Профилът е актуализиран успешно."
+  },
+  "dashboard": {
+    "titlePlaceholder": "Заглавие на таблото", "slugPlaceholder": "kratko-ime-tablo",
+    "editor": {
+      "editTitle": "Редактирай", "slugLabel": "Кратко име:", "publicLabel": "Публично", "privateLabel": "Частно",
+      "previewButton": "Преглед", "settingsButton": "Настройки", "addWidgetsTitle": "Добави джаджи",
+      "dashboardSettingsTitle": "Настройки на таблото", "titleField": "Заглавие", "slugField": "Кратко име",
+      "makePublicCheckbox": "Направи таблото публично", "cancelButton": "Отказ", "saveButton": "Запази",
+      "loading": "Зареждане...", "errorLoading": "Грешка при зареждане на таблото",
+      "loadingWidgetEditor": "Зареждане на редактора...", "widgetEditorFailed": "Редакторът на джаджата не можа да се зареди.",
+      "noWidgetSettings": "Тази джаджа няма настройки за редактиране.",
+      "noWidgetSettingsHint": "Все още можете да я местите, преоразмерявате или премахнете от таблото."
+    }
+  }
+}

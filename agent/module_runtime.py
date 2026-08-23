@@ -107,6 +107,14 @@ class AgentModuleRuntime:
         declared = {item.registration_id for item in manifest.registrations if item.kind in {"capability", "service"}}
         if not set(services).issubset(declared):
             raise ModuleLifecycleError("runtime exposed an undeclared capability")
+        replaced = {
+            id(self._services[capability_id]): self._services[capability_id]
+            for capability_id in services
+            if capability_id in self._services
+        }
+        for previous_service in replaced.values():
+            if hasattr(previous_service, "close"):
+                previous_service.close()
         self._services.update(services)
 
     def invoke(self, capability_id: str, action: str, arguments: dict) -> dict:
@@ -119,6 +127,25 @@ class AgentModuleRuntime:
             raise
         except Exception as exc:
             raise ModuleLifecycleError("capability invocation failed") from exc
+
+    def capability_states(self) -> dict[str, dict]:
+        """Return current state from active services that expose a read boundary."""
+        result: dict[str, dict] = {}
+        for capability_id, service in self._services.items():
+            try:
+                if hasattr(service, "state_for"):
+                    state = service.state_for(capability_id)
+                elif hasattr(service, "state"):
+                    state = service.state()
+                else:
+                    continue
+            except Exception as exc:
+                raise ModuleLifecycleError(
+                    f"capability state read failed for {capability_id}"
+                ) from exc
+            if isinstance(state, dict) and state:
+                result[capability_id] = state
+        return result
 
     def activate_automation(self, automation_id: str, definition) -> None:
         trigger_service = self._services.get(definition.trigger.capability_id)

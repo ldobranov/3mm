@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from three_mm_protocol import (
     AgentCommand, AgentCommandResult, AgentHeartbeat, AgentInventory,
-    AgentReportedState, DeviceDesiredState,
+    AgentReportedState, CapabilityStateReportV1, DeviceDesiredState,
 )
 
 logger = logging.getLogger(__name__)
@@ -226,6 +226,27 @@ class CorePublisher:
     def publish_event(self, event: dict) -> None:
         payload = {"event_id": f"evt_{uuid.uuid4().hex}", "device_id": self.credential.device_id, "occurred_at": datetime.now(UTC).isoformat(), **event}
         self._send_or_queue("events", payload, f"event:{payload['event_id']}")
+        try:
+            self._publish_capability_states()
+        except (ModuleLifecycleError, ValidationError) as exc:
+            logger.warning("Capability state publish after event failed: %s", exc)
+
+    def _publish_capability_states(self) -> None:
+        if self.module_runtime is None:
+            return
+        observed_at = datetime.now(UTC)
+        for capability_id, values in self.module_runtime.capability_states().items():
+            report = CapabilityStateReportV1(
+                device_id=self.credential.device_id,
+                capability_id=capability_id,
+                values=values,
+                observed_at=observed_at,
+            )
+            self._send_or_queue(
+                f"capabilities/{capability_id}/state",
+                report.model_dump(mode="json"),
+                f"capability-state:{capability_id}",
+            )
 
     def _poll_command(self) -> None:
         response = requests.get(
@@ -295,6 +316,7 @@ class CorePublisher:
                     output = self.module_runtime.invoke(
                         command.payload["capability_id"], command.payload["action"], command.payload.get("arguments", {})
                     )
+                    self._publish_capability_states()
                     result = AgentCommandResult(command_id=command.command_id, device_id=self.credential.device_id, status="succeeded", completed_at=datetime.now(UTC), output=output)
                     self.command_journal.save(command.idempotency_key, result)
                     self._submit_result(result)
@@ -392,4 +414,8 @@ class CorePublisher:
                 self._reconcile_state()
             except (requests.RequestException, ValidationError) as exc:
                 logger.warning("Core state reconciliation failed: %s", exc)
+            try:
+                self._publish_capability_states()
+            except (ModuleLifecycleError, ValidationError) as exc:
+                logger.warning("Core capability state publish failed: %s", exc)
             self._stop.wait(self.interval_seconds)
