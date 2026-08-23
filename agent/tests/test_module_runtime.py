@@ -48,6 +48,8 @@ def test_trusted_gpio_entrypoint_activates_declared_capabilities(tmp_path):
     assert result["outputs"]["gpio.output.1"] is False
     state=json.loads((tmp_path/"modules/data/org.3mm.gpio-test/gpio-runtime.json").read_text())
     assert state["outputs"]=={"gpio.output.1":False}
+    assert runtime.capability_states()["gpio.digital.input"] == {"gpio.input.1": False}
+    assert runtime.capability_states()["gpio.digital.control"] == {"gpio.output.1": False}
 
 def test_gpio_module_fails_closed_without_declared_capability_or_handler(tmp_path):
     gpio=MockDigitalGpioDriver()
@@ -73,3 +75,35 @@ def test_gpio_local_rule_runs_and_emits_event_without_core(tmp_path):
     blob=gpio_package(outputs={"gpio.output.1":False},rules=[{"input":"gpio.input.1","output":"gpio.output.1","when":True,"set":True}])
     install(runtime,blob); gpio.set_input("gpio.input.1",True)
     assert gpio.output("gpio.output.1").read() is True and events[0]["event_type"]=="gpio.input.changed"
+    assert events[0]["payload"] == {
+        "capability_id": "gpio.digital.input",
+        "channel": "gpio.input.1",
+        "value": True,
+        "sequence": 1,
+    }
+
+
+def test_gpio_input_change_is_published_without_an_automation_rule(tmp_path):
+    gpio=MockDigitalGpioDriver(); events=[]
+    runtime=AgentModuleRuntime(tmp_path,architecture="aarch64",runtime_handlers={GPIO_ENTRYPOINT:gpio_runtime_handler(gpio,events.append)})
+    install(runtime,gpio_package(rules=[]))
+    gpio.set_input("gpio.input.1",True)
+    assert events == [{
+        "event_type": "gpio.input.changed",
+        "payload": {
+            "capability_id": "gpio.digital.input",
+            "channel": "gpio.input.1",
+            "value": True,
+            "sequence": 1,
+        },
+    }]
+
+
+def test_gpio_update_replaces_old_event_subscriptions(tmp_path):
+    gpio=MockDigitalGpioDriver(); events=[]
+    runtime=AgentModuleRuntime(tmp_path,architecture="aarch64",runtime_handlers={GPIO_ENTRYPOINT:gpio_runtime_handler(gpio,events.append)})
+    blob=gpio_package(rules=[])
+    install(runtime,blob)
+    install(runtime,blob)
+    gpio.set_input("gpio.input.1",True)
+    assert len(events) == 1

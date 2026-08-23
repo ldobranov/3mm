@@ -22,7 +22,16 @@ from backend.utils.ai_extension_builder.generator import (
 from backend.utils.ai_extension_builder.clarifier import clarify_extension_spec
 from backend.utils.db_utils import get_db
 from backend.db.settings import Settings
+from backend.services.ai_capability_context import build_automation_capability_context
 from backend.utils.secure_settings import decrypt_secret, SecureSettingsError
+from three_mm_protocol import (
+    AutomationCapabilityContextV1,
+    BuilderSettingV1,
+    CapabilityBindingV1,
+    CapabilityPlanV1,
+    CapabilityPresentationV1,
+    PresentationStateV1,
+)
 
 
 router = APIRouter()
@@ -105,12 +114,44 @@ def _plan_extension_intent(payload: PlanExtensionIntentRequest) -> ExtensionInte
             "type": "string", "title": "Hour format", "enum": ["24", "12"], "default": "24",
         }
     config_schema = {"type": "object", "properties": config_properties} if config_properties else {}
+    capability_plan = None
+    if _contains_any(description, ("gpio", "pin", "пин", "digital input", "цифров вход")):
+        capability_plan = CapabilityPlanV1(
+            target="dashboard_widget" if project_type == "widget" else "application_page",
+            settings=(
+                BuilderSettingV1(key="deviceId", label="Device", kind="device", required=True),
+                BuilderSettingV1(key="channel", label="Input pin", kind="capability_channel", required=True),
+                BuilderSettingV1(key="activeHigh", label="Active high", kind="boolean", default=True),
+                BuilderSettingV1(key="activeColor", label="Active color", kind="color", default="#22C55E"),
+                BuilderSettingV1(key="inactiveColor", label="Inactive color", kind="color", default="#EF4444"),
+            ),
+            bindings=(CapabilityBindingV1(
+                alias="inputState",
+                capability_id="gpio.digital.input",
+                operation="subscribe",
+                device_setting="deviceId",
+                channel_setting="channel",
+                permissions=("hardware.gpio",),
+            ),),
+            presentations=(CapabilityPresentationV1(
+                kind="indicator",
+                source_binding="inputState",
+                states=(
+                    PresentationStateV1(value=True, label="Active", color="#22C55E"),
+                    PresentationStateV1(value=False, label="Inactive", color="#EF4444"),
+                    PresentationStateV1(state="stale", label="Stale", color="#F59E0B"),
+                    PresentationStateV1(state="offline", label="Offline", color="#6B7280"),
+                    PresentationStateV1(state="error", label="Error", color="#DC2626"),
+                ),
+            ),),
+        )
     return ExtensionIntentPlan(
         project_type=project_type,
         template_key=template_key,
         package_kind=package_kind,
         needs_database=needs_database,
         config_schema=config_schema,
+        capability_plan=capability_plan,
         summary=f"Create {location} {storage}.",
         assumptions=assumptions,
         questions=questions,
@@ -130,6 +171,17 @@ def plan_extension_intent(
 ):
     _require_admin(claims)
     return _plan_extension_intent(payload)
+
+
+@router.get("/api/ai/extensions/capabilities", response_model=AutomationCapabilityContextV1)
+def list_extension_builder_capabilities(
+    claims: dict = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Return the trusted device capabilities available to Builder plans."""
+
+    _require_admin(claims)
+    return build_automation_capability_context(db)
 
 
 @router.post("/api/ai/extensions/clarify", response_model=ClarifyExtensionResponse)

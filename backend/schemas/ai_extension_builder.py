@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Literal, Optional
+from three_mm_protocol import CapabilityPlanV1
 
 
 class LocaleConfig(BaseModel):
@@ -70,6 +71,9 @@ class ExtensionSpec(BaseModel):
     # lets the compiled editor render a useful form even when AI refinement is
     # unavailable.
     config_schema: Dict[str, Any] = Field(default_factory=dict)
+
+    # Provider-independent behavior contract used by deterministic generators.
+    capability_plan: CapabilityPlanV1 | None = None
 
     # Free-form description to guide the AI
     goal: Optional[str] = None
@@ -143,6 +147,7 @@ class ExtensionIntentPlan(BaseModel):
     package_kind: Literal["compiled", "legacy"]
     needs_database: bool
     config_schema: Dict[str, Any] = Field(default_factory=dict)
+    capability_plan: CapabilityPlanV1 | None = None
     summary: str
     assumptions: List[str] = Field(default_factory=list)
     questions: List[ClarifyQuestion] = Field(default_factory=list)

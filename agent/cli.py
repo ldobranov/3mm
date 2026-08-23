@@ -43,6 +43,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=defaults.heartbeat_interval_seconds,
     )
+    parser.set_defaults(
+        gpio_driver=defaults.gpio_driver,
+        gpio_chip=defaults.gpio_chip,
+        gpio_inputs=defaults.gpio_inputs,
+        gpio_outputs=defaults.gpio_outputs,
+    )
     return parser
 
 
@@ -58,6 +64,10 @@ def main(argv: Sequence[str] | None = None) -> None:
         provisioning_data_dir=arguments.provisioning_data_dir,
         core_url=arguments.core_url,
         heartbeat_interval_seconds=arguments.heartbeat_interval_seconds,
+        gpio_driver=arguments.gpio_driver,
+        gpio_chip=arguments.gpio_chip,
+        gpio_inputs=arguments.gpio_inputs,
+        gpio_outputs=arguments.gpio_outputs,
     )
     uvicorn.run(
         create_app(settings),

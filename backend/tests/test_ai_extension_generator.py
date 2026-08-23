@@ -2,6 +2,13 @@ import json
 
 from backend.schemas.ai_extension_builder import ExtensionSpec
 from backend.utils.ai_extension_builder import generator
+from three_mm_protocol import (
+    BuilderSettingV1,
+    CapabilityBindingV1,
+    CapabilityPlanV1,
+    CapabilityPresentationV1,
+    PresentationStateV1,
+)
 
 
 class _RetryingOpenRouter:
@@ -138,3 +145,82 @@ def test_legacy_clock_settings_are_migrated_to_typed_widget_controls():
         "displayMode": "digital", "hourFormat": "24", "timezone": "UTC",
     }
     assert "setInterval" in files["source/frontend/Widget.vue"]
+
+
+def test_capability_plan_produces_a_deterministic_gpio_indicator():
+    plan = CapabilityPlanV1(
+        target="dashboard_widget",
+        settings=(
+            BuilderSettingV1(key="deviceId", label="Device", kind="device", required=True),
+            BuilderSettingV1(key="channel", label="Input pin", kind="capability_channel", required=True),
+            BuilderSettingV1(key="activeHigh", label="Active high", kind="boolean", default=True),
+        ),
+        bindings=(CapabilityBindingV1(
+            alias="inputState", capability_id="gpio.digital.input", operation="subscribe",
+            device_setting="deviceId", channel_setting="channel", permissions=("hardware.gpio",),
+        ),),
+        presentations=(CapabilityPresentationV1(
+            kind="indicator", source_binding="inputState", states=(
+                PresentationStateV1(value=True, label="Active", color="#22C55E"),
+                PresentationStateV1(value=False, label="Inactive", color="#EF4444"),
+                PresentationStateV1(state="stale", label="Stale", color="#F59E0B"),
+                PresentationStateV1(state="offline", label="Offline", color="#6B7280"),
+                PresentationStateV1(state="error", label="Error", color="#DC2626"),
+            ),
+        ),),
+    )
+    spec = ExtensionSpec(
+        name="InputLamp", version="1.0.0", type="widget",
+        description="GPIO input lamp", api_prefix="/api/input-lamp",
+        backend_entry="input_lamp.py", frontend_entry="InputLamp.vue",
+        capability_plan=plan,
+    )
+
+    report, _, files = generator.build_extension_zip(
+        spec, use_ai=True, instructions=spec.description,
+    )
+
+    manifest = json.loads(files["manifest.json"])
+    contract = json.loads(files["compiled-ui.json"])
+    widget = files["source/frontend/Widget.vue"]
+    assert manifest["capabilities"]["consumes"] == ["gpio.digital.input"]
+    assert manifest["permissions"] == ["hardware.gpio"]
+    assert manifest["configuration_schema"]["properties"]["deviceId"]["format"] == "device"
+    assert contract["capability_plan"]["bindings"][0]["alias"] == "inputState"
+    runtime = files["source/frontend/capability-runtime.ts"]
+    assert "useCapabilityFeed" in runtime
+    assert "'/runtime-config.json'" in runtime
+    assert "window.location.hostname" in runtime
+    assert "async function apiFetch" in runtime
+    assert "_publicCapabilityStateUrl" in runtime
+    assert "/capabilities/${encodeURIComponent(capabilityDescriptor.capabilityId)}/state" in runtime
+    assert "/events" in runtime and "setInterval(refresh, 3000)" in runtime
+    assert "./capability-runtime" in widget
+    assert "template.functional" in {warning.code for warning in report.warnings}
+
+
+def test_compiled_capability_rebuild_preserves_source_and_syncs_contract_version():
+    plan = CapabilityPlanV1(
+        target="dashboard_widget",
+        settings=(BuilderSettingV1(key="deviceId", label="Device", kind="device"),),
+        bindings=(CapabilityBindingV1(
+            alias="state", capability_id="sensor.temperature", operation="read_state",
+            device_setting="deviceId", permissions=("data.read",),
+        ),),
+        presentations=(CapabilityPresentationV1(kind="metric", source_binding="state"),),
+    )
+    first = ExtensionSpec(
+        name="Temperature", version="1.0.0", type="widget", description="Temperature",
+        api_prefix="/api/temperature", backend_entry="temperature.py",
+        frontend_entry="Temperature.vue", capability_plan=plan,
+    )
+    _, _, files = generator.build_extension_zip(first, use_ai=False)
+    files["source/frontend/Widget.vue"] += "\n<!-- preserved edit -->\n"
+    next_spec = first.model_copy(update={"version": "1.0.1"})
+
+    _, _, rebuilt = generator.package_extension_zip(next_spec, files)
+
+    assert "preserved edit" in rebuilt["source/frontend/Widget.vue"]
+    assert json.loads(rebuilt["manifest.json"])["version"] == "1.0.1"
+    assert json.loads(rebuilt["compiled-ui.json"])["version"] == "1.0.1"
+    assert json.loads(rebuilt["manifest.json"])["capabilities"]["consumes"] == ["sensor.temperature"]

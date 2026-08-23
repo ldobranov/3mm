@@ -19,6 +19,22 @@ def default_data_dir() -> Path:
     return Path.home() / ".local" / "share" / "3mm" / "agent"
 
 
+def _gpio_lines_from_env(name: str) -> dict[str, int]:
+    value = os.getenv(name, "").strip()
+    if not value:
+        return {}
+    result: dict[str, int] = {}
+    for item in value.split(","):
+        capability_id, separator, line_text = item.strip().partition(":")
+        if not separator or not capability_id or not line_text:
+            raise ValueError(f"{name} must contain capability:BCM-line pairs")
+        line = int(line_text)
+        if line < 0:
+            raise ValueError(f"{name} GPIO lines cannot be negative")
+        result[capability_id] = line
+    return result
+
+
 @dataclass(frozen=True, slots=True)
 class AgentSettings:
     data_dir: Path
@@ -30,6 +46,10 @@ class AgentSettings:
     provisioning_data_dir: Path | None = None
     core_url: str | None = None
     heartbeat_interval_seconds: int = 30
+    gpio_driver: str = "mock"
+    gpio_chip: str = "/dev/gpiochip0"
+    gpio_inputs: dict[str, int] | None = None
+    gpio_outputs: dict[str, int] | None = None
 
     def __post_init__(self) -> None:
         if not 1 <= self.port <= 65535:
@@ -38,6 +58,10 @@ class AgentSettings:
             raise ValueError("Agent display name cannot be empty")
         if self.heartbeat_interval_seconds < 5:
             raise ValueError("Heartbeat interval must be at least 5 seconds")
+        if self.gpio_driver not in {"mock", "gpiod"}:
+            raise ValueError("GPIO driver must be 'mock' or 'gpiod'")
+        if self.gpio_driver == "gpiod" and not self.gpio_inputs:
+            raise ValueError("The gpiod driver requires at least one input mapping")
 
     @classmethod
     def from_env(cls) -> "AgentSettings":
@@ -66,4 +90,8 @@ class AgentSettings:
             heartbeat_interval_seconds=int(
                 os.getenv("THREE_MM_HEARTBEAT_INTERVAL_SECONDS", "30")
             ),
+            gpio_driver=os.getenv("THREE_MM_GPIO_DRIVER", "mock").strip().lower(),
+            gpio_chip=os.getenv("THREE_MM_GPIO_CHIP", "/dev/gpiochip0").strip(),
+            gpio_inputs=_gpio_lines_from_env("THREE_MM_GPIO_INPUTS"),
+            gpio_outputs=_gpio_lines_from_env("THREE_MM_GPIO_OUTPUTS"),
         )

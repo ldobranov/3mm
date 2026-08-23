@@ -34,6 +34,28 @@ def test_compiled_ui_contract_supports_widget_and_editor():
     assert [item.kind for item in compiled.entrypoints] == ["widget", "editor"]
 
 
+def test_compiled_ui_contract_accepts_a_versioned_capability_plan():
+    value = definition(capability_plan={
+        "schema_version": 1,
+        "target": "dashboard_widget",
+        "settings": [
+            {"key": "deviceId", "label": "Device", "kind": "device", "required": True},
+        ],
+        "bindings": [{
+            "alias": "inputState",
+            "capability_id": "gpio.digital.input",
+            "operation": "read_state",
+            "device_setting": "deviceId",
+        }],
+        "presentations": [],
+    })
+
+    compiled = CompiledUiExtensionV1.model_validate(value)
+
+    assert compiled.capability_plan is not None
+    assert compiled.capability_plan.bindings[0].capability_id == "gpio.digital.input"
+
+
 def test_route_entrypoint_requires_a_route():
     value = definition()
     value["entrypoints"] = [

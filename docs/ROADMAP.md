@@ -259,6 +259,8 @@ Stages:
 
 Goal: make AI-generated widgets and extensions reliable by combining structured AI planning with tested platform capabilities and deterministic code generation.
 
+Status: completed and accepted on physical `rasp-3mm` hardware on 2026-08-23.
+
 Deliverables:
 
 - plain-language intent translated into a versioned, reviewable capability plan;
@@ -291,7 +293,7 @@ Acceptance criteria:
 - disconnecting Core shows a stale/offline state rather than a false red or green value;
 - Core and the generic frontend contain no concrete GPIO widget or generated extension name.
 
-Stages:
+Stages (completed on 2026-08-23):
 
 1. capability-plan contract, project migration and deterministic generator foundation;
 2. common UI/data building blocks and incremental repair workflow;

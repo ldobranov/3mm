@@ -15,6 +15,10 @@ def test_agent_settings_are_environment_driven(monkeypatch, tmp_path):
     monkeypatch.setenv("THREE_MM_AGENT_ROLE", "standalone")
     monkeypatch.setenv("THREE_MM_AGENT_HARDWARE_PROFILE", "mock-pi3")
     monkeypatch.setenv("THREE_MM_PROVISIONING_DATA_DIR", str(tmp_path / "setup"))
+    monkeypatch.setenv("THREE_MM_GPIO_DRIVER", "gpiod")
+    monkeypatch.setenv("THREE_MM_GPIO_CHIP", "/dev/gpiochip4")
+    monkeypatch.setenv("THREE_MM_GPIO_INPUTS", "gpio.input.1:17,input.door:22")
+    monkeypatch.setenv("THREE_MM_GPIO_OUTPUTS", "gpio.output.1:27")
 
     settings = AgentSettings.from_env()
 
@@ -25,9 +29,25 @@ def test_agent_settings_are_environment_driven(monkeypatch, tmp_path):
     assert settings.role is AgentRole.STANDALONE
     assert settings.hardware_profile is HardwareProfile.MOCK_PI3
     assert settings.provisioning_data_dir == tmp_path / "setup"
+    assert settings.gpio_driver == "gpiod"
+    assert settings.gpio_chip == "/dev/gpiochip4"
+    assert settings.gpio_inputs == {"gpio.input.1": 17, "input.door": 22}
+    assert settings.gpio_outputs == {"gpio.output.1": 27}
 
 
 @pytest.mark.parametrize("port", [0, 65536])
 def test_agent_settings_reject_invalid_ports(tmp_path, port):
     with pytest.raises(ValueError):
         AgentSettings(data_dir=tmp_path, port=port)
+
+
+def test_gpiod_settings_require_an_input_mapping(tmp_path):
+    with pytest.raises(ValueError, match="at least one input"):
+        AgentSettings(data_dir=tmp_path, gpio_driver="gpiod")
+
+
+def test_gpio_environment_mapping_is_validated(monkeypatch):
+    monkeypatch.setenv("THREE_MM_GPIO_INPUTS", "gpio.input.1")
+
+    with pytest.raises(ValueError, match="capability:BCM-line"):
+        AgentSettings.from_env()

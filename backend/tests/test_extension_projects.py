@@ -177,6 +177,7 @@ def test_modify_existing_returns_reviewable_diff_without_mutating_source(monkeyp
         "files": [
             {"path": "manifest.json", "content": "{}"},
             {"path": "source/frontend/Widget.vue", "content": "<template>Clock</template>"},
+            {"path": "source/frontend/capability-runtime.ts", "content": "trusted runtime"},
         ],
     }).json()
 
@@ -188,6 +189,7 @@ def test_modify_existing_returns_reviewable_diff_without_mutating_source(monkeyp
     assert proposal["changed_files"] == ["source/frontend/Widget.vue"]
     assert "-<template>Clock</template>" in proposal["diffs"]["source/frontend/Widget.vue"]
     assert "manifest.json" not in seen_files
+    assert "source/frontend/capability-runtime.ts" not in seen_files
     unchanged = client.get(f"/api/v1/extension-projects/{created['project_id']}", headers=headers).json()
     assert {item["path"]: item["content"] for item in unchanged["files"]}["source/frontend/Widget.vue"] == "<template>Clock</template>"
     db.close()

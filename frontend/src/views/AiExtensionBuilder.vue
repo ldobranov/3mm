@@ -83,12 +83,39 @@
           <ul v-if="intentPlan.assumptions.length" class="plan-list">
             <li v-for="assumption in intentPlan.assumptions" :key="assumption">{{ assumption }}</li>
           </ul>
+          <div v-if="intentPlan.capability_plan" class="capability-review">
+            <div>
+              <span class="capability-review-label">{{ t('extensions.aiBuilder.guided.dataSource', 'Data source') }}</span>
+              <strong v-for="binding in intentPlan.capability_plan.bindings" :key="binding.alias">
+                {{ binding.capability_id }} · {{ binding.operation }}
+              </strong>
+            </div>
+            <div>
+              <span class="capability-review-label">{{ t('extensions.aiBuilder.guided.settingsIncluded', 'Settings included') }}</span>
+              <span>{{ intentPlan.capability_plan.settings.map(item => item.label).join(', ') }}</span>
+            </div>
+            <div>
+              <span class="capability-review-label">{{ t('extensions.aiBuilder.guided.permissions', 'Permissions') }}</span>
+              <span>{{ capabilityPlanPermissions.join(', ') || t('extensions.aiBuilder.guided.noExtraPermissions', 'No extra permissions') }}</span>
+            </div>
+            <div class="capability-availability" :class="{ 'is-missing': !capabilityPlanReady }">
+              <span class="capability-review-label">{{ t('extensions.aiBuilder.guided.availableHardware', 'Available hardware') }}</span>
+              <template v-if="matchingCapabilities.length">
+                <strong v-for="item in matchingCapabilities" :key="`${item.device_id}:${item.capability_id}`">
+                  {{ item.device_name }} · {{ capabilityChannels(item).join(', ') || t('extensions.aiBuilder.guided.noChannels', 'No input channels declared') }}
+                </strong>
+              </template>
+              <span v-else>{{ capabilityContextLoading
+                ? t('extensions.aiBuilder.guided.checkingHardware', 'Checking registered devices...')
+                : t('extensions.aiBuilder.guided.missingHardware', 'No compatible enabled capability is registered.') }}</span>
+            </div>
+          </div>
           <div v-if="intentPlan.questions.length" class="plan-question">
             <strong>{{ intentPlan.questions[0].question }}</strong>
             <span class="muted">{{ t('extensions.aiBuilder.guided.chooseAbove', 'Choose an answer above, then review the plan again.') }}</span>
           </div>
           <div class="guided-actions">
-            <button class="button button-primary" type="button" :disabled="busy || intentPlan.questions.length > 0" @click="generateGuided">
+            <button class="button button-primary" type="button" :disabled="busy || intentPlan.questions.length > 0 || !capabilityPlanReady" @click="generateGuided">
               {{ busy ? t('extensions.aiBuilder.generating', 'Generating...') : `3 · ${t('extensions.aiBuilder.guided.generate', 'Generate')}` }}
             </button>
           </div>
@@ -161,6 +188,49 @@
             </div>
           </div>
         </details>
+
+        <section v-if="spec.capability_plan" class="capability-project-editor">
+          <div class="capability-project-heading">
+            <div>
+              <span class="eyebrow">{{ t('extensions.aiBuilder.capabilities.behavior', 'Widget behavior') }}</span>
+              <h3>{{ t('extensions.aiBuilder.capabilities.adjust', 'Adjust without starting over') }}</h3>
+            </div>
+            <span class="plan-badge">{{ spec.capability_plan.bindings[0]?.capability_id }}</span>
+          </div>
+          <div class="capability-project-grid">
+            <label>
+              <span>{{ t('extensions.aiBuilder.capabilities.presentation', 'Presentation') }}</span>
+              <select v-model="spec.capability_plan.presentations[0].kind">
+                <option value="indicator">{{ t('extensions.aiBuilder.capabilities.indicator', 'Status lamp') }}</option>
+                <option value="metric">{{ t('extensions.aiBuilder.capabilities.metric', 'Large value') }}</option>
+                <option value="text">{{ t('extensions.aiBuilder.capabilities.text', 'Text value') }}</option>
+                <option value="list">{{ t('extensions.aiBuilder.capabilities.list', 'Recent values') }}</option>
+                <option value="chart">{{ t('extensions.aiBuilder.capabilities.chart', 'Mini chart') }}</option>
+              </select>
+            </label>
+            <label>
+              <span>{{ t('extensions.aiBuilder.capabilities.staleAfter', 'Show stale after (seconds)') }}</span>
+              <input v-model.number="spec.capability_plan.bindings[0].stale_after_seconds" type="number" min="1" max="3600" />
+            </label>
+          </div>
+          <div class="capability-project-source" :class="{ 'is-missing': !capabilityPlanReady }">
+            <span>{{ t('extensions.aiBuilder.capabilities.source', 'Available source') }}</span>
+            <strong v-if="matchingCapabilities.length">
+              {{ matchingCapabilities.map(item => `${item.device_name} · ${capabilityChannels(item).join(', ') || item.capability_id}`).join('; ') }}
+            </strong>
+            <strong v-else>{{ t('extensions.aiBuilder.capabilities.sourceMissing', 'No compatible enabled device is available') }}</strong>
+          </div>
+          <div v-if="spec.capability_plan.presentations[0].kind === 'indicator'" class="capability-state-grid">
+            <label v-for="state in spec.capability_plan.presentations[0].states" :key="`${state.state}:${String(state.value)}`">
+              <span>{{ capabilityStateName(state) }}</span>
+              <input v-model="state.label" type="text" />
+              <input v-model="state.color" type="color" :aria-label="`${capabilityStateName(state)} color`" />
+            </label>
+          </div>
+          <p class="muted capability-project-hint">
+            {{ t('extensions.aiBuilder.capabilities.savedHint', 'Save the draft, then build a new patch version. Existing source and history stay in this project.') }}
+          </p>
+        </section>
 
         <div v-if="activeProject" class="modify-panel">
           <label>
@@ -806,7 +876,7 @@
           {{
             t(
               'extensions.aiBuilder.editor.versionNote',
-              'Tip: change the Version field above before rebuilding to avoid name+version conflicts on upload.'
+              'A new version is assigned automatically. Your edited files remain in the same project.'
             )
           }}
         </p>
@@ -917,6 +987,7 @@ type ExtensionSpec = {
   public_endpoints: string[]
   dependencies: Record<string, unknown>
   config_schema: Record<string, unknown>
+  capability_plan?: CapabilityPlan | null
   provides?: ProvidesConfig
   consumes?: ConsumesConfig
   goal?: string
@@ -958,15 +1029,41 @@ type ClarifyQuestion = {
   suggestions: string[]
 }
 
+type CapabilityPlan = {
+  schema_version: 1
+  target: 'dashboard_widget' | 'application_page'
+  settings: Array<{ key: string; label: string; kind: string; required?: boolean; default?: string | number | boolean | null; options?: Array<string | number | boolean> }>
+  bindings: Array<{ alias: string; capability_id: string; operation: string; action?: string | null; device_setting: string; channel_setting?: string | null; permissions: string[]; stale_after_seconds: number }>
+  presentations: Array<{ kind: 'indicator' | 'metric' | 'text' | 'list' | 'chart' | 'form'; source_binding?: string | null; states: CapabilityPresentationState[] }>
+}
+
+type CapabilityPresentationState = {
+  state: 'value' | 'stale' | 'offline' | 'error'
+  value?: string | number | boolean | null
+  label: string
+  color: string
+}
+
 type ExtensionIntentPlan = {
   project_type: 'extension' | 'widget'
   template_key: 'simple' | 'crud'
   package_kind: 'compiled' | 'legacy'
   needs_database: boolean
   config_schema: Record<string, unknown>
+  capability_plan?: CapabilityPlan | null
   summary: string
   assumptions: string[]
   questions: ClarifyQuestion[]
+}
+
+type BuilderCapability = {
+  device_id: string
+  device_name: string
+  device_role: string
+  capability_id: string
+  module_id: string
+  module_version: string
+  metadata: Record<string, string | number | boolean>
 }
 
 type CrudFieldType = 'text' | 'int' | 'bool' | 'json' | 'timestamp'
@@ -1030,6 +1127,82 @@ const guidedDescription = ref('')
 const guidedPlacement = ref<'auto' | 'dashboard' | 'page'>('auto')
 const guidedDataMode = ref<'auto' | 'none' | 'settings' | 'records'>('auto')
 const intentPlan = ref<ExtensionIntentPlan | null>(null)
+const builderCapabilities = ref<BuilderCapability[]>([])
+const capabilityContextLoading = ref(false)
+const capabilityPlanPermissions = computed(() => Array.from(new Set(
+  intentPlan.value?.capability_plan?.bindings.flatMap(binding => binding.permissions || []) || []
+)))
+const activeCapabilityPlan = computed(() => intentPlan.value?.capability_plan || spec.value.capability_plan || null)
+const requestedCapabilityIds = computed(() => new Set(
+  activeCapabilityPlan.value?.bindings.map(binding => binding.capability_id) || []
+))
+const matchingCapabilities = computed(() => builderCapabilities.value.filter(item => (
+  requestedCapabilityIds.value.has(item.capability_id)
+)))
+const capabilityChannels = (item: BuilderCapability): string[] => String(
+  item.metadata.automation_channels || ''
+).split(',').map(value => value.trim()).filter(Boolean)
+const capabilityPlanReady = computed(() => {
+  const plan = activeCapabilityPlan.value
+  if (!plan) return true
+  return plan.bindings.every(binding => matchingCapabilities.value.some(item => (
+    item.capability_id === binding.capability_id
+    && (!binding.channel_setting || capabilityChannels(item).length > 0)
+  )))
+})
+
+const loadBuilderCapabilities = async () => {
+  builderCapabilities.value = []
+  if (!activeCapabilityPlan.value) return
+  capabilityContextLoading.value = true
+  try {
+    const response = await http.get('/api/ai/extensions/capabilities')
+    builderCapabilities.value = response.data.capabilities || []
+  } finally {
+    capabilityContextLoading.value = false
+  }
+}
+
+const capabilityStateName = (state: CapabilityPresentationState): string => {
+  if (state.state === 'value') {
+    return state.value === true
+      ? t('extensions.aiBuilder.capabilities.activeState', 'Active state')
+      : t('extensions.aiBuilder.capabilities.inactiveState', 'Inactive state')
+  }
+  return {
+    stale: t('extensions.aiBuilder.capabilities.staleState', 'Stale state'),
+    offline: t('extensions.aiBuilder.capabilities.offlineState', 'Offline state'),
+    error: t('extensions.aiBuilder.capabilities.errorState', 'Error state')
+  }[state.state]
+}
+
+const capabilityConfigSchema = (plan: CapabilityPlan): Record<string, unknown> => {
+  const devices = Array.from(new Map(matchingCapabilities.value.map(item => [item.device_id, item])).values())
+  const channels = Array.from(new Set(matchingCapabilities.value.flatMap(capabilityChannels)))
+  const properties: Record<string, Record<string, unknown>> = {}
+  for (const setting of plan.settings) {
+    const item: Record<string, unknown> = {
+      title: setting.label,
+      type: setting.kind === 'boolean' ? 'boolean' : setting.kind === 'number' ? 'number' : 'string'
+    }
+    if (setting.kind === 'color') item.format = 'color'
+    if (setting.kind === 'device') {
+      item.format = 'device'
+      item.enum = devices.map(device => device.device_id)
+      item.enumNames = devices.map(device => device.device_name)
+      if (devices.length) item.default = devices[0].device_id
+    } else if (setting.kind === 'capability_channel') {
+      item.format = 'capability-channel'
+      item.enum = channels
+      if (channels.length) item.default = channels[0]
+    } else if (setting.options?.length) {
+      item.enum = setting.options
+    }
+    if (setting.default !== undefined && setting.default !== null) item.default = setting.default
+    properties[setting.key] = item
+  }
+  return { type: 'object', properties }
+}
 
 const availablePermissions = [
   'database_read',
@@ -1323,6 +1496,7 @@ const openProject = async (projectId: string) => {
     const project = await readExtensionProject(projectId)
     activeProject.value = project
     hydrateProject(project)
+    await loadBuilderCapabilities()
     projectBuilds.value = await listExtensionProjectBuilds(projectId)
     success.value = t('extensions.aiBuilder.projects.opened', 'Project opened')
   } catch (e: unknown) {
@@ -1360,6 +1534,7 @@ const newProject = () => {
   guidedPlacement.value = 'auto'
   guidedDataMode.value = 'auto'
   intentPlan.value = null
+  builderCapabilities.value = []
 }
 
 const guidedProjectName = (): string => {
@@ -1381,12 +1556,16 @@ const prepareGuidedPlan = async () => {
       data_mode: guidedDataMode.value
     })
     intentPlan.value = response.data
+    await loadBuilderCapabilities()
     const name = guidedProjectName()
     spec.value.name = name
     spec.value.goal = guidedDescription.value.trim()
     spec.value.description = guidedDescription.value.trim().slice(0, 240)
     spec.value.type = intentPlan.value!.project_type
-    spec.value.config_schema = intentPlan.value!.config_schema || {}
+    spec.value.config_schema = intentPlan.value!.capability_plan
+      ? capabilityConfigSchema(intentPlan.value!.capability_plan)
+      : intentPlan.value!.config_schema || {}
+    spec.value.capability_plan = intentPlan.value!.capability_plan || null
     templateKey.value = intentPlan.value!.template_key
     applyTemplate(templateKey.value)
     if (intentPlan.value!.needs_database) {
@@ -1409,7 +1588,7 @@ const prepareGuidedPlan = async () => {
 }
 
 const generateGuided = async () => {
-  if (!intentPlan.value || intentPlan.value.questions.length) return
+  if (!intentPlan.value || intentPlan.value.questions.length || !capabilityPlanReady.value) return
   await generate()
 }
 
@@ -2084,6 +2263,10 @@ const openFromWarning = async (code: string, message: string) => {
 }
 
 const generate = async () => {
+  if (!capabilityPlanReady.value) {
+    error.value = t('extensions.aiBuilder.capabilities.buildBlocked', 'Connect and enable a compatible device capability before building.')
+    return
+  }
   busy.value = true
   error.value = ''
   success.value = ''
@@ -2169,12 +2352,23 @@ const clarify = async () => {
 
 const rebuildFromEdits = async () => {
   if (!filePaths.value.length) return
+  if (!capabilityPlanReady.value) {
+    error.value = t('extensions.aiBuilder.capabilities.buildBlocked', 'Connect and enable a compatible device capability before building.')
+    return
+  }
 
   busy.value = true
   error.value = ''
   success.value = ''
 
   try {
+    let project = await persistProject()
+    spec.value.version = await readNextProjectVersion(project.project_id, changeKind.value)
+    project = await updateExtensionProject(project.project_id, project.revision, {
+      spec: projectSpecSnapshot(),
+      status: 'draft'
+    })
+    activeProject.value = project
     const edited = { ...filesText.value }
 
     // Keep manifest in sync with the current spec (especially version).
@@ -2214,7 +2408,18 @@ const rebuildFromEdits = async () => {
     generatedZipBase64.value = res.data.zip_base64
     filesText.value = res.data.files_text || edited
     selectedFile.value = selectedFile.value || filePaths.value[0] || ''
-    success.value = t('extensions.aiBuilder.editor.rebuilt', 'ZIP rebuilt successfully')
+    project = await replaceExtensionProjectFiles(project.project_id, project.revision, filesText.value)
+    await createExtensionProjectBuild(project.project_id, project.revision, {
+      change_kind: changeKind.value,
+      change_request: changeRequest.value.trim() || t('extensions.aiBuilder.editor.incrementalBuild', 'Incremental rebuild from saved files'),
+      status: 'built',
+      report: report.value || {},
+      artifact_base64: generatedZipBase64.value
+    })
+    activeProject.value = await readExtensionProject(project.project_id)
+    projectBuilds.value = await listExtensionProjectBuilds(project.project_id)
+    await refreshProjects()
+    success.value = t('extensions.aiBuilder.editor.rebuilt', 'A new version was built from the saved edits')
   } catch (e: unknown) {
     error.value = getHttpErrorMessage(e)
   } finally {
@@ -2343,6 +2548,40 @@ const downloadZip = () => {
   grid-template-columns: minmax(180px, 0.7fr) minmax(180px, 1fr) minmax(180px, 1fr);
   gap: 0.9rem;
   margin-top: 1.25rem;
+}
+
+.capability-review {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.capability-availability {
+  grid-column: 1 / -1;
+}
+
+.capability-availability.is-missing {
+  border-color: color-mix(in srgb, #f59e0b 55%, var(--card-border));
+  background: color-mix(in srgb, #f59e0b 10%, var(--card-bg));
+}
+
+.capability-review > div {
+  display: grid;
+  align-content: start;
+  gap: 0.3rem;
+  padding: 0.85rem;
+  border: 1px solid var(--card-border);
+  border-radius: var(--border-radius-md);
+  background: color-mix(in srgb, var(--card-bg) 92%, var(--primary-color));
+}
+
+.capability-review-label {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .guided-form label {
@@ -2595,6 +2834,87 @@ const downloadZip = () => {
 
 .build-empty {
   padding: 0.75rem 0;
+}
+
+.capability-project-editor {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  background: color-mix(in srgb, var(--card-bg) 94%, var(--primary-color));
+}
+
+.capability-project-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.capability-project-heading h3 {
+  margin: 0.2rem 0 0;
+}
+
+.capability-project-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.capability-project-grid label,
+.capability-state-grid label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.capability-state-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+.capability-state-grid label {
+  grid-template-columns: minmax(0, 1fr) 2.5rem;
+}
+
+.capability-state-grid label > span {
+  grid-column: 1 / -1;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.capability-state-grid input[type='color'] {
+  width: 2.5rem;
+  min-height: 2.35rem;
+  padding: 0.2rem;
+}
+
+.capability-project-hint {
+  margin: 0;
+}
+
+.capability-project-source {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border: 1px solid color-mix(in srgb, #22c55e 42%, var(--border-color));
+  border-radius: var(--border-radius-sm);
+  background: color-mix(in srgb, #22c55e 8%, var(--card-bg));
+}
+
+.capability-project-source > span {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.capability-project-source.is-missing {
+  border-color: color-mix(in srgb, #f59e0b 52%, var(--border-color));
+  background: color-mix(in srgb, #f59e0b 9%, var(--card-bg));
 }
 
 .modify-panel {
@@ -2966,7 +3286,8 @@ textarea.code {
   }
 
   .guided-heading,
-  .guided-form {
+  .guided-form,
+  .capability-review {
     display: grid;
     grid-template-columns: 1fr;
   }
@@ -2984,6 +3305,14 @@ textarea.code {
   }
 
   .modify-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .capability-project-heading {
+    display: grid;
+  }
+
+  .capability-project-grid {
     grid-template-columns: 1fr;
   }
 

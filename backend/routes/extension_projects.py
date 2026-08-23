@@ -210,7 +210,11 @@ def propose_project_modification(
     current_files = {item.path: item.content for item in project.files}
     if not current_files:
         raise HTTPException(409, "Generate or add project source files before requesting a modification")
-    protected = {"manifest.json", "compiled-ui.json"}
+    protected = {
+        "manifest.json",
+        "compiled-ui.json",
+        "source/frontend/capability-runtime.ts",
+    }
     editable_files = {path: content for path, content in current_files.items() if path not in protected}
     if not editable_files:
         raise HTTPException(409, "Project does not contain editable source files")

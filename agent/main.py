@@ -16,7 +16,7 @@ from agent.core_client import (
     CommandJournal, CorePublisher, DeviceCredentialStore, OutboxStore,
     ReconciliationStore,
 )
-from agent.hardware import create_hardware_driver, create_mock_gpio_driver
+from agent.hardware import MockDigitalGpioDriver, create_gpio_driver, create_hardware_driver
 from agent.modules.gpio import GPIO_ENTRYPOINT, gpio_runtime_handler
 from agent.automation_store import AutomationStore
 from agent.identity import AgentIdentity, AgentIdentityStore
@@ -65,8 +65,14 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
         )
         publisher = None
         app.state.module_event_sink = lambda _event: None
-        gpio = create_mock_gpio_driver(resolved_settings.hardware_profile)
-        app.state.mock_gpio = gpio
+        gpio = create_gpio_driver(
+            resolved_settings.hardware_profile,
+            driver_name=resolved_settings.gpio_driver,
+            chip=resolved_settings.gpio_chip,
+            inputs=resolved_settings.gpio_inputs,
+            outputs=resolved_settings.gpio_outputs,
+        )
+        app.state.mock_gpio = gpio if isinstance(gpio, MockDigitalGpioDriver) else None
         module_runtime = AgentModuleRuntime(
             resolved_settings.data_dir,
             architecture=app.state.agent_runtime.inventory.architecture,
@@ -97,6 +103,7 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
         yield
         if publisher is not None:
             publisher.stop()
+        gpio.close()
 
     app = FastAPI(
         title="3mm Agent",
@@ -147,6 +154,8 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
     def mock_gpio_state(request: Request) -> dict[str, dict[str, bool]]:
         """Return isolated test GPIO state; the Agent service is loopback-only."""
         gpio = request.app.state.mock_gpio
+        if gpio is None:
+            raise HTTPException(404, "Mock GPIO diagnostics are disabled")
         return {
             "inputs": {"gpio.input.1": gpio.input("gpio.input.1").read()},
             "outputs": {"gpio.output.1": gpio.output("gpio.output.1").read()},
@@ -157,6 +166,8 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
         capability_id: str, payload: MockGpioInputUpdate, request: Request
     ) -> dict[str, object]:
         """Simulate a test input transition without exposing any real GPIO."""
+        if request.app.state.mock_gpio is None:
+            raise HTTPException(404, "Mock GPIO diagnostics are disabled")
         try:
             event = request.app.state.mock_gpio.set_input(capability_id, payload.value)
         except KeyError as exc:

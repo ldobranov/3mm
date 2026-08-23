@@ -30,6 +30,7 @@ POST_BASELINE_TABLES = {
     "device_commands",
     "device_states",
     "device_events",
+    "device_capability_states",
     "module_packages",
     "module_installations",
     "automation_proposals",

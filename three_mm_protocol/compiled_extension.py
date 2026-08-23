@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from three_mm_protocol.capability_builder import CapabilityPlanV1
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN, SEMVER_PATTERN
 from three_mm_protocol.runtime_extension import IDENTIFIER_PATTERN, LocalizedTextV1, ROUTE_PATTERN
 
@@ -46,6 +47,7 @@ class CompiledUiExtensionV1(StrictCompiledUiModel):
     module_id: str = Field(pattern=MODULE_ID_PATTERN)
     version: str = Field(pattern=SEMVER_PATTERN)
     entrypoints: tuple[CompiledUiEntrypointV1, ...] = Field(min_length=1, max_length=64)
+    capability_plan: CapabilityPlanV1 | None = None
 
     @model_validator(mode="after")
     def validate_entrypoints(self):

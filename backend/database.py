@@ -34,6 +34,7 @@ from backend.db.device import (
     DeviceCommand,
     DeviceEvent,
     DeviceState,
+    DeviceCapabilityState,
 )
 from backend.db.module import ModulePackage, ModuleInstallation
 from backend.db.runtime_extension import RuntimeEntityRecord, RuntimeExtensionDefinition

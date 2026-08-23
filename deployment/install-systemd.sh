@@ -29,11 +29,21 @@ release_dir=$install_root/releases/$release_id
 venv_dir=$install_root/venv
 ai_master_key_file=/etc/3mm/ai-settings.key
 ai_master_key_line=""
+gpio_driver_line="THREE_MM_GPIO_DRIVER=mock"
+gpio_chip_line="THREE_MM_GPIO_CHIP=/dev/gpiochip0"
+gpio_inputs_line="THREE_MM_GPIO_INPUTS="
+gpio_outputs_line="THREE_MM_GPIO_OUTPUTS="
 
 if [[ -s $ai_master_key_file ]]; then
   ai_master_key_line="AI_SETTINGS_MASTER_KEY=$(cat "$ai_master_key_file")"
 elif [[ -f /etc/3mm/3mm.env ]]; then
   ai_master_key_line=$(grep '^AI_SETTINGS_MASTER_KEY=' /etc/3mm/3mm.env | head -n 1 || true)
+fi
+if [[ -f /etc/3mm/3mm.env ]]; then
+  gpio_driver_line=$(grep '^THREE_MM_GPIO_DRIVER=' /etc/3mm/3mm.env | head -n 1 || printf '%s' "$gpio_driver_line")
+  gpio_chip_line=$(grep '^THREE_MM_GPIO_CHIP=' /etc/3mm/3mm.env | head -n 1 || printf '%s' "$gpio_chip_line")
+  gpio_inputs_line=$(grep '^THREE_MM_GPIO_INPUTS=' /etc/3mm/3mm.env | head -n 1 || printf '%s' "$gpio_inputs_line")
+  gpio_outputs_line=$(grep '^THREE_MM_GPIO_OUTPUTS=' /etc/3mm/3mm.env | head -n 1 || printf '%s' "$gpio_outputs_line")
 fi
 
 if ! id -u 3mm >/dev/null 2>&1; then
@@ -103,6 +113,10 @@ THREE_MM_AGENT_HARDWARE_PROFILE=native
 THREE_MM_CORE_URL=http://127.0.0.1:8887
 THREE_MM_HEARTBEAT_INTERVAL_SECONDS=30
 THREE_MM_PROVISIONING_DATA_DIR=/var/lib/3mm/provisioning
+$gpio_driver_line
+$gpio_chip_line
+$gpio_inputs_line
+$gpio_outputs_line
 EOF
 if [[ ! -s $ai_master_key_file ]]; then
   if [[ -n $ai_master_key_line ]]; then

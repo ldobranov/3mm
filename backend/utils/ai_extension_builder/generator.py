@@ -561,6 +561,25 @@ def _normalize_widget_spec(spec: ExtensionSpec) -> ExtensionSpec:
     properties = dict(original) if isinstance(original, dict) else {}
     intent = f"{normalized.description} {normalized.goal or ''}".casefold()
 
+    if normalized.capability_plan:
+        kind_schema = {
+            "text": {"type": "string"},
+            "number": {"type": "number"},
+            "boolean": {"type": "boolean"},
+            "select": {"type": "string"},
+            "timezone": {"type": "string", "format": "timezone"},
+            "color": {"type": "string", "format": "color"},
+            "device": {"type": "string", "format": "device"},
+            "capability_channel": {"type": "string", "format": "capability-channel"},
+        }
+        for setting in normalized.capability_plan.settings:
+            item = {**kind_schema[setting.kind], "title": setting.label}
+            if setting.default is not None:
+                item["default"] = setting.default
+            if setting.options:
+                item["enum"] = list(setting.options)
+            properties[setting.key] = item
+
     timezone_keys = [
         key for key, item in properties.items()
         if "timezone" in key.casefold()
@@ -594,6 +613,8 @@ def _normalize_widget_spec(spec: ExtensionSpec) -> ExtensionSpec:
 
 
 def _compiled_widget_component(spec: ExtensionSpec) -> str:
+    if spec.capability_plan and spec.capability_plan.presentations:
+        return _compiled_capability_indicator_component(spec)
     properties = (spec.config_schema or {}).get("properties", {})
     has_timezone = any(
         isinstance(item, dict) and item.get("format") == "timezone"
@@ -628,11 +649,166 @@ dt {{ font-weight:600 }} dd {{ margin:0 }}
 
 
 def _compiled_widget_has_functional_scaffold(spec: ExtensionSpec) -> bool:
+    if spec.capability_plan and spec.capability_plan.presentations:
+        return True
     properties = (spec.config_schema or {}).get("properties", {})
     return any(
         isinstance(item, dict) and item.get("format") == "timezone"
         for item in properties.values()
     )
+
+
+def _compiled_capability_runtime_source(spec: ExtensionSpec) -> str:
+    plan = spec.capability_plan
+    assert plan is not None
+    binding = plan.bindings[0]
+    descriptor = json.dumps({
+        "capabilityId": binding.capability_id,
+        "operation": binding.operation,
+        "action": binding.action,
+        "deviceSetting": binding.device_setting,
+        "channelSetting": binding.channel_setting,
+        "staleAfterMs": binding.stale_after_seconds * 1000,
+    })
+    return f'''import {{ computed, onBeforeUnmount, onMounted, ref, watch, type ComputedRef }} from 'vue'
+export const capabilityDescriptor = {descriptor} as const
+type FeedItem = {{ value: unknown; occurredAt: number }}
+export function useCapabilityFeed(config: ComputedRef<Record<string, unknown>>) {{
+  const value = ref<unknown>(null)
+  const status = ref<'stale' | 'offline' | 'error' | 'ready'>('stale')
+  const history = ref<FeedItem[]>([])
+  const pending = ref(false)
+  const deviceId = computed(() => String(config.value[capabilityDescriptor.deviceSetting] || ''))
+  const channel = computed(() => capabilityDescriptor.channelSetting ? String(config.value[capabilityDescriptor.channelSetting] || '') : '')
+  const publicStateUrl = computed(() => String(config.value._publicCapabilityStateUrl || ''))
+  const authHeaders = () => {{ const token = localStorage.getItem('authToken'); return token ? {{ Authorization: `Bearer ${{token}}` }} : {{}} }}
+  let backendUrlPromise: Promise<string> | undefined
+  const normalizedUrl = (value: string) => value.trim().replace(/[/]+$/, '')
+  async function backendUrl() {{
+    if (!backendUrlPromise) backendUrlPromise = (async () => {{
+      try {{
+        const response = await fetch('/runtime-config.json', {{ cache: 'no-store' }})
+        if (response.ok) {{
+          const runtime = await response.json() as {{ backend_url?: unknown; backend_port?: unknown }}
+          if (typeof runtime.backend_url === 'string' && runtime.backend_url.trim()) return normalizedUrl(runtime.backend_url)
+          if (Number.isInteger(runtime.backend_port) && Number(runtime.backend_port) > 0 && Number(runtime.backend_port) <= 65535) {{
+            return `${{window.location.protocol}}//${{window.location.hostname}}:${{Number(runtime.backend_port)}}`
+          }}
+        }}
+      }} catch {{ /* continue with the configured fallback */ }}
+      const override = localStorage.getItem('mm_backend_url_override')
+      if (override !== null) return normalizedUrl(override)
+      return `${{window.location.protocol}}//${{window.location.hostname}}:8887`
+    }})()
+    return backendUrlPromise
+  }}
+  async function apiFetch(path: string, init?: RequestInit) {{
+    const base = await backendUrl()
+    return fetch(base ? `${{base}}${{path}}` : path, init)
+  }}
+  async function refresh() {{
+    if (!deviceId.value || (capabilityDescriptor.channelSetting && !channel.value)) {{ status.value = 'stale'; return }}
+    try {{
+      const statePath = publicStateUrl.value || `/api/v1/devices/${{encodeURIComponent(deviceId.value)}}/capabilities/${{encodeURIComponent(capabilityDescriptor.capabilityId)}}/state`
+      const stateResponse = await apiFetch(statePath, {{ headers: authHeaders() }})
+      if (!stateResponse.ok) {{ status.value = stateResponse.status === 404 ? 'stale' : stateResponse.status >= 500 ? 'offline' : 'error'; return }}
+      const snapshot = await stateResponse.json() as {{ values?: Record<string, unknown>; observed_at?: string }}
+      const stateValues = snapshot.values || {{}}
+      value.value = channel.value ? stateValues[channel.value] : Object.values(stateValues)[0]
+      const observedAt = Date.parse(snapshot.observed_at || '') || 0
+      status.value = !observedAt || Date.now() - observedAt > capabilityDescriptor.staleAfterMs ? 'stale' : 'ready'
+      if (publicStateUrl.value) {{ history.value = []; return }}
+      const eventResponse = await apiFetch(`/api/v1/devices/${{encodeURIComponent(deviceId.value)}}/events`, {{ headers: authHeaders() }})
+      if (eventResponse.ok) {{
+        const events = await eventResponse.json() as Array<{{ payload?: Record<string, unknown>; occurred_at?: string }}>
+        history.value = events.filter(item => !channel.value || item.payload?.channel === channel.value || item.payload?.capability_id === channel.value).slice(0, 20).map(item => ({{ value: item.payload?.value, occurredAt: Date.parse(item.occurred_at || '') || Date.now() }}))
+      }}
+    }} catch {{ status.value = 'offline' }}
+  }}
+  async function invoke(nextValue: boolean) {{
+    if (capabilityDescriptor.operation !== 'invoke' || !capabilityDescriptor.action) return
+    pending.value = true
+    try {{
+      const response = await apiFetch(`/api/v1/devices/${{encodeURIComponent(deviceId.value)}}/capabilities/invoke`, {{
+        method: 'POST', headers: {{ 'Content-Type': 'application/json', ...authHeaders() }},
+        body: JSON.stringify({{ capability_id: capabilityDescriptor.capabilityId, action: capabilityDescriptor.action, arguments: {{ channel: channel.value, value: nextValue }} }})
+      }})
+      status.value = response.ok ? 'stale' : 'error'
+    }} catch {{ status.value = 'offline' }} finally {{ pending.value = false }}
+  }}
+  let timer: ReturnType<typeof setInterval> | undefined
+  onMounted(() => {{ refresh(); timer = setInterval(refresh, 3000) }})
+  onBeforeUnmount(() => {{ if (timer) clearInterval(timer) }})
+  watch([deviceId, channel], refresh)
+  return {{ value, status, history, pending, deviceId, channel, refresh, invoke }}
+}}
+'''
+
+
+def _compiled_capability_indicator_component(spec: ExtensionSpec) -> str:
+    plan = spec.capability_plan
+    assert plan is not None
+    presentation = plan.presentations[0]
+    state_map = {
+        (item.state, str(item.value).lower() if item.state == "value" else item.state): {
+            "label": item.label, "color": item.color,
+        }
+        for item in presentation.states
+    }
+    defaults = {
+        "active": state_map.get(("value", "true"), {"label": "Active", "color": "#22C55E"}),
+        "inactive": state_map.get(("value", "false"), {"label": "Inactive", "color": "#EF4444"}),
+        "stale": state_map.get(("stale", "stale"), {"label": "Stale", "color": "#F59E0B"}),
+        "offline": state_map.get(("offline", "offline"), {"label": "Offline", "color": "#6B7280"}),
+        "error": state_map.get(("error", "error"), {"label": "Error", "color": "#DC2626"}),
+    }
+    return f'''<template>
+  <section class="capability-widget" :class="`is-${{visualState}}`">
+    <template v-if="presentationKind === 'indicator'">
+      <span class="lamp" :style="{{ backgroundColor: indicatorColor }}" aria-hidden="true"></span>
+      <strong>{{{{ label }}}}</strong>
+    </template>
+    <template v-else-if="presentationKind === 'metric'">
+      <strong class="metric">{{{{ displayValue }}}}</strong><span>{{{{ label }}}}</span>
+    </template>
+    <ol v-else-if="presentationKind === 'list'" class="history">
+      <li v-for="item in history" :key="item.occurredAt"><strong>{{{{ item.value }}}}</strong><time>{{{{ new Date(item.occurredAt).toLocaleTimeString() }}}}</time></li>
+    </ol>
+    <div v-else-if="presentationKind === 'chart'" class="chart">
+      <span v-for="item in history.slice().reverse()" :key="item.occurredAt" :style="{{ height: barHeight(item.value) }}"></span>
+    </div>
+    <label v-else-if="presentationKind === 'form'" class="command"><input v-model="formValue" type="checkbox" /><button type="button" :disabled="pending" @click="invoke(formValue)">{{{{ pending ? 'Sending…' : 'Apply' }}}}</button></label>
+    <strong v-else>{{{{ displayValue }}}}</strong>
+    <small>{{{{ channel || deviceId || 'Select a data source' }}}}</small>
+  </section>
+</template>
+
+<script setup lang="ts">
+import {{ computed, ref }} from 'vue'
+import {{ useCapabilityFeed }} from './capability-runtime'
+const props = defineProps<{{ config?: Record<string, unknown> }}>()
+const config = computed(() => props.config || {{}})
+const {{ value, status, history, pending, deviceId, channel, invoke }} = useCapabilityFeed(config)
+const presentationKind = {json.dumps(presentation.kind)}
+const defaults = {json.dumps(defaults)} as Record<string, {{ label: string; color: string }}>
+const activeHigh = computed(() => props.config?.activeHigh !== false)
+const visualState = computed(() => status.value === 'ready' ? (Boolean(value.value) === activeHigh.value ? 'active' : 'inactive') : status.value)
+const label = computed(() => defaults[visualState.value]?.label || visualState.value)
+const indicatorColor = computed(() => visualState.value === 'active' ? String(props.config?.activeColor || defaults.active.color) : visualState.value === 'inactive' ? String(props.config?.inactiveColor || defaults.inactive.color) : defaults[visualState.value]?.color || '#6B7280')
+const displayValue = computed(() => value.value == null ? '—' : String(value.value))
+const formValue = ref(false)
+const barHeight = (item: unknown) => `${{Math.max(8, Math.min(100, typeof item === 'number' ? Math.abs(item) : item ? 100 : 8))}}%`
+</script>
+
+<style scoped>
+.capability-widget {{ display:grid; min-height:100%; place-content:center; justify-items:center; gap:.55rem; padding:1rem; color:inherit; text-align:center }}
+.lamp {{ width:clamp(3.5rem, 35%, 8rem); aspect-ratio:1; border-radius:50%; border:1px solid color-mix(in srgb, currentColor 18%, transparent); box-shadow:0 0 0 .55rem color-mix(in srgb, currentColor 5%, transparent), 0 .5rem 1.5rem color-mix(in srgb, currentColor 20%, transparent) }}
+strong {{ font-size:1.1rem }} .metric {{ font-size:clamp(2rem, 8vw, 4.5rem); font-variant-numeric:tabular-nums }} small {{ color:var(--text-secondary, currentColor); opacity:.72 }}
+.history {{ display:grid; gap:.35rem; width:100%; margin:0; padding:0; list-style:none }} .history li {{ display:flex; justify-content:space-between; gap:1rem }}
+.chart {{ display:flex; align-items:end; gap:3px; width:min(100%, 18rem); height:8rem }} .chart span {{ flex:1; min-height:4px; border-radius:3px 3px 0 0; background:var(--accent-color, #4f7cff) }}
+.command {{ display:flex; align-items:center; gap:.75rem }} button {{ padding:.45rem .8rem; border:0; border-radius:.45rem; background:var(--accent-color, #4f7cff); color:white }}
+</style>
+'''
 
 
 def _compiled_time_widget_component(spec: ExtensionSpec) -> str:
@@ -695,9 +871,9 @@ def _compiled_widget_editor(spec: ExtensionSpec) -> str:
       <span>{{{{ field.title }}}}</span>
       <input v-if="field.type === 'boolean'" type="checkbox" :checked="Boolean(value[field.key])" @change="setBoolean(field.key, $event)" />
       <select v-else-if="field.options.length || field.format === 'timezone'" :value="value[field.key] ?? field.defaultValue ?? ''" @change="setValue(field.key, $event)">
-        <option v-for="option in field.options" :key="String(option)" :value="option">{{{{ option }}}}</option>
+        <option v-for="(option, index) in field.options" :key="String(option)" :value="option">{{{{ field.optionLabels[index] || option }}}}</option>
       </select>
-      <input v-else :type="field.type === 'integer' || field.type === 'number' ? 'number' : 'text'" :value="value[field.key] ?? ''" @input="setValue(field.key, $event)" />
+      <input v-else :type="field.format === 'color' ? 'color' : field.type === 'integer' || field.type === 'number' ? 'number' : 'text'" :value="value[field.key] ?? field.defaultValue ?? ''" @input="setValue(field.key, $event)" />
     </label>
     <p v-if="!fields.length">This widget has no configurable fields.</p>
   </div>
@@ -714,7 +890,8 @@ const timezoneOptions = (() => {{
 }})()
 const fields = Object.entries(schema.properties || {{}}).map(([key, item]: [string, any]) => ({{
   key, title: item.title || key, type: item.type || 'string', format: item.format || '',
-  defaultValue: item.default, options: item.enum || (item.format === 'timezone' ? timezoneOptions : [])
+  defaultValue: item.default, options: item.enum || (item.format === 'timezone' ? timezoneOptions : []),
+  optionLabels: item.enumNames || []
 }}))
 function setValue(key: string, event: Event) {{ const target = event.target as HTMLInputElement; const field = fields.find(item => item.key === key); const next = field?.type === 'integer' || field?.type === 'number' ? Number(target.value) : target.value; emit('update:modelValue', {{ ...value.value, [key]: next }}) }}
 function setBoolean(key: string, event: Event) {{ emit('update:modelValue', {{ ...value.value, [key]: (event.target as HTMLInputElement).checked }}) }}
@@ -740,6 +917,8 @@ def _build_compiled_widget_zip(
             {"entrypoint_id": editor_id, "kind": "editor", "source": "source/frontend/WidgetEditor.vue", "label": {"en": f"{spec.name} settings", "translations": {"bg": f"Настройки на {spec.name}"}}, "target_entrypoint_id": widget_id},
         ],
     }
+    if spec.capability_plan:
+        contract["capability_plan"] = spec.capability_plan.model_dump(mode="json")
     schema_properties = (spec.config_schema or {}).get("properties", {})
     config_defaults = {
         key: value["default"] for key, value in schema_properties.items()
@@ -749,7 +928,12 @@ def _build_compiled_widget_zip(
         "manifest_version": 2, "module_id": module_id, "name": spec.name, "version": spec.version,
         "description": spec.description, "runtimes": ["ui"], "entrypoints": {"ui": "compiled-ui.json"},
         "compatibility": {"protocol": "1.0", "agent": ">=0.1.0", "core": ">=0.1.0", "architectures": ["any"]},
-        "capabilities": {"provides": [], "consumes": []}, "permissions": [], "dependencies": {}, "conflicts": [],
+        "capabilities": {
+            "provides": [],
+            "consumes": sorted({binding.capability_id for binding in spec.capability_plan.bindings}) if spec.capability_plan else [],
+        },
+        "permissions": sorted({permission for binding in spec.capability_plan.bindings for permission in binding.permissions}) if spec.capability_plan else [],
+        "dependencies": {}, "conflicts": [],
         "configuration_schema": spec.config_schema, "configuration_defaults": config_defaults,
         "health_check": {"type": "json_file", "path": "compiled-ui.json"},
         "registrations": [{"kind": "widget", "registration_id": f"{module_id}.widget", "metadata": {"entrypoint_id": widget_id}}],
@@ -760,6 +944,8 @@ def _build_compiled_widget_zip(
         "source/frontend/Widget.vue": _compiled_widget_component(spec),
         "source/frontend/WidgetEditor.vue": _compiled_widget_editor(spec),
     }
+    if spec.capability_plan:
+        files_text["source/frontend/capability-runtime.ts"] = _compiled_capability_runtime_source(spec)
     warnings: List[BuildWarning] = []
     if use_ai and (instructions or spec.goal) and _compiled_widget_has_functional_scaffold(spec):
         warnings.append(BuildWarning(
@@ -769,7 +955,7 @@ def _build_compiled_widget_zip(
     elif use_ai and (instructions or spec.goal):
         editable_sources = {
             path: content for path, content in files_text.items()
-            if path.startswith("source/frontend/")
+            if path.startswith("source/frontend/") and path != "source/frontend/capability-runtime.ts"
         }
         compiled_instructions = (
             (instructions or spec.goal or "")
@@ -1034,6 +1220,45 @@ def package_extension_zip(
         sanitized[path] = text
 
     is_compiled = "compiled-ui.json" in sanitized
+    if is_compiled:
+        normalized = _normalize_widget_spec(spec)
+        try:
+            manifest = json.loads(sanitized["manifest.json"])
+            contract = json.loads(sanitized["compiled-ui.json"])
+            manifest.update({
+                "name": normalized.name,
+                "version": normalized.version,
+                "description": normalized.description,
+                "configuration_schema": normalized.config_schema,
+                "configuration_defaults": {
+                    key: value["default"]
+                    for key, value in (normalized.config_schema or {}).get("properties", {}).items()
+                    if isinstance(value, dict) and "default" in value
+                },
+                "capabilities": {
+                    **(manifest.get("capabilities") or {}),
+                    "consumes": sorted({
+                        binding.capability_id for binding in normalized.capability_plan.bindings
+                    }) if normalized.capability_plan else [],
+                },
+                "permissions": sorted({
+                    permission
+                    for binding in normalized.capability_plan.bindings
+                    for permission in binding.permissions
+                }) if normalized.capability_plan else [],
+            })
+            contract["version"] = normalized.version
+            if normalized.capability_plan:
+                contract["capability_plan"] = normalized.capability_plan.model_dump(mode="json")
+            else:
+                contract.pop("capability_plan", None)
+            sanitized["manifest.json"] = json.dumps(manifest, ensure_ascii=False, indent=2)
+            sanitized["compiled-ui.json"] = json.dumps(contract, ensure_ascii=False, indent=2)
+        except (KeyError, TypeError, json.JSONDecodeError) as exc:
+            warnings.append(BuildWarning(
+                code="package.compiled_metadata_invalid",
+                message=f"Compiled package metadata could not be synchronized: {exc}",
+            ))
     required = (["manifest.json", "compiled-ui.json"] if is_compiled else [
         "manifest.json", f"backend/{spec.backend_entry}", f"frontend/{spec.frontend_entry}",
     ])

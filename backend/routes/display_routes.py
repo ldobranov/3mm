@@ -17,8 +17,11 @@ from backend.schemas.display import (
 )
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from backend.db.device import Device, DeviceCapabilityState
+from backend.services.device_capability_registry import has_registered_capability
+from three_mm_protocol import CapabilityStateSnapshotV1
 
 class DisplaySchema(BaseModel):
     id: int
@@ -468,7 +471,99 @@ def public_display(username: str, slug: str, db: Session = Depends(get_db)):
     if not d:
         raise HTTPException(status_code=404, detail="Display not found or not public")
     widgets = db.query(Widget).filter(Widget.display_id == d.id).order_by(Widget.z_index.asc()).all()
+    serialized_widgets = []
+    for widget in widgets:
+        item = serialize_widget(widget)
+        if widget.type.startswith("compiled:"):
+            item["config"] = {
+                **item["config"],
+                "_publicCapabilityStateUrl": (
+                    f"/api/public/displays/{d.id}/widgets/{widget.id}/capability-state"
+                ),
+            }
+        serialized_widgets.append(item)
     return {
         "display": {"id": d.id, "title": d.title, "slug": d.slug, "is_public": d.is_public},
-        "widgets": [serialize_widget(w) for w in widgets]
+        "widgets": serialized_widgets,
     }
+
+
+@router.get(
+    "/api/public/displays/{display_id}/widgets/{widget_id}/capability-state",
+    response_model=CapabilityStateSnapshotV1,
+)
+def public_widget_capability_state(
+    display_id: int,
+    widget_id: int,
+    db: Session = Depends(get_db),
+) -> CapabilityStateSnapshotV1:
+    display = db.query(Display).filter(
+        Display.id == display_id,
+        Display.is_public.is_(True),
+    ).first()
+    widget = db.query(Widget).filter(
+        Widget.id == widget_id,
+        Widget.display_id == display_id,
+    ).first()
+    if display is None or widget is None:
+        raise HTTPException(status_code=404, detail="Public widget was not found")
+    try:
+        _, module_id, version, entrypoint_id = widget.type.split(":", 3)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Public capability widget was not found") from exc
+    package = db.query(ModulePackage).filter(
+        ModulePackage.module_id == module_id,
+        ModulePackage.version == version,
+    ).first()
+    if package is None:
+        raise HTTPException(status_code=404, detail="Public capability widget was not found")
+    try:
+        validated = validate_module_package(Path(package.file_path).read_bytes())
+    except (OSError, ModulePackageError) as exc:
+        raise HTTPException(status_code=404, detail="Public capability widget was not found") from exc
+    compiled_ui = validated.compiled_ui
+    plan = compiled_ui.capability_plan if compiled_ui else None
+    entrypoint = next(
+        (
+            item
+            for item in (compiled_ui.entrypoints if compiled_ui else ())
+            if item.entrypoint_id == entrypoint_id and item.kind == "widget"
+        ),
+        None,
+    )
+    if entrypoint is None or plan is None or not plan.bindings:
+        raise HTTPException(status_code=404, detail="Public capability widget was not found")
+    binding = plan.bindings[0]
+    device_id = str((widget.config or {}).get(binding.device_setting) or "")
+    channel = (
+        str((widget.config or {}).get(binding.channel_setting) or "")
+        if binding.channel_setting
+        else ""
+    )
+    device = db.query(Device).filter(Device.device_id == device_id).first()
+    if device is None or not has_registered_capability(db, device, binding.capability_id):
+        raise HTTPException(status_code=404, detail="Public capability state was not found")
+    state = db.query(DeviceCapabilityState).filter(
+        DeviceCapabilityState.device_id == device.id,
+        DeviceCapabilityState.capability_id == binding.capability_id,
+    ).first()
+    if state is None:
+        raise HTTPException(status_code=404, detail="Public capability state was not found")
+    values = state.values or {}
+    if channel:
+        if channel not in values:
+            raise HTTPException(status_code=404, detail="Public capability channel was not found")
+        values = {channel: values[channel]}
+    observed_at = state.observed_at
+    received_at = state.received_at
+    if observed_at.tzinfo is None:
+        observed_at = observed_at.replace(tzinfo=timezone.utc)
+    if received_at.tzinfo is None:
+        received_at = received_at.replace(tzinfo=timezone.utc)
+    return CapabilityStateSnapshotV1(
+        device_id=device.device_id,
+        capability_id=binding.capability_id,
+        values=values,
+        observed_at=observed_at,
+        received_at=received_at,
+    )

@@ -1,6 +1,6 @@
 """Persistent Core registry models for managed devices."""
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -174,3 +174,18 @@ class DeviceState(Base):
     reported_revision = Column(Integer, nullable=False, default=0)
     reported_state = Column(JSON, nullable=False, default=dict)
     reported_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class DeviceCapabilityState(Base):
+    __tablename__ = "device_capability_states"
+
+    id = Column(Integer, primary_key=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False, index=True)
+    capability_id = Column(String(160), nullable=False)
+    values = Column(JSON, nullable=False, default=dict)
+    observed_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    received_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("device_id", "capability_id", name="uq_device_capability_state"),
+    )

@@ -38,3 +38,19 @@ def test_ambiguous_placement_asks_one_plain_language_question():
     ))
     assert plan.project_type == "widget"
     assert [question.id for question in plan.questions] == ["placement"]
+
+
+def test_gpio_indicator_request_produces_a_typed_capability_plan():
+    plan = _plan_extension_intent(PlanExtensionIntentRequest(
+        description="Dashboard widget that reads a GPIO input pin and shows a red or green lamp",
+        placement="dashboard",
+        data_mode="settings",
+    ))
+    capability_plan = plan.capability_plan
+    assert capability_plan is not None
+    assert capability_plan.bindings[0].capability_id == "gpio.digital.input"
+    assert capability_plan.bindings[0].operation == "subscribe"
+    assert {item.kind for item in capability_plan.settings} >= {"device", "capability_channel"}
+    assert {item.state for item in capability_plan.presentations[0].states} >= {
+        "value", "stale", "offline", "error",
+    }
