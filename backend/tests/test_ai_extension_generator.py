@@ -53,7 +53,43 @@ class _NoOpOpenRouter(_RetryingOpenRouter):
         return {"choices": [{"message": {"content": json.dumps({"files": {}})}}]}
 
 
-def test_invalid_json_response_is_retried_without_json_mode(monkeypatch):
+class _InvalidFileResponseGroq:
+    calls = []
+    default_model = "llama-3.1-8b-instant"
+
+    def __init__(self, api_key=None):
+        self.api_key = api_key
+
+    def is_configured(self):
+        return True
+
+    def chat_completions(self, **kwargs):
+        self.calls.append(kwargs.get("response_format"))
+        return {"choices": [{"message": {"content": "not a valid file response"}}]}
+
+
+class _SuccessfulFallbackOpenRouter:
+    calls = []
+    default_model = "openrouter/free"
+
+    def __init__(self, api_key=None):
+        self.api_key = api_key
+
+    def is_configured(self):
+        return True
+
+    def chat_completions(self, **kwargs):
+        self.calls.append(kwargs.get("response_format"))
+        content = (
+            "<<<3MM_FILE:source/frontend/Widget.vue>>>\n"
+            "<template><strong>{{ count }}</strong></template>"
+            "<script setup lang=\"ts\">const count = 1</script>\n"
+            "<<<3MM_END>>>\n"
+        )
+        return {"choices": [{"message": {"content": content}}]}
+
+
+def test_invalid_auto_provider_response_is_retried_with_file_markers(monkeypatch):
     _RetryingOpenRouter.calls = []
     monkeypatch.setattr(generator, "OpenRouterClient", _RetryingOpenRouter)
     monkeypatch.setattr(generator, "GroqClient", _UnconfiguredGroq)
@@ -77,13 +113,65 @@ def test_invalid_json_response_is_retried_without_json_mode(monkeypatch):
         openrouter_api_key="configured-for-test",
     )
 
-    assert _RetryingOpenRouter.calls == [{"type": "json_object"}, None]
+    assert _RetryingOpenRouter.calls == [None, None]
     assert "currentTime" in files["source/frontend/Widget.vue"]
     assert "source/frontend/WidgetEditor.vue" in files
     manifest = json.loads(files["manifest.json"])
     assert manifest["entrypoints"] == {"ui": "compiled-ui.json"}
     assert "ai.bad_response.retry" in {warning.code for warning in report.warnings}
     assert "ai.updated_files" in {warning.code for warning in report.warnings}
+
+
+def test_auto_provider_falls_back_when_groq_breaks_file_contract(monkeypatch):
+    _InvalidFileResponseGroq.calls = []
+    _SuccessfulFallbackOpenRouter.calls = []
+    monkeypatch.setattr(generator, "GroqClient", _InvalidFileResponseGroq)
+    monkeypatch.setattr(generator, "OpenRouterClient", _SuccessfulFallbackOpenRouter)
+    spec = ExtensionSpec(
+        name="CounterWidget", version="1.0.0", type="widget",
+        description="A counter", api_prefix="/api/counter",
+        backend_entry="counter.py", frontend_entry="CounterWidget.vue",
+        frontend_routes=[], goal="Show a counter",
+    )
+
+    report, _, files = generator.build_extension_zip(
+        spec,
+        instructions=spec.goal,
+        use_ai=True,
+        groq_api_key="groq-test-key",
+        openrouter_api_key="openrouter-test-key",
+    )
+
+    assert _InvalidFileResponseGroq.calls == [None]
+    assert _SuccessfulFallbackOpenRouter.calls == [None]
+    assert "const count = 1" in files["source/frontend/Widget.vue"]
+    warning_codes = {warning.code for warning in report.warnings}
+    assert "ai.bad_response.retry" not in warning_codes
+    assert "ai.updated_files" in warning_codes
+
+
+def test_json_extraction_accepts_null_provider_content():
+    assert generator._extract_json_object(None) is None
+
+
+def test_file_block_extraction_preserves_vue_source():
+    content = (
+        "<<<3MM_FILE:source/frontend/Widget.vue>>>\n"
+        "<template>{{ value }}</template>\n"
+        "<script setup lang=\"ts\">const options = {\"mode\": \"digital\"}</script>\n"
+        "<<<3MM_END>>>\n"
+    )
+
+    assert generator._extract_file_payload(content) == {"files": {
+        "source/frontend/Widget.vue": (
+            "<template>{{ value }}</template>\n"
+            "<script setup lang=\"ts\">const options = {\"mode\": \"digital\"}</script>"
+        )
+    }}
+
+
+def test_file_payload_rejects_unrelated_json_object_from_plain_source():
+    assert generator._extract_file_payload('const options = {"mode": "digital"}') is None
 
 
 def test_compiled_widget_rejects_unchanged_generic_scaffold(monkeypatch):

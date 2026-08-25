@@ -14,7 +14,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from backend.db.base import Base
+from backend.db.display import Display
 from backend.db.user import User
+from backend.db.widget import Widget
 from backend.routes.extension_projects import router
 import backend.routes.extension_projects as project_routes
 from backend.schemas.ai_extension_builder import BuildWarning
@@ -52,7 +54,17 @@ def _compiled_artifact(version: str) -> bytes:
             "version": version,
             "entrypoints": {"ui": "compiled-ui.json"},
         }))
-        archive.writestr("compiled-ui.json", "{}")
+        archive.writestr("compiled-ui.json", json.dumps({
+            "compiled_ui_version": 1,
+            "module_id": "clock.project",
+            "version": version,
+            "entrypoints": [{
+                "entrypoint_id": "widget",
+                "kind": "widget",
+                "source": "source/frontend/Widget.vue",
+                "label": {"en": "Clock"},
+            }],
+        }))
     return output.getvalue()
 
 
@@ -86,6 +98,20 @@ def test_project_source_is_persistent_and_build_versions_are_server_managed(monk
     assert first.json()["package_kind"] == "compiled"
     assert first.json()["files_snapshot"]["source/frontend/Widget.vue"] == "<template>Clock</template>"
 
+    admin = db.query(User).filter(User.email == "projects@example.com").one()
+    display = Display(user_id=admin.id, title="Project preview", slug="project-preview", is_public=True)
+    display.widgets.append(Widget(
+        type="compiled:clock.project:0.0.1:widget",
+        config={"timezone": "Europe/Sofia"},
+        x=2,
+        y=3,
+        width=4,
+        height=2,
+    ))
+    db.add(display)
+    db.commit()
+    widget_id = display.widgets[0].id
+
     updated = client.get(f"/api/v1/extension-projects/{project['project_id']}", headers=headers).json()
     second_artifact = _compiled_artifact("0.1.0")
     second = client.post(f"/api/v1/extension-projects/{project['project_id']}/builds", headers=headers, json={
@@ -101,6 +127,11 @@ def test_project_source_is_persistent_and_build_versions_are_server_managed(monk
     )
     assert installed.status_code == 200
     assert installed.json()["status"] == "installed"
+    db.expire_all()
+    upgraded_widget = db.get(Widget, widget_id)
+    assert upgraded_widget.type == "compiled:clock.project:0.1.0:widget"
+    assert upgraded_widget.config == {"timezone": "Europe/Sofia"}
+    assert (upgraded_widget.x, upgraded_widget.y, upgraded_widget.width, upgraded_widget.height) == (2, 3, 4, 2)
     downloaded = client.get(
         f"/api/v1/extension-projects/{project['project_id']}/builds/{second.json()['build_id']}/artifact",
         headers=headers,
@@ -116,6 +147,8 @@ def test_project_source_is_persistent_and_build_versions_are_server_managed(monk
     history = client.get(f"/api/v1/extension-projects/{project['project_id']}/builds", headers=headers).json()
     assert next(item for item in history if item["build_id"] == first.json()["build_id"])["status"] == "installed"
     assert next(item for item in history if item["build_id"] == second.json()["build_id"])["status"] == "built"
+    db.expire_all()
+    assert db.get(Widget, widget_id).type == "compiled:clock.project:0.0.1:widget"
     assert len(client.get(f"/api/v1/extension-projects/{project['project_id']}/builds", headers=headers).json()) == 2
     db.close()
 

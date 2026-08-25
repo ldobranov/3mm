@@ -118,3 +118,28 @@ make arbitrary AI-generated executable code safe. The next stabilization work
 must consolidate the extension lifecycle, remove legacy paths, split the large
 Builder implementation, unify deployment and strengthen frontend workflow
 tests before new extension capabilities are added.
+
+## Post-acceptance stabilization — 2026-08-25
+
+The first real incremental edits exposed two workflow gaps that were corrected
+before starting Milestone 10:
+
+- free-provider responses now accept both strict JSON and an explicit 3mm file
+  envelope, handle non-string or truncated responses, and fall through to the
+  next configured provider when a response does not contain usable files;
+- accepting a reviewed modification now saves the source, assigns the next
+  patch version, builds the immutable artifact and installs it as one action;
+- installing or rolling back a compiled project migrates existing dashboard
+  widget instances of the same module and entrypoint to the selected version,
+  while preserving their configuration and layout.
+
+The physical acceptance upgraded the existing DoorSensor widget from `0.0.1`
+to `0.0.2` and then exercised rollback and forward installation. The dashboard
+loaded the new `Open count` behavior without recreating the widget. The accepted
+Raspberry release was `worktree-ad7992ad3e03-20260825082710`.
+
+Focused verification passed 37 frontend tests and 18 backend compiled-package,
+project lifecycle and public-capability tests. This stabilization remains part
+of the Milestone 9 checkpoint rather than expanding the scope of Milestone 10.
+The complete cross-project Python suite passed 276 tests; the four remaining
+Windows failures are the already documented Unix `0600` file-mode assertions.

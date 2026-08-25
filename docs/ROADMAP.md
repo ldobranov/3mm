@@ -1,6 +1,6 @@
 # 3mm Roadmap
 
-Status: active; Milestones 0–7 completed, Milestone 8 in progress
+Status: active; Milestones 0–9 completed, Milestone 10 in progress
 Planning style: sequential milestones with a runnable result after every milestone
 
 Dates are intentionally not assigned until the current baseline is reproducible. Progress is measured by acceptance criteria, not optimistic calendar estimates.
@@ -304,6 +304,10 @@ Stages (completed on 2026-08-23):
 
 Goal: replace mock hardware with real Raspberry adapters while preserving contracts.
 
+Status: in progress on the physical `rasp-3mm` Raspberry Pi 3B+ baseline. The
+native `libgpiod` input path and systemd deployment are accepted; reboot,
+reconnect, storage and repeatable-install acceptance remain.
+
 Deliverables:
 
 - Raspberry Pi OS installation path;
@@ -461,9 +465,15 @@ These are the first concrete tasks after approval of this plan:
 - [x] Add strict compiled-source package validation and a reference Clock fixture.
 - [x] Build the install-time Vue compiler and immutable artifact store; production sandbox enforcement remains in Milestone 8 Stage 4.
 - [x] Add the generic browser loader and connect compiled widgets, routes, editors and components without rebuilding Core frontend.
-- [ ] Prove the compiled Clock artifact in Display Editor on Raspberry Pi.
-- [ ] Prove Contacts install-to-use behavior in the browser on Raspberry Pi.
-- [ ] Constrain AI Extension Builder generation to the runtime contract.
+- [x] Prove the compiled Clock artifact in Display Editor on Raspberry Pi.
+- [x] Prove Contacts install-to-use behavior in the browser on Raspberry Pi.
+- [x] Constrain AI Extension Builder generation to reviewed runtime and compiled capability contracts.
+- [x] Validate the native `libgpiod` input capability and generated GPIO widget on physical `rasp-3mm`.
+- [x] Stabilize incremental AI file responses, one-click build/install and version-aware widget rollback.
+- [ ] Verify Agent/Core/Web recovery and persistent identity across a controlled Raspberry Pi reboot.
+- [ ] Verify Agent buffering and automatic reconciliation across a controlled Core outage.
+- [ ] Record storage bounds, release retention and interrupted-deployment recovery.
+- [ ] Complete repeatable first-boot/pairing documentation and the Milestone 10 report.
 - [ ] Validate the open setup-only access point and persistent NetworkManager profile across a Raspberry Pi reboot.
 - [ ] Validate automatic transition from setup services to the selected runtime role on physical `rasp-3mm`.
 

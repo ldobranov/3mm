@@ -262,7 +262,7 @@
                 {{ t('extensions.aiBuilder.projects.reject', 'Reject') }}
               </button>
               <button class="button button-primary" type="button" :disabled="busy || !modificationProposal.changed_files.length" @click="acceptModification">
-                {{ t('extensions.aiBuilder.projects.accept', 'Accept changes') }}
+                {{ t('extensions.aiBuilder.projects.acceptBuildInstall', 'Accept, build & install') }}
               </button>
             </div>
           </div>
@@ -1483,6 +1483,7 @@ const acceptModification = async () => {
   if (!proposal || !activeProject.value) return
   busy.value = true
   error.value = ''
+  success.value = ''
   try {
     const project = await replaceExtensionProjectFiles(
       proposal.project_id,
@@ -1493,9 +1494,21 @@ const acceptModification = async () => {
     filesText.value = { ...proposal.proposed_files }
     selectedFile.value = proposal.changed_files[0] || selectedFile.value
     modificationProposal.value = null
-    changeRequest.value = ''
+    generatedZipBase64.value = ''
+    installedOk.value = false
     await refreshProjects()
-    success.value = t('extensions.aiBuilder.projects.accepted', 'Changes accepted and saved as a draft')
+
+    await rebuildFromEdits()
+    if (error.value || !generatedZipBase64.value) return
+
+    await install()
+    if (error.value || !installedOk.value) return
+
+    changeRequest.value = ''
+    success.value = t(
+      'extensions.aiBuilder.projects.acceptedBuiltInstalled',
+      'Changes accepted, built and installed'
+    )
   } catch (e: unknown) {
     error.value = getHttpErrorMessage(e)
   } finally {

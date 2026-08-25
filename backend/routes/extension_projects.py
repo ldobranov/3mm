@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.db.extension_project import ExtensionProject, ExtensionProjectBuild, ExtensionProjectFile
 from backend.db.user import User
+from backend.db.widget import Widget
 from backend.schemas.extension_project import (
     CreateExtensionProjectRequest,
     CreateProjectBuildRequest,
@@ -128,6 +129,29 @@ def _build_response(build: ExtensionProjectBuild) -> ProjectBuildResponse:
     return ProjectBuildResponse.model_validate(build, from_attributes=True).model_copy(
         update={"has_artifact": bool(build.artifact_path)}
     )
+
+
+def _compiled_widget_target(build: ExtensionProjectBuild) -> tuple[str, set[str]] | None:
+    """Return the module and widget entrypoints that can safely follow this build."""
+    if build.package_kind != "compiled" or not build.artifact_path:
+        return None
+    try:
+        with zipfile.ZipFile(build.artifact_path) as archive:
+            manifest = json.loads(archive.read("manifest.json"))
+            compiled_ui = json.loads(archive.read("compiled-ui.json"))
+    except (OSError, KeyError, zipfile.BadZipFile, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    module_id = manifest.get("module_id")
+    if not isinstance(module_id, str) or manifest.get("version") != build.version:
+        return None
+    entrypoints = {
+        item.get("entrypoint_id")
+        for item in compiled_ui.get("entrypoints", [])
+        if isinstance(item, dict)
+        and item.get("kind") == "widget"
+        and isinstance(item.get("entrypoint_id"), str)
+    }
+    return (module_id, entrypoints) if entrypoints else None
 
 
 @router.post("", response_model=ExtensionProjectResponse, status_code=201)
@@ -414,6 +438,14 @@ def mark_build_installed(
     build.installed_at = datetime.now(timezone.utc)
     project.status = "installed"
     project.current_version = build.version
+    widget_target = _compiled_widget_target(build)
+    if widget_target:
+        module_id, entrypoint_ids = widget_target
+        widget_prefix = f"compiled:{module_id}:"
+        for widget in db.scalars(select(Widget).where(Widget.type.startswith(widget_prefix))):
+            parts = widget.type.split(":", 3)
+            if len(parts) == 4 and parts[3] in entrypoint_ids:
+                widget.type = f"compiled:{module_id}:{build.version}:{parts[3]}"
     project.revision += 1
     db.commit()
     db.refresh(build)

@@ -20,10 +20,11 @@ class StubClient:
 
 def test_free_provider_prefers_groq():
     openrouter = StubClient(result={"unused": True})
-    groq = StubClient(result={"choices": []})
+    result = {"choices": [{"message": {"content": "{}"}}]}
+    groq = StubClient(result=result)
     client = FreeProviderFallbackClient(openrouter, groq)
 
-    assert client.chat_completions([{"role": "user", "content": "test"}]) == {"choices": []}
+    assert client.chat_completions([{"role": "user", "content": "test"}]) == result
     assert client.last_provider == "groq"
     assert openrouter.calls == []
     assert len(groq.calls) == 1
@@ -45,10 +46,46 @@ def test_free_provider_falls_back_to_openrouter_with_model_override():
 
 def test_free_provider_uses_configured_groq_when_openrouter_is_missing():
     openrouter = StubClient(configured=False)
-    groq = StubClient(result={"ok": True})
+    result = {"choices": [{"message": {"content": "{}"}}]}
+    groq = StubClient(result=result)
     client = FreeProviderFallbackClient(openrouter, groq)
 
     assert client.is_configured()
-    assert client.chat_completions([]) == {"ok": True}
+    assert client.chat_completions([]) == result
     assert openrouter.calls == []
     assert client.last_provider == "groq"
+
+
+def test_free_provider_falls_back_when_groq_returns_null_content():
+    openrouter_result = {"choices": [{"message": {"content": '{"files": {}}'}}]}
+    openrouter = StubClient(result=openrouter_result)
+    groq = StubClient(result={"choices": [{"message": {"content": None}}]})
+    client = FreeProviderFallbackClient(openrouter, groq)
+
+    assert client.chat_completions([]) == openrouter_result
+    assert len(groq.calls) == 1
+    assert len(openrouter.calls) == 1
+    assert client.last_provider == "openrouter"
+
+
+def test_free_provider_falls_back_when_content_fails_caller_validation():
+    openrouter_result = {"choices": [{"message": {"content": '{"files": {}}'}}]}
+    openrouter = StubClient(result=openrouter_result)
+    groq = StubClient(result={"choices": [{"message": {"content": "plain explanation"}}]})
+    client = FreeProviderFallbackClient(openrouter, groq)
+
+    result = client.chat_completions(
+        [], response_validator=lambda response: '"files"' in response["choices"][0]["message"]["content"]
+    )
+
+    assert result == openrouter_result
+    assert len(groq.calls) == 1
+    assert len(openrouter.calls) == 1
+    assert client.last_provider == "openrouter"
+
+
+def test_free_provider_accepts_text_content_parts():
+    result = {"choices": [{"message": {"content": [{"type": "text", "text": "{}"}]}}]}
+    client = FreeProviderFallbackClient(StubClient(configured=False), StubClient(result=result))
+
+    assert client.chat_completions([]) == result

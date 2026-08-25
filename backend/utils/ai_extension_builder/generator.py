@@ -47,9 +47,17 @@ def _json_bytes(data: Dict) -> bytes:
     return json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
 
 
-def _extract_json_object(text: str) -> Optional[Dict]:
+def _extract_json_object(text: object) -> Optional[Dict]:
     """Best-effort extraction of a JSON object from model output."""
+    if not isinstance(text, str):
+        return None
     text = text.strip()
+    try:
+        direct = json.loads(text)
+        if isinstance(direct, dict):
+            return direct
+    except (TypeError, ValueError, json.JSONDecodeError):
+        pass
     # Common case: model returns fenced json
     if "```" in text:
         # Take the first fenced block
@@ -58,24 +66,103 @@ def _extract_json_object(text: str) -> Optional[Dict]:
             candidate = parts[1]
             # remove optional language tag
             candidate = candidate.lstrip()
-            if candidate.startswith("json"):
+            if candidate[:4].lower() == "json":
                 candidate = candidate[4:]
             candidate = candidate.strip()
             try:
-                return json.loads(candidate)
+                parsed = json.loads(candidate)
+                if isinstance(parsed, dict):
+                    return parsed
             except Exception:
                 pass
 
-    # Fallback: try to locate first {...}
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        candidate = text[start : end + 1]
+    # Fallback: scan prose for the first complete JSON object. raw_decode avoids
+    # swallowing later braces from an explanation after the object.
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", text):
         try:
-            return json.loads(candidate)
-        except Exception:
-            return None
+            parsed, _ = decoder.raw_decode(text[match.start():])
+            if isinstance(parsed, dict):
+                return parsed
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
     return None
+
+
+_FILE_BLOCK_PATTERN = re.compile(
+    r"^<<<3MM_FILE:(?P<path>[^\r\n>]+)>>>\r?\n"
+    r"(?P<content>.*?)^<<<3MM_END>>>(?:\r?\n|$)",
+    flags=re.MULTILINE | re.DOTALL,
+)
+
+
+def _extract_file_payload(text: object) -> Optional[Dict]:
+    """Accept strict JSON or the token-efficient 3mm file-block format."""
+    if isinstance(text, str):
+        # Parse our explicit envelope before scanning for JSON. Vue/TypeScript
+        # source commonly contains valid object literals that must remain file
+        # content rather than being mistaken for the provider response object.
+        files: Dict[str, str] = {}
+        for match in _FILE_BLOCK_PATTERN.finditer(text):
+            path = match.group("path").strip()
+            content = match.group("content")
+            if content.endswith("\r\n"):
+                content = content[:-2]
+            elif content.endswith("\n"):
+                content = content[:-1]
+            if path:
+                files[path] = content
+        if files:
+            return {"files": files}
+
+    data = _extract_json_object(text)
+    if not isinstance(data, dict):
+        return None
+    if not (
+        isinstance(data.get("files"), dict)
+        or isinstance(data.get("files_b64"), dict)
+    ):
+        return None
+    return data
+
+
+def _response_content(response: object) -> object:
+    if not isinstance(response, dict):
+        return ""
+    choices = response.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        return ""
+    message = choices[0].get("message")
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content", "")
+    if isinstance(content, list):
+        return "\n".join(
+            part["text"] for part in content
+            if isinstance(part, dict) and isinstance(part.get("text"), str)
+        )
+    return content
+
+
+def _response_has_file_payload(response: Dict) -> bool:
+    data = _extract_file_payload(_response_content(response))
+    return bool(
+        isinstance(data, dict)
+        and (
+            isinstance(data.get("files"), dict)
+            or isinstance(data.get("files_b64"), dict)
+        )
+    )
+
+
+def _response_finish_reason(response: object) -> str:
+    if not isinstance(response, dict):
+        return ""
+    choices = response.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        return ""
+    reason = choices[0].get("finish_reason")
+    return reason if isinstance(reason, str) else ""
 
 
 def _ai_refine_files(
@@ -158,9 +245,6 @@ def _ai_refine_files(
     system = (
         "You are an expert developer for a FastAPI + Vue 3 extension system. "
         "You will receive an ExtensionSpec and a set of scaffold files. "
-        "Return STRICT JSON only, with no markdown, reasoning or explanation. "
-        "Use exactly this shape: {\"files\": {\"path\": \"complete UTF-8 file content\"}}. "
-        "Do not use Base64. If no file needs changes, return {\"files\": {}}. "
         "Only include files you changed. Only use paths from allowed_paths. "
         "Keep i18n keys namespaced and consistent with the JSON nesting. "
         "Do not change manifest.json structure (unless asked) and do not add new files.\n\n"
@@ -183,54 +267,78 @@ def _ai_refine_files(
         # Prefer JSON mode when the provider/model supports it.
         response_format = {"type": "json_object"}
 
-        def _call(use_response_format: bool) -> Dict:
+        def _call(use_response_format: bool, *, repair: bool = False) -> Dict:
+            if use_response_format:
+                output_contract = (
+                    "Return STRICT JSON only, with no markdown, reasoning or explanation. "
+                    "Use exactly this shape: {\"files\": {\"path\": \"complete UTF-8 file content\"}}. "
+                    "Do not use Base64. If no file needs changes, return {\"files\": {}}."
+                )
+            else:
+                output_contract = (
+                    "Return only complete changed files using this exact plain-text format; do not use JSON, "
+                    "Markdown fences, reasoning or explanations:\n"
+                    "<<<3MM_FILE:path/from/allowed_paths>>>\n"
+                    "complete UTF-8 file content\n"
+                    "<<<3MM_END>>>\n"
+                    "Repeat the block for each changed file. Never abbreviate or omit file content."
+                )
+            if repair:
+                output_contract += (
+                    "\nYour previous answer was invalid or incomplete. Produce the answer again and follow "
+                    "the file markers exactly. Keep the implementation concise enough to finish the response."
+                )
             kwargs = {
                 "model": model,
                 "messages": [
-                    {"role": "system", "content": system},
+                    {"role": "system", "content": f"{system}\n\n{output_contract}"},
                     {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
                 ],
                 "temperature": 0.2,
-                "max_tokens": 2500,
+                "max_tokens": 6000 if repair else 5000,
             }
             if use_response_format:
                 kwargs["response_format"] = response_format
+            if isinstance(client, FreeProviderFallbackClient):
+                kwargs["response_validator"] = _response_has_file_payload
             return getattr(client, "chat_completions")(**kwargs)
 
-        used_response_format = True
-        try:
-            resp = _call(used_response_format)
-        except Exception as e:
-            # Some OpenRouter models reject response_format; retry without it.
-            warnings.append(
-                BuildWarning(
-                    code="ai.response_format.unsupported",
-                    message=f"AI provider rejected response_format JSON mode ({type(e).__name__}); retrying without it.",
+        # Auto/free routing uses file blocks immediately. This avoids spending a
+        # request on JSON mode, which free OpenRouter routes frequently reject.
+        used_response_format = not isinstance(client, FreeProviderFallbackClient)
+        if used_response_format:
+            try:
+                resp = _call(True)
+            except Exception as e:
+                warnings.append(
+                    BuildWarning(
+                        code="ai.response_format.unsupported",
+                        message=f"AI provider rejected response_format JSON mode ({type(e).__name__}); retrying without it.",
+                    )
                 )
-            )
-            used_response_format = False
-            resp = _call(used_response_format)
-        content = (
-            resp.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-        )
-        data = _extract_json_object(content)
-        if not data and used_response_format:
-            warnings.append(
-                BuildWarning(
-                    code="ai.bad_response.retry",
-                    message="AI returned invalid JSON; retrying once without JSON mode.",
-                )
-            )
+                used_response_format = False
+                resp = _call(False)
+        else:
             resp = _call(False)
-            content = (
-                resp.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
+
+        content = _response_content(resp)
+        data = _extract_file_payload(content)
+        if data is None:
+            truncated = _response_finish_reason(resp).lower() in {"length", "max_tokens"}
+            warnings.append(
+                BuildWarning(
+                    code="ai.response_truncated.retry" if truncated else "ai.bad_response.retry",
+                    message=(
+                        "AI output was truncated; retrying once with a larger output allowance."
+                        if truncated else
+                        "AI returned an invalid file response; retrying once with explicit file markers."
+                    ),
+                )
             )
-            data = _extract_json_object(content)
-        if not data or not isinstance(data, dict):
+            resp = _call(False, repair=True)
+            content = _response_content(resp)
+            data = _extract_file_payload(content)
+        if data is None or not isinstance(data, dict):
             warnings.append(
                 BuildWarning(
                     code="ai.bad_response",
@@ -242,7 +350,7 @@ def _ai_refine_files(
         files_plain = data.get("files") if isinstance(data.get("files"), dict) else None
         files_b64 = data.get("files_b64") if isinstance(data.get("files_b64"), dict) else None
 
-        if not files_plain and not files_b64:
+        if files_plain is None and files_b64 is None:
             warnings.append(
                 BuildWarning(
                     code="ai.bad_response",
@@ -252,7 +360,7 @@ def _ai_refine_files(
             return {}, warnings
 
         updates: Dict[str, str] = {}
-        source = files_b64 if files_b64 else files_plain
+        source = files_b64 if files_b64 is not None else files_plain
 
         for path, text in (source or {}).items():
             if path not in base_files_text:
