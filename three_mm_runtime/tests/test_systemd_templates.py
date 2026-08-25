@@ -30,6 +30,7 @@ def test_units_run_unprivileged_with_common_layout_and_hardening() -> None:
         assert unit["User"] == "3mm"
         assert unit["Group"] == "3mm"
         assert unit["WorkingDirectory"] == "/opt/3mm/current"
+        assert unit["ExecStart"].startswith("/opt/3mm/current/.venv/bin/python")
         assert unit["EnvironmentFile"] == "-/etc/3mm/3mm.env"
         assert unit["NoNewPrivileges"] == "true"
         assert unit["PrivateTmp"] == "true"
@@ -101,3 +102,16 @@ def test_installer_preserves_identity_and_delegates_network_mutation() -> None:
     assert "nmcli" not in installer
     assert "iptables" not in installer
     assert "nft" not in installer
+
+
+def test_installer_owns_the_atomic_release_and_rollback_boundary() -> None:
+    installer = INSTALLER.read_text(encoding="utf-8")
+    launcher = (SYSTEMD_DIR.parents[1] / "deploy.ps1").read_text(encoding="utf-8")
+
+    assert 'python3 -m venv "$release_dir/.venv"' in installer
+    assert 'ln -sfnT "$release_dir" "$current_link"' in installer
+    assert 'trap rollback ERR' in installer
+    assert 'source.backup(backup)' in installer
+    assert 'venv_dir=$install_root/venv' not in installer
+    assert "deployment\\install-systemd.sh" in launcher
+    assert "remote-deploy.sh" not in launcher

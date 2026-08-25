@@ -130,9 +130,12 @@ TLS or reverse-proxy boundary.
 For an explicitly prepared Linux release archive, the reviewed systemd
 installer is `deployment/install-systemd.sh`. It requires root, an immutable
 release ID and an exact frontend CORS origin. An existing Agent identity may be
-passed as the fourth argument for migration. The installer enables Core, Web
-and Agent for Standalone, keeps Setup disabled, and does not alter networking
-or firewall configuration.
+passed as the fourth argument for migration. Each immutable release contains
+its own Python environment and the installer performs database/environment
+backup, atomic activation, health checks and rollback. `deploy.ps1` uses this
+same installer rather than maintaining a second deployment implementation. The
+runtime planner enables Core, Web and Agent for Standalone, keeps Setup disabled,
+and does not alter networking or firewall configuration.
 
 ## 📋 Prerequisites
 

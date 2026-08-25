@@ -929,34 +929,37 @@ import {
   type ExtensionProjectModification,
   type ProjectChangeKind
 } from '@/utils/extension-projects'
+import {
+  capabilityChannels,
+  createCapabilityConfigSchema,
+  createCrudDefaultTable,
+  createCrudEntityGoalBlock,
+  createGuidedProjectName,
+  createInitialExtensionSpec,
+  createManifestPreview,
+  createZipPathsPreview,
+  deriveExtensionNamespace,
+  extensionNameToSnakeCase,
+  getHttpErrorMessage,
+  routeRequiresAuth,
+  setRouteRequiresAuth,
+  type BuildReport,
+  type BuilderCapability,
+  type CapabilityPresentationState,
+  type ClarifyQuestion,
+  type ConsumesConfig,
+  type ConsumerEmbedder,
+  type CrudEntityModel,
+  type CrudField,
+  type ExtensionIntentPlan,
+  type ExtensionSpec,
+  type ProviderEmbedder,
+  type ProviderEmbedderConfig,
+  type ProvidesConfig
+} from '@/utils/extension-builder'
 
 const { t } = useI18n()
 const settingsStore = useSettingsStore()
-
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null
-
-const getHttpErrorMessage = (e: unknown): string => {
-  // Best-effort extraction of backend `detail`.
-  if (isRecord(e)) {
-    const resp = e.response
-    if (isRecord(resp)) {
-      const data = resp.data
-      if (isRecord(data) && 'detail' in data) {
-        const detail = data.detail
-        if (typeof detail === 'string') return detail
-        try {
-          // Pydantic validation errors are typically arrays of objects.
-          return JSON.stringify(detail, null, 2)
-        } catch {
-          return String(detail)
-        }
-      }
-    }
-    if (typeof e.message === 'string') return e.message
-  }
-  return String(e)
-}
 
 const projectStatusLabel = (status: string): string => ({
   draft: t('extensions.aiBuilder.projects.statusDraft', 'Draft'),
@@ -970,129 +973,6 @@ const buildStatusLabel = (status: string): string => ({
   installed: t('extensions.aiBuilder.projects.buildInstalledStatus', 'Installed'),
   failed: t('extensions.aiBuilder.projects.statusFailed', 'Needs attention')
 }[status] || status)
-
-type ExtensionSpec = {
-  name: string
-  version: string
-  type: 'extension' | 'widget'
-  description: string
-  author: string
-  api_prefix: string
-  backend_entry: string
-  frontend_entry: string
-  frontend_components: string[]
-  frontend_routes: FrontendRoute[]
-  locales: { supported: string[]; default: string; directory: string }
-  permissions: string[]
-  public_endpoints: string[]
-  dependencies: Record<string, unknown>
-  config_schema: Record<string, unknown>
-  capability_plan?: CapabilityPlan | null
-  provides?: ProvidesConfig
-  consumes?: ConsumesConfig
-  goal?: string
-}
-
-type FrontendRoute = {
-  path: string
-  component: string
-  name?: string
-  meta?: Record<string, unknown>
-  props?: boolean
-}
-
-type ProviderEmbedderConfig = {
-  label: string
-  component: string
-  format_api?: string
-  ui_translations_api?: string
-  description?: string
-}
-
-type ProvidesConfig = {
-  content_embedders?: Record<string, ProviderEmbedderConfig>
-}
-
-type ConsumesConfig = {
-  content_embedders?: Record<string, string[]>
-}
-
-type BuildReport = {
-  extension_id: string
-  files: string[]
-  warnings: Array<{ code: string; message: string }>
-}
-
-type ClarifyQuestion = {
-  id: string
-  question: string
-  suggestions: string[]
-}
-
-type CapabilityPlan = {
-  schema_version: 1
-  target: 'dashboard_widget' | 'application_page'
-  settings: Array<{ key: string; label: string; kind: string; required?: boolean; default?: string | number | boolean | null; options?: Array<string | number | boolean> }>
-  bindings: Array<{ alias: string; capability_id: string; operation: string; action?: string | null; device_setting: string; channel_setting?: string | null; permissions: string[]; stale_after_seconds: number }>
-  presentations: Array<{ kind: 'indicator' | 'metric' | 'text' | 'list' | 'chart' | 'form'; source_binding?: string | null; states: CapabilityPresentationState[] }>
-}
-
-type CapabilityPresentationState = {
-  state: 'value' | 'stale' | 'offline' | 'error'
-  value?: string | number | boolean | null
-  label: string
-  color: string
-}
-
-type ExtensionIntentPlan = {
-  project_type: 'extension' | 'widget'
-  template_key: 'simple' | 'crud'
-  package_kind: 'compiled' | 'legacy'
-  needs_database: boolean
-  config_schema: Record<string, unknown>
-  capability_plan?: CapabilityPlan | null
-  summary: string
-  assumptions: string[]
-  questions: ClarifyQuestion[]
-}
-
-type BuilderCapability = {
-  device_id: string
-  device_name: string
-  device_role: string
-  capability_id: string
-  module_id: string
-  module_version: string
-  metadata: Record<string, string | number | boolean>
-}
-
-type CrudFieldType = 'text' | 'int' | 'bool' | 'json' | 'timestamp'
-type CrudField = {
-  name: string
-  type: CrudFieldType
-  required: boolean
-  translatable: boolean
-}
-
-type CrudEntityModel = {
-  table: string
-  entityName: string
-  fields: CrudField[]
-}
-
-type ProviderEmbedder = {
-  typeKey: string
-  label: string
-  component: string
-  format_api?: string
-  ui_translations_api?: string
-  description?: string
-}
-
-type ConsumerEmbedder = {
-  typeKey: string
-  providersCsv: string
-}
 
 const cardStyle = computed(() => ({
   backgroundColor: settingsStore.styleSettings.cardBg,
@@ -1139,9 +1019,6 @@ const requestedCapabilityIds = computed(() => new Set(
 const matchingCapabilities = computed(() => builderCapabilities.value.filter(item => (
   requestedCapabilityIds.value.has(item.capability_id)
 )))
-const capabilityChannels = (item: BuilderCapability): string[] => String(
-  item.metadata.automation_channels || ''
-).split(',').map(value => value.trim()).filter(Boolean)
 const capabilityPlanReady = computed(() => {
   const plan = activeCapabilityPlan.value
   if (!plan) return true
@@ -1174,34 +1051,6 @@ const capabilityStateName = (state: CapabilityPresentationState): string => {
     offline: t('extensions.aiBuilder.capabilities.offlineState', 'Offline state'),
     error: t('extensions.aiBuilder.capabilities.errorState', 'Error state')
   }[state.state]
-}
-
-const capabilityConfigSchema = (plan: CapabilityPlan): Record<string, unknown> => {
-  const devices = Array.from(new Map(matchingCapabilities.value.map(item => [item.device_id, item])).values())
-  const channels = Array.from(new Set(matchingCapabilities.value.flatMap(capabilityChannels)))
-  const properties: Record<string, Record<string, unknown>> = {}
-  for (const setting of plan.settings) {
-    const item: Record<string, unknown> = {
-      title: setting.label,
-      type: setting.kind === 'boolean' ? 'boolean' : setting.kind === 'number' ? 'number' : 'string'
-    }
-    if (setting.kind === 'color') item.format = 'color'
-    if (setting.kind === 'device') {
-      item.format = 'device'
-      item.enum = devices.map(device => device.device_id)
-      item.enumNames = devices.map(device => device.device_name)
-      if (devices.length) item.default = devices[0].device_id
-    } else if (setting.kind === 'capability_channel') {
-      item.format = 'capability-channel'
-      item.enum = channels
-      if (channels.length) item.default = channels[0]
-    } else if (setting.options?.length) {
-      item.enum = setting.options
-    }
-    if (setting.default !== undefined && setting.default !== null) item.default = setting.default
-    properties[setting.key] = item
-  }
-  return { type: 'object', properties }
 }
 
 const availablePermissions = [
@@ -1298,65 +1147,11 @@ const isStepDone = (idx: number): boolean => {
 
 const extensionId = computed(() => `${spec.value.name}_${spec.value.version}`)
 
-const manifestPreview = computed<Record<string, unknown>>(() => {
-  const localesDirRaw = spec.value.locales?.directory || 'locales/'
-  const localesDir = localesDirRaw.endsWith('/') ? localesDirRaw : `${localesDirRaw}/`
-
-  const base: Record<string, unknown> = {
-    name: spec.value.name,
-    version: spec.value.version,
-    type: spec.value.type,
-    description: spec.value.description,
-    author: spec.value.author,
-    backend_entry: spec.value.backend_entry,
-    frontend_entry: spec.value.frontend_entry,
-    frontend_components: spec.value.frontend_components,
-    frontend_routes: spec.value.frontend_routes,
-    locales: {
-      supported: spec.value.locales?.supported || ['en', 'bg'],
-      default: spec.value.locales?.default || 'en',
-      directory: localesDir
-    },
-    permissions: spec.value.permissions,
-    public_endpoints: spec.value.public_endpoints,
-    dependencies: spec.value.dependencies
-  }
-
-  if (spec.value.provides) base.provides = spec.value.provides
-  if (spec.value.consumes) base.consumes = spec.value.consumes
-
-  return base
-})
+const manifestPreview = computed<Record<string, unknown>>(() => createManifestPreview(spec.value))
 
 const manifestPreviewText = computed(() => JSON.stringify(manifestPreview.value, null, 2))
 
-const zipPathsPreview = computed(() => {
-  const localesDirRaw = spec.value.locales?.directory || 'locales/'
-  const localesDir = localesDirRaw.endsWith('/') ? localesDirRaw : `${localesDirRaw}/`
-  const langs = spec.value.locales?.supported || ['en', 'bg']
-  const localeFiles = langs.map(l => `${localesDir}${l}.json`)
-
-  // Provider embedder components (if any)
-  const providedComponents: string[] = []
-  const ce = spec.value.provides?.content_embedders
-  if (ce) {
-    for (const cfg of Object.values(ce)) {
-      const comp = cfg.component
-      if (typeof comp === 'string' && comp.trim()) {
-        const file = comp.endsWith('.vue') ? comp : `${comp}.vue`
-        providedComponents.push(`frontend/${file}`)
-      }
-    }
-  }
-
-  return [
-    'manifest.json',
-    `backend/${spec.value.backend_entry}`,
-    `frontend/${spec.value.frontend_entry}`,
-    ...providedComponents,
-    ...localeFiles
-  ]
-})
+const zipPathsPreview = computed(() => createZipPathsPreview(spec.value))
 
 const touched = reactive({
   name: false,
@@ -1383,48 +1178,7 @@ const selectedFileContent = computed({
   }
 })
 
-const _deriveNamespace = (name: string): string => {
-  const base = (name || '').replace(/Extension$/i, '').trim() || name
-  return base.toLowerCase().replace(/[^a-z0-9]/g, '')
-}
-
-const _toSnakeCase = (name: string): string => {
-  const s = (name || '')
-    .replace(/Extension$/i, '')
-    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
-    .replace(/\W+/g, '_')
-    .toLowerCase()
-    .replace(/^_+|_+$/g, '')
-  return s || 'my_extension'
-}
-
-const initialSpec = (): ExtensionSpec => ({
-  name: 'MyExtension',
-  version: '0.0.0',
-  type: 'extension',
-  description: 'AI generated extension',
-  author: 'AI',
-  api_prefix: '/api/my',
-  backend_entry: 'my_extension.py',
-  frontend_entry: 'MyExtension.vue',
-  frontend_components: [],
-  frontend_routes: [
-    {
-      path: '/my',
-      component: 'MyExtension.vue',
-      name: 'MyExtension',
-      meta: { requiresAuth: true }
-    }
-  ],
-  locales: { supported: ['en', 'bg'], default: 'en', directory: 'locales/' },
-  permissions: [],
-  public_endpoints: [],
-  dependencies: {},
-  config_schema: {},
-  goal: ''
-})
-
-const spec = ref<ExtensionSpec>(initialSpec())
+const spec = ref<ExtensionSpec>(createInitialExtensionSpec())
 
 const crudModel = reactive<{ table: string; entityName: string; fields: CrudField[] }>({
   table: '',
@@ -1461,7 +1215,7 @@ const hydrateProject = (project: ExtensionProject) => {
   const storedSpec = (stored.extension_spec || stored) as ExtensionSpec
   const builderState = (stored.builder_state || {}) as Record<string, any>
   Object.keys(touched).forEach(key => { touched[key as keyof typeof touched] = true })
-  spec.value = { ...initialSpec(), ...JSON.parse(JSON.stringify(storedSpec)), version: project.current_version }
+  spec.value = { ...createInitialExtensionSpec(), ...JSON.parse(JSON.stringify(storedSpec)), version: project.current_version }
   templateKey.value = builderState.template_key || 'simple'
   if (builderState.crud_model) {
     crudModel.table = builderState.crud_model.table || ''
@@ -1509,7 +1263,7 @@ const openProject = async (projectId: string) => {
 const newProject = () => {
   activeProject.value = null
   projectBuilds.value = []
-  spec.value = initialSpec()
+  spec.value = createInitialExtensionSpec()
   filesText.value = {}
   selectedFile.value = ''
   generatedZipBase64.value = ''
@@ -1537,13 +1291,6 @@ const newProject = () => {
   builderCapabilities.value = []
 }
 
-const guidedProjectName = (): string => {
-  const source = guidedName.value.trim() || guidedDescription.value.trim().split(/\s+/).slice(0, 3).join(' ')
-  const words = source.match(/[A-Za-z0-9]+/g) || []
-  const result = words.map(word => `${word.charAt(0).toUpperCase()}${word.slice(1)}`).join('')
-  return result || 'GeneratedExtension'
-}
-
 const prepareGuidedPlan = async () => {
   if (guidedDescription.value.trim().length < 10) return
   busy.value = true
@@ -1557,13 +1304,13 @@ const prepareGuidedPlan = async () => {
     })
     intentPlan.value = response.data
     await loadBuilderCapabilities()
-    const name = guidedProjectName()
+    const name = createGuidedProjectName(guidedName.value, guidedDescription.value)
     spec.value.name = name
     spec.value.goal = guidedDescription.value.trim()
     spec.value.description = guidedDescription.value.trim().slice(0, 240)
     spec.value.type = intentPlan.value!.project_type
     spec.value.config_schema = intentPlan.value!.capability_plan
-      ? capabilityConfigSchema(intentPlan.value!.capability_plan)
+      ? createCapabilityConfigSchema(intentPlan.value!.capability_plan, matchingCapabilities.value)
       : intentPlan.value!.config_schema || {}
     spec.value.capability_plan = intentPlan.value!.capability_plan || null
     templateKey.value = intentPlan.value!.template_key
@@ -1770,7 +1517,7 @@ onMounted(async () => {
 const autoFillEmbedderLabel = (e: ProviderEmbedder) => {
   if (e.label) return
   if (!e.component) return
-  const ns = _deriveNamespace(spec.value.name) || 'my'
+  const ns = deriveExtensionNamespace(spec.value.name) || 'my'
   const comp = (e.component || '').replace(/\.vue$/i, '').trim()
   if (!comp) return
   e.label = `${ns}.embedders.${comp}.title`
@@ -1783,7 +1530,7 @@ const syncProviderEmbeddersToSpec = () => {
     const component = (e.component || '').trim()
     if (!key || !component) continue
     map[key] = {
-      label: (e.label || '').trim() || `${_deriveNamespace(spec.value.name) || 'my'}.embedders.${component.replace(/\.vue$/i, '')}.title`,
+      label: (e.label || '').trim() || `${deriveExtensionNamespace(spec.value.name) || 'my'}.embedders.${component.replace(/\.vue$/i, '')}.title`,
       component,
       ...(e.format_api ? { format_api: e.format_api } : {}),
       ...(e.ui_translations_api ? { ui_translations_api: e.ui_translations_api } : {}),
@@ -1839,17 +1586,8 @@ const syncConsumerEmbeddersToSpec = () => {
   }
 }
 
-const routeRequiresAuth = (r: FrontendRoute): boolean => {
-  return Boolean(r?.meta?.requiresAuth)
-}
-
-const setRouteRequiresAuth = (r: FrontendRoute, value: boolean) => {
-  const current = r.meta && typeof r.meta === 'object' ? r.meta : {}
-  r.meta = { ...current, requiresAuth: value }
-}
-
 const addRoute = () => {
-  const ns = _deriveNamespace(spec.value.name) || 'my'
+  const ns = deriveExtensionNamespace(spec.value.name) || 'my'
   if (!Array.isArray(spec.value.frontend_routes)) spec.value.frontend_routes = []
   spec.value.frontend_routes.push({
     path: `/${ns}`,
@@ -1881,7 +1619,7 @@ const removeCrudField = (idx: number) => {
 }
 
 const addCrudModel = () => {
-  const ns = _deriveNamespace(spec.value.name)
+  const ns = deriveExtensionNamespace(spec.value.name)
   extraCrudModels.push({
     table: `ext_${ns || 'my'}_table`,
     entityName: 'records',
@@ -1905,53 +1643,12 @@ const removeCrudFieldForModel = (modelIdx: number, fieldIdx: number) => {
   m.fields.splice(fieldIdx, 1)
 }
 
-const _crudDefaultTable = () => {
-  const ns = _deriveNamespace(spec.value.name)
-  return `ext_${ns || 'my'}_items`
-}
-
-const _crudEntityToGoalBlock = (m: CrudEntityModel, title: string) => {
-  const ns = _deriveNamespace(spec.value.name)
-  const entity = (m.entityName || 'items').trim()
-  const table = (m.table || _crudDefaultTable()).trim()
-
-  const fields = (m.fields || [])
-    .filter(f => (f.name || '').trim())
-    .map(f => {
-      const flags = [f.required ? 'required' : 'optional', f.translatable ? 'translatable' : 'not translatable']
-      return `- ${f.name.trim()}: ${f.type} (${flags.join(', ')})`
-    })
-    .join('\n')
-
-  const translatableFields = (m.fields || [])
-    .filter(f => (f.name || '').trim() && f.translatable)
-    .map(f => f.name.trim())
-
-  const translationsNote = translatableFields.length
-    ? `Translatable fields: ${translatableFields.join(', ')}. Use an extension translations table (e.g. ext_${ns || 'my'}_translations with (record_id, language_code, translation_data JSONB) UNIQUE) and merge translations on reads.`
-    : 'No translatable fields.'
-
-  return (
-    `${title}\n` +
-    `Entity: ${entity}\n` +
-    `Main table: ${table} (PostgreSQL, lowercase)\n` +
-    `Fields:\n${fields || '- (none)'}\n\n` +
-    `API:\n` +
-    `- GET ${spec.value.api_prefix}/${entity} (list)\n` +
-    `- POST ${spec.value.api_prefix}/${entity} (create)\n` +
-    `- PUT ${spec.value.api_prefix}/${entity}/{id} (update)\n` +
-    `- DELETE ${spec.value.api_prefix}/${entity}/{id} (delete)\n` +
-    `Auth: protect endpoints with require_user.\n` +
-    `${translationsNote}`
-  )
-}
-
 const _crudModelToGoalBlock = () => {
   const blocks: string[] = []
-  blocks.push(_crudEntityToGoalBlock(crudModel as unknown as CrudEntityModel, 'CRUD Data Model'))
+  blocks.push(createCrudEntityGoalBlock(spec.value, crudModel as unknown as CrudEntityModel, 'CRUD Data Model'))
 
   for (const extra of extraCrudModels) {
-    blocks.push(_crudEntityToGoalBlock(extra, 'CRUD Data Model'))
+    blocks.push(createCrudEntityGoalBlock(spec.value, extra, 'CRUD Data Model'))
   }
 
   return blocks.join('\n\n')
@@ -1970,9 +1667,9 @@ const applyCrudModelToGoal = (replace: boolean) => {
 watch(
   () => spec.value.name,
   newName => {
-    const ns = _deriveNamespace(newName)
+    const ns = deriveExtensionNamespace(newName)
     if (!touched.api_prefix) spec.value.api_prefix = `/api/${ns || 'my'}`
-    if (!touched.backend_entry) spec.value.backend_entry = `${_toSnakeCase(newName)}.py`
+    if (!touched.backend_entry) spec.value.backend_entry = `${extensionNameToSnakeCase(newName)}.py`
     if (!touched.frontend_entry) spec.value.frontend_entry = `${newName || 'MyExtension'}.vue`
     if (!touched.frontend_routes) {
       spec.value.frontend_routes = [
@@ -1988,7 +1685,7 @@ watch(
 )
 
 const applyTemplate = (key: typeof templateKey.value) => {
-  const ns = _deriveNamespace(spec.value.name)
+  const ns = deriveExtensionNamespace(spec.value.name)
 
   if (key === 'simple') {
     spec.value.permissions = []
@@ -2188,7 +1885,7 @@ watch(
   ([key]) => {
     if (key !== 'crud' && key !== 'crud_multilingual') return
     if (!crudModel.table) {
-      crudModel.table = _crudDefaultTable()
+      crudModel.table = createCrudDefaultTable(spec.value.name)
     }
   }
 )

@@ -59,7 +59,7 @@ class NetworkManagerMutationBoundary:
         nmcli: str = "/usr/bin/nmcli",
         systemd_run: str = "/usr/bin/systemd-run",
         systemctl: str = "/usr/bin/systemctl",
-        python: str = "/opt/3mm/venv/bin/python",
+        python: str = "/opt/3mm/current/.venv/bin/python",
         runner: MutationCommandRunner | None = None,
         timeout_seconds: float = 15.0,
     ) -> None:

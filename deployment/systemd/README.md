@@ -3,9 +3,11 @@
 Status: validated service templates installed by the immutable release installer.
 
 Application and setup-portal services run as the dedicated unprivileged `3mm`
-user from an immutable
-release link at `/opt/3mm/current`. Persistent state is under `/var/lib/3mm`,
-optional non-secret overrides are read from `/etc/3mm/3mm.env`. Core binds to
+user from an immutable release link at `/opt/3mm/current`. Every release owns
+its Python environment at `/opt/3mm/releases/<release-id>/.venv`; switching the
+current link therefore switches code and dependencies together. Persistent
+state is under `/var/lib/3mm`, optional overrides are read from
+`/etc/3mm/3mm.env`. Core binds to
 all interfaces so a Hub can be reached from its trusted local network. Agent
 remains loopback-only. The setup portal binds only while setup mode owns the
 Wi-Fi interface. Internet exposure still requires
@@ -31,10 +33,27 @@ The templates intentionally use `Restart=on-failure`, not unconditional
 restart, and do not couple Core and Agent process lifetimes. A failed Core must
 not stop already deployed local Agent workloads.
 
-`deployment/install-systemd.sh` installs a prepared release archive. It must be
-run explicitly as root and requires the archive path, an immutable release ID
-and the exact frontend origin allowed by Core CORS. It does not install system
-packages, change networking or configure a firewall.
+`deployment/install-systemd.sh` is the single installer for prepared release
+archives. It must be run explicitly as root and requires the archive path, an
+immutable release ID and the exact frontend origin allowed by Core CORS. The
+optional fifth argument verifies the archive SHA-256. It builds dependencies
+before stopping services, backs up SQLite and the service environment, switches
+the current link atomically, verifies active runtime endpoints and restores the
+previous release automatically on failure. It does not install system packages,
+change networking or configure a firewall.
+
+`deploy.ps1` builds and verifies the frontend on the development machine,
+creates the archive and delegates installation to that same script. Normal
+deployments require a clean, pushed commit. The explicit `-IncludeWorkingTree`
+switch is reserved for test deployments of reviewed uncommitted changes.
+
+After deployment, the dependency-free release smoke test checks the Web shell,
+the required Core API surface, Agent readiness, hello and inventory, and verifies
+that all Agent responses expose the same persistent device identity:
+
+```bash
+python3 /opt/3mm/current/deployment/release_smoke.py
+```
 
 ## First administrator
 
@@ -46,7 +65,7 @@ same unprivileged account that owns the Core database:
 sudo -u 3mm env \
   PYTHONPATH=/opt/3mm/current \
   DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db \
-  /opt/3mm/venv/bin/python -m backend.scripts.bootstrap_admin
+  /opt/3mm/current/.venv/bin/python -m backend.scripts.bootstrap_admin
 ```
 
 If the same username and email were already registered through the web UI,

@@ -133,3 +133,9 @@ The first hardened Core start exposed an old writable-path assumption for the
 uploads directory. Core now has a typed `UPLOADS_DIR` setting and systemd
 places uploads under `/var/lib/3mm/core/uploads`; `ProtectSystem=strict` remains
 enabled rather than being weakened.
+
+Deployment contract update (2026-08-24): the shared virtual environment above
+documents the original hardware validation. Current releases instead own
+`/opt/3mm/releases/<release-id>/.venv`, while `/opt/3mm/current` is switched
+atomically. This makes dependency rollback follow the same release boundary as
+the application code.

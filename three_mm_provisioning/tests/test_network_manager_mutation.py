@@ -61,6 +61,7 @@ def test_runtime_activation_cancels_external_setup_safety_first():
     assert runner.calls[0][0][-2:] == ("stop", "3mm-setup-safety.timer")
     assert runner.calls[1][0][0] == "/usr/bin/systemd-run"
     assert "PYTHONPATH=/opt/3mm/current" in runner.calls[1][0]
+    assert "/opt/3mm/current/.venv/bin/python" in runner.calls[1][0]
 
 
 def test_temporary_client_secret_uses_stdin_and_is_not_saved():

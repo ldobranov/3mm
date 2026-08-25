@@ -19,6 +19,10 @@ from backend.utils.ai_extension_builder.openrouter_client import OpenRouterClien
 from backend.utils.ai_extension_builder.groq_client import GroqClient
 from backend.utils.ai_extension_builder.free_provider_client import FreeProviderFallbackClient
 from backend.utils.ai_extension_builder.validators import validate_extension_package
+from backend.utils.ai_extension_builder.widget_spec import (
+    compiled_module_id,
+    normalize_widget_spec,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -548,70 +552,6 @@ def _default_locales(spec: ExtensionSpec) -> Tuple[Dict, Dict]:
     return en, bg
 
 
-def _compiled_module_id(name: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "widget"
-    return f"org.3mm.generated.{slug}"
-
-
-def _normalize_widget_spec(spec: ExtensionSpec) -> ExtensionSpec:
-    """Upgrade common legacy setting shapes without knowing the widget identity."""
-    normalized = spec.model_copy(deep=True)
-    schema = normalized.config_schema or {}
-    original = schema.get("properties", {}) if isinstance(schema, dict) else {}
-    properties = dict(original) if isinstance(original, dict) else {}
-    intent = f"{normalized.description} {normalized.goal or ''}".casefold()
-
-    if normalized.capability_plan:
-        kind_schema = {
-            "text": {"type": "string"},
-            "number": {"type": "number"},
-            "boolean": {"type": "boolean"},
-            "select": {"type": "string"},
-            "timezone": {"type": "string", "format": "timezone"},
-            "color": {"type": "string", "format": "color"},
-            "device": {"type": "string", "format": "device"},
-            "capability_channel": {"type": "string", "format": "capability-channel"},
-        }
-        for setting in normalized.capability_plan.settings:
-            item = {**kind_schema[setting.kind], "title": setting.label}
-            if setting.default is not None:
-                item["default"] = setting.default
-            if setting.options:
-                item["enum"] = list(setting.options)
-            properties[setting.key] = item
-
-    timezone_keys = [
-        key for key, item in properties.items()
-        if "timezone" in key.casefold()
-        or (isinstance(item, dict) and "timezone" in str(item.get("title", "")).casefold())
-    ]
-    if timezone_keys or any(term in intent for term in ("timezone", "time zone", "часова зона")):
-        for key in timezone_keys:
-            properties.pop(key, None)
-        properties["timezone"] = {
-            "type": "string", "title": "Timezone", "format": "timezone", "default": "UTC",
-        }
-
-    mode_keys = [key for key in properties if key.casefold() in {"mode", "displaymode", "display_mode"}]
-    if mode_keys or ("digital" in intent and "analog" in intent):
-        for key in mode_keys:
-            properties.pop(key, None)
-        properties["displayMode"] = {
-            "type": "string", "title": "Display", "enum": ["digital", "analog"], "default": "digital",
-        }
-
-    hour_keys = [key for key in properties if key.casefold() in {"ampm", "hourformat", "hour_format"}]
-    if hour_keys or any(term in intent for term in ("12/24", "am/pm", "ap or pm", "12 hour", "24 hour")):
-        for key in hour_keys:
-            properties.pop(key, None)
-        properties["hourFormat"] = {
-            "type": "string", "title": "Hour format", "enum": ["24", "12"], "default": "24",
-        }
-
-    normalized.config_schema = {"type": "object", "properties": properties} if properties else {}
-    return normalized
-
-
 def _compiled_widget_component(spec: ExtensionSpec) -> str:
     if spec.capability_plan and spec.capability_plan.presentations:
         return _compiled_capability_indicator_component(spec)
@@ -907,7 +847,7 @@ def _build_compiled_widget_zip(
     spec: ExtensionSpec, instructions: Optional[str], use_ai: bool, model: Optional[str],
     ai_provider: Optional[str], groq_api_key: Optional[str], openrouter_api_key: Optional[str],
 ) -> Tuple[BuildReport, str, Dict[str, str]]:
-    module_id = _compiled_module_id(spec.name)
+    module_id = compiled_module_id(spec.name)
     widget_id = "widget"
     editor_id = "widget_editor"
     contract = {
@@ -1005,7 +945,7 @@ def build_extension_zip(
     """
 
     if spec.type == "widget":
-        spec = _normalize_widget_spec(spec)
+        spec = normalize_widget_spec(spec)
         return _build_compiled_widget_zip(
             spec, instructions, use_ai, model, ai_provider, groq_api_key, openrouter_api_key
         )
@@ -1221,7 +1161,7 @@ def package_extension_zip(
 
     is_compiled = "compiled-ui.json" in sanitized
     if is_compiled:
-        normalized = _normalize_widget_spec(spec)
+        normalized = normalize_widget_spec(spec)
         try:
             manifest = json.loads(sanitized["manifest.json"])
             contract = json.loads(sanitized["compiled-ui.json"])

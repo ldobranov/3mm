@@ -192,7 +192,7 @@ Acceptance criteria:
 
 Goal: make the AI Extension Builder publish useful extensions that become available immediately, without rebuilding the Core frontend or executing arbitrary generated code.
 
-Status: completed on 2026-08-17; compiled source execution remains explicitly separated into Milestone 8.
+Status: completed on 2026-08-17; compiled source execution remains explicitly separated into Milestone 8. See [MILESTONE_7_REPORT.md](MILESTONE_7_REPORT.md).
 
 Deliverables:
 
@@ -221,7 +221,7 @@ Acceptance criteria:
 
 Goal: install reviewed Vue extension source as immutable browser-ready artifacts without rebuilding the complete Core frontend or running a Vite development server.
 
-Status: in progress; source contract, artifact compiler and generic browser loader completed on 2026-08-18.
+Status: completed for reviewed, trusted Vue packages on 2026-08-21. See [MILESTONE_8_REPORT.md](MILESTONE_8_REPORT.md).
 
 Deliverables:
 
@@ -259,7 +259,7 @@ Stages:
 
 Goal: make AI-generated widgets and extensions reliable by combining structured AI planning with tested platform capabilities and deterministic code generation.
 
-Status: completed and accepted on physical `rasp-3mm` hardware on 2026-08-23.
+Status: completed and accepted on physical `rasp-3mm` hardware on 2026-08-23. See [MILESTONE_9_REPORT.md](MILESTONE_9_REPORT.md).
 
 Deliverables:
 

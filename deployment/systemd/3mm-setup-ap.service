@@ -11,8 +11,8 @@ User=root
 Group=root
 WorkingDirectory=/opt/3mm/current
 Environment=PYTHONPATH=/opt/3mm/current
-ExecStart=/opt/3mm/venv/bin/python -m three_mm_provisioning.setup_access_point start --data-dir /var/lib/3mm/provisioning --interface wlan0
-ExecStop=/opt/3mm/venv/bin/python -m three_mm_provisioning.setup_access_point stop
+ExecStart=/opt/3mm/current/.venv/bin/python -m three_mm_provisioning.setup_access_point start --data-dir /var/lib/3mm/provisioning --interface wlan0
+ExecStop=/opt/3mm/current/.venv/bin/python -m three_mm_provisioning.setup_access_point stop
 RemainAfterExit=true
 NoNewPrivileges=true
 PrivateTmp=true
