@@ -15,6 +15,7 @@ release_id=$2
 frontend_origin=$3
 identity_source=${4:-}
 expected_archive_sha256=${5:-}
+test_fail_after_health=${THREE_MM_INSTALLER_TEST_FAIL_AFTER_HEALTH:-0}
 
 if [[ ! $release_id =~ ^[a-zA-Z0-9._-]+$ ]]; then
   echo "Release ID contains unsupported characters." >&2
@@ -26,6 +27,14 @@ if [[ ! $frontend_origin =~ ^https?://[a-zA-Z0-9.-]+(:[0-9]{1,5})?$ ]]; then
 fi
 if [[ -n $expected_archive_sha256 && ! $expected_archive_sha256 =~ ^[a-fA-F0-9]{64}$ ]]; then
   echo "Archive SHA-256 is invalid." >&2
+  exit 1
+fi
+if [[ $test_fail_after_health != 0 && $test_fail_after_health != 1 ]]; then
+  echo "THREE_MM_INSTALLER_TEST_FAIL_AFTER_HEALTH must be 0 or 1." >&2
+  exit 1
+fi
+if [[ $test_fail_after_health == 1 && $release_id != rollback-test-* ]]; then
+  echo "Post-health failure injection requires a rollback-test-* release ID." >&2
   exit 1
 fi
 if [[ ! -f $release_archive ]]; then
@@ -44,6 +53,7 @@ install_root=/opt/3mm
 releases_root=$install_root/releases
 release_dir=$releases_root/$release_id
 current_link=$install_root/current
+previous_link=$install_root/previous
 state_root=/var/lib/3mm
 core_state=$state_root/core
 database=$core_state/3mm.db
@@ -59,6 +69,9 @@ all_services=(
   3mm-network-helper.service
 )
 previous_release=""
+saved_rollback_release=""
+saved_rollback_link=0
+rollback_link_updated=0
 release_created=0
 mutation_started=0
 database_backup_created=0
@@ -73,6 +86,14 @@ fail() {
   echo "$1" >&2
   return 1
 }
+
+if ! command -v flock >/dev/null 2>&1; then
+  fail "The release installer requires flock for deployment locking."
+fi
+exec 9>/run/lock/3mm-release-mutation.lock
+if ! flock -n 9; then
+  fail "Another deployment or release cleanup is already running."
+fi
 
 assert_release_path() {
   local target=$1
@@ -187,6 +208,13 @@ rollback() {
     restore_environment
     if [[ -n $previous_release && -d $previous_release ]]; then
       ln -sfnT "$previous_release" "$current_link"
+      if [[ $rollback_link_updated -eq 1 ]]; then
+        if [[ $saved_rollback_link -eq 1 ]]; then
+          ln -sfnT "$saved_rollback_release" "$previous_link"
+        else
+          rm -f -- "$previous_link"
+        fi
+      fi
       install_units "$previous_release" || true
       activate_runtime "$previous_release" || {
         systemctl --no-pager --full status "${all_services[@]}" >&2 || true
@@ -210,6 +238,21 @@ if [[ -L $current_link ]]; then
 fi
 if [[ -n $previous_release && ! -d $previous_release ]]; then
   echo "Current release link does not resolve to a directory." >&2
+  exit 1
+fi
+if [[ -n $previous_release ]]; then
+  assert_release_path "$previous_release"
+fi
+if [[ -L $previous_link ]]; then
+  saved_rollback_release=$(readlink -f "$previous_link")
+  if [[ ! -d $saved_rollback_release ]]; then
+    echo "Rollback release link does not resolve to a directory." >&2
+    exit 1
+  fi
+  assert_release_path "$saved_rollback_release"
+  saved_rollback_link=1
+elif [[ -e $previous_link ]]; then
+  echo "Rollback release path exists but is not a symbolic link." >&2
   exit 1
 fi
 if [[ -e $release_dir ]]; then
@@ -376,6 +419,13 @@ runuser -u 3mm -- env \
 log "Activating release atomically"
 ln -sfnT "$release_dir" "$current_link"
 activate_runtime "$release_dir"
+if [[ $test_fail_after_health == 1 ]]; then
+  fail "Injected post-health deployment failure for rollback acceptance."
+fi
+if [[ -n $previous_release && $previous_release != "$release_dir" ]]; then
+  ln -sfnT "$previous_release" "$previous_link"
+  rollback_link_updated=1
+fi
 
 log "Deployment succeeded"
 rm -f -- "$release_archive"

@@ -6,6 +6,7 @@ param(
     [int]$HealthTimeoutSeconds = 90,
     [switch]$IncludeWorkingTree,
     [switch]$InteractiveSudo,
+    [switch]$RollbackTestAfterHealth,
     [switch]$SkipPush
 )
 
@@ -112,6 +113,9 @@ try {
     if ($FrontendOrigin -notmatch '^https?://[A-Za-z0-9.-]+(?::[0-9]{1,5})?$') {
         throw "Frontend origin must be a plain HTTP(S) origin without a path: $FrontendOrigin"
     }
+    if ($RollbackTestAfterHealth -and -not $IncludeWorkingTree) {
+        throw 'RollbackTestAfterHealth requires IncludeWorkingTree for an explicit test snapshot.'
+    }
 
     Write-Step 'Checking local prerequisites'
     foreach ($command in @('git', 'pnpm', 'tar', 'ssh', 'scp')) {
@@ -147,7 +151,11 @@ try {
         throw "Unexpected Git commit value: $commit"
     }
     $shortCommit = $commit.Substring(0, 12)
-    $releasePrefix = $(if ($isDirty) { "worktree-$shortCommit" } else { $shortCommit })
+    $releasePrefix = $(
+        if ($RollbackTestAfterHealth) { "rollback-test-worktree-$shortCommit" }
+        elseif ($isDirty) { "worktree-$shortCommit" }
+        else { $shortCommit }
+    )
     $releaseId = "$releasePrefix-$(Get-Date -Format 'yyyyMMddHHmmss')"
     Write-Host "Branch:  $branch"
     Write-Host "Commit:  $commit"
@@ -217,6 +225,15 @@ try {
             $SshHost, 'sudo -n true'
         )
     }
+    $rollbackTargetBefore = $null
+    if ($RollbackTestAfterHealth) {
+        $rollbackTargetBefore = (Invoke-Native -Command 'ssh' -Arguments @(
+            '-o', 'BatchMode=yes', $SshHost, 'readlink -f /opt/3mm/current'
+        ) -Capture | Select-Object -Last 1).ToString().Trim()
+        if ($rollbackTargetBefore -notmatch '^/opt/3mm/releases/[A-Za-z0-9._-]+$') {
+            throw "Unexpected active release before rollback test: $rollbackTargetBefore"
+        }
+    }
 
     Write-Step 'Packaging the verified release snapshot'
     $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "3mm-deploy-$releaseId"
@@ -239,6 +256,7 @@ try {
     Copy-Item -Path (Join-Path $repoRoot 'frontend\dist\*') -Destination $stageDist -Recurse -Force
 
     $releaseMetadata = [ordered]@{
+        release_id = $releaseId
         branch = $branch
         commit = $commit
         includes_working_tree = $isDirty
@@ -277,7 +295,15 @@ try {
 
     Write-Step 'Creating and activating the remote release'
     $sudoCommand = $(if ($InteractiveSudo) { 'sudo' } else { 'sudo -n' })
-    $remoteCommand = "$sudoCommand bash $remoteInstaller $remoteArchive $releaseId $FrontendOrigin '' $artifactSha256; result=`$?; rm -f $remoteInstaller; exit `$result"
+    $installerCommand = $(
+        if ($RollbackTestAfterHealth) {
+            "$sudoCommand env THREE_MM_INSTALLER_TEST_FAIL_AFTER_HEALTH=1 bash"
+        }
+        else {
+            "$sudoCommand bash"
+        }
+    )
+    $remoteCommand = "$installerCommand $remoteInstaller $remoteArchive $releaseId $FrontendOrigin '' $artifactSha256; result=`$?; rm -f $remoteInstaller; exit `$result"
     $sshArguments = @('-o', 'ConnectTimeout=10')
     if ($InteractiveSudo) {
         $sshArguments += '-tt'
@@ -286,12 +312,70 @@ try {
         $sshArguments += @('-o', 'BatchMode=yes')
     }
     $sshArguments += @($SshHost, $remoteCommand)
-    Invoke-Native -Command 'ssh' -Arguments $sshArguments
+    if ($RollbackTestAfterHealth) {
+        & ssh @sshArguments
+        $installerExitCode = $LASTEXITCODE
+        if ($installerExitCode -eq 0) {
+            throw 'Rollback acceptance deployment unexpectedly succeeded.'
+        }
+    }
+    else {
+        Invoke-Native -Command 'ssh' -Arguments $sshArguments
+    }
 
-    Write-Step 'Checking the application from the deployment machine'
+    Write-Step 'Checking the active runtime from the deployment machine'
     $originUri = [Uri]$FrontendOrigin
-    Wait-Http -Url "http://$($originUri.Host):8887/ready" -TimeoutSeconds $HealthTimeoutSeconds
-    Wait-Http -Url "$($FrontendOrigin.TrimEnd('/'))/user/login" -TimeoutSeconds $HealthTimeoutSeconds
+    $runtimeModeCommand = 'if systemctl is-active --quiet 3mm-setup.service; then printf setup; elif systemctl is-active --quiet 3mm-core.service && systemctl is-active --quiet 3mm-web.service && systemctl is-active --quiet 3mm-agent.service; then printf application; else printf unknown; fi'
+    $runtimeMode = (Invoke-Native -Command 'ssh' -Arguments @(
+        '-o', 'BatchMode=yes', $SshHost, $runtimeModeCommand
+    ) -Capture | Select-Object -Last 1).ToString().Trim()
+    if ($runtimeMode -eq 'setup') {
+        Wait-Http -Url "http://$($originUri.Host):8895/ready" -TimeoutSeconds $HealthTimeoutSeconds
+        Write-Host 'First-boot setup runtime is healthy.' -ForegroundColor Green
+        Write-Host 'Open Wi-Fi network: 3mm Setup XXXX'
+        Write-Host 'Setup page after joining it: http://10.42.0.1:8895/setup'
+    }
+    elseif ($runtimeMode -eq 'application') {
+        Wait-Http -Url "http://$($originUri.Host):8887/ready" -TimeoutSeconds $HealthTimeoutSeconds
+        Wait-Http -Url "$($FrontendOrigin.TrimEnd('/'))/user/login" -TimeoutSeconds $HealthTimeoutSeconds
+    }
+    else {
+        throw 'The Raspberry Pi has neither a healthy setup runtime nor a complete application runtime.'
+    }
+
+    if ($RollbackTestAfterHealth) {
+        $candidateState = (Invoke-Native -Command 'ssh' -Arguments @(
+            '-o', 'BatchMode=yes', $SshHost,
+            "if test -e /opt/3mm/releases/$releaseId; then echo present; else echo absent; fi"
+        ) -Capture | Select-Object -Last 1).ToString().Trim()
+        if ($candidateState -ne 'absent') {
+            throw "Failed rollback release was not removed: $releaseId"
+        }
+        $rollbackTargetAfter = (Invoke-Native -Command 'ssh' -Arguments @(
+            '-o', 'BatchMode=yes', $SshHost, 'readlink -f /opt/3mm/current'
+        ) -Capture | Select-Object -Last 1).ToString().Trim()
+        if ($rollbackTargetAfter -ne $rollbackTargetBefore) {
+            throw "Rollback restored the wrong release: $rollbackTargetAfter"
+        }
+        $testBackupPath = "/var/lib/3mm/deploy-backups/$releaseId"
+        $cleanupSshArguments = @('-o', 'ConnectTimeout=10')
+        if ($InteractiveSudo) {
+            $cleanupSshArguments += '-tt'
+        }
+        else {
+            $cleanupSshArguments += @('-o', 'BatchMode=yes')
+        }
+        $cleanupSshArguments += @(
+            $SshHost,
+            "$sudoCommand rm -rf -- $testBackupPath"
+        )
+        Invoke-Native -Command 'ssh' -Arguments $cleanupSshArguments
+        Write-Host "`nRollback acceptance test completed successfully." -ForegroundColor Green
+        Write-Host "Rejected release: $releaseId"
+        Write-Host "Restored release: $rollbackTargetAfter"
+        Write-Host 'Restored runtime: healthy'
+        exit 0
+    }
 
     Write-Host "`nDeployment completed successfully." -ForegroundColor Green
     Write-Host "Release: $releaseId"

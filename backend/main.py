@@ -47,6 +47,7 @@ from backend.routes.runtime_extensions import router as runtime_extensions_route
 from backend.routes.permission_routes import router as permission_router
 from backend.routes.role_routes import router as role_router
 from backend.routes.session_routes import router as session_router
+from backend.routes.system_updates import router as system_updates_router
 
 # Import all route routers
 from backend.routes.settings import router as settings_router
@@ -222,6 +223,7 @@ app.include_router(modules_router)
 app.include_router(runtime_extensions_router)
 app.include_router(ai_automations_router)
 app.include_router(extension_projects_router)
+app.include_router(system_updates_router)
 app.include_router(refresh_router, prefix="/api")
 app.include_router(session_router, prefix="/api")
 app.include_router(audit_router, prefix="/api")

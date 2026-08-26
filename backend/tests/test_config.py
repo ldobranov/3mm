@@ -16,6 +16,8 @@ def test_safe_portable_defaults(monkeypatch, tmp_path):
     assert settings.database_url.startswith("sqlite:///")
     assert settings.backend.port == 8887
     assert "password" not in settings.database_url
+    assert settings.updates.repository == "ldobranov/3mm"
+    assert settings.updates.manifest_asset_name == "3mm-update-manifest.json"
 
 
 def test_environment_overrides_file_configuration(monkeypatch, tmp_path):
@@ -38,6 +40,10 @@ def test_environment_overrides_file_configuration(monkeypatch, tmp_path):
     monkeypatch.setenv("BACKEND_PORT", "9001")
     monkeypatch.setenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
     monkeypatch.setenv("DEVICE_OFFLINE_AFTER_SECONDS", "120")
+    monkeypatch.setenv("THREE_MM_UPDATE_REPOSITORY", "example/3mm")
+    monkeypatch.setenv("THREE_MM_UPDATE_MANIFEST_ASSET", "catalog.json")
+    monkeypatch.setenv("THREE_MM_RELEASE_METADATA_FILE", str(tmp_path / "release.json"))
+    monkeypatch.setenv("THREE_MM_UPDATE_TIMEOUT_SECONDS", "12")
     get_settings.cache_clear()
 
     settings = get_settings()
@@ -50,3 +56,7 @@ def test_environment_overrides_file_configuration(monkeypatch, tmp_path):
         "http://localhost:5173",
     ]
     assert settings.backend.device_offline_after_seconds == 120
+    assert settings.updates.repository == "example/3mm"
+    assert settings.updates.manifest_asset_name == "catalog.json"
+    assert settings.updates.release_metadata_file == tmp_path / "release.json"
+    assert settings.updates.timeout_seconds == 12

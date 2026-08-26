@@ -33,9 +33,23 @@ class BackendSettings(BaseModel):
     device_offline_after_seconds: int = Field(default=90, ge=5, le=3600)
 
 
+class UpdateCatalogSettings(BaseModel):
+    repository: str = Field(
+        default="ldobranov/3mm",
+        pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+    )
+    manifest_asset_name: str = Field(
+        default="3mm-update-manifest.json",
+        pattern=r"^[A-Za-z0-9._-]+\.json$",
+    )
+    release_metadata_file: Path = PROJECT_ROOT / ".3mm-release.json"
+    timeout_seconds: int = Field(default=8, ge=1, le=30)
+
+
 class AppSettings(BaseModel):
     frontend: FrontendSettings = Field(default_factory=FrontendSettings)
     backend: BackendSettings = Field(default_factory=BackendSettings)
+    updates: UpdateCatalogSettings = Field(default_factory=UpdateCatalogSettings)
 
     @property
     def database_url(self) -> str:
@@ -88,6 +102,7 @@ def get_settings() -> AppSettings:
 
     frontend = dict(data.get("frontend") or {})
     backend = dict(data.get("backend") or {})
+    updates = dict(data.get("updates") or {})
 
     if database_url := os.getenv("DATABASE_URL"):
         backend["database_url"] = database_url
@@ -105,6 +120,14 @@ def get_settings() -> AppSettings:
         frontend["backend_url"] = frontend_backend_url
     if frontend_url := os.getenv("FRONTEND_URL"):
         frontend["frontend_url"] = frontend_url
+    if update_repository := os.getenv("THREE_MM_UPDATE_REPOSITORY"):
+        updates["repository"] = update_repository
+    if update_manifest := os.getenv("THREE_MM_UPDATE_MANIFEST_ASSET"):
+        updates["manifest_asset_name"] = update_manifest
+    if release_metadata := os.getenv("THREE_MM_RELEASE_METADATA_FILE"):
+        updates["release_metadata_file"] = release_metadata
+    if update_timeout := os.getenv("THREE_MM_UPDATE_TIMEOUT_SECONDS"):
+        updates["timeout_seconds"] = int(update_timeout)
 
     backend["database_url"] = _normalize_database_url(
         backend.get("database_url", BackendSettings().database_url)
@@ -113,4 +136,5 @@ def get_settings() -> AppSettings:
     return AppSettings(
         frontend=FrontendSettings.model_validate(frontend),
         backend=BackendSettings.model_validate(backend),
+        updates=UpdateCatalogSettings.model_validate(updates),
     )

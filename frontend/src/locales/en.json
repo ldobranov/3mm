@@ -8,6 +8,23 @@
     "no_data_found": "No profile data found.", "failed_to_load": "Failed to load profile.",
     "failed_to_update": "Failed to update profile.", "updated_successfully": "Profile updated successfully."
   },
+  "systemUpdates": {
+    "eyebrow": "System", "title": "System updates", "subtitle": "Review the installed release and check the trusted release catalog.",
+    "check": "Check for updates", "checking": "Checking…", "loading": "Loading update status…",
+    "readOnlyTitle": "Safe catalog check", "readOnlyText": "Checking reads release metadata only. Installation, downloads and restarts are disabled in this stage.",
+    "checkedAt": "Checked", "deviceEyebrow": "This device", "currentTitle": "Installed release",
+    "releaseId": "Release", "commit": "Commit", "branch": "Branch", "architecture": "Architecture",
+    "metadataMissing": "Release metadata is unavailable, so the installed version cannot be compared yet.",
+    "catalogEyebrow": "Trusted source", "catalogTitle": "Release catalog", "repository": "Repository",
+    "latestVersion": "Latest version", "channel": "Channel", "published": "Published",
+    "manifestValidated": "The release manifest matches the published assets.",
+    "dependenciesTitle": "System dependencies", "dependenciesText": "Packages declared by this release. Nothing is installed during a check.",
+    "noDependencies": "No additional packages declared", "artifactsTitle": "Release artifacts",
+    "artifactsText": "Architecture-specific files validated against the catalog manifest.", "noArtifacts": "No validated artifacts",
+    "statusNotChecked": "Not checked yet", "statusNoRelease": "No published release", "statusManifestMissing": "Manifest missing",
+    "statusUpdateAvailable": "Update available", "statusUpToDate": "Up to date", "statusCurrentUnknown": "Current version unknown",
+    "statusUnsupported": "Architecture not supported", "statusError": "Check failed", "unknownError": "The update status could not be loaded."
+  },
   "dashboard": {
     "titlePlaceholder": "Dashboard title", "slugPlaceholder": "dashboard-slug",
     "editor": {

@@ -115,3 +115,13 @@ def test_installer_owns_the_atomic_release_and_rollback_boundary() -> None:
     assert 'venv_dir=$install_root/venv' not in installer
     assert "deployment\\install-systemd.sh" in launcher
     assert "remote-deploy.sh" not in launcher
+
+
+def test_deploy_accepts_setup_or_application_runtime() -> None:
+    launcher = (SYSTEMD_DIR.parents[1] / "deploy.ps1").read_text(encoding="utf-8")
+
+    assert "systemctl is-active --quiet 3mm-setup.service" in launcher
+    assert "$runtimeMode -eq 'setup'" in launcher
+    assert "$runtimeMode -eq 'application'" in launcher
+    assert 'http://$($originUri.Host):8895/ready' in launcher
+    assert "http://10.42.0.1:8895/setup" in launcher

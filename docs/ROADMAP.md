@@ -305,8 +305,11 @@ Stages (completed on 2026-08-23):
 Goal: replace mock hardware with real Raspberry adapters while preserving contracts.
 
 Status: in progress on the physical `rasp-3mm` Raspberry Pi 3B+ baseline. The
-native `libgpiod` input path and systemd deployment are accepted; reboot,
-reconnect, storage and repeatable-install acceptance remain.
+native `libgpiod` input path, systemd deployment, reboot and reconnect behavior
+bounded release retention and automatic failed-deployment rollback are
+accepted; deployment-backup retention and the read-only first-boot preflight are
+also accepted, while clean-media installation acceptance remains. See
+[MILESTONE_10_REPORT.md](MILESTONE_10_REPORT.md).
 
 Deliverables:
 
@@ -372,6 +375,13 @@ Acceptance criteria:
 - diagnostics are useful and contain no secrets;
 - storage cannot grow without configured bounds;
 - release and rollback procedures are repeatable.
+
+OTA update stages (see [OTA_UPDATE_PLAN.md](OTA_UPDATE_PLAN.md)):
+
+1. administrator-only, read-only release catalog and dependency preview — completed locally on 2026-08-26;
+2. reproducible, architecture-specific GitHub Release artifacts and strict manifest generation — tooling completed locally; first publication pending;
+3. verified staging, allowlisted dependency installation, explicit approval and automatic rollback;
+4. update channels, maintenance windows and fleet rollout controls.
 
 ## Milestone 13 — Ecosystem expansion
 
@@ -470,10 +480,19 @@ These are the first concrete tasks after approval of this plan:
 - [x] Constrain AI Extension Builder generation to reviewed runtime and compiled capability contracts.
 - [x] Validate the native `libgpiod` input capability and generated GPIO widget on physical `rasp-3mm`.
 - [x] Stabilize incremental AI file responses, one-click build/install and version-aware widget rollback.
-- [ ] Verify Agent/Core/Web recovery and persistent identity across a controlled Raspberry Pi reboot.
-- [ ] Verify Agent buffering and automatic reconciliation across a controlled Core outage.
-- [ ] Record storage bounds, release retention and interrupted-deployment recovery.
-- [ ] Complete repeatable first-boot/pairing documentation and the Milestone 10 report.
+- [x] Verify Agent/Core/Web recovery and persistent identity across a controlled Raspberry Pi reboot.
+- [x] Verify Agent buffering and automatic reconciliation across a controlled Core outage.
+- [x] Record storage bounds and apply protected release retention on `rasp-3mm`.
+- [x] Verify interrupted-deployment recovery and automatic rollback.
+- [x] Bound deployment backup history while preserving matching recovery points.
+- [x] Add and physically run the read-only first-boot host/release preflight.
+- [x] Document the current clean Standalone install, admin bootstrap and local pairing flow.
+- [x] Add an admin-only, read-only GitHub Release catalog with strict manifest validation and dependency preview.
+- [x] Add deterministic multi-architecture release packaging, manifest generation and a draft-first tag workflow.
+- [ ] Publish the first reproducible architecture-specific release and generated update manifest.
+- [ ] Add verified staging and an explicitly approved, allowlisted dependency plan without giving the Web service unrestricted root access.
+- [ ] Reuse immutable activation, health checks and rollback for the first manually applied OTA update.
+- [ ] Repeat the documented Standalone flow on clean media and close the Milestone 10 report.
 - [ ] Validate the open setup-only access point and persistent NetworkManager profile across a Raspberry Pi reboot.
 - [ ] Validate automatic transition from setup services to the selected runtime role on physical `rasp-3mm`.
 

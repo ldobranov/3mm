@@ -226,6 +226,16 @@ export async function createRouterWithDynamicRoutes() {
         menuLabel: { en: 'Automations', bg: 'Автоматизации' },
       },
     },
+    {
+      path: '/system/updates',
+      name: 'SystemUpdates',
+      component: () => import('@/views/SystemUpdates.vue'),
+      meta: {
+        requiresAuth: true,
+        requiresRole: 'admin',
+        menuLabel: { en: 'System updates', bg: 'Системни обновявания' },
+      },
+    },
     { path: '/@:username/:slug', name: 'PublicDisplay', component: () => import('@/views/PublicDisplay.vue') },
     { path: '/:pathMatch(.*)*', name: 'NotFound', component: () => import('../views/NotFound.vue') },
   ];

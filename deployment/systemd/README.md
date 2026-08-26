@@ -42,10 +42,59 @@ the current link atomically, verifies active runtime endpoints and restores the
 previous release automatically on failure. It does not install system packages,
 change networking or configure a firewall.
 
+Every successful replacement also records the verified prior release at
+`/opt/3mm/previous`. Release cleanup is a separate, explicit operation. Its
+default mode is read-only and reports protected releases, deletion candidates
+and reclaimable storage:
+
+```bash
+sudo python3 /opt/3mm/current/deployment/release_retention.py --keep-history 3
+```
+
+The active release, the explicit rollback target and the selected number of
+additional recent releases are always protected. Actual deletion requires the
+additional `--apply` flag and is refused when the rollback link is unavailable
+or unsafe. Deployment and cleanup share an exclusive mutation lock so that the
+active target cannot change during deletion. Persistent data below
+`/var/lib/3mm` is outside the cleanup scope.
+
+Deployment state backups have their own root-only retention tool. It always
+protects the backups corresponding to both `/opt/3mm/current` and
+`/opt/3mm/previous`, plus the configured number of recent recovery points:
+
+```bash
+sudo python3 /opt/3mm/current/deployment/deployment_backup_retention.py \
+  --keep-history 3
+```
+
+This command is also a dry run unless `--apply` is supplied. Apply is blocked
+if either protected release has no matching deployment backup, if a release
+link changes while planning, or if an unexpected symlink is found. Release and
+backup retention share the installer mutation lock.
+
 `deploy.ps1` builds and verifies the frontend on the development machine,
 creates the archive and delegates installation to that same script. Normal
 deployments require a clean, pushed commit. The explicit `-IncludeWorkingTree`
 switch is reserved for test deployments of reviewed uncommitted changes.
+
+The wrapper accepts either runtime selected by the shared planner: the normal
+Core/Web/Agent application runtime or the setup-only runtime expected on a clean
+device. The complete host preflight, open-AP setup, administrator bootstrap and
+co-located Agent pairing procedure is documented in
+[`docs/RASPBERRY_PI_FIRST_BOOT.md`](../../docs/RASPBERRY_PI_FIRST_BOOT.md).
+
+The rollback path has an explicit acceptance mode for a reviewed test snapshot:
+
+```powershell
+.\deploy.ps1 -IncludeWorkingTree -InteractiveSudo -RollbackTestAfterHealth
+```
+
+This mode creates only a `rollback-test-*` candidate, verifies that the new
+runtime becomes healthy, injects a controlled installer error and expects the
+installer to restore the exact release that was active before the test. The
+wrapper then checks external health, confirms that the failed release directory
+was removed and removes its test-only deployment backup. The failure injection
+is rejected for every release ID outside the reserved test prefix.
 
 After deployment, the dependency-free release smoke test checks the Web shell,
 the required Core API surface, Agent readiness, hello and inventory, and verifies

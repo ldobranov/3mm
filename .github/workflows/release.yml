@@ -1,0 +1,147 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    name: Build and publish immutable release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm
+        working-directory: frontend
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.13.1 --activate
+
+      - name: Validate tag and selected commit
+        id: release
+        env:
+          TAG: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$COMMIT" origin/main
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          tag = os.environ["TAG"]
+          match = re.fullmatch(r"v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)", tag)
+          if match is None:
+              raise SystemExit(f"Unsupported release tag: {tag}")
+          version = match.group(1)
+          source_version = Path("VERSION").read_text(encoding="ascii").strip()
+          if source_version != version:
+              raise SystemExit(
+                  f"Tag version {version!r} does not match VERSION {source_version!r}"
+              )
+          channel = "stable" if "-" not in version else "beta"
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              print(f"version={version}", file=output)
+              print(f"channel={channel}", file=output)
+          PY
+          test "$(git cat-file -t "refs/tags/$TAG")" = "tag"
+          test "$(git rev-list -n 1 "$TAG")" = "$COMMIT"
+          echo "source_date_epoch=$(git show -s --format=%ct "$COMMIT")" >> "$GITHUB_OUTPUT"
+
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify frontend
+        working-directory: frontend
+        run: |
+          pnpm run test:unit -- --run
+          pnpm run type-check
+          pnpm run build-only
+
+      - name: Verify backend and release tooling
+        run: |
+          python -m pip install --requirement backend/requirements-dev.txt
+          python -m pytest -q
+
+      - name: Export the exact tagged source
+        env:
+          COMMIT: ${{ github.sha }}
+        run: git archive --format=tar --output "$RUNNER_TEMP/3mm-source.tar" "$COMMIT"
+
+      - name: Build release assets twice
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          CHANNEL: ${{ steps.release.outputs.channel }}
+          SOURCE_DATE_EPOCH: ${{ steps.release.outputs.source_date_epoch }}
+          TAG: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          common_args=(
+            --source-archive "$RUNNER_TEMP/3mm-source.tar"
+            --frontend-dist frontend/dist
+            --dependencies-file deployment/release-dependencies.json
+            --repository "$REPOSITORY"
+            --version "$VERSION"
+            --tag "$TAG"
+            --commit "$COMMIT"
+            --branch main
+            --channel "$CHANNEL"
+            --source-date-epoch "$SOURCE_DATE_EPOCH"
+            --architecture aarch64
+            --architecture armv7l
+            --architecture x86_64
+          )
+          python deployment/build_release.py "${common_args[@]}" --output-dir "$RUNNER_TEMP/release-a"
+          python deployment/build_release.py "${common_args[@]}" --output-dir "$RUNNER_TEMP/release-b"
+          diff --recursive --brief "$RUNNER_TEMP/release-a" "$RUNNER_TEMP/release-b"
+          cd "$RUNNER_TEMP/release-a"
+          sha256sum ./*.tar.gz ./3mm-update-manifest.json > SHA256SUMS
+
+      - name: Confirm checkout remained clean
+        run: git diff --exit-code
+
+      - name: Publish complete draft and then make it visible
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.release.outputs.version }}
+          CHANNEL: ${{ steps.release.outputs.channel }}
+        run: |
+          set -Eeuo pipefail
+          release_flags=(--draft --verify-tag --title "3mm $VERSION" --generate-notes)
+          if [[ "$CHANNEL" != "stable" ]]; then
+            release_flags+=(--prerelease)
+          fi
+          gh release create "$TAG" "$RUNNER_TEMP/release-a/"* "${release_flags[@]}"
+          gh release edit "$TAG" --draft=false

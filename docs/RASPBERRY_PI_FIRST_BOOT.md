@@ -1,0 +1,190 @@
+# Raspberry Pi installation and first boot
+
+Status: repeatable procedure documented and preflight-validated; a destructive
+clean-media repetition is still pending.
+
+This guide installs one Raspberry Pi as a 3mm Standalone device. It deliberately
+keeps passwords out of commands, files and Git. Password prompts must be
+answered interactively.
+
+## Validated baseline
+
+The current physical baseline is a Raspberry Pi 3B+ running Debian GNU/Linux 13
+on `aarch64`. The accepted host has Python 3.13.5, Node.js 20.19.2, npm 9.2.0,
+NetworkManager and a Wi-Fi interface named `wlan0`.
+
+The installer does not install operating-system packages, alter the firewall or
+replace NetworkManager. It creates the `3mm` system account, immutable releases,
+the release-specific Python environment, persistent directories and systemd
+units. Python and frontend-compiler dependencies are currently downloaded at
+install time, so the device needs Internet access during deployment.
+
+Use wired Ethernet for the first remote installation. An unprovisioned 3mm
+release intentionally changes `wlan0` into the setup access point, which can
+otherwise interrupt the SSH deployment session.
+
+## 1. Prepare the Raspberry Pi
+
+Install a current 64-bit Raspberry Pi OS or Debian image. In the imaging tool:
+
+- enable SSH;
+- configure the device hostname;
+- add the dedicated device SSH public key;
+- do not embed an SSH password in the image or repository;
+- connect wired Ethernet for installation.
+
+The host must provide:
+
+- Python 3.10 or newer with the `venv` module;
+- Node.js 20 or newer and npm;
+- `bash`, `tar`, `flock`, `systemctl` and `nmcli`;
+- active NetworkManager managing an interface named `wlan0`.
+
+## 2. Run the read-only preflight
+
+From the development laptop, copy only the dependency-free checker and run it
+before deploying:
+
+```powershell
+scp .\deployment\first_boot_preflight.py raspberry@<device-ip>:/tmp/3mm-first-boot-preflight.py
+ssh raspberry@<device-ip> "python3 /tmp/3mm-first-boot-preflight.py"
+```
+
+Continue only when the last line is `result=ready failed=0`. The checker does
+not install packages, start or stop services, or change NetworkManager.
+
+## 3. Build and install an immutable release
+
+Use a clean commit that is already pushed to the selected remote. From Windows
+PowerShell in the repository root:
+
+```powershell
+.\deploy.ps1 `
+  -SshHost raspberry@<device-ip> `
+  -FrontendOrigin http://<final-lan-address>:8080 `
+  -InteractiveSudo `
+  -SkipPush
+```
+
+Omit `-SkipPush` when the wrapper should push and verify the clean commit. Do not
+use `-IncludeWorkingTree` for clean-install acceptance.
+
+The sudo password, if one exists, is entered only at the interactive prompt.
+The laptop builds and verifies `frontend/dist`; the Raspberry creates the
+release-specific virtual environment and compiler dependencies. A failed
+activation restores the prior release automatically.
+
+On an empty provisioning state the expected successful result is the setup
+runtime, not the normal login page. The deployment wrapper recognizes both
+valid outcomes:
+
+- first boot: setup portal healthy on port 8895;
+- provisioned device: Core, Web and Agent healthy on ports 8887, 8080 and 8890.
+
+After installation, the release itself can be checked without mutation:
+
+```bash
+python3 /opt/3mm/current/deployment/first_boot_preflight.py \
+  --release-root /opt/3mm/current
+```
+
+## 4. Complete setup from a phone
+
+The unprovisioned device enables only:
+
+- `3mm-network-helper.service`;
+- `3mm-setup-ap.service`;
+- `3mm-setup.service`.
+
+Join the open Wi-Fi network named `3mm Setup XXXX`. It intentionally has no
+password and exists only during setup or an explicit network reset. Open:
+
+```text
+http://10.42.0.1:8895/setup
+```
+
+Enter the destination Wi-Fi name and password, device name and locale, then
+select **Standalone**. The Wi-Fi password is passed to NetworkManager and is not
+stored in the provisioning journal, application database or logs.
+
+On success the setup access point is removed, the saved Wi-Fi profile becomes
+active, and Core, Web and Agent replace the setup services. On failure the
+network change is rolled back and setup mode remains available.
+
+The current **Administrator name** field is provisioning metadata. It does not
+create a login account; the first account is created interactively in the next
+step.
+
+## 5. Create the first administrator
+
+Reconnect over SSH on the final LAN and run:
+
+```bash
+sudo -u 3mm env \
+  PYTHONPATH=/opt/3mm/current \
+  DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db \
+  /opt/3mm/current/.venv/bin/python -m backend.scripts.bootstrap_admin
+```
+
+Enter the username, email and password only at the prompts. The normal minimum
+password length is 12 characters. The bootstrap refuses to replace an existing
+administrator.
+
+## 6. Pair the co-located Agent
+
+The Standalone Agent has a persistent identity but needs its own Core credential.
+Copy the public half of the dedicated device key to a temporary readable path:
+
+```powershell
+scp <device-key>.pub raspberry@<device-ip>:/tmp/3mm-device.pub
+```
+
+Then pair it locally through the audited Core pairing services:
+
+```bash
+sudo -u 3mm env \
+  PYTHONPATH=/opt/3mm/current \
+  DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db \
+  /opt/3mm/current/.venv/bin/python \
+  /opt/3mm/current/deployment/bootstrap-local-agent.py \
+  --admin-email <administrator-email> \
+  --identity-file /var/lib/3mm/agent/identity.json \
+  --credential-dir /var/lib/3mm/agent \
+  --public-key-file /tmp/3mm-device.pub \
+  --display-name <device-name> \
+  --role standalone
+
+sudo systemctl restart 3mm-agent.service
+rm -f /tmp/3mm-device.pub
+```
+
+Only the public key is copied. The generated Agent credential remains private
+under `/var/lib/3mm/agent`.
+
+## 7. Acceptance checks
+
+Run the release smoke test:
+
+```bash
+python3 /opt/3mm/current/deployment/release_smoke.py
+```
+
+Then verify:
+
+- `http://<final-lan-address>:8080/user/login` loads;
+- the new administrator can sign in;
+- the local Agent is present and online in Devices;
+- health, hello and inventory expose one stable device identity;
+- a reboot returns to Core, Web and Agent without recreating the setup AP;
+- an explicit network reset returns to the open setup AP and preserves the
+  application database and Agent identity.
+
+## Current acceptance boundary
+
+The host/release preflight and the already-provisioned Standalone runtime have
+been verified on the physical Pi 3B+. A new SD card has not yet been erased and
+run through every step above, so clean-device acceptance remains open.
+
+Node setup is also not yet claimed as complete. The portal persists the selected
+Hub address, but external-Hub credential bootstrap is not yet a single first-boot
+flow. Use the Standalone path for the current Milestone 10 physical acceptance.

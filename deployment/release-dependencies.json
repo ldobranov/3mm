@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "apt_packages": [
+    "ca-certificates",
+    "curl",
+    "npm",
+    "python3",
+    "python3-venv",
+    "util-linux"
+  ]
+}
