@@ -26,6 +26,7 @@ from backend.services.system_updates import (
     SEMVER_PATTERN,
     SHA256_PATTERN,
     UpdateArtifact,
+    UpdateChannel,
     check_update_catalog,
 )
 
@@ -84,6 +85,7 @@ class StagedUpdate(BaseModel):
     release_id: str = Field(pattern=r"^[A-Za-z0-9._-]+$", max_length=160)
     version: str = Field(pattern=SEMVER_PATTERN)
     commit: str = Field(pattern=r"^[0-9a-f]{40}$")
+    channel: UpdateChannel = "stable"
     architecture: Literal["aarch64", "armv7l", "x86_64"]
     artifact_filename: str = Field(pattern=r"^[A-Za-z0-9._-]+\.tar\.gz$")
     artifact_sha256: str = Field(pattern=SHA256_PATTERN)
@@ -133,7 +135,7 @@ class UpdateOperationStatus(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-CatalogChecker = Callable[[UpdateCatalogSettings], object]
+CatalogChecker = Callable[..., object]
 ArtifactDownloader = Callable[[UpdateArtifact, Path, UpdateCatalogSettings], None]
 DependencyInspector = Callable[[Sequence[str]], dict[str, bool]]
 DiskUsageReader = Callable[[Path], shutil._ntuple_diskusage]
@@ -522,6 +524,7 @@ def stage_latest_update(
     backend: BackendSettings,
     frontend: FrontendSettings,
     *,
+    channel: UpdateChannel = "stable",
     catalog_checker: CatalogChecker = check_update_catalog,
     downloader: ArtifactDownloader = download_artifact,
     dependency_inspector: DependencyInspector = inspect_installed_dependencies,
@@ -530,10 +533,12 @@ def stage_latest_update(
     current_operation = read_operation_status(settings)
     if current_operation.state in {"queued", "applying"}:
         raise UpdateStagingError("An update operation is already running")
-    catalog = catalog_checker(settings)
+    catalog = catalog_checker(settings, channel=channel)
     latest = getattr(catalog, "latest", None)
     if latest is None or not latest.manifest_validated:
         raise UpdateStagingError("No validated release is available for staging")
+    if latest.channel != channel:
+        raise UpdateStagingError("The release does not match the selected channel")
     catalog_status = getattr(catalog, "status", None)
     if catalog_status != "update_available":
         if catalog_status == "up_to_date":
@@ -607,6 +612,7 @@ def stage_latest_update(
         release_id=latest.release_id,
         version=latest.version,
         commit=latest.commit,
+        channel=channel,
         architecture=architecture,
         artifact_filename=artifact.filename,
         artifact_sha256=artifact.sha256,
@@ -662,7 +668,7 @@ def revalidate_official_release(
         manifest_asset_name=manifest_asset_name,
         release_metadata_file=release_metadata_file,
     )
-    catalog = catalog_checker(trusted_settings)
+    catalog = catalog_checker(trusted_settings, channel=staged.channel)
     if getattr(catalog, "status", None) != "update_available":
         raise UpdateStagingError(
             "Official release is not eligible for installation on this device"
@@ -678,7 +684,7 @@ def revalidate_official_release(
         latest.release_id != staged.release_id
         or latest.version != staged.version
         or latest.commit != staged.commit
-        or latest.channel != "stable"
+        or latest.channel != staged.channel
         or artifact is None
         or artifact.filename != staged.artifact_filename
         or artifact.sha256 != staged.artifact_sha256
@@ -686,7 +692,7 @@ def revalidate_official_release(
         or latest.dependencies.apt_packages != staged.dependencies
     ):
         raise UpdateStagingError(
-            "Staged update no longer matches the official stable release"
+            "Staged update no longer matches the official selected-channel release"
         )
 
 

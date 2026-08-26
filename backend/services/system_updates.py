@@ -21,6 +21,7 @@ COMMIT_PATTERN = r"^[0-9a-f]{40}$"
 SEMVER_PATTERN = r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$"
 SHA256_PATTERN = r"^[0-9a-f]{64}$"
 PACKAGE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9+.:~-]*$")
+UpdateChannel = Literal["stable", "beta", "test"]
 
 
 class UpdateCatalogError(RuntimeError):
@@ -58,7 +59,7 @@ class UpdateManifest(BaseModel):
     version: str = Field(pattern=SEMVER_PATTERN)
     release_id: str = Field(pattern=r"^[A-Za-z0-9._-]+$")
     commit: str = Field(pattern=COMMIT_PATTERN)
-    channel: Literal["stable", "beta", "test"] = "stable"
+    channel: UpdateChannel = "stable"
     artifacts: list[UpdateArtifact] = Field(min_length=1, max_length=10)
     dependencies: UpdateDependencies = Field(default_factory=UpdateDependencies)
 
@@ -94,7 +95,7 @@ class LatestRelease(BaseModel):
     version: str | None = None
     release_id: str | None = None
     commit: str | None = None
-    channel: Literal["stable", "beta", "test"] | None = None
+    channel: UpdateChannel | None = None
     artifacts: list[UpdateArtifact] = Field(default_factory=list)
     dependencies: UpdateDependencies = Field(default_factory=UpdateDependencies)
 
@@ -308,14 +309,35 @@ def _current_architecture() -> str:
     }.get(architecture, architecture or "unknown")
 
 
-def _latest_release_shell(payload: dict[str, object], repository: str) -> LatestRelease:
-    if payload.get("draft") is True or payload.get("prerelease") is True:
+def _tag_channel(tag: str) -> UpdateChannel | None:
+    version = tag[1:] if tag.startswith("v") else tag
+    if not re.fullmatch(SEMVER_PATTERN, version):
+        return None
+    _core, separator, prerelease = version.partition("-")
+    if not separator:
+        return "stable"
+    return "test" if prerelease.split(".", 1)[0].lower() == "test" else "beta"
+
+
+def _latest_release_shell(
+    payload: dict[str, object],
+    repository: str,
+    *,
+    channel: UpdateChannel,
+) -> LatestRelease:
+    if payload.get("draft") is True:
         raise UpdateCatalogError("GitHub returned an unpublished release")
+    tag = _required_string(payload.get("tag_name"), "tag_name")
+    if _tag_channel(tag) != channel:
+        raise UpdateCatalogError("Release tag does not match the selected channel")
+    is_prerelease = payload.get("prerelease") is True
+    if is_prerelease != (channel != "stable"):
+        raise UpdateCatalogError("GitHub release state does not match its channel")
     html_url = _required_string(payload.get("html_url"), "html_url")
     if not _safe_release_page_url(html_url, repository):
         raise UpdateCatalogError("Release page URL is outside the selected repository")
     return LatestRelease(
-        tag=_required_string(payload.get("tag_name"), "tag_name"),
+        tag=tag,
         name=_required_string(payload.get("name") or payload.get("tag_name"), "name"),
         published_at=_optional_datetime(payload.get("published_at")),
         html_url=html_url,
@@ -326,6 +348,7 @@ def _latest_release_shell(payload: dict[str, object], repository: str) -> Latest
 def check_update_catalog(
     settings: UpdateCatalogSettings,
     *,
+    channel: UpdateChannel = "stable",
     fetch_json: JsonFetcher = _fetch_json,
 ) -> UpdateCheckResponse:
     checked_at = datetime.now(UTC)
@@ -341,9 +364,11 @@ def check_update_catalog(
             checked_at=checked_at,
         )
 
-    release_api_url = (
-        f"https://api.github.com/repos/{settings.repository}/releases/latest"
-    )
+    release_api_url = f"https://api.github.com/repos/{settings.repository}/releases/latest"
+    if channel != "stable":
+        release_api_url = (
+            f"https://api.github.com/repos/{settings.repository}/releases?per_page=20"
+        )
     try:
         release_payload = fetch_json(release_api_url, settings.timeout_seconds)
     except UpdateCatalogNotFound:
@@ -363,6 +388,33 @@ def check_update_catalog(
             checked_at=checked_at,
         )
 
+    if channel != "stable":
+        if not isinstance(release_payload, list):
+            return _base_response(
+                settings,
+                current,
+                status="error",
+                message="GitHub release response is invalid",
+                checked_at=checked_at,
+            )
+        matching_releases = [
+            item
+            for item in release_payload
+            if isinstance(item, dict)
+            and item.get("draft") is not True
+            and isinstance(item.get("tag_name"), str)
+            and _tag_channel(item["tag_name"]) == channel
+        ]
+        if not matching_releases:
+            return _base_response(
+                settings,
+                current,
+                status="no_release",
+                message=f"No published {channel} release is available",
+                checked_at=checked_at,
+            )
+        release_payload = matching_releases[0]
+
     if not isinstance(release_payload, dict):
         return _base_response(
             settings,
@@ -373,7 +425,11 @@ def check_update_catalog(
         )
 
     try:
-        latest = _latest_release_shell(release_payload, settings.repository)
+        latest = _latest_release_shell(
+            release_payload,
+            settings.repository,
+            channel=channel,
+        )
         assets = release_payload.get("assets")
         if not isinstance(assets, list):
             raise UpdateCatalogError("GitHub release assets are invalid")
@@ -411,6 +467,10 @@ def check_update_catalog(
         if latest.tag not in {manifest.version, f"v{manifest.version}"}:
             raise UpdateCatalogError(
                 "Release tag and update manifest version do not match"
+            )
+        if manifest.channel != channel:
+            raise UpdateCatalogError(
+                "Release manifest does not match the selected update channel"
             )
 
         for artifact in manifest.artifacts:

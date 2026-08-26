@@ -19,7 +19,10 @@ For a tag such as `v1.2.0`, `.github/workflows/release.yml`:
 9. publishes the release only after every asset was uploaded successfully.
 
 A prerelease semantic version such as `v1.2.0-beta.1` is published as a GitHub
-prerelease. The stable update catalog deliberately ignores prereleases.
+prerelease. Normal versions use the `stable` channel, `-test...` versions use
+the `test` channel, and every other prerelease uses `beta`. Stable catalog
+checks deliberately ignore prereleases; an administrator must select a preview
+channel explicitly.
 
 ## Required assets
 
@@ -72,9 +75,10 @@ After the workflow succeeds:
 - confirm that the manifest is validated and the correct device architecture is listed;
 - confirm that dependency packages are displayed as a preview only.
 
-Phase 3 now provides manual staging and explicit installation approval. It is
-not accepted for production until a newer release passes the documented
-download, dependency, restart and injected-rollback checks on the Raspberry Pi.
+Phase 3 manual staging and explicit installation approval were physically
+accepted on `rasp-3mm` with successful `v0.2.3` activation and real failed-run
+rollback evidence. Preview channels still require a separate published
+acceptance release before scheduled checks are considered.
 The installed `.3mm-release.json` must contain `version`; both the manual
 deployment launcher and published artifacts source it from the repository
 `VERSION` file so the updater can reject same-version and downgrade attempts.

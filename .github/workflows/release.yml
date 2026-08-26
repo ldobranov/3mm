@@ -67,7 +67,14 @@ jobs:
               raise SystemExit(
                   f"Tag version {version!r} does not match VERSION {source_version!r}"
               )
-          channel = "stable" if "-" not in version else "beta"
+          prerelease = version.partition("-")[2]
+          channel = (
+              "stable"
+              if not prerelease
+              else "test"
+              if prerelease.split(".", 1)[0].lower() == "test"
+              else "beta"
+          )
           with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
               print(f"version={version}", file=output)
               print(f"channel={channel}", file=output)

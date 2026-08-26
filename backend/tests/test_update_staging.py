@@ -169,7 +169,7 @@ def stage(
         update_settings,
         BackendSettings(database_url=f"sqlite:///{tmp_path / 'new.db'}"),
         FrontendSettings(frontend_url="http://192.168.1.88:8080"),
-        catalog_checker=lambda _settings: catalog,
+        catalog_checker=lambda _settings, **_kwargs: catalog,
         downloader=copy_artifact,
         dependency_inspector=lambda requested: {
             name: name == "ca-certificates" for name in requested
@@ -186,6 +186,7 @@ def test_stage_downloads_one_architecture_and_records_reviewable_preflight(
 
     assert result.status == "ready"
     assert result.staged.release_id == "v1.2.0"
+    assert result.staged.channel == "stable"
     assert result.staged.approval_nonce not in result.staged.model_dump_json(
         exclude={"approval_nonce"}
     )
@@ -219,7 +220,7 @@ def test_stage_rejects_dependency_outside_installed_allowlist_before_download(
             update_settings,
             BackendSettings(database_url=f"sqlite:///{tmp_path / 'new.db'}"),
             FrontendSettings(frontend_url="http://192.168.1.88:8080"),
-            catalog_checker=lambda _settings: catalog,
+            catalog_checker=lambda _settings, **_kwargs: catalog,
             downloader=downloader,
             dependency_inspector=lambda _packages: {},
             disk_usage_reader=lambda _path: SimpleNamespace(free=1024**3),
@@ -248,7 +249,7 @@ def test_stage_rejects_a_release_that_is_not_newer_before_download(
             update_settings,
             BackendSettings(database_url=f"sqlite:///{tmp_path / 'new.db'}"),
             FrontendSettings(frontend_url="http://192.168.1.88:8080"),
-            catalog_checker=lambda _settings: catalog,
+            catalog_checker=lambda _settings, **_kwargs: catalog,
             downloader=downloader,
         )
 
@@ -385,7 +386,7 @@ def test_root_revalidation_rejects_staging_state_that_differs_from_official_cata
             repository="ldobranov/3mm",
             manifest_asset_name="3mm-update-manifest.json",
             release_metadata_file=tmp_path / ".3mm-release.json",
-            catalog_checker=lambda _settings: official,
+            catalog_checker=lambda _settings, **_kwargs: official,
         )
 
 
@@ -419,5 +420,5 @@ def test_root_revalidation_rejects_an_official_release_that_is_not_newer(
             repository="ldobranov/3mm",
             manifest_asset_name="3mm-update-manifest.json",
             release_metadata_file=tmp_path / ".3mm-release.json",
-            catalog_checker=lambda _settings: official,
+            catalog_checker=lambda _settings, **_kwargs: official,
         )

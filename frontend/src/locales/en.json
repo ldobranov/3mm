@@ -12,6 +12,8 @@
     "eyebrow": "System", "title": "System updates", "subtitle": "Review the installed release and check the trusted release catalog.",
     "check": "Check for updates", "checking": "Checking…", "loading": "Loading update status…",
     "stage": "Download and verify", "staging": "Downloading and verifying…",
+    "channelSelect": "Update channel", "channelStable": "Stable — recommended", "channelBeta": "Beta — preview", "channelTest": "Test — internal",
+    "channelChanged": "Check the selected channel to refresh its release status.", "previewChannelWarning": "Preview channels may contain unfinished changes. Installation still requires the same verification and explicit approval.",
     "safeTitle": "Verified manual updates", "safeText": "Checking never changes the device. Downloading verifies the exact release first, and installation requires a separate administrator approval.",
     "readOnlyTitle": "Safe catalog check", "readOnlyText": "Checking reads release metadata only. Installation, downloads and restarts are disabled in this stage.",
     "checkedAt": "Checked", "deviceEyebrow": "This device", "currentTitle": "Installed release",

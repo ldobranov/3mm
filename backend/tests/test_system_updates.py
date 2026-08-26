@@ -132,6 +132,91 @@ def test_valid_manifest_reports_an_available_update(
     assert response.latest.dependencies.apt_packages == ["rsync"]
 
 
+def test_beta_channel_selects_a_matching_prerelease(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    metadata_file = tmp_path / ".3mm-release.json"
+    write_release_metadata(metadata_file, version="1.2.0")
+    release, manifest = catalog_payloads()
+    release_base = "https://github.com/ldobranov/3mm/releases/download/v1.3.0-beta.1"
+    release.update(
+        {
+            "tag_name": "v1.3.0-beta.1",
+            "name": "3mm 1.3.0-beta.1",
+            "prerelease": True,
+            "html_url": "https://github.com/ldobranov/3mm/releases/tag/v1.3.0-beta.1",
+        }
+    )
+    release["assets"][0]["browser_download_url"] = (
+        f"{release_base}/3mm-update-manifest.json"
+    )
+    release["assets"][1].update(
+        {
+            "name": "3mm-1.3.0-beta.1-aarch64.tar.gz",
+            "browser_download_url": f"{release_base}/3mm-1.3.0-beta.1-aarch64.tar.gz",
+        }
+    )
+    manifest.update(
+        {
+            "version": "1.3.0-beta.1",
+            "release_id": "v1.3.0-beta.1",
+            "channel": "beta",
+        }
+    )
+    manifest["artifacts"][0].update(
+        {
+            "filename": "3mm-1.3.0-beta.1-aarch64.tar.gz",
+            "download_url": f"{release_base}/3mm-1.3.0-beta.1-aarch64.tar.gz",
+        }
+    )
+    responses = iter([[release], manifest])
+    requested_urls: list[str] = []
+    monkeypatch.setattr(
+        "backend.services.system_updates.platform.machine", lambda: "aarch64"
+    )
+
+    def fetch(url: str, _timeout: int) -> object:
+        requested_urls.append(url)
+        return next(responses)
+
+    response = check_update_catalog(
+        make_settings(metadata_file),
+        channel="beta",
+        fetch_json=fetch,
+    )
+
+    assert response.status == "update_available"
+    assert response.latest is not None
+    assert response.latest.channel == "beta"
+    assert response.latest.version == "1.3.0-beta.1"
+    assert requested_urls[0].endswith("/releases?per_page=20")
+
+
+def test_selected_channel_must_match_the_release_manifest(tmp_path: Path) -> None:
+    metadata_file = tmp_path / ".3mm-release.json"
+    write_release_metadata(metadata_file, version="1.2.0")
+    release, manifest = catalog_payloads()
+    release.update(
+        {
+            "tag_name": "v1.3.0-beta.1",
+            "name": "3mm 1.3.0-beta.1",
+            "prerelease": True,
+            "html_url": "https://github.com/ldobranov/3mm/releases/tag/v1.3.0-beta.1",
+        }
+    )
+    manifest["version"] = "1.3.0-beta.1"
+    responses = iter([[release], manifest])
+
+    response = check_update_catalog(
+        make_settings(metadata_file),
+        channel="beta",
+        fetch_json=lambda _url, _timeout: next(responses),
+    )
+
+    assert response.status == "error"
+    assert "selected update channel" in response.message
+
+
 def test_matching_commit_reports_up_to_date(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

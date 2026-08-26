@@ -9,6 +9,18 @@
         </p>
       </div>
       <div class="updates-actions">
+        <label class="channel-control">
+          <span>{{ t('systemUpdates.channelSelect', 'Update channel') }}</span>
+          <select
+            v-model="selectedChannel"
+            :disabled="checking || loading || staging || operationBusy"
+            @change="resetChannelResult"
+          >
+            <option value="stable">{{ t('systemUpdates.channelStable', 'Stable — recommended') }}</option>
+            <option value="beta">{{ t('systemUpdates.channelBeta', 'Beta — preview') }}</option>
+            <option value="test">{{ t('systemUpdates.channelTest', 'Test — internal') }}</option>
+          </select>
+        </label>
         <button
           v-if="canStage"
           class="button button-secondary"
@@ -37,6 +49,11 @@
         <p>{{ t('systemUpdates.safeText', 'Checking never changes the device. Downloading verifies the exact release first, and installation requires a separate administrator approval.') }}</p>
       </div>
     </section>
+
+    <div v-if="selectedChannel !== 'stable'" class="notice notice-warning" role="status">
+      <i class="bi bi-exclamation-diamond" aria-hidden="true"></i>
+      {{ t('systemUpdates.previewChannelWarning', 'Preview channels may contain unfinished changes. Installation still requires the same verification and explicit approval.') }}
+    </div>
 
     <div v-if="loading" class="loading-state" aria-live="polite">
       <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
@@ -173,6 +190,7 @@
           <div>
             <p class="eyebrow">{{ t('systemUpdates.reviewEyebrow', 'Ready for review') }}</p>
             <h2>{{ t('systemUpdates.reviewTitle', 'Verified update plan') }} {{ staged.version }}</h2>
+            <p class="channel-note">{{ t('systemUpdates.channel', 'Channel') }}: {{ staged.channel }}</p>
           </div>
         </div>
 
@@ -224,6 +242,7 @@
         <dl class="confirm-summary">
           <div><dt>{{ t('systemUpdates.releaseId', 'Release') }}</dt><dd>{{ staged.release_id }}</dd></div>
           <div><dt>{{ t('systemUpdates.latestVersion', 'Version') }}</dt><dd>{{ staged.version }}</dd></div>
+          <div><dt>{{ t('systemUpdates.channel', 'Channel') }}</dt><dd>{{ staged.channel }}</dd></div>
           <div><dt>{{ t('systemUpdates.architecture', 'Architecture') }}</dt><dd>{{ staged.architecture }}</dd></div>
         </dl>
         <label class="confirm-check">
@@ -258,6 +277,8 @@ type UpdateStatus =
   | 'current_unknown'
   | 'unsupported_architecture'
   | 'error'
+
+type UpdateChannel = 'stable' | 'beta' | 'test'
 
 interface CurrentRelease {
   release_id: string
@@ -321,6 +342,7 @@ interface StagedUpdate {
   release_id: string
   version: string
   commit: string
+  channel: UpdateChannel
   architecture: string
   artifact_filename: string
   artifact_sha256: string
@@ -336,6 +358,7 @@ interface StagedUpdate {
 
 const { t } = useI18n()
 const status = ref<UpdateCheckResponse | null>(null)
+const selectedChannel = ref<UpdateChannel>('stable')
 const loading = ref(true)
 const checking = ref(false)
 const staging = ref(false)
@@ -438,12 +461,25 @@ async function checkForUpdates() {
   checking.value = true
   errorMessage.value = ''
   try {
-    const response = await http.post('/api/v1/system-updates/check')
+    const response = await http.post('/api/v1/system-updates/check', { channel: selectedChannel.value })
     status.value = response.data
   } catch (error) {
     errorMessage.value = errorText(error)
   } finally {
     checking.value = false
+  }
+}
+
+function resetChannelResult() {
+  staged.value = null
+  if (!status.value) return
+  status.value = {
+    ...status.value,
+    status: 'not_checked',
+    message: t('systemUpdates.channelChanged', 'Check the selected channel to refresh its release status.'),
+    latest: null,
+    update_available: null,
+    checked_at: null,
   }
 }
 
@@ -461,7 +497,7 @@ async function stageUpdate() {
   staging.value = true
   errorMessage.value = ''
   try {
-    const response = await http.post('/api/v1/system-updates/stage')
+    const response = await http.post('/api/v1/system-updates/stage', { channel: selectedChannel.value })
     staged.value = response.data.staged
     operation.value = {
       state: 'ready',
@@ -585,7 +621,10 @@ onUnmounted(stopOperationPolling)
 .updates-view .card { border-color: var(--updates-border); background: var(--updates-surface); color: var(--updates-text); }
 .updates-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
 .updates-header h1 { margin: 0; }
-.updates-actions { display: flex; flex: 0 0 auto; gap: .6rem; }
+.updates-actions { display: flex; flex: 0 0 auto; align-items: flex-end; gap: .6rem; }
+.channel-control { display: grid; gap: .25rem; color: var(--updates-muted); font-size: .68rem; font-weight: 700; }
+.channel-control select { min-width: 10.5rem; height: 2.35rem; padding: 0 2rem 0 .7rem; border: 1px solid var(--updates-border); border-radius: var(--radius-sm); background: var(--updates-surface); color: var(--updates-text); font: inherit; font-size: .78rem; }
+.channel-control select:focus { border-color: var(--accent); outline: 2px solid color-mix(in srgb, var(--accent) 24%, transparent); outline-offset: 1px; }
 .eyebrow { margin: 0 0 .3rem; color: var(--accent); font-size: .72rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
 .intro { max-width: 680px; margin: .45rem 0 0; color: var(--updates-muted); }
 .safety-banner { display: flex; align-items: flex-start; gap: .8rem; margin-bottom: 1rem; padding: .9rem 1rem; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--updates-border)); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--accent) 7%, var(--updates-surface)); }
@@ -593,6 +632,7 @@ onUnmounted(stopOperationPolling)
 .safety-banner p { margin: .2rem 0 0; color: var(--updates-muted); font-size: .82rem; }
 .notice { display: flex; align-items: center; gap: .65rem; margin-bottom: 1rem; padding: .8rem 1rem; border: 1px solid var(--updates-border); border-radius: var(--radius-sm); }
 .notice-error { border-color: color-mix(in srgb, var(--danger) 42%, var(--updates-border)); background: color-mix(in srgb, var(--danger) 8%, var(--updates-surface)); }
+.notice-warning { border-color: color-mix(in srgb, #d97706 42%, var(--updates-border)); background: color-mix(in srgb, #d97706 8%, var(--updates-surface)); }
 .loading-state { display: flex; align-items: center; justify-content: center; gap: .65rem; min-height: 220px; color: var(--updates-muted); }
 .status-card { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; padding: 1rem 1.1rem; }
 .status-card time { flex: 0 0 auto; color: var(--updates-muted); font-size: .76rem; }
@@ -612,6 +652,7 @@ onUnmounted(stopOperationPolling)
 .release-card { padding: 1.1rem; }
 .section-heading { display: flex; align-items: center; gap: .7rem; padding-bottom: .9rem; border-bottom: 1px solid var(--updates-border); }
 .section-heading h2 { margin: 0; font-size: 1rem; }
+.channel-note { margin: .2rem 0 0; color: var(--updates-muted); font-size: .72rem; }
 .detail-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .9rem; margin: 1rem 0 0; }
 .detail-list div { min-width: 0; }
 .detail-list dt { margin-bottom: .22rem; color: var(--updates-muted); font-size: .7rem; letter-spacing: .04em; text-transform: uppercase; }
@@ -665,7 +706,7 @@ onUnmounted(stopOperationPolling)
 .confirm-icon { display: grid; width: 2.7rem; height: 2.7rem; margin-bottom: .8rem; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-link) 11%, var(--updates-surface)); color: var(--color-link); font-size: 1.2rem; place-items: center; }
 .confirm-dialog h2 { margin: 0; font-size: 1.15rem; }
 .confirm-dialog > p { margin: .45rem 2rem 1rem 0; color: var(--updates-muted); font-size: .8rem; }
-.confirm-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; margin: 0 0 1rem; padding: .8rem; border-radius: var(--radius-sm); background: var(--updates-soft); }
+.confirm-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; margin: 0 0 1rem; padding: .8rem; border-radius: var(--radius-sm); background: var(--updates-soft); }
 .confirm-summary dt { color: var(--updates-muted); font-size: .65rem; text-transform: uppercase; }
 .confirm-summary dd { margin: .12rem 0 0; overflow-wrap: anywhere; font-size: .78rem; font-weight: 700; }
 .confirm-check { display: flex; align-items: flex-start; gap: .6rem; padding: .8rem; border: 1px solid var(--updates-border); border-radius: var(--radius-sm); cursor: pointer; }
@@ -677,6 +718,7 @@ onUnmounted(stopOperationPolling)
 @media (max-width: 760px) {
   .updates-header, .status-card { align-items: stretch; flex-direction: column; }
   .updates-actions { width: 100%; flex-direction: column; }
+  .channel-control, .channel-control select { width: 100%; }
   .updates-header .button { width: 100%; justify-content: center; }
   .release-grid, .requirements-card, .review-grid { grid-template-columns: 1fr; }
   .requirements-column + .requirements-column { border-top: 1px solid var(--updates-border); border-left: 0; }

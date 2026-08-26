@@ -66,8 +66,20 @@ describe('System updates catalog', () => {
     await wrapper.find('.updates-header .button').trigger('click')
     await flushPromises()
 
-    expect(http.post).toHaveBeenCalledWith('/api/v1/system-updates/check')
+    expect(http.post).toHaveBeenCalledWith('/api/v1/system-updates/check', { channel: 'stable' })
     expect(wrapper.text()).toContain('No published release')
+  })
+
+  it('checks only the update channel selected by the administrator', async () => {
+    const wrapper = mount(SystemUpdates)
+    await flushPromises()
+
+    await wrapper.find('.channel-control select').setValue('beta')
+    await wrapper.findAll('.updates-header button').find(button => button.text().includes('Check for updates'))!.trigger('click')
+    await flushPromises()
+
+    expect(http.post).toHaveBeenCalledWith('/api/v1/system-updates/check', { channel: 'beta' })
+    expect(wrapper.text()).toContain('Preview channels may contain unfinished changes')
   })
 
   it('does not offer staging when the published release is not newer', async () => {
@@ -120,6 +132,7 @@ describe('System updates catalog', () => {
               release_id: 'v1.2.0',
               version: '1.2.0',
               commit: 'b'.repeat(40),
+              channel: 'stable',
               architecture: 'aarch64',
               artifact_filename: '3mm-1.2.0-aarch64.tar.gz',
               artifact_sha256: 'c'.repeat(64),
@@ -148,7 +161,7 @@ describe('System updates catalog', () => {
     await stageButton!.trigger('click')
     await flushPromises()
 
-    expect(http.post).toHaveBeenCalledWith('/api/v1/system-updates/stage')
+    expect(http.post).toHaveBeenCalledWith('/api/v1/system-updates/stage', { channel: 'stable' })
     expect(wrapper.text()).toContain('Verified update plan')
     expect(wrapper.text()).toContain('Will install')
     expect(wrapper.text()).toContain('Release file verified')
@@ -158,7 +171,7 @@ describe('System updates catalog', () => {
     const wrapper = mount(SystemUpdates)
     await flushPromises()
     ;(wrapper.vm as any).staged = {
-      release_id: 'v1.2.0', version: '1.2.0', commit: 'b'.repeat(40), architecture: 'aarch64',
+      release_id: 'v1.2.0', version: '1.2.0', commit: 'b'.repeat(40), channel: 'stable', architecture: 'aarch64',
       approval_nonce: 'd'.repeat(64), dependency_plan: [], preflight: [],
     }
     await wrapper.vm.$nextTick()

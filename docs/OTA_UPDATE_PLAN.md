@@ -130,7 +130,26 @@ generated install scripts.
 
 ## Phase 4 — Operational controls
 
-- update channels and maintenance windows;
+Stage 1 implemented locally on 2026-08-26; `v0.3.0-beta.1` is the planned
+bootstrap release for physical preview-channel acceptance:
+
+- an administrator explicitly selects `stable`, `beta` or `test` before a
+  catalog check;
+- stable checks continue to use GitHub's latest stable release, while preview
+  checks inspect published prereleases for the selected channel;
+- the tag convention maps normal semantic versions to `stable`, prereleases to
+  `beta`, and `-test...` prereleases to `test`;
+- the selected channel is bound into the staged plan and independently checked
+  again by the root worker before any mutation;
+- changing channels discards the previous catalog result and staged UI plan,
+  and preview channels carry a visible warning;
+- requests without a channel remain backward compatible and use `stable`.
+
+Still pending:
+
+- manually deploy the channel-aware `v0.3.0-beta.1` bootstrap, then publish and
+  exercise `v0.3.0-beta.2` through the Beta OTA path on `rasp-3mm`;
+- maintenance windows;
 - automatic checks with cached results and backoff;
 - manual download/apply separation;
 - fleet rings for Hub/Node installations;

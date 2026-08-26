@@ -114,10 +114,13 @@ def test_update_check_is_read_only_and_admin_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client, db, admin_token, viewer_token = make_client()
-    monkeypatch.setattr(
-        "backend.routes.system_updates.check_update_catalog",
-        lambda _settings: response_payload("no_release"),
-    )
+    selected_channels: list[str] = []
+
+    def check(_settings, *, channel):
+        selected_channels.append(channel)
+        return response_payload("no_release")
+
+    monkeypatch.setattr("backend.routes.system_updates.check_update_catalog", check)
     try:
         assert (
             client.post(
@@ -130,10 +133,12 @@ def test_update_check_is_read_only_and_admin_only(
         response = client.post(
             "/api/v1/system-updates/check",
             headers={"Authorization": f"Bearer {admin_token}"},
+            json={"channel": "beta"},
         )
 
         assert response.status_code == 200
         assert response.json()["status"] == "no_release"
+        assert selected_channels == ["beta"]
     finally:
         db.close()
 
@@ -169,7 +174,7 @@ def test_stage_is_admin_only_and_records_a_reviewable_audit(
     client, db, admin_token, viewer_token = make_client()
     monkeypatch.setattr(
         "backend.routes.system_updates.stage_latest_update",
-        lambda *_arguments: staged_response(),
+        lambda *_arguments, **_kwargs: staged_response(),
     )
     try:
         forbidden = client.post(
@@ -188,6 +193,7 @@ def test_stage_is_admin_only_and_records_a_reviewable_audit(
         audit = db.execute(select(AuditLog)).scalar_one()
         assert audit.action == "SYSTEM_UPDATE_STAGED"
         assert "approval_nonce" not in audit.changes
+        assert audit.changes["channel"] == "stable"
     finally:
         db.close()
 

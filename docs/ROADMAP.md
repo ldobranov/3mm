@@ -381,7 +381,7 @@ OTA update stages (see [OTA_UPDATE_PLAN.md](OTA_UPDATE_PLAN.md)):
 1. administrator-only, read-only release catalog and dependency preview — completed locally on 2026-08-26;
 2. reproducible, architecture-specific GitHub Release artifacts and strict manifest generation — `v0.1.0` published;
 3. verified staging, allowlisted dependency installation, explicit approval and automatic rollback — completed on physical `rasp-3mm`; failed candidates rolled back and `v0.2.3` completed the successful OTA acceptance run;
-4. update channels, maintenance windows and fleet rollout controls.
+4. update channels, maintenance windows and fleet rollout controls — explicit `stable`/`beta`/`test` selection is implemented locally; `v0.3.0-beta.1` is the preview-channel bootstrap candidate, while Raspberry acceptance, scheduling and fleet controls remain.
 
 ## Milestone 13 — Ecosystem expansion
 
@@ -493,6 +493,8 @@ These are the first concrete tasks after approval of this plan:
 - [x] Add verified staging and an explicitly approved, allowlisted dependency plan without giving the Web service unrestricted root access.
 - [x] Add a narrow root helper that independently revalidates the official manifest before package or installer mutation.
 - [x] Reuse immutable activation, health checks and rollback for the first manually applied OTA update.
+- [x] Bind explicit stable, beta and test channel selection through catalog, staging and privileged revalidation.
+- [ ] Publish and physically validate one preview-channel release before enabling scheduled checks.
 - [ ] Repeat the documented Standalone flow on clean media and close the Milestone 10 report.
 - [ ] Validate the open setup-only access point and persistent NetworkManager profile across a Raspberry Pi reboot.
 - [ ] Validate automatic transition from setup services to the selected runtime role on physical `rasp-3mm`.
