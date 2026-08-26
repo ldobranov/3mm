@@ -51,6 +51,10 @@ def test_environment_overrides_file_configuration(monkeypatch, tmp_path):
     monkeypatch.setenv(
         "THREE_MM_UPDATE_HELPER_STATUS_FILE", str(tmp_path / "status.json")
     )
+    monkeypatch.setenv("THREE_MM_UPDATE_POLICY_FILE", str(tmp_path / "policy.json"))
+    monkeypatch.setenv(
+        "THREE_MM_UPDATE_CHECK_CACHE_FILE", str(tmp_path / "check-cache.json")
+    )
     monkeypatch.setenv("THREE_MM_UPDATE_TIMEOUT_SECONDS", "12")
     monkeypatch.setenv("THREE_MM_UPDATE_APPROVAL_TTL_SECONDS", "900")
     monkeypatch.setenv("THREE_MM_UPDATE_MAX_ARTIFACT_BYTES", "104857600")
@@ -74,6 +78,8 @@ def test_environment_overrides_file_configuration(monkeypatch, tmp_path):
     assert settings.updates.dependency_allowlist_file == tmp_path / "allowlist.json"
     assert settings.updates.helper_socket == tmp_path / "helper.sock"
     assert settings.updates.helper_status_file == tmp_path / "status.json"
+    assert settings.updates.policy_file == tmp_path / "policy.json"
+    assert settings.updates.check_cache_file == tmp_path / "check-cache.json"
     assert settings.updates.timeout_seconds == 12
     assert settings.updates.approval_ttl_seconds == 900
     assert settings.updates.max_artifact_bytes == 104857600

@@ -49,6 +49,8 @@ class UpdateCatalogSettings(BaseModel):
     )
     helper_socket: Path = Path("/run/3mm/update-helper.sock")
     helper_status_file: Path = PROJECT_ROOT / ".runtime" / "update-status.json"
+    policy_file: Path = PROJECT_ROOT / ".runtime" / "update-policy.json"
+    check_cache_file: Path = PROJECT_ROOT / ".runtime" / "update-check-cache.json"
     timeout_seconds: int = Field(default=8, ge=1, le=30)
     approval_ttl_seconds: int = Field(default=1800, ge=300, le=86400)
     max_artifact_bytes: int = Field(
@@ -150,6 +152,10 @@ def get_settings() -> AppSettings:
         updates["helper_socket"] = helper_socket
     if helper_status := os.getenv("THREE_MM_UPDATE_HELPER_STATUS_FILE"):
         updates["helper_status_file"] = helper_status
+    if update_policy := os.getenv("THREE_MM_UPDATE_POLICY_FILE"):
+        updates["policy_file"] = update_policy
+    if update_check_cache := os.getenv("THREE_MM_UPDATE_CHECK_CACHE_FILE"):
+        updates["check_cache_file"] = update_check_cache
     if update_timeout := os.getenv("THREE_MM_UPDATE_TIMEOUT_SECONDS"):
         updates["timeout_seconds"] = int(update_timeout)
     if approval_ttl := os.getenv("THREE_MM_UPDATE_APPROVAL_TTL_SECONDS"):

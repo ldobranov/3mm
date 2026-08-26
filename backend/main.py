@@ -48,6 +48,7 @@ from backend.routes.permission_routes import router as permission_router
 from backend.routes.role_routes import router as role_router
 from backend.routes.session_routes import router as session_router
 from backend.routes.system_updates import router as system_updates_router
+from backend.services.update_policy import system_update_check_manager
 
 # Import all route routers
 from backend.routes.settings import router as settings_router
@@ -130,6 +131,7 @@ async def lifespan(app: FastAPI):
     init_db()
     await update_manager.start_update_worker()
     await performance_monitor.start_monitoring()
+    await system_update_check_manager.start()
     extension_loader_task = asyncio.create_task(
         load_enabled_extensions(app), name="enabled-extension-loader"
     )
@@ -143,6 +145,7 @@ async def lifespan(app: FastAPI):
             await extension_loader_task
         await performance_monitor.stop_monitoring()
         await update_manager.stop_update_worker()
+        await system_update_check_manager.stop()
 
 
 # Configure FastAPI to use Unicode-preserving JSON encoder

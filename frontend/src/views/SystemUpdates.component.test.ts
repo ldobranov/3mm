@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const http = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
+  put: vi.fn(),
 }))
 
 vi.mock('@/utils/dynamic-http', () => ({ default: http }))
@@ -37,15 +38,37 @@ function response(status = 'not_checked') {
   }
 }
 
+function policyResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    policy: {
+      schema_version: 1,
+      channel: 'stable',
+      automatic_checks_enabled: false,
+      check_interval_hours: 6,
+      maintenance_window_enabled: false,
+      maintenance_timezone: 'UTC',
+      maintenance_start: '03:00',
+      maintenance_duration_minutes: 120,
+    },
+    cached_check: null,
+    within_maintenance_window: false,
+    current_window_started_at: null,
+    current_window_ends_at: null,
+    next_window_starts_at: null,
+    ...overrides,
+  }
+}
+
 describe('System updates catalog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     http.get.mockImplementation((url: string) => Promise.resolve({
       data: url.endsWith('/operation')
         ? { state: 'idle', message: 'No update is staged' }
-        : response(),
+        : url.endsWith('/policy') ? policyResponse() : response(),
     }))
     http.post.mockResolvedValue({ data: response('no_release') })
+    http.put.mockResolvedValue({ data: policyResponse() })
   })
 
   it('loads local release state without checking the remote catalog', async () => {
@@ -54,6 +77,7 @@ describe('System updates catalog', () => {
 
     expect(http.get).toHaveBeenCalledWith('/api/v1/system-updates/status')
     expect(http.get).toHaveBeenCalledWith('/api/v1/system-updates/operation')
+    expect(http.get).toHaveBeenCalledWith('/api/v1/system-updates/policy')
     expect(http.post).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('current-release')
     expect(wrapper.text()).toContain('Downloading verifies the exact release first')
@@ -86,7 +110,7 @@ describe('System updates catalog', () => {
     http.get.mockImplementation((url: string) => Promise.resolve({
       data: url.endsWith('/operation')
         ? { state: 'idle', message: 'No update is staged' }
-        : response('not_newer'),
+        : url.endsWith('/policy') ? policyResponse() : response('not_newer'),
     }))
 
     const wrapper = mount(SystemUpdates)
@@ -123,7 +147,7 @@ describe('System updates catalog', () => {
     http.get.mockImplementation((url: string) => Promise.resolve({
       data: url.endsWith('/operation')
         ? { state: 'idle', message: 'No update is staged' }
-        : checked,
+        : url.endsWith('/policy') ? policyResponse() : checked,
     }))
     http.post.mockImplementation((url: string) => Promise.resolve({
       data: url.endsWith('/stage')
@@ -189,6 +213,38 @@ describe('System updates catalog', () => {
       release_id: 'v1.2.0',
       approval_nonce: 'd'.repeat(64),
       confirmation: 'INSTALL 1.2.0',
+      maintenance_override: false,
     })
+  })
+
+  it('requires a separate acknowledgement outside the maintenance window', async () => {
+    http.get.mockImplementation((url: string) => Promise.resolve({
+      data: url.endsWith('/operation')
+        ? { state: 'idle', message: 'No update is staged' }
+        : url.endsWith('/policy')
+          ? policyResponse({
+              policy: {
+                ...policyResponse().policy,
+                maintenance_window_enabled: true,
+              },
+              next_window_starts_at: '2026-08-27T03:00:00Z',
+            })
+          : response(),
+    }))
+    const wrapper = mount(SystemUpdates)
+    await flushPromises()
+    ;(wrapper.vm as any).staged = {
+      release_id: 'v1.2.0', version: '1.2.0', commit: 'b'.repeat(40), channel: 'stable', architecture: 'aarch64',
+      approval_nonce: 'd'.repeat(64), dependency_plan: [], preflight: [],
+    }
+    await wrapper.vm.$nextTick()
+
+    await wrapper.findAll('button').find(button => button.text().includes('Review and install'))!.trigger('click')
+    const checks = wrapper.findAll('.confirm-check input')
+    expect(checks).toHaveLength(2)
+    await checks[0].setValue(true)
+    expect(wrapper.findAll('button').find(button => button.text().includes('Install update'))!.attributes('disabled')).toBeDefined()
+    await checks[1].setValue(true)
+    expect(wrapper.findAll('button').find(button => button.text().includes('Install update'))!.attributes('disabled')).toBeUndefined()
   })
 })

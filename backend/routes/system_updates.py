@@ -7,6 +7,23 @@ from sqlalchemy.orm import Session
 from backend.config import get_settings
 from backend.db.audit_log import AuditLog
 from backend.db.user import User
+from backend.services.system_updates import (
+    UpdateCatalogError,
+    UpdateChannel,
+    UpdateCheckResponse,
+    check_update_catalog,
+    read_local_update_status,
+)
+from backend.services.update_policy import (
+    UpdatePolicyError,
+    UpdatePolicyRequest,
+    UpdatePolicyStatus,
+    check_and_cache_update_catalog,
+    ensure_apply_is_allowed,
+    read_update_policy,
+    read_update_policy_status,
+    save_update_policy,
+)
 from backend.services.update_staging import (
     StagedUpdateResponse,
     UpdateApplyRequest,
@@ -15,13 +32,6 @@ from backend.services.update_staging import (
     approve_staged_update,
     read_operation_status,
     stage_latest_update,
-)
-from backend.services.system_updates import (
-    UpdateCatalogError,
-    UpdateCheckResponse,
-    UpdateChannel,
-    check_update_catalog,
-    read_local_update_status,
 )
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
@@ -49,10 +59,53 @@ def check_for_updates(
     _admin: User = Depends(require_admin),
 ) -> UpdateCheckResponse:
     """Read GitHub release metadata without downloading or installing code."""
-    return check_update_catalog(
-        get_settings().updates,
-        channel=(payload or UpdateChannelRequest()).channel,
+    try:
+        return check_and_cache_update_catalog(
+            get_settings().updates,
+            channel=(payload or UpdateChannelRequest()).channel,
+            checker=check_update_catalog,
+        )
+    except (UpdateCatalogError, UpdatePolicyError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/policy", response_model=UpdatePolicyStatus)
+def update_policy_status(
+    _admin: User = Depends(require_admin),
+) -> UpdatePolicyStatus:
+    try:
+        return read_update_policy_status(get_settings().updates)
+    except UpdatePolicyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.put("/policy", response_model=UpdatePolicyStatus)
+def update_policy(
+    payload: UpdatePolicyRequest,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> UpdatePolicyStatus:
+    settings = get_settings().updates
+    try:
+        previous = read_update_policy(settings)
+        saved = save_update_policy(settings, payload)
+        result = read_update_policy_status(settings)
+    except UpdatePolicyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    db.add(
+        AuditLog(
+            user_id=admin.id,
+            action="SYSTEM_UPDATE_POLICY_CHANGED",
+            entity_type="system_update_policy",
+            entity_name="standalone",
+            changes={
+                "before": previous.model_dump(mode="json"),
+                "after": saved.model_dump(mode="json"),
+            },
+        )
     )
+    db.commit()
+    return result
 
 
 @router.get("/operation", response_model=UpdateOperationStatus)
@@ -118,13 +171,17 @@ def apply_update(
     settings = get_settings()
     client = UpdateHelperClient(settings.updates.helper_socket)
     try:
+        policy_status = ensure_apply_is_allowed(
+            settings.updates,
+            maintenance_override=payload.maintenance_override,
+        )
         result = approve_staged_update(
             settings.updates,
             payload,
             requested_by_user_id=admin.id,
             scheduler=client.schedule,
         )
-    except (UpdateHelperError, UpdateStagingError) as exc:
+    except (UpdateHelperError, UpdatePolicyError, UpdateStagingError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     db.add(
         AuditLog(
@@ -136,6 +193,11 @@ def apply_update(
                 "version": result.version,
                 "commit": result.commit,
                 "state": result.state,
+                "maintenance_window_enabled": (
+                    policy_status.policy.maintenance_window_enabled
+                ),
+                "within_maintenance_window": (policy_status.within_maintenance_window),
+                "maintenance_override": payload.maintenance_override,
             },
         )
     )

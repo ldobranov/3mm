@@ -1,24 +1,25 @@
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import backend.database  # noqa: F401 - register complete model metadata
-from backend.db.base import Base
 from backend.db.audit_log import AuditLog
+from backend.db.base import Base
 from backend.db.user import User
+from backend.routes.system_updates import router
+from backend.services.system_updates import (
+    CurrentRelease,
+    UpdateCheckResponse,
+)
+from backend.services.update_policy import UpdatePolicy, UpdatePolicyStatus
 from backend.services.update_staging import (
     PreflightCheck,
     StagedUpdate,
     StagedUpdateResponse,
     UpdateOperationStatus,
-)
-from backend.routes.system_updates import router
-from backend.services.system_updates import (
-    CurrentRelease,
-    UpdateCheckResponse,
 )
 from backend.utils import jwt_utils
 from backend.utils.auth import hash_password
@@ -116,11 +117,13 @@ def test_update_check_is_read_only_and_admin_only(
     client, db, admin_token, viewer_token = make_client()
     selected_channels: list[str] = []
 
-    def check(_settings, *, channel):
+    def check(_settings, *, channel, checker):
         selected_channels.append(channel)
         return response_payload("no_release")
 
-    monkeypatch.setattr("backend.routes.system_updates.check_update_catalog", check)
+    monkeypatch.setattr(
+        "backend.routes.system_updates.check_and_cache_update_catalog", check
+    )
     try:
         assert (
             client.post(
@@ -139,6 +142,58 @@ def test_update_check_is_read_only_and_admin_only(
         assert response.status_code == 200
         assert response.json()["status"] == "no_release"
         assert selected_channels == ["beta"]
+    finally:
+        db.close()
+
+
+def test_update_policy_is_admin_only_and_changes_are_audited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db, admin_token, viewer_token = make_client()
+    original = UpdatePolicy()
+    saved = UpdatePolicy(
+        channel="beta",
+        automatic_checks_enabled=True,
+        maintenance_window_enabled=True,
+        maintenance_timezone="Europe/Sofia",
+    )
+    status_response = UpdatePolicyStatus(
+        policy=saved,
+        cached_check=None,
+        within_maintenance_window=False,
+    )
+    monkeypatch.setattr(
+        "backend.routes.system_updates.read_update_policy", lambda _settings: original
+    )
+    monkeypatch.setattr(
+        "backend.routes.system_updates.save_update_policy",
+        lambda _settings, _payload: saved,
+    )
+    monkeypatch.setattr(
+        "backend.routes.system_updates.read_update_policy_status",
+        lambda _settings: status_response,
+    )
+    payload = saved.model_dump(exclude={"schema_version"})
+    try:
+        forbidden = client.put(
+            "/api/v1/system-updates/policy",
+            headers={"Authorization": f"Bearer {viewer_token}"},
+            json=payload,
+        )
+        assert forbidden.status_code == 403
+
+        response = client.put(
+            "/api/v1/system-updates/policy",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json=payload,
+        )
+
+        assert response.status_code == 200
+        assert response.json()["policy"]["channel"] == "beta"
+        audit = db.execute(select(AuditLog)).scalar_one()
+        assert audit.action == "SYSTEM_UPDATE_POLICY_CHANGED"
+        assert audit.changes["before"]["automatic_checks_enabled"] is False
+        assert audit.changes["after"]["automatic_checks_enabled"] is True
     finally:
         db.close()
 
@@ -238,6 +293,7 @@ def test_apply_requires_admin_and_passes_only_the_explicit_approval(
         assert response.status_code == 202
         assert response.json()["state"] == "queued"
         assert calls[0][0].confirmation == "INSTALL 1.2.0"
+        assert calls[0][0].maintenance_override is False
         assert calls[0][1] > 0
     finally:
         db.close()

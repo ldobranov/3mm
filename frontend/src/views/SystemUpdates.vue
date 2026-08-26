@@ -55,6 +55,91 @@
       {{ t('systemUpdates.previewChannelWarning', 'Preview channels may contain unfinished changes. Installation still requires the same verification and explicit approval.') }}
     </div>
 
+    <section v-if="policyStatus" class="policy-card card">
+      <div class="section-heading policy-heading">
+        <span class="section-icon"><i class="bi bi-calendar2-check" aria-hidden="true"></i></span>
+        <div>
+          <p class="eyebrow">{{ t('systemUpdates.policyEyebrow', 'Operational controls') }}</p>
+          <h2>{{ t('systemUpdates.policyTitle', 'Update policy') }}</h2>
+          <p>{{ t('systemUpdates.policyText', 'Automatic checks are read-only. Installation always remains an administrator action.') }}</p>
+        </div>
+        <button class="button button-primary" :disabled="savingPolicy" @click="savePolicy">
+          <i class="bi bi-check2" aria-hidden="true"></i>
+          {{ savingPolicy ? t('common.saving', 'Saving…') : t('common.save', 'Save') }}
+        </button>
+      </div>
+
+      <div class="policy-grid">
+        <label class="policy-toggle">
+          <input v-model="policyDraft.automatic_checks_enabled" type="checkbox">
+          <span>
+            <strong>{{ t('systemUpdates.automaticChecks', 'Automatic update checks') }}</strong>
+            <small>{{ t('systemUpdates.automaticChecksHelp', 'Checks the trusted catalog in the background without downloading or installing anything.') }}</small>
+          </span>
+        </label>
+        <label class="field-control">
+          <span>{{ t('systemUpdates.automaticChannel', 'Automatic channel') }}</span>
+          <select v-model="policyDraft.channel" :disabled="!policyDraft.automatic_checks_enabled">
+            <option value="stable">{{ t('systemUpdates.channelStable', 'Stable — recommended') }}</option>
+            <option value="beta">{{ t('systemUpdates.channelBeta', 'Beta — preview') }}</option>
+            <option value="test">{{ t('systemUpdates.channelTest', 'Test — internal') }}</option>
+          </select>
+        </label>
+        <label class="field-control">
+          <span>{{ t('systemUpdates.checkInterval', 'Check interval') }}</span>
+          <select v-model.number="policyDraft.check_interval_hours" :disabled="!policyDraft.automatic_checks_enabled">
+            <option :value="1">1 {{ t('systemUpdates.hour', 'hour') }}</option>
+            <option :value="3">3 {{ t('systemUpdates.hours', 'hours') }}</option>
+            <option :value="6">6 {{ t('systemUpdates.hours', 'hours') }}</option>
+            <option :value="12">12 {{ t('systemUpdates.hours', 'hours') }}</option>
+            <option :value="24">24 {{ t('systemUpdates.hours', 'hours') }}</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="policy-divider"></div>
+
+      <div class="policy-grid maintenance-grid">
+        <label class="policy-toggle">
+          <input v-model="policyDraft.maintenance_window_enabled" type="checkbox">
+          <span>
+            <strong>{{ t('systemUpdates.maintenanceWindow', 'Daily maintenance window') }}</strong>
+            <small>{{ t('systemUpdates.maintenanceWindowHelp', 'Outside this window, installation requires a separate explicit override.') }}</small>
+          </span>
+        </label>
+        <label class="field-control">
+          <span>{{ t('systemUpdates.timezone', 'Timezone') }}</span>
+          <select v-model="policyDraft.maintenance_timezone" :disabled="!policyDraft.maintenance_window_enabled">
+            <option v-for="zone in timezoneOptions" :key="zone" :value="zone">{{ zone }}</option>
+          </select>
+        </label>
+        <label class="field-control">
+          <span>{{ t('systemUpdates.windowStarts', 'Starts at') }}</span>
+          <input v-model="policyDraft.maintenance_start" type="time" :disabled="!policyDraft.maintenance_window_enabled">
+        </label>
+        <label class="field-control">
+          <span>{{ t('systemUpdates.windowDuration', 'Duration') }}</span>
+          <select v-model.number="policyDraft.maintenance_duration_minutes" :disabled="!policyDraft.maintenance_window_enabled">
+            <option :value="30">30 {{ t('systemUpdates.minutes', 'minutes') }}</option>
+            <option :value="60">1 {{ t('systemUpdates.hour', 'hour') }}</option>
+            <option :value="120">2 {{ t('systemUpdates.hours', 'hours') }}</option>
+            <option :value="240">4 {{ t('systemUpdates.hours', 'hours') }}</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="policy-status-row">
+        <span>
+          <i class="bi bi-clock-history" aria-hidden="true"></i>
+          {{ cachedCheckSummary }}
+        </span>
+        <span v-if="policyStatus.policy.maintenance_window_enabled" :class="policyStatus.within_maintenance_window ? 'window-open' : 'window-closed'">
+          <i :class="policyStatus.within_maintenance_window ? 'bi bi-unlock' : 'bi bi-lock'" aria-hidden="true"></i>
+          {{ maintenanceSummary }}
+        </span>
+      </div>
+    </section>
+
     <div v-if="loading" class="loading-state" aria-live="polite">
       <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
       {{ t('systemUpdates.loading', 'Loading update status…') }}
@@ -249,9 +334,17 @@
           <input v-model="restartAcknowledged" type="checkbox">
           <span>{{ t('systemUpdates.confirmRestart', 'I understand that the application will restart and may be briefly unavailable.') }}</span>
         </label>
+        <div v-if="requiresMaintenanceOverride" class="notice notice-warning maintenance-override">
+          <i class="bi bi-calendar-x" aria-hidden="true"></i>
+          <span>{{ t('systemUpdates.outsideWindow', 'This installation is outside the saved maintenance window.') }}</span>
+        </div>
+        <label v-if="requiresMaintenanceOverride" class="confirm-check">
+          <input v-model="maintenanceOverrideAcknowledged" type="checkbox">
+          <span>{{ t('systemUpdates.confirmWindowOverride', 'Install now and explicitly override the maintenance window.') }}</span>
+        </label>
         <div class="dialog-actions">
           <button class="button button-secondary" :disabled="applying" @click="closeConfirmation">{{ t('common.cancel', 'Cancel') }}</button>
-          <button class="button button-primary" :disabled="!restartAcknowledged || applying" @click="applyUpdate">
+          <button class="button button-primary" :disabled="!canConfirmInstall || applying" @click="applyUpdate">
             <i class="bi bi-arrow-up-circle" :class="{ spinning: applying }" aria-hidden="true"></i>
             {{ applying ? t('systemUpdates.startingInstall', 'Starting…') : t('systemUpdates.installNow', 'Install update') }}
           </button>
@@ -324,6 +417,36 @@ interface UpdateCheckResponse {
   checked_at: string | null
 }
 
+interface UpdatePolicy {
+  schema_version: 1
+  channel: UpdateChannel
+  automatic_checks_enabled: boolean
+  check_interval_hours: number
+  maintenance_window_enabled: boolean
+  maintenance_timezone: string
+  maintenance_start: string
+  maintenance_duration_minutes: number
+}
+
+interface UpdateCheckCache {
+  channel: UpdateChannel
+  result: UpdateCheckResponse | null
+  last_attempt_at: string
+  last_success_at: string | null
+  next_check_at: string
+  consecutive_failures: number
+  last_error: string | null
+}
+
+interface UpdatePolicyStatus {
+  policy: UpdatePolicy
+  cached_check: UpdateCheckCache | null
+  within_maintenance_window: boolean
+  current_window_started_at: string | null
+  current_window_ends_at: string | null
+  next_window_starts_at: string | null
+}
+
 type OperationState = 'idle' | 'ready' | 'queued' | 'applying' | 'succeeded' | 'failed'
 
 interface UpdateOperation {
@@ -359,18 +482,49 @@ interface StagedUpdate {
 const { t } = useI18n()
 const status = ref<UpdateCheckResponse | null>(null)
 const selectedChannel = ref<UpdateChannel>('stable')
+const policyStatus = ref<UpdatePolicyStatus | null>(null)
+const policyDraft = ref({
+  channel: 'stable' as UpdateChannel,
+  automatic_checks_enabled: false,
+  check_interval_hours: 6,
+  maintenance_window_enabled: false,
+  maintenance_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+  maintenance_start: '03:00',
+  maintenance_duration_minutes: 120,
+})
 const loading = ref(true)
 const checking = ref(false)
 const staging = ref(false)
 const applying = ref(false)
+const savingPolicy = ref(false)
 const errorMessage = ref('')
 const staged = ref<StagedUpdate | null>(null)
 const operation = ref<UpdateOperation | null>(null)
 const showConfirmation = ref(false)
 const restartAcknowledged = ref(false)
+const maintenanceOverrideAcknowledged = ref(false)
 let operationTimer: ReturnType<typeof setInterval> | null = null
 
+const intlWithTimezones = Intl as typeof Intl & {
+  supportedValuesOf?: (key: 'timeZone') => string[]
+}
+const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+const timezoneOptions = computed(() => {
+  const supported = intlWithTimezones.supportedValuesOf?.('timeZone') || [
+    'UTC', 'Europe/Sofia', 'Europe/London', 'America/New_York', 'Asia/Tokyo',
+  ]
+  return Array.from(new Set([policyDraft.value.maintenance_timezone, detectedTimezone, 'UTC', ...supported])).sort()
+})
+
 const operationBusy = computed(() => operation.value?.state === 'queued' || operation.value?.state === 'applying')
+const requiresMaintenanceOverride = computed(() => Boolean(
+  policyStatus.value?.policy.maintenance_window_enabled
+  && !policyStatus.value.within_maintenance_window,
+))
+const canConfirmInstall = computed(() => Boolean(
+  restartAcknowledged.value
+  && (!requiresMaintenanceOverride.value || maintenanceOverrideAcknowledged.value),
+))
 const canStage = computed(() => {
   const latest = status.value?.latest
   return Boolean(
@@ -423,6 +577,27 @@ const operationIcon = computed(() => operation.value ? {
   failed: 'bi bi-exclamation-triangle-fill',
 }[operation.value.state] : 'bi bi-clock-history')
 
+const cachedCheckSummary = computed(() => {
+  const cached = policyStatus.value?.cached_check
+  if (!cached) return t('systemUpdates.noCachedCheck', 'No cached automatic check yet')
+  if (cached.last_error) {
+    return `${t('systemUpdates.lastCheckFailed', 'Last check failed')}: ${cached.last_error}. ${t('systemUpdates.retryAt', 'Retry')} ${formatDate(cached.next_check_at)}`
+  }
+  return `${t('systemUpdates.lastChecked', 'Last checked')} ${formatDate(cached.last_success_at || cached.last_attempt_at)} · ${cached.channel}`
+})
+
+const maintenanceSummary = computed(() => {
+  const operational = policyStatus.value
+  if (!operational?.policy.maintenance_window_enabled) return ''
+  if (operational.within_maintenance_window && operational.current_window_ends_at) {
+    return `${t('systemUpdates.windowOpenUntil', 'Window open until')} ${formatDate(operational.current_window_ends_at)}`
+  }
+  if (operational.next_window_starts_at) {
+    return `${t('systemUpdates.nextWindow', 'Next window')} ${formatDate(operational.next_window_starts_at)}`
+  }
+  return t('systemUpdates.windowClosed', 'Maintenance window closed')
+})
+
 function errorText(error: any): string {
   return error?.response?.data?.detail || error?.message || t('systemUpdates.unknownError', 'The update status could not be loaded.')
 }
@@ -463,10 +638,53 @@ async function checkForUpdates() {
   try {
     const response = await http.post('/api/v1/system-updates/check', { channel: selectedChannel.value })
     status.value = response.data
+    await loadPolicy(false)
   } catch (error) {
     errorMessage.value = errorText(error)
   } finally {
     checking.value = false
+  }
+}
+
+function applyPolicyResponse(value: UpdatePolicyStatus, useCachedResult: boolean) {
+  policyStatus.value = value
+  policyDraft.value = {
+    channel: value.policy.channel,
+    automatic_checks_enabled: value.policy.automatic_checks_enabled,
+    check_interval_hours: value.policy.check_interval_hours,
+    maintenance_window_enabled: value.policy.maintenance_window_enabled,
+    maintenance_timezone: value.policy.maintenance_timezone,
+    maintenance_start: value.policy.maintenance_start,
+    maintenance_duration_minutes: value.policy.maintenance_duration_minutes,
+  }
+  if (useCachedResult) {
+    selectedChannel.value = value.policy.channel
+    if (value.cached_check?.result) {
+      status.value = value.cached_check.result
+      selectedChannel.value = value.cached_check.channel
+    }
+  }
+}
+
+async function loadPolicy(useCachedResult = true) {
+  try {
+    const response = await http.get('/api/v1/system-updates/policy')
+    applyPolicyResponse(response.data, useCachedResult)
+  } catch (error) {
+    errorMessage.value = errorText(error)
+  }
+}
+
+async function savePolicy() {
+  savingPolicy.value = true
+  errorMessage.value = ''
+  try {
+    const response = await http.put('/api/v1/system-updates/policy', policyDraft.value)
+    applyPolicyResponse(response.data, false)
+  } catch (error) {
+    errorMessage.value = errorText(error)
+  } finally {
+    savingPolicy.value = false
   }
 }
 
@@ -521,6 +739,7 @@ function closeConfirmation() {
   if (applying.value) return
   showConfirmation.value = false
   restartAcknowledged.value = false
+  maintenanceOverrideAcknowledged.value = false
 }
 
 function startOperationPolling() {
@@ -553,7 +772,7 @@ async function loadOperation(silent = false) {
 }
 
 async function applyUpdate() {
-  if (!staged.value || !restartAcknowledged.value) return
+  if (!staged.value || !canConfirmInstall.value) return
   applying.value = true
   errorMessage.value = ''
   const reviewed = staged.value
@@ -563,6 +782,7 @@ async function applyUpdate() {
       release_id: reviewed.release_id,
       approval_nonce: reviewed.approval_nonce,
       confirmation: `INSTALL ${reviewed.version}`,
+      maintenance_override: requiresMaintenanceOverride.value && maintenanceOverrideAcknowledged.value,
     })
     operation.value = response.data
     started = true
@@ -588,6 +808,7 @@ async function applyUpdate() {
     if (started) {
       showConfirmation.value = false
       restartAcknowledged.value = false
+      maintenanceOverrideAcknowledged.value = false
       staged.value = null
       startOperationPolling()
     }
@@ -596,6 +817,7 @@ async function applyUpdate() {
 
 onMounted(async () => {
   await Promise.all([loadLocalStatus(), loadOperation()])
+  await loadPolicy()
 })
 onUnmounted(stopOperationPolling)
 </script>
@@ -633,6 +855,27 @@ onUnmounted(stopOperationPolling)
 .notice { display: flex; align-items: center; gap: .65rem; margin-bottom: 1rem; padding: .8rem 1rem; border: 1px solid var(--updates-border); border-radius: var(--radius-sm); }
 .notice-error { border-color: color-mix(in srgb, var(--danger) 42%, var(--updates-border)); background: color-mix(in srgb, var(--danger) 8%, var(--updates-surface)); }
 .notice-warning { border-color: color-mix(in srgb, #d97706 42%, var(--updates-border)); background: color-mix(in srgb, #d97706 8%, var(--updates-surface)); }
+.policy-card { margin-bottom: 1rem; padding: 1.1rem; }
+.policy-heading { align-items: center; }
+.policy-heading > div { flex: 1; }
+.policy-heading p:last-child { margin: .2rem 0 0; color: var(--updates-muted); font-size: .78rem; }
+.policy-grid { display: grid; grid-template-columns: minmax(18rem, 1.7fr) repeat(2, minmax(9rem, .65fr)); gap: .9rem; padding-top: 1rem; }
+.maintenance-grid { grid-template-columns: minmax(18rem, 1.7fr) minmax(12rem, 1fr) minmax(8rem, .55fr) minmax(8rem, .55fr); }
+.policy-toggle { display: flex; align-items: flex-start; gap: .65rem; padding: .7rem; border: 1px solid var(--updates-border); border-radius: var(--radius-sm); background: var(--updates-soft); cursor: pointer; }
+.policy-toggle input { margin-top: .18rem; accent-color: var(--accent); }
+.policy-toggle span { display: grid; gap: .18rem; }
+.policy-toggle strong { font-size: .8rem; }
+.policy-toggle small { color: var(--updates-muted); font-size: .7rem; line-height: 1.35; }
+.field-control { display: grid; align-content: start; gap: .3rem; color: var(--updates-muted); font-size: .68rem; font-weight: 700; }
+.field-control select, .field-control input { width: 100%; height: 2.35rem; padding: 0 .7rem; border: 1px solid var(--updates-border); border-radius: var(--radius-sm); background: var(--updates-surface); color: var(--updates-text); font: inherit; font-size: .76rem; }
+.field-control select:focus, .field-control input:focus { border-color: var(--accent); outline: 2px solid color-mix(in srgb, var(--accent) 24%, transparent); outline-offset: 1px; }
+.field-control select:disabled, .field-control input:disabled { opacity: .55; cursor: not-allowed; }
+.policy-divider { margin-top: 1rem; border-top: 1px solid var(--updates-border); }
+.policy-status-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .65rem; margin-top: 1rem; padding-top: .85rem; border-top: 1px solid var(--updates-border); color: var(--updates-muted); font-size: .72rem; }
+.policy-status-row span { display: flex; align-items: center; gap: .4rem; }
+.policy-status-row .window-open { color: var(--accent); }
+.policy-status-row .window-closed { color: #d97706; }
+.maintenance-override { margin: 1rem 0 0; font-size: .78rem; }
 .loading-state { display: flex; align-items: center; justify-content: center; gap: .65rem; min-height: 220px; color: var(--updates-muted); }
 .status-card { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; padding: 1rem 1.1rem; }
 .status-card time { flex: 0 0 auto; color: var(--updates-muted); font-size: .76rem; }
@@ -721,6 +964,9 @@ onUnmounted(stopOperationPolling)
   .channel-control, .channel-control select { width: 100%; }
   .updates-header .button { width: 100%; justify-content: center; }
   .release-grid, .requirements-card, .review-grid { grid-template-columns: 1fr; }
+  .policy-heading { align-items: flex-start; }
+  .policy-heading .button { width: 100%; justify-content: center; }
+  .policy-grid, .maintenance-grid { grid-template-columns: 1fr; }
   .requirements-column + .requirements-column { border-top: 1px solid var(--updates-border); border-left: 0; }
   .restart-warning { align-items: flex-start; flex-wrap: wrap; }
   .restart-warning .button { width: 100%; justify-content: center; }

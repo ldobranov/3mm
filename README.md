@@ -1,43 +1,130 @@
-# 3mm — Мултифункционална платформа с FastAPI и Vue 3
+# 3mm
 
-Проектът **3mm** има за цел да бъде модулна система, която позволява лесно добавяне на функционалности като блог, онлайн магазин, домашна автоматизация и индустриален мониторинг чрез динамични добавки (extensions).
+[![Current release](https://img.shields.io/github/v/release/ldobranov/3mm?include_prereleases&label=release)](https://github.com/ldobranov/3mm/releases)
+[![CI](https://github.com/ldobranov/3mm/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ldobranov/3mm/actions/workflows/ci.yml)
 
-## 🛠 Стек
+3mm is a modular edge-control platform for Raspberry Pi and Linux devices. It
+combines a central Core, a persistent device Agent, dashboards, provisioning,
+runtime extensions and a reviewed AI-assisted extension workflow in one
+system.
 
-- **Backend:** FastAPI + Pydantic + SQLite
-- **Frontend:** Vue 3 + Vite + TailwindCSS
-- **UI Framework:** TailwindCSS (преди Bootstrap)
-- **Системни модули:** 
-  - User Manager (с роли)
-  - Settings мениджър
-  - Dynamic Menu Editor
-  - Extension Generator (в разработка)
+> **Project status:** Beta. The current physically validated release is
+> [v0.3.0-beta.4](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.4).
+> It has completed a real Beta-channel OTA update on a Raspberry Pi 3B+. The
+> project is not yet presented as production-hardened.
+
+## What works
+
+- **Core and web application** — authentication, roles, settings, dynamic
+  navigation, dashboards and device management.
+- **Persistent Agent** — stable device identity, health and inventory,
+  pairing, heartbeat, command processing, reconciliation and offline outbox.
+- **Hardware capabilities** — deterministic mock profiles and opt-in native
+  Raspberry GPIO input through the official `gpiod` bindings.
+- **Provisioning** — browser-based first setup, an open setup-only access
+  point, Wi-Fi configuration with rollback and Standalone/Hub/Node roles.
+- **Extensions** — declarative runtime extensions and reviewed compiled Vue
+  widgets, editors, routes and reusable components.
+- **AI Extension Builder** — guided intent planning, editable projects,
+  automatic versions, reviewable source changes, deterministic capability
+  foundations, compilation and installation.
+- **Immutable deployment** — versioned releases, persistent state outside the
+  application tree, health checks, rollback and bounded release/backup
+  retention.
+- **OTA updates** — architecture-specific reproducible artifacts, validated
+  manifests, Stable/Beta/Test channels, cached read-only background checks,
+  maintenance-window enforcement and explicit administrator approval.
+
+## Architecture
+
+```text
+Browser
+   |
+   v
+Core API + SQLite  <---->  Runtime and compiled extension artifacts
+   |
+   | authenticated device protocol
+   v
+Agent  <---->  hardware drivers and local capabilities
+
+Provisioning selects the device role.
+The immutable updater activates releases and preserves rollback state.
+```
+
+The Core does not hardcode concrete extensions. Routes, navigation, widgets
+and data contracts are discovered from validated package metadata. The Agent
+is the hardware boundary; browser code and generated extensions do not access
+devices directly.
+
+## Technology
+
+- Python 3.10+ and FastAPI
+- SQLAlchemy, Alembic and SQLite
+- Vue 3, TypeScript, Vite, Pinia and Vue Router
+- Bootstrap plus project CSS tokens and native Vue components
+- systemd and NetworkManager on the Raspberry deployment
+- pnpm for locked frontend release builds
 
 ## Local development
 
-On Linux, macOS or WSL, start the backend and frontend together from the
+Recommended host tools:
+
+- Python 3.13;
+- Node.js 22;
+- pnpm 10.13.1.
+
+On Linux, macOS or WSL, start Core and the development frontend from the
 repository root:
 
 ```bash
 ./dev.sh
 ```
 
-The script creates an isolated Python environment, installs missing
-dependencies, starts the Core API on `http://localhost:8887`, waits for its
-health check and then starts the web interface on `http://localhost:5173`.
-Press `Ctrl+C` to stop both processes.
+The launcher creates `backend/.venv`, starts Core on
+`http://localhost:8887`, waits for health and starts Vite on
+`http://localhost:5173`.
 
-Run the quality checks separately:
+On Windows, prepare the backend once:
 
-```bash
-backend/.venv/bin/python -m pip install -r backend/requirements-dev.txt
-backend/.venv/bin/python -m pytest
-npm --prefix frontend run build
+```powershell
+py -3 -m venv backend\.venv
+backend\.venv\Scripts\python -m pip install -r backend\requirements-dev.txt
 ```
 
-### Standalone Agent development
+Then run Core:
 
-Run one Agent from the repository root with an isolated persistent identity:
+```powershell
+backend\.venv\Scripts\python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8887
+```
+
+In a second terminal, run the frontend:
+
+```powershell
+cd frontend
+corepack enable
+corepack prepare pnpm@10.13.1 --activate
+pnpm install --frozen-lockfile
+pnpm run dev
+```
+
+### Quality checks
+
+From the repository root:
+
+```bash
+backend/.venv/bin/python -m pytest -q
+pnpm --dir frontend run test:unit -- --run
+pnpm --dir frontend run type-check
+pnpm --dir frontend run build-only
+```
+
+On Windows, use `backend\.venv\Scripts\python` for the Python command.
+Four Agent tests that assert Unix `0600` mode bits are expected to fail on
+NTFS; the same paths are enforced and tested on Linux.
+
+### Standalone Agent
+
+Run an isolated development Agent with a persistent identity:
 
 ```bash
 backend/.venv/bin/python -m agent \
@@ -46,277 +133,70 @@ backend/.venv/bin/python -m agent \
   --role standalone
 ```
 
-The Agent listens on `http://127.0.0.1:8890` by default. Its liveness,
-identity contract and privacy-conscious inventory are available at:
+The Agent listens on `127.0.0.1:8890` by default:
 
-- `/health`;
-- `/ready`;
-- `/api/v1/agent/hello`;
-- `/api/v1/agent/inventory`.
+- `/health`
+- `/ready`
+- `/api/v1/agent/hello`
+- `/api/v1/agent/inventory`
 
-Start two independent mock Agents with persistent, different identities:
+Use `./dev-agents.sh` to start two independent mock devices.
 
-```bash
-./dev-agents.sh
+## Raspberry Pi
+
+The tested deployment uses an immutable layout:
+
+```text
+/opt/3mm/current  -> /opt/3mm/releases/<release-id>
+/opt/3mm/previous -> last rollback release
+/var/lib/3mm      -> persistent application and device state
 ```
 
-The mock Agents listen on ports `8890` and `8891`. Their runtime data stays in
-the ignored `.runtime/agents` directory, so restarting the launcher preserves
-their device IDs. The first Agent reports the deterministic `mock-pi3` hardware
-profile and the second reports `mock-zero2`; neither profile imports Raspberry
-libraries. Press `Ctrl+C` to stop both processes.
+Start with the
+[Raspberry Pi first-boot procedure](docs/RASPBERRY_PI_FIRST_BOOT.md). It covers
+preflight, installation, setup Wi-Fi, administrator bootstrap, Agent pairing
+and smoke checks. The normal installer performs backup, migration, atomic
+activation, health verification and rollback.
 
-Select a profile for an individual development Agent with
-`--hardware-profile native|mock-pi3|mock-zero2|mock-linux` or the
-`THREE_MM_AGENT_HARDWARE_PROFILE` environment variable. The default is
-`native`. Mock profiles currently provide only the implemented
-`hardware.inventory` capability; GPIO capabilities are introduced in their
-own later milestone.
+Do not treat the development HTTP deployment or open setup-only access point
+as the final production security boundary. TLS, marketplace trust and stronger
+isolation for third-party executable extensions remain future production work.
 
-### Headless setup prototype
+## Releases and updates
 
-Start the browser-based setup service from the repository root:
+The source version is stored in [VERSION](VERSION). Releases use immutable
+annotated semantic-version tags and publish:
 
-```bash
-backend/.venv/bin/python -m setup_service
-```
+- `aarch64`, `armv7l` and `x86_64` archives;
+- `3mm-update-manifest.json`;
+- `SHA256SUMS`.
 
-On Windows, use `backend/.venv/Scripts/python -m setup_service`. The prototype
-listens on `http://127.0.0.1:8895` by default and exposes the setup page at
-`/setup`. It uses the deterministic mock network adapter: it exercises setup,
-validation, commit and rollback behavior but does not inspect or change the
-host's NetworkManager configuration.
+Stable releases use the Stable channel, `-test...` prereleases use Test and
+other prereleases use Beta. The updater verifies release identity, checksum,
+architecture, dependencies and preflight conditions before it can ask for
+explicit administrator approval. Administrators can opt into cached background
+catalog checks with persisted retry backoff. A daily maintenance window can
+gate installation; applying outside it requires a separate explicit override.
+Background checks never download or install a release.
 
-The setup service also responds to common Android, Apple and Windows captive
-portal probe paths by redirecting the browser to `/setup`. Its public API is
-limited to versioned status and configuration endpoints under `/api/v1/setup`.
+See the [changelog](CHANGELOG.md) for user-visible changes and the
+[release guide](docs/RELEASING.md) for the maintainer workflow.
 
-Provisioning state is written atomically under the shared provisioning data
-directory (`$XDG_DATA_HOME/3mm/setup` or `$HOME/.local/share/3mm/setup` by
-default). Use setup's `--data-dir`, Agent's `--provisioning-data-dir` or the
-shared `THREE_MM_PROVISIONING_DATA_DIR` variable to override it. The older
-`THREE_MM_SETUP_DATA_DIR` variable remains a compatibility fallback. The
-journal never stores the network name or passphrase. A completed setup is
-restored after a service restart; an interrupted attempt rolls back through
-the network adapter and returns to setup mode.
+## Documentation
 
-At Agent startup, a completed provisioning snapshot overrides the fallback
-`--role`. Changing the snapshot from Standalone to Hub or Node does not alter
-the Agent data directory or its persistent device identity. Missing or
-incomplete provisioning state leaves the explicit fallback role unchanged;
-corrupt state fails startup instead of being silently replaced.
+| Document | Purpose |
+| --- | --- |
+| [Architecture plan](docs/ARCHITECTURE_PLAN.md) | System boundaries and target architecture |
+| [Project rules](docs/PROJECT_RULES.md) | Compatibility, safety and development rules |
+| [Roadmap](docs/ROADMAP.md) | Milestones and remaining work |
+| [Raspberry baseline](docs/RASPBERRY_PI_BASELINE.md) | Physical device baseline and measurements |
+| [First boot](docs/RASPBERRY_PI_FIRST_BOOT.md) | Repeatable Raspberry installation and provisioning |
+| [Extension lifecycle](docs/EXTENSION_LIFECYCLE.md) | Package, version and data lifecycle |
+| [Runtime extension v1](docs/RUNTIME_EXTENSION_V1.md) | Declarative extension contract |
+| [Compiled extension v1](docs/COMPILED_EXTENSION_V1.md) | Reviewed Vue compilation boundary |
+| [Module Manifest v2](docs/MODULE_MANIFEST_V2.md) | Package envelope and identities |
+| [OTA update plan](docs/OTA_UPDATE_PLAN.md) | Update architecture and acceptance stages |
+| [Release guide](docs/RELEASING.md) | Versioning, publication and verification |
 
-The Linux platform layer includes a read-only NetworkManager inspector. It
-queries only general service state and device interface/type/state fields; it
-does not query connection profiles, SSIDs, UUIDs, addresses or credentials.
-The mock adapter remains the only adapter authorized for configuration changes.
-
-The shared runtime planner maps the persisted device role to services without
-depending on systemd: an unprovisioned or interrupted device runs Setup, a Node
-runs Agent, and Hub or Standalone runs Core, Web plus the local Agent.
-Installers and service managers can consume this plan while keeping role policy
-in one tested location.
-
-Validated systemd templates for that layout live under `deployment/systemd`.
-Core is reachable from the trusted local network; Agent and Setup remain on
-loopback. The templates are not installed automatically and currently grant no
-NetworkManager write access to the setup prototype.
-
-For static-artifact smoke tests, `python -m three_mm_web --directory
-frontend/dist` serves the already built Vue application with history-route
-fallback. It is a dependency-free validation server, not the final production
-TLS or reverse-proxy boundary.
-
-For an explicitly prepared Linux release archive, the reviewed systemd
-installer is `deployment/install-systemd.sh`. It requires root, an immutable
-release ID and an exact frontend CORS origin. An existing Agent identity may be
-passed as the fourth argument for migration. Each immutable release contains
-its own Python environment and the installer performs database/environment
-backup, atomic activation, health checks and rollback. `deploy.ps1` uses this
-same installer rather than maintaining a second deployment implementation. The
-runtime planner enables Core, Web and Agent for Standalone, keeps Setup disabled,
-and does not alter networking or firewall configuration.
-
-## 📋 Prerequisites
-
-Before installing, ensure you have the following installed on your system:
-
-- **Python 3.10 or higher** (check with `python --version` or `python3 --version`)
-  - On Ubuntu/Debian: `sudo apt update && sudo apt install python3 python3-venv python3-pip`
-  - On macOS: Install from python.org or use Homebrew: `brew install python`
-  - On Windows: Download from python.org (ensure "Add Python to PATH" during installation)
-- **Node.js 20 or higher** (check with `node --version`)
-  - Download from nodejs.org or use package manager
-  - Update npm if needed: `npm install -g npm@latest`
-- **npm 10 or higher** (check with `npm --version`)
-  - Comes with Node.js 20+, or update with the command above
-
-### Troubleshooting Python Virtual Environment
-
-If you encounter errors like "cannot execute: required file not found" when activating venv or running pip:
-
-1. Ensure Python 3.8+ is installed: `python3 --version`
-2. On Linux systems, install the venv module: `sudo apt install python3-venv` (Ubuntu/Debian)
-3. Try recreating the virtual environment: `rm -rf backend/venv && python3 -m venv backend/venv`
-4. If `python3` doesn't work, try `python` (but ensure it's Python 3)
-
-## 📦 Installation
-
-### Backend Setup
-
-1. Navigate to the backend directory:
-   ```bash
-   cd backend
-   ```
-
-2. Create a virtual environment:
-   - On Linux/Mac:
-     ```bash
-     python3 -m venv venv
-     ```
-   - On Windows:
-     ```bash
-     python -m venv venv
-     ```
-
-3. Activate the virtual environment:
-   - On Linux/Mac:
-     ```bash
-     source venv/bin/activate
-     ```
-   - On Windows:
-     ```bash
-     venv\Scripts\activate
-     ```
-
-4. Install Python dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-5. Initialize the database (creates admin user and initial data):
-   ```bash
-   python backend/scripts/init_database.py
-   ```
-
-6. (Optional) Deactivate the virtual environment when done:
-   ```bash
-   deactivate
-   ```
-
-### Frontend Setup
-
-1. Navigate to the frontend directory:
-   ```bash
-   cd frontend
-   ```
-
-2. Install Node.js dependencies:
-   ```bash
-   npm install
-   ```
-
-## 🚀 Running the Application
-
-### Backend - Quick Start (Recommended)
-
-**Option 1: Automated Setup (First Time)**
-```bash
-./start_backend.sh
-```
-This script will:
-- Create virtual environment if it doesn't exist
-- Install all dependencies
-- Start the server with hot reload
-- Display helpful status messages
-
-**Option 2: Quick Start (Subsequent Runs)**
-```bash
-./quick_start.sh
-```
-Use this after initial setup to quickly start the server.
-
-**Option 3: Manual Setup**
-```bash
-# Activate virtual environment if not already active
-source backend/venv/bin/activate  # Linux/Mac
-# or
-venv\Scripts\activate  # Windows
-
-# Start the FastAPI server
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8887
-```
-
-### Frontend
-
-From the project root directory:
-
-```bash
-cd frontend
-npm run dev
-```
-
-The frontend will typically run on `http://localhost:5173` (Vite default) and is configured to connect to the backend at `http://localhost:8887`.
-
-**Note:** The frontend and backend URLs are configured in the root `config.json` file. For local development, the defaults are `http://localhost:8887` for backend and `http://localhost:5173` for frontend. If you need to connect to different URLs (e.g., production), update the `config.json` file before starting the application.
-
-### Running Both
-
-Open two terminal windows/tabs:
-
-1. Terminal 1: Run `./start_backend.sh` (or manual setup)
-2. Terminal 2: Run `cd frontend && npm run dev`
-
-The application should now be accessible at the frontend URL, communicating with the backend API.
-
-## 🔧 Development Tools
-
-For development, you can install additional tools:
-```bash
-source backend/venv/bin/activate
-pip install -r backend/requirements-dev.txt
-```
-
-This includes tools like:
-- `httpx` - API testing
-- `debugpy` - VSCode remote debugging
-- `ipython` - Enhanced Python shell
-- `black`, `isort` - Code formatting
-- `pytest` - Testing framework
-
-## 🛠 Common Issues and Solutions
-
-### Python Import Issues
-If you get `ModuleNotFoundError: No module named 'backend'`:
-- The startup scripts automatically fix this
-- Manually: ensure you're running from project root and virtual environment is active
-- Run `export PYTHONPATH="${PYTHONPATH}:$(pwd)"` if needed
-
-### Virtual Environment Issues
-If `python3 -m venv` fails:
-- Ubuntu/Debian: `sudo apt install python3-venv`
-- Make sure you have Python 3.8+: `python3 --version`
-
-### Permission Issues (Linux/Mac)
-```bash
-# Make scripts executable
-chmod +x start_backend.sh
-chmod +x quick_start.sh
-```
-
-### Port Already in Use
-If port 8887 is busy:
-```bash
-# Find process using the port
-lsof -i :8887
-# Kill the process
-kill -9 <PID>
-# Or use a different port
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8888
-```
-
-## 📡 Server Endpoints
-
-- **Backend API:** http://0.0.0.0:8887
-- **API Documentation:** http://0.0.0.0:8887/docs
-- **Frontend:** http://localhost:5173 (typically)
+Milestone reports in `docs/MILESTONE_*_REPORT.md` retain the detailed
+acceptance evidence behind the current implementation.

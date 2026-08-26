@@ -425,6 +425,8 @@ upsert_environment THREE_MM_UPDATE_STAGING_DIR /var/lib/3mm/core/update-staging
 upsert_environment THREE_MM_UPDATE_DEPENDENCY_ALLOWLIST /opt/3mm/current/deployment/update-dependency-allowlist.json
 upsert_environment THREE_MM_UPDATE_HELPER_SOCKET /run/3mm/update-helper.sock
 upsert_environment THREE_MM_UPDATE_HELPER_STATUS_FILE /var/lib/3mm/update-helper/status.json
+upsert_environment THREE_MM_UPDATE_POLICY_FILE /var/lib/3mm/core/update-policy.json
+upsert_environment THREE_MM_UPDATE_CHECK_CACHE_FILE /var/lib/3mm/core/update-check-cache.json
 
 if [[ -s $ai_master_key_file ]]; then
   ai_master_key=$(cat "$ai_master_key_file")

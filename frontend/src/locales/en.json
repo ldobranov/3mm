@@ -1,5 +1,5 @@
 {
-  "common": { "cancel": "Cancel", "error": "Error", "save": "Save" },
+  "common": { "cancel": "Cancel", "error": "Error", "save": "Save", "saving": "Saving…" },
   "profile": {
     "title": "My profile", "account": "Account", "username": "Username", "email": "Email",
     "role": "Role", "status": "Status", "active": "Active", "inactive": "Inactive",
@@ -37,7 +37,15 @@
     "confirmRestart": "I understand that the application will restart and may be briefly unavailable.", "startingInstall": "Starting…", "installNow": "Install update",
     "readyMessage": "The verified update is ready for administrator approval.", "reconnecting": "The update started. Waiting for the application to return…",
     "preflightArchive": "Release file verified", "preflightStorage": "Storage ready", "preflightDatabase": "Database ready for backup",
-    "preflightMigration": "Migration and rollback entrypoints present", "preflightDependencies": "Dependencies approved"
+    "preflightMigration": "Migration and rollback entrypoints present", "preflightDependencies": "Dependencies approved",
+    "policyEyebrow": "Operational controls", "policyTitle": "Update policy", "policyText": "Automatic checks are read-only. Installation always remains an administrator action.",
+    "automaticChecks": "Automatic update checks", "automaticChecksHelp": "Checks the trusted catalog in the background without downloading or installing anything.",
+    "automaticChannel": "Automatic channel", "checkInterval": "Check interval", "hour": "hour", "hours": "hours",
+    "maintenanceWindow": "Daily maintenance window", "maintenanceWindowHelp": "Outside this window, installation requires a separate explicit override.",
+    "timezone": "Timezone", "windowStarts": "Starts at", "windowDuration": "Duration", "minutes": "minutes",
+    "noCachedCheck": "No cached automatic check yet", "lastCheckFailed": "Last check failed", "retryAt": "Retry", "lastChecked": "Last checked",
+    "windowOpenUntil": "Window open until", "nextWindow": "Next window", "windowClosed": "Maintenance window closed",
+    "outsideWindow": "This installation is outside the saved maintenance window.", "confirmWindowOverride": "Install now and explicitly override the maintenance window."
   },
   "dashboard": {
     "titlePlaceholder": "Dashboard title", "slugPlaceholder": "dashboard-slug",

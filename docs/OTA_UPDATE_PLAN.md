@@ -4,7 +4,11 @@ Status: Phases 1 and 2 are published in stable release `v0.1.0`. The Phase 3
 boundary was introduced in `v0.2.0` and physically accepted on `rasp-3mm` on
 2026-08-26: failed `v0.2.1` and `v0.2.2` attempts restored the healthy `v0.2.0`
 release, corrected `v0.2.2` was installed as the trusted base, and `v0.2.3` was
-then staged and activated successfully through the OTA path.
+then staged and activated successfully through the OTA path. Phase 4 channel
+selection was physically accepted with a `v0.3.0-beta.3` bootstrap followed by
+an in-application OTA update to `v0.3.0-beta.4`. Standalone background checks,
+cache/backoff and maintenance-window enforcement were physically accepted on
+2026-08-27 in an immutable review deployment.
 
 ## Goal
 
@@ -130,8 +134,7 @@ generated install scripts.
 
 ## Phase 4 — Operational controls
 
-Stage 1 implemented locally on 2026-08-26; `v0.3.0-beta.1` is the planned
-bootstrap release for physical preview-channel acceptance:
+Stage 1 implemented and physically accepted on 2026-08-26:
 
 - an administrator explicitly selects `stable`, `beta` or `test` before a
   catalog check;
@@ -145,22 +148,55 @@ bootstrap release for physical preview-channel acceptance:
   and preview channels carry a visible warning;
 - requests without a channel remain backward compatible and use `stable`.
 
+Physical acceptance completed on `rasp-3mm`:
+
+- published `v0.3.0-beta.3` was installed as the channel-aware bootstrap;
+- the Beta catalog then selected only published Beta release
+  `v0.3.0-beta.4` and validated its manifest;
+- staging passed archive, storage, database, migration and dependency
+  preflights before the exact `INSTALL 0.3.0-beta.4` approval;
+- the root-owned update worker activated `v0.3.0-beta.4`, retained
+  `v0.3.0-beta.3` as rollback and preserved the device identity;
+- Core, Web, Agent and update-helper passed health checks, and a final Beta
+  catalog check returned `up_to_date`.
+
+Stage 2 implemented and physically accepted on 2026-08-27:
+
+- an administrator can opt into read-only background catalog checks, choose
+  the channel and select a bounded interval from one hour to seven days;
+- the selected policy and last trusted catalog result persist outside the
+  immutable release tree;
+- successful checks schedule the next interval, while failures retain the last
+  trusted result and use persistent exponential backoff capped at 24 hours;
+- a daily IANA-timezone maintenance window is calculated server-side and shown
+  in the UI with its current or next occurrence;
+- applying a staged release outside that window is rejected unless the
+  administrator supplies a separate explicit override, which is recorded in
+  the audit log;
+- automatic work is deliberately limited to catalog reads: download, staging,
+  dependency changes and installation remain separate manual operations.
+
+Physical acceptance completed on `rasp-3mm`:
+
+- the policy persisted Beta checks every six hours and a Europe/Sofia daily
+  window from 03:00 to 05:00;
+- the running background worker independently cached a Stable `not_newer`
+  result and then a Beta `up_to_date` result with zero failures;
+- an apply request outside the window was rejected before staging or the root
+  helper could be reached;
+- Core, Web, Agent and update-helper remained healthy in the immutable review
+  release.
+
 Still pending:
 
-- manually deploy the channel-aware `v0.3.0-beta.1` bootstrap, then publish and
-  exercise `v0.3.0-beta.2` through the Beta OTA path on `rasp-3mm`;
-- maintenance windows;
-- automatic checks with cached results and backoff;
-- manual download/apply separation;
 - fleet rings for Hub/Node installations;
 - power-loss acceptance and recovery;
 - optional automatic installation only after the manual path is accepted on
   clean Raspberry Pi media.
 
-## Deliberately excluded through Phase 3
+## Deliberately excluded through Phase 4
 
-- automatic updates;
-- background or scheduled download/install;
+- unattended download or installation;
 - arbitrary packages, commands, URLs or branch archives;
 - Web process access to `sudo`, `apt`, `systemctl` or writable system paths;
 - changing NetworkManager;

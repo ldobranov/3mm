@@ -113,6 +113,7 @@ class UpdateApplyRequest(BaseModel):
     release_id: str = Field(pattern=r"^[A-Za-z0-9._-]+$", max_length=160)
     approval_nonce: str = Field(pattern=r"^[0-9a-f]{64}$")
     confirmation: str = Field(min_length=1, max_length=200)
+    maintenance_override: bool = False
 
     model_config = ConfigDict(extra="forbid")
 
