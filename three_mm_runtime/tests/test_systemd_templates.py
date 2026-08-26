@@ -130,6 +130,14 @@ def test_installer_owns_the_atomic_release_and_rollback_boundary() -> None:
     assert "remote-deploy.sh" not in launcher
 
 
+def test_installer_uses_a_root_owned_cache_outside_protected_home() -> None:
+    installer = INSTALLER.read_text(encoding="utf-8")
+
+    assert "deploy_cache_root=/var/cache/3mm/deploy" in installer
+    assert 'install -d -o root -g root -m 0700' in installer
+    assert 'HOME="$deploy_home" npm_config_cache="$npm_cache"' in installer
+
+
 def test_deploy_accepts_setup_or_application_runtime() -> None:
     launcher = (SYSTEMD_DIR.parents[1] / "deploy.ps1").read_text(encoding="utf-8")
 

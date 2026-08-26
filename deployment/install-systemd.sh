@@ -58,6 +58,9 @@ state_root=/var/lib/3mm
 core_state=$state_root/core
 database=$core_state/3mm.db
 backup_root=$state_root/deploy-backups/$release_id
+deploy_cache_root=/var/cache/3mm/deploy
+deploy_home=$deploy_cache_root/home
+npm_cache=$deploy_cache_root/npm
 environment_file=/etc/3mm/3mm.env
 ai_master_key_file=/etc/3mm/ai-settings.key
 runtime_services=(
@@ -282,6 +285,8 @@ if ! id -u 3mm >/dev/null 2>&1; then
 fi
 
 install -d -o root -g root -m 0755 "$install_root" "$releases_root" /etc/3mm
+install -d -o root -g root -m 0700 \
+  "$deploy_cache_root" "$deploy_home" "$npm_cache"
 install -d -o 3mm -g 3mm -m 0750 "$state_root"
 install -d -o 3mm -g 3mm -m 0700 "$state_root/agent"
 
@@ -337,7 +342,8 @@ python3 -m venv "$release_dir/.venv"
 if ! command -v npm >/dev/null 2>&1; then
   fail "Node.js/npm is required for the compiled UI extension toolchain."
 fi
-npm install --prefix "$release_dir/frontend/compiler" \
+HOME="$deploy_home" npm_config_cache="$npm_cache" \
+  npm install --prefix "$release_dir/frontend/compiler" \
   --ignore-scripts --no-audit --no-fund
 
 log "Stopping services and backing up persistent state"

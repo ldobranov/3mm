@@ -380,7 +380,7 @@ OTA update stages (see [OTA_UPDATE_PLAN.md](OTA_UPDATE_PLAN.md)):
 
 1. administrator-only, read-only release catalog and dependency preview — completed locally on 2026-08-26;
 2. reproducible, architecture-specific GitHub Release artifacts and strict manifest generation — `v0.1.0` published;
-3. verified staging, allowlisted dependency installation, explicit approval and automatic rollback — `v0.2.0` deployed as the base; `v0.2.1` OTA acceptance pending;
+3. verified staging, allowlisted dependency installation, explicit approval and automatic rollback — `v0.2.0` deployed as the base; `v0.2.1` rollback verified; `v0.2.2` corrected acceptance pending;
 4. update channels, maintenance windows and fleet rollout controls.
 
 ## Milestone 13 — Ecosystem expansion
