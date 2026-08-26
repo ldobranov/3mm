@@ -214,6 +214,17 @@ activate_runtime() {
   verify_runtime
 }
 
+restart_always_on_services() {
+  local service
+  systemctl enable "${always_on_services[@]}"
+  systemctl restart "${always_on_services[@]}"
+  for service in "${always_on_services[@]}"; do
+    if ! systemctl is-active --quiet "$service"; then
+      fail "Required service did not become active: $service"
+    fi
+  done
+}
+
 rollback() {
   local exit_code=$?
   trap - ERR
@@ -235,6 +246,9 @@ rollback() {
         fi
       fi
       install_units "$previous_release" 0 || true
+      if [[ -f $previous_release/deployment/systemd/3mm-update-helper.service ]]; then
+        restart_always_on_services || true
+      fi
       activate_runtime "$previous_release" || {
         systemctl --no-pager --full status "${runtime_services[@]}" >&2 || true
         echo "Rollback completed, but the previous release is not healthy." >&2
@@ -453,10 +467,7 @@ runuser -u 3mm -- env \
 log "Activating release atomically"
 ln -sfnT "$release_dir" "$current_link"
 activate_runtime "$release_dir"
-systemctl enable --now "${always_on_services[@]}"
-if ! systemctl is-active --quiet 3mm-update-helper.service; then
-  fail "The system update helper did not become active."
-fi
+restart_always_on_services
 if [[ $test_fail_after_health == 1 ]]; then
   fail "Injected post-health deployment failure for rollback acceptance."
 fi

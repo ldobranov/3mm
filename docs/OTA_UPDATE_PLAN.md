@@ -1,10 +1,10 @@
 # 3mm OTA update and dependency plan
 
 Status: Phases 1 and 2 are published in stable release `v0.1.0`. The Phase 3
-boundary is published in `v0.2.0` and manually deployed on `rasp-3mm`. The first
-`v0.2.1` OTA attempt safely rolled back after exposing a protected-home npm cache
-assumption. The corrected `v0.2.2` release is now the manually deployed trusted
-base; `v0.2.3` is the clean candidate for the end-to-end OTA acceptance run.
+boundary was introduced in `v0.2.0` and physically accepted on `rasp-3mm` on
+2026-08-26: failed `v0.2.1` and `v0.2.2` attempts restored the healthy `v0.2.0`
+release, corrected `v0.2.2` was installed as the trusted base, and `v0.2.3` was
+then staged and activated successfully through the OTA path.
 
 ## Goal
 
@@ -85,11 +85,8 @@ Implemented and published in `v0.1.0`:
 
 See [RELEASING.md](RELEASING.md) for the maintainer procedure.
 
-Still pending: exercise a newer published archive through the Phase 3 manual
-path and existing installer health gates on `rasp-3mm`.
-
-Acceptance boundary: a freshly published release appears as available on a
-supported device, but the application still cannot install it.
+The published release catalog, architecture selection and reproducible artifact
+checks are now exercised by the accepted Phase 3 path on `rasp-3mm`.
 
 ## Phase 3 — Staged update and dependencies
 
@@ -115,13 +112,18 @@ Implemented in `v0.2.0`:
 - Core audit entries identify the staging and approving administrator, while a
   root-owned operation/audit record survives service restarts without secrets.
 
-Physical acceptance still required:
+Physical acceptance completed on `rasp-3mm` on 2026-08-26:
 
-- publish and validate `v0.2.3` as newer than the manually installed `v0.2.2`;
-- stage it from the UI and inspect the real dependency/disk/database plan;
-- approve it and observe the UI recover after Core/Web restart;
-- inject one installer failure and confirm the previous release, database and
-  services are restored while the failure remains visible in operation status.
+- `v0.2.3` was selected as the exact `aarch64` artifact over the manually
+  installed `v0.2.2` base;
+- archive identity, SHA-256, dependencies, disk capacity, SQLite quick-check,
+  backup capacity and migration entrypoint all passed before approval;
+- exact confirmation `INSTALL 0.2.3` queued the root-owned worker and the UI/API
+  recovered after the Core and Web restart;
+- two earlier real installer failures restored the previous release, database
+  and healthy services, and persisted a terminal failure operation record;
+- the successful run activated `/opt/3mm/releases/v0.2.3`, preserved device
+  identity and left Core, Web, Agent and the update helper healthy.
 
 The web backend must not execute arbitrary package names, shell fragments or
 generated install scripts.

@@ -138,6 +138,17 @@ def test_installer_uses_a_root_owned_cache_outside_protected_home() -> None:
     assert 'HOME="$deploy_home" npm_config_cache="$npm_cache"' in installer
 
 
+def test_installer_restarts_always_on_services_after_link_activation() -> None:
+    installer = INSTALLER.read_text(encoding="utf-8")
+
+    activation = installer.index('ln -sfnT "$release_dir" "$current_link"')
+    restart = installer.index("restart_always_on_services", activation)
+
+    assert activation < restart
+    assert 'systemctl restart "${always_on_services[@]}"' in installer
+    assert "restart_always_on_services || true" in installer
+
+
 def test_deploy_accepts_setup_or_application_runtime() -> None:
     launcher = (SYSTEMD_DIR.parents[1] / "deploy.ps1").read_text(encoding="utf-8")
 
