@@ -1,8 +1,8 @@
 # 3mm OTA update and dependency plan
 
-Status: Phases 1 and 2 are published in stable release `v0.1.0`. Phase 3 is
-included in release candidate `v0.2.0` and awaits physical Raspberry acceptance
-before it is considered complete.
+Status: Phases 1 and 2 are published in stable release `v0.1.0`. The Phase 3
+boundary is published in `v0.2.0` and manually deployed on `rasp-3mm`. Release
+`v0.2.1` is the newer acceptance candidate for the first end-to-end OTA run.
 
 ## Goal
 
@@ -115,8 +115,7 @@ Implemented in `v0.2.0`:
 
 Physical acceptance still required:
 
-- deploy the Phase 3 boundary itself through the existing reviewed manual path;
-- publish a version newer than the installed Raspberry release;
+- publish and validate `v0.2.1` as newer than the manually installed `v0.2.0`;
 - stage it from the UI and inspect the real dependency/disk/database plan;
 - approve it and observe the UI recover after Core/Web restart;
 - inject one installer failure and confirm the previous release, database and
