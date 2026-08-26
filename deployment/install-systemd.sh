@@ -60,13 +60,20 @@ database=$core_state/3mm.db
 backup_root=$state_root/deploy-backups/$release_id
 environment_file=/etc/3mm/3mm.env
 ai_master_key_file=/etc/3mm/ai-settings.key
-all_services=(
+runtime_services=(
   3mm-agent.service
   3mm-core.service
   3mm-web.service
   3mm-setup.service
   3mm-setup-ap.service
   3mm-network-helper.service
+)
+always_on_services=(
+  3mm-update-helper.service
+)
+installed_units=(
+  "${runtime_services[@]}"
+  "${always_on_services[@]}"
 )
 previous_release=""
 saved_rollback_release=""
@@ -109,8 +116,17 @@ assert_release_path() {
 
 install_units() {
   local source_release=$1
+  local require_update_helper=${2:-1}
   local unit
-  for unit in "${all_services[@]}"; do
+  for unit in "${installed_units[@]}"; do
+    if [[ ! -f $source_release/deployment/systemd/$unit ]]; then
+      if [[ $unit == 3mm-update-helper.service && $require_update_helper == 0 ]]; then
+        systemctl disable --now "$unit" >/dev/null 2>&1 || true
+        rm -f -- "/etc/systemd/system/$unit"
+        continue
+      fi
+      fail "Release is missing required service definition: $unit"
+    fi
     install -o root -g root -m 0644 \
       "$source_release/deployment/systemd/$unit" "/etc/systemd/system/$unit"
   done
@@ -203,7 +219,7 @@ rollback() {
   echo "Deployment failed; restoring ${previous_release:-the previous system state}." >&2
 
   if [[ $mutation_started -eq 1 ]]; then
-    systemctl stop "${all_services[@]}" >/dev/null 2>&1 || true
+    systemctl stop "${runtime_services[@]}" >/dev/null 2>&1 || true
     restore_database
     restore_environment
     if [[ -n $previous_release && -d $previous_release ]]; then
@@ -215,9 +231,9 @@ rollback() {
           rm -f -- "$previous_link"
         fi
       fi
-      install_units "$previous_release" || true
+      install_units "$previous_release" 0 || true
       activate_runtime "$previous_release" || {
-        systemctl --no-pager --full status "${all_services[@]}" >&2 || true
+        systemctl --no-pager --full status "${runtime_services[@]}" >&2 || true
         echo "Rollback completed, but the previous release is not healthy." >&2
       }
     fi
@@ -292,10 +308,15 @@ tar -xzf "$release_archive" -C "$release_dir" \
 required_files=(
   frontend/dist/index.html
   backend/requirements.txt
+  backend/services/update_staging.py
+  deployment/apply_staged_update.py
   deployment/migrate_database.py
+  deployment/update-dependency-allowlist.json
   deployment/systemd/3mm-core.service
   deployment/systemd/3mm-web.service
   deployment/systemd/3mm-agent.service
+  deployment/systemd/3mm-update-helper.service
+  three_mm_runtime/update_helper.py
 )
 for required_file in "${required_files[@]}"; do
   if [[ ! -f $release_dir/$required_file ]]; then
@@ -320,7 +341,7 @@ npm install --prefix "$release_dir/frontend/compiler" \
   --ignore-scripts --no-audit --no-fund
 
 log "Stopping services and backing up persistent state"
-systemctl stop "${all_services[@]}" >/dev/null 2>&1 || true
+systemctl stop "${runtime_services[@]}" >/dev/null 2>&1 || true
 mutation_started=1
 install -d -o root -g root -m 0700 "$backup_root"
 if [[ -f $database ]]; then
@@ -379,6 +400,11 @@ upsert_environment THREE_MM_HEARTBEAT_INTERVAL_SECONDS 30
 upsert_environment THREE_MM_PROVISIONING_DATA_DIR /var/lib/3mm/provisioning
 upsert_environment THREE_MM_SETUP_HOST 0.0.0.0
 upsert_environment THREE_MM_SETUP_PORT 8895
+upsert_environment FRONTEND_URL "$frontend_origin"
+upsert_environment THREE_MM_UPDATE_STAGING_DIR /var/lib/3mm/core/update-staging
+upsert_environment THREE_MM_UPDATE_DEPENDENCY_ALLOWLIST /opt/3mm/current/deployment/update-dependency-allowlist.json
+upsert_environment THREE_MM_UPDATE_HELPER_SOCKET /run/3mm/update-helper.sock
+upsert_environment THREE_MM_UPDATE_HELPER_STATUS_FILE /var/lib/3mm/update-helper/status.json
 
 if [[ -s $ai_master_key_file ]]; then
   ai_master_key=$(cat "$ai_master_key_file")
@@ -404,6 +430,8 @@ install -d -o 3mm -g 3mm -m 0750 \
   "$core_state/extensions/frontend" \
   "$core_state/extensions/compiled" \
   "$state_root/provisioning"
+install -d -o 3mm -g 3mm -m 0700 "$core_state/update-staging"
+install -d -o root -g 3mm -m 0750 "$state_root/update-helper"
 
 log "Installing service definitions and migrating the database"
 install_units "$release_dir"
@@ -419,6 +447,10 @@ runuser -u 3mm -- env \
 log "Activating release atomically"
 ln -sfnT "$release_dir" "$current_link"
 activate_runtime "$release_dir"
+systemctl enable --now "${always_on_services[@]}"
+if ! systemctl is-active --quiet 3mm-update-helper.service; then
+  fail "The system update helper did not become active."
+fi
 if [[ $test_fail_after_health == 1 ]]; then
   fail "Injected post-health deployment failure for rollback acceptance."
 fi
@@ -429,5 +461,5 @@ fi
 
 log "Deployment succeeded"
 rm -f -- "$release_archive"
-systemctl --no-pager --full status "${all_services[@]}" 2>/dev/null || true
+systemctl --no-pager --full status "${runtime_services[@]}" "${always_on_services[@]}" 2>/dev/null || true
 trap - ERR

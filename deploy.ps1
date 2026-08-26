@@ -113,6 +113,14 @@ try {
     if ($FrontendOrigin -notmatch '^https?://[A-Za-z0-9.-]+(?::[0-9]{1,5})?$') {
         throw "Frontend origin must be a plain HTTP(S) origin without a path: $FrontendOrigin"
     }
+    $versionFile = Join-Path $repoRoot 'VERSION'
+    if (-not (Test-Path -LiteralPath $versionFile -PathType Leaf)) {
+        throw "Project VERSION file was not found: $versionFile"
+    }
+    $projectVersion = [System.IO.File]::ReadAllText($versionFile).Trim()
+    if ($projectVersion -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+        throw "Project VERSION is not a supported semantic version: $projectVersion"
+    }
     if ($RollbackTestAfterHealth -and -not $IncludeWorkingTree) {
         throw 'RollbackTestAfterHealth requires IncludeWorkingTree for an explicit test snapshot.'
     }
@@ -159,6 +167,7 @@ try {
     $releaseId = "$releasePrefix-$(Get-Date -Format 'yyyyMMddHHmmss')"
     Write-Host "Branch:  $branch"
     Write-Host "Commit:  $commit"
+    Write-Host "Version: $projectVersion"
     Write-Host "Dirty:   $isDirty"
     Write-Host "Release: $releaseId"
 
@@ -259,6 +268,7 @@ try {
         release_id = $releaseId
         branch = $branch
         commit = $commit
+        version = $projectVersion
         includes_working_tree = $isDirty
         created_at = (Get-Date).ToUniversalTime().ToString('o')
     } | ConvertTo-Json

@@ -11,6 +11,7 @@ UNITS = {
 PRIVILEGED_UNITS = {
     "helper": SYSTEMD_DIR / "3mm-network-helper.service",
     "setup_ap": SYSTEMD_DIR / "3mm-setup-ap.service",
+    "update_helper": SYSTEMD_DIR / "3mm-update-helper.service",
 }
 
 
@@ -75,6 +76,17 @@ def test_privileged_network_units_are_narrowly_scoped() -> None:
     assert setup_ap["ProtectSystem"] == "strict"
 
 
+def test_update_helper_exposes_only_a_local_hardened_scheduler() -> None:
+    helper = _directives(PRIVILEGED_UNITS["update_helper"])
+
+    assert helper["User"] == "root"
+    assert "three_mm_runtime.update_helper" in helper["ExecStart"]
+    assert "/run/3mm/update-helper.sock" in helper["ExecStart"]
+    assert helper["ProtectSystem"] == "strict"
+    assert helper["ProtectHome"] == "true"
+    assert helper["RestrictAddressFamilies"] == "AF_UNIX"
+
+
 def test_units_use_the_shared_provisioning_directory() -> None:
     agent_command = _directives(UNITS["agent"])["ExecStart"]
     setup_command = _directives(UNITS["setup"])["ExecStart"]
@@ -98,6 +110,7 @@ def test_installer_preserves_identity_and_delegates_network_mutation() -> None:
     assert "three_mm_runtime.activate" in installer
     assert "3mm-network-helper.service" in installer
     assert "3mm-setup-ap.service" in installer
+    assert "3mm-update-helper.service" in installer
     assert "NetworkManager" not in installer
     assert "nmcli" not in installer
     assert "iptables" not in installer
@@ -110,9 +123,9 @@ def test_installer_owns_the_atomic_release_and_rollback_boundary() -> None:
 
     assert 'python3 -m venv "$release_dir/.venv"' in installer
     assert 'ln -sfnT "$release_dir" "$current_link"' in installer
-    assert 'trap rollback ERR' in installer
-    assert 'source.backup(backup)' in installer
-    assert 'venv_dir=$install_root/venv' not in installer
+    assert "trap rollback ERR" in installer
+    assert "source.backup(backup)" in installer
+    assert "venv_dir=$install_root/venv" not in installer
     assert "deployment\\install-systemd.sh" in launcher
     assert "remote-deploy.sh" not in launcher
 
@@ -123,5 +136,13 @@ def test_deploy_accepts_setup_or_application_runtime() -> None:
     assert "systemctl is-active --quiet 3mm-setup.service" in launcher
     assert "$runtimeMode -eq 'setup'" in launcher
     assert "$runtimeMode -eq 'application'" in launcher
-    assert 'http://$($originUri.Host):8895/ready' in launcher
+    assert "http://$($originUri.Host):8895/ready" in launcher
     assert "http://10.42.0.1:8895/setup" in launcher
+
+
+def test_deploy_records_the_validated_project_version() -> None:
+    launcher = (SYSTEMD_DIR.parents[1] / "deploy.ps1").read_text(encoding="utf-8")
+
+    assert "Join-Path $repoRoot 'VERSION'" in launcher
+    assert "$projectVersion -notmatch" in launcher
+    assert "version = $projectVersion" in launcher

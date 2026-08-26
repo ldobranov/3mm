@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from backend.services.system_updates import UpdateManifest, read_current_release
+from backend.services.update_staging import read_dependency_allowlist
 from deployment.build_release import (
     ReleaseBuildError,
     build_release_assets,
@@ -19,12 +20,17 @@ EPOCH = 1_787_728_000
 REQUIRED_SOURCE_FILES = {
     "VERSION": b"1.2.0\n",
     "backend/requirements.txt": b"fastapi==0.141.1\n",
+    "backend/services/update_staging.py": b"print('stage')\n",
     "deployment/install-systemd.sh": b"#!/usr/bin/env bash\n",
+    "deployment/apply_staged_update.py": b"print('apply')\n",
     "deployment/migrate_database.py": b"print('migrate')\n",
+    "deployment/update-dependency-allowlist.json": b'{"schema_version":1,"apt_packages":[]}\n',
     "deployment/systemd/3mm-agent.service": b"[Unit]\n",
     "deployment/systemd/3mm-core.service": b"[Unit]\n",
+    "deployment/systemd/3mm-update-helper.service": b"[Unit]\n",
     "deployment/systemd/3mm-web.service": b"[Unit]\n",
     "frontend/compiler/package.json": b'{"name":"compiler"}\n',
+    "three_mm_runtime/update_helper.py": b"print('helper')\n",
     "frontend/dist/stale.js": b"must not survive\n",
 }
 
@@ -197,9 +203,13 @@ def test_builder_requires_a_complete_frontend_dist(tmp_path: Path) -> None:
 
 def test_tracked_release_dependencies_are_strict_and_reviewable() -> None:
     packages = read_dependencies(Path("deployment/release-dependencies.json"))
+    allowlist = read_dependency_allowlist(
+        Path("deployment/update-dependency-allowlist.json")
+    )
 
     assert packages == sorted(packages)
     assert {"curl", "npm", "python3", "python3-venv", "util-linux"} <= set(packages)
+    assert set(packages) <= allowlist
 
 
 def test_release_workflow_publishes_only_complete_tagged_builds() -> None:

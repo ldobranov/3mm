@@ -36,7 +36,9 @@ REQUIRED_RELEASE_FILES = (
     "deployment/systemd/3mm-network-helper.service",
     "deployment/systemd/3mm-setup-ap.service",
     "deployment/systemd/3mm-setup.service",
+    "deployment/systemd/3mm-update-helper.service",
     "deployment/systemd/3mm-web.service",
+    "deployment/update-dependency-allowlist.json",
     "frontend/compiler/package.json",
     "frontend/dist/index.html",
 )

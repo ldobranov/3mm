@@ -16,17 +16,23 @@ LATEST_COMMIT = "b" * 40
 ARTIFACT_SHA256 = "c" * 64
 
 
-def write_release_metadata(path: Path, *, commit: str = CURRENT_COMMIT) -> None:
+def write_release_metadata(
+    path: Path,
+    *,
+    commit: str = CURRENT_COMMIT,
+    version: str | None = None,
+) -> None:
+    payload = {
+        "release_id": "current-release",
+        "branch": "main",
+        "commit": commit,
+        "created_at": "2026-08-26T08:00:00Z",
+        "includes_working_tree": False,
+    }
+    if version is not None:
+        payload["version"] = version
     path.write_text(
-        json.dumps(
-            {
-                "release_id": "current-release",
-                "branch": "main",
-                "commit": commit,
-                "created_at": "2026-08-26T08:00:00Z",
-                "includes_working_tree": False,
-            }
-        ),
+        json.dumps(payload),
         encoding="utf-8",
     )
 
@@ -144,6 +150,59 @@ def test_matching_commit_reports_up_to_date(
 
     assert response.status == "up_to_date"
     assert response.update_available is False
+
+
+@pytest.mark.parametrize("installed_version", ["1.2.0", "1.3.0"])
+def test_same_or_older_published_version_cannot_be_offered_as_an_update(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    installed_version: str,
+) -> None:
+    metadata_file = tmp_path / ".3mm-release.json"
+    write_release_metadata(metadata_file, version=installed_version)
+    release, manifest = catalog_payloads()
+    responses = iter([release, manifest])
+    monkeypatch.setattr(
+        "backend.services.system_updates.platform.machine", lambda: "aarch64"
+    )
+
+    response = check_update_catalog(
+        make_settings(metadata_file),
+        fetch_json=lambda _url, _timeout: next(responses),
+    )
+
+    assert response.status == "not_newer"
+    assert response.update_available is False
+
+
+def test_stable_release_is_newer_than_an_installed_prerelease(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    metadata_file = tmp_path / ".3mm-release.json"
+    write_release_metadata(metadata_file, version="1.2.0-beta.2")
+    release, manifest = catalog_payloads()
+    responses = iter([release, manifest])
+    monkeypatch.setattr(
+        "backend.services.system_updates.platform.machine", lambda: "aarch64"
+    )
+
+    response = check_update_catalog(
+        make_settings(metadata_file),
+        fetch_json=lambda _url, _timeout: next(responses),
+    )
+
+    assert response.status == "update_available"
+    assert response.update_available is True
+
+
+def test_invalid_installed_version_is_rejected(tmp_path: Path) -> None:
+    metadata_file = tmp_path / ".3mm-release.json"
+    write_release_metadata(metadata_file, version="latest")
+
+    response = read_local_update_status(make_settings(metadata_file))
+
+    assert response.status == "error"
+    assert response.message == "Current release version is invalid"
 
 
 def test_manifest_is_required_for_a_trusted_update(tmp_path: Path) -> None:

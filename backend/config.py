@@ -43,7 +43,23 @@ class UpdateCatalogSettings(BaseModel):
         pattern=r"^[A-Za-z0-9._-]+\.json$",
     )
     release_metadata_file: Path = PROJECT_ROOT / ".3mm-release.json"
+    staging_dir: Path = PROJECT_ROOT / ".runtime" / "update-staging"
+    dependency_allowlist_file: Path = (
+        PROJECT_ROOT / "deployment" / "update-dependency-allowlist.json"
+    )
+    helper_socket: Path = Path("/run/3mm/update-helper.sock")
+    helper_status_file: Path = PROJECT_ROOT / ".runtime" / "update-status.json"
     timeout_seconds: int = Field(default=8, ge=1, le=30)
+    approval_ttl_seconds: int = Field(default=1800, ge=300, le=86400)
+    max_artifact_bytes: int = Field(
+        default=512 * 1024 * 1024,
+        ge=1024 * 1024,
+        le=2 * 1024 * 1024 * 1024,
+    )
+    minimum_free_bytes: int = Field(
+        default=512 * 1024 * 1024,
+        ge=64 * 1024 * 1024,
+    )
 
 
 class AppSettings(BaseModel):
@@ -126,8 +142,22 @@ def get_settings() -> AppSettings:
         updates["manifest_asset_name"] = update_manifest
     if release_metadata := os.getenv("THREE_MM_RELEASE_METADATA_FILE"):
         updates["release_metadata_file"] = release_metadata
+    if staging_dir := os.getenv("THREE_MM_UPDATE_STAGING_DIR"):
+        updates["staging_dir"] = staging_dir
+    if dependency_allowlist := os.getenv("THREE_MM_UPDATE_DEPENDENCY_ALLOWLIST"):
+        updates["dependency_allowlist_file"] = dependency_allowlist
+    if helper_socket := os.getenv("THREE_MM_UPDATE_HELPER_SOCKET"):
+        updates["helper_socket"] = helper_socket
+    if helper_status := os.getenv("THREE_MM_UPDATE_HELPER_STATUS_FILE"):
+        updates["helper_status_file"] = helper_status
     if update_timeout := os.getenv("THREE_MM_UPDATE_TIMEOUT_SECONDS"):
         updates["timeout_seconds"] = int(update_timeout)
+    if approval_ttl := os.getenv("THREE_MM_UPDATE_APPROVAL_TTL_SECONDS"):
+        updates["approval_ttl_seconds"] = int(approval_ttl)
+    if max_artifact := os.getenv("THREE_MM_UPDATE_MAX_ARTIFACT_BYTES"):
+        updates["max_artifact_bytes"] = int(max_artifact)
+    if minimum_free := os.getenv("THREE_MM_UPDATE_MINIMUM_FREE_BYTES"):
+        updates["minimum_free_bytes"] = int(minimum_free)
 
     backend["database_url"] = _normalize_database_url(
         backend.get("database_url", BackendSettings().database_url)

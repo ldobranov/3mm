@@ -21,6 +21,11 @@ The shared runtime planner determines which units an installer enables:
 | Node | `3mm-agent.service` |
 | Hub or Standalone | `3mm-core.service`, `3mm-web.service`, `3mm-agent.service` |
 
+`3mm-update-helper.service` is always enabled after a successful immutable
+installation. It exposes only a group-restricted Unix socket and can schedule
+one fixed staged-update worker. It does not accept commands, URLs, archive
+paths or package names from Core.
+
 The setup portal remains unprivileged and talks through a root-owned Unix
 socket to a narrowly scoped NetworkManager helper. The open `3mm Setup XXXX`
 access point exists only in unprovisioned or explicit network-reset mode,
@@ -41,6 +46,19 @@ before stopping services, backs up SQLite and the service environment, switches
 the current link atomically, verifies active runtime endpoints and restores the
 previous release automatically on failure. It does not install system packages,
 change networking or configure a firewall.
+
+The System Updates UI separates catalog check, download/verification and
+installation approval. Core stages one bounded archive under
+`/var/lib/3mm/core/update-staging`, verifies its size, SHA-256, safe tar layout,
+embedded identity, free space, SQLite health and dependency plan, then requires
+a second administrator action. Immediately before mutation, the root worker
+independently checks the staged identity and checksum against the official
+GitHub manifest again. Only packages present in both the release declaration
+and the installed root-owned allowlist can reach `apt-get`; no shell fragment
+or generated installer is accepted. The existing installer remains the owner
+of database backup, migration, activation, health checks and rollback. Root
+results are persisted under `/var/lib/3mm/update-helper` without credentials or
+provider keys so the restarted Core can report the outcome.
 
 Every successful replacement also records the verified prior release at
 `/opt/3mm/previous`. Release cleanup is a separate, explicit operation. Its

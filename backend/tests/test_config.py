@@ -43,7 +43,18 @@ def test_environment_overrides_file_configuration(monkeypatch, tmp_path):
     monkeypatch.setenv("THREE_MM_UPDATE_REPOSITORY", "example/3mm")
     monkeypatch.setenv("THREE_MM_UPDATE_MANIFEST_ASSET", "catalog.json")
     monkeypatch.setenv("THREE_MM_RELEASE_METADATA_FILE", str(tmp_path / "release.json"))
+    monkeypatch.setenv("THREE_MM_UPDATE_STAGING_DIR", str(tmp_path / "staging"))
+    monkeypatch.setenv(
+        "THREE_MM_UPDATE_DEPENDENCY_ALLOWLIST", str(tmp_path / "allowlist.json")
+    )
+    monkeypatch.setenv("THREE_MM_UPDATE_HELPER_SOCKET", str(tmp_path / "helper.sock"))
+    monkeypatch.setenv(
+        "THREE_MM_UPDATE_HELPER_STATUS_FILE", str(tmp_path / "status.json")
+    )
     monkeypatch.setenv("THREE_MM_UPDATE_TIMEOUT_SECONDS", "12")
+    monkeypatch.setenv("THREE_MM_UPDATE_APPROVAL_TTL_SECONDS", "900")
+    monkeypatch.setenv("THREE_MM_UPDATE_MAX_ARTIFACT_BYTES", "104857600")
+    monkeypatch.setenv("THREE_MM_UPDATE_MINIMUM_FREE_BYTES", "268435456")
     get_settings.cache_clear()
 
     settings = get_settings()
@@ -59,4 +70,11 @@ def test_environment_overrides_file_configuration(monkeypatch, tmp_path):
     assert settings.updates.repository == "example/3mm"
     assert settings.updates.manifest_asset_name == "catalog.json"
     assert settings.updates.release_metadata_file == tmp_path / "release.json"
+    assert settings.updates.staging_dir == tmp_path / "staging"
+    assert settings.updates.dependency_allowlist_file == tmp_path / "allowlist.json"
+    assert settings.updates.helper_socket == tmp_path / "helper.sock"
+    assert settings.updates.helper_status_file == tmp_path / "status.json"
     assert settings.updates.timeout_seconds == 12
+    assert settings.updates.approval_ttl_seconds == 900
+    assert settings.updates.max_artifact_bytes == 104857600
+    assert settings.updates.minimum_free_bytes == 268435456

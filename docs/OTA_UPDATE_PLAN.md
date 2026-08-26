@@ -1,8 +1,8 @@
 # 3mm OTA update and dependency plan
 
-Status: Phase 1 and the Phase 2 release tooling are implemented locally on
-2026-08-26. The first published release and all installation behavior remain
-intentionally pending.
+Status: Phases 1 and 2 are published in stable release `v0.1.0`. Phase 3 is
+included in release candidate `v0.2.0` and awaits physical Raspberry acceptance
+before it is considered complete.
 
 ## Goal
 
@@ -29,12 +29,13 @@ Implemented:
 - a strict `3mm-update-manifest.json` is required before an update is trusted;
 - the release tag, manifest, asset names, sizes, URLs and available GitHub digest are cross-checked;
 - architecture compatibility and declared APT packages are displayed;
+- a release with the same or an older semantic version is never offered for
+  staging, even when its commit differs from the installed snapshot;
 - no archive is downloaded and no package, service or filesystem state is changed;
 - System Updates is an admin route available to the data-driven Menu Editor.
 
-The public repository currently has no published GitHub Release. The expected
-and honest result is therefore `no_release` until the first release is
-published with a valid manifest.
+The first published catalog entry is stable release `v0.1.0` with validated
+artifacts for `aarch64`, `armv7l` and `x86_64`.
 
 ## Manifest v1
 
@@ -67,7 +68,7 @@ external download URLs and inconsistent release metadata are rejected.
 
 ## Phase 2 — Reproducible release artifacts
 
-Implemented locally:
+Implemented and published in `v0.1.0`:
 
 - tag-driven GitHub workflow restricted to commits contained in `main`;
 - locked frontend installation plus the complete frontend/backend quality gates;
@@ -82,29 +83,44 @@ Implemented locally:
 
 See [RELEASING.md](RELEASING.md) for the maintainer procedure.
 
-Still pending:
-
-- commit and push the release tooling;
-- create the first semantic-version tag;
-- let GitHub build and publish the first real release;
-- validate that release through System Updates on `rasp-3mm`;
-- exercise the published archive with the existing installer and health gates.
+Still pending: exercise a newer published archive through the Phase 3 manual
+path and existing installer health gates on `rasp-3mm`.
 
 Acceptance boundary: a freshly published release appears as available on a
 supported device, but the application still cannot install it.
 
 ## Phase 3 — Staged update and dependencies
 
-- download only the selected manifest artifact into a bounded staging directory;
-- verify size and SHA-256 before extraction;
-- run disk-space, architecture, database-backup and migration preflight checks;
-- compare declared APT packages with a reviewed 3mm allowlist;
-- show the exact dependency plan and require explicit administrator approval;
-- let a narrow privileged helper install only approved packages and activate the
-  staged release through the existing immutable installer;
-- require Core, Web and Agent health checks; restore the previous symlink,
-  database backup and services on failure;
-- retain an audit record without credentials or provider keys.
+Implemented in `v0.2.0`:
+
+- one architecture-specific artifact is downloaded into a bounded fixed staging
+  location; no URL or filename is accepted from the browser;
+- size, SHA-256, redirect host, safe tar layout, expanded size, required files,
+  embedded release identity and embedded dependency declaration are verified;
+- storage, architecture, SQLite quick-check, backup capacity and migration
+  entrypoint preflights are presented to the administrator;
+- declared APT packages must be contained in the reviewed installed allowlist;
+- the UI shows keep/install actions and requires a separate restart
+  acknowledgement plus an exact version-bound API approval;
+- Core can send only release ID, short-lived approval nonce and administrator ID
+  to a root-owned local Unix socket;
+- the root worker revalidates the archive against the official stable GitHub
+  manifest immediately before any package or installer mutation;
+- only missing allowlisted packages are passed as individual `apt-get`
+  arguments; shell fragments and generated install scripts are impossible;
+- the existing immutable installer owns database backup, migration, atomic
+  activation, Core/Web/Agent health gates and rollback;
+- Core audit entries identify the staging and approving administrator, while a
+  root-owned operation/audit record survives service restarts without secrets.
+
+Physical acceptance still required:
+
+- deploy the Phase 3 boundary itself through the existing reviewed manual path;
+- publish a version newer than the installed Raspberry release;
+- stage it from the UI and inspect the real dependency/disk/database plan;
+- approve it and observe the UI recover after Core/Web restart;
+- inject one installer failure and confirm the previous release, database and
+  services are restored while the failure remains visible in operation status.
 
 The web backend must not execute arbitrary package names, shell fragments or
 generated install scripts.
@@ -119,12 +135,11 @@ generated install scripts.
 - optional automatic installation only after the manual path is accepted on
   clean Raspberry Pi media.
 
-## Deliberately excluded from Phases 1–2
+## Deliberately excluded through Phase 3
 
 - automatic updates;
-- downloading or extracting release archives;
-- `apt`, `pip` or `npm` installation;
-- `sudo`, service restart or systemd mutation;
-- database migrations;
+- background or scheduled download/install;
+- arbitrary packages, commands, URLs or branch archives;
+- Web process access to `sudo`, `apt`, `systemctl` or writable system paths;
 - changing NetworkManager;
 - accepting prereleases or unvalidated branch snapshots.

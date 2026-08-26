@@ -107,6 +107,7 @@ UpdateCheckStatus = Literal[
     "manifest_missing",
     "update_available",
     "up_to_date",
+    "not_newer",
     "current_unknown",
     "unsupported_architecture",
     "error",
@@ -215,15 +216,31 @@ def read_current_release(metadata_file: Path) -> CurrentRelease:
             raise UpdateCatalogError("Current release metadata is invalid")
         return value.strip()
 
+    version = optional_string("version")
+    if version is not None and not re.fullmatch(SEMVER_PATTERN, version):
+        raise UpdateCatalogError("Current release version is invalid")
+
     return CurrentRelease(
         release_id=optional_string("release_id") or release_id,
         commit=commit,
         branch=optional_string("branch"),
-        version=optional_string("version"),
+        version=version,
         created_at=created_at,
         includes_working_tree=includes_working_tree,
         metadata_available=True,
     )
+
+
+def _semver_key(version: str) -> tuple[tuple[int, int, int], tuple[object, ...]]:
+    core_text, separator, prerelease_text = version.partition("-")
+    core = tuple(int(item) for item in core_text.split("."))
+    if not separator:
+        return core, (1,)
+    prerelease = tuple(
+        (0, int(item)) if item.isdigit() else (1, item.lower())
+        for item in prerelease_text.split(".")
+    )
+    return core, (0, prerelease)
 
 
 def _base_response(
@@ -455,18 +472,35 @@ def check_update_catalog(
                 update_available=None,
                 checked_at=checked_at,
             )
-        available = current.commit != manifest.commit
+        if current.commit == manifest.commit:
+            return _base_response(
+                settings,
+                current,
+                status="up_to_date",
+                message="The system is up to date",
+                latest=latest,
+                update_available=False,
+                checked_at=checked_at,
+            )
+        if current.version is not None and _semver_key(manifest.version) <= _semver_key(
+            current.version
+        ):
+            return _base_response(
+                settings,
+                current,
+                status="not_newer",
+                message="Published release is not newer than the installed version",
+                latest=latest,
+                update_available=False,
+                checked_at=checked_at,
+            )
         return _base_response(
             settings,
             current,
-            status="update_available" if available else "up_to_date",
-            message=(
-                "A validated update is available"
-                if available
-                else "The system is up to date"
-            ),
+            status="update_available",
+            message="A validated update is available",
             latest=latest,
-            update_available=available,
+            update_available=True,
             checked_at=checked_at,
         )
     except UpdateCatalogError as exc:

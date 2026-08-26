@@ -40,7 +40,11 @@ function response(status = 'not_checked') {
 describe('System updates catalog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    http.get.mockResolvedValue({ data: response() })
+    http.get.mockImplementation((url: string) => Promise.resolve({
+      data: url.endsWith('/operation')
+        ? { state: 'idle', message: 'No update is staged' }
+        : response(),
+    }))
     http.post.mockResolvedValue({ data: response('no_release') })
   })
 
@@ -49,9 +53,10 @@ describe('System updates catalog', () => {
     await flushPromises()
 
     expect(http.get).toHaveBeenCalledWith('/api/v1/system-updates/status')
+    expect(http.get).toHaveBeenCalledWith('/api/v1/system-updates/operation')
     expect(http.post).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('current-release')
-    expect(wrapper.text()).toContain('Installation, downloads and restarts are disabled')
+    expect(wrapper.text()).toContain('Downloading verifies the exact release first')
   })
 
   it('checks the release catalog only after an explicit action', async () => {
@@ -65,9 +70,22 @@ describe('System updates catalog', () => {
     expect(wrapper.text()).toContain('No published release')
   })
 
-  it('shows validated dependencies and artifacts without an install action', async () => {
-    http.get.mockResolvedValue({
-      data: {
+  it('does not offer staging when the published release is not newer', async () => {
+    http.get.mockImplementation((url: string) => Promise.resolve({
+      data: url.endsWith('/operation')
+        ? { state: 'idle', message: 'No update is staged' }
+        : response('not_newer'),
+    }))
+
+    const wrapper = mount(SystemUpdates)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('No newer release')
+    expect(wrapper.text()).not.toContain('Download and verify')
+  })
+
+  it('stages a validated update and shows the exact review plan', async () => {
+    const checked = {
         ...response('update_available'),
         update_available: true,
         latest: {
@@ -89,8 +107,34 @@ describe('System updates catalog', () => {
           }],
           dependencies: { apt_packages: ['rsync'] },
         },
-      },
-    })
+      }
+    http.get.mockImplementation((url: string) => Promise.resolve({
+      data: url.endsWith('/operation')
+        ? { state: 'idle', message: 'No update is staged' }
+        : checked,
+    }))
+    http.post.mockImplementation((url: string) => Promise.resolve({
+      data: url.endsWith('/stage')
+        ? {
+            staged: {
+              release_id: 'v1.2.0',
+              version: '1.2.0',
+              commit: 'b'.repeat(40),
+              architecture: 'aarch64',
+              artifact_filename: '3mm-1.2.0-aarch64.tar.gz',
+              artifact_sha256: 'c'.repeat(64),
+              artifact_size_bytes: 1234,
+              dependencies: ['rsync'],
+              dependency_plan: [{ name: 'rsync', installed: false, action: 'install' }],
+              frontend_origin: 'http://192.168.1.88:8080',
+              staged_at: '2026-08-26T09:00:00Z',
+              approval_expires_at: '2026-08-26T09:30:00Z',
+              approval_nonce: 'd'.repeat(64),
+              preflight: [{ name: 'archive.identity', passed: true, detail: 'Verified' }],
+            },
+          }
+        : response('no_release'),
+    }))
 
     const wrapper = mount(SystemUpdates)
     await flushPromises()
@@ -98,7 +142,40 @@ describe('System updates catalog', () => {
     expect(wrapper.text()).toContain('1.2.0')
     expect(wrapper.text()).toContain('rsync')
     expect(wrapper.text()).toContain('3mm-1.2.0-aarch64.tar.gz')
-    expect(wrapper.findAll('button')).toHaveLength(1)
-    expect(wrapper.find('button').text()).toContain('Check for updates')
+
+    const stageButton = wrapper.findAll('button').find(button => button.text().includes('Download and verify'))
+    expect(stageButton).toBeTruthy()
+    await stageButton!.trigger('click')
+    await flushPromises()
+
+    expect(http.post).toHaveBeenCalledWith('/api/v1/system-updates/stage')
+    expect(wrapper.text()).toContain('Verified update plan')
+    expect(wrapper.text()).toContain('Will install')
+    expect(wrapper.text()).toContain('Release file verified')
+  })
+
+  it('requires restart acknowledgement before sending exact approval', async () => {
+    const wrapper = mount(SystemUpdates)
+    await flushPromises()
+    ;(wrapper.vm as any).staged = {
+      release_id: 'v1.2.0', version: '1.2.0', commit: 'b'.repeat(40), architecture: 'aarch64',
+      approval_nonce: 'd'.repeat(64), dependency_plan: [], preflight: [],
+    }
+    await wrapper.vm.$nextTick()
+
+    await wrapper.findAll('button').find(button => button.text().includes('Review and install'))!.trigger('click')
+    const installButton = wrapper.findAll('button').find(button => button.text().includes('Install update'))!
+    expect(installButton.attributes('disabled')).toBeDefined()
+
+    await wrapper.find('.confirm-check input').setValue(true)
+    http.post.mockResolvedValue({ data: { state: 'queued', message: 'queued', release_id: 'v1.2.0' } })
+    await installButton.trigger('click')
+    await flushPromises()
+
+    expect(http.post).toHaveBeenCalledWith('/api/v1/system-updates/apply', {
+      release_id: 'v1.2.0',
+      approval_nonce: 'd'.repeat(64),
+      confirmation: 'INSTALL 1.2.0',
+    })
   })
 })

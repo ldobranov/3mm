@@ -102,12 +102,17 @@ def read_source_payload(source_archive: Path) -> list[PayloadFile]:
     required = {
         "VERSION",
         "backend/requirements.txt",
+        "backend/services/update_staging.py",
+        "deployment/apply_staged_update.py",
         "deployment/install-systemd.sh",
         "deployment/migrate_database.py",
+        "deployment/update-dependency-allowlist.json",
         "deployment/systemd/3mm-agent.service",
         "deployment/systemd/3mm-core.service",
+        "deployment/systemd/3mm-update-helper.service",
         "deployment/systemd/3mm-web.service",
         "frontend/compiler/package.json",
+        "three_mm_runtime/update_helper.py",
     }
     missing = sorted(required - names)
     if missing:

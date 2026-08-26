@@ -41,7 +41,9 @@ permissions and timestamps are normalized using the tagged commit timestamp.
 
 `deployment/release-dependencies.json` lists the host packages required by the
 release. The builder accepts only a sorted, duplicate-free list of safe Debian
-package names. Phase 2 publishes this list for review; it does not install it.
+package names. The staged updater also requires every name to exist in the
+independently reviewed `deployment/update-dependency-allowlist.json` shipped by
+the already installed release.
 
 Adding or removing a package is a code-reviewed change. The future privileged
 helper must also apply its own allowlist and must never execute package names,
@@ -70,5 +72,9 @@ After the workflow succeeds:
 - confirm that the manifest is validated and the correct device architecture is listed;
 - confirm that dependency packages are displayed as a preview only.
 
-Installation remains disabled until the staged downloader, privileged helper,
-health checks and rollback path in Phase 3 are accepted on the Raspberry Pi.
+Phase 3 now provides manual staging and explicit installation approval. It is
+not accepted for production until a newer release passes the documented
+download, dependency, restart and injected-rollback checks on the Raspberry Pi.
+The installed `.3mm-release.json` must contain `version`; both the manual
+deployment launcher and published artifacts source it from the repository
+`VERSION` file so the updater can reject same-version and downgrade attempts.
