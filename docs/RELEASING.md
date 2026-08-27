@@ -13,7 +13,7 @@ of the application release version.
 | Version/tag example | Update channel | GitHub state |
 | --- | --- | --- |
 | `0.3.0` / `v0.3.0` | Stable | Release |
-| `0.3.0-beta.7` / `v0.3.0-beta.7` | Beta | Prerelease |
+| `0.3.0-beta.8` / `v0.3.0-beta.8` | Beta | Prerelease |
 | `0.3.0-test.1` / `v0.3.0-test.1` | Test | Prerelease |
 
 Stable catalog checks deliberately ignore prereleases. An administrator must
@@ -69,7 +69,7 @@ rewriting history.
 
 ## What the workflow verifies
 
-For a tag such as `v0.3.0-beta.7`,
+For a tag such as `v0.3.0-beta.8`,
 [`.github/workflows/release.yml`](../.github/workflows/release.yml):
 
 1. verifies the semantic-version tag and exact `VERSION` match;
@@ -165,7 +165,11 @@ release and use it to prove the complete in-application OTA path.
   captive network recovery, but its first physical clean install rolled back
   because the detached job's umask blocked the `3mm` service account.
 - `v0.3.0-beta.7` corrects that clean-install permission boundary. Physical
-  acceptance remains pending.
+  clean-media installation and setup-AP acceptance then completed on the Pi
+  3B+ baseline.
+- `v0.3.0-beta.8` adds the scan handoff needed by a single Wi-Fi radio, the
+  documented empty-database Beta login and corrected user management. OTA,
+  reboot and clean-install revalidation remain the release acceptance steps.
 
 Tags `v0.3.0-beta.1` and `v0.3.0-beta.2` are historical failed publication
 attempts, not accepted GitHub Releases. They must not be moved or reused.

@@ -8,6 +8,43 @@ pre-1.0.
 
 ## [Unreleased]
 
+## [0.3.0-beta.8] - 2026-08-27
+
+### Added
+
+- A Beta-only first-install administrator for a brand-new empty database, with
+  the documented `admin@example.com` / `admin` test login. Existing databases,
+  users and passwords are never replaced or reset.
+- A Wi-Fi scan cache captured before the device changes `wlan0` into the setup
+  access point, so the phone setup page can still list nearby networks while
+  the single radio is serving the setup AP.
+- Complete administrator user-management controls for listing users, assigning
+  roles, optionally changing passwords and creating or deleting accounts.
+
+### Fixed
+
+- The setup scan now combines cached and live results and excludes the device's
+  own `3mm Setup` network.
+- Provisioning cache permissions now allow the setup service to read the scan
+  prepared by the privileged network helper.
+- User Management now calls the current authenticated user API, displays the
+  initial administrator and enforces self-delete and last-administrator
+  protection.
+- User forms, feedback, English/Bulgarian text and the mobile layout are
+  consistent with the current application shell.
+
+### Verified
+
+- Passed 57 focused backend, provisioning and deployment tests, all 50
+  frontend tests and the production frontend build.
+- Verified the Users API against the physical Raspberry deployment and
+  reviewed the setup scan and initial-login flow on the clean Pi baseline.
+
+### Documentation
+
+- Updated the one-command installation, first-boot and release guides with the
+  current Beta version and initial-account behavior.
+
 ## [0.3.0-beta.7] - 2026-08-27
 
 ### Fixed
@@ -245,7 +282,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.7...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.8...HEAD
+[0.3.0-beta.8]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.8
 [0.3.0-beta.7]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.7
 [0.3.0-beta.6]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.6
 [0.3.0-beta.5]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.5
