@@ -6,17 +6,19 @@ from fastapi.testclient import TestClient
 
 from setup_service.config import SetupSettings
 from setup_service.main import PUBLIC_SETUP_ENDPOINTS, create_app
+from three_mm_protocol import AgentRole
 from three_mm_provisioning import (
-    FileProvisioningStore,
     FileNetworkRecoveryMarker,
+    FileProvisioningStore,
     MemoryProvisioningStore,
+    NetworkCredentials,
+    ProvisioningRequest,
     ProvisioningSnapshot,
     ProvisioningStoreError,
 )
-from three_mm_protocol import AgentRole
-from three_mm_provisioning import NetworkCredentials, ProvisioningRequest
 from three_mm_provisioning.mock_network import MockNetworkAdapter
 from three_mm_provisioning.network_manager import WifiNetwork
+from three_mm_provisioning.wifi_scan_cache import write_wifi_scan_cache
 
 
 @pytest.fixture
@@ -90,10 +92,53 @@ def test_setup_lists_cached_wifi_networks(store):
         response = client.get("/api/v1/setup/networks")
 
     assert response.json() == {
+        "items": [{"network_name": "Nearby Wi-Fi", "signal": 76, "secured": True}]
+    }
+
+
+def test_setup_merges_pre_ap_scan_and_filters_its_own_network(store, tmp_path):
+    class ScanAdapter(MockNetworkAdapter):
+        def scan_wifi_networks(self):
+            return (
+                WifiNetwork("3mm Setup 546E", 100, False),
+                WifiNetwork("Cafe", 45, False),
+            )
+
+    data_dir = tmp_path / "provisioning"
+    write_wifi_scan_cache(
+        data_dir,
+        (
+            WifiNetwork("KavalaVIVA", 81, True),
+            WifiNetwork("Cafe", 30, False),
+        ),
+    )
+    settings = SetupSettings(data_dir=data_dir)
+
+    with TestClient(create_app(ScanAdapter(), store, settings)) as client:
+        response = client.get("/api/v1/setup/networks")
+
+    assert response.json() == {
         "items": [
-            {"network_name": "Nearby Wi-Fi", "signal": 76, "secured": True}
+            {"network_name": "KavalaVIVA", "signal": 81, "secured": True},
+            {"network_name": "Cafe", "signal": 45, "secured": False},
         ]
     }
+
+
+def test_setup_uses_pre_ap_scan_when_live_scan_fails(store, tmp_path):
+    class FailingScanAdapter(MockNetworkAdapter):
+        def scan_wifi_networks(self):
+            raise RuntimeError("simulated scan failure")
+
+    data_dir = tmp_path / "provisioning"
+    write_wifi_scan_cache(data_dir, (WifiNetwork("KavalaVIVA", 81, True),))
+    settings = SetupSettings(data_dir=data_dir)
+
+    with TestClient(create_app(FailingScanAdapter(), store, settings)) as client:
+        response = client.get("/api/v1/setup/networks")
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["network_name"] == "KavalaVIVA"
 
 
 def test_setup_theme_uses_safe_values_from_the_core_database(store, tmp_path):

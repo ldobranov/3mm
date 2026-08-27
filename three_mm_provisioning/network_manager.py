@@ -115,10 +115,15 @@ class NetworkManagerReadOnlyAdapter:
         )
         return _parse_status(general, devices)
 
-    def scan_wifi_networks(self) -> tuple[WifiNetwork, ...]:
-        """Return NetworkManager's cached scan without disrupting an active AP."""
+    def scan_wifi_networks(
+        self,
+        *,
+        rescan: bool = False,
+        interface: str | None = None,
+    ) -> tuple[WifiNetwork, ...]:
+        """Return a Wi-Fi scan, optionally refreshing before setup AP activation."""
 
-        output = self._execute(
+        arguments = [
             "-t",
             "-e",
             "yes",
@@ -127,9 +132,11 @@ class NetworkManagerReadOnlyAdapter:
             "device",
             "wifi",
             "list",
-            "--rescan",
-            "no",
-        )
+        ]
+        if interface is not None:
+            arguments.extend(("ifname", interface))
+        arguments.extend(("--rescan", "yes" if rescan else "no"))
+        output = self._execute(*arguments)
         return _parse_wifi_networks(output)
 
     def _execute(self, *arguments: str) -> str:

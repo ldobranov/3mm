@@ -87,7 +87,9 @@ def test_privileged_network_units_are_narrowly_scoped() -> None:
     assert setup_ap["RemainAfterExit"] == "true"
     assert helper["ProtectSystem"] == "strict"
     assert setup_ap["ProtectSystem"] == "strict"
-    assert setup_ap["ReadWritePaths"] == "/etc/NetworkManager/dnsmasq-shared.d"
+    assert setup_ap["ReadWritePaths"] == (
+        "/etc/NetworkManager/dnsmasq-shared.d /var/lib/3mm/provisioning"
+    )
 
 
 def test_setup_ap_owns_the_captive_dns_lifecycle() -> None:
@@ -98,8 +100,7 @@ def test_setup_ap_owns_the_captive_dns_lifecycle() -> None:
         setup_ap["ExecStartPre"]
     )
     assert setup_ap["ExecStopPost"] == (
-        "/usr/bin/rm -f "
-        "/etc/NetworkManager/dnsmasq-shared.d/3mm-captive-portal.conf"
+        "/usr/bin/rm -f " "/etc/NetworkManager/dnsmasq-shared.d/3mm-captive-portal.conf"
     )
     assert CAPTIVE_DNS_CONFIG.read_text(encoding="utf-8").splitlines()[-1] == (
         "address=/#/10.42.0.1"
@@ -116,7 +117,10 @@ def test_update_helper_exposes_only_a_local_hardened_scheduler() -> None:
     assert helper["ProtectHome"] == "true"
     assert helper["RestrictAddressFamilies"] == "AF_UNIX"
     assert helper["RuntimeDirectoryPreserve"] == "yes"
-    assert "--network-recovery-policy /var/lib/3mm/core/network-recovery-policy.json" in helper["ExecStart"]
+    assert (
+        "--network-recovery-policy /var/lib/3mm/core/network-recovery-policy.json"
+        in helper["ExecStart"]
+    )
     assert "--provisioning-data-dir /var/lib/3mm/provisioning" in helper["ExecStart"]
 
 
@@ -158,13 +162,22 @@ def test_installer_preserves_identity_and_delegates_network_mutation() -> None:
     assert "3mm-captive-portal-dnsmasq.conf" in installer
     assert "THREE_MM_NETWORK_RECOVERY_POLICY_FILE" in installer
     assert "THREE_MM_NETWORK_RECOVERY_MARKER_FILE" in installer
-    assert 'http://$device_hostname.local' in installer
-    assert 'frontend_primary_origin=$frontend_scheme://$frontend_host' in installer
-    assert 'frontend_compat_origin=$frontend_scheme://$frontend_host:8080' in installer
+    assert "http://$device_hostname.local" in installer
+    assert "frontend_primary_origin=$frontend_scheme://$frontend_host" in installer
+    assert "frontend_compat_origin=$frontend_scheme://$frontend_host:8080" in installer
     assert "NetworkManager" not in installer
     assert "nmcli" not in installer
     assert "iptables" not in installer
     assert "nft" not in installer
+
+
+def test_first_install_creates_but_updates_do_not_reset_the_test_admin() -> None:
+    installer = INSTALLER.read_text(encoding="utf-8")
+
+    assert "database_existed_before_deploy=0" in installer
+    assert "--create-development-default-if-empty" in installer
+    assert "if [[ $database_existed_before_deploy -eq 0 ]]" in installer
+    assert 'rm -f -- "$database" "${database}-wal" "${database}-shm"' in installer
 
 
 def test_installer_owns_the_atomic_release_and_rollback_boundary() -> None:
@@ -184,7 +197,7 @@ def test_installer_uses_a_root_owned_cache_outside_protected_home() -> None:
     installer = INSTALLER.read_text(encoding="utf-8")
 
     assert "deploy_cache_root=/var/cache/3mm/deploy" in installer
-    assert 'install -d -o root -g root -m 0700' in installer
+    assert "install -d -o root -g root -m 0700" in installer
     assert 'HOME="$deploy_home" npm_config_cache="$npm_cache"' in installer
 
 

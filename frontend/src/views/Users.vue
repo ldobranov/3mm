@@ -12,21 +12,21 @@
 
     <div v-if="errorMessage" class="alert mt-2" style="border-color: var(--danger); color: var(--danger);">
       {{ errorMessage }}
-      <button type="button" class="button button-outline button-sm" @click="errorMessage = ''" aria-label="Close" style="position: absolute; right: 0.5rem; top: 0.5rem;">×</button>
+      <button type="button" class="button button-outline button-sm" @click="errorMessage = ''" :aria-label="t('users.close', 'Close')" style="position: absolute; right: 0.5rem; top: 0.5rem;">×</button>
     </div>
 
     <div v-if="successMessage" class="alert mt-2" style="border-color: var(--accent); color: var(--color-text);">
       {{ successMessage }}
-      <button type="button" class="button button-outline button-sm" @click="successMessage = ''" aria-label="Close" style="position: absolute; right: 0.5rem; top: 0.5rem;">×</button>
+      <button type="button" class="button button-outline button-sm" @click="successMessage = ''" :aria-label="t('users.close', 'Close')" style="position: absolute; right: 0.5rem; top: 0.5rem;">×</button>
     </div>
 
     <div v-if="loading" class="text-center" style="padding: 2rem 0;">
-      <div class="spinner" role="status" aria-label="Loading"></div>
+      <div class="spinner" role="status" :aria-label="t('users.loading', 'Loading')"></div>
     </div>
 
-    <div v-else-if="users.length === 0" class="alert alert-info">
+    <div v-else-if="!errorMessage && users.length === 0" class="alert alert-info">
       <i class="bi bi-info-circle" style="margin-right: 0.5rem;"></i>
-      No users found. Create your first user using the button above!
+      {{ t('users.empty', 'No users found. Create your first user using the button above!') }}
     </div>
 
     <div v-else class="grid">
@@ -47,11 +47,11 @@
         <div class="user-meta">
           <span class="chip" :class="user.role === 'admin' ? 'chip-admin' : 'chip-user'">
             <i class="bi bi-shield-check"></i>
-            {{ user.role || 'User' }}
+            {{ user.role === 'admin' ? t('users.roleAdmin', 'Admin') : t('users.roleUser', 'User') }}
           </span>
           <span class="user-joined">
             <i class="bi bi-calendar"></i>
-            Joined: {{ formatDate(user.created_at) }}
+            {{ t('users.joined', 'Joined') }}: {{ formatDate(user.created_at) }}
           </span>
         </div>
 
@@ -60,7 +60,7 @@
             class="button button-outline button-sm"
             @click="openEditModal(user)"
           >
-            <i class="bi bi-pencil"></i>Edit
+            <i class="bi bi-pencil"></i>{{ t('users.edit', 'Edit') }}
           </button>
           <button
             class="button button-outline button-sm"
@@ -68,7 +68,7 @@
             @click="confirmDelete(user)"
             :disabled="user.id === currentUserId"
           >
-            <i class="bi bi-trash"></i>Delete
+            <i class="bi bi-trash"></i>{{ t('users.delete', 'Delete') }}
           </button>
         </div>
       </div>
@@ -83,60 +83,62 @@
           <div class="modal-surface modal-lg" role="dialog" aria-modal="true" @click.stop :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
             <div style="display:flex; align-items:center; justify-content:space-between; padding-bottom:0.5rem; border-bottom:1px solid var(--card-border);">
               <h5 class="view-subtitle" style="margin:0;">
-                {{ editingUser ? 'Edit User' : 'Create New User' }}
+                {{ editingUser ? t('users.editTitle', 'Edit User') : t('users.createTitle', 'Create New User') }}
               </h5>
-              <button type="button" class="button button-outline button-sm" @click="closeModal">×</button>
+              <button type="button" class="button button-outline button-sm" @click="closeModal" :aria-label="t('users.close', 'Close')">×</button>
             </div>
 
             <form @submit.prevent="saveUser" style="padding-top: 1rem; display: grid; gap: 1rem;">
               <div>
-                <label class="text-sm" style="display: block; margin-bottom: 0.25rem; color: var(--color-text);">Username</label>
+                <label class="text-sm" style="display: block; margin-bottom: 0.25rem; color: var(--color-text);">{{ t('users.username', 'Username') }}</label>
                 <input 
                   type="text"
                   class="input"
                   v-model="formData.username"
-                  placeholder="Enter username"
+                  :placeholder="t('users.usernamePlaceholder', 'Enter username')"
                   required
                 />
               </div>
 
               <div>
-                <label class="text-sm" style="display: block; margin-bottom: 0.25rem; color: var(--color-text);">Email</label>
+                <label class="text-sm" style="display: block; margin-bottom: 0.25rem; color: var(--color-text);">{{ t('users.email', 'Email') }}</label>
                 <input 
                   type="email"
                   class="input"
                   v-model="formData.email"
-                  placeholder="Enter email"
+                  :placeholder="t('users.emailPlaceholder', 'Enter email')"
                   required
                 />
               </div>
 
-              <div v-if="!editingUser">
-                <label class="text-sm" style="display: block; margin-bottom: 0.25rem; color: var(--color-text);">Password</label>
+              <div>
+                <label class="text-sm" style="display: block; margin-bottom: 0.25rem; color: var(--color-text);">
+                  {{ editingUser ? t('users.newPassword', 'New password (optional)') : t('users.password', 'Password') }}
+                </label>
                 <input 
                   type="password"
                   class="input"
                   v-model="formData.password"
-                  placeholder="Enter password"
+                  :placeholder="editingUser ? t('users.newPasswordPlaceholder', 'Leave blank to keep the current password') : t('users.passwordPlaceholder', 'Enter password')"
                   :required="!editingUser"
                 />
               </div>
 
               <div>
-                <label class="text-sm" style="display: block; margin-bottom: 0.25rem; color: var(--color-text);">Role</label>
+                <label class="text-sm" style="display: block; margin-bottom: 0.25rem; color: var(--color-text);">{{ t('users.role', 'Role') }}</label>
                 <select class="select" v-model="formData.role">
-                  <option value="user">User</option>
-                  <option value="admin">Admin</option>
+                  <option value="user">{{ t('users.roleUser', 'User') }}</option>
+                  <option value="admin">{{ t('users.roleAdmin', 'Admin') }}</option>
                 </select>
               </div>
 
               <div class="actions-row" style="justify-content: end; gap: 0.5rem;">
                 <button type="button" class="button button-secondary" @click="closeModal">
-                  Cancel
+                  {{ t('users.cancel', 'Cancel') }}
                 </button>
                 <button type="submit" class="button button-primary">
                   <i class="bi bi-save" style="margin-right: 0.25rem;"></i>
-                  {{ editingUser ? 'Update' : 'Create' }}
+                  {{ editingUser ? t('users.update', 'Update') : t('users.create', 'Create') }}
                 </button>
               </div>
             </form>
@@ -153,22 +155,22 @@
         <div class="modal-container">
           <div class="modal-surface modal-sm" role="dialog" aria-modal="true" @click.stop :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
             <div style="display:flex; align-items:center; justify-content:space-between; padding-bottom:0.5rem; border-bottom:1px solid var(--card-border);">
-              <h5 class="view-subtitle" style="margin:0;">Confirm Delete</h5>
-              <button type="button" class="button button-outline button-sm" @click="showDeleteModal = false">×</button>
+              <h5 class="view-subtitle" style="margin:0;">{{ t('users.confirmDeleteTitle', 'Confirm Delete') }}</h5>
+              <button type="button" class="button button-outline button-sm" @click="showDeleteModal = false" :aria-label="t('users.close', 'Close')">×</button>
             </div>
             <div style="padding-top: 0.75rem;">
-              <p>Are you sure you want to delete the user "{{ userToDelete?.username }}"?</p>
+              <p>{{ t('users.confirmDeleteQuestion', 'Are you sure you want to delete the user "{username}"?', { username: userToDelete?.username || '' }) }}</p>
               <p style="color: var(--button-danger-text);">
                 <i class="bi bi-exclamation-triangle" style="margin-right: 0.25rem;"></i>
-                This action cannot be undone.
+                {{ t('users.cannotUndo', 'This action cannot be undone.') }}
               </p>
             </div>
             <div class="actions-row" style="justify-content: end; border-top: 1px solid var(--card-border); padding-top: 0.5rem;">
               <button class="button button-secondary" @click="showDeleteModal = false">
-                Cancel
+                {{ t('users.cancel', 'Cancel') }}
               </button>
               <button class="button button-danger" @click="deleteUser">
-                <i class="bi bi-trash" style="margin-right: 0.25rem;"></i>Delete
+                <i class="bi bi-trash" style="margin-right: 0.25rem;"></i>{{ t('users.delete', 'Delete') }}
               </button>
             </div>
           </div>
@@ -219,13 +221,28 @@ export default defineComponent({
       role: 'user'
     });
 
+    const translateApiError = (error: any, fallbackKey: string, fallback: string) => {
+      const detail = error?.response?.data?.detail;
+      const detailKeys: Record<string, [string, string]> = {
+        'Username or email already exists': ['users.duplicate', 'Username or email already exists.'],
+        'Cannot demote the last administrator': ['users.lastAdminDemote', 'The last administrator cannot be changed to a user.'],
+        'Cannot delete the last administrator': ['users.lastAdminDelete', 'The last administrator cannot be deleted.'],
+        'Cannot delete your own account': ['users.selfDelete', 'You cannot delete your own account.'],
+        'User not found': ['users.notFound', 'User not found.'],
+        'Missing required fields': ['users.missingFields', 'Complete all required fields.']
+      };
+      const translated = typeof detail === 'string' ? detailKeys[detail] : undefined;
+      return translated ? t(translated[0], translated[1]) : t(fallbackKey, fallback);
+    };
+
     const fetchUsers = async () => {
       loading.value = true;
       try {
-        const response = await http.get('/user/read');
+        const response = await http.get('/api/user/read');
         users.value = response.data.items || [];
+        errorMessage.value = '';
       } catch (error) {
-        errorMessage.value = 'Failed to fetch users. Please try again later.';
+        errorMessage.value = t('users.loadFailed', 'Failed to fetch users. Please try again later.');
       } finally {
         loading.value = false;
       }
@@ -272,23 +289,25 @@ export default defineComponent({
             id: editingUser.value.id,
             username: formData.value.username,
             email: formData.value.email,
-            role: formData.value.role
+            role: formData.value.role,
+            ...(formData.value.password ? { password: formData.value.password } : {})
           };
-          await http.put('/user/update', payload);
-          successMessage.value = 'User updated successfully!';
+          await http.put('/api/user/update', payload);
+          successMessage.value = t('users.updated', 'User updated successfully!');
         } else {
           // Create new user
-          await http.post('/user/register', {
+          await http.post('/api/user/create', {
             username: formData.value.username,
             email: formData.value.email,
-            password: formData.value.password
+            password: formData.value.password,
+            role: formData.value.role
           });
-          successMessage.value = 'User created successfully!';
+          successMessage.value = t('users.created', 'User created successfully!');
         }
         closeModal();
         fetchUsers();
       } catch (error: any) {
-        errorMessage.value = error.response?.data?.detail || 'Failed to save user. Please try again.';
+        errorMessage.value = translateApiError(error, 'users.saveFailed', 'Failed to save user. Please try again.');
       }
     };
 
@@ -301,20 +320,20 @@ export default defineComponent({
       if (!userToDelete.value) return;
       
       try {
-        await http.delete(`/user/delete/${userToDelete.value.id}`);
-        successMessage.value = 'User deleted successfully!';
+        await http.delete(`/api/user/delete/${userToDelete.value.id}`);
+        successMessage.value = t('users.deleted', 'User deleted successfully!');
         showDeleteModal.value = false;
         userToDelete.value = null;
         fetchUsers();
       } catch (error) {
-        errorMessage.value = 'Failed to delete user. Please try again.';
+        errorMessage.value = translateApiError(error, 'users.deleteFailed', 'Failed to delete user. Please try again.');
       }
     };
 
     const formatDate = (dateString?: string) => {
-      if (!dateString) return 'Unknown';
+      if (!dateString) return t('users.unknownDate', 'Unknown');
       const date = new Date(dateString);
-      return date.toLocaleDateString();
+      return date.toLocaleDateString(currentLanguage.value === 'bg' ? 'bg-BG' : 'en-US');
     };
 
     const getRoleBadgeClass = (role: string) => {
@@ -357,7 +376,7 @@ export default defineComponent({
 /* Users grid */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 350px), 1fr));
   gap: 1rem;
   margin-top: 1rem;
 }
@@ -387,6 +406,7 @@ export default defineComponent({
 
 .user-info {
   flex: 1;
+  min-width: 0;
 }
 
 .user-name {
@@ -400,6 +420,7 @@ export default defineComponent({
   margin: 0;
   color: var(--text-secondary);
   font-size: 0.9rem;
+  overflow-wrap: anywhere;
 }
 
 .user-email i {
@@ -456,5 +477,44 @@ export default defineComponent({
   display: flex;
   gap: 0.5rem;
   justify-content: flex-start;
+}
+
+@media (max-width: 520px) {
+  .user-card {
+    padding: 1rem;
+  }
+
+  .user-avatar {
+    flex: 0 0 auto;
+    font-size: 2.25rem;
+    margin-right: 0.75rem;
+  }
+
+  .user-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.625rem;
+  }
+
+  .user-actions,
+  .actions-row {
+    flex-direction: column;
+  }
+
+  .user-actions .button,
+  .actions-row .button {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .modal-container {
+    padding: 0.625rem;
+  }
+
+  .modal-surface,
+  .modal-lg,
+  .modal-sm {
+    width: 100%;
+  }
 }
 </style>

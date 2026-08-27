@@ -14,6 +14,9 @@ from backend.db.user import User
 from backend.utils.auth import hash_password
 
 MINIMUM_PASSWORD_LENGTH = 12
+DEVELOPMENT_ADMIN_USERNAME = "admin"
+DEVELOPMENT_ADMIN_EMAIL = "admin@example.com"
+DEVELOPMENT_ADMIN_PASSWORD = "admin"
 
 
 class AdminBootstrapError(RuntimeError):
@@ -40,9 +43,7 @@ def create_initial_admin(
     existing_admin = db.scalar(select(User).where(User.role == "admin"))
     if existing_admin is not None:
         raise AdminBootstrapError("An administrator already exists")
-    username_owner = db.scalar(
-        select(User).where(User.username == normalized_username)
-    )
+    username_owner = db.scalar(select(User).where(User.username == normalized_username))
     email_owner = db.scalar(select(User).where(User.email == normalized_email))
     if username_owner is not None or email_owner is not None:
         if (
@@ -71,6 +72,20 @@ def create_initial_admin(
     return admin
 
 
+def create_development_admin_if_empty(db: Session) -> User | None:
+    """Create the documented beta/test administrator only in an empty user table."""
+
+    if db.scalar(select(User).limit(1)) is not None:
+        return None
+    return create_initial_admin(
+        db,
+        DEVELOPMENT_ADMIN_USERNAME,
+        DEVELOPMENT_ADMIN_EMAIL,
+        DEVELOPMENT_ADMIN_PASSWORD,
+        allow_insecure_password=True,
+    )
+
+
 def prompt_for_admin(
     input_fn: Callable[[str], str] = input,
     password_fn: Callable[[str], str] = getpass.getpass,
@@ -91,17 +106,30 @@ def main() -> None:
         action="store_true",
         help="allow a short password for an isolated development installation",
     )
+    parser.add_argument(
+        "--create-development-default-if-empty",
+        action="store_true",
+        help="create the documented beta/test administrator in an empty database",
+    )
     arguments = parser.parse_args()
     try:
-        username, email, password = prompt_for_admin()
         with SessionLocal() as db:
-            admin = create_initial_admin(
-                db,
-                username,
-                email,
-                password,
-                allow_insecure_password=arguments.allow_insecure_development_password,
-            )
+            if arguments.create_development_default_if_empty:
+                admin = create_development_admin_if_empty(db)
+                if admin is None:
+                    print("Development administrator not created: users already exist")
+                    return
+            else:
+                username, email, password = prompt_for_admin()
+                admin = create_initial_admin(
+                    db,
+                    username,
+                    email,
+                    password,
+                    allow_insecure_password=(
+                        arguments.allow_insecure_development_password
+                    ),
+                )
     except AdminBootstrapError as exc:
         raise SystemExit(str(exc)) from exc
     print(f"Administrator created for {admin.email}")

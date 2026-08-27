@@ -6,7 +6,7 @@ from three_mm_provisioning import (
     NetworkInspectionError,
     NetworkManagerReadOnlyAdapter,
 )
-from three_mm_provisioning.network_manager import CommandResult
+from three_mm_provisioning.network_manager import CommandResult, WifiNetwork
 
 
 class FakeRunner:
@@ -108,11 +108,22 @@ def test_cached_wifi_scan_is_deduplicated_sorted_and_does_not_rescan():
 
     networks = adapter.scan_wifi_networks()
 
-    assert [
-        (item.network_name, item.signal, item.secured) for item in networks
-    ] == [("Office:Lab", 95, True), ("Cafe", 35, False)]
+    assert [(item.network_name, item.signal, item.secured) for item in networks] == [
+        ("Office:Lab", 95, True),
+        ("Cafe", 35, False),
+    ]
     command = runner.calls[0][0]
     assert command[-2:] == ("--rescan", "no")
+
+
+def test_explicit_wifi_scan_refreshes_the_selected_interface():
+    runner = FakeRunner([CommandResult(0, "Nearby:82:WPA2\n")])
+    adapter = NetworkManagerReadOnlyAdapter("/usr/bin/nmcli", runner)
+
+    networks = adapter.scan_wifi_networks(rescan=True, interface="wlan0")
+
+    assert networks == (WifiNetwork("Nearby", 82, True),)
+    assert runner.calls[0][0][-4:] == ("ifname", "wlan0", "--rescan", "yes")
 
 
 def test_from_system_fails_when_nmcli_is_unavailable(monkeypatch):

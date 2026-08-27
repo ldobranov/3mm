@@ -8,6 +8,22 @@
     "no_data_found": "No profile data found.", "failed_to_load": "Failed to load profile.",
     "failed_to_update": "Failed to update profile.", "updated_successfully": "Profile updated successfully."
   },
+  "users": {
+    "title": "User management", "createNew": "Create new user", "loading": "Loading", "close": "Close",
+    "empty": "No users found. Create your first user using the button above!", "joined": "Joined", "unknownDate": "Unknown",
+    "role": "Role", "roleAdmin": "Admin", "roleUser": "User", "edit": "Edit", "delete": "Delete",
+    "editTitle": "Edit user", "createTitle": "Create new user", "username": "Username", "usernamePlaceholder": "Enter username",
+    "email": "Email", "emailPlaceholder": "Enter email", "password": "Password", "passwordPlaceholder": "Enter password",
+    "newPassword": "New password (optional)", "newPasswordPlaceholder": "Leave blank to keep the current password",
+    "cancel": "Cancel", "update": "Update", "create": "Create", "confirmDeleteTitle": "Confirm deletion",
+    "confirmDeleteQuestion": "Are you sure you want to delete the user \"{username}\"?", "cannotUndo": "This action cannot be undone.",
+    "loadFailed": "Failed to fetch users. Please try again later.", "created": "User created successfully!",
+    "updated": "User updated successfully!", "deleted": "User deleted successfully!",
+    "saveFailed": "Failed to save user. Please try again.", "deleteFailed": "Failed to delete user. Please try again.",
+    "duplicate": "Username or email already exists.", "lastAdminDemote": "The last administrator cannot be changed to a user.",
+    "lastAdminDelete": "The last administrator cannot be deleted.", "selfDelete": "You cannot delete your own account.",
+    "notFound": "User not found.", "missingFields": "Complete all required fields."
+  },
   "networkRecovery": {
     "title": "Device network recovery",
     "description": "Move this device to another Wi-Fi network or recover access when its local network is unavailable.",

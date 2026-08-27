@@ -161,9 +161,18 @@ allows installation over Wi-Fi: the SSH session is expected to close only when
 the device switches to its open `3mm Setup XXXX` access point.
 
 Use `--tag` for a reproducible exact release, for example by appending
-`-s -- --tag v0.3.0-beta.7` after `sudo bash`. Passwords are requested only by
-`sudo` and the later interactive administrator bootstrap; they are not command
-arguments or repository data.
+`-s -- --tag v0.3.0-beta.7` after `sudo bash`. The Raspberry host password is
+requested only by `sudo` and is never a command argument or repository value.
+
+During Beta, a brand-new empty database receives one test administrator:
+
+- email: `admin@example.com`
+- password: `admin`
+
+Sign in and replace this password from **Profile**. Updates never recreate this
+account, reset its password or change existing users. The interactive secure
+administrator bootstrap remains available for installations that do not use
+the Beta default.
 
 The tested deployment uses an immutable layout:
 

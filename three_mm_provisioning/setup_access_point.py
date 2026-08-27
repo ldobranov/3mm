@@ -10,9 +10,11 @@ from three_mm_provisioning import (
     FileProvisioningStore,
     ProvisioningState,
 )
+from three_mm_provisioning.network_manager import NetworkManagerReadOnlyAdapter
 from three_mm_provisioning.network_manager_mutation import (
     NetworkManagerMutationBoundary,
 )
+from three_mm_provisioning.wifi_scan_cache import write_wifi_scan_cache
 
 CONNECTION_NAME = "3mm-setup"
 
@@ -33,6 +35,14 @@ def start(data_dir: Path, interface: str, machine_id_path: Path) -> None:
         and not recovery_requested
     ):
         return
+    try:
+        nearby_networks = NetworkManagerReadOnlyAdapter.from_system(
+            timeout_seconds=15.0
+        ).scan_wifi_networks(rescan=True, interface=interface)
+        write_wifi_scan_cache(data_dir, nearby_networks)
+    except Exception:
+        # Scanning is best-effort; manual SSID entry must always remain available.
+        pass
     boundary = NetworkManagerMutationBoundary()
     existing_uuid = boundary.connection_uuid(CONNECTION_NAME)
     if existing_uuid is not None:
@@ -54,7 +64,9 @@ def stop() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Manage the 3mm setup access point")
     parser.add_argument("action", choices=("start", "stop"))
-    parser.add_argument("--data-dir", type=Path, default=Path("/var/lib/3mm/provisioning"))
+    parser.add_argument(
+        "--data-dir", type=Path, default=Path("/var/lib/3mm/provisioning")
+    )
     parser.add_argument("--interface", default="wlan0")
     parser.add_argument("--machine-id", type=Path, default=Path("/etc/machine-id"))
     arguments = parser.parse_args()

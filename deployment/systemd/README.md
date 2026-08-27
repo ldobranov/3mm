@@ -124,9 +124,15 @@ python3 /opt/3mm/current/deployment/release_smoke.py
 
 ## First administrator
 
-After Core is healthy, create the first administrator from an interactive
-terminal. The command reads the password without echoing it and runs with the
-same unprivileged account that owns the Core database:
+On the first deployment of a brand-new empty database, the Beta/test installer
+creates `admin@example.com` with password `admin`. It does this only when the
+database did not exist before deployment and the user table is empty. Updates
+therefore do not recreate the account, replace an administrator or reset a
+password. Change the default immediately from **Profile**.
+
+For an older installation without an administrator, create one interactively.
+The command reads the password without echoing it and runs with the same
+unprivileged account that owns the Core database:
 
 ```bash
 sudo -u 3mm env \

@@ -6,6 +6,7 @@ from backend.db.base import Base
 from backend.db.user import User
 from backend.scripts.bootstrap_admin import (
     AdminBootstrapError,
+    create_development_admin_if_empty,
     create_initial_admin,
     prompt_for_admin,
 )
@@ -100,6 +101,35 @@ def test_short_password_requires_explicit_development_override(db: Session) -> N
     )
 
     assert verify_password("admin", admin.hashed_password)
+
+
+def test_development_default_is_created_only_in_an_empty_user_table(
+    db: Session,
+) -> None:
+    admin = create_development_admin_if_empty(db)
+
+    assert admin is not None
+    assert admin.username == "admin"
+    assert admin.email == "admin@example.com"
+    assert admin.role == "admin"
+    assert verify_password("admin", admin.hashed_password)
+    assert create_development_admin_if_empty(db) is None
+
+
+def test_development_default_does_not_modify_an_existing_user(db: Session) -> None:
+    existing = User(
+        username="existing",
+        email="existing@example.com",
+        hashed_password="unchanged",
+        role="user",
+    )
+    db.add(existing)
+    db.commit()
+
+    assert create_development_admin_if_empty(db) is None
+    db.refresh(existing)
+    assert existing.hashed_password == "unchanged"
+    assert existing.role == "user"
 
 
 def test_prompt_requires_matching_passwords() -> None:

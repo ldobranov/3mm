@@ -24,6 +24,11 @@ in Beta. It:
 
 Git is not required on the Raspberry Pi.
 
+For the current Beta/test installation, a brand-new empty database receives
+the initial login `admin@example.com` with password `admin`. Change it from
+**Profile** after signing in. An update never recreates the account or resets
+an existing password.
+
 ## Wi-Fi-only installation
 
 The detached job continues after SSH disconnects. On an unprovisioned device,
@@ -82,7 +87,7 @@ After setup, the application is available at `http://<device-ip>/` and
 
 Continue with the complete
 [Raspberry Pi first-boot procedure](docs/RASPBERRY_PI_FIRST_BOOT.md) for phone
-setup, administrator creation, local Agent pairing and acceptance checks.
+setup, initial login, local Agent pairing and acceptance checks.
 
 ## Development deployment
 

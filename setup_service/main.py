@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import re
+import sqlite3
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-import re
-import sqlite3
 from threading import Lock
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
@@ -24,8 +24,8 @@ from setup_service.schemas import (
     WifiNetworkOption,
 )
 from three_mm_provisioning import (
-    FileProvisioningStore,
     FileNetworkRecoveryMarker,
+    FileProvisioningStore,
     NetworkAdapter,
     NetworkCredentials,
     NetworkRecoveryStoreError,
@@ -39,6 +39,10 @@ from three_mm_provisioning import (
 from three_mm_provisioning.mock_network import MockNetworkAdapter
 from three_mm_provisioning.network_helper_client import (
     NetworkHelperClientAdapter,
+)
+from three_mm_provisioning.wifi_scan_cache import (
+    merge_wifi_networks,
+    read_wifi_scan_cache,
 )
 
 SETUP_PAGE = Path(__file__).with_name("static") / "setup.html"
@@ -267,13 +271,19 @@ def create_app(
         include_in_schema=False,
     )
     def networks() -> WifiNetworkList:
+        cached_items = read_wifi_scan_cache(resolved_settings.data_dir)
         scanner = getattr(resolved_network, "scan_wifi_networks", None)
         if scanner is None:
-            return WifiNetworkList(items=[])
-        try:
-            items = scanner()
-        except Exception as exc:
-            raise HTTPException(status_code=503, detail="wifi_scan_failed") from exc
+            items = cached_items
+        else:
+            try:
+                items = merge_wifi_networks(cached_items, scanner())
+            except Exception as exc:
+                if not cached_items:
+                    raise HTTPException(
+                        status_code=503, detail="wifi_scan_failed"
+                    ) from exc
+                items = cached_items
         return WifiNetworkList(
             items=[
                 WifiNetworkOption(

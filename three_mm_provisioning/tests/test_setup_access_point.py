@@ -2,13 +2,15 @@ from pathlib import Path
 
 from three_mm_protocol import AgentRole
 from three_mm_provisioning import (
+    FileNetworkRecoveryMarker,
     FileProvisioningStore,
     NetworkCredentials,
     ProvisioningRequest,
     ProvisioningSnapshot,
-    FileNetworkRecoveryMarker,
+    setup_access_point,
 )
-from three_mm_provisioning import setup_access_point
+from three_mm_provisioning.network_manager import WifiNetwork
+from three_mm_provisioning.wifi_scan_cache import read_wifi_scan_cache
 
 
 class FakeBoundary:
@@ -22,6 +24,22 @@ class FakeBoundary:
         self.calls.append(("create", values))
 
 
+class FakeScanner:
+    calls = []
+
+    @classmethod
+    def from_system(cls, **values):
+        cls.calls.append(("from_system", values))
+        return cls()
+
+    def scan_wifi_networks(self, **values):
+        self.calls.append(("scan", values))
+        return (
+            WifiNetwork("Nearby Wi-Fi", 77, True),
+            WifiNetwork("3mm Setup CDEF", 100, False),
+        )
+
+
 def test_unprovisioned_device_creates_open_machine_specific_ap(tmp_path, monkeypatch):
     machine_id = tmp_path / "machine-id"
     machine_id.write_text("0123456789abcdef\n", encoding="utf-8")
@@ -31,12 +49,21 @@ def test_unprovisioned_device_creates_open_machine_specific_ap(tmp_path, monkeyp
         "NetworkManagerMutationBoundary",
         FakeBoundary,
     )
+    FakeScanner.calls = []
+    monkeypatch.setattr(
+        setup_access_point,
+        "NetworkManagerReadOnlyAdapter",
+        FakeScanner,
+    )
 
-    setup_access_point.start(tmp_path / "state", "wlan0", machine_id)
+    state_dir = tmp_path / "state"
+    setup_access_point.start(state_dir, "wlan0", machine_id)
 
     create = next(call[1] for call in FakeBoundary.calls if call[0] == "create")
     assert create["network_name"] == "3mm Setup CDEF"
     assert "passphrase" not in create
+    assert ("scan", {"rescan": True, "interface": "wlan0"}) in FakeScanner.calls
+    assert read_wifi_scan_cache(state_dir) == (WifiNetwork("Nearby Wi-Fi", 77, True),)
 
 
 def test_provisioned_device_does_not_create_setup_ap(tmp_path, monkeypatch):
@@ -83,7 +110,9 @@ def test_recovery_marker_allows_a_provisioned_device_to_create_setup_ap(
     machine_id = tmp_path / "machine-id"
     machine_id.write_text("0123456789abcdef\n", encoding="utf-8")
     FakeBoundary.calls = []
-    monkeypatch.setattr(setup_access_point, "NetworkManagerMutationBoundary", FakeBoundary)
+    monkeypatch.setattr(
+        setup_access_point, "NetworkManagerMutationBoundary", FakeBoundary
+    )
 
     setup_access_point.start(state_dir, "wlan0", machine_id)
 

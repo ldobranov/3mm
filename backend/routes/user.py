@@ -8,6 +8,7 @@ from backend.db.user import User, UserSchema
 from backend.db.session import Session as UserSession
 from backend.db.audit_log import AuditLog
 from pydantic import BaseModel
+from typing import Literal
 import logging
 import traceback
 import jwt
@@ -29,11 +30,32 @@ class UserCreate(BaseModel):
     email: str
     password: str
 
+class AdminUserCreate(UserCreate):
+    role: Literal["user", "admin"] = "user"
+
+class AdminUserUpdate(BaseModel):
+    id: int
+    username: str
+    email: str
+    role: Literal["user", "admin"]
+    password: str | None = None
+
 class LoginPayload(BaseModel):
     email: str
     password: str
 
 token_blacklist = set()
+
+def require_admin(authorization: str, db: Session) -> User:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authorization required")
+
+    claims = decode_token(authorization.removeprefix("Bearer "))
+    user_id = claims.get("sub") or claims.get("user_id")
+    current_user = db.query(User).filter(User.id == user_id).first()
+    if not current_user or current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
 
 @router.post("/register")
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
@@ -54,6 +76,31 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error during user registration: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@router.post("/create")
+def create_user(
+    user: AdminUserCreate,
+    authorization: str = Header(...),
+    db: Session = Depends(get_db),
+):
+    """Create a user with an explicitly selected role - admin only."""
+    require_admin(authorization, db)
+    if not user.username.strip() or not user.email.strip() or not user.password:
+        raise HTTPException(status_code=422, detail="Missing required fields")
+    try:
+        new_user = User(
+            username=user.username,
+            email=user.email,
+            hashed_password=hash_password(user.password),
+            role=user.role,
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return {"message": "User created successfully", "id": new_user.id}
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Username or email already exists")
 
 @router.post("/login")
 def login_user(
@@ -209,18 +256,7 @@ def read_users(
 ):
     """Get list of users - admin only"""
     try:
-        # Decode token to get user info
-        if not authorization or not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Authorization required")
-        
-        token = authorization.split("Bearer ")[1]
-        claims = decode_token(token)
-        user_id = claims.get("sub") or claims.get("user_id")
-        
-        # Check if user is admin
-        current_user = db.query(User).filter(User.id == user_id).first()
-        if not current_user or current_user.role != "admin":
-            raise HTTPException(status_code=403, detail="Admin access required")
+        require_admin(authorization, db)
         
         # Return users list
         users = db.query(User).offset(skip).limit(limit).all()
@@ -245,48 +281,37 @@ def read_users(
 
 @router.put("/update")
 def update_user(
-    user_data: dict,
+    user_data: AdminUserUpdate,
     authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """Update user - admin only"""
     try:
-        # Decode token to get user info
-        if not authorization or not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Authorization required")
-        
-        token = authorization.split("Bearer ")[1]
-        claims = decode_token(token)
-        admin_id = claims.get("sub") or claims.get("user_id")
-        
-        # Check if user is admin
-        admin_user = db.query(User).filter(User.id == admin_id).first()
-        if not admin_user or admin_user.role != "admin":
-            raise HTTPException(status_code=403, detail="Admin access required")
-        
-        # Get user to update
-        user_id = user_data.get("id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID required")
-        
-        user = db.query(User).filter(User.id == user_id).first()
+        require_admin(authorization, db)
+        user = db.query(User).filter(User.id == user_data.id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        
-        # Update user fields
-        if "username" in user_data:
-            user.username = user_data["username"]
-        if "email" in user_data:
-            user.email = user_data["email"]
-        if "role" in user_data:
-            user.role = user_data["role"]
-        if "password" in user_data and user_data["password"]:
-            user.hashed_password = hash_password(user_data["password"])
+
+        if (
+            user.role == "admin"
+            and user_data.role != "admin"
+            and db.query(User).filter(User.role == "admin").count() <= 1
+        ):
+            raise HTTPException(status_code=400, detail="Cannot demote the last administrator")
+
+        user.username = user_data.username
+        user.email = user_data.email
+        user.role = user_data.role
+        if user_data.password:
+            user.hashed_password = hash_password(user_data.password)
         
         db.commit()
         db.refresh(user)
         
         return {"message": "User updated successfully"}
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Username or email already exists")
     except HTTPException:
         raise
     except Exception as e:
@@ -302,27 +327,19 @@ def delete_user(
 ):
     """Delete user - admin only"""
     try:
-        # Decode token to get user info
-        if not authorization or not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Authorization required")
-        
-        token = authorization.split("Bearer ")[1]
-        claims = decode_token(token)
-        admin_id = claims.get("sub") or claims.get("user_id")
-        
-        # Check if user is admin
-        admin_user = db.query(User).filter(User.id == admin_id).first()
-        if not admin_user or admin_user.role != "admin":
-            raise HTTPException(status_code=403, detail="Admin access required")
+        admin_user = require_admin(authorization, db)
         
         # Prevent self-deletion
-        if user_id == admin_id:
+        if user_id == admin_user.id:
             raise HTTPException(status_code=400, detail="Cannot delete your own account")
         
         # Get user to delete
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
+
+        if user.role == "admin" and db.query(User).filter(User.role == "admin").count() <= 1:
+            raise HTTPException(status_code=400, detail="Cannot delete the last administrator")
         
         # Delete related records first to avoid foreign key constraints
         # Import necessary models

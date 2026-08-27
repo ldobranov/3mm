@@ -67,6 +67,10 @@ previous_link=$install_root/previous
 state_root=/var/lib/3mm
 core_state=$state_root/core
 database=$core_state/3mm.db
+database_existed_before_deploy=0
+if [[ -f $database ]]; then
+  database_existed_before_deploy=1
+fi
 backup_root=$state_root/deploy-backups/$release_id
 deploy_cache_root=/var/cache/3mm/deploy
 deploy_home=$deploy_cache_root/home
@@ -164,6 +168,8 @@ restore_database() {
   if [[ $database_backup_created -eq 1 && -f $backup_root/3mm.db ]]; then
     install -o 3mm -g 3mm -m 0640 "$backup_root/3mm.db" "$database"
     rm -f -- "${database}-wal" "${database}-shm"
+  elif [[ $database_existed_before_deploy -eq 0 ]]; then
+    rm -f -- "$database" "${database}-wal" "${database}-shm"
   fi
 }
 
@@ -483,6 +489,14 @@ runuser -u 3mm -- env \
   COMPILED_UI_ARTIFACTS_DIR=/var/lib/3mm/core/extensions/compiled \
   PYTHONPATH="$release_dir" \
   "$release_dir/.venv/bin/python" "$release_dir/deployment/migrate_database.py"
+if [[ $database_existed_before_deploy -eq 0 ]]; then
+  log "Creating the beta/test default administrator"
+  runuser -u 3mm -- env \
+    DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db \
+    PYTHONPATH="$release_dir" \
+    "$release_dir/.venv/bin/python" -m backend.scripts.bootstrap_admin \
+      --create-development-default-if-empty
+fi
 
 log "Activating release atomically"
 ln -sfnT "$release_dir" "$current_link"

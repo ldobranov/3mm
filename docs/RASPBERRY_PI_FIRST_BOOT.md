@@ -1,11 +1,12 @@
 # Raspberry Pi installation and first boot
 
-Status: repeatable procedure documented and preflight-validated; a destructive
-clean-media repetition is still pending.
+Status: one-command clean-media bootstrap, setup AP and return to the normal
+Standalone runtime are physically validated on the Raspberry Pi 3B+ baseline.
 
 This guide installs one Raspberry Pi as a 3mm Standalone device. It deliberately
-keeps passwords out of commands, files and Git. Password prompts must be
-answered interactively.
+keeps Raspberry, Wi-Fi and user-selected passwords out of commands, files and
+Git. Password prompts must be answered interactively. The public `admin` Beta
+login described below is a disposable test default, not a secret.
 
 ## Validated baseline
 
@@ -152,11 +153,23 @@ On success the setup access point is removed, the saved Wi-Fi profile becomes
 active, and Core, Web and Agent replace the setup services. On failure the
 network change is rolled back and setup mode remains available.
 
-The current **Administrator name** field is provisioning metadata. It does not
-create a login account; the first account is created interactively in the next
-step.
+The current **Administrator name** field remains provisioning metadata and does
+not select the application login. During Beta, the immutable installer creates
+the documented test administrator only when the user table is initially empty.
 
-## 5. Create the first administrator
+## 5. Sign in with the Beta/test administrator
+
+Open `http://<hostname>.local/` or `http://<device-ip>/` and use:
+
+- email: `admin@example.com`
+- password: `admin`
+
+Change the password from **Profile** after signing in. This short default is for
+the current Beta/test flow, not the production security model. It is created
+only for a brand-new empty database; upgrades do not recreate it, replace an
+existing administrator or reset a password.
+
+If an older installation has no administrator, create one interactively:
 
 Reconnect over SSH on the final LAN and run:
 
@@ -247,9 +260,10 @@ fallback addresses and operational details.
 
 ## Current acceptance boundary
 
-The host/release preflight and the already-provisioned Standalone runtime have
-been verified on the physical Pi 3B+. A new SD card has not yet been erased and
-run through every step above, so clean-device acceptance remains open.
+The host/release preflight, one-command installation, Wi-Fi-only handoff to the
+open setup AP, captive setup and return to the Standalone runtime have been
+verified on a clean SD card on the physical Pi 3B+. Local Agent pairing and the
+full post-install checklist remain separate acceptance steps.
 
 Node setup is also not yet claimed as complete. The portal persists the selected
 Hub address, but external-Hub credential bootstrap is not yet a single first-boot
