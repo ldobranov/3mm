@@ -10,6 +10,7 @@ def test_setup_settings_are_environment_driven(monkeypatch):
     monkeypatch.setenv("THREE_MM_SETUP_HOST", "0.0.0.0")
     monkeypatch.setenv("THREE_MM_SETUP_PORT", "9015")
     monkeypatch.setenv("THREE_MM_NETWORK_HELPER_SOCKET", "helper.sock")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///test-core.db")
 
     settings = SetupSettings.from_env()
 
@@ -17,6 +18,7 @@ def test_setup_settings_are_environment_driven(monkeypatch):
     assert settings.host == "0.0.0.0"
     assert settings.port == 9015
     assert settings.network_helper_socket == Path("helper.sock")
+    assert settings.core_database_path == Path("test-core.db")
 
 
 @pytest.mark.parametrize("port", [0, 65536])

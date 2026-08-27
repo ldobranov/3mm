@@ -14,6 +14,13 @@ from three_mm_provisioning.network_inspection import (
     NetworkManagerStatus,
 )
 from three_mm_provisioning.network_manager import NetworkManagerReadOnlyAdapter
+from three_mm_provisioning.network_recovery import (
+    DEFAULT_OFFLINE_AFTER_SECONDS,
+    FileNetworkRecoveryMarker,
+    FileNetworkRecoveryPolicyStore,
+    NetworkRecoveryPolicy,
+    NetworkRecoveryStoreError,
+)
 from three_mm_provisioning.network_manager_provisioning import (
     NetworkManagerProvisioningPlan,
     NetworkManagerProvisioningPlanner,
@@ -49,6 +56,11 @@ __all__ = [
     "NetworkInspectionAdapter",
     "NetworkInspectionError",
     "NetworkManagerReadOnlyAdapter",
+    "DEFAULT_OFFLINE_AFTER_SECONDS",
+    "FileNetworkRecoveryMarker",
+    "FileNetworkRecoveryPolicyStore",
+    "NetworkRecoveryPolicy",
+    "NetworkRecoveryStoreError",
     "NetworkManagerProvisioningPlan",
     "NetworkManagerProvisioningPlanner",
     "MutationCommandResult",

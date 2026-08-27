@@ -8,6 +8,46 @@ pre-1.0.
 
 ## [Unreleased]
 
+### Added
+
+- Administrator-only network recovery controls in Settings, including current
+  Wi-Fi/Ethernet link state, manual setup-Wi-Fi activation and an optional
+  automatic trigger after five continuous minutes without either local link.
+- Nearby Wi-Fi scanning in the setup portal and reuse of the saved application
+  theme while recovery mode is active.
+- Captive-portal DNS and an HTTP entry point on port 80 during setup mode so a
+  phone can open the setup page automatically after joining the open AP.
+
+### Changed
+
+- The normal web application is now available on port 80 at both the device IP
+  and `<hostname>.local`; port 8080 remains a compatibility listener.
+- Network recovery is coordinated through the existing root helper and runtime
+  planner. The captive DNS override exists only for the lifetime of the setup
+  AP and is removed when setup stops.
+
+### Fixed
+
+- Successful setup no longer reports a false apply failure while the device is
+  already switching from the setup AP to the selected Wi-Fi network.
+- Frontend URL normalization and CORS now support the device hostname without
+  requiring an explicit port.
+
+### Verified
+
+- Deployed immutable review release
+  `worktree-f433dada70b5-20260827170249` on `rasp-3mm` and verified HTTP 200 on
+  ports 80 and 8080.
+- Physically completed the manual AP, automatic phone captive portal, Wi-Fi
+  selection, save, reconnect and normal application access flow.
+- Passed 38 focused setup/systemd tests and all 47 frontend tests before the
+  accepted deployment.
+
+### Documentation
+
+- Added the Network Recovery operator guide and updated first-boot, roadmap and
+  Milestone 10 acceptance documentation.
+
 ## [0.3.0-beta.5] - 2026-08-27
 
 ### Added

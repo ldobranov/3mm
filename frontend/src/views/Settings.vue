@@ -706,6 +706,9 @@ export default defineComponent({
   grid-template-columns: 220px minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .settings-nav {
@@ -717,6 +720,9 @@ export default defineComponent({
   border: 1px solid var(--card-border, #e3e3e3);
   border-radius: var(--border-radius-md, 8px);
   background: var(--card-bg, #ffffff);
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .settings-nav-item {
@@ -733,6 +739,12 @@ export default defineComponent({
   font-size: 0.95rem;
   text-align: left;
   cursor: pointer;
+  min-width: 0;
+}
+
+.settings-nav-item span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .settings-nav-item:hover,
@@ -754,12 +766,15 @@ export default defineComponent({
 
 .settings-content {
   min-width: 0;
+  max-width: 100%;
   display: grid;
   gap: 1rem;
 }
 
 .settings-anchor {
   scroll-margin-top: 1rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .section-cluster {
@@ -780,7 +795,19 @@ export default defineComponent({
 
 @media (max-width: 768px) {
   .settings-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     padding: 0.75rem;
+  }
+
+  .settings-nav-item {
+    padding: 0.65rem;
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 380px) {
+  .settings-nav {
+    grid-template-columns: 1fr;
   }
 }
 </style>

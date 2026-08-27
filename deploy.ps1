@@ -2,7 +2,7 @@
 param(
     [string]$SshHost = $(if ($env:THREE_MM_DEPLOY_HOST) { $env:THREE_MM_DEPLOY_HOST } else { 'rasp-3mm' }),
     [string]$RemoteName = $(if ($env:THREE_MM_DEPLOY_REMOTE) { $env:THREE_MM_DEPLOY_REMOTE } else { 'origin' }),
-    [string]$FrontendOrigin = $(if ($env:THREE_MM_FRONTEND_ORIGIN) { $env:THREE_MM_FRONTEND_ORIGIN } else { 'http://192.168.1.88:8080' }),
+    [string]$FrontendOrigin = $(if ($env:THREE_MM_FRONTEND_ORIGIN) { $env:THREE_MM_FRONTEND_ORIGIN } else { 'http://192.168.1.88' }),
     [int]$HealthTimeoutSeconds = 90,
     [switch]$IncludeWorkingTree,
     [switch]$InteractiveSudo,

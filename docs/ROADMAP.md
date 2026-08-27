@@ -305,10 +305,12 @@ Stages (completed on 2026-08-23):
 Goal: replace mock hardware with real Raspberry adapters while preserving contracts.
 
 Status: in progress on the physical `rasp-3mm` Raspberry Pi 3B+ baseline. The
-native `libgpiod` input path, systemd deployment, reboot and reconnect behavior
+native `libgpiod` input path, systemd deployment, reboot and reconnect behavior,
 bounded release retention and automatic failed-deployment rollback are
 accepted; deployment-backup retention and the read-only first-boot preflight are
-also accepted, while clean-media installation acceptance remains. See
+also accepted. Administrator-controlled network recovery, the phone captive
+portal and the physical setup-to-Standalone transition are accepted, while
+clean-media installation acceptance remains. See
 [MILESTONE_10_REPORT.md](MILESTONE_10_REPORT.md).
 
 Deliverables:
@@ -318,7 +320,8 @@ Deliverables:
 - gpiozero/libgpiod driver decision and implementation;
 - Pi Zero 2 W and Pi 3B resource measurements where available;
 - reconnect, reboot, storage-limit and power-loss tests;
-- first-boot/pairing documentation.
+- first-boot/pairing documentation;
+- manual and policy-controlled setup-Wi-Fi recovery with a phone captive portal.
 
 Acceptance criteria:
 
@@ -502,10 +505,12 @@ These are the first concrete tasks after approval of this plan:
 - [x] Publish and physically validate one preview-channel release before enabling scheduled checks.
 - [x] Persist Standalone automatic check policy, cached results and bounded retry backoff.
 - [x] Enforce a daily maintenance window with a separate audited manual override.
+- [x] Add administrator-controlled manual and five-minute offline network recovery.
+- [x] Serve the application on port 80 through both its LAN IP and mDNS hostname while retaining port 8080 compatibility.
+- [x] Validate the setup AP, automatic phone captive portal and setup-to-Standalone transition on physical `rasp-3mm`.
 - [ ] Add fleet rollout rings only after Hub/Node orchestration exists.
 - [ ] Repeat the documented Standalone flow on clean media and close the Milestone 10 report.
 - [ ] Validate the open setup-only access point and persistent NetworkManager profile across a Raspberry Pi reboot.
-- [ ] Validate automatic transition from setup services to the selected runtime role on physical `rasp-3mm`.
 
 ## Explicitly deferred
 

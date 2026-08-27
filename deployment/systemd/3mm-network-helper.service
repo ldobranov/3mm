@@ -6,7 +6,7 @@ Requires=NetworkManager.service
 [Service]
 Type=simple
 User=root
-Group=root
+Group=3mm
 WorkingDirectory=/opt/3mm/current
 Environment=PYTHONPATH=/opt/3mm/current
 ExecStart=/opt/3mm/current/.venv/bin/python -m three_mm_provisioning.network_helper --socket /run/3mm/network-helper.sock --group 3mm
@@ -14,6 +14,7 @@ Restart=on-failure
 RestartSec=5s
 RuntimeDirectory=3mm
 RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from three_mm_provisioning import FileProvisioningStore
+from three_mm_provisioning import FileNetworkRecoveryMarker, FileProvisioningStore
 from three_mm_runtime.services import DeviceRuntimePlanner, RuntimeService
 
 UNIT_NAMES = {
@@ -30,7 +30,10 @@ def _systemctl(*arguments: str) -> None:
 
 
 def activate(data_dir: Path = Path("/var/lib/3mm/provisioning")) -> None:
-    plan = DeviceRuntimePlanner(FileProvisioningStore(data_dir)).resolve()
+    plan = DeviceRuntimePlanner(
+        FileProvisioningStore(data_dir),
+        FileNetworkRecoveryMarker(data_dir / "network-recovery.json"),
+    ).resolve()
     application_units = tuple(UNIT_NAMES.values())
     if plan.includes(RuntimeService.SETUP):
         _systemctl("disable", "--now", *application_units)

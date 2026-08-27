@@ -4,6 +4,7 @@ from three_mm_provisioning import (
     NetworkCredentials,
     ProvisioningRequest,
     ProvisioningSnapshot,
+    FileNetworkRecoveryMarker,
 )
 from three_mm_runtime import DeviceRuntimePlanner, RuntimeService
 
@@ -66,3 +67,15 @@ def test_standalone_is_a_hub_preset_with_the_same_services() -> None:
 
     assert standalone.services == hub.services
     assert standalone.includes(RuntimeService.AGENT)
+
+
+def test_recovery_marker_temporarily_overrides_a_provisioned_runtime(tmp_path) -> None:
+    marker = FileNetworkRecoveryMarker(tmp_path / "network-recovery.json")
+    marker.activate("manual")
+
+    plan = DeviceRuntimePlanner(
+        MemoryProvisioningStore(_provisioned(AgentRole.STANDALONE)),
+        marker,
+    ).resolve()
+
+    assert plan.services == (RuntimeService.SETUP,)

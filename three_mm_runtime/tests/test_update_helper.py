@@ -4,6 +4,13 @@ from pathlib import Path
 import pytest
 
 from backend.services.update_staging import StagedUpdate
+from three_mm_protocol import AgentRole
+from three_mm_provisioning import (
+    FileProvisioningStore,
+    NetworkCredentials,
+    ProvisioningRequest,
+    ProvisioningSnapshot,
+)
 from three_mm_runtime import update_helper
 from three_mm_runtime.update_helper import UpdateMutationBoundary
 
@@ -127,3 +134,89 @@ def test_mutation_boundary_uses_no_shell_and_only_the_fixed_worker() -> None:
         "3mm-update-manifest.json",
     )
     assert "apt-get" not in " ".join(command)
+
+
+def test_manual_network_setup_accepts_only_a_fixed_admin_request(tmp_path: Path) -> None:
+    data_dir = tmp_path / "provisioning"
+    FileProvisioningStore(data_dir).save(
+        ProvisioningSnapshot.provisioned(
+            ProvisioningRequest(
+                network=NetworkCredentials("network", "not-persisted"),
+                locale="en-GB",
+                device_name="device",
+                administrator_name="admin",
+                role=AgentRole.STANDALONE,
+            )
+        )
+    )
+    calls = []
+
+    class FakeBoundary:
+        def schedule_network_setup(self, trigger, **values):
+            calls.append((trigger, values))
+
+    response = update_helper._handle_request(
+        {"action": "start_network_setup", "requested_by_user_id": 7},
+        stage_root=tmp_path / "stage",
+        state_root=tmp_path / "state",
+        allowlist=tmp_path / "allowlist.json",
+        status_file=tmp_path / "status.json",
+        boundary=FakeBoundary(),
+        provisioning_data_dir=data_dir,
+    )
+    injected = update_helper._handle_request(
+        {
+            "action": "start_network_setup",
+            "requested_by_user_id": 7,
+            "command": "nmcli connection delete anything",
+        },
+        stage_root=tmp_path / "stage",
+        state_root=tmp_path / "state",
+        allowlist=tmp_path / "allowlist.json",
+        status_file=tmp_path / "status.json",
+        boundary=FakeBoundary(),
+        provisioning_data_dir=data_dir,
+    )
+
+    assert response == {"ok": True, "status": "queued"}
+    assert calls == [
+        (
+            "manual",
+            {
+                "data_dir": data_dir,
+                "service_user": "3mm",
+                "service_group": "3mm",
+            },
+        )
+    ]
+    assert injected == {"ok": False, "error": "invalid_request"}
+
+
+def test_network_setup_boundary_uses_only_the_fixed_module() -> None:
+    calls: list[tuple[str, ...]] = []
+
+    class FakeRunner:
+        def run(self, arguments) -> int:
+            calls.append(tuple(arguments))
+            return 0
+
+    boundary = UpdateMutationBoundary(runner=FakeRunner())
+    boundary.schedule_network_setup("automatic")
+
+    command = calls[0]
+    assert command[0] == "/usr/bin/systemd-run"
+    assert "/bin/sh" not in command
+    assert "/bin/bash" not in command
+    assert "three_mm_runtime.network_recovery" in command
+    assert "--property=ProtectSystem=strict" in command
+    assert "--property=ReadWritePaths=/var/lib/3mm/provisioning" in command
+    assert "--property=ReadWritePaths=/run/lock" in command
+    assert command[-7:] == (
+        "/var/lib/3mm/provisioning",
+        "--trigger",
+        "automatic",
+        "--user",
+        "3mm",
+        "--group",
+        "3mm",
+    )

@@ -9,7 +9,7 @@ from urllib.request import urlopen
 
 import pytest
 
-from three_mm_web.server import create_server
+from three_mm_web.server import build_parser, create_server
 
 
 @contextmanager
@@ -54,3 +54,11 @@ def test_missing_asset_remains_not_found(artifact: Path) -> None:
             urlopen(f"{base_url}/assets/missing.js", timeout=2)
 
         assert error.value.code == 404
+
+
+def test_cli_accepts_a_distinct_alias_port(artifact: Path) -> None:
+    arguments = build_parser().parse_args(
+        ["--directory", str(artifact), "--port", "8080", "--alias-port", "80"]
+    )
+
+    assert arguments.alias_port == 80

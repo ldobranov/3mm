@@ -15,11 +15,30 @@ from three_mm_provisioning.network_manager_persistent import (
 from three_mm_provisioning.network_manager_mutation import (
     NetworkManagerMutationBoundary,
 )
+from three_mm_provisioning.network_manager import NetworkManagerReadOnlyAdapter
 
 MAX_REQUEST_BYTES = 4096
 
 
 def _handle_request(payload: object) -> dict[str, object]:
+    if payload == {"action": "scan_wifi"}:
+        try:
+            networks = NetworkManagerReadOnlyAdapter.from_system(
+                timeout_seconds=5.0
+            ).scan_wifi_networks()
+        except Exception:
+            return {"ok": False, "error": "wifi_scan_failed"}
+        return {
+            "ok": True,
+            "items": [
+                {
+                    "network_name": item.network_name,
+                    "signal": item.signal,
+                    "secured": item.secured,
+                }
+                for item in networks
+            ],
+        }
     if payload == {"action": "activate_runtime"}:
         try:
             NetworkManagerMutationBoundary().schedule_runtime_activation()

@@ -16,12 +16,20 @@ from three_mm_provisioning.network_inspection import (
 
 GENERAL_FIELDS = "RUNNING,STATE,CONNECTIVITY,WIFI-HW,WIFI"
 DEVICE_FIELDS = "DEVICE,TYPE,STATE"
+WIFI_FIELDS = "SSID,SIGNAL,SECURITY"
 
 
 @dataclass(frozen=True, slots=True)
 class CommandResult:
     return_code: int
     standard_output: str
+
+
+@dataclass(frozen=True, slots=True)
+class WifiNetwork:
+    network_name: str
+    signal: int
+    secured: bool
 
 
 class CommandRunner(Protocol):
@@ -107,6 +115,23 @@ class NetworkManagerReadOnlyAdapter:
         )
         return _parse_status(general, devices)
 
+    def scan_wifi_networks(self) -> tuple[WifiNetwork, ...]:
+        """Return NetworkManager's cached scan without disrupting an active AP."""
+
+        output = self._execute(
+            "-t",
+            "-e",
+            "yes",
+            "-f",
+            WIFI_FIELDS,
+            "device",
+            "wifi",
+            "list",
+            "--rescan",
+            "no",
+        )
+        return _parse_wifi_networks(output)
+
     def _execute(self, *arguments: str) -> str:
         result = self._runner.run(
             (self._executable, *arguments),
@@ -150,6 +175,62 @@ def _parse_status(general_output: str, device_output: str) -> NetworkManagerStat
         wifi_enabled=_parse_flag(general_fields[4], "enabled", "disabled"),
         devices=tuple(devices),
     )
+
+
+def _parse_wifi_networks(output: str) -> tuple[WifiNetwork, ...]:
+    strongest: dict[str, WifiNetwork] = {}
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        fields = _split_escaped_fields(line)
+        if len(fields) != 3:
+            raise NetworkInspectionError("NetworkManager Wi-Fi output is invalid")
+        network_name, signal_value, security = fields
+        if not network_name or len(network_name) > 32:
+            continue
+        try:
+            signal = int(signal_value)
+        except ValueError as exc:
+            raise NetworkInspectionError(
+                "NetworkManager Wi-Fi signal is invalid"
+            ) from exc
+        if not 0 <= signal <= 100:
+            raise NetworkInspectionError("NetworkManager Wi-Fi signal is invalid")
+        candidate = WifiNetwork(
+            network_name=network_name,
+            signal=signal,
+            secured=security.strip() not in {"", "--"},
+        )
+        previous = strongest.get(network_name)
+        if previous is None or candidate.signal > previous.signal:
+            strongest[network_name] = candidate
+    return tuple(
+        sorted(
+            strongest.values(),
+            key=lambda item: (-item.signal, item.network_name.casefold()),
+        )[:30]
+    )
+
+
+def _split_escaped_fields(value: str) -> list[str]:
+    fields: list[str] = []
+    current: list[str] = []
+    escaped = False
+    for character in value:
+        if escaped:
+            current.append(character)
+            escaped = False
+        elif character == "\\":
+            escaped = True
+        elif character == ":":
+            fields.append("".join(current))
+            current = []
+        else:
+            current.append(character)
+    if escaped:
+        current.append("\\")
+    fields.append("".join(current))
+    return fields
 
 
 def _parse_flag(value: str, true_value: str, false_value: str) -> bool:

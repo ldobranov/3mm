@@ -15,7 +15,6 @@ Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=20s
 StateDirectory=3mm/agent 3mm/provisioning
-RuntimeDirectory=3mm
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

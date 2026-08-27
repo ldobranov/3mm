@@ -5,6 +5,8 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
+import re
+import sqlite3
 from threading import Lock
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
@@ -13,11 +15,20 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from setup_service import __version__
 from setup_service.config import SetupSettings
-from setup_service.schemas import SetupConfiguration, SetupOutcome, SetupStatus
+from setup_service.schemas import (
+    SetupConfiguration,
+    SetupOutcome,
+    SetupStatus,
+    SetupTheme,
+    WifiNetworkList,
+    WifiNetworkOption,
+)
 from three_mm_provisioning import (
     FileProvisioningStore,
+    FileNetworkRecoveryMarker,
     NetworkAdapter,
     NetworkCredentials,
+    NetworkRecoveryStoreError,
     ProvisioningRequest,
     ProvisioningSnapshot,
     ProvisioningState,
@@ -39,6 +50,8 @@ PUBLIC_SETUP_ENDPOINTS = frozenset(
         ("GET", "/ready"),
         ("GET", "/setup"),
         ("GET", "/api/v1/setup/status"),
+        ("GET", "/api/v1/setup/networks"),
+        ("GET", "/api/v1/setup/theme"),
         ("POST", "/api/v1/setup/configure"),
         ("GET", "/generate_204"),
         ("GET", "/hotspot-detect.html"),
@@ -47,11 +60,85 @@ PUBLIC_SETUP_ENDPOINTS = frozenset(
     }
 )
 
+THEME_DEFAULTS = {
+    "light_body_bg": "#ffffff",
+    "light_card_bg": "#ffffff",
+    "light_panel_bg": "#f8fafc",
+    "light_text_primary": "#222222",
+    "light_text_secondary": "#666666",
+    "light_card_border": "#d1d5db",
+    "light_button_primary_bg": "#007bff",
+    "light_border_radius_md": "8",
+    "dark_body_bg": "#1f2937",
+    "dark_card_bg": "#374151",
+    "dark_panel_bg": "#263449",
+    "dark_text_primary": "#e5e7eb",
+    "dark_text_secondary": "#9ca3af",
+    "dark_card_border": "#4b5563",
+    "dark_button_primary_bg": "#3b82f6",
+    "dark_border_radius_md": "8",
+    "header_bg_color": "#4caf50",
+    "header_text_color": "#ffffff",
+}
+HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _read_setup_theme(database_path: Path) -> SetupTheme:
+    values = dict(THEME_DEFAULTS)
+    mode = "light"
+    try:
+        with sqlite3.connect(
+            f"file:{database_path.as_posix()}?mode=ro",
+            uri=True,
+            timeout=1,
+        ) as connection:
+            rows = connection.execute(
+                "SELECT key, value FROM settings "
+                "WHERE key IN ("
+                "'default_theme','user_theme','header_bg_color','header_text_color',"
+                "'light_body_bg','light_card_bg','light_panel_bg',"
+                "'light_text_primary','light_text_secondary','light_card_border',"
+                "'light_button_primary_bg','light_border_radius_md',"
+                "'dark_body_bg','dark_card_bg','dark_panel_bg',"
+                "'dark_text_primary','dark_text_secondary','dark_card_border',"
+                "'dark_button_primary_bg','dark_border_radius_md'"
+                ") ORDER BY id"
+            ).fetchall()
+        stored = {key: value for key, value in rows if isinstance(value, str)}
+        requested_mode = stored.get("user_theme") or stored.get("default_theme")
+        if requested_mode in {"light", "dark"}:
+            mode = requested_mode
+        for key in values:
+            candidate = stored.get(key)
+            if key.endswith("border_radius_md"):
+                if candidate and candidate.isdigit() and 0 <= int(candidate) <= 50:
+                    values[key] = candidate
+            elif candidate and HEX_COLOR.fullmatch(candidate):
+                values[key] = candidate
+    except (OSError, sqlite3.Error):
+        pass
+    prefix = f"{mode}_"
+    return SetupTheme(
+        mode=mode,
+        body_bg=values[f"{prefix}body_bg"],
+        card_bg=values[f"{prefix}card_bg"],
+        panel_bg=values[f"{prefix}panel_bg"],
+        text_primary=values[f"{prefix}text_primary"],
+        text_secondary=values[f"{prefix}text_secondary"],
+        border=values[f"{prefix}card_border"],
+        primary=values[f"{prefix}button_primary_bg"],
+        header_bg=values["header_bg_color"],
+        header_text=values["header_text_color"],
+        border_radius=int(values[f"{prefix}border_radius_md"]),
+    )
+
 
 @dataclass(frozen=True, slots=True)
 class SetupRuntime:
     machine: ProvisioningStateMachine
     store: ProvisioningStore
+    recovery_marker: FileNetworkRecoveryMarker
+    previous_snapshot: ProvisioningSnapshot | None
     lock: Lock
 
 
@@ -63,6 +150,7 @@ def create_app(
     network: NetworkAdapter | None = None,
     store: ProvisioningStore | None = None,
     settings: SetupSettings | None = None,
+    recovery_marker: FileNetworkRecoveryMarker | None = None,
 ) -> FastAPI:
     resolved_settings = settings or SetupSettings.from_env()
     resolved_network = network or (
@@ -71,11 +159,15 @@ def create_app(
         else MockNetworkAdapter()
     )
     resolved_store = store or FileProvisioningStore(resolved_settings.data_dir)
+    resolved_recovery_marker = recovery_marker or FileNetworkRecoveryMarker(
+        resolved_settings.data_dir / "network-recovery.json"
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         machine = ProvisioningStateMachine(resolved_network)
         snapshot = resolved_store.load()
+        previous_snapshot = None
         if snapshot is None:
             machine.start_setup()
         elif snapshot.state is ProvisioningState.PROVISIONED:
@@ -83,13 +175,19 @@ def create_app(
                 raise ProvisioningStoreError(
                     "Provisioned snapshot does not contain a role"
                 )
-            machine.restore_provisioned(snapshot.role)
+            if resolved_recovery_marker.is_active():
+                previous_snapshot = snapshot
+                machine.recover_setup()
+            else:
+                machine.restore_provisioned(snapshot.role)
         else:
             machine.recover_setup()
             resolved_store.clear()
         app.state.setup_runtime = SetupRuntime(
             machine=machine,
             store=resolved_store,
+            recovery_marker=resolved_recovery_marker,
+            previous_snapshot=previous_snapshot,
             lock=Lock(),
         )
         yield
@@ -163,6 +261,38 @@ def create_app(
             role=runtime.machine.role,
         )
 
+    @app.get(
+        "/api/v1/setup/networks",
+        response_model=WifiNetworkList,
+        include_in_schema=False,
+    )
+    def networks() -> WifiNetworkList:
+        scanner = getattr(resolved_network, "scan_wifi_networks", None)
+        if scanner is None:
+            return WifiNetworkList(items=[])
+        try:
+            items = scanner()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="wifi_scan_failed") from exc
+        return WifiNetworkList(
+            items=[
+                WifiNetworkOption(
+                    network_name=item.network_name,
+                    signal=item.signal,
+                    secured=item.secured,
+                )
+                for item in items
+            ]
+        )
+
+    @app.get(
+        "/api/v1/setup/theme",
+        response_model=SetupTheme,
+        include_in_schema=False,
+    )
+    def theme() -> SetupTheme:
+        return _read_setup_theme(resolved_settings.core_database_path)
+
     @app.post(
         "/api/v1/setup/configure",
         response_model=SetupOutcome,
@@ -195,13 +325,14 @@ def create_app(
                     status_code=409,
                     detail="setup_not_available",
                 )
-            try:
-                runtime.store.save(ProvisioningSnapshot.attempt_started())
-            except ProvisioningStoreError as exc:
-                raise HTTPException(
-                    status_code=503,
-                    detail="setup_persistence_failed",
-                ) from exc
+            if runtime.previous_snapshot is None:
+                try:
+                    runtime.store.save(ProvisioningSnapshot.attempt_started())
+                except (ProvisioningStoreError, NetworkRecoveryStoreError) as exc:
+                    raise HTTPException(
+                        status_code=503,
+                        detail="setup_persistence_failed",
+                    ) from exc
             try:
                 result = runtime.machine.provision(provisioning_request)
             except RuntimeError as exc:
@@ -210,24 +341,27 @@ def create_app(
                     detail="setup_not_available",
                 ) from exc
             if result.recovery_required:
-                try:
-                    runtime.store.clear()
-                except ProvisioningStoreError as exc:
-                    raise HTTPException(
-                        status_code=503,
-                        detail="setup_persistence_failed",
-                    ) from exc
+                if runtime.previous_snapshot is None:
+                    try:
+                        runtime.store.clear()
+                    except ProvisioningStoreError as exc:
+                        raise HTTPException(
+                            status_code=503,
+                            detail="setup_persistence_failed",
+                        ) from exc
             else:
                 try:
                     runtime.store.save(
                         ProvisioningSnapshot.provisioned(provisioning_request)
                     )
-                except ProvisioningStoreError as exc:
+                    runtime.recovery_marker.clear()
+                except (ProvisioningStoreError, NetworkRecoveryStoreError) as exc:
                     runtime.machine.recover_setup()
-                    try:
-                        runtime.store.clear()
-                    except ProvisioningStoreError:
-                        pass
+                    if runtime.previous_snapshot is None:
+                        try:
+                            runtime.store.clear()
+                        except ProvisioningStoreError:
+                            pass
                     raise HTTPException(
                         status_code=503,
                         detail="setup_persistence_failed",

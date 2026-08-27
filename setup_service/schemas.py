@@ -37,3 +37,27 @@ class SetupOutcome(SetupApiModel):
     role: AgentRole | None
     recovery_required: bool
     error_code: str | None = None
+
+
+class WifiNetworkOption(SetupApiModel):
+    network_name: str
+    signal: int = Field(ge=0, le=100)
+    secured: bool
+
+
+class WifiNetworkList(SetupApiModel):
+    items: list[WifiNetworkOption]
+
+
+class SetupTheme(SetupApiModel):
+    mode: str
+    body_bg: str
+    card_bg: str
+    panel_bg: str
+    text_primary: str
+    text_secondary: str
+    border: str
+    primary: str
+    header_bg: str
+    header_text: str
+    border_radius: int = Field(ge=0, le=50)

@@ -6,7 +6,11 @@ from dataclasses import dataclass
 from enum import Enum
 
 from three_mm_protocol import AgentRole
-from three_mm_provisioning import ProvisioningState, ProvisioningStore
+from three_mm_provisioning import (
+    FileNetworkRecoveryMarker,
+    ProvisioningState,
+    ProvisioningStore,
+)
 
 
 class RuntimeService(str, Enum):
@@ -28,10 +32,17 @@ class RuntimePlan:
 class DeviceRuntimePlanner:
     """Build a fail-closed service plan from the provisioning journal."""
 
-    def __init__(self, store: ProvisioningStore) -> None:
+    def __init__(
+        self,
+        store: ProvisioningStore,
+        recovery_marker: FileNetworkRecoveryMarker | None = None,
+    ) -> None:
         self._store = store
+        self._recovery_marker = recovery_marker
 
     def resolve(self) -> RuntimePlan:
+        if self._recovery_marker is not None and self._recovery_marker.is_active():
+            return RuntimePlan(role=None, services=(RuntimeService.SETUP,))
         snapshot = self._store.load()
         if snapshot is None or snapshot.state is not ProvisioningState.PROVISIONED:
             return RuntimePlan(role=None, services=(RuntimeService.SETUP,))

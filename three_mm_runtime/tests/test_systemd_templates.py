@@ -13,6 +13,7 @@ PRIVILEGED_UNITS = {
     "setup_ap": SYSTEMD_DIR / "3mm-setup-ap.service",
     "update_helper": SYSTEMD_DIR / "3mm-update-helper.service",
 }
+CAPTIVE_DNS_CONFIG = SYSTEMD_DIR / "3mm-captive-portal-dnsmasq.conf"
 
 
 def _directives(path: Path) -> dict[str, str]:
@@ -50,17 +51,27 @@ def test_core_is_lan_accessible_while_device_services_stay_on_loopback() -> None
 
     assert "--host 0.0.0.0 --port 8887" in core_command
     assert "--host 0.0.0.0 --port 8080" in web_command
+    assert "--alias-port 80" in web_command
     assert "--host 127.0.0.1 --port 8890" in agent_command
     assert "--host 0.0.0.0 --port 8895" in setup_command
+    assert "--captive-port 80" in setup_command
+    assert "--captive-url http://10.42.0.1:8895/setup" in setup_command
 
 
 def test_setup_unit_has_no_network_mutation_privileges() -> None:
     unit = _directives(UNITS["setup"])
 
     assert unit["User"] != "root"
-    assert "AmbientCapabilities" not in unit
-    assert "CapabilityBoundingSet" not in unit
+    assert unit["AmbientCapabilities"] == "CAP_NET_BIND_SERVICE"
+    assert unit["CapabilityBoundingSet"] == "CAP_NET_BIND_SERVICE"
     assert "--network-helper-socket /run/3mm/network-helper.sock" in unit["ExecStart"]
+
+
+def test_web_uses_only_the_low_port_bind_capability() -> None:
+    unit = _directives(UNITS["web"])
+
+    assert unit["CapabilityBoundingSet"] == "CAP_NET_BIND_SERVICE"
+    assert unit["AmbientCapabilities"] == "CAP_NET_BIND_SERVICE"
 
 
 def test_privileged_network_units_are_narrowly_scoped() -> None:
@@ -68,12 +79,30 @@ def test_privileged_network_units_are_narrowly_scoped() -> None:
     setup_ap = _directives(PRIVILEGED_UNITS["setup_ap"])
 
     assert helper["User"] == "root"
+    assert helper["Group"] == "3mm"
     assert setup_ap["User"] == "root"
     assert "network_helper" in helper["ExecStart"]
     assert "setup_access_point start" in setup_ap["ExecStart"]
     assert setup_ap["RemainAfterExit"] == "true"
     assert helper["ProtectSystem"] == "strict"
     assert setup_ap["ProtectSystem"] == "strict"
+    assert setup_ap["ReadWritePaths"] == "/etc/NetworkManager/dnsmasq-shared.d"
+
+
+def test_setup_ap_owns_the_captive_dns_lifecycle() -> None:
+    setup_ap = _directives(PRIVILEGED_UNITS["setup_ap"])
+
+    assert "3mm-captive-portal-dnsmasq.conf" in setup_ap["ExecStartPre"]
+    assert "/etc/NetworkManager/dnsmasq-shared.d/3mm-captive-portal.conf" in (
+        setup_ap["ExecStartPre"]
+    )
+    assert setup_ap["ExecStopPost"] == (
+        "/usr/bin/rm -f "
+        "/etc/NetworkManager/dnsmasq-shared.d/3mm-captive-portal.conf"
+    )
+    assert CAPTIVE_DNS_CONFIG.read_text(encoding="utf-8").splitlines()[-1] == (
+        "address=/#/10.42.0.1"
+    )
 
 
 def test_update_helper_exposes_only_a_local_hardened_scheduler() -> None:
@@ -85,6 +114,20 @@ def test_update_helper_exposes_only_a_local_hardened_scheduler() -> None:
     assert helper["ProtectSystem"] == "strict"
     assert helper["ProtectHome"] == "true"
     assert helper["RestrictAddressFamilies"] == "AF_UNIX"
+    assert helper["RuntimeDirectoryPreserve"] == "yes"
+    assert "--network-recovery-policy /var/lib/3mm/core/network-recovery-policy.json" in helper["ExecStart"]
+    assert "--provisioning-data-dir /var/lib/3mm/provisioning" in helper["ExecStart"]
+
+
+def test_only_helpers_own_the_shared_runtime_socket_directory() -> None:
+    setup = _directives(UNITS["setup"])
+    network_helper = _directives(PRIVILEGED_UNITS["helper"])
+
+    assert "RuntimeDirectory" not in setup
+    for name in ("core", "web", "agent"):
+        assert "RuntimeDirectory" not in _directives(UNITS[name])
+    assert network_helper["RuntimeDirectory"] == "3mm"
+    assert network_helper["RuntimeDirectoryPreserve"] == "yes"
 
 
 def test_units_use_the_shared_provisioning_directory() -> None:
@@ -111,6 +154,12 @@ def test_installer_preserves_identity_and_delegates_network_mutation() -> None:
     assert "3mm-network-helper.service" in installer
     assert "3mm-setup-ap.service" in installer
     assert "3mm-update-helper.service" in installer
+    assert "3mm-captive-portal-dnsmasq.conf" in installer
+    assert "THREE_MM_NETWORK_RECOVERY_POLICY_FILE" in installer
+    assert "THREE_MM_NETWORK_RECOVERY_MARKER_FILE" in installer
+    assert 'http://$device_hostname.local' in installer
+    assert 'frontend_primary_origin=$frontend_scheme://$frontend_host' in installer
+    assert 'frontend_compat_origin=$frontend_scheme://$frontend_host:8080' in installer
     assert "NetworkManager" not in installer
     assert "nmcli" not in installer
     assert "iptables" not in installer

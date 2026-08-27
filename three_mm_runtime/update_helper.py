@@ -17,6 +17,15 @@ from backend.services.update_staging import (
     validate_staged_payload,
     write_operation_status,
 )
+from three_mm_provisioning import (
+    FileNetworkRecoveryMarker,
+    FileNetworkRecoveryPolicyStore,
+    FileProvisioningStore,
+    NetworkManagerReadOnlyAdapter,
+    ProvisioningState,
+)
+from three_mm_provisioning.network_recovery import RecoveryTrigger
+from three_mm_runtime.network_recovery import NetworkRecoveryMonitor
 
 MAX_REQUEST_BYTES = 4096
 
@@ -49,7 +58,7 @@ class SubprocessUpdateCommandRunner:
 
 
 class UpdateMutationBoundary:
-    """Schedule one fixed reviewed worker; never accept commands or package names."""
+    """Schedule fixed reviewed workers; never accept commands or package names."""
 
     def __init__(
         self,
@@ -110,6 +119,45 @@ class UpdateMutationBoundary:
         if self._runner.run(arguments) != 0:
             raise UpdateStagingError("Update worker could not be scheduled")
 
+    def schedule_network_setup(
+        self,
+        trigger: RecoveryTrigger,
+        *,
+        data_dir: Path = Path("/var/lib/3mm/provisioning"),
+        service_user: str = "3mm",
+        service_group: str = "3mm",
+    ) -> None:
+        if trigger not in {"manual", "automatic"}:
+            raise ValueError("Network recovery trigger is invalid")
+        arguments = (
+            self._systemd_run,
+            "--unit=3mm-network-recovery",
+            "--collect",
+            "--on-active=2s",
+            "--property=Type=exec",
+            "--property=TimeoutStartSec=2min",
+            "--property=PrivateTmp=true",
+            "--property=ProtectSystem=strict",
+            f"--property=ReadWritePaths={data_dir.as_posix()}",
+            "--property=ReadWritePaths=/run/lock",
+            "--property=ProtectHome=true",
+            "/usr/bin/env",
+            "PYTHONPATH=/opt/3mm/current",
+            self._python,
+            "-m",
+            "three_mm_runtime.network_recovery",
+            "--data-dir",
+            data_dir.as_posix(),
+            "--trigger",
+            trigger,
+            "--user",
+            service_user,
+            "--group",
+            service_group,
+        )
+        if self._runner.run(arguments) != 0:
+            raise RuntimeError("Network setup worker could not be scheduled")
+
 
 def _handle_request(
     payload: object,
@@ -121,7 +169,39 @@ def _handle_request(
     service_user: str = "3mm",
     service_group: str = "3mm",
     boundary: UpdateMutationBoundary | None = None,
+    provisioning_data_dir: Path = Path("/var/lib/3mm/provisioning"),
 ) -> dict[str, object]:
+    if isinstance(payload, dict) and set(payload) == {
+        "action",
+        "requested_by_user_id",
+    }:
+        user_id = payload.get("requested_by_user_id")
+        if (
+            payload.get("action") != "start_network_setup"
+            or not isinstance(user_id, int)
+            or isinstance(user_id, bool)
+            or user_id <= 0
+        ):
+            return {"ok": False, "error": "invalid_request"}
+        marker = FileNetworkRecoveryMarker(
+            provisioning_data_dir / "network-recovery.json"
+        )
+        try:
+            snapshot = FileProvisioningStore(provisioning_data_dir).load()
+            if marker.is_active():
+                return {"ok": True, "status": "queued"}
+            if snapshot is None or snapshot.state is not ProvisioningState.PROVISIONED:
+                return {"ok": False, "error": "setup_not_available"}
+            (boundary or UpdateMutationBoundary()).schedule_network_setup(
+                "manual",
+                data_dir=provisioning_data_dir,
+                service_user=service_user,
+                service_group=service_group,
+            )
+        except Exception:
+            return {"ok": False, "error": "network_setup_schedule_failed"}
+        return {"ok": True, "status": "queued"}
+
     if not isinstance(payload, dict) or set(payload) != {
         "action",
         "release_id",
@@ -218,6 +298,10 @@ def serve(
     repository: str,
     manifest_asset_name: str,
     group_name: str = "3mm",
+    network_recovery_policy: Path = Path(
+        "/var/lib/3mm/core/network-recovery-policy.json"
+    ),
+    provisioning_data_dir: Path = Path("/var/lib/3mm/provisioning"),
 ) -> None:
     import grp
 
@@ -225,6 +309,15 @@ def serve(
     boundary = UpdateMutationBoundary(
         repository=repository,
         manifest_asset_name=manifest_asset_name,
+    )
+    recovery_monitor = NetworkRecoveryMonitor(
+        policy_store=FileNetworkRecoveryPolicyStore(network_recovery_policy),
+        marker=FileNetworkRecoveryMarker(
+            provisioning_data_dir / "network-recovery.json"
+        ),
+        provisioning_store=FileProvisioningStore(provisioning_data_dir),
+        inspector=NetworkManagerReadOnlyAdapter.from_system(),
+        scheduler=boundary,
     )
     socket_path.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
     os.chown(socket_path.parent, 0, group_id)
@@ -235,8 +328,13 @@ def serve(
         os.chown(socket_path, 0, group_id)
         os.chmod(socket_path, 0o660)
         server.listen(4)
+        server.settimeout(5.0)
         while True:
-            connection, _ = server.accept()
+            try:
+                connection, _ = server.accept()
+            except socket.timeout:
+                recovery_monitor.poll()
+                continue
             with connection:
                 request = b""
                 while len(request) <= MAX_REQUEST_BYTES:
@@ -258,6 +356,7 @@ def serve(
                         status_file=state_root / "status.json",
                         service_group=group_name,
                         boundary=boundary,
+                        provisioning_data_dir=provisioning_data_dir,
                     )
                 except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
                     response = {"ok": False, "error": "invalid_request"}
@@ -275,6 +374,16 @@ def main() -> None:
     parser.add_argument("--repository", required=True)
     parser.add_argument("--manifest-asset", required=True)
     parser.add_argument("--group", default="3mm")
+    parser.add_argument(
+        "--network-recovery-policy",
+        type=Path,
+        default=Path("/var/lib/3mm/core/network-recovery-policy.json"),
+    )
+    parser.add_argument(
+        "--provisioning-data-dir",
+        type=Path,
+        default=Path("/var/lib/3mm/provisioning"),
+    )
     arguments = parser.parse_args()
     serve(
         arguments.socket,
@@ -284,6 +393,8 @@ def main() -> None:
         repository=arguments.repository,
         manifest_asset_name=arguments.manifest_asset,
         group_name=arguments.group,
+        network_recovery_policy=arguments.network_recovery_policy,
+        provisioning_data_dir=arguments.provisioning_data_dir,
     )
 
 

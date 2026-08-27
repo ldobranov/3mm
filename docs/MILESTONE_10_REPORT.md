@@ -29,6 +29,10 @@ The complete Standalone Beta OTA path is also accepted through official
 release `v0.3.0-beta.5`, including persistent operational policy, a retained
 official rollback release and the post-install `up_to_date` catalog state.
 
+The administrator-controlled network recovery slice is physically accepted on
+the same device. Normal Web access now works on port 80 through both the LAN IP
+and `rasp-3mm.local`, while port 8080 remains available for compatibility.
+
 ## Controlled reboot acceptance
 
 Before reboot:
@@ -262,6 +266,49 @@ Independent post-install verification confirmed:
 - a fresh authenticated Beta catalog check reports current and latest version
   `0.3.0-beta.5`, status `up_to_date` and no available update.
 
+## Network recovery and captive portal acceptance
+
+The network recovery worktree was deployed as immutable release
+`worktree-f433dada70b5-20260827170249`. The physical acceptance covered a
+provisioned, Wi-Fi-only Raspberry Pi with no Ethernet fallback.
+
+The accepted operator path is:
+
+1. an administrator opens **Settings → Network Configuration**;
+2. the page reports local link state and the usable
+   `http://rasp-3mm.local` address;
+3. **Start setup Wi-Fi** asks the narrow root helper to schedule setup mode;
+4. Core, Web and Agent stop and the open `3mm Setup XXXX` AP starts;
+5. setup-only DNS resolves phone captive checks to `10.42.0.1`, where port 80
+   redirects to the setup portal on port 8895;
+6. the phone opens the portal, scans nearby Wi-Fi networks and applies the
+   selected profile;
+7. the recovery marker clears and the normal Standalone runtime returns.
+
+The setup portal used the saved application theme. The complete phone flow was
+physically accepted, including automatic portal opening, successful save,
+reconnection to the normal network and application access afterward. A
+previous false `Setup could not be applied` result was corrected so the client
+does not treat the expected AP disconnect as a failed save.
+
+Automatic recovery is enabled by default after 300 continuous seconds without
+either an active Wi-Fi or Ethernet link. It is administrator-selectable because
+a Raspberry Pi powered by a UPS can legitimately outlive its router. The
+monitor checks local link state only, not Internet reachability, and resets its
+timer as soon as either link returns.
+
+Normal Web access returned HTTP 200 at all accepted entry points:
+
+- `http://192.168.1.88/`;
+- `http://rasp-3mm.local/`;
+- `http://192.168.1.88:8080/`.
+
+The Web and setup services remain unprivileged and receive only
+`CAP_NET_BIND_SERVICE` for port 80. Network mutation remains in the existing
+root boundary. The captive DNS file is installed only while the setup AP unit
+is active and is removed when that unit stops. Thirty-eight focused
+setup/systemd tests and all 47 frontend tests passed before deployment.
+
 ## Remaining acceptance work
 
 - configure and physically verify a GPIO output before testing local
@@ -269,7 +316,6 @@ Independent post-install verification confirmed:
 - repeat the documented Standalone installation, first-boot and pairing flow on
   clean media;
 - verify the open setup-only AP and saved NetworkManager profile across reboot;
-- verify the physical setup-to-Standalone service transition;
 - complete external-Hub credential bootstrap for a Node first boot;
 - measure a Pi Zero 2 W if that hardware becomes available;
 - close the final Milestone 10 acceptance checklist after the remaining physical

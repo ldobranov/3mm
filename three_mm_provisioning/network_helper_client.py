@@ -8,6 +8,7 @@ from pathlib import Path
 
 from three_mm_provisioning.models import NetworkCredentials
 from three_mm_provisioning.network import NetworkAdapterError
+from three_mm_provisioning.network_manager import WifiNetwork
 
 
 class NetworkHelperClientAdapter:
@@ -41,7 +42,29 @@ class NetworkHelperClientAdapter:
         if result != {"ok": True}:
             raise NetworkAdapterError("Network helper rejected runtime activation")
 
-    def _request(self, payload: dict[str, str]) -> object:
+    def scan_wifi_networks(self) -> tuple[WifiNetwork, ...]:
+        result = self._request({"action": "scan_wifi"})
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            raise NetworkAdapterError("Network helper rejected Wi-Fi scan")
+        items = result.get("items")
+        if not isinstance(items, list):
+            raise NetworkAdapterError("Network helper returned an invalid Wi-Fi scan")
+        try:
+            return tuple(
+                WifiNetwork(
+                    network_name=item["network_name"],
+                    signal=item["signal"],
+                    secured=item["secured"],
+                )
+                for item in items
+                if isinstance(item, dict)
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise NetworkAdapterError(
+                "Network helper returned an invalid Wi-Fi scan"
+            ) from exc
+
+    def _request(self, payload: dict[str, object]) -> object:
         request = json.dumps(payload, separators=(",", ":")).encode("utf-8") + b"\n"
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:

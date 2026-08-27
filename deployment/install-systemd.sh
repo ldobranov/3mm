@@ -13,6 +13,12 @@ fi
 release_archive=$(realpath "$1")
 release_id=$2
 frontend_origin=$3
+frontend_scheme=${frontend_origin%%://*}
+frontend_host_port=${frontend_origin#*://}
+frontend_host=${frontend_host_port%%:*}
+frontend_primary_origin=$frontend_scheme://$frontend_host
+frontend_compat_origin=$frontend_scheme://$frontend_host:8080
+device_hostname=$(hostname -s)
 identity_source=${4:-}
 expected_archive_sha256=${5:-}
 test_fail_after_health=${THREE_MM_INSTALLER_TEST_FAIL_AFTER_HEALTH:-0}
@@ -23,6 +29,10 @@ if [[ ! $release_id =~ ^[a-zA-Z0-9._-]+$ ]]; then
 fi
 if [[ ! $frontend_origin =~ ^https?://[a-zA-Z0-9.-]+(:[0-9]{1,5})?$ ]]; then
   echo "Frontend origin must be a plain HTTP(S) origin without a path." >&2
+  exit 1
+fi
+if [[ ! $device_hostname =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]]; then
+  echo "Device hostname cannot be published through mDNS: $device_hostname" >&2
   exit 1
 fi
 if [[ -n $expected_archive_sha256 && ! $expected_archive_sha256 =~ ^[a-fA-F0-9]{64}$ ]]; then
@@ -189,6 +199,7 @@ verify_runtime() {
     '3mm-agent.service|http://127.0.0.1:8890/ready'
     '3mm-core.service|http://127.0.0.1:8887/ready'
     '3mm-web.service|http://127.0.0.1:8080/user/login'
+    '3mm-web.service|http://127.0.0.1/user/login'
     '3mm-setup.service|http://127.0.0.1:8895/ready'
   )
   for pair in "${checks[@]}"; do
@@ -334,8 +345,11 @@ required_files=(
   deployment/systemd/3mm-core.service
   deployment/systemd/3mm-web.service
   deployment/systemd/3mm-agent.service
+  deployment/systemd/3mm-captive-portal-dnsmasq.conf
   deployment/systemd/3mm-update-helper.service
   three_mm_runtime/update_helper.py
+  three_mm_runtime/network_recovery.py
+  three_mm_provisioning/network_recovery.py
 )
 for required_file in "${required_files[@]}"; do
   if [[ ! -f $release_dir/$required_file ]]; then
@@ -409,7 +423,7 @@ upsert_environment FRONTEND_EXTENSIONS_DIR /var/lib/3mm/core/extensions/frontend
 upsert_environment COMPILED_UI_ARTIFACTS_DIR /var/lib/3mm/core/extensions/compiled
 upsert_environment BACKEND_HOST 0.0.0.0
 upsert_environment BACKEND_PORT 8887
-upsert_environment CORS_ORIGINS "[\"$frontend_origin\"]"
+upsert_environment CORS_ORIGINS "[\"$frontend_origin\",\"$frontend_primary_origin\",\"$frontend_compat_origin\",\"http://$device_hostname.local\",\"http://$device_hostname.local:8080\"]"
 upsert_environment DEVICE_OFFLINE_AFTER_SECONDS 90
 upsert_environment THREE_MM_AGENT_HOST 127.0.0.1
 upsert_environment THREE_MM_AGENT_PORT 8890
@@ -427,6 +441,10 @@ upsert_environment THREE_MM_UPDATE_HELPER_SOCKET /run/3mm/update-helper.sock
 upsert_environment THREE_MM_UPDATE_HELPER_STATUS_FILE /var/lib/3mm/update-helper/status.json
 upsert_environment THREE_MM_UPDATE_POLICY_FILE /var/lib/3mm/core/update-policy.json
 upsert_environment THREE_MM_UPDATE_CHECK_CACHE_FILE /var/lib/3mm/core/update-check-cache.json
+upsert_environment THREE_MM_NETWORK_RECOVERY_POLICY_FILE /var/lib/3mm/core/network-recovery-policy.json
+upsert_environment THREE_MM_NETWORK_RECOVERY_MARKER_FILE /var/lib/3mm/provisioning/network-recovery.json
+upsert_environment THREE_MM_NETWORK_RECOVERY_HELPER_SOCKET /run/3mm/update-helper.sock
+upsert_environment THREE_MM_NETWORK_RECOVERY_OFFLINE_SECONDS 300
 
 if [[ -s $ai_master_key_file ]]; then
   ai_master_key=$(cat "$ai_master_key_file")

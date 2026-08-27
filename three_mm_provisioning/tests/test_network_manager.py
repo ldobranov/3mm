@@ -92,6 +92,29 @@ def test_adapter_rejects_failed_command_without_exposing_output():
     assert "sensitive unexpected output" not in str(captured.value)
 
 
+def test_cached_wifi_scan_is_deduplicated_sorted_and_does_not_rescan():
+    runner = FakeRunner(
+        [
+            CommandResult(
+                0,
+                "Office\\:Lab:80:WPA2\n"
+                "Cafe:35:--\n"
+                "Office\\:Lab:95:WPA2\n"
+                ":100:WPA2\n",
+            )
+        ]
+    )
+    adapter = NetworkManagerReadOnlyAdapter("/usr/bin/nmcli", runner)
+
+    networks = adapter.scan_wifi_networks()
+
+    assert [
+        (item.network_name, item.signal, item.secured) for item in networks
+    ] == [("Office:Lab", 95, True), ("Cafe", 35, False)]
+    command = runner.calls[0][0]
+    assert command[-2:] == ("--rescan", "no")
+
+
 def test_from_system_fails_when_nmcli_is_unavailable(monkeypatch):
     monkeypatch.setattr(
         "three_mm_provisioning.network_manager.shutil.which",

@@ -1,15 +1,22 @@
+import sqlite3
+
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
+from setup_service.config import SetupSettings
 from setup_service.main import PUBLIC_SETUP_ENDPOINTS, create_app
 from three_mm_provisioning import (
     FileProvisioningStore,
+    FileNetworkRecoveryMarker,
     MemoryProvisioningStore,
     ProvisioningSnapshot,
     ProvisioningStoreError,
 )
+from three_mm_protocol import AgentRole
+from three_mm_provisioning import NetworkCredentials, ProvisioningRequest
 from three_mm_provisioning.mock_network import MockNetworkAdapter
+from three_mm_provisioning.network_manager import WifiNetwork
 
 
 @pytest.fixture
@@ -46,6 +53,8 @@ def test_public_route_surface_is_explicit_and_setup_page_is_available(store):
 
     assert response.status_code == 200
     assert "Set up this 3mm device" in response.text
+    assert "Setup saved. Connect to" in response.text
+    assert "Setup could not be applied." not in response.text
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert status.json() == {
@@ -70,6 +79,53 @@ def test_captive_portal_probes_redirect_to_setup(probe, store):
 
     assert response.status_code == 307
     assert response.headers["location"] == "/setup"
+
+
+def test_setup_lists_cached_wifi_networks(store):
+    class ScanAdapter(MockNetworkAdapter):
+        def scan_wifi_networks(self):
+            return (WifiNetwork("Nearby Wi-Fi", 76, True),)
+
+    with TestClient(create_app(ScanAdapter(), store)) as client:
+        response = client.get("/api/v1/setup/networks")
+
+    assert response.json() == {
+        "items": [
+            {"network_name": "Nearby Wi-Fi", "signal": 76, "secured": True}
+        ]
+    }
+
+
+def test_setup_theme_uses_safe_values_from_the_core_database(store, tmp_path):
+    database = tmp_path / "core.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE settings (id INTEGER PRIMARY KEY, key TEXT, value TEXT)"
+        )
+        connection.executemany(
+            "INSERT INTO settings (key, value) VALUES (?, ?)",
+            [
+                ("user_theme", "dark"),
+                ("dark_body_bg", "#101820"),
+                ("dark_card_bg", "#18242f"),
+                ("dark_button_primary_bg", "#4caf50"),
+                ("header_bg_color", "not-a-color"),
+            ],
+        )
+    settings = SetupSettings(
+        data_dir=tmp_path / "provisioning",
+        core_database_path=database,
+    )
+
+    with TestClient(create_app(MockNetworkAdapter(), store, settings)) as client:
+        response = client.get("/api/v1/setup/theme")
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "dark"
+    assert response.json()["body_bg"] == "#101820"
+    assert response.json()["card_bg"] == "#18242f"
+    assert response.json()["primary"] == "#4caf50"
+    assert response.json()["header_bg"] == "#4caf50"
 
 
 def test_successful_configuration_stops_setup_mode(configuration, store):
@@ -198,3 +254,49 @@ def test_failed_final_snapshot_recovers_setup(configuration):
     }
     assert adapter.configuration_committed is False
     assert adapter.setup_active is True
+
+
+def recovery_snapshot() -> ProvisioningSnapshot:
+    return ProvisioningSnapshot.provisioned(
+        ProvisioningRequest(
+            network=NetworkCredentials("old-network", "not-persisted"),
+            locale="en-GB",
+            device_name="old-device",
+            administrator_name="admin",
+            role=AgentRole.STANDALONE,
+        )
+    )
+
+
+def test_recovery_setup_keeps_previous_provisioning_when_new_wifi_fails(
+    configuration, tmp_path
+):
+    store = MemoryProvisioningStore(recovery_snapshot())
+    marker = FileNetworkRecoveryMarker(tmp_path / "network-recovery.json")
+    marker.activate("manual")
+    adapter = MockNetworkAdapter(connectivity_succeeds=False)
+
+    with TestClient(create_app(adapter, store, recovery_marker=marker)) as client:
+        response = client.post("/api/v1/setup/configure", json=configuration)
+
+    assert response.json()["recovery_required"] is True
+    assert store.snapshot == recovery_snapshot()
+    assert marker.is_active() is True
+
+
+def test_successful_recovery_replaces_snapshot_and_clears_marker(
+    configuration, tmp_path
+):
+    store = MemoryProvisioningStore(recovery_snapshot())
+    marker = FileNetworkRecoveryMarker(tmp_path / "network-recovery.json")
+    marker.activate("manual")
+
+    with TestClient(
+        create_app(MockNetworkAdapter(), store, recovery_marker=marker)
+    ) as client:
+        response = client.post("/api/v1/setup/configure", json=configuration)
+
+    assert response.json()["state"] == "provisioned"
+    assert store.snapshot is not None
+    assert store.snapshot.device_name == configuration["device_name"]
+    assert marker.is_active() is False

@@ -61,7 +61,7 @@ PowerShell in the repository root:
 ```powershell
 .\deploy.ps1 `
   -SshHost raspberry@<device-ip> `
-  -FrontendOrigin http://<final-lan-address>:8080 `
+  -FrontendOrigin http://<final-lan-address> `
   -InteractiveSudo `
   -SkipPush
 ```
@@ -78,8 +78,10 @@ On an empty provisioning state the expected successful result is the setup
 runtime, not the normal login page. The deployment wrapper recognizes both
 valid outcomes:
 
-- first boot: setup portal healthy on port 8895;
-- provisioned device: Core, Web and Agent healthy on ports 8887, 8080 and 8890.
+- first boot: setup portal healthy on port 8895 with a captive HTTP entry point
+  on port 80;
+- provisioned device: Core, Web and Agent healthy on ports 8887, 80/8080 and
+  8890.
 
 After installation, the release itself can be checked without mutation:
 
@@ -97,15 +99,20 @@ The unprovisioned device enables only:
 - `3mm-setup.service`.
 
 Join the open Wi-Fi network named `3mm Setup XXXX`. It intentionally has no
-password and exists only during setup or an explicit network reset. Open:
+password and exists only during setup or an explicit network reset. The phone
+should detect the captive portal and open the setup page automatically. Some
+operating systems show a **Sign in to network** notification instead. If the
+page does not open, use the fallback address:
 
 ```text
 http://10.42.0.1:8895/setup
 ```
 
-Enter the destination Wi-Fi name and password, device name and locale, then
-select **Standalone**. The Wi-Fi password is passed to NetworkManager and is not
-stored in the provisioning journal, application database or logs.
+Select a nearby network from the scan results, or enter its name manually.
+Enter its password, device name and locale, then select **Standalone**. The
+portal follows the saved application theme. The Wi-Fi password is passed to
+NetworkManager and is not stored in the provisioning journal, application
+database or logs.
 
 On success the setup access point is removed, the saved Wi-Fi profile becomes
 active, and Core, Web and Agent replace the setup services. On failure the
@@ -171,13 +178,38 @@ python3 /opt/3mm/current/deployment/release_smoke.py
 
 Then verify:
 
-- `http://<final-lan-address>:8080/user/login` loads;
+- `http://<final-lan-address>/user/login` loads;
+- `http://<hostname>.local/user/login` loads on a client with mDNS support;
+- port 8080 remains available as a compatibility listener;
 - the new administrator can sign in;
 - the local Agent is present and online in Devices;
 - health, hello and inventory expose one stable device identity;
 - a reboot returns to Core, Web and Agent without recreating the setup AP;
 - an explicit network reset returns to the open setup AP and preserves the
   application database and Agent identity.
+
+## 8. Recover or move the device to another Wi-Fi network
+
+Sign in as an administrator and open **Settings → Network Configuration**.
+This panel provides two independent controls:
+
+- **Start setup Wi-Fi** immediately switches the device to its open
+  `3mm Setup XXXX` access point;
+- **Automatically start setup Wi-Fi after 5 minutes offline** is enabled by
+  default and can be disabled. It measures only whether both Wi-Fi and Ethernet
+  links are disconnected; it does not test Internet access.
+
+The checkbox is useful for devices that must recover unattended. Disable it
+when the Raspberry Pi may remain powered by a UPS while its router is expected
+to be temporarily offline and must retain its saved network profile.
+
+Starting setup on a Wi-Fi-only device intentionally drops its normal IP,
+hostname page and SSH connection. Join the open AP from a phone and complete
+the same setup flow described above. Successful setup restores the normal
+runtime without changing the Core database or Agent identity.
+
+See [NETWORK_RECOVERY.md](NETWORK_RECOVERY.md) for the runtime boundary,
+fallback addresses and operational details.
 
 ## Current acceptance boundary
 

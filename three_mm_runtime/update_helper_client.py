@@ -1,4 +1,4 @@
-"""Unprivileged client for the local, narrowly scoped update helper."""
+"""Unprivileged client for the local, narrowly scoped privileged helper."""
 
 from __future__ import annotations
 
@@ -28,6 +28,17 @@ class UpdateHelperClient:
             "approval_nonce": approval_nonce,
             "requested_by_user_id": requested_by_user_id,
         }
+        self._request(payload)
+
+    def request_network_setup(self, requested_by_user_id: int) -> None:
+        self._request(
+            {
+                "action": "start_network_setup",
+                "requested_by_user_id": requested_by_user_id,
+            }
+        )
+
+    def _request(self, payload: dict[str, object]) -> None:
         request = json.dumps(payload, separators=(",", ":")).encode("utf-8") + b"\n"
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:

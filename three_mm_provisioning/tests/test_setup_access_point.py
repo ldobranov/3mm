@@ -6,6 +6,7 @@ from three_mm_provisioning import (
     NetworkCredentials,
     ProvisioningRequest,
     ProvisioningSnapshot,
+    FileNetworkRecoveryMarker,
 )
 from three_mm_provisioning import setup_access_point
 
@@ -61,3 +62,29 @@ def test_provisioned_device_does_not_create_setup_ap(tmp_path, monkeypatch):
     setup_access_point.start(state_dir, "wlan0", tmp_path / "missing")
 
     assert FakeBoundary.calls == []
+
+
+def test_recovery_marker_allows_a_provisioned_device_to_create_setup_ap(
+    tmp_path, monkeypatch
+):
+    state_dir = tmp_path / "state"
+    FileProvisioningStore(state_dir).save(
+        ProvisioningSnapshot.provisioned(
+            ProvisioningRequest(
+                network=NetworkCredentials("private-network", "not-persisted"),
+                locale="en-GB",
+                device_name="test-device",
+                administrator_name="admin",
+                role=AgentRole.STANDALONE,
+            )
+        )
+    )
+    FileNetworkRecoveryMarker(state_dir / "network-recovery.json").activate("manual")
+    machine_id = tmp_path / "machine-id"
+    machine_id.write_text("0123456789abcdef\n", encoding="utf-8")
+    FakeBoundary.calls = []
+    monkeypatch.setattr(setup_access_point, "NetworkManagerMutationBoundary", FakeBoundary)
+
+    setup_access_point.start(state_dir, "wlan0", machine_id)
+
+    assert any(call[0] == "create" for call in FakeBoundary.calls)

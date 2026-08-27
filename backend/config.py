@@ -64,10 +64,22 @@ class UpdateCatalogSettings(BaseModel):
     )
 
 
+class NetworkRecoverySettings(BaseModel):
+    policy_file: Path = PROJECT_ROOT / ".runtime" / "network-recovery-policy.json"
+    marker_file: Path = PROJECT_ROOT / ".runtime" / "network-recovery.json"
+    helper_socket: Path = Path("/run/3mm/update-helper.sock")
+    machine_id_file: Path = Path("/etc/machine-id")
+    offline_after_seconds: int = Field(default=300, ge=60, le=3600)
+    setup_url: str = "http://10.42.0.1:8895/setup"
+
+
 class AppSettings(BaseModel):
     frontend: FrontendSettings = Field(default_factory=FrontendSettings)
     backend: BackendSettings = Field(default_factory=BackendSettings)
     updates: UpdateCatalogSettings = Field(default_factory=UpdateCatalogSettings)
+    network_recovery: NetworkRecoverySettings = Field(
+        default_factory=NetworkRecoverySettings
+    )
 
     @property
     def database_url(self) -> str:
@@ -121,6 +133,7 @@ def get_settings() -> AppSettings:
     frontend = dict(data.get("frontend") or {})
     backend = dict(data.get("backend") or {})
     updates = dict(data.get("updates") or {})
+    network_recovery = dict(data.get("network_recovery") or {})
 
     if database_url := os.getenv("DATABASE_URL"):
         backend["database_url"] = database_url
@@ -164,6 +177,14 @@ def get_settings() -> AppSettings:
         updates["max_artifact_bytes"] = int(max_artifact)
     if minimum_free := os.getenv("THREE_MM_UPDATE_MINIMUM_FREE_BYTES"):
         updates["minimum_free_bytes"] = int(minimum_free)
+    if recovery_policy := os.getenv("THREE_MM_NETWORK_RECOVERY_POLICY_FILE"):
+        network_recovery["policy_file"] = recovery_policy
+    if recovery_marker := os.getenv("THREE_MM_NETWORK_RECOVERY_MARKER_FILE"):
+        network_recovery["marker_file"] = recovery_marker
+    if recovery_helper := os.getenv("THREE_MM_NETWORK_RECOVERY_HELPER_SOCKET"):
+        network_recovery["helper_socket"] = recovery_helper
+    if recovery_delay := os.getenv("THREE_MM_NETWORK_RECOVERY_OFFLINE_SECONDS"):
+        network_recovery["offline_after_seconds"] = int(recovery_delay)
 
     backend["database_url"] = _normalize_database_url(
         backend.get("database_url", BackendSettings().database_url)
@@ -173,4 +194,5 @@ def get_settings() -> AppSettings:
         frontend=FrontendSettings.model_validate(frontend),
         backend=BackendSettings.model_validate(backend),
         updates=UpdateCatalogSettings.model_validate(updates),
+        network_recovery=NetworkRecoverySettings.model_validate(network_recovery),
     )

@@ -5,7 +5,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from three_mm_provisioning import FileProvisioningStore, ProvisioningState
+from three_mm_provisioning import (
+    FileNetworkRecoveryMarker,
+    FileProvisioningStore,
+    ProvisioningState,
+)
 from three_mm_provisioning.network_manager_mutation import (
     NetworkManagerMutationBoundary,
 )
@@ -13,14 +17,21 @@ from three_mm_provisioning.network_manager_mutation import (
 CONNECTION_NAME = "3mm-setup"
 
 
-def _setup_ssid(machine_id_path: Path) -> str:
+def setup_ssid(machine_id_path: Path) -> str:
     suffix = machine_id_path.read_text(encoding="utf-8").strip()[-4:].upper()
     return f"3mm Setup {suffix}"
 
 
 def start(data_dir: Path, interface: str, machine_id_path: Path) -> None:
     snapshot = FileProvisioningStore(data_dir).load()
-    if snapshot is not None and snapshot.state is ProvisioningState.PROVISIONED:
+    recovery_requested = FileNetworkRecoveryMarker(
+        data_dir / "network-recovery.json"
+    ).is_active()
+    if (
+        snapshot is not None
+        and snapshot.state is ProvisioningState.PROVISIONED
+        and not recovery_requested
+    ):
         return
     boundary = NetworkManagerMutationBoundary()
     existing_uuid = boundary.connection_uuid(CONNECTION_NAME)
@@ -29,7 +40,7 @@ def start(data_dir: Path, interface: str, machine_id_path: Path) -> None:
     boundary.create_temporary_open_setup_access_point(
         interface=interface,
         connection_name=CONNECTION_NAME,
-        network_name=_setup_ssid(machine_id_path),
+        network_name=setup_ssid(machine_id_path),
     )
 
 

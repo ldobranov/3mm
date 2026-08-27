@@ -11,8 +11,10 @@ User=root
 Group=root
 WorkingDirectory=/opt/3mm/current
 Environment=PYTHONPATH=/opt/3mm/current
+ExecStartPre=/usr/bin/install -o root -g root -m 0644 /opt/3mm/current/deployment/systemd/3mm-captive-portal-dnsmasq.conf /etc/NetworkManager/dnsmasq-shared.d/3mm-captive-portal.conf
 ExecStart=/opt/3mm/current/.venv/bin/python -m three_mm_provisioning.setup_access_point start --data-dir /var/lib/3mm/provisioning --interface wlan0
 ExecStop=/opt/3mm/current/.venv/bin/python -m three_mm_provisioning.setup_access_point stop
+ExecStopPost=/usr/bin/rm -f /etc/NetworkManager/dnsmasq-shared.d/3mm-captive-portal.conf
 RemainAfterExit=true
 NoNewPrivileges=true
 PrivateTmp=true
@@ -23,6 +25,7 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
+ReadWritePaths=/etc/NetworkManager/dnsmasq-shared.d
 
 [Install]
 WantedBy=multi-user.target
