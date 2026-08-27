@@ -8,6 +8,8 @@ pre-1.0.
 
 ## [Unreleased]
 
+## [0.3.0-beta.5] - 2026-08-27
+
 ### Added
 
 - Persistent Standalone OTA policy for Stable/Beta/Test automatic catalog
@@ -25,6 +27,11 @@ pre-1.0.
 - Automatic update work is intentionally limited to catalog checks; staging,
   dependency changes, activation and rollback remain explicit administrator
   operations through the existing root helper.
+
+### Fixed
+
+- Included the IANA timezone database on Windows so maintenance-window policy
+  validation behaves consistently in local development and on Linux devices.
 
 ### Verified
 
@@ -162,7 +169,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.4...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.5...HEAD
+[0.3.0-beta.5]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.5
 [0.3.0-beta.4]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.4
 [0.3.0-beta.3]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.3
 [0.2.3]: https://github.com/ldobranov/3mm/releases/tag/v0.2.3
