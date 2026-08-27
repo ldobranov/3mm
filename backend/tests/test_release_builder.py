@@ -19,6 +19,7 @@ COMMIT = "a" * 40
 EPOCH = 1_787_728_000
 REQUIRED_SOURCE_FILES = {
     "VERSION": b"1.2.0\n",
+    "install.sh": b"#!/usr/bin/env bash\n",
     "backend/requirements.txt": b"fastapi==0.141.1\n",
     "backend/services/update_staging.py": b"print('stage')\n",
     "deployment/install-systemd.sh": b"#!/usr/bin/env bash\n",
@@ -135,6 +136,7 @@ def test_release_archives_are_reproducible_and_installer_compatible(
             assert "frontend/dist/assets/main.js" in names
             assert "frontend/dist/stale.js" not in names
             assert "deployment/install-systemd.sh" in names
+            assert "install.sh" in names
             assert all(member.mtime == EPOCH for member in archive.getmembers())
             metadata = json.load(archive.extractfile(".3mm-release.json"))
             assert metadata["architecture"] == artifact["architecture"]

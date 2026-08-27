@@ -8,8 +8,16 @@ pre-1.0.
 
 ## [Unreleased]
 
+## [0.3.0-beta.6] - 2026-08-27
+
 ### Added
 
+- A one-command Raspberry Pi bootstrap that selects the official architecture
+  artifact, installs a fixed reviewed clean-host baseline, verifies release
+  identity, size and SHA-256, runs the host preflight and delegates activation
+  to the immutable installer.
+- Wi-Fi-safe detached installation so first-boot setup can take ownership of
+  `wlan0` without terminating the installation together with the SSH session.
 - Administrator-only network recovery controls in Settings, including current
   Wi-Fi/Ethernet link state, manual setup-Wi-Fi activation and an optional
   automatic trigger after five continuous minutes without either local link.
@@ -20,6 +28,8 @@ pre-1.0.
 
 ### Changed
 
+- Replaced the legacy mutable source-tree installer and its obsolete guide with
+  the official release-artifact bootstrap and current immutable layout.
 - The normal web application is now available on port 80 at both the device IP
   and `<hostname>.local`; port 8080 remains a compatibility listener.
 - Network recovery is coordinated through the existing root helper and runtime
@@ -47,6 +57,8 @@ pre-1.0.
 
 - Added the Network Recovery operator guide and updated first-boot, roadmap and
   Milestone 10 acceptance documentation.
+- Added the single-command clean-install path to README and the dedicated
+  installation guide. Clean-media physical acceptance remains pending.
 
 ## [0.3.0-beta.5] - 2026-08-27
 
@@ -216,7 +228,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.5...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.6...HEAD
+[0.3.0-beta.6]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.6
 [0.3.0-beta.5]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.5
 [0.3.0-beta.4]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.4
 [0.3.0-beta.3]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.3

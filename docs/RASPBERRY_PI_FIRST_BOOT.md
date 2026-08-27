@@ -13,15 +13,17 @@ The current physical baseline is a Raspberry Pi 3B+ running Debian GNU/Linux 13
 on `aarch64`. The accepted host has Python 3.13.5, Node.js 20.19.2, npm 9.2.0,
 NetworkManager and a Wi-Fi interface named `wlan0`.
 
-The installer does not install operating-system packages, alter the firewall or
-replace NetworkManager. It creates the `3mm` system account, immutable releases,
-the release-specific Python environment, persistent directories and systemd
-units. Python and frontend-compiler dependencies are currently downloaded at
-install time, so the device needs Internet access during deployment.
+The public bootstrap installs only the reviewed APT dependencies recorded in
+the release manifest. It does not alter the firewall or replace the
+host's network manager. The immutable installer creates the `3mm` system
+account, release-specific Python environment, persistent directories and
+systemd units. Internet access is required while the release and dependencies
+are downloaded.
 
-Use wired Ethernet for the first remote installation. An unprovisioned 3mm
-release intentionally changes `wlan0` into the setup access point, which can
-otherwise interrupt the SSH deployment session.
+Ethernet is preferred but no longer required for the first installation. The
+public bootstrap starts the immutable installer as a detached systemd job. An
+unprovisioned release can therefore change `wlan0` into the setup access point
+without terminating the installation when the Wi-Fi SSH session closes.
 
 ## 1. Prepare the Raspberry Pi
 
@@ -31,7 +33,7 @@ Install a current 64-bit Raspberry Pi OS or Debian image. In the imaging tool:
 - configure the device hostname;
 - add the dedicated device SSH public key;
 - do not embed an SSH password in the image or repository;
-- connect wired Ethernet for installation.
+- connect Ethernet when convenient, or preconfigure temporary Wi-Fi.
 
 The host must provide:
 
@@ -40,7 +42,39 @@ The host must provide:
 - `bash`, `tar`, `flock`, `systemctl` and `nmcli`;
 - active NetworkManager managing an interface named `wlan0`.
 
-## 2. Run the read-only preflight
+## 2. Install with one command
+
+On the Raspberry Pi, run:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash
+```
+
+Git is not required on the device. The bootstrap selects the latest published
+Beta release for the current architecture, validates the release manifest,
+installs its reviewed dependencies, verifies the artifact size and SHA-256,
+and runs the read-only preflight automatically. It then delegates activation to
+the existing rollback-capable immutable installer.
+
+The background job survives loss of the SSH connection. Its unit name is
+printed before the command returns and its log can be followed while LAN access
+remains with the printed `journalctl` command. On a Wi-Fi-only first boot, loss
+of SSH after that point is expected; continue from the phone on `3mm Setup
+XXXX`.
+
+To pin an exact published release:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | \
+  sudo bash -s -- --tag v0.3.0-beta.6
+```
+
+## 3. Manual development deployment
+
+The laptop-driven path remains available when testing an exact development
+commit that has not yet been published as a release.
+
+### Run the read-only preflight
 
 From the development laptop, copy only the dependency-free checker and run it
 before deploying:
@@ -53,7 +87,7 @@ ssh raspberry@<device-ip> "python3 /tmp/3mm-first-boot-preflight.py"
 Continue only when the last line is `result=ready failed=0`. The checker does
 not install packages, start or stop services, or change NetworkManager.
 
-## 3. Build and install an immutable release
+### Build and install an immutable release
 
 Use a clean commit that is already pushed to the selected remote. From Windows
 PowerShell in the repository root:

@@ -2,6 +2,7 @@ from pathlib import Path
 
 SYSTEMD_DIR = Path(__file__).parents[2] / "deployment" / "systemd"
 INSTALLER = SYSTEMD_DIR.parent / "install-systemd.sh"
+BOOTSTRAP_INSTALLER = SYSTEMD_DIR.parents[1] / "install.sh"
 UNITS = {
     "core": SYSTEMD_DIR / "3mm-core.service",
     "web": SYSTEMD_DIR / "3mm-web.service",
@@ -214,3 +215,20 @@ def test_deploy_records_the_validated_project_version() -> None:
     assert "Join-Path $repoRoot 'VERSION'" in launcher
     assert "$projectVersion -notmatch" in launcher
     assert "version = $projectVersion" in launcher
+
+
+def test_public_bootstrap_uses_verified_release_and_detached_installation() -> None:
+    bootstrap = BOOTSTRAP_INSTALLER.read_text(encoding="utf-8")
+
+    assert "api.github.com/repos/$THREE_MM_REPOSITORY/releases" in bootstrap
+    assert "3mm-update-manifest.json" in bootstrap
+    assert "sha256sum --check --status" in bootstrap
+    assert "deployment/first_boot_preflight.py" in bootstrap
+    assert "deployment/install-systemd.sh" in bootstrap
+    assert "systemd-run" in bootstrap
+    assert "--no-block" in bootstrap
+    assert "THREE_MM_BOOTSTRAP_PACKAGES" in bootstrap
+    assert "network-manager" in bootstrap
+    assert "dnsmasq-base" in bootstrap
+    assert "3mm Setup XXXX" in bootstrap
+    assert "git clone" not in bootstrap

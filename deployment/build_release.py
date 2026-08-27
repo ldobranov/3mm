@@ -101,6 +101,7 @@ def read_source_payload(source_archive: Path) -> list[PayloadFile]:
 
     required = {
         "VERSION",
+        "install.sh",
         "backend/requirements.txt",
         "backend/services/update_staging.py",
         "deployment/apply_staged_update.py",

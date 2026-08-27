@@ -8,10 +8,11 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Beta. The current physically validated release is
-> [v0.3.0-beta.5](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.5).
-> It completed a real Beta-channel OTA update from `v0.3.0-beta.4` on a
-> Raspberry Pi 3B+. The project is not yet presented as production-hardened.
+> **Project status:** Beta. The current release is
+> [v0.3.0-beta.6](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.6),
+> which introduces one-command clean installation and the accepted network
+> recovery/captive-portal runtime. Destructive clean-media acceptance is the
+> next physical test. The project is not yet presented as production-hardened.
 
 ## What works
 
@@ -144,6 +145,25 @@ The Agent listens on `127.0.0.1:8890` by default:
 Use `./dev-agents.sh` to start two independent mock devices.
 
 ## Raspberry Pi
+
+For a clean Raspberry Pi OS/Debian installation, the normal Beta bootstrap is
+one command:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash
+```
+
+Git is not required on the Raspberry Pi. The bootstrap selects the latest
+published Beta artifact for the device architecture, installs its reviewed APT
+dependencies, verifies its size and SHA-256 digest, runs the read-only host
+preflight and starts the immutable installer as a detached systemd job. This
+allows installation over Wi-Fi: the SSH session is expected to close only when
+the device switches to its open `3mm Setup XXXX` access point.
+
+Use `--tag` for a reproducible exact release, for example by appending
+`-s -- --tag v0.3.0-beta.6` after `sudo bash`. Passwords are requested only by
+`sudo` and the later interactive administrator bootstrap; they are not command
+arguments or repository data.
 
 The tested deployment uses an immutable layout:
 
