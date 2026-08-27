@@ -158,6 +158,9 @@ release and use it to prove the complete in-application OTA path.
 - `v0.3.0-beta.4` completed the real Beta OTA path from `beta.3`, preserved
   the persistent device identity and retained `beta.3` as the rollback
   release.
+- `v0.3.0-beta.5` completed the real Beta OTA path from `beta.4`, preserved
+  the persistent device identity, retained `beta.4` as the rollback release
+  and returned `up_to_date` on the post-install Beta catalog check.
 
 Tags `v0.3.0-beta.1` and `v0.3.0-beta.2` are historical failed publication
 attempts, not accepted GitHub Releases. They must not be moved or reused.

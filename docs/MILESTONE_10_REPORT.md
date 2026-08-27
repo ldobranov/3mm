@@ -4,11 +4,11 @@ Date started: 2026-08-25
 
 Status: in progress
 
-Reference commit: `93b0fa9 feat: stabilize incremental extension upgrades`
+Latest accepted release commit: `dbb530d chore: prepare v0.3.0-beta.5 release`
 
-Canonical rollback release: `93b0fa951373-20260825090942`
+Canonical rollback release: `v0.3.0-beta.4`
 
-Active retention-test release: `worktree-93b0fa951373-20260825104929`
+Active release: `v0.3.0-beta.5`
 
 Device: Raspberry Pi 3B+ (`rasp-3mm`)
 
@@ -24,6 +24,10 @@ traffic and flushes its outbox after Core returns.
 The tests preserved the device identity, approved registry record, extension
 project history, compiled widget version, widget configuration and dashboard
 layout. NetworkManager and the saved network profiles were not modified.
+
+The complete Standalone Beta OTA path is also accepted through official
+release `v0.3.0-beta.5`, including persistent operational policy, a retained
+official rollback release and the post-install `up_to_date` catalog state.
 
 ## Controlled reboot acceptance
 
@@ -235,6 +239,28 @@ The procedure has not been run from an erased SD card in this pass because doing
 so would destroy the only working test installation. That physical repetition,
 the setup-AP reboot boundary and the service transition after real phone setup
 remain acceptance work.
+
+## Standalone OTA operational acceptance
+
+Official `v0.3.0-beta.4` was installed as the exact clean OTA base, preserving
+the existing persistent database, extension state and Agent identity. The
+administrator then completed the in-application Beta update to published
+release `v0.3.0-beta.5`.
+
+Independent post-install verification confirmed:
+
+- the root-owned operation reached `succeeded` for commit
+  `dbb530db90a84b14db87e5aa7409349751060947`;
+- `/opt/3mm/current` resolves to release `v0.3.0-beta.5` and
+  `/opt/3mm/previous` resolves to the official `v0.3.0-beta.4` base;
+- Core, Web, Agent and update-helper are active and the complete release smoke
+  test passes;
+- device identity `dev_a3ad5f8844f1466f847f5f8cf78d6fe3` is unchanged;
+- the persisted Beta policy retains six-hour checks and the Europe/Sofia
+  03:00–05:00 maintenance window;
+- policy and cache files remain owned by `3mm:3mm` with mode `0600`;
+- a fresh authenticated Beta catalog check reports current and latest version
+  `0.3.0-beta.5`, status `up_to_date` and no available update.
 
 ## Remaining acceptance work
 

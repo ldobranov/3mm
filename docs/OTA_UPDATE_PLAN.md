@@ -8,7 +8,8 @@ then staged and activated successfully through the OTA path. Phase 4 channel
 selection was physically accepted with a `v0.3.0-beta.3` bootstrap followed by
 an in-application OTA update to `v0.3.0-beta.4`. Standalone background checks,
 cache/backoff and maintenance-window enforcement were physically accepted on
-2026-08-27 in an immutable review deployment.
+2026-08-27, published in `v0.3.0-beta.5` and accepted through an
+in-application OTA update from the official `v0.3.0-beta.4` release.
 
 ## Goal
 
@@ -184,8 +185,14 @@ Physical acceptance completed on `rasp-3mm`:
   result and then a Beta `up_to_date` result with zero failures;
 - an apply request outside the window was rejected before staging or the root
   helper could be reached;
-- Core, Web, Agent and update-helper remained healthy in the immutable review
-  release.
+- official `v0.3.0-beta.5` was installed through the in-application Beta OTA
+  path from official `v0.3.0-beta.4` and the root operation reached
+  `succeeded`;
+- `/opt/3mm/current` resolved to `v0.3.0-beta.5`, `/opt/3mm/previous` retained
+  the official `v0.3.0-beta.4` base and the persistent device identity was
+  unchanged;
+- Core, Web, Agent and update-helper passed health checks, and a fresh Beta
+  catalog check returned `up_to_date` with zero retry failures.
 
 Still pending:
 

@@ -9,9 +9,9 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current physically validated release is
-> [v0.3.0-beta.4](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.4).
-> It has completed a real Beta-channel OTA update on a Raspberry Pi 3B+. The
-> project is not yet presented as production-hardened.
+> [v0.3.0-beta.5](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.5).
+> It completed a real Beta-channel OTA update from `v0.3.0-beta.4` on a
+> Raspberry Pi 3B+. The project is not yet presented as production-hardened.
 
 ## What works
 

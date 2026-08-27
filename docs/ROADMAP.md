@@ -385,7 +385,8 @@ OTA update stages (see [OTA_UPDATE_PLAN.md](OTA_UPDATE_PLAN.md)):
    `stable`/`beta`/`test` selection is physically accepted through the
    `v0.3.0-beta.3` to `v0.3.0-beta.4` OTA path; persistent read-only automatic
    checks, cached backoff and server-enforced daily maintenance windows are
-   accepted on Standalone; fleet rings remain for the Hub/Node architecture.
+   physically accepted through the `v0.3.0-beta.4` to `v0.3.0-beta.5`
+   Standalone OTA path; fleet rings remain for the Hub/Node architecture.
 
 ## Milestone 13 — Ecosystem expansion
 

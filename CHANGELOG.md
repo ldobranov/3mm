@@ -39,6 +39,13 @@ pre-1.0.
   `rasp-3mm` and kept Core, Web, Agent and update-helper healthy.
 - Physically exercised automatic Stable and Beta checks, cache persistence,
   zero-failure retry state and out-of-window apply rejection.
+- Completed the physical in-application Beta OTA path from
+  `v0.3.0-beta.4` to `v0.3.0-beta.5` on `rasp-3mm`.
+- Preserved the persistent device identity and retained `v0.3.0-beta.4` as
+  the rollback release while Core, Web, Agent and update-helper passed health
+  checks.
+- Confirmed the persisted update operation reached `succeeded` and a fresh
+  post-install Beta catalog check returned `up_to_date` with no retry failure.
 
 ### Documentation
 
