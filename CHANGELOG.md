@@ -8,6 +8,16 @@ pre-1.0.
 
 ## [Unreleased]
 
+## [0.3.0-beta.7] - 2026-08-27
+
+### Fixed
+
+- The detached bootstrap now uses the immutable installer's expected `0022`
+  umask, allowing the unprivileged `3mm` service account to traverse and run
+  the release-specific virtual environment during first-install migration.
+- Failed first installation remains rollback-safe and can be retried without
+  cleaning partial application state manually.
+
 ## [0.3.0-beta.6] - 2026-08-27
 
 ### Added
@@ -59,6 +69,13 @@ pre-1.0.
   Milestone 10 acceptance documentation.
 - Added the single-command clean-install path to README and the dedicated
   installation guide. Clean-media physical acceptance remains pending.
+
+### Known issues
+
+- The first physical clean-media attempt inherited an overly restrictive
+  transient-unit umask. Migration could not execute the release Python as the
+  `3mm` user, so activation rolled back before setup AP startup. This is
+  corrected in `v0.3.0-beta.7`.
 
 ## [0.3.0-beta.5] - 2026-08-27
 
@@ -228,7 +245,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.6...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.7...HEAD
+[0.3.0-beta.7]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.7
 [0.3.0-beta.6]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.6
 [0.3.0-beta.5]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.5
 [0.3.0-beta.4]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.4

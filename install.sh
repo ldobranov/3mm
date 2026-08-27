@@ -330,7 +330,7 @@ systemd-run \
   --no-block \
   --property=Type=exec \
   --property=RuntimeMaxSec=45min \
-  --property=UMask=0077 \
+  --property=UMask=0022 \
   /usr/bin/bash "$worker" "$stage" "$installer" "$archive" \
   "$release_id" "$frontend_origin" "$artifact_sha256"
 job_started=1

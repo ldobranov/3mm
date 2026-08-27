@@ -13,7 +13,7 @@ of the application release version.
 | Version/tag example | Update channel | GitHub state |
 | --- | --- | --- |
 | `0.3.0` / `v0.3.0` | Stable | Release |
-| `0.3.0-beta.6` / `v0.3.0-beta.6` | Beta | Prerelease |
+| `0.3.0-beta.7` / `v0.3.0-beta.7` | Beta | Prerelease |
 | `0.3.0-test.1` / `v0.3.0-test.1` | Test | Prerelease |
 
 Stable catalog checks deliberately ignore prereleases. An administrator must
@@ -69,7 +69,7 @@ rewriting history.
 
 ## What the workflow verifies
 
-For a tag such as `v0.3.0-beta.6`,
+For a tag such as `v0.3.0-beta.7`,
 [`.github/workflows/release.yml`](../.github/workflows/release.yml):
 
 1. verifies the semantic-version tag and exact `VERSION` match;
@@ -161,8 +161,11 @@ release and use it to prove the complete in-application OTA path.
 - `v0.3.0-beta.5` completed the real Beta OTA path from `beta.4`, preserved
   the persistent device identity, retained `beta.4` as the rollback release
   and returned `up_to_date` on the post-install Beta catalog check.
-- `v0.3.0-beta.6` publishes the one-command clean-host bootstrap, port 80 and
-  captive network recovery. Its clean-media physical acceptance is pending.
+- `v0.3.0-beta.6` published the one-command clean-host bootstrap, port 80 and
+  captive network recovery, but its first physical clean install rolled back
+  because the detached job's umask blocked the `3mm` service account.
+- `v0.3.0-beta.7` corrects that clean-install permission boundary. Physical
+  acceptance remains pending.
 
 Tags `v0.3.0-beta.1` and `v0.3.0-beta.2` are historical failed publication
 attempts, not accepted GitHub Releases. They must not be moved or reused.

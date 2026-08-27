@@ -9,7 +9,7 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current release is
-> [v0.3.0-beta.6](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.6),
+> [v0.3.0-beta.7](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.7),
 > which introduces one-command clean installation and the accepted network
 > recovery/captive-portal runtime. Destructive clean-media acceptance is the
 > next physical test. The project is not yet presented as production-hardened.
@@ -161,7 +161,7 @@ allows installation over Wi-Fi: the SSH session is expected to close only when
 the device switches to its open `3mm Setup XXXX` access point.
 
 Use `--tag` for a reproducible exact release, for example by appending
-`-s -- --tag v0.3.0-beta.6` after `sudo bash`. Passwords are requested only by
+`-s -- --tag v0.3.0-beta.7` after `sudo bash`. Passwords are requested only by
 `sudo` and the later interactive administrator bootstrap; they are not command
 arguments or repository data.
 

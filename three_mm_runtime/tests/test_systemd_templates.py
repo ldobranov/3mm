@@ -227,6 +227,8 @@ def test_public_bootstrap_uses_verified_release_and_detached_installation() -> N
     assert "deployment/install-systemd.sh" in bootstrap
     assert "systemd-run" in bootstrap
     assert "--no-block" in bootstrap
+    assert "--property=UMask=0022" in bootstrap
+    assert "--property=UMask=0077" not in bootstrap
     assert "THREE_MM_BOOTSTRAP_PACKAGES" in bootstrap
     assert "network-manager" in bootstrap
     assert "dnsmasq-base" in bootstrap

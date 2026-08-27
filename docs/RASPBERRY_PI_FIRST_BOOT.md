@@ -66,7 +66,7 @@ To pin an exact published release:
 
 ```bash
 wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | \
-  sudo bash -s -- --tag v0.3.0-beta.6
+  sudo bash -s -- --tag v0.3.0-beta.7
 ```
 
 ## 3. Manual development deployment
