@@ -117,6 +117,9 @@ def test_update_helper_exposes_only_a_local_hardened_scheduler() -> None:
     assert helper["ProtectHome"] == "true"
     assert helper["RestrictAddressFamilies"] == "AF_UNIX"
     assert helper["RuntimeDirectoryPreserve"] == "yes"
+    assert helper["ReadWritePaths"] == (
+        "/var/lib/3mm/backups /var/lib/3mm/core/backup-imports /etc/3mm"
+    )
     assert (
         "--network-recovery-policy /var/lib/3mm/core/network-recovery-policy.json"
         in helper["ExecStart"]
@@ -162,6 +165,8 @@ def test_installer_preserves_identity_and_delegates_network_mutation() -> None:
     assert "3mm-captive-portal-dnsmasq.conf" in installer
     assert "THREE_MM_NETWORK_RECOVERY_POLICY_FILE" in installer
     assert "THREE_MM_NETWORK_RECOVERY_MARKER_FILE" in installer
+    assert "THREE_MM_BACKUP_IMPORT_DIR" in installer
+    assert "deployment/portable_backup.py" in installer
     assert "http://$device_hostname.local" in installer
     assert "frontend_primary_origin=$frontend_scheme://$frontend_host" in installer
     assert "frontend_compat_origin=$frontend_scheme://$frontend_host:8080" in installer

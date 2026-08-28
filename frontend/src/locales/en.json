@@ -15,6 +15,29 @@
     "factoryQueued": "Factory reset requested. Connect to the open 3mm Setup Wi-Fi to configure the device again.",
     "working": "Starting…", "actionFailed": "The system action could not be started."
   },
+  "backups": {
+    "navigation": "Backup and recovery", "title": "Backup and recovery",
+    "description": "Create encrypted local backups and restore this Standalone device to an earlier state.",
+    "refresh": "Refresh", "refreshing": "Refreshing…", "ready": "Ready to back up", "notReady": "Backup is not ready",
+    "estimatedSize": "Estimated size", "availableSpace": "Free space", "files": "Files", "create": "Create backup", "starting": "Starting…",
+    "savedTitle": "Saved backups", "retention": "The five newest backups are kept automatically on this device.", "empty": "No local backups yet.", "restore": "Restore",
+    "operationIdle": "No backup operation has run", "operationCreating": "Creating encrypted backup…", "operationRestoring": "Restoring backup…",
+    "operationCompleted": "Last operation completed", "operationRolledBack": "Restore failed and previous state was recovered", "operationFailed": "Last operation failed",
+    "createConfirm": "Type CREATE BACKUP to create an encrypted local backup.", "createQueued": "Backup started. The application may be unavailable briefly; refresh after it returns.",
+    "restoreConfirm": "Type the shown RESTORE phrase to replace the current device data with this backup.", "restoreQueued": "Restore started. The application may restart; reconnect and refresh after it returns.",
+    "loadFailed": "Backup information could not be loaded.",
+    "disasterTitle": "Disaster recovery file", "disasterHelp": "Download a password-protected recovery file and keep it away from this device. Use it after a new installation if the SD card fails.",
+    "download": "Download", "preparingDownload": "Preparing…", "downloadConfirm": "Create and download a portable recovery file? Keep both the file and its password safe.", "downloadReady": "Recovery file downloaded. Store it and its password away from this device.",
+    "restoreFile": "Restore from file", "importing": "Checking file…", "restoreFileConfirm": "Restore all application data from this file? The device will restart its services.",
+    "passwordPrompt": "Enter a recovery password with at least 8 characters.", "passwordRepeat": "Enter the recovery password again.", "passwordTooShort": "The recovery password must contain at least 8 characters.", "passwordMismatch": "The recovery passwords do not match."
+  },
+  "diagnostics": {
+    "navigation": "Diagnostics", "title": "Support diagnostics",
+    "description": "Review safe device checks and download a redacted JSON bundle for troubleshooting.",
+    "safeTitle": "Safe by design", "safeHelp": "The bundle contains system metadata and health results, never passwords, keys, tokens, Wi-Fi profiles, database content or logs.",
+    "download": "Download diagnostics", "downloading": "Preparing…", "loading": "Checking device…",
+    "checks": "checks", "warnings": "warnings", "failed": "Diagnostics could not be prepared."
+  },
   "profile": {
     "title": "My profile", "account": "Account", "username": "Username", "email": "Email",
     "role": "Role", "status": "Status", "active": "Active", "inactive": "Inactive",

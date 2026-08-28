@@ -1,6 +1,6 @@
 # 3mm Roadmap
 
-Status: active; Milestones 0–10 completed, Milestone 11 planned
+Status: active; Milestones 0–10 completed, Milestone 11 in progress
 Planning style: sequential milestones with a runnable result after every milestone
 
 Dates are intentionally not assigned until the current baseline is reproducible. Progress is measured by acceptance criteria, not optimistic calendar estimates.
@@ -337,8 +337,9 @@ Acceptance criteria:
 Goal: make one Standalone device safely ownable, diagnosable and recoverable
 before adding more devices or more executable extension power.
 
-Status: planned. Work begins after the accepted Milestone 10 source is
-published as the next official Beta release.
+Status: in progress since 2026-08-28. Stages 1–3 and the Stage 4 implementation
+are deployed on physical `rasp-3mm`; final clean-media restore acceptance
+remains. See [MILESTONE_11_REPORT.md](MILESTONE_11_REPORT.md).
 
 Deliverables:
 
@@ -356,6 +357,8 @@ Deliverables:
 - automatic rollback when migration, activation or health verification fails;
 - administrator UI for backup, restore progress and device storage;
 - diagnostic bundle with deterministic secret redaction;
+- password-protected portable recovery download and bounded restore-from-file
+  upload for failed-media recovery;
 - physical backup → factory reset → restore acceptance on `rasp-3mm`.
 
 Acceptance criteria:
@@ -376,7 +379,8 @@ Stages:
 1. backup manifest, state inventory and compatibility contract;
 2. root-local snapshot/restore engine with validation and rollback;
 3. administrator UI, bounded retention and redacted diagnostics;
-4. physical factory-reset/restore acceptance and official Beta release.
+4. portable recovery implementation, physical clean-media restore acceptance
+   and official Beta release.
 
 ## Milestone 12 — Hub and Node orchestration
 
@@ -595,11 +599,13 @@ These are the first concrete tasks after approval of this plan:
 - [x] Repeat the documented Standalone flow on clean media.
 - [x] Physically accept restart, destructive 3mm factory reset, setup-AP reboot and fresh Standalone setup.
 - [x] Publish the accepted Milestone 10 source as the next official Beta release (`v0.3.0-beta.9`).
-- [ ] Define the Milestone 11 backup manifest and complete persistent-state inventory.
-- [ ] Add a read-only backup preview with compatibility, checksum, size and free-space reporting.
-- [ ] Implement root-local backup and restore under the shared mutation lock with automatic rollback.
-- [ ] Add bounded backup retention and a deterministic secret-redacted diagnostics bundle.
-- [ ] Complete backup → factory reset → restore acceptance before beginning Hub/Node orchestration.
+- [x] Define the Milestone 11 backup manifest and complete persistent-state inventory.
+- [x] Add a read-only backup preview with compatibility, checksum, size and free-space reporting.
+- [x] Implement root-local backup and restore under the shared mutation lock with automatic rollback.
+- [x] Add an administrator backup catalog/UI and bounded retention of the five newest local backups.
+- [x] Add a deterministic secret-redacted diagnostics bundle.
+- [x] Add password-protected portable backup download and restore-from-file.
+- [ ] Complete portable download → clean install → upload restore acceptance before beginning Hub/Node orchestration.
 - [ ] Add fleet rollout rings only after Hub/Node orchestration exists.
 
 ## Explicitly deferred

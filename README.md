@@ -29,6 +29,9 @@ system.
 - **Device administration** — audience-aware dynamic menus, audited Raspberry
   restart and an explicit 3mm factory reset that returns an installed device
   to first-boot setup.
+- **Backup and diagnostics** — encrypted local snapshots, transactional
+  restore with rollback, password-protected disaster-recovery downloads and
+  secret-redacted diagnostic bundles.
 - **Extensions** — declarative runtime extensions and reviewed compiled Vue
   widgets, editors, routes and reusable components.
 - **AI Extension Builder** — guided intent planning, editable projects,
@@ -198,6 +201,10 @@ The [network recovery guide](docs/NETWORK_RECOVERY.md) covers manual setup
 Wi-Fi, the optional five-minute offline trigger and the phone captive portal.
 The [device administration guide](docs/DEVICE_ADMINISTRATION.md) documents
 public navigation, restart and the exact factory-reset boundary.
+The [backup and restore guide](docs/BACKUP_AND_RESTORE.md) explains local
+recovery and how to keep a password-protected `.3mmrecovery` file away from
+the device for failed-SD-card recovery. The
+[diagnostics guide](docs/DIAGNOSTICS.md) records the redaction boundary.
 
 Do not treat the development HTTP deployment or open setup-only access point
 as the final production security boundary. TLS, marketplace trust and stronger
@@ -234,6 +241,8 @@ See the [changelog](CHANGELOG.md) for user-visible changes and the
 | [First boot](docs/RASPBERRY_PI_FIRST_BOOT.md) | Repeatable Raspberry installation and provisioning |
 | [Network recovery](docs/NETWORK_RECOVERY.md) | Port 80, hostname access, setup AP and Wi-Fi recovery |
 | [Device administration](docs/DEVICE_ADMINISTRATION.md) | Menu audiences, restart and factory reset |
+| [Backup and restore](docs/BACKUP_AND_RESTORE.md) | Local snapshots, portable recovery and restore safety |
+| [Redacted diagnostics](docs/DIAGNOSTICS.md) | Support bundle contents and secret exclusions |
 | [Extension lifecycle](docs/EXTENSION_LIFECYCLE.md) | Package, version and data lifecycle |
 | [Runtime extension v1](docs/RUNTIME_EXTENSION_V1.md) | Declarative extension contract |
 | [Compiled extension v1](docs/COMPILED_EXTENSION_V1.md) | Reviewed Vue compilation boundary |

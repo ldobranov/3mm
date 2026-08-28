@@ -136,7 +136,9 @@ def test_mutation_boundary_uses_no_shell_and_only_the_fixed_worker() -> None:
     assert "apt-get" not in " ".join(command)
 
 
-def test_manual_network_setup_accepts_only_a_fixed_admin_request(tmp_path: Path) -> None:
+def test_manual_network_setup_accepts_only_a_fixed_admin_request(
+    tmp_path: Path,
+) -> None:
     data_dir = tmp_path / "provisioning"
     FileProvisioningStore(data_dir).save(
         ProvisioningSnapshot.provisioned(
@@ -278,3 +280,178 @@ def test_system_action_boundary_uses_fixed_commands() -> None:
     assert "--property=ProtectSystem=strict" in reset
     assert "--property=ReadWritePaths=/var/lib/3mm" in reset
     assert "/bin/sh" not in reset and "/bin/bash" not in reset
+
+
+def test_backup_request_schedules_only_the_fixed_encrypted_worker(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    class FakeRunner:
+        def run(self, arguments) -> int:
+            calls.append(tuple(arguments))
+            return 0
+
+    boundary = UpdateMutationBoundary(runner=FakeRunner())
+    response = update_helper._handle_request(
+        {"action": "create_backup", "requested_by_user_id": 7},
+        stage_root=tmp_path / "stage",
+        state_root=tmp_path / "state",
+        allowlist=tmp_path / "allowlist.json",
+        status_file=tmp_path / "status.json",
+        boundary=boundary,
+        backup_root=Path("/var/lib/3mm/backups"),
+    )
+
+    assert response == {"ok": True, "status": "queued"}
+    command = calls[0]
+    assert command[0] == "/usr/bin/systemd-run"
+    assert "/bin/sh" not in command and "/bin/bash" not in command
+    assert "/opt/3mm/current/deployment/create_backup.py" in command
+    assert "--property=ReadWritePaths=/var/lib/3mm/backups" in command
+    assert command[-2:] == ("--requested-by-user-id", "7")
+
+
+def test_restore_request_rejects_paths_and_schedules_fixed_worker(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    class FakeRunner:
+        def run(self, arguments) -> int:
+            calls.append(tuple(arguments))
+            return 0
+
+    boundary = UpdateMutationBoundary(runner=FakeRunner())
+    common = {
+        "stage_root": tmp_path / "stage",
+        "state_root": tmp_path / "state",
+        "allowlist": tmp_path / "allowlist.json",
+        "status_file": tmp_path / "status.json",
+        "boundary": boundary,
+    }
+    backup_id = "bkp_20260828T120000Z_0123abcd"
+    accepted = update_helper._handle_request(
+        {
+            "action": "restore_backup",
+            "backup_id": backup_id,
+            "requested_by_user_id": 7,
+        },
+        **common,
+    )
+    rejected = update_helper._handle_request(
+        {
+            "action": "restore_backup",
+            "backup_id": "../../etc/passwd",
+            "requested_by_user_id": 7,
+        },
+        **common,
+    )
+
+    assert accepted == {"ok": True, "status": "queued"}
+    assert rejected == {"ok": False, "error": "invalid_request"}
+    command = calls[0]
+    assert "/opt/3mm/current/deployment/restore_backup.py" in command
+    assert command[-4:] == ("--backup-id", backup_id, "--requested-by-user-id", "7")
+
+
+def test_portable_export_keeps_password_inside_the_helper_request(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    backup_id = "bkp_20260828T120000Z_0123abcd"
+    captured = []
+    monkeypatch.setattr(update_helper, "_service_ids", lambda *_args: (1000, 1000))
+    monkeypatch.setattr(
+        update_helper,
+        "create_portable_export",
+        lambda root, key, selected, password, owner: captured.append(
+            (root, key, selected, password, owner)
+        )
+        or type(
+            "Export",
+            (),
+            {
+                "export_id": "a" * 32,
+                "backup_id": selected,
+                "filename": f"{selected}.3mmrecovery",
+            },
+        )(),
+    )
+
+    response = update_helper._handle_request(
+        {
+            "action": "export_backup",
+            "backup_id": backup_id,
+            "passphrase": "recovery-password",
+            "requested_by_user_id": 7,
+        },
+        stage_root=tmp_path / "stage",
+        state_root=tmp_path / "state",
+        allowlist=tmp_path / "allowlist.json",
+        status_file=tmp_path / "status.json",
+        backup_root=tmp_path / "backups",
+    )
+
+    assert response["status"] == "ready"
+    assert response["export_id"] == "a" * 32
+    assert captured[0][3] == "recovery-password"
+
+
+def test_portable_restore_uses_only_the_fixed_upload_directory(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    backup_id = "bkp_20260828T120000Z_0123abcd"
+    scheduled = []
+    imported = []
+
+    class Boundary:
+        def schedule_restore(self, **kwargs) -> None:
+            scheduled.append(kwargs)
+
+    monkeypatch.setattr(update_helper, "_service_ids", lambda *_args: (1000, 1000))
+    monkeypatch.setattr(
+        update_helper,
+        "import_portable_backup",
+        lambda upload, root, key, password, **kwargs: imported.append(
+            (upload, root, key, password, kwargs)
+        )
+        or backup_id,
+    )
+    backup_root = tmp_path / "backups"
+    response = update_helper._handle_request(
+        {
+            "action": "restore_portable_backup",
+            "upload_id": "b" * 32,
+            "passphrase": "recovery-password",
+            "requested_by_user_id": 7,
+        },
+        stage_root=tmp_path / "stage",
+        state_root=tmp_path / "state",
+        allowlist=tmp_path / "allowlist.json",
+        status_file=tmp_path / "status.json",
+        boundary=Boundary(),
+        backup_root=backup_root,
+    )
+    rejected = update_helper._handle_request(
+        {
+            "action": "restore_portable_backup",
+            "upload_id": "../../etc/passwd",
+            "passphrase": "recovery-password",
+            "requested_by_user_id": 7,
+        },
+        stage_root=tmp_path / "stage",
+        state_root=tmp_path / "state",
+        allowlist=tmp_path / "allowlist.json",
+        status_file=tmp_path / "status.json",
+        boundary=Boundary(),
+        backup_root=backup_root,
+    )
+
+    assert response == {"ok": True, "status": "queued", "backup_id": backup_id}
+    assert rejected == {"ok": False, "error": "invalid_request"}
+    assert imported[0][0] == tmp_path / "core/backup-imports" / (
+        f"{'b' * 32}.3mmrecovery"
+    )
+    assert scheduled[0]["backup_id"] == backup_id

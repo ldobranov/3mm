@@ -8,6 +8,38 @@ pre-1.0.
 
 ## [Unreleased]
 
+### Added
+
+- Administrator backup preview, encrypted local backup catalog, bounded
+  retention and transactional restore with automatic rollback.
+- Password-protected `.3mmrecovery` downloads and bounded restore-from-file
+  uploads for recovery after a failed or replaced SD card.
+- Deterministic administrator diagnostics downloads with explicit secret
+  redaction and no persisted diagnostic payload.
+
+### Fixed
+
+- Host configuration restore now stages data on the destination filesystem,
+  avoiding cross-filesystem directory replacement failures.
+- Restore startup failures restart the existing services before returning an
+  error, and one-time recovery exports can be removed by Core after download.
+
+### Verified
+
+- Restored a real local backup on `rasp-3mm` and returned Core, Web, Agent and
+  update-helper to a healthy state.
+- Deployed review release `worktree-50f841dce023-20260828175806` and completed
+  a real portable export/import round trip with a fresh device key, archive
+  authentication, private export permissions and cleanup.
+- Passed all 60 frontend tests, TypeScript checking and the production build;
+  focused backend, protocol, helper and deployment tests passed before the
+  Raspberry review deployment.
+
+### Documentation
+
+- Added the backup/restore contract, diagnostics boundary and Milestone 11
+  implementation report.
+
 ## [0.3.0-beta.9] - 2026-08-28
 
 ### Added

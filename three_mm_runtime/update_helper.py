@@ -17,6 +17,10 @@ from backend.services.update_staging import (
     validate_staged_payload,
     write_operation_status,
 )
+from deployment.portable_backup import (
+    create_portable_export,
+    import_portable_backup,
+)
 from three_mm_provisioning import (
     FileNetworkRecoveryMarker,
     FileNetworkRecoveryPolicyStore,
@@ -28,6 +32,7 @@ from three_mm_provisioning.network_recovery import RecoveryTrigger
 from three_mm_runtime.network_recovery import NetworkRecoveryMonitor
 
 MAX_REQUEST_BYTES = 4096
+MAX_PORTABLE_ARCHIVE_BYTES = 512 * 1024 * 1024
 
 
 def _service_ids(user_name: str, group_name: str) -> tuple[int, int]:
@@ -197,6 +202,68 @@ class UpdateMutationBoundary:
         if self._runner.run(arguments) != 0:
             raise RuntimeError("System action could not be scheduled")
 
+    def schedule_backup(self, *, backup_root: Path, requested_by_user_id: int) -> None:
+        arguments = (
+            self._systemd_run,
+            "--unit=3mm-backup-create",
+            "--collect",
+            "--property=Type=exec",
+            "--property=TimeoutStartSec=15min",
+            "--property=PrivateTmp=true",
+            "--property=ProtectSystem=strict",
+            f"--property=ReadWritePaths={backup_root.as_posix()}",
+            "--property=ReadWritePaths=/etc/3mm",
+            "--property=ReadWritePaths=/run/lock",
+            "--property=ProtectHome=true",
+            "/usr/bin/env",
+            "PYTHONPATH=/opt/3mm/current",
+            self._python,
+            "/opt/3mm/current/deployment/create_backup.py",
+            "--backup-root",
+            backup_root.as_posix(),
+            "--key-file",
+            "/etc/3mm/backup.key",
+            "--requested-by-user-id",
+            str(requested_by_user_id),
+        )
+        if self._runner.run(arguments) != 0:
+            raise RuntimeError("Backup worker could not be scheduled")
+
+    def schedule_restore(
+        self,
+        *,
+        backup_root: Path,
+        backup_id: str,
+        requested_by_user_id: int,
+    ) -> None:
+        arguments = (
+            self._systemd_run,
+            "--unit=3mm-backup-restore",
+            "--collect",
+            "--property=Type=exec",
+            "--property=TimeoutStartSec=20min",
+            "--property=PrivateTmp=true",
+            "--property=ProtectSystem=strict",
+            "--property=ReadWritePaths=/var/lib/3mm",
+            "--property=ReadWritePaths=/etc/3mm",
+            "--property=ReadWritePaths=/run/lock",
+            "--property=ProtectHome=true",
+            "/usr/bin/env",
+            "PYTHONPATH=/opt/3mm/current",
+            self._python,
+            "/opt/3mm/current/deployment/restore_backup.py",
+            "--backup-root",
+            backup_root.as_posix(),
+            "--key-file",
+            "/etc/3mm/backup.key",
+            "--backup-id",
+            backup_id,
+            "--requested-by-user-id",
+            str(requested_by_user_id),
+        )
+        if self._runner.run(arguments) != 0:
+            raise RuntimeError("Restore worker could not be scheduled")
+
 
 def _handle_request(
     payload: object,
@@ -209,7 +276,122 @@ def _handle_request(
     service_group: str = "3mm",
     boundary: UpdateMutationBoundary | None = None,
     provisioning_data_dir: Path = Path("/var/lib/3mm/provisioning"),
+    backup_root: Path = Path("/var/lib/3mm/backups"),
 ) -> dict[str, object]:
+    if isinstance(payload, dict) and set(payload) == {
+        "action",
+        "backup_id",
+        "passphrase",
+        "requested_by_user_id",
+    }:
+        backup_id = payload.get("backup_id")
+        passphrase = payload.get("passphrase")
+        user_id = payload.get("requested_by_user_id")
+        if (
+            payload.get("action") != "export_backup"
+            or not isinstance(backup_id, str)
+            or not __import__("re").fullmatch(
+                r"bkp_\d{8}T\d{6}Z_[0-9a-f]{8}", backup_id
+            )
+            or not isinstance(passphrase, str)
+            or not isinstance(user_id, int)
+            or isinstance(user_id, bool)
+            or user_id <= 0
+        ):
+            return {"ok": False, "error": "invalid_request"}
+        try:
+            _service_uid, service_gid = _service_ids(service_user, service_group)
+            exported = create_portable_export(
+                backup_root,
+                Path("/etc/3mm/backup.key"),
+                backup_id,
+                passphrase,
+                owner=(0, service_gid),
+            )
+        except Exception:
+            return {"ok": False, "error": "backup_export_failed"}
+        return {
+            "ok": True,
+            "status": "ready",
+            "export_id": exported.export_id,
+            "backup_id": exported.backup_id,
+            "filename": exported.filename,
+        }
+
+    if isinstance(payload, dict) and set(payload) == {
+        "action",
+        "upload_id",
+        "passphrase",
+        "requested_by_user_id",
+    }:
+        upload_id = payload.get("upload_id")
+        passphrase = payload.get("passphrase")
+        user_id = payload.get("requested_by_user_id")
+        if (
+            payload.get("action") != "restore_portable_backup"
+            or not isinstance(upload_id, str)
+            or not __import__("re").fullmatch(r"[0-9a-f]{32}", upload_id)
+            or not isinstance(passphrase, str)
+            or not isinstance(user_id, int)
+            or isinstance(user_id, bool)
+            or user_id <= 0
+        ):
+            return {"ok": False, "error": "invalid_request"}
+        upload = backup_root.parent / "core/backup-imports" / (
+            f"{upload_id}.3mmrecovery"
+        )
+        try:
+            _service_uid, service_gid = _service_ids(service_user, service_group)
+            backup_id = import_portable_backup(
+                upload,
+                backup_root,
+                Path("/etc/3mm/backup.key"),
+                passphrase,
+                max_archive_bytes=MAX_PORTABLE_ARCHIVE_BYTES,
+                owner=(0, service_gid),
+            )
+            (boundary or UpdateMutationBoundary()).schedule_restore(
+                backup_root=backup_root,
+                backup_id=backup_id,
+                requested_by_user_id=user_id,
+            )
+        except Exception:
+            upload.unlink(missing_ok=True)
+            return {"ok": False, "error": "portable_restore_failed"}
+        return {
+            "ok": True,
+            "status": "queued",
+            "backup_id": backup_id,
+        }
+
+    if isinstance(payload, dict) and set(payload) == {
+        "action",
+        "backup_id",
+        "requested_by_user_id",
+    }:
+        backup_id = payload.get("backup_id")
+        user_id = payload.get("requested_by_user_id")
+        if (
+            payload.get("action") != "restore_backup"
+            or not isinstance(backup_id, str)
+            or not __import__("re").fullmatch(
+                r"bkp_\d{8}T\d{6}Z_[0-9a-f]{8}", backup_id
+            )
+            or not isinstance(user_id, int)
+            or isinstance(user_id, bool)
+            or user_id <= 0
+        ):
+            return {"ok": False, "error": "invalid_request"}
+        try:
+            (boundary or UpdateMutationBoundary()).schedule_restore(
+                backup_root=backup_root,
+                backup_id=backup_id,
+                requested_by_user_id=user_id,
+            )
+        except Exception:
+            return {"ok": False, "error": "restore_schedule_failed"}
+        return {"ok": True, "status": "queued"}
+
     if isinstance(payload, dict) and set(payload) == {
         "action",
         "requested_by_user_id",
@@ -217,12 +399,28 @@ def _handle_request(
         user_id = payload.get("requested_by_user_id")
         action = payload.get("action")
         if (
-            action not in {"start_network_setup", "restart_device", "factory_reset"}
+            action
+            not in {
+                "start_network_setup",
+                "restart_device",
+                "factory_reset",
+                "create_backup",
+            }
             or not isinstance(user_id, int)
             or isinstance(user_id, bool)
             or user_id <= 0
         ):
             return {"ok": False, "error": "invalid_request"}
+
+        if action == "create_backup":
+            try:
+                (boundary or UpdateMutationBoundary()).schedule_backup(
+                    backup_root=backup_root,
+                    requested_by_user_id=user_id,
+                )
+            except Exception:
+                return {"ok": False, "error": "backup_schedule_failed"}
+            return {"ok": True, "status": "queued"}
 
         if action in {"restart_device", "factory_reset"}:
             try:
@@ -350,6 +548,7 @@ def serve(
         "/var/lib/3mm/core/network-recovery-policy.json"
     ),
     provisioning_data_dir: Path = Path("/var/lib/3mm/provisioning"),
+    backup_root: Path = Path("/var/lib/3mm/backups"),
 ) -> None:
     import grp
 
@@ -405,6 +604,7 @@ def serve(
                         service_group=group_name,
                         boundary=boundary,
                         provisioning_data_dir=provisioning_data_dir,
+                        backup_root=backup_root,
                     )
                 except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
                     response = {"ok": False, "error": "invalid_request"}
@@ -432,6 +632,11 @@ def main() -> None:
         type=Path,
         default=Path("/var/lib/3mm/provisioning"),
     )
+    parser.add_argument(
+        "--backup-root",
+        type=Path,
+        default=Path("/var/lib/3mm/backups"),
+    )
     arguments = parser.parse_args()
     serve(
         arguments.socket,
@@ -443,6 +648,7 @@ def main() -> None:
         group_name=arguments.group,
         network_recovery_policy=arguments.network_recovery_policy,
         provisioning_data_dir=arguments.provisioning_data_dir,
+        backup_root=arguments.backup_root,
     )
 
 

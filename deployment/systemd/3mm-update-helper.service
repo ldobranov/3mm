@@ -9,7 +9,7 @@ User=root
 Group=3mm
 WorkingDirectory=/opt/3mm/current
 Environment=PYTHONPATH=/opt/3mm/current
-ExecStart=/opt/3mm/current/.venv/bin/python -m three_mm_runtime.update_helper --socket /run/3mm/update-helper.sock --stage-root /var/lib/3mm/core/update-staging --state-root /var/lib/3mm/update-helper --allowlist /opt/3mm/current/deployment/update-dependency-allowlist.json --repository ldobranov/3mm --manifest-asset 3mm-update-manifest.json --group 3mm --network-recovery-policy /var/lib/3mm/core/network-recovery-policy.json --provisioning-data-dir /var/lib/3mm/provisioning
+ExecStart=/opt/3mm/current/.venv/bin/python -m three_mm_runtime.update_helper --socket /run/3mm/update-helper.sock --stage-root /var/lib/3mm/core/update-staging --state-root /var/lib/3mm/update-helper --allowlist /opt/3mm/current/deployment/update-dependency-allowlist.json --repository ldobranov/3mm --manifest-asset 3mm-update-manifest.json --group 3mm --network-recovery-policy /var/lib/3mm/core/network-recovery-policy.json --provisioning-data-dir /var/lib/3mm/provisioning --backup-root /var/lib/3mm/backups
 Restart=on-failure
 RestartSec=5s
 RuntimeDirectory=3mm
@@ -20,6 +20,7 @@ StateDirectoryMode=0750
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
+ReadWritePaths=/var/lib/3mm/backups /var/lib/3mm/core/backup-imports /etc/3mm
 ProtectHome=true
 ProtectKernelTunables=true
 ProtectKernelModules=true

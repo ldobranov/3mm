@@ -73,6 +73,22 @@ class NetworkRecoverySettings(BaseModel):
     setup_url: str = "http://10.42.0.1:8895/setup"
 
 
+class BackupSettings(BaseModel):
+    agent_data_dir: Path = PROJECT_ROOT / ".runtime" / "agent"
+    provisioning_data_dir: Path = PROJECT_ROOT / ".runtime" / "provisioning"
+    backend_extensions_dir: Path = PROJECT_ROOT / "backend" / "extensions"
+    frontend_extensions_dir: Path = PROJECT_ROOT / "frontend" / "src" / "extensions"
+    compiled_artifacts_dir: Path = PROJECT_ROOT / ".runtime" / "compiled-extensions"
+    host_config_file: Path = PROJECT_ROOT / ".runtime" / "3mm.env"
+    storage_dir: Path = PROJECT_ROOT / ".runtime" / "backups"
+    import_dir: Path = PROJECT_ROOT / ".runtime" / "backup-imports"
+    minimum_free_bytes: int = Field(default=64 * 1024 * 1024, ge=16 * 1024 * 1024)
+    max_import_bytes: int = Field(
+        default=513 * 1024 * 1024,
+        ge=16 * 1024 * 1024,
+    )
+
+
 class AppSettings(BaseModel):
     frontend: FrontendSettings = Field(default_factory=FrontendSettings)
     backend: BackendSettings = Field(default_factory=BackendSettings)
@@ -80,6 +96,7 @@ class AppSettings(BaseModel):
     network_recovery: NetworkRecoverySettings = Field(
         default_factory=NetworkRecoverySettings
     )
+    backups: BackupSettings = Field(default_factory=BackupSettings)
 
     @property
     def database_url(self) -> str:
@@ -134,6 +151,7 @@ def get_settings() -> AppSettings:
     backend = dict(data.get("backend") or {})
     updates = dict(data.get("updates") or {})
     network_recovery = dict(data.get("network_recovery") or {})
+    backups = dict(data.get("backups") or {})
 
     if database_url := os.getenv("DATABASE_URL"):
         backend["database_url"] = database_url
@@ -185,6 +203,26 @@ def get_settings() -> AppSettings:
         network_recovery["helper_socket"] = recovery_helper
     if recovery_delay := os.getenv("THREE_MM_NETWORK_RECOVERY_OFFLINE_SECONDS"):
         network_recovery["offline_after_seconds"] = int(recovery_delay)
+    if agent_data_dir := os.getenv("THREE_MM_AGENT_DATA_DIR"):
+        backups["agent_data_dir"] = agent_data_dir
+    if provisioning_data_dir := os.getenv("THREE_MM_PROVISIONING_DATA_DIR"):
+        backups["provisioning_data_dir"] = provisioning_data_dir
+    if backend_extensions := os.getenv("BACKEND_EXTENSIONS_DIR"):
+        backups["backend_extensions_dir"] = backend_extensions
+    if frontend_extensions := os.getenv("FRONTEND_EXTENSIONS_DIR"):
+        backups["frontend_extensions_dir"] = frontend_extensions
+    if compiled_artifacts := os.getenv("COMPILED_UI_ARTIFACTS_DIR"):
+        backups["compiled_artifacts_dir"] = compiled_artifacts
+    if backup_host_config := os.getenv("THREE_MM_BACKUP_HOST_CONFIG_FILE"):
+        backups["host_config_file"] = backup_host_config
+    if backup_storage := os.getenv("THREE_MM_BACKUP_STORAGE_DIR"):
+        backups["storage_dir"] = backup_storage
+    if backup_import_dir := os.getenv("THREE_MM_BACKUP_IMPORT_DIR"):
+        backups["import_dir"] = backup_import_dir
+    if backup_minimum_free := os.getenv("THREE_MM_BACKUP_MINIMUM_FREE_BYTES"):
+        backups["minimum_free_bytes"] = int(backup_minimum_free)
+    if backup_max_import := os.getenv("THREE_MM_BACKUP_MAX_IMPORT_BYTES"):
+        backups["max_import_bytes"] = int(backup_max_import)
 
     backend["database_url"] = _normalize_database_url(
         backend.get("database_url", BackendSettings().database_url)
@@ -195,4 +233,5 @@ def get_settings() -> AppSettings:
         backend=BackendSettings.model_validate(backend),
         updates=UpdateCatalogSettings.model_validate(updates),
         network_recovery=NetworkRecoverySettings.model_validate(network_recovery),
+        backups=BackupSettings.model_validate(backups),
     )

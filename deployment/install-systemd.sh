@@ -346,6 +346,9 @@ required_files=(
   backend/requirements.txt
   backend/services/update_staging.py
   deployment/apply_staged_update.py
+  deployment/create_backup.py
+  deployment/portable_backup.py
+  deployment/restore_backup.py
   deployment/factory_reset.py
   deployment/migrate_database.py
   deployment/update-dependency-allowlist.json
@@ -434,6 +437,7 @@ upsert_environment CORS_ORIGINS "[\"$frontend_origin\",\"$frontend_primary_origi
 upsert_environment DEVICE_OFFLINE_AFTER_SECONDS 90
 upsert_environment THREE_MM_AGENT_HOST 127.0.0.1
 upsert_environment THREE_MM_AGENT_PORT 8890
+upsert_environment THREE_MM_AGENT_DATA_DIR /var/lib/3mm/agent
 upsert_environment THREE_MM_AGENT_ROLE standalone
 upsert_environment THREE_MM_AGENT_HARDWARE_PROFILE native
 upsert_environment THREE_MM_CORE_URL http://127.0.0.1:8887
@@ -452,6 +456,11 @@ upsert_environment THREE_MM_NETWORK_RECOVERY_POLICY_FILE /var/lib/3mm/core/netwo
 upsert_environment THREE_MM_NETWORK_RECOVERY_MARKER_FILE /var/lib/3mm/provisioning/network-recovery.json
 upsert_environment THREE_MM_NETWORK_RECOVERY_HELPER_SOCKET /run/3mm/update-helper.sock
 upsert_environment THREE_MM_NETWORK_RECOVERY_OFFLINE_SECONDS 300
+upsert_environment THREE_MM_BACKUP_HOST_CONFIG_FILE /etc/3mm/3mm.env
+upsert_environment THREE_MM_BACKUP_STORAGE_DIR /var/lib/3mm/backups
+upsert_environment THREE_MM_BACKUP_IMPORT_DIR /var/lib/3mm/core/backup-imports
+upsert_environment THREE_MM_BACKUP_MINIMUM_FREE_BYTES 67108864
+upsert_environment THREE_MM_BACKUP_MAX_IMPORT_BYTES 537919488
 
 if [[ -s $ai_master_key_file ]]; then
   ai_master_key=$(cat "$ai_master_key_file")
@@ -478,7 +487,9 @@ install -d -o 3mm -g 3mm -m 0750 \
   "$core_state/extensions/compiled" \
   "$state_root/provisioning"
 install -d -o 3mm -g 3mm -m 0700 "$core_state/update-staging"
+install -d -o 3mm -g 3mm -m 0700 "$core_state/backup-imports"
 install -d -o root -g 3mm -m 0750 "$state_root/update-helper"
+install -d -o root -g 3mm -m 0750 "$state_root/backups"
 
 log "Installing service definitions and migrating the database"
 install_units "$release_dir"

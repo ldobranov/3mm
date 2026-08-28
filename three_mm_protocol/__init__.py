@@ -13,8 +13,11 @@ from three_mm_protocol.models import (
     AgentRole,
 )
 from three_mm_protocol.module_manifest import (
-    ModuleCapabilities, ModuleCompatibility, ModuleHealthCheck,
-    ModuleManifestV2, ModuleRegistration,
+    ModuleCapabilities,
+    ModuleCompatibility,
+    ModuleHealthCheck,
+    ModuleManifestV2,
+    ModuleRegistration,
     meets_minimum_version,
 )
 from three_mm_protocol.automation import (
@@ -48,6 +51,13 @@ from three_mm_protocol.capability_builder import (
 from three_mm_protocol.capability_state import (
     CapabilityStateReportV1,
     CapabilityStateSnapshotV1,
+)
+from three_mm_protocol.backup import (
+    BACKUP_MANIFEST_VERSION,
+    BackupCompatibilityV1,
+    BackupEntryV1,
+    BackupManifestV1,
+    BackupProtectionV1,
 )
 
 __all__ = [
@@ -89,4 +99,9 @@ __all__ = [
     "PresentationStateV1",
     "CapabilityStateReportV1",
     "CapabilityStateSnapshotV1",
+    "BACKUP_MANIFEST_VERSION",
+    "BackupCompatibilityV1",
+    "BackupEntryV1",
+    "BackupManifestV1",
+    "BackupProtectionV1",
 ]

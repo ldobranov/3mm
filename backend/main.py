@@ -24,6 +24,8 @@ from backend.db.extension import Extension
 from backend.routes.ai_extension_builder_routes import (
     router as ai_extension_builder_router,
 )
+from backend.routes.backups import router as backups_router
+from backend.routes.diagnostics import router as diagnostics_router
 from backend.routes.ai_automations import router as ai_automations_router
 from backend.routes.extension_projects import router as extension_projects_router
 from backend.routes.audit_routes import router as audit_router
@@ -231,6 +233,8 @@ app.include_router(extension_projects_router)
 app.include_router(system_updates_router)
 app.include_router(system_control_router)
 app.include_router(network_recovery_router)
+app.include_router(backups_router)
+app.include_router(diagnostics_router)
 app.include_router(refresh_router, prefix="/api")
 app.include_router(session_router, prefix="/api")
 app.include_router(audit_router, prefix="/api")

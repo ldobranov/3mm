@@ -52,7 +52,70 @@ class UpdateHelperClient:
             }
         )
 
-    def _request(self, payload: dict[str, object]) -> None:
+    def request_backup(self, requested_by_user_id: int) -> None:
+        self._request(
+            {
+                "action": "create_backup",
+                "requested_by_user_id": requested_by_user_id,
+            }
+        )
+
+    def request_restore(self, backup_id: str, requested_by_user_id: int) -> None:
+        self._request(
+            {
+                "action": "restore_backup",
+                "backup_id": backup_id,
+                "requested_by_user_id": requested_by_user_id,
+            }
+        )
+
+    def request_portable_export(
+        self,
+        backup_id: str,
+        passphrase: str,
+        requested_by_user_id: int,
+    ) -> dict[str, object]:
+        result = self._request(
+            {
+                "action": "export_backup",
+                "backup_id": backup_id,
+                "passphrase": passphrase,
+                "requested_by_user_id": requested_by_user_id,
+            },
+            expected_status="ready",
+        )
+        if not all(
+            isinstance(result.get(field), str)
+            for field in ("export_id", "backup_id", "filename")
+        ):
+            raise UpdateHelperError("The recovery export response is invalid")
+        return result
+
+    def request_portable_restore(
+        self,
+        upload_id: str,
+        passphrase: str,
+        requested_by_user_id: int,
+    ) -> str:
+        result = self._request(
+            {
+                "action": "restore_portable_backup",
+                "upload_id": upload_id,
+                "passphrase": passphrase,
+                "requested_by_user_id": requested_by_user_id,
+            }
+        )
+        backup_id = result.get("backup_id")
+        if not isinstance(backup_id, str):
+            raise UpdateHelperError("The portable restore response is invalid")
+        return backup_id
+
+    def _request(
+        self,
+        payload: dict[str, object],
+        *,
+        expected_status: str = "queued",
+    ) -> dict[str, object]:
         request = json.dumps(payload, separators=(",", ":")).encode("utf-8") + b"\n"
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
@@ -70,5 +133,8 @@ class UpdateHelperClient:
             result = json.loads(response.split(b"\n", 1)[0])
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             raise UpdateHelperError("The system update helper is unavailable") from exc
-        if result != {"ok": True, "status": "queued"}:
+        if not isinstance(result, dict) or result.get("ok") is not True:
             raise UpdateHelperError("The system update helper rejected the request")
+        if result.get("status") != expected_status:
+            raise UpdateHelperError("The system update helper response is invalid")
+        return result

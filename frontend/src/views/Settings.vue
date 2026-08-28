@@ -103,6 +103,14 @@
         <div v-if="isAdmin" v-show="activeSection === 'system'" id="system-settings" class="settings-anchor">
           <SystemControlSection />
         </div>
+
+        <div v-if="isAdmin" v-show="activeSection === 'backups'" id="backup-settings" class="settings-anchor">
+          <BackupRecoverySection />
+        </div>
+
+        <div v-if="isAdmin" v-show="activeSection === 'diagnostics'" id="diagnostic-settings" class="settings-anchor">
+          <DiagnosticsSection />
+        </div>
       </section>
     </div>
 
@@ -129,6 +137,8 @@ import MenuConfigurationSection from '@/components/settings/MenuConfigurationSec
 import ThemeCustomizationSection from '@/components/settings/ThemeCustomizationSection.vue';
 import NetworkConfigurationSection from '@/components/settings/NetworkConfigurationSection.vue';
 import SystemControlSection from '@/components/settings/SystemControlSection.vue';
+import BackupRecoverySection from '@/components/settings/BackupRecoverySection.vue';
+import DiagnosticsSection from '@/components/settings/DiagnosticsSection.vue';
 
 interface Setting {
   id?: number;
@@ -146,7 +156,9 @@ export default defineComponent({
     MenuConfigurationSection,
     ThemeCustomizationSection,
     NetworkConfigurationSection,
-    SystemControlSection
+    SystemControlSection,
+    BackupRecoverySection,
+    DiagnosticsSection
   },
   setup() {
     const themeStore = useThemeStore();
@@ -220,7 +232,11 @@ export default defineComponent({
       { id: 'menu', icon: 'bi bi-list-nested', label: t('settings.menuConfiguration', 'Menu Configuration') },
       { id: 'network', icon: 'bi bi-router', label: t('settings.networkConfiguration', 'Network Configuration') },
       ...(isAdmin.value
-        ? [{ id: 'system', icon: 'bi bi-cpu', label: t('systemControl.navigation', 'Device Control') }]
+        ? [
+            { id: 'backups', icon: 'bi bi-archive', label: t('backups.navigation', 'Backup and recovery') },
+            { id: 'diagnostics', icon: 'bi bi-activity', label: t('diagnostics.navigation', 'Diagnostics') },
+            { id: 'system', icon: 'bi bi-cpu', label: t('systemControl.navigation', 'Device Control') },
+          ]
         : [])
     ]);
 

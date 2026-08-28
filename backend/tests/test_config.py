@@ -59,6 +59,18 @@ def test_environment_overrides_file_configuration(monkeypatch, tmp_path):
     monkeypatch.setenv("THREE_MM_UPDATE_APPROVAL_TTL_SECONDS", "900")
     monkeypatch.setenv("THREE_MM_UPDATE_MAX_ARTIFACT_BYTES", "104857600")
     monkeypatch.setenv("THREE_MM_UPDATE_MINIMUM_FREE_BYTES", "268435456")
+    monkeypatch.setenv("THREE_MM_AGENT_DATA_DIR", str(tmp_path / "agent"))
+    monkeypatch.setenv("THREE_MM_PROVISIONING_DATA_DIR", str(tmp_path / "provisioning"))
+    monkeypatch.setenv("BACKEND_EXTENSIONS_DIR", str(tmp_path / "backend-ext"))
+    monkeypatch.setenv("FRONTEND_EXTENSIONS_DIR", str(tmp_path / "frontend-ext"))
+    monkeypatch.setenv("COMPILED_UI_ARTIFACTS_DIR", str(tmp_path / "compiled-ext"))
+    monkeypatch.setenv("THREE_MM_BACKUP_HOST_CONFIG_FILE", str(tmp_path / "3mm.env"))
+    monkeypatch.setenv("THREE_MM_BACKUP_STORAGE_DIR", str(tmp_path / "backups"))
+    monkeypatch.setenv(
+        "THREE_MM_BACKUP_IMPORT_DIR", str(tmp_path / "backup-imports")
+    )
+    monkeypatch.setenv("THREE_MM_BACKUP_MINIMUM_FREE_BYTES", "33554432")
+    monkeypatch.setenv("THREE_MM_BACKUP_MAX_IMPORT_BYTES", "67108864")
     get_settings.cache_clear()
 
     settings = get_settings()
@@ -84,3 +96,13 @@ def test_environment_overrides_file_configuration(monkeypatch, tmp_path):
     assert settings.updates.approval_ttl_seconds == 900
     assert settings.updates.max_artifact_bytes == 104857600
     assert settings.updates.minimum_free_bytes == 268435456
+    assert settings.backups.agent_data_dir == tmp_path / "agent"
+    assert settings.backups.provisioning_data_dir == tmp_path / "provisioning"
+    assert settings.backups.backend_extensions_dir == tmp_path / "backend-ext"
+    assert settings.backups.frontend_extensions_dir == tmp_path / "frontend-ext"
+    assert settings.backups.compiled_artifacts_dir == tmp_path / "compiled-ext"
+    assert settings.backups.host_config_file == tmp_path / "3mm.env"
+    assert settings.backups.storage_dir == tmp_path / "backups"
+    assert settings.backups.import_dir == tmp_path / "backup-imports"
+    assert settings.backups.minimum_free_bytes == 33554432
+    assert settings.backups.max_import_bytes == 67108864
