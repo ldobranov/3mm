@@ -99,6 +99,10 @@
             @config-updated="onNetworkConfigUpdated"
           />
         </div>
+
+        <div v-if="isAdmin" v-show="activeSection === 'system'" id="system-settings" class="settings-anchor">
+          <SystemControlSection />
+        </div>
       </section>
     </div>
 
@@ -124,6 +128,7 @@ import HeaderCustomizationSection from '@/components/settings/HeaderCustomizatio
 import MenuConfigurationSection from '@/components/settings/MenuConfigurationSection.vue';
 import ThemeCustomizationSection from '@/components/settings/ThemeCustomizationSection.vue';
 import NetworkConfigurationSection from '@/components/settings/NetworkConfigurationSection.vue';
+import SystemControlSection from '@/components/settings/SystemControlSection.vue';
 
 interface Setting {
   id?: number;
@@ -140,7 +145,8 @@ export default defineComponent({
     HeaderCustomizationSection,
     MenuConfigurationSection,
     ThemeCustomizationSection,
-    NetworkConfigurationSection
+    NetworkConfigurationSection,
+    SystemControlSection
   },
   setup() {
     const themeStore = useThemeStore();
@@ -156,6 +162,7 @@ export default defineComponent({
     const activeMenuId = ref<number | null>(null);
     const errorMessage = ref('');
     const successMessage = ref('');
+    const isAdmin = computed(() => localStorage.getItem('role') === 'admin');
     const savingMenu = ref(false);
     const creatingMenu = ref(false);
     const managingMenu = ref(false);
@@ -195,7 +202,12 @@ export default defineComponent({
           const label = typeof menuLabel === 'string'
             ? menuLabel
             : menuLabel?.[currentLanguage.value] || menuLabel?.en || fallbackLabel;
-          return { path: route.path, label, adminOnly: route.meta?.requiresRole === 'admin' };
+          return {
+            path: route.path,
+            label,
+            adminOnly: route.meta?.requiresRole === 'admin',
+            requiresAuth: route.meta?.requiresAuth === true,
+          };
         })
         .filter((route, index, routes) => routes.findIndex(item => item.path === route.path) === index)
         .sort((a, b) => a.label.localeCompare(b.label));
@@ -206,7 +218,10 @@ export default defineComponent({
       { id: 'theme', icon: 'bi bi-palette', label: t('settings.themeCustomization', 'Theme Customization') },
       { id: 'header', icon: 'bi bi-window', label: t('settings.headerCustomization', 'Header Customization') },
       { id: 'menu', icon: 'bi bi-list-nested', label: t('settings.menuConfiguration', 'Menu Configuration') },
-      { id: 'network', icon: 'bi bi-router', label: t('settings.networkConfiguration', 'Network Configuration') }
+      { id: 'network', icon: 'bi bi-router', label: t('settings.networkConfiguration', 'Network Configuration') },
+      ...(isAdmin.value
+        ? [{ id: 'system', icon: 'bi bi-cpu', label: t('systemControl.navigation', 'Device Control') }]
+        : [])
     ]);
 
     // Theme-specific local state
@@ -256,7 +271,8 @@ export default defineComponent({
 
       currentMenuItems.value.push({
         label: labelObj,
-        path: newItem.path
+        path: newItem.path,
+        audience: newItem.audience || 'authenticated'
       });
     };
 
@@ -651,6 +667,7 @@ export default defineComponent({
       activeMenu,
       errorMessage,
       successMessage,
+      isAdmin,
       savingMenu,
       creatingMenu,
       managingMenu,

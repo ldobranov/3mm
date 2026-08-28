@@ -8,6 +8,35 @@ pre-1.0.
 
 ## [Unreleased]
 
+### Added
+
+- Recovery setup now pre-fills the previous device name, locale,
+  administrator metadata, role and Hub address without persisting Wi-Fi
+  credentials.
+- Menu Editor visibility audiences for public visitors, signed-in users and
+  administrators, while protected routes remain protected by router metadata.
+- Administrator-only Raspberry restart and 3mm factory-reset controls backed
+  by the narrow privileged helper, exact confirmation phrases and audit logs.
+
+### Changed
+
+- Factory reset removes persistent 3mm users, settings, dashboards,
+  extensions, Agent identity, provisioning and update state, then returns the
+  installed release to first-boot setup. The immutable release and Raspberry
+  Pi OS are preserved.
+
+### Verified
+
+- Repeated the one-command installation on clean Raspberry Pi media and
+  completed setup-to-Standalone successfully.
+- Deployed immutable review release
+  `worktree-4eb350b6a650-20260828075444` on the clean device; Core, Web, Agent
+  and update-helper are healthy, ports 80/8080 and `rasp-3mm.local` return HTTP
+  200, and the new system-control endpoints enforce authentication.
+- Passed 60 focused backend/provisioning/deployment tests, all 54 frontend
+  tests, TypeScript checking and the production frontend build. Physical
+  factory-reset acceptance remains pending.
+
 ## [0.3.0-beta.8] - 2026-08-27
 
 ### Added

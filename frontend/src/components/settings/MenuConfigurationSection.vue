@@ -113,6 +113,7 @@ interface MenuRouteOption {
   path: string
   label: string
   adminOnly: boolean
+  requiresAuth: boolean
 }
 
 export default defineComponent({

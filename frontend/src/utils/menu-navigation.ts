@@ -1,7 +1,10 @@
 export interface NavigationItem {
   path: string
   label: string | Record<string, string>
+  audience?: MenuAudience
 }
+
+export type MenuAudience = 'public' | 'authenticated' | 'admin'
 
 export function mergeNavigationItems(
   customItems: NavigationItem[],
@@ -29,4 +32,28 @@ export function isMenuRouteEligible(
   if (!path || path === '/' || path.includes(':')) return false
   if (['/user/login', '/user/register', '/user/logout'].includes(path)) return false
   return !requiredRole || requiredRole === currentRole
+}
+
+export function isNavigationItemVisible(
+  item: NavigationItem,
+  options: {
+    isLoggedIn: boolean
+    currentRole: string
+    routeRequiresAuth?: boolean
+    routeRequiredRole?: string
+  },
+): boolean {
+  const { isLoggedIn, currentRole, routeRequiresAuth, routeRequiredRole } = options
+
+  if (item.audience === 'public') {
+    if (routeRequiresAuth) return false
+  } else if (item.audience === 'authenticated') {
+    if (!isLoggedIn) return false
+  } else if (item.audience === 'admin') {
+    if (!isLoggedIn || currentRole !== 'admin') return false
+  } else if (routeRequiresAuth && !isLoggedIn) {
+    return false
+  }
+
+  return !routeRequiredRole || (isLoggedIn && currentRole === routeRequiredRole)
 }

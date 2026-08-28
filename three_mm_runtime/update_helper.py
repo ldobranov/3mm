@@ -158,6 +158,45 @@ class UpdateMutationBoundary:
         if self._runner.run(arguments) != 0:
             raise RuntimeError("Network setup worker could not be scheduled")
 
+    def schedule_system_action(self, action: str) -> None:
+        if action == "restart_device":
+            unit = "3mm-system-restart"
+            worker = ("/usr/bin/systemctl", "reboot")
+            timeout = "2min"
+            protection = ()
+        elif action == "factory_reset":
+            unit = "3mm-factory-reset"
+            worker = (
+                "/usr/bin/env",
+                "PYTHONPATH=/opt/3mm/current",
+                self._python,
+                "/opt/3mm/current/deployment/factory_reset.py",
+            )
+            timeout = "5min"
+            protection = (
+                "--property=ProtectSystem=strict",
+                "--property=ReadWritePaths=/var/lib/3mm",
+                "--property=ReadWritePaths=/run/lock",
+                "--property=NoNewPrivileges=true",
+            )
+        else:
+            raise ValueError("System action is invalid")
+
+        arguments = (
+            self._systemd_run,
+            f"--unit={unit}",
+            "--collect",
+            "--on-active=2s",
+            "--property=Type=exec",
+            f"--property=TimeoutStartSec={timeout}",
+            "--property=PrivateTmp=true",
+            "--property=ProtectHome=true",
+            *protection,
+            *worker,
+        )
+        if self._runner.run(arguments) != 0:
+            raise RuntimeError("System action could not be scheduled")
+
 
 def _handle_request(
     payload: object,
@@ -176,13 +215,22 @@ def _handle_request(
         "requested_by_user_id",
     }:
         user_id = payload.get("requested_by_user_id")
+        action = payload.get("action")
         if (
-            payload.get("action") != "start_network_setup"
+            action not in {"start_network_setup", "restart_device", "factory_reset"}
             or not isinstance(user_id, int)
             or isinstance(user_id, bool)
             or user_id <= 0
         ):
             return {"ok": False, "error": "invalid_request"}
+
+        if action in {"restart_device", "factory_reset"}:
+            try:
+                (boundary or UpdateMutationBoundary()).schedule_system_action(action)
+            except Exception:
+                return {"ok": False, "error": "system_action_schedule_failed"}
+            return {"ok": True, "status": "queued"}
+
         marker = FileNetworkRecoveryMarker(
             provisioning_data_dir / "network-recovery.json"
         )

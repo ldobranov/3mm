@@ -309,8 +309,9 @@ native `libgpiod` input path, systemd deployment, reboot and reconnect behavior,
 bounded release retention and automatic failed-deployment rollback are
 accepted; deployment-backup retention and the read-only first-boot preflight are
 also accepted. Administrator-controlled network recovery, the phone captive
-portal and the physical setup-to-Standalone transition are accepted, while
-clean-media installation acceptance remains. See
+portal, the physical setup-to-Standalone transition and the repeatable
+clean-media installation are accepted. Audited restart and factory-reset
+controls are implemented; destructive factory-reset acceptance remains. See
 [MILESTONE_10_REPORT.md](MILESTONE_10_REPORT.md).
 
 Deliverables:
@@ -321,7 +322,8 @@ Deliverables:
 - Pi Zero 2 W and Pi 3B resource measurements where available;
 - reconnect, reboot, storage-limit and power-loss tests;
 - first-boot/pairing documentation;
-- manual and policy-controlled setup-Wi-Fi recovery with a phone captive portal.
+- manual and policy-controlled setup-Wi-Fi recovery with a phone captive portal;
+- administrator-controlled restart and application factory reset.
 
 Acceptance criteria:
 
@@ -509,7 +511,8 @@ These are the first concrete tasks after approval of this plan:
 - [x] Serve the application on port 80 through both its LAN IP and mDNS hostname while retaining port 8080 compatibility.
 - [x] Validate the setup AP, automatic phone captive portal and setup-to-Standalone transition on physical `rasp-3mm`.
 - [ ] Add fleet rollout rings only after Hub/Node orchestration exists.
-- [ ] Repeat the documented Standalone flow on clean media and close the Milestone 10 report.
+- [x] Repeat the documented Standalone flow on clean media.
+- [ ] Physically accept the destructive 3mm factory-reset path and close the remaining device-control boundary.
 - [ ] Validate the open setup-only access point and persistent NetworkManager profile across a Raspberry Pi reboot.
 
 ## Explicitly deferred

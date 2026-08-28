@@ -24,6 +24,7 @@ REQUIRED_SOURCE_FILES = {
     "backend/services/update_staging.py": b"print('stage')\n",
     "deployment/install-systemd.sh": b"#!/usr/bin/env bash\n",
     "deployment/apply_staged_update.py": b"print('apply')\n",
+    "deployment/factory_reset.py": b"print('reset')\n",
     "deployment/migrate_database.py": b"print('migrate')\n",
     "deployment/update-dependency-allowlist.json": b'{"schema_version":1,"apt_packages":[]}\n',
     "deployment/systemd/3mm-agent.service": b"[Unit]\n",
@@ -136,6 +137,7 @@ def test_release_archives_are_reproducible_and_installer_compatible(
             assert "frontend/dist/assets/main.js" in names
             assert "frontend/dist/stale.js" not in names
             assert "deployment/install-systemd.sh" in names
+            assert "deployment/factory_reset.py" in names
             assert "install.sh" in names
             assert all(member.mtime == EPOCH for member in archive.getmembers())
             metadata = json.load(archive.extractfile(".3mm-release.json"))

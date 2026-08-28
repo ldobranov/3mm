@@ -18,6 +18,7 @@ from setup_service.config import SetupSettings
 from setup_service.schemas import (
     SetupConfiguration,
     SetupOutcome,
+    SetupPrefill,
     SetupStatus,
     SetupTheme,
     WifiNetworkList,
@@ -54,6 +55,7 @@ PUBLIC_SETUP_ENDPOINTS = frozenset(
         ("GET", "/ready"),
         ("GET", "/setup"),
         ("GET", "/api/v1/setup/status"),
+        ("GET", "/api/v1/setup/prefill"),
         ("GET", "/api/v1/setup/networks"),
         ("GET", "/api/v1/setup/theme"),
         ("POST", "/api/v1/setup/configure"),
@@ -263,6 +265,23 @@ def create_app(
             state=runtime.machine.state,
             setup_active=runtime.machine.state is ProvisioningState.SETUP,
             role=runtime.machine.role,
+        )
+
+    @app.get(
+        "/api/v1/setup/prefill",
+        response_model=SetupPrefill,
+        include_in_schema=False,
+    )
+    def prefill(request: Request) -> SetupPrefill:
+        snapshot = _runtime(request).previous_snapshot
+        if snapshot is None:
+            return SetupPrefill()
+        return SetupPrefill(
+            locale=snapshot.locale,
+            device_name=snapshot.device_name,
+            administrator_name=snapshot.administrator_name,
+            role=snapshot.role,
+            hub_endpoint=snapshot.hub_endpoint,
         )
 
     @app.get(

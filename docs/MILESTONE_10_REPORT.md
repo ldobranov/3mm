@@ -4,15 +4,15 @@ Date started: 2026-08-25
 
 Status: in progress
 
-Latest accepted release commit: `dbb530d chore: prepare v0.3.0-beta.5 release`
+Latest accepted official release commit: `4eb350b chore: prepare v0.3.0-beta.8 release`
 
-Canonical rollback release: `v0.3.0-beta.4`
+Canonical rollback release: `v0.3.0-beta.8`
 
-Active release: `v0.3.0-beta.5`
+Active review release: `worktree-4eb350b6a650-20260828075444`
 
 Device: Raspberry Pi 3B+ (`rasp-3mm`)
 
-Device identity: `dev_a3ad5f8844f1466f847f5f8cf78d6fe3`
+Current clean-install device identity: `dev_693cbd1cefd74061a2ac38ccbc5daef8`
 
 ## Current result
 
@@ -32,6 +32,13 @@ official rollback release and the post-install `up_to_date` catalog state.
 The administrator-controlled network recovery slice is physically accepted on
 the same device. Normal Web access now works on port 80 through both the LAN IP
 and `rasp-3mm.local`, while port 8080 remains available for compatibility.
+
+The documented one-command installation has now also been repeated on clean
+media. The Wi-Fi-only bootstrap survived the SSH handoff, exposed the open setup
+AP and captive portal, and returned to a healthy Standalone runtime after phone
+provisioning. The review deployment adds secret-free recovery prefill,
+audience-aware menus and audited restart/factory-reset controls. Every path
+except the destructive factory-reset execution has been physically reviewed.
 
 ## Controlled reboot acceptance
 
@@ -239,10 +246,11 @@ Two product boundaries remain visible rather than being hidden by the guide:
 - Node provisioning stores the Hub address, but external-Hub credential pairing
   is not yet a complete single first-boot flow.
 
-The procedure has not been run from an erased SD card in this pass because doing
-so would destroy the only working test installation. That physical repetition,
-the setup-AP reboot boundary and the service transition after real phone setup
-remain acceptance work.
+The procedure was subsequently repeated from an erased SD card. The public
+one-command bootstrap installed official `v0.3.0-beta.8`, switched the Wi-Fi-only
+host to the open setup AP without depending on the SSH session and completed the
+real phone setup-to-Standalone transition successfully. The setup-AP reboot
+boundary remains separate acceptance work.
 
 ## Standalone OTA operational acceptance
 
@@ -309,13 +317,41 @@ root boundary. The captive DNS file is installed only while the setup AP unit
 is active and is removed when that unit stops. Thirty-eight focused
 setup/systemd tests and all 47 frontend tests passed before deployment.
 
+## Clean-media and device-administration acceptance
+
+On 2026-08-28, `rasp-3mm` was rebuilt from clean media and installed with the
+documented public one-command Beta bootstrap. Setup completed over Wi-Fi and the
+new installation returned to the normal Standalone application. Official
+release `v0.3.0-beta.8` was then used as the rollback base for immutable review
+release `worktree-4eb350b6a650-20260828075444`.
+
+Post-deployment verification confirmed:
+
+- Core, Web, Agent and update-helper are active;
+- Agent health, versioned hello and inventory expose persistent identity
+  `dev_693cbd1cefd74061a2ac38ccbc5daef8`;
+- ports 80 and 8080 and `http://rasp-3mm.local/` return HTTP 200;
+- the dynamic menu endpoint remains readable before authentication while each
+  configured item can declare public, authenticated or administrator scope;
+- restart and factory-reset endpoints exist and reject anonymous requests;
+- the privileged helper contains only fixed restart and factory-reset actions;
+- the factory-reset worker is present in the immutable release;
+- service logs contain no post-deployment errors.
+
+The user accepted recovery prefill, menu visibility and restart behavior. The
+factory-reset request and worker are covered by automated permission, command
+boundary and filesystem-scope tests, but the destructive physical execution was
+deliberately deferred so the newly accepted clean installation remains usable.
+
+Sixty focused backend/provisioning/deployment tests, all 54 frontend tests,
+TypeScript checking and the production frontend build passed for this slice.
+
 ## Remaining acceptance work
 
 - configure and physically verify a GPIO output before testing local
   input-to-output automation with Core unavailable;
-- repeat the documented Standalone installation, first-boot and pairing flow on
-  clean media;
 - verify the open setup-only AP and saved NetworkManager profile across reboot;
+- physically accept the explicit 3mm factory-reset path on a disposable state;
 - complete external-Hub credential bootstrap for a Node first boot;
 - measure a Pi Zero 2 W if that hardware becomes available;
 - close the final Milestone 10 acceptance checklist after the remaining physical

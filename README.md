@@ -24,8 +24,11 @@ system.
 - **Hardware capabilities** — deterministic mock profiles and opt-in native
   Raspberry GPIO input through the official `gpiod` bindings.
 - **Provisioning and recovery** — browser-based first setup, Wi-Fi scan and
-  rollback, an open setup-only access point, administrator-controlled network
-  recovery and Standalone/Hub/Node roles.
+  rollback, an open setup-only access point, secret-free recovery prefill,
+  administrator-controlled network recovery and Standalone/Hub/Node roles.
+- **Device administration** — audience-aware dynamic menus, audited Raspberry
+  restart and an explicit 3mm factory reset that returns an installed device
+  to first-boot setup.
 - **Extensions** — declarative runtime extensions and reviewed compiled Vue
   widgets, editors, routes and reusable components.
 - **AI Extension Builder** — guided intent planning, editable projects,
@@ -193,6 +196,8 @@ On a provisioned device, open the application at `http://<device-ip>/` or
 `http://<hostname>.local/`. Port `8080` remains available for compatibility.
 The [network recovery guide](docs/NETWORK_RECOVERY.md) covers manual setup
 Wi-Fi, the optional five-minute offline trigger and the phone captive portal.
+The [device administration guide](docs/DEVICE_ADMINISTRATION.md) documents
+public navigation, restart and the exact factory-reset boundary.
 
 Do not treat the development HTTP deployment or open setup-only access point
 as the final production security boundary. TLS, marketplace trust and stronger
@@ -228,6 +233,7 @@ See the [changelog](CHANGELOG.md) for user-visible changes and the
 | [Raspberry baseline](docs/RASPBERRY_PI_BASELINE.md) | Physical device baseline and measurements |
 | [First boot](docs/RASPBERRY_PI_FIRST_BOOT.md) | Repeatable Raspberry installation and provisioning |
 | [Network recovery](docs/NETWORK_RECOVERY.md) | Port 80, hostname access, setup AP and Wi-Fi recovery |
+| [Device administration](docs/DEVICE_ADMINISTRATION.md) | Menu audiences, restart and factory reset |
 | [Extension lifecycle](docs/EXTENSION_LIFECYCLE.md) | Package, version and data lifecycle |
 | [Runtime extension v1](docs/RUNTIME_EXTENSION_V1.md) | Declarative extension contract |
 | [Compiled extension v1](docs/COMPILED_EXTENSION_V1.md) | Reviewed Vue compilation boundary |

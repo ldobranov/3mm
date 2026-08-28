@@ -111,7 +111,8 @@ import { useRouter } from 'vue-router';
 import { useI18n } from '@/utils/i18n';
 import { useSettingsStore } from '@/stores/settings';
 import ThemeToggle from './ThemeToggle.vue';
-import { mergeNavigationItems } from '@/utils/menu-navigation';
+import { isNavigationItemVisible, mergeNavigationItems } from '@/utils/menu-navigation';
+import type { MenuAudience } from '@/utils/menu-navigation';
 import { readAvailableLanguages, readLanguageSettings } from '@/utils/language-api';
 import { reloadRuntimeExtensionRoutes } from '@/utils/runtime-extensions';
 
@@ -125,6 +126,7 @@ export default defineComponent({
       label: string | { [key: string]: string };
       path: string;
       icon?: string;
+      audience?: MenuAudience;
     }
 
     const menuItems = ref<MenuItem[]>([]);
@@ -190,15 +192,12 @@ export default defineComponent({
 
         // Check route requirements
         const route = router.getRoutes().find((r) => r.path === item.path);
-        if (!route) return true; // Show if route not found (external link)
-
-        const requiresAuth = route.meta?.requiresAuth === true;
-        if (requiresAuth && !isLoggedIn.value) return false;
-
-        const requiredRole = route.meta?.requiresRole as string | undefined;
-        if (requiredRole && currentRole.value !== requiredRole) return false;
-
-        return true;
+        return isNavigationItemVisible(item, {
+          isLoggedIn: isLoggedIn.value,
+          currentRole: currentRole.value,
+          routeRequiresAuth: route?.meta?.requiresAuth === true,
+          routeRequiredRole: route?.meta?.requiresRole as string | undefined,
+        });
       });
     });
 

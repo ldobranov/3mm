@@ -19,6 +19,22 @@ class MenuCreateSchema(PydanticBaseModel):
 
 class MenuRenameSchema(PydanticBaseModel):
     name: str
+
+
+def _validated_menu_items(value: object) -> list:
+    if not isinstance(value, list):
+        raise HTTPException(status_code=400, detail="Menu items must be a list")
+    for item in value:
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=400, detail="Menu item must be an object")
+        audience = item.get("audience")
+        if audience is not None and audience not in {
+            "public",
+            "authenticated",
+            "admin",
+        }:
+            raise HTTPException(status_code=400, detail="Menu item audience is invalid")
+    return value
 from backend.db.page import Page
 from backend.db.settings import Settings
 from backend.db.user import User, UserSchema
@@ -845,7 +861,7 @@ def update_menu(
         language_code = menu_data.get("language", "en")
 
         # Get items directly from menu data (new optimal structure)
-        items = menu_data.get("items", [])
+        items = _validated_menu_items(menu_data.get("items", []))
 
         # Update menu fields
         db_menu.name = menu_data.get("name", db_menu.name)

@@ -329,6 +329,42 @@ def test_recovery_setup_keeps_previous_provisioning_when_new_wifi_fails(
     assert marker.is_active() is True
 
 
+def test_recovery_setup_prefills_only_non_secret_previous_values(tmp_path) -> None:
+    snapshot = recovery_snapshot()
+    store = MemoryProvisioningStore(snapshot)
+    marker = FileNetworkRecoveryMarker(tmp_path / "network-recovery.json")
+    marker.activate("manual")
+
+    with TestClient(
+        create_app(MockNetworkAdapter(), store, recovery_marker=marker)
+    ) as client:
+        response = client.get("/api/v1/setup/prefill")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "locale": "en-GB",
+        "device_name": "old-device",
+        "administrator_name": "admin",
+        "role": "standalone",
+        "hub_endpoint": None,
+    }
+    assert "network" not in response.text
+    assert "passphrase" not in response.text
+
+
+def test_first_boot_setup_prefill_is_empty(store) -> None:
+    with TestClient(create_app(MockNetworkAdapter(), store)) as client:
+        response = client.get("/api/v1/setup/prefill")
+
+    assert response.json() == {
+        "locale": None,
+        "device_name": None,
+        "administrator_name": None,
+        "role": None,
+        "hub_endpoint": None,
+    }
+
+
 def test_successful_recovery_replaces_snapshot_and_clears_marker(
     configuration, tmp_path
 ):

@@ -105,6 +105,7 @@ def read_source_payload(source_archive: Path) -> list[PayloadFile]:
         "backend/requirements.txt",
         "backend/services/update_staging.py",
         "deployment/apply_staged_update.py",
+        "deployment/factory_reset.py",
         "deployment/install-systemd.sh",
         "deployment/migrate_database.py",
         "deployment/update-dependency-allowlist.json",

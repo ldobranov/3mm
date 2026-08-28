@@ -32,6 +32,14 @@ class SetupStatus(SetupApiModel):
     role: AgentRole | None
 
 
+class SetupPrefill(SetupApiModel):
+    locale: str | None = None
+    device_name: str | None = None
+    administrator_name: str | None = None
+    role: AgentRole | None = None
+    hub_endpoint: str | None = None
+
+
 class SetupOutcome(SetupApiModel):
     state: ProvisioningState
     role: AgentRole | None

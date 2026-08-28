@@ -1,5 +1,20 @@
 {
   "common": { "cancel": "Отказ", "error": "Грешка", "save": "Запази", "saving": "Запазване…" },
+  "settings": {
+    "menuAudience": "Видимо за", "menuAudiencePublic": "Всички", "menuAudienceAuthenticated": "Влезли потребители",
+    "menuAudienceAdmin": "Администратори", "menuPublicRouteRequired": "Този адрес изисква вход и не може да бъде направен публичен."
+  },
+  "systemControl": {
+    "navigation": "Управление на устройството", "title": "Управление на устройството",
+    "description": "Рестартирайте Raspberry Pi или изтрийте постоянните 3mm данни и се върнете към първоначалната настройка.",
+    "restartTitle": "Рестарт на Raspberry Pi", "restartHelp": "Рестартира устройството. Приложението ще бъде недостъпно за кратко.",
+    "restartButton": "Рестартирай", "restartConfirm": "Да се рестартира ли Raspberry Pi сега?",
+    "restartQueued": "Рестартът е заявен. Свържете се отново след стартирането на устройството.",
+    "factoryTitle": "Фабрично нулиране", "factoryHelp": "Изтрива окончателно потребители, настройки, extensions, dashboards, Agent identity и provisioning данни, след което стартира setup Wi-Fi.",
+    "factoryButton": "Изтрий и нулирай", "factoryConfirm": "Това ще изтрие окончателно всички 3mm данни. Въведете FACTORY RESET, за да продължите.",
+    "factoryQueued": "Фабричното нулиране е заявено. Свържете се към отворената мрежа 3mm Setup, за да настроите устройството отново.",
+    "working": "Стартиране…", "actionFailed": "Системното действие не можа да бъде стартирано."
+  },
   "profile": {
     "title": "Моят профил", "account": "Акаунт", "username": "Потребителско име", "email": "Имейл",
     "role": "Роля", "status": "Статус", "active": "Активен", "inactive": "Неактивен",

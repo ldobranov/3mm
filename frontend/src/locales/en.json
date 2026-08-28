@@ -1,5 +1,20 @@
 {
   "common": { "cancel": "Cancel", "error": "Error", "save": "Save", "saving": "Saving…" },
+  "settings": {
+    "menuAudience": "Visible to", "menuAudiencePublic": "Everyone", "menuAudienceAuthenticated": "Signed-in users",
+    "menuAudienceAdmin": "Administrators", "menuPublicRouteRequired": "This route requires sign-in and cannot be exposed publicly."
+  },
+  "systemControl": {
+    "navigation": "Device control", "title": "Device control",
+    "description": "Restart this Raspberry Pi or erase all persistent 3mm data and return it to first-boot setup.",
+    "restartTitle": "Restart Raspberry Pi", "restartHelp": "Restarts the device. The application will be unavailable for a short time.",
+    "restartButton": "Restart device", "restartConfirm": "Restart the Raspberry Pi now?",
+    "restartQueued": "Restart requested. Reconnect after the device starts again.",
+    "factoryTitle": "Factory reset", "factoryHelp": "Permanently deletes users, settings, extensions, dashboards, Agent identity and provisioning data, then starts the setup Wi-Fi.",
+    "factoryButton": "Erase and reset", "factoryConfirm": "This permanently deletes all 3mm data. Type FACTORY RESET to continue.",
+    "factoryQueued": "Factory reset requested. Connect to the open 3mm Setup Wi-Fi to configure the device again.",
+    "working": "Starting…", "actionFailed": "The system action could not be started."
+  },
   "profile": {
     "title": "My profile", "account": "Account", "username": "Username", "email": "Email",
     "role": "Role", "status": "Status", "active": "Active", "inactive": "Inactive",

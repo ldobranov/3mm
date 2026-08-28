@@ -81,6 +81,19 @@
       const scanButton = document.querySelector('#scan-networks');
       const submitButton = form.querySelector('button[type="submit"]');
 
+      async function loadSavedSetup() {
+        try {
+          const response = await fetch('/api/v1/setup/prefill');
+          if (!response.ok) return;
+          const saved = await response.json();
+          for (const name of ['locale', 'device_name', 'administrator_name', 'role', 'hub_endpoint']) {
+            if (typeof saved[name] !== 'string' || !saved[name]) continue;
+            const field = form.elements.namedItem(name);
+            if (field) field.value = saved[name];
+          }
+        } catch (_) {}
+      }
+
       function showReconnectMessage(network) {
         status.dataset.error = 'false';
         status.textContent = `Setup saved. Connect to “${network}” and reopen Mega Monitor. If the setup network remains available, check the password and try again.`;
@@ -178,6 +191,7 @@
       });
 
       loadTheme();
+      loadSavedSetup();
       scanNetworks();
     </script>
   </body>

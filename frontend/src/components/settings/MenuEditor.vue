@@ -66,6 +66,26 @@
                 @input="updateMenuItemPath(index, $event)"
               />
             </div>
+
+            <div class="menu-editor-field">
+              <label class="form-label menu-item-field-label">
+                {{ t('settings.menuAudience', 'Visible to') }}
+              </label>
+              <select
+                class="select menu-item-access-input"
+                :value="item.audience || defaultAudienceForPath(item.path)"
+                @change="updateMenuItemAudience(index, $event)"
+              >
+                <option value="public" :disabled="!isPublicRoute(item.path)">
+                  {{ t('settings.menuAudiencePublic', 'Everyone') }}
+                </option>
+                <option value="authenticated">{{ t('settings.menuAudienceAuthenticated', 'Signed-in users') }}</option>
+                <option value="admin">{{ t('settings.menuAudienceAdmin', 'Administrators') }}</option>
+              </select>
+              <small v-if="!isPublicRoute(item.path)" class="help-text">
+                {{ t('settings.menuPublicRouteRequired', 'This route requires sign-in and cannot be exposed publicly.') }}
+              </small>
+            </div>
           </div>
         </div>
 
@@ -123,6 +143,15 @@
             :placeholder="t('settings.customPathPlaceholder', '/custom-path')"
           />
         </div>
+
+        <div class="menu-editor-field">
+          <label class="form-label">{{ t('settings.menuAudience', 'Visible to') }}</label>
+          <select v-model="newItem.audience" class="select menu-editor-input">
+            <option value="public" :disabled="!isPublicRoute(resolvedNewItemPath)">{{ t('settings.menuAudiencePublic', 'Everyone') }}</option>
+            <option value="authenticated">{{ t('settings.menuAudienceAuthenticated', 'Signed-in users') }}</option>
+            <option value="admin">{{ t('settings.menuAudienceAdmin', 'Administrators') }}</option>
+          </select>
+        </div>
       </div>
 
       <button
@@ -137,7 +166,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref } from 'vue'
+import { computed, defineComponent, ref } from 'vue'
 import type { PropType } from 'vue'
 import { useI18n } from '@/utils/i18n'
 import { VueDraggable } from 'vue-draggable-plus'
@@ -145,12 +174,14 @@ import { VueDraggable } from 'vue-draggable-plus'
 interface MenuItem {
   label: Record<string, string>
   path: string
+  audience?: 'public' | 'authenticated' | 'admin'
 }
 
 interface MenuRouteOption {
   path: string
   label: string
   adminOnly: boolean
+  requiresAuth: boolean
 }
 
 export default defineComponent({
@@ -187,10 +218,32 @@ export default defineComponent({
   emits: ['add-item', 'edit-item', 'remove-item', 'update-items', 'drag-end'],
   setup(props, { emit }) {
     const { t } = useI18n()
-    const newItem = ref({ label: '', path: '' })
+    const newItem = ref<{ label: string; path: string; audience: MenuItem['audience'] }>({
+      label: '',
+      path: '',
+      audience: 'authenticated'
+    })
     const newItemCustomPath = ref('')
 
     const isKnownRoute = (path: string) => props.routeOptions.some(route => route.path === path)
+
+    const resolvedNewItemPath = computed(() => newItem.value.path === '__custom__'
+      ? newItemCustomPath.value.trim()
+      : newItem.value.path)
+
+    const routeForPath = (path: string) => props.routeOptions.find(route => route.path === path)
+
+    const isPublicRoute = (path: string) => {
+      const route = routeForPath(path)
+      return route ? !route.requiresAuth : Boolean(path)
+    }
+
+    const defaultAudienceForPath = (path: string): MenuItem['audience'] => {
+      const route = routeForPath(path)
+      if (route?.adminOnly) return 'admin'
+      if (route?.requiresAuth) return 'authenticated'
+      return 'public'
+    }
 
     const normalizeMenuItemLabel = (item: MenuItem) => {
       if (typeof item.label === 'string') {
@@ -225,8 +278,16 @@ export default defineComponent({
       const items = [...props.menu.items]
       items[index] = {
         ...items[index],
-        path: target.value === '__custom__' ? '' : target.value
+        path: target.value === '__custom__' ? '' : target.value,
+        audience: defaultAudienceForPath(target.value === '__custom__' ? '' : target.value)
       }
+      emit('update-items', items)
+    }
+
+    const updateMenuItemAudience = (index: number, event: Event) => {
+      const target = event.target as HTMLSelectElement
+      const items = [...props.menu.items]
+      items[index] = { ...items[index], audience: target.value as MenuItem['audience'] }
       emit('update-items', items)
     }
 
@@ -234,6 +295,7 @@ export default defineComponent({
       if (newItem.value.path === '__custom__') return
       const route = props.routeOptions.find(item => item.path === newItem.value.path)
       if (route && !newItem.value.label.trim()) newItem.value.label = route.label
+      newItem.value.audience = defaultAudienceForPath(newItem.value.path)
     }
 
     const handleItemsReorder = (items: MenuItem[]) => {
@@ -252,11 +314,12 @@ export default defineComponent({
 
       const items = [...props.menu.items, {
         label: labelObj,
-        path
+        path,
+        audience: newItem.value.audience || defaultAudienceForPath(path)
       }]
 
       emit('update-items', items)
-      newItem.value = { label: '', path: '' }
+      newItem.value = { label: '', path: '', audience: 'authenticated' }
       newItemCustomPath.value = ''
     }
 
@@ -281,10 +344,14 @@ export default defineComponent({
       t,
       newItem,
       newItemCustomPath,
+      resolvedNewItemPath,
       isKnownRoute,
+      isPublicRoute,
+      defaultAudienceForPath,
       updateMenuItemLabel,
       updateMenuItemPath,
       updateMenuItemRoute,
+      updateMenuItemAudience,
       handleNewRouteChange,
       handleItemsReorder,
       addMenuItem,
@@ -367,7 +434,7 @@ export default defineComponent({
 
 .menu-item-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(10rem, 0.8fr);
   gap: 0.75rem;
 }
 
@@ -383,6 +450,7 @@ export default defineComponent({
 
 .menu-item-label,
 .menu-item-path-input,
+.menu-item-access-input,
 .menu-editor-input {
   width: 100%;
 }

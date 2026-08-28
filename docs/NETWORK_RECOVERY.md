@@ -52,7 +52,9 @@ when the device is protected by a UPS but the router is not.
 3. If automatic opening does not occur, browse to
    `http://10.42.0.1:8895/setup`.
 4. Select a network from the scan results or enter its SSID manually.
-5. Enter the Wi-Fi password and the remaining provisioning values, then save.
+5. In recovery mode the previous device name, locale, administrator metadata,
+   role and Hub address are pre-filled. Select the destination network, enter
+   its Wi-Fi password and review the remaining values, then save.
 6. Reconnect the phone to the destination network and open the device through
    its IP address or `<hostname>.local`.
 
@@ -65,6 +67,8 @@ expected runtime transition as success once the profile was accepted.
 - Only an authenticated administrator can change the automatic policy or
   request manual setup.
 - The policy and recovery marker contain no Wi-Fi password.
+- Recovery prefill contains only non-secret provisioning metadata. The Wi-Fi
+  password must always be entered again.
 - The destination password is passed to NetworkManager and is not written to
   the application database, provisioning journal or logs.
 - Setup Web remains unprivileged and receives only the low-port bind capability
@@ -94,5 +98,6 @@ Wi-Fi-only Raspberry Pi 3B+:
 - 38 focused setup/systemd tests and all 47 frontend tests passed before the
   accepted deployment.
 
-Clean-media repetition and setup-profile behavior across a full Raspberry
-reboot remain part of the open Milestone 10 acceptance boundary.
+The one-command flow has also been repeated successfully on clean media.
+Setup-profile behavior across a full Raspberry reboot remains part of the open
+Milestone 10 acceptance boundary.

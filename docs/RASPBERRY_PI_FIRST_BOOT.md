@@ -258,12 +258,35 @@ runtime without changing the Core database or Agent identity.
 See [NETWORK_RECOVERY.md](NETWORK_RECOVERY.md) for the runtime boundary,
 fallback addresses and operational details.
 
+## 9. Restart or reset the installed device
+
+Administrators can open **Settings → Device Control** after provisioning.
+
+- **Restart device** schedules a normal Raspberry Pi restart. Core acknowledges
+  the audited request before the helper restarts the host, so the browser and
+  SSH connection are expected to disappear briefly.
+- **Factory reset** requires the exact phrase `FACTORY RESET`. It deletes
+  persistent 3mm users, settings, dashboards, extensions, Agent identity,
+  provisioning data, deployment backups and update-helper state. The current
+  immutable release and Raspberry Pi OS remain installed, and setup Wi-Fi is
+  started again.
+
+Factory reset is not an SD-card erase. The last verified NetworkManager Wi-Fi
+profile remains available as a connection rollback until setup successfully
+applies a replacement. During the current Beta, the empty application database
+receives the documented test administrator again.
+
+See [DEVICE_ADMINISTRATION.md](DEVICE_ADMINISTRATION.md) for confirmations,
+authorization and the complete reset boundary.
+
 ## Current acceptance boundary
 
 The host/release preflight, one-command installation, Wi-Fi-only handoff to the
 open setup AP, captive setup and return to the Standalone runtime have been
-verified on a clean SD card on the physical Pi 3B+. Local Agent pairing and the
-full post-install checklist remain separate acceptance steps.
+verified on a clean SD card on the physical Pi 3B+. Restart is implemented and
+automatically tested. The destructive factory-reset path is intentionally still
+pending one explicit physical acceptance run. Local Agent pairing and the full
+post-install checklist remain separate acceptance steps.
 
 Node setup is also not yet claimed as complete. The portal persists the selected
 Hub address, but external-Hub credential bootstrap is not yet a single first-boot

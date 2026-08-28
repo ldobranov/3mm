@@ -220,3 +220,61 @@ def test_network_setup_boundary_uses_only_the_fixed_module() -> None:
         "--group",
         "3mm",
     )
+
+
+def test_system_actions_accept_only_fixed_requests_and_workers(tmp_path: Path) -> None:
+    scheduled: list[str] = []
+
+    class FakeBoundary:
+        def schedule_system_action(self, action: str) -> None:
+            scheduled.append(action)
+
+    common = {
+        "stage_root": tmp_path / "stage",
+        "state_root": tmp_path / "state",
+        "allowlist": tmp_path / "allowlist.json",
+        "status_file": tmp_path / "status.json",
+        "boundary": FakeBoundary(),
+    }
+    restarted = update_helper._handle_request(
+        {"action": "restart_device", "requested_by_user_id": 7},
+        **common,
+    )
+    reset = update_helper._handle_request(
+        {"action": "factory_reset", "requested_by_user_id": 7},
+        **common,
+    )
+    injected = update_helper._handle_request(
+        {
+            "action": "factory_reset",
+            "requested_by_user_id": 7,
+            "path": "/var/lib/anything",
+        },
+        **common,
+    )
+
+    assert restarted == {"ok": True, "status": "queued"}
+    assert reset == {"ok": True, "status": "queued"}
+    assert injected == {"ok": False, "error": "invalid_request"}
+    assert scheduled == ["restart_device", "factory_reset"]
+
+
+def test_system_action_boundary_uses_fixed_commands() -> None:
+    calls: list[tuple[str, ...]] = []
+
+    class FakeRunner:
+        def run(self, arguments) -> int:
+            calls.append(tuple(arguments))
+            return 0
+
+    boundary = UpdateMutationBoundary(runner=FakeRunner())
+    boundary.schedule_system_action("restart_device")
+    boundary.schedule_system_action("factory_reset")
+
+    restart, reset = calls
+    assert restart[-2:] == ("/usr/bin/systemctl", "reboot")
+    assert "/bin/sh" not in restart and "/bin/bash" not in restart
+    assert reset[-1] == "/opt/3mm/current/deployment/factory_reset.py"
+    assert "--property=ProtectSystem=strict" in reset
+    assert "--property=ReadWritePaths=/var/lib/3mm" in reset
+    assert "/bin/sh" not in reset and "/bin/bash" not in reset

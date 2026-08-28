@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   isMenuRouteEligible,
+  isNavigationItemVisible,
   mergeNavigationItems,
   normalizeAvailableLanguages,
 } from './menu-navigation'
@@ -28,5 +29,27 @@ describe('menu navigation', () => {
     expect(isMenuRouteEligible('/automations/proposals', 'admin', 'admin')).toBe(true)
     expect(isMenuRouteEligible('/dashboard/:id/edit', undefined, 'admin')).toBe(false)
     expect(isMenuRouteEligible('/user/logout', undefined, 'admin')).toBe(false)
+  })
+
+  it('supports explicit public, signed-in and admin menu audiences', () => {
+    expect(isNavigationItemVisible(
+      { path: '/@demo/status', label: 'Status', audience: 'public' },
+      { isLoggedIn: false, currentRole: '' },
+    )).toBe(true)
+    expect(isNavigationItemVisible(
+      { path: '/dashboard', label: 'Dashboards', audience: 'authenticated' },
+      { isLoggedIn: false, currentRole: '', routeRequiresAuth: true },
+    )).toBe(false)
+    expect(isNavigationItemVisible(
+      { path: '/system/updates', label: 'Updates', audience: 'admin' },
+      { isLoggedIn: true, currentRole: 'user', routeRequiresAuth: true, routeRequiredRole: 'admin' },
+    )).toBe(false)
+  })
+
+  it('never lets a public menu flag bypass a protected route', () => {
+    expect(isNavigationItemVisible(
+      { path: '/settings', label: 'Settings', audience: 'public' },
+      { isLoggedIn: false, currentRole: '', routeRequiresAuth: true },
+    )).toBe(false)
   })
 })

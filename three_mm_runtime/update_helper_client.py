@@ -38,6 +38,20 @@ class UpdateHelperClient:
             }
         )
 
+    def request_system_action(
+        self,
+        action: str,
+        requested_by_user_id: int,
+    ) -> None:
+        if action not in {"restart_device", "factory_reset"}:
+            raise ValueError("Unsupported system action")
+        self._request(
+            {
+                "action": action,
+                "requested_by_user_id": requested_by_user_id,
+            }
+        )
+
     def _request(self, payload: dict[str, object]) -> None:
         request = json.dumps(payload, separators=(",", ":")).encode("utf-8") + b"\n"
         try:
