@@ -594,7 +594,7 @@ These are the first concrete tasks after approval of this plan:
 - [x] Validate the setup AP, automatic phone captive portal and setup-to-Standalone transition on physical `rasp-3mm`.
 - [x] Repeat the documented Standalone flow on clean media.
 - [x] Physically accept restart, destructive 3mm factory reset, setup-AP reboot and fresh Standalone setup.
-- [ ] Publish the accepted Milestone 10 source as the next official Beta release.
+- [x] Publish the accepted Milestone 10 source as the next official Beta release (`v0.3.0-beta.9`).
 - [ ] Define the Milestone 11 backup manifest and complete persistent-state inventory.
 - [ ] Add a read-only backup preview with compatibility, checksum, size and free-space reporting.
 - [ ] Implement root-local backup and restore under the shared mutation lock with automatic rollback.
