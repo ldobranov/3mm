@@ -8,6 +8,8 @@ pre-1.0.
 
 ## [Unreleased]
 
+## [0.3.0-beta.9] - 2026-08-28
+
 ### Added
 
 - Recovery setup now pre-fills the previous device name, locale,
@@ -34,8 +36,10 @@ pre-1.0.
   and update-helper are healthy, ports 80/8080 and `rasp-3mm.local` return HTTP
   200, and the new system-control endpoints enforce authentication.
 - Passed 60 focused backend/provisioning/deployment tests, all 54 frontend
-  tests, TypeScript checking and the production frontend build. Physical
-  factory-reset acceptance remains pending.
+  tests, TypeScript checking and the production frontend build.
+- Physically completed the factory-reset path: persistent 3mm state was erased,
+  the open setup AP returned across reboot, phone setup completed again and the
+  fresh Standalone login worked.
 
 ## [0.3.0-beta.8] - 2026-08-27
 
@@ -311,7 +315,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.8...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.9...HEAD
+[0.3.0-beta.9]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.9
 [0.3.0-beta.8]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.8
 [0.3.0-beta.7]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.7
 [0.3.0-beta.6]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.6

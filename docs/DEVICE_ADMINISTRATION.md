@@ -73,9 +73,10 @@ storage contents must be replaced.
 
 ## Current verification boundary
 
-The review release `worktree-4eb350b6a650-20260828075444` is active on the clean
-Raspberry Pi baseline. Core, Web, Agent and update-helper are healthy. Both
-system-control endpoints reject anonymous requests, and their request/helper
-boundaries are covered by focused tests. Restart and factory reset were not
-triggered during deployment; destructive physical factory-reset acceptance is
-still pending.
+Review release `worktree-4eb350b6a650-20260828075444` was installed on the clean
+Raspberry Pi baseline. Core, Web, Agent and update-helper were healthy, and both
+system-control endpoints rejected anonymous requests. Physical acceptance then
+confirmed restart, complete 3mm state removal, setup-AP return across reboot,
+phone provisioning and a fresh Standalone login. The request/helper and fixed
+filesystem boundaries are also covered by focused tests. The accepted behavior
+is included in `v0.3.0-beta.9`.

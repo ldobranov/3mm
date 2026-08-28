@@ -2,9 +2,9 @@
 
 Date started: 2026-08-25
 
-Status: in progress
+Status: completed on 2026-08-28
 
-Latest accepted official release commit: `4eb350b chore: prepare v0.3.0-beta.8 release`
+Closure release: `v0.3.0-beta.9`
 
 Canonical rollback release: `v0.3.0-beta.8`
 
@@ -37,8 +37,8 @@ The documented one-command installation has now also been repeated on clean
 media. The Wi-Fi-only bootstrap survived the SSH handoff, exposed the open setup
 AP and captive portal, and returned to a healthy Standalone runtime after phone
 provisioning. The review deployment adds secret-free recovery prefill,
-audience-aware menus and audited restart/factory-reset controls. Every path
-except the destructive factory-reset execution has been physically reviewed.
+audience-aware menus and audited restart/factory-reset controls. The complete
+destructive reset, AP reboot and fresh setup path is physically accepted.
 
 ## Controlled reboot acceptance
 
@@ -340,19 +340,25 @@ Post-deployment verification confirmed:
 
 The user accepted recovery prefill, menu visibility and restart behavior. The
 factory-reset request and worker are covered by automated permission, command
-boundary and filesystem-scope tests, but the destructive physical execution was
-deliberately deferred so the newly accepted clean installation remains usable.
+boundary and filesystem-scope tests. Physical execution also confirmed that
+old 3mm state is removed, setup Wi-Fi returns after reboot, phone provisioning
+can be completed again and the fresh Standalone login works.
 
 Sixty focused backend/provisioning/deployment tests, all 54 frontend tests,
 TypeScript checking and the production frontend build passed for this slice.
 
-## Remaining acceptance work
+## Closure and deferred boundaries
 
-- configure and physically verify a GPIO output before testing local
-  input-to-output automation with Core unavailable;
-- verify the open setup-only AP and saved NetworkManager profile across reboot;
-- physically accept the explicit 3mm factory-reset path on a disposable state;
-- complete external-Hub credential bootstrap for a Node first boot;
-- measure a Pi Zero 2 W if that hardware becomes available;
-- close the final Milestone 10 acceptance checklist after the remaining physical
-  tests.
+Milestone 10 is closed on the available Raspberry Pi 3B+ baseline. The accepted
+boundary includes clean-media installation, real GPIO input, immutable runtime,
+reboot/reconnect, Core outage buffering, storage retention, OTA rollback,
+network recovery, captive setup, restart and factory reset.
+
+The following are deliberately moved out of this milestone:
+
+- external-Hub credential bootstrap and multi-device orchestration move to the
+  Hub/Node milestone;
+- additional native output wiring and device integrations move to capability
+  expansion and require their own hardware acceptance;
+- Pi Zero 2 W measurements remain conditional on that hardware becoming
+  available and do not block the accepted Pi 3B+ baseline.

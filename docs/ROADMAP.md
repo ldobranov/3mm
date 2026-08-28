@@ -1,6 +1,6 @@
 # 3mm Roadmap
 
-Status: active; Milestones 0–9 completed, Milestone 10 in progress
+Status: active; Milestones 0–10 completed, Milestone 11 planned
 Planning style: sequential milestones with a runnable result after every milestone
 
 Dates are intentionally not assigned until the current baseline is reproducible. Progress is measured by acceptance criteria, not optimistic calendar estimates.
@@ -32,7 +32,8 @@ Acceptance criteria:
 
 ## Milestone 1 — Core and Agent foundations
 
-Status: in progress; first Raspberry Pi 3B+ baseline captured on 2026-08-09. See [RASPBERRY_PI_BASELINE.md](RASPBERRY_PI_BASELINE.md).
+Status: completed on 2026-08-09; first Raspberry Pi 3B+ baseline captured in
+[RASPBERRY_PI_BASELINE.md](RASPBERRY_PI_BASELINE.md).
 
 Goal: introduce a real Agent, shared contracts and the universal device-role foundation.
 
@@ -63,6 +64,8 @@ Acceptance criteria:
 - failed first-boot network configuration returns to setup mode.
 
 ## Milestone 2 — Secure pairing and device registry
+
+Status: completed on 2026-08-09 as the accepted foundation for Milestone 3.
 
 Goal: replace the hardcoded Raspberry list with real devices.
 
@@ -304,15 +307,11 @@ Stages (completed on 2026-08-23):
 
 Goal: replace mock hardware with real Raspberry adapters while preserving contracts.
 
-Status: in progress on the physical `rasp-3mm` Raspberry Pi 3B+ baseline. The
-native `libgpiod` input path, systemd deployment, reboot and reconnect behavior,
-bounded release retention and automatic failed-deployment rollback are
-accepted; deployment-backup retention and the read-only first-boot preflight are
-also accepted. Administrator-controlled network recovery, the phone captive
-portal, the physical setup-to-Standalone transition and the repeatable
-clean-media installation are accepted. Audited restart and factory-reset
-controls are implemented; destructive factory-reset acceptance remains. See
-[MILESTONE_10_REPORT.md](MILESTONE_10_REPORT.md).
+Status: completed on 2026-08-28 on the physical `rasp-3mm` Raspberry Pi 3B+
+baseline. Native GPIO input, immutable systemd deployment, reboot/reconnect,
+Core-outage buffering, bounded storage, failed-deployment rollback, OTA,
+clean-media installation, network recovery, captive setup, restart and factory
+reset are accepted. See [MILESTONE_10_REPORT.md](MILESTONE_10_REPORT.md).
 
 Deliverables:
 
@@ -333,71 +332,84 @@ Acceptance criteria:
 - CPU, memory and storage remain within documented limits;
 - clean device installation can be repeated from the guide.
 
-## Milestone 11 — Safe compiled AI module builder
+## Milestone 11 — Recoverable Standalone appliance
 
-Goal: evolve the existing AI Extension Builder into a controlled module development pipeline.
+Goal: make one Standalone device safely ownable, diagnosable and recoverable
+before adding more devices or more executable extension power.
 
-Boundary: Milestone 9 covers trusted capability composition and deterministic
-generation. This milestone covers genuinely new executable frontend/backend
-code that cannot be expressed through registered capabilities.
-
-Deliverables:
-
-- isolated build workspace;
-- manifest-first generation;
-- generated tests and validation gates;
-- dependency allowlist and license metadata;
-- artifact signing and immutable versions;
-- human review diff;
-- isolated runtime for generated backend code.
-
-Acceptance criteria:
-
-- generated code never executes inside the Core API process before approval;
-- failed checks prevent packaging and installation;
-- requested permissions are visible and explainable;
-- installed artifact corresponds exactly to the reviewed hash;
-- removal and rollback are verified.
-
-## Milestone 12 — Production operations
-
-Goal: make small real installations supportable.
+Status: planned. Work begins after the accepted Milestone 10 source is
+published as the next official Beta release.
 
 Deliverables:
 
-- backup and verified restore;
-- Core migration from Raspberry Pi to PC;
-- TLS and secure remote access guidance;
-- fleet update rings and maintenance windows;
-- retention and storage management;
-- diagnostics bundle with secret redaction;
-- release compatibility matrix.
+- versioned backup manifest with application, database and protocol
+  compatibility metadata;
+- consistent backup of Core data, uploads, dashboards, extensions, Builder
+  projects, menus, settings, Agent identity, provisioning and operational
+  policy;
+- explicit classification and protection of credentials and other secret
+  material; no secret-bearing browser download in plaintext;
+- backup catalog with size reporting and bounded retention;
+- restore preview, checksum, compatibility and free-space validation before
+  mutation;
+- service quiescence and the shared mutation lock during restore;
+- automatic rollback when migration, activation or health verification fails;
+- administrator UI for backup, restore progress and device storage;
+- diagnostic bundle with deterministic secret redaction;
+- physical backup → factory reset → restore acceptance on `rasp-3mm`.
 
 Acceptance criteria:
 
-- Core can be restored onto a different host without re-pairing all Agents, subject to preserved keys;
-- failed staged update does not affect the whole fleet;
-- diagnostics are useful and contain no secrets;
-- storage cannot grow without configured bounds;
-- release and rollback procedures are repeatable.
+- a verified restore recovers users, settings, dashboards, installed
+  extensions and Builder project history;
+- full-device restore preserves Agent identity and credentials so the device
+  does not need to be paired again;
+- a corrupt, truncated or incompatible archive is rejected before persistent
+  state changes;
+- a failed restore returns to the exact pre-restore state and healthy runtime;
+- diagnostics are useful without containing passwords, provider keys, tokens
+  or private device credentials;
+- backup history cannot grow without a configured bound.
 
-OTA update stages (see [OTA_UPDATE_PLAN.md](OTA_UPDATE_PLAN.md)):
+Stages:
 
-1. administrator-only, read-only release catalog and dependency preview — completed locally on 2026-08-26;
-2. reproducible, architecture-specific GitHub Release artifacts and strict manifest generation — `v0.1.0` published;
-3. verified staging, allowlisted dependency installation, explicit approval and automatic rollback — completed on physical `rasp-3mm`; failed candidates rolled back and `v0.2.3` completed the successful OTA acceptance run;
-4. update channels, maintenance windows and fleet rollout controls — explicit
-   `stable`/`beta`/`test` selection is physically accepted through the
-   `v0.3.0-beta.3` to `v0.3.0-beta.4` OTA path; persistent read-only automatic
-   checks, cached backoff and server-enforced daily maintenance windows are
-   physically accepted through the `v0.3.0-beta.4` to `v0.3.0-beta.5`
-   Standalone OTA path; fleet rings remain for the Hub/Node architecture.
+1. backup manifest, state inventory and compatibility contract;
+2. root-local snapshot/restore engine with validation and rollback;
+3. administrator UI, bounded retention and redacted diagnostics;
+4. physical factory-reset/restore acceptance and official Beta release.
 
-## Milestone 13 — Ecosystem expansion
+## Milestone 12 — Hub and Node orchestration
 
-Goal: expand capabilities without weakening Core architecture.
+Goal: turn the proven Standalone device model into a real multi-device system
+without reinstalling a Standalone device to promote it to Hub.
 
-Candidate modules:
+Deliverables:
+
+- complete Node first-boot flow with Hub discovery or explicit Hub address;
+- one-time Hub-issued Node credential bootstrap and revocation;
+- Hub topology, Node inventory, online/offline state and role management;
+- routed desired state, commands, capability events and diagnostics;
+- local mock topology for multiple Nodes without Raspberry-only imports;
+- safe behavior while a Node or Hub is temporarily unreachable;
+- promotion of an existing Standalone installation to Hub without data loss;
+- update-policy foundation for per-device and staged rollout groups.
+
+Acceptance criteria:
+
+- an unknown Node cannot join a Hub silently;
+- an approved Node retains identity across reconnect and reboot;
+- losing the Hub does not stop already deployed local Node behavior;
+- reconnect drains buffered state without duplicate actions;
+- revocation prevents a Node from reconnecting;
+- one Hub manages at least two independent mock Nodes, with physical Node
+  acceptance when a second device is available.
+
+## Milestone 13 — Capability and integration expansion
+
+Goal: add useful reusable capabilities through the contracts already accepted,
+without weakening Core or turning integrations into hardcoded product logic.
+
+Candidate capabilities and modules:
 
 - media player and kiosk;
 - UDP, MQTT and Modbus;
@@ -406,16 +418,86 @@ Candidate modules:
 - audio and lighting;
 - Home Assistant bridge;
 - museum installation bundle based on ShowController lessons;
-- child-center device integrations where appropriate;
-- signed private module repositories.
+- child-center device integrations where appropriate.
 
 Candidate selection criteria:
 
-- real user need;
-- reusable capability rather than one-off special case;
-- clear permissions and failure behavior;
-- laptop-testable logic;
-- hardware availability for final acceptance.
+- real user need and a concrete acceptance scenario;
+- reusable capability rather than a one-off extension name in Core;
+- explicit permissions, ownership and offline behavior;
+- deterministic mock implementation for laptop tests;
+- physical validation when the required hardware is available;
+- compatibility with the capability-based Extension Builder.
+
+Acceptance criteria:
+
+- each selected integration works through a declared capability contract;
+- generated widgets and automations consume the capability without direct
+  hardware or transport access;
+- missing hardware and network failure produce explicit offline/stale state;
+- install, disable, rollback and uninstall preserve unrelated device state.
+
+## Milestone 14 — Production hardening and operations
+
+Goal: make small real installations supportable and establish the security
+boundary required before arbitrary AI-generated executable code is considered.
+
+Deliverables:
+
+- TLS and secure remote-access deployment guidance;
+- production administrator bootstrap and credential-rotation policy;
+- secret lifecycle for backups, provider keys and device credentials;
+- signed releases and trusted private module repositories;
+- release compatibility matrix and supported migration windows;
+- fleet update rings and maintenance-window coordination for Hub/Node;
+- audit retention, operational alerts and supportable redacted diagnostics;
+- restore and Core migration between supported hosts.
+
+Acceptance criteria:
+
+- Core can be restored onto a different host without re-pairing all Agents when
+  the protected credential material is included;
+- failed staged updates do not affect an entire fleet;
+- remote access does not require exposing the development HTTP boundary;
+- secrets can be rotated without reinstalling the complete system;
+- release, rollback and support procedures are repeatable.
+
+OTA update stages (see [OTA_UPDATE_PLAN.md](OTA_UPDATE_PLAN.md)):
+
+1. administrator-only, read-only release catalog and dependency preview — completed locally on 2026-08-26;
+2. reproducible, architecture-specific GitHub Release artifacts and strict manifest generation — `v0.1.0` published;
+3. verified staging, allowlisted dependency installation, explicit approval and automatic rollback — completed on physical `rasp-3mm`; failed candidates rolled back and `v0.2.3` completed the successful OTA acceptance run;
+4. update channels and Standalone maintenance windows — physically accepted through `v0.3.0-beta.5`;
+5. fleet rollout rings and coordinated maintenance — deferred until Milestone 12 provides Hub/Node orchestration.
+
+## Milestone 15 — Safe compiled AI module builder
+
+Goal: allow genuinely new AI-generated executable frontend/backend modules only
+after the production isolation, signing and operational boundaries exist.
+
+Boundary: Milestone 9 remains the preferred trusted capability-composition
+path. This milestone is only for behavior that cannot be expressed through
+registered capabilities.
+
+Deliverables:
+
+- isolated build workspace and runtime sandbox;
+- manifest-first generation;
+- generated tests and validation gates;
+- dependency allowlist and license metadata;
+- artifact signing and immutable versions;
+- human review diff tied to the installed artifact hash;
+- isolated runtime for generated backend code;
+- explicit resource, network, filesystem and device permission enforcement.
+
+Acceptance criteria:
+
+- generated code never executes inside the Core API process before approval;
+- failed checks prevent packaging and installation;
+- requested permissions are visible and explainable;
+- installed code corresponds exactly to the reviewed and signed hash;
+- sandbox escape attempts fail closed;
+- removal and rollback are verified without losing extension data.
 
 ## Immediate work queue
 
@@ -510,10 +592,15 @@ These are the first concrete tasks after approval of this plan:
 - [x] Add administrator-controlled manual and five-minute offline network recovery.
 - [x] Serve the application on port 80 through both its LAN IP and mDNS hostname while retaining port 8080 compatibility.
 - [x] Validate the setup AP, automatic phone captive portal and setup-to-Standalone transition on physical `rasp-3mm`.
-- [ ] Add fleet rollout rings only after Hub/Node orchestration exists.
 - [x] Repeat the documented Standalone flow on clean media.
-- [ ] Physically accept the destructive 3mm factory-reset path and close the remaining device-control boundary.
-- [ ] Validate the open setup-only access point and persistent NetworkManager profile across a Raspberry Pi reboot.
+- [x] Physically accept restart, destructive 3mm factory reset, setup-AP reboot and fresh Standalone setup.
+- [ ] Publish the accepted Milestone 10 source as the next official Beta release.
+- [ ] Define the Milestone 11 backup manifest and complete persistent-state inventory.
+- [ ] Add a read-only backup preview with compatibility, checksum, size and free-space reporting.
+- [ ] Implement root-local backup and restore under the shared mutation lock with automatic rollback.
+- [ ] Add bounded backup retention and a deterministic secret-redacted diagnostics bundle.
+- [ ] Complete backup → factory reset → restore acceptance before beginning Hub/Node orchestration.
+- [ ] Add fleet rollout rings only after Hub/Node orchestration exists.
 
 ## Explicitly deferred
 

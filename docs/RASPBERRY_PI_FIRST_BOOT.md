@@ -67,7 +67,7 @@ To pin an exact published release:
 
 ```bash
 wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | \
-  sudo bash -s -- --tag v0.3.0-beta.8
+  sudo bash -s -- --tag v0.3.0-beta.9
 ```
 
 ## 3. Manual development deployment
@@ -284,9 +284,9 @@ authorization and the complete reset boundary.
 The host/release preflight, one-command installation, Wi-Fi-only handoff to the
 open setup AP, captive setup and return to the Standalone runtime have been
 verified on a clean SD card on the physical Pi 3B+. Restart is implemented and
-automatically tested. The destructive factory-reset path is intentionally still
-pending one explicit physical acceptance run. Local Agent pairing and the full
-post-install checklist remain separate acceptance steps.
+physically tested. Factory reset, setup-AP return across reboot, phone setup and
+the fresh Standalone login are also physically accepted. Local Agent pairing on
+an external Core remains part of the future Hub/Node milestone.
 
 Node setup is also not yet claimed as complete. The portal persists the selected
 Hub address, but external-Hub credential bootstrap is not yet a single first-boot
