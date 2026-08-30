@@ -275,4 +275,6 @@ The Agent installation API still rejects it because the service is Core-hosted.
 
 Milestone 12 is closed. The next vertical project may implement the child-center
 domain as a separate application extension while Core and Agent remain unaware
-of its people, visits, wristbands, consumption records and external vendor.
+of its people, visits, wristbands, consumption records and external vendor. Its
+incremental delivery and acceptance plan is recorded in
+[CHILD_CENTER_EXTENSION_PLAN.md](CHILD_CENTER_EXTENSION_PLAN.md).
