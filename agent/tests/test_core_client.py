@@ -93,3 +93,45 @@ def test_core_publisher_posts_current_capability_snapshots(monkeypatch, tmp_path
         "/api/v1/devices/dev_0123456789abcdef0123456789abcdef/capabilities/gpio.digital.input/state"
     )
     assert posted[0][1]["values"] == {"gpio.input.1": True}
+
+
+def test_identifier_event_uses_agent_identity_and_persistent_outbox(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "agent.core_client.CorePublisher._post",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            __import__("requests").RequestException("offline")
+        ),
+    )
+    credential = DeviceCredential(
+        device_id="dev_0123456789abcdef0123456789abcdef",
+        credential_id="cred_0123456789abcdef0123456789abcdef",
+        credential_secret="s" * 43,
+    )
+    publisher = CorePublisher(
+        core_url="http://core",
+        credential=credential,
+        inventory_provider=lambda: None,
+        command_journal=CommandJournal(tmp_path),
+        reconciliation_store=ReconciliationStore(tmp_path),
+        outbox=OutboxStore(tmp_path),
+        started_monotonic=0,
+    )
+
+    publisher.publish_event(
+        {
+            "device_id": "dev_ffffffffffffffffffffffffffffffff",
+            "event_type": "identifier.scan.v1",
+            "payload": {
+                "capability_id": "identifier.scan.v1",
+                "opaque_identifier": "TAG-1",
+                "reader_id": "reader.mock.1",
+                "adapter_kind": "mock",
+                "sequence": 1,
+            },
+        }
+    )
+
+    queued = publisher.outbox.load()
+    assert len(queued) == 1
+    assert queued[0].payload["device_id"] == credential.device_id
+    assert queued[0].payload["event_id"].startswith("evt_")

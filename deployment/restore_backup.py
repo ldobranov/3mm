@@ -43,6 +43,7 @@ RUNTIME_SERVICES = (
     "3mm-core.service",
     "3mm-agent.service",
     "3mm-web.service",
+    "3mm-application-extension@*.service",
 )
 BACKUP_ID_PATTERN = r"^bkp_\d{8}T\d{6}Z_[0-9a-f]{8}$"
 
@@ -94,6 +95,14 @@ class SystemRestoreRuntime:
                 "/usr/bin/env",
                 f"PYTHONPATH={release}",
                 str(release / ".venv/bin/python"),
+                str(release / "deployment/restore_application_extensions.py"),
+            )
+        )
+        self._run(
+            (
+                "/usr/bin/env",
+                f"PYTHONPATH={release}",
+                str(release / ".venv/bin/python"),
                 "-m",
                 "three_mm_runtime.activate",
             )
@@ -102,6 +111,16 @@ class SystemRestoreRuntime:
         for _attempt in range(15):
             try:
                 verify_release(ReleaseEndpoints(timeout=3.0))
+                # Restore swaps persistent directories atomically. Refresh the
+                # privileged helper so its hardened bind-mount namespace sees
+                # the restored application state instead of detached inodes.
+                self._run(
+                    (
+                        "/usr/bin/systemctl",
+                        "try-restart",
+                        "3mm-update-helper.service",
+                    )
+                )
                 return
             except SmokeFailure as exc:
                 last_error = exc
@@ -285,10 +304,12 @@ def _prepare_payload(
     gid: int,
     *,
     apply_ownership: bool = True,
+    application_service_ids: tuple[int, int] | None = None,
 ) -> None:
     core = payload / "core"
     agent = payload / "agent"
     provisioning = payload / "provisioning"
+    applications = payload / "applications"
     for required in (
         core / "3mm.db",
         agent / "identity.json",
@@ -297,6 +318,9 @@ def _prepare_payload(
         if not required.is_file():
             raise ValueError("Backup is missing required Standalone state")
     (core / "update-staging").mkdir(parents=True, exist_ok=True)
+    # Empty runtime directories are excluded from the archive but must exist
+    # before hardened systemd units resolve their ReadWritePaths entries.
+    (core / "backup-imports").mkdir(parents=True, exist_ok=True)
     _chown_tree(core, uid, gid, directory_mode=0o750, apply_ownership=apply_ownership)
     _chown_tree(agent, uid, gid, directory_mode=0o700, apply_ownership=apply_ownership)
     _chown_tree(
@@ -306,6 +330,23 @@ def _prepare_payload(
         directory_mode=0o700,
         apply_ownership=apply_ownership,
     )
+    applications.mkdir(parents=True, exist_ok=True)
+    application_uid, application_gid = application_service_ids or (uid, gid)
+    _chown_tree(
+        applications,
+        application_uid,
+        application_gid,
+        directory_mode=0o750,
+        apply_ownership=apply_ownership,
+    )
+    # Runtime-only platform sockets are intentionally excluded from backups,
+    # but systemd requires their parent to exist before Core can start.
+    platform_directory = applications / "platform"
+    platform_directory.mkdir(mode=0o750)
+    os.chmod(platform_directory, 0o750)
+    if apply_ownership:
+        os.chown(applications, 0, application_gid)
+        os.chown(platform_directory, uid, application_gid)
     host_config = payload / "host-config/3mm.env"
     if host_config.exists():
         if apply_ownership:
@@ -334,6 +375,11 @@ def _switch_state(
             state_root / "provisioning",
             payload / "provisioning",
             rollback / "provisioning",
+        ),
+        (
+            state_root / "application-extensions",
+            payload / "applications",
+            rollback / "application-extensions",
         ),
     )
     try:
@@ -402,6 +448,7 @@ def restore_backup(
     requested_by_user_id: int,
     runtime: RestoreRuntime | None = None,
     service_ids: tuple[int, int] | None = None,
+    application_service_ids: tuple[int, int] | None = None,
     status_owner: tuple[int, int] | None = None,
     state_root: Path = Path("/var/lib/3mm"),
     host_config: Path = Path("/etc/3mm/3mm.env"),
@@ -439,7 +486,11 @@ def restore_backup(
             manifest = _validate_and_stage(decrypted, staging, backup_id)
             decrypted.unlink()
             _prepare_payload(
-                staging / "payload", uid, gid, apply_ownership=apply_ownership
+                staging / "payload",
+                uid,
+                gid,
+                apply_ownership=apply_ownership,
+                application_service_ids=application_service_ids,
             )
         except Exception:
             write_backup_operation_status(
@@ -540,6 +591,13 @@ def _service_ids() -> tuple[int, int]:
     return pwd.getpwnam("3mm").pw_uid, grp.getgrnam("3mm").gr_gid
 
 
+def _application_service_ids() -> tuple[int, int]:
+    import grp
+    import pwd
+
+    return pwd.getpwnam("3mm-app").pw_uid, grp.getgrnam("3mm-app").gr_gid
+
+
 def main() -> None:
     import fcntl
     import grp
@@ -566,6 +624,7 @@ def main() -> None:
             key_file=arguments.key_file,
             requested_by_user_id=arguments.requested_by_user_id,
             status_owner=(0, grp.getgrnam("3mm").gr_gid),
+            application_service_ids=_application_service_ids(),
         )
 
 

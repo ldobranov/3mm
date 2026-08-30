@@ -40,7 +40,10 @@ def require_user(authorization: Optional[str] = Header(None)) -> dict:
             status_code=401, detail="Authorization header missing or invalid format"
         )
     token = authorization.split(" ", 1)[1].strip()
-    return decode_token(token)  # raises HTTPException on invalid/expired
+    claims = decode_token(token)  # raises HTTPException on invalid/expired
+    if claims.get("token_type", "user") != "user":
+        raise HTTPException(status_code=401, detail="A normal user token is required")
+    return claims
 
 
 def require_admin(

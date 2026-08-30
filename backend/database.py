@@ -36,7 +36,21 @@ from backend.db.device import (
     DeviceState,
     DeviceCapabilityState,
 )
-from backend.db.module import ModulePackage, ModuleInstallation
+from backend.db.module import (
+    ApplicationEventCursor,
+    ApplicationEventDelivery,
+    ApplicationConnectorAttempt,
+    ApplicationConnectorBinding,
+    ApplicationExtensionInstallation,
+    ApplicationJobState,
+    ApplicationKioskEnrollment,
+    ApplicationKioskTerminal,
+    ApplicationPermissionGrant,
+    ApplicationSecretReference,
+    ApplicationSyncCheckpoint,
+    ModuleInstallation,
+    ModulePackage,
+)
 from backend.db.runtime_extension import RuntimeEntityRecord, RuntimeExtensionDefinition
 from backend.db.extension_project import ExtensionProject, ExtensionProjectBuild, ExtensionProjectFile
 from backend.db.automation import (

@@ -24,6 +24,9 @@ from backend.db.extension import Extension
 from backend.routes.ai_extension_builder_routes import (
     router as ai_extension_builder_router,
 )
+from backend.routes.application_extensions import router as application_extensions_router
+from backend.routes.application_events import router as application_events_router
+from backend.routes.application_operations import router as application_operations_router
 from backend.routes.backups import router as backups_router
 from backend.routes.diagnostics import router as diagnostics_router
 from backend.routes.ai_automations import router as ai_automations_router
@@ -53,6 +56,9 @@ from backend.routes.system_updates import router as system_updates_router
 from backend.routes.system_control import router as system_control_router
 from backend.routes.network_recovery import router as network_recovery_router
 from backend.services.update_policy import system_update_check_manager
+from backend.services.application_events import retry_application_events_once
+from backend.services.application_jobs import run_application_jobs_once
+from backend.services.application_platform import ApplicationPlatformServer
 
 # Import all route routers
 from backend.routes.settings import router as settings_router
@@ -129,15 +135,55 @@ async def load_enabled_extensions(app: FastAPI):
             db.close()
 
 
+async def run_application_event_worker():
+    """Retry durable application deliveries without blocking Agent ingestion."""
+    while True:
+        try:
+            await asyncio.to_thread(
+                retry_application_events_once,
+                app_settings.applications,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Application event broker retry failed")
+        await asyncio.sleep(30)
+
+
+async def run_application_job_worker():
+    while True:
+        try:
+            await asyncio.to_thread(
+                run_application_jobs_once,
+                app_settings.applications,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Application job scheduler failed")
+        await asyncio.sleep(30)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Own all application startup and shutdown work."""
     init_db()
+    application_platform = ApplicationPlatformServer(
+        app_settings.applications.platform_socket,
+        app_settings.applications.key_root,
+    )
+    application_platform.start()
     await update_manager.start_update_worker()
     await performance_monitor.start_monitoring()
     await system_update_check_manager.start()
     extension_loader_task = asyncio.create_task(
         load_enabled_extensions(app), name="enabled-extension-loader"
+    )
+    application_event_task = asyncio.create_task(
+        run_application_event_worker(), name="application-event-worker"
+    )
+    application_job_task = asyncio.create_task(
+        run_application_job_worker(), name="application-job-worker"
     )
 
     try:
@@ -145,8 +191,17 @@ async def lifespan(app: FastAPI):
     finally:
         if not extension_loader_task.done():
             extension_loader_task.cancel()
+        if not application_event_task.done():
+            application_event_task.cancel()
+        if not application_job_task.done():
+            application_job_task.cancel()
         with suppress(asyncio.CancelledError):
             await extension_loader_task
+        with suppress(asyncio.CancelledError):
+            await application_event_task
+        with suppress(asyncio.CancelledError):
+            await application_job_task
+        application_platform.stop()
         await performance_monitor.stop_monitoring()
         await update_manager.stop_update_worker()
         await system_update_check_manager.stop()
@@ -227,6 +282,9 @@ app.include_router(device_capabilities_router)
 app.include_router(device_capability_state_router)
 app.include_router(device_events_router)
 app.include_router(modules_router)
+app.include_router(application_extensions_router)
+app.include_router(application_events_router)
+app.include_router(application_operations_router)
 app.include_router(runtime_extensions_router)
 app.include_router(ai_automations_router)
 app.include_router(extension_projects_router)

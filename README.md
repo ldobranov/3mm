@@ -33,7 +33,8 @@ system.
   restore with rollback, password-protected disaster-recovery downloads and
   secret-redacted diagnostic bundles.
 - **Extensions** — declarative runtime extensions and reviewed compiled Vue
-  widgets, editors, routes and reusable components.
+  widgets, editors, routes and reusable components, plus the locally completed
+  supervised application-service foundation for transactional extensions.
 - **AI Extension Builder** — guided intent planning, editable projects,
   automatic versions, reviewable source changes, deterministic capability
   foundations, compilation and installation.
@@ -246,6 +247,7 @@ See the [changelog](CHANGELOG.md) for user-visible changes and the
 | [Extension lifecycle](docs/EXTENSION_LIFECYCLE.md) | Package, version and data lifecycle |
 | [Runtime extension v1](docs/RUNTIME_EXTENSION_V1.md) | Declarative extension contract |
 | [Compiled extension v1](docs/COMPILED_EXTENSION_V1.md) | Reviewed Vue compilation boundary |
+| [Application extension v1 plan](docs/APPLICATION_EXTENSION_V1_PLAN.md) | Planned trusted business-service and integration boundary |
 | [Module Manifest v2](docs/MODULE_MANIFEST_V2.md) | Package envelope and identities |
 | [OTA update plan](docs/OTA_UPDATE_PLAN.md) | Update architecture and acceptance stages |
 | [Release guide](docs/RELEASING.md) | Versioning, publication and verification |

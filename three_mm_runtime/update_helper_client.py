@@ -60,6 +60,34 @@ class UpdateHelperClient:
             }
         )
 
+    def activate_application_extension(
+        self,
+        sha256: str,
+        requested_by_user_id: int,
+    ) -> dict[str, object]:
+        return self._request(
+            {
+                "action": "activate_application_extension",
+                "sha256": sha256,
+                "requested_by_user_id": requested_by_user_id,
+            },
+            expected_status="active",
+        )
+
+    def disable_application_extension(
+        self,
+        instance_id: str,
+        requested_by_user_id: int,
+    ) -> None:
+        self._request(
+            {
+                "action": "disable_application_extension",
+                "instance_id": instance_id,
+                "requested_by_user_id": requested_by_user_id,
+            },
+            expected_status="disabled",
+        )
+
     def request_restore(self, backup_id: str, requested_by_user_id: int) -> None:
         self._request(
             {

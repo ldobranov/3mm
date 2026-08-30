@@ -91,6 +91,7 @@ always_on_services=(
 installed_units=(
   "${runtime_services[@]}"
   "${always_on_services[@]}"
+  3mm-application-extension@.service
 )
 previous_release=""
 saved_rollback_release=""
@@ -137,6 +138,11 @@ install_units() {
   local unit
   for unit in "${installed_units[@]}"; do
     if [[ ! -f $source_release/deployment/systemd/$unit ]]; then
+      if [[ $unit == 3mm-application-extension@.service && $require_update_helper == 0 ]]; then
+        systemctl stop '3mm-application-extension@*.service' >/dev/null 2>&1 || true
+        rm -f -- "/etc/systemd/system/$unit"
+        continue
+      fi
       if [[ $unit == 3mm-update-helper.service && $require_update_helper == 0 ]]; then
         systemctl disable --now "$unit" >/dev/null 2>&1 || true
         rm -f -- "/etc/systemd/system/$unit"
@@ -314,11 +320,22 @@ assert_release_path "$release_dir"
 if ! id -u 3mm >/dev/null 2>&1; then
   useradd --system --home-dir "$state_root" --shell /usr/sbin/nologin 3mm
 fi
+if ! getent group 3mm-app >/dev/null 2>&1; then
+  groupadd --system 3mm-app
+fi
+if ! id -u 3mm-app >/dev/null 2>&1; then
+  useradd --system --gid 3mm-app --home-dir "$state_root/application-extensions" \
+    --shell /usr/sbin/nologin 3mm-app
+fi
+usermod -a -G 3mm-app 3mm
 
 install -d -o root -g root -m 0755 "$install_root" "$releases_root" /etc/3mm
 install -d -o root -g root -m 0700 \
   "$deploy_cache_root" "$deploy_home" "$npm_cache"
-install -d -o 3mm -g 3mm -m 0750 "$state_root"
+# The main service user owns the shared state root. The dedicated application
+# group receives traverse-only access so it can reach its isolated subtree
+# without listing or entering Core, Agent, backup or provisioning state.
+install -d -o 3mm -g 3mm-app -m 0710 "$state_root"
 install -d -o 3mm -g 3mm -m 0700 "$state_root/agent"
 
 if [[ -n $identity_source && ! -e $state_root/agent/identity.json ]]; then
@@ -349,6 +366,7 @@ required_files=(
   deployment/create_backup.py
   deployment/portable_backup.py
   deployment/restore_backup.py
+  deployment/restore_application_extensions.py
   deployment/factory_reset.py
   deployment/migrate_database.py
   deployment/update-dependency-allowlist.json
@@ -357,7 +375,12 @@ required_files=(
   deployment/systemd/3mm-agent.service
   deployment/systemd/3mm-captive-portal-dnsmasq.conf
   deployment/systemd/3mm-update-helper.service
+  deployment/systemd/3mm-application-extension@.service
   three_mm_runtime/update_helper.py
+  three_mm_runtime/application_activation.py
+  three_mm_runtime/application_host.py
+  three_mm_runtime/application_transport.py
+  three_mm_application_sdk/__init__.py
   three_mm_runtime/network_recovery.py
   three_mm_provisioning/network_recovery.py
 )
@@ -440,6 +463,8 @@ upsert_environment THREE_MM_AGENT_PORT 8890
 upsert_environment THREE_MM_AGENT_DATA_DIR /var/lib/3mm/agent
 upsert_environment THREE_MM_AGENT_ROLE standalone
 upsert_environment THREE_MM_AGENT_HARDWARE_PROFILE native
+upsert_environment THREE_MM_IDENTIFIER_DRIVER mock
+upsert_environment THREE_MM_IDENTIFIER_READER_ID reader.mock.1
 upsert_environment THREE_MM_CORE_URL http://127.0.0.1:8887
 upsert_environment THREE_MM_HEARTBEAT_INTERVAL_SECONDS 30
 upsert_environment THREE_MM_PROVISIONING_DATA_DIR /var/lib/3mm/provisioning
@@ -461,6 +486,10 @@ upsert_environment THREE_MM_BACKUP_STORAGE_DIR /var/lib/3mm/backups
 upsert_environment THREE_MM_BACKUP_IMPORT_DIR /var/lib/3mm/core/backup-imports
 upsert_environment THREE_MM_BACKUP_MINIMUM_FREE_BYTES 67108864
 upsert_environment THREE_MM_BACKUP_MAX_IMPORT_BYTES 537919488
+upsert_environment THREE_MM_APPLICATION_ROOT /var/lib/3mm/application-extensions
+upsert_environment THREE_MM_APPLICATION_KEY_ROOT /etc/3mm/application-extensions
+upsert_environment THREE_MM_APPLICATION_HELPER_SOCKET /run/3mm/update-helper.sock
+upsert_environment THREE_MM_APPLICATION_PLATFORM_SOCKET /var/lib/3mm/application-extensions/platform/platform.sock
 
 if [[ -s $ai_master_key_file ]]; then
   ai_master_key=$(cat "$ai_master_key_file")
@@ -490,6 +519,11 @@ install -d -o 3mm -g 3mm -m 0700 "$core_state/update-staging"
 install -d -o 3mm -g 3mm -m 0700 "$core_state/backup-imports"
 install -d -o root -g 3mm -m 0750 "$state_root/update-helper"
 install -d -o root -g 3mm -m 0750 "$state_root/backups"
+install -d -o root -g 3mm-app -m 0750 \
+  "$state_root/application-extensions" \
+  /etc/3mm/application-extensions
+install -d -o 3mm -g 3mm-app -m 0750 \
+  "$state_root/application-extensions/platform"
 
 log "Installing service definitions and migrating the database"
 install_units "$release_dir"

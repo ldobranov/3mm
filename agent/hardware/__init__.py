@@ -8,6 +8,7 @@ from agent.hardware.gpio import (
     MockDigitalGpioDriver,
 )
 from agent.hardware.gpiod import GpiodDigitalGpioDriver
+from agent.hardware.identifier import MockIdentifierAdapter
 
 
 def create_hardware_driver(
@@ -64,4 +65,5 @@ __all__ = [
     "DigitalOutput",
     "MockDigitalGpioDriver",
     "GpiodDigitalGpioDriver",
+    "MockIdentifierAdapter",
 ]

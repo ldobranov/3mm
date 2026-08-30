@@ -79,6 +79,9 @@ class BackupSettings(BaseModel):
     backend_extensions_dir: Path = PROJECT_ROOT / "backend" / "extensions"
     frontend_extensions_dir: Path = PROJECT_ROOT / "frontend" / "src" / "extensions"
     compiled_artifacts_dir: Path = PROJECT_ROOT / ".runtime" / "compiled-extensions"
+    application_extensions_dir: Path = (
+        PROJECT_ROOT / ".runtime" / "application-extensions"
+    )
     host_config_file: Path = PROJECT_ROOT / ".runtime" / "3mm.env"
     storage_dir: Path = PROJECT_ROOT / ".runtime" / "backups"
     import_dir: Path = PROJECT_ROOT / ".runtime" / "backup-imports"
@@ -86,6 +89,15 @@ class BackupSettings(BaseModel):
     max_import_bytes: int = Field(
         default=513 * 1024 * 1024,
         ge=16 * 1024 * 1024,
+    )
+
+
+class ApplicationRuntimeSettings(BaseModel):
+    root: Path = PROJECT_ROOT / ".runtime" / "application-extensions"
+    key_root: Path = PROJECT_ROOT / ".runtime" / "application-extension-keys"
+    helper_socket: Path = Path("/run/3mm/update-helper.sock")
+    platform_socket: Path = (
+        PROJECT_ROOT / ".runtime" / "application-extensions" / "platform" / "platform.sock"
     )
 
 
@@ -97,6 +109,9 @@ class AppSettings(BaseModel):
         default_factory=NetworkRecoverySettings
     )
     backups: BackupSettings = Field(default_factory=BackupSettings)
+    applications: ApplicationRuntimeSettings = Field(
+        default_factory=ApplicationRuntimeSettings
+    )
 
     @property
     def database_url(self) -> str:
@@ -152,6 +167,7 @@ def get_settings() -> AppSettings:
     updates = dict(data.get("updates") or {})
     network_recovery = dict(data.get("network_recovery") or {})
     backups = dict(data.get("backups") or {})
+    applications = dict(data.get("applications") or {})
 
     if database_url := os.getenv("DATABASE_URL"):
         backend["database_url"] = database_url
@@ -213,6 +229,8 @@ def get_settings() -> AppSettings:
         backups["frontend_extensions_dir"] = frontend_extensions
     if compiled_artifacts := os.getenv("COMPILED_UI_ARTIFACTS_DIR"):
         backups["compiled_artifacts_dir"] = compiled_artifacts
+    if backup_applications := os.getenv("THREE_MM_APPLICATION_ROOT"):
+        backups["application_extensions_dir"] = backup_applications
     if backup_host_config := os.getenv("THREE_MM_BACKUP_HOST_CONFIG_FILE"):
         backups["host_config_file"] = backup_host_config
     if backup_storage := os.getenv("THREE_MM_BACKUP_STORAGE_DIR"):
@@ -223,6 +241,14 @@ def get_settings() -> AppSettings:
         backups["minimum_free_bytes"] = int(backup_minimum_free)
     if backup_max_import := os.getenv("THREE_MM_BACKUP_MAX_IMPORT_BYTES"):
         backups["max_import_bytes"] = int(backup_max_import)
+    if application_root := os.getenv("THREE_MM_APPLICATION_ROOT"):
+        applications["root"] = application_root
+    if application_key_root := os.getenv("THREE_MM_APPLICATION_KEY_ROOT"):
+        applications["key_root"] = application_key_root
+    if application_helper := os.getenv("THREE_MM_APPLICATION_HELPER_SOCKET"):
+        applications["helper_socket"] = application_helper
+    if application_platform_socket := os.getenv("THREE_MM_APPLICATION_PLATFORM_SOCKET"):
+        applications["platform_socket"] = application_platform_socket
 
     backend["database_url"] = _normalize_database_url(
         backend.get("database_url", BackendSettings().database_url)
@@ -234,4 +260,5 @@ def get_settings() -> AppSettings:
         updates=UpdateCatalogSettings.model_validate(updates),
         network_recovery=NetworkRecoverySettings.model_validate(network_recovery),
         backups=BackupSettings.model_validate(backups),
+        applications=ApplicationRuntimeSettings.model_validate(applications),
     )

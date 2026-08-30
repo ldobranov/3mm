@@ -1,9 +1,6 @@
 # Milestone 11 report — Recoverable Standalone appliance
 
-Status: in progress; backup, local restore, portable disaster recovery,
-administrator UI, diagnostics and bounded retention implemented and deployed
-on physical `rasp-3mm` on 2026-08-28. Final clean-media restore acceptance is
-still pending.
+Status: completed and physically accepted on `rasp-3mm` on 2026-08-29.
 
 ## Goal
 
@@ -93,8 +90,18 @@ Hub/Node orchestration expands the failure surface.
 - Kept the destructive final acceptance separate: no portable restore was
   applied over the currently running installation during the smoke test.
 
-## Next stage
+## Final clean-media acceptance
 
-Download the recovery file through the browser, perform a clean installation,
-upload and apply the file, then verify users, settings, dashboards, extensions,
-Builder history and stable Agent identity before closing Milestone 11.
+- Downloaded the password-protected recovery file through the browser.
+- Completed a clean 3mm installation and uploaded the portable recovery file.
+- Applied the restore successfully on the clean device.
+- Verified the restored application state and normal device operation.
+- User-confirmed the complete acceptance sequence passed; Milestone 11 is
+  closed.
+
+## Outcome
+
+The Standalone appliance now has locally encrypted backups, transactional
+restore with rollback, portable failed-media recovery, bounded retention and
+secret-redacted diagnostics. Further storage work belongs to the extension
+storage participation introduced by Milestone 12, not to Milestone 11.

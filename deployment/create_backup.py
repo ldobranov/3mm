@@ -31,7 +31,11 @@ from backend.services.backups import (
 BACKUP_ROOT = Path("/var/lib/3mm/backups")
 KEY_FILE = Path("/etc/3mm/backup.key")
 MUTATION_LOCK = Path("/run/lock/3mm-release-mutation.lock")
-RUNTIME_SERVICES = ("3mm-core.service", "3mm-agent.service")
+RUNTIME_SERVICES = (
+    "3mm-core.service",
+    "3mm-agent.service",
+    "3mm-application-extension@*.service",
+)
 ARCHIVE_MAGIC = b"3MMBKP1\0"
 BACKUP_RETENTION_COUNT = 5
 
@@ -116,6 +120,9 @@ def production_settings(backup_root: Path = BACKUP_ROOT) -> AppSettings:
             backend_extensions_dir=core / "extensions/backend",
             frontend_extensions_dir=core / "extensions/frontend",
             compiled_artifacts_dir=core / "extensions/compiled",
+            application_extensions_dir=Path(
+                "/var/lib/3mm/application-extensions"
+            ),
             host_config_file=Path("/etc/3mm/3mm.env"),
             storage_dir=backup_root,
         ),

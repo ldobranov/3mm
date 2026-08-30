@@ -12,6 +12,10 @@ export interface CompiledUiEntrypoint {
   route?: string | null
   target_entrypoint_id?: string | null
   requires_role?: string | null
+  application_audience?: 'public' | 'kiosk' | 'operator' | 'administrator'
+  required_permissions?: string[]
+  navigation?: boolean
+  menu_order?: number
   asset_url: string
 }
 
@@ -34,8 +38,13 @@ export function compiledWidgetType(pkg: CompiledUiPackage, entrypoint: CompiledU
 
 export async function getCompiledUiCatalog(refresh = false): Promise<CompiledUiPackage[]> {
   if (refresh || !catalogPromise) {
+    const kioskToken = !localStorage.getItem('authToken')
+      ? localStorage.getItem('applicationKioskToken')
+      : null
     catalogPromise = Promise.all([
-      http.get('/api/v1/modules/compiled-ui/catalog'),
+      http.get('/api/v1/modules/compiled-ui/catalog', kioskToken
+        ? { headers: { Authorization: `Bearer ${kioskToken}` } }
+        : undefined),
       http.getCurrentBackendUrl(),
     ]).then(([response, backendUrl]) => {
       const base = backendUrl || window.location.origin

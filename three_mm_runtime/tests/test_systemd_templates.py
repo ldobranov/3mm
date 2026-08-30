@@ -14,6 +14,7 @@ PRIVILEGED_UNITS = {
     "setup_ap": SYSTEMD_DIR / "3mm-setup-ap.service",
     "update_helper": SYSTEMD_DIR / "3mm-update-helper.service",
 }
+APPLICATION_TEMPLATE = SYSTEMD_DIR / "3mm-application-extension@.service"
 CAPTIVE_DNS_CONFIG = SYSTEMD_DIR / "3mm-captive-portal-dnsmasq.conf"
 
 
@@ -57,6 +58,14 @@ def test_core_is_lan_accessible_while_device_services_stay_on_loopback() -> None
     assert "--host 0.0.0.0 --port 8895" in setup_command
     assert "--captive-port 80" in setup_command
     assert "--captive-url http://10.42.0.1:8895/setup" in setup_command
+
+
+def test_core_can_create_only_its_application_platform_socket() -> None:
+    unit = _directives(UNITS["core"])
+
+    assert unit["ReadWritePaths"] == (
+        "/var/lib/3mm/application-extensions/platform"
+    )
 
 
 def test_setup_unit_has_no_network_mutation_privileges() -> None:
@@ -118,13 +127,30 @@ def test_update_helper_exposes_only_a_local_hardened_scheduler() -> None:
     assert helper["RestrictAddressFamilies"] == "AF_UNIX"
     assert helper["RuntimeDirectoryPreserve"] == "yes"
     assert helper["ReadWritePaths"] == (
-        "/var/lib/3mm/backups /var/lib/3mm/core/backup-imports /etc/3mm"
+        "/var/lib/3mm/backups /var/lib/3mm/core/backup-imports "
+        "/var/lib/3mm/application-extensions /etc/3mm/application-extensions"
     )
     assert (
         "--network-recovery-policy /var/lib/3mm/core/network-recovery-policy.json"
         in helper["ExecStart"]
     )
     assert "--provisioning-data-dir /var/lib/3mm/provisioning" in helper["ExecStart"]
+
+
+def test_application_extensions_run_as_a_separate_network_isolated_identity() -> None:
+    unit = _directives(APPLICATION_TEMPLATE)
+
+    assert unit["User"] == "3mm-app"
+    assert unit["Group"] == "3mm-app"
+    assert "three_mm_runtime.application_host" in unit["ExecStart"]
+    assert unit["PrivateNetwork"] == "true"
+    assert unit["RestrictAddressFamilies"] == "AF_UNIX"
+    assert unit["ProtectSystem"] == "strict"
+    assert unit["ReadWritePaths"] == (
+        "/var/lib/3mm/application-extensions/%i/data "
+        "/var/lib/3mm/application-extensions/%i/run"
+    )
+    assert unit["PartOf"] == "3mm-core.service"
 
 
 def test_only_helpers_own_the_shared_runtime_socket_directory() -> None:
@@ -158,6 +184,7 @@ def test_installer_preserves_identity_and_delegates_network_mutation() -> None:
 
     assert "identity.json" in installer
     assert "install -o 3mm -g 3mm -m 0600" in installer
+    assert 'install -d -o 3mm -g 3mm-app -m 0710 "$state_root"' in installer
     assert "three_mm_runtime.activate" in installer
     assert "3mm-network-helper.service" in installer
     assert "3mm-setup-ap.service" in installer

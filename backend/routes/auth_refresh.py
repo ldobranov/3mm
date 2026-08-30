@@ -13,6 +13,8 @@ async def refresh_access_token(request: Request):
 
     # Validate existing token
     claims = decode_token(raw_token)
+    if claims.get("token_type", "user") != "user":
+        raise HTTPException(status_code=401, detail="A normal user token is required")
 
     # Optional: only refresh near expiry (disabled for now)
     # now = int(datetime.now(timezone.utc).timestamp())

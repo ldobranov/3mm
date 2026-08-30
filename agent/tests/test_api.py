@@ -115,3 +115,30 @@ def test_loopback_mock_gpio_diagnostics_are_isolated_and_deterministic(tmp_path)
     assert initial.json()["inputs"]["gpio.input.1"] is False
     assert changed.json() == {"changed": True, "sequence": 1}
     assert final.json()["inputs"]["gpio.input.1"] is True
+
+
+def test_loopback_identifier_mock_uses_normal_capability_contract(tmp_path):
+    settings = AgentSettings(
+        data_dir=tmp_path,
+        identifier_driver="mock",
+        identifier_reader_id="reader.acceptance.1",
+    )
+
+    with TestClient(create_app(settings)) as client:
+        hello = client.get("/api/v1/agent/hello").json()
+        first = client.post(
+            "/api/v1/agent/mock-identifier/scan",
+            json={"opaque_identifier": "TAG-001"},
+        )
+        second = client.post(
+            "/api/v1/agent/mock-identifier/scan",
+            json={"opaque_identifier": "TAG-002"},
+        )
+
+    assert "identifier.scan.v1" in hello["capabilities"]
+    assert first.json() == {
+        "status": "emitted",
+        "sequence": 1,
+        "reader_id": "reader.acceptance.1",
+    }
+    assert second.json()["sequence"] == 2

@@ -74,6 +74,8 @@ def _settings(tmp_path: Path) -> AppSettings:
     (uploads / "logo.png").write_bytes(b"image")
     host_config = tmp_path / "3mm.env"
     host_config.write_text("EXAMPLE=value\n", encoding="utf-8")
+    applications = tmp_path / "application-extensions"
+    applications.mkdir()
 
     return AppSettings(
         backend=BackendSettings(
@@ -86,6 +88,7 @@ def _settings(tmp_path: Path) -> AppSettings:
             backend_extensions_dir=core / "extensions" / "backend",
             frontend_extensions_dir=core / "extensions" / "frontend",
             compiled_artifacts_dir=core / "extensions" / "compiled",
+            application_extensions_dir=applications,
             host_config_file=host_config,
             storage_dir=tmp_path / "backups",
             minimum_free_bytes=16 * 1024 * 1024,
@@ -133,6 +136,28 @@ def test_backup_preview_fails_closed_when_identity_is_missing(tmp_path: Path) ->
     assert preview.ready is False
     assert preview.manifest is None
     assert any(issue.code == "compatibility.device" for issue in preview.issues)
+
+
+def test_backup_preview_includes_only_application_owned_data(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    instance = "a" * 24
+    instance_root = settings.backups.application_extensions_dir / instance
+    data = instance_root / "data"
+    data.mkdir(parents=True)
+    (data / "state.sqlite3").write_bytes(b"application-state")
+    (instance_root / "active.json").write_text("not backup data", encoding="utf-8")
+    (instance_root / "run").mkdir()
+    (instance_root / "run/service.sock").write_text("transient", encoding="utf-8")
+
+    preview = build_backup_preview(
+        settings,
+        disk_usage=lambda _path: shutil_disk_usage(100_000_000),
+    )
+    application_paths = {
+        entry.path for entry in preview.manifest.entries if entry.area == "applications"
+    }
+
+    assert application_paths == {f"{instance}/data/state.sqlite3"}
 
 
 def test_backup_preview_reports_insufficient_space(tmp_path: Path) -> None:
@@ -295,6 +320,13 @@ def test_portable_import_rejects_the_wrong_password(tmp_path: Path) -> None:
 def test_restore_replaces_state_and_runs_health_boundary(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     key_file = tmp_path / "keys" / "backup.key"
+    application_state = (
+        settings.backups.application_extensions_dir
+        / ("b" * 24)
+        / "data/state.sqlite3"
+    )
+    application_state.parent.mkdir(parents=True)
+    application_state.write_bytes(b"application-before-backup")
 
     class BackupController:
         def stop(self, _services) -> None:
@@ -310,6 +342,7 @@ def test_restore_replaces_state_and_runs_health_boundary(tmp_path: Path) -> None
         controller=BackupController(),
     )
     (settings.backend.uploads_dir / "logo.png").write_bytes(b"changed")
+    application_state.write_bytes(b"application-after-backup")
     calls = []
 
     class RestoreController:
@@ -336,6 +369,9 @@ def test_restore_replaces_state_and_runs_health_boundary(tmp_path: Path) -> None
 
     assert result.state == "completed"
     assert (settings.backend.uploads_dir / "logo.png").read_bytes() == b"image"
+    assert application_state.read_bytes() == b"application-before-backup"
+    assert (tmp_path / "core/backup-imports").is_dir()
+    assert (settings.backups.application_extensions_dir / "platform").is_dir()
     assert [call[0] for call in calls] == ["stop", "migrate", "verify"]
 
 
@@ -558,6 +594,27 @@ def test_corrupt_backup_is_rejected_before_services_stop(tmp_path: Path) -> None
     assert calls == []
     status = read_backup_operation_status(settings.backups.storage_dir / "status.json")
     assert status.error_code == "restore_validation_failed"
+
+
+def test_system_restore_refreshes_helper_after_health_verification(monkeypatch):
+    import deployment.restore_backup as restore_backup_module
+
+    commands: list[tuple[str, ...]] = []
+    runtime = restore_backup_module.SystemRestoreRuntime()
+    monkeypatch.setattr(
+        runtime,
+        "_run",
+        lambda command: commands.append(tuple(command)),
+    )
+    monkeypatch.setattr(restore_backup_module, "verify_release", lambda _endpoints: None)
+
+    runtime.activate_and_verify()
+
+    assert commands[-1] == (
+        "/usr/bin/systemctl",
+        "try-restart",
+        "3mm-update-helper.service",
+    )
 
 
 def shutil_disk_usage(free: int):

@@ -115,6 +115,7 @@ import { isNavigationItemVisible, mergeNavigationItems } from '@/utils/menu-navi
 import type { MenuAudience } from '@/utils/menu-navigation';
 import { readAvailableLanguages, readLanguageSettings } from '@/utils/language-api';
 import { reloadRuntimeExtensionRoutes } from '@/utils/runtime-extensions';
+import { reloadCompiledUiRoutes } from '@/router';
 
 export default defineComponent({
   name: 'Menu',
@@ -132,6 +133,8 @@ export default defineComponent({
     const menuItems = ref<MenuItem[]>([]);
     const errorMessage = ref('');
     const authToken = ref(localStorage.getItem('authToken'));
+    const kioskToken = ref(localStorage.getItem('applicationKioskToken'));
+    const role = ref(localStorage.getItem('role') || '');
     const settingsStore = useSettingsStore();
 
     const router = useRouter();
@@ -142,6 +145,8 @@ export default defineComponent({
     // Update auth token ref
     const updateAuthToken = () => {
       authToken.value = localStorage.getItem('authToken');
+      kioskToken.value = localStorage.getItem('applicationKioskToken');
+      role.value = localStorage.getItem('role') || '';
     };
 
     // Computed property to check login status
@@ -149,7 +154,8 @@ export default defineComponent({
       return !!authToken.value && authToken.value !== 'null' && authToken.value !== 'undefined';
     });
 
-    const currentRole = computed(() => localStorage.getItem('role') || '');
+    const currentRole = computed(() => role.value);
+    const isKiosk = computed(() => Boolean(kioskToken.value));
 
 
     const getMenuItemLabel = (item: MenuItem): string => {
@@ -194,6 +200,7 @@ export default defineComponent({
         const route = router.getRoutes().find((r) => r.path === item.path);
         return isNavigationItemVisible(item, {
           isLoggedIn: isLoggedIn.value,
+          isKiosk: isKiosk.value,
           currentRole: currentRole.value,
           routeRequiresAuth: route?.meta?.requiresAuth === true,
           routeRequiredRole: route?.meta?.requiresRole as string | undefined,
@@ -233,6 +240,13 @@ export default defineComponent({
         .map((route) => ({
           label: route.meta.menuLabel as MenuItem['label'],
           path: route.path,
+          audience: (
+            route.meta.applicationAudience === 'administrator'
+              ? 'admin'
+              : route.meta.applicationAudience === 'operator'
+                ? 'authenticated'
+                : route.meta.applicationAudience || undefined
+          ) as MenuAudience | undefined,
         }));
     };
 
@@ -311,8 +325,9 @@ export default defineComponent({
       updateAuthToken();
       try {
         await reloadRuntimeExtensionRoutes(router);
+        await reloadCompiledUiRoutes(router);
       } catch (error) {
-        console.warn('Runtime extension routes could not be refreshed:', error);
+        console.warn('Extension routes could not be refreshed:', error);
       }
       await fetchMenuItems();
       await settingsStore.loadSettings();

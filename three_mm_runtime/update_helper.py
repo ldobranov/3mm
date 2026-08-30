@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import socket
 import subprocess
@@ -30,9 +31,14 @@ from three_mm_provisioning import (
 )
 from three_mm_provisioning.network_recovery import RecoveryTrigger
 from three_mm_runtime.network_recovery import NetworkRecoveryMonitor
+from three_mm_runtime.application_activation import (
+    activate_application_package,
+    SystemdApplicationSupervisor,
+)
 
 MAX_REQUEST_BYTES = 4096
 MAX_PORTABLE_ARCHIVE_BYTES = 512 * 1024 * 1024
+LOGGER = logging.getLogger(__name__)
 
 
 def _service_ids(user_name: str, group_name: str) -> tuple[int, int]:
@@ -264,6 +270,9 @@ class UpdateMutationBoundary:
         if self._runner.run(arguments) != 0:
             raise RuntimeError("Restore worker could not be scheduled")
 
+    def stop_application_extension(self, instance_id: str) -> None:
+        SystemdApplicationSupervisor().stop(instance_id)
+
 
 def _handle_request(
     payload: object,
@@ -277,7 +286,77 @@ def _handle_request(
     boundary: UpdateMutationBoundary | None = None,
     provisioning_data_dir: Path = Path("/var/lib/3mm/provisioning"),
     backup_root: Path = Path("/var/lib/3mm/backups"),
+    application_upload_root: Path = Path("/var/lib/3mm/core/uploads/modules"),
+    application_root: Path = Path("/var/lib/3mm/application-extensions"),
+    application_key_root: Path = Path("/etc/3mm/application-extensions"),
+    application_user: str = "3mm-app",
+    application_group: str = "3mm-app",
 ) -> dict[str, object]:
+    if isinstance(payload, dict) and set(payload) == {
+        "action",
+        "sha256",
+        "requested_by_user_id",
+    }:
+        sha256 = payload.get("sha256")
+        user_id = payload.get("requested_by_user_id")
+        if (
+            payload.get("action") != "activate_application_extension"
+            or not isinstance(sha256, str)
+            or not __import__("re").fullmatch(r"[0-9a-f]{64}", sha256)
+            or not isinstance(user_id, int)
+            or isinstance(user_id, bool)
+            or user_id <= 0
+        ):
+            return {"ok": False, "error": "invalid_request"}
+        try:
+            service_uid, service_gid = _service_ids(
+                application_user, application_group
+            )
+            activated = activate_application_package(
+                application_upload_root / f"{sha256}.zip",
+                sha256,
+                root=application_root,
+                key_root=application_key_root,
+                service_uid=service_uid,
+                service_gid=service_gid,
+            )
+        except Exception:
+            LOGGER.exception("Application extension activation failed")
+            return {"ok": False, "error": "application_activation_failed"}
+        return {
+            "ok": True,
+            "status": "active",
+            "module_id": activated.module_id,
+            "version": activated.version,
+            "sha256": activated.sha256,
+            "instance_id": activated.instance_id,
+            "socket_path": str(activated.socket_path),
+        }
+
+    if isinstance(payload, dict) and set(payload) == {
+        "action",
+        "instance_id",
+        "requested_by_user_id",
+    }:
+        instance_id = payload.get("instance_id")
+        user_id = payload.get("requested_by_user_id")
+        if (
+            payload.get("action") != "disable_application_extension"
+            or not isinstance(instance_id, str)
+            or not __import__("re").fullmatch(r"[0-9a-f]{24}", instance_id)
+            or not isinstance(user_id, int)
+            or isinstance(user_id, bool)
+            or user_id <= 0
+        ):
+            return {"ok": False, "error": "invalid_request"}
+        try:
+            (boundary or UpdateMutationBoundary()).stop_application_extension(
+                instance_id
+            )
+        except Exception:
+            return {"ok": False, "error": "application_disable_failed"}
+        return {"ok": True, "status": "disabled"}
+
     if isinstance(payload, dict) and set(payload) == {
         "action",
         "backup_id",
@@ -549,6 +628,9 @@ def serve(
     ),
     provisioning_data_dir: Path = Path("/var/lib/3mm/provisioning"),
     backup_root: Path = Path("/var/lib/3mm/backups"),
+    application_upload_root: Path = Path("/var/lib/3mm/core/uploads/modules"),
+    application_root: Path = Path("/var/lib/3mm/application-extensions"),
+    application_key_root: Path = Path("/etc/3mm/application-extensions"),
 ) -> None:
     import grp
 
@@ -605,6 +687,9 @@ def serve(
                         boundary=boundary,
                         provisioning_data_dir=provisioning_data_dir,
                         backup_root=backup_root,
+                        application_upload_root=application_upload_root,
+                        application_root=application_root,
+                        application_key_root=application_key_root,
                     )
                 except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
                     response = {"ok": False, "error": "invalid_request"}
@@ -637,6 +722,21 @@ def main() -> None:
         type=Path,
         default=Path("/var/lib/3mm/backups"),
     )
+    parser.add_argument(
+        "--application-upload-root",
+        type=Path,
+        default=Path("/var/lib/3mm/core/uploads/modules"),
+    )
+    parser.add_argument(
+        "--application-root",
+        type=Path,
+        default=Path("/var/lib/3mm/application-extensions"),
+    )
+    parser.add_argument(
+        "--application-key-root",
+        type=Path,
+        default=Path("/etc/3mm/application-extensions"),
+    )
     arguments = parser.parse_args()
     serve(
         arguments.socket,
@@ -649,6 +749,9 @@ def main() -> None:
         network_recovery_policy=arguments.network_recovery_policy,
         provisioning_data_dir=arguments.provisioning_data_dir,
         backup_root=arguments.backup_root,
+        application_upload_root=arguments.application_upload_root,
+        application_root=arguments.application_root,
+        application_key_root=arguments.application_key_root,
     )
 
 

@@ -4,6 +4,7 @@ import Login from '../views/Login.vue';
 import { getAvailableExtensions } from '@/utils/extension-relationships';
 import http from '@/utils/dynamic-http';
 import { getCompiledUiCatalog, loadCompiledComponent } from '@/utils/compiled-ui';
+import type { CompiledUiPackage } from '@/utils/compiled-ui';
 
 const extensionManifests = import.meta.glob('../extensions/*/manifest.json', { eager: true });
 const extensionComponents = import.meta.glob('../extensions/*/*.vue');
@@ -200,6 +201,49 @@ export async function reloadExtensionRoutes(router: any) {
   }
 }
 
+export function compiledRouteRecords(packages: CompiledUiPackage[]): RouteRecordRaw[] {
+  const routes: RouteRecordRaw[] = [];
+  for (const pkg of packages) {
+    for (const entrypoint of pkg.entrypoints.filter(item => item.kind === 'route' && item.route)) {
+      const audience = entrypoint.application_audience;
+      const isApplicationRoute = Boolean(audience);
+      routes.push({
+        path: entrypoint.route!,
+        name: `compiled-${pkg.module_id}-${pkg.version}-${entrypoint.entrypoint_id}`,
+        component: () => loadCompiledComponent(pkg, entrypoint),
+        meta: {
+          requiresAuth: isApplicationRoute
+            ? audience === 'operator' || audience === 'administrator'
+            : true,
+          requiresKiosk: audience === 'kiosk',
+          requiresRole: audience === 'administrator'
+            ? 'admin'
+            : entrypoint.requires_role || undefined,
+          applicationAudience: audience,
+          applicationPermissions: entrypoint.required_permissions || [],
+          menuLabel: entrypoint.navigation === false ? undefined : entrypoint.label,
+          menuOrder: entrypoint.menu_order,
+          isCompiledExtensionRoute: true,
+          compiledModuleId: pkg.module_id,
+          compiledSourceHash: pkg.source_sha256,
+        },
+      });
+    }
+  }
+  return routes;
+}
+
+export async function reloadCompiledUiRoutes(router: any): Promise<void> {
+  for (const route of router.getRoutes()) {
+    if (route.meta?.isCompiledExtensionRoute && route.name) {
+      router.removeRoute(route.name);
+    }
+  }
+  for (const route of compiledRouteRecords(await getCompiledUiCatalog(true))) {
+    router.addRoute(route);
+  }
+}
+
 export async function createRouterWithDynamicRoutes() {
 
   // Load base application routes
@@ -249,23 +293,7 @@ export async function createRouterWithDynamicRoutes() {
   }
 
   try {
-    const compiledRoutes: RouteRecordRaw[] = [];
-    for (const pkg of await getCompiledUiCatalog()) {
-      for (const entrypoint of pkg.entrypoints.filter(item => item.kind === 'route' && item.route)) {
-        compiledRoutes.push({
-          path: entrypoint.route!,
-          name: `compiled-${pkg.module_id}-${pkg.version}-${entrypoint.entrypoint_id}`,
-          component: () => loadCompiledComponent(pkg, entrypoint),
-          meta: {
-            requiresAuth: true,
-            requiresRole: entrypoint.requires_role || undefined,
-            isCompiledExtensionRoute: true,
-            compiledModuleId: pkg.module_id,
-            compiledSourceHash: pkg.source_sha256,
-          },
-        });
-      }
-    }
+    const compiledRoutes = compiledRouteRecords(await getCompiledUiCatalog());
     routes.splice(routes.length - 1, 0, ...compiledRoutes);
   } catch (error) {
     console.error('Failed to load compiled extension routes:', error);
@@ -279,6 +307,8 @@ export async function createRouterWithDynamicRoutes() {
   router.beforeEach((to, from, next) => {
     const token = localStorage.getItem('authToken');
     const isAuthenticated = Boolean(token && token !== 'null' && token !== 'undefined');
+    const kioskToken = localStorage.getItem('applicationKioskToken');
+    const isKiosk = Boolean(kioskToken && kioskToken !== 'null' && kioskToken !== 'undefined');
 
     if (to.path === '/') {
       if (!isAuthenticated) {
@@ -296,6 +326,11 @@ export async function createRouterWithDynamicRoutes() {
     }
 
     const requiresAuth = to.matched.some((record) => record.meta && record.meta.requiresAuth === true);
+    const requiresKiosk = to.matched.some((record) => record.meta && record.meta.requiresKiosk === true);
+
+    if (requiresKiosk && !isKiosk) {
+      return next('/user/login');
+    }
      
     if (!requiresAuth) {
       return next();

@@ -4,7 +4,7 @@ export interface NavigationItem {
   audience?: MenuAudience
 }
 
-export type MenuAudience = 'public' | 'authenticated' | 'admin'
+export type MenuAudience = 'public' | 'authenticated' | 'admin' | 'kiosk'
 
 export function mergeNavigationItems(
   customItems: NavigationItem[],
@@ -38,12 +38,13 @@ export function isNavigationItemVisible(
   item: NavigationItem,
   options: {
     isLoggedIn: boolean
+    isKiosk?: boolean
     currentRole: string
     routeRequiresAuth?: boolean
     routeRequiredRole?: string
   },
 ): boolean {
-  const { isLoggedIn, currentRole, routeRequiresAuth, routeRequiredRole } = options
+  const { isLoggedIn, isKiosk = false, currentRole, routeRequiresAuth, routeRequiredRole } = options
 
   if (item.audience === 'public') {
     if (routeRequiresAuth) return false
@@ -51,6 +52,8 @@ export function isNavigationItemVisible(
     if (!isLoggedIn) return false
   } else if (item.audience === 'admin') {
     if (!isLoggedIn || currentRole !== 'admin') return false
+  } else if (item.audience === 'kiosk') {
+    if (!isKiosk) return false
   } else if (routeRequiresAuth && !isLoggedIn) {
     return false
   }

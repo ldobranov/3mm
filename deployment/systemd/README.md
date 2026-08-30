@@ -26,6 +26,16 @@ installation. It exposes only a group-restricted Unix socket and can schedule
 one fixed staged-update worker. It does not accept commands, URLs, archive
 paths or package names from Core.
 
+Application extensions use `3mm-application-extension@.service` and the
+separate unprivileged `3mm-app` identity. The service imports only the reviewed
+wheel selected by root-owned active metadata and communicates with Core over a
+per-installation signed Unix socket. It has a private network namespace and can
+write only its own `data` and `run` directories. Activation is explicit,
+applies forward-only extension migrations, is health checked and restores both
+the previous active version and its SQLite snapshot if the candidate fails.
+Backup quiesces application instances and includes only their mutable `data`;
+restore reactivates them from checksum-addressed reviewed packages.
+
 The setup portal remains unprivileged and talks through a root-owned Unix
 socket to a narrowly scoped NetworkManager helper. The open `3mm Setup XXXX`
 access point exists only in unprovisioned or explicit network-reset mode,

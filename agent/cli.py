@@ -48,6 +48,8 @@ def build_parser() -> argparse.ArgumentParser:
         gpio_chip=defaults.gpio_chip,
         gpio_inputs=defaults.gpio_inputs,
         gpio_outputs=defaults.gpio_outputs,
+        identifier_driver=defaults.identifier_driver,
+        identifier_reader_id=defaults.identifier_reader_id,
     )
     return parser
 
@@ -68,6 +70,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         gpio_chip=arguments.gpio_chip,
         gpio_inputs=arguments.gpio_inputs,
         gpio_outputs=arguments.gpio_outputs,
+        identifier_driver=arguments.identifier_driver,
+        identifier_reader_id=arguments.identifier_reader_id,
     )
     uvicorn.run(
         create_app(settings),

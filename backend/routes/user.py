@@ -348,11 +348,22 @@ def delete_user(
         from backend.db.display import Display
         from backend.db.audit_log import AuditLog
         from backend.db.session import Session as UserSession
+        from backend.db.module import ApplicationKioskEnrollment, ApplicationPermissionGrant
         
         # Delete user's permissions (both as grantor and grantee)
         db.query(Permission).filter(
             (Permission.user_id == user_id) | (Permission.granted_by == user_id)
         ).delete(synchronize_session=False)
+        db.query(ApplicationPermissionGrant).filter(
+            (ApplicationPermissionGrant.user_id == user_id)
+            | (ApplicationPermissionGrant.granted_by == user_id)
+        ).delete(synchronize_session=False)
+        db.query(ApplicationKioskEnrollment).filter(
+            ApplicationKioskEnrollment.created_by == user_id
+        ).update(
+            {ApplicationKioskEnrollment.created_by: None},
+            synchronize_session=False,
+        )
         
         # Delete user's sessions
         db.query(UserSession).filter(UserSession.user_id == user_id).delete(synchronize_session=False)

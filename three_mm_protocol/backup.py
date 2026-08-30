@@ -41,7 +41,7 @@ class BackupProtectionV1(StrictBackupModel):
 
 
 class BackupEntryV1(StrictBackupModel):
-    area: Literal["core", "agent", "provisioning", "host-config"]
+    area: Literal["core", "agent", "provisioning", "host-config", "applications"]
     path: str = Field(min_length=1, max_length=512)
     sensitivity: Literal["private", "secret"]
     size_bytes: int = Field(ge=0)

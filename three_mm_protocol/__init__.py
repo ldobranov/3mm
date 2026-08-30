@@ -52,12 +52,28 @@ from three_mm_protocol.capability_state import (
     CapabilityStateReportV1,
     CapabilityStateSnapshotV1,
 )
+from three_mm_protocol.identifier_scan import (
+    IdentifierScanEventV1,
+    IdentifierScanPayloadV1,
+)
 from three_mm_protocol.backup import (
     BACKUP_MANIFEST_VERSION,
     BackupCompatibilityV1,
     BackupEntryV1,
     BackupManifestV1,
     BackupProtectionV1,
+)
+from three_mm_protocol.application_extension import (
+    ApplicationConnectorV1,
+    ApplicationEventSubscriptionV1,
+    ApplicationExtensionV1,
+    ApplicationJobV1,
+    ApplicationLifecycleV1,
+    ApplicationOperationV1,
+    ApplicationPermissionV1,
+    ApplicationRouteV1,
+    ApplicationServiceV1,
+    ApplicationStorageV1,
 )
 
 __all__ = [
@@ -99,9 +115,21 @@ __all__ = [
     "PresentationStateV1",
     "CapabilityStateReportV1",
     "CapabilityStateSnapshotV1",
+    "IdentifierScanEventV1",
+    "IdentifierScanPayloadV1",
     "BACKUP_MANIFEST_VERSION",
     "BackupCompatibilityV1",
     "BackupEntryV1",
     "BackupManifestV1",
     "BackupProtectionV1",
+    "ApplicationConnectorV1",
+    "ApplicationEventSubscriptionV1",
+    "ApplicationExtensionV1",
+    "ApplicationJobV1",
+    "ApplicationLifecycleV1",
+    "ApplicationOperationV1",
+    "ApplicationPermissionV1",
+    "ApplicationRouteV1",
+    "ApplicationServiceV1",
+    "ApplicationStorageV1",
 ]

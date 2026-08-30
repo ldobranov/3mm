@@ -1,0 +1,21 @@
+{
+  "compiled_ui_version": 1,
+  "module_id": "org.3mm.application-reference",
+  "version": "1.0.1",
+  "entrypoints": [
+    {
+      "entrypoint_id": "registration",
+      "kind": "route",
+      "source": "source/frontend/Registration.vue",
+      "label": {"en": "Reference registration"},
+      "route": "/reference/register"
+    },
+    {
+      "entrypoint_id": "operations",
+      "kind": "route",
+      "source": "source/frontend/Operations.vue",
+      "label": {"en": "Reference operations"},
+      "route": "/reference/operations"
+    }
+  ]
+}

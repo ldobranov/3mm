@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from agent import __version__
 from agent.config import AgentSettings
@@ -16,7 +16,12 @@ from agent.core_client import (
     CommandJournal, CorePublisher, DeviceCredentialStore, OutboxStore,
     ReconciliationStore,
 )
-from agent.hardware import MockDigitalGpioDriver, create_gpio_driver, create_hardware_driver
+from agent.hardware import (
+    MockDigitalGpioDriver,
+    MockIdentifierAdapter,
+    create_gpio_driver,
+    create_hardware_driver,
+)
 from agent.modules.gpio import GPIO_ENTRYPOINT, gpio_runtime_handler
 from agent.automation_store import AutomationStore
 from agent.identity import AgentIdentity, AgentIdentityStore
@@ -40,6 +45,11 @@ class MockGpioInputUpdate(BaseModel):
     value: bool
 
 
+class MockIdentifierScanRequest(BaseModel):
+    opaque_identifier: str
+    scan_metadata: dict[str, str | int | float | bool] = Field(default_factory=dict)
+
+
 def _runtime(request: Request) -> AgentRuntime:
     return request.app.state.agent_runtime
 
@@ -56,9 +66,23 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
                 FileProvisioningStore(resolved_settings.provisioning_data_dir)
             ).resolve(resolved_role)
         identity = AgentIdentityStore(resolved_settings.data_dir).load_or_create()
+        def current_inventory() -> AgentInventory:
+            inventory = collect_inventory(identity.device_id, hardware)
+            if resolved_settings.identifier_driver == "mock":
+                inventory = inventory.model_copy(
+                    update={
+                        "capabilities": tuple(
+                            dict.fromkeys(
+                                (*inventory.capabilities, "identifier.scan.v1")
+                            )
+                        )
+                    }
+                )
+            return inventory
+
         app.state.agent_runtime = AgentRuntime(
             identity=identity,
-            inventory=collect_inventory(identity.device_id, hardware),
+            inventory=current_inventory(),
             role=resolved_role,
             started_at=datetime.now(UTC),
             started_monotonic=time.monotonic(),
@@ -73,6 +97,14 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
             outputs=resolved_settings.gpio_outputs,
         )
         app.state.mock_gpio = gpio if isinstance(gpio, MockDigitalGpioDriver) else None
+        app.state.mock_identifier = (
+            MockIdentifierAdapter(
+                resolved_settings.data_dir / "identifier-sequence.json",
+                reader_id=resolved_settings.identifier_reader_id,
+            )
+            if resolved_settings.identifier_driver == "mock"
+            else None
+        )
         module_runtime = AgentModuleRuntime(
             resolved_settings.data_dir,
             architecture=app.state.agent_runtime.inventory.architecture,
@@ -89,7 +121,7 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
                 publisher = CorePublisher(
                     core_url=resolved_settings.core_url,
                     credential=credential,
-                    inventory_provider=lambda: collect_inventory(identity.device_id, hardware),
+                    inventory_provider=current_inventory,
                     command_journal=CommandJournal(resolved_settings.data_dir),
                     reconciliation_store=ReconciliationStore(resolved_settings.data_dir),
                     outbox=OutboxStore(resolved_settings.data_dir),
@@ -173,6 +205,29 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
         except KeyError as exc:
             raise HTTPException(404, "Mock GPIO input was not found") from exc
         return {"changed": event is not None, "sequence": event.sequence if event else None}
+
+    @app.post("/api/v1/agent/mock-identifier/scan", tags=["diagnostics"])
+    def emit_mock_identifier_scan(
+        payload: MockIdentifierScanRequest,
+        request: Request,
+    ) -> dict[str, object]:
+        """Emit one opaque scan through the normal persistent Agent outbox."""
+        adapter = request.app.state.mock_identifier
+        if adapter is None:
+            raise HTTPException(404, "Mock identifier diagnostics are disabled")
+        try:
+            event = adapter.scan(
+                payload.opaque_identifier,
+                metadata=payload.scan_metadata,
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        request.app.state.module_event_sink(event)
+        return {
+            "status": "emitted",
+            "sequence": event["payload"]["sequence"],
+            "reader_id": event["payload"]["reader_id"],
+        }
 
     return app
 

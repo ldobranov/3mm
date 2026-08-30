@@ -10,6 +10,24 @@ pre-1.0.
 
 ### Added
 
+- A strict `ApplicationExtensionV1` contract for supervised services,
+  versioned operations, audiences, extension permissions, event subscriptions,
+  connectors, jobs, storage and lifecycle declarations.
+- Cross-file application package validation for service artifact integrity,
+  compiled routes, declared capabilities, exact permissions and secret-safe
+  configuration references.
+- A separate `3mm-app` Extension Host, stable service SDK, signed local
+  transport, administrator-only Core gateway and transactional activation with
+  health checking and rollback. Uploaded application UI stays hidden until its
+  service is active.
+- Extension-owned SQLite storage, forward-only SDK migrations and a
+  transactional outbox, with database rollback on failed activation and
+  encrypted backup/restore participation for mutable application data.
+- Extension-scoped operator grants, one-use kiosk enrollment, renewable
+  short-lived kiosk sessions and immediate terminal revocation, with kiosk JWTs
+  kept separate from normal user authentication.
+- Server-filtered application compiled routes and data-driven public, kiosk,
+  operator and administrator navigation policies.
 - Administrator backup preview, encrypted local backup catalog, bounded
   retention and transactional restore with automatic rollback.
 - Password-protected `.3mmrecovery` downloads and bounded restore-from-file
@@ -31,14 +49,19 @@ pre-1.0.
 - Deployed review release `worktree-50f841dce023-20260828175806` and completed
   a real portable export/import round trip with a fresh device key, archive
   authentication, private export permissions and cleanup.
+- Completed the final browser download → clean installation → portable upload
+  and restore acceptance on `rasp-3mm`, closing Milestone 11.
+- Passed 160 focused application-extension protocol, SDK, runtime,
+  authorization, backup/restore and deployment tests for Milestone 12 Stages
+  1–4, plus 10 focused frontend tests and the production frontend build.
 - Passed all 60 frontend tests, TypeScript checking and the production build;
   focused backend, protocol, helper and deployment tests passed before the
   Raspberry review deployment.
 
 ### Documentation
 
-- Added the backup/restore contract, diagnostics boundary and Milestone 11
-  implementation report.
+- Added the backup/restore contract, diagnostics boundary, closed Milestone 11
+  report and the Milestone 12 application-extension plan/report.
 
 ## [0.3.0-beta.9] - 2026-08-28
 

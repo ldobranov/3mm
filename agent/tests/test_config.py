@@ -19,6 +19,8 @@ def test_agent_settings_are_environment_driven(monkeypatch, tmp_path):
     monkeypatch.setenv("THREE_MM_GPIO_CHIP", "/dev/gpiochip4")
     monkeypatch.setenv("THREE_MM_GPIO_INPUTS", "gpio.input.1:17,input.door:22")
     monkeypatch.setenv("THREE_MM_GPIO_OUTPUTS", "gpio.output.1:27")
+    monkeypatch.setenv("THREE_MM_IDENTIFIER_DRIVER", "mock")
+    monkeypatch.setenv("THREE_MM_IDENTIFIER_READER_ID", "reader.usb.1")
 
     settings = AgentSettings.from_env()
 
@@ -33,6 +35,8 @@ def test_agent_settings_are_environment_driven(monkeypatch, tmp_path):
     assert settings.gpio_chip == "/dev/gpiochip4"
     assert settings.gpio_inputs == {"gpio.input.1": 17, "input.door": 22}
     assert settings.gpio_outputs == {"gpio.output.1": 27}
+    assert settings.identifier_driver == "mock"
+    assert settings.identifier_reader_id == "reader.usb.1"
 
 
 @pytest.mark.parametrize("port", [0, 65536])

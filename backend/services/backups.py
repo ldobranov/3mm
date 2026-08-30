@@ -98,7 +98,7 @@ class BackupCatalogResponse(StrictPreviewModel):
 
 @dataclass(frozen=True, slots=True)
 class BackupSource:
-    area: Literal["core", "agent", "provisioning", "host-config"]
+    area: Literal["core", "agent", "provisioning", "host-config", "applications"]
     source: Path
     logical_path: str
     sensitivity: Literal["private", "secret"]
@@ -299,7 +299,7 @@ def _backup_sources(
     settings: AppSettings, database_path: Path
 ) -> tuple[BackupSource, ...]:
     core_root = database_path.parent
-    return (
+    sources = [
         BackupSource(
             "core", database_path, database_path.name, "secret", required=True
         ),
@@ -352,7 +352,25 @@ def _backup_sources(
             "3mm.env",
             "secret",
         ),
-    )
+    ]
+    applications = settings.backups.application_extensions_dir
+    if applications.is_dir() and not applications.is_symlink():
+        for instance in sorted(applications.iterdir()):
+            if (
+                re.fullmatch(r"[0-9a-f]{24}", instance.name)
+                and instance.is_dir()
+                and not instance.is_symlink()
+            ):
+                sources.append(
+                    BackupSource(
+                        "applications",
+                        instance / "data",
+                        f"{instance.name}/data",
+                        "secret",
+                        report_missing=False,
+                    )
+                )
+    return tuple(sources)
 
 
 def resolve_backup_entry(settings: AppSettings, entry: BackupEntryV1) -> Path:

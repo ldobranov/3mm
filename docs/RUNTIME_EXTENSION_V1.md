@@ -38,6 +38,12 @@ Publishing or activating a definition requires an administrator and creates an a
 
 Relationships, custom layouts, remote APIs, media fields and capability actions are intentionally deferred until the basic CRUD reference extension passes the full install-to-use acceptance scenario.
 
+They are not added to `runtime-extension v1` by allowing arbitrary handlers or
+scripts. A workflow that needs related transactional records, background work,
+hardware events or an external business API moves to the separately supervised
+`application-extension v1` boundary described in
+[APPLICATION_EXTENSION_V1_PLAN.md](APPLICATION_EXTENSION_V1_PLAN.md).
+
 ## Required validation
 
 - IDs, routes, field IDs and navigation IDs are unique;

@@ -36,6 +36,14 @@ The platform must support these primary use cases:
 10. A clean installation must not depend on credentials, paths or services from a developer's machine.
 11. Local operation and already installed modules must not depend on an active AI subscription or cloud availability.
 12. A Hub is also a managed local device and therefore always runs its own Agent.
+13. Complete business applications remain installable extensions; Core provides
+    lifecycle, identity, permissions and gateways but never owns their domain
+    entities or vendor mappings.
+14. An accepted local business operation is durable before external delivery;
+    connector failure cannot erase local work or trigger blind duplicate
+    submission.
+15. Public and kiosk interfaces are explicit restricted audiences, not
+    authenticated application routes with their client-side guard removed.
 
 ## 3. Target system
 
@@ -169,6 +177,39 @@ is not copied into the provisioning journal, Core database, diagnostics,
 environment configuration, command arguments or logs.
 
 Network management is behind an adapter so the state machine and portal are testable on a laptop. Raspberry-specific NetworkManager, access-point and captive-portal integration belongs in the platform adapter, not in the provisioning domain logic.
+
+### 3.7 Business application extensions
+
+Some extensions need more than declarative CRUD or a compiled Vue component.
+They may own related domain records, transactional workflows, role-specific
+operations, hardware events and reliable communication with a local or remote
+business system. These extensions use a separate, trusted
+`application-extension v1` boundary rather than expanding Core with concrete
+business concepts.
+
+An application extension is a coordinated package that may contribute:
+
+- a supervised backend service running outside the Core API process;
+- compiled UI routes for public/kiosk, operator and administrator workflows;
+- an extension-owned, namespaced data store and forward migrations;
+- versioned commands, events and query contracts exposed through a generic
+  Core gateway;
+- declared Agent capabilities, such as an opaque identifier-scan event;
+- declared outbound connectors using opaque secret references;
+- a durable, bounded outbox with idempotency, retry and reconciliation state;
+- backup, restore, health, disable, rollback and uninstall hooks.
+
+Core authenticates the caller, authorizes an extension-scoped operation and
+routes a versioned request; it never imports the extension service or knows its
+entities, vendor names or workflow. Public and kiosk operations are explicitly
+enumerated and narrower than normal authenticated access. Hardware events
+carry opaque identifiers rather than personal data, and external credentials
+never enter manifests, browser state, logs or AI context.
+
+The full planned boundary is recorded in
+[APPLICATION_EXTENSION_V1_PLAN.md](APPLICATION_EXTENSION_V1_PLAN.md). A
+vertical business application is developed as its own extension only after
+this neutral platform contract passes a mock end-to-end acceptance scenario.
 
 ## 4. Core-Agent protocol
 

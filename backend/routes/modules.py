@@ -2,7 +2,7 @@
 import base64
 import shutil
 from pathlib import Path
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
@@ -10,7 +10,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from backend.config import get_settings
 from backend.db.device import Device, DeviceInventorySnapshot
-from backend.db.module import ModuleInstallation, ModulePackage
+from backend.db.module import (
+    ApplicationExtensionInstallation,
+    ModuleInstallation,
+    ModulePackage,
+)
 from backend.db.widget import Widget
 from backend.db.user import User
 from backend.services.device_commands import queue_command
@@ -20,6 +24,11 @@ from backend.services.compiled_ui import (
     compile_ui_package,
     compiled_artifacts_dir,
     load_compiled_ui_artifact,
+)
+from backend.services.application_access import (
+    application_permission_ids,
+    can_access_application_route,
+    resolve_application_principal,
 )
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
@@ -45,27 +54,91 @@ def _validated_compiled_package(package: ModulePackage):
     return validated
 
 
-def _compiled_catalog_item(package: ModulePackage) -> dict:
+def _compiled_catalog_item(
+    package: ModulePackage,
+    db: Session,
+    authorization: str | None,
+) -> dict | None:
     validated = _validated_compiled_package(package)
     try:
         artifact = load_compiled_ui_artifact(validated)
     except CompiledUiBuildError as exc:
         raise HTTPException(409, str(exc)) from exc
     base = f"/api/v1/modules/compiled-ui/assets/{package.module_id}/{package.version}/{package.sha256}"
+    entrypoints = []
+    application = validated.application_extension
+    route_policies = (
+        {item.entrypoint_id: item for item in application.routes}
+        if application is not None
+        else {}
+    )
+    principal = resolve_application_principal(authorization, db)
+    installation = None
+    permission_ids: frozenset[str] = frozenset()
+    if application is not None:
+        installation = db.scalar(
+            select(ApplicationExtensionInstallation).where(
+                ApplicationExtensionInstallation.module_package_id == package.id,
+                ApplicationExtensionInstallation.enabled.is_(True),
+                ApplicationExtensionInstallation.status == "active",
+            )
+        )
+        if installation is None:
+            return None
+        if principal.kind == "user" and principal.user_id is not None:
+            permission_ids = application_permission_ids(
+                db,
+                installation.id,
+                principal.user_id,
+            )
+    for entrypoint in validated.compiled_ui.entrypoints:
+        policy = route_policies.get(entrypoint.entrypoint_id)
+        if application is not None:
+            if policy is None or not can_access_application_route(
+                policy,
+                principal,
+                module_id=application.module_id,
+                permission_ids=permission_ids,
+            ):
+                continue
+        entrypoints.append(
+            {
+                **entrypoint.model_dump(mode="json"),
+                "asset_url": f"{base}/{artifact.entrypoints[entrypoint.entrypoint_id]}",
+                **(
+                    {
+                        "application_audience": policy.audience,
+                        "required_permissions": list(policy.required_permissions),
+                        "navigation": policy.navigation,
+                        "menu_order": policy.order,
+                    }
+                    if policy is not None
+                    else {}
+                ),
+            }
+        )
+    if application is not None and not entrypoints:
+        return None
     return {
         "module_id": package.module_id,
         "name": package.manifest.get("name") or package.module_id,
         "version": package.version,
         "source_sha256": package.sha256,
         "styles": [f"{base}/{path}" for path in artifact.styles],
-        "entrypoints": [
-            {
-                **entrypoint.model_dump(mode="json"),
-                "asset_url": f"{base}/{artifact.entrypoints[entrypoint.entrypoint_id]}",
-            }
-            for entrypoint in validated.compiled_ui.entrypoints
-        ],
+        "entrypoints": entrypoints,
     }
+
+
+def _application_package_is_active(package: ModulePackage, db: Session) -> bool:
+    if (package.manifest.get("entrypoints") or {}).get("core") != "application-extension.json":
+        return True
+    return db.scalar(
+        select(ApplicationExtensionInstallation.id).where(
+            ApplicationExtensionInstallation.module_package_id == package.id,
+            ApplicationExtensionInstallation.enabled.is_(True),
+            ApplicationExtensionInstallation.status == "active",
+        )
+    ) is not None
 
 @router.post("/packages",response_model=PackageResponse)
 async def upload_package(package:UploadFile=File(...),_admin:User=Depends(require_admin),db:Session=Depends(get_db)):
@@ -97,14 +170,22 @@ def list_packages(_admin:User=Depends(require_admin),db:Session=Depends(get_db))
 
 
 @router.get("/compiled-ui/catalog")
-def compiled_ui_catalog(db:Session=Depends(get_db)):
+def compiled_ui_catalog(
+    authorization: str | None = Header(default=None),
+    db:Session=Depends(get_db),
+):
     packages = db.scalars(select(ModulePackage).order_by(ModulePackage.module_id, ModulePackage.version))
+    items = []
+    for package in packages:
+        if (package.manifest.get("entrypoints") or {}).get("ui") != "compiled-ui.json":
+            continue
+        if not _application_package_is_active(package, db):
+            continue
+        item = _compiled_catalog_item(package, db, authorization)
+        if item is not None:
+            items.append(item)
     return {
-        "items": [
-            _compiled_catalog_item(package)
-            for package in packages
-            if (package.manifest.get("entrypoints") or {}).get("ui") == "compiled-ui.json"
-        ]
+        "items": items
     }
 
 
@@ -127,6 +208,12 @@ def delete_compiled_ui_package(
         raise HTTPException(409, "Remove this extension's widgets from all dashboards before deleting it")
     if db.scalar(select(ModuleInstallation.id).where(ModuleInstallation.module_package_id == package.id).limit(1)) is not None:
         raise HTTPException(409, "Uninstall this package from devices before deleting it")
+    if db.scalar(
+        select(ApplicationExtensionInstallation.id).where(
+            ApplicationExtensionInstallation.module_package_id == package.id
+        ).limit(1)
+    ) is not None:
+        raise HTTPException(409, "Disable and remove this application extension before deleting it")
 
     validated = _validated_compiled_package(package)
     artifact_dir = (
@@ -151,6 +238,8 @@ def compiled_ui_asset(module_id:str,version:str,sha256:str,asset_path:str,db:Ses
         )
     )
     if package is None:
+        raise HTTPException(404, "compiled UI artifact was not found")
+    if not _application_package_is_active(package, db):
         raise HTTPException(404, "compiled UI artifact was not found")
     validated = _validated_compiled_package(package)
     try:
@@ -184,8 +273,10 @@ def install_module(sha256:str,device_id:str,_admin:User=Depends(require_admin),d
     package=db.scalar(select(ModulePackage).where(ModulePackage.sha256==sha256)); device=db.scalar(select(Device).where(Device.device_id==device_id))
     if not package or not device: raise HTTPException(404,"package or device was not found")
     blob=Path(package.file_path).read_bytes()
-    try: validate_module_package(blob,architecture=_device_architecture(db,device),protocol_version=device.protocol_version)
+    try: validated=validate_module_package(blob,architecture=_device_architecture(db,device),protocol_version=device.protocol_version)
     except ModulePackageError as exc: raise HTTPException(409,str(exc)) from exc
+    if validated.application_extension is not None:
+        raise HTTPException(409, "Application extensions run on Core, not on an Agent")
     command=queue_command(db,device=device,command_type="module.install",payload={"package_base64":base64.b64encode(blob).decode(),"sha256":package.sha256,"module_id":package.module_id,"version":package.version},idempotency_key=f"module.install:{package.module_id}:{package.sha256}",ttl_seconds=900)
     installation=db.scalar(select(ModuleInstallation).where(ModuleInstallation.device_id==device.id,ModuleInstallation.module_id==package.module_id))
     if installation is None:
@@ -205,6 +296,8 @@ def registrations(_admin:User=Depends(require_admin),db:Session=Depends(get_db))
     result=[]
     for package in db.scalars(select(ModulePackage)):
         if (package.manifest.get("entrypoints") or {}).get("ui") == "runtime-extension.json":
+            continue
+        if not _application_package_is_active(package, db):
             continue
         for item in package.registrations or []: result.append({"module_id":package.module_id,"version":package.version,**item})
     return result

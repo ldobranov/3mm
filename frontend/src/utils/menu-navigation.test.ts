@@ -52,4 +52,18 @@ describe('menu navigation', () => {
       { isLoggedIn: false, currentRole: '', routeRequiresAuth: true },
     )).toBe(false)
   })
+
+  it('shows kiosk navigation only while a kiosk identity is active', () => {
+    const item = { path: '/application/check-in', label: 'Check in', audience: 'kiosk' as const }
+    expect(isNavigationItemVisible(item, {
+      isLoggedIn: false,
+      isKiosk: false,
+      currentRole: '',
+    })).toBe(false)
+    expect(isNavigationItemVisible(item, {
+      isLoggedIn: false,
+      isKiosk: true,
+      currentRole: '',
+    })).toBe(true)
+  })
 })

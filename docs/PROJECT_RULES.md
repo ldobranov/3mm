@@ -82,6 +82,22 @@ These rules apply to Core, Agent, modules, documentation and AI-generated change
 8. Module database migrations are forward versioned and tested against backup restoration.
 9. Frontend contributions are loaded from a validated registry, not hardcoded imports in Core navigation.
 10. Module packages are immutable after publication.
+11. A business application service runs outside the Core API process and is
+    reached only through a versioned, authenticated extension-service contract.
+12. Extension-owned domain data is namespaced and cannot be queried directly
+    by another extension or by generic Core code.
+13. Public, kiosk, operator and administrator operations are separately
+    declared and authorized; a public route never implies access to an
+    extension's authenticated API.
+14. External-system credentials are opaque secret references. Connector
+    manifests and extension configuration never contain the secret value.
+15. Retriable external mutations use a bounded durable outbox, stable
+    idempotency identity and an observable terminal failure state.
+16. Hardware identifiers and scan events cross the Agent boundary through a
+    declared capability; extensions do not open serial, USB, NFC or RFID
+    devices directly.
+17. Extension data, migrations and connector state participate explicitly in
+    backup, restore, disable, rollback and uninstall behavior.
 
 ## 7. AI behavior
 

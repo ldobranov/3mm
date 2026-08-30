@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from three_mm_protocol import (
     AgentCommand, AgentCommandResult, AgentHeartbeat, AgentInventory,
     AgentReportedState, CapabilityStateReportV1, DeviceDesiredState,
+    IdentifierScanEventV1,
 )
 
 logger = logging.getLogger(__name__)
@@ -224,7 +225,19 @@ class CorePublisher:
         )
 
     def publish_event(self, event: dict) -> None:
-        payload = {"event_id": f"evt_{uuid.uuid4().hex}", "device_id": self.credential.device_id, "occurred_at": datetime.now(UTC).isoformat(), **event}
+        event_type = event.get("event_type")
+        event_payload = event.get("payload")
+        if not isinstance(event_type, str) or not isinstance(event_payload, dict):
+            raise ValueError("Agent event must contain an event type and object payload")
+        payload = {
+            "event_id": f"evt_{uuid.uuid4().hex}",
+            "device_id": self.credential.device_id,
+            "occurred_at": datetime.now(UTC).isoformat(),
+            "event_type": event_type,
+            "payload": event_payload,
+        }
+        if event_type == "identifier.scan.v1":
+            payload = IdentifierScanEventV1.model_validate(payload).model_dump(mode="json")
         self._send_or_queue("events", payload, f"event:{payload['event_id']}")
         try:
             self._publish_capability_states()

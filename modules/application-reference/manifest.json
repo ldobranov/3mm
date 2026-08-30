@@ -1,0 +1,48 @@
+{
+  "manifest_version": 2,
+  "module_id": "org.3mm.application-reference",
+  "name": "Application Reference",
+  "version": "1.0.1",
+  "runtimes": ["core", "ui"],
+  "entrypoints": {
+    "core": "application-extension.json",
+    "ui": "compiled-ui.json"
+  },
+  "compatibility": {
+    "protocol": "1.0",
+    "architectures": ["any"]
+  },
+  "capabilities": {
+    "provides": [],
+    "consumes": ["identifier.scan.v1"]
+  },
+  "permissions": [
+    "data.read",
+    "data.write",
+    "events.consume",
+    "network.outbound",
+    "process.spawn",
+    "secrets.use"
+  ],
+  "configuration_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "READER_DEVICE_ID": {"type": "string"},
+      "BUSINESS_API_URL": {"type": "string", "format": "uri"},
+      "BUSINESS_API_CREDENTIAL": {
+        "type": "string",
+        "x-3mm-secret-reference": true
+      }
+    }
+  },
+  "configuration_defaults": {
+    "READER_DEVICE_ID": "dev_00000000000000000000000000000000",
+    "BUSINESS_API_URL": "http://127.0.0.1:9911"
+  },
+  "registrations": [],
+  "health_check": {
+    "type": "json_file",
+    "path": "application-extension.json"
+  }
+}

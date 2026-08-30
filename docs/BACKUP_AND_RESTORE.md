@@ -30,6 +30,7 @@ rejected.
 | Core | `/var/lib/3mm/core/extensions/backend` | installed backend extension files | private | include |
 | Core | `/var/lib/3mm/core/extensions/frontend` | installed frontend extension files | private | include |
 | Core | `/var/lib/3mm/core/extensions/compiled` | immutable compiled UI artifacts | private | include so the restored active hash is immediately available |
+| Applications | `/var/lib/3mm/application-extensions/<instance>/data` | extension-owned SQLite state, files and transactional outbox | secret | include only the mutable `data` subtree; exclude reviewed code and runtime material |
 | Agent | `/var/lib/3mm/agent` | stable identity, Core credential, command journal, outbox, automations and module data | secret | include in device-bound backup |
 | Provisioning | `/var/lib/3mm/provisioning` | role, locale, device name and recovery state | private | include, excluding transient scan cache |
 | Host config | `/etc/3mm/3mm.env` | deployment overrides and possible provider or service secrets | secret | include only in device-bound backup |
@@ -86,10 +87,13 @@ The root worker authenticates and decrypts into a root-only temporary staging
 area, validates the complete manifest, exact archive inventory, every checksum,
 application/protocol/architecture compatibility, SQLite integrity and stable
 device identity before stopping services. It then swaps only the allowlisted
-Core, Agent, provisioning and host-config state, runs current migrations and
-requires Core, Agent and Web health checks to pass. A failure restores the
-previous directories. If rollback itself cannot complete, its recovery files
-are retained instead of being deleted.
+Core, Agent, provisioning, application and host-config state. Restored enabled
+applications are rebuilt from their checksum-addressed packages and migrate
+their own database before Core, Agent and Web health checks must pass. Reviewed
+service wheels, active pointers, sockets and transport keys are not accepted
+from the archive. A failure restores the previous directories. If rollback
+itself cannot complete, its recovery files are retained instead of being
+deleted.
 
 `GET /api/v1/backups` returns only validated catalog sidecars. Each sidecar
 contains timestamps, compatibility, size and archive checksum metadata, but no

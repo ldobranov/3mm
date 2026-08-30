@@ -50,6 +50,8 @@ class AgentSettings:
     gpio_chip: str = "/dev/gpiochip0"
     gpio_inputs: dict[str, int] | None = None
     gpio_outputs: dict[str, int] | None = None
+    identifier_driver: str = "disabled"
+    identifier_reader_id: str = "reader.mock.1"
 
     def __post_init__(self) -> None:
         if not 1 <= self.port <= 65535:
@@ -62,6 +64,10 @@ class AgentSettings:
             raise ValueError("GPIO driver must be 'mock' or 'gpiod'")
         if self.gpio_driver == "gpiod" and not self.gpio_inputs:
             raise ValueError("The gpiod driver requires at least one input mapping")
+        if self.identifier_driver not in {"disabled", "mock"}:
+            raise ValueError("Identifier driver must be 'disabled' or 'mock'")
+        if not self.identifier_reader_id.strip():
+            raise ValueError("Identifier reader ID cannot be empty")
 
     @classmethod
     def from_env(cls) -> "AgentSettings":
@@ -94,4 +100,10 @@ class AgentSettings:
             gpio_chip=os.getenv("THREE_MM_GPIO_CHIP", "/dev/gpiochip0").strip(),
             gpio_inputs=_gpio_lines_from_env("THREE_MM_GPIO_INPUTS"),
             gpio_outputs=_gpio_lines_from_env("THREE_MM_GPIO_OUTPUTS"),
+            identifier_driver=os.getenv(
+                "THREE_MM_IDENTIFIER_DRIVER", "disabled"
+            ).strip().lower(),
+            identifier_reader_id=os.getenv(
+                "THREE_MM_IDENTIFIER_READER_ID", "reader.mock.1"
+            ).strip(),
         )

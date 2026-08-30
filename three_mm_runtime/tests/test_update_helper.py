@@ -455,3 +455,63 @@ def test_portable_restore_uses_only_the_fixed_upload_directory(
         f"{'b' * 32}.3mmrecovery"
     )
     assert scheduled[0]["backup_id"] == backup_id
+
+
+def test_application_activation_uses_only_the_fixed_sha_package_path(
+    monkeypatch, tmp_path: Path
+) -> None:
+    captured = []
+    sha256 = "a" * 64
+    monkeypatch.setattr(update_helper, "_service_ids", lambda *_args: (1200, 1201))
+    monkeypatch.setattr(
+        update_helper,
+        "activate_application_package",
+        lambda package_path, expected, **kwargs: captured.append(
+            (package_path, expected, kwargs)
+        )
+        or type(
+            "Activated",
+            (),
+            {
+                "module_id": "org.3mm.demo",
+                "version": "1.0.0",
+                "sha256": expected,
+                "instance_id": "b" * 24,
+                "socket_path": tmp_path / "apps" / ("b" * 24) / "run/service.sock",
+            },
+        )(),
+    )
+
+    response = update_helper._handle_request(
+        {
+            "action": "activate_application_extension",
+            "sha256": sha256,
+            "requested_by_user_id": 7,
+        },
+        stage_root=tmp_path / "stage",
+        state_root=tmp_path / "state",
+        allowlist=tmp_path / "allowlist.json",
+        status_file=tmp_path / "status.json",
+        application_upload_root=tmp_path / "uploads",
+        application_root=tmp_path / "apps",
+        application_key_root=tmp_path / "keys",
+    )
+    injected = update_helper._handle_request(
+        {
+            "action": "activate_application_extension",
+            "sha256": sha256,
+            "requested_by_user_id": 7,
+            "package_path": "/tmp/anything.zip",
+        },
+        stage_root=tmp_path / "stage",
+        state_root=tmp_path / "state",
+        allowlist=tmp_path / "allowlist.json",
+        status_file=tmp_path / "status.json",
+    )
+
+    assert response["status"] == "active"
+    assert captured[0][0] == tmp_path / "uploads" / f"{sha256}.zip"
+    assert captured[0][1] == sha256
+    assert captured[0][2]["service_uid"] == 1200
+    assert captured[0][2]["service_gid"] == 1201
+    assert injected == {"ok": False, "error": "invalid_request"}

@@ -1,6 +1,6 @@
 # 3mm Roadmap
 
-Status: active; Milestones 0–10 completed, Milestone 11 in progress
+Status: active; Milestones 0–12 completed
 Planning style: sequential milestones with a runnable result after every milestone
 
 Dates are intentionally not assigned until the current baseline is reproducible. Progress is measured by acceptance criteria, not optimistic calendar estimates.
@@ -337,9 +337,8 @@ Acceptance criteria:
 Goal: make one Standalone device safely ownable, diagnosable and recoverable
 before adding more devices or more executable extension power.
 
-Status: in progress since 2026-08-28. Stages 1–3 and the Stage 4 implementation
-are deployed on physical `rasp-3mm`; final clean-media restore acceptance
-remains. See [MILESTONE_11_REPORT.md](MILESTONE_11_REPORT.md).
+Status: completed and physically accepted on 2026-08-29. See
+[MILESTONE_11_REPORT.md](MILESTONE_11_REPORT.md).
 
 Deliverables:
 
@@ -382,7 +381,67 @@ Stages:
 4. portable recovery implementation, physical clean-media restore acceptance
    and official Beta release.
 
-## Milestone 12 — Hub and Node orchestration
+## Milestone 12 — Trusted application extension foundation
+
+Goal: let a separately installed business application own transactional
+workflows, role-specific UI, hardware events and reliable external integration
+without adding its entities or vendor logic to Core.
+
+Status: completed and physically accepted on 2026-08-30. All seven stages and
+the twelve-step neutral reference flow passed. See
+[APPLICATION_EXTENSION_V1_PLAN.md](APPLICATION_EXTENSION_V1_PLAN.md) and
+[MILESTONE_12_REPORT.md](MILESTONE_12_REPORT.md).
+
+Deliverables:
+
+- strict `application-extension v1` package and operation contract;
+- offline-installable supervised backend service and stable Extension Host SDK
+  outside the Core API process;
+- authenticated generic Core gateway with correlation and audit identity;
+- extension-scoped permissions for public, kiosk, operator and administrator
+  operations;
+- revocable kiosk terminal enrollment and short-lived extension-scoped
+  sessions;
+- extension-owned storage, forward migrations and full backup/restore
+  participation;
+- generic application event broker with cursor, acknowledgement and duplicate
+  delivery handling;
+- opaque secret references and a destination-restricted connector broker;
+- bounded durable outbox, retry, idempotency and manual-review states;
+- persistent jobs, deterministic clock, paginated synchronization checkpoints
+  and generic operational status;
+- generic `identifier.scan.v1` Agent capability with mock and hardware adapter
+  boundaries;
+- neutral end-to-end reference package proving lifecycle and failure behavior.
+
+Acceptance criteria:
+
+- the reference application installs without a concrete module branch in Core
+  or Agent;
+- kiosk, operator and administrator access is independently enforced;
+- a normal operator needs no global administrator role;
+- duplicate identifier events cannot duplicate business state;
+- connector downtime does not lose an accepted operation or cause blind
+  duplicate submission;
+- active timed state, event cursor, scheduler and outbox survive service and
+  device restart;
+- a failed paginated sync leaves the last complete catalog active;
+- credentials remain absent from manifests, UI responses, logs, diagnostics
+  and AI context;
+- kiosk identities and connector credentials can be revoked or rotated
+  independently;
+- upgrade failure rolls back service and schema state;
+- backup/restore preserves application data and pending connector work;
+- disable stops routes, jobs and subscriptions without deleting data;
+- the neutral flow passes on deterministic laptop mocks and its service/reader
+  lifecycle passes on physical Raspberry hardware.
+
+After this milestone, the child-center workflow will be developed as a
+separate extension and will consume these generic contracts. Its people,
+visits, wristbands, consumption and point-of-sale mapping must not become Core
+models or special cases.
+
+## Milestone 13 — Hub and Node orchestration
 
 Goal: turn the proven Standalone device model into a real multi-device system
 without reinstalling a Standalone device to promote it to Hub.
@@ -408,7 +467,7 @@ Acceptance criteria:
 - one Hub manages at least two independent mock Nodes, with physical Node
   acceptance when a second device is available.
 
-## Milestone 13 — Capability and integration expansion
+## Milestone 14 — Capability and integration expansion
 
 Goal: add useful reusable capabilities through the contracts already accepted,
 without weakening Core or turning integrations into hardcoded product logic.
@@ -422,7 +481,8 @@ Candidate capabilities and modules:
 - audio and lighting;
 - Home Assistant bridge;
 - museum installation bundle based on ShowController lessons;
-- child-center device integrations where appropriate.
+- reusable capabilities required by separately maintained vertical
+  application extensions.
 
 Candidate selection criteria:
 
@@ -441,7 +501,7 @@ Acceptance criteria:
 - missing hardware and network failure produce explicit offline/stale state;
 - install, disable, rollback and uninstall preserve unrelated device state.
 
-## Milestone 14 — Production hardening and operations
+## Milestone 15 — Production hardening and operations
 
 Goal: make small real installations supportable and establish the security
 boundary required before arbitrary AI-generated executable code is considered.
@@ -472,9 +532,9 @@ OTA update stages (see [OTA_UPDATE_PLAN.md](OTA_UPDATE_PLAN.md)):
 2. reproducible, architecture-specific GitHub Release artifacts and strict manifest generation — `v0.1.0` published;
 3. verified staging, allowlisted dependency installation, explicit approval and automatic rollback — completed on physical `rasp-3mm`; failed candidates rolled back and `v0.2.3` completed the successful OTA acceptance run;
 4. update channels and Standalone maintenance windows — physically accepted through `v0.3.0-beta.5`;
-5. fleet rollout rings and coordinated maintenance — deferred until Milestone 12 provides Hub/Node orchestration.
+5. fleet rollout rings and coordinated maintenance — deferred until Milestone 13 provides Hub/Node orchestration.
 
-## Milestone 15 — Safe compiled AI module builder
+## Milestone 16 — Safe compiled AI module builder
 
 Goal: allow genuinely new AI-generated executable frontend/backend modules only
 after the production isolation, signing and operational boundaries exist.
@@ -605,7 +665,14 @@ These are the first concrete tasks after approval of this plan:
 - [x] Add an administrator backup catalog/UI and bounded retention of the five newest local backups.
 - [x] Add a deterministic secret-redacted diagnostics bundle.
 - [x] Add password-protected portable backup download and restore-from-file.
-- [ ] Complete portable download → clean install → upload restore acceptance before beginning Hub/Node orchestration.
+- [x] Complete portable download → clean install → upload restore acceptance before beginning Milestone 12.
+- [x] Define and contract-test `application-extension v1`, operations, permissions and event subscriptions.
+- [x] Add the offline supervised service host, Extension Host SDK and generic authenticated Core gateway.
+- [x] Add extension storage/migrations, transactional outbox and backup/restore participation.
+- [x] Add revocable kiosk terminals plus server-enforced public/kiosk/operator authorization.
+- [x] Add the event broker and generic `identifier.scan.v1` capability with deterministic mock and hardware-adapter boundary.
+- [x] Add protected connector secrets, destination broker, scheduler/checkpoints and reconciliation states.
+- [x] Accept the complete neutral reference application before starting the separate child-center extension.
 - [ ] Add fleet rollout rings only after Hub/Node orchestration exists.
 
 ## Explicitly deferred
