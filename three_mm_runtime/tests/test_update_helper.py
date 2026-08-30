@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from backend.services.backups import BackupPreviewResponse
 from backend.services.update_staging import StagedUpdate
 from three_mm_protocol import AgentRole
 from three_mm_provisioning import (
@@ -310,6 +311,46 @@ def test_backup_request_schedules_only_the_fixed_encrypted_worker(
     assert "/opt/3mm/current/deployment/create_backup.py" in command
     assert "--property=ReadWritePaths=/var/lib/3mm/backups" in command
     assert command[-2:] == ("--requested-by-user-id", "7")
+
+
+def test_backup_preview_reads_protected_state_inside_the_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = object()
+    preview = BackupPreviewResponse(
+        ready=True,
+        manifest=None,
+        entry_count=7,
+        estimated_backup_bytes=1234,
+        available_bytes=5678,
+        minimum_free_after_backup_bytes=64,
+        required_available_bytes=1298,
+        sufficient_space=True,
+        storage_path="/var/lib/3mm/backups",
+        issues=(),
+    )
+    captured = []
+    monkeypatch.setattr(update_helper, "production_settings", lambda _root: settings)
+    monkeypatch.setattr(
+        update_helper,
+        "build_backup_preview",
+        lambda selected: captured.append(selected) or preview,
+    )
+
+    response = update_helper._handle_request(
+        {"action": "preview_backup", "requested_by_user_id": 7},
+        stage_root=tmp_path / "stage",
+        state_root=tmp_path / "state",
+        allowlist=tmp_path / "allowlist.json",
+        status_file=tmp_path / "status.json",
+        backup_root=tmp_path / "backups",
+    )
+
+    assert response["status"] == "inspected"
+    assert response["preview"]["ready"] is True
+    assert response["preview"]["entry_count"] == 7
+    assert captured == [settings]
 
 
 def test_restore_request_rejects_paths_and_schedules_fixed_worker(

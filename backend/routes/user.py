@@ -7,11 +7,13 @@ from backend.utils.jwt_utils import decode_token, create_access_token
 from backend.db.user import User, UserSchema
 from backend.db.session import Session as UserSession
 from backend.db.audit_log import AuditLog
+from backend.services.session_policy import get_session_duration_hours
 from pydantic import BaseModel
 from typing import Literal
 import logging
 import traceback
 import jwt
+import secrets
 
 logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
@@ -121,12 +123,6 @@ def login_user(
         if not verify_password(payload.password, db_user.hashed_password):
             raise HTTPException(status_code=400, detail="Invalid credentials")
 
-        # Issue token using centralized JWT utils (env-driven secret and standard claims)
-        token = create_access_token(subject=str(db_user.id), extra_claims={
-            "username": db_user.username,
-            "role": db_user.role or ""
-        })
-        
         # Parse user agent for device info
         device_info = {}
         if user_agent:
@@ -139,12 +135,22 @@ def login_user(
         # Create session record
         session = UserSession(
             user_id=db_user.id,
-            token=token,
+            token=f"pending-{secrets.token_urlsafe(32)}",
             ip_address=request.client.host if request.client else None,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.utcnow() + timedelta(hours=get_session_duration_hours(db)),
             **device_info
         )
         db.add(session)
+        db.flush()
+
+        # Bind the signed token to the persistent session so refresh and revocation
+        # remain stable across Core restarts and immutable deployments.
+        token = create_access_token(subject=str(db_user.id), extra_claims={
+            "username": db_user.username,
+            "role": db_user.role or "",
+            "sid": session.id,
+        })
+        session.token = token
         db.commit()
         
         # Create audit log for login
@@ -158,7 +164,6 @@ def login_user(
         db.add(audit_log)
         db.commit()
         
-        logger.debug(f"Generated token: {token}")
         return {"message": "Login successful", "token": token}
     except HTTPException:
         raise

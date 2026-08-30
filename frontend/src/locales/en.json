@@ -2,7 +2,12 @@
   "common": { "cancel": "Cancel", "error": "Error", "save": "Save", "saving": "Saving…" },
   "settings": {
     "menuAudience": "Visible to", "menuAudiencePublic": "Everyone", "menuAudienceAuthenticated": "Signed-in users",
-    "menuAudienceAdmin": "Administrators", "menuPublicRouteRequired": "This route requires sign-in and cannot be exposed publicly."
+    "menuAudienceAdmin": "Administrators", "menuPublicRouteRequired": "This route requires sign-in and cannot be exposed publicly.",
+    "sessionDuration": {
+      "title": "Signed-in session", "help": "Choose how long this device remembers a signed-in browser. Active sessions renew automatically.",
+      "label": "Session duration (hours)", "range": "Allowed range: 1 hour to 30 days.",
+      "save": "Save session duration", "saved": "Session duration saved"
+    }
   },
   "systemControl": {
     "navigation": "Device control", "title": "Device control",

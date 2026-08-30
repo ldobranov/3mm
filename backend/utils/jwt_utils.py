@@ -39,6 +39,19 @@ def decode_token(token: str) -> dict:
     except InvalidTokenError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
+
+def decode_token_for_refresh(token: str) -> dict:
+    """Verify a token signature while allowing its short access lifetime to expire."""
+    try:
+        return jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+            options={"verify_exp": False},
+        )
+    except InvalidTokenError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
 # Backward-compatibility alias for legacy imports
 def decode_jwt(token: str) -> dict:
     return decode_token(token)

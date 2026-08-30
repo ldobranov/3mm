@@ -18,6 +18,8 @@ from backend.services.update_staging import (
     validate_staged_payload,
     write_operation_status,
 )
+from backend.services.backups import build_backup_preview
+from deployment.create_backup import production_settings
 from deployment.portable_backup import (
     create_portable_export,
     import_portable_backup,
@@ -37,6 +39,7 @@ from three_mm_runtime.application_activation import (
 )
 
 MAX_REQUEST_BYTES = 4096
+MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_PORTABLE_ARCHIVE_BYTES = 512 * 1024 * 1024
 LOGGER = logging.getLogger(__name__)
 
@@ -480,6 +483,7 @@ def _handle_request(
         if (
             action
             not in {
+                "preview_backup",
                 "start_network_setup",
                 "restart_device",
                 "factory_reset",
@@ -490,6 +494,18 @@ def _handle_request(
             or user_id <= 0
         ):
             return {"ok": False, "error": "invalid_request"}
+
+        if action == "preview_backup":
+            try:
+                preview = build_backup_preview(production_settings(backup_root))
+            except Exception:
+                LOGGER.exception("Backup preview failed")
+                return {"ok": False, "error": "backup_preview_failed"}
+            return {
+                "ok": True,
+                "status": "inspected",
+                "preview": preview.model_dump(mode="json"),
+            }
 
         if action == "create_backup":
             try:
@@ -693,9 +709,13 @@ def serve(
                     )
                 except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
                     response = {"ok": False, "error": "invalid_request"}
-                connection.sendall(
-                    json.dumps(response, separators=(",", ":")).encode("utf-8") + b"\n"
+                encoded = (
+                    json.dumps(response, separators=(",", ":")).encode("utf-8")
+                    + b"\n"
                 )
+                if len(encoded) > MAX_RESPONSE_BYTES:
+                    encoded = b'{"ok":false,"error":"response_too_large"}\n'
+                connection.sendall(encoded)
 
 
 def main() -> None:

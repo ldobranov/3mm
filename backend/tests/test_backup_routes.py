@@ -92,6 +92,53 @@ def test_backup_preview_is_admin_only(monkeypatch: pytest.MonkeyPatch) -> None:
         db.close()
 
 
+def test_backup_preview_uses_privileged_helper_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    client, db, admin_token, _viewer_token = _client()
+    helper_socket = tmp_path / "update-helper.sock"
+    helper_socket.touch()
+    settings = SimpleNamespace(
+        updates=SimpleNamespace(helper_socket=helper_socket),
+    )
+    preview = BackupPreviewResponse(
+        ready=True,
+        manifest=None,
+        entry_count=7,
+        estimated_backup_bytes=1234,
+        available_bytes=5678,
+        minimum_free_after_backup_bytes=64,
+        required_available_bytes=1298,
+        sufficient_space=True,
+        storage_path="/var/lib/3mm/backups",
+        issues=(),
+    )
+    requested = []
+    monkeypatch.setattr("backend.routes.backups.get_settings", lambda: settings)
+    monkeypatch.setattr(
+        "backend.routes.backups.build_backup_preview",
+        lambda _settings: pytest.fail("protected state must be read by the helper"),
+    )
+    monkeypatch.setattr(
+        "three_mm_runtime.update_helper_client.UpdateHelperClient.request_backup_preview",
+        lambda _client, user_id: requested.append(user_id)
+        or preview.model_dump(mode="json"),
+    )
+    try:
+        response = client.get(
+            "/api/v1/backups/preview",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["ready"] is True
+        assert response.json()["entry_count"] == 7
+        assert len(requested) == 1
+    finally:
+        db.close()
+
+
 def test_backup_catalog_is_admin_only(monkeypatch: pytest.MonkeyPatch) -> None:
     client, db, admin_token, viewer_token = _client()
     monkeypatch.setattr(

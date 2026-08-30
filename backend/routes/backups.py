@@ -74,9 +74,19 @@ def backup_catalog(
 
 @router.get("/preview", response_model=BackupPreviewResponse)
 def backup_preview(
-    _admin: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
 ) -> BackupPreviewResponse:
-    return build_backup_preview(get_settings())
+    settings = get_settings()
+    if not settings.updates.helper_socket.exists():
+        return build_backup_preview(settings)
+    try:
+        preview = UpdateHelperClient(
+            settings.updates.helper_socket,
+            timeout_seconds=30,
+        ).request_backup_preview(admin.id)
+    except UpdateHelperError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return BackupPreviewResponse.model_validate(preview)
 
 
 @router.get("/operation", response_model=BackupOperationStatus)

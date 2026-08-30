@@ -6,6 +6,8 @@ import json
 import socket
 from pathlib import Path
 
+MAX_RESPONSE_BYTES = 1024 * 1024
+
 
 class UpdateHelperError(RuntimeError):
     """Raised when the privileged update helper rejects or misses a request."""
@@ -59,6 +61,19 @@ class UpdateHelperClient:
                 "requested_by_user_id": requested_by_user_id,
             }
         )
+
+    def request_backup_preview(self, requested_by_user_id: int) -> dict[str, object]:
+        result = self._request(
+            {
+                "action": "preview_backup",
+                "requested_by_user_id": requested_by_user_id,
+            },
+            expected_status="inspected",
+        )
+        preview = result.get("preview")
+        if not isinstance(preview, dict):
+            raise UpdateHelperError("The backup preview response is invalid")
+        return preview
 
     def activate_application_extension(
         self,
@@ -151,13 +166,15 @@ class UpdateHelperClient:
                 client.connect(str(self._socket_path))
                 client.sendall(request)
                 response = b""
-                while len(response) <= 4096:
+                while len(response) <= MAX_RESPONSE_BYTES:
                     chunk = client.recv(1024)
                     if not chunk:
                         break
                     response += chunk
                     if b"\n" in response:
                         break
+            if len(response) > MAX_RESPONSE_BYTES:
+                raise ValueError("response_too_large")
             result = json.loads(response.split(b"\n", 1)[0])
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             raise UpdateHelperError("The system update helper is unavailable") from exc

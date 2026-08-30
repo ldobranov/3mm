@@ -18,6 +18,36 @@
         <p>{{ t('settings.adminInfo2', 'Logged-in users can set their own preferences using the header selectors.') }}</p>
       </div>
 
+      <div class="admin-info session-settings-card">
+        <div>
+          <h3>{{ t('settings.sessionDuration.title', 'Signed-in session') }}</h3>
+          <p>{{ t('settings.sessionDuration.help', 'Choose how long this device remembers a signed-in browser. Active sessions renew automatically.') }}</p>
+        </div>
+        <div class="form-group session-duration-control">
+          <label class="form-label" for="session-duration-hours">
+            {{ t('settings.sessionDuration.label', 'Session duration (hours)') }}
+          </label>
+          <input
+            id="session-duration-hours"
+            v-model.number="sessionDurationHours"
+            class="input"
+            type="number"
+            :min="sessionDurationMinimum"
+            :max="sessionDurationMaximum"
+            step="1"
+          />
+          <small class="help-text">
+            {{ t('settings.sessionDuration.range', 'Allowed range: 1 hour to 30 days.') }}
+          </small>
+        </div>
+        <div class="settings-actions">
+          <button class="button button-primary" :disabled="sessionDurationSaving" @click="saveSessionDuration">
+            {{ sessionDurationSaving ? t('common.saving', 'Saving…') : t('settings.sessionDuration.save', 'Save session duration') }}
+          </button>
+          <span v-if="sessionDurationMessage" class="help-text">{{ sessionDurationMessage }}</span>
+        </div>
+      </div>
+
       <div class="admin-info" style="margin-top: 1rem;">
         <h3 style="margin: 0 0 0.5rem;">{{ t('settings.aiProvider.title', 'AI Provider (Extension Builder)') }}</h3>
 
@@ -131,6 +161,11 @@ export default defineComponent({
     const groqKeyInput = ref<string>('')
     const openrouterKeyInput = ref<string>('')
     const aiSaveMessage = ref<string>('')
+    const sessionDurationHours = ref<number>(168)
+    const sessionDurationMinimum = ref<number>(1)
+    const sessionDurationMaximum = ref<number>(720)
+    const sessionDurationSaving = ref(false)
+    const sessionDurationMessage = ref('')
 
     const aiStatus = ref<{ provider: string | null; has_groq_key: boolean; has_openrouter_key: boolean }>({
       provider: null,
@@ -154,6 +189,15 @@ export default defineComponent({
 
         // Load AI settings status (admin only)
         if (isAdmin.value) {
+          try {
+            const sessionRes = await http.get('/api/admin/session-settings')
+            sessionDurationHours.value = sessionRes.data?.duration_hours || 168
+            sessionDurationMinimum.value = sessionRes.data?.minimum_hours || 1
+            sessionDurationMaximum.value = sessionRes.data?.maximum_hours || 720
+          } catch (e) {
+            console.error('Failed to load session settings:', e)
+          }
+
           try {
             const aiRes = await http.get('/api/admin/ai-settings')
             aiStatus.value = aiRes.data
@@ -211,6 +255,22 @@ export default defineComponent({
       }
     }
 
+    const saveSessionDuration = async () => {
+      sessionDurationMessage.value = ''
+      sessionDurationSaving.value = true
+      try {
+        const res = await http.put('/api/admin/session-settings', {
+          duration_hours: sessionDurationHours.value
+        })
+        sessionDurationHours.value = res.data.duration_hours
+        sessionDurationMessage.value = t('settings.sessionDuration.saved', 'Session duration saved')
+      } catch (e: any) {
+        sessionDurationMessage.value = e?.response?.data?.detail || t('settings.saveFailed', 'Save failed')
+      } finally {
+        sessionDurationSaving.value = false
+      }
+    }
+
     const clearGroqKey = async () => {
       try {
         const res = await http.post('/api/admin/ai-settings', { provider: aiProvider.value, groq_api_key: '' })
@@ -249,6 +309,12 @@ export default defineComponent({
       openrouterKeyInput,
       aiStatus,
       aiSaveMessage,
+      sessionDurationHours,
+      sessionDurationMinimum,
+      sessionDurationMaximum,
+      sessionDurationSaving,
+      sessionDurationMessage,
+      saveSessionDuration,
       saveAiSettings,
       clearGroqKey,
       clearOpenRouterKey
@@ -293,10 +359,26 @@ export default defineComponent({
 }
 
 .admin-info h3 {
+  margin: 0;
   font-size: 0.98rem;
   font-weight: 650;
   letter-spacing: -0.01em;
   color: var(--text-primary, #222222);
+}
+
+.session-settings-card {
+  margin-top: 1rem;
+}
+
+.session-duration-control {
+  max-width: 18rem;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
 }
 
 .admin-info .form-group {
