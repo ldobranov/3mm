@@ -191,6 +191,14 @@ class AgentModuleRuntime:
                 service.close()
         return ModuleRuntimeResult(module_id, state["active_version"], "disabled")
 
+    def close(self) -> None:
+        """Release active services without changing their persistent enabled state."""
+        services = {id(service): service for service in self._services.values()}
+        self._services.clear()
+        for service in services.values():
+            if hasattr(service, "close"):
+                service.close()
+
     def registrations(self) -> list[dict]:
         result = []
         state_dir = self.root / "state"

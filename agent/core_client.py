@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import json
 import base64
+import queue
 import uuid
 import os
 import threading
@@ -26,6 +27,7 @@ from three_mm_protocol import (
 )
 
 logger = logging.getLogger(__name__)
+COMMAND_LONG_POLL_SECONDS = 5.0
 
 
 class DeviceCredential(BaseModel):
@@ -166,11 +168,19 @@ class CorePublisher:
     interval_seconds: int = 30
     _stop: threading.Event = field(init=False, repr=False)
     _thread: threading.Thread | None = field(init=False, default=None, repr=False)
+    _event_thread: threading.Thread | None = field(init=False, default=None, repr=False)
+    _command_thread: threading.Thread | None = field(init=False, default=None, repr=False)
+    _event_queue: queue.Queue[dict] = field(init=False, repr=False)
+    _outbox_lock: threading.Lock = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.core_url = self.core_url.rstrip("/")
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._event_thread = None
+        self._command_thread = None
+        self._event_queue = queue.Queue(maxsize=500)
+        self._outbox_lock = threading.Lock()
 
     @property
     def headers(self) -> dict[str, str]:
@@ -178,6 +188,18 @@ class CorePublisher:
         return {"Authorization": value}
 
     def start(self) -> None:
+        self._event_thread = threading.Thread(
+            target=self._run_event_delivery,
+            name="3mm-event-publisher",
+            daemon=True,
+        )
+        self._event_thread.start()
+        self._command_thread = threading.Thread(
+            target=self._run_commands,
+            name="3mm-command-receiver",
+            daemon=True,
+        )
+        self._command_thread.start()
         self._thread = threading.Thread(target=self._run, name="3mm-core-publisher", daemon=True)
         self._thread.start()
 
@@ -185,6 +207,10 @@ class CorePublisher:
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=5)
+        if self._event_thread is not None:
+            self._event_thread.join(timeout=5)
+        if self._command_thread is not None:
+            self._command_thread.join(timeout=COMMAND_LONG_POLL_SECONDS + 2)
 
     def _post(self, suffix: str, payload: dict) -> None:
         response = requests.post(
@@ -203,19 +229,21 @@ class CorePublisher:
             self._post(suffix, payload)
             return True
         except requests.RequestException:
-            self.outbox.enqueue(OutboxEntry(suffix=suffix, payload=payload, deduplication_key=deduplication_key))
+            with self._outbox_lock:
+                self.outbox.enqueue(OutboxEntry(suffix=suffix, payload=payload, deduplication_key=deduplication_key))
             return False
 
     def _flush_outbox(self) -> None:
-        remaining: list[OutboxEntry] = []
-        entries = self.outbox.load()
-        for index, entry in enumerate(entries):
-            try:
-                self._post(entry.suffix, entry.payload)
-            except requests.RequestException:
-                remaining.extend(entries[index:])
-                break
-        self.outbox.save(remaining)
+        with self._outbox_lock:
+            remaining: list[OutboxEntry] = []
+            entries = self.outbox.load()
+            for index, entry in enumerate(entries):
+                try:
+                    self._post(entry.suffix, entry.payload)
+                except requests.RequestException:
+                    remaining.extend(entries[index:])
+                    break
+            self.outbox.save(remaining)
 
     def _submit_result(self, result: AgentCommandResult) -> None:
         self._send_or_queue(
@@ -238,11 +266,30 @@ class CorePublisher:
         }
         if event_type == "identifier.scan.v1":
             payload = IdentifierScanEventV1.model_validate(payload).model_dump(mode="json")
+        try:
+            self._event_queue.put_nowait(payload)
+        except queue.Full:
+            logger.warning("Agent event delivery queue is full; dropping event %s", payload["event_id"])
+
+    def _deliver_event(self, payload: dict) -> None:
         self._send_or_queue("events", payload, f"event:{payload['event_id']}")
         try:
             self._publish_capability_states()
         except (ModuleLifecycleError, ValidationError) as exc:
             logger.warning("Capability state publish after event failed: %s", exc)
+
+    def _run_event_delivery(self) -> None:
+        while not self._stop.is_set() or not self._event_queue.empty():
+            try:
+                payload = self._event_queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            try:
+                self._deliver_event(payload)
+            except Exception as exc:
+                logger.warning("Agent event delivery failed: %s", exc)
+            finally:
+                self._event_queue.task_done()
 
     def _publish_capability_states(self) -> None:
         if self.module_runtime is None:
@@ -261,11 +308,12 @@ class CorePublisher:
                 f"capability-state:{capability_id}",
             )
 
-    def _poll_command(self) -> None:
+    def _poll_command(self, *, wait_seconds: float = 0.0) -> None:
         response = requests.get(
             f"{self.core_url}/api/v1/devices/{self.credential.device_id}/commands/next",
             headers=self.headers,
-            timeout=10,
+            params={"wait_seconds": wait_seconds},
+            timeout=max(10.0, wait_seconds + 5.0),
         )
         if response.status_code == 204:
             return
@@ -355,6 +403,17 @@ class CorePublisher:
         self.command_journal.save(command.idempotency_key, result)
         self._submit_result(result)
 
+    def _run_commands(self) -> None:
+        while not self._stop.is_set():
+            started_at = time.monotonic()
+            try:
+                self._poll_command(wait_seconds=COMMAND_LONG_POLL_SECONDS)
+            except (requests.RequestException, ValidationError) as exc:
+                logger.warning("Core command receive failed: %s", exc)
+            elapsed = time.monotonic() - started_at
+            if elapsed < 0.5:
+                self._stop.wait(0.5 - elapsed)
+
     def _reconcile_state(self) -> None:
         response = requests.get(
             f"{self.core_url}/api/v1/devices/{self.credential.device_id}/desired-state",
@@ -419,10 +478,6 @@ class CorePublisher:
                 self._send_or_queue("heartbeat", heartbeat.model_dump(mode="json"), "heartbeat")
             except requests.RequestException as exc:
                 logger.warning("Core heartbeat publish failed: %s", exc)
-            try:
-                self._poll_command()
-            except (requests.RequestException, ValidationError) as exc:
-                logger.warning("Core command poll failed: %s", exc)
             try:
                 self._reconcile_state()
             except (requests.RequestException, ValidationError) as exc:

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.automation import AutomationAuditEvent, AutomationProposal, AutomationRevision
 from backend.db.device import Device
-from backend.services.device_commands import DeviceCommandError, queue_command
+from backend.services.device_commands import DeviceCommandError, commit_queued_command, queue_command
 from three_mm_protocol.automation import AutomationDefinitionV1
 
 
@@ -96,7 +96,7 @@ def apply_proposal(db: Session, *, proposal: AutomationProposal, actor_user_id: 
     _audit(db, automation_id=proposal.proposal_id, proposal_id=proposal.proposal_id,
            revision_id=revision_id, actor_user_id=actor_user_id, event_type="automation.applied",
            details={"intent": proposal.intent, "candidate_hash": proposal.candidate_hash, "command_ids": revision.command_ids})
-    db.commit()
+    commit_queued_command(db, device=device, command=command)
     db.refresh(revision)
     return revision
 
@@ -137,7 +137,7 @@ def rollback(db: Session, *, current: AutomationRevision, actor_user_id: int) ->
     _audit(db, automation_id=current.automation_id, proposal_id=current.proposal_id,
            revision_id=revision_id, actor_user_id=actor_user_id, event_type="automation.rolled_back",
            details={"from_revision_id": current.revision_id, "restored_revision_id": previous.revision_id if previous else None, "command_ids": [command.command_id]})
-    db.commit()
+    commit_queued_command(db, device=device, command=command)
     db.refresh(restored)
     return restored
 
@@ -201,6 +201,6 @@ def set_enabled(
         event_type="automation.enabled" if enabled else "automation.disabled",
         details={"from_revision_id": current.revision_id, "command_ids": [command.command_id]},
     )
-    db.commit()
+    commit_queued_command(db, device=device, command=command)
     db.refresh(revision)
     return revision

@@ -62,8 +62,8 @@ class AgentSettings:
             raise ValueError("Heartbeat interval must be at least 5 seconds")
         if self.gpio_driver not in {"mock", "gpiod"}:
             raise ValueError("GPIO driver must be 'mock' or 'gpiod'")
-        if self.gpio_driver == "gpiod" and not self.gpio_inputs:
-            raise ValueError("The gpiod driver requires at least one input mapping")
+        if self.gpio_driver == "gpiod" and not (self.gpio_inputs or self.gpio_outputs):
+            raise ValueError("The gpiod driver requires at least one input or output mapping")
         if self.identifier_driver not in {"disabled", "mock"}:
             raise ValueError("Identifier driver must be 'disabled' or 'mock'")
         if not self.identifier_reader_id.strip():

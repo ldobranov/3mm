@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -13,10 +13,12 @@ from backend.db.user import User
 from backend.services.device_commands import (
     DeviceCommandError,
     command_envelope,
+    commit_queued_command,
     deliver_next_command,
     queue_command,
     record_command_result,
 )
+from backend.services.device_command_notifier import device_command_notifier
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from backend.utils.device_auth import require_device
@@ -66,6 +68,7 @@ def create_command(
         raise HTTPException(status_code=404, detail="Device was not found")
     try:
         command = queue_command(db, device=device, **payload.model_dump())
+        commit_queued_command(db, device=device, command=command)
     except DeviceCommandError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return CommandStatusResponse.model_validate(command, from_attributes=True)
@@ -97,15 +100,25 @@ def list_commands(
 
 
 @router.get("/{device_id}/commands/next", response_model=AgentCommand)
-def next_command(
+async def next_command(
     device_id: str,
     response: Response,
+    wait_seconds: float = Query(default=0.0, ge=0.0, le=20.0),
     device: Device = Depends(require_device),
     db: Session = Depends(get_db),
 ) -> AgentCommand | Response:
     if device.device_id != device_id:
         raise HTTPException(status_code=403, detail="Device identity mismatch")
+    revision = device_command_notifier.revision(device.id)
     command = deliver_next_command(db, device=device)
+    if command is None and wait_seconds > 0:
+        await device_command_notifier.wait(
+            device.id,
+            after=revision,
+            timeout=wait_seconds,
+        )
+        db.rollback()
+        command = deliver_next_command(db, device=device)
     if command is None:
         response.status_code = status.HTTP_204_NO_CONTENT
         return response

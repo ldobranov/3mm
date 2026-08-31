@@ -40,10 +40,11 @@ def context() -> AutomationCapabilityContextV1:
             module_version="1.0.0",
             metadata={
                 "automation_role": "action",
-                "automation_actions": "set_output",
+                "automation_actions": "set_output,pulse_output",
                 "automation_channels": "gpio.output.1",
-                "automation_required_fields": "channel,value",
-                "automation_value_type": "boolean",
+                "automation_required_fields_set_output": "channel,value",
+                "automation_value_type_set_output": "boolean",
+                "automation_required_fields_pulse_output": "channel,duration_ms",
             },
         ),
     ))
@@ -112,6 +113,30 @@ def test_declared_automation_contract_rejects_string_boolean():
 
     assert issues[0].path == "trigger"
     assert "Boolean value" in issues[0].message
+
+
+def test_action_specific_contract_accepts_a_duration_based_pulse():
+    candidate = mock_gpio_automation().model_copy(update={
+        "actions": (mock_gpio_automation().actions[0].model_copy(update={
+            "action": "pulse_output",
+            "arguments": {"channel": "gpio.output.1", "duration_ms": 500},
+        }),)
+    })
+
+    assert validate_automation_capabilities(candidate, context()) == ()
+
+
+def test_action_specific_contract_requires_pulse_duration():
+    candidate = mock_gpio_automation().model_copy(update={
+        "actions": (mock_gpio_automation().actions[0].model_copy(update={
+            "action": "pulse_output",
+            "arguments": {"channel": "gpio.output.1"},
+        }),)
+    })
+
+    issues = validate_automation_capabilities(candidate, context())
+
+    assert "duration_ms" in issues[0].message
 
 
 def test_local_automation_cannot_span_devices():

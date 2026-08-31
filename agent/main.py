@@ -135,6 +135,7 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
         yield
         if publisher is not None:
             publisher.stop()
+        module_runtime.close()
         gpio.close()
 
     app = FastAPI(

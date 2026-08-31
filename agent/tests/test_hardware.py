@@ -1,4 +1,5 @@
 import pytest
+import threading
 from types import SimpleNamespace
 
 from agent.hardware import (
@@ -103,12 +104,26 @@ class _FakeLineRequest:
             for line, settings in config.items()
         }
         self.released = False
+        self.edge_ready = threading.Event()
 
     def get_value(self, line):
         return self.values[line]
 
     def set_value(self, line, value):
         self.values[line] = value
+
+    def set_input_value(self, line, value):
+        self.values[line] = value
+        self.edge_ready.set()
+
+    def wait_edge_events(self, timeout=None):
+        ready = self.edge_ready.wait(timeout)
+        if ready:
+            self.edge_ready.clear()
+        return ready
+
+    def read_edge_events(self):
+        return [object()]
 
     def release(self):
         self.released = True
@@ -125,6 +140,7 @@ class _FakeGpiod:
         self.line = SimpleNamespace(
             Direction=SimpleNamespace(INPUT="input", OUTPUT="output"),
             Bias=SimpleNamespace(PULL_UP="pull-up"),
+            Edge=SimpleNamespace(BOTH="both"),
             Value=SimpleNamespace(ACTIVE="active", INACTIVE="inactive"),
         )
         self.LineSettings = _FakeLineSettings
@@ -150,12 +166,48 @@ def test_gpiod_driver_maps_active_low_input_and_output_then_releases_lines():
     input_settings = fake.requests[0].config[17]
     assert input_settings.bias == "pull-up"
     assert input_settings.active_low is True
+    assert input_settings.edge_detection == "both"
 
     gpio.output("gpio.output.1").write(True)
     assert gpio.output("gpio.output.1").read() is True
 
     gpio.close()
     assert all(request.released for request in fake.requests)
+
+
+def test_gpiod_input_delivers_edge_without_polling_delay():
+    fake = _FakeGpiod()
+    gpio = GpiodDigitalGpioDriver(
+        chip="/dev/gpiochip0",
+        inputs={"gpio.input.1": 17},
+        gpiod_module=fake,
+    )
+    callback_ready = threading.Event()
+    events = []
+    gpio.input("gpio.input.1").subscribe(
+        lambda event: (events.append(event), callback_ready.set())
+    )
+
+    fake.requests[0].set_input_value(17, "active")
+
+    assert callback_ready.wait(0.5)
+    assert [(event.value, event.sequence) for event in events] == [(True, 1)]
+    gpio.close()
+
+
+def test_gpiod_driver_supports_output_only_mapping():
+    fake = _FakeGpiod()
+    gpio = GpiodDigitalGpioDriver(
+        chip="/dev/gpiochip0",
+        inputs={},
+        outputs={"gpio.output.1": 27},
+        gpiod_module=fake,
+    )
+
+    gpio.output("gpio.output.1").write(True)
+
+    assert gpio.output("gpio.output.1").read() is True
+    gpio.close()
 
 
 def test_gpiod_driver_rejects_overlapping_line_mappings():

@@ -45,9 +45,20 @@ def test_agent_settings_reject_invalid_ports(tmp_path, port):
         AgentSettings(data_dir=tmp_path, port=port)
 
 
-def test_gpiod_settings_require_an_input_mapping(tmp_path):
-    with pytest.raises(ValueError, match="at least one input"):
+def test_gpiod_settings_require_an_input_or_output_mapping(tmp_path):
+    with pytest.raises(ValueError, match="at least one input or output"):
         AgentSettings(data_dir=tmp_path, gpio_driver="gpiod")
+
+
+def test_gpiod_settings_allow_an_output_only_device(tmp_path):
+    settings = AgentSettings(
+        data_dir=tmp_path,
+        gpio_driver="gpiod",
+        gpio_outputs={"gpio.output.1": 27},
+    )
+
+    assert settings.gpio_inputs is None
+    assert settings.gpio_outputs == {"gpio.output.1": 27}
 
 
 def test_gpio_environment_mapping_is_validated(monkeypatch):

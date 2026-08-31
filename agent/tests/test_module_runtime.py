@@ -1,4 +1,4 @@
-import hashlib, io, json, zipfile
+import hashlib, io, json, time, zipfile
 import pytest
 from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
 from agent.hardware import MockDigitalGpioDriver
@@ -32,8 +32,8 @@ def test_integrity_and_architecture_fail_closed(tmp_path):
     with pytest.raises(ModuleLifecycleError,match="integrity"): runtime.install(blob,expected_sha256="0"*64)
     with pytest.raises(ModuleLifecycleError,match="architecture"): install(runtime,blob)
 
-def gpio_package(*, outputs={"gpio.output.1": True}, entrypoint=GPIO_ENTRYPOINT, rules=[]):
-    manifest = {"manifest_version":2,"module_id":"org.3mm.gpio-test","name":"GPIO test","version":"1.0.0","runtimes":["agent"],"entrypoints":{"agent":entrypoint},"compatibility":{"protocol":"1.0","architectures":["aarch64"]},"permissions":["hardware.gpio","data.write"],"capabilities":{"provides":["gpio.digital.input","gpio.digital.output"]},"configuration_defaults":{"inputs":["gpio.input.1"],"outputs":outputs,"rules":rules},"health_check":{"type":"file_exists","path":"health/ready"},"registrations":[{"kind":"capability","registration_id":"gpio.digital.input"},{"kind":"capability","registration_id":"gpio.digital.control"}]}
+def gpio_package(*, outputs={"gpio.output.1": True}, entrypoint=GPIO_ENTRYPOINT, rules=[], pulse_min_ms=50, pulse_max_ms=10000, pulse_cooldown_ms=0):
+    manifest = {"manifest_version":2,"module_id":"org.3mm.gpio-test","name":"GPIO test","version":"1.0.0","runtimes":["agent"],"entrypoints":{"agent":entrypoint},"compatibility":{"protocol":"1.0","architectures":["aarch64"]},"permissions":["hardware.gpio","data.write"],"capabilities":{"provides":["gpio.digital.input","gpio.digital.output"]},"configuration_defaults":{"inputs":["gpio.input.1"],"outputs":outputs,"rules":rules,"pulse_min_ms":pulse_min_ms,"pulse_max_ms":pulse_max_ms,"pulse_cooldown_ms":pulse_cooldown_ms},"health_check":{"type":"file_exists","path":"health/ready"},"registrations":[{"kind":"capability","registration_id":"gpio.digital.input"},{"kind":"capability","registration_id":"gpio.digital.control"}]}
     out=io.BytesIO()
     with zipfile.ZipFile(out,"w") as z:
         z.writestr("manifest.json",json.dumps(manifest)); z.writestr("health/ready","ok")
@@ -74,13 +74,82 @@ def test_gpio_local_rule_runs_and_emits_event_without_core(tmp_path):
     runtime=AgentModuleRuntime(tmp_path,architecture="aarch64",runtime_handlers={GPIO_ENTRYPOINT:gpio_runtime_handler(gpio,events.append)})
     blob=gpio_package(outputs={"gpio.output.1":False},rules=[{"input":"gpio.input.1","output":"gpio.output.1","when":True,"set":True}])
     install(runtime,blob); gpio.set_input("gpio.input.1",True)
-    assert gpio.output("gpio.output.1").read() is True and events[0]["event_type"]=="gpio.input.changed"
-    assert events[0]["payload"] == {
+    input_event = next(event for event in events if event["event_type"] == "gpio.input.changed")
+    assert gpio.output("gpio.output.1").read() is True
+    assert input_event["payload"] == {
         "capability_id": "gpio.digital.input",
         "channel": "gpio.input.1",
         "value": True,
         "sequence": 1,
     }
+
+
+def test_gpio_pulse_restores_safe_state_and_emits_output_events(tmp_path):
+    gpio=MockDigitalGpioDriver(); events=[]
+    runtime=AgentModuleRuntime(tmp_path,architecture="aarch64",runtime_handlers={GPIO_ENTRYPOINT:gpio_runtime_handler(gpio,events.append)})
+    install(runtime,gpio_package(outputs={"gpio.output.1":False},pulse_min_ms=20))
+
+    result = runtime.invoke(
+        "gpio.digital.control",
+        "pulse_output",
+        {"channel": "gpio.output.1", "duration_ms": 20},
+    )
+
+    assert result["pulse"] == {
+        "channel": "gpio.output.1",
+        "duration_ms": 20,
+        "active_value": True,
+        "safe_value": False,
+    }
+    assert gpio.output("gpio.output.1").read() is True
+    deadline = time.monotonic() + 0.5
+    while (
+        (gpio.output("gpio.output.1").read() or len(events) < 2)
+        and time.monotonic() < deadline
+    ):
+        time.sleep(0.005)
+    assert gpio.output("gpio.output.1").read() is False
+    assert [event["payload"]["reason"] for event in events] == [
+        "pulse_started",
+        "pulse_completed",
+    ]
+
+
+def test_gpio_pulse_rejects_unsafe_duration_and_disable_restores_output(tmp_path):
+    gpio=MockDigitalGpioDriver()
+    runtime=AgentModuleRuntime(tmp_path,architecture="aarch64",runtime_handlers={GPIO_ENTRYPOINT:gpio_runtime_handler(gpio)})
+    install(runtime,gpio_package(outputs={"gpio.output.1":False},pulse_min_ms=20,pulse_max_ms=100))
+
+    with pytest.raises(ModuleLifecycleError, match="between 20 and 100"):
+        runtime.invoke(
+            "gpio.digital.control",
+            "pulse_output",
+            {"channel": "gpio.output.1", "duration_ms": 101},
+        )
+    runtime.invoke(
+        "gpio.digital.control",
+        "pulse_output",
+        {"channel": "gpio.output.1", "duration_ms": 100},
+    )
+    runtime.disable("org.3mm.gpio-test")
+
+    assert gpio.output("gpio.output.1").read() is False
+
+
+def test_gpio_runtime_shutdown_restores_output_without_disabling_module(tmp_path):
+    gpio=MockDigitalGpioDriver()
+    runtime=AgentModuleRuntime(tmp_path,architecture="aarch64",runtime_handlers={GPIO_ENTRYPOINT:gpio_runtime_handler(gpio)})
+    install(runtime,gpio_package(outputs={"gpio.output.1":False},pulse_min_ms=20))
+    runtime.invoke(
+        "gpio.digital.control",
+        "pulse_output",
+        {"channel": "gpio.output.1", "duration_ms": 100},
+    )
+
+    runtime.close()
+
+    assert gpio.output("gpio.output.1").read() is False
+    assert runtime.state("org.3mm.gpio-test")["enabled"] is True
 
 
 def test_gpio_input_change_is_published_without_an_automation_rule(tmp_path):

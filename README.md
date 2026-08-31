@@ -22,7 +22,8 @@ system.
 - **Persistent Agent** — stable device identity, health and inventory,
   pairing, heartbeat, command processing, reconciliation and offline outbox.
 - **Hardware capabilities** — deterministic mock profiles and opt-in native
-  Raspberry GPIO input through the official `gpiod` bindings.
+  Raspberry digital input/output through the official `gpiod` bindings,
+  edge-driven inputs and safe bounded output pulses.
 - **Provisioning and recovery** — browser-based first setup, Wi-Fi scan and
   rollback, an open setup-only access point, secret-free recovery prefill,
   administrator-controlled network recovery and Standalone/Hub/Node roles.

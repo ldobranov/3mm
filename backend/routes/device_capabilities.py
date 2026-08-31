@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from backend.db.device import Device
 from backend.db.user import User
 from backend.services.device_capability_registry import registered_capabilities
-from backend.services.device_commands import queue_command
+from backend.services.device_commands import commit_queued_command, queue_command
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 
@@ -43,4 +43,5 @@ def invoke_capability(device_id:str,payload:InvokeCapabilityRequest,_admin:User=
     if payload.capability_id not in {item.capability_id for item in _capabilities(db,device)}:
         raise HTTPException(409,"Capability is not enabled on this device")
     command=queue_command(db,device=device,command_type="capability.invoke",payload=payload.model_dump(),idempotency_key=f"capability:{payload.capability_id}:{uuid4().hex}",ttl_seconds=300)
+    commit_queued_command(db,device=device,command=command)
     return CapabilityCommandResponse(command_id=command.command_id,status=command.status)

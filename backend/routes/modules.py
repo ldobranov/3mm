@@ -17,7 +17,7 @@ from backend.db.module import (
 )
 from backend.db.widget import Widget
 from backend.db.user import User
-from backend.services.device_commands import queue_command
+from backend.services.device_commands import commit_queued_command, queue_command
 from backend.services.module_packages import ModulePackageError, validate_module_package
 from backend.services.compiled_ui import (
     CompiledUiBuildError,
@@ -282,14 +282,14 @@ def install_module(sha256:str,device_id:str,_admin:User=Depends(require_admin),d
     if installation is None:
         installation=ModuleInstallation(device_id=device.id,module_package_id=package.id,module_id=package.module_id,desired_version=package.version,status="queued",enabled=True,data_retained=True); db.add(installation)
     installation.module_package_id=package.id; installation.desired_version=package.version; installation.status=command.status; installation.command_id=command.command_id; installation.enabled=True; installation.error=None
-    db.commit(); db.refresh(installation); return installation
+    commit_queued_command(db,device=device,command=command); db.refresh(installation); return installation
 
 @router.post("/{module_id}/devices/{device_id}/disable",response_model=InstallationResponse)
 def disable_module(module_id:str,device_id:str,_admin:User=Depends(require_admin),db:Session=Depends(get_db)):
     device=db.scalar(select(Device).where(Device.device_id==device_id)); installation=db.scalar(select(ModuleInstallation).where(ModuleInstallation.device_id==device.id,ModuleInstallation.module_id==module_id)) if device else None
     if not installation: raise HTTPException(404,"module installation was not found")
     command=queue_command(db,device=device,command_type="module.disable",payload={"module_id":module_id},idempotency_key=f"module.disable:{module_id}:{installation.installed_version}",ttl_seconds=300)
-    installation.command_id=command.command_id; installation.status=command.status; db.commit(); db.refresh(installation); return installation
+    installation.command_id=command.command_id; installation.status=command.status; commit_queued_command(db,device=device,command=command); db.refresh(installation); return installation
 
 @router.get("/registrations",response_model=list[dict])
 def registrations(_admin:User=Depends(require_admin),db:Session=Depends(get_db)):

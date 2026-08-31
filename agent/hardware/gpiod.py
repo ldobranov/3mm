@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import threading
+import time
 from collections.abc import Callable
 from typing import Any
 
 from agent.hardware.gpio import DigitalInputCallback, DigitalInputEvent
+
+
+logger = logging.getLogger(__name__)
 
 
 class GpiodDigitalGpioDriver:
@@ -23,11 +28,13 @@ class GpiodDigitalGpioDriver:
         chip: str,
         inputs: dict[str, int],
         outputs: dict[str, int] | None = None,
-        poll_interval_seconds: float = 0.05,
+        input_debounce_seconds: float = 0.02,
         gpiod_module: Any | None = None,
     ) -> None:
-        if not inputs:
-            raise ValueError("At least one GPIO input mapping is required")
+        if not inputs and not outputs:
+            raise ValueError("At least one GPIO input or output mapping is required")
+        if input_debounce_seconds < 0:
+            raise ValueError("GPIO input debounce cannot be negative")
         if len(set(inputs.values())) != len(inputs):
             raise ValueError("GPIO input lines must be unique")
         output_lines = dict(outputs or {})
@@ -47,7 +54,7 @@ class GpiodDigitalGpioDriver:
                 chip=chip,
                 capability_id=capability_id,
                 line=line,
-                poll_interval_seconds=poll_interval_seconds,
+                debounce_seconds=input_debounce_seconds,
             )
             for capability_id, line in inputs.items()
         }
@@ -91,12 +98,12 @@ class _GpiodInput:
         chip: str,
         capability_id: str,
         line: int,
-        poll_interval_seconds: float,
+        debounce_seconds: float,
     ) -> None:
         self.capability_id = capability_id
         self._gpiod = gpiod
         self._line = line
-        self._poll_interval_seconds = poll_interval_seconds
+        self._debounce_seconds = debounce_seconds
         self._request = gpiod.request_lines(
             chip,
             consumer=f"3mm-agent:{capability_id}",
@@ -105,6 +112,7 @@ class _GpiodInput:
                     direction=gpiod.line.Direction.INPUT,
                     bias=gpiod.line.Bias.PULL_UP,
                     active_low=True,
+                    edge_detection=gpiod.line.Edge.BOTH,
                 )
             },
         )
@@ -125,7 +133,7 @@ class _GpiodInput:
             self._callbacks.append(callback)
             if self._thread is None:
                 self._thread = threading.Thread(
-                    target=self._poll,
+                    target=self._watch_edges,
                     name=f"3mm-gpio-{self._line}",
                     daemon=True,
                 )
@@ -138,10 +146,31 @@ class _GpiodInput:
 
         return unsubscribe
 
-    def _poll(self) -> None:
+    def _watch_edges(self) -> None:
         previous = self.read()
-        while not self._stop.wait(self._poll_interval_seconds):
-            current = self.read()
+        while not self._stop.is_set():
+            try:
+                edge_ready = self._request.wait_edge_events(timeout=0.2)
+            except (OSError, RuntimeError) as exc:
+                if not self._stop.is_set():
+                    logger.warning("GPIO edge wait failed for line %s: %s", self._line, exc)
+                return
+            if not edge_ready:
+                continue
+            with self._request_lock:
+                self._request.read_edge_events()
+            if self._debounce_seconds:
+                debounce_deadline = time.monotonic() + self._debounce_seconds
+                while not self._stop.is_set():
+                    remaining = debounce_deadline - time.monotonic()
+                    if remaining <= 0 or not self._request.wait_edge_events(timeout=remaining):
+                        break
+                    with self._request_lock:
+                        self._request.read_edge_events()
+                    debounce_deadline = time.monotonic() + self._debounce_seconds
+            with self._request_lock:
+                value = self._request.get_value(self._line)
+            current = value == self._gpiod.line.Value.ACTIVE
             if current == previous:
                 continue
             previous = current
@@ -150,7 +179,13 @@ class _GpiodInput:
             with self._callback_lock:
                 callbacks = tuple(self._callbacks)
             for callback in callbacks:
-                callback(event)
+                try:
+                    callback(event)
+                except Exception:
+                    logger.exception(
+                        "GPIO input callback failed for capability %s",
+                        self.capability_id,
+                    )
 
     def close(self) -> None:
         self._stop.set()

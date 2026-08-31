@@ -110,8 +110,16 @@ def validate_automation_capabilities(
             allowed_key = "automation_events" if path == "trigger" else "automation_actions"
             allowed = {item.strip() for item in str(metadata.get(allowed_key, "")).split(",") if item.strip()}
             values = automation.trigger.conditions if path == "trigger" else reference.arguments
-            required = {item.strip() for item in str(metadata.get("automation_required_fields", "")).split(",") if item.strip()}
+            required_value = metadata.get(
+                f"automation_required_fields_{operation}",
+                metadata.get("automation_required_fields", ""),
+            )
+            required = {item.strip() for item in str(required_value).split(",") if item.strip()}
             channels = {item.strip() for item in str(metadata.get("automation_channels", "")).split(",") if item.strip()}
+            value_type = metadata.get(
+                f"automation_value_type_{operation}",
+                metadata.get("automation_value_type"),
+            )
             reason = None
             if declared_role and declared_role != expected_role:
                 reason = f"Capability {reference.capability_id!r} cannot be used as an automation {expected_role}"
@@ -121,7 +129,7 @@ def validate_automation_capabilities(
                 reason = f"Capability {reference.capability_id!r} requires fields {sorted(required)}"
             elif channels and values.get("channel") not in channels:
                 reason = f"Channel {values.get('channel')!r} is not supported by capability {reference.capability_id!r}"
-            elif metadata.get("automation_value_type") == "boolean" and not isinstance(values.get("value"), bool):
+            elif value_type == "boolean" and not isinstance(values.get("value"), bool):
                 reason = f"Capability {reference.capability_id!r} requires a Boolean value"
             if reason:
                 issues.append(AutomationValidationIssue(

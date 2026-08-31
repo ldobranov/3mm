@@ -9,6 +9,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from backend.db.device import Device, DeviceCommand
+from backend.services.device_command_notifier import device_command_notifier
 from three_mm_protocol import AgentCommand, AgentCommandResult
 
 
@@ -52,8 +53,21 @@ def queue_command(
         expires_at=created_at + timedelta(seconds=ttl_seconds),
     )
     db.add(command)
+    db.flush()
+    return command
+
+
+def commit_queued_command(
+    db: Session,
+    *,
+    device: Device,
+    command: DeviceCommand,
+) -> DeviceCommand:
+    """Commit the complete caller transaction before waking the Agent."""
+
     db.commit()
     db.refresh(command)
+    device_command_notifier.notify(device.id)
     return command
 
 
