@@ -37,7 +37,7 @@
     <!-- Extensions List -->
     <div class="card extensions-list" :style="{ backgroundColor: settingsStore.styleSettings.cardBg, color: settingsStore.styleSettings.textPrimary, borderColor: settingsStore.styleSettings.cardBorder }">
       <div class="card-content">
-        <h2>{{ t('extensions.installedExtensions', 'Installed Extensions') }}</h2>
+        <h2>{{ t('extensions.installedExtensions', 'Extensions') }}</h2>
         <div v-if="operationError" class="error-message">{{ operationError }}</div>
         <div v-if="loading" class="loading">{{ t('extensions.loadingExtensions', 'Loading extensions...') }}</div>
         <div v-else-if="extensions.length === 0" class="no-extensions">
@@ -56,7 +56,7 @@
             </div>
             <div class="extension-meta">
               <span class="extension-type">{{ ext.type }}</span>
-              <span v-if="ext.source !== 'legacy'" class="runtime-badge">{{ ext.source === 'compiled' ? 'Compiled UI' : 'Runtime' }}</span>
+              <span v-if="ext.source !== 'legacy'" class="runtime-badge">{{ extensionSourceLabel(ext) }}</span>
               <span v-if="ext.author" class="extension-author">{{ t('extensions.by', 'by') }} {{ ext.author }}</span>
             </div>
             <p v-if="ext.description" class="extension-description">{{ ext.description }}</p>
@@ -75,7 +75,7 @@
               </label>
             </div>
             <div class="extension-actions">
-               <div v-if="ext.source === 'runtime' && ext.is_installed" class="version-controls">
+               <div v-if="(ext.source === 'runtime' && ext.is_installed) || ext.source === 'application'" class="version-controls">
                  <label :for="`version-${ext.id}`">{{ t('extensions.version', 'Version') }}</label>
                  <select :id="`version-${ext.id}`" v-model="selectedVersions[ext.id]">
                    <option v-for="version in ext.available_versions" :key="version" :value="version">
@@ -84,15 +84,17 @@
                  </select>
                  <button
                    class="version-btn"
-                   :disabled="!ext.can_manage || selectedVersions[ext.id] === ext.version || operationBusy === ext.id"
+                   :disabled="!canActivateVersion(ext)"
                    @click="activateVersion(ext)"
                  >
                    {{ activatingVersion === ext.id
                      ? t('extensions.activatingVersion', 'Activating...')
-                     : t('extensions.activateVersion', 'Activate version') }}
+                     : ext.source === 'application' && !ext.is_enabled
+                       ? t('extensions.installApplication', 'Install and activate')
+                       : t('extensions.activateVersion', 'Activate version') }}
                  </button>
                </div>
-               <span v-if="ext.source === 'runtime' && ext.is_installed" class="managed-note">
+               <span v-if="(ext.source === 'runtime' || ext.source === 'application') && ext.is_installed" class="managed-note">
                  {{ t('extensions.runtimeDataPreserved', 'Data is preserved when disabled') }}
                </span>
                <button
@@ -106,14 +108,24 @@
                    : t('extensions.reinstall', 'Reinstall') }}
                </button>
                <button
-                 v-if="ext.source === 'legacy' || (ext.is_installed && ext.can_manage)"
+                 v-if="ext.source === 'legacy' || (ext.source === 'runtime' && ext.is_installed && ext.can_manage) || (ext.source === 'application' && ext.can_manage)"
                  @click="deleteExtension(ext)"
                  class="delete-btn"
                  :disabled="operationBusy === ext.id"
                >
-                 {{ ext.source === 'runtime'
+                 {{ isUninstallAction(ext)
                    ? t('extensions.uninstall', 'Uninstall')
+                   : ext.source === 'application'
+                     ? t('extensions.deletePackage', 'Delete package')
                    : t('extensions.delete', 'Delete') }}
+               </button>
+               <button
+                 v-if="ext.source === 'application' && !ext.is_installed && ext.can_manage"
+                 class="delete-btn"
+                 :disabled="operationBusy === ext.id"
+                 @click="eraseApplicationData(ext)"
+               >
+                 {{ t('extensions.eraseData', 'Erase data') }}
                </button>
              </div>
           </div>
@@ -126,16 +138,26 @@
       <div class="modal-container">
         <div class="modal-surface" @click.stop>
           <div class="modal-header">
-            <h2>{{ extensionToDelete?.source === 'runtime'
+            <h2>{{ deleteAction === 'erase-data'
+              ? t('extensions.eraseApplicationData', 'Erase application data')
+              : extensionToDelete && isUninstallAction(extensionToDelete)
               ? t('extensions.uninstallExtension', 'Uninstall Extension')
+              : extensionToDelete?.source === 'application'
+                ? t('extensions.deletePackage', 'Delete package')
               : t('extensions.deleteExtension', 'Delete Extension') }}</h2>
           </div>
 
           <div class="modal-body">
-            <p>{{ extensionToDelete?.source === 'runtime'
-              ? t('extensions.uninstallConfirm', 'Uninstall this runtime extension? Its routes and menu entries will be removed.')
+            <p>{{ deleteAction === 'erase-data'
+              ? t('extensions.eraseApplicationDataConfirm', 'Permanently erase all preserved data for this application? This cannot be undone, and reinstalling the package will start with an empty database.')
+              : extensionToDelete?.source === 'application' && extensionToDelete.is_installed
+              ? t('extensions.uninstallApplicationConfirm', 'Uninstall this application extension? Its service, routes and access configuration will be removed. Its application data and uploaded package will be preserved.')
+              : extensionToDelete?.source === 'application'
+                ? t('extensions.deleteApplicationPackageConfirm', 'Delete this unused application package version? Preserved application data will not be deleted.')
+              : extensionToDelete?.source === 'runtime'
+                ? t('extensions.uninstallConfirm', 'Uninstall this runtime extension? Its routes and menu entries will be removed.')
               : t('extensions.deleteConfirm', 'Are you sure you want to delete this extension?') }}</p>
-            <p><strong>{{ extensionToDelete?.name }} v{{ extensionToDelete?.version }}</strong></p>
+            <p><strong>{{ extensionToDelete?.name }}<template v-if="deleteAction !== 'erase-data'"> v{{ deleteTargetVersion(extensionToDelete) }}</template></strong></p>
 
             <!-- Database data deletion checkbox - only show if extension has tables -->
             <div v-if="extensionToDelete?.type === 'extension' || extensionToDelete?.source === 'runtime'" class="form-field">
@@ -167,8 +189,12 @@
               {{ t('extensions.cancel', 'Cancel') }}
             </button>
             <button @click="confirmDeleteExtension" class="button button-danger" :disabled="operationBusy !== null">
-              {{ extensionToDelete?.source === 'runtime'
+              {{ deleteAction === 'erase-data'
+                ? t('extensions.eraseData', 'Erase data')
+                : extensionToDelete && isUninstallAction(extensionToDelete)
                 ? t('extensions.uninstall', 'Uninstall')
+                : extensionToDelete?.source === 'application'
+                  ? t('extensions.deletePackage', 'Delete package')
                 : t('extensions.delete', 'Delete') }}
             </button>
           </div>
@@ -196,7 +222,7 @@ const router = useRouter();
 
 interface Extension {
   id: string;
-  source: 'legacy' | 'runtime' | 'compiled';
+  source: 'legacy' | 'runtime' | 'compiled' | 'application';
   name: string;
   type: string;
   version: string;
@@ -208,7 +234,26 @@ interface Extension {
   can_manage: boolean;
   available_versions: string[];
   package_sha256?: string | null;
+  package_sha256_by_version?: Record<string, string>;
   is_installed: boolean;
+}
+
+interface ModulePackageCatalogItem {
+  module_id: string;
+  version: string;
+  sha256: string;
+  manifest: {
+    name?: string;
+    description?: string;
+    entrypoints?: Record<string, string>;
+  };
+}
+
+interface ApplicationInstallation {
+  module_id: string;
+  active_version: string | null;
+  status: string;
+  enabled: boolean;
 }
 
 const extensions = ref<Extension[]>([]);
@@ -225,6 +270,7 @@ const selectedVersions = ref<Record<string, string>>({});
 const activatingVersion = ref<string | null>(null);
 const operationBusy = ref<string | null>(null);
 const operationError = ref('');
+const deleteAction = ref<'remove' | 'erase-data'>('remove');
 
 const isAdmin = computed(() => (localStorage.getItem('role') || '') === 'admin');
 
@@ -233,14 +279,106 @@ const authHeaders = () => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
+const extensionSourceLabel = (extension: Extension): string => {
+  if (extension.source === 'compiled') return 'Compiled UI';
+  if (extension.source === 'application') return 'Application';
+  return 'Runtime';
+};
+
+const applicationPackageSha = (extension: Extension, version: string): string | null =>
+  extension.package_sha256_by_version?.[version] || null;
+
+const isUninstallAction = (extension: Extension): boolean =>
+  extension.source === 'runtime' || (
+    extension.source === 'application' && extension.is_installed
+  );
+
+const deleteTargetVersion = (extension: Extension | null): string => {
+  if (!extension) return '';
+  if (extension.source === 'application' && !extension.is_installed) {
+    return selectedVersions.value[extension.id] || extension.version;
+  }
+  return extension.version;
+};
+
+const canActivateVersion = (extension: Extension): boolean => {
+  const version = selectedVersions.value[extension.id];
+  if (!extension.can_manage || !version || operationBusy.value === extension.id) return false;
+  if (extension.source === 'application') {
+    return Boolean(applicationPackageSha(extension, version)) && (
+      !extension.is_enabled || version !== extension.version
+    );
+  }
+  return extension.source === 'runtime' && version !== extension.version;
+};
+
+const buildApplicationExtensions = (
+  packages: ModulePackageCatalogItem[],
+  installations: ApplicationInstallation[],
+): Extension[] => {
+  const installationByModule = new Map(
+    installations.map(installation => [installation.module_id, installation]),
+  );
+  const packagesByModule = new Map<string, ModulePackageCatalogItem[]>();
+  for (const pkg of packages) {
+    if (pkg.manifest?.entrypoints?.core !== 'application-extension.json') continue;
+    const versions = packagesByModule.get(pkg.module_id) || [];
+    versions.push(pkg);
+    packagesByModule.set(pkg.module_id, versions);
+  }
+
+  return Array.from(packagesByModule.entries()).map(([moduleId, modulePackages]) => {
+    const ordered = [...modulePackages].sort((left, right) =>
+      left.version.localeCompare(right.version, undefined, { numeric: true }),
+    );
+    const installation = installationByModule.get(moduleId);
+    const selectedPackage = ordered.find(pkg => pkg.version === installation?.active_version)
+      || ordered[ordered.length - 1];
+    const active = installation?.status === 'active' && installation.enabled;
+    return {
+      id: `application:${moduleId}`,
+      source: 'application',
+      name: selectedPackage.manifest.name || moduleId,
+      type: 'application',
+      version: installation?.active_version || selectedPackage.version,
+      description: selectedPackage.manifest.description
+        || t('extensions.applicationDescription', 'Core-hosted application extension'),
+      status: installation?.status || 'staged',
+      is_enabled: Boolean(active),
+      created_at: '',
+      can_manage: isAdmin.value,
+      available_versions: ordered.map(pkg => pkg.version),
+      package_sha256: selectedPackage.sha256,
+      package_sha256_by_version: Object.fromEntries(
+        ordered.map(pkg => [pkg.version, pkg.sha256]),
+      ),
+      is_installed: Boolean(installation?.active_version),
+    };
+  });
+};
+
 const loadExtensions = async () => {
   loading.value = true;
   try {
-    const [catalogResponse, compiledPackages] = await Promise.all([
+    const [catalogResponse, compiledPackages, modulePackagesResponse, applicationInstallationsResponse] = await Promise.all([
       http.get('/api/v1/runtime-extensions/catalog', { params: { language: currentLanguage.value } }),
-      getCompiledUiCatalog(true)
+      getCompiledUiCatalog(true),
+      isAdmin.value ? http.get('/api/v1/modules/packages') : Promise.resolve({ data: [] }),
+      isAdmin.value ? http.get('/api/v1/application-extensions') : Promise.resolve({ data: [] })
     ]);
-    const compiled: Extension[] = compiledPackages.map(pkg => ({
+    const modulePackages = Array.isArray(modulePackagesResponse.data)
+      ? modulePackagesResponse.data as ModulePackageCatalogItem[]
+      : [];
+    const applicationInstallations = Array.isArray(applicationInstallationsResponse.data)
+      ? applicationInstallationsResponse.data as ApplicationInstallation[]
+      : [];
+    const applications = buildApplicationExtensions(modulePackages, applicationInstallations);
+    const applicationModuleIds = new Set(applications.map(extension =>
+      extension.id.replace('application:', ''),
+    ));
+    const compiled: Extension[] = compiledPackages
+      .filter(pkg => !applicationModuleIds.has(pkg.module_id))
+      .map(pkg => ({
       id: `compiled:${pkg.module_id}:${pkg.version}`,
       source: 'compiled',
       name: pkg.name,
@@ -255,7 +393,7 @@ const loadExtensions = async () => {
       package_sha256: pkg.source_sha256,
       is_installed: true
     }));
-    extensions.value = [...(catalogResponse.data || []), ...compiled];
+    extensions.value = [...(catalogResponse.data || []), ...applications, ...compiled];
     selectedVersions.value = Object.fromEntries(
       extensions.value.map(extension => [extension.id, extension.version])
     );
@@ -311,7 +449,11 @@ const uploadExtension = async () => {
       uploadedName = legacyResponse.data.name;
     }
 
-    uploadSuccess.value = t('extensions.uploadSuccess', 'Extension "{name}" uploaded successfully!', { name: uploadedName });
+    uploadSuccess.value = t(
+      'extensions.uploadSuccess',
+      'Extension "{name}" uploaded successfully!',
+      { name: uploadedName },
+    ).replace('{name}', uploadedName);
     selectedFile.value = null;
     // Reset file input
     const fileInput = document.getElementById('extension-file') as HTMLInputElement;
@@ -335,6 +477,22 @@ const toggleExtension = async (extension: Extension, event: Event) => {
   try {
     if (extension.source === 'compiled') {
       target.checked = true;
+      return;
+    } else if (extension.source === 'application') {
+      const moduleId = extension.id.replace('application:', '');
+      if (isEnabled) {
+        const version = selectedVersions.value[extension.id];
+        const sha256 = applicationPackageSha(extension, version);
+        if (!sha256) throw new Error('Application package version is unavailable');
+        await http.post(`/api/v1/application-extensions/packages/${sha256}/activate`);
+      } else {
+        await http.post(
+          `/api/v1/application-extensions/${encodeURIComponent(moduleId)}/disable`,
+        );
+      }
+      await getCompiledUiCatalog(true);
+      window.dispatchEvent(new Event('menu-refresh'));
+      await loadExtensions();
       return;
     } else if (extension.source === 'runtime') {
       const moduleId = extension.id.replace('runtime:', '');
@@ -374,6 +532,15 @@ const toggleExtension = async (extension: Extension, event: Event) => {
 
 const deleteExtension = (extension: Extension) => {
   extensionToDelete.value = extension;
+  deleteAction.value = 'remove';
+  deleteDatabaseData.value = false;
+  deleteUploadedFiles.value = false;
+  showDeleteModal.value = true;
+};
+
+const eraseApplicationData = (extension: Extension) => {
+  extensionToDelete.value = extension;
+  deleteAction.value = 'erase-data';
   deleteDatabaseData.value = false;
   deleteUploadedFiles.value = false;
   showDeleteModal.value = true;
@@ -381,21 +548,28 @@ const deleteExtension = (extension: Extension) => {
 
 const activateVersion = async (extension: Extension) => {
   const version = selectedVersions.value[extension.id];
-  if (extension.source !== 'runtime' || !version || version === extension.version) return;
+  if (!canActivateVersion(extension) || !version) return;
 
   activatingVersion.value = extension.id;
   operationBusy.value = extension.id;
   operationError.value = '';
   try {
-    const moduleId = extension.id.replace('runtime:', '');
-    await http.post(
-      `/api/v1/runtime-extensions/definitions/${encodeURIComponent(moduleId)}/versions/${encodeURIComponent(version)}/activate`
-    );
-    await reloadRuntimeExtensionRoutes(router);
+    if (extension.source === 'application') {
+      const sha256 = applicationPackageSha(extension, version);
+      if (!sha256) throw new Error('Application package version is unavailable');
+      await http.post(`/api/v1/application-extensions/packages/${sha256}/activate`);
+      await getCompiledUiCatalog(true);
+    } else {
+      const moduleId = extension.id.replace('runtime:', '');
+      await http.post(
+        `/api/v1/runtime-extensions/definitions/${encodeURIComponent(moduleId)}/versions/${encodeURIComponent(version)}/activate`
+      );
+      await reloadRuntimeExtensionRoutes(router);
+    }
     window.dispatchEvent(new Event('menu-refresh'));
     await loadExtensions();
   } catch (error) {
-    console.error('Failed to activate runtime extension version:', error);
+    console.error('Failed to activate extension version:', error);
     operationError.value = errorMessage(error, t('extensions.versionError', 'Could not activate the selected version.'));
   } finally {
     activatingVersion.value = null;
@@ -429,7 +603,12 @@ const confirmDeleteExtension = async () => {
   operationError.value = '';
 
   try {
-    if (extensionToDelete.value.source === 'compiled') {
+    if (deleteAction.value === 'erase-data') {
+      const moduleId = extensionToDelete.value.id.replace('application:', '');
+      await http.delete(
+        `/api/v1/application-extensions/${encodeURIComponent(moduleId)}/data`,
+      );
+    } else if (extensionToDelete.value.source === 'compiled') {
       const [, moduleId, version] = extensionToDelete.value.id.split(':');
       await http.delete(`/api/v1/modules/compiled-ui/packages/${encodeURIComponent(moduleId)}/${encodeURIComponent(version)}`);
       await getCompiledUiCatalog(true);
@@ -440,6 +619,20 @@ const confirmDeleteExtension = async () => {
         { params: { delete_data: deleteDatabaseData.value } }
       );
       await reloadRuntimeExtensionRoutes(router);
+      window.dispatchEvent(new Event('menu-refresh'));
+    } else if (extensionToDelete.value.source === 'application') {
+      const moduleId = extensionToDelete.value.id.replace('application:', '');
+      if (extensionToDelete.value.is_installed) {
+        await http.delete(
+          `/api/v1/application-extensions/${encodeURIComponent(moduleId)}`,
+        );
+      } else {
+        const version = deleteTargetVersion(extensionToDelete.value);
+        await http.delete(
+          `/api/v1/modules/compiled-ui/packages/${encodeURIComponent(moduleId)}/${encodeURIComponent(version)}`,
+        );
+      }
+      await getCompiledUiCatalog(true);
       window.dispatchEvent(new Event('menu-refresh'));
     } else {
       await http.delete(`/api/extensions/${extensionToDelete.value.id.replace('legacy:', '')}`, {
@@ -453,6 +646,7 @@ const confirmDeleteExtension = async () => {
     await loadExtensions();
     showDeleteModal.value = false;
     extensionToDelete.value = null;
+    deleteAction.value = 'remove';
   } catch (error) {
     console.error('Failed to delete extension:', error);
     operationError.value = errorMessage(error, t('extensions.uninstallError', 'Could not remove the extension.'));
@@ -464,6 +658,7 @@ const confirmDeleteExtension = async () => {
 const cancelDeleteExtension = () => {
   showDeleteModal.value = false;
   extensionToDelete.value = null;
+  deleteAction.value = 'remove';
   deleteDatabaseData.value = false;
   deleteUploadedFiles.value = false;
 };

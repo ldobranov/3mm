@@ -35,7 +35,9 @@ from three_mm_provisioning.network_recovery import RecoveryTrigger
 from three_mm_runtime.network_recovery import NetworkRecoveryMonitor
 from three_mm_runtime.application_activation import (
     activate_application_package,
+    erase_application_instance_data,
     SystemdApplicationSupervisor,
+    uninstall_application_instance,
 )
 
 MAX_REQUEST_BYTES = 4096
@@ -276,6 +278,27 @@ class UpdateMutationBoundary:
     def stop_application_extension(self, instance_id: str) -> None:
         SystemdApplicationSupervisor().stop(instance_id)
 
+    def uninstall_application_extension(
+        self,
+        instance_id: str,
+        *,
+        root: Path,
+        key_root: Path,
+    ) -> None:
+        uninstall_application_instance(
+            instance_id,
+            root=root,
+            key_root=key_root,
+        )
+
+    def erase_application_extension_data(
+        self,
+        instance_id: str,
+        *,
+        root: Path,
+    ) -> None:
+        erase_application_instance_data(instance_id, root=root)
+
 
 def _handle_request(
     payload: object,
@@ -343,8 +366,13 @@ def _handle_request(
     }:
         instance_id = payload.get("instance_id")
         user_id = payload.get("requested_by_user_id")
+        action = payload.get("action")
         if (
-            payload.get("action") != "disable_application_extension"
+            action not in {
+                "disable_application_extension",
+                "erase_application_extension_data",
+                "uninstall_application_extension",
+            }
             or not isinstance(instance_id, str)
             or not __import__("re").fullmatch(r"[0-9a-f]{24}", instance_id)
             or not isinstance(user_id, int)
@@ -353,12 +381,33 @@ def _handle_request(
         ):
             return {"ok": False, "error": "invalid_request"}
         try:
-            (boundary or UpdateMutationBoundary()).stop_application_extension(
-                instance_id
-            )
+            selected_boundary = boundary or UpdateMutationBoundary()
+            if action == "uninstall_application_extension":
+                selected_boundary.uninstall_application_extension(
+                    instance_id,
+                    root=application_root,
+                    key_root=application_key_root,
+                )
+            elif action == "erase_application_extension_data":
+                selected_boundary.erase_application_extension_data(
+                    instance_id,
+                    root=application_root,
+                )
+            else:
+                selected_boundary.stop_application_extension(instance_id)
         except Exception:
-            return {"ok": False, "error": "application_disable_failed"}
-        return {"ok": True, "status": "disabled"}
+            error = {
+                "uninstall_application_extension": "application_uninstall_failed",
+                "erase_application_extension_data": "application_data_erase_failed",
+            }.get(action, "application_disable_failed")
+            return {"ok": False, "error": error}
+        return {
+            "ok": True,
+            "status": {
+                "uninstall_application_extension": "uninstalled",
+                "erase_application_extension_data": "erased",
+            }.get(action, "disabled"),
+        }
 
     if isinstance(payload, dict) and set(payload) == {
         "action",

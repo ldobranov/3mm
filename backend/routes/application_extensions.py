@@ -9,17 +9,24 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.config import get_settings
 from backend.db.audit_log import AuditLog
 from backend.db.module import (
+    ApplicationConnectorAttempt,
+    ApplicationConnectorBinding,
+    ApplicationEventCursor,
+    ApplicationEventDelivery,
     ApplicationExtensionInstallation,
+    ApplicationJobState,
     ApplicationKioskEnrollment,
     ApplicationKioskTerminal,
     ApplicationPermissionGrant,
+    ApplicationSecretReference,
+    ApplicationSyncCheckpoint,
     ModulePackage,
 )
 from backend.db.user import User
@@ -288,6 +295,99 @@ def disable_application_extension(
     db.commit()
     db.refresh(installation)
     return installation
+
+
+@router.delete("/{module_id}")
+def uninstall_application_extension(
+    module_id: str,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    installation = _installation(db, module_id)
+    version = installation.active_version
+    try:
+        UpdateHelperClient(
+            get_settings().applications.helper_socket
+        ).uninstall_application_extension(installation.instance_id, admin.id)
+    except UpdateHelperError as exc:
+        raise HTTPException(409, "Application extension could not be uninstalled") from exc
+
+    owned_models = (
+        ApplicationConnectorAttempt,
+        ApplicationConnectorBinding,
+        ApplicationEventCursor,
+        ApplicationEventDelivery,
+        ApplicationJobState,
+        ApplicationKioskTerminal,
+        ApplicationKioskEnrollment,
+        ApplicationPermissionGrant,
+        ApplicationSecretReference,
+        ApplicationSyncCheckpoint,
+    )
+    for model in owned_models:
+        db.execute(
+            delete(model).where(
+                model.application_installation_id == installation.id
+            )
+        )
+    db.delete(installation)
+    db.add(
+        AuditLog(
+            user_id=admin.id,
+            action="APPLICATION_EXTENSION_UNINSTALLED",
+            entity_type="application_extension",
+            entity_name=module_id,
+            changes={"version": version, "data_preserved": True},
+        )
+    )
+    db.commit()
+    return {
+        "status": "uninstalled",
+        "module_id": module_id,
+        "version": version,
+        "data_preserved": True,
+    }
+
+
+@router.delete("/{module_id}/data")
+def erase_application_extension_data(
+    module_id: str,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    if db.scalar(
+        select(ApplicationExtensionInstallation.id).where(
+            ApplicationExtensionInstallation.module_id == module_id
+        )
+    ) is not None:
+        raise HTTPException(409, "Uninstall the application extension before erasing data")
+    packages = list(
+        db.scalars(select(ModulePackage).where(ModulePackage.module_id == module_id))
+    )
+    if not any(
+        (package.manifest.get("entrypoints") or {}).get("core")
+        == "application-extension.json"
+        for package in packages
+    ):
+        raise HTTPException(404, "Application extension package was not found")
+
+    try:
+        UpdateHelperClient(
+            get_settings().applications.helper_socket
+        ).erase_application_extension_data(application_instance_id(module_id), admin.id)
+    except UpdateHelperError as exc:
+        raise HTTPException(409, "Application extension data could not be erased") from exc
+    db.add(
+        AuditLog(
+            user_id=admin.id,
+            action="APPLICATION_EXTENSION_DATA_ERASED",
+            entity_type="application_extension",
+            entity_name=module_id,
+            changes={"data_preserved": False},
+        )
+    )
+    db.commit()
+    return {"status": "erased", "module_id": module_id}
 
 
 @router.post("/{module_id}/operations/{operation_id}")

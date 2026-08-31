@@ -7,6 +7,7 @@ import io
 import json
 import os
 import secrets
+import shutil
 import sqlite3
 import subprocess
 import time
@@ -85,6 +86,56 @@ class ActivatedApplication:
 
 def application_instance_id(module_id: str) -> str:
     return hashlib.sha256(module_id.encode("utf-8")).hexdigest()[:24]
+
+
+def _validate_instance_id(instance_id: str) -> None:
+    if len(instance_id) != 24 or any(
+        character not in "0123456789abcdef" for character in instance_id
+    ):
+        raise ApplicationActivationError("Application instance identity is invalid")
+
+
+def uninstall_application_instance(
+    instance_id: str,
+    *,
+    root: Path = Path("/var/lib/3mm/application-extensions"),
+    key_root: Path = Path("/etc/3mm/application-extensions"),
+    supervisor: ApplicationSupervisor | None = None,
+) -> None:
+    """Remove one application runtime while preserving its mutable data."""
+    _validate_instance_id(instance_id)
+
+    selected_supervisor = supervisor or SystemdApplicationSupervisor()
+    selected_supervisor.stop(instance_id)
+
+    instance_root = root / instance_id
+    (instance_root / "active.json").unlink(missing_ok=True)
+    shutil.rmtree(instance_root / "releases", ignore_errors=True)
+    shutil.rmtree(instance_root / "run", ignore_errors=True)
+    for snapshot in instance_root.glob(".database-*.rollback"):
+        snapshot.unlink(missing_ok=True)
+    (key_root / f"{instance_id}.key").unlink(missing_ok=True)
+
+
+def erase_application_instance_data(
+    instance_id: str,
+    *,
+    root: Path = Path("/var/lib/3mm/application-extensions"),
+    supervisor: ApplicationSupervisor | None = None,
+) -> None:
+    """Permanently erase preserved data for an already uninstalled application."""
+    _validate_instance_id(instance_id)
+    selected_supervisor = supervisor or SystemdApplicationSupervisor()
+    instance_root = root / instance_id
+    if selected_supervisor.is_enabled(instance_id) or (instance_root / "active.json").exists():
+        raise ApplicationActivationError(
+            "Application data cannot be erased while the service is installed"
+        )
+    shutil.rmtree(instance_root / "data", ignore_errors=True)
+    try:
+        instance_root.rmdir()
+    except OSError:
+        pass
 
 
 def _write_atomic(path: Path, payload: bytes, mode: int) -> None:

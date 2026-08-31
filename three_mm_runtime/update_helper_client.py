@@ -103,6 +103,34 @@ class UpdateHelperClient:
             expected_status="disabled",
         )
 
+    def uninstall_application_extension(
+        self,
+        instance_id: str,
+        requested_by_user_id: int,
+    ) -> None:
+        self._request(
+            {
+                "action": "uninstall_application_extension",
+                "instance_id": instance_id,
+                "requested_by_user_id": requested_by_user_id,
+            },
+            expected_status="uninstalled",
+        )
+
+    def erase_application_extension_data(
+        self,
+        instance_id: str,
+        requested_by_user_id: int,
+    ) -> None:
+        self._request(
+            {
+                "action": "erase_application_extension_data",
+                "instance_id": instance_id,
+                "requested_by_user_id": requested_by_user_id,
+            },
+            expected_status="erased",
+        )
+
     def request_restore(self, backup_id: str, requested_by_user_id: int) -> None:
         self._request(
             {

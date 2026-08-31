@@ -556,3 +556,59 @@ def test_application_activation_uses_only_the_fixed_sha_package_path(
     assert captured[0][2]["service_uid"] == 1200
     assert captured[0][2]["service_gid"] == 1201
     assert injected == {"ok": False, "error": "invalid_request"}
+
+
+def test_application_uninstall_uses_fixed_runtime_roots(tmp_path: Path) -> None:
+    calls = []
+
+    class Boundary:
+        def uninstall_application_extension(self, instance_id, **kwargs):
+            calls.append((instance_id, kwargs))
+
+    response = update_helper._handle_request(
+        {
+            "action": "uninstall_application_extension",
+            "instance_id": "b" * 24,
+            "requested_by_user_id": 7,
+        },
+        stage_root=tmp_path / "stage",
+        state_root=tmp_path / "state",
+        allowlist=tmp_path / "allowlist.json",
+        status_file=tmp_path / "status.json",
+        boundary=Boundary(),
+        application_root=tmp_path / "apps",
+        application_key_root=tmp_path / "keys",
+    )
+
+    assert response == {"ok": True, "status": "uninstalled"}
+    assert calls == [
+        (
+            "b" * 24,
+            {"root": tmp_path / "apps", "key_root": tmp_path / "keys"},
+        )
+    ]
+
+
+def test_application_data_erase_uses_only_the_fixed_instance_root(tmp_path: Path) -> None:
+    calls = []
+
+    class Boundary:
+        def erase_application_extension_data(self, instance_id, **kwargs):
+            calls.append((instance_id, kwargs))
+
+    response = update_helper._handle_request(
+        {
+            "action": "erase_application_extension_data",
+            "instance_id": "c" * 24,
+            "requested_by_user_id": 7,
+        },
+        stage_root=tmp_path / "stage",
+        state_root=tmp_path / "state",
+        allowlist=tmp_path / "allowlist.json",
+        status_file=tmp_path / "status.json",
+        boundary=Boundary(),
+        application_root=tmp_path / "apps",
+    )
+
+    assert response == {"ok": True, "status": "erased"}
+    assert calls == [("c" * 24, {"root": tmp_path / "apps"})]

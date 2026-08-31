@@ -17,6 +17,8 @@ from three_mm_runtime.application_activation import (
     ApplicationActivationError,
     activate_application_package,
     application_instance_id,
+    erase_application_instance_data,
+    uninstall_application_instance,
 )
 from three_mm_runtime import application_activation
 
@@ -197,3 +199,58 @@ def test_failed_upgrade_restores_previous_sqlite_state(tmp_path):
         assert connection.execute("SELECT value FROM records").fetchall() == [
             ("previous",)
         ]
+
+
+def test_uninstall_removes_runtime_files_but_preserves_application_data(tmp_path):
+    instance_id = "a" * 24
+    root = tmp_path / "apps"
+    key_root = tmp_path / "keys"
+    instance_root = root / instance_id
+    data_root = instance_root / "data"
+    (instance_root / "releases/release").mkdir(parents=True)
+    (instance_root / "run").mkdir()
+    data_root.mkdir()
+    key_root.mkdir()
+    (instance_root / "active.json").write_text("{}", encoding="utf-8")
+    (instance_root / "releases/release/service.whl").write_bytes(b"wheel")
+    (instance_root / "run/service.sock").write_text("socket", encoding="utf-8")
+    (data_root / "state.sqlite3").write_bytes(b"application-data")
+    (key_root / f"{instance_id}.key").write_bytes(b"s" * 32)
+    supervisor = Supervisor()
+
+    uninstall_application_instance(
+        instance_id,
+        root=root,
+        key_root=key_root,
+        supervisor=supervisor,
+    )
+
+    assert supervisor.calls == [("stop", instance_id)]
+    assert (data_root / "state.sqlite3").read_bytes() == b"application-data"
+    assert not (instance_root / "active.json").exists()
+    assert not (instance_root / "releases").exists()
+    assert not (instance_root / "run").exists()
+    assert not (key_root / f"{instance_id}.key").exists()
+
+
+def test_erasing_preserved_data_requires_an_uninstalled_service(tmp_path):
+    instance_id = "a" * 24
+    root = tmp_path / "apps"
+    data_root = root / instance_id / "data"
+    data_root.mkdir(parents=True)
+    (data_root / "state.sqlite3").write_bytes(b"application-data")
+
+    with pytest.raises(ApplicationActivationError, match="cannot be erased"):
+        erase_application_instance_data(
+            instance_id,
+            root=root,
+            supervisor=EnabledSupervisor(),
+        )
+    assert (data_root / "state.sqlite3").exists()
+
+    erase_application_instance_data(
+        instance_id,
+        root=root,
+        supervisor=Supervisor(),
+    )
+    assert not data_root.exists()

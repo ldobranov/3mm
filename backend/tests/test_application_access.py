@@ -27,6 +27,7 @@ from backend.services.module_packages import validate_module_package
 from backend.tests.test_module_packages import application_definition, application_package
 from backend.utils.db_utils import get_db
 from backend.utils.jwt_utils import create_access_token
+from three_mm_runtime.application_activation import application_instance_id
 
 
 class ReadyClient:
@@ -260,6 +261,68 @@ def test_compiled_application_catalog_returns_only_authorized_routes(monkeypatch
         kiosk_item = client.get(catalog, headers=headers(kiosk_token)).json()["items"][0]
         assert [item["entrypoint_id"] for item in kiosk_item["entrypoints"]] == ["registration"]
         assert kiosk_item["entrypoints"][0]["application_audience"] == "kiosk"
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_uninstall_removes_core_registration_and_preserves_package(monkeypatch, tmp_path):
+    (
+        client,
+        db,
+        engine,
+        _admin,
+        operator,
+        installation,
+        package,
+        admin_token,
+        _operator_token,
+    ) = environment(monkeypatch, tmp_path)
+    helper_calls = []
+    erase_calls = []
+    monkeypatch.setattr(
+        application_extensions.UpdateHelperClient,
+        "uninstall_application_extension",
+        lambda _self, instance_id, user_id: helper_calls.append(
+            (instance_id, user_id)
+        ),
+    )
+    monkeypatch.setattr(
+        application_extensions.UpdateHelperClient,
+        "erase_application_extension_data",
+        lambda _self, instance_id, user_id: erase_calls.append(
+            (instance_id, user_id)
+        ),
+    )
+    grant = ApplicationPermissionGrant(
+        application_installation_id=installation.id,
+        user_id=operator.id,
+        permission_id="records_manage",
+    )
+    db.add(grant)
+    db.commit()
+    installation_id = installation.id
+    package_id = package.id
+    grant_id = grant.id
+    try:
+        response = client.delete(
+            f"/api/v1/application-extensions/{package.module_id}",
+            headers=headers(admin_token),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["data_preserved"] is True
+        assert helper_calls == [("a" * 24, 1)]
+        assert db.get(ApplicationExtensionInstallation, installation_id) is None
+        assert db.get(ModulePackage, package_id) is not None
+        assert db.get(ApplicationPermissionGrant, grant_id) is None
+
+        erased = client.delete(
+            f"/api/v1/application-extensions/{package.module_id}/data",
+            headers=headers(admin_token),
+        )
+        assert erased.status_code == 200
+        assert erase_calls == [(application_instance_id(package.module_id), 1)]
     finally:
         db.close()
         engine.dispose()
