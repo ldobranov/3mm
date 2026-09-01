@@ -51,6 +51,10 @@ def _settings(tmp_path: Path) -> AppSettings:
         encoding="utf-8",
     )
     (agent / "core-credential.json").write_text("{}", encoding="utf-8")
+    (agent / "pairing-private-key.pem").write_text(
+        "not-a-real-private-key",
+        encoding="utf-8",
+    )
 
     provisioning = tmp_path / "provisioning"
     provisioning.mkdir()
@@ -122,6 +126,11 @@ def test_backup_preview_reports_manifest_checksums_and_space(tmp_path: Path) -> 
     assert ("agent", "identity.json") in paths
     assert ("provisioning", "provisioning.json") in paths
     assert ("host-config", "3mm.env") in paths
+    sensitivities = {
+        (entry.area, entry.path): entry.sensitivity
+        for entry in preview.manifest.entries
+    }
+    assert sensitivities[("agent", "pairing-private-key.pem")] == "secret"
 
 
 def test_backup_preview_fails_closed_when_identity_is_missing(tmp_path: Path) -> None:

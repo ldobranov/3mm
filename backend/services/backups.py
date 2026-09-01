@@ -271,7 +271,10 @@ def _scan_source(
     for candidate, relative in candidates:
         logical_path = _logical_entry_path(source.logical_path, relative)
         sensitivity = source.sensitivity
-        if source.area == "agent" and logical_path == "core-credential.json":
+        if source.area == "agent" and logical_path in {
+            "core-credential.json",
+            "pairing-private-key.pem",
+        }:
             sensitivity = "secret"
         try:
             size_bytes, sha256 = _sha256_stable_file(candidate)

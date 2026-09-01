@@ -184,16 +184,18 @@ Enter the username, email and password only at the prompts. The normal minimum
 password length is 12 characters. The bootstrap refuses to replace an existing
 administrator.
 
-## 6. Pair the co-located Agent
+## 6. Verify automatic local Agent pairing
 
-The Standalone Agent has a persistent identity but needs its own Core credential.
-Copy the public half of the dedicated device key to a temporary readable path:
+Completing a Standalone or Hub setup now pairs the co-located Agent before its
+service starts. The bootstrap creates a persistent Ed25519 device key, runs the
+normal audited Core pairing flow and stores the issued credential under
+`/var/lib/3mm/agent`. Repeated runtime activation is idempotent and does not
+create another device. Node mode intentionally remains dependent on its
+external Hub pairing flow.
 
-```powershell
-scp <device-key>.pub raspberry@<device-ip>:/tmp/3mm-device.pub
-```
-
-Then pair it locally through the audited Core pairing services:
+No SSH key copy, device-ID entry or manual pairing command is required. For an
+older installation, or to repair an interrupted local bootstrap, run the same
+automatic operation explicitly:
 
 ```bash
 sudo -u 3mm env \
@@ -201,19 +203,14 @@ sudo -u 3mm env \
   DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db \
   /opt/3mm/current/.venv/bin/python \
   /opt/3mm/current/deployment/bootstrap-local-agent.py \
-  --admin-email <administrator-email> \
-  --identity-file /var/lib/3mm/agent/identity.json \
-  --credential-dir /var/lib/3mm/agent \
-  --public-key-file /tmp/3mm-device.pub \
-  --display-name <device-name> \
-  --role standalone
+  --automatic
 
 sudo systemctl restart 3mm-agent.service
-rm -f /tmp/3mm-device.pub
 ```
 
-Only the public key is copied. The generated Agent credential remains private
-under `/var/lib/3mm/agent`.
+The private device key and generated Core credential remain readable only by
+the `3mm` service account and are included as secret material in encrypted
+Standalone backups.
 
 ## 7. Acceptance checks
 

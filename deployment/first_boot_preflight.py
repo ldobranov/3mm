@@ -29,7 +29,9 @@ REQUIRED_COMMANDS = (
 )
 REQUIRED_RELEASE_FILES = (
     "backend/requirements.txt",
+    "deployment/bootstrap-local-agent.py",
     "deployment/install-systemd.sh",
+    "deployment/local_agent_pairing.py",
     "deployment/migrate_database.py",
     "deployment/systemd/3mm-agent.service",
     "deployment/systemd/3mm-core.service",

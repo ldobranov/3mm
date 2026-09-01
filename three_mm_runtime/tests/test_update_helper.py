@@ -280,6 +280,7 @@ def test_system_action_boundary_uses_fixed_commands() -> None:
     assert reset[-1] == "/opt/3mm/current/deployment/factory_reset.py"
     assert "--property=ProtectSystem=strict" in reset
     assert "--property=ReadWritePaths=/var/lib/3mm" in reset
+    assert "--property=ReadWritePaths=/etc/3mm" in reset
     assert "/bin/sh" not in reset and "/bin/bash" not in reset
 
 

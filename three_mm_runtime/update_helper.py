@@ -192,6 +192,7 @@ class UpdateMutationBoundary:
             protection = (
                 "--property=ProtectSystem=strict",
                 "--property=ReadWritePaths=/var/lib/3mm",
+                "--property=ReadWritePaths=/etc/3mm",
                 "--property=ReadWritePaths=/run/lock",
                 "--property=NoNewPrivileges=true",
             )

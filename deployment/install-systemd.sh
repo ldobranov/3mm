@@ -363,7 +363,9 @@ required_files=(
   backend/requirements.txt
   backend/services/update_staging.py
   deployment/apply_staged_update.py
+  deployment/bootstrap-local-agent.py
   deployment/create_backup.py
+  deployment/local_agent_pairing.py
   deployment/portable_backup.py
   deployment/restore_backup.py
   deployment/restore_application_extensions.py

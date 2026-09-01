@@ -83,10 +83,16 @@ def _remove_application_keys(key_root: Path = APPLICATION_KEY_ROOT) -> None:
 
 
 def _prepare_state_directories(
-    state_root: Path, uid: int, gid: int, application_gid: int
+    state_root: Path,
+    uid: int,
+    gid: int,
+    application_gid: int,
+    key_root: Path = APPLICATION_KEY_ROOT,
 ) -> None:
+    state_root.mkdir(parents=True, exist_ok=True)
+    os.chown(state_root, uid, application_gid)
+    os.chmod(state_root, 0o710)
     directories = {
-        state_root: 0o750,
         state_root / "agent": 0o700,
         state_root / "core": 0o750,
         state_root / "core" / "uploads": 0o750,
@@ -95,6 +101,7 @@ def _prepare_state_directories(
         state_root / "core" / "extensions" / "frontend": 0o750,
         state_root / "core" / "extensions" / "compiled": 0o750,
         state_root / "core" / "update-staging": 0o700,
+        state_root / "core" / "backup-imports": 0o700,
         state_root / "provisioning": 0o750,
     }
     for path, mode in directories.items():
@@ -109,9 +116,13 @@ def _prepare_state_directories(
     application_state.mkdir(parents=True, exist_ok=True)
     os.chown(application_state, 0, application_gid)
     os.chmod(application_state, 0o750)
-    APPLICATION_KEY_ROOT.mkdir(parents=True, exist_ok=True)
-    os.chown(APPLICATION_KEY_ROOT, 0, application_gid)
-    os.chmod(APPLICATION_KEY_ROOT, 0o750)
+    application_platform = application_state / "platform"
+    application_platform.mkdir(parents=True, exist_ok=True)
+    os.chown(application_platform, uid, application_gid)
+    os.chmod(application_platform, 0o750)
+    key_root.mkdir(parents=True, exist_ok=True)
+    os.chown(key_root, 0, application_gid)
+    os.chmod(key_root, 0o750)
 
 
 def perform_factory_reset(
