@@ -4,28 +4,40 @@
       <h1 class="view-title">{{ t('extensions.title', 'Extensions') }}</h1>
 
       <div v-if="isAdmin" class="header-actions">
-        <router-link class="ai-builder-link" to="/extensions/ai-builder">
+        <router-link class="button button-outline ai-builder-link" to="/extensions/ai-builder">
+          <i class="bi bi-stars" aria-hidden="true"></i>
           {{ t('extensions.aiBuilder.open', 'Open AI Builder') }}
         </router-link>
       </div>
     </div>
 
     <!-- Upload Section -->
-    <div v-if="isAdmin" class="card upload-section" :style="{ backgroundColor: settingsStore.styleSettings.cardBg, color: settingsStore.styleSettings.textPrimary, borderColor: settingsStore.styleSettings.cardBorder }">
+    <div v-if="isAdmin" class="card upload-section">
       <div class="card-content">
-        <h2>{{ t('extensions.uploadExtension', 'Upload Extension') }}</h2>
+        <div class="section-heading">
+          <span class="section-heading-icon" aria-hidden="true">
+            <i class="bi bi-file-earmark-arrow-up"></i>
+          </span>
+          <h2>{{ t('extensions.uploadExtension', 'Upload Extension') }}</h2>
+        </div>
         <form @submit.prevent="uploadExtension" class="upload-form">
-          <div class="form-group">
-            <label for="extension-file">{{ t('extensions.extensionFile', 'Extension File (.zip)') }}</label>
+          <label for="extension-file" class="upload-picker">
+            <span class="upload-picker-icon" aria-hidden="true"><i class="bi bi-file-earmark-zip"></i></span>
+            <span class="upload-picker-copy">
+              <strong>{{ selectedFile?.name || t('extensions.extensionFile', 'Extension File (.zip)') }}</strong>
+              <small>.zip</small>
+            </span>
             <input
               id="extension-file"
+              class="upload-file-input"
               type="file"
               accept=".zip"
               @change="handleFileSelect"
               required
             />
-          </div>
-          <button type="submit" :disabled="!selectedFile || uploading" class="upload-btn">
+          </label>
+          <button type="submit" :disabled="!selectedFile || uploading" class="button button-primary upload-btn">
+            <i class="bi bi-upload" aria-hidden="true"></i>
             {{ uploading ? t('extensions.uploading', 'Uploading...') : t('extensions.uploadExtensionButton', 'Upload Extension') }}
           </button>
         </form>
@@ -35,9 +47,17 @@
     </div>
 
     <!-- Extensions List -->
-    <div class="card extensions-list" :style="{ backgroundColor: settingsStore.styleSettings.cardBg, color: settingsStore.styleSettings.textPrimary, borderColor: settingsStore.styleSettings.cardBorder }">
-      <div class="card-content">
-        <h2>{{ t('extensions.installedExtensions', 'Extensions') }}</h2>
+    <section class="extensions-list">
+      <div class="extensions-list-content">
+        <div class="extensions-list-heading">
+          <div class="section-heading">
+            <span class="section-heading-icon" aria-hidden="true">
+              <i class="bi bi-boxes"></i>
+            </span>
+            <h2>{{ t('extensions.installedExtensions', 'Extensions') }}</h2>
+          </div>
+          <span v-if="!loading" class="extension-count">{{ extensions.length }}</span>
+        </div>
         <div v-if="operationError" class="error-message">{{ operationError }}</div>
         <div v-if="loading" class="loading">{{ t('extensions.loadingExtensions', 'Loading extensions...') }}</div>
         <div v-else-if="extensions.length === 0" class="no-extensions">
@@ -48,11 +68,10 @@
             v-for="ext in extensions"
             :key="ext.id"
             class="extension-card"
-            :style="{ backgroundColor: settingsStore.styleSettings.cardBg, color: settingsStore.styleSettings.textPrimary, borderColor: settingsStore.styleSettings.cardBorder }"
           >
             <div class="extension-header">
               <h3>{{ ext.name }}</h3>
-              <span class="extension-version">{{ t('extensions.version', 'v') }}{{ ext.version }}</span>
+              <span class="extension-version">{{ t('extensions.version', 'v') }} {{ ext.version }}</span>
             </div>
             <div class="extension-meta">
               <span class="extension-type">{{ ext.type }}</span>
@@ -64,7 +83,10 @@
               <span :class="['status-badge', ext.status]">
                 {{ t(`extensions.${ext.status}`, ext.status) }}
               </span>
-              <label class="toggle-switch">
+              <label
+                class="toggle-switch"
+                :aria-label="`${ext.name}: ${t(`extensions.${ext.status}`, ext.status)}`"
+              >
                 <input
                   type="checkbox"
                   :checked="ext.is_enabled"
@@ -74,7 +96,7 @@
                 <span class="slider"></span>
               </label>
             </div>
-            <div class="extension-actions">
+            <div v-if="ext.source !== 'compiled'" class="extension-actions">
                <div v-if="(ext.source === 'runtime' && ext.is_installed) || ext.source === 'application'" class="version-controls">
                  <label :for="`version-${ext.id}`">{{ t('extensions.version', 'Version') }}</label>
                  <select :id="`version-${ext.id}`" v-model="selectedVersions[ext.id]">
@@ -83,7 +105,8 @@
                    </option>
                  </select>
                  <button
-                   class="version-btn"
+                   type="button"
+                   class="button button-outline button-sm version-btn"
                    :disabled="!canActivateVersion(ext)"
                    @click="activateVersion(ext)"
                  >
@@ -94,40 +117,90 @@
                        : t('extensions.activateVersion', 'Activate version') }}
                  </button>
                </div>
-               <span v-if="(ext.source === 'runtime' || ext.source === 'application') && ext.is_installed" class="managed-note">
-                 {{ t('extensions.runtimeDataPreserved', 'Data is preserved when disabled') }}
-               </span>
-               <button
-                 v-if="ext.source === 'runtime' && !ext.is_installed && ext.can_manage"
-                 class="version-btn"
-                 :disabled="operationBusy === ext.id"
-                 @click="reinstallExtension(ext)"
-               >
-                 {{ operationBusy === ext.id
-                   ? t('extensions.reinstalling', 'Reinstalling...')
-                   : t('extensions.reinstall', 'Reinstall') }}
-               </button>
-               <button
-                 v-if="ext.source === 'legacy' || (ext.source === 'runtime' && ext.is_installed && ext.can_manage) || (ext.source === 'application' && ext.can_manage)"
-                 @click="deleteExtension(ext)"
-                 class="delete-btn"
-                 :disabled="operationBusy === ext.id"
-               >
-                 {{ isUninstallAction(ext)
-                   ? t('extensions.uninstall', 'Uninstall')
-                   : ext.source === 'application'
-                     ? t('extensions.deletePackage', 'Delete package')
-                   : t('extensions.delete', 'Delete') }}
-               </button>
-               <button
-                 v-if="ext.source === 'application' && !ext.is_installed && ext.can_manage"
-                 class="delete-btn"
-                 :disabled="operationBusy === ext.id"
-                 @click="eraseApplicationData(ext)"
-               >
-                 {{ t('extensions.eraseData', 'Erase data') }}
-               </button>
+               <div class="extension-action-footer">
+                 <span v-if="(ext.source === 'runtime' || ext.source === 'application') && ext.is_installed" class="managed-note">
+                   <i class="bi bi-database-check" aria-hidden="true"></i>
+                   {{ t('extensions.runtimeDataPreserved', 'Data is preserved when disabled') }}
+                 </span>
+                 <div class="extension-action-buttons">
+                   <button
+                     v-if="ext.source === 'runtime' && !ext.is_installed && ext.can_manage"
+                     type="button"
+                     class="button button-outline button-sm version-btn"
+                     :disabled="operationBusy === ext.id"
+                     @click="reinstallExtension(ext)"
+                   >
+                     {{ operationBusy === ext.id
+                       ? t('extensions.reinstalling', 'Reinstalling...')
+                       : t('extensions.reinstall', 'Reinstall') }}
+                   </button>
+                   <button
+                     v-if="ext.source === 'legacy' || (ext.source === 'runtime' && ext.is_installed && ext.can_manage) || (ext.source === 'application' && ext.can_manage)"
+                     type="button"
+                     @click="deleteExtension(ext)"
+                     class="button button-sm delete-btn"
+                     :disabled="operationBusy === ext.id"
+                   >
+                     {{ isUninstallAction(ext)
+                       ? t('extensions.uninstall', 'Uninstall')
+                       : ext.source === 'application'
+                         ? t('extensions.deletePackage', 'Delete package')
+                       : t('extensions.delete', 'Delete') }}
+                   </button>
+                   <button
+                     v-if="ext.source === 'application' && !ext.is_installed && ext.can_manage"
+                     type="button"
+                     class="button button-sm delete-btn"
+                     :disabled="operationBusy === ext.id"
+                     @click="eraseApplicationData(ext)"
+                   >
+                     {{ t('extensions.eraseData', 'Erase data') }}
+                   </button>
+                 </div>
+               </div>
              </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Application installation configuration -->
+    <div v-if="showConfigurationModal" class="modal-backdrop" @click="cancelApplicationConfiguration">
+      <div class="modal-container">
+        <div class="modal-surface" @click.stop>
+          <div class="modal-header">
+            <h2>{{ t('extensions.configureApplication', 'Configure application') }}</h2>
+          </div>
+          <div class="modal-body">
+            <p>{{ t('extensions.configureApplicationHelp', 'Choose which managed device this application should use. The selection is preserved across updates.') }}</p>
+            <div v-for="field in configurationFields" :key="field.key" class="form-field configuration-field">
+              <label :for="`application-config-${field.key}`">{{ field.label }}</label>
+              <select
+                :id="`application-config-${field.key}`"
+                v-model="configurationValues[field.key]"
+                :required="field.required"
+              >
+                <option value="" disabled>{{ t('extensions.selectDevice', 'Select a device') }}</option>
+                <option v-for="device in configurationDevices" :key="device.device_id" :value="device.device_id">
+                  {{ device.display_name || device.device_id }} · {{ device.role }}
+                </option>
+              </select>
+              <small v-if="field.description" class="help-text">{{ field.description }}</small>
+            </div>
+            <div v-if="configurationDevices.length === 0" class="error-message">
+              {{ t('extensions.noDevicesAvailable', 'No active managed devices are available.') }}
+            </div>
+            <div v-if="configurationError" class="error-message">{{ configurationError }}</div>
+          </div>
+          <div class="modal-footer">
+            <button class="button button-secondary" :disabled="configurationSaving" @click="cancelApplicationConfiguration">
+              {{ t('extensions.cancel', 'Cancel') }}
+            </button>
+            <button class="button version-btn" :disabled="!canSaveApplicationConfiguration || configurationSaving" @click="confirmApplicationConfiguration">
+              {{ configurationSaving
+                ? t('extensions.activatingVersion', 'Activating...')
+                : t('extensions.installApplication', 'Install and activate') }}
+            </button>
           </div>
         </div>
       </div>
@@ -256,6 +329,21 @@ interface ApplicationInstallation {
   enabled: boolean;
 }
 
+interface ApplicationConfigurationField {
+  key: string;
+  kind: 'device';
+  label: string;
+  description?: string | null;
+  required: boolean;
+  value?: string | null;
+}
+
+interface ApplicationConfigurationDevice {
+  device_id: string;
+  display_name?: string | null;
+  role: string;
+}
+
 const extensions = ref<Extension[]>([]);
 const loading = ref(false);
 const uploading = ref(false);
@@ -271,8 +359,22 @@ const activatingVersion = ref<string | null>(null);
 const operationBusy = ref<string | null>(null);
 const operationError = ref('');
 const deleteAction = ref<'remove' | 'erase-data'>('remove');
+const showConfigurationModal = ref(false);
+const configurationFields = ref<ApplicationConfigurationField[]>([]);
+const configurationDevices = ref<ApplicationConfigurationDevice[]>([]);
+const configurationValues = ref<Record<string, string>>({});
+const configurationTarget = ref<{ extension: Extension; sha256: string } | null>(null);
+const configurationSaving = ref(false);
+const configurationError = ref('');
 
 const isAdmin = computed(() => (localStorage.getItem('role') || '') === 'admin');
+
+const canSaveApplicationConfiguration = computed(() =>
+  configurationDevices.value.length > 0
+  && configurationFields.value.every(field =>
+    !field.required || Boolean(configurationValues.value[field.key]),
+  ),
+);
 
 const authHeaders = () => {
   const token = localStorage.getItem('authToken') || '';
@@ -287,6 +389,70 @@ const extensionSourceLabel = (extension: Extension): string => {
 
 const applicationPackageSha = (extension: Extension, version: string): string | null =>
   extension.package_sha256_by_version?.[version] || null;
+
+const activateApplicationPackage = async (
+  extension: Extension,
+  sha256: string,
+): Promise<boolean> => {
+  const response = await http.get(
+    `/api/v1/application-extensions/packages/${sha256}/configuration`,
+  );
+  const fields = Array.isArray(response.data?.fields)
+    ? response.data.fields as ApplicationConfigurationField[]
+    : [];
+  if (fields.length === 0) {
+    await http.post(`/api/v1/application-extensions/packages/${sha256}/activate`);
+    return true;
+  }
+  configurationFields.value = fields;
+  configurationDevices.value = Array.isArray(response.data?.devices)
+    ? response.data.devices as ApplicationConfigurationDevice[]
+    : [];
+  configurationValues.value = Object.fromEntries(
+    fields.map(field => [field.key, field.value || '']),
+  );
+  configurationTarget.value = { extension, sha256 };
+  configurationError.value = '';
+  showConfigurationModal.value = true;
+  return false;
+};
+
+const cancelApplicationConfiguration = () => {
+  if (configurationSaving.value) return;
+  showConfigurationModal.value = false;
+  configurationTarget.value = null;
+  configurationFields.value = [];
+  configurationDevices.value = [];
+  configurationValues.value = {};
+  configurationError.value = '';
+};
+
+const confirmApplicationConfiguration = async () => {
+  if (!configurationTarget.value || !canSaveApplicationConfiguration.value) return;
+  configurationSaving.value = true;
+  configurationError.value = '';
+  const target = configurationTarget.value;
+  operationBusy.value = target.extension.id;
+  try {
+    await http.post(
+      `/api/v1/application-extensions/packages/${target.sha256}/activate`,
+      { configuration: { ...configurationValues.value } },
+    );
+    configurationSaving.value = false;
+    cancelApplicationConfiguration();
+    await getCompiledUiCatalog(true);
+    window.dispatchEvent(new Event('menu-refresh'));
+    await loadExtensions();
+  } catch (error) {
+    configurationError.value = errorMessage(
+      error,
+      t('extensions.versionError', 'Could not activate the selected version.'),
+    );
+  } finally {
+    configurationSaving.value = false;
+    operationBusy.value = null;
+  }
+};
 
 const isUninstallAction = (extension: Extension): boolean =>
   extension.source === 'runtime' || (
@@ -484,7 +650,11 @@ const toggleExtension = async (extension: Extension, event: Event) => {
         const version = selectedVersions.value[extension.id];
         const sha256 = applicationPackageSha(extension, version);
         if (!sha256) throw new Error('Application package version is unavailable');
-        await http.post(`/api/v1/application-extensions/packages/${sha256}/activate`);
+        const activated = await activateApplicationPackage(extension, sha256);
+        if (!activated) {
+          target.checked = false;
+          return;
+        }
       } else {
         await http.post(
           `/api/v1/application-extensions/${encodeURIComponent(moduleId)}/disable`,
@@ -557,7 +727,8 @@ const activateVersion = async (extension: Extension) => {
     if (extension.source === 'application') {
       const sha256 = applicationPackageSha(extension, version);
       if (!sha256) throw new Error('Application package version is unavailable');
-      await http.post(`/api/v1/application-extensions/packages/${sha256}/activate`);
+      const activated = await activateApplicationPackage(extension, sha256);
+      if (!activated) return;
       await getCompiledUiCatalog(true);
     } else {
       const moduleId = extension.id.replace('runtime:', '');
@@ -685,72 +856,137 @@ watch(currentLanguage, async () => {
 
 <style scoped>
 .upload-section {
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
+  overflow: hidden;
 }
 
 .header-actions {
-  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
 }
 
 .ai-builder-link {
-  display: inline-block;
-  padding: 0.5rem 0.75rem;
-  border-radius: var(--border-radius-md);
-  border: 1px solid var(--card-border);
-  text-decoration: none;
+  gap: 0.45rem;
+  min-height: 2.5rem;
+  border-color: var(--card-border);
   color: var(--text-primary);
 }
 
 .ai-builder-link:hover {
-  opacity: 0.9;
+  border-color: var(--button-primary-bg);
+  background: color-mix(in srgb, var(--button-primary-bg) 8%, transparent);
+  color: var(--button-primary-bg);
 }
 
 .card-content {
-  padding: 1.5rem;
+  padding: 1.25rem;
+}
+
+.section-heading,
+.extensions-list-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.section-heading h2,
+.extensions-list-heading h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 680;
+  letter-spacing: -0.015em;
+}
+
+.section-heading-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 2.25rem;
+  border-radius: var(--border-radius-md);
+  color: var(--button-primary-bg);
+  background: color-mix(in srgb, var(--button-primary-bg) 10%, transparent);
 }
 
 .upload-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.upload-picker {
+  position: relative;
   display: flex;
-  gap: 1rem;
-  align-items: end;
-}
-
-.form-group {
-  flex: 1;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: 500;
-}
-
-.form-group input[type="file"] {
-  width: 100%;
-  padding: 0.75rem;
-  border: 1px solid var(--border-color);
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  min-height: 3.25rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px dashed var(--input-border);
   border-radius: var(--border-radius-md);
-  background-color: var(--input-bg);
+  background: var(--panel-bg);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.upload-picker:hover,
+.upload-picker:focus-within {
+  border-color: var(--button-primary-bg);
+  background: color-mix(in srgb, var(--button-primary-bg) 5%, var(--panel-bg));
+}
+
+.upload-picker-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 2rem;
+  border-radius: var(--border-radius-sm);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+}
+
+.upload-picker-copy {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.upload-picker-copy strong {
+  overflow: hidden;
   color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-picker-copy small {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.upload-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .upload-btn {
-  padding: 0.75rem 1.5rem;
-  background-color: var(--button-primary-bg);
-  color: var(--button-primary-text);
-  border: none;
-  border-radius: var(--border-radius-md);
-  cursor: pointer;
-  font-weight: 500;
-  transition: background-color 0.2s;
-}
-
-.upload-btn:hover:not(:disabled) {
-  background-color: var(--button-primary-hover);
+  gap: 0.45rem;
+  min-width: 10rem;
+  min-height: 3.25rem;
 }
 
 .upload-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
@@ -773,23 +1009,58 @@ watch(currentLanguage, async () => {
 }
 
 .extensions-list {
-  margin-top: 2rem;
+  margin-top: 1.5rem;
+}
+
+.extensions-list-content {
+  min-width: 0;
+}
+
+.extensions-list-heading {
+  justify-content: space-between;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.extension-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.55rem;
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  background: var(--panel-bg);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 650;
 }
 
 .extensions-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
-  gap: 1.5rem;
-  margin-top: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
 }
 
 .extension-card {
-  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 18rem;
+  padding: 1rem;
   border-radius: var(--border-radius-md);
   border: 1px solid var(--card-border);
-  box-shadow: var(--card-shadow);
+  background: var(--card-bg);
+  box-shadow: 0 1px 2px var(--card-shadow);
   word-wrap: break-word;
   overflow-wrap: break-word;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.extension-card:hover {
+  border-color: var(--color-border-hover);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--card-shadow) 65%, transparent);
 }
 
 .extension-header {
@@ -803,41 +1074,51 @@ watch(currentLanguage, async () => {
 .extension-header h3 {
   margin: 0;
   color: var(--text-primary);
+  font-size: 1.05rem;
+  font-weight: 680;
+  letter-spacing: -0.015em;
   word-break: break-word;
   flex: 1;
   min-width: 0;
 }
 
 .extension-version {
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   color: var(--text-secondary);
-  background-color: var(--card-bg);
+  background-color: var(--panel-bg);
   border: 1px solid var(--card-border);
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--border-radius-sm);
+  padding: 0.22rem 0.45rem;
+  border-radius: 999px;
   flex-shrink: 0;
   white-space: nowrap;
 }
 
 .extension-meta {
   display: flex;
-  gap: 1rem;
-  margin-bottom: 0.5rem;
-  font-size: 0.875rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.65rem;
+  font-size: 0.78rem;
   color: var(--text-secondary);
 }
 
+.extension-type,
 .runtime-badge {
-  padding: 0.125rem 0.5rem;
+  padding: 0.15rem 0.45rem;
   border: 1px solid var(--card-border);
   border-radius: 999px;
   color: var(--text-secondary);
-  font-size: 0.75rem;
+  background: var(--panel-bg);
+  font-size: 0.72rem;
 }
 
 .managed-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   color: var(--text-secondary);
-  font-size: 0.8125rem;
+  font-size: 0.76rem;
 }
 
 .toggle-switch input:disabled + .slider {
@@ -846,9 +1127,11 @@ watch(currentLanguage, async () => {
 }
 
 .extension-description {
+  flex: 1;
   color: var(--text-secondary);
-  margin-bottom: 1rem;
-  font-size: 0.875rem;
+  margin: 0 0 0.85rem;
+  font-size: 0.84rem;
+  line-height: 1.5;
   word-wrap: break-word;
   overflow-wrap: break-word;
 }
@@ -857,39 +1140,52 @@ watch(currentLanguage, async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  min-height: 2.5rem;
+  margin-bottom: 0.85rem;
+  padding: 0.45rem 0.6rem;
   gap: 1rem;
-  flex-wrap: wrap;
+  border-radius: var(--border-radius-md);
+  background: var(--panel-bg);
 }
 
 .status-badge {
-  padding: 0.25rem 0.75rem;
-  border-radius: var(--border-radius-sm);
-  font-size: 0.75rem;
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0;
+  font-size: 0.7rem;
+  font-weight: 680;
   text-transform: uppercase;
 }
 
+.status-badge::before {
+  content: '';
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 .status-badge.active {
-  background-color: var(--success-bg);
   color: var(--success-color);
 }
 
-.status-badge.inactive {
-  background-color: var(--warning-bg);
-  color: var(--warning-color);
+.status-badge.inactive,
+.status-badge.disabled,
+.status-badge.staged {
+  color: var(--text-muted);
 }
 
 .status-badge.error {
-  background-color: var(--error-bg);
   color: var(--error-color);
 }
 
 .toggle-switch {
   position: relative;
   display: inline-block;
-  width: 50px;
-  height: 24px;
+  width: 42px;
+  height: 22px;
+  flex: 0 0 42px;
 }
 
 .toggle-switch input {
@@ -906,19 +1202,20 @@ watch(currentLanguage, async () => {
   right: 0;
   bottom: 0;
   background-color: var(--card-border);
-  transition: 0.4s;
+  transition: 0.2s;
   border-radius: 24px;
 }
 
 .slider:before {
   position: absolute;
   content: "";
-  height: 18px;
-  width: 18px;
+  height: 16px;
+  width: 16px;
   left: 3px;
   bottom: 3px;
-  background-color: var(--text-primary);
-  transition: 0.4s;
+  background-color: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.22);
+  transition: 0.2s;
   border-radius: 50%;
 }
 
@@ -927,38 +1224,43 @@ input:checked + .slider {
 }
 
 input:checked + .slider:before {
-  transform: translateX(26px);
+  transform: translateX(20px);
 }
 
 .extension-actions {
-  display: flex;
-  justify-content: flex-end;
-  align-items: end;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  display: grid;
+  gap: 0.7rem;
+  margin-top: auto;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--card-border);
 }
 
 .version-controls {
-  display: flex;
-  align-items: end;
+  display: grid;
+  grid-template-columns: auto minmax(4.5rem, 0.45fr) minmax(0, 1fr);
+  align-items: center;
   gap: 0.5rem;
-  margin-right: auto;
+  width: 100%;
 }
 
 .version-controls label {
-  align-self: center;
   color: var(--text-secondary);
-  font-size: 0.8125rem;
+  font-size: 0.76rem;
 }
 
 .version-controls select,
 .version-btn {
+  min-width: 0;
   min-height: 2.25rem;
   border: 1px solid var(--card-border);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--border-radius-sm);
   background: var(--input-bg);
   color: var(--text-primary);
   padding: 0.375rem 0.625rem;
+}
+
+.version-btn {
+  width: 100%;
 }
 
 .version-btn:disabled {
@@ -966,18 +1268,31 @@ input:checked + .slider:before {
   opacity: 0.55;
 }
 
+.extension-action-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-height: 1.9rem;
+}
+
+.extension-action-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
 .delete-btn {
-  padding: 0.5rem 1rem;
-  background-color: var(--error-bg);
+  min-height: 2rem;
+  background-color: color-mix(in srgb, var(--error-color) 9%, transparent);
   color: var(--error-color);
-  border: 1px solid var(--error-border);
-  border-radius: var(--border-radius-md);
-  cursor: pointer;
-  font-size: 0.875rem;
+  border: 1px solid color-mix(in srgb, var(--error-color) 36%, transparent);
+  border-radius: var(--border-radius-sm);
   transition: background-color 0.2s;
 }
 
-.delete-btn:hover {
+.delete-btn:hover:not(:disabled) {
   background-color: var(--error-color);
   color: white;
 }
@@ -986,5 +1301,93 @@ input:checked + .slider:before {
   text-align: center;
   padding: 2rem;
   color: var(--text-secondary);
+}
+
+.configuration-field {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.configuration-field label {
+  font-weight: 600;
+}
+
+.configuration-field select {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--card-border);
+  border-radius: var(--border-radius-md);
+  background: var(--input-bg);
+  color: var(--text-primary);
+}
+
+@media (max-width: 720px) {
+  .view-header {
+    align-items: stretch;
+  }
+
+  .header-actions,
+  .ai-builder-link {
+    width: 100%;
+  }
+
+  .upload-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .upload-btn {
+    width: 100%;
+  }
+
+  .extensions-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .extension-card {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .card-content {
+    padding: 1rem;
+  }
+
+  .extension-card {
+    padding: 0.85rem;
+  }
+
+  .extension-header {
+    gap: 0.5rem;
+  }
+
+  .extension-version {
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .version-controls {
+    grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
+  }
+
+  .version-controls label {
+    grid-column: 1 / -1;
+  }
+
+  .extension-action-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .extension-action-buttons {
+    width: 100%;
+  }
+
+  .extension-action-buttons .button {
+    flex: 1;
+  }
 }
 </style>

@@ -54,13 +54,13 @@
             :available-languages="availableLanguages"
             :current-site-name="currentSiteName"
             :current-header-message="currentHeaderMessage"
+            :site-name-fallback="headerSiteNameFallback"
+            :header-message-fallback="headerMessageFallback"
             :header-settings="headerSettings"
             :saving-header="savingHeader"
-            :language-settings-map="languageSettingsMap"
-            @update:header-language="headerLanguage = $event"
+            @update:header-language="handleHeaderLanguageChange"
             @update:current-site-name="currentSiteName = $event"
             @update:current-header-message="currentHeaderMessage = $event"
-            @header-language-change="onHeaderLanguageChange"
             @save-header-settings="saveHeaderSettings"
             @logo-upload="handleLogoUpload"
             @logo-remove="removeLogo"
@@ -120,7 +120,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, computed, watch } from 'vue';
+import { defineComponent, ref, reactive, onMounted, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useThemeStore } from '@/stores/theme';
 import { useSettingsStore } from '@/stores/settings';
@@ -129,6 +129,11 @@ import http from '@/utils/dynamic-http';
 import { isMenuRouteEligible } from '@/utils/menu-navigation';
 import { upsertSettings } from '@/utils/settings-api';
 import { readAvailableLanguages, readLanguageSettings } from '@/utils/language-api';
+import {
+  DEFAULT_HEADER_SETTINGS,
+  editableHeaderTextValue,
+  headerTextFallback
+} from '@/utils/header-settings';
 
 // Import extracted components
 import ApplicationSettingsSection from '@/components/settings/ApplicationSettingsSection.vue';
@@ -183,15 +188,27 @@ export default defineComponent({
     const savingDarkStyle = ref(false);
     
     // Language selection refs - default to English
-    const headerLanguage = ref<string>('en');
+    const headerLanguage = ref<string>(localStorage.getItem('settingsHeaderLanguage') || 'en');
     const menuLanguage = ref<string>(localStorage.getItem('settingsMenuLanguage') || 'en');
     const languageSettingsMap = ref(new Map<string, Setting[]>());
+    const headerTextDrafts = reactive<Record<string, { siteName: string; headerMessage: string }>>({});
     const currentMenuItems = ref<any[]>([]);
     
     // Local settings
     const headerSettings = settingsStore.headerSettings;
     const lightStyleSettings = settingsStore.lightStyleSettings;
     const darkStyleSettings = settingsStore.darkStyleSettings;
+
+    const headerSiteNameFallback = computed(() => headerTextFallback(
+      languageSettingsMap.value,
+      'site_name',
+      DEFAULT_HEADER_SETTINGS.siteName
+    ));
+    const headerMessageFallback = computed(() => headerTextFallback(
+      languageSettingsMap.value,
+      'header_message',
+      DEFAULT_HEADER_SETTINGS.headerMessage
+    ));
     
     // Computed
     const activeMenu = computed(() => {
@@ -272,6 +289,7 @@ export default defineComponent({
         }
         if (!availableLanguages.value.includes(headerLanguage.value)) {
           headerLanguage.value = 'en';
+          localStorage.setItem('settingsHeaderLanguage', 'en');
         }
       } catch (error) {
         console.error('Failed to fetch available languages:', error);
@@ -454,32 +472,30 @@ export default defineComponent({
       try {
         const langCode = headerLanguage.value || 'en';
 
-        // Save current language values
-        await saveSettingForLanguage('site_name', currentSiteName.value || 'Mega Monitor', langCode, `Site name in ${langCode.toUpperCase()}`);
-        await saveSettingForLanguage('header_message', currentHeaderMessage.value || 'Welcome to Mega Monitor', langCode, `Header message in ${langCode.toUpperCase()}`);
-        await saveSettingForLanguage('header_bg_color', headerSettings.backgroundColor, langCode, `Header background color in ${langCode.toUpperCase()}`);
-        await saveSettingForLanguage('header_text_color', headerSettings.textColor, langCode, `Header text color in ${langCode.toUpperCase()}`);
-        // Save logo URL if it exists
-        if (headerSettings.logoUrl) {
-          await saveSettingForLanguage('logo_url', headerSettings.logoUrl, langCode, `Logo URL in ${langCode.toUpperCase()}`);
-        }
+        // Only text varies by language. An empty value intentionally uses the
+        // English/default fallback in the rendered header.
+        await Promise.all([
+          saveSettingForLanguage(
+            'site_name',
+            currentSiteName.value,
+            langCode,
+            `Site name in ${langCode.toUpperCase()}`
+          ),
+          saveSettingForLanguage(
+            'header_message',
+            currentHeaderMessage.value,
+            langCode,
+            `Header message in ${langCode.toUpperCase()}`
+          )
+        ]);
 
-        // Also ensure English defaults exist
-        if (langCode !== 'en') {
-          await saveSettingForLanguage('site_name', 'Mega Monitor', 'en', 'Site name in EN');
-          await saveSettingForLanguage('header_message', 'Welcome to Mega Monitor', 'en', 'Header message in EN');
-          await saveSettingForLanguage('header_bg_color', '#4CAF50', 'en', 'Header background color in EN');
-          await saveSettingForLanguage('header_text_color', '#ffffff', 'en', 'Header text color in EN');
-          // Ensure English logo URL exists if we have a logo
-          if (headerSettings.logoUrl) {
-            await saveSettingForLanguage('logo_url', headerSettings.logoUrl, 'en', 'Logo URL in EN');
-          }
-        }
-
+        // Logo and colors are stored once with language_code = null.
         await settingsStore.saveHeaderSettings();
 
-        // Debug: log the current logo URL
-        console.log('Header settings saved. Logo URL:', headerSettings.logoUrl);
+        headerTextDrafts[langCode] = {
+          siteName: currentSiteName.value,
+          headerMessage: currentHeaderMessage.value
+        };
 
         successMessage.value = `Header settings saved for ${langCode.toUpperCase()}!`;
         setTimeout(() => successMessage.value = '', 3000);
@@ -569,26 +585,37 @@ export default defineComponent({
 
       } catch (error) {
         console.error('Failed to save language-specific setting:', error);
-        errorMessage.value = 'Failed to save setting';
+        throw error;
       }
     };
 
-    const onHeaderLanguageChange = async () => {
-      try {
-        const langSettings = await loadLanguageSettings(headerLanguage.value || 'en');
+    const readHeaderTextDraft = async (languageCode: string) => {
+      const langSettings = languageSettingsMap.value.get(languageCode)
+        || await loadLanguageSettings(languageCode);
 
-        const siteName = langSettings.find((s: Setting) => s.key === 'site_name');
-        const headerMessage = langSettings.find((s: Setting) => s.key === 'header_message');
-        const bgColor = langSettings.find((s: Setting) => s.key === 'header_bg_color');
-        const textColor = langSettings.find((s: Setting) => s.key === 'header_text_color');
+      return {
+        siteName: editableHeaderTextValue(langSettings, 'site_name', languageCode),
+        headerMessage: editableHeaderTextValue(langSettings, 'header_message', languageCode)
+      };
+    };
 
-        currentSiteName.value = siteName?.value || 'Mega Monitor';
-        currentHeaderMessage.value = headerMessage?.value || 'Welcome to Mega Monitor';
-        headerSettings.backgroundColor = bgColor?.value || '#4CAF50';
-        headerSettings.textColor = textColor?.value || '#ffffff';
-      } catch (error) {
-        console.error('Failed to load header language settings:', error);
-      }
+    const handleHeaderLanguageChange = async (newLanguage: string) => {
+      const previousLanguage = headerLanguage.value;
+      if (newLanguage === previousLanguage) return;
+
+      headerTextDrafts[previousLanguage] = {
+        siteName: currentSiteName.value,
+        headerMessage: currentHeaderMessage.value
+      };
+
+      headerLanguage.value = newLanguage;
+      localStorage.setItem('settingsHeaderLanguage', newLanguage);
+
+      const nextDraft = headerTextDrafts[newLanguage]
+        || await readHeaderTextDraft(newLanguage);
+      headerTextDrafts[newLanguage] = nextDraft;
+      currentSiteName.value = nextDraft.siteName;
+      currentHeaderMessage.value = nextDraft.headerMessage;
     };
 
     const loadMenuForLanguage = async (languageCode: string) => {
@@ -633,22 +660,17 @@ export default defineComponent({
 
       await Promise.all([settingsStore.loadSettings(), fetchMenus(), fetchAvailableLanguages()]);
 
-      // Load the menu items for the current language
+      // Menu items contain every localized label. Load the selected menu once;
+      // changing the editing language must not discard unsaved translations.
       await safeLoadMenuForLanguage(menuLanguage.value);
 
-      await loadLanguageSettings('en');
+      const headerLanguages = Array.from(new Set(['en', headerLanguage.value]));
+      await Promise.all(headerLanguages.map(loadLanguageSettings));
 
-      headerLanguage.value = 'en';
-      menuLanguage.value = 'en';
-
-      await safeLoadMenuForLanguage('en');
-
-      // Initialize local variables
-      const langSettings = languageSettingsMap.value.get('en') || [];
-      const siteName = langSettings.find((s: Setting) => s.key === 'site_name');
-      const headerMessage = langSettings.find((s: Setting) => s.key === 'header_message');
-      currentSiteName.value = siteName?.value || 'Mega Monitor';
-      currentHeaderMessage.value = headerMessage?.value || 'Welcome to Mega Monitor';
+      const initialHeaderDraft = await readHeaderTextDraft(headerLanguage.value);
+      headerTextDrafts[headerLanguage.value] = initialHeaderDraft;
+      currentSiteName.value = initialHeaderDraft.siteName;
+      currentHeaderMessage.value = initialHeaderDraft.headerMessage;
 
       loading.value = false;
       settingsStore.updateCSSVariables();
@@ -661,10 +683,9 @@ export default defineComponent({
 
 
     // Handle menu language changes
-    const handleMenuLanguageChange = async (newLanguage: string) => {
+    const handleMenuLanguageChange = (newLanguage: string) => {
       menuLanguage.value = newLanguage;
       localStorage.setItem('settingsMenuLanguage', newLanguage);
-      await safeLoadMenuForLanguage(newLanguage);
     };
 
     // Watch for active menu changes and reload menu items
@@ -703,6 +724,8 @@ export default defineComponent({
       languageSettingsMap,
       currentSiteName,
       currentHeaderMessage,
+      headerSiteNameFallback,
+      headerMessageFallback,
       currentMenuItems,
 
       // Current language for reactivity
@@ -710,7 +733,7 @@ export default defineComponent({
 
       // Functions
       t,
-      onHeaderLanguageChange,
+      handleHeaderLanguageChange,
       handleMenuLanguageChange,
       loadMenuForLanguage,
       addMenuItem,

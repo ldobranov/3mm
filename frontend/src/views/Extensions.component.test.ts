@@ -150,6 +150,59 @@ describe('Extensions management workflow', () => {
     expect(compiledUi.getCatalog).toHaveBeenCalled()
   })
 
+  it('asks for a declared device binding before application activation', async () => {
+    const packageSha = '9'.repeat(64)
+    const deviceId = `dev_${'1'.repeat(32)}`
+    http.get.mockImplementation((url: string) => {
+      if (url === '/api/v1/modules/packages') {
+        return Promise.resolve({
+          data: [{
+            module_id: 'org.example.reader-app',
+            version: '0.2.0',
+            sha256: packageSha,
+            manifest: {
+              name: 'Reader Application',
+              entrypoints: { core: 'application-extension.json' }
+            }
+          }]
+        })
+      }
+      if (url === `/api/v1/application-extensions/packages/${packageSha}/configuration`) {
+        return Promise.resolve({
+          data: {
+            fields: [{
+              key: 'READER_DEVICE_ID',
+              kind: 'device',
+              label: 'Reader device',
+              required: true,
+              value: null
+            }],
+            devices: [{ device_id: deviceId, display_name: 'Front reader', role: 'node' }]
+          }
+        })
+      }
+      return Promise.resolve({ data: [] })
+    })
+    const wrapper = await mountView()
+    const card = wrapper.findAll('.extension-card')
+      .find(item => item.text().includes('Reader Application'))!
+
+    await card.findAll('button')
+      .find(button => button.text() === 'Install and activate')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Reader device')
+    await wrapper.get('#application-config-READER_DEVICE_ID').setValue(deviceId)
+    await wrapper.get('.modal-footer .version-btn').trigger('click')
+    await flushPromises()
+
+    expect(http.post).toHaveBeenCalledWith(
+      `/api/v1/application-extensions/packages/${packageSha}/activate`,
+      { configuration: { READER_DEVICE_ID: deviceId } }
+    )
+  })
+
   it('uninstalls an application while keeping its uploaded package visible', async () => {
     const packageSha = 'd'.repeat(64)
     http.get.mockImplementation((url: string) => {

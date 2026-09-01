@@ -6,6 +6,41 @@ export interface NavigationItem {
 
 export type MenuAudience = 'public' | 'authenticated' | 'admin' | 'kiosk'
 
+export function localizedNavigationLabel(
+  label: NavigationItem['label'],
+  language: string,
+  fallbackLanguage = 'en',
+): string {
+  if (typeof label === 'string') return label
+  return label?.[language] || label?.[fallbackLanguage] || Object.values(label || {})[0] || ''
+}
+
+export function navigationLabelForEditing(
+  label: NavigationItem['label'],
+  language: string,
+): string {
+  if (typeof label === 'string') return language === 'en' ? label : ''
+  return label?.[language] || ''
+}
+
+export function updateLocalizedNavigationLabel<T extends NavigationItem>(
+  item: T,
+  language: string,
+  value: string,
+): T {
+  const labels = typeof item.label === 'string'
+    ? { en: item.label }
+    : { ...(item.label || {}) }
+
+  return {
+    ...item,
+    label: {
+      ...labels,
+      [language]: value,
+    },
+  }
+}
+
 export function mergeNavigationItems(
   customItems: NavigationItem[],
   dynamicItems: NavigationItem[],

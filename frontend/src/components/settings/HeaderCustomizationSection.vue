@@ -6,6 +6,12 @@
       @update:model-value="handleLanguageChange"
       :label="t('settings.currentLanguage', 'Current Language')"
     />
+    <p class="header-language-note">
+      {{ t(
+        'settings.headerLanguageHelp',
+        'Site name and header message are translated per language. Logo and colors apply to every language.'
+      ) }}
+    </p>
 
     <form @submit.prevent="saveHeaderSettings">
       <div class="form-group">
@@ -20,8 +26,8 @@
           class="input"
           :placeholder="`Site name in ${headerLanguage.toUpperCase()}`"
         />
-        <small class="help-text">
-          {{ t('settings.current', 'Current') }}: {{ getSettingValueForLanguage('site_name', headerLanguage) || 'Mega Monitor' }}
+        <small v-if="!currentSiteName" class="help-text">
+          {{ t('settings.headerFallback', 'Fallback in the header') }}: {{ siteNameFallback }}
         </small>
       </div>
 
@@ -37,8 +43,15 @@
           class="input"
           :placeholder="`Header message in ${headerLanguage.toUpperCase()}`"
         />
+        <small v-if="!currentHeaderMessage" class="help-text">
+          {{ t('settings.headerFallback', 'Fallback in the header') }}: {{ headerMessageFallback }}
+        </small>
+      </div>
+
+      <div class="shared-header-heading">
+        <strong>{{ t('settings.sharedHeaderAppearance', 'Shared appearance') }}</strong>
         <small class="help-text">
-          {{ t('settings.current', 'Current') }}: {{ getSettingValueForLanguage('header_message', headerLanguage) || 'Welcome to Mega Monitor' }}
+          {{ t('settings.sharedHeaderAppearanceHelp', 'These settings do not change when the language changes.') }}
         </small>
       </div>
 
@@ -100,8 +113,8 @@
             alt="Logo"
             class="preview-logo"
           />
-          <div class="preview-title">{{ currentSiteName || 'Site Name' }}</div>
-          <div class="preview-message">{{ currentHeaderMessage || 'Your message here' }}</div>
+          <div class="preview-title">{{ currentSiteName || siteNameFallback || 'Site Name' }}</div>
+          <div class="preview-message">{{ currentHeaderMessage || headerMessageFallback || 'Your message here' }}</div>
         </div>
       </div>
 
@@ -135,14 +148,6 @@ import ColorPicker from '@/components/ColorPicker.vue'
 import ImageUpload from '@/components/ImageUpload.vue'
 import ImageEditorModal from '@/components/ImageEditorModal.vue'
 
-interface Setting {
-  id?: number
-  key: string
-  value: string
-  description?: string
-  language_code?: string
-}
-
 export default defineComponent({
   name: 'HeaderCustomizationSection',
   components: {
@@ -169,6 +174,14 @@ export default defineComponent({
       type: String,
       required: true
     },
+    siteNameFallback: {
+      type: String,
+      required: true
+    },
+    headerMessageFallback: {
+      type: String,
+      required: true
+    },
     headerSettings: {
       type: Object,
       required: true
@@ -181,16 +194,11 @@ export default defineComponent({
       type: Boolean,
       default: false
     },
-    languageSettingsMap: {
-      type: Object as PropType<Map<string, Setting[]>>,
-      required: true
-    },
   },
   emits: [
     'update:headerLanguage',
     'update:currentSiteName',
     'update:currentHeaderMessage',
-    'header-language-change',
     'save-header-settings',
     'logo-upload',
     'logo-remove'
@@ -254,7 +262,6 @@ export default defineComponent({
 
     const handleLanguageChange = (value: string) => {
       emit('update:headerLanguage', value)
-      emit('header-language-change')
     }
 
     const handleSiteNameChange = (e: Event) => {
@@ -267,18 +274,8 @@ export default defineComponent({
       emit('update:currentHeaderMessage', target.value)
     }
 
-    const onHeaderLanguageChange = () => {
-      emit('header-language-change')
-    }
-
     const saveHeaderSettings = () => {
       emit('save-header-settings')
-    }
-
-    const getSettingValueForLanguage = (key: string, languageCode: string): string => {
-      const langSettings = props.languageSettingsMap.get(languageCode) || []
-      const setting = langSettings.find((s: Setting) => s.key === key)
-      return setting?.value || ''
     }
 
     const openImageEditor = () => {
@@ -310,9 +307,7 @@ export default defineComponent({
       handleHeaderMessageChange,
       handleLogoUpload,
       removeLogo,
-      onHeaderLanguageChange,
       saveHeaderSettings,
-      getSettingValueForLanguage,
       logoImages,
       handleUploadSuccess,
       handleUploadError,
@@ -376,6 +371,20 @@ export default defineComponent({
 
 .form-group:last-of-type {
   margin-bottom: 0;
+}
+
+.header-language-note {
+  margin: -0.25rem 0 1rem;
+  color: var(--text-secondary, #666666);
+  font-size: 0.875rem;
+}
+
+.shared-header-heading {
+  display: grid;
+  gap: 0.25rem;
+  margin: 1.25rem 0 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--card-border, #e3e3e3);
 }
 </style>
 

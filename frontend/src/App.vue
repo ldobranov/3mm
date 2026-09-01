@@ -8,6 +8,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from '@/utils/i18n'
 import http from '@/utils/dynamic-http'
 import { readSettings } from '@/utils/settings-api'
+import { resolveHeaderSettings } from '@/utils/header-settings'
 import '@/assets/styles.css';
 
 // Initialize stores
@@ -111,21 +112,18 @@ const loadDefaults = async () => {
 
 const fetchHeaderSettings = async () => {
   try {
-    // Fetch header settings for current language (merged global + language-specific)
-    const items = await readSettings(currentLanguage.value)
+    const languageCode = currentLanguage.value || 'en'
+    const [localizedSettings, allSettings] = await Promise.all([
+      readSettings(languageCode),
+      readSettings()
+    ])
+    const resolvedHeader = resolveHeaderSettings(localizedSettings, allSettings, languageCode)
 
-    // Update local refs with merged settings
-    const siteNameSetting = items.find((s: any) => s.key === 'site_name')
-    const headerMessageSetting = items.find((s: any) => s.key === 'header_message')
-    const logoSetting = items.find((s: any) => s.key === 'logo_url')
-    const bgColorSetting = items.find((s: any) => s.key === 'header_bg_color')
-    const textColorSetting = items.find((s: any) => s.key === 'header_text_color')
-
-    siteName.value = siteNameSetting?.value || 'Mega Monitor'
-    headerMessage.value = headerMessageSetting?.value || 'Welcome to Mega Monitor'
-    logoUrl.value = logoSetting?.value || ''
-    headerBgColor.value = bgColorSetting?.value || '#4CAF50'
-    headerTextColor.value = textColorSetting?.value || '#ffffff'
+    siteName.value = resolvedHeader.siteName
+    headerMessage.value = resolvedHeader.headerMessage
+    logoUrl.value = resolvedHeader.logoUrl
+    headerBgColor.value = resolvedHeader.backgroundColor
+    headerTextColor.value = resolvedHeader.textColor
   } catch (e) {
     console.error('Failed to fetch header settings:', e)
     // Set defaults

@@ -79,12 +79,14 @@ class UpdateHelperClient:
         self,
         sha256: str,
         requested_by_user_id: int,
+        configuration: dict[str, object] | None = None,
     ) -> dict[str, object]:
         return self._request(
             {
                 "action": "activate_application_extension",
                 "sha256": sha256,
                 "requested_by_user_id": requested_by_user_id,
+                "configuration": configuration or {},
             },
             expected_status="active",
         )

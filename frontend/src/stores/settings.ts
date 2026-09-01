@@ -4,6 +4,7 @@ import { useThemeStore } from '@/stores/theme'
 import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
 import { readSettings, upsertSettings } from '@/utils/settings-api'
+import { resolveHeaderSettings } from '@/utils/header-settings'
 
 export const useSettingsStore = defineStore('settings', () => {
   const themeStore = useThemeStore()
@@ -19,15 +20,13 @@ export const useSettingsStore = defineStore('settings', () => {
   const languageSpecificKeys = [
     'site_name',
     'header_message',
-    'header_bg_color',
-    'header_text_color',
     'page_title_',
     'widget_title_'
   ]
   
   // Settings that should remain global (visual/technical)
   const globalKeys = [
-    'logo_url',
+    'logo_url', 'header_bg_color', 'header_text_color',
     'light_body_bg', 'light_content_bg', 'light_button_primary_bg',
     'light_button_secondary_bg', 'light_button_danger_bg', 'light_card_bg',
     'light_card_border', 'light_panel_bg', 'light_text_primary',
@@ -104,23 +103,17 @@ export const useSettingsStore = defineStore('settings', () => {
       currentLanguageCode.value = languageCode
       
       // Load language-specific settings
-      const items = await readSettings(languageCode)
+      const [items, allItems] = await Promise.all([
+        readSettings(languageCode),
+        readSettings()
+      ])
       
       // Cache language-specific settings
       languageSettings.set(languageCode, items)
 
       // Load header settings
-      const siteName = items.find((s: any) => s.key === 'site_name')
-      const headerMessage = items.find((s: any) => s.key === 'header_message')
-      const logoUrl = items.find((s: any) => s.key === 'logo_url')
-      const bgColor = items.find((s: any) => s.key === 'header_bg_color')
-      const textColor = items.find((s: any) => s.key === 'header_text_color')
-
-      headerSettings.siteName = siteName?.value || 'Mega Monitor'
-      headerSettings.headerMessage = headerMessage?.value || 'Welcome to Mega Monitor'
-      headerSettings.logoUrl = logoUrl?.value || ''
-      headerSettings.backgroundColor = bgColor?.value || '#4CAF50'
-      headerSettings.textColor = textColor?.value || '#ffffff'
+      const resolvedHeader = resolveHeaderSettings(items, allItems, languageCode)
+      Object.assign(headerSettings, resolvedHeader)
 
       loaded.value = true
 
@@ -327,29 +320,6 @@ export const useSettingsStore = defineStore('settings', () => {
     return isLanguageSpecific(key)
   }
 
-  // Process settings for a specific language
-  const processSettingsForLanguage = (items: any[], languageCode: string) => {
-    // Find language-specific settings first
-    const langSpecificItems = items.filter(item =>
-      item.language_code === languageCode ||
-      (shouldSaveAsLanguageSpecific(item.key) && !item.language_code)
-    )
-    
-    // Update header settings with language-specific values
-    const siteName = items.find((s: any) => s.key === 'site_name')
-    const headerMessage = items.find((s: any) => s.key === 'header_message')
-    const logoUrl = items.find((s: any) => s.key === 'logo_url')
-    const bgColor = items.find((s: any) => s.key === 'header_bg_color')
-    const textColor = items.find((s: any) => s.key === 'header_text_color')
-
-    // Use language-specific values if available, otherwise global
-    headerSettings.siteName = siteName?.value || 'Mega Monitor'
-    headerSettings.headerMessage = headerMessage?.value || 'Welcome to Mega Monitor'
-    headerSettings.logoUrl = logoUrl?.value || ''
-    headerSettings.backgroundColor = bgColor?.value || '#4CAF50'
-    headerSettings.textColor = textColor?.value || '#ffffff'
-  }
-
   // Language-aware save method
   const saveSettingWithLanguage = async (key: string, value: string, description?: string) => {
     const languageCode = currentLanguageCode.value
@@ -366,7 +336,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
     // Update cache
     const currentItems = languageSettings.get(languageCode) || []
-    const updatedItems = currentItems.filter(item => item.key !== key)
+    const updatedItems = currentItems.filter(item =>
+      item.key !== key ||
+      (item.language_code ?? null) !== (settingData.language_code ?? null)
+    )
     updatedItems.push(settingData)
     languageSettings.set(languageCode, updatedItems)
   }
@@ -406,15 +379,28 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  // Save header settings (only logo is global now)
+  // Header visuals are shared across languages; only header text is localized.
   const saveHeaderSettings = async () => {
     try {
-      // Debug: log the logo URL being saved
-      console.log('Saving header settings. Logo URL:', headerSettings.logoUrl);
-
-      // Save global settings
       const globalSettingsToSave = [
-        { key: 'logo_url', value: headerSettings.logoUrl, description: 'Logo URL or base64 data' }
+        {
+          key: 'logo_url',
+          value: headerSettings.logoUrl,
+          description: 'Logo URL or base64 data',
+          language_code: null
+        },
+        {
+          key: 'header_bg_color',
+          value: headerSettings.backgroundColor,
+          description: 'Shared header background color',
+          language_code: null
+        },
+        {
+          key: 'header_text_color',
+          value: headerSettings.textColor,
+          description: 'Shared header text color',
+          language_code: null
+        }
       ]
 
       await upsertSettings(globalSettingsToSave)

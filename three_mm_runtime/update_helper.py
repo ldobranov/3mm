@@ -40,7 +40,7 @@ from three_mm_runtime.application_activation import (
     uninstall_application_instance,
 )
 
-MAX_REQUEST_BYTES = 4096
+MAX_REQUEST_BYTES = 64 * 1024
 MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_PORTABLE_ARCHIVE_BYTES = 512 * 1024 * 1024
 LOGGER = logging.getLogger(__name__)
@@ -318,13 +318,13 @@ def _handle_request(
     application_user: str = "3mm-app",
     application_group: str = "3mm-app",
 ) -> dict[str, object]:
-    if isinstance(payload, dict) and set(payload) == {
-        "action",
-        "sha256",
-        "requested_by_user_id",
-    }:
+    if isinstance(payload, dict) and set(payload) in (
+        {"action", "sha256", "requested_by_user_id"},
+        {"action", "sha256", "requested_by_user_id", "configuration"},
+    ):
         sha256 = payload.get("sha256")
         user_id = payload.get("requested_by_user_id")
+        configuration = payload.get("configuration", {})
         if (
             payload.get("action") != "activate_application_extension"
             or not isinstance(sha256, str)
@@ -332,6 +332,7 @@ def _handle_request(
             or not isinstance(user_id, int)
             or isinstance(user_id, bool)
             or user_id <= 0
+            or not isinstance(configuration, dict)
         ):
             return {"ok": False, "error": "invalid_request"}
         try:
@@ -341,6 +342,7 @@ def _handle_request(
             activated = activate_application_package(
                 application_upload_root / f"{sha256}.zip",
                 sha256,
+                configuration=configuration,
                 root=application_root,
                 key_root=application_key_root,
                 service_uid=service_uid,

@@ -213,3 +213,26 @@ def test_device_scope_and_manifest_permission_fail_closed(monkeypatch, broker_db
     enqueue_application_event(db, event, ApplicationRuntimeSettings())
 
     assert db.scalar(select(ApplicationEventDelivery)) is None
+
+
+def test_saved_installation_device_binding_overrides_package_default(
+    monkeypatch, broker_db
+):
+    db, device, installation, package = broker_db
+    package.manifest = {
+        **package.manifest,
+        "configuration_defaults": {"READER_DEVICE_ID": "another-device"},
+    }
+    installation.configuration = {"READER_DEVICE_ID": DEVICE_ID}
+    db.commit()
+    event = add_event(db, device, "d")
+    calls = []
+    monkeypatch.setattr(
+        "backend.services.application_events.invoke_application",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or {},
+    )
+
+    enqueue_application_event(db, event, ApplicationRuntimeSettings())
+
+    assert db.scalar(select(ApplicationEventDelivery)).status == "acknowledged"
+    assert len(calls) == 1

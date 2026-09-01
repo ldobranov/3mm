@@ -2,11 +2,38 @@ import { describe, expect, it } from 'vitest'
 import {
   isMenuRouteEligible,
   isNavigationItemVisible,
+  localizedNavigationLabel,
   mergeNavigationItems,
+  navigationLabelForEditing,
   normalizeAvailableLanguages,
+  updateLocalizedNavigationLabel,
 } from './menu-navigation'
 
 describe('menu navigation', () => {
+  it('keeps localized menu labels separate while editing', () => {
+    const item = {
+      path: '/settings',
+      label: { en: 'Settings' },
+    }
+
+    expect(navigationLabelForEditing(item.label, 'bg')).toBe('')
+    expect(localizedNavigationLabel(item.label, 'bg')).toBe('Settings')
+
+    const translated = updateLocalizedNavigationLabel(item, 'bg', 'Настройки')
+
+    expect(translated.label).toEqual({ en: 'Settings', bg: 'Настройки' })
+    expect(localizedNavigationLabel(translated.label, 'en')).toBe('Settings')
+    expect(localizedNavigationLabel(translated.label, 'bg')).toBe('Настройки')
+    expect(item.label).toEqual({ en: 'Settings' })
+  })
+
+  it('treats legacy string labels as English without pre-filling another language', () => {
+    expect(navigationLabelForEditing('Devices', 'en')).toBe('Devices')
+    expect(navigationLabelForEditing('Devices', 'bg')).toBe('')
+    expect(updateLocalizedNavigationLabel({ path: '/devices', label: 'Devices' }, 'bg', 'Устройства').label)
+      .toEqual({ en: 'Devices', bg: 'Устройства' })
+  })
+
   it('keeps custom entries and appends dynamic entries without duplicate paths', () => {
     expect(mergeNavigationItems(
       [{ path: '/settings', label: 'Settings' }, { path: '/main-server', label: 'My devices' }],

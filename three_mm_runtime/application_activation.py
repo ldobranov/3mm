@@ -17,6 +17,10 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 from backend.services.module_packages import ModulePackageError, validate_module_package
+from backend.services.application_configuration import (
+    ApplicationConfigurationError,
+    resolve_application_configuration,
+)
 from three_mm_runtime.application_transport import (
     ApplicationServiceClient,
     ApplicationTransportError,
@@ -237,6 +241,7 @@ def activate_application_package(
     package_path: Path,
     expected_sha256: str,
     *,
+    configuration: dict[str, object] | None = None,
     root: Path = Path("/var/lib/3mm/application-extensions"),
     key_root: Path = Path("/etc/3mm/application-extensions"),
     supervisor: ApplicationSupervisor | None = None,
@@ -258,6 +263,15 @@ def activate_application_package(
     definition = validated.application_extension
     if definition is None:
         raise ApplicationActivationError("Package is not an application extension")
+    try:
+        resolved_configuration = resolve_application_configuration(
+            validated.manifest.configuration_schema,
+            validated.manifest.configuration_defaults,
+            definition,
+            overrides=configuration,
+        )
+    except ApplicationConfigurationError as exc:
+        raise ApplicationActivationError(str(exc)) from exc
 
     instance_id = application_instance_id(definition.module_id)
     instance_root = root / instance_id
@@ -307,7 +321,7 @@ def activate_application_package(
         "health_operation_id": definition.service.health_operation_id,
         "startup_timeout_seconds": definition.service.startup_timeout_seconds,
         "shutdown_timeout_seconds": definition.service.shutdown_timeout_seconds,
-        "configuration": validated.manifest.configuration_defaults,
+        "configuration": resolved_configuration,
         "platform_socket": str(root / "platform" / "platform.sock"),
         "storage": {
             "schema_revision": definition.storage.schema_revision,

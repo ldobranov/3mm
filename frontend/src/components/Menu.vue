@@ -111,9 +111,9 @@ import { useRouter } from 'vue-router';
 import { useI18n } from '@/utils/i18n';
 import { useSettingsStore } from '@/stores/settings';
 import ThemeToggle from './ThemeToggle.vue';
-import { isNavigationItemVisible, mergeNavigationItems } from '@/utils/menu-navigation';
+import { isNavigationItemVisible, localizedNavigationLabel, mergeNavigationItems } from '@/utils/menu-navigation';
 import type { MenuAudience } from '@/utils/menu-navigation';
-import { readAvailableLanguages, readLanguageSettings } from '@/utils/language-api';
+import { readAvailableLanguages } from '@/utils/language-api';
 import { reloadRuntimeExtensionRoutes } from '@/utils/runtime-extensions';
 import { reloadCompiledUiRoutes } from '@/router';
 
@@ -159,33 +159,7 @@ export default defineComponent({
 
 
     const getMenuItemLabel = (item: MenuItem): string => {
-      if (typeof item.label === 'string') {
-        // Direct string label - assume it's English
-        return item.label;
-      }
-
-      if (typeof item.label === 'object' && item.label) {
-        // Object with language keys
-        const langLabel = item.label[currentLanguage.value];
-        if (langLabel) {
-          return langLabel;
-        }
-
-        // Fallback to English
-        const enLabel = item.label['en'];
-        if (enLabel) {
-          return enLabel;
-        }
-
-        // Use any available label
-        const anyLabel = Object.values(item.label)[0] as string;
-        if (anyLabel) {
-          return anyLabel;
-        }
-      }
-
-      // Final fallback
-      return 'Menu Item';
+      return localizedNavigationLabel(item.label, currentLanguage.value) || 'Menu Item';
     };
 
     const visibleMenuItems = computed(() => {
@@ -253,22 +227,6 @@ export default defineComponent({
 
     const fetchMenuItems = async () => {
       try {
-        // Load language-specific settings for header
-        const langSettings = await readLanguageSettings(currentLanguage.value);
-
-        // Update header settings for current language
-        const siteName = langSettings.find((s: any) => s.key === 'site_name');
-        const headerMessage = langSettings.find((s: any) => s.key === 'header_message');
-        const logoUrl = langSettings.find((s: any) => s.key === 'logo_url');
-        const bgColor = langSettings.find((s: any) => s.key === 'header_bg_color');
-        const textColor = langSettings.find((s: any) => s.key === 'header_text_color');
-
-        settingsStore.headerSettings.siteName = siteName?.value || 'Mega Monitor';
-        settingsStore.headerSettings.headerMessage = headerMessage?.value || 'Welcome to Mega Monitor';
-        settingsStore.headerSettings.logoUrl = logoUrl?.value || '';
-        settingsStore.headerSettings.backgroundColor = bgColor?.value || '#4CAF50';
-        settingsStore.headerSettings.textColor = textColor?.value || '#ffffff';
-
         // Load menu for current language - uses items field with translation support
         const response = await http.get(`/menu/read/${currentLanguage.value}`);
         const menus = response.data.items || [];

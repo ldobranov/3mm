@@ -1,5 +1,6 @@
 import json
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 import backend.database  # noqa: F401 - register the complete Core model graph
 from backend.config import ApplicationRuntimeSettings
 from backend.db.base import Base
+from backend.db.device import Device
 from backend.db.module import (
     ApplicationExtensionInstallation,
     ApplicationPermissionGrant,
@@ -122,6 +124,70 @@ def environment(monkeypatch, tmp_path, blob=None):
 
 def headers(token):
     return {"Authorization": f"Bearer {token}"}
+
+
+def test_application_activation_selects_and_persists_a_managed_device(
+    monkeypatch, tmp_path
+):
+    (
+        client,
+        db,
+        engine,
+        _admin,
+        _operator,
+        installation,
+        package,
+        admin_token,
+        _operator_token,
+    ) = environment(monkeypatch, tmp_path)
+    device_id = "dev_0123456789abcdef0123456789abcdef"
+    db.add(
+        Device(
+            device_id=device_id,
+            display_name="Front reader",
+            role="node",
+            protocol_version="1.0",
+            approved_at=datetime.now(UTC),
+        )
+    )
+    db.commit()
+    helper_calls = []
+    monkeypatch.setattr(
+        application_extensions.UpdateHelperClient,
+        "activate_application_extension",
+        lambda _self, sha256, user_id, configuration: helper_calls.append(
+            (sha256, user_id, configuration)
+        )
+        or {
+            "module_id": package.module_id,
+            "version": package.version,
+            "instance_id": installation.instance_id,
+            "socket_path": installation.socket_path,
+        },
+    )
+    try:
+        configuration = client.get(
+            f"/api/v1/application-extensions/packages/{package.sha256}/configuration",
+            headers=headers(admin_token),
+        )
+        assert configuration.status_code == 200
+        assert configuration.json()["fields"][0]["key"] == "READER_DEVICE_ID"
+        assert configuration.json()["devices"][0]["device_id"] == device_id
+
+        activated = client.post(
+            f"/api/v1/application-extensions/packages/{package.sha256}/activate",
+            json={"configuration": {"READER_DEVICE_ID": device_id}},
+            headers=headers(admin_token),
+        )
+        assert activated.status_code == 200
+        db.refresh(installation)
+        assert installation.configuration["READER_DEVICE_ID"] == device_id
+        assert helper_calls == [
+            (package.sha256, 1, installation.configuration)
+        ]
+    finally:
+        db.close()
+        engine.dispose()
 
 
 def test_operator_permission_is_server_enforced_and_revocable(monkeypatch, tmp_path):

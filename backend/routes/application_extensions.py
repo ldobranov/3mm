@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from backend.config import get_settings
 from backend.db.audit_log import AuditLog
+from backend.db.device import Device
 from backend.db.module import (
     ApplicationConnectorAttempt,
     ApplicationConnectorBinding,
@@ -35,6 +36,11 @@ from backend.services.application_extensions import (
     find_operation,
     invoke_application,
     load_application_definition,
+)
+from backend.services.application_configuration import (
+    ApplicationConfigurationError,
+    device_configuration_keys,
+    resolve_application_configuration,
 )
 from backend.services.application_access import application_permission_ids
 from backend.utils.auth_dep import require_admin, require_user
@@ -59,6 +65,12 @@ class ApplicationInstallationResponse(BaseModel):
     error: str | None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ApplicationActivationRequest(BaseModel):
+    configuration: dict[str, object] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class ApplicationOperationRequest(BaseModel):
@@ -195,9 +207,66 @@ def list_application_extensions(
     )
 
 
+@router.get("/packages/{sha256}/configuration")
+def application_package_configuration(
+    sha256: str,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    package = db.scalar(select(ModulePackage).where(ModulePackage.sha256 == sha256))
+    if package is None:
+        raise HTTPException(404, "Application package was not found")
+    definition = _definition(package)
+    schema = package.manifest.get("configuration_schema") or {}
+    properties = schema.get("properties") or {}
+    installation = db.scalar(
+        select(ApplicationExtensionInstallation).where(
+            ApplicationExtensionInstallation.module_id == package.module_id
+        )
+    )
+    current = dict(package.manifest.get("configuration_defaults") or {})
+    if installation is not None:
+        current.update(installation.configuration or {})
+    fields = []
+    for key in device_configuration_keys(definition):
+        field_schema = properties.get(key) if isinstance(properties, dict) else None
+        field_schema = field_schema if isinstance(field_schema, dict) else {}
+        fields.append(
+            {
+                "key": key,
+                "kind": "device",
+                "label": field_schema.get("title") or key.replace("_", " ").title(),
+                "description": field_schema.get("description"),
+                "required": True,
+                "value": current.get(key),
+            }
+        )
+    devices = list(
+        db.scalars(
+            select(Device)
+            .where(Device.revoked_at.is_(None))
+            .order_by(Device.display_name, Device.device_id)
+        )
+    )
+    return {
+        "module_id": package.module_id,
+        "version": package.version,
+        "fields": fields,
+        "devices": [
+            {
+                "device_id": device.device_id,
+                "display_name": device.display_name,
+                "role": device.role,
+            }
+            for device in devices
+        ],
+    }
+
+
 @router.post("/packages/{sha256}/activate", response_model=ApplicationInstallationResponse)
 def activate_application_extension(
     sha256: str,
+    request: ApplicationActivationRequest | None = None,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -213,6 +282,36 @@ def activate_application_extension(
             ApplicationExtensionInstallation.module_id == package.module_id
         )
     )
+    requested_configuration = request.configuration if request is not None else {}
+    configurable_device_keys = set(device_configuration_keys(definition))
+    if set(requested_configuration) - configurable_device_keys:
+        raise HTTPException(
+            422,
+            "Only declared device bindings can be configured during activation",
+        )
+    try:
+        resolved_configuration = resolve_application_configuration(
+            package.manifest.get("configuration_schema") or {},
+            package.manifest.get("configuration_defaults") or {},
+            definition,
+            existing=(installation.configuration if installation is not None else None),
+            overrides=requested_configuration,
+        )
+    except ApplicationConfigurationError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    available_device_ids = set(
+        db.scalars(select(Device.device_id).where(Device.revoked_at.is_(None)))
+    )
+    unavailable = sorted(
+        key
+        for key in configurable_device_keys
+        if resolved_configuration.get(key) not in available_device_ids
+    )
+    if unavailable:
+        raise HTTPException(
+            422,
+            "Select an available device for: " + ", ".join(unavailable),
+        )
     if installation is None:
         installation = ApplicationExtensionInstallation(
             module_id=package.module_id,
@@ -235,7 +334,11 @@ def activate_application_extension(
         result = UpdateHelperClient(
             get_settings().applications.helper_socket,
             timeout_seconds=definition.service.startup_timeout_seconds + 10,
-        ).activate_application_extension(sha256, admin.id)
+        ).activate_application_extension(
+            sha256,
+            admin.id,
+            resolved_configuration,
+        )
         if result.get("module_id") != package.module_id or result.get("version") != package.version:
             raise UpdateHelperError("Application helper returned another package identity")
         installation.instance_id = str(result["instance_id"])
@@ -246,6 +349,7 @@ def activate_application_extension(
         installation.activated_at = datetime.now(UTC)
         installation.health_checked_at = datetime.now(UTC)
         installation.error = None
+        installation.configuration = resolved_configuration
     except (KeyError, UpdateHelperError) as exc:
         installation.module_package_id = previous_package_id or package.id
         installation.status = "active" if previous_package_id else "failed"
@@ -259,7 +363,11 @@ def activate_application_extension(
             action="APPLICATION_EXTENSION_ACTIVATED",
             entity_type="application_extension",
             entity_name=package.module_id,
-            changes={"version": package.version, "sha256": package.sha256},
+            changes={
+                "version": package.version,
+                "sha256": package.sha256,
+                "configuration_keys": sorted(resolved_configuration),
+            },
         )
     )
     db.commit()

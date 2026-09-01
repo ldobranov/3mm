@@ -26,7 +26,18 @@ from three_mm_runtime import application_activation
 def service_package() -> bytes:
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:
-        archive.writestr("manifest.json", json.dumps(application_manifest(runtimes=["core"], entrypoints={"core": "application-extension.json"})))
+        archive.writestr(
+            "manifest.json",
+            json.dumps(
+                application_manifest(
+                    runtimes=["core"],
+                    entrypoints={"core": "application-extension.json"},
+                    configuration_defaults={
+                        "READER_DEVICE_ID": "dev_0123456789abcdef0123456789abcdef"
+                    },
+                )
+            ),
+        )
         definition = application_definition(routes=[])
         archive.writestr("application-extension.json", json.dumps(definition))
         archive.writestr(definition["service"]["artifact"], APPLICATION_WHEEL)
@@ -86,6 +97,9 @@ def test_activation_stages_only_the_reviewed_wheel_and_becomes_active(tmp_path):
     active = json.loads((tmp_path / "apps" / result.instance_id / "active.json").read_text())
     assert active["sha256"] == result.sha256
     assert active["wheel"] == "service.whl"
+    assert active["configuration"]["READER_DEVICE_ID"] == (
+        "dev_0123456789abcdef0123456789abcdef"
+    )
     assert (tmp_path / "keys" / f"{result.instance_id}.key").stat().st_size == 32
     assert supervisor.calls == [("restart", result.instance_id)]
 

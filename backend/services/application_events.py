@@ -205,6 +205,7 @@ def enqueue_application_event(
         permissions = set((package.manifest or {}).get("permissions") or [])
         capabilities = set(_manifest_section(package, "capabilities").get("consumes") or [])
         configuration = _manifest_section(package, "configuration_defaults")
+        configuration.update(installation.configuration or {})
         for subscription in definition.event_subscriptions:
             if (
                 subscription.event_type != event.event_type

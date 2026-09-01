@@ -45,6 +45,7 @@ class ApplicationExtensionInstallation(Base):
     status = Column(String(32), nullable=False, default="staged", index=True)
     enabled = Column(Boolean, nullable=False, default=False, index=True)
     socket_path = Column(Text, nullable=False)
+    configuration = Column(JSON, nullable=False, default=dict)
     error = Column(Text, nullable=True)
     activated_at = Column(DateTime(timezone=True), nullable=True)
     health_checked_at = Column(DateTime(timezone=True), nullable=True)

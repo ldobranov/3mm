@@ -74,7 +74,6 @@
         @remove-item="removeMenuItem"
         @update-items="updateMenuItems"
         @drag-end="onDragEnd"
-        :get-menu-item-label="getMenuItemLabel"
         :settings-store="settingsStore"
       />
 
@@ -204,10 +203,6 @@ export default defineComponent({
       emit('update:menuLanguage', value)
     }
 
-    const onMenuLanguageChange = () => {
-      emit('menu-language-change')
-    }
-
     const addMenuItem = (newItem: any) => {
       emit('add-menu-item', newItem)
     }
@@ -256,33 +251,12 @@ export default defineComponent({
       emit('drag-end')
     }
 
-    const getMenuItemLabel = (item: any, languageCode: string): string => {
-      // Helper function to normalize menu item labels to objects
-      const normalizeMenuItemLabel = (item: any) => {
-        if (typeof item.label === 'string') {
-          item.label = { en: item.label }
-        } else if (!item.label || typeof item.label !== 'object') {
-          item.label = { en: 'Menu Item' }
-        }
-        return item
-      }
-
-      // Ensure label is normalized
-      normalizeMenuItemLabel(item)
-
-      if (typeof item.label === 'object' && item.label) {
-        return item.label[languageCode] || item.label['en'] || Object.values(item.label)[0] || 'Menu Item'
-      }
-      return 'Menu Item'
-    }
-
     return {
       t,
       activeMenu,
       menuProp,
       handleMenuChange,
       handleMenuLanguageChange,
-      onMenuLanguageChange,
       updateMenuItems,
       addMenuItem,
       editMenuItem,
@@ -293,8 +267,7 @@ export default defineComponent({
       renameMenu,
       deleteMenu,
       saveMenu,
-      onDragEnd,
-      getMenuItemLabel
+      onDragEnd
     }
   }
 })

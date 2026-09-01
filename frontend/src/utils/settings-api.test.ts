@@ -51,4 +51,26 @@ describe('settings API', () => {
       language_code: 'bg'
     })
   })
+
+  it('updates the global header visual instead of a localized legacy record', async () => {
+    http.get.mockResolvedValue({
+      data: {
+        items: [
+          { id: 11, key: 'header_bg_color', value: '#111111', language_code: 'en' },
+          { id: 22, key: 'header_bg_color', value: '#222222', language_code: null }
+        ]
+      }
+    })
+
+    await upsertSettings([
+      { key: 'header_bg_color', value: '#333333', language_code: null }
+    ])
+
+    expect(http.put).toHaveBeenCalledWith('/settings/update', {
+      id: 22,
+      key: 'header_bg_color',
+      value: '#333333',
+      language_code: null
+    })
+  })
 })

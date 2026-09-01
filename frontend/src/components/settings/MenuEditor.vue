@@ -37,10 +37,16 @@
               <input
                 type="text"
                 class="input menu-item-label"
-                :value="getMenuItemLabel(item, menuLanguage)"
+                :value="navigationLabelForEditing(item.label, menuLanguage)"
                 @input="updateMenuItemLabel(index, $event)"
                 :placeholder="`${t('settings.label', 'Label')} ${t('settings.in', 'in')} ${menuLanguage.toUpperCase()}`"
               />
+              <small
+                v-if="!navigationLabelForEditing(item.label, menuLanguage) && fallbackLabel(item)"
+                class="help-text"
+              >
+                {{ t('settings.menuLabelFallback', 'Fallback in the header:') }} {{ fallbackLabel(item) }}
+              </small>
             </div>
 
             <div class="menu-editor-field">
@@ -169,6 +175,11 @@
 import { computed, defineComponent, ref } from 'vue'
 import type { PropType } from 'vue'
 import { useI18n } from '@/utils/i18n'
+import {
+  localizedNavigationLabel,
+  navigationLabelForEditing,
+  updateLocalizedNavigationLabel
+} from '@/utils/menu-navigation'
 import { VueDraggable } from 'vue-draggable-plus'
 
 interface MenuItem {
@@ -206,10 +217,6 @@ export default defineComponent({
       type: Array as PropType<MenuRouteOption[]>,
       required: true
     },
-    getMenuItemLabel: {
-      type: Function,
-      required: true
-    },
     settingsStore: {
       type: Object,
       required: true
@@ -245,22 +252,16 @@ export default defineComponent({
       return 'public'
     }
 
-    const normalizeMenuItemLabel = (item: MenuItem) => {
-      if (typeof item.label === 'string') {
-        item.label = { en: item.label }
-      } else if (!item.label || typeof item.label !== 'object') {
-        item.label = { en: 'Menu Item' }
-      }
-      return item
-    }
-
     const updateMenuItemLabel = (index: number, event: Event) => {
       const target = event.target as HTMLInputElement
       const items = [...props.menu.items]
-      const item = items[index]
-      normalizeMenuItemLabel(item)
-      item.label[props.menuLanguage] = target.value
+      items[index] = updateLocalizedNavigationLabel(items[index], props.menuLanguage, target.value)
       emit('update-items', items)
+    }
+
+    const fallbackLabel = (item: MenuItem) => {
+      const label = localizedNavigationLabel(item.label, props.menuLanguage)
+      return label === navigationLabelForEditing(item.label, props.menuLanguage) ? '' : label
     }
 
     const updateMenuItemPath = (index: number, event: Event) => {
@@ -348,6 +349,8 @@ export default defineComponent({
       isKnownRoute,
       isPublicRoute,
       defaultAudienceForPath,
+      fallbackLabel,
+      navigationLabelForEditing,
       updateMenuItemLabel,
       updateMenuItemPath,
       updateMenuItemRoute,

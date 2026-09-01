@@ -50,6 +50,11 @@ def test_clean_database_migrates_to_head_and_back_to_base(tmp_path):
     assert "extension_project_files" in tables
     assert "extension_project_builds" in tables
     assert "application_extension_installations" in tables
+    installation_columns = {
+        column["name"]
+        for column in inspector.get_columns("application_extension_installations")
+    }
+    assert "configuration" in installation_columns
     assert "application_permission_grants" in tables
     assert "application_kiosk_enrollments" in tables
     assert "application_kiosk_terminals" in tables
