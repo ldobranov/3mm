@@ -59,11 +59,9 @@ class SystemRestoreRuntime:
         subprocess.run(
             list(arguments),
             check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
             timeout=180,
         )
-
+        
     def stop(self, services: Sequence[str]) -> None:
         self._run(("/usr/bin/systemctl", "stop", *services))
 

@@ -22,6 +22,7 @@ def test_restore_reactivates_only_enabled_application_packages(monkeypatch, tmp_
                 socket_path TEXT NOT NULL,
                 status TEXT NOT NULL,
                 enabled INTEGER NOT NULL,
+                configuration TEXT NOT NULL,
                 health_checked_at TEXT,
                 error TEXT
             );
@@ -36,11 +37,22 @@ def test_restore_reactivates_only_enabled_application_packages(monkeypatch, tmp_
             ("org.3mm.disabled", "1.0.0", "b" * 64),
         )
         connection.execute(
-            "INSERT INTO application_extension_installations VALUES (?, 1, ?, ?, 'active', 1, NULL, 'old')",
-            ("org.3mm.active", "0" * 24, "old.sock"),
+            """
+            INSERT INTO application_extension_installations
+            VALUES (?, 1, ?, ?, 'active', 1, ?, NULL, 'old')
+            """,
+            (
+                "org.3mm.active",
+                "0" * 24,
+                "old.sock",
+                '{"READER_DEVICE_ID":"dev_11111111111111111111111111111111"}',
+            ),
         )
         connection.execute(
-            "INSERT INTO application_extension_installations VALUES (?, 2, ?, ?, 'disabled', 0, NULL, NULL)",
+            """
+            INSERT INTO application_extension_installations
+            VALUES (?, 2, ?, ?, 'disabled', 0, '{}', NULL, NULL)
+            """,
             ("org.3mm.disabled", "1" * 24, "disabled.sock"),
         )
 
@@ -74,6 +86,7 @@ def test_restore_reactivates_only_enabled_application_packages(monkeypatch, tmp_
     assert restored == ("org.3mm.active",)
     assert captured[0][0] == upload_root / f"{'a' * 64}.zip"
     assert captured[0][2]["service_uid"] == 1200
+    assert captured[0][2]["configuration"] == {"READER_DEVICE_ID": "dev_11111111111111111111111111111111"}
     with sqlite3.connect(database) as connection:
         row = connection.execute(
             "SELECT instance_id, socket_path, error FROM application_extension_installations WHERE module_id = ?",

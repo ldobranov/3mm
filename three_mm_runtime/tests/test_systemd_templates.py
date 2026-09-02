@@ -60,11 +60,12 @@ def test_core_is_lan_accessible_while_device_services_stay_on_loopback() -> None
     assert "--captive-url http://10.42.0.1:8895/setup" in setup_command
 
 
-def test_core_can_create_only_its_application_platform_socket() -> None:
+def test_core_can_write_runtime_and_export_cleanup_paths() -> None:
     unit = _directives(UNITS["core"])
 
     assert unit["ReadWritePaths"] == (
-        "/var/lib/3mm/application-extensions/platform"
+        "/var/lib/3mm/application-extensions/platform "
+        "/var/lib/3mm/backups/exports"
     )
 
 

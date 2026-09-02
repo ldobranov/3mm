@@ -9,6 +9,7 @@ import sqlite3
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
+import json
 
 from three_mm_runtime.application_activation import activate_application_package
 
@@ -41,7 +42,7 @@ def restore_application_extensions(
         rows = list(
             connection.execute(
                 """
-                SELECT i.module_id, p.version, p.sha256
+                SELECT i.module_id, i.configuration, p.version, p.sha256
                 FROM application_extension_installations AS i
                 JOIN module_packages AS p ON p.id = i.module_package_id
                 WHERE i.enabled = 1 AND i.status = 'active'
@@ -52,10 +53,24 @@ def restore_application_extensions(
         uid, gid = service_ids or _service_ids()
         desired: set[str] = set()
         restored: list[str] = []
+
         for row in rows:
+            try:
+                configuration = json.loads(row["configuration"] or "{}")
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise RuntimeError(
+                    "Stored application configuration is invalid"
+                ) from exc
+
+            if not isinstance(configuration, dict):
+                raise RuntimeError(
+                    "Stored application configuration is invalid"
+                )
+
             activated = activate_application_package(
                 upload_root / f"{row['sha256']}.zip",
                 row["sha256"],
+                configuration=configuration,
                 root=application_root,
                 key_root=key_root,
                 service_uid=uid,
@@ -65,12 +80,16 @@ def restore_application_extensions(
                 activated.module_id != row["module_id"]
                 or activated.version != row["version"]
             ):
-                raise RuntimeError("Restored application package identity changed")
+                raise RuntimeError(
+                    "Restored application package identity changed"
+                )
+
             desired.add(activated.instance_id)
             connection.execute(
                 """
                 UPDATE application_extension_installations
-                SET instance_id = ?, socket_path = ?, health_checked_at = ?, error = NULL
+                SET instance_id = ?, socket_path = ?,
+                    health_checked_at = ?, error = NULL
                 WHERE module_id = ?
                 """,
                 (
@@ -81,25 +100,34 @@ def restore_application_extensions(
                 ),
             )
             restored.append(activated.module_id)
+
         connection.commit()
     finally:
         connection.close()
 
     if WANTS_ROOT.is_dir():
-        for link in WANTS_ROOT.glob("3mm-application-extension@*.service"):
+        for link in WANTS_ROOT.glob(
+            "3mm-application-extension@*.service"
+        ):
             match = re.fullmatch(
-                r"3mm-application-extension@([0-9a-f]{24})\.service", link.name
+                r"3mm-application-extension@([0-9a-f]{24})\.service",
+                link.name,
             )
             if match and match.group(1) not in desired:
                 subprocess.run(
-                    ["/usr/bin/systemctl", "disable", "--now", link.name],
+                    [
+                        "/usr/bin/systemctl",
+                        "disable",
+                        "--now",
+                        link.name,
+                    ],
                     check=True,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     timeout=30,
                 )
-    return tuple(restored)
 
+    return tuple(restored)
 
 def main() -> None:
     if os.geteuid() != 0:

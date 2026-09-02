@@ -188,6 +188,13 @@ def perform_factory_reset(
             "three_mm_runtime.activate",
         )
     )
+    command_runner.run(
+        (
+            "/usr/bin/systemctl",
+            "try-restart",
+            "3mm-update-helper.service",
+        )
+    )
 
 
 def main() -> None:
