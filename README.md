@@ -9,7 +9,7 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current release is
-> [v0.3.0-beta.9](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.9),
+> [v0.3.0-beta.10](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.10),
 > which closes the physical Raspberry baseline with repeatable clean-media
 > installation, recovery-aware setup, audience-aware menus and audited restart
 > and factory reset. The complete reset-to-setup flow is physically validated;
@@ -170,7 +170,7 @@ allows installation over Wi-Fi: the SSH session is expected to close only when
 the device switches to its open `3mm Setup XXXX` access point.
 
 Use `--tag` for a reproducible exact release, for example by appending
-`-s -- --tag v0.3.0-beta.9` after `sudo bash`. The Raspberry host password is
+`-s -- --tag v0.3.0-beta.10` after `sudo bash`. The Raspberry host password is
 requested only by `sudo` and is never a command argument or repository value.
 
 During Beta, a brand-new empty database receives one test administrator:
