@@ -6,6 +6,7 @@ from sqlalchemy import pool
 from alembic import context
 from backend.config import get_settings
 from backend.db.base import Base  # Import the Base metadata from your models
+import backend.database  # noqa: F401 - populate all models during migrations, not revision discovery
 
 # Explicitly import all model modules to populate Base.metadata and avoid lazy import cycles
 import backend.db.user  # noqa: F401

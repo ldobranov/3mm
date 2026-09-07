@@ -11,10 +11,6 @@ can now be built entirely through the migration history.
 from alembic import op
 from sqlalchemy import MetaData
 
-import backend.database  # noqa: F401 - populate model metadata
-from backend.db.base import Base
-
-
 revision = "0f1e2d3c4b5a"
 down_revision = None
 branch_labels = None
@@ -59,6 +55,11 @@ POST_BASELINE_TABLES = {
 
 
 def _baseline_metadata() -> MetaData:
+    # Reading the revision graph must not initialize the runtime database.
+    # Only an actual upgrade/downgrade needs the populated model metadata.
+    import backend.database  # noqa: F401 - populate model metadata
+    from backend.db.base import Base
+
     metadata = MetaData()
     for table in Base.metadata.sorted_tables:
         if table.name not in POST_BASELINE_TABLES:

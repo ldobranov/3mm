@@ -9,6 +9,8 @@ import subprocess
 from pathlib import Path
 from typing import Protocol, Sequence
 
+from deployment.prepare_backup_storage import prepare_backup_storage
+
 STATE_ROOT = Path("/var/lib/3mm")
 INSTALL_ROOT = Path("/opt/3mm")
 CURRENT_LINK = INSTALL_ROOT / "current"
@@ -123,6 +125,9 @@ def _prepare_state_directories(
     key_root.mkdir(parents=True, exist_ok=True)
     os.chown(key_root, 0, application_gid)
     os.chmod(key_root, 0o750)
+    prepare_backup_storage(
+        state_root / "backups", key_root.parent / "backup.key", owner=(0, gid)
+    )
 
 
 def perform_factory_reset(

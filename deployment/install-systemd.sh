@@ -367,6 +367,8 @@ required_files=(
   deployment/create_backup.py
   deployment/local_agent_pairing.py
   deployment/portable_backup.py
+  deployment/prepare_backup_storage.py
+  deployment/backup_compatibility.py
   deployment/restore_backup.py
   deployment/restore_application_extensions.py
   deployment/factory_reset.py
@@ -528,6 +530,8 @@ install -d -o 3mm -g 3mm-app -m 0750 \
   "$state_root/application-extensions/platform"
 
 log "Installing service definitions and migrating the database"
+PYTHONPATH="$release_dir" \
+  "$release_dir/.venv/bin/python" -m deployment.prepare_backup_storage
 install_units "$release_dir"
 runuser -u 3mm -- env \
   DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db \

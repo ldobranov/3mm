@@ -20,6 +20,7 @@ from backend.services.update_staging import (
 )
 from backend.services.backups import build_backup_preview
 from deployment.create_backup import production_settings
+from deployment.backup_compatibility import BackupCompatibilityError
 from deployment.portable_backup import (
     create_portable_export,
     import_portable_backup,
@@ -489,9 +490,20 @@ def _handle_request(
                 backup_id=backup_id,
                 requested_by_user_id=user_id,
             )
-        except Exception:
-            upload.unlink(missing_ok=True)
-            return {"ok": False, "error": "portable_restore_failed"}
+        except Exception as exc:
+            LOGGER.exception("Portable recovery import or scheduling failed")
+            try:
+                upload.unlink(missing_ok=True)
+            except OSError:
+                LOGGER.exception("Portable recovery upload cleanup failed")
+            error = "portable_restore_failed"
+            if isinstance(exc, BackupCompatibilityError):
+                return {"ok": False, "error": "portable_restore_incompatible", "message": str(exc)}
+            if isinstance(exc, OSError):
+                error = "portable_restore_storage_failed"
+            elif isinstance(exc, ValueError):
+                error = "portable_restore_validation_failed"
+            return {"ok": False, "error": error}
         return {
             "ok": True,
             "status": "queued",

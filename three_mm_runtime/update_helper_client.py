@@ -209,6 +209,19 @@ class UpdateHelperClient:
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             raise UpdateHelperError("The system update helper is unavailable") from exc
         if not isinstance(result, dict) or result.get("ok") is not True:
+            if (isinstance(result, dict)
+                    and result.get("error") == "portable_restore_incompatible"
+                    and isinstance(result.get("message"), str)):
+                raise UpdateHelperError(result["message"])
+            messages = {
+                "portable_restore_storage_failed": "Recovery storage could not be accessed. Check the device recovery logs.",
+                "portable_restore_validation_failed": "The recovery file could not be validated. Check the export password and file.",
+                "portable_restore_failed": "Recovery import or scheduling failed. Check the device recovery logs.",
+            }
+            if isinstance(result, dict) and isinstance(result.get("error"), str):
+                message = messages.get(result["error"])
+                if message:
+                    raise UpdateHelperError(message)
             raise UpdateHelperError("The system update helper rejected the request")
         if result.get("status") != expected_status:
             raise UpdateHelperError("The system update helper response is invalid")

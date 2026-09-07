@@ -102,8 +102,11 @@ restore selection. Creation automatically retains the five newest valid
 archive/metadata pairs; unknown or malformed files are reported and never
 deleted by retention.
 
-The current Beta restore window is intentionally conservative: backup and
-installed application versions must match exactly.
+The Beta restore window accepts the same version and older versions within
+the same major/minor series, provided the database revision has a known path
+to the installed Alembic head. Newer backups require updating the device first.
+Protocol and architecture must still match. Migration or health-check failure
+rolls back the previous state.
 
 ## Portable disaster recovery
 
@@ -133,6 +136,7 @@ oversized uploads fail before persistent state is changed.
    installation's device key before the normal transactional restore begins.
 
 The recovery password is not the login password and is never stored by 3mm.
-The file is unrecoverable if that password is lost. A factory reset or failed
-SD card removes device-local backups, but cannot remove a recovery file that
-was already saved on another computer or phone.
+The file is unrecoverable if that password is lost. Master reset preserves local
+backups and their key; formatting or losing the SD card does not. Keep a recovery
+file on another computer or phone. Installation and reset prepare recovery
+storage before starting services; see [clean-install recovery](RECOVERY_CLEAN_INSTALL_FIX.md).

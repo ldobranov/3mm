@@ -73,6 +73,8 @@ def test_factory_reset_recreates_all_runtime_mount_paths(
     )
 
     assert (state_root / "core" / "backup-imports").is_dir()
+    assert (state_root / "backups" / "exports").is_dir()
+    assert len((key_root.parent / "backup.key").read_bytes()) == 32
     assert (state_root / "application-extensions" / "platform").is_dir()
     assert key_root.is_dir()
     assert ownership[state_root] == (1001, 1003)

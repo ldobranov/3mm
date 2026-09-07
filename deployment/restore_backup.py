@@ -35,6 +35,7 @@ from deployment.create_backup import (
     production_settings,
 )
 from deployment.release_smoke import ReleaseEndpoints, SmokeFailure, verify_release
+from deployment.backup_compatibility import validate_release_path
 from three_mm_protocol import PROTOCOL_VERSION, BackupManifestV1
 from three_mm_provisioning import ProvisioningSnapshot, ProvisioningState
 
@@ -176,8 +177,10 @@ def _validate_compatibility(manifest: BackupManifestV1) -> None:
         .strip()
     )
     compatibility = manifest.compatibility
-    if compatibility.application_version != current_version:
-        raise ValueError("Backup application version is not supported by this release")
+    validate_release_path(
+        compatibility.application_version, current_version,
+        compatibility.database_revision, Path(__file__).resolve().parents[1],
+    )
     if compatibility.protocol_version != PROTOCOL_VERSION:
         raise ValueError("Backup protocol version is not supported")
     if compatibility.architecture != (platform.machine() or "unknown"):

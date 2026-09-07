@@ -6,6 +6,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [Unreleased]
+
+## [0.3.0-beta.11] - 2026-09-07
+
+### Fixed
+
+- Prepare the recovery key and export directory before service startup on clean
+  installation and Master reset; preserve existing keys for retained backups.
+- Accept older backups within the same major/minor release series when a known
+  database migration path exists; reject newer or incompatible archives clearly.
+- Keep compatibility checks read-only by deferring legacy database initialization
+  until migration execution.
+- Log portable import failures and distinguish storage, validation and version
+  compatibility errors instead of a generic helper rejection.
+
+### Verified
+
+- User confirmed successful restore from their portable backup on Raspberry.
+- Tested cross-version portable restore with real database migration and
+  application data, plus read-only compatibility checks under systemd.
+- Fresh-card installation of this published version remains to be tested.
+
 ## [0.3.0-beta.10] - 2026-09-02
 
 ### Added
@@ -370,7 +392,9 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.9...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.11...HEAD
+[0.3.0-beta.11]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.11
+[0.3.0-beta.10]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.10
 [0.3.0-beta.9]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.9
 [0.3.0-beta.8]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.8
 [0.3.0-beta.7]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.7
