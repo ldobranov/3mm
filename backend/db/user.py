@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, UniqueConstraint, DateTime, Table, ForeignKey
+from sqlalchemy import Column, Integer, String, UniqueConstraint, DateTime, Table, ForeignKey, Boolean, text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from backend.db.base import Base
@@ -17,6 +17,8 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     role = Column(String, nullable=True, default="user")  # Simple role field
+    is_blocked = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    token_version = Column(Integer, nullable=False, default=0, server_default=text("0"))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     
     # New relationships for security features

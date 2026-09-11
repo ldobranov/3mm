@@ -8,6 +8,24 @@ pre-1.0.
 
 ## [Unreleased]
 
+## [0.3.0-beta.12] - 2026-09-11
+
+### Added
+
+- Dynamic per-user application permission controls and an own-access snapshot
+  for extension interfaces, with shared route/operation authorization rules.
+- Administrator-controlled account blocking, unblocking and termination of all
+  sessions, with audit entries and protection against self-blocking.
+- Persistent token generations prevent revoked tokens from returning after
+  unblocking or logging in again, including legacy sessionless tokens.
+- Migration preserves existing users as unblocked; shared HTTP request guards
+  enforce account and session revocation on legacy routes as well.
+
+### Verified
+
+- Raspberry grant/revoke test used the same login token throughout; temporary
+  test user was removed. Device testing of account blocking remains pending.
+
 ## [0.3.0-beta.11] - 2026-09-07
 
 ### Fixed

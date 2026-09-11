@@ -7,7 +7,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
@@ -42,7 +42,10 @@ from backend.services.application_configuration import (
     device_configuration_keys,
     resolve_application_configuration,
 )
-from backend.services.application_access import application_permission_ids
+from backend.services.application_access import (
+    application_permission_ids, ApplicationPrincipal,
+    can_access_application_route, can_access_application_operation,
+)
 from backend.utils.auth_dep import require_admin, require_user
 from backend.utils.db_utils import get_db
 from backend.utils.jwt_utils import create_access_token
@@ -71,6 +74,15 @@ class ApplicationActivationRequest(BaseModel):
     configuration: dict[str, object] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")
+
+
+class ApplicationAccessResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    module_id: str
+    active_version: str
+    user_id: int
+    allowed_route_ids: list[str]
+    allowed_operation_ids: list[str]
 
 
 class ApplicationOperationRequest(BaseModel):
@@ -127,6 +139,8 @@ def _active_package(
     package = db.get(ModulePackage, installation.module_package_id)
     if package is None:
         raise HTTPException(409, "Active application package is unavailable")
+    if installation.active_version != package.version or installation.module_id != package.module_id:
+        raise HTTPException(409, "Active application package version is inconsistent")
     return package
 
 
@@ -565,7 +579,10 @@ def invoke_operator_operation(
     if "operator" not in operation.audiences:
         raise HTTPException(403, "Operation is not available to operators")
     permission_ids = application_permission_ids(db, installation.id, user.id)
-    if not user.role == "admin" and operation.required_permission not in permission_ids:
+    if not can_access_application_operation(
+        operation, ApplicationPrincipal(kind="user", user_id=user.id, is_admin=user.role == "admin"),
+        audience="operator", permission_ids=permission_ids,
+    ):
         raise HTTPException(403, "Application permission is required")
     return _invoke(
         installation,
@@ -621,6 +638,30 @@ def invoke_kiosk_operation(
     )
     db.commit()
     return result
+
+
+@router.get("/{module_id}/access", response_model=ApplicationAccessResponse)
+def get_application_access(
+    module_id: str,
+    response: Response,
+    claims: dict = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    user = _user_from_claims(db, claims)
+    installation = _installation(db, module_id)
+    package = _active_package(db, installation)
+    definition = _definition(package)
+    principal = ApplicationPrincipal(kind="user", user_id=user.id, is_admin=user.role == "admin")
+    permissions = application_permission_ids(db, installation.id, user.id)
+    response.headers["Cache-Control"] = "no-store"
+    return ApplicationAccessResponse(
+        module_id=module_id, active_version=package.version, user_id=user.id,
+        allowed_route_ids=sorted(route.route_id for route in definition.routes
+            if can_access_application_route(route, principal, module_id=module_id, permission_ids=permissions)),
+        allowed_operation_ids=sorted(operation.operation_id for operation in definition.operations
+            if any(can_access_application_operation(operation, principal, audience=audience, permission_ids=permissions)
+                   for audience in ("public", "operator", "administrator"))),
+    )
 
 
 @router.get("/{module_id}/permissions")

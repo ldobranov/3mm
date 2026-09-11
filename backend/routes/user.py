@@ -8,6 +8,7 @@ from backend.db.user import User, UserSchema
 from backend.db.session import Session as UserSession
 from backend.db.audit_log import AuditLog
 from backend.services.session_policy import get_session_duration_hours
+from backend.utils.auth_dep import validate_user_claims
 from pydantic import BaseModel
 from typing import Literal
 import logging
@@ -46,6 +47,9 @@ class LoginPayload(BaseModel):
     email: str
     password: str
 
+class AccountStatus(BaseModel):
+    is_blocked: bool
+
 token_blacklist = set()
 
 def require_admin(authorization: str, db: Session) -> User:
@@ -53,6 +57,7 @@ def require_admin(authorization: str, db: Session) -> User:
         raise HTTPException(status_code=401, detail="Authorization required")
 
     claims = decode_token(authorization.removeprefix("Bearer "))
+    validate_user_claims(claims, db)
     user_id = claims.get("sub") or claims.get("user_id")
     current_user = db.query(User).filter(User.id == user_id).first()
     if not current_user or current_user.role != "admin":
@@ -122,6 +127,8 @@ def login_user(
 
         if not verify_password(payload.password, db_user.hashed_password):
             raise HTTPException(status_code=400, detail="Invalid credentials")
+        if db_user.is_blocked:
+            raise HTTPException(status_code=403, detail="Account is blocked")
 
         # Parse user agent for device info
         device_info = {}
@@ -149,6 +156,7 @@ def login_user(
             "username": db_user.username,
             "role": db_user.role or "",
             "sid": session.id,
+            "token_version": db_user.token_version,
         })
         session.token = token
         db.commit()
@@ -272,6 +280,7 @@ def read_users(
                     "username": u.username,
                     "email": u.email,
                     "role": u.role,
+                    "is_blocked": u.is_blocked,
                     "created_at": u.created_at.isoformat() if hasattr(u, 'created_at') and u.created_at else None
                 }
                 for u in users
@@ -300,7 +309,8 @@ def update_user(
         if (
             user.role == "admin"
             and user_data.role != "admin"
-            and db.query(User).filter(User.role == "admin").count() <= 1
+            and not user.is_blocked
+            and db.query(User).filter(User.role == "admin", User.is_blocked.is_(False)).count() <= 1
         ):
             raise HTTPException(status_code=400, detail="Cannot demote the last administrator")
 
@@ -343,7 +353,7 @@ def delete_user(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        if user.role == "admin" and db.query(User).filter(User.role == "admin").count() <= 1:
+        if user.role == "admin" and not user.is_blocked and db.query(User).filter(User.role == "admin", User.is_blocked.is_(False)).count() <= 1:
             raise HTTPException(status_code=400, detail="Cannot delete the last administrator")
         
         # Delete related records first to avoid foreign key constraints
@@ -393,6 +403,43 @@ def delete_user(
         logger.error(f"Error deleting user: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+def revoke_user_sessions(db: Session, user: User) -> int:
+    # SQL increment prevents concurrent revocations from losing a generation.
+    db.query(User).filter(User.id == user.id).update({User.token_version: User.token_version + 1})
+    return db.query(UserSession).filter(UserSession.user_id == user.id, UserSession.is_active.is_(True)).update({UserSession.is_active: False})
+
+
+@router.put("/{user_id}/status")
+def set_user_status(user_id: int, payload: AccountStatus, authorization: str = Header(...), db: Session = Depends(get_db)):
+    admin = require_admin(authorization, db)
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(404, "User not found")
+    if payload.is_blocked and user.id == admin.id:
+        raise HTTPException(400, "Cannot block your own account")
+    if payload.is_blocked and not user.is_blocked and user.role == "admin" and db.query(User).filter(User.role == "admin", User.is_blocked.is_(False)).count() <= 1:
+        raise HTTPException(400, "Cannot block the last administrator")
+    if user.is_blocked != payload.is_blocked:
+        if payload.is_blocked:
+            revoke_user_sessions(db, user)
+        user.is_blocked = payload.is_blocked
+        db.add(AuditLog(user_id=admin.id, action="USER_BLOCK" if payload.is_blocked else "USER_UNBLOCK", entity_type="user", entity_id=user.id))
+        db.commit()
+    return {"is_blocked": user.is_blocked}
+
+
+@router.post("/{user_id}/revoke-sessions")
+def terminate_user_sessions(user_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
+    admin = require_admin(authorization, db)
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(404, "User not found")
+    count = revoke_user_sessions(db, user)
+    db.add(AuditLog(user_id=admin.id, action="USER_REVOKE_SESSIONS", entity_type="user", entity_id=user.id))
+    db.commit()
+    return {"revoked_sessions": count}
+
 
 @router.post("/logout")
 def logout_user(

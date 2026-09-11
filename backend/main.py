@@ -4,7 +4,8 @@ import logging
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
+from backend.utils.auth_dep import guard_user_session
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -208,7 +209,8 @@ async def lifespan(app: FastAPI):
 
 
 # Configure FastAPI to use Unicode-preserving JSON encoder
-app = FastAPI(default_response_class=UnicodeJSONResponse, lifespan=lifespan)
+app = FastAPI(default_response_class=UnicodeJSONResponse, lifespan=lifespan,
+              dependencies=[Depends(guard_user_session)])
 
 
 class CustomErrorHandlerMiddleware(BaseHTTPMiddleware):

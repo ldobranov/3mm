@@ -56,11 +56,21 @@
         </div>
 
         <div class="user-actions">
+          <span v-if="user.is_blocked" class="chip">{{ t('users.blocked', 'Blocked') }}</span>
           <button
             class="button button-outline button-sm"
             @click="openEditModal(user)"
           >
             <i class="bi bi-pencil"></i>{{ t('users.edit', 'Edit') }}
+          </button>
+          <button class="button button-outline button-sm" :aria-expanded="permissionsUserId === user.id" @click="permissionsUserId = permissionsUserId === user.id ? null : user.id">
+            <i class="bi bi-shield-lock"></i>{{ t('users.applicationAccess', 'Application access') }}
+          </button>
+          <button class="button button-outline button-sm" :disabled="accountBusy || user.id === currentUserId" @click="accountAction(user, 'status')">
+            {{ user.is_blocked ? t('users.unblock', 'Unblock') : t('users.block', 'Block') }}
+          </button>
+          <button class="button button-outline button-sm" :disabled="accountBusy || user.id === currentUserId" @click="accountAction(user, 'sessions')">
+            {{ t('users.endSessions', 'End sessions') }}
           </button>
           <button
             class="button button-outline button-sm"
@@ -71,6 +81,7 @@
             <i class="bi bi-trash"></i>{{ t('users.delete', 'Delete') }}
           </button>
         </div>
+        <UserApplicationPermissions v-if="permissionsUserId === user.id" :key="user.id" :user-id="user.id" :is-admin="user.role === 'admin'" />
       </div>
     </div>
 
@@ -185,22 +196,46 @@ import { defineComponent, ref, onMounted, computed } from 'vue';
 import http from '@/utils/dynamic-http';
 import { useSettingsStore } from '@/stores/settings';
 import { useI18n } from '@/utils/i18n';
+import UserApplicationPermissions from '@/components/UserApplicationPermissions.vue';
 
 interface User {
   id: number;
   username: string;
   email: string;
   role: string;
+  is_blocked?: boolean;
   created_at?: string;
 }
 
 export default defineComponent({
   name: 'Users',
+  components: { UserApplicationPermissions },
   setup() {
     const { t, currentLanguage } = useI18n();
     const settingsStore = useSettingsStore();
     const styleSettings = computed(() => settingsStore.styleSettings);
     const users = ref<User[]>([]);
+    const permissionsUserId = ref<number | null>(null);
+    const accountBusy = ref(false);
+    const accountAction = async (user: User, action: 'status' | 'sessions') => {
+      const prompt = action === 'sessions'
+        ? t('users.endSessionsConfirm', 'End all sessions for {username}? A new login will be required.', { username: user.username })
+        : user.is_blocked
+          ? t('users.unblockConfirm', 'Unblock {username}? Old sessions will remain invalid.', { username: user.username })
+          : t('users.blockConfirm', 'Block {username} and end all their sessions?', { username: user.username });
+      if (accountBusy.value || !window.confirm(prompt)) return;
+      accountBusy.value = true;
+      errorMessage.value = '';
+      successMessage.value = '';
+      try {
+        if (action === 'status') await http.put(`/api/user/${user.id}/status`, { is_blocked: !user.is_blocked });
+        else await http.post(`/api/user/${user.id}/revoke-sessions`);
+        await fetchUsers();
+        successMessage.value = t('users.accessUpdated', 'Account access updated.');
+      } catch {
+        errorMessage.value = t('users.accessUpdateFailed', 'Account access could not be changed. Refresh and try again.');
+      } finally { accountBusy.value = false; }
+    };
     const loading = ref(false);
     const errorMessage = ref('');
     const successMessage = ref('');
@@ -348,6 +383,9 @@ export default defineComponent({
       t,
       currentLanguage,
       users,
+      permissionsUserId,
+      accountBusy,
+      accountAction,
       loading,
       errorMessage,
       successMessage,

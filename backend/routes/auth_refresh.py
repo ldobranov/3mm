@@ -12,7 +12,7 @@ from backend.services.session_policy import (
     get_session_duration_hours,
     save_session_duration_hours,
 )
-from backend.utils.auth_dep import require_admin
+from backend.utils.auth_dep import require_admin, validate_user_claims
 from backend.utils.db_utils import get_db
 from backend.utils.jwt_utils import create_access_token, decode_token_for_refresh
 
@@ -73,6 +73,7 @@ async def refresh_access_token(request: Request, db: Session = Depends(get_db)):
     claims = decode_token_for_refresh(raw_token)
     if claims.get("token_type", "user") != "user":
         raise HTTPException(status_code=401, detail="A normal user token is required")
+    validate_user_claims(claims, db)
 
     # Optional: only refresh near expiry (disabled for now)
     # now = int(datetime.now(timezone.utc).timestamp())

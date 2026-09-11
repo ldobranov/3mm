@@ -15,7 +15,8 @@ from backend.db.module import (
 )
 from backend.db.user import User
 from backend.utils.jwt_utils import decode_token
-from three_mm_protocol import ApplicationRouteV1
+from three_mm_protocol import ApplicationRouteV1, ApplicationOperationV1
+from backend.utils.auth_dep import validate_user_claims
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,9 +75,7 @@ def resolve_application_principal(
         user_id = int(subject)
     except (TypeError, ValueError) as exc:
         raise HTTPException(401, "User token subject is invalid") from exc
-    user = db.get(User, user_id)
-    if user is None:
-        raise HTTPException(401, "User is unavailable")
+    user = validate_user_claims(claims, db)
     return ApplicationPrincipal(
         kind="user",
         user_id=user.id,
@@ -120,4 +119,24 @@ def can_access_application_route(
         return principal.is_admin
     if route.audience == "operator":
         return principal.is_admin or set(route.required_permissions) <= permission_ids
+    return False
+
+
+def can_access_application_operation(
+    operation: ApplicationOperationV1,
+    principal: ApplicationPrincipal,
+    *,
+    audience: str,
+    permission_ids: frozenset[str] = frozenset(),
+) -> bool:
+    if audience not in operation.audiences:
+        return False
+    if audience == "public":
+        return True
+    if principal.kind != "user":
+        return False
+    if audience == "administrator":
+        return principal.is_admin
+    if audience == "operator":
+        return principal.is_admin or operation.required_permission in permission_ids
     return False

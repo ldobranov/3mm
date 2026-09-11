@@ -9,10 +9,10 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current release is
-> [v0.3.0-beta.11](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.11),
-> which fixes recovery storage preparation and supports older compatible
-> backups within the same release series. Restore was confirmed on Raspberry;
-> clean-card acceptance of this release is the next test. The project is not
+> [v0.3.0-beta.12](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.12),
+> which adds dynamic application permissions, account blocking and persistent
+> session revocation. Application grant/revoke was tested on Raspberry;
+> device acceptance of account blocking remains to be completed. The project is not
 > yet presented as production-hardened.
 
 ## What works

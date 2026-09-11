@@ -48,6 +48,24 @@ const mountView = async () => {
 }
 
 describe('Users management page', () => {
+  it('confirms blocking and session revocation, and protects the current user', async () => {
+    http.get.mockResolvedValue({ data: { items: [admin, { ...admin, id: 2, role: 'user' }] } })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const wrapper = await mountView()
+    const button = (name: string) => wrapper.findAll('.user-actions button').filter(b => b.text() === name)
+    expect(button('Block')[0].attributes('disabled')).toBeDefined()
+    await button('Block')[1].trigger('click')
+    expect(http.put).not.toHaveBeenCalled()
+    confirm.mockReturnValue(true)
+    await button('Block')[1].trigger('click')
+    await flushPromises()
+    expect(http.put).toHaveBeenCalledWith('/api/user/2/status', { is_blocked: true })
+    await button('End sessions')[1].trigger('click')
+    await flushPromises()
+    expect(http.post).toHaveBeenCalledWith('/api/user/2/revoke-sessions')
+    confirm.mockRestore()
+    wrapper.unmount()
+  })
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
