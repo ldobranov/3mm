@@ -13,6 +13,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+from backend.routes.access_control import router as access_router
+router.include_router(access_router)
 
 @router.get("/groups", response_model=List[GroupSchema])
 def get_groups(
@@ -216,6 +218,10 @@ def delete_group(
     )
     db.add(audit_log)
     
+    # SQLite deployments may not enforce FK cascades.
+    from backend.db.association_tables import group_roles, group_permissions
+    db.execute(group_roles.delete().where(group_roles.c.group_id == group_id))
+    db.execute(group_permissions.delete().where(group_permissions.c.group_id == group_id))
     # Delete group
     db.delete(group)
     db.commit()
@@ -443,7 +449,7 @@ def get_user_groups(
         raise HTTPException(status_code=404, detail="User not found")
     
     # Get all groups for this user
-    groups = user.groups.all()
+    groups = user.groups
     
     result = []
     for group in groups:

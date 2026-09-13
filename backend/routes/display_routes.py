@@ -24,6 +24,8 @@ from pathlib import Path
 from backend.db.device import Device, DeviceCapabilityState
 from backend.services.device_capability_registry import has_registered_capability
 from three_mm_protocol import CapabilityStateSnapshotV1
+from backend.services.access_control import dashboard_levels
+from backend.db.association_tables import role_dashboard_grants
 
 class DisplaySchema(BaseModel):
     id: int
@@ -39,17 +41,6 @@ class DisplaySchema(BaseModel):
         from_attributes = True
 
 router = APIRouter()
-
-
-def active_dashboard_grants(db: Session, user_id: int):
-    """Only effective grants; NONE is absence of a grant, not a deny rule."""
-    return db.query(Permission).filter(
-        Permission.user_id == user_id,
-        Permission.entity_type == "dashboard",
-        Permission.permission_level.in_([PermissionLevel.VIEW, PermissionLevel.EDIT,
-                                         PermissionLevel.DELETE, PermissionLevel.ADMIN]),
-        or_(Permission.expires_at.is_(None), Permission.expires_at > datetime.now(timezone.utc).replace(tzinfo=None)),
-    )
 
 
 def ensure_access(db: Session, user_id: int, display_id: int, require_owner: bool = False) -> Display:
@@ -68,9 +59,7 @@ def ensure_access(db: Session, user_id: int, display_id: int, require_owner: boo
     
     # Check if user has permissions
     from backend.db.permission import Permission
-    permission = active_dashboard_grants(db, user_id).filter(
-        Permission.entity_id == display_id
-    ).first()
+    permission = dashboard_levels(db, user_id).get(display_id, 0)
     
     if permission:
         return display
@@ -112,7 +101,7 @@ def read_displays(
             from backend.db.permission import Permission
             
             # Get displays user has permissions for
-            permitted_display_ids = active_dashboard_grants(db, user_id).with_entities(Permission.entity_id).subquery()
+            permitted_display_ids = list(dashboard_levels(db, user_id))
             
             displays = db.query(Display).filter(
                 or_(
@@ -216,6 +205,7 @@ def delete_display(display_id: int, claims: dict = Depends(require_user), db: Se
         raise HTTPException(status_code=401, detail="Invalid token payload")
     user_id = int(user_id)
     d = ensure_owner(db, user_id, display_id)
+    db.execute(role_dashboard_grants.delete().where(role_dashboard_grants.c.display_id == display_id))
     db.delete(d)
     db.commit()
     return {"message": "Display deleted"}
@@ -249,23 +239,13 @@ def create_widget(display_id: int, payload: WidgetCreate, claims: dict = Depends
     if d.user_id != user_id:
         # Not owner, check if user has edit permission
         from backend.db.permission import Permission, PermissionLevel
-        permission = active_dashboard_grants(db, user_id).filter(
-            Permission.entity_id == display_id
-        ).first()
+        permission = dashboard_levels(db, user_id).get(display_id, 0)
         
         if not permission:
             raise HTTPException(status_code=403, detail="No permission to edit this dashboard")
         
         # Check permission level (need at least EDIT)
-        level_hierarchy = {
-            PermissionLevel.NONE: 0,
-            PermissionLevel.VIEW: 1,
-            PermissionLevel.EDIT: 2,
-            PermissionLevel.DELETE: 3,
-            PermissionLevel.ADMIN: 4
-        }
-        
-        if level_hierarchy.get(permission.permission_level, 0) < level_hierarchy.get(PermissionLevel.EDIT, 2):
+        if permission < 2:
             raise HTTPException(status_code=403, detail="Insufficient permission level (need edit or higher)")
     
     # Validate widget type
@@ -346,23 +326,13 @@ def update_widget(widget_id: int, payload: WidgetUpdate, claims: dict = Depends(
     if d.user_id != user_id:
         # Not owner, check if user has edit permission
         from backend.db.permission import Permission, PermissionLevel
-        permission = active_dashboard_grants(db, user_id).filter(
-            Permission.entity_id == d.id
-        ).first()
+        permission = dashboard_levels(db, user_id).get(d.id, 0)
         
         if not permission:
             raise HTTPException(status_code=403, detail="No permission to edit this dashboard")
         
         # Check permission level (need at least EDIT)
-        level_hierarchy = {
-            PermissionLevel.NONE: 0,
-            PermissionLevel.VIEW: 1,
-            PermissionLevel.EDIT: 2,
-            PermissionLevel.DELETE: 3,
-            PermissionLevel.ADMIN: 4
-        }
-        
-        if level_hierarchy.get(permission.permission_level, 0) < level_hierarchy.get(PermissionLevel.EDIT, 2):
+        if permission < 2:
             raise HTTPException(status_code=403, detail="Insufficient permission level (need edit or higher)")
     
     # User has permission, update the widget
@@ -397,23 +367,13 @@ def delete_widget(widget_id: int, claims: dict = Depends(require_user), db: Sess
     if d.user_id != user_id:
         # Not owner, check if user has delete permission
         from backend.db.permission import Permission, PermissionLevel
-        permission = active_dashboard_grants(db, user_id).filter(
-            Permission.entity_id == d.id
-        ).first()
+        permission = dashboard_levels(db, user_id).get(d.id, 0)
         
         if not permission:
             raise HTTPException(status_code=403, detail="No permission to delete from this dashboard")
         
         # Check permission level (need at least DELETE)
-        level_hierarchy = {
-            PermissionLevel.NONE: 0,
-            PermissionLevel.VIEW: 1,
-            PermissionLevel.EDIT: 2,
-            PermissionLevel.DELETE: 3,
-            PermissionLevel.ADMIN: 4
-        }
-        
-        if level_hierarchy.get(permission.permission_level, 0) < level_hierarchy.get(PermissionLevel.DELETE, 3):
+        if permission < 3:
             raise HTTPException(status_code=403, detail="Insufficient permission level (need delete or higher)")
     
     db.delete(w)

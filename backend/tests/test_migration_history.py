@@ -56,6 +56,7 @@ def test_clean_database_migrates_to_head_and_back_to_base(tmp_path):
     }
     assert "configuration" in installation_columns
     assert "application_permission_grants" in tables
+    assert {'group_roles', 'role_application_grants', 'role_dashboard_grants'} <= tables
     assert "application_kiosk_enrollments" in tables
     assert "application_kiosk_terminals" in tables
     assert "application_event_deliveries" in tables
@@ -71,7 +72,20 @@ def test_clean_database_migrates_to_head_and_back_to_base(tmp_path):
 
     _alembic(database_url, "upgrade", "head")
     _alembic(database_url, "downgrade", "base")
-
     engine = create_engine(database_url)
     assert set(inspect(engine).get_table_names()) <= {"alembic_version"}
+    engine.dispose()
+
+
+def test_scoped_grants_upgrade_from_previous_release(tmp_path):
+    url = f"sqlite:///{(tmp_path / 'upgrade.db').as_posix()}"
+    _alembic(url, 'upgrade', 'fc04b5c6d7e8')
+    engine = create_engine(url)
+    assert 'role_application_grants' not in inspect(engine).get_table_names()
+    engine.dispose()
+    _alembic(url, 'upgrade', 'head')
+    _alembic(url, 'check')
+    _alembic(url, 'downgrade', 'fc04b5c6d7e8')
+    engine = create_engine(url)
+    assert 'role_application_grants' not in inspect(engine).get_table_names()
     engine.dispose()

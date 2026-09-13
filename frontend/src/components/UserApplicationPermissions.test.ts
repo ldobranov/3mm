@@ -9,7 +9,7 @@ vi.mock('@/utils/i18n', async () => {
 import Panel from './UserApplicationPermissions.vue'
 const base = '/api/v1/application-extensions'
 const permission = { permission_id: 'records', label: { en: 'Records', translations: { bg: 'Записи' } }, description: { en: 'Manage records', translations: {} } }
-const snapshot = (grants: unknown[] = []) => ({ data: { permissions: [permission], grants } })
+const snapshot = (grants: unknown[] = []) => ({ data: { permissions: [permission], grants, sources: {records: ['Group: Staff / Role: Operator']} } })
 async function open() {
   const wrapper = mount(Panel, { props: { userId: 2, isAdmin: false } })
   await flushPromises()
@@ -31,6 +31,7 @@ describe('User application permissions', () => {
     expect(wrapper.text()).toContain('Записи')
     expect(wrapper.text()).not.toContain('disabled')
     expect(wrapper.get('input').element.checked).toBe(false)
+    expect(wrapper.text()).toContain('Group: Staff / Role: Operator')
     expect(http.post).not.toHaveBeenCalled()
     wrapper.unmount()
   })

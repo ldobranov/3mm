@@ -19,7 +19,7 @@
     <p v-else-if="selected && !busy && !permissions.length">{{ t('users.noPermissions', 'This application declares no user permissions.') }}</p>
     <label v-for="permission in permissions" :key="permission.permission_id" class="permission-row">
       <input type="checkbox" :checked="grants.includes(permission.permission_id)" :disabled="busy || failed" @change="toggle(permission.permission_id, $event)" />
-      <span><strong>{{ localized(permission.label) }}</strong><small>{{ localized(permission.description) }}</small></span>
+      <span><strong>{{ localized(permission.label) }}</strong><small>{{ localized(permission.description) }}</small><small v-if="sources[permission.permission_id]?.length">{{ t('access.sources', 'Effective access from') }}: {{ sources[permission.permission_id].join('; ') }}</small></span>
     </label>
   </section>
 </template>
@@ -39,6 +39,7 @@ const applications = ref<Application[]>([])
 const selected = ref('')
 const permissions = ref<Permission[]>([])
 const grants = ref<string[]>([])
+const sources = ref<Record<string, string[]>>({})
 const busy = ref(false)
 const failed = ref(false)
 let generation = 0
@@ -66,6 +67,7 @@ async function loadApplications() {
 
 async function loadPermissions() {
   const request = ++generation
+  sources.value = {}
   permissions.value = []
   grants.value = []
   failed.value = false
@@ -77,6 +79,9 @@ async function loadPermissions() {
     permissions.value = response.data.permissions
     grants.value = response.data.grants.filter((grant: { user_id: number }) => grant.user_id === props.userId)
       .map((grant: { permission_id: string }) => grant.permission_id)
+    const effective = await http.get(`/api/access/users/${props.userId}/applications/${encodeURIComponent(selected.value)}`)
+    if (request !== generation) return
+    sources.value = effective.data.sources || {}
   } catch {
     if (request === generation) failed.value = true
   } finally {

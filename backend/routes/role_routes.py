@@ -211,6 +211,11 @@ def delete_role(
     result = db.execute(stmt).fetchall()
     if len(result) > 0:
         raise HTTPException(status_code=400, detail="Cannot delete role that is assigned to users")
+    from backend.db.association_tables import group_roles, role_application_grants, role_dashboard_grants, role_permissions
+    if db.execute(select(group_roles).where(group_roles.c.role_id == role_id)).first():
+        raise HTTPException(status_code=400, detail="Cannot delete role that is assigned to groups")
+    for table in (role_application_grants, role_dashboard_grants, role_permissions):
+        db.execute(table.delete().where(table.c.role_id == role_id))
     
     # Create audit log before deletion
     audit_log = AuditLog(

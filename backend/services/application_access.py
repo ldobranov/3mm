@@ -17,6 +17,7 @@ from backend.db.user import User
 from backend.utils.jwt_utils import decode_token
 from three_mm_protocol import ApplicationRouteV1, ApplicationOperationV1
 from backend.utils.auth_dep import validate_user_claims
+from backend.services.access_control import application_sources
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,15 +89,7 @@ def application_permission_ids(
     installation_id: int,
     user_id: int,
 ) -> frozenset[str]:
-    return frozenset(
-        db.scalars(
-            select(ApplicationPermissionGrant.permission_id).where(
-                ApplicationPermissionGrant.application_installation_id
-                == installation_id,
-                ApplicationPermissionGrant.user_id == user_id,
-            )
-        )
-    )
+    return frozenset(application_sources(db, installation_id, user_id))
 
 
 def can_access_application_route(

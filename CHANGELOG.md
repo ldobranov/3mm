@@ -18,8 +18,25 @@ pre-1.0.
 - Restrict Core Users, Settings and Extensions management screens to admins.
   Public dashboards and dynamically registered application routes are unchanged.
 
-This revision covers the first access-hardening slice only. Group/role grant
-aggregation and delegated application administration remain pending.
+### Added
+
+- Users now includes custom role/group creation, direct user-role membership,
+  user-group membership and group-role assignment, with immediate audited saves.
+- Shared live resolution combines direct application grants with personal roles
+  and group roles. Application access shows the origin of effective permissions.
+- Resource-scoped role grants for application permissions and dashboard widget
+  read/edit/delete operations; NONE remains absence of a grant, not a deny.
+- Migration and cleanup for scoped grants, including safe application uninstall.
+- Documented explicit delegated application management through permission-gated
+  operator routes and operations. Existing administrator-only declarations stay
+  system-admin-only; extensions must opt in and update their own interface.
+
+### Compatibility
+
+- No extension business logic is included. System settings, user management,
+  package lifecycle and recovery are not delegated by custom roles.
+- Dashboard ownership, sharing and bulk layout remain owner-only. Legacy
+  role/group permission tables are not automatically converted into new grants.
 
 ## [0.3.0-beta.12] - 2026-09-11
 
@@ -423,7 +440,9 @@ aggregation and delegated application administration remain pending.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.11...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.13...HEAD
+[0.3.0-beta.13]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.13
+[0.3.0-beta.12]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.12
 [0.3.0-beta.11]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.11
 [0.3.0-beta.10]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.10
 [0.3.0-beta.9]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.9

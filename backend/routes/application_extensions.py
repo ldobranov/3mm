@@ -31,6 +31,7 @@ from backend.db.module import (
     ModulePackage,
 )
 from backend.db.user import User
+from backend.db.association_tables import role_application_grants
 from backend.services.application_extensions import (
     ApplicationGatewayError,
     find_operation,
@@ -452,6 +453,7 @@ def uninstall_application_extension(
                 model.application_installation_id == installation.id
             )
         )
+    db.execute(delete(role_application_grants).where(role_application_grants.c.installation_id == installation.id))
     db.delete(installation)
     db.add(
         AuditLog(

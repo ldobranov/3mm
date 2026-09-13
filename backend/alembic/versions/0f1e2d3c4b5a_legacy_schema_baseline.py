@@ -18,6 +18,9 @@ depends_on = None
 
 
 POST_BASELINE_TABLES = {
+    "group_roles",
+    "role_application_grants",
+    "role_dashboard_grants",
     "devices",
     "device_credentials",
     "device_pairing_requests",

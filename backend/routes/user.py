@@ -390,6 +390,11 @@ def delete_user(
         db.query(Page).filter(Page.owner_id == user_id).delete(synchronize_session=False)
         
         # Delete user's displays/dashboards
+        from sqlalchemy import select
+        from backend.db.association_tables import role_dashboard_grants
+        db.execute(role_dashboard_grants.delete().where(
+            role_dashboard_grants.c.display_id.in_(select(Display.id).where(Display.user_id == user_id))
+        ))
         db.query(Display).filter(Display.user_id == user_id).delete(synchronize_session=False)
         
         # Now delete the user

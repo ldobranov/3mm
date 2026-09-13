@@ -9,10 +9,10 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current release is
-> [v0.3.0-beta.12](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.12),
-> which adds dynamic application permissions, account blocking and persistent
-> session revocation. Application grant/revoke was tested on Raspberry;
-> device acceptance of account blocking remains to be completed. The project is not
+> [v0.3.0-beta.13](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.13),
+> which adds scoped roles, groups and inherited application/dashboard access.
+> Delegated application management is explicit and separate from system admin.
+> Physical Raspberry acceptance of this revision remains pending. The project is not
 > yet presented as production-hardened.
 
 ## What works
@@ -238,6 +238,7 @@ See the [changelog](CHANGELOG.md) for user-visible changes and the
 | --- | --- |
 | [Architecture plan](docs/ARCHITECTURE_PLAN.md) | System boundaries and target architecture |
 | [Project rules](docs/PROJECT_RULES.md) | Compatibility, safety and development rules |
+| [Users and access](docs/ACCESS_CONTROL.md) | Roles, groups, scoped permissions and extension delegation handoff |
 | [Roadmap](docs/ROADMAP.md) | Milestones and remaining work |
 | [Raspberry baseline](docs/RASPBERRY_PI_BASELINE.md) | Physical device baseline and measurements |
 | [First boot](docs/RASPBERRY_PI_FIRST_BOOT.md) | Repeatable Raspberry installation and provisioning |

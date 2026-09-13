@@ -39,3 +39,22 @@ group_permissions = Table(
     Column('entity_id', Integer, nullable=False),
     Column('permission_level', String(20), default="view")
 )
+
+# Scoped grants are separate from the legacy single-row permission tables.
+group_roles = Table(
+    'group_roles', Base.metadata,
+    Column('group_id', Integer, ForeignKey('groups.id', ondelete='CASCADE'), primary_key=True),
+    Column('role_id', Integer, ForeignKey('roles.id', ondelete='CASCADE'), primary_key=True),
+)
+role_application_grants = Table(
+    'role_application_grants', Base.metadata,
+    Column('role_id', Integer, ForeignKey('roles.id', ondelete='CASCADE'), primary_key=True),
+    Column('installation_id', Integer, ForeignKey('application_extension_installations.id', ondelete='CASCADE'), primary_key=True),
+    Column('permission_id', String(100), primary_key=True),
+)
+role_dashboard_grants = Table(
+    'role_dashboard_grants', Base.metadata,
+    Column('role_id', Integer, ForeignKey('roles.id', ondelete='CASCADE'), primary_key=True),
+    Column('display_id', Integer, ForeignKey('displays.id', ondelete='CASCADE'), primary_key=True),
+    Column('permission_level', String(20), nullable=False),
+)

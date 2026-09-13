@@ -20,6 +20,9 @@
       <button type="button" class="button button-outline button-sm" @click="successMessage = ''" :aria-label="t('users.close', 'Close')" style="position: absolute; right: 0.5rem; top: 0.5rem;">×</button>
     </div>
 
+    <button class="button button-outline" :aria-expanded="showAccess" @click="showAccess = !showAccess">{{ t('access.title', 'Roles and groups') }}</button>
+    <AccessManagement v-if="showAccess" :users="users" @changed="accessRevision++" />
+
     <div v-if="loading" class="text-center" style="padding: 2rem 0;">
       <div class="spinner" role="status" :aria-label="t('users.loading', 'Loading')"></div>
     </div>
@@ -81,7 +84,7 @@
             <i class="bi bi-trash"></i>{{ t('users.delete', 'Delete') }}
           </button>
         </div>
-        <UserApplicationPermissions v-if="permissionsUserId === user.id" :key="user.id" :user-id="user.id" :is-admin="user.role === 'admin'" />
+        <UserApplicationPermissions v-if="permissionsUserId === user.id" :key="`${user.id}-${accessRevision}`" :user-id="user.id" :is-admin="user.role === 'admin'" />
       </div>
     </div>
 
@@ -197,6 +200,7 @@ import http from '@/utils/dynamic-http';
 import { useSettingsStore } from '@/stores/settings';
 import { useI18n } from '@/utils/i18n';
 import UserApplicationPermissions from '@/components/UserApplicationPermissions.vue';
+import AccessManagement from '@/components/AccessManagement.vue';
 
 interface User {
   id: number;
@@ -209,13 +213,15 @@ interface User {
 
 export default defineComponent({
   name: 'Users',
-  components: { UserApplicationPermissions },
+  components: { UserApplicationPermissions, AccessManagement },
   setup() {
     const { t, currentLanguage } = useI18n();
     const settingsStore = useSettingsStore();
     const styleSettings = computed(() => settingsStore.styleSettings);
     const users = ref<User[]>([]);
     const permissionsUserId = ref<number | null>(null);
+    const showAccess = ref(false);
+    const accessRevision = ref(0);
     const accountBusy = ref(false);
     const accountAction = async (user: User, action: 'status' | 'sessions') => {
       const prompt = action === 'sessions'
@@ -384,6 +390,8 @@ export default defineComponent({
       currentLanguage,
       users,
       permissionsUserId,
+      showAccess,
+      accessRevision,
       accountBusy,
       accountAction,
       loading,
