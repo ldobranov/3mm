@@ -8,10 +8,13 @@ pre-1.0.
 
 ## [Unreleased]
 
-## [0.3.0-beta.13] - 2026-09-13
+## [0.3.0-beta.14] - 2026-09-13
 
 ### Fixed
 
+- Correct the checkbox element type in the new access-management test. Tag
+  `v0.3.0-beta.13` failed frontend type checking and published no release assets;
+  this revision contains the complete access changes below.
 - Ignore expired and NONE dashboard grants in listings, direct reads and widget
   mutations. Resolve dashboard-list administrator status from the current user
   record instead of stale JWT role claims.
@@ -440,8 +443,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.13...HEAD
-[0.3.0-beta.13]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.13
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.14...HEAD
+[0.3.0-beta.14]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.14
 [0.3.0-beta.12]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.12
 [0.3.0-beta.11]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.11
 [0.3.0-beta.10]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.10

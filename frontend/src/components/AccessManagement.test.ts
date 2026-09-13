@@ -37,7 +37,7 @@ it('failed writes keep server state and require refresh', async () => {
   await wrapper.get('.check input').setValue(true)
   await flushPromises()
   expect(wrapper.get('fieldset').element.disabled).toBe(true)
-  expect(wrapper.get('.check input').element.checked).toBe(false)
+  expect(wrapper.get<HTMLInputElement>('.check input').element.checked).toBe(false)
   expect(wrapper.find('[role=alert]').exists()).toBe(true)
   expect(wrapper.emitted('changed')).toBeUndefined()
   wrapper.unmount()

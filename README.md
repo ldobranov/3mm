@@ -9,7 +9,7 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current release is
-> [v0.3.0-beta.13](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.13),
+> [v0.3.0-beta.14](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.14),
 > which adds scoped roles, groups and inherited application/dashboard access.
 > Delegated application management is explicit and separate from system admin.
 > Physical Raspberry acceptance of this revision remains pending. The project is not
