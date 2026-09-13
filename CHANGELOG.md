@@ -8,6 +8,19 @@ pre-1.0.
 
 ## [Unreleased]
 
+## [0.3.0-beta.13] - 2026-09-13
+
+### Fixed
+
+- Ignore expired and NONE dashboard grants in listings, direct reads and widget
+  mutations. Resolve dashboard-list administrator status from the current user
+  record instead of stale JWT role claims.
+- Restrict Core Users, Settings and Extensions management screens to admins.
+  Public dashboards and dynamically registered application routes are unchanged.
+
+This revision covers the first access-hardening slice only. Group/role grant
+aggregation and delegated application administration remain pending.
+
 ## [0.3.0-beta.12] - 2026-09-11
 
 ### Added

@@ -3,7 +3,9 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from backend.database import get_db
 from backend.utils.jwt_utils import decode_token
-from backend.utils.auth_dep import require_user, try_get_claims
+from backend.utils.auth_dep import require_user, try_get_claims, validate_user_claims
+from backend.db.permission import Permission, PermissionLevel
+from sqlalchemy import or_
 from backend.db.user import User
 from backend.db.display import Display
 from backend.db.widget import Widget
@@ -39,6 +41,17 @@ class DisplaySchema(BaseModel):
 router = APIRouter()
 
 
+def active_dashboard_grants(db: Session, user_id: int):
+    """Only effective grants; NONE is absence of a grant, not a deny rule."""
+    return db.query(Permission).filter(
+        Permission.user_id == user_id,
+        Permission.entity_type == "dashboard",
+        Permission.permission_level.in_([PermissionLevel.VIEW, PermissionLevel.EDIT,
+                                         PermissionLevel.DELETE, PermissionLevel.ADMIN]),
+        or_(Permission.expires_at.is_(None), Permission.expires_at > datetime.now(timezone.utc).replace(tzinfo=None)),
+    )
+
+
 def ensure_access(db: Session, user_id: int, display_id: int, require_owner: bool = False) -> Display:
     """Check if user has access to display (owner or has permissions)"""
     display = db.query(Display).filter(Display.id == display_id).first()
@@ -55,9 +68,7 @@ def ensure_access(db: Session, user_id: int, display_id: int, require_owner: boo
     
     # Check if user has permissions
     from backend.db.permission import Permission
-    permission = db.query(Permission).filter(
-        Permission.user_id == user_id,
-        Permission.entity_type == "dashboard",
+    permission = active_dashboard_grants(db, user_id).filter(
         Permission.entity_id == display_id
     ).first()
     
@@ -88,8 +99,9 @@ def read_displays(
         displays = db.query(Display).filter(Display.is_public == True).offset(offset).limit(limit).all()
     else:
         # Authenticated: get user info
-        user_id = claims.get("sub") or claims.get("user_id")
-        user_role = claims.get("role", "")
+        user = validate_user_claims(claims, db)
+        user_id = user.id
+        user_role = user.role
         
         if user_role == "admin":
             # Admin sees all displays
@@ -100,10 +112,7 @@ def read_displays(
             from backend.db.permission import Permission
             
             # Get displays user has permissions for
-            permitted_display_ids = db.query(Permission.entity_id).filter(
-                Permission.user_id == user_id,
-                Permission.entity_type == "dashboard"
-            ).subquery()
+            permitted_display_ids = active_dashboard_grants(db, user_id).with_entities(Permission.entity_id).subquery()
             
             displays = db.query(Display).filter(
                 or_(
@@ -240,9 +249,7 @@ def create_widget(display_id: int, payload: WidgetCreate, claims: dict = Depends
     if d.user_id != user_id:
         # Not owner, check if user has edit permission
         from backend.db.permission import Permission, PermissionLevel
-        permission = db.query(Permission).filter(
-            Permission.user_id == user_id,
-            Permission.entity_type == "dashboard",
+        permission = active_dashboard_grants(db, user_id).filter(
             Permission.entity_id == display_id
         ).first()
         
@@ -339,9 +346,7 @@ def update_widget(widget_id: int, payload: WidgetUpdate, claims: dict = Depends(
     if d.user_id != user_id:
         # Not owner, check if user has edit permission
         from backend.db.permission import Permission, PermissionLevel
-        permission = db.query(Permission).filter(
-            Permission.user_id == user_id,
-            Permission.entity_type == "dashboard",
+        permission = active_dashboard_grants(db, user_id).filter(
             Permission.entity_id == d.id
         ).first()
         
@@ -392,9 +397,7 @@ def delete_widget(widget_id: int, claims: dict = Depends(require_user), db: Sess
     if d.user_id != user_id:
         # Not owner, check if user has delete permission
         from backend.db.permission import Permission, PermissionLevel
-        permission = db.query(Permission).filter(
-            Permission.user_id == user_id,
-            Permission.entity_type == "dashboard",
+        permission = active_dashboard_grants(db, user_id).filter(
             Permission.entity_id == d.id
         ).first()
         
