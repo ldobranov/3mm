@@ -23,6 +23,7 @@ from backend.db.widget import Widget
 from backend.db.universal_translation import Menu
 from backend.db.settings import Settings
 from backend.db.role import Role
+from backend.db.application_command import ApplicationCommandEpoch, ApplicationCommandRequest
 from backend.db.notification import Notification
 from backend.db.extension import Extension
 from backend.db.device import (

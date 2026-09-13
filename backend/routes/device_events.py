@@ -11,6 +11,7 @@ from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from backend.utils.device_auth import require_device
 from three_mm_protocol import IdentifierScanEventV1
+from three_mm_protocol.passage import PassageEventV1
 
 router=APIRouter(prefix="/api/v1/devices",tags=["device-events"])
 class DeviceEventPayload(BaseModel):
@@ -25,6 +26,8 @@ class DeviceEventPayload(BaseModel):
     def validate_known_event_contract(self):
         if self.event_type == "identifier.scan.v1":
             IdentifierScanEventV1.model_validate(self.model_dump())
+        if self.event_type == 'access.passage.v1':
+            PassageEventV1.model_validate(self.model_dump())
         return self
 
 
@@ -43,6 +46,15 @@ class DeviceEventResponse(BaseModel):
 def ingest_event(device_id:str,payload:DeviceEventPayload,background_tasks:BackgroundTasks,device:Device=Depends(require_device),db:Session=Depends(get_db)):
     if device.device_id!=device_id or payload.device_id!=device_id: raise HTTPException(403,"Device identity mismatch")
     existing=db.scalar(select(DeviceEvent).where(DeviceEvent.event_id==payload.event_id))
+    from backend.services.device_commands import _utc
+    if existing is not None and (existing.device_id != device.id or existing.event_type != payload.event_type or existing.payload != payload.payload or _utc(existing.occurred_at) != _utc(payload.occurred_at)):
+        raise HTTPException(409, 'Event identity has different content')
+    if existing is None and payload.event_type == 'access.passage.v1':
+        from backend.services.passage import validate_passage
+        try:
+            validate_passage(db, device, PassageEventV1.model_validate(payload.model_dump()))
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
     duplicate = existing is not None
     event = existing or DeviceEvent(device_id=device.id,event_id=payload.event_id,event_type=payload.event_type,payload=payload.payload,occurred_at=payload.occurred_at)
     if existing is None:

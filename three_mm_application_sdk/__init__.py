@@ -121,6 +121,16 @@ class ApplicationPlatformClient:
     def get_checkpoint(self, checkpoint_id: str) -> dict[str, object]:
         return self._call("checkpoint.get", {"checkpoint_id": checkpoint_id})
 
+    def submit_command(self, binding_id: str, *, request_id: str,
+                       arguments: Mapping[str, object], ttl_seconds: int = 10,
+                       direction: str = 'forward') -> dict[str, object]:
+        return self._call('command.submit', {'command': {
+            'binding_id': binding_id, 'request_id': request_id, 'arguments': dict(arguments),
+            'ttl_seconds': ttl_seconds, 'direction': direction}})
+
+    def command_status(self, command_id: str) -> dict[str, object]:
+        return self._call('command.status', {'command_id': command_id})
+
     def put_checkpoint(
         self,
         checkpoint_id: str,

@@ -8,6 +8,7 @@ import base64
 import queue
 import uuid
 import os
+import sqlite3
 import threading
 import time
 from dataclasses import dataclass, field
@@ -16,6 +17,8 @@ from pathlib import Path
 from typing import Callable
 from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
 from agent.automation_store import AutomationStore, StoredAutomation
+from agent.physical_command_journal import PhysicalCommandJournal
+from three_mm_protocol.passage import PassageEventV1
 
 import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -266,6 +269,8 @@ class CorePublisher:
         }
         if event_type == "identifier.scan.v1":
             payload = IdentifierScanEventV1.model_validate(payload).model_dump(mode="json")
+        if event_type == 'access.passage.v1':
+            payload = PassageEventV1.model_validate(payload).model_dump(mode='json')
         try:
             self._event_queue.put_nowait(payload)
         except queue.Full:
@@ -319,10 +324,28 @@ class CorePublisher:
             return
         response.raise_for_status()
         command = AgentCommand.model_validate(response.json())
+        if command.device_id != self.credential.device_id:
+            raise ValueError('Command device identity mismatch')
         cached = self.command_journal.get(command.idempotency_key)
         if cached is not None:
             replay = cached.model_copy(update={"command_id": command.command_id})
             self._submit_result(replay)
+            return
+
+        if command.command_type in {'capability.invoke', 'application.capability.invoke'} and self.module_runtime is not None:
+            journal = PhysicalCommandJournal(self.command_journal.path.parent)
+            def authorize():
+                started = time.monotonic()
+                permit = requests.post(f'{self.core_url}/api/v1/devices/{self.credential.device_id}/commands/{command.command_id}/authorize-execution', headers=self.headers, timeout=2)
+                permit.raise_for_status()
+                body = permit.json()
+                if body.get('authorized') is not True or body.get('command_id') != command.command_id or time.monotonic() - started > 2:
+                    raise ValueError('Execution permit was not received promptly')
+            result = journal.execute(command, lambda: self.module_runtime.invoke(
+                command.payload['capability_id'], command.payload['action'], command.payload.get('arguments', {})),
+                authorize=authorize if command.command_type == 'application.capability.invoke' else None)
+            self._submit_result(result)
+            self._publish_capability_states()
             return
 
         completed_at = datetime.now(UTC)
@@ -366,22 +389,13 @@ class CorePublisher:
                     command_id=command.command_id, device_id=self.credential.device_id,
                     status="failed", completed_at=datetime.now(UTC), error=str(exc),
                 )
-        elif command.command_type in {"module.install", "module.disable", "capability.invoke"} and self.module_runtime is not None:
+        elif command.command_type in {"module.install", "module.disable"} and self.module_runtime is not None:
             try:
                 if command.command_type == "module.install":
                     package = base64.b64decode(command.payload["package_base64"], validate=True)
                     lifecycle = self.module_runtime.install(package, expected_sha256=command.payload["sha256"])
-                elif command.command_type == "module.disable":
-                    lifecycle = self.module_runtime.disable(command.payload["module_id"])
                 else:
-                    output = self.module_runtime.invoke(
-                        command.payload["capability_id"], command.payload["action"], command.payload.get("arguments", {})
-                    )
-                    self._publish_capability_states()
-                    result = AgentCommandResult(command_id=command.command_id, device_id=self.credential.device_id, status="succeeded", completed_at=datetime.now(UTC), output=output)
-                    self.command_journal.save(command.idempotency_key, result)
-                    self._submit_result(result)
-                    return
+                    lifecycle = self.module_runtime.disable(command.payload["module_id"])
                 result = AgentCommandResult(
                     command_id=command.command_id, device_id=self.credential.device_id,
                     status="succeeded", completed_at=datetime.now(UTC),
@@ -408,7 +422,7 @@ class CorePublisher:
             started_at = time.monotonic()
             try:
                 self._poll_command(wait_seconds=COMMAND_LONG_POLL_SECONDS)
-            except (requests.RequestException, ValidationError) as exc:
+            except (requests.RequestException, ValueError, OSError, sqlite3.Error, ModuleLifecycleError) as exc:
                 logger.warning("Core command receive failed: %s", exc)
             elapsed = time.monotonic() - started_at
             if elapsed < 0.5:

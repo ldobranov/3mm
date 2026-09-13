@@ -9,9 +9,10 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current release is
-> [v0.3.0-beta.14](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.14),
-> which adds scoped roles, groups and inherited application/dashboard access.
-> Delegated application management is explicit and separate from system admin.
+> [v0.3.0-beta.15](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.15),
+> which adds scoped application commands, crash-safe physical attempt recording
+> and a correlated passage-event contract. Hardware adapters and physical
+> acceptance remain separate work; no exactly-once physical effect is claimed.
 > Physical Raspberry acceptance of this revision remains pending. The project is not
 > yet presented as production-hardened.
 
@@ -250,6 +251,7 @@ See the [changelog](CHANGELOG.md) for user-visible changes and the
 | [Runtime extension v1](docs/RUNTIME_EXTENSION_V1.md) | Declarative extension contract |
 | [Compiled extension v1](docs/COMPILED_EXTENSION_V1.md) | Reviewed Vue compilation boundary |
 | [Application extension v1 plan](docs/APPLICATION_EXTENSION_V1_PLAN.md) | Planned trusted business-service and integration boundary |
+| [Application commands and passage](docs/APPLICATION_COMMANDS.md) | Scoped SDK commands, crash/restore safety and correlated sensor evidence |
 | [Module Manifest v2](docs/MODULE_MANIFEST_V2.md) | Package envelope and identities |
 | [OTA update plan](docs/OTA_UPDATE_PLAN.md) | Update architecture and acceptance stages |
 | [Release guide](docs/RELEASING.md) | Versioning, publication and verification |

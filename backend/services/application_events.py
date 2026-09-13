@@ -21,6 +21,7 @@ from backend.services.application_extensions import (
     invoke_application,
     load_application_definition,
 )
+from backend.services.passage import passage_delivery_allowed
 
 
 MAX_DELIVERY_ATTEMPTS = 5
@@ -135,9 +136,9 @@ def _drain_subscription(
             db.commit()
             continue
         device = db.get(Device, event.device_id)
-        if device is None:
+        if device is None or not passage_delivery_allowed(db, installation, event):
             delivery.status = "dead_letter"
-            delivery.last_error = "Source device is unavailable"
+            delivery.last_error = "Source device or passage authority is unavailable"
             cursor = _cursor(db, installation.id, subscription.subscription_id)
             _record_terminal_delivery(cursor, event, acknowledged=False)
             _prune_dead_letters(db, installation.id, subscription.subscription_id, cursor)
@@ -198,6 +199,8 @@ def enqueue_application_event(
         )
     ).all()
     for installation, package in rows:
+        if not passage_delivery_allowed(db, installation, event):
+            continue
         try:
             definition = load_application_definition(package)
         except ApplicationGatewayError:

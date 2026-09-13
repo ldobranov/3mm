@@ -157,6 +157,11 @@ class ApplicationPlatformServer:
 
     def _dispatch(self, db, installation, request: dict[str, object]) -> dict[str, object]:
         action = request.get("action")
+        if action in {'command.submit', 'command.status'}:
+            from backend.services.application_commands import submit_command, command_status
+            if action == 'command.submit':
+                return submit_command(db, installation, request.get('command'))
+            return command_status(db, installation, str(request.get('command_id', '')))
         if action == "connector.request":
             headers = request.get("headers")
             if not isinstance(headers, dict) or not all(

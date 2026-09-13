@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN, SEMVER_PATTERN
 from three_mm_protocol.runtime_extension import IDENTIFIER_PATTERN, LocalizedTextV1
+from three_mm_protocol.application_commands import ApplicationCommandBindingV1
 
 
 APPLICATION_EVENT_PATTERN = (
@@ -247,6 +248,7 @@ class ApplicationExtensionV1(StrictApplicationModel):
         max_length=32,
     )
     jobs: tuple[ApplicationJobV1, ...] = Field(default=(), max_length=64)
+    command_bindings: tuple[ApplicationCommandBindingV1, ...] = Field(default=(), max_length=64)
     storage: ApplicationStorageV1
     lifecycle: ApplicationLifecycleV1 = Field(default_factory=ApplicationLifecycleV1)
 
@@ -267,6 +269,7 @@ class ApplicationExtensionV1(StrictApplicationModel):
             ("subscription IDs", subscription_ids),
             ("connector IDs", connector_ids),
             ("job IDs", job_ids),
+            ("command bindings", [item.binding_id for item in self.command_bindings]),
         ):
             if len(values) != len(set(values)):
                 raise ValueError(f"{label} must be unique")

@@ -15,6 +15,7 @@ MAX_PACKAGE_BYTES = 10 * 1024 * 1024
 MAX_EXPANDED_BYTES = 40 * 1024 * 1024
 MAX_FILES = 256
 ALLOWED_PERMISSIONS = {
+    "capabilities.invoke",
     "data.read",
     "data.write",
     "events.consume",
@@ -185,6 +186,8 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
             )
 
         consumed_capabilities = set(manifest.capabilities.consumes)
+        if {item.capability_id for item in application_extension.command_bindings} - consumed_capabilities:
+            raise ModulePackageError('Application command capabilities must be declared as consumed')
         missing_capabilities = sorted(
             {
                 item.capability_id
@@ -225,6 +228,8 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
             item.device_scope_config_key
             for item in application_extension.event_subscriptions
         }
+        referenced_config.update(item.target_device_config_key for item in application_extension.command_bindings)
+        referenced_config.update(item.sensor_device_config_key for item in application_extension.command_bindings if item.sensor_device_config_key)
         referenced_config.update(
             item.destination_config_key
             for item in application_extension.connectors
@@ -280,6 +285,8 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
             )
 
         expected_permissions = {"data.read", "data.write", "process.spawn"}
+        if application_extension.command_bindings:
+            expected_permissions.add('capabilities.invoke')
         if application_extension.event_subscriptions:
             expected_permissions.add("events.consume")
         if emitted_events:

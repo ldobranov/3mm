@@ -152,3 +152,15 @@ def submit_command_result(
                     installation.enabled = False
             db.commit()
     return CommandStatusResponse.model_validate(command, from_attributes=True)
+
+
+@router.post('/{device_id}/commands/{command_id}/authorize-execution')
+def authorize_physical_execution(device_id: str, command_id: str,
+        device: Device = Depends(require_device), db: Session = Depends(get_db)):
+    if device.device_id != device_id:
+        raise HTTPException(403, 'Device identity mismatch')
+    from backend.services.application_commands import authorize_execution
+    try:
+        return authorize_execution(db, device, command_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc

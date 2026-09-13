@@ -39,6 +39,14 @@ def restore_application_extensions(
     connection = sqlite3.connect(database)
     connection.row_factory = sqlite3.Row
     try:
+        # Never restore outstanding physical authority, even on the same SD card.
+        # Commit this before any service activation; normal restart does not run it.
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if 'application_command_epochs' in tables:
+            connection.execute("UPDATE application_command_epochs SET generation=lower(hex(randomblob(16)))")
+        if 'device_commands' in tables:
+            connection.execute("UPDATE device_commands SET status='failed', error='Restore invalidated physical authority' WHERE command_type IN ('application.capability.invoke', 'capability.invoke') AND status IN ('queued', 'delivered')")
+        connection.commit()
         rows = list(
             connection.execute(
                 """

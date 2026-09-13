@@ -343,6 +343,9 @@ def activate_application_extension(
     installation.previous_package_id = previous_package_id
     installation.module_package_id = package.id
     installation.status = "activating"
+    from backend.services.application_commands import invalidate_commands
+    if installation.id is not None:
+        invalidate_commands(db, installation.id)
     installation.error = None
     db.commit()
     try:
@@ -397,11 +400,18 @@ def disable_application_extension(
     db: Session = Depends(get_db),
 ):
     installation = _installation(db, module_id)
+    from backend.services.application_commands import invalidate_commands
+    previous_status = installation.status
+    installation.status = 'disabling'
+    invalidate_commands(db, installation.id)
+    db.commit()
     try:
         UpdateHelperClient(
             get_settings().applications.helper_socket
         ).disable_application_extension(installation.instance_id, admin.id)
     except UpdateHelperError as exc:
+        installation.status = previous_status
+        db.commit()
         raise HTTPException(409, "Application extension could not be disabled") from exc
     installation.enabled = False
     installation.status = "disabled"
@@ -428,11 +438,19 @@ def uninstall_application_extension(
 ):
     installation = _installation(db, module_id)
     version = installation.active_version
+    from backend.services.application_commands import invalidate_commands
+    from backend.db.application_command import ApplicationCommandEpoch, ApplicationCommandRequest
+    previous_status = installation.status
+    installation.status = 'uninstalling'
+    invalidate_commands(db, installation.id)
+    db.commit()
     try:
         UpdateHelperClient(
             get_settings().applications.helper_socket
         ).uninstall_application_extension(installation.instance_id, admin.id)
     except UpdateHelperError as exc:
+        installation.status = previous_status
+        db.commit()
         raise HTTPException(409, "Application extension could not be uninstalled") from exc
 
     owned_models = (
@@ -454,6 +472,8 @@ def uninstall_application_extension(
             )
         )
     db.execute(delete(role_application_grants).where(role_application_grants.c.installation_id == installation.id))
+    db.execute(delete(ApplicationCommandRequest).where(ApplicationCommandRequest.installation_id == installation.id))
+    db.execute(delete(ApplicationCommandEpoch).where(ApplicationCommandEpoch.installation_id == installation.id))
     db.delete(installation)
     db.add(
         AuditLog(

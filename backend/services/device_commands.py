@@ -41,6 +41,8 @@ def queue_command(
         )
     )
     if existing is not None:
+        if existing.command_type != command_type or existing.payload != payload:
+            raise DeviceCommandError('Command idempotency key has different content')
         return existing
     command = DeviceCommand(
         command_id=f"cmd_{uuid.uuid4().hex}",

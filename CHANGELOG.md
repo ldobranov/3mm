@@ -8,6 +8,37 @@ pre-1.0.
 
 ## [Unreleased]
 
+## [0.3.0-beta.15] - 2026-09-13
+
+### Added
+
+- Application SDK command submit/status through the existing signed platform
+  socket and device queue. Packages declare device bindings, exact actions,
+  bounded argument schemas and a maximum ten-second authorization lifetime.
+- One-use live Agent execution authorization, scoped to the active installation,
+  package, generation and approved target device; no administrator token is used.
+- Generic `access.passage.v1` sensor evidence with command/generation, binding,
+  direction and sensor correlation. Duplicate confirmations and delivery to an
+  unrelated installation are rejected.
+- Migration for application command generations and correlated requests.
+
+### Fixed
+
+- Queue-delivered capability actions persist their attempt before invoking the
+  driver. An interrupted attempt remains unknown and is never automatically
+  repeated; conflicting reuse of a command identity is rejected.
+- Disable/update invalidate outstanding application authority. Restore rotates
+  generations and cancels both application and direct pending capability commands.
+  Old passage deliveries cannot cross the restored generation.
+
+### Limits
+
+- Driver success is not proof of passage or exactly-once physical execution.
+  Compatible passage adapters, extension domain transitions and real two-device
+  acceptance tests remain separate work. No concrete extension is changed.
+- Core and Agent must both be updated. Already-issued in-flight permits cannot
+  retract a hardware action; see the command contract for recovery and rollback.
+
 ## [0.3.0-beta.14] - 2026-09-13
 
 ### Fixed
