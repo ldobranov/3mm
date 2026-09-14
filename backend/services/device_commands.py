@@ -30,10 +30,12 @@ def queue_command(
     idempotency_key: str,
     ttl_seconds: int,
     now: datetime | None = None,
+    not_after: datetime | None = None,
 ) -> DeviceCommand:
     if device.revoked_at is not None:
         raise DeviceCommandError("Device is revoked")
-    created_at = now or datetime.now(timezone.utc)
+    if not_after is not None and not_after.utcoffset() is None:
+        raise DeviceCommandError('Command deadline requires a timezone')
     existing = db.scalar(
         select(DeviceCommand).where(
             DeviceCommand.device_id == device.id,
@@ -44,6 +46,12 @@ def queue_command(
         if existing.command_type != command_type or existing.payload != payload:
             raise DeviceCommandError('Command idempotency key has different content')
         return existing
+    created_at = now or datetime.now(timezone.utc)
+    expires_at = created_at + timedelta(seconds=ttl_seconds)
+    if not_after is not None:
+        expires_at = min(expires_at, not_after)
+        if expires_at <= created_at:
+            raise DeviceCommandError('Command absolute deadline has expired')
     command = DeviceCommand(
         command_id=f"cmd_{uuid.uuid4().hex}",
         device_id=device.id,
@@ -52,7 +60,7 @@ def queue_command(
         idempotency_key=idempotency_key,
         status="queued",
         created_at=created_at,
-        expires_at=created_at + timedelta(seconds=ttl_seconds),
+        expires_at=expires_at,
     )
     db.add(command)
     db.flush()

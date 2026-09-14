@@ -1,7 +1,8 @@
 """Narrow declarative command authority; no caller-selected device or action."""
 from typing import Literal
+from datetime import UTC, datetime
 import math
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def validate_argument_schema(schema: dict) -> None:
@@ -66,3 +67,22 @@ class ApplicationCommandSubmitV1(BaseModel):
     arguments: dict = Field(default_factory=dict)
     ttl_seconds: int = Field(default=10, ge=1, le=10, strict=True)
     direction: Literal['forward', 'reverse'] = 'forward'
+    not_after: AwareDatetime | None = None
+
+    @field_validator('not_after', mode='before')
+    @classmethod
+    def deadline_type(cls, value):
+        if value is not None and not isinstance(value, (str, datetime)):
+            raise ValueError('not_after requires an ISO datetime with timezone')
+        return value
+
+    @field_validator('not_after')
+    @classmethod
+    def utc_deadline(cls, value):
+        return value.astimezone(UTC) if value is not None else None
+
+
+class ApplicationCommandLookupV1(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    request_id: str = Field(min_length=1, max_length=96)
+    binding_id: str = Field(pattern=r'^[a-z][a-z0-9_]{0,95}$')

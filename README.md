@@ -9,9 +9,9 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current release is
-> [v0.3.0-beta.15](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.15),
-> which adds scoped application commands, crash-safe physical attempt recording
-> and a correlated passage-event contract. Hardware adapters and physical
+> [v0.3.0-beta.16](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.16),
+> which adds absolute command deadlines and read-only recovery of lost submit
+> replies by application request identity. Hardware adapters and physical
 > acceptance remain separate work; no exactly-once physical effect is claimed.
 > Physical Raspberry acceptance of this revision remains pending. The project is not
 > yet presented as production-hardened.

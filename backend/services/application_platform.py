@@ -130,11 +130,11 @@ class ApplicationPlatformServer:
                     installation = db.scalar(
                         select(ApplicationExtensionInstallation).where(
                             ApplicationExtensionInstallation.instance_id == instance_id,
-                            ApplicationExtensionInstallation.enabled.is_(True),
-                            ApplicationExtensionInstallation.status == "active",
                         )
                     )
-                    if installation is None:
+                    if installation is None or (request.get('action') != 'command.lookup' and (
+                        not installation.enabled or installation.status != 'active'
+                    )):
                         raise ValueError("Application installation is not active")
                     result = self._dispatch(db, installation, request)
                 finally:
@@ -157,6 +157,9 @@ class ApplicationPlatformServer:
 
     def _dispatch(self, db, installation, request: dict[str, object]) -> dict[str, object]:
         action = request.get("action")
+        if action == 'command.lookup':
+            from backend.services.application_commands import command_lookup
+            return command_lookup(db, installation, request.get('lookup'))
         if action in {'command.submit', 'command.status'}:
             from backend.services.application_commands import submit_command, command_status
             if action == 'command.submit':

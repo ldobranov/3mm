@@ -8,6 +8,29 @@ pre-1.0.
 
 ## [Unreleased]
 
+## [0.3.0-beta.16] - 2026-09-15
+
+### Added
+
+- Optional UTC-normalized `not_after` command deadline in Core/SDK. Delayed
+  submissions cannot restart the original authorization lifetime; identical
+  retries preserve expiry and changed deadlines conflict.
+- Signed, read-only `command_lookup(request_id=..., binding_id=...)` for lost
+  submit replies. Lookup uses the original device association, not the current
+  configuration, and reports ambiguous historical matches explicitly.
+- Disabled installations may read their own invalidated command history through
+  authenticated lookup without regaining execution authority. Restore preserves
+  discoverability without replaying commands.
+
+### Compatibility and verification
+
+- Existing relative-TTL callers and beta.15 command history remain supported;
+  no new database migration or concrete extension change is required.
+- Forty focused tests cover deadlines, conflicts, expiry, signed lookup,
+  original device bindings, restore and lookup racing an uncommitted submit.
+- A not-found lookup is only a snapshot: callers must synchronize the submitting
+  worker and respect the original deadline before clearing uncertain work.
+
 ## [0.3.0-beta.15] - 2026-09-13
 
 ### Added

@@ -123,10 +123,18 @@ class ApplicationPlatformClient:
 
     def submit_command(self, binding_id: str, *, request_id: str,
                        arguments: Mapping[str, object], ttl_seconds: int = 10,
-                       direction: str = 'forward') -> dict[str, object]:
-        return self._call('command.submit', {'command': {
+                       direction: str = 'forward', not_after: datetime | None = None) -> dict[str, object]:
+        command = {
             'binding_id': binding_id, 'request_id': request_id, 'arguments': dict(arguments),
-            'ttl_seconds': ttl_seconds, 'direction': direction}})
+            'ttl_seconds': ttl_seconds, 'direction': direction}
+        if not_after is not None:
+            if not isinstance(not_after, datetime) or not_after.utcoffset() is None:
+                raise ValueError('not_after requires a datetime with timezone')
+            command['not_after'] = not_after.astimezone(UTC).isoformat()
+        return self._call('command.submit', {'command': command})
+
+    def command_lookup(self, *, request_id: str, binding_id: str) -> dict[str, object]:
+        return self._call('command.lookup', {'lookup': {'request_id': request_id, 'binding_id': binding_id}})
 
     def command_status(self, command_id: str) -> dict[str, object]:
         return self._call('command.status', {'command_id': command_id})

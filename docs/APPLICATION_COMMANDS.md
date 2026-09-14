@@ -74,6 +74,45 @@ transport. Permissions constrain trusted installed services, not a sandbox again
 host-root compromise. Extensions remain responsible for authorizing their users
 before requesting a command.
 
+## Deadline and lost-reply recovery (0.3.0-beta.16)
+
+`submit_command` now accepts optional `not_after`, a timezone-aware Python
+`datetime` in the SDK or ISO datetime in the shared wire contract. Offsets are
+normalized to UTC. Core sets expiry to `min(queue time + TTL, not_after)` and
+refuses an already-expired new request. Replay preserves the original expiry;
+changing/adding/removing a deadline for the same key is a conflict. Equivalent
+UTC instants are equivalent deadlines. Omitting the field preserves beta.15 behavior.
+The existing live permit and Agent checks enforce the resulting expiry unchanged.
+
+For a lost submit reply, use the new signed, read-only operation:
+
+```python
+result = platform.command_lookup(request_id="intent-unique-id", binding_id="entry_output")
+if result["status"] == "found":
+    command = result["command"]
+```
+
+The response is `{"status": "not_found"}` or `{"status": "found", "command": ...}`.
+The command contains the original `command_id`, generation, authoritative
+`expires_at`, claimed flag, status, result/error and accepted `passage_event_id`.
+Lookup searches only the authenticated installation's stored request hashes and
+original target-device associations, never the current binding configuration.
+This also supports beta.15 history without a database migration. Multiple matches
+after target changes cause an explicit ambiguity error, never arbitrary selection.
+History has the same retention lifetime as its original command/device records.
+
+Only `command.lookup` may read a disabled installation's history using its still
+valid instance signature; this does not start its stopped service. Disabled or
+restored authority is reported as invalidated. Other platform operations still
+require an active installation. Authentication/transport errors are errors, not
+`not_found`. Lookup never queues, claims, commits or renews a command.
+
+**A not-found result is a snapshot, not proof that an in-flight submit cannot
+commit later.** Stop/join the submitting worker and respect the original absolute
+deadline before clearing uncertain work. Never resubmit merely to discover status.
+Existing in-flight permits still cannot be retracted; no hard-real-time guarantee
+or automatic physical retry is introduced.
+
 ## Crash and lifecycle safety
 
 For both `capability.invoke` and `application.capability.invoke`, the Agent commits

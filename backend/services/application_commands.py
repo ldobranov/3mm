@@ -11,7 +11,7 @@ from backend.services.application_extensions import load_application_definition
 from backend.services.application_configuration import _validate_value
 from backend.services.device_commands import queue_command, commit_queued_command, _utc
 from backend.services.device_capability_registry import has_registered_capability
-from three_mm_protocol.application_commands import ApplicationCommandSubmitV1
+from three_mm_protocol.application_commands import ApplicationCommandLookupV1, ApplicationCommandSubmitV1
 
 COMMAND_TYPE = 'application.capability.invoke'
 
@@ -72,8 +72,10 @@ def submit_command(db, installation, payload):
     identity = hashlib.sha256(f'{installation.id}:{device.device_id}:{request.request_id}'.encode()).hexdigest()
     command_payload = {'capability_id': binding.capability_id, 'action': binding.action, 'arguments': request.arguments,
         'binding_id': binding.binding_id, 'direction': request.direction, 'ttl_seconds': request.ttl_seconds}
+    if request.not_after is not None:
+        command_payload['not_after'] = request.not_after.isoformat()
     command = queue_command(db, device=device, command_type=COMMAND_TYPE, payload=command_payload,
-        idempotency_key='app:' + identity, ttl_seconds=request.ttl_seconds)
+        idempotency_key='app:' + identity, ttl_seconds=request.ttl_seconds, not_after=request.not_after)
     record = db.get(ApplicationCommandRequest, command.command_id)
     if record is None:
         record = ApplicationCommandRequest(command_id=command.command_id, installation_id=installation.id,
@@ -90,9 +92,14 @@ def command_status(db, installation, command_id):
     record = db.get(ApplicationCommandRequest, command_id)
     if record is None or record.installation_id != installation.id:
         raise ValueError('Command is not owned by this application')
+    return _command_snapshot(db, installation, record)
+
+
+def _command_snapshot(db, installation, record):
+    command_id = record.command_id
     command = db.scalar(select(DeviceCommand).where(DeviceCommand.command_id == command_id))
     epoch = db.get(ApplicationCommandEpoch, installation.id)
-    valid = epoch is not None and epoch.generation == record.generation and installation.module_package_id == record.package_id
+    valid = installation.enabled and installation.status == 'active' and epoch is not None and epoch.generation == record.generation and installation.module_package_id == record.package_id
     state = command.status
     if not valid:
         state = 'invalidated'
@@ -101,6 +108,31 @@ def command_status(db, installation, command_id):
     return {'command_id': command_id, 'status': state, 'claimed': record.claimed,
         'generation': record.generation, 'expires_at': _utc(command.expires_at).isoformat(),
         'result': command.result, 'error': command.error, 'passage_event_id': record.passage_event_id}
+
+
+def command_lookup(db, installation, payload):
+    """Read existing immutable request identities; never resolve current bindings."""
+    request = ApplicationCommandLookupV1.model_validate(payload)
+    if installation is None or installation.id is None:
+        raise ValueError('Application installation is unavailable')
+    with db.no_autoflush:
+        rows = db.execute(select(ApplicationCommandRequest, DeviceCommand.idempotency_key, Device.device_id)
+            .join(DeviceCommand, DeviceCommand.command_id == ApplicationCommandRequest.command_id)
+            .join(Device, Device.id == DeviceCommand.device_id)
+            .where(ApplicationCommandRequest.installation_id == installation.id,
+                DeviceCommand.command_type == COMMAND_TYPE,
+                DeviceCommand.payload['binding_id'].as_string() == request.binding_id)
+            .execution_options(yield_per=100))
+        matches = []
+        for record, key, device_id in rows:
+            identity = hashlib.sha256(f'{installation.id}:{device_id}:{request.request_id}'.encode()).hexdigest()
+            if key == 'app:' + identity:
+                matches.append(record)
+                if len(matches) > 1:
+                    raise ValueError('Command lookup is ambiguous across original target devices; manual review is required')
+        if not matches:
+            return {'status': 'not_found'}
+        return {'status': 'found', 'command': _command_snapshot(db, installation, matches[0])}
 
 
 def authorize_execution(db, device, command_id):
