@@ -12,6 +12,7 @@ import uuid
 from sqlalchemy import select, update
 from backend.db.module import ApplicationExtensionInstallation as Installation, ApplicationJobState as State, ModulePackage
 from backend.services.application_extensions import ApplicationGatewayError, invoke_application, load_application_definition
+from three_mm_runtime.application_transport import DispatchPhase
 
 logger = logging.getLogger(__name__)
 POLL_SECONDS = 1.0
@@ -32,6 +33,7 @@ class Claim:
     token: str
     scheduled_at: datetime
     job: object
+    retry_delay: float = 5.0
 
 
 def _active(claim):
@@ -91,6 +93,10 @@ def claim_job(db, installation_id, package_id, instance_id, job, *, now=None):
         state = State(application_installation_id=installation_id, job_id=job.job_id, next_run_at=current)
         db.add(state)
         db.flush()
+    waiting = state.last_outcome == 'waiting_service' and state.lease_package_id == package_id and state.lease_instance_id == instance_id
+    retry_delay = 5.0
+    if waiting and state.last_completed_at is not None:
+        retry_delay = min(30.0, max(5.0, 2 * (_aware(state.next_run_at) - _aware(state.last_completed_at)).total_seconds()))
     if state.lease_package_id is not None and state.lease_package_id != package_id:
         state.next_run_at = current
         existed = False
@@ -98,11 +104,13 @@ def claim_job(db, installation_id, package_id, instance_id, job, *, now=None):
     if scheduled > current:
         db.commit()
         return None
-    if existed and job.catch_up == 'skip' and current - scheduled >= timedelta(seconds=job.interval_seconds):
+    if existed and not waiting and job.catch_up == 'skip' and current - scheduled >= timedelta(seconds=job.interval_seconds):
         state.next_run_at = current + timedelta(seconds=job.interval_seconds)
         state.last_outcome = 'skipped'
         db.commit()
         return None
+    if waiting and state.last_scheduled_at is not None:
+        scheduled = _aware(state.last_scheduled_at)
     token = uuid.uuid4().hex
     state.lease_token, state.lease_instance_id, state.lease_package_id = token, instance_id, package_id
     state.lease_until = current + timedelta(seconds=LEASE_SECONDS)
@@ -111,7 +119,7 @@ def claim_job(db, installation_id, package_id, instance_id, job, *, now=None):
     state.last_outcome, state.last_error = 'running', None
     state.last_duration_ms = state.last_lateness_ms = None
     db.commit()
-    return Claim(state.id, installation_id, package_id, instance_id, token, scheduled, job)
+    return Claim(state.id, installation_id, package_id, instance_id, token, scheduled, job, retry_delay)
 
 
 def execute_job(db, settings, claim, *, stop=None, now=None):
@@ -141,21 +149,37 @@ def execute_job(db, settings, claim, *, stop=None, now=None):
     state.last_lateness_ms = max(0, int((started - claim.scheduled_at).total_seconds() * 1000))
     db.commit()
     outcome, error = 'succeeded', None
+    def still_owned_and_active():
+        # Use a fresh transaction after readiness, not the detached snapshot.
+        db.rollback()
+        return not (stop is not None and stop.is_set()) and db.scalar(select(State.id).where(
+            State.id == claim.state_id, State.lease_token == claim.token,
+            State.last_outcome == 'running', State.lease_until > datetime.now(UTC),
+            select(Installation.id).where(*_active(claim)).exists())) is not None
     try:
         invoke_application(installation, package, settings, claim.job.handler_operation_id, {}, {
             'audience': 'internal', 'correlation_id': f'job:{claim.instance_id}:{claim.job.job_id}',
             'idempotency_key': f'job:{claim.instance_id}:{claim.job.job_id}:{claim.scheduled_at.isoformat()}',
-        }, required_audience='internal')
+        }, required_audience='internal', require_ready=True, before_dispatch=still_owned_and_active)
+    except ApplicationGatewayError as exc:
+        if exc.phase == DispatchPhase.NOT_DISPATCHED:
+            outcome, error = ('waiting_service', 'not_dispatched') if exc.retryable else ('cancelled', 'lifecycle_changed')
+        else:
+            outcome, error = 'unknown', 'execution_unconfirmed'
     except Exception:
         outcome, error = 'unknown', 'execution_unconfirmed'
     completed = now or datetime.now(UTC)
     next_run = claim.scheduled_at + timedelta(seconds=claim.job.interval_seconds)
     if next_run <= completed:
         next_run = completed + timedelta(seconds=claim.job.interval_seconds)
+    if outcome == 'waiting_service':
+        next_run = completed + timedelta(seconds=claim.retry_delay)
     values = dict(last_outcome=outcome, last_error=error, last_completed_at=completed,
         last_duration_ms=max(0, int((time.monotonic()-mark)*1000)), next_run_at=next_run)
     if outcome == 'succeeded':
         values.update(lease_token=None, lease_until=None, run_count=State.run_count + 1)
+    elif outcome in {'waiting_service', 'cancelled'}:
+        values.update(lease_token=None, lease_until=None)
     db.execute(update(State).where(State.id == claim.state_id, State.lease_token == claim.token).values(**values))
     db.commit()
 

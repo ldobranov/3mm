@@ -10,11 +10,14 @@ from backend.db.module import ApplicationExtensionInstallation, ModulePackage
 from backend.services.module_packages import ModulePackageError, validate_module_package
 from three_mm_protocol import ApplicationExtensionV1, ApplicationOperationV1
 from three_mm_runtime.application_transport import ApplicationServiceClient
-from three_mm_runtime.application_transport import ApplicationTransportError
+from three_mm_runtime.application_transport import ApplicationTransportError, DispatchPhase
 
 
 class ApplicationGatewayError(RuntimeError):
-    pass
+    def __init__(self, message, *, phase=DispatchPhase.EXECUTION_UNCONFIRMED, retryable=False):
+        super().__init__(message)
+        self.phase = DispatchPhase(phase)
+        self.retryable = retryable
 
 
 def load_application_definition(package: ModulePackage) -> ApplicationExtensionV1:
@@ -88,6 +91,8 @@ def invoke_application(
     context: dict[str, object],
     *,
     required_audience: str,
+    require_ready: bool = False,
+    before_dispatch=None,
 ) -> dict[str, object]:
     if not installation.enabled or installation.status != "active":
         raise ApplicationGatewayError("Application extension is not active")
@@ -105,9 +110,24 @@ def invoke_application(
     try:
         secret = key_path.read_bytes()
     except OSError as exc:
-        raise ApplicationGatewayError("Application transport key is unavailable") from exc
+        raise ApplicationGatewayError("Application transport key is unavailable",
+            phase=DispatchPhase.NOT_DISPATCHED, retryable=True) from exc
     if len(secret) != 32:
         raise ApplicationGatewayError("Application transport key is invalid")
+    if require_ready:
+        # This reserved host operation reads platform storage only; it does not
+        # invoke the extension job. Failure says nothing about any historical job.
+        try:
+            readiness = ApplicationServiceClient(Path(installation.socket_path), secret, 2).invoke(
+                'three_mm.platform.status', {},
+                {'audience': 'internal', 'correlation_id': 'job-readiness'})
+            if not isinstance(readiness.get('revision'), str) or not readiness['revision'] or not isinstance(readiness.get('outbox'), dict):
+                raise ApplicationTransportError('Host is not ready')
+        except (ApplicationTransportError, OSError) as exc:
+            raise ApplicationGatewayError('Application host is not ready',
+                phase=DispatchPhase.NOT_DISPATCHED, retryable=True) from exc
+    if before_dispatch is not None and not before_dispatch():
+        raise ApplicationGatewayError('Application job lifecycle changed', phase=DispatchPhase.NOT_DISPATCHED)
     try:
         result = ApplicationServiceClient(
             Path(installation.socket_path),
@@ -115,7 +135,7 @@ def invoke_application(
             operation.timeout_seconds,
         ).invoke(operation_id, payload, context)
     except ApplicationTransportError as exc:
-        raise ApplicationGatewayError(str(exc)) from exc
+        raise ApplicationGatewayError(str(exc), phase=exc.phase, retryable=exc.retryable) from exc
     validate_operation_payload(result, operation.output_schema)
     if len(json.dumps(result, ensure_ascii=False)) > 1024 * 1024:
         raise ApplicationGatewayError("Application operation result is too large")

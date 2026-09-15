@@ -260,7 +260,7 @@ def application_operational_status(
         "jobs": [{"job_id": item.job_id, "next_run_at": item.next_run_at, "lease_until": item.lease_until, "last_outcome": item.last_outcome, "last_completed_at": item.last_completed_at, "run_count": item.run_count,
                   "scheduled_at": item.last_scheduled_at, "started_at": item.last_started_at,
                   "duration_ms": item.last_duration_ms, "lateness_ms": item.last_lateness_ms,
-                  "error_category": item.last_error if item.last_error in {'execution_unconfirmed', 'lease_expired', 'legacy_inflight', 'restore_unconfirmed', 'lifecycle_changed'} else None} for item in jobs],
+                  "error_category": item.last_error if item.last_error in {'not_dispatched', 'execution_unconfirmed', 'lease_expired', 'legacy_inflight', 'restore_unconfirmed', 'lifecycle_changed'} else None} for item in jobs],
         "connectors": {"attempt_counts": connector_counts, "items": [{"connector_id": item.connector_id, "destination_origin": item.destination_origin, "enabled": item.enabled, "last_outcome": item.last_outcome, "last_http_status": item.last_http_status, "last_checked_at": item.last_checked_at, "last_error_category": item.last_error_category} for item in connectors]},
         "outbox": runtime_status.get("outbox", {}),
     }

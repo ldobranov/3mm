@@ -8,6 +8,26 @@ pre-1.0.
 
 ## [Unreleased]
 
+## [0.3.0-beta.18] - 2026-09-15
+
+### Fixed
+
+- Application jobs wait for authenticated host readiness after startup/OTA.
+  Proven pre-send failures release only the owned claim and retry with persisted
+  5–30 second backoff, preserving the occurrence's idempotency identity.
+- Typed transport phases distinguish connect failure from partial send, lost
+  responses and invalid output. Uncertain executions remain quarantined; old
+  unknown records are never automatically unlocked.
+- Lifecycle and claim ownership are checked again after readiness. Diagnostics
+  distinguish waiting for the service from execution requiring manual review.
+
+### Verified and compatibility
+
+- Twenty focused local tests passed, plus six real Unix-socket tests on Raspberry
+  in isolation. No production service, domain record or physical output changed.
+- No new migration; concurrency limits and physical deadlines are unchanged.
+  Existing unknown jobs still require explicit administrator reconciliation.
+
 ## [0.3.0-beta.17] - 2026-09-15
 
 ### Added
@@ -522,7 +542,11 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.14...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.18...HEAD
+[0.3.0-beta.18]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.18
+[0.3.0-beta.17]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.17
+[0.3.0-beta.16]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.16
+[0.3.0-beta.15]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.15
 [0.3.0-beta.14]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.14
 [0.3.0-beta.12]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.12
 [0.3.0-beta.11]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.11

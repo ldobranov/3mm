@@ -9,6 +9,7 @@ import socket
 import time
 import uuid
 from pathlib import Path
+from enum import Enum
 
 
 TRANSPORT_VERSION = 1
@@ -16,8 +17,16 @@ MAX_MESSAGE_BYTES = 1024 * 1024
 MAX_CLOCK_SKEW_SECONDS = 30
 
 
+class DispatchPhase(str, Enum):
+    NOT_DISPATCHED = 'not_dispatched'
+    EXECUTION_UNCONFIRMED = 'execution_unconfirmed'
+
+
 class ApplicationTransportError(RuntimeError):
-    pass
+    def __init__(self, message, *, phase=DispatchPhase.EXECUTION_UNCONFIRMED, retryable=False):
+        super().__init__(message)
+        self.phase = DispatchPhase(phase)
+        self.retryable = retryable
 
 
 def _canonical(value: dict[str, object]) -> bytes:
@@ -125,15 +134,20 @@ class ApplicationServiceClient:
             },
             self._secret,
         )
+        dispatch_started = False
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
                 connection.settimeout(self._timeout_seconds)
                 connection.connect(str(self._socket_path))
+                # Set before sendall: even a partial send has an uncertain outcome.
+                dispatch_started = True
                 send_message(connection, request)
                 response = read_message(connection)
         except OSError as exc:
             raise ApplicationTransportError(
-                "Application extension service is unavailable"
+                "Application extension service is unavailable",
+                phase=DispatchPhase.EXECUTION_UNCONFIRMED if dispatch_started else DispatchPhase.NOT_DISPATCHED,
+                retryable=not dispatch_started,
             ) from exc
         verified = verify_message(
             response,

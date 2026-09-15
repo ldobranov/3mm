@@ -9,9 +9,9 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current release is
-> [v0.3.0-beta.17](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.17),
-> which adds timely, bounded application job scheduling and durable protection
-> against overlapping or uncertain repeated jobs. Hardware adapters and physical
+> [v0.3.0-beta.18](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.18),
+> which adds host-readiness checks and bounded retries for jobs proven not sent,
+> while preserving quarantine for uncertain executions. Hardware adapters and physical
 > acceptance remain separate work; no exactly-once physical effect is claimed.
 > Physical Raspberry acceptance of this revision remains pending. The project is not
 > yet presented as production-hardened.
