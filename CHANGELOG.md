@@ -8,6 +8,31 @@ pre-1.0.
 
 ## [Unreleased]
 
+## [0.3.0-beta.17] - 2026-09-15
+
+### Added
+
+- Due-time application job scheduling with a one-second discovery bound and two
+  executor threads per Core process, using separate database sessions.
+- Database-atomic claims serialize jobs per installation across Core processes.
+  Renewable leases outlive short job intervals; uncertain/expired claims are not
+  automatically retried. Restore fences old executor completions.
+- Scheduled/start time, duration, lateness and safe error categories in existing
+  operational diagnostics. Audited administrator resolution requires a disabled
+  application and explicit confirmation of external-outcome review.
+- Migration `2f37e8f9a0b1` preserves legacy in-flight jobs as unknown outcomes.
+
+### Verified and compatibility
+
+- Seventeen focused tests cover scheduling, concurrent claims, lifecycle,
+  catch-up, restore, resolution authorization and migrations.
+- Isolated Raspberry mock test: fast-job gaps 4.980/4.992/5.034 seconds alongside
+  a six-second job; benchmark process averaged 3.24% of one CPU core.
+- Event retries and physical command deadlines are unchanged. No concrete
+  extension or production Raspberry state is changed by this release task.
+- Stop old Core processes during upgrade; reconcile uncertain jobs before
+  resuming or rolling back to a scheduler without these safeguards.
+
 ## [0.3.0-beta.16] - 2026-09-15
 
 ### Added

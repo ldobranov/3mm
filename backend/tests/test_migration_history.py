@@ -3,7 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -66,6 +66,8 @@ def test_clean_database_migrates_to_head_and_back_to_base(tmp_path):
     assert "application_connector_bindings" in tables
     assert "application_connector_attempts" in tables
     assert "application_job_states" in tables
+    assert {'lease_token', 'last_scheduled_at', 'last_duration_ms', 'last_lateness_ms'} <= {
+        column['name'] for column in inspector.get_columns('application_job_states')}
     assert "application_sync_checkpoints" in tables
     build_columns = {column["name"] for column in inspector.get_columns("extension_project_builds")}
     assert {"artifact_path", "package_kind", "installed_at"} <= build_columns
@@ -89,4 +91,24 @@ def test_scoped_grants_upgrade_from_previous_release(tmp_path):
     _alembic(url, 'downgrade', 'fc04b5c6d7e8')
     engine = create_engine(url)
     assert 'role_application_grants' not in inspect(engine).get_table_names()
+    engine.dispose()
+
+
+def test_job_claim_upgrade_preserves_and_quarantines_legacy_inflight(tmp_path):
+    url = f"sqlite:///{(tmp_path / 'job-upgrade.db').as_posix()}"
+    _alembic(url, 'upgrade', '1e26d7e8f9a0')
+    engine = create_engine(url)
+    with engine.begin() as connection:
+        connection.execute(text("INSERT INTO module_packages (id,module_id,version,manifest,sha256,size_bytes,file_path,registrations) VALUES (1,'org.example.jobs','1.0.0','{}',:sha,1,'unused','[]')"), {'sha': 'a'*64})
+        connection.execute(text("INSERT INTO application_extension_installations (id,module_id,module_package_id,instance_id,status,enabled,socket_path,configuration) VALUES (1,'org.example.jobs',1,:instance,'active',1,'unused','{}')"), {'instance': 'a'*24})
+        connection.execute(text("INSERT INTO application_job_states (application_installation_id,job_id,next_run_at,lease_until,last_outcome,run_count) VALUES (1,'sync','2026-09-15 10:00:00','2026-09-15 10:00:05','running',7)"))
+    engine.dispose()
+    _alembic(url, 'upgrade', 'head')
+    _alembic(url, 'check')
+    engine = create_engine(url)
+    with engine.connect() as connection:
+        row = connection.execute(text('SELECT lease_token,last_outcome,last_error,run_count,next_run_at FROM application_job_states')).one()
+        assert len(row[0]) == 32
+        assert row[1:4] == ('unknown', 'legacy_inflight', 7)
+        assert row[4].startswith('2026-09-15 10:00:00')
     engine.dispose()

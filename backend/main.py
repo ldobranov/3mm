@@ -58,7 +58,7 @@ from backend.routes.system_control import router as system_control_router
 from backend.routes.network_recovery import router as network_recovery_router
 from backend.services.update_policy import system_update_check_manager
 from backend.services.application_events import retry_application_events_once
-from backend.services.application_jobs import run_application_jobs_once
+from backend.services.application_jobs import ApplicationJobScheduler
 from backend.services.application_platform import ApplicationPlatformServer
 
 # Import all route routers
@@ -152,17 +152,19 @@ async def run_application_event_worker():
 
 
 async def run_application_job_worker():
-    while True:
-        try:
-            await asyncio.to_thread(
-                run_application_jobs_once,
-                app_settings.applications,
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Application job scheduler failed")
-        await asyncio.sleep(30)
+    scheduler = ApplicationJobScheduler(app_settings.applications)
+    try:
+        while True:
+            try:
+                delay = await asyncio.to_thread(scheduler.tick)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.warning("Application job scheduler unavailable")
+                delay = 1.0
+            await asyncio.sleep(delay)
+    finally:
+        await asyncio.to_thread(scheduler.close)
 
 
 @asynccontextmanager

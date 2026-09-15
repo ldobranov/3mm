@@ -46,6 +46,10 @@ def restore_application_extensions(
             connection.execute("UPDATE application_command_epochs SET generation=lower(hex(randomblob(16)))")
         if 'device_commands' in tables:
             connection.execute("UPDATE device_commands SET status='failed', error='Restore invalidated physical authority' WHERE command_type IN ('application.capability.invoke', 'capability.invoke') AND status IN ('queued', 'delivered')")
+        if 'application_job_states' in tables:
+            columns = {row[1] for row in connection.execute('PRAGMA table_info(application_job_states)')}
+            if 'lease_token' in columns:
+                connection.execute("UPDATE application_job_states SET lease_token=lower(hex(randomblob(16))), lease_until=NULL, last_outcome='unknown', last_error='restore_unconfirmed' WHERE lease_token IS NOT NULL OR last_outcome='running'")
         connection.commit()
         rows = list(
             connection.execute(

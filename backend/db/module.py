@@ -295,6 +295,12 @@ class ApplicationJobState(Base):
     last_completed_at = Column(DateTime(timezone=True), nullable=True)
     last_outcome = Column(String(32), nullable=True)
     last_error = Column(Text, nullable=True)
+    lease_token = Column(String(32), nullable=True)
+    lease_instance_id = Column(String(24), nullable=True)
+    lease_package_id = Column(Integer, nullable=True)
+    last_scheduled_at = Column(DateTime(timezone=True), nullable=True)
+    last_duration_ms = Column(Integer, nullable=True)
+    last_lateness_ms = Column(Integer, nullable=True)
     run_count = Column(Integer, nullable=False, default=0)
     updated_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
