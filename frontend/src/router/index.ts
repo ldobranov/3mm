@@ -267,7 +267,6 @@ export async function createRouterWithDynamicRoutes() {
       meta: {
         requiresAuth: true,
         requiresRole: 'admin',
-        menuLabel: { en: 'Automations', bg: 'Автоматизации' },
       },
     },
     {
@@ -277,7 +276,6 @@ export async function createRouterWithDynamicRoutes() {
       meta: {
         requiresAuth: true,
         requiresRole: 'admin',
-        menuLabel: { en: 'System updates', bg: 'Системни обновявания' },
       },
     },
     { path: '/@:username/:slug', name: 'PublicDisplay', component: () => import('@/views/PublicDisplay.vue') },

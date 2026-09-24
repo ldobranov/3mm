@@ -8,6 +8,21 @@ pre-1.0.
 
 ## [Unreleased]
 
+## [0.3.0-beta.19] - 2026-09-24
+
+### Fixed
+
+- Automations and System updates are no longer automatically appended to the
+  header. Manually configured links can be removed through Menu Editor without
+  returning on refresh. Existing saved menu entries are not deleted by the update.
+- Both pages remain available at `/automations/proposals` and `/system/updates`,
+  with their existing administrator guards. Dynamic extension navigation is unchanged.
+
+### Verified
+
+- Ten focused navigation tests and the production frontend build passed locally.
+- No backend, database, payment or concrete extension changes are included.
+
 ## [0.3.0-beta.18] - 2026-09-15
 
 ### Fixed
@@ -542,7 +557,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.18...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.19...HEAD
+[0.3.0-beta.19]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.19
 [0.3.0-beta.18]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.18
 [0.3.0-beta.17]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.17
 [0.3.0-beta.16]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.16

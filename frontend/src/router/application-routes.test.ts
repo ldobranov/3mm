@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { compiledRouteRecords } from './index'
+import { compiledRouteRecords, createRouterWithDynamicRoutes } from './index'
+import http from '@/utils/dynamic-http'
+import * as compiledUi from '@/utils/compiled-ui'
+import { mergeNavigationItems } from '@/utils/menu-navigation'
 import type { CompiledUiPackage } from '@/utils/compiled-ui'
 
 
@@ -28,6 +31,28 @@ function applicationPackage(audience: 'public' | 'kiosk' | 'operator' | 'adminis
 
 
 describe('application compiled routes', () => {
+  it('keeps optional Core pages protected without forcing them into the header', async () => {
+    const api = vi.spyOn(http, 'get').mockResolvedValue({ data: { items: [] } })
+    const catalog = vi.spyOn(compiledUi, 'getCompiledUiCatalog').mockResolvedValue([])
+    try {
+      const router = await createRouterWithDynamicRoutes()
+      const automatic = router.getRoutes()
+        .filter(route => route.meta.menuLabel)
+        .map(route => ({ path: route.path, label: String(route.meta.menuLabel) }))
+      for (const path of ['/automations/proposals', '/system/updates']) {
+        const route = router.resolve(path)
+        expect(route.meta.requiresAuth).toBe(true)
+        expect(route.meta.requiresRole).toBe('admin')
+        expect(mergeNavigationItems([], automatic).some(item => item.path === path)).toBe(false)
+        expect(mergeNavigationItems([{ path, label: 'Custom label' }], automatic))
+          .toContainEqual({ path, label: 'Custom label' })
+      }
+    } finally {
+      api.mockRestore()
+      catalog.mockRestore()
+    }
+  })
+
   it('derives route guards and navigation only from server catalog metadata', () => {
     const routes = compiledRouteRecords([
       applicationPackage('public'),
