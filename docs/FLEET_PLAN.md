@@ -1,7 +1,8 @@
 # 3mm Fleet — Milestone 13 delivery plan
 
 Updated: 2026-09-30. Status: Node installation and real rollback accepted on Zero;
-beta.21 adds release packaging; clean-media AP onboarding remains pending.
+beta.21 is published. User confirmed upgrade and manual AP -> Wi-Fi setup on Zero;
+clean-media AP onboarding remains pending.
 Parent milestone: [Hub and Node orchestration](ROADMAP.md#milestone-13--hub-and-node-orchestration).
 
 ## Scope
@@ -28,6 +29,21 @@ Keep two independent configuration decisions:
 
 1. Which Hub controls this Node?
 2. Does this client installation opt into a central 3mm management service?
+
+These connections can be active simultaneously: Node -> local Hub -> optional
+central 3mm installation. They are not mutually exclusive roles. The local Hub
+is the Node's only command authority; the cloud never creates a second Agent
+publisher or replaces the saved Hub address. Cloud loss must not block local
+startup, pairing, authentication or existing local workloads.
+
+Central enrollment is separately owner-approved and outbound from the Hub.
+Use separate installation/device identities, credentials, revocation and status.
+Cloud permissions cannot exceed locally delegated scopes. Remote physical requests
+must pass the same local authorization, expiry, idempotency and execution journal
+as local requests; this reduces duplicate execution risk, not an exactly-once
+guarantee. Expired or uncertain actions are never replayed after reconnect.
+Initial cloud scope is read-only. Cloud transport, delegation and management UI
+are planned, not implemented by the Node installer or connection-status endpoint.
 
 Cloud enrollment is never a prerequisite for local pairing. The example central
 address is `https://3mm.config.bg`; no product hostname is hardcoded. Cloudflare
@@ -92,8 +108,19 @@ Neither extension is part of the Stage 1 installation task.
   with manual address entry always available.
 - Wi-Fi provisioning and Hub enrollment are separate durable states. Unreachable
   Hub must not undo working Wi-Fi or silently mark the Node as paired.
-- Hub creates a short-lived pairing code; Node claims it; administrator confirms
-  the device identity; Node completes enrollment and stores its own credential.
+- Default UX: Node uses the explicitly selected Hub, otherwise discovers local
+  candidates. It requests enrollment in the background; the Hub administrator
+  presses Add once. Codes and manual addresses are fallback, not normal setup.
+- Multiple candidates require a choice; discovery is not authority. Requests are
+  bounded, deduplicated, expiring and carry no rights until approval. Rejected or
+  revoked devices cannot silently re-enroll. Retry transient failures with jitter
+  and backoff, preserving progress across restart without undoing Wi-Fi.
+- Reuse existing approval/credential boundaries, but do not simply expose public
+  code creation. Current one-use completion loses its credential if the response
+  is lost: implement authenticated, durable completion recovery before automation.
+- Optional administrator-enabled ten-minute enrollment window comes only after
+  authenticated trust establishment and explicit scope/device limits; merely
+  sharing a LAN must never automatically grant control.
 - Bind enrollment to the selected Hub identity. Discovery is not trust; define
   authenticated transport/trust establishment before exposing enrollment secrets.
 - Handle expiry, rejection, interruption after approval/completion and reboot
@@ -173,6 +200,26 @@ Neither extension is part of the Stage 1 installation task.
 - [x] Separate Node artifact/wheelhouse, release workflow and `--profile node`
   bootstrap path implemented locally; publication is separate.
 - [x] Setup hides full-runtime roles on Node and rejects them before network mutation.
+- [x] Published beta.21 installed by user; manual AP and return to Wi-Fi confirmed,
+  with `http://rasp-3mm.local` selected as Hub. This is not completed enrollment.
+- [x] Agent startup resolves the Setup Hub selection and exposes loopback-only
+  `/api/v1/agent/hub-connection` status. Legacy credentials cannot move to another
+  Setup-selected endpoint. No discovery or cloud transport yet.
+- [x] Administrative pending-request API: `GET /api/v1/pairing/requests`
+  (bounded `after_id`/`limit` pagination, no codes/keys/credential secrets), and
+  `POST /api/v1/pairing/requests/{id}/reject` with an audit record. Rejection expires
+  only pending requests. Approval atomically reserves an unexpired pending request;
+  completion rejects expired requests and revoked devices. Existing code flow stays.
+  21 focused pairing/API/local-bootstrap tests passed. No schema migration needed.
+- [x] Local implementation of Node-originated enrollment, durable completion and
+  Hub approval UI. Node retains its proposed credential before contacting the Hub;
+  only administrator approval grants access. Lost responses/restarts reuse the
+  same request and credential. Rejection, expiry and revocation are terminal.
+  Migration `3048f9a0b1c2` and endpoint binding are included. See
+  [pairing operation and acceptance](FLEET_PAIRING.md).
+- [ ] Deploy the new Hub and Node together and accept real Zero enrollment.
+  Automatic discovery and authenticated Hub identity establishment remain open;
+  the current beta uses an explicitly selected trusted-LAN endpoint.
 - [ ] Stages 2–6 implementation and acceptance.
 
 ### Stage 1 findings and next work
@@ -195,7 +242,8 @@ Run the new diagnostic against a checkout with its Node dependencies available:
 `python3 deployment/node_preflight.py`. It does not install packages, change
 NetworkManager, contact the cloud or mutate services. Its dependency result is
 separate from `installer_ready`, which remains false while installer integration
-is unfinished. Do not use the current public installer on Zero W yet.
+is unfinished. Use the published beta.21 Node profile for the supported target;
+the diagnostic result alone is not installation or clean-media acceptance.
 
 The default full installer still installs Core dependencies, compiles the extension
 toolchain and prepares/migrates Core state. The always-on update helper imports

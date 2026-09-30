@@ -25,6 +25,8 @@ from agent.hardware import (
 from agent.modules.gpio import GPIO_ENTRYPOINT, gpio_runtime_handler
 from agent.automation_store import AutomationStore
 from agent.identity import AgentIdentity, AgentIdentityStore
+from agent.hub_connection import HubConnectionStatus, resolve_hub_connection
+from agent.enrollment import NodeEnrollmentWorker
 from agent.inventory import collect_inventory
 from agent.module_runtime import AgentModuleRuntime
 from agent.role import AgentRoleResolver
@@ -61,11 +63,23 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         resolved_role = resolved_settings.role
+        provisioning_snapshot = None
         if resolved_settings.provisioning_data_dir is not None:
-            resolved_role = AgentRoleResolver(
-                FileProvisioningStore(resolved_settings.provisioning_data_dir)
-            ).resolve(resolved_role)
+            provisioning_store = FileProvisioningStore(resolved_settings.provisioning_data_dir)
+            resolved_role = AgentRoleResolver(provisioning_store).resolve(resolved_role)
+            provisioning_snapshot = provisioning_store.load()
         identity = AgentIdentityStore(resolved_settings.data_dir).load_or_create()
+        credential = DeviceCredentialStore(resolved_settings.data_dir).load()
+        if credential is not None and credential.device_id != identity.device_id:
+            raise RuntimeError("Core credential does not match Agent identity")
+        connection = resolve_hub_connection(
+            role=resolved_role,
+            snapshot=provisioning_snapshot,
+            configured_endpoint=resolved_settings.core_url,
+            has_credential=credential is not None,
+            credential_endpoint=credential.hub_endpoint if credential is not None else None,
+        )
+        app.state.hub_connection = connection
         def current_inventory() -> AgentInventory:
             inventory = collect_inventory(identity.device_id, hardware)
             if resolved_settings.identifier_driver == "mock":
@@ -113,14 +127,12 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
         module_runtime.start_active()
         automation_store = AutomationStore(resolved_settings.data_dir, module_runtime)
         automation_store.activate_all(device_id=identity.device_id)
-        if resolved_settings.core_url:
-            credential = DeviceCredentialStore(resolved_settings.data_dir).load()
-            if credential is not None:
-                if credential.device_id != identity.device_id:
-                    raise RuntimeError("Core credential does not match Agent identity")
+        def start_publisher(approved_credential):
+            nonlocal publisher
+            if publisher is None:
                 publisher = CorePublisher(
-                    core_url=resolved_settings.core_url,
-                    credential=credential,
+                    core_url=approved_credential.api_endpoint or connection.hub_endpoint,
+                    credential=approved_credential,
                     inventory_provider=current_inventory,
                     command_journal=CommandJournal(resolved_settings.data_dir),
                     reconciliation_store=ReconciliationStore(resolved_settings.data_dir),
@@ -132,11 +144,26 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
                 )
                 publisher.start()
                 app.state.module_event_sink = publisher.publish_event
-        yield
-        if publisher is not None:
-            publisher.stop()
-        module_runtime.close()
-        gpio.close()
+        enrollment = None
+        if connection.state == "credential_available" and credential is not None:
+            start_publisher(credential)
+        elif connection.state == "awaiting_pairing" and resolved_role is AgentRole.NODE:
+            enrollment = NodeEnrollmentWorker(
+                resolved_settings.data_dir, connection.hub_endpoint, identity.device_id,
+                (provisioning_snapshot.device_name if provisioning_snapshot else None) or resolved_settings.display_name,
+                start_publisher,
+                lambda state: setattr(app.state, "hub_connection", connection.model_copy(update={"state": state})),
+            )
+            enrollment.start()
+        try:
+            yield
+        finally:
+            if enrollment is not None:
+                enrollment.stop()
+            if publisher is not None:
+                publisher.stop()
+            module_runtime.close()
+            gpio.close()
 
     app = FastAPI(
         title="3mm Agent",
@@ -158,6 +185,11 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
     def readiness(request: Request) -> dict[str, str]:
         runtime = _runtime(request)
         return {"status": "ready", "device_id": runtime.identity.device_id}
+
+    @app.get("/api/v1/agent/hub-connection", response_model=HubConnectionStatus, tags=["agent"])
+    def hub_connection(request: Request) -> HubConnectionStatus:
+        """Loopback-only startup status; does not assert the Hub is online."""
+        return request.app.state.hub_connection
 
     @app.get(
         "/api/v1/agent/hello",

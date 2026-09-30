@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 from sqlalchemy.orm import Session
@@ -20,11 +20,25 @@ from backend.services.device_pairing import (
     issue_pairing_code,
     issue_replacement_device_credential,
     revoke_device_credential,
+    list_pending_pairing_requests,
+    reject_pairing_request,
 )
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
+from backend.services.node_enrollment import enroll_node, EnrollmentConflict, EnrollmentCapacity
+from three_mm_protocol.fleet_pairing import NodeEnrollmentRequest, NodeEnrollmentResponse
 
 router = APIRouter(prefix="/api/v1", tags=["device-pairing"])
+
+
+@router.post("/pairing/enroll", response_model=NodeEnrollmentResponse)
+def request_node_enrollment(payload: NodeEnrollmentRequest, db: Session = Depends(get_db)):
+    try:
+        return enroll_node(db, payload)
+    except EnrollmentConflict as exc:
+        raise HTTPException(409, "Enrollment conflict; administrator recovery required") from exc
+    except EnrollmentCapacity as exc:
+        raise HTTPException(429, "Enrollment capacity reached") from exc
 
 
 class PairingCodeResponse(BaseModel):
@@ -82,6 +96,54 @@ class CredentialRevocationResponse(BaseModel):
     status: str = "revoked"
 
     model_config = ConfigDict(extra="forbid")
+
+
+class PendingPairingResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: int
+    device_id: str
+    display_name: str
+    role: str
+    protocol_version: str
+    expires_at: datetime
+
+
+@router.get("/pairing/requests", response_model=list[PendingPairingResponse])
+def pending_pairing_requests(
+    after_id: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=100),
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> list[PendingPairingResponse]:
+    return [
+        PendingPairingResponse(
+            request_id=row.id, device_id=row.requested_device_id,
+            display_name=(row.requested_metadata or {}).get("display_name", ""),
+            role=(row.requested_metadata or {}).get("role", ""),
+            protocol_version=(row.requested_metadata or {}).get("protocol_version", ""),
+            expires_at=row.expires_at,
+        )
+        for row in list_pending_pairing_requests(db, after_id=after_id, limit=limit)
+    ]
+
+
+@router.post("/pairing/requests/{request_id}/reject", status_code=204)
+def reject_pairing(
+    request_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> None:
+    try:
+        reject_pairing_request(db, request_id=request_id)
+    except PairingApprovalError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    db.add(AuditLog(
+        user_id=admin.id, action="DEVICE_PAIRING_REJECTED",
+        entity_type="device_pairing_request", entity_id=request_id,
+        changes={"status": "rejected"},
+    ))
+    db.commit()
 
 
 @router.post(

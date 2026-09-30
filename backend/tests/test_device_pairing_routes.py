@@ -248,3 +248,44 @@ def test_admin_revokes_issued_device_credential_with_audit_record() -> None:
         assert client.post(endpoint, headers=headers).status_code == 404
     finally:
         db.close()
+
+
+def test_pending_list_and_rejection_are_admin_only_secret_free_and_final():
+    client, db, admin_token, user_token = make_client()
+    try:
+        headers = {"Authorization": f"Bearer {admin_token}"}
+        issued = client.post("/api/v1/pairing-codes", headers=headers).json()
+        payload = {
+            "code": issued["code"], "device_id": "dev_" + "a" * 32,
+            "public_key": "ssh-ed25519 test-agent-public-key",
+            "display_name": "Zero", "role": "node", "protocol_version": "1.0",
+        }
+        assert client.post("/api/v1/pairing/claim", json=payload).status_code == 202
+        listing = "/api/v1/pairing/requests"
+        reject = f"{listing}/{issued['request_id']}/reject"
+        approve = f"{listing}/{issued['request_id']}/approve"
+        for auth, expected in [({}, 401), ({"Authorization": f"Bearer {user_token}"}, 403)]:
+            assert client.get(listing, headers=auth).status_code == expected
+            assert client.post(reject, headers=auth).status_code == expected
+            assert client.post(approve, headers=auth).status_code == expected
+        response = client.get(listing, headers=headers)
+        assert response.status_code == 200
+        assert response.json()[0]["display_name"] == "Zero"
+        assert set(response.json()[0]) == {
+            "request_id", "device_id", "display_name", "role", "protocol_version", "expires_at",
+        }
+        assert issued["code"] not in response.text
+        assert client.get(listing, params={"after_id": issued["request_id"]}, headers=headers).json() == []
+        assert client.get(listing, params={"limit": 101}, headers=headers).status_code == 422
+        assert client.post(reject, headers=headers).status_code == 204
+        assert client.get(listing, headers=headers).json() == []
+        assert client.post(approve, headers=headers).status_code == 409
+        assert client.post(reject, headers=headers).status_code == 409
+        assert client.post("/api/v1/pairing/complete", json={
+            "code": issued["code"], "device_id": payload["device_id"],
+        }).status_code == 409
+        assert db.query(DeviceCredential).count() == 0
+        audit = db.query(AuditLog).filter_by(action="DEVICE_PAIRING_REJECTED").one()
+        assert audit.entity_id == issued["request_id"]
+    finally:
+        db.close()

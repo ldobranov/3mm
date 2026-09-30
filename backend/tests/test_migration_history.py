@@ -112,3 +112,26 @@ def test_job_claim_upgrade_preserves_and_quarantines_legacy_inflight(tmp_path):
         assert row[1:4] == ('unknown', 'legacy_inflight', 7)
         assert row[4].startswith('2026-09-15 10:00:00')
     engine.dispose()
+
+
+def test_node_enrollment_upgrade_and_downgrade(tmp_path):
+    url = f"sqlite:///{(tmp_path / 'enrollment.db').as_posix()}"
+    _alembic(url, 'upgrade', '2f37e8f9a0b1')
+    engine = create_engine(url)
+    assert next(c for c in inspect(engine).get_columns('device_pairing_requests')
+                if c['name'] == 'created_by_user_id')['nullable'] is False
+    engine.dispose()
+    _alembic(url, 'upgrade', 'head')
+    _alembic(url, 'check')
+    engine = create_engine(url)
+    assert next(c for c in inspect(engine).get_columns('device_pairing_requests')
+                if c['name'] == 'created_by_user_id')['nullable'] is True
+    with engine.begin() as connection:
+        connection.execute(text("INSERT INTO device_pairing_requests (code_hash,requested_device_id,requested_metadata,expires_at) VALUES (:hash,:device,'{}','2030-01-01')"),
+                           {'hash': 'e' * 64, 'device': 'dev_' + 'e' * 32})
+    engine.dispose()
+    _alembic(url, 'downgrade', '2f37e8f9a0b1')
+    engine = create_engine(url)
+    with engine.connect() as connection:
+        assert connection.execute(text('SELECT count(*) FROM device_pairing_requests')).scalar() == 0
+    engine.dispose()

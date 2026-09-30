@@ -6,6 +6,7 @@
     </div>
 
     <div class="extension-content">
+      <FleetPairing @approved="loadDevices" @registry-refresh="loadDevices" />
       <!-- Dashboard Overview -->
       <div class="dashboard-overview">
         <h2>{{ t('mainServer.dashboard.overview', 'System Overview') }}</h2>
@@ -316,6 +317,7 @@
 import { computed, ref, onMounted } from 'vue';
 import { useI18n } from '@/utils/i18n';
 import http from '@/utils/dynamic-http';
+import FleetPairing from '@/components/FleetPairing.vue';
 
 const { t } = useI18n();
 

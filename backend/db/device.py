@@ -71,7 +71,7 @@ class DevicePairingRequest(Base):
     public_key = Column(Text, nullable=True)
     requested_metadata = Column(JSON, nullable=False, default=dict)
     device_id = Column(Integer, ForeignKey("devices.id"), nullable=True, index=True)
-    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     approved_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -82,6 +82,12 @@ class DevicePairingRequest(Base):
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
     device = relationship("Device", back_populates="pairing_requests")
+
+    __table_args__ = (
+        Index("uq_node_enrollment_device", "requested_device_id", unique=True,
+              sqlite_where=created_by_user_id.is_(None),
+              postgresql_where=created_by_user_id.is_(None)),
+    )
 
 
 class DeviceInventorySnapshot(Base):

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.db.device import Device, DeviceCredential, DevicePairingRequest
@@ -143,24 +144,41 @@ def approve_pairing_request(
     if approved_at.tzinfo is None:
         raise ValueError("Pairing timestamps must include a timezone")
 
+    # Serialize approval against another approval or rejection, including sessions
+    # whose identity map still contains an older version of the request.
+    reserved = db.execute(
+        update(DevicePairingRequest)
+        .where(
+            DevicePairingRequest.id == request_id,
+            *_pending_request_conditions(approved_at),
+        )
+        .values(approved_at=approved_at, approved_by_user_id=approved_by_user_id)
+        .execution_options(synchronize_session=False)
+    )
+    if reserved.rowcount != 1:
+        db.rollback()
+        raise PairingApprovalError("Pairing request is not pending approval")
+    db.expire_all()
     request = db.get(DevicePairingRequest, request_id)
     if (
         request is None
         or request.claimed_at is None
-        or request.approved_at is not None
         or request.device_id is not None
         or not request.requested_device_id
     ):
+        db.rollback()
         raise PairingApprovalError("Pairing request is not pending approval")
     existing = db.scalar(
         select(Device).where(Device.device_id == request.requested_device_id)
     )
     if existing is not None:
+        db.rollback()
         raise PairingApprovalError("Device identity is already registered")
 
     metadata = request.requested_metadata or {}
     required_metadata = {"display_name", "role", "protocol_version"}
     if not required_metadata.issubset(metadata):
+        db.rollback()
         raise PairingApprovalError("Pairing request metadata is incomplete")
 
     device = Device(
@@ -174,9 +192,76 @@ def approve_pairing_request(
     request.approved_by_user_id = approved_by_user_id
     request.approved_at = approved_at
     db.add(device)
-    db.commit()
+    if request.created_by_user_id is None:
+        # Node already persisted the secret; Core receives only its verifier.
+        if metadata.get("enrollment_version") != 1:
+            db.rollback()
+            raise PairingApprovalError("Unsupported enrollment request")
+        db.add(DeviceCredential(
+            device=device, credential_id=metadata["credential_id"],
+            secret_hash=metadata["credential_secret_hash"], created_at=approved_at,
+        ))
+        request.completed_at = approved_at
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise PairingApprovalError("Device identity is already registered") from exc
     db.refresh(device)
     return device
+
+
+def _pending_request_conditions(now: datetime) -> tuple:
+    return (
+        DevicePairingRequest.claimed_at.is_not(None),
+        DevicePairingRequest.requested_device_id.is_not(None),
+        DevicePairingRequest.approved_at.is_(None),
+        DevicePairingRequest.completed_at.is_(None),
+        DevicePairingRequest.device_id.is_(None),
+        DevicePairingRequest.expires_at > now,
+    )
+
+
+def list_pending_pairing_requests(
+    db: Session, *, after_id: int = 0, limit: int = 50,
+    now: datetime | None = None,
+) -> list[DevicePairingRequest]:
+    checked_at = now or datetime.now(timezone.utc)
+    if checked_at.tzinfo is None:
+        raise ValueError("Pairing timestamps must include a timezone")
+    if after_id < 0 or not 1 <= limit <= 100:
+        raise ValueError("Invalid pairing page")
+    return list(db.scalars(
+        select(DevicePairingRequest)
+        .where(DevicePairingRequest.id > after_id, *_pending_request_conditions(checked_at))
+        .order_by(DevicePairingRequest.id).limit(limit)
+    ))
+
+
+def reject_pairing_request(
+    db: Session, *, request_id: int, now: datetime | None = None,
+) -> None:
+    """Expire a pending request without creating or changing a managed device.
+
+    The caller commits the rejection together with its administrator audit row.
+    Rejection provenance lives in that audit; no new persistent status is invented.
+    """
+    rejected_at = now or datetime.now(timezone.utc)
+    if rejected_at.tzinfo is None:
+        raise ValueError("Pairing timestamps must include a timezone")
+    result = db.execute(
+        update(DevicePairingRequest)
+        .where(DevicePairingRequest.id == request_id, *_pending_request_conditions(rejected_at))
+        .values(expires_at=rejected_at)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        raise PairingApprovalError("Pairing request is not pending approval")
+    db.expire_all()
+    request = db.get(DevicePairingRequest, request_id)
+    if request.created_by_user_id is None:
+        request.requested_metadata = {**request.requested_metadata, "rejected": True}
 
 
 def complete_pairing_request(
@@ -199,6 +284,11 @@ def complete_pairing_request(
             DevicePairingRequest.approved_at.is_not(None),
             DevicePairingRequest.device_id.is_not(None),
             DevicePairingRequest.completed_at.is_(None),
+            DevicePairingRequest.created_by_user_id.is_not(None),
+            DevicePairingRequest.expires_at > completed_at,
+            DevicePairingRequest.device_id.in_(
+                select(Device.id).where(Device.revoked_at.is_(None))
+            ),
         )
         .values(completed_at=completed_at)
     )

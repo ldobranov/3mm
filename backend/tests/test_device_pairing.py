@@ -16,6 +16,8 @@ from backend.services.device_pairing import (
     issue_pairing_code,
     issue_replacement_device_credential,
     pairing_code_hash,
+    list_pending_pairing_requests,
+    reject_pairing_request,
 )
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -236,3 +238,60 @@ def test_approved_agent_receives_one_unique_credential_once(db: Session) -> None
             now=now + timedelta(seconds=5),
         )
     assert db.query(DeviceCredential).count() == 1
+
+
+def _pending(db, now):
+    issued = issue_pairing_code(db, created_by_user_id=1, now=now)
+    claim_pairing_code(
+        db, code=issued.code, requested_device_id="dev_" + "a" * 32,
+        public_key="test-public-key", requested_metadata={
+            "display_name": "Zero", "role": "node", "protocol_version": "1.0",
+        }, now=now,
+    )
+    return issued
+
+
+def test_expired_claim_cannot_be_listed_or_approved(db):
+    now = datetime.now(timezone.utc)
+    issued = _pending(db, now)
+    expired = issued.expires_at
+    assert list_pending_pairing_requests(db, now=now)
+    assert list_pending_pairing_requests(db, now=expired) == []
+    with pytest.raises(PairingApprovalError):
+        approve_pairing_request(db, request_id=issued.request_id, approved_by_user_id=1, now=expired)
+    assert db.query(Device).count() == 0
+
+
+@pytest.mark.parametrize("invalidate", ["expire", "revoke"])
+def test_approved_pairing_cannot_complete_after_expiry_or_device_revocation(db, invalidate):
+    now = datetime.now(timezone.utc)
+    issued = _pending(db, now)
+    device = approve_pairing_request(db, request_id=issued.request_id, approved_by_user_id=1, now=now)
+    if invalidate == "revoke":
+        device.revoked_at = now
+        db.commit()
+    with pytest.raises(PairingCompletionError):
+        complete_pairing_request(
+            db, code=issued.code, requested_device_id=device.device_id,
+            now=issued.expires_at if invalidate == "expire" else now,
+        )
+    assert db.query(DeviceCredential).count() == 0
+
+
+def test_failed_duplicate_identity_approval_rolls_back_reservation(db):
+    now = datetime.now(timezone.utc)
+    issued = _pending(db, now)
+    db.add(Device(device_id="dev_" + "a" * 32, role="node", protocol_version="1.0", approved_at=now))
+    db.commit()
+    with pytest.raises(PairingApprovalError):
+        approve_pairing_request(db, request_id=issued.request_id, approved_by_user_id=1, now=now)
+    assert db.get(DevicePairingRequest, issued.request_id).approved_at is None
+
+
+def test_rejection_and_approval_are_mutually_exclusive(db):
+    now = datetime.now(timezone.utc)
+    issued = _pending(db, now)
+    approve_pairing_request(db, request_id=issued.request_id, approved_by_user_id=1, now=now)
+    with pytest.raises(PairingApprovalError):
+        reject_pairing_request(db, request_id=issued.request_id, now=now)
+    assert db.query(Device).count() == 1

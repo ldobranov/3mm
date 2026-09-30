@@ -1,4 +1,11 @@
 {
+  "fleetPairing": {
+    "title": "New devices", "help": "Devices request access automatically after Wi-Fi setup. Add only a device you recognize. Names are supplied by the device.",
+    "refresh": "Refresh", "loading": "Looking for requests…", "empty": "No devices are waiting for approval.",
+    "add": "Add device", "reject": "Reject", "next": "Next requests",
+    "failed": "The request could not be confirmed. Refresh and check its current state.",
+    "approved": "Device approved. It will connect automatically within about 30 seconds.", "rejected": "Request rejected."
+  },
   "common": { "cancel": "Cancel", "error": "Error", "save": "Save", "saving": "Saving…" },
   "settings": {
     "menuAudience": "Visible to", "menuAudiencePublic": "Everyone", "menuAudienceAuthenticated": "Signed-in users",
