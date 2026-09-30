@@ -15,6 +15,13 @@ from typing import Callable
 from three_mm_protocol import AgentCommand, AgentCommandResult
 
 
+class PhysicalCommandFailure(RuntimeError):
+    """A trusted executor's known rejection/rollback, not an unknown I/O error."""
+    def __init__(self, execution_state: str, message: str):
+        super().__init__(message)
+        self.execution_state = execution_state
+
+
 class PhysicalCommandJournal:
     def __init__(self, data_dir: Path):
         data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -74,6 +81,8 @@ class PhysicalCommandJournal:
                         output = invoke()
                         result = AgentCommandResult(command_id=command.command_id, device_id=command.device_id,
                             status='succeeded', completed_at=now(), output={**output, 'execution_state': 'executed'})
+                    except PhysicalCommandFailure as exc:
+                        result = self.failed(command, exc.execution_state, str(exc))
                     except Exception:
                         result = self.failed(command, 'unknown', 'Driver outcome is unknown; automatic retry refused')
         with closing(self._connect()) as db, db:

@@ -1,5 +1,7 @@
 """Validated module catalog and per-device lifecycle API."""
 import base64
+import hashlib
+import json
 import shutil
 from pathlib import Path
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
@@ -9,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from backend.config import get_settings
-from backend.db.device import Device, DeviceInventorySnapshot
+from backend.db.device import Device, DeviceCommand, DeviceInventorySnapshot
 from backend.db.module import (
     ApplicationExtensionInstallation,
     ModuleInstallation,
@@ -17,7 +19,7 @@ from backend.db.module import (
 )
 from backend.db.widget import Widget
 from backend.db.user import User
-from backend.services.device_commands import commit_queued_command, queue_command
+from backend.services.device_commands import DeviceCommandError, commit_queued_command, queue_command
 from backend.services.module_packages import ModulePackageError, validate_module_package
 from backend.services.compiled_ui import (
     CompiledUiBuildError,
@@ -268,8 +270,48 @@ def _device_architecture(db,device):
     snapshot=db.scalar(select(DeviceInventorySnapshot).where(DeviceInventorySnapshot.device_id==device.id).order_by(DeviceInventorySnapshot.received_at.desc()).limit(1))
     return (snapshot.inventory or {}).get("architecture") if snapshot else None
 
+
+def _lifecycle_idempotency_key(
+    db: Session, *, device: Device, command_type: str, module_id: str,
+    legacy_key: str, client_key: str | None, admin_id: int,
+) -> str:
+    if client_key is not None:
+        identity = json.dumps([admin_id, command_type, module_id, client_key])
+        digest = hashlib.sha256(identity.encode()).hexdigest()
+        suffix = ":" + client_key if len(client_key) <= 48 else ""
+        return "module.client:" + digest + suffix
+    opposite = "module.disable" if command_type == "module.install" else "module.install"
+    completed = db.scalar(
+        select(DeviceCommand).where(
+            DeviceCommand.device_id == device.id,
+            DeviceCommand.command_type == opposite,
+            DeviceCommand.payload["module_id"].as_string() == module_id,
+            DeviceCommand.status == "succeeded",
+            DeviceCommand.completed_at.is_not(None),
+        ).order_by(DeviceCommand.completed_at.desc(), DeviceCommand.id.desc()).limit(1)
+    )
+    # Retain existing initial-episode keys, including requests queued by older Core versions.
+    if completed is None and len(legacy_key) <= 128:
+        return legacy_key
+    identity = json.dumps([legacy_key, completed.command_id if completed else None])
+    return "module.lifecycle.legacy:" + hashlib.sha256(identity.encode()).hexdigest()
+
+
+def _queue_lifecycle_command(db: Session, *, device: Device, **values):
+    existing = db.scalar(select(DeviceCommand).where(
+        DeviceCommand.device_id == device.id,
+        DeviceCommand.idempotency_key == values["idempotency_key"],
+    ))
+    try:
+        command = queue_command(db, device=device, **values)
+    except DeviceCommandError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return command, existing is not None
+
+
 @router.post("/packages/{sha256}/devices/{device_id}/install",response_model=InstallationResponse)
-def install_module(sha256:str,device_id:str,_admin:User=Depends(require_admin),db:Session=Depends(get_db)):
+def install_module(sha256:str,device_id:str,_admin:User=Depends(require_admin),db:Session=Depends(get_db),
+                   idempotency_key:str|None=Header(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")):
     package=db.scalar(select(ModulePackage).where(ModulePackage.sha256==sha256)); device=db.scalar(select(Device).where(Device.device_id==device_id))
     if not package or not device: raise HTTPException(404,"package or device was not found")
     blob=Path(package.file_path).read_bytes()
@@ -277,18 +319,27 @@ def install_module(sha256:str,device_id:str,_admin:User=Depends(require_admin),d
     except ModulePackageError as exc: raise HTTPException(409,str(exc)) from exc
     if validated.application_extension is not None:
         raise HTTPException(409, "Application extensions run on Core, not on an Agent")
-    command=queue_command(db,device=device,command_type="module.install",payload={"package_base64":base64.b64encode(blob).decode(),"sha256":package.sha256,"module_id":package.module_id,"version":package.version},idempotency_key=f"module.install:{package.module_id}:{package.sha256}",ttl_seconds=900)
     installation=db.scalar(select(ModuleInstallation).where(ModuleInstallation.device_id==device.id,ModuleInstallation.module_id==package.module_id))
+    key = _lifecycle_idempotency_key(db, device=device, command_type="module.install", module_id=package.module_id,
+        legacy_key=f"module.install:{package.module_id}:{package.sha256}", client_key=idempotency_key, admin_id=_admin.id)
+    command, replay = _queue_lifecycle_command(db,device=device,command_type="module.install",payload={"package_base64":base64.b64encode(blob).decode(),"sha256":package.sha256,"module_id":package.module_id,"version":package.version},idempotency_key=key,ttl_seconds=900)
+    if replay and installation is not None:
+        return installation
     if installation is None:
         installation=ModuleInstallation(device_id=device.id,module_package_id=package.id,module_id=package.module_id,desired_version=package.version,status="queued",enabled=True,data_retained=True); db.add(installation)
     installation.module_package_id=package.id; installation.desired_version=package.version; installation.status=command.status; installation.command_id=command.command_id; installation.enabled=True; installation.error=None
     commit_queued_command(db,device=device,command=command); db.refresh(installation); return installation
 
 @router.post("/{module_id}/devices/{device_id}/disable",response_model=InstallationResponse)
-def disable_module(module_id:str,device_id:str,_admin:User=Depends(require_admin),db:Session=Depends(get_db)):
+def disable_module(module_id:str,device_id:str,_admin:User=Depends(require_admin),db:Session=Depends(get_db),
+                   idempotency_key:str|None=Header(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")):
     device=db.scalar(select(Device).where(Device.device_id==device_id)); installation=db.scalar(select(ModuleInstallation).where(ModuleInstallation.device_id==device.id,ModuleInstallation.module_id==module_id)) if device else None
     if not installation: raise HTTPException(404,"module installation was not found")
-    command=queue_command(db,device=device,command_type="module.disable",payload={"module_id":module_id},idempotency_key=f"module.disable:{module_id}:{installation.installed_version}",ttl_seconds=300)
+    key = _lifecycle_idempotency_key(db, device=device, command_type="module.disable", module_id=module_id,
+        legacy_key=f"module.disable:{module_id}:{installation.installed_version}", client_key=idempotency_key, admin_id=_admin.id)
+    command, replay = _queue_lifecycle_command(db,device=device,command_type="module.disable",payload={"module_id":module_id},idempotency_key=key,ttl_seconds=300)
+    if replay:
+        return installation
     installation.command_id=command.command_id; installation.status=command.status; commit_queued_command(db,device=device,command=command); db.refresh(installation); return installation
 
 @router.get("/registrations",response_model=list[dict])

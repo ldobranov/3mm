@@ -1,9 +1,12 @@
 # 3mm Fleet — Milestone 13 delivery plan
 
-Updated: 2026-09-30. Status: Node installation and real rollback accepted on Zero;
-beta.21 is published. User confirmed upgrade and manual AP -> Wi-Fi setup on Zero;
-clean-media AP onboarding remains pending.
+Updated: 2026-09-30. Status: Node installation/rollback, manual AP -> Wi-Fi,
+Hub enrollment and a Fleet-controlled physical LED output accepted on Zero.
+This is partial Milestone 13 acceptance, not completion or production readiness.
+Clean-media Node onboarding and failure/hardware acceptance remain pending.
 Parent milestone: [Hub and Node orchestration](ROADMAP.md#milestone-13--hub-and-node-orchestration).
+Product sequence: [local-first commercial delivery plan](FLEET_BUSINESS_PLAN.md).
+Latest test evidence: [Zero baseline](FLEET_ZERO_BASELINE.md#fleet-and-physical-led-acceptance--2026-09-30).
 
 ## Scope
 
@@ -80,12 +83,14 @@ Neither extension is part of the Stage 1 installation task.
 - `backend/routes/device_pairing.py`: issue code, claim, administrator approval,
   completion and credential revocation. Reuse this contract rather than adding
   another enrollment protocol.
-- Shared provisioning and network recovery already exist. Local automatic Agent
-  pairing is documented for Standalone/Hub; external Node onboarding is unfinished.
+- Shared provisioning and network recovery already exist. External Node enrollment
+  with an explicitly selected Hub and administrator approval is user-accepted;
+  automatic Hub discovery and authenticated discovery trust remain unfinished.
 - GPIO input/output capability support exists. Identifier configuration currently
   supports only disabled/mock, so a real reader still requires a hardware adapter.
-- Release architectures currently are aarch64, armv7l and x86_64. An armv6l device
-  must be rejected clearly until its runtime dependencies and artifacts are tested.
+- Published Node packaging supports the tested ARMv6/Python 3.13 target separately
+  from full-profile releases. The actual Zero installed it; do not infer support
+  for untested architecture/Python combinations from the portable module manifest.
 
 ## Stage 1 — Minimal installation and service boundary
 
@@ -217,9 +222,19 @@ Neither extension is part of the Stage 1 installation task.
   same request and credential. Rejection, expiry and revocation are terminal.
   Migration `3048f9a0b1c2` and endpoint binding are included. See
   [pairing operation and acceptance](FLEET_PAIRING.md).
-- [ ] Deploy the new Hub and Node together and accept real Zero enrollment.
+- [x] User accepted real Zero enrollment; Fleet screenshots show the stable device
+  identity, online state, inventory and administrator-managed module installation.
   Automatic discovery and authenticated Hub identity establishment remain open;
   the current beta uses an explicitly selected trusted-LAN endpoint.
+- [x] Optional Fleet extension packaged through 0.1.5: state timestamps, stale-state
+  blocking and bounded digital controls through existing administrator APIs.
+- [x] Mock GPIO 1.0.6 admission on ARMv6 and remote install confirmed by the Node.
+- [x] User confirmed the physical LED output test after selecting gpiod and GPIO17;
+  output-only package avoids claiming an unused input. Evidence is user-reported,
+  not an independently observed electrical measurement.
+- [ ] Configure GPIO mappings/driver safely through the UI rather than SSH.
+- [ ] Physically accept pulse timing, output disable, outage/reconnect/reboot,
+  expired/duplicate command behavior and latency; do not infer these from an LED test.
 - [ ] Stages 2–6 implementation and acceptance.
 
 ### Stage 1 findings and next work

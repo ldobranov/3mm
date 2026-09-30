@@ -9,13 +9,12 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current release is
-> [v0.3.0-beta.21](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.21),
-> which adds the minimal ARMv6 Node installer and offline runtime packages.
-> Node install/rollback passed with existing Wi-Fi retained; clean-media AP
-> onboarding and Fleet pairing remain pending. Hardware adapters and physical
-> acceptance remain separate work; no exactly-once physical effect is claimed.
-> Physical Raspberry acceptance of this revision remains pending. The project is not
-> yet presented as production-hardened.
+> [v0.3.0-beta.24](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.24),
+> which adds persistent GPIO output configuration for the optional Fleet 0.1.6
+> extension. Zero W enrollment, inventory and an environment-configured GPIO17
+> LED test passed. The new configuration flow and its restart/offline matrix
+> still require physical acceptance; no exactly-once physical effect is claimed.
+> The project is not yet presented as production-hardened.
 
 ## What works
 
@@ -185,9 +184,20 @@ This command is **not available in beta.19 or earlier**; beta.20 published no as
 the new bootstrap and `3mm-node-manifest.json` release asset. Other Node
 architectures/Python versions are rejected rather than compiling on-device.
 The fresh-install Setup AP changes Wi-Fi and may disconnect SSH. Setup only
-offers the Node role. Hub pairing UI and a permanent Node administration page
-are separate Fleet stages; installing this profile does not enroll it automatically.
+offers the Node role. Local enrollment and administrator approval are available
+through the optional Fleet extension; installing Node is not completed pairing.
+There is no permanent Node administration page or Node runtime OTA UI yet.
 See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
+
+### Updating a paired Hub and Zero
+
+After the new GitHub Release is fully published, update the Hub through
+`/system/updates` using the Beta channel. Update the Zero over SSH with the same
+Node bootstrap command above; add `--tag v0.3.0-beta.24` to select this exact
+release. Provisioned upgrades preserve identity and pairing, not Master reset.
+Then upload Fleet `0.1.6` on the Hub through Extensions. Updating the Fleet ZIP
+alone does not update Core or the Zero Agent. Follow the
+[GPIO configuration guide](docs/FLEET_GPIO_CONFIGURATION.md) before enabling outputs.
 
 Use `--tag` for a reproducible exact release, for example by appending
 `-s -- --tag v0.3.0-beta.11` after `sudo bash`. The Raspberry host password is
@@ -276,6 +286,8 @@ See the [changelog](CHANGELOG.md) for user-visible changes and the
 | [Module Manifest v2](docs/MODULE_MANIFEST_V2.md) | Package envelope and identities |
 | [OTA update plan](docs/OTA_UPDATE_PLAN.md) | Update architecture and acceptance stages |
 | [Release guide](docs/RELEASING.md) | Versioning, publication and verification |
+| [Fleet GPIO configuration](docs/FLEET_GPIO_CONFIGURATION.md) | Compatible updates and one safe output without SSH |
+| [Fleet business plan](docs/FLEET_BUSINESS_PLAN.md) | Local-first delivery before optional cloud and paid functions |
 
 Milestone reports in `docs/MILESTONE_*_REPORT.md` retain the detailed
 acceptance evidence behind the current implementation.

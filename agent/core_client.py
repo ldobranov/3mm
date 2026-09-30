@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Callable
 from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
 from agent.automation_store import AutomationStore, StoredAutomation
-from agent.physical_command_journal import PhysicalCommandJournal
+from agent.physical_command_journal import PhysicalCommandFailure, PhysicalCommandJournal
 from three_mm_protocol.passage import PassageEventV1
 
 import requests
@@ -191,6 +191,7 @@ class CorePublisher:
     started_monotonic: float
     module_runtime: AgentModuleRuntime | None = None
     automation_store: AutomationStore | None = None
+    gpio_configuration: object | None = None
     interval_seconds: int = 30
     _stop: threading.Event = field(init=False, repr=False)
     _thread: threading.Thread | None = field(init=False, default=None, repr=False)
@@ -355,6 +356,17 @@ class CorePublisher:
             self._submit_result(replay)
             return
 
+        if command.command_type == 'agent.gpio.configure' and self.gpio_configuration is not None:
+            journal = PhysicalCommandJournal(self.command_journal.path.parent)
+            def configure_gpio():
+                if (command.expires_at - command.created_at).total_seconds() > 10:
+                    raise PhysicalCommandFailure('not_executed', 'GPIO configuration requires a deadline of at most ten seconds')
+                return self.gpio_configuration.apply(command.payload, self.module_runtime)
+            result = journal.execute(command, configure_gpio)
+            self._submit_result(result)
+            self._reconcile_state()
+            return
+
         if command.command_type in {'capability.invoke', 'application.capability.invoke'} and self.module_runtime is not None:
             journal = PhysicalCommandJournal(self.command_journal.path.parent)
             def authorize():
@@ -439,6 +451,9 @@ class CorePublisher:
             )
         self.command_journal.save(command.idempotency_key, result)
         self._submit_result(result)
+        if command.command_type in {"module.install", "module.disable"} and self.gpio_configuration is not None:
+            self._reconcile_state()
+            self._publish_capability_states()
 
     def _run_commands(self) -> None:
         while not self._stop.is_set():
@@ -461,6 +476,13 @@ class CorePublisher:
         desired = DeviceDesiredState.model_validate(response.json())
         current = self.reconciliation_store.load()
         if desired.revision <= current.applied_revision:
+            if self.gpio_configuration is not None:
+                self._send_or_queue("reported-state", AgentReportedState(
+                    device_id=self.credential.device_id, desired_revision=desired.revision,
+                    applied_revision=current.applied_revision, reported_at=datetime.now(UTC),
+                    state={"inventory_generation": current.inventory_generation,
+                           "gpio_configuration": self.gpio_configuration.describe(self.module_runtime)},
+                ).model_dump(mode="json"), "reported-state")
             return
         supported_keys = {"inventory_generation"}
         unsupported = sorted(set(desired.state) - supported_keys)
@@ -491,6 +513,9 @@ class CorePublisher:
                 reported_at=datetime.now(UTC),
                 state={"inventory_generation": current.inventory_generation},
             )
+        if self.gpio_configuration is not None:
+            reported = reported.model_copy(update={"state": {
+                **reported.state, "gpio_configuration": self.gpio_configuration.describe(self.module_runtime)}})
         self._send_or_queue("reported-state", reported.model_dump(mode="json"), "reported-state")
 
     def _run(self) -> None:

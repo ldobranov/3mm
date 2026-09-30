@@ -8,6 +8,35 @@ pre-1.0.
 
 ## [Unreleased]
 
+## [0.3.0-beta.24] - 2026-09-30
+
+### Added
+
+- Generic Agent GPIO configuration command and reported revision, consumed by
+  the optional Fleet 0.1.6 extension. One inactive-LOW, active-high output can be
+  configured without SSH, using mock or gpiod on the reviewed Zero W / Pi 3B+ boards.
+- BCM/physical-pin mapping, disabled-module and fresh-state checks, explicit
+  wiring approval, persisted configuration, inactive startup and rollback.
+- ARMv6-compatible GPIO package metadata, output-only reference package and
+  lifecycle-probe fixture. Core remains independent of concrete extension names.
+- Fleet GPIO operator guide and local-first business delivery plan.
+
+### Fixed
+
+- Module install/disable accepts scoped request identities and fresh lifecycle
+  episodes, allowing repeat disable/re-enable without replaying an old result.
+- GPIO configuration uses the durable physical-command journal and bounded
+  authorization; uncertain execution is not automatically retried.
+
+### Compatibility and acceptance
+
+- Update both Hub/Core and Node/Agent, then upload Fleet 0.1.6 separately. No
+  database migration, credential reset or change to extension business data.
+- The earlier GPIO17 LED test passed with environment settings. The new Fleet
+  configuration flow still requires physical acceptance; Milestone 13 stays open.
+- Older Agents ignore the managed configuration file. Review hardware and the
+  previous environment mapping before downgrading a configured device.
+
 ## [0.3.0-beta.21] - 2026-09-30
 
 ### Fixed
@@ -583,7 +612,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.21...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.24...HEAD
+[0.3.0-beta.24]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.24
 [0.3.0-beta.21]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.21
 [0.3.0-beta.19]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.19
 [0.3.0-beta.18]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.18

@@ -208,3 +208,12 @@ class AgentModuleRuntime:
             if state.get("enabled"):
                 result.extend(state.get("registrations", []))
         return result
+
+    def enabled_hardware_modules(self, permission: str) -> list[str]:
+        """Fail closed when persistent module state cannot be inspected."""
+        result = []
+        for path in (self.root / "state").glob("*.json"):
+            state = json.loads(path.read_text())
+            if state.get("enabled") and permission in state.get("permissions", []):
+                result.append(path.stem)
+        return sorted(result)

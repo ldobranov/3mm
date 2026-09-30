@@ -1,0 +1,34 @@
+{
+  "manifest_version": 2,
+  "module_id": "org.3mm.digital-output",
+  "name": "Digital GPIO Output",
+  "version": "1.0.0",
+  "description": "Single digital output using the configured Agent GPIO driver, with no input channels or local rules.",
+  "runtimes": ["agent"],
+  "entrypoints": {"agent": "builtin:gpio.digital.v1"},
+  "compatibility": {"protocol": "1.0", "agent": ">=0.1.0", "core": ">=0.1.0", "architectures": ["armv6l", "aarch64", "x86_64"]},
+  "capabilities": {"provides": ["gpio.digital.output"], "consumes": ["hardware.gpio.digital_output"]},
+  "permissions": ["hardware.gpio", "data.write", "events.publish"],
+  "configuration_schema": {"type": "object"},
+  "configuration_defaults": {
+    "inputs": [],
+    "outputs": {"gpio.output.1": false},
+    "rules": [],
+    "pulse_min_ms": 50,
+    "pulse_max_ms": 10000,
+    "pulse_cooldown_ms": 0
+  },
+  "health_check": {"type": "file_exists", "path": "health/ready"},
+  "registrations": [{
+    "kind": "capability",
+    "registration_id": "gpio.digital.control",
+    "metadata": {
+      "automation_role": "action",
+      "automation_actions": "set_output,pulse_output",
+      "automation_channels": "gpio.output.1",
+      "automation_required_fields_set_output": "channel,value",
+      "automation_value_type_set_output": "boolean",
+      "automation_required_fields_pulse_output": "channel,duration_ms"
+    }
+  }]
+}

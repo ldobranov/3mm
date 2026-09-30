@@ -1,0 +1,16 @@
+{
+  "manifest_version": 2,
+  "module_id": "org.3mm.agent-probe",
+  "name": "Agent Lifecycle Probe",
+  "version": "1.0.0",
+  "description": "Hardware-free package for confirming remote Agent install and disable commands. No executable workload or capabilities.",
+  "runtimes": ["agent"],
+  "compatibility": {
+    "protocol": "1.0",
+    "agent": ">=0.1.0",
+    "core": ">=0.1.0",
+    "architectures": ["armv6l", "armv7l", "aarch64", "x86_64"]
+  },
+  "permissions": [],
+  "health_check": {"type": "json_file", "path": "health/ready.json"}
+}
