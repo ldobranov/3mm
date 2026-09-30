@@ -9,7 +9,7 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current release is
-> [v0.3.0-beta.20](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.20),
+> [v0.3.0-beta.21](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.21),
 > which adds the minimal ARMv6 Node installer and offline runtime packages.
 > Node install/rollback passed with existing Wi-Fi retained; clean-media AP
 > onboarding and Fleet pairing remain pending. Hardware adapters and physical
@@ -173,7 +173,7 @@ the device switches to its open `3mm Setup XXXX` access point.
 
 ### Minimal Node / Raspberry Pi Zero W
 
-Fleet beta.20 adds a minimal Node profile for **Zero W ARMv6 with
+Fleet beta.21 adds a minimal Node profile for **Zero W ARMv6 with
 Raspbian 13 / Python 3.13**. It installs Agent and shared Setup/recovery, not Core,
 the application database or npm. After a release containing Node assets is published:
 
@@ -181,7 +181,7 @@ the application database or npm. After a release containing Node assets is publi
 wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --profile node
 ```
 
-This command is **not available in beta.19 or earlier**. It requires
+This command is **not available in beta.19 or earlier**; beta.20 published no assets. It requires
 the new bootstrap and `3mm-node-manifest.json` release asset. Other Node
 architectures/Python versions are rejected rather than compiling on-device.
 The fresh-install Setup AP changes Wi-Fi and may disconnect SSH. Setup only
@@ -239,6 +239,7 @@ annotated semantic-version tags and publish:
 
 - `aarch64`, `armv7l` and `x86_64` archives;
 - `3mm-update-manifest.json`;
+- a separate ARMv6 Node archive and `3mm-node-manifest.json`;
 - `SHA256SUMS`.
 
 Stable releases use the Stable channel, `-test...` prereleases use Test and

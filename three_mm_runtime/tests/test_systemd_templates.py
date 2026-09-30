@@ -198,7 +198,13 @@ def test_installer_preserves_identity_and_delegates_network_mutation() -> None:
     assert "http://$device_hostname.local" in installer
     assert "frontend_primary_origin=$frontend_scheme://$frontend_host" in installer
     assert "frontend_compat_origin=$frontend_scheme://$frontend_host:8080" in installer
-    assert "NetworkManager" not in installer
+    # The AP unit needs its writable directory before systemd builds its namespace.
+    # Permit only directory preparation; connections and DNS remain helper-owned.
+    network_directory = (
+        "install -d -o root -g root -m 0755 /etc/NetworkManager/dnsmasq-shared.d"
+    )
+    assert installer.count(network_directory) == 1
+    assert "NetworkManager" not in installer.replace(network_directory, "")
     assert "nmcli" not in installer
     assert "iptables" not in installer
     assert "nft" not in installer

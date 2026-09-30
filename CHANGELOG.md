@@ -8,7 +8,13 @@ pre-1.0.
 
 ## [Unreleased]
 
-## [0.3.0-beta.20] - 2026-09-30
+## [0.3.0-beta.21] - 2026-09-30
+
+### Fixed
+
+- Allow only the exact Setup AP directory preparation in the installer's
+  architecture test; direct network mutations remain forbidden. Tag beta.20
+  failed this test and published no assets; beta.21 includes the Node work below.
 
 ### Added
 
@@ -577,8 +583,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.20...HEAD
-[0.3.0-beta.20]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.20
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.21...HEAD
+[0.3.0-beta.21]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.21
 [0.3.0-beta.19]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.19
 [0.3.0-beta.18]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.18
 [0.3.0-beta.17]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.17

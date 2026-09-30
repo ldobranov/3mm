@@ -1,6 +1,6 @@
 # Minimal Node installation
 
-Introduced in beta.20. Beta.19 has no Node
+Introduced in beta.21 (beta.20 published no assets). Beta.19 has no Node
 artifact. Do not confuse this with selecting the Node role in a full installation.
 
 ## Supported initial target

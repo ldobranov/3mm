@@ -1,7 +1,7 @@
 # 3mm Fleet — Milestone 13 delivery plan
 
 Updated: 2026-09-30. Status: Node installation and real rollback accepted on Zero;
-beta.20 adds release packaging; clean-media AP onboarding remains pending.
+beta.21 adds release packaging; clean-media AP onboarding remains pending.
 Parent milestone: [Hub and Node orchestration](ROADMAP.md#milestone-13--hub-and-node-orchestration).
 
 ## Scope
@@ -218,7 +218,7 @@ Cross-profile replacement is rejected before service mutations. Node rollback
 restores the previous release/environment/units or removes newly installed units
 and its current link on failed first activation; persistent state is retained.
 
-Releases through beta.19 have no Node artifacts. Beta.20 build and bootstrap
+Releases through beta.19 have no Node artifacts; beta.20 failed CI. Beta.21 build and bootstrap
 support a separate `3mm-node-manifest.json` for ARMv6/Python 3.13;
 other combinations fail closed. See [Node installation](NODE_INSTALLATION.md).
 Phone AP recovery, durable pairing and physical hardware acceptance remain
