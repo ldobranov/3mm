@@ -14,6 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from setup_service import __version__
+from three_mm_runtime.install_profile import InstallProfile, read_install_profile, validate_profile_role
 from setup_service.config import SetupSettings
 from setup_service.schemas import (
     SetupConfiguration,
@@ -159,6 +160,7 @@ def create_app(
     recovery_marker: FileNetworkRecoveryMarker | None = None,
 ) -> FastAPI:
     resolved_settings = settings or SetupSettings.from_env()
+    install_profile = read_install_profile(Path(__file__).resolve().parents[1])
     resolved_network = network or (
         NetworkHelperClientAdapter(resolved_settings.network_helper_socket)
         if resolved_settings.network_helper_socket is not None
@@ -252,7 +254,11 @@ def create_app(
 
     @app.get("/setup", response_class=HTMLResponse, include_in_schema=False)
     def setup_page() -> HTMLResponse:
-        return HTMLResponse(SETUP_PAGE.read_text(encoding="utf-8"))
+        page = SETUP_PAGE.read_text(encoding="utf-8")
+        if install_profile is InstallProfile.NODE:
+            page = page.replace('<option value="standalone">Standalone</option>', '')
+            page = page.replace('<option value="hub">Hub / Server</option>', '')
+        return HTMLResponse(page)
 
     @app.get(
         "/api/v1/setup/status",
@@ -332,6 +338,10 @@ def create_app(
         request: Request,
         background_tasks: BackgroundTasks,
     ) -> SetupOutcome:
+        try:
+            validate_profile_role(install_profile, configuration.role)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=422, detail="role_requires_full_installation") from exc
         runtime = _runtime(request)
         provisioning_request = ProvisioningRequest(
             network=NetworkCredentials(

@@ -132,8 +132,17 @@ jobs:
           python deployment/build_release.py "${common_args[@]}" --output-dir "$RUNNER_TEMP/release-a"
           python deployment/build_release.py "${common_args[@]}" --output-dir "$RUNNER_TEMP/release-b"
           diff --recursive --brief "$RUNNER_TEMP/release-a" "$RUNNER_TEMP/release-b"
+          python deployment/prepare_node_wheels.py --output "$RUNNER_TEMP/node-wheels"
+          node_args=(
+            --source-root . --wheels "$RUNNER_TEMP/node-wheels"
+            --version "$VERSION" --commit "$COMMIT" --repository "$REPOSITORY"
+            --epoch "$SOURCE_DATE_EPOCH"
+          )
+          python deployment/build_node_release.py "${node_args[@]}" --output "$RUNNER_TEMP/release-a"
+          python deployment/build_node_release.py "${node_args[@]}" --output "$RUNNER_TEMP/release-b"
+          diff --recursive --brief "$RUNNER_TEMP/release-a" "$RUNNER_TEMP/release-b"
           cd "$RUNNER_TEMP/release-a"
-          sha256sum ./*.tar.gz ./3mm-update-manifest.json > SHA256SUMS
+          sha256sum ./*.tar.gz ./3mm-update-manifest.json ./3mm-node-manifest.json > SHA256SUMS
 
       - name: Confirm checkout remained clean
         run: git diff --exit-code

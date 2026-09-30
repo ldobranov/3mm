@@ -4,7 +4,7 @@ set -Eeuo pipefail
 readonly THREE_MM_REPOSITORY="ldobranov/3mm"
 readonly THREE_MM_DEFAULT_CHANNEL="beta"
 readonly THREE_MM_BOOTSTRAP_ROOT="/var/tmp/3mm-bootstrap"
-readonly -a THREE_MM_BOOTSTRAP_PACKAGES=(
+THREE_MM_BOOTSTRAP_PACKAGES=(
   avahi-daemon
   ca-certificates
   curl
@@ -20,6 +20,7 @@ readonly -a THREE_MM_BOOTSTRAP_PACKAGES=(
 channel=${THREE_MM_CHANNEL:-$THREE_MM_DEFAULT_CHANNEL}
 requested_tag=${THREE_MM_TAG:-}
 frontend_origin=${THREE_MM_FRONTEND_ORIGIN:-}
+install_profile=full
 
 usage() {
   cat <<'EOF'
@@ -29,6 +30,7 @@ Usage:
   wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash
 
 Options:
+  --profile full|node        Full app (default) or minimal Node (ARMv6/Python 3.13)
   --channel stable|beta|test  Release channel (default: beta)
   --tag vX.Y.Z[-suffix]      Install one exact published release
   --frontend-origin URL      Public HTTP(S) origin; defaults to this device IP
@@ -46,6 +48,11 @@ fail() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --profile)
+      [[ $# -ge 2 ]] || fail "--profile requires a value"
+      install_profile=$2
+      shift 2
+      ;;
     --channel)
       [[ $# -ge 2 ]] || fail "--channel requires a value"
       channel=$2
@@ -70,6 +77,10 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+[[ $install_profile == full || $install_profile == node ]] || fail "profile must be full or node"
+if [[ $install_profile == node ]]; then
+  THREE_MM_BOOTSTRAP_PACKAGES=(avahi-daemon ca-certificates curl dnsmasq-base network-manager python3 python3-venv util-linux)
+fi
 
 [[ $channel == stable || $channel == beta || $channel == test ]] || \
   fail "channel must be stable, beta or test"
@@ -83,10 +94,15 @@ for command in apt-get hostname python3 sha256sum stat systemctl systemd-run tar
 done
 
 architecture=$(uname -m)
+if [[ $install_profile == node ]]; then
+  [[ $architecture == armv6l ]] || fail "Node profile currently supports Raspberry Pi Zero W ARMv6 only"
+  python3 -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 13) else "Node requires Python 3.13")'
+else
 case "$architecture" in
   aarch64|armv7l|x86_64) ;;
   *) fail "unsupported architecture: $architecture" ;;
 esac
+fi
 
 if [[ -z $frontend_origin ]]; then
   primary_address=$(hostname -I | tr ' ' '\n' | sed '/^$/d' | head -n 1)
@@ -174,14 +190,16 @@ Path(output).write_text(selected["tag_name"] + "\n", encoding="ascii")
 PY
 
 selected_tag=$(<"$selected_tag_file")
-manifest_url="https://github.com/$THREE_MM_REPOSITORY/releases/download/$selected_tag/3mm-update-manifest.json"
+manifest_name=3mm-update-manifest.json
+if [[ $install_profile == node ]]; then manifest_name=3mm-node-manifest.json; fi
+manifest_url="https://github.com/$THREE_MM_REPOSITORY/releases/download/$selected_tag/$manifest_name"
 wget --https-only --secure-protocol=TLSv1_2 --timeout=30 --tries=3 \
   -qO "$manifest" "$manifest_url" || fail "could not download the release manifest"
 
 python3 - \
   "$manifest" "$THREE_MM_REPOSITORY" "$selected_tag" "$channel" "$architecture" \
   "$release_id_file" "$artifact_file_name" "$artifact_url_file" \
-  "$artifact_sha_file" "$artifact_size_file" "$packages_file" <<'PY'
+  "$artifact_sha_file" "$artifact_size_file" "$packages_file" "$install_profile" <<'PY'
 import json
 import re
 import sys
@@ -199,11 +217,14 @@ from pathlib import Path
     sha_file,
     size_file,
     packages_file,
+    install_profile,
 ) = sys.argv[1:]
 payload = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
 
 if payload.get("schema_version") != 1:
     raise SystemExit("Release manifest schema is unsupported")
+if payload.get('profile', 'full') != install_profile:
+    raise SystemExit('Release profile does not match requested installation')
 version = payload.get("version")
 commit = payload.get("commit")
 if (
@@ -225,6 +246,8 @@ matches = (
 if len(matches) != 1:
     raise SystemExit("Release has no unique artifact for this architecture")
 artifact = matches[0]
+if install_profile == 'node' and artifact.get('python') != f'{sys.version_info.major}.{sys.version_info.minor}':
+    raise SystemExit('Node artifact Python version does not match')
 filename = artifact.get("filename")
 url = artifact.get("download_url")
 sha256 = artifact.get("sha256")
@@ -291,11 +314,17 @@ printf '%s  %s\n' "$artifact_sha256" "$archive" | sha256sum --check --status || 
 installer="$stage/install-systemd.sh"
 preflight="$stage/first_boot_preflight.py"
 tar -xOf "$archive" deployment/install-systemd.sh > "$installer"
+if [[ $install_profile == full ]]; then
 tar -xOf "$archive" deployment/first_boot_preflight.py > "$preflight"
 chmod 0700 "$installer" "$preflight"
 
 printf 'Running the read-only first-boot preflight...\n'
 python3 "$preflight"
+else
+  chmod 0700 "$installer"
+  # Dependency/import preflight runs inside the staged Node venv before activation.
+  systemctl is-active --quiet NetworkManager || fail "NetworkManager must be active"
+fi
 
 worker="$stage/run-install.sh"
 cat > "$worker" <<'EOF'
@@ -308,6 +337,7 @@ archive=$3
 release_id=$4
 frontend_origin=$5
 sha256=$6
+profile=$7
 
 cleanup() {
   result=$?
@@ -317,7 +347,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-/usr/bin/bash "$installer" "$archive" "$release_id" "$frontend_origin" "" "$sha256"
+/usr/bin/bash "$installer" "$archive" "$release_id" "$frontend_origin" "" "$sha256" "$profile"
 EOF
 chmod 0700 "$worker"
 
@@ -332,7 +362,7 @@ systemd-run \
   --property=RuntimeMaxSec=45min \
   --property=UMask=0022 \
   /usr/bin/bash "$worker" "$stage" "$installer" "$archive" \
-  "$release_id" "$frontend_origin" "$artifact_sha256"
+  "$release_id" "$frontend_origin" "$artifact_sha256" "$install_profile"
 job_started=1
 
 cat <<EOF

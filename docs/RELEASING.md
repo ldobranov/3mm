@@ -78,6 +78,8 @@ For a tag such as `v0.3.0-beta.9`,
 4. runs all backend and frontend tests, type checking and the production build;
 5. exports the exact Git tree with `git archive`;
 6. builds `aarch64`, `armv7l` and `x86_64` artifacts twice;
+   also prepares a reviewed ARMv6/CPython 3.13 wheelhouse and builds the minimal
+   Node artifact twice from the same tagged checkout and wheelhouse;
 7. rejects the release unless both builds are byte-for-byte identical;
 8. generates the channel-aware manifest and checksums;
 9. uploads every asset to a draft GitHub Release;
@@ -93,12 +95,18 @@ metadata:
 3mm-<version>-armv7l.tar.gz
 3mm-<version>-x86_64.tar.gz
 3mm-update-manifest.json
+3mm-<version>-node-armv6l.tar.gz
+3mm-node-manifest.json
 SHA256SUMS
 ```
 
-Every archive contains the same reviewed source and prebuilt frontend plus
+Every full-profile archive contains the same reviewed source and prebuilt frontend plus
 architecture-specific `.3mm-release.json` metadata. File ordering, ownership,
 permissions and timestamps are normalized using the tagged commit timestamp.
+The Node archive contains only Agent, shared Setup/protocol/recovery and their
+offline wheelhouse. It has a `node` profile marker and Python/architecture
+metadata. Its separate manifest keeps existing Core OTA clients compatible.
+Node assets start with the next Fleet release, not historical beta.19.
 
 ## Dependency boundary
 
@@ -118,11 +126,16 @@ After the workflow succeeds:
 
 1. confirm the GitHub Release is not a draft;
 2. confirm prerelease state matches the selected channel;
-3. confirm all five required assets are present;
+3. confirm all seven required assets are present for Fleet releases;
 4. inspect `3mm-update-manifest.json` for version, tag, commit, channel and
    architecture entries;
 5. confirm `SHA256SUMS` covers every archive and the manifest;
 6. keep the Release immutable after it becomes visible.
+
+For Node, additionally inspect `3mm-node-manifest.json` and the wheelhouse
+provenance. Do not reuse beta.19 for Fleet publication. Follow
+[Node installation](NODE_INSTALLATION.md); clean AP onboarding and Hub pairing
+must not be inferred from a successful Agent-only install/rollback test.
 
 ## Device acceptance
 

@@ -1,0 +1,5 @@
+# Agent + shared setup runtime; no Core ORM, AI or frontend compiler.
+-r ../agent/requirements.txt
+-r ../setup_service/requirements.txt
+# Native GPIO adapter, not a mock substitute on deployed Nodes.
+gpiod==2.5.0; sys_platform == "linux"

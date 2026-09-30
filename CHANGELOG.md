@@ -8,6 +8,26 @@ pre-1.0.
 
 ## [Unreleased]
 
+## [0.3.0-beta.20] - 2026-09-30
+
+### Added
+
+- Minimal Node installation profile for Raspberry Pi Zero W ARMv6 / Python 3.13,
+  selected with `install.sh --profile node`, without Core, database or npm.
+- Separate Node release artifact and manifest, with an offline binary wheelhouse,
+  recorded source/output hashes and reviewed piwheels alias metadata correction.
+- Core-independent network recovery service, immutable activation and rollback.
+- Node-only Setup role selection and rejection of full-runtime roles before any
+  network mutation. Existing full-profile installation remains the default.
+
+### Verified and limits
+
+- 64 focused tests passed. Real installation and an injected post-health failure
+  rollback passed on Zero W with Wi-Fi retained; identity and environment survived.
+- Clean-media phone/AP onboarding is pending. Durable Hub pairing and permanent
+  Node web administration remain separate Fleet stages; installation is not pairing.
+- No concrete business extension, Hub deployment or physical GPIO operation changed.
+
 ## [0.3.0-beta.19] - 2026-09-24
 
 ### Fixed
@@ -557,7 +577,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.19...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.20...HEAD
+[0.3.0-beta.20]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.20
 [0.3.0-beta.19]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.19
 [0.3.0-beta.18]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.18
 [0.3.0-beta.17]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.17

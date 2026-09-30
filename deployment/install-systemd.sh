@@ -5,8 +5,8 @@ if [[ ${EUID} -ne 0 ]]; then
   echo "Run this installer as root." >&2
   exit 1
 fi
-if [[ $# -lt 3 || $# -gt 5 ]]; then
-  echo "Usage: $0 RELEASE_ARCHIVE RELEASE_ID FRONTEND_ORIGIN [IDENTITY_FILE] [ARCHIVE_SHA256]" >&2
+if [[ $# -lt 3 || $# -gt 6 ]]; then
+  echo "Usage: $0 RELEASE_ARCHIVE RELEASE_ID FRONTEND_ORIGIN [IDENTITY_FILE] [ARCHIVE_SHA256] [full|node]" >&2
   exit 1
 fi
 
@@ -21,9 +21,19 @@ frontend_compat_origin=$frontend_scheme://$frontend_host:8080
 device_hostname=$(hostname -s)
 identity_source=${4:-}
 expected_archive_sha256=${5:-}
+install_profile=${6:-full}
+if [[ $install_profile != full && $install_profile != node ]]; then
+  echo "Installation profile must be full or node." >&2
+  exit 1
+fi
+# Node packaging is experimental until clean-install/rollback acceptance.
+if [[ $install_profile == node && -z $expected_archive_sha256 ]]; then
+  echo "Node installation requires an explicit archive SHA-256." >&2
+  exit 1
+fi
 test_fail_after_health=${THREE_MM_INSTALLER_TEST_FAIL_AFTER_HEALTH:-0}
 
-if [[ ! $release_id =~ ^[a-zA-Z0-9._-]+$ ]]; then
+if [[ ! $release_id =~ ^[a-zA-Z0-9._-]+$ || $release_id == . || $release_id == .. ]]; then
   echo "Release ID contains unsupported characters." >&2
   exit 1
 fi
@@ -93,6 +103,11 @@ installed_units=(
   "${always_on_services[@]}"
   3mm-application-extension@.service
 )
+if [[ $install_profile == node ]]; then
+  runtime_services=(3mm-agent.service 3mm-setup.service 3mm-setup-ap.service 3mm-network-helper.service)
+  always_on_services=(3mm-node-recovery.service)
+  installed_units=("${runtime_services[@]}" "${always_on_services[@]}")
+fi
 previous_release=""
 saved_rollback_release=""
 saved_rollback_link=0
@@ -214,6 +229,12 @@ verify_runtime() {
     '3mm-web.service|http://127.0.0.1/user/login'
     '3mm-setup.service|http://127.0.0.1:8895/ready'
   )
+  if [[ $install_profile == node ]]; then
+    checks=(
+      '3mm-agent.service|http://127.0.0.1:8890/ready'
+      '3mm-setup.service|http://127.0.0.1:8895/ready'
+    )
+  fi
   for pair in "${checks[@]}"; do
     service=${pair%%|*}
     endpoint=${pair#*|}
@@ -257,7 +278,11 @@ rollback() {
 
   if [[ $mutation_started -eq 1 ]]; then
     systemctl stop "${runtime_services[@]}" >/dev/null 2>&1 || true
-    restore_database
+    if [[ $install_profile == full ]]; then
+      restore_database
+    else
+      systemctl stop "${always_on_services[@]}" >/dev/null 2>&1 || true
+    fi
     restore_environment
     if [[ -n $previous_release && -d $previous_release ]]; then
       ln -sfnT "$previous_release" "$current_link"
@@ -269,13 +294,24 @@ rollback() {
         fi
       fi
       install_units "$previous_release" 0 || true
-      if [[ -f $previous_release/deployment/systemd/3mm-update-helper.service ]]; then
+      if [[ $install_profile == node || -f $previous_release/deployment/systemd/3mm-update-helper.service ]]; then
         restart_always_on_services || true
       fi
       activate_runtime "$previous_release" || {
         systemctl --no-pager --full status "${runtime_services[@]}" >&2 || true
         echo "Rollback completed, but the previous release is not healthy." >&2
       }
+    elif [[ $install_profile == node ]]; then
+      # Failed first install: do not leave enabled units or a dangling current link.
+      systemctl disable --now "${installed_units[@]}" >/dev/null 2>&1 || true
+      local unit
+      for unit in "${installed_units[@]}"; do
+        rm -f -- "/etc/systemd/system/$unit"
+      done
+      if [[ -L $current_link && $(readlink -f "$current_link") == "$release_dir" ]]; then
+        rm -f -- "$current_link"
+      fi
+      systemctl daemon-reload
     fi
   fi
 
@@ -298,6 +334,14 @@ if [[ -n $previous_release && ! -d $previous_release ]]; then
 fi
 if [[ -n $previous_release ]]; then
   assert_release_path "$previous_release"
+  previous_profile=full
+  if [[ -f $previous_release/.3mm-install-profile ]]; then
+    previous_profile=$(<"$previous_release/.3mm-install-profile")
+  fi
+  if [[ $previous_profile != "$install_profile" ]]; then
+    echo "In-place installation profile changes are not supported." >&2
+    exit 1
+  fi
 fi
 if [[ -L $previous_link ]]; then
   saved_rollback_release=$(readlink -f "$previous_link")
@@ -317,9 +361,22 @@ if [[ -e $release_dir ]]; then
 fi
 assert_release_path "$release_dir"
 
+if [[ $install_profile == node && -z $previous_release ]]; then
+  # Never take ownership of units/state from an unrecognized installation.
+  for unit in "${installed_units[@]}" 3mm-core.service 3mm-web.service 3mm-update-helper.service; do
+    if systemctl cat "$unit" >/dev/null 2>&1; then
+      fail "Existing 3mm unit without a managed Node release: $unit"
+    fi
+  done
+  if [[ -e $current_link || -e $environment_file || -d $core_state ]]; then
+    fail "Existing 3mm state requires a managed migration, not a fresh Node install."
+  fi
+fi
+
 if ! id -u 3mm >/dev/null 2>&1; then
   useradd --system --home-dir "$state_root" --shell /usr/sbin/nologin 3mm
 fi
+if [[ $install_profile == full ]]; then
 if ! getent group 3mm-app >/dev/null 2>&1; then
   groupadd --system 3mm-app
 fi
@@ -328,14 +385,19 @@ if ! id -u 3mm-app >/dev/null 2>&1; then
     --shell /usr/sbin/nologin 3mm-app
 fi
 usermod -a -G 3mm-app 3mm
+fi
 
 install -d -o root -g root -m 0755 "$install_root" "$releases_root" /etc/3mm
+if [[ $install_profile == full ]]; then
 install -d -o root -g root -m 0700 \
   "$deploy_cache_root" "$deploy_home" "$npm_cache"
 # The main service user owns the shared state root. The dedicated application
 # group receives traverse-only access so it can reach its isolated subtree
 # without listing or entering Core, Agent, backup or provisioning state.
 install -d -o 3mm -g 3mm-app -m 0710 "$state_root"
+else
+  install -d -o 3mm -g 3mm -m 0700 "$state_root"
+fi
 install -d -o 3mm -g 3mm -m 0700 "$state_root/agent"
 
 if [[ -n $identity_source && ! -e $state_root/agent/identity.json ]]; then
@@ -388,18 +450,57 @@ required_files=(
   three_mm_runtime/network_recovery.py
   three_mm_provisioning/network_recovery.py
 )
+if [[ $install_profile == node ]]; then
+  required_files=(
+    agent/requirements.txt setup_service/requirements.txt
+    .3mm-install-profile .3mm-release.json deployment/node-wheels/provenance.json
+    deployment/node-requirements.txt deployment/node_preflight.py
+    three_mm_runtime/install_profile.py three_mm_runtime/activate.py
+    three_mm_runtime/node_recovery.py three_mm_runtime/network_recovery.py
+    three_mm_provisioning/network_helper.py three_mm_provisioning/setup_access_point.py
+    setup_service/static/setup.html deployment/systemd/3mm-captive-portal-dnsmasq.conf
+  )
+  for unit in "${installed_units[@]}"; do
+    required_files+=("deployment/systemd/$unit")
+  done
+fi
 for required_file in "${required_files[@]}"; do
   if [[ ! -f $release_dir/$required_file ]]; then
     fail "Release artifact is incomplete: $required_file is required."
   fi
 done
+if [[ $install_profile == full ]]; then
 if [[ ! -d $release_dir/frontend/dist/assets ]] || \
    ! find "$release_dir/frontend/dist/assets" -maxdepth 1 -type f -name '*.js' -print -quit | grep -q .; then
   fail "Frontend artifact is incomplete: dist/assets/*.js is required."
 fi
+fi
+# Profile selection belongs to this immutable release, never to mutable env state.
+if [[ $install_profile == node ]]; then
+  [[ $(<"$release_dir/.3mm-install-profile") == node ]] || fail "Not a Node artifact."
+  python3 - "$release_dir/.3mm-release.json" <<'PY'
+import json, platform, sys
+with open(sys.argv[1]) as source:
+    metadata = json.load(source)
+if (metadata.get('profile') != 'node' or metadata.get('architecture') != platform.machine()
+        or metadata.get('python') != f'{sys.version_info.major}.{sys.version_info.minor}'):
+    raise SystemExit('Node artifact architecture or Python version does not match this host')
+PY
+fi
+printf '%s\n' "$install_profile" > "$release_dir/.3mm-install-profile"
 
 log "Creating the release-specific Python environment"
 python3 -m venv "$release_dir/.venv"
+if [[ $install_profile == node ]]; then
+  "$release_dir/.venv/bin/python" -m pip install --disable-pip-version-check \
+    --no-index --find-links "$release_dir/deployment/node-wheels" \
+    --only-binary=:all: --requirement "$release_dir/deployment/node-requirements.txt"
+  # Fail before stopping services; imports alone cannot validate package metadata.
+  "$release_dir/.venv/bin/python" -m pip check
+  "$release_dir/.venv/bin/python" "$release_dir/deployment/node_preflight.py"
+  PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" -c \
+    'from pathlib import Path; from three_mm_provisioning import FileProvisioningStore; from three_mm_runtime.install_profile import InstallProfile, validate_profile_role; s = FileProvisioningStore(Path("/var/lib/3mm/provisioning")).load(); validate_profile_role(InstallProfile.NODE, s.role if s else None)'
+else
 "$release_dir/.venv/bin/python" -m pip install \
   --disable-pip-version-check \
   --requirement "$release_dir/backend/requirements.txt"
@@ -410,12 +511,16 @@ fi
 HOME="$deploy_home" npm_config_cache="$npm_cache" \
   npm install --prefix "$release_dir/frontend/compiler" \
   --ignore-scripts --no-audit --no-fund
+fi
 
 log "Stopping services and backing up persistent state"
 systemctl stop "${runtime_services[@]}" >/dev/null 2>&1 || true
 mutation_started=1
+if [[ $install_profile == node ]]; then
+  systemctl stop "${always_on_services[@]}" >/dev/null 2>&1 || true
+fi
 install -d -o root -g root -m 0700 "$backup_root"
-if [[ -f $database ]]; then
+if [[ $install_profile == full && -f $database ]]; then
   "$release_dir/.venv/bin/python" - "$database" "$backup_root/3mm.db" <<'PY'
 import sqlite3
 import sys
@@ -453,6 +558,7 @@ upsert_environment() {
   printf '%s=%s\n' "$key" "$value" >> "$next_file"
   mv "$next_file" "$environment_tmp"
 }
+if [[ $install_profile == full ]]; then
 upsert_environment DATABASE_URL sqlite:////var/lib/3mm/core/3mm.db
 upsert_environment UPLOADS_DIR /var/lib/3mm/core/uploads
 upsert_environment BACKEND_EXTENSIONS_DIR /var/lib/3mm/core/extensions/backend
@@ -528,11 +634,33 @@ install -d -o root -g 3mm-app -m 0750 \
   /etc/3mm/application-extensions
 install -d -o 3mm -g 3mm-app -m 0750 \
   "$state_root/application-extensions/platform"
+else
+  upsert_environment THREE_MM_AGENT_HOST 127.0.0.1
+  upsert_environment THREE_MM_AGENT_PORT 8890
+  upsert_environment THREE_MM_AGENT_ROLE node
+  upsert_environment THREE_MM_AGENT_DATA_DIR /var/lib/3mm/agent
+  upsert_environment THREE_MM_AGENT_HARDWARE_PROFILE native
+  upsert_environment THREE_MM_PROVISIONING_DATA_DIR /var/lib/3mm/provisioning
+  upsert_environment THREE_MM_SETUP_HOST 0.0.0.0
+  upsert_environment THREE_MM_SETUP_PORT 8895
+  # Keep a configured Hub URL/driver on upgrades; never invent a mock reader.
+  if [[ $environment_backup_created -eq 0 ]]; then
+    upsert_environment THREE_MM_IDENTIFIER_DRIVER disabled
+    upsert_environment THREE_MM_GPIO_DRIVER mock
+  fi
+  install -o root -g 3mm -m 0640 "$environment_tmp" "$environment_file"
+  rm -f -- "$environment_tmp"
+  install -d -o 3mm -g 3mm -m 0750 "$state_root/provisioning"
+  install -d -o root -g root -m 0755 /etc/NetworkManager/dnsmasq-shared.d
+fi
 
-log "Installing service definitions and migrating the database"
+log "Installing service definitions"
+if [[ $install_profile == full ]]; then
 PYTHONPATH="$release_dir" \
   "$release_dir/.venv/bin/python" -m deployment.prepare_backup_storage
+fi
 install_units "$release_dir"
+if [[ $install_profile == full ]]; then
 runuser -u 3mm -- env \
   DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db \
   UPLOADS_DIR=/var/lib/3mm/core/uploads \
@@ -548,6 +676,7 @@ if [[ $database_existed_before_deploy -eq 0 ]]; then
     PYTHONPATH="$release_dir" \
     "$release_dir/.venv/bin/python" -m backend.scripts.bootstrap_admin \
       --create-development-default-if-empty
+fi
 fi
 
 log "Activating release atomically"

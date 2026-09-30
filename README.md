@@ -9,9 +9,10 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current release is
-> [v0.3.0-beta.19](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.19),
-> which stops forcing Automations and System updates into the main menu while
-> preserving their routes and administrator access checks. Hardware adapters and physical
+> [v0.3.0-beta.20](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.20),
+> which adds the minimal ARMv6 Node installer and offline runtime packages.
+> Node install/rollback passed with existing Wi-Fi retained; clean-media AP
+> onboarding and Fleet pairing remain pending. Hardware adapters and physical
 > acceptance remain separate work; no exactly-once physical effect is claimed.
 > Physical Raspberry acceptance of this revision remains pending. The project is not
 > yet presented as production-hardened.
@@ -169,6 +170,24 @@ dependencies, verifies its size and SHA-256 digest, runs the read-only host
 preflight and starts the immutable installer as a detached systemd job. This
 allows installation over Wi-Fi: the SSH session is expected to close only when
 the device switches to its open `3mm Setup XXXX` access point.
+
+### Minimal Node / Raspberry Pi Zero W
+
+Fleet beta.20 adds a minimal Node profile for **Zero W ARMv6 with
+Raspbian 13 / Python 3.13**. It installs Agent and shared Setup/recovery, not Core,
+the application database or npm. After a release containing Node assets is published:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --profile node
+```
+
+This command is **not available in beta.19 or earlier**. It requires
+the new bootstrap and `3mm-node-manifest.json` release asset. Other Node
+architectures/Python versions are rejected rather than compiling on-device.
+The fresh-install Setup AP changes Wi-Fi and may disconnect SSH. Setup only
+offers the Node role. Hub pairing UI and a permanent Node administration page
+are separate Fleet stages; installing this profile does not enroll it automatically.
+See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 Use `--tag` for a reproducible exact release, for example by appending
 `-s -- --tag v0.3.0-beta.11` after `sudo bash`. The Raspberry host password is

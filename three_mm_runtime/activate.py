@@ -7,6 +7,7 @@ from pathlib import Path
 
 from three_mm_provisioning import FileNetworkRecoveryMarker, FileProvisioningStore
 from three_mm_runtime.services import DeviceRuntimePlanner, RuntimeService
+from three_mm_runtime.install_profile import InstallProfile, read_install_profile, validate_profile_role
 
 UNIT_NAMES = {
     RuntimeService.CORE: "3mm-core.service",
@@ -64,7 +65,12 @@ def activate(data_dir: Path = Path("/var/lib/3mm/provisioning")) -> None:
         FileProvisioningStore(data_dir),
         FileNetworkRecoveryMarker(data_dir / "network-recovery.json"),
     ).resolve()
-    application_units = tuple(UNIT_NAMES.values())
+    profile = read_install_profile(RELEASE_ROOT)
+    validate_profile_role(profile, plan.role)
+    application_units = (
+        (UNIT_NAMES[RuntimeService.AGENT],)
+        if profile is InstallProfile.NODE else tuple(UNIT_NAMES.values())
+    )
     if plan.includes(RuntimeService.SETUP):
         _systemctl("disable", "--now", *application_units)
         _systemctl("enable", "--now", *SETUP_UNITS)

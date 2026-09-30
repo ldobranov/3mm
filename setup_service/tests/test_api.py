@@ -365,6 +365,24 @@ def test_first_boot_setup_prefill_is_empty(store) -> None:
     }
 
 
+@pytest.mark.parametrize('role', ['standalone', 'hub'])
+def test_node_install_rejects_full_roles_before_network_mutation(monkeypatch, configuration, store, role):
+    from setup_service import main
+    from three_mm_runtime.install_profile import InstallProfile
+    monkeypatch.setattr(main, 'read_install_profile', lambda _: InstallProfile.NODE)
+    adapter = MockNetworkAdapter()
+    configuration['role'] = role
+    with TestClient(create_app(adapter, store)) as client:
+        before = list(adapter.calls)
+        page = client.get('/setup').text
+        assert 'value="standalone"' not in page and 'value="hub"' not in page
+        assert 'value="node"' in page
+        response = client.post('/api/v1/setup/configure', json=configuration)
+        assert response.status_code == 422
+        assert adapter.calls == before
+        assert store.snapshot is None
+
+
 def test_successful_recovery_replaces_snapshot_and_clears_marker(
     configuration, tmp_path
 ):
