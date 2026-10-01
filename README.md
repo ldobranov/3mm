@@ -9,12 +9,10 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current release is
-> [v0.3.0-beta.24](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.24),
-> which adds persistent GPIO output configuration for the optional Fleet 0.1.6
-> extension. Zero W enrollment, inventory and an environment-configured GPIO17
-> LED test passed. The new configuration flow and its restart/offline matrix
-> still require physical acceptance; no exactly-once physical effect is claimed.
-> The project is not yet presented as production-hardened.
+> [v0.3.0-beta.26](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.26),
+> which adds signed administrator-approved Node OTA installation, pinned Hub trust,
+> durable final installation reporting and rollback/unknown outcome handling.
+> Fleet 0.1.7 provides the administrator UI for this Core-owned OTA workflow.
 
 ## What works
 
@@ -193,11 +191,14 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 After the new GitHub Release is fully published, update the Hub through
 `/system/updates` using the Beta channel. Update the Zero over SSH with the same
-Node bootstrap command above; add `--tag v0.3.0-beta.24` to select this exact
+Node bootstrap command above; add `--tag v0.3.0-beta.26` to select the published
 release. Provisioned upgrades preserve identity and pairing, not Master reset.
-Then upload Fleet `0.1.6` on the Hub through Extensions. Updating the Fleet ZIP
+Then upload Fleet `0.1.7` on the Hub through Extensions. Updating the Fleet ZIP
 alone does not update Core or the Zero Agent. Follow the
 [GPIO configuration guide](docs/FLEET_GPIO_CONFIGURATION.md) before enabling outputs.
+The signed Node OTA path requires an explicit one-time Hub key trust bootstrap;
+see [Node update scope and acceptance](docs/FLEET_NODE_OTA.md). Fleet 0.1.7
+exposes prepare and explicit install controls, while Core remains the source of truth.
 
 Use `--tag` for a reproducible exact release, for example by appending
 `-s -- --tag v0.3.0-beta.11` after `sudo bash`. The Raspberry host password is
@@ -287,6 +288,7 @@ See the [changelog](CHANGELOG.md) for user-visible changes and the
 | [OTA update plan](docs/OTA_UPDATE_PLAN.md) | Update architecture and acceptance stages |
 | [Release guide](docs/RELEASING.md) | Versioning, publication and verification |
 | [Fleet GPIO configuration](docs/FLEET_GPIO_CONFIGURATION.md) | Compatible updates and one safe output without SSH |
+| [Fleet Node OTA](docs/FLEET_NODE_OTA.md) | Signed Hub approval, Node trust and independent installation outcomes |
 | [Fleet business plan](docs/FLEET_BUSINESS_PLAN.md) | Local-first delivery before optional cloud and paid functions |
 
 Milestone reports in `docs/MILESTONE_*_REPORT.md` retain the detailed

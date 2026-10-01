@@ -1,5 +1,6 @@
 """Root boundary checks without root privileges, hardware or subprocesses."""
 from datetime import UTC, datetime, timedelta
+import base64
 import hashlib
 import io
 import os
@@ -12,6 +13,7 @@ import pytest
 
 from three_mm_protocol.node_updates import (
     NodeUpdateApplyRequest,
+    NodeUpdateAuthorization,
     NodeUpdatePrepareRequest,
 )
 from three_mm_runtime import node_update_helper as module
@@ -35,7 +37,8 @@ def request(number=1, **changes):
 def envelope(value):
     return {
         "action": "apply",
-        "request": value.model_dump(mode="json"),
+        "request": NodeUpdateAuthorization(request=value, key_id="a" * 64,
+            signature=base64.b64encode(b"s" * 64).decode()).model_dump(mode="json"),
     }
 
 
@@ -73,6 +76,7 @@ def boundary(tmp_path):
         store,
         service_uid=1000,
         scheduler=scheduler,
+        authorization_verifier=lambda _: None,
         validator=lambda value: validated.append(
             value.operation_id
         ),
@@ -107,6 +111,7 @@ def test_durable_acceptance_replay_conflict_and_active_serialization(
         ),
         service_uid=1000,
         scheduler=scheduler,
+        authorization_verifier=lambda _: pytest.fail("replay reverified"),
         validator=lambda _: pytest.fail(
             "replay revalidated"
         ),

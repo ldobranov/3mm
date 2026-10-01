@@ -6,7 +6,45 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
-## [Unreleased]
+## [0.3.0-beta.26] - 2026-10-01
+
+### Added
+
+- Explicit administrator-approved Node runtime apply with a short-lived,
+  device/operation/release/hash-bound Ed25519 Hub authorization. The privileged
+  helper and detached worker verify independently pinned root trust before execution.
+- Root-only one-time Hub key/device binding bootstrap, no silent key replacement,
+  and signed-helper readiness reported to Core before remote apply is permitted.
+- Durable Agent tracking and independent authenticated final installation reports,
+  distinct from successful command handoff. Restart/offline reporting never
+  repeats installation; unknown outcomes block further updates.
+- Node OS OpenSSL prerequisite and trust files/tools in the minimal artifact,
+  without adding Core or native cryptography Python dependencies to Zero.
+
+### Compatibility and limits
+
+- No database migration; existing command JSON retains handoff and outcome
+  separately. Existing prepare/status APIs remain compatible.
+- Both Hub and Node need a newly published signed-path bootstrap release and an
+  explicitly verified Hub key pin. Beta.25 alone does not implement signed apply.
+- No deployment, Fleet OTA UI or physical OTA acceptance is claimed by this change.
+
+## [0.3.0-beta.25] - 2026-10-01
+
+### Added
+
+- Separate root Node update helper, bounded root staging and detached immutable
+  installer worker with durable success/rollback/unknown outcomes.
+- Official Node catalog and verified Hub staging, authenticated per-device archive
+  delivery, Agent prepare command and persistent prepare status.
+- ARMv6 Node helper packaged alongside full Hub assets in the published release.
+
+### Limits
+
+- Prepare/execution foundation only: no signed Hub apply authorization, remote
+  apply/final-report integration or Fleet OTA UI in this published version.
+- Physical Node OTA acceptance remains pending; bootstrap publication is not proof
+  that a real device was updated successfully.
 
 ## [0.3.0-beta.24] - 2026-09-30
 
@@ -612,7 +650,9 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.24...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.26...HEAD
+[0.3.0-beta.26]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.26
+[0.3.0-beta.25]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.25
 [0.3.0-beta.24]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.24
 [0.3.0-beta.21]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.21
 [0.3.0-beta.19]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.19

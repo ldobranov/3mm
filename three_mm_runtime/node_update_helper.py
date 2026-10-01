@@ -27,9 +27,11 @@ import shutil
 from pydantic import ValidationError
 from three_mm_protocol.node_updates import (
     NodeUpdateApplyRequest,
+    NodeUpdateAuthorization,
     NodeUpdateOperation,
     NodeUpdatePrepareRequest,
     NodeUpdatePreparedArtifact,
+    NodeUpdateSupport,
 )
 
 STATE_ROOT = Path("/var/lib/3mm-node-update")
@@ -45,10 +47,11 @@ MAX_OPERATIONS = 128
 ACTIVE_STATES = {"accepted", "running", "unknown"}
 REQUIRED_FILES = {
     ".3mm-release.json", ".3mm-install-profile", "VERSION",
-    "agent/main.py", "agent/requirements.txt", "setup_service/main.py",
+    "agent/main.py", "agent/requirements.txt", "agent/node_update_execution.py", "setup_service/main.py",
     "deployment/install-systemd.sh", "deployment/node-requirements.txt",
     "deployment/node_preflight.py", "deployment/node-wheels/provenance.json",
     "deployment/apply_node_update.py", "three_mm_runtime/node_update_helper.py",
+    "deployment/trust_node_update_hub.py", "three_mm_runtime/node_update_trust.py",
     "three_mm_protocol/node_updates.py", "deployment/systemd/3mm-node-update-helper.service",
 }
 
@@ -60,7 +63,7 @@ class NodeUpdateError(RuntimeError):
 
 
 def unit_name(operation_id: str) -> str:
-    if not re.fullmatch(r"nodeupd_[0-9a-f]{32}", operation_id):
+    if not isinstance(operation_id, str) or not re.fullmatch(r"nodeupd_[0-9a-f]{32}", operation_id):
         raise NodeUpdateError("invalid_request", "Invalid operation identity")
     return "3mm-node-update-" + operation_id.removeprefix("nodeupd_") + ".service"
 
@@ -93,7 +96,7 @@ def read_small(path: Path, limit=64 * 1024) -> bytes:
     return value
 
 
-def request_digest(request: NodeUpdateApplyRequest) -> str:
+def request_digest(request: NodeUpdateApplyRequest | NodeUpdateAuthorization) -> str:
     return hashlib.sha256(json.dumps(request.model_dump(mode="json"),
         sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
@@ -134,15 +137,20 @@ class NodeUpdateStore:
             if not isinstance(raw, dict):
                 raise ValueError("record must be an object")
             request = NodeUpdateApplyRequest.model_validate_json(json.dumps(raw["request"]))
+            # Legacy unsigned records remain observable, never executable.
+            authorization = (NodeUpdateAuthorization.model_validate_json(json.dumps(raw["authorization"]))
+                             if raw.get("authorization") is not None else None)
             operation = NodeUpdateOperation.model_validate_json(json.dumps(raw["operation"]))
             if (request.operation_id != operation_id or operation.operation_id != operation_id
                     or any(getattr(request, field) != getattr(operation, field)
                            for field in ("device_id", "release_id", "archive_sha256"))
-                    or raw["digest"] != request_digest(request)):
+                    or (authorization is not None and authorization.request != request)
+                    or raw["digest"] != request_digest(authorization or request)):
                 raise ValueError("record identity mismatch")
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
             raise NodeUpdateError("invalid_state", "Node update operation record is invalid") from exc
-        return {"request": request, "operation": operation, "digest": raw["digest"]}
+        return {"request": request, "authorization": authorization,
+                "operation": operation, "digest": raw["digest"]}
 
     def records(self):
         return [self.read(path.stem) for path in sorted((self.root / "operations").glob("*.json"))]
@@ -154,6 +162,8 @@ class NodeUpdateStore:
         trusted_path(directory, directory=True, permissions=self.enforce_permissions)
         temporary = directory / (".status-" + uuid.uuid4().hex)
         payload = json.dumps({"request": record["request"].model_dump(mode="json"),
+            "authorization": (record["authorization"].model_dump(mode="json")
+                              if record.get("authorization") is not None else None),
             "operation": operation.model_dump(mode="json"), "digest": record["digest"]}, sort_keys=True).encode()
         descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         try:
@@ -514,10 +524,13 @@ class SubprocessNodeUpdateScheduler:
 
 
 class NodeUpdateHelper:
-    def __init__(self, store, *, service_uid, scheduler=None, validator=None):
+    def __init__(self, store, *, service_uid, scheduler=None, validator=None, authorization_verifier=None):
         self.store, self.service_uid = store, service_uid
         self.scheduler = scheduler or SubprocessNodeUpdateScheduler()
         self.validator = validator or (lambda request: inspect_prepared_archive(request, store=store))
+        from three_mm_runtime.node_update_trust import verify_node_update_authorization
+        self.authorization_verifier = authorization_verifier or (
+            lambda authorization: verify_node_update_authorization(authorization, state_root=store.root))
 
     def _reconcile(self, record):
         if (record["operation"].status in {"accepted", "running"}
@@ -531,8 +544,25 @@ class NodeUpdateHelper:
         try:
             if not isinstance(payload, dict):
                 raise NodeUpdateError("invalid_request", "Invalid request envelope")
-            if payload == {"action": "status"}:
+            if payload == {"action": "support"}:
+                from three_mm_runtime.node_update_trust import read_node_update_trust
+                try:
+                    trust = read_node_update_trust()
+                except NodeUpdateError as exc:
+                    if exc.code != "hub_trust_missing":
+                        raise
+                    trust = None
+                support = NodeUpdateSupport(signed_apply_supported=True,
+                    approval_key_id=trust.hub_key.key_id if trust else None,
+                    trusted_device_id=trust.device_id if trust else None)
+                return {"ok": True, "support": support.model_dump(mode="json")}
+            if (payload.get("action") == "status"
+                    and set(payload) in ({"action"}, {"action", "operation_id"})):
                 with self.store.locked():
+                    if "operation_id" in payload:
+                        record = self.store.read(payload["operation_id"])
+                        operation = self._reconcile(record) if record else None
+                        return {"ok": True, "operation": operation.model_dump(mode="json") if operation else None}
                     records = self.store.records()
                     for record in records:
                         self._reconcile(record)
@@ -558,11 +588,12 @@ class NodeUpdateHelper:
                 }
             if set(payload) != {"action", "request"} or payload["action"] != "apply":
                 raise NodeUpdateError("invalid_request", "Unsupported Node update action")
-            request = NodeUpdateApplyRequest.model_validate_json(json.dumps(payload["request"]))
+            authorization = NodeUpdateAuthorization.model_validate_json(json.dumps(payload["request"]))
+            request = authorization.request
             with self.store.locked():
                 existing = self.store.read(request.operation_id)
                 if existing:
-                    if existing["digest"] != request_digest(request):
+                    if existing["digest"] != request_digest(authorization):
                         raise NodeUpdateError("identity_conflict", "Operation identity has different content")
                     operation = self._reconcile(existing)
                     return {"ok": True, "operation": operation.model_dump(mode="json")}
@@ -572,11 +603,13 @@ class NodeUpdateHelper:
                         raise NodeUpdateError("update_busy", "Another Node update needs completion or recovery")
                 if len(records) >= MAX_OPERATIONS:
                     raise NodeUpdateError("history_full", "Root must reconcile/prune the bounded operation history")
+                self.authorization_verifier(authorization)
                 self.validator(request)
                 operation = NodeUpdateOperation(operation_id=request.operation_id, device_id=request.device_id,
                     release_id=request.release_id, archive_sha256=request.archive_sha256,
                     status="accepted", updated_at=datetime.now(UTC))
-                record = {"request": request, "operation": operation, "digest": request_digest(request)}
+                record = {"request": request, "authorization": authorization,
+                          "operation": operation, "digest": request_digest(authorization)}
                 self.store.write(record)
                 try:
                     self.scheduler.schedule(request.operation_id)

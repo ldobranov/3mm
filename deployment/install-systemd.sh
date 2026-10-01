@@ -465,7 +465,9 @@ if [[ $install_profile == node ]]; then
     three_mm_runtime/install_profile.py three_mm_runtime/activate.py
     three_mm_runtime/node_recovery.py three_mm_runtime/network_recovery.py
     three_mm_runtime/node_update_helper.py deployment/apply_node_update.py
+    three_mm_runtime/node_update_trust.py deployment/trust_node_update_hub.py
     three_mm_protocol/node_updates.py agent/node_update_client.py
+    agent/node_update_execution.py
     three_mm_provisioning/network_helper.py three_mm_provisioning/setup_access_point.py
     setup_service/static/setup.html deployment/systemd/3mm-captive-portal-dnsmasq.conf
   )

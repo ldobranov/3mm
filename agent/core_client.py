@@ -19,6 +19,8 @@ from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
 from agent.automation_store import AutomationStore, StoredAutomation
 from agent.physical_command_journal import PhysicalCommandFailure, PhysicalCommandJournal
 from agent.node_update_transport import NodeUpdateTransport, NodeUpdateTransportError
+from agent.node_update_client import NodeUpdateHelperError
+from agent.node_update_execution import NodeUpdateExecution
 from three_mm_protocol.node_updates import NodeUpdatePrepareRequest
 from three_mm_protocol.passage import PassageEventV1
 
@@ -195,6 +197,7 @@ class CorePublisher:
     automation_store: AutomationStore | None = None
     gpio_configuration: object | None = None
     node_update_transport: NodeUpdateTransport | None = None
+    node_update_execution: NodeUpdateExecution | None = None
     interval_seconds: int = 30
     _stop: threading.Event = field(init=False, repr=False)
     _thread: threading.Thread | None = field(init=False, default=None, repr=False)
@@ -340,6 +343,27 @@ class CorePublisher:
                 f"capability-state:{capability_id}",
             )
 
+    def _node_execution(self) -> NodeUpdateExecution | None:
+        if self.node_update_execution is None and self.node_update_transport is not None:
+            self.node_update_execution = NodeUpdateExecution(
+                data_dir=self.command_journal.path.parent,
+                device_id=self.credential.device_id,
+                helper=self.node_update_transport.helper,
+            )
+        return self.node_update_execution
+
+    def _node_update_support(self) -> dict | None:
+        execution = self._node_execution()
+        if execution is None:
+            return None
+        try:
+            support = execution.helper.support()
+            if support.trusted_device_id not in (None, self.credential.device_id):
+                raise NodeUpdateHelperError("node_update_device_mismatch")
+            return support.model_dump(mode="json")
+        except NodeUpdateHelperError:
+            return {"schema_version": 1, "signed_apply_supported": False}
+
     def _poll_command(self, *, wait_seconds: float = 0.0) -> None:
         response = requests.get(
             f"{self.core_url}/api/v1/devices/{self.credential.device_id}/commands/next",
@@ -463,6 +487,22 @@ class CorePublisher:
                     completed_at=datetime.now(UTC),
                     error=str(exc),
                 )        
+        elif command.command_type == "agent.update.apply" and self._node_execution() is not None:
+            try:
+                operation = self.node_update_execution.apply(command)
+                result = AgentCommandResult(
+                    command_id=command.command_id, device_id=self.credential.device_id,
+                    status="succeeded", completed_at=datetime.now(UTC),
+                    output={"operation_id": operation.operation_id,
+                            "release_id": operation.release_id,
+                            "archive_sha256": operation.archive_sha256,
+                            "handoff_status": operation.status},
+                )
+            except (NodeUpdateHelperError, ValidationError, OSError) as exc:
+                result = AgentCommandResult(
+                    command_id=command.command_id, device_id=self.credential.device_id,
+                    status="failed", completed_at=datetime.now(UTC), error=str(exc),
+                )
         elif command.command_type in {"automation.apply", "automation.remove"} and self.automation_store is not None:
             try:
                 if command.command_type == "automation.apply":
@@ -535,12 +575,17 @@ class CorePublisher:
         desired = DeviceDesiredState.model_validate(response.json())
         current = self.reconciliation_store.load()
         if desired.revision <= current.applied_revision:
-            if self.gpio_configuration is not None:
+            node_update_support = self._node_update_support()
+            if self.gpio_configuration is not None or node_update_support is not None:
+                state = {"inventory_generation": current.inventory_generation}
+                if self.gpio_configuration is not None:
+                    state["gpio_configuration"] = self.gpio_configuration.describe(self.module_runtime)
+                if node_update_support is not None:
+                    state["node_update"] = node_update_support
                 self._send_or_queue("reported-state", AgentReportedState(
                     device_id=self.credential.device_id, desired_revision=desired.revision,
                     applied_revision=current.applied_revision, reported_at=datetime.now(UTC),
-                    state={"inventory_generation": current.inventory_generation,
-                           "gpio_configuration": self.gpio_configuration.describe(self.module_runtime)},
+                    state=state,
                 ).model_dump(mode="json"), "reported-state")
             return
         supported_keys = {"inventory_generation"}
@@ -575,6 +620,9 @@ class CorePublisher:
         if self.gpio_configuration is not None:
             reported = reported.model_copy(update={"state": {
                 **reported.state, "gpio_configuration": self.gpio_configuration.describe(self.module_runtime)}})
+        node_update_support = self._node_update_support()
+        if node_update_support is not None:
+            reported = reported.model_copy(update={"state": {**reported.state, "node_update": node_update_support}})
         self._send_or_queue("reported-state", reported.model_dump(mode="json"), "reported-state")
 
     def _run(self) -> None:
@@ -584,6 +632,12 @@ class CorePublisher:
                 self._flush_outbox()
             except RuntimeError as exc:
                 logger.warning("Agent outbox flush failed: %s", exc)
+            try:
+                execution = self._node_execution()
+                if execution is not None:
+                    execution.report_pending(self._post)
+            except (requests.RequestException, NodeUpdateHelperError, ValidationError, OSError) as exc:
+                logger.warning("Core Node update outcome publish failed: %s", exc)
             if not inventory_published:
                 try:
                     self._publish_inventory()

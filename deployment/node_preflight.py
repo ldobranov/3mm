@@ -11,12 +11,12 @@ import sys
 from pathlib import Path
 
 
-NODE_COMMANDS = ("bash", "python3", "systemctl", "nmcli", "tar", "flock", "curl", "dnsmasq")
+NODE_COMMANDS = ("bash", "python3", "systemctl", "nmcli", "tar", "flock", "curl", "dnsmasq", "openssl")
 NODE_IMPORTS = (
     "requests", "pydantic", "fastapi", "uvicorn", "gpiod",
     "agent.main", "setup_service.main", "three_mm_provisioning.network_helper",
     "three_mm_runtime.activate", "three_mm_runtime.network_recovery",
-    "three_mm_runtime.node_recovery", "three_mm_runtime.node_update_helper",
+    "three_mm_runtime.node_recovery", "three_mm_runtime.node_update_helper", "three_mm_runtime.node_update_trust",
 )
 
 

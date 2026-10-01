@@ -24,12 +24,15 @@ def test_node_update_files_are_in_minimal_reproducible_archive(tmp_path):
     kwargs = dict(version=(ROOT / "VERSION").read_text().strip(), commit="a" * 40,
                   repository="example/3mm", epoch=1700000000)
     first = build(ROOT, wheels, tmp_path / "first", **kwargs)
+    assert "openssl" in first["dependencies"]["apt_packages"]
     assert build(ROOT, wheels, tmp_path / "second", **kwargs) == first
     with tarfile.open(tmp_path / "first" / first["artifacts"][0]["filename"]) as archive:
         names = set(archive.getnames())
         assert {
             "agent/node_update_client.py", "three_mm_protocol/node_updates.py",
+            "agent/node_update_execution.py",
             "three_mm_runtime/node_update_helper.py", "deployment/apply_node_update.py",
+            "three_mm_runtime/node_update_trust.py", "deployment/trust_node_update_hub.py",
             "deployment/systemd/3mm-node-update-helper.service",
         } <= names
         assert not any(name.startswith(("backend/", "frontend/")) for name in names)

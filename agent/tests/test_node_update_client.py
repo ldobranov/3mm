@@ -1,9 +1,10 @@
+import base64
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from agent.node_update_client import NodeUpdateClient, NodeUpdateHelperError
-from three_mm_protocol.node_updates import NodeUpdateApplyRequest, NodeUpdateOperation
+from three_mm_protocol.node_updates import NodeUpdateApplyRequest, NodeUpdateAuthorization, NodeUpdateOperation
 
 
 def test_node_update_client_does_not_call_installer_and_checks_identity(monkeypatch):
@@ -18,19 +19,32 @@ def test_node_update_client_does_not_call_installer_and_checks_identity(monkeypa
         status="accepted", updated_at=now,
     )
     sent = []
+    authorization = NodeUpdateAuthorization(
+        request=request, key_id="d" * 64, signature=base64.b64encode(b"s" * 64).decode(),
+    )
     client = NodeUpdateClient()
     monkeypatch.setattr(client, "_request", lambda payload: sent.append(payload) or operation)
-    assert client.apply(request).status == "accepted"  # Not completed installation.
+    assert client.apply(authorization).status == "accepted"  # Not completed installation.
     assert sent[0]["action"] == "apply"
-    assert sent[0]["request"]["expires_at"] == request.model_dump(mode="json")["expires_at"]
+    assert sent[0]["request"] == authorization.model_dump(mode="json")
     monkeypatch.setattr(client, "_request", lambda _: operation.model_copy(update={"device_id": "dev_" + "e" * 32}))
     with pytest.raises(NodeUpdateHelperError, match="invalid_helper_operation"):
-        client.apply(request)
+        client.apply(authorization)
 
 
 def test_missing_helper_does_not_claim_success(tmp_path):
     with pytest.raises(NodeUpdateHelperError):
         NodeUpdateClient(tmp_path / "missing.sock").status()
+
+
+def test_status_selects_exact_operation_and_rejects_wrong_identity(monkeypatch):
+    client = NodeUpdateClient()
+    sent = []
+    monkeypatch.setattr(client, "_request", lambda payload: sent.append(payload))
+    assert client.status("nodeupd_" + "a" * 32) is None
+    assert sent == [{"action": "status", "operation_id": "nodeupd_" + "a" * 32}]
+    with pytest.raises(NodeUpdateHelperError, match="invalid_operation_id"):
+        client.status("../escape")
 
 
 def test_prepare_checks_root_prepared_identity(monkeypatch):

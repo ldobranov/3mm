@@ -6,10 +6,11 @@ import socket
 from pathlib import Path
 
 from three_mm_protocol.node_updates import (
-    NodeUpdateApplyRequest,
+    NodeUpdateAuthorization,
     NodeUpdateOperation,
     NodeUpdatePrepareRequest,
     NodeUpdatePreparedArtifact,
+    NodeUpdateSupport,
 )
 
 SOCKET_PATH = Path("/run/3mm-node-update/helper.sock")
@@ -58,8 +59,9 @@ class NodeUpdateClient:
 
         return prepared
     
-    def apply(self, request: NodeUpdateApplyRequest) -> NodeUpdateOperation:
-        operation = self._request({"action": "apply", "request": request.model_dump(mode="json")})
+    def apply(self, authorization: NodeUpdateAuthorization) -> NodeUpdateOperation:
+        request = authorization.request
+        operation = self._request({"action": "apply", "request": authorization.model_dump(mode="json")})
         if operation is None or any(
             getattr(operation, field) != getattr(request, field)
             for field in ("operation_id", "device_id", "release_id", "archive_sha256")
@@ -67,8 +69,22 @@ class NodeUpdateClient:
             raise NodeUpdateHelperError("invalid_helper_operation")
         return operation
 
-    def status(self) -> NodeUpdateOperation | None:
-        return self._request({"action": "status"})
+    def status(self, operation_id: str | None = None) -> NodeUpdateOperation | None:
+        if operation_id is not None and not re.fullmatch(r"nodeupd_[0-9a-f]{32}", operation_id):
+            raise NodeUpdateHelperError("invalid_operation_id")
+        payload = {"action": "status"}
+        if operation_id is not None:
+            payload["operation_id"] = operation_id
+        operation = self._request(payload)
+        if operation is not None and operation_id is not None and operation.operation_id != operation_id:
+            raise NodeUpdateHelperError("invalid_helper_operation")
+        return operation
+
+    def support(self) -> NodeUpdateSupport:
+        try:
+            return NodeUpdateSupport.model_validate(self._exchange({"action": "support"})["support"])
+        except (ValueError, KeyError) as exc:
+            raise NodeUpdateHelperError("invalid_helper_support") from exc
 
     def _request(
         self,

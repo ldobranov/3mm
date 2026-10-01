@@ -11,10 +11,27 @@ from sqlalchemy.orm import Session
 from backend.db.device import Device, DeviceCommand
 from backend.services.device_command_notifier import device_command_notifier
 from three_mm_protocol import AgentCommand, AgentCommandResult
+from three_mm_protocol.node_updates import NodeUpdateOperation
+
+
+NODE_UPDATE_TERMINAL_OUTCOMES = frozenset({"succeeded", "rolled_back", "failed"})
+NODE_MUTATION_COMMAND_TYPES = frozenset({
+    "gpio.write", "gpio.pulse", "capability.invoke", "application.capability.invoke",
+    "agent.gpio.configure", "module.install", "module.disable",
+})
 
 
 class DeviceCommandError(RuntimeError):
     pass
+
+
+def node_update_is_terminal(command: DeviceCommand) -> bool:
+    """Only an independent validated operation report releases the OTA gate."""
+    try:
+        operation = NodeUpdateOperation.model_validate((command.result or {})["operation"])
+        return operation.status in NODE_UPDATE_TERMINAL_OUTCOMES
+    except (ValueError, TypeError, KeyError):
+        return False
 
 
 def _utc(value: datetime) -> datetime:
@@ -36,6 +53,11 @@ def queue_command(
         raise DeviceCommandError("Device is revoked")
     if not_after is not None and not_after.utcoffset() is None:
         raise DeviceCommandError('Command deadline requires a timezone')
+    guarded_node_mutation = device.role == "node" and command_type in NODE_MUTATION_COMMAND_TYPES
+    if device.role == "node" and (guarded_node_mutation or command_type == "agent.update.apply"):
+        # The same device row lock is used by OTA approval. This is also a
+        # SQLite writer lock, serializing physical/config changes against OTA.
+        db.execute(update(Device).where(Device.id == device.id).values(updated_at=Device.updated_at))
     existing = db.scalar(
         select(DeviceCommand).where(
             DeviceCommand.device_id == device.id,
@@ -46,6 +68,14 @@ def queue_command(
         if existing.command_type != command_type or existing.payload != payload:
             raise DeviceCommandError('Command idempotency key has different content')
         return existing
+    if guarded_node_mutation and any(
+        not node_update_is_terminal(operation)
+        for operation in db.scalars(select(DeviceCommand).where(
+            DeviceCommand.device_id == device.id,
+            DeviceCommand.command_type == "agent.update.apply",
+        ))
+    ):
+        raise DeviceCommandError("Node update is pending or unconfirmed; device mutations are paused")
     created_at = now or datetime.now(timezone.utc)
     expires_at = created_at + timedelta(seconds=ttl_seconds)
     if not_after is not None:
@@ -150,6 +180,12 @@ def record_command_result(
     )
     if command is None:
         raise DeviceCommandError("Command was not found")
+    if command.command_type == "agent.update.apply":
+        db.execute(
+            update(DeviceCommand).where(DeviceCommand.id == command.id)
+            .values(result=DeviceCommand.result)
+        )
+        db.refresh(command)
     if result.device_id != device.device_id:
         raise DeviceCommandError("Device identity mismatch")
     if command.status in {"succeeded", "failed"}:
@@ -161,7 +197,12 @@ def record_command_result(
         db.commit()
         raise DeviceCommandError("Command has expired")
     command.status = result.status
-    command.result = result.output
+    if command.command_type == "agent.update.apply":
+        # Handoff acknowledgement is not installation completion. Independent
+        # durable OTA reports may arrive before this acknowledgement.
+        command.result = {**(command.result or {}), "handoff": result.output}
+    else:
+        command.result = result.output
     command.error = result.error
     command.completed_at = result.completed_at
     db.commit()

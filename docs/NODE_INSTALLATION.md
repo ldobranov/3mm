@@ -48,11 +48,15 @@ Hub URL and GPIO mappings are retained. Cross-profile replacements are refused.
 Node uses `3mm-node-recovery.service`, not the Core update helper. There is no
 Node OTA UI yet; the same bootstrap/installer can apply a later Node artifact.
 
-Core main now includes the separate **Node update helper**, authenticated
-Hub-to-Node preparation/delivery and Agent prepare command wiring. Fleet install
-and final apply/status UI are not yet complete. Published beta.24 does not contain
-the helper, so beta.25 is used as the one-time bootstrap upgrade before the first
-real remote Node OTA acceptance test. See [Node OTA stages and boundary](FLEET_NODE_OTA.md).
+Published beta.25 includes the separate **Node update helper**, authenticated
+Hub-to-Node preparation/delivery and Agent prepare command wiring. Signed Hub
+approval, remote apply and independent final reporting are newer working-tree
+changes, not deployed/published. They require a later bootstrap release on both
+Hub and Node plus explicit root pinning of the Hub approval key/device identity.
+Beta.25 alone is not a secure remote-apply bootstrap. The new Node manifest also
+declares the OS `openssl` prerequisite; Python still contains no Core dependencies.
+Fleet install/status UI and physical OTA acceptance remain pending. See
+[Node OTA stages, trust bootstrap and boundary](FLEET_NODE_OTA.md).
 
 ## Diagnostics
 

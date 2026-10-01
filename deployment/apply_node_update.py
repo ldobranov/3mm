@@ -18,6 +18,7 @@ from three_mm_runtime.node_update_helper import (
     AGENT_DATA, CURRENT_ROOT, SOCKET_PATH, MAX_REQUEST_BYTES, NodeUpdateError, NodeUpdateStore,
     inspect_prepared_archive, read_small, trusted_path,
 )
+from three_mm_runtime.node_update_trust import verify_node_update_authorization
 
 
 def snapshot_agent_state(agent_data):
@@ -71,8 +72,10 @@ def run_installer(arguments):
 
 def apply_node_update(operation_id, *, store=None, validator=None, runner=run_installer,
                       current_root=CURRENT_ROOT, agent_data=AGENT_DATA, health_checker=check_health,
-                      helper_checker=check_helper):
+                      helper_checker=check_helper, authorization_verifier=None):
     store = store or NodeUpdateStore()
+    authorization_verifier = authorization_verifier or (
+        lambda authorization: verify_node_update_authorization(authorization, state_root=store.root))
     validator = validator or (lambda request: inspect_prepared_archive(request, store=store,
         current_root=current_root, agent_data=agent_data))
     with store.locked():
@@ -83,6 +86,7 @@ def apply_node_update(operation_id, *, store=None, validator=None, runner=run_in
             return 0 if record["operation"].status == "succeeded" else 1
         request = record["request"]
         try:
+            authorization_verifier(record.get("authorization"))
             archive_path, target_metadata = validator(request)
             previous = Path(current_root).resolve(strict=True)
             trusted_path(previous / ".3mm-release.json", permissions=store.enforce_permissions)
@@ -99,6 +103,9 @@ def apply_node_update(operation_id, *, store=None, validator=None, runner=run_in
     try:
         if request.expires_at <= datetime.now(UTC):
             raise NodeUpdateError("expired", "Node update handoff expired before installer invocation")
+        authorization_verifier(record.get("authorization"))
+        if request.expires_at <= datetime.now(UTC):
+            raise NodeUpdateError("expired", "Node update handoff expired during approval verification")
         mutated = True
         result = runner(["/usr/bin/bash", str(previous / "deployment/install-systemd.sh"),
             str(archive_path), request.release_id, "http://localhost", "", request.archive_sha256, "node"])

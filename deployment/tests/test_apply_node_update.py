@@ -1,12 +1,13 @@
 """Detached worker durability and installer outcomes using only local fakes."""
 from datetime import UTC, datetime, timedelta
+import base64
 import json
 from pathlib import Path
 
 import pytest
 
 from deployment import apply_node_update as module
-from three_mm_protocol.node_updates import NodeUpdateApplyRequest, NodeUpdateOperation
+from three_mm_protocol.node_updates import NodeUpdateApplyRequest, NodeUpdateAuthorization, NodeUpdateOperation
 from three_mm_runtime.node_update_helper import NodeUpdateStore, request_digest
 
 
@@ -43,13 +44,16 @@ def installation(tmp_path):
     operation = NodeUpdateOperation(operation_id=request.operation_id, device_id=request.device_id,
         release_id=request.release_id, archive_sha256=request.archive_sha256,
         status="accepted", updated_at=created)
-    store.write({"request": request, "operation": operation, "digest": request_digest(request)})
+    authorization = NodeUpdateAuthorization(request=request, key_id="a" * 64,
+        signature=base64.b64encode(b"s" * 64).decode())
+    store.write({"request": request, "authorization": authorization,
+                 "operation": operation, "digest": request_digest(authorization)})
     archive = tmp_path / "prepared.tar.gz"
     archive.write_bytes(b"already validated")
     current = CurrentRelease(old)
     arguments = dict(store=store, current_root=current, agent_data=agent,
         validator=lambda _: (archive, metadata[new]), health_checker=lambda _: True,
-        helper_checker=lambda _: True)
+        helper_checker=lambda _: True, authorization_verifier=lambda _: None)
     return store, request, current, old, new, agent, archive, arguments
 
 
@@ -143,6 +147,54 @@ def test_preflight_failure_and_crash_leave_durable_nonretriable_outcomes(install
     assert store.read(request.operation_id)["operation"].status == "running"
     assert module.apply_node_update(request.operation_id,
         runner=lambda _: pytest.fail("running operation reexecuted after restart"), **arguments) == 1
+
+
+def test_worker_rechecks_pinned_approval_immediately_before_mutation(installation):
+    store, request, _, _, _, _, _, arguments = installation
+    calls = []
+    def verifier(authorization):
+        calls.append(authorization)
+        if len(calls) == 2:
+            raise module.NodeUpdateError("hub_trust_conflict", "Pinned key changed")
+    arguments["authorization_verifier"] = verifier
+    assert module.apply_node_update(request.operation_id,
+        runner=lambda _: pytest.fail("untrusted approval mutated"), **arguments) == 1
+    assert len(calls) == 2 and calls[0] == calls[1]
+    assert store.read(request.operation_id)["operation"].status == "failed"
+
+
+def test_deadline_that_expires_during_signature_check_never_starts_installer(installation, monkeypatch):
+    store, request, _, _, _, _, _, arguments = installation
+    current_time = [request.created_at + timedelta(seconds=1)]
+    checks = []
+
+    class Clock:
+        @staticmethod
+        def now(_):
+            return current_time[0]
+
+    def verify(authorization):
+        checks.append(authorization)
+        if len(checks) == 2:
+            current_time[0] = request.expires_at
+
+    monkeypatch.setattr(module, "datetime", Clock)
+    arguments["authorization_verifier"] = verify
+    assert module.apply_node_update(request.operation_id,
+        runner=lambda _: pytest.fail("Signature check extended the deadline"), **arguments) == 1
+    operation = store.read(request.operation_id)["operation"]
+    assert operation.status == "failed" and operation.error_code == "expired"
+
+
+def test_legacy_unsigned_record_is_readable_but_worker_cannot_execute(installation):
+    store, request, _, _, _, _, _, arguments = installation
+    record = store.read(request.operation_id)
+    record["authorization"], record["digest"] = None, request_digest(request)
+    store.write(record)
+    arguments.pop("authorization_verifier")
+    assert module.apply_node_update(request.operation_id,
+        runner=lambda _: pytest.fail("unsigned record mutated"), **arguments) == 1
+    assert store.read(request.operation_id)["operation"].status == "failed"
 
 
 def test_installer_timeout_is_owned_by_transient_cgroup_not_bash_parent(monkeypatch):
