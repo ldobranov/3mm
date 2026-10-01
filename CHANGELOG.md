@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.27] - 2026-10-01
+
+### Verification target
+
+- No behavioral OTA code change from beta.26. This release exists as the first
+  physical signed Node OTA target for validating the beta.26 Hub/Agent path.
+- Physical acceptance is not claimed until the Node reports a durable final
+  `succeeded` outcome after installation.
+
 ## [0.3.0-beta.26] - 2026-10-01
 
 ### Added
@@ -650,7 +659,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.26...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.27...HEAD
+[0.3.0-beta.27]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.27
 [0.3.0-beta.26]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.26
 [0.3.0-beta.25]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.25
 [0.3.0-beta.24]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.24

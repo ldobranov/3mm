@@ -9,9 +9,9 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current release is
-> [v0.3.0-beta.26](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.26),
-> which adds signed administrator-approved Node OTA installation, pinned Hub trust,
-> durable final installation reporting and rollback/unknown outcome handling.
+> [v0.3.0-beta.27](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.27),
+> which carries the signed Node OTA implementation from beta.26 and is published
+> as the first physical one-Node OTA acceptance target.
 > Fleet 0.1.7 provides the administrator UI for this Core-owned OTA workflow.
 
 ## What works
