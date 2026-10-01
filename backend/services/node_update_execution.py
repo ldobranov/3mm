@@ -15,6 +15,7 @@ from backend.services.device_commands import (
     DeviceCommandError, commit_queued_command, node_update_is_terminal, queue_command,
 )
 from backend.services.node_update_approval import public_approval_key, sign_node_update, verify_node_update
+from backend.services.device_capability_registry import has_registered_capability
 from backend.services.node_update_delivery import open_node_delivery
 from three_mm_protocol.node_updates import (
     MAX_HANDOFF_SECONDS, NodeUpdateApplyRequest, NodeUpdateAuthorization,
@@ -72,18 +73,27 @@ def _check_device_idle(db: Session, device: Device, settings: AppSettings, now: 
         or support.get("approval_key_id") != public_approval_key(settings.updates).key_id
     ):
         raise DeviceCommandError("Node signed update support and pinned Hub identity must be configured first")
-    for measurement in db.scalars(select(DeviceCapabilityState).where(
-        DeviceCapabilityState.device_id == device.id,
-    )):
-        if measurement.capability_id != "gpio.digital.control":
-            continue
+    if has_registered_capability(db, device, "gpio.digital.control"):
+        measurement = db.scalar(select(DeviceCapabilityState).where(
+            DeviceCapabilityState.device_id == device.id,
+            DeviceCapabilityState.capability_id == "gpio.digital.control",
+        ))
+
+        if measurement is None:
+            raise DeviceCommandError("Node output state is missing")
+
         if not -timedelta(seconds=30) <= now - utc(measurement.observed_at) <= freshness:
             raise DeviceCommandError("Node output state is stale")
+
         channels = measurement.values
+
         if not isinstance(channels, dict) or not channels or any(
-            active is not False for active in channels.values()
+            active is not False
+            for active in channels.values()
         ):
-            raise DeviceCommandError("Node outputs are active or their state is unconfirmed")
+            raise DeviceCommandError(
+                "Node outputs are active or their state is unconfirmed"
+            )
     for other in db.scalars(select(DeviceCommand).where(DeviceCommand.device_id == device.id)):
         if other.command_type == "agent.update.apply":
             if not node_update_is_terminal(other):

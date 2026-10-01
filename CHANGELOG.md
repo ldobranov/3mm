@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.28] - 2026-10-01
+
+### Fixed
+
+- Node OTA approval now considers only an enabled `gpio.digital.control`
+  capability. Historical stale state from a disabled GPIO module no longer
+  blocks installation.
+- When `gpio.digital.control` is enabled, OTA still fails closed unless a fresh
+  state report exists and every reported output is confirmed inactive.
+
+### Verified
+
+- 105 scoped Node OTA tests passed; two POSIX-only security checks were skipped
+  on the Windows development host.
+- Physical Node OTA acceptance remains pending until a real beta.26 Node
+  completes an update through Fleet with a durable final `succeeded` outcome.
+
 ## [0.3.0-beta.27] - 2026-10-01
 
 ### Verification target
@@ -659,7 +676,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.27...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.28...HEAD
+[0.3.0-beta.28]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.28
 [0.3.0-beta.27]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.27
 [0.3.0-beta.26]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.26
 [0.3.0-beta.25]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.25

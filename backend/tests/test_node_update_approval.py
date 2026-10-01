@@ -160,8 +160,12 @@ def test_generic_unsigned_or_forged_apply_cannot_bypass_explicit_approval(setup)
     assert report(client, op, outcome(op)).status_code == 409
 
 
-@pytest.mark.parametrize("failure", ["unprepared", "archive_tampered", "expired", "offline", "active_output", "stale_output", "unconfirmed_apply", "unsupported", "wrong_key", "stale_support"])
-def test_apply_preconditions_fail_closed(setup, failure):
+@pytest.mark.parametrize("failure", [
+    "unprepared", "archive_tampered", "expired", "offline",
+    "missing_output", "active_output", "stale_output",
+    "unconfirmed_apply", "unsupported", "wrong_key", "stale_support"
+])
+def test_apply_preconditions_fail_closed(setup, failure, monkeypatch):
     client, db, device, settings, headers, _viewer, op = setup
     if failure == "unprepared":
         db.scalar(select(DeviceCommand)).status = "delivered"
@@ -176,10 +180,25 @@ def test_apply_preconditions_fail_closed(setup, failure):
         metadata.write_text(json.dumps(data))
     elif failure == "offline":
         db.scalar(select(DeviceHeartbeat)).received_at = datetime.now(UTC) - timedelta(minutes=3)
-    elif failure.endswith("output"):
-        db.add(DeviceCapabilityState(device_id=device.id, capability_id="gpio.digital.control",
-            values={"gpio.output.1": failure == "active_output"},
-            observed_at=datetime.now(UTC) - timedelta(minutes=3 if failure == "stale_output" else 0)))
+    elif failure in {"missing_output", "active_output", "stale_output"}:
+        monkeypatch.setattr(
+            "backend.services.node_update_execution.has_registered_capability",
+            lambda *_args: True,
+        )
+
+        if failure != "missing_output":
+            db.add(DeviceCapabilityState(
+                device_id=device.id,
+                capability_id="gpio.digital.control",
+                values={
+                    "gpio.output.1": failure == "active_output"
+                },
+                observed_at=datetime.now(UTC) - timedelta(
+                    minutes=3
+                    if failure == "stale_output"
+                    else 0
+                ),
+            ))
     elif failure in {"unsupported", "wrong_key", "stale_support"}:
         state = db.scalar(select(DeviceState))
         if failure == "stale_support":
@@ -200,6 +219,26 @@ def test_apply_preconditions_fail_closed(setup, failure):
     assert db.scalar(select(DeviceCommand).where(
         DeviceCommand.idempotency_key == "node-update-apply:" + op,
     )) is None
+
+
+def test_disabled_gpio_does_not_block_ota_with_stale_historical_state(setup):
+    client, db, device, _settings, headers, _viewer, op = setup
+
+    db.add(DeviceCapabilityState(
+        device_id=device.id,
+        capability_id="gpio.digital.control",
+        values={"gpio.output.1": False},
+        observed_at=datetime.now(UTC) - timedelta(hours=1),
+    ))
+    db.commit()
+
+    response = client.post(
+        f"/api/v1/devices/{DEVICE_ID}/node-updates/{op}/apply",
+        json={"confirmed_install": True},
+        headers=headers,
+    )
+
+    assert response.status_code == 202, response.text
 
 
 def test_malformed_approval_identity_is_not_silently_replaced(setup):
