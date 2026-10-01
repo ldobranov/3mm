@@ -1,17 +1,19 @@
 # One-Node runtime update from Fleet
 
-Status: Stage 1 implemented locally, not deployed/published or physically accepted.
-This updates the complete Node runtime, not an installed Agent module package.
-The published beta.24 / Fleet 0.1.6 do not yet provide this feature.
+Status: Stages 1 and 2 prepare-path are implemented in Core main but are not yet
+published or physically accepted. This updates the complete Node runtime, not an
+installed Agent module package. Published beta.24 / Fleet 0.1.6 do not provide
+Node OTA. Beta.25 is the planned one-time bootstrap release that installs the
+Node update helper; a later release will be used for the first real remote OTA.
 
 ## Delivery stages
 
-1. **Node execution foundation (current):** versioned handoff, root-only staged
+1. **Node execution foundation (implemented):** versioned handoff, root-only staged
    artifact validation, narrow local helper, detached immutable installer and
    durable outcome. The minimal artifact includes the helper without Core.
-2. **Hub/Agent transport:** administrator-scoped catalog and preparation from
+2. **Hub/Agent prepare transport (implemented):** administrator-scoped catalog and preparation from
    official Node releases, authenticated per-device download, bounded disk use,
-   Agent handoff and runtime/outcome reporting. Zero downloads from its Hub;
+   Agent handoff and durable prepare-status reporting. Zero downloads from its Hub;
    it need not access the internet. Never accept arbitrary URLs or shell commands.
 3. **Optional Fleet UI:** version/current status, check, prepare, review and
    explicitly install one device; reconnect and show the final outcome.
@@ -42,9 +44,11 @@ without a fresh public-network download.
   `/var/lib/3mm`. Socket: `/run/3mm-node-update/helper.sock`. The helper reads
   only an already root-prepared `staging/<operation_id>/release.tar.gz`.
 
-At this stage there is intentionally **no remote preparation endpoint** and no
-public command handler. The helper cannot be used end-to-end through Fleet yet.
-Root staging is an internal/test boundary, not a customer installation procedure.
+Core now provides administrator-scoped official Node release discovery,
+Hub-side verified staging, authenticated per-device archive delivery,
+`agent.update.prepare`, Agent download verification and root-helper preparation.
+Installation/apply is still not exposed through Fleet, and no release is called
+updated until the durable final helper outcome is known.
 
 Operations use `nodeupd_<32 hex>` and carry `device_id`, `release_id`, SHA-256,
 original `created_at`/`expires_at` and `confirmed_install: true`. Local envelopes
@@ -75,8 +79,16 @@ recovery-only service set. Do not claim remote management after that downgrade.
 
 ## Verification
 
-Local Stage 1 check: **61 passed** across protocol/client, helper/worker,
-minimal package, Node installer, preflight and recovery tests.
+Current focused OTA regression check: **83 passed, 2 skipped** on Windows.
+The two skipped checks cover Unix ownership and `O_NOFOLLOW` boundaries and must
+still pass on Linux/target hardware.
+
+Stage 1 execution and Stage 2 prepare-path tests cover strict identities,
+deadlines, helper authorization, durable replay, official release validation,
+authenticated per-device delivery, cross-device denial, Agent download
+verification, command persistence and durable prepare status. Physical Linux/Zero
+acceptance, revoked-credential delivery, remote apply/final outcome and rollback
+acceptance remain required before Node OTA is advertised as complete.
 
 Focused tests cover strict input/deadlines, helper authorization, durable replay,
 unknown interruption, archive rejection, fixed execution, outcomes and packaging.
