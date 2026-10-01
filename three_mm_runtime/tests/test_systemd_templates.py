@@ -251,6 +251,33 @@ def test_installer_restarts_always_on_services_after_link_activation() -> None:
     assert "restart_always_on_services || true" in installer
 
 
+def test_node_starts_update_helpers_before_runtime() -> None:
+    installer = INSTALLER.read_text(encoding="utf-8")
+
+    activation = installer.index('log "Activating release atomically"')
+    end = installer.index(
+        'if [[ $test_fail_after_health == 1 ]]',
+        activation,
+    )
+    block = installer[activation:end]
+
+    node_start = block.index('if [[ $install_profile == node ]]')
+    else_start = block.index("else", node_start)
+    fi_start = block.index("fi", else_start)
+
+    node_branch = block[node_start:else_start]
+    full_branch = block[else_start:fi_start]
+
+    assert (
+        node_branch.index("restart_always_on_services")
+        < node_branch.index('activate_runtime "$release_dir"')
+    )
+    assert (
+        full_branch.index('activate_runtime "$release_dir"')
+        < full_branch.index("restart_always_on_services")
+    )
+
+
 def test_deploy_accepts_setup_or_application_runtime() -> None:
     launcher = (SYSTEMD_DIR.parents[1] / "deploy.ps1").read_text(encoding="utf-8")
 

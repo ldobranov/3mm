@@ -692,8 +692,16 @@ fi
 
 log "Activating release atomically"
 ln -sfnT "$release_dir" "$current_link"
-activate_runtime "$release_dir"
-restart_always_on_services
+
+if [[ $install_profile == node ]]; then
+  # The Node update helper must be available before the new Agent starts.
+  # Agent startup immediately reconciles any durable OTA operation.
+  restart_always_on_services
+  activate_runtime "$release_dir"
+else
+  activate_runtime "$release_dir"
+  restart_always_on_services
+fi
 if [[ $test_fail_after_health == 1 ]]; then
   fail "Injected post-health deployment failure for rollback acceptance."
 fi

@@ -9,11 +9,11 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current release is
-> [v0.3.0-beta.28](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.28),
-> which fixes the Node OTA safety gate so stale state from a disabled GPIO
-> capability cannot block an update, while enabled outputs still require a fresh,
-> confirmed-inactive state before installation.
-> Fleet 0.1.7 provides the administrator UI for this Core-owned OTA workflow.
+> [v0.3.0-beta.29](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.29),
+> which starts the Node update helper before the new Agent during immutable
+> Node activation, preventing OTA outcome reconciliation from racing helper
+> startup. Fleet 0.1.7 provides the administrator UI for this Core-owned OTA
+> workflow. Final physical OTA acceptance remains pending.
 
 ## What works
 

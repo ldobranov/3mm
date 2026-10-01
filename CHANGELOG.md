@@ -6,6 +6,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.29] - 2026-10-01
+
+### Fixed
+
+- Node immutable deployment now starts the privileged update helper and recovery
+  services before activating the new Agent. This prevents Agent OTA outcome
+  reconciliation from racing helper startup after release activation.
+- Full-profile Hub deployment retains its existing activation order.
+
+### Verified
+
+- 142 scoped Node OTA and installer tests passed; two POSIX-only security checks
+  were skipped on the Windows development host.
+- Physical beta.26 -> beta.28 OTA installed and activated beta.28 successfully,
+  preserving Agent identity and pairing, but final verification remained
+  `unknown / postflight_unverified` because of the helper startup race.
+- Final durable `succeeded` acceptance remains pending. Because the OTA worker
+  runs the installer from the source release, beta.29 must first be installed
+  on the test Node before validating a subsequent OTA release.
+
 ## [0.3.0-beta.28] - 2026-10-01
 
 ### Fixed
@@ -676,7 +696,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.28...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.29...HEAD
+[0.3.0-beta.29]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.29
 [0.3.0-beta.28]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.28
 [0.3.0-beta.27]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.27
 [0.3.0-beta.26]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.26
