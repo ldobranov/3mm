@@ -9,11 +9,12 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current release is
-> [v0.3.0-beta.29](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.29),
-> which starts the Node update helper before the new Agent during immutable
-> Node activation, preventing OTA outcome reconciliation from racing helper
-> startup. Fleet 0.1.7 provides the administrator UI for this Core-owned OTA
-> workflow. Final physical OTA acceptance remains pending.
+> [v0.3.0-beta.30](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.30),
+> which restores UTC timezone information on device `reported_at` timestamps so
+> fresh Node state is not incorrectly treated as stale by Fleet. beta.29 ->
+> beta.30 is also the first physical OTA transition that can validate the
+> helper-before-Agent startup order introduced in beta.29. Physical GPIO pin
+> reconfiguration and final OTA acceptance remain pending.
 
 ## What works
 

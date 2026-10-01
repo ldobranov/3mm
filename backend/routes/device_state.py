@@ -67,4 +67,4 @@ def get_state(device_id: str, _admin: User = Depends(require_admin), db: Session
     device = db.scalar(select(Device).where(Device.device_id == device_id))
     if device is None: raise HTTPException(404, "Device was not found")
     row = _row(db, device)
-    return StateSummary(desired=_desired(row, device_id), reported_revision=row.reported_revision, reported_state=row.reported_state, reported_at=row.reported_at, synchronized=row.reported_revision == row.desired_revision)
+    return StateSummary(desired=_desired(row, device_id), reported_revision=row.reported_revision, reported_state=row.reported_state, reported_at=(row.reported_at.replace(tzinfo=timezone.utc) if row.reported_at is not None and row.reported_at.tzinfo is None else row.reported_at), synchronized=row.reported_revision == row.desired_revision)

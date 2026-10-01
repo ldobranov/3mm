@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.30] - 2026-10-01
+
+### Fixed
+
+- Device state API now restores UTC timezone information when SQLite returns a
+  naive `reported_at` timestamp. Fleet no longer interprets fresh Node reports
+  as several hours old and incorrectly disables GPIO configuration.
+
+### Verified
+
+- 29 relevant device-state, registry and Node OTA tests passed locally.
+- Physical GPIO pin reconfiguration remains to be verified after deployment.
+- beta.29 -> beta.30 is the first physical OTA transition that can validate the
+  beta.29 Node startup-order fix, because the OTA worker uses the installer from
+  the source release.
+
 ## [0.3.0-beta.29] - 2026-10-01
 
 ### Fixed
@@ -696,7 +712,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.29...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.30...HEAD
+[0.3.0-beta.30]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.30
 [0.3.0-beta.29]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.29
 [0.3.0-beta.28]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.28
 [0.3.0-beta.27]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.27
