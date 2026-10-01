@@ -30,6 +30,7 @@ from agent.enrollment import NodeEnrollmentWorker
 from agent.inventory import collect_inventory
 from agent.module_runtime import AgentModuleRuntime
 from agent.role import AgentRoleResolver
+from agent.node_update_transport import NodeUpdateTransport
 from three_mm_protocol import AgentHealth, AgentHello, AgentInventory, AgentRole
 from three_mm_provisioning import FileProvisioningStore
 
@@ -126,22 +127,69 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
         automation_store.activate_all(device_id=identity.device_id)
         def start_publisher(approved_credential):
             nonlocal publisher
+
             if publisher is None:
+                core_url = (
+                    approved_credential.api_endpoint
+                    or connection.hub_endpoint
+                )
+
+                node_update_transport = None
+
+                if resolved_role is AgentRole.NODE:
+                    node_update_transport = (
+                        NodeUpdateTransport(
+                            core_url=core_url,
+                            device_id=(
+                                approved_credential.device_id
+                            ),
+                            headers={
+                                "Authorization": (
+                                    "Device "
+                                    f"{approved_credential.credential_id}:"
+                                    f"{approved_credential.credential_secret}"
+                                )
+                            },
+                            data_dir=(
+                                resolved_settings.data_dir
+                            ),
+                        )
+                    )
+
                 publisher = CorePublisher(
-                    core_url=approved_credential.api_endpoint or connection.hub_endpoint,
+                    core_url=core_url,
                     credential=approved_credential,
                     inventory_provider=current_inventory,
-                    command_journal=CommandJournal(resolved_settings.data_dir),
-                    reconciliation_store=ReconciliationStore(resolved_settings.data_dir),
-                    outbox=OutboxStore(resolved_settings.data_dir),
+                    command_journal=CommandJournal(
+                        resolved_settings.data_dir
+                    ),
+                    reconciliation_store=ReconciliationStore(
+                        resolved_settings.data_dir
+                    ),
+                    outbox=OutboxStore(
+                        resolved_settings.data_dir
+                    ),
                     module_runtime=module_runtime,
                     automation_store=automation_store,
                     gpio_configuration=gpio_configuration,
-                    started_monotonic=app.state.agent_runtime.started_monotonic,
-                    interval_seconds=resolved_settings.heartbeat_interval_seconds,
+                    node_update_transport=(
+                        node_update_transport
+                    ),
+                    started_monotonic=(
+                        app.state.agent_runtime
+                        .started_monotonic
+                    ),
+                    interval_seconds=(
+                        resolved_settings
+                        .heartbeat_interval_seconds
+                    ),
                 )
+
                 publisher.start()
-                app.state.module_event_sink = publisher.publish_event
+
+                app.state.module_event_sink = (
+                    publisher.publish_event
+                )
         enrollment = None
         if connection.state == "credential_available" and credential is not None:
             start_publisher(credential)

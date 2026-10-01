@@ -48,6 +48,12 @@ Hub URL and GPIO mappings are retained. Cross-profile replacements are refused.
 Node uses `3mm-node-recovery.service`, not the Core update helper. There is no
 Node OTA UI yet; the same bootstrap/installer can apply a later Node artifact.
 
+The next local delivery adds a separate **Node update helper**, without Core
+dependencies. This is an execution foundation, not an available Fleet button:
+Hub preparation/delivery and Agent command wiring still need implementation.
+See [Node OTA stages and boundary](FLEET_NODE_OTA.md). Published beta.24 does not
+contain this helper; a future bootstrap upgrade is required before remote updates.
+
 ## Diagnostics
 
 ```bash

@@ -18,6 +18,8 @@ from typing import Callable
 from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
 from agent.automation_store import AutomationStore, StoredAutomation
 from agent.physical_command_journal import PhysicalCommandFailure, PhysicalCommandJournal
+from agent.node_update_transport import NodeUpdateTransport, NodeUpdateTransportError
+from three_mm_protocol.node_updates import NodeUpdatePrepareRequest
 from three_mm_protocol.passage import PassageEventV1
 
 import requests
@@ -192,6 +194,7 @@ class CorePublisher:
     module_runtime: AgentModuleRuntime | None = None
     automation_store: AutomationStore | None = None
     gpio_configuration: object | None = None
+    node_update_transport: NodeUpdateTransport | None = None
     interval_seconds: int = 30
     _stop: threading.Event = field(init=False, repr=False)
     _thread: threading.Thread | None = field(init=False, default=None, repr=False)
@@ -404,6 +407,62 @@ class CorePublisher:
                     completed_at=datetime.now(UTC),
                     error=f"Inventory publish failed: {type(exc).__name__}",
                 )
+        elif (
+            command.command_type
+            == "agent.update.prepare"
+            and self.node_update_transport is not None
+        ):
+            try:
+                request = (
+                    NodeUpdatePrepareRequest.model_validate(
+                        command.payload
+                    )
+                )
+
+                if (
+                    request.device_id
+                    != self.credential.device_id
+                ):
+                    raise NodeUpdateTransportError(
+                        "node_update_device_mismatch"
+                    )
+
+                prepared = (
+                    self.node_update_transport.prepare(
+                        request
+                    )
+                )
+
+                result = AgentCommandResult(
+                    command_id=command.command_id,
+                    device_id=self.credential.device_id,
+                    status="succeeded",
+                    completed_at=datetime.now(UTC),
+                    output={
+                        "operation_id":
+                            prepared.operation_id,
+                        "release_id":
+                            prepared.release_id,
+                        "archive_sha256":
+                            prepared.archive_sha256,
+                        "archive_size_bytes":
+                            prepared.archive_size_bytes,
+                        "prepared_at":
+                            prepared.prepared_at.isoformat(),
+                    },
+                )
+
+            except (
+                ValidationError,
+                NodeUpdateTransportError,
+            ) as exc:
+                result = AgentCommandResult(
+                    command_id=command.command_id,
+                    device_id=self.credential.device_id,
+                    status="failed",
+                    completed_at=datetime.now(UTC),
+                    error=str(exc),
+                )        
         elif command.command_type in {"automation.apply", "automation.remove"} and self.automation_store is not None:
             try:
                 if command.command_type == "automation.apply":

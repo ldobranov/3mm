@@ -16,7 +16,7 @@ NODE_IMPORTS = (
     "requests", "pydantic", "fastapi", "uvicorn", "gpiod",
     "agent.main", "setup_service.main", "three_mm_provisioning.network_helper",
     "three_mm_runtime.activate", "three_mm_runtime.network_recovery",
-    "three_mm_runtime.node_recovery",
+    "three_mm_runtime.node_recovery", "three_mm_runtime.node_update_helper",
 )
 
 

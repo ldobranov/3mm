@@ -12,9 +12,9 @@ from deployment.build_release import (PayloadFile, write_release_archive,
 from deployment.prepare_node_wheels import digest
 
 RUNTIME_FILES = ('__init__.py', 'services.py', 'activate.py', 'install_profile.py',
-                 'network_recovery.py', 'node_recovery.py')
+                 'network_recovery.py', 'node_recovery.py', 'node_update_helper.py')
 UNITS = ('3mm-agent.service', '3mm-setup.service', '3mm-setup-ap.service',
-         '3mm-network-helper.service', '3mm-node-recovery.service',
+         '3mm-network-helper.service', '3mm-node-recovery.service', '3mm-node-update-helper.service',
          '3mm-captive-portal-dnsmasq.conf')
 APT_PACKAGES = sorted(['avahi-daemon', 'ca-certificates', 'curl', 'dnsmasq-base',
                       'network-manager', 'python3', 'python3-venv', 'util-linux'])
@@ -28,7 +28,7 @@ def build(root, wheels, output, *, version, commit, repository, epoch,
     if (root / 'VERSION').read_text().strip() != version:
         raise ValueError('VERSION does not match')
     names = {'VERSION', 'deployment/install-systemd.sh', 'deployment/node-requirements.txt',
-             'deployment/node_preflight.py'}
+             'deployment/node_preflight.py', 'deployment/apply_node_update.py'}
     names.update('three_mm_runtime/' + name for name in RUNTIME_FILES)
     names.update('deployment/systemd/' + name for name in UNITS)
     for package in ('agent', 'setup_service', 'three_mm_protocol', 'three_mm_provisioning'):

@@ -1,0 +1,31 @@
+[Unit]
+Description=3mm minimal Node immutable update helper
+After=local-fs.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/3mm/current
+Environment=PYTHONPATH=/opt/3mm/current
+ExecStart=/opt/3mm/current/.venv/bin/python -m three_mm_runtime.node_update_helper
+RuntimeDirectory=3mm-node-update
+RuntimeDirectoryMode=0755
+StateDirectory=3mm-node-update
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

@@ -105,7 +105,7 @@ installed_units=(
 )
 if [[ $install_profile == node ]]; then
   runtime_services=(3mm-agent.service 3mm-setup.service 3mm-setup-ap.service 3mm-network-helper.service)
-  always_on_services=(3mm-node-recovery.service)
+  always_on_services=(3mm-node-recovery.service 3mm-node-update-helper.service)
   installed_units=("${runtime_services[@]}" "${always_on_services[@]}")
 fi
 previous_release=""
@@ -161,6 +161,13 @@ install_units() {
       if [[ $unit == 3mm-update-helper.service && $require_update_helper == 0 ]]; then
         systemctl disable --now "$unit" >/dev/null 2>&1 || true
         rm -f -- "/etc/systemd/system/$unit"
+        continue
+      fi
+      if [[ $unit == 3mm-node-update-helper.service && $require_update_helper == 0 ]]; then
+        # Older Node rollback releases predate the independent update helper.
+        systemctl disable --now "$unit" >/dev/null 2>&1 || true
+        rm -f -- "/etc/systemd/system/$unit"
+        always_on_services=(3mm-node-recovery.service)
         continue
       fi
       fail "Release is missing required service definition: $unit"
@@ -457,6 +464,8 @@ if [[ $install_profile == node ]]; then
     deployment/node-requirements.txt deployment/node_preflight.py
     three_mm_runtime/install_profile.py three_mm_runtime/activate.py
     three_mm_runtime/node_recovery.py three_mm_runtime/network_recovery.py
+    three_mm_runtime/node_update_helper.py deployment/apply_node_update.py
+    three_mm_protocol/node_updates.py agent/node_update_client.py
     three_mm_provisioning/network_helper.py three_mm_provisioning/setup_access_point.py
     setup_service/static/setup.html deployment/systemd/3mm-captive-portal-dnsmasq.conf
   )

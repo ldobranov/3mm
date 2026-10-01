@@ -43,6 +43,7 @@ from backend.routes.device_state import router as device_state_router
 from backend.routes.device_capabilities import router as device_capabilities_router
 from backend.routes.device_capability_state import router as device_capability_state_router
 from backend.routes.device_events import router as device_events_router
+from backend.routes.node_update_delivery import router as node_update_delivery_router
 from backend.routes.extension_routes import router as extension_router
 from backend.routes.group_routes import router as group_router
 from backend.routes.language_routes import router as language_router
@@ -56,6 +57,7 @@ from backend.routes.session_routes import router as session_router
 from backend.routes.system_updates import router as system_updates_router
 from backend.routes.system_control import router as system_control_router
 from backend.routes.network_recovery import router as network_recovery_router
+from backend.routes.node_updates import router as node_updates_router
 from backend.services.update_policy import system_update_check_manager
 from backend.services.application_events import retry_application_events_once
 from backend.services.application_jobs import ApplicationJobScheduler
@@ -281,6 +283,8 @@ app.include_router(device_pairing_router)
 app.include_router(device_ingest_router)
 app.include_router(device_registry_router)
 app.include_router(device_commands_router)
+app.include_router(node_update_delivery_router)
+app.include_router(node_updates_router)
 app.include_router(device_state_router)
 app.include_router(device_capabilities_router)
 app.include_router(device_capability_state_router)
