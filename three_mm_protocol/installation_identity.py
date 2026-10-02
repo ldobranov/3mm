@@ -75,7 +75,7 @@ class InstallationIdentityResultV1(IdentityContract):
     identity: InstallationIdentityV1
     core_version: str = Field(pattern=SEMVER_PATTERN)
     protocol_version: Literal["1.0"] = "1.0"
-    sdk_version: Literal["1.1", "1.2"] = "1.2"
+    sdk_version: Literal["1.1", "1.2", "1.3"] = "1.3"
 
 
 class InstallationProofRequestV1(IdentityContract):

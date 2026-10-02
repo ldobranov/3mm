@@ -163,11 +163,12 @@ class PeerEnrollmentStartV1(PeerModel):
 
 
 def enrollment_resource(
-    request_id: str, module_id: str, scopes: tuple[str, ...]
+    request_id: str, module_id: str, scopes: tuple[str, ...], metadata=None
 ) -> str:
-    digest = hashlib.sha256(
-        canonical_json({"module_id": module_id, "scopes": list(scopes)})
-    ).hexdigest()
+    value = {"module_id": module_id, "scopes": list(scopes)}
+    if metadata is not None:
+        value["enrollment_metadata"] = metadata.model_dump(mode="json")
+    digest = hashlib.sha256(canonical_json(value)).hexdigest()
     return f"peer.enroll:{request_id}:{digest}"
 
 
@@ -294,17 +295,30 @@ def canonical_json(value: object) -> bytes:
 
 
 def credential_bytes(claims: PeerCredentialClaimsV1) -> bytes:
-    return PEER_CREDENTIAL_DOMAIN + canonical_json(claims.model_dump(mode="json"))
+    domain = (
+        b"3mm.installation.peer.credential.v2\n"
+        if claims.credential_version == 2
+        else PEER_CREDENTIAL_DOMAIN
+    )
+    return domain + canonical_json(claims.model_dump(mode="json"))
 
 
 def enrollment_start_bytes(start: PeerEnrollmentStartV1) -> bytes:
-    return PEER_START_DOMAIN + canonical_json(
-        start.model_dump(mode="json", exclude={"signature"})
+    domain = (
+        b"3mm.installation.peer.start.v2\n"
+        if start.peer_version == 2
+        else PEER_START_DOMAIN
     )
+    return domain + canonical_json(start.model_dump(mode="json", exclude={"signature"}))
 
 
 def request_bytes(request: PeerRequestV1) -> bytes:
-    return PEER_REQUEST_DOMAIN + canonical_json(
+    domain = (
+        b"3mm.installation.peer.request.v2\n"
+        if request.peer_version == 2
+        else PEER_REQUEST_DOMAIN
+    )
+    return domain + canonical_json(
         request.model_dump(mode="json", exclude={"signature"})
     )
 

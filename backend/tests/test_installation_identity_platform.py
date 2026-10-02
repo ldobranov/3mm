@@ -87,7 +87,8 @@ def test_two_extension_instances_share_whole_core_identity(platform):
     db.commit()
     second = server._dispatch(db, installation, {"action": "installation.identity.get"})
     assert second == first
-    assert first["sdk_version"] == "1.2"
+    from three_mm_application_sdk import SDK_VERSION
+    assert first["sdk_version"] == SDK_VERSION
     assert set(first["identity"]) == {
         "identity_version",
         "installation_id",

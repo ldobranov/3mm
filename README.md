@@ -8,12 +8,13 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Beta. The current release is
-> [v0.3.0-beta.31](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.31),
-> introducing installation identity, consent-scoped HTTPS peers and Application
-> SDK 1.2, plus read-only Node Update checks. Isolated Raspberry peer acceptance
-> passed; Cloud Manager business integration and public ingress are still separate
-> work. This release does not automatically connect to a cloud or update devices.
+> **Project status:** Beta. This source prepares **v0.3.0-beta.32**, adding
+> proof-bound application intent and exact consent review through installation
+> peer v2 / Application SDK 1.3, while retaining v1 and Node Update checks.
+> Release assets become available only after the tag-driven workflow succeeds;
+> the release badge above reflects published versions. Local v2 tests passed;
+> real v2 HTTPS/Linux acceptance, Cloud Manager business integration and public
+> ingress remain separate work. No automatic cloud connection or device update.
 
 ## What works
 
@@ -47,7 +48,9 @@ system.
   maintenance-window enforcement and explicit administrator approval.
 - **Optional installation peers** — encrypted installation identity, verified
   HTTPS enrollment with separate local consent and receiver approval, limited
-  status sharing, revocation and durable retries. No cloud command authority.
+  status sharing, revocation and durable retries. Peer v2 binds an opaque
+  application intent and exact consent revision/hash to proofs and approval;
+  changing the selection stops export until reapproval. No cloud command authority.
 
 ## Architecture
 
@@ -196,8 +199,9 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 After the new GitHub Release is fully published, update the Hub through
 `/system/updates` using the Beta channel. Update the Zero over SSH with the same
-Node bootstrap command above; add `--tag v0.3.0-beta.31` to select the published
-release. Provisioned upgrades preserve identity and pairing, not Master reset.
+Node bootstrap command above; after beta.32 publication, add
+`--tag v0.3.0-beta.32` to select that exact release. Provisioned upgrades preserve
+identity and pairing, not Master reset.
 Then upload Fleet `0.1.7` on the Hub through Extensions. Updating the Fleet ZIP
 alone does not update Core or the Zero Agent. Follow the
 [GPIO configuration guide](docs/FLEET_GPIO_CONFIGURATION.md) before enabling outputs.
@@ -296,6 +300,7 @@ See the [changelog](CHANGELOG.md) for user-visible changes and the
 | [Application job scheduler](docs/APPLICATION_JOB_SCHEDULER.md) | Interval scheduling, bounded concurrency and unknown-outcome recovery |
 | [Installation identity v1](docs/INSTALLATION_IDENTITY_V1.md) | Stable identity, bounded proofs, backup and clone boundaries |
 | [Installation peers v1](docs/INSTALLATION_PEER_V1.md) | SDK 1.2 consent, enrollment, status projection and HTTPS acceptance |
+| [Installation peers v2](docs/INSTALLATION_PEER_V2.md) | SDK 1.3 verified intent, exact consent review and reapproval boundaries |
 | [Module Manifest v2](docs/MODULE_MANIFEST_V2.md) | Package envelope and identities |
 | [OTA update plan](docs/OTA_UPDATE_PLAN.md) | Update architecture and acceptance stages |
 | [Release guide](docs/RELEASING.md) | Versioning, publication and verification |

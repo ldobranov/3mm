@@ -565,7 +565,8 @@ def test_consent_projection_unknowns_source_times_selection_and_no_secrets(pair)
         result = installation_projection(db, app, pair.sender.link_id).model_dump(
             mode="json"
         )
-        assert result["summary"]["sdk_version"]["value"] == "1.2"
+        from three_mm_application_sdk import SDK_VERSION
+        assert result["summary"]["sdk_version"]["value"] == SDK_VERSION
         assert [node["device_id"] for node in result["nodes"]] == [NODE]
         fields = result["nodes"][0]["fields"]
         assert set(fields) == {"online", "agent_version", "architecture"}

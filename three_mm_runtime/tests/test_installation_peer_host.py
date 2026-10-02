@@ -10,7 +10,12 @@ from three_mm_runtime import application_host as host
 from three_mm_runtime.application_transport import sign_message, verify_message
 
 
-def test_host_authenticates_before_delivering_machine_context(tmp_path, monkeypatch):
+@pytest.mark.parametrize("audience", ["installation_peer", "installation_bootstrap"])
+def test_host_authenticates_before_delivering_machine_context(
+    tmp_path, monkeypatch, audience
+):
+    from three_mm_protocol.installation_peer_v2 import enrollment_metadata
+
     instance = "a" * 24
     root = tmp_path / "apps"
     instance_root = root / instance
@@ -27,7 +32,7 @@ def test_host_authenticates_before_delivering_machine_context(tmp_path, monkeypa
                 "operations": [
                     {
                         "operation_id": "report",
-                        "audiences": ["installation_peer"],
+                        "audiences": [audience],
                         "idempotency": "required",
                     }
                 ],
@@ -40,16 +45,26 @@ def test_host_authenticates_before_delivering_machine_context(tmp_path, monkeypa
         "key_id": "b" * 64,
         "binding_id": "peer_" + "c" * 32,
         "generation": 1,
-        "scopes": ["installation.status.report"],
+        "scopes": (
+            ["installation.status.report"] if audience == "installation_peer" else []
+        ),
     }
     request = {
         "version": 1,
         "request_id": "valid",
         "timestamp": int(time.time()),
         "operation_id": "report",
-        "payload": {},
+        "payload": (
+            {
+                "enrollment_metadata": enrollment_metadata(
+                    "fixture_intent", {}
+                ).model_dump(mode="json")
+            }
+            if audience == "installation_bootstrap"
+            else {}
+        ),
         "context": {
-            "audience": "installation_peer",
+            "audience": audience,
             "correlation_id": "fixture",
             "idempotency_key": "report_fixture",
             "machine": machine,
@@ -57,7 +72,12 @@ def test_host_authenticates_before_delivering_machine_context(tmp_path, monkeypa
     }
     signed = sign_message(request, secret)
     tampered = copy.deepcopy(signed)
-    tampered["context"]["machine"]["scopes"] = ["capabilities.invoke"]
+    if audience == "installation_bootstrap":
+        tampered["payload"]["enrollment_metadata"][
+            "application_intent"
+        ] = "substituted_intent"
+    else:
+        tampered["context"]["machine"]["scopes"] = ["capabilities.invoke"]
     mixed = copy.deepcopy(request)
     mixed["request_id"] = "mixed"
     mixed["context"]["user_id"] = 1
@@ -111,7 +131,7 @@ def test_host_authenticates_before_delivering_machine_context(tmp_path, monkeypa
 
     class Service:
         def handle(self, operation_id, payload, context):
-            delivered.append(context)
+            delivered.append((payload, context))
             return {}
 
     monkeypatch.setattr(host, "_load_service", lambda *_args: Service())
@@ -124,6 +144,7 @@ def test_host_authenticates_before_delivering_machine_context(tmp_path, monkeypa
         for connection in connections
     ]
     assert [response["ok"] for response in responses] == [True, False, False]
-    assert len(delivered) == 1 and delivered[0].user_id is None
-    assert delivered[0].machine.installation_id == machine["installation_id"]
-    assert delivered[0].machine.scopes == ("installation.status.report",)
+    assert len(delivered) == 1 and delivered[0][1].user_id is None
+    assert delivered[0][1].machine.installation_id == machine["installation_id"]
+    assert delivered[0][1].machine.scopes == tuple(machine["scopes"])
+    assert delivered[0][0] == request["payload"]

@@ -4,7 +4,7 @@ import json
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN, SEMVER_PATTERN
 from three_mm_protocol.runtime_extension import IDENTIFIER_PATTERN, LocalizedTextV1
@@ -63,7 +63,7 @@ class ApplicationServiceV1(StrictApplicationModel):
     artifact: str = Field(min_length=1, max_length=240)
     artifact_sha256: str = Field(pattern=SHA256_PATTERN)
     entrypoint: str = Field(pattern=SERVICE_ENTRYPOINT_PATTERN, max_length=240)
-    sdk_version: Literal["1.0", "1.1", "1.2"] = "1.0"
+    sdk_version: Literal["1.0", "1.1", "1.2", "1.3"] = "1.0"
     health_operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
     startup_timeout_seconds: int = Field(default=30, ge=1, le=120)
     shutdown_timeout_seconds: int = Field(default=15, ge=1, le=60)
@@ -231,8 +231,16 @@ class ApplicationLifecycleV1(StrictApplicationModel):
 
 
 class ApplicationPeerReceiverV1(StrictApplicationModel):
+    peer_version: Literal[1, 2] = 1
     bootstrap_operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
     report_operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
+
+    @field_validator("peer_version", mode="before")
+    @classmethod
+    def integer_peer_version(cls, value):
+        if type(value) is not int:
+            raise ValueError("Peer version must be an integer")
+        return value
 
 
 class ApplicationExtensionV1(StrictApplicationModel):
@@ -276,8 +284,10 @@ class ApplicationExtensionV1(StrictApplicationModel):
             raise ValueError("installation identity permissions require SDK 1.1")
         peer_permissions = set(self.platform_permissions) - {"installation.identity.read", "installation.identity.prove"}
         peer_operations = [item for item in self.operations if {"installation_bootstrap", "installation_peer"} & set(item.audiences)]
-        if (peer_permissions or self.peer_receiver or peer_operations) and self.service.sdk_version != "1.2":
-            raise ValueError("Installation peer and projection contracts require SDK 1.2")
+        if (peer_permissions or self.peer_receiver or peer_operations) and self.service.sdk_version not in ("1.2", "1.3"):
+            raise ValueError("Installation peer and projection contracts require SDK 1.2 or later")
+        if self.peer_receiver and self.peer_receiver.peer_version == 2 and self.service.sdk_version != "1.3":
+            raise ValueError("Proof-bound enrollment metadata requires SDK 1.3")
         permission_ids = [item.permission_id for item in self.permissions]
         operation_ids = [item.operation_id for item in self.operations]
         route_ids = [item.route_id for item in self.routes]
@@ -312,6 +322,18 @@ class ApplicationExtensionV1(StrictApplicationModel):
                     raise ValueError("Peer receiver operations must declare their exact audience")
             if {item.operation_id for item in peer_operations} != {self.peer_receiver.bootstrap_operation_id, self.peer_receiver.report_operation_id}:
                 raise ValueError("Only the two declared peer receiver operations are allowed")
+            if self.peer_receiver.peer_version == 2:
+                schema = operations[self.peer_receiver.bootstrap_operation_id].input_schema
+                fields = {
+                    "binding_id": "string", "installation_identity": "object",
+                    "requested_scopes": "array", "enrollment_metadata": "object",
+                }
+                if (
+                    not set(fields) <= set(schema.get("required", []))
+                    or any(schema.get("properties", {}).get(name, {}).get("type") != kind
+                           for name, kind in fields.items())
+                ):
+                    raise ValueError("Peer v2 bootstrap must declare verified enrollment metadata")
         elif peer_operations:
             raise ValueError("Peer operations require a receiver declaration")
         for operation in self.operations:

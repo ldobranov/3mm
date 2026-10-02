@@ -157,7 +157,7 @@ class ApplicationPlatformServer:
 
     def _dispatch(self, db, installation, request: dict[str, object]) -> dict[str, object]:
         action = request.get("action")
-        if action in {"installation.peers.enroll", "installation.peers.list", "installation.peers.approve", "installation.peers.revoke", "installation.peers.rotate", "installation.peers.report", "installation.status.get"}:
+        if action in {"installation.peers.enroll", "installation.peers.list", "installation.peers.capabilities", "installation.peers.approve", "installation.peers.revoke", "installation.peers.rotate", "installation.peers.report", "installation.status.get"}:
             from backend.services import installation_peers as peers
             from backend.services.installation_projection import installation_projection
             permissions = {
@@ -168,9 +168,13 @@ class ApplicationPlatformServer:
                 "installation.status.get": "installation.status.read",
             }
             _, _, definition = peers._application(db, installation.module_id)
-            if action == "installation.peers.list":
+            if action in {"installation.peers.list", "installation.peers.capabilities"}:
                 if not {"installation.peers.receive", "installation.peers.enroll"} & set(definition.platform_permissions):
                     raise ValueError("Installation peer permissions are not declared")
+                if action == "installation.peers.capabilities":
+                    if definition.service.sdk_version != "1.3":
+                        raise ValueError("Peer approval binding capabilities require SDK 1.3")
+                    return peers.peer_capabilities()
                 return peers.list_peers(db, installation)
             if action == "installation.peers.revoke":
                 permission = "installation.peers.receive" if request.get("direction") == "inbound" else "installation.peers.enroll"
@@ -183,7 +187,11 @@ class ApplicationPlatformServer:
             if action == "installation.peers.rotate":
                 return peers.rotate_outbound(db, installation, str(request.get("link_id", "")))
             if action == "installation.peers.approve":
-                return peers.approve_inbound(db, installation, str(request.get("binding_id", "")), request.get("expected_generation"))
+                return peers.approve_inbound(
+                    db, installation, str(request.get("binding_id", "")), request.get("expected_generation"),
+                    expected_metadata_revision=request.get("expected_metadata_revision"),
+                    expected_metadata_hash=request.get("expected_metadata_hash"),
+                )
             if action == "installation.peers.revoke":
                 return peers.revoke_peer(db, installation, str(request.get("peer_id", "")), request.get("direction"))
             if action == "installation.peers.report":

@@ -66,6 +66,47 @@ from three_mm_protocol.installation_peer import (
     enrollment_resource,
     enrollment_start_bytes,
 )
+from three_mm_protocol.installation_peer_v2 import (
+    PEER_V2_PREFIX,
+    PeerCapabilitiesV2,
+    enrollment_metadata,
+    normalized_consent,
+    parse_peer,
+    peer_model,
+)
+
+
+def _version(row):
+    return parse_peer(PeerEnrollmentStartV1, row.start_request).peer_version
+
+
+def _metadata(row):
+    return getattr(
+        parse_peer(PeerEnrollmentStartV1, row.start_request),
+        "enrollment_metadata",
+        None,
+    )
+
+
+def _prefix(row):
+    return PEER_V2_PREFIX if _version(row) == 2 else PEER_PREFIX
+
+
+def peer_capabilities():
+    return PeerCapabilitiesV2().model_dump(mode="json")
+
+
+def _verify_projection(projection, metadata):
+    consent = metadata.consent
+    if (
+        projection.consent_revision != metadata.consent_revision
+        or set(projection.summary) != set(consent.summary_fields)
+        or {node.device_id for node in projection.nodes} != set(consent.node_ids)
+        or any(
+            set(node.fields) != set(consent.node_fields) for node in projection.nodes
+        )
+    ):
+        _deny("Projection differs from the receiver-approved consent")
 
 
 class InstallationPeerError(RuntimeError):
@@ -126,7 +167,7 @@ def _application(db, module_id, *, permission=None, receiver=False):
         _deny("Application package is unavailable")
     definition = load_application_definition(package)
     if (
-        definition.service.sdk_version != "1.2"
+        definition.service.sdk_version not in ("1.2", "1.3")
         or permission
         and permission not in definition.platform_permissions
         or receiver
@@ -180,6 +221,8 @@ def _lock(db, model, key):
 
 
 def _live_inbound(db, row):
+    if row is None:
+        _deny()
     application, package, definition = _application(
         db, row.module_id, permission="installation.peers.receive", receiver=True
     )
@@ -189,6 +232,8 @@ def _live_inbound(db, row):
         or row.application_instance_id != application.instance_id
         or row.receiver_identity != identity.model_dump(mode="json")
         or row.origin != configured_origin(db)
+        or row.state != "renewable"
+        and definition.peer_receiver.peer_version != _version(row)
     ):
         _deny()
     return application, package, definition
@@ -201,7 +246,7 @@ def _live_outbound(db, row, application):
         or row.state == "revoked"
     ):
         _deny("Local peer consent is unavailable or withdrawn")
-    current, _, _ = _application(
+    current, _, definition = _application(
         db, application.module_id, permission="installation.peers.enroll"
     )
     identity, _ = _load_or_create(db)
@@ -210,12 +255,35 @@ def _live_outbound(db, row, application):
         or current.instance_id != application.instance_id
     ):
         _deny("Local installation identity changed")
+    metadata = _metadata(row)
+    if metadata is not None and (
+        definition.service.sdk_version != "1.3"
+        or metadata.consent_revision != row.consent_revision
+        or metadata.consent.model_dump(mode="json") != row.consent
+    ):
+        _deny("Local peer metadata or SDK version changed")
 
 
 def create_outbound(
-    db, application, *, origin, receiver_identity, target_module_id, consent, user_id
+    db,
+    application,
+    *,
+    origin,
+    receiver_identity,
+    target_module_id,
+    consent,
+    user_id,
+    peer_version=1,
+    application_intent=None,
 ):
-    _application(db, application.module_id, permission="installation.peers.enroll")
+    _, _, definition = _application(
+        db, application.module_id, permission="installation.peers.enroll"
+    )
+    peer_model(PeerEnrollmentStartV1, peer_version)
+    if peer_version == 2 and definition.service.sdk_version != "1.3":
+        _deny("Proof-bound enrollment metadata requires SDK 1.3")
+    if peer_version == 1 and application_intent is not None:
+        _deny("Application intent requires peer v2")
     if (
         db.scalar(
             select(func.count())
@@ -231,6 +299,13 @@ def create_outbound(
     origin = InstallationProofRequestV1.canonical_origin(origin)
     receiver = InstallationIdentityV1.model_validate(receiver_identity)
     selection = ProjectionConsentV1.model_validate(consent)
+    metadata = (
+        enrollment_metadata(application_intent, selection)
+        if peer_version == 2
+        else None
+    )
+    if metadata is not None:
+        selection = metadata.consent
     available = set(
         db.scalars(
             select(Device.device_id).where(
@@ -246,7 +321,9 @@ def create_outbound(
     now = datetime.now(UTC)
     # Validate module ID through the shared start schema, before inserting state.
     link_id = f"peer_{uuid.uuid4().hex}"
-    start = _signed_start(db, link_id, target_module_id, receiver, origin, now)
+    start = _signed_start(
+        db, link_id, target_module_id, receiver, origin, now, metadata
+    )
     row = InstallationPeerOutbound(
         link_id=link_id,
         module_id=application.module_id,
@@ -283,15 +360,16 @@ def _challenge(receiver, origin, resource, now):
     )
 
 
-def _signed_start(db, link_id, target_module_id, receiver, origin, now):
+def _signed_start(db, link_id, target_module_id, receiver, origin, now, metadata=None):
     identity, private = _load_or_create(db)
     challenge = _challenge(
         identity,
         origin,
-        enrollment_resource(link_id, target_module_id, (PEER_SCOPE,)),
+        enrollment_resource(link_id, target_module_id, (PEER_SCOPE,), metadata),
         now,
     )
-    start = PeerEnrollmentStartV1(
+    start = peer_model(PeerEnrollmentStartV1, 2 if metadata else 1)(
+        **({"enrollment_metadata": metadata} if metadata else {}),
         request_id=link_id,
         target_module_id=target_module_id,
         sender=identity,
@@ -308,21 +386,24 @@ def _signed_start(db, link_id, target_module_id, receiver, origin, now):
     )
 
 
-def enrollment_start(db, value, *, origin, now=None):
+def enrollment_start(db, value, *, origin, now=None, peer_version=1):
     now = now or datetime.now(UTC)
-    start = PeerEnrollmentStartV1.model_validate(value)
-    application, _, _ = _application(
+    start = parse_peer(PeerEnrollmentStartV1, value, version=peer_version)
+    metadata = getattr(start, "enrollment_metadata", None)
+    application, _, definition = _application(
         db,
         start.target_module_id,
         permission="installation.peers.receive",
         receiver=True,
     )
+    if definition.peer_receiver.peer_version != start.peer_version:
+        _deny("Receiving application does not declare this peer version")
     receiver, _ = _load_or_create(db)
     if receiver != start.receiver:
         _deny("Pinned receiver installation identity changed")
     verify_signature(start.sender, start.signature, enrollment_start_bytes(start))
     resource = enrollment_resource(
-        start.request_id, start.target_module_id, start.scopes
+        start.request_id, start.target_module_id, start.scopes, metadata
     )
     expected = start.receiver_challenge
     if (
@@ -405,12 +486,32 @@ def enrollment_start(db, value, *, origin, now=None):
         mode="json"
     ):
         old = InstallationProofRequestV1.model_validate(row.sender_challenge)
-        if row.state != "renewable" and not (
-            row.state == "challenged" and old.expires_at <= now
+        previous = _metadata(row)
+        renewed_consent = (
+            metadata is not None
+            and previous is not None
+            and metadata.application_intent == previous.application_intent
+            and metadata.consent_revision > previous.consent_revision
+            and row.origin == origin
+            and row.request_id == start.request_id
+        )
+        if (
+            row.state != "renewable"
+            and metadata is not None
+            and previous != metadata
+            and not renewed_consent
+        ):
+            _deny("Enrollment metadata changed without a newer consent revision")
+        if (
+            row.state != "renewable"
+            and not renewed_consent
+            and not (row.state == "challenged" and old.expires_at <= now)
         ):
             _deny(
                 "Installation already has an enrollment or binding; explicit review is required"
             )
+        if metadata is not None:
+            row.generation += 1
         row.request_id = start.request_id
         row.start_request = start.model_dump(mode="json")
         row.sender_challenge = _challenge(receiver, origin, resource, now).model_dump(
@@ -420,7 +521,8 @@ def enrollment_start(db, value, *, origin, now=None):
         row.completed_digest = row.credential = row.rotation_digest = None
         row.approval_expires_at = now + timedelta(minutes=15)
         row.updated_at = now
-    result = PeerEnrollmentChallengeV1(
+    result = peer_model(PeerEnrollmentChallengeV1, start.peer_version)(
+        **({"enrollment_metadata": metadata} if metadata else {}),
         binding_id=row.binding_id,
         receiver_proof=receiver_proof,
         sender_challenge=InstallationProofRequestV1.model_validate(
@@ -432,23 +534,30 @@ def enrollment_start(db, value, *, origin, now=None):
 
 
 def _result(row):
-    return PeerEnrollmentResultV1(
+    metadata = _metadata(row)
+    return peer_model(PeerEnrollmentResultV1, _version(row))(
+        **({"enrollment_metadata": metadata} if metadata else {}),
         binding_id=row.binding_id,
         state=row.state,
         generation=row.generation,
         credential=(
-            PeerCredentialV1.model_validate(row.credential) if row.credential else None
+            parse_peer(PeerCredentialV1, row.credential, version=_version(row))
+            if row.credential
+            else None
         ),
     )
 
 
-def enrollment_complete(db, value, *, origin, now=None):
+def enrollment_complete(db, value, *, origin, now=None, peer_version=1):
     now = now or datetime.now(UTC)
-    complete = PeerEnrollmentCompleteV1.model_validate(value)
+    complete = parse_peer(PeerEnrollmentCompleteV1, value, version=peer_version)
     row = _lock(db, InstallationPeerInbound, complete.binding_id)
     _live_inbound(db, row)
-    if row.origin != origin:
+    metadata = _metadata(row)
+    if row.origin != origin or _version(row) != complete.peer_version:
         _deny()
+    if metadata is not None and complete.metadata_hash != metadata.metadata_hash:
+        _deny("Enrollment completion metadata does not match")
     digest = hashlib.sha256(
         canonical_json(complete.model_dump(mode="json"))
     ).hexdigest()
@@ -485,7 +594,9 @@ def enrollment_complete(db, value, *, origin, now=None):
 
 def _issue(db, row, now):
     identity, private = _load_or_create(db)
-    claims = PeerCredentialClaimsV1(
+    metadata = _metadata(row)
+    claims = peer_model(PeerCredentialClaimsV1, _version(row))(
+        **({"enrollment_metadata": metadata} if metadata else {}),
         binding_id=row.binding_id,
         issuer=identity,
         subject=InstallationIdentityV1.model_validate(row.sender_identity),
@@ -495,7 +606,7 @@ def _issue(db, row, now):
         issued_at=now,
         expires_at=now + timedelta(hours=24),
     )
-    certificate = PeerCredentialV1(
+    certificate = peer_model(PeerCredentialV1, _version(row))(
         claims=claims,
         signature=base64.b64encode(private.sign(credential_bytes(claims))).decode(),
     )
@@ -504,7 +615,15 @@ def _issue(db, row, now):
 
 
 def approve_inbound(
-    db, application, binding_id, expected_generation, *, user_id=None, now=None
+    db,
+    application,
+    binding_id,
+    expected_generation,
+    *,
+    user_id=None,
+    now=None,
+    expected_metadata_revision=None,
+    expected_metadata_hash=None,
 ):
     now = now or datetime.now(UTC)
     if type(expected_generation) is not int or expected_generation < 1:
@@ -517,6 +636,16 @@ def approve_inbound(
         or row.generation != expected_generation
     ):
         _deny()
+    metadata = _metadata(row)
+    if metadata is not None:
+        if (
+            type(expected_metadata_revision) is not int
+            or expected_metadata_revision != metadata.consent_revision
+            or expected_metadata_hash != metadata.metadata_hash
+        ):
+            _deny("Reviewed enrollment metadata revision or hash changed")
+    elif expected_metadata_revision is not None or expected_metadata_hash is not None:
+        _deny("Metadata review requires peer v2")
     if row.state == "active":
         result = _result(row)
         db.commit()
@@ -596,10 +725,32 @@ def update_consent(db, application, link_id, consent, expected_revision, *, user
     )
     if set(selection.node_ids) - available:
         _deny("Select only currently registered, non-revoked Nodes")
+    previous = _metadata(row)
+    if previous is not None:
+        selection = normalized_consent(selection)
+        if selection == previous.consent:
+            result = outbound_status(row)
+            db.commit()
+            return result
     row.consent = selection.model_dump(mode="json")
     row.consent_revision += 1
     row.report_id = row.report_projection = row.report_result = None
     row.updated_at = datetime.now(UTC)
+    if previous is not None:
+        metadata = enrollment_metadata(
+            previous.application_intent, selection, row.consent_revision
+        )
+        row.start_request = _signed_start(
+            db,
+            row.link_id,
+            row.target_module_id,
+            InstallationIdentityV1.model_validate(row.receiver_identity),
+            row.origin,
+            row.updated_at,
+            metadata,
+        ).model_dump(mode="json")
+        row.state = "new"
+        row.credential = row.complete_request = row.rotation_request = None
     _audit(
         db,
         "INSTALLATION_PEER_LOCAL_CONSENT",
@@ -677,7 +828,7 @@ def invalidate_application_peers(db, module_id):
 
 
 def outbound_status(row):
-    return {
+    result = {
         "link_id": row.link_id,
         "state": row.state,
         "consent_revision": row.consent_revision,
@@ -692,6 +843,33 @@ def outbound_status(row):
             else None
         ),
     }
+    metadata = _metadata(row)
+    if metadata is not None:
+        result.update(
+            peer_version=2, enrollment_metadata=metadata.model_dump(mode="json")
+        )
+    return result
+
+
+def _inbound_status(row):
+    result = {
+        "binding_id": row.binding_id,
+        "sender_identity": row.sender_identity,
+        "state": row.state,
+        "generation": row.generation,
+        "approval_expires_at": as_utc(row.approval_expires_at).isoformat(),
+    }
+    metadata = _metadata(row)
+    if metadata is not None:
+        result.update(
+            peer_version=2,
+            verified_metadata=(
+                metadata.model_dump(mode="json")
+                if row.completed_digest and row.state in ("pending", "active")
+                else None
+            ),
+        )
+    return result
 
 
 def list_peers(db, application):
@@ -712,16 +890,7 @@ def list_peers(db, application):
         )
     )
     return {
-        "inbound": [
-            {
-                "binding_id": row.binding_id,
-                "sender_identity": row.sender_identity,
-                "state": row.state,
-                "generation": row.generation,
-                "approval_expires_at": as_utc(row.approval_expires_at).isoformat(),
-            }
-            for row in incoming
-        ],
+        "inbound": [_inbound_status(row) for row in incoming],
         "outbound": [outbound_status(row) for row in outgoing],
     }
 
@@ -737,7 +906,26 @@ def notify_bootstrap(db, binding_id):
         "installation_identity": row.sender_identity,
         "requested_scopes": [PEER_SCOPE],
     }
+    metadata = _metadata(row)
+    generation = row.generation
+    if metadata is not None:
+        payload["enrollment_metadata"] = metadata.model_dump(mode="json")
+        context = machine_context(
+            row,
+            "installation_bootstrap",
+            f"enrollment:{binding_id}:{generation}:{metadata.metadata_hash}",
+        )
     db.commit()  # Owner's handler may approve through another SDK connection.
+
+    def still_pending():
+        db.expire_all()
+        current = db.get(InstallationPeerInbound, binding_id)
+        try:
+            _live_inbound(db, current)
+        except (InstallationPeerError, ApplicationGatewayError):
+            return False
+        return current.state == "pending" and current.generation == generation
+
     try:
         invoke_application(
             application,
@@ -747,6 +935,7 @@ def notify_bootstrap(db, binding_id):
             payload,
             context,
             required_audience="installation_bootstrap",
+            before_dispatch=still_pending,
         )
     except ApplicationGatewayError:
         # Durable pending state is discoverable through the receiver SDK/UI.
@@ -773,10 +962,16 @@ def authenticate_request(
     db, value, *, origin, path, now=None, allow_rotation_receipt=False
 ):
     now = now or datetime.now(UTC)
-    request = PeerRequestV1.model_validate(value)
+    wire_version = 2 if path.startswith(PEER_V2_PREFIX + "/") else 1
+    request = parse_peer(PeerRequestV1, value, version=wire_version)
     row = _lock(db, InstallationPeerInbound, request.credential.claims.binding_id)
     _live_inbound(db, row)
-    if row.state != "active" or row.origin != origin or request.path != path:
+    if (
+        row.state != "active"
+        or row.origin != origin
+        or request.path != path
+        or _version(row) != request.peer_version
+    ):
         _deny()
     digest = hashlib.sha256(canonical_json(request.model_dump(mode="json"))).hexdigest()
     if allow_rotation_receipt and row.rotation_digest == digest:
@@ -854,6 +1049,9 @@ def receive_report(db, value, *, origin, path, now=None):
     report = PeerReportV1.model_validate(request.payload)
     if report.projection.installation_id != row.sender_id:
         _deny("Projection installation subject is invalid")
+    metadata = _metadata(row)
+    if metadata is not None:
+        _verify_projection(report.projection, metadata)
     application, package, definition = _live_inbound(db, row)
     principal = ApplicationPrincipal(
         kind="installation",
@@ -986,6 +1184,7 @@ def enroll_outbound(db, application, link_id, *, transport=None):
     row = _lock(db, InstallationPeerOutbound, link_id)
     _live_outbound(db, row, application)
     revision = row.consent_revision
+    version, metadata, prefix = _version(row), _metadata(row), _prefix(row)
     origin, receiver, sender, target = (
         row.origin,
         row.receiver_identity,
@@ -997,7 +1196,7 @@ def enroll_outbound(db, application, link_id, *, transport=None):
         db.commit()
         return result
     if row.complete_request is None:
-        start = PeerEnrollmentStartV1.model_validate(row.start_request)
+        start = parse_peer(PeerEnrollmentStartV1, row.start_request, version=version)
         if start.receiver_challenge.expires_at <= datetime.now(UTC):
             start = _signed_start(
                 db,
@@ -1006,16 +1205,21 @@ def enroll_outbound(db, application, link_id, *, transport=None):
                 InstallationIdentityV1.model_validate(receiver),
                 origin,
                 datetime.now(UTC),
+                metadata,
             )
             row.start_request = start.model_dump(mode="json")
         db.commit()
-        response = PeerEnrollmentChallengeV1.model_validate(
+        response = parse_peer(
+            PeerEnrollmentChallengeV1,
             transport(
                 origin,
-                PEER_PREFIX + "/enrollments/start",
+                prefix + "/enrollments/start",
                 start.model_dump(mode="json"),
-            )
+            ),
+            version=version,
         )
+        if metadata is not None and response.enrollment_metadata != metadata:
+            _deny("Receiver enrollment metadata does not match")
         verify_installation_proof(
             response.receiver_proof,
             expected_identity=receiver,
@@ -1028,10 +1232,12 @@ def enroll_outbound(db, application, link_id, *, transport=None):
             or challenge.receiver_key_id != pinned.key_id
             or challenge.receiver_key_generation != pinned.key_generation
             or challenge.audience != origin
-            or challenge.resource != enrollment_resource(link_id, target, (PEER_SCOPE,))
+            or challenge.resource
+            != enrollment_resource(link_id, target, (PEER_SCOPE,), metadata)
         ):
             _deny("Receiver enrollment challenge binding is invalid")
-        complete = PeerEnrollmentCompleteV1(
+        complete = peer_model(PeerEnrollmentCompleteV1, version)(
+            **({"metadata_hash": metadata.metadata_hash} if metadata else {}),
             binding_id=response.binding_id,
             sender_proof=prove_installation_identity(db, challenge),
         )
@@ -1048,14 +1254,20 @@ def enroll_outbound(db, application, link_id, *, transport=None):
         )
     row = _lock(db, InstallationPeerOutbound, link_id)
     _live_outbound(db, row, application)
+    if row.consent_revision != revision:
+        _deny("Local peer consent changed while enrollment was in flight")
     complete = dict(row.complete_request)
     remote_binding_id = row.remote_binding_id
     db.commit()
-    result = PeerEnrollmentResultV1.model_validate(
-        transport(origin, PEER_PREFIX + "/enrollments/complete", complete)
+    result = parse_peer(
+        PeerEnrollmentResultV1,
+        transport(origin, prefix + "/enrollments/complete", complete),
+        version=version,
     )
     if result.binding_id != remote_binding_id:
         _deny("Enrollment response binding is invalid")
+    if metadata is not None and result.enrollment_metadata != metadata:
+        _deny("Enrollment response metadata does not match")
     if result.credential:
         verify_peer_credential(
             result.credential,
@@ -1080,7 +1292,10 @@ def enroll_outbound(db, application, link_id, *, transport=None):
 
 def signed_outbound_request(db, row, path, payload):
     identity, private = _load_or_create(db)
-    credential = PeerCredentialV1.model_validate(row.credential)
+    version, metadata = _version(row), _metadata(row)
+    credential = parse_peer(PeerCredentialV1, row.credential, version=version)
+    if metadata is not None and credential.claims.enrollment_metadata != metadata:
+        _deny("Credential metadata differs from local consent")
     verify_peer_credential(
         credential,
         issuer=InstallationIdentityV1.model_validate(row.receiver_identity),
@@ -1090,7 +1305,7 @@ def signed_outbound_request(db, row, path, payload):
         now=datetime.now(UTC),
     )
     now = datetime.now(UTC)
-    request = PeerRequestV1(
+    request = peer_model(PeerRequestV1, version)(
         credential=credential,
         path=path,
         nonce=secrets.token_urlsafe(32),
@@ -1111,6 +1326,7 @@ def rotate_outbound(db, application, link_id, *, transport=None):
     _live_outbound(db, row, application)
     if row.state != "active":
         _deny("Peer is not active")
+    version, metadata, prefix = _version(row), _metadata(row), _prefix(row)
     revision, origin, receiver, sender, target = (
         row.consent_revision,
         row.origin,
@@ -1120,14 +1336,16 @@ def rotate_outbound(db, application, link_id, *, transport=None):
     )
     if row.rotation_request is None:
         row.rotation_request = signed_outbound_request(
-            db, row, PEER_PREFIX + "/rotate", {}
+            db, row, prefix + "/rotate", {}
         ).model_dump(mode="json")
     request = dict(row.rotation_request)
     binding_id = row.remote_binding_id
     old_generation = row.credential["claims"]["generation"]
     db.commit()
-    result = PeerEnrollmentResultV1.model_validate(
-        (transport or peer_http)(origin, PEER_PREFIX + "/rotate", request)
+    result = parse_peer(
+        PeerEnrollmentResultV1,
+        (transport or peer_http)(origin, prefix + "/rotate", request),
+        version=version,
     )
     if (
         result.credential is None
@@ -1135,6 +1353,8 @@ def rotate_outbound(db, application, link_id, *, transport=None):
         or result.generation != old_generation + 1
     ):
         _deny("Rotation response binding or generation is invalid")
+    if metadata is not None and result.enrollment_metadata != metadata:
+        _deny("Rotation response metadata does not match")
     verify_peer_credential(
         result.credential,
         issuer=InstallationIdentityV1.model_validate(receiver),
@@ -1173,11 +1393,14 @@ def report_outbound(db, application, link_id, report_id, *, transport=None):
         else installation_projection(db, application, link_id)
     )
     report = PeerReportV1(report_id=report_id, projection=projection)
+    metadata = _metadata(row)
+    if metadata is not None:
+        _verify_projection(projection, metadata)
     row.report_id = report_id
     row.report_projection = projection.model_dump(mode="json")
     row.report_result = None
     request = signed_outbound_request(
-        db, row, PEER_PREFIX + "/report", report.model_dump(mode="json")
+        db, row, _prefix(row) + "/report", report.model_dump(mode="json")
     )
     revision, origin = row.consent_revision, row.origin
     db.commit()

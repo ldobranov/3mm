@@ -12,6 +12,7 @@ from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from three_mm_protocol.installation_identity import InstallationIdentityV1
 from three_mm_protocol.installation_peer import PEER_MAX_BYTES, ProjectionConsentV1
+from three_mm_protocol.installation_peer_v2 import PeerOutboundConsentRequestV2
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN
 from sqlalchemy import select
 
@@ -34,6 +35,11 @@ class OutboundConsentRequest(BaseModel):
 class GenerationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     expected_generation: int = Field(ge=1)
+
+
+class MetadataReviewRequest(GenerationRequest):
+    expected_metadata_revision: int | None = Field(default=None, ge=1)
+    expected_metadata_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class ConsentUpdateRequest(BaseModel):
@@ -146,7 +152,7 @@ def create_outbound(
 def approve_peer(
     module_id: str,
     binding_id: str,
-    request: GenerationRequest,
+    request: MetadataReviewRequest,
     admin=Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -156,6 +162,29 @@ def approve_peer(
         _application(db, module_id),
         binding_id,
         request.expected_generation,
+        user_id=admin.id,
+        expected_metadata_revision=request.expected_metadata_revision,
+        expected_metadata_hash=request.expected_metadata_hash,
+    )
+
+
+@router.post("/applications/{module_id}/outbound/v2", status_code=201)
+def create_outbound_v2(
+    module_id: str,
+    request: PeerOutboundConsentRequestV2,
+    admin=Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return _run(
+        peers.create_outbound,
+        db,
+        _application(db, module_id),
+        origin=request.origin,
+        receiver_identity=request.receiver_identity,
+        target_module_id=request.target_module_id,
+        consent=request.consent,
+        application_intent=request.application_intent,
+        peer_version=2,
         user_id=admin.id,
     )
 
@@ -216,6 +245,7 @@ def revoke_peer(
 
 
 @router.get("/v1/identity")
+@router.get("/v2/identity")
 def public_peer_identity(
     request: Request, response: Response, db: Session = Depends(get_db)
 ):
@@ -224,32 +254,59 @@ def public_peer_identity(
     return _run(installation_identity, db).model_dump(mode="json")
 
 
+@router.get("/v2/capabilities")
+def peer_capabilities(
+    request: Request, response: Response, db: Session = Depends(get_db)
+):
+    _https_origin(request, db)
+    response.headers["Cache-Control"] = "no-store"
+    return peers.peer_capabilities()
+
+
 @router.post("/v1/enrollments/start")
+@router.post("/v2/enrollments/start")
 async def start_enrollment(request: Request, db: Session = Depends(get_db)):
     origin = _https_origin(request, db)
     value = await _body(request)
     result = await run_in_threadpool(
-        _run, peers.enrollment_start, db, value, origin=origin
+        _run,
+        peers.enrollment_start,
+        db,
+        value,
+        origin=origin,
+        peer_version=2 if "/v2/" in request.url.path else 1,
     )
     return result.model_dump(mode="json")
 
 
 @router.post("/v1/enrollments/complete")
+@router.post("/v2/enrollments/complete")
 async def complete_enrollment(request: Request, db: Session = Depends(get_db)):
     origin = _https_origin(request, db)
     value = await _body(request)
     result = await run_in_threadpool(
-        _run, peers.enrollment_complete, db, value, origin=origin
+        _run,
+        peers.enrollment_complete,
+        db,
+        value,
+        origin=origin,
+        peer_version=2 if "/v2/" in request.url.path else 1,
     )
     await run_in_threadpool(_run, peers.notify_bootstrap, db, result.binding_id)
     # Owner callback might approve. The same completion now reads its receipt.
     result = await run_in_threadpool(
-        _run, peers.enrollment_complete, db, value, origin=origin
+        _run,
+        peers.enrollment_complete,
+        db,
+        value,
+        origin=origin,
+        peer_version=2 if "/v2/" in request.url.path else 1,
     )
     return result.model_dump(mode="json")
 
 
 @router.post("/v1/report")
+@router.post("/v2/report")
 async def report_status(request: Request, db: Session = Depends(get_db)):
     origin = _https_origin(request, db)
     value = await _body(request, authenticated=True)
@@ -259,6 +316,7 @@ async def report_status(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/v1/rotate")
+@router.post("/v2/rotate")
 async def rotate_credential(request: Request, db: Session = Depends(get_db)):
     origin = _https_origin(request, db)
     value = await _body(request, authenticated=True)

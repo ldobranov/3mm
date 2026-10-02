@@ -1,5 +1,10 @@
 # Installation peers v1 — Core/SDK G2 and G3
 
+This document records the beta.31 v1 implementation. The subsequent, locally
+implemented **unreleased** peer v2 / SDK 1.3 addition is described in
+[INSTALLATION_PEER_V2.md](INSTALLATION_PEER_V2.md). V1 remains supported but does
+not prove the exact receiving-application intent and consent before approval.
+
 Release target: `v0.3.0-beta.31`, prepared on `main` after isolated Raspberry
 acceptance, based on `1bf18f9636a4d50476052f910812188fcbb49e44`.
 Publication requires the tag release workflow to pass; no live deployment is

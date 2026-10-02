@@ -6,6 +6,43 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.32] - 2026-10-02
+
+### Added
+
+- Generic installation peer v2 / Application SDK 1.3: bounded opaque application
+  intent and normalized exact consent selection, revision and hash are bound
+  into the signed start, both possession proofs, pending receipt and credential.
+- Verified metadata is available before approval through the receiver bootstrap
+  handler and SDK/admin inbound reads. Approval checks generation plus the
+  reviewed metadata revision/hash, including idempotent approval retries.
+- Shared v2 schemas, administrator consent-create API, explicit capability
+  discovery and receiver manifest version selection; no silent v1 downgrade.
+
+### Changed
+
+- Every actual v2 consent change, including reduction, clears outgoing credentials
+  and cached reports, stops export and requires a new receiver approval generation.
+  A reordered but identical selection is an idempotent no-op.
+- V2 receivers reject projections whose revision or selected fields/Nodes differ
+  from the reviewed consent. Late replies and old bootstrap callbacks remain fenced.
+- SDK runtime 1.3 continues supporting manifests 1.0–1.2 and legacy peer v1 wire
+  behavior. Applications embedding older protocol parsers must accept the actual
+  G1 runtime SDK version; see the v2 compatibility guide.
+
+### Compatibility and verification
+
+- No new database migration. Existing peer JSON stores v2 metadata; backup restore
+  retains its audit record but quarantines trust, credentials and cached reports.
+- 154 targeted/regression tests and five additional malformed-credential cases
+  passed on Windows; the production frontend build and diff checks passed.
+  Real v2 TLS/Linux/public-ingress acceptance is not claimed.
+- Intent issuance, expiry/reuse, organization mapping and Owner authorization
+  remain receiving-application rules, not concrete business logic in Core.
+- Prepared for tag-driven Hub and ARMv6 Node artifact publication. Node Update
+  checks are retained from beta.31; no Node pairing, hardware authority, live
+  deployment or Child Center package changes are included.
+
 ## [0.3.0-beta.31] - 2026-10-02
 
 ### Added
@@ -752,7 +789,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.31...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.32...HEAD
+[0.3.0-beta.32]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.32
 [0.3.0-beta.31]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.31
 [0.3.0-beta.30]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.30
 [0.3.0-beta.29]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.29

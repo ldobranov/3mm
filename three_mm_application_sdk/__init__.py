@@ -20,8 +20,8 @@ from datetime import UTC, datetime
 
 REVISION_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$")
 PLATFORM_MESSAGE_LIMIT = 6 * 1024 * 1024
-SDK_VERSION = "1.2"
-SUPPORTED_SDK_VERSIONS = ("1.0", "1.1", "1.2")
+SDK_VERSION = "1.3"
+SUPPORTED_SDK_VERSIONS = ("1.0", "1.1", "1.2", "1.3")
 
 
 class ApplicationPlatformError(RuntimeError):
@@ -144,22 +144,46 @@ class ApplicationPlatformClient:
     def enroll_installation_peer(self, link_id: str) -> dict[str, object]:
         """Resume a durable, locally approved enrollment; never invent an origin."""
         from three_mm_protocol.installation_peer import PeerOutboundStatusV1
-        return PeerOutboundStatusV1.model_validate(self._call("installation.peers.enroll", {"link_id": link_id})).model_dump(mode="json")
+        from three_mm_protocol.installation_peer_v2 import parse_peer
+        return parse_peer(PeerOutboundStatusV1, self._call("installation.peers.enroll", {"link_id": link_id})).model_dump(mode="json")
+
+    def get_installation_peer_capabilities(self) -> dict[str, object]:
+        """Require approval-binding v2 explicitly; never downgrade silently."""
+        from three_mm_protocol.installation_peer_v2 import PeerCapabilitiesV2
+        return PeerCapabilitiesV2.model_validate(self._call("installation.peers.capabilities", {})).model_dump(mode="json")
 
     def list_installation_peers(self) -> dict[str, object]:
-        return self._call("installation.peers.list", {})
+        from three_mm_protocol.installation_peer_v2 import PeerInboundStatusV2
+        result = self._call("installation.peers.list", {})
+        for value in result.get("inbound", []):
+            if value.get("peer_version") == 2:
+                PeerInboundStatusV2.model_validate(value)
+        return result
 
-    def approve_installation_peer(self, binding_id: str, *, expected_generation: int) -> dict[str, object]:
+    def approve_installation_peer(self, binding_id: str, *, expected_generation: int,
+                                  expected_metadata_revision: int | None = None,
+                                  expected_metadata_hash: str | None = None) -> dict[str, object]:
         """Receiver approval after the extension's own ownership/ACL checks."""
         from three_mm_protocol.installation_peer import PeerEnrollmentResultV1
-        return PeerEnrollmentResultV1.model_validate(self._call("installation.peers.approve", {"binding_id": binding_id, "expected_generation": expected_generation})).model_dump(mode="json")
+        from three_mm_protocol.installation_peer_v2 import parse_peer
+        payload = {"binding_id": binding_id, "expected_generation": expected_generation}
+        if expected_metadata_revision is not None or expected_metadata_hash is not None:
+            from three_mm_protocol.installation_peer_v2 import PeerApprovalReviewV2
+            review = PeerApprovalReviewV2(
+                expected_generation=expected_generation,
+                expected_metadata_revision=expected_metadata_revision,
+                expected_metadata_hash=expected_metadata_hash,
+            )
+            payload.update(review.model_dump(mode="json"))
+        return parse_peer(PeerEnrollmentResultV1, self._call("installation.peers.approve", payload)).model_dump(mode="json")
 
     def revoke_installation_peer(self, peer_id: str, *, direction: str) -> dict[str, object]:
         return self._call("installation.peers.revoke", {"peer_id": peer_id, "direction": direction})
 
     def rotate_installation_peer(self, link_id: str) -> dict[str, object]:
         from three_mm_protocol.installation_peer import PeerOutboundStatusV1
-        return PeerOutboundStatusV1.model_validate(self._call("installation.peers.rotate", {"link_id": link_id})).model_dump(mode="json")
+        from three_mm_protocol.installation_peer_v2 import parse_peer
+        return parse_peer(PeerOutboundStatusV1, self._call("installation.peers.rotate", {"link_id": link_id})).model_dump(mode="json")
 
     def get_installation_status(self, link_id: str) -> dict[str, object]:
         from three_mm_protocol.installation_peer import InstallationProjectionV1
