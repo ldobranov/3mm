@@ -19,6 +19,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from agent.identity import AgentIdentity
 from backend.config import AppSettings, PROJECT_ROOT
+from backend.services.installation_identity import InstallationIdentityError, validate_identity_backup
 from three_mm_protocol import (
     PROTOCOL_VERSION,
     BackupCompatibilityV1,
@@ -560,6 +561,13 @@ def build_backup_preview(
         )
 
     if database_path is not None:
+        try:
+            validate_identity_backup(database_path, settings.backups.host_config_file)
+        except InstallationIdentityError:
+            issues.append(BackupPreviewIssue(
+                severity="error", code="compatibility.installation_identity",
+                message="Installation identity recovery material is missing or invalid",
+            ))
         for source in _backup_sources(settings, database_path):
             entries.extend(_scan_source(source, issues))
 

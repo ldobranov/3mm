@@ -9,12 +9,11 @@ runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
 > **Project status:** Beta. The current release is
-> [v0.3.0-beta.30](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.30),
-> which restores UTC timezone information on device `reported_at` timestamps so
-> fresh Node state is not incorrectly treated as stale by Fleet. beta.29 ->
-> beta.30 is also the first physical OTA transition that can validate the
-> helper-before-Agent startup order introduced in beta.29. Physical GPIO pin
-> reconfiguration and final OTA acceptance remain pending.
+> [v0.3.0-beta.31](https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.31),
+> introducing installation identity, consent-scoped HTTPS peers and Application
+> SDK 1.2, plus read-only Node Update checks. Isolated Raspberry peer acceptance
+> passed; Cloud Manager business integration and public ingress are still separate
+> work. This release does not automatically connect to a cloud or update devices.
 
 ## What works
 
@@ -46,6 +45,9 @@ system.
 - **OTA updates** — architecture-specific reproducible artifacts, validated
   manifests, Stable/Beta/Test channels, cached read-only background checks,
   maintenance-window enforcement and explicit administrator approval.
+- **Optional installation peers** — encrypted installation identity, verified
+  HTTPS enrollment with separate local consent and receiver approval, limited
+  status sharing, revocation and durable retries. No cloud command authority.
 
 ## Architecture
 
@@ -186,14 +188,15 @@ architectures/Python versions are rejected rather than compiling on-device.
 The fresh-install Setup AP changes Wi-Fi and may disconnect SSH. Setup only
 offers the Node role. Local enrollment and administrator approval are available
 through the optional Fleet extension; installing Node is not completed pairing.
-There is no permanent Node administration page or Node runtime OTA UI yet.
+There is no permanent Node administration page. The optional Fleet extension
+provides a Hub-side Node runtime OTA interface; trust bootstrap is described below.
 See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 ### Updating a paired Hub and Zero
 
 After the new GitHub Release is fully published, update the Hub through
 `/system/updates` using the Beta channel. Update the Zero over SSH with the same
-Node bootstrap command above; add `--tag v0.3.0-beta.26` to select the published
+Node bootstrap command above; add `--tag v0.3.0-beta.31` to select the published
 release. Provisioned upgrades preserve identity and pairing, not Master reset.
 Then upload Fleet `0.1.7` on the Hub through Extensions. Updating the Fleet ZIP
 alone does not update Core or the Zero Agent. Follow the
@@ -201,6 +204,10 @@ alone does not update Core or the Zero Agent. Follow the
 The signed Node OTA path requires an explicit one-time Hub key trust bootstrap;
 see [Node update scope and acceptance](docs/FLEET_NODE_OTA.md). Fleet 0.1.7
 exposes prepare and explicit install controls, while Core remains the source of truth.
+Already paired, signed-update-capable Nodes with a verified Hub key pin can be
+updated from Fleet instead of SSH. Unknown outcomes must be reviewed, not replayed.
+The new Node check reports the latest release and confirmed Hub OTA history;
+manual upgrades without that history remain unknown, not automatically up to date.
 
 Use `--tag` for a reproducible exact release, for example by appending
 `-s -- --tag v0.3.0-beta.11` after `sudo bash`. The Raspberry host password is
@@ -270,6 +277,7 @@ See the [changelog](CHANGELOG.md) for user-visible changes and the
 
 | Document | Purpose |
 | --- | --- |
+| [Product master plan](docs/MASTER_PLAN.md) | Local-first product sequence and optional central extensions |
 | [Architecture plan](docs/ARCHITECTURE_PLAN.md) | System boundaries and target architecture |
 | [Project rules](docs/PROJECT_RULES.md) | Compatibility, safety and development rules |
 | [Users and access](docs/ACCESS_CONTROL.md) | Roles, groups, scoped permissions and extension delegation handoff |
@@ -286,6 +294,8 @@ See the [changelog](CHANGELOG.md) for user-visible changes and the
 | [Application extension v1 plan](docs/APPLICATION_EXTENSION_V1_PLAN.md) | Planned trusted business-service and integration boundary |
 | [Application commands and passage](docs/APPLICATION_COMMANDS.md) | Scoped SDK commands, crash/restore safety and correlated sensor evidence |
 | [Application job scheduler](docs/APPLICATION_JOB_SCHEDULER.md) | Interval scheduling, bounded concurrency and unknown-outcome recovery |
+| [Installation identity v1](docs/INSTALLATION_IDENTITY_V1.md) | Stable identity, bounded proofs, backup and clone boundaries |
+| [Installation peers v1](docs/INSTALLATION_PEER_V1.md) | SDK 1.2 consent, enrollment, status projection and HTTPS acceptance |
 | [Module Manifest v2](docs/MODULE_MANIFEST_V2.md) | Package envelope and identities |
 | [OTA update plan](docs/OTA_UPDATE_PLAN.md) | Update architecture and acceptance stages |
 | [Release guide](docs/RELEASING.md) | Versioning, publication and verification |

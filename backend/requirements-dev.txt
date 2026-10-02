@@ -6,7 +6,6 @@
 
 # Development and debugging tools
 pytest==8.4.1
-httpx==0.28.1  # For API testing
 debugpy==1.8.16  # For VSCode remote debugging
 ipython==9.5.0  # Enhanced Python shell
 black==25.1.0   # Code formatting

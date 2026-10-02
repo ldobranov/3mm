@@ -442,6 +442,8 @@ def uninstall_application_extension(
     from backend.db.application_command import ApplicationCommandEpoch, ApplicationCommandRequest
     previous_status = installation.status
     installation.status = 'uninstalling'
+    from backend.services.installation_peers import invalidate_application_peers
+    invalidate_application_peers(db, installation.module_id)
     invalidate_commands(db, installation.id)
     db.commit()
     try:

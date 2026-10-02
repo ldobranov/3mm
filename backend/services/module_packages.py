@@ -3,6 +3,7 @@ import hashlib, io, json, stat, zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from pydantic import ValidationError
+from backend.version import core_version as actual_core_version
 from three_mm_protocol import (
     ApplicationExtensionV1,
     CompiledUiExtensionV1,
@@ -25,6 +26,12 @@ ALLOWED_PERMISSIONS = {
     "secrets.use",
     "hardware.inventory",
     "hardware.gpio",
+    "installation.identity.read",
+    "installation.identity.prove",
+    "installation.peers.enroll",
+    "installation.peers.receive",
+    "installation.peers.report",
+    "installation.status.read",
 }
 
 class ModulePackageError(ValueError): pass
@@ -74,7 +81,7 @@ def _read_compiled_ui(
         )
     return compiled_ui, source_files
 
-def validate_module_package(package: bytes, *, architecture: str | None = None, protocol_version: str = "1.0", core_version: str = "0.1.0") -> ValidatedModulePackage:
+def validate_module_package(package: bytes, *, architecture: str | None = None, protocol_version: str = "1.0", core_version: str | None = None) -> ValidatedModulePackage:
     if not package or len(package) > MAX_PACKAGE_BYTES:
         raise ModulePackageError("module package size is outside the allowed range")
     try:
@@ -107,8 +114,14 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
         raise ModulePackageError(f"unsupported permissions: {', '.join(unsupported)}")
     if manifest.compatibility.protocol != protocol_version:
         raise ModulePackageError("incompatible protocol version")
-    if "core" in manifest.runtimes and not meets_minimum_version(core_version, manifest.compatibility.core):
-        raise ModulePackageError("incompatible Core runtime version")
+    if "core" in manifest.runtimes:
+        try:
+            version = core_version if core_version is not None else actual_core_version()
+            compatible = meets_minimum_version(version, manifest.compatibility.core)
+        except ValueError as exc:
+            raise ModulePackageError("Core runtime version is unavailable or invalid") from exc
+        if not compatible:
+            raise ModulePackageError("incompatible Core runtime version")
     if architecture and architecture not in manifest.compatibility.architectures and "any" not in manifest.compatibility.architectures:
         raise ModulePackageError("incompatible CPU architecture")
     package_files = {
@@ -285,6 +298,7 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
             )
 
         expected_permissions = {"data.read", "data.write", "process.spawn"}
+        expected_permissions.update(application_extension.platform_permissions)
         if application_extension.command_bindings:
             expected_permissions.add('capabilities.invoke')
         if application_extension.event_subscriptions:
@@ -292,6 +306,8 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
         if emitted_events:
             expected_permissions.add("events.publish")
         if application_extension.connectors:
+            expected_permissions.add("network.outbound")
+        if {"installation.peers.enroll", "installation.peers.report"} & set(application_extension.platform_permissions):
             expected_permissions.add("network.outbound")
         if any(
             item.credential_ref_config_key is not None
@@ -372,6 +388,8 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
             raise ModulePackageError(
                 f"compiled UI source package contains forbidden files: {', '.join(forbidden)}"
             )
+    if any(item.startswith("installation.") for item in manifest.permissions) and application_extension is None:
+        raise ModulePackageError("installation identity permissions require an application extension")
     return ValidatedModulePackage(
         manifest=manifest,
         sha256=hashlib.sha256(package).hexdigest(),

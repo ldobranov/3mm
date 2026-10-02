@@ -23,7 +23,9 @@ class ApplicationGatewayError(RuntimeError):
 def load_application_definition(package: ModulePackage) -> ApplicationExtensionV1:
     try:
         validated = validate_module_package(Path(package.file_path).read_bytes())
-    except (OSError, ModulePackageError) as exc:
+    except ModulePackageError as exc:
+        raise ApplicationGatewayError(f"Application package is no longer valid: {exc}") from exc
+    except OSError as exc:
         raise ApplicationGatewayError("Application package is no longer valid") from exc
     if validated.sha256 != package.sha256 or validated.application_extension is None:
         raise ApplicationGatewayError("Application package identity is invalid")

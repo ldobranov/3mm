@@ -191,17 +191,7 @@ def serve(instance: str, root: Path, key_root: Path, group_id: int | None = None
                         raise ApplicationTransportError(
                             "Application operation forbids an idempotency key"
                         )
-                    context = OperationContext(
-                        audience=audience,
-                        correlation_id=str(raw_context.get("correlation_id", "")),
-                        user_id=raw_context.get("user_id")
-                        if isinstance(raw_context.get("user_id"), int)
-                        and not isinstance(raw_context.get("user_id"), bool)
-                        else None,
-                        idempotency_key=raw_context.get("idempotency_key")
-                        if isinstance(raw_context.get("idempotency_key"), str)
-                        else None,
-                    )
+                    context = OperationContext.from_platform(raw_context)
                     result = service.handle(operation_id, payload, context)
                     if not isinstance(result, dict):
                         raise ApplicationTransportError(

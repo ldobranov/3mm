@@ -18,6 +18,9 @@ depends_on = None
 
 
 POST_BASELINE_TABLES = {
+    "installation_peer_origin", "installation_peer_inbound",
+    "installation_peer_outbound", "installation_peer_nonces", "installation_peer_audit",
+    "core_installation_identity",
     "application_command_epochs",
     "application_command_requests",
     "group_roles",

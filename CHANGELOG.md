@@ -6,6 +6,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.31] - 2026-10-02
+
+### Added
+
+- Stable Core installation identity and bounded Ed25519 proof of possession,
+  with encrypted private keys, lazy creation and actual Core version checks.
+- Application SDK 1.2 installation-peer enrollment, separate local consent and
+  receiver approval, expiring credentials, revocation, replay protection and
+  durable completion/report/rotation retries. SDK 1.0/1.1 services remain supported.
+- Explicitly selected installation/Node status projections over verified HTTPS;
+  machine audiences cannot acquire human permissions or physical command authority.
+- Read-only administrator Node Update check for the latest official release and
+  the last confirmed OTA version. Missing or uncertain history stays unknown;
+  preparing an already confirmed selected release does not download it again.
+- General product plan and installation identity/peer integration contracts.
+
+### Fixed
+
+- Valid module IDs containing the `3mm` component now work in peer consent requests.
+- Registration/login/profile logs exclude credentials, tokens, decoded claims and
+  raw exception details, without changing authentication or session behavior.
+- Peer HTTPS transport dependencies are included in production requirements,
+  not only development installations. Node dependencies remain minimal.
+
+### Compatibility and verification
+
+- Alembic revisions `4159a0b1c2d3` and `526ab1c2d3e4` add identity and peer tables.
+  Recovery preserves the identity/key pair but quarantines peer trust in both
+  directions; restored links require fresh approval. Retire the source before
+  running its restored replacement; identical active SD/database clones are unsupported.
+- Release preparation: 199 scoped tests passed, with two Linux/opt-in tests
+  skipped on Windows; the production frontend build passed. Isolated Raspberry
+  HTTPS/Unix-socket acceptance also passed. Four Linux acceptance/schema tests and eight authentication
+  logging tests passed without changing the live Hub, Zero or application data.
+- Cloud Manager consent/ownership UI, reporting schedules and public HTTPS ingress
+  remain separate integration work. No concrete business extension or automatic
+  cloud connection is included; local Hub/Node operation remains independent.
+- Node check uses Hub OTA history, not a new live Agent version contract. Manual
+  installs and unconfirmed results cannot be advertised as up to date.
+
 ## [0.3.0-beta.30] - 2026-10-01
 
 ### Fixed
@@ -712,7 +752,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.30...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.31...HEAD
+[0.3.0-beta.31]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.31
 [0.3.0-beta.30]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.30
 [0.3.0-beta.29]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.29
 [0.3.0-beta.28]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.28

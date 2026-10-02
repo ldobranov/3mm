@@ -49,7 +49,9 @@ def _validated_compiled_package(package: ModulePackage):
     try:
         blob = Path(package.file_path).read_bytes()
         validated = validate_module_package(blob)
-    except (OSError, ModulePackageError) as exc:
+    except ModulePackageError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except OSError as exc:
         raise HTTPException(409, "compiled UI package is no longer valid") from exc
     if validated.sha256 != package.sha256 or validated.compiled_ui is None:
         raise HTTPException(409, "compiled UI package identity is invalid")

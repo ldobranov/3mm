@@ -28,6 +28,7 @@ from backend.routes.ai_extension_builder_routes import (
 from backend.routes.application_extensions import router as application_extensions_router
 from backend.routes.application_events import router as application_events_router
 from backend.routes.application_operations import router as application_operations_router
+from backend.routes.installation_peers import router as installation_peers_router
 from backend.routes.backups import router as backups_router
 from backend.routes.diagnostics import router as diagnostics_router
 from backend.routes.ai_automations import router as ai_automations_router
@@ -293,6 +294,7 @@ app.include_router(modules_router)
 app.include_router(application_extensions_router)
 app.include_router(application_events_router)
 app.include_router(application_operations_router)
+app.include_router(installation_peers_router)
 app.include_router(runtime_extensions_router)
 app.include_router(ai_automations_router)
 app.include_router(extension_projects_router)

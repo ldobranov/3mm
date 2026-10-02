@@ -87,6 +87,16 @@ class NodePrepareAdminResponse(BaseModel):
     command_status: str
 
 
+class NodeUpdateCheckResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_release_id: str | None
+    latest_release_id: str
+    latest_version: str
+    channel: NodeUpdateChannel
+    update_available: bool | None
+
+
 class NodePrepareStatusResponse(BaseModel):
     model_config = ConfigDict(
         extra="forbid"
@@ -152,6 +162,99 @@ def _aware_utc(
         UTC
     )
     
+
+def _current_node_release_id(
+    db: Session,
+    device: Device,
+) -> str | None:
+    command = db.scalar(
+        select(DeviceCommand)
+        .where(
+            DeviceCommand.device_id == device.id,
+            DeviceCommand.command_type == "agent.update.apply",
+        )
+        .order_by(DeviceCommand.created_at.desc(), DeviceCommand.id.desc())
+        .limit(1)
+    )
+
+    # A newer unconfirmed attempt must not expose an older success as current.
+    try:
+        operation = installation_outcome(command)
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+    if operation is None or operation.device_id != device.device_id:
+        return None
+
+    if operation.status == "succeeded":
+        return operation.release_id
+
+    if operation.status == "rolled_back":
+        return operation.previous_release_id
+
+    return None
+
+
+@router.get(
+    "/{device_id}/node-updates/check",
+    response_model=NodeUpdateCheckResponse,
+)
+def check_node_update(
+    device_id: str,
+    channel: NodeUpdateChannel = "beta",
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> NodeUpdateCheckResponse:
+    device = db.scalar(
+        select(Device).where(
+            Device.device_id == device_id
+        )
+    )
+
+    if device is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Device was not found",
+        )
+
+    if device.role != "node":
+        raise HTTPException(
+            status_code=409,
+            detail="Node updates require a Node device",
+        )
+
+    if device.revoked_at is not None:
+        raise HTTPException(status_code=409, detail="Device is revoked")
+
+    try:
+        release = find_published_node_release(
+            get_settings().updates,
+            channel=channel,
+        )
+    except NodeReleaseCatalogError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
+    current_release_id = _current_node_release_id(
+        db,
+        device,
+    )
+
+    return NodeUpdateCheckResponse(
+        current_release_id=current_release_id,
+        latest_release_id=release.manifest.release_id,
+        latest_version=release.manifest.version,
+        channel=release.manifest.channel,
+        update_available=(
+            None
+            if current_release_id is None
+            else current_release_id
+            != release.manifest.release_id
+        ),
+    )
+
 
 @router.post(
     "/{device_id}/node-updates/prepare",
@@ -222,6 +325,20 @@ def prepare_node_update(
                 ),
             )
         )
+
+        current_release_id = _current_node_release_id(
+            db,
+            device,
+        )
+
+        if (
+            current_release_id is not None
+            and current_release_id
+            == release.manifest.release_id
+        ):
+            raise DeviceCommandError(
+                "Node is already running the selected release"
+            )
 
         candidate_archive = (
             candidate_directory

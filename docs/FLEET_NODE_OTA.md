@@ -1,26 +1,39 @@
 # One-Node runtime update from Fleet
 
-Updated: 2026-10-01. Beta.25 is published with the execution foundation and
-Hub/Agent prepare transport. Signed approval, remote apply and independent final
-reports are implemented in the working tree, **not deployed or published**.
+Updated: 2026-10-02. The user reports a successful real **Hub -> Node runtime
+update**, with remaining bugs. This is happy-path acceptance based on the user's
+confirmation, not an independent inspection of release versions or final logs.
+Stage 4 is in progress; failure-path acceptance and bug triage remain open.
 This updates the complete Node runtime, not an installed Agent module package.
-Fleet 0.1.6 has no Node OTA interface. Neither beta.25 publication nor local
-tests constitute physical OTA acceptance.
+Beta.25 contains the earlier execution foundation/prepare transport, not the
+signed remote-apply path. Fleet 0.1.7 implements the Node OTA interface.
+
+## User-reported physical update — 2026-10-01
+
+- Evidence: the user explicitly confirmed a successful update from Hub to Node.
+- Bugs were reported but not yet described; do not infer causes or fixes.
+- Exact Hub/Node/Fleet versions, operation ID and final installation report were
+  not supplied with this confirmation. Record them with the reproducible bug list.
+- This does not confirm failed-health rollback, reboot/network interruption,
+  lost-response recovery, preserved GPIO/binding state or clean-media onboarding.
+- No live changes or additional physical test were performed by this planning chat.
 
 ## Delivery stages
 
 1. **Node execution foundation (implemented):** versioned handoff, root-only staged
    artifact validation, narrow local helper, detached immutable installer and
    durable outcome. The minimal artifact includes the helper without Core.
-2. **Hub/Agent orchestration (local implementation):** administrator-scoped catalog and preparation from
+2. **Hub/Agent orchestration (implemented):** administrator-scoped catalog and preparation from
    official Node releases, authenticated per-device download, bounded disk use,
    Agent handoff and durable prepare-status reporting. Zero downloads from its Hub;
    it need not access the internet. Explicit apply is signed by the Hub and
    validated against root-pinned trust on the Node. Never accept arbitrary URLs
    or shell commands. Durable final reporting is separate from command acceptance.
-3. **Optional Fleet UI:** version/current status, check, prepare, review and
+3. **Optional Fleet UI (implemented in Fleet 0.1.7):** version/current status, check, prepare, review and
    explicitly install one device; reconnect and show the final outcome.
-4. **Physical acceptance and publication:** publish/bootstrap a release containing
+4. **Physical acceptance and publication (in progress):** the user reports a
+   successful real update; remaining bugs and failure tests are still open.
+   The full acceptance procedure is to publish/bootstrap a release containing
    signed apply on both Hub and Node, explicitly pin the Hub key, then test a
    subsequent real Fleet update, failed-health rollback, network/reboot and
    lost-response tests. Only then advertise subsequent updates without SSH.
@@ -53,8 +66,8 @@ verified staging, authenticated per-device archive delivery, `agent.update.prepa
 and explicitly approved `agent.update.apply`. Apply requires completed matching
 preparation, unexpired/reverified Hub staging, fresh Node readiness and idle
 hardware/command state. An existing operation reuses its original approval and
-deadline; it does not receive a new authorization lifetime. Installation is not
-yet exposed through Fleet. No release is called updated until the durable final
+deadline; it does not receive a new authorization lifetime. Fleet 0.1.7 exposes
+the installation workflow. No release is called updated until the durable final
 helper outcome is known.
 
 ## Independent Hub approval
@@ -85,8 +98,8 @@ are never accepted by the socket API.
 
 First install a **published release containing this signed path** on Hub and Node
 using the existing immutable bootstrap. Beta.25 only contains the earlier
-foundation: it is not sufficient for signed remote apply. No new release is
-published by this development step.
+foundation: it is not sufficient for signed remote apply. This guide does not
+identify the live release used in the user's successful update.
 
 On the Hub, read `/api/v1/devices/node-updates/approval-key` and verify its
 `key_id` fingerprint through a trusted connection/administrator session. On Zero:
@@ -113,6 +126,10 @@ own approval key. This avoids queueing an install on an older unsupported Agent.
 
 ## API and durable result
 
+- `GET /api/v1/devices/{device_id}/node-updates/check?channel=beta` (Core
+  beta.31+): read-only administrator check of the official catalog. Returns
+  `current_release_id`, `latest_release_id`, `latest_version`, `channel` and
+  `update_available`. It never downloads, prepares or installs an archive.
 - `POST /api/v1/devices/{device_id}/node-updates/prepare`: administrator-only
   official Beta/Stable/Test preparation; returns the operation and prepare command.
 - `POST /api/v1/devices/{device_id}/node-updates/{operation_id}/apply`:
@@ -124,6 +141,15 @@ own approval key. This avoids queueing an install on an older unsupported Agent.
 - `GET /api/v1/devices/{device_id}/node-updates/{operation_id}`:
   administrator-only prepare state plus `installation` and apply-command identity.
   The installation field, not a succeeded command handoff, determines the outcome.
+
+`current_release_id` is derived only from the newest durable OTA installation
+outcome held by this Hub: `succeeded` selects the new release, `rolled_back`
+selects the verified previous release. Missing, malformed, failed or uncertain
+outcomes return null, as does a newer attempt without a final report. A known
+matching release returns `update_available: false` and prepare refuses to
+download it again. Unknown is **not** up to date. This is not a fresh Agent
+version query: direct SSH/manual installs may not be represented by Hub history.
+Fleet consumes this generic Core endpoint; no Fleet ZIP is bundled in Core.
 
 Core stores handoff and installation outcome separately in existing command JSON,
 so no database migration is required. A late handoff acknowledgement cannot erase
@@ -175,10 +201,17 @@ recovery-only service set. Do not claim remote management after that downgrade.
 
 ## Verification
 
+Beta.31 release preparation (2026-10-02): **16 Node Update route checks passed**,
+including administrator/device guards, read-only unknown results, redundant
+prepare rejection and no fallback to an older success after an uncertain attempt.
+The broader scoped Core/SDK/Node preparation run passed 199 checks; this does
+not add a physical Node update or close the failure-path acceptance below.
+
 Combined scoped check on Windows (2026-10-01): **134 passed, 2 skipped**.
 The skipped tests require POSIX ownership and `O_NOFOLLOW`; they remain Linux
 acceptance gates. Actual Ed25519 verification also passed through the available
-OpenSSL executable on the development host. No physical Node update was run.
+OpenSSL executable on the development host. No physical Node update was run
+as part of those automated checks; the later user-reported update is recorded above.
 
 Focused tests cover signed approvals, wrong keys/devices, tampering, unsafe trust
 files, original deadlines, durable replay, Agent restart/lost replies, outcome
@@ -186,7 +219,7 @@ monotonicity, device/admin authorization and unchanged prepare/packaging behavio
 They use isolated state and fake installers; no live device, network mutation or
 GPIO action is performed. Unix ownership boundaries still require Linux runs.
 
-Pending: Fleet UI, signed-path bootstrap/pinning on the actual Zero, then a
-subsequent release update, failed-health rollback, Hub/network interruption,
+Pending: capture the successful test's versions/final outcome and remaining bugs;
+verify signed-path trust, failed-health rollback, Hub/network interruption,
 Agent/Node reboot and lost install response. Verify identity, Hub binding and GPIO
 configuration after each case. Only final `succeeded` may be labeled "Updated".

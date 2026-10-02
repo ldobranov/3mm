@@ -23,6 +23,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from agent.identity import AgentIdentity
 from backend.config import AppSettings
+from backend.services.installation_identity import validate_identity_backup
 from backend.services.backups import (
     BackupOperationStatus,
     write_backup_operation_status,
@@ -36,6 +37,7 @@ from deployment.create_backup import (
 )
 from deployment.release_smoke import ReleaseEndpoints, SmokeFailure, verify_release
 from deployment.backup_compatibility import validate_release_path
+from deployment.installation_peer_recovery import quarantine_restored_installation_peers
 from three_mm_protocol import PROTOCOL_VERSION, BackupManifestV1
 from three_mm_provisioning import ProvisioningSnapshot, ProvisioningState
 
@@ -280,6 +282,9 @@ def _validate_and_stage(
         manifest.compatibility.database_revision,
     )
     _validate_identity_and_role(staging / "payload", manifest)
+    validate_identity_backup(
+        staging / "payload/core/3mm.db", staging / "payload/host-config/3mm.env",
+    )
     return manifest
 
 
@@ -486,6 +491,7 @@ def restore_backup(
             _decrypt_archive(archive, key_file, decrypted)
             manifest = _validate_and_stage(decrypted, staging, backup_id)
             decrypted.unlink()
+            quarantine_restored_installation_peers(staging / "payload/core/3mm.db")
             _prepare_payload(
                 staging / "payload",
                 uid,

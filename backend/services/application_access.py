@@ -27,6 +27,11 @@ class ApplicationPrincipal:
     is_admin: bool = False
     kiosk_module_id: str | None = None
     terminal_id: str | None = None
+    installation_id: str | None = None
+    installation_key_id: str | None = None
+    peer_binding_id: str | None = None
+    peer_generation: int | None = None
+    machine_scopes: frozenset[str] = frozenset()
 
 
 ANONYMOUS_PRINCIPAL = ApplicationPrincipal(kind="anonymous")
@@ -124,6 +129,12 @@ def can_access_application_operation(
 ) -> bool:
     if audience not in operation.audiences:
         return False
+    if audience == "installation_peer":
+        return (principal.kind == "installation" and bool(principal.installation_id)
+                and bool(principal.peer_binding_id) and bool(principal.peer_generation)
+                and principal.machine_scopes == frozenset({"installation.status.report"}))
+    if audience == "installation_bootstrap":
+        return principal.kind == "installation_bootstrap" and bool(principal.installation_id) and not principal.machine_scopes
     if audience == "public":
         return True
     if principal.kind != "user":

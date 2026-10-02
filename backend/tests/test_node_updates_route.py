@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import hashlib
 
 import pytest
@@ -25,6 +25,7 @@ from backend.db.device import (
 )
 from backend.db.user import User
 from backend.routes.node_updates import (
+    _current_node_release_id,
     router,
 )
 from backend.services.node_release_catalog import (
@@ -39,23 +40,104 @@ from backend.utils.jwt_utils import (
 )
 
 
-DEVICE_ID = (
-    "dev_"
-    + "a" * 32
-)
+DEVICE_ID = "dev_" + "a" * 32
 
 TAG = "v0.3.0-beta.25"
 
-ARCHIVE = (
-    "3mm-0.3.0-beta.25-"
-    "node-armv6l.tar.gz"
-)
+ARCHIVE = "3mm-0.3.0-beta.25-" "node-armv6l.tar.gz"
 
 DATA = b"official-node-release"
 
-SHA = hashlib.sha256(
-    DATA
-).hexdigest()
+SHA = hashlib.sha256(DATA).hexdigest()
+
+
+@pytest.mark.parametrize(
+    "outcome,expected",
+    [
+        (None, None),
+        ({"status": "accepted"}, None),
+        ({"status": "running"}, None),
+        ({"status": "unknown"}, None),
+        ({"status": "failed"}, None),
+        ({"status": "rolled_back"}, "v0.3.0-beta.24"),
+        ({"status": "succeeded", "device_id": "dev_" + "b" * 32}, None),
+        ({"status": "not-a-valid-outcome"}, None),
+    ],
+)
+def test_current_release_does_not_fall_back_past_newer_attempt(
+    tmp_path, monkeypatch, outcome, expected
+):
+    _, db, engine, _, _ = make_client(tmp_path, monkeypatch)
+    try:
+        device = db.scalar(select(Device).where(Device.device_id == DEVICE_ID))
+        now = datetime.now(UTC)
+        for index, override in enumerate([{"status": "succeeded"}, outcome]):
+            operation_id = "nodeupd_" + str(index) * 32
+            operation = {
+                "schema_version": 1,
+                "operation_id": operation_id,
+                "device_id": DEVICE_ID,
+                "release_id": TAG,
+                "archive_sha256": SHA,
+                "status": "succeeded",
+                "updated_at": now.isoformat(),
+                "previous_release_id": "v0.3.0-beta.24",
+            }
+            if override is not None:
+                operation.update(override)
+            db.add(
+                DeviceCommand(
+                    command_id="cmd_" + str(index) * 32,
+                    device_id=device.id,
+                    command_type="agent.update.apply",
+                    payload={},
+                    idempotency_key="node-update-apply:" + operation_id,
+                    status="succeeded" if index == 0 else "delivered",
+                    result={"operation": operation} if override is not None else None,
+                    created_at=now + timedelta(seconds=index),
+                    expires_at=now + timedelta(minutes=2),
+                )
+            )
+        db.commit()
+        assert _current_node_release_id(db, device) == expected
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_check_is_read_only_admin_only_and_rejects_revoked_devices(
+    tmp_path, monkeypatch
+):
+    client, db, engine, admin_token, viewer_token = make_client(tmp_path, monkeypatch)
+    try:
+        path = f"/api/v1/devices/{DEVICE_ID}/node-updates/check"
+        admin_headers = {"Authorization": f"Bearer {admin_token}"}
+        assert client.get(path).status_code == 401
+        assert (
+            client.get(
+                path, headers={"Authorization": f"Bearer {viewer_token}"}
+            ).status_code
+            == 403
+        )
+        response = client.get(path, headers=admin_headers)
+        assert response.status_code == 200
+        assert response.json()["current_release_id"] is None
+        assert response.json()["update_available"] is None
+        assert db.scalar(select(DeviceCommand)) is None
+        device = db.scalar(select(Device).where(Device.device_id == DEVICE_ID))
+        device.revoked_at = datetime.now(UTC)
+        db.commit()
+        assert client.get(path, headers=admin_headers).status_code == 409
+        assert (
+            client.get(
+                "/api/v1/devices/dev_" + "b" * 32 + "/node-updates/check",
+                headers=admin_headers,
+            ).status_code
+            == 404
+        )
+    finally:
+        db.close()
+        engine.dispose()
 
 
 @pytest.fixture(autouse=True)
@@ -72,29 +154,20 @@ def release():
         {
             "schema_version": 1,
             "profile": "node",
-            "version":
-                "0.3.0-beta.25",
-            "release_id":
-                TAG,
-            "commit":
-                "b" * 40,
-            "channel":
-                "beta",
+            "version": "0.3.0-beta.25",
+            "release_id": TAG,
+            "commit": "b" * 40,
+            "channel": "beta",
             "dependencies": {
                 "apt_packages": [],
             },
             "artifacts": [
                 {
-                    "architecture":
-                        "armv6l",
-                    "python":
-                        "3.13",
-                    "filename":
-                        ARCHIVE,
-                    "sha256":
-                        SHA,
-                    "size_bytes":
-                        len(DATA),
+                    "architecture": "armv6l",
+                    "python": "3.13",
+                    "filename": ARCHIVE,
+                    "sha256": SHA,
+                    "size_bytes": len(DATA),
                     "download_url": (
                         "https://github.com/"
                         "ldobranov/3mm/"
@@ -476,8 +549,8 @@ def test_prepare_request_cannot_supply_url_path_or_shell(
     finally:
         db.close()
         engine.dispose()
-        
-        
+
+
 def test_prepare_status_is_durable_from_command_record(
     tmp_path,
     monkeypatch,
@@ -697,6 +770,196 @@ def test_prepare_status_rejects_corrupt_agent_identity(
         assert (
             status_response.status_code
             == 409
+        )
+
+    finally:
+        db.close()
+        engine.dispose()
+
+def test_check_reports_current_and_latest_node_release(
+    tmp_path,
+    monkeypatch,
+):
+    (
+        client,
+        db,
+        engine,
+        admin_token,
+        _,
+    ) = make_client(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        device = db.scalar(
+            select(Device).where(
+                Device.device_id == DEVICE_ID
+            )
+        )
+
+        now = datetime.now(UTC)
+
+        db.add(
+            DeviceCommand(
+                command_id="cmd_" + "c" * 32,
+                device_id=device.id,
+                command_type="agent.update.apply",
+                payload={},
+                idempotency_key=(
+                    "node-update-apply:"
+                    "nodeupd_" + "d" * 32
+                ),
+                status="succeeded",
+                result={
+                    "operation": {
+                        "schema_version": 1,
+                        "operation_id":
+                            "nodeupd_" + "d" * 32,
+                        "device_id": DEVICE_ID,
+                        "release_id": TAG,
+                        "archive_sha256": SHA,
+                        "status": "succeeded",
+                        "updated_at":
+                            now.isoformat(),
+                        "previous_release_id":
+                            "v0.3.0-beta.24",
+                        "error_code": None,
+                    }
+                },
+                expires_at=now,
+                completed_at=now,
+            )
+        )
+
+        db.commit()
+
+        response = client.get(
+            (
+                f"/api/v1/devices/"
+                f"{DEVICE_ID}"
+                "/node-updates/check"
+                "?channel=beta"
+            ),
+            headers={
+                "Authorization":
+                    f"Bearer {admin_token}"
+            },
+        )
+
+        assert response.status_code == 200
+
+        body = response.json()
+
+        assert body == {
+            "current_release_id": TAG,
+            "latest_release_id": TAG,
+            "latest_version":
+                "0.3.0-beta.25",
+            "channel": "beta",
+            "update_available": False,
+        }
+
+    finally:
+        db.close()
+        engine.dispose()
+
+def test_prepare_rejects_release_already_running(
+    tmp_path,
+    monkeypatch,
+):
+    (
+        client,
+        db,
+        engine,
+        admin_token,
+        _,
+    ) = make_client(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        device = db.scalar(
+            select(Device).where(
+                Device.device_id == DEVICE_ID
+            )
+        )
+
+        now = datetime.now(UTC)
+
+        db.add(
+            DeviceCommand(
+                command_id="cmd_" + "e" * 32,
+                device_id=device.id,
+                command_type="agent.update.apply",
+                payload={},
+                idempotency_key=(
+                    "node-update-apply:"
+                    "nodeupd_" + "f" * 32
+                ),
+                status="succeeded",
+                result={
+                    "operation": {
+                        "schema_version": 1,
+                        "operation_id":
+                            "nodeupd_" + "f" * 32,
+                        "device_id": DEVICE_ID,
+                        "release_id": TAG,
+                        "archive_sha256": SHA,
+                        "status": "succeeded",
+                        "updated_at":
+                            now.isoformat(),
+                        "previous_release_id":
+                            "v0.3.0-beta.24",
+                        "error_code": None,
+                    }
+                },
+                expires_at=now,
+                completed_at=now,
+            )
+        )
+
+        db.commit()
+
+        monkeypatch.setattr(
+            (
+                "backend.routes.node_updates."
+                "download_published_node_archive"
+            ),
+            lambda *_args, **_kwargs:
+                pytest.fail(
+                    "same release must not be downloaded"
+                ),
+        )
+
+        response = client.post(
+            (
+                f"/api/v1/devices/"
+                f"{DEVICE_ID}"
+                "/node-updates/prepare"
+            ),
+            headers={
+                "Authorization":
+                    f"Bearer {admin_token}"
+            },
+            json={
+                "channel": "beta",
+            },
+        )
+
+        assert response.status_code == 409
+
+        commands = list(
+            db.scalars(
+                select(DeviceCommand)
+            )
+        )
+
+        assert len(commands) == 1
+        assert (
+            commands[0].command_type
+            == "agent.update.apply"
         )
 
     finally:

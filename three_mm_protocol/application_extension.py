@@ -26,6 +26,8 @@ ApplicationAudience = Literal[
     "operator",
     "administrator",
     "internal",
+    "installation_bootstrap",
+    "installation_peer",
 ]
 
 
@@ -61,7 +63,7 @@ class ApplicationServiceV1(StrictApplicationModel):
     artifact: str = Field(min_length=1, max_length=240)
     artifact_sha256: str = Field(pattern=SHA256_PATTERN)
     entrypoint: str = Field(pattern=SERVICE_ENTRYPOINT_PATTERN, max_length=240)
-    sdk_version: Literal["1.0"] = "1.0"
+    sdk_version: Literal["1.0", "1.1", "1.2"] = "1.0"
     health_operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
     startup_timeout_seconds: int = Field(default=30, ge=1, le=120)
     shutdown_timeout_seconds: int = Field(default=15, ge=1, le=60)
@@ -91,7 +93,7 @@ class ApplicationPermissionV1(StrictApplicationModel):
 class ApplicationOperationV1(StrictApplicationModel):
     operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
     kind: Literal["query", "command", "job"]
-    audiences: tuple[ApplicationAudience, ...] = Field(min_length=1, max_length=5)
+    audiences: tuple[ApplicationAudience, ...] = Field(min_length=1, max_length=7)
     required_permission: str | None = Field(
         default=None,
         pattern=IDENTIFIER_PATTERN,
@@ -105,6 +107,9 @@ class ApplicationOperationV1(StrictApplicationModel):
 
     @model_validator(mode="after")
     def validate_operation_semantics(self):
+        if {"installation_bootstrap", "installation_peer"} & set(self.audiences):
+            if len(self.audiences) != 1 or self.kind != "command" or self.required_permission is not None or self.emitted_events:
+                raise ValueError("Peer operations must be isolated commands without human permissions or events")
         if len(self.audiences) != len(set(self.audiences)):
             raise ValueError("operation audiences must be unique")
         if "internal" in self.audiences and len(self.audiences) != 1:
@@ -225,11 +230,22 @@ class ApplicationLifecycleV1(StrictApplicationModel):
     rollback: Literal["transactional"] = "transactional"
 
 
+class ApplicationPeerReceiverV1(StrictApplicationModel):
+    bootstrap_operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    report_operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
+
+
 class ApplicationExtensionV1(StrictApplicationModel):
     application_extension_version: Literal[1]
     module_id: str = Field(pattern=MODULE_ID_PATTERN)
     version: str = Field(pattern=SEMVER_PATTERN)
     service: ApplicationServiceV1
+    platform_permissions: tuple[Literal[
+        "installation.identity.read", "installation.identity.prove",
+        "installation.peers.enroll", "installation.peers.receive",
+        "installation.peers.report", "installation.status.read",
+    ], ...] = Field(default=(), max_length=6)
+    peer_receiver: ApplicationPeerReceiverV1 | None = None
     permissions: tuple[ApplicationPermissionV1, ...] = Field(
         default=(),
         max_length=128,
@@ -254,6 +270,14 @@ class ApplicationExtensionV1(StrictApplicationModel):
 
     @model_validator(mode="after")
     def validate_references(self):
+        if len(self.platform_permissions) != len(set(self.platform_permissions)):
+            raise ValueError("platform permissions must be unique")
+        if self.platform_permissions and self.service.sdk_version == "1.0":
+            raise ValueError("installation identity permissions require SDK 1.1")
+        peer_permissions = set(self.platform_permissions) - {"installation.identity.read", "installation.identity.prove"}
+        peer_operations = [item for item in self.operations if {"installation_bootstrap", "installation_peer"} & set(item.audiences)]
+        if (peer_permissions or self.peer_receiver or peer_operations) and self.service.sdk_version != "1.2":
+            raise ValueError("Installation peer and projection contracts require SDK 1.2")
         permission_ids = [item.permission_id for item in self.permissions]
         operation_ids = [item.operation_id for item in self.operations]
         route_ids = [item.route_id for item in self.routes]
@@ -276,6 +300,20 @@ class ApplicationExtensionV1(StrictApplicationModel):
 
         known_permissions = set(permission_ids)
         operations = {item.operation_id: item for item in self.operations}
+        if self.peer_receiver:
+            if "installation.peers.receive" not in self.platform_permissions:
+                raise ValueError("Peer receiver requires its platform permission")
+            for operation_id, audience in (
+                (self.peer_receiver.bootstrap_operation_id, "installation_bootstrap"),
+                (self.peer_receiver.report_operation_id, "installation_peer"),
+            ):
+                operation = operations.get(operation_id)
+                if operation is None or operation.audiences != (audience,):
+                    raise ValueError("Peer receiver operations must declare their exact audience")
+            if {item.operation_id for item in peer_operations} != {self.peer_receiver.bootstrap_operation_id, self.peer_receiver.report_operation_id}:
+                raise ValueError("Only the two declared peer receiver operations are allowed")
+        elif peer_operations:
+            raise ValueError("Peer operations require a receiver declaration")
         for operation in self.operations:
             if (
                 operation.required_permission is not None

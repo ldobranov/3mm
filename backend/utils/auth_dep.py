@@ -28,7 +28,7 @@ def try_get_claims(authorization: Optional[str] = Header(None)) -> Optional[dict
         claims = decode_token(token)
         return claims
     except Exception as e:
-        logger.warning(f"Failed to decode token: {e}")
+        logger.warning("Token decoding failed (%s)", type(e).__name__)
         return None
 
 

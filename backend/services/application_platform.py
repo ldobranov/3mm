@@ -157,6 +157,60 @@ class ApplicationPlatformServer:
 
     def _dispatch(self, db, installation, request: dict[str, object]) -> dict[str, object]:
         action = request.get("action")
+        if action in {"installation.peers.enroll", "installation.peers.list", "installation.peers.approve", "installation.peers.revoke", "installation.peers.rotate", "installation.peers.report", "installation.status.get"}:
+            from backend.services import installation_peers as peers
+            from backend.services.installation_projection import installation_projection
+            permissions = {
+                "installation.peers.enroll": "installation.peers.enroll",
+                "installation.peers.rotate": "installation.peers.enroll",
+                "installation.peers.approve": "installation.peers.receive",
+                "installation.peers.report": "installation.peers.report",
+                "installation.status.get": "installation.status.read",
+            }
+            _, _, definition = peers._application(db, installation.module_id)
+            if action == "installation.peers.list":
+                if not {"installation.peers.receive", "installation.peers.enroll"} & set(definition.platform_permissions):
+                    raise ValueError("Installation peer permissions are not declared")
+                return peers.list_peers(db, installation)
+            if action == "installation.peers.revoke":
+                permission = "installation.peers.receive" if request.get("direction") == "inbound" else "installation.peers.enroll"
+            else:
+                permission = permissions[action]
+            if permission not in definition.platform_permissions:
+                raise ValueError("Installation peer permission is not declared")
+            if action == "installation.peers.enroll":
+                return peers.enroll_outbound(db, installation, str(request.get("link_id", "")))
+            if action == "installation.peers.rotate":
+                return peers.rotate_outbound(db, installation, str(request.get("link_id", "")))
+            if action == "installation.peers.approve":
+                return peers.approve_inbound(db, installation, str(request.get("binding_id", "")), request.get("expected_generation"))
+            if action == "installation.peers.revoke":
+                return peers.revoke_peer(db, installation, str(request.get("peer_id", "")), request.get("direction"))
+            if action == "installation.peers.report":
+                return peers.report_outbound(db, installation, str(request.get("link_id", "")), str(request.get("report_id", "")))
+            projection = installation_projection(db, installation, str(request.get("link_id", "")))
+            db.commit()
+            return projection.model_dump(mode="json")
+        if action in {"installation.identity.get", "installation.identity.prove"}:
+            from backend.db.module import ModulePackage
+            from backend.services.application_extensions import load_application_definition
+            from backend.services.installation_identity import installation_identity, prove_installation_identity
+
+            if not installation.enabled or installation.status != "active":
+                raise ValueError("Application installation is not active")
+            package = db.get(ModulePackage, installation.module_package_id)
+            if package is None:
+                raise ValueError("Application package is unavailable")
+            definition = load_application_definition(package)
+            permission = (
+                "installation.identity.read" if action == "installation.identity.get"
+                else "installation.identity.prove"
+            )
+            if permission not in definition.platform_permissions:
+                raise ValueError("Installation identity permission is not declared")
+            if action == "installation.identity.get":
+                return installation_identity(db).model_dump(mode="json")
+            return prove_installation_identity(db, request.get("proof_request")).model_dump(mode="json")
         if action == 'command.lookup':
             from backend.services.application_commands import command_lookup
             return command_lookup(db, installation, request.get('lookup'))

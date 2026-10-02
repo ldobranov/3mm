@@ -23,6 +23,8 @@ from backend.db.widget import Widget
 from backend.db.universal_translation import Menu
 from backend.db.settings import Settings
 from backend.db.role import Role
+from backend.db.installation_identity import CoreInstallationIdentity
+from backend.db.installation_peer import InstallationPeerOrigin, InstallationPeerInbound, InstallationPeerOutbound, InstallationPeerNonce, InstallationPeerAudit
 from backend.db.application_command import ApplicationCommandEpoch, ApplicationCommandRequest
 from backend.db.notification import Notification
 from backend.db.extension import Extension

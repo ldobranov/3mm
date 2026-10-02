@@ -67,7 +67,7 @@ def require_admin(authorization: str, db: Session) -> User:
 @router.post("/register")
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
     try:
-        logger.debug(f"Registering user: {user}")
+        logger.debug("User registration requested")
         if not user.username or not user.email or not user.password:
             raise HTTPException(status_code=422, detail="Missing required fields")
 
@@ -75,13 +75,14 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
         new_user = User(username=user.username, email=user.email, hashed_password=hashed_password)
         db.add(new_user)
         db.commit()
-        logger.debug(f"User registered: {new_user}, ID: {new_user.id}")
+        logger.debug("User registration succeeded")
         return {"message": "User registered successfully"}
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Username or email already exists")
     except Exception as e:
-        logger.error(f"Error during user registration: {e}")
+        # SQL/validation exception text can include passwords or bound tokens.
+        logger.error("User registration failed (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @router.post("/create")
@@ -117,7 +118,7 @@ def login_user(
     user_agent: str = Header(None, alias="User-Agent")
 ):
     try:
-        logger.debug(f"Incoming login payload: {payload.model_dump()}")
+        logger.debug("User login requested")
         if not payload.email or not payload.password:
             raise HTTPException(status_code=422, detail="Missing required fields")
 
@@ -176,23 +177,21 @@ def login_user(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error during login: {e}")
+        logger.error("User login failed (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @router.get("/profile")
 def fetch_user_profile(authorization: str = Header(...), db: Session = Depends(get_db)):
     try:
-        logger.debug(f"Incoming request headers: {authorization}")
-        logger.debug(f"Authorization header received: {authorization}")
+        logger.debug("User profile requested")
 
         # Validate Authorization header format
         if not authorization or not authorization.startswith("Bearer "):
             logger.error("Authorization header missing or invalid format")
             raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
 
-        # Extract and log the token
+        # Extract for validation only; never log tokens or decoded claims.
         token = authorization.split("Bearer ")[1]
-        logger.debug(f"Extracted token: {token}")
 
         # Check if token is blacklisted
         if token in token_blacklist:
@@ -202,23 +201,22 @@ def fetch_user_profile(authorization: str = Header(...), db: Session = Depends(g
         # Decode the token and handle potential errors
         try:
             payload = decode_token(token)
-            logger.debug(f"Decoded JWT payload: {payload}")
+            logger.debug("Profile token decoded")
         except HTTPException as e:
             # Propagate specific auth errors
             raise e
         except Exception as e:
-            logger.error(f"Invalid token: {e}")
+            logger.error("Profile token validation failed (%s)", type(e).__name__)
             raise HTTPException(status_code=401, detail="Invalid token")
 
         user_id = payload.get("sub") or payload.get("user_id")
-        logger.debug(f"Decoded payload: {payload}, user_id: {user_id}")
 
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             logger.error("User not found")
             raise HTTPException(status_code=404, detail="User not found")
 
-        logger.debug(f"Profile fetched: {user}")
+        logger.debug("User profile fetched")
         return {
             "id": user.id,
             "username": user.username,
@@ -226,10 +224,10 @@ def fetch_user_profile(authorization: str = Header(...), db: Session = Depends(g
             "role": user.role
         }
     except ValueError as e:
-        logger.error(f"JWT error: {e}")
+        logger.error("Profile JWT validation failed (%s)", type(e).__name__)
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error("User profile failed (%s)", type(e).__name__)
         raise HTTPException(status_code=422, detail="Unprocessable Entity")
 
 @router.put("/profile/update")
@@ -290,7 +288,7 @@ def read_users(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error reading users: {e}")
+        logger.error("Reading users failed (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @router.put("/update")
@@ -330,7 +328,7 @@ def update_user(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating user: {e}")
+        logger.error("Updating user failed (%s)", type(e).__name__)
         db.rollback()
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
@@ -405,7 +403,7 @@ def delete_user(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting user: {e}")
+        logger.error("Deleting user failed (%s)", type(e).__name__)
         db.rollback()
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
@@ -482,7 +480,7 @@ def logout_user(
         token_blacklist.add(token)
         return {"message": "Logout successful"}
     except Exception as e:
-        logger.error(f"Error during logout: {e}")
+        logger.error("User logout failed (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @router.post("/language")
@@ -526,7 +524,7 @@ def save_user_language(
             "guest": True
         }
     except Exception as e:
-        logger.error(f"Error saving language preference: {e}")
+        logger.error("Saving language preference failed (%s)", type(e).__name__)
         # For guest users, still return success with localStorage
         return {
             "message": "Language preference saved locally", 
@@ -565,7 +563,7 @@ def get_user_language(
             language = setting.value if setting else "en"
         except Exception as settings_error:
             # If Settings table doesn't exist, fallback to "en"
-            logger.warn(f"Settings table not available, defaulting to 'en': {settings_error}")
+            logger.warning("Language settings unavailable, defaulting to 'en' (%s)", type(settings_error).__name__)
             language = "en"
 
         return {"language": language}
@@ -573,5 +571,5 @@ def get_user_language(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error retrieving language preference: {e}")
+        logger.error("Retrieving language preference failed (%s)", type(e).__name__)
         return {"language": "en"}  # Fallback to English
