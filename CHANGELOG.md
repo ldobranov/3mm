@@ -6,6 +6,47 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.33] - 2026-10-03
+
+### Added
+
+- Platform-neutral inventory schema 2, legacy schema 1 ingestion and generic
+  inventory presentation. Embedded reports need no invented Linux values.
+- One provider-neutral capability query for installed Agent modules and
+  device-owned native/firmware providers, with revision, conflict and Core-owned
+  disable semantics. Standalone, local Agent, Hub/Fleet and applications share it.
+- Device-authenticated schema discovery and runtime feature advertisement,
+  separate from capabilities. Unsupported new work is rejected before dispatch;
+  application execution still requires the existing one-time live permit.
+- Independent mock embedded reference client with durable identity, receipts,
+  bounded outbox and optional application execution permits; no Agent runtime
+  dependency, real firmware, GPIO or firmware OTA implementation.
+
+### Fixed
+
+- Bounded device JSON/HTTP payloads, fresh credential revocation checks,
+  content-bound Agent receipt replay and protection against device-spoofed Core
+  audit events. Pending outbox work is retained instead of silently evicted.
+- Historical invalid/oversized state, commands and receipts remain preserved
+  with explicit recovery conflicts; they do not trigger destructive cleanup or
+  automatic replay of uncertain execution.
+
+### Compatibility and verification
+
+- Additive Alembic revisions `637bc2d3e4f5` and `748cd3e4f5a6` add provider and
+  runtime feature tables. Existing identities, credentials, module installations
+  and desired state are preserved without re-pairing. Protocol 1.0, HTTP `/api/v1`
+  and Application SDK 1.3 remain compatible; legacy unadvertised support is unknown.
+- New Linux inventory stays opt-in/negotiated. Before downgrading Core, stop
+  schema-2/provider clients or return Linux clients to schema 1; an older release
+  cannot restore a backup containing unknown newer migration revisions.
+- C8 migration, mixed-version portable restore/rollback and legacy recovery gate:
+  61 passed, one POSIX-only check skipped on Windows. C9 local Linux/mock/application
+  and dependency-boundary gates: 56 passed. Detailed limits are in the C0–C9 reports.
+- Hub/Zero/Fleet deployment acceptance remains pending. Publication builds the
+  full-profile and ARMv6 Node packages; it does not update devices. No Child Center
+  package or business data is included.
+
 ## [0.3.0-beta.32] - 2026-10-02
 
 ### Added
@@ -789,7 +830,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.32...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.33...HEAD
+[0.3.0-beta.33]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.33
 [0.3.0-beta.32]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.32
 [0.3.0-beta.31]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.31
 [0.3.0-beta.30]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.30

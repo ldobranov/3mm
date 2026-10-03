@@ -8,13 +8,16 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Beta. This source prepares **v0.3.0-beta.32**, adding
-> proof-bound application intent and exact consent review through installation
-> peer v2 / Application SDK 1.3, while retaining v1 and Node Update checks.
+> **Project status:** Beta. This source prepares **v0.3.0-beta.33**, adding
+> platform-neutral device inventory, provider-neutral capabilities and runtime
+> feature negotiation for the shared Standalone/Hub/application device layer.
+> Device protocol 1.0, Application SDK 1.3, installation peers and Node Update remain.
 > Release assets become available only after the tag-driven workflow succeeds;
-> the release badge above reflects published versions. Local v2 tests passed;
-> real v2 HTTPS/Linux acceptance, Cloud Manager business integration and public
-> ingress remain separate work. No automatic cloud connection or device update.
+> the release badge above reflects published versions. Linux + independent mock
+> embedded/application acceptance passed locally; deployed Hub/Zero/Fleet checks
+> remain pending. No real ESP firmware, automatic cloud connection or device update.
+> Real peer v2 HTTPS/Linux acceptance, Cloud Manager integration and public ingress
+> remain separate work.
 
 ## What works
 
@@ -22,6 +25,9 @@ system.
   navigation, dashboards and device management.
 - **Persistent Agent** — stable device identity, health and inventory,
   pairing, heartbeat, command processing, reconciliation and offline outbox.
+- **Shared Device/Node Platform** — versioned neutral inventory and one capability
+  registry for module, native and firmware providers, with advertised runtime
+  features and an independent mock client. Fleet is optional, not a prerequisite.
 - **Hardware capabilities** — deterministic mock profiles and opt-in native
   Raspberry digital input/output through the official `gpiod` bindings,
   edge-driven inputs and safe bounded output pulses.
@@ -199,8 +205,8 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 After the new GitHub Release is fully published, update the Hub through
 `/system/updates` using the Beta channel. Update the Zero over SSH with the same
-Node bootstrap command above; after beta.32 publication, add
-`--tag v0.3.0-beta.32` to select that exact release. Provisioned upgrades preserve
+Node bootstrap command above; after beta.33 publication, add
+`--tag v0.3.0-beta.33` to select that exact release. Provisioned upgrades preserve
 identity and pairing, not Master reset.
 Then upload Fleet `0.1.7` on the Hub through Extensions. Updating the Fleet ZIP
 alone does not update Core or the Zero Agent. Follow the
