@@ -32,6 +32,7 @@ from backend.utils.db_utils import get_db
 from backend.utils.secure_settings import SecureSettingsError, decrypt_secret
 from three_mm_protocol.automation import (
     AutomationCapabilityContextV1,
+    AutomationCapabilityContextV2,
     AutomationDefinitionV1,
 )
 
@@ -164,7 +165,7 @@ class UsageLedgerResponse(BaseModel):
 
 @router.get(
     "/automation-context",
-    response_model=AutomationCapabilityContextV1,
+    response_model=AutomationCapabilityContextV2 | AutomationCapabilityContextV1,
     summary="Read the trusted capability context available for AI planning",
 )
 def read_automation_context(

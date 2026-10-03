@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from agent import __version__
@@ -27,11 +27,13 @@ from agent.automation_store import AutomationStore
 from agent.identity import AgentIdentity, AgentIdentityStore
 from agent.hub_connection import HubConnectionStatus, resolve_hub_connection
 from agent.enrollment import NodeEnrollmentWorker
-from agent.inventory import collect_inventory
+from agent.inventory import collect_inventory, platform_neutral_inventory
 from agent.module_runtime import AgentModuleRuntime
 from agent.role import AgentRoleResolver
 from agent.node_update_transport import NodeUpdateTransport
-from three_mm_protocol import AgentHealth, AgentHello, AgentInventory, AgentRole
+from three_mm_protocol import (
+    AgentHealth, AgentHello, AgentInventory, AgentRole, DeviceInventoryV2,
+)
 from three_mm_provisioning import FileProvisioningStore
 
 
@@ -183,6 +185,8 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
                         resolved_settings
                         .heartbeat_interval_seconds
                     ),
+                    inventory_schema_version=resolved_settings.inventory_schema_version,
+                    feature_negotiation=True,
                 )
 
                 publisher.start()
@@ -255,11 +259,14 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
 
     @app.get(
         "/api/v1/agent/inventory",
-        response_model=AgentInventory,
+        response_model=DeviceInventoryV2 | AgentInventory,
         tags=["agent"],
     )
-    def inventory(request: Request) -> AgentInventory:
-        return _runtime(request).inventory
+    def inventory(
+        request: Request, schema_version: int = Query(default=1, ge=1, le=2),
+    ) -> AgentInventory | DeviceInventoryV2:
+        report = _runtime(request).inventory
+        return platform_neutral_inventory(report) if schema_version == 2 else report
 
     @app.get("/api/v1/agent/mock-gpio/state", tags=["diagnostics"])
     def mock_gpio_state(request: Request) -> dict[str, dict[str, bool]]:

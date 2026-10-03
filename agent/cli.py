@@ -39,6 +39,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--log-level", default="info")
     parser.add_argument("--core-url", default=defaults.core_url)
     parser.add_argument(
+        "--inventory-schema-version",
+        type=int,
+        choices=(1, 2),
+        default=defaults.inventory_schema_version,
+    )
+    parser.add_argument(
         "--heartbeat-interval-seconds",
         type=int,
         default=defaults.heartbeat_interval_seconds,
@@ -72,6 +78,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         gpio_outputs=arguments.gpio_outputs,
         identifier_driver=arguments.identifier_driver,
         identifier_reader_id=arguments.identifier_reader_id,
+        inventory_schema_version=arguments.inventory_schema_version,
     )
     uvicorn.run(
         create_app(settings),

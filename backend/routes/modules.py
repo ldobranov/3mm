@@ -34,6 +34,7 @@ from backend.services.application_access import (
 )
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
+from three_mm_protocol.device_inventory import inventory_value
 
 router=APIRouter(prefix="/api/v1/modules",tags=["modules"])
 
@@ -270,7 +271,7 @@ def compiled_ui_asset(module_id:str,version:str,sha256:str,asset_path:str,db:Ses
 
 def _device_architecture(db,device):
     snapshot=db.scalar(select(DeviceInventorySnapshot).where(DeviceInventorySnapshot.device_id==device.id).order_by(DeviceInventorySnapshot.received_at.desc()).limit(1))
-    return (snapshot.inventory or {}).get("architecture") if snapshot else None
+    return inventory_value(snapshot.inventory, "architecture") if snapshot else None
 
 
 def _lifecycle_idempotency_key(

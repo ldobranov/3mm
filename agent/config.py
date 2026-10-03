@@ -52,6 +52,7 @@ class AgentSettings:
     gpio_outputs: dict[str, int] | None = None
     identifier_driver: str = "disabled"
     identifier_reader_id: str = "reader.mock.1"
+    inventory_schema_version: int = 1
 
     def __post_init__(self) -> None:
         if not 1 <= self.port <= 65535:
@@ -68,6 +69,11 @@ class AgentSettings:
             raise ValueError("Identifier driver must be 'disabled' or 'mock'")
         if not self.identifier_reader_id.strip():
             raise ValueError("Identifier reader ID cannot be empty")
+        if (
+            type(self.inventory_schema_version) is not int
+            or self.inventory_schema_version not in (1, 2)
+        ):
+            raise ValueError("Inventory schema version must be 1 or 2")
 
     @classmethod
     def from_env(cls) -> "AgentSettings":
@@ -106,4 +112,7 @@ class AgentSettings:
             identifier_reader_id=os.getenv(
                 "THREE_MM_IDENTIFIER_READER_ID", "reader.mock.1"
             ).strip(),
+            inventory_schema_version=int(
+                os.getenv("THREE_MM_INVENTORY_SCHEMA_VERSION", "1")
+            ),
         )

@@ -3,7 +3,8 @@
 from datetime import datetime
 from typing import TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from three_mm_protocol.node_security import bounded_node_message
 
 from three_mm_protocol.capability_builder import CAPABILITY_ID_PATTERN
 
@@ -16,6 +17,7 @@ class StrictCapabilityStateModel(BaseModel):
 
 
 class CapabilityStateReportV1(StrictCapabilityStateModel):
+    _bounded = model_validator(mode="after")(bounded_node_message)
     schema_version: int = Field(default=1, ge=1, le=1)
     device_id: str = Field(pattern=r"^dev_[0-9a-f]{32}$")
     capability_id: str = Field(pattern=CAPABILITY_ID_PATTERN)

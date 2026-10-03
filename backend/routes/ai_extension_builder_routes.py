@@ -26,6 +26,7 @@ from backend.services.ai_capability_context import build_automation_capability_c
 from backend.utils.secure_settings import decrypt_secret, SecureSettingsError
 from three_mm_protocol import (
     AutomationCapabilityContextV1,
+    AutomationCapabilityContextV2,
     BuilderSettingV1,
     CapabilityBindingV1,
     CapabilityPlanV1,
@@ -173,7 +174,7 @@ def plan_extension_intent(
     return _plan_extension_intent(payload)
 
 
-@router.get("/api/ai/extensions/capabilities", response_model=AutomationCapabilityContextV1)
+@router.get("/api/ai/extensions/capabilities", response_model=AutomationCapabilityContextV2 | AutomationCapabilityContextV1)
 def list_extension_builder_capabilities(
     claims: dict = Depends(require_user),
     db: Session = Depends(get_db),

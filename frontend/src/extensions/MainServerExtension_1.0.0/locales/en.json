@@ -1,5 +1,11 @@
 {
   "mainServer": {
+    "inventory": {
+      "hostname": "Hostname", "model": "Model", "platform": "Platform", "platformVersion": "Platform version",
+      "architecture": "Architecture", "family": "Platform family", "runtime": "Runtime", "runtimeVersion": "Runtime version",
+      "memoryFree": "Available memory", "flash": "Flash", "flashFree": "Free flash", "cpu": "Logical CPUs",
+      "memory": "Memory", "storage": "Storage", "storageFree": "Free storage", "unavailable": "Inventory unavailable"
+    },
     "title": "Main Server Extension",
     "description": "Manage and distribute updates to Raspberry Pi devices",
     "health": {

@@ -9,7 +9,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from agent.hardware import HardwareInventoryDriver, LinuxHardwareDriver
+from agent import __version__
 from three_mm_protocol import AgentInventory
+from three_mm_protocol.device_inventory import (
+    DeviceInventoryV2,
+    upgrade_agent_inventory,
+)
 from three_mm_provisioning import (
     NetworkInspectionError,
     NetworkManagerReadOnlyAdapter,
@@ -63,4 +68,14 @@ def collect_inventory(
         network_manager_active=_network_manager_active(),
         hardware_driver=hardware_snapshot.driver_id,
         capabilities=hardware_snapshot.capabilities,
+    )
+
+
+def platform_neutral_inventory(report: AgentInventory) -> DeviceInventoryV2:
+    system = platform.system().lower()
+    return upgrade_agent_inventory(
+        report,
+        runtime_version=__version__,
+        platform_family=system,
+        platform_system=system,
     )

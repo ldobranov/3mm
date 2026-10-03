@@ -1,6 +1,6 @@
 from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from backend.db.device import Device, DeviceEvent
@@ -10,17 +10,14 @@ from backend.services.application_events import process_application_event
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from backend.utils.device_auth import require_device
-from three_mm_protocol import IdentifierScanEventV1
+from three_mm_protocol import DeviceEventV1, IdentifierScanEventV1
 from three_mm_protocol.passage import PassageEventV1
+from three_mm_protocol.node_security import CORE_DEVICE_AUDIT_EVENTS
 
 router=APIRouter(prefix="/api/v1/devices",tags=["device-events"])
-class DeviceEventPayload(BaseModel):
-    event_id:str=Field(pattern=r"^evt_[0-9a-f]{32}$")
-    device_id:str=Field(pattern=r"^dev_[0-9a-f]{32}$")
-    event_type:str=Field(min_length=1,max_length=120)
-    payload:dict=Field(default_factory=dict)
-    occurred_at:datetime
-    model_config=ConfigDict(extra="forbid")
+class DeviceEventPayload(DeviceEventV1):
+    # Keep the existing API component name/mutability and specialized validation.
+    model_config=ConfigDict(extra="forbid", frozen=False)
 
     @model_validator(mode="after")
     def validate_known_event_contract(self):
@@ -45,6 +42,8 @@ class DeviceEventResponse(BaseModel):
 @router.post("/{device_id}/events",status_code=status.HTTP_202_ACCEPTED)
 def ingest_event(device_id:str,payload:DeviceEventPayload,background_tasks:BackgroundTasks,device:Device=Depends(require_device),db:Session=Depends(get_db)):
     if device.device_id!=device_id or payload.device_id!=device_id: raise HTTPException(403,"Device identity mismatch")
+    if payload.event_type in CORE_DEVICE_AUDIT_EVENTS:
+        raise HTTPException(403, "Event type is reserved for Core audit")
     existing=db.scalar(select(DeviceEvent).where(DeviceEvent.event_id==payload.event_id))
     from backend.services.device_commands import _utc
     if existing is not None and (existing.device_id != device.id or existing.event_type != payload.event_type or existing.payload != payload.payload or _utc(existing.occurred_at) != _utc(payload.occurred_at)):

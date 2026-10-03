@@ -1,7 +1,8 @@
 """Revisioned desired/reported state endpoints."""
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from three_mm_protocol.node_security import bounded_node_message
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,7 @@ from three_mm_protocol import AgentReportedState, DeviceDesiredState
 router = APIRouter(prefix="/api/v1/devices", tags=["device-state"])
 
 class DesiredStateUpdate(BaseModel):
+    _bounded = model_validator(mode="after")(bounded_node_message)
     expected_revision: int = Field(ge=0)
     state: dict
     model_config = ConfigDict(extra="forbid")
@@ -36,7 +38,12 @@ def _row(db: Session, device: Device) -> DeviceState:
 def _desired(row: DeviceState, device_id: str) -> DeviceDesiredState:
     value = row.desired_updated_at
     if value.tzinfo is None: value = value.replace(tzinfo=timezone.utc)
-    return DeviceDesiredState(device_id=device_id, revision=row.desired_revision, state=row.desired_state, updated_at=value)
+    try:
+        return DeviceDesiredState(device_id=device_id, revision=row.desired_revision, state=row.desired_state, updated_at=value)
+    except ValueError as exc:
+        # Keep historical state for backup/recovery, without sending an invalid
+        # Node message or silently resetting its desired revision.
+        raise HTTPException(409, detail={"code": "stored_desired_state_invalid", "revision": row.desired_revision, "message": "Stored desired state requires a compatible bounded update; original data was preserved"}) from exc
 
 @router.get("/{device_id}/desired-state", response_model=DeviceDesiredState)
 def get_desired_state(device_id: str, device: Device = Depends(require_device), db: Session = Depends(get_db)) -> DeviceDesiredState:
@@ -49,7 +56,13 @@ def update_desired_state(device_id: str, payload: DesiredStateUpdate, _admin: Us
     if device is None: raise HTTPException(404, "Device was not found")
     row = _row(db, device)
     if row.desired_revision != payload.expected_revision: raise HTTPException(409, "Desired state revision conflict")
-    row.desired_revision += 1; row.desired_state = payload.state; row.desired_updated_at = datetime.now(timezone.utc)
+    # Validate the outgoing envelope too: its identity/time overhead is larger
+    # than the update request. Never commit state the Node cannot receive.
+    try:
+        desired = DeviceDesiredState(device_id=device_id, revision=row.desired_revision + 1, state=payload.state, updated_at=datetime.now(timezone.utc))
+    except ValueError as exc:
+        raise HTTPException(422, "Desired state exceeds the Node message contract") from exc
+    row.desired_revision = desired.revision; row.desired_state = desired.state; row.desired_updated_at = desired.updated_at
     db.commit(); db.refresh(row)
     return _desired(row, device_id)
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import json
 import base64
+import hashlib
 import queue
 import uuid
 import os
@@ -23,6 +24,12 @@ from agent.node_update_client import NodeUpdateHelperError
 from agent.node_update_execution import NodeUpdateExecution
 from three_mm_protocol.node_updates import NodeUpdatePrepareRequest
 from three_mm_protocol.passage import PassageEventV1
+from agent.inventory import platform_neutral_inventory
+from agent import __version__
+from agent.runtime_features import RuntimeFeaturePublisher
+from three_mm_protocol.node_features import (
+    DeviceRuntimeFeaturesV1, FEATURE_COMMANDS, MANDATORY_NODE_FEATURES,
+)
 
 import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -54,9 +61,12 @@ class DeviceCredentialStore:
         self.binding_path = data_dir / "core-binding.json"
 
     def load(self) -> DeviceCredential | None:
+        if self.path.is_symlink() or self.binding_path.is_symlink():
+            raise RuntimeError("Credential files cannot be symbolic links")
         if not self.path.exists():
             return None
         try:
+            os.chmod(self.path, 0o600)
             credential = DeviceCredential.model_validate_json(
                 self.path.read_text(encoding="utf-8")
             )
@@ -75,11 +85,15 @@ class DeviceCredentialStore:
             raise RuntimeError(f"Cannot load Core credential from {self.path}") from exc
 
     def save(self, credential: DeviceCredential) -> None:
+        if self.path.is_symlink() or self.binding_path.is_symlink():
+            raise RuntimeError("Credential files cannot be symbolic links")
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(self.path.parent, 0o700)
         if credential.hub_endpoint is not None:
             # Keep the legacy secret-file schema readable by rollback releases.
             binding = self.binding_path.with_suffix(".tmp")
+            if binding.is_symlink():
+                raise RuntimeError("Credential temporary file cannot be a symbolic link")
             binding.write_text(json.dumps({
                 "device_id": credential.device_id, "credential_id": credential.credential_id,
                 "hub_endpoint": credential.hub_endpoint, "api_endpoint": credential.api_endpoint,
@@ -87,6 +101,8 @@ class DeviceCredentialStore:
             os.chmod(binding, 0o600)
             os.replace(binding, self.binding_path)
         temporary = self.path.with_suffix(".tmp")
+        if temporary.is_symlink():
+            raise RuntimeError("Credential temporary file cannot be a symbolic link")
         temporary.write_text(credential.model_dump_json(indent=2, exclude={"hub_endpoint", "api_endpoint"}) + "\n", encoding="utf-8")
         os.chmod(temporary, 0o600)
         os.replace(temporary, self.path)
@@ -97,33 +113,90 @@ class CommandJournal:
 
     def __init__(self, data_dir: Path) -> None:
         self.path = data_dir / "command-journal.json"
+        # Keep the old result file readable by rollback releases. A separate
+        # proof binds command content AND result; partial writes fail closed.
+        self.proof_path = data_dir / "command-journal-proofs.json"
+        self._proofs: dict = {}
+        if self.proof_path.exists():
+            try:
+                self._proofs = json.loads(self.proof_path.read_text(encoding="utf-8"))
+                if not isinstance(self._proofs, dict):
+                    raise ValueError("Invalid receipt proofs")
+            except (OSError, ValueError) as exc:
+                raise RuntimeError("Cannot load command receipt proofs") from exc
         self._results: dict[str, AgentCommandResult] = {}
+        self._unverified: dict[str, object] = {}
         if self.path.exists():
             try:
                 raw = json.loads(self.path.read_text(encoding="utf-8"))
-                self._results = {
-                    key: AgentCommandResult.model_validate(value)
-                    for key, value in raw.items()
-                }
+                if not isinstance(raw, dict):
+                    raise ValueError("Invalid command journal")
+                for key, value in raw.items():
+                    try:
+                        self._results[key] = AgentCommandResult.model_validate(value)
+                    except ValidationError:
+                        # Historic receipts may exceed new bounds. Retain their
+                        # raw evidence, but never treat them as a cache miss.
+                        self._unverified[key] = value
             except (OSError, ValueError, ValidationError) as exc:
                 raise RuntimeError(f"Cannot load command journal from {self.path}") from exc
 
     def get(self, idempotency_key: str) -> AgentCommandResult | None:
         return self._results.get(idempotency_key)
 
-    def save(self, idempotency_key: str, result: AgentCommandResult) -> None:
+    @staticmethod
+    def _digest(value) -> str:
+        return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+
+    def get_for_command(self, command: AgentCommand) -> AgentCommandResult | None:
+        if command.idempotency_key in self._unverified:
+            return AgentCommandResult(
+                command_id=command.command_id, device_id=command.device_id,
+                status="failed", completed_at=datetime.now(UTC),
+                output={"execution_state": "unknown", "recovery_code": "legacy_receipt_invalid"},
+                error="Stored receipt requires recovery; automatic replay refused",
+            )
+        result = self.get(command.idempotency_key)
+        if result is None:
+            return None
+        proof = self._proofs.get(command.idempotency_key)
+        expected = {
+            "command": self._digest(command.model_dump(mode="json", exclude={"command_id"})),
+            "result": self._digest(result.model_dump(mode="json")),
+        }
+        if proof != expected:
+            return AgentCommandResult(
+                command_id=command.command_id, device_id=command.device_id,
+                status="failed", completed_at=datetime.now(UTC),
+                output={"execution_state": "unknown" if proof is None else "conflict"},
+                error="Cached receipt cannot verify this command; automatic replay refused",
+            )
+        return result.model_copy(update={"command_id": command.command_id})
+
+    def save(self, idempotency_key: str, result: AgentCommandResult, *, command: AgentCommand | None = None) -> None:
+        if idempotency_key in self._unverified:
+            raise RuntimeError("Unverified historical receipt must not be overwritten")
         self._results[idempotency_key] = result
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         temporary = self.path.with_suffix(".tmp")
         temporary.write_text(
             json.dumps(
-                {key: value.model_dump(mode="json") for key, value in self._results.items()},
+                {**self._unverified, **{key: value.model_dump(mode="json") for key, value in self._results.items()}},
                 indent=2,
             ) + "\n",
             encoding="utf-8",
         )
         os.chmod(temporary, 0o600)
         os.replace(temporary, self.path)
+        if command is not None:
+            self._proofs[idempotency_key] = {
+                "command": self._digest(command.model_dump(mode="json", exclude={"command_id"})),
+                "result": self._digest(result.model_dump(mode="json")),
+            }
+            temporary = self.proof_path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(self._proofs) + "\n", encoding="utf-8")
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, self.proof_path)
 
 
 class ReconciliationState(BaseModel):
@@ -180,8 +253,10 @@ class OutboxStore:
 
     def enqueue(self, entry: OutboxEntry) -> None:
         entries = [item for item in self.load() if item.deduplication_key != entry.deduplication_key]
+        if len(entries) >= 500:
+            raise RuntimeError("Agent outbox is full; pending records were preserved")
         entries.append(entry)
-        self.save(entries[-500:])
+        self.save(entries)
 
 
 @dataclass(slots=True)
@@ -199,6 +274,10 @@ class CorePublisher:
     node_update_transport: NodeUpdateTransport | None = None
     node_update_execution: NodeUpdateExecution | None = None
     interval_seconds: int = 30
+    inventory_schema_version: int = 1
+    # Legacy embedding/test adapter. The production Agent opts in explicitly.
+    feature_negotiation: bool = False
+    _runtime_features: RuntimeFeaturePublisher | None = field(init=False, default=None, repr=False)
     _stop: threading.Event = field(init=False, repr=False)
     _thread: threading.Thread | None = field(init=False, default=None, repr=False)
     _event_thread: threading.Thread | None = field(init=False, default=None, repr=False)
@@ -207,6 +286,11 @@ class CorePublisher:
     _outbox_lock: threading.Lock = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        if (
+            type(self.inventory_schema_version) is not int
+            or self.inventory_schema_version not in (1, 2)
+        ):
+            raise ValueError("Inventory schema version must be 1 or 2")
         self.core_url = self.core_url.rstrip("/")
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -214,6 +298,8 @@ class CorePublisher:
         self._command_thread = None
         self._event_queue = queue.Queue(maxsize=500)
         self._outbox_lock = threading.Lock()
+        if self.feature_negotiation:
+            self._runtime_features = RuntimeFeaturePublisher(self.core_url, self.credential)
 
     @property
     def headers(self) -> dict[str, str]:
@@ -251,11 +337,44 @@ class CorePublisher:
             json=payload,
             headers=self.headers,
             timeout=10,
+            allow_redirects=False,
         )
         response.raise_for_status()
 
+        if 300 <= getattr(response, "status_code", 200) < 400:
+            raise requests.HTTPError("Core redirect is not a message acknowledgement")
+
+    def _runtime_declaration(self) -> dict:
+        features = set(MANDATORY_NODE_FEATURES) | {"inventory_refresh"}
+        if self.module_runtime is not None:
+            features.update({"module_lifecycle", "application_execution_permits"})
+        if self.automation_store is not None:
+            features.add("local_automations")
+        if self.gpio_configuration is not None:
+            features.add("gpio_configuration")
+        if self.node_update_transport is not None:
+            features.add("release_update_prepare")
+            support = self._node_update_support()
+            if support is not None and support.get("signed_apply_supported") is True:
+                features.add("release_update_apply")
+        commands = {command for feature in features for command in FEATURE_COMMANDS.get(feature, ())}
+        return DeviceRuntimeFeaturesV1(
+            device_id=self.credential.device_id, runtime_name="3mm-agent",
+            runtime_version=__version__, features=tuple(sorted(features)),
+            command_types=tuple(sorted(commands)),
+        ).model_dump(mode="json")
+
+    def _negotiated_inventory_version(self) -> int:
+        if self._runtime_features is None:
+            return self.inventory_schema_version
+        return self._runtime_features.inventory_version(self.inventory_schema_version, self._runtime_declaration)
+
     def _publish_inventory(self) -> None:
-        self._post("inventory", self.inventory_provider().model_dump(mode="json"))
+        version = self._negotiated_inventory_version()
+        report = self.inventory_provider()
+        if version == 2:
+            report = platform_neutral_inventory(report)
+        self._post("inventory", report.model_dump(mode="json"))
 
     def _send_or_queue(self, suffix: str, payload: dict, deduplication_key: str) -> bool:
         try:
@@ -365,11 +484,13 @@ class CorePublisher:
             return {"schema_version": 1, "signed_apply_supported": False}
 
     def _poll_command(self, *, wait_seconds: float = 0.0) -> None:
+        self._negotiated_inventory_version()
         response = requests.get(
             f"{self.core_url}/api/v1/devices/{self.credential.device_id}/commands/next",
             headers=self.headers,
             params={"wait_seconds": wait_seconds},
             timeout=max(10.0, wait_seconds + 5.0),
+            allow_redirects=False,
         )
         if response.status_code == 204:
             return
@@ -377,7 +498,7 @@ class CorePublisher:
         command = AgentCommand.model_validate(response.json())
         if command.device_id != self.credential.device_id:
             raise ValueError('Command device identity mismatch')
-        cached = self.command_journal.get(command.idempotency_key)
+        cached = self.command_journal.get_for_command(command)
         if cached is not None:
             replay = cached.model_copy(update={"command_id": command.command_id})
             self._submit_result(replay)
@@ -398,7 +519,7 @@ class CorePublisher:
             journal = PhysicalCommandJournal(self.command_journal.path.parent)
             def authorize():
                 started = time.monotonic()
-                permit = requests.post(f'{self.core_url}/api/v1/devices/{self.credential.device_id}/commands/{command.command_id}/authorize-execution', headers=self.headers, timeout=2)
+                permit = requests.post(f'{self.core_url}/api/v1/devices/{self.credential.device_id}/commands/{command.command_id}/authorize-execution', headers=self.headers, timeout=2, allow_redirects=False)
                 permit.raise_for_status()
                 body = permit.json()
                 if body.get('authorized') is not True or body.get('command_id') != command.command_id or time.monotonic() - started > 2:
@@ -548,7 +669,7 @@ class CorePublisher:
                 completed_at=completed_at,
                 error="Unsupported command type",
             )
-        self.command_journal.save(command.idempotency_key, result)
+        self.command_journal.save(command.idempotency_key, result, command=command)
         self._submit_result(result)
         if command.command_type in {"module.install", "module.disable"} and self.gpio_configuration is not None:
             self._reconcile_state()
@@ -570,6 +691,7 @@ class CorePublisher:
             f"{self.core_url}/api/v1/devices/{self.credential.device_id}/desired-state",
             headers=self.headers,
             timeout=10,
+            allow_redirects=False,
         )
         response.raise_for_status()
         desired = DeviceDesiredState.model_validate(response.json())
@@ -629,6 +751,12 @@ class CorePublisher:
         inventory_published = False
         while not self._stop.is_set():
             try:
+                self._negotiated_inventory_version()
+            except (requests.RequestException, ValueError) as exc:
+                logger.warning("Core protocol negotiation failed: %s", type(exc).__name__)
+                self._stop.wait(self.interval_seconds)
+                continue
+            try:
                 self._flush_outbox()
             except RuntimeError as exc:
                 logger.warning("Agent outbox flush failed: %s", exc)
@@ -642,7 +770,7 @@ class CorePublisher:
                 try:
                     self._publish_inventory()
                     inventory_published = True
-                except requests.RequestException as exc:
+                except (requests.RequestException, ValueError) as exc:
                     logger.warning("Core inventory publish failed: %s", exc)
             heartbeat = AgentHeartbeat(
                 device_id=self.credential.device_id,

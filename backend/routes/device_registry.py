@@ -1,8 +1,7 @@
 """Administrator read API for real registered devices."""
 
 from datetime import datetime, timedelta, timezone
-
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,6 +13,7 @@ from backend.db.module import ModuleInstallation
 from backend.services.device_registry import as_utc, is_device_online
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
+from three_mm_protocol.device_inventory import normalized_inventory
 
 router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
 
@@ -58,6 +58,7 @@ class DeviceDetailResponse(DeviceRegistryItem):
 def list_devices(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
+    inventory_schema_version: int = Query(default=1, ge=1, le=2),
 ) -> DeviceRegistryResponse:
     now = datetime.now(timezone.utc)
     offline_after = timedelta(
@@ -97,7 +98,10 @@ def list_devices(
                     revoked_at=device.revoked_at,
                 ),
                 last_seen_at=last_seen_at,
-                latest_inventory=inventory.inventory if inventory else None,
+                latest_inventory=(
+                    normalized_inventory(inventory.inventory)
+                    if inventory_schema_version == 2 else inventory.inventory
+                ) if inventory else None,
             )
         )
     return DeviceRegistryResponse(items=items, total=len(items))
@@ -107,6 +111,7 @@ def get_device(
     device_id: str,
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
+    inventory_schema_version: int = Query(default=1, ge=1, le=2),
 ) -> DeviceDetailResponse:
     now = datetime.now(timezone.utc)
     offline_after = timedelta(
@@ -166,7 +171,10 @@ def get_device(
             revoked_at=device.revoked_at,
         ),
         last_seen_at=last_seen_at,
-        latest_inventory=inventory.inventory if inventory else None,
+        latest_inventory=(
+            normalized_inventory(inventory.inventory)
+            if inventory_schema_version == 2 else inventory.inventory
+        ) if inventory else None,
         modules=[
             DeviceModuleItem(
                 module_id=item.module_id,

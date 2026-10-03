@@ -108,8 +108,11 @@ export type BuilderCapability = {
   device_name: string
   device_role: string
   capability_id: string
-  module_id: string
-  module_version: string
+  module_id?: string
+  module_version?: string
+  provider_type?: string
+  provider_id?: string
+  provider_version?: string
   metadata: Record<string, string | number | boolean>
 }
 

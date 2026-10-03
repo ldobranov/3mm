@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from backend.db.device import Device, DeviceHeartbeat, DeviceInventorySnapshot
 from backend.utils.db_utils import get_db
 from backend.utils.device_auth import require_device
-from three_mm_protocol import AgentHeartbeat, AgentInventory
+from three_mm_protocol import AgentHeartbeat, AgentInventory, DeviceInventoryV2
 
 router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
 
@@ -59,7 +59,7 @@ def submit_heartbeat(
     status_code=status.HTTP_202_ACCEPTED,
 )
 def submit_inventory(
-    payload: AgentInventory,
+    payload: DeviceInventoryV2 | AgentInventory,
     device_id: Annotated[str, Path(pattern=r"^dev_[0-9a-f]{32}$")],
     device: Device = Depends(require_device),
     db: Session = Depends(get_db),

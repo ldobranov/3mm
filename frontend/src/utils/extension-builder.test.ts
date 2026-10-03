@@ -29,6 +29,20 @@ const capability = (overrides: Partial<BuilderCapability> = {}): BuilderCapabili
 })
 
 describe('extension builder model', () => {
+  it('uses firmware capabilities without a fabricated module identity', () => {
+    const native: BuilderCapability = {
+      device_id: 'device-embedded', device_name: 'Embedded', device_role: 'node',
+      capability_id: 'gpio.input', provider_type: 'embedded_firmware',
+      provider_id: 'example.runtime', provider_version: '0.1',
+      metadata: { automation_channels: 'input.1' }
+    }
+    expect(capabilityChannels(native)).toEqual(['input.1'])
+    const schema = createCapabilityConfigSchema({ schema_version: 1, target: 'dashboard_widget',
+      settings: [{ key: 'device', label: 'Device', kind: 'device' }],
+      bindings: [], presentations: [] }, [native])
+    expect(schema).toMatchObject({ properties: { device: { enum: ['device-embedded'] } } })
+  })
+
   it('creates independent defaults and stable generated identifiers', () => {
     const first = createInitialExtensionSpec()
     const second = createInitialExtensionSpec()

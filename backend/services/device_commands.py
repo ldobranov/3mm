@@ -9,9 +9,12 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from backend.db.device import Device, DeviceCommand
+from backend.db.module import ModuleInstallation
 from backend.services.device_command_notifier import device_command_notifier
+from backend.services.device_runtime_features import command_is_supported, lock_device, read_runtime_features
 from three_mm_protocol import AgentCommand, AgentCommandResult
 from three_mm_protocol.node_updates import NodeUpdateOperation
+from three_mm_protocol.node_security import validate_command_payload
 
 
 NODE_UPDATE_TERMINAL_OUTCOMES = frozenset({"succeeded", "rolled_back", "failed"})
@@ -26,7 +29,13 @@ class DeviceCommandError(RuntimeError):
 
 
 def node_update_is_terminal(command: DeviceCommand) -> bool:
-    """Only an independent validated operation report releases the OTA gate."""
+    """Validated completion or proven non-dispatch releases the OTA gate."""
+    # A Core-side rejection before *any* dispatch cannot have begun an update.
+    # Never infer this from a generic failed acknowledgement after delivery.
+    if (command.status == "failed" and command.delivered_at is None
+            and not command.delivery_attempts
+            and (command.result or {}).get("execution_state") == "not_dispatched"):
+        return True
     try:
         operation = NodeUpdateOperation.model_validate((command.result or {})["operation"])
         return operation.status in NODE_UPDATE_TERMINAL_OUTCOMES
@@ -51,13 +60,17 @@ def queue_command(
 ) -> DeviceCommand:
     if device.revoked_at is not None:
         raise DeviceCommandError("Device is revoked")
+    try:
+        validate_command_payload(command_type, payload)
+        if type(ttl_seconds) is not int or not 1 <= ttl_seconds <= 86400:
+            raise ValueError("Command TTL is invalid")
+    except ValueError as exc:
+        raise DeviceCommandError(str(exc)) from exc
     if not_after is not None and not_after.utcoffset() is None:
         raise DeviceCommandError('Command deadline requires a timezone')
     guarded_node_mutation = device.role == "node" and command_type in NODE_MUTATION_COMMAND_TYPES
-    if device.role == "node" and (guarded_node_mutation or command_type == "agent.update.apply"):
-        # The same device row lock is used by OTA approval. This is also a
-        # SQLite writer lock, serializing physical/config changes against OTA.
-        db.execute(update(Device).where(Device.id == device.id).values(updated_at=Device.updated_at))
+    # Serialize support changes against queueing, including non-Node devices.
+    lock_device(db, device)
     existing = db.scalar(
         select(DeviceCommand).where(
             DeviceCommand.device_id == device.id,
@@ -68,6 +81,8 @@ def queue_command(
         if existing.command_type != command_type or existing.payload != payload:
             raise DeviceCommandError('Command idempotency key has different content')
         return existing
+    if not command_is_supported(db, device, command_type):
+        raise DeviceCommandError("Device runtime does not advertise support for this command")
     if guarded_node_mutation and any(
         not node_update_is_terminal(operation)
         for operation in db.scalars(select(DeviceCommand).where(
@@ -119,6 +134,7 @@ def deliver_next_command(
     delivery_lease_seconds: int = 30,
 ) -> DeviceCommand | None:
     delivered_at = now or datetime.now(timezone.utc)
+    lock_device(db, device)
     lease_expired_at = delivered_at - timedelta(seconds=delivery_lease_seconds)
     db.execute(
         update(DeviceCommand)
@@ -130,6 +146,26 @@ def deliver_next_command(
         .values(status="expired"),
         execution_options={"synchronize_session": False},
     )
+    # Recheck withdrawals before first dispatch. Already delivered work remains
+    # uncertain and follows the original lease/result/OTA recovery contract.
+    support = read_runtime_features(db, device)
+    if support is not None:
+        commands = set(support.declaration["command_types"])
+        for pending in db.scalars(select(DeviceCommand).where(
+            DeviceCommand.device_id == device.id, DeviceCommand.status == "queued",
+            DeviceCommand.delivered_at.is_(None), DeviceCommand.delivery_attempts == 0,
+        )):
+            if pending.command_type not in commands:
+                pending.status = "failed"
+                pending.error = "Runtime support withdrawn before dispatch"
+                pending.result = {"execution_state": "not_dispatched"}
+                pending.completed_at = delivered_at
+                if pending.command_type in {"module.install", "module.disable"}:
+                    db.execute(update(ModuleInstallation).where(
+                        ModuleInstallation.command_id == pending.command_id,
+                        ModuleInstallation.device_id == device.id,
+                    ).values(status="failed", error=pending.error))
+    db.flush()
     command = db.scalar(
         select(DeviceCommand)
         .where(
@@ -149,6 +185,21 @@ def deliver_next_command(
     if command is None:
         db.commit()
         return None
+    try:
+        command_envelope(command, device.device_id)
+    except ValueError as exc:
+        # Historical rows are not rewritten by migration. Invalid work must
+        # not gain a delivery attempt merely because stricter DTOs reject it.
+        if command.delivered_at is None and not command.delivery_attempts:
+            command.status = "failed"
+            command.result = {**(command.result or {}), "execution_state": "not_dispatched", "recovery_code": "stored_command_invalid"}
+            command.error = "Stored command cannot satisfy the Node contract"
+            command.completed_at = delivered_at
+            db.execute(update(ModuleInstallation).where(ModuleInstallation.command_id == command.command_id, ModuleInstallation.device_id == device.id).values(status="failed", error=command.error))
+        # Already dispatched work stays uncertain, with its original receipt
+        # and delivery evidence. Never label it not_dispatched or replay it.
+        db.commit()
+        raise DeviceCommandError("Stored command requires recovery; automatic dispatch refused") from exc
     command.status = "delivered"
     command.delivered_at = delivered_at
     command.delivery_attempts = (command.delivery_attempts or 0) + 1

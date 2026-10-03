@@ -94,10 +94,10 @@
             </thead>
             <tbody>
               <tr v-for="device in devices" :key="device.device_id">
-                <td>{{ device.display_name || device.latest_inventory?.hostname || device.device_id }}</td>
+                <td>{{ device.display_name || inventoryText(device.latest_inventory, 'hostname') || device.device_id }}</td>
                 <td><code>{{ device.device_id }}</code></td>
                 <td>{{ device.role }}</td>
-                <td>{{ device.latest_inventory?.model || device.latest_inventory?.architecture || '-' }}</td>
+                <td>{{ inventoryText(device.latest_inventory, 'model') || inventoryText(device.latest_inventory, 'architecture') || '-' }}</td>
                 <td>
                   <span :class="['status-badge', device.online ? 'online' : 'offline']">
                     {{ device.online
@@ -149,6 +149,7 @@
           <div class="diagnostics-grid">
             <section>
               <h4>{{ t('mainServer.diagnostics.inventory', 'Latest inventory') }}</h4>
+              <DeviceInventorySummary :inventory="selectedDiagnosticsDevice.latest_inventory" :translate="inventoryLabel" />
               <pre>{{ prettyJson(selectedDiagnosticsDevice.latest_inventory) }}</pre>
             </section>
             <section>
@@ -318,16 +319,14 @@ import { computed, ref, onMounted } from 'vue';
 import { useI18n } from '@/utils/i18n';
 import http from '@/utils/dynamic-http';
 import FleetPairing from '@/components/FleetPairing.vue';
+import DeviceInventorySummary from '@/components/DeviceInventorySummary.vue';
+import { inventoryText, type DeviceInventory } from '@/utils/device-inventory';
 
 const { t } = useI18n();
 
 // State
 const availableUpdates = ref<any[]>([]);
-interface DeviceInventory {
-  hostname?: string;
-  model?: string | null;
-  architecture?: string;
-}
+const inventoryLabel = (key: string, fallback: string) => t(`mainServer.inventory.${key}`, fallback);
 
 interface RegistryDevice {
   device_id: string;
@@ -569,7 +568,7 @@ const loadDevices = async () => {
   isLoadingDevices.value = true;
   devicesError.value = false;
   try {
-    const response = await http.get('/api/v1/devices');
+    const response = await http.get('/api/v1/devices?inventory_schema_version=2');
     const registry = response.data as DeviceRegistryResponse;
     devices.value = registry.items;
   } catch (error) {

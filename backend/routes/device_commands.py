@@ -110,15 +110,18 @@ async def next_command(
     if device.device_id != device_id:
         raise HTTPException(status_code=403, detail="Device identity mismatch")
     revision = device_command_notifier.revision(device.id)
-    command = deliver_next_command(db, device=device)
-    if command is None and wait_seconds > 0:
-        await device_command_notifier.wait(
-            device.id,
-            after=revision,
-            timeout=wait_seconds,
-        )
-        db.rollback()
+    try:
         command = deliver_next_command(db, device=device)
+        if command is None and wait_seconds > 0:
+            await device_command_notifier.wait(
+                device.id,
+                after=revision,
+                timeout=wait_seconds,
+            )
+            db.rollback()
+            command = deliver_next_command(db, device=device)
+    except DeviceCommandError as exc:
+        raise HTTPException(409, detail=str(exc)) from exc
     if command is None:
         response.status_code = status.HTTP_204_NO_CONTENT
         return response

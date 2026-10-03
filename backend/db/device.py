@@ -1,6 +1,6 @@
 """Persistent Core registry models for managed devices."""
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -194,4 +194,34 @@ class DeviceCapabilityState(Base):
 
     __table_args__ = (
         UniqueConstraint("device_id", "capability_id", name="uq_device_capability_state"),
+    )
+
+
+class DeviceRuntimeFeatures(Base):
+    __tablename__ = "device_runtime_features"
+
+    id = Column(Integer, primary_key=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    revision = Column(Integer, nullable=False)
+    declaration = Column(JSON, nullable=False)
+    received_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class DeviceCapabilityProvider(Base):
+    """Non-module declarations; Core owns enabled, the device owns its report."""
+
+    __tablename__ = "device_capability_providers"
+
+    id = Column(Integer, primary_key=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider_type = Column(String(64), nullable=False)
+    provider_id = Column(String(160), nullable=False)
+    provider_version = Column(String(64), nullable=False)
+    revision = Column(Integer, nullable=False)
+    enabled = Column(Boolean, nullable=False, default=True)
+    capabilities = Column(JSON, nullable=False, default=list)
+    reported_at = Column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("device_id", "provider_type", "provider_id", name="uq_device_capability_provider"),
     )

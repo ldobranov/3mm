@@ -22,10 +22,12 @@ from three_mm_protocol.module_manifest import (
 )
 from three_mm_protocol.automation import (
     AutomationCapabilityContextV1,
+    AutomationCapabilityContextV2,
     AutomationDefinitionV1,
     AutomationValidationIssue,
     CapabilityCommandAction,
     CapabilityContextEntry,
+    ProviderCapabilityContextEntry,
     CapabilityEventTrigger,
     validate_automation_capabilities,
 )
@@ -51,6 +53,21 @@ from three_mm_protocol.capability_builder import (
 from three_mm_protocol.capability_state import (
     CapabilityStateReportV1,
     CapabilityStateSnapshotV1,
+)
+from three_mm_protocol.device_inventory import DeviceInventoryV2
+from three_mm_protocol.device_event import DeviceEventV1
+from three_mm_protocol.node_features import (
+    CoreNodeProtocolV1,
+    DeviceRuntimeFeaturesV1,
+    DeviceRuntimeFeaturesReportV1,
+    DeviceRuntimeFeaturesSnapshotV1,
+)
+from three_mm_protocol.device_capabilities import (
+    CapabilityAdvertisementV1,
+    CapabilityProviderReportV1,
+    CapabilityProviderSnapshotV1,
+    CapabilityProviderControlV1,
+    CapabilityRegistrationV2,
 )
 from three_mm_protocol.identifier_scan import (
     IdentifierScanEventV1,
@@ -86,6 +103,17 @@ __all__ = [
     "DeviceDesiredState",
     "AgentHello",
     "AgentInventory",
+    "DeviceInventoryV2",
+    "DeviceEventV1",
+    "CoreNodeProtocolV1",
+    "DeviceRuntimeFeaturesV1",
+    "DeviceRuntimeFeaturesReportV1",
+    "DeviceRuntimeFeaturesSnapshotV1",
+    "CapabilityAdvertisementV1",
+    "CapabilityProviderReportV1",
+    "CapabilityProviderSnapshotV1",
+    "CapabilityProviderControlV1",
+    "CapabilityRegistrationV2",
     "AgentRole",
     "ModuleCapabilities",
     "ModuleCompatibility",
@@ -94,10 +122,12 @@ __all__ = [
     "ModuleRegistration",
     "meets_minimum_version",
     "AutomationCapabilityContextV1",
+    "AutomationCapabilityContextV2",
     "AutomationDefinitionV1",
     "AutomationValidationIssue",
     "CapabilityCommandAction",
     "CapabilityContextEntry",
+    "ProviderCapabilityContextEntry",
     "CapabilityEventTrigger",
     "validate_automation_capabilities",
     "LocalizedTextV1",

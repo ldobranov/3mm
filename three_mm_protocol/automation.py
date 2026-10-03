@@ -66,6 +66,24 @@ class AutomationCapabilityContextV1(StrictAutomationModel):
         }
 
 
+class ProviderCapabilityContextEntry(StrictAutomationModel):
+    device_id: str
+    device_name: str
+    device_role: str
+    capability_id: str
+    provider_type: str
+    provider_id: str
+    provider_version: str
+    metadata: dict[str, str | int | float | bool] = Field(default_factory=dict)
+
+
+class AutomationCapabilityContextV2(AutomationCapabilityContextV1):
+    """Same references/validation, without fabricated module identities."""
+
+    context_version: Literal[2] = 2
+    capabilities: tuple[ProviderCapabilityContextEntry, ...] = ()
+
+
 class AutomationValidationIssue(StrictAutomationModel):
     path: str
     code: Literal["device.unavailable", "capability.unavailable"]

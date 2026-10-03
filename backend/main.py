@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Depends
 from backend.utils.auth_dep import guard_user_session
+from backend.utils.device_body_limit import DeviceBodyLimitMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -42,6 +43,7 @@ from backend.routes.device_registry import router as device_registry_router
 from backend.routes.device_commands import router as device_commands_router
 from backend.routes.device_state import router as device_state_router
 from backend.routes.device_capabilities import router as device_capabilities_router
+from backend.routes.device_runtime_features import router as device_runtime_features_router
 from backend.routes.device_capability_state import router as device_capability_state_router
 from backend.routes.device_events import router as device_events_router
 from backend.routes.node_update_delivery import router as node_update_delivery_router
@@ -237,6 +239,7 @@ class CustomErrorHandlerMiddleware(BaseHTTPMiddleware):
 
 # Add middleware to FastAPI app
 app.add_middleware(CustomErrorHandlerMiddleware)
+app.add_middleware(DeviceBodyLimitMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -288,6 +291,7 @@ app.include_router(node_update_delivery_router)
 app.include_router(node_updates_router)
 app.include_router(device_state_router)
 app.include_router(device_capabilities_router)
+app.include_router(device_runtime_features_router)
 app.include_router(device_capability_state_router)
 app.include_router(device_events_router)
 app.include_router(modules_router)

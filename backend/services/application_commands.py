@@ -11,6 +11,7 @@ from backend.services.application_extensions import load_application_definition
 from backend.services.application_configuration import _validate_value
 from backend.services.device_commands import queue_command, commit_queued_command, _utc
 from backend.services.device_capability_registry import has_registered_capability
+from backend.services.device_runtime_features import command_is_supported, lock_device
 from three_mm_protocol.application_commands import ApplicationCommandLookupV1, ApplicationCommandSubmitV1
 
 COMMAND_TYPE = 'application.capability.invoke'
@@ -137,6 +138,9 @@ def command_lookup(db, installation, payload):
 
 def authorize_execution(db, device, command_id):
     """One live permit, never redelivered. A missing response is not retryable."""
+    lock_device(db, device)
+    if not command_is_supported(db, device, COMMAND_TYPE):
+        raise ValueError('Device runtime does not support application execution permits')
     record = db.get(ApplicationCommandRequest, command_id)
     command = db.scalar(select(DeviceCommand).where(DeviceCommand.command_id == command_id, DeviceCommand.device_id == device.id))
     if record is None or command is None or command.command_type != COMMAND_TYPE or command.status != 'delivered':

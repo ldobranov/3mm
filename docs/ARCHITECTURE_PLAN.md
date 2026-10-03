@@ -44,6 +44,10 @@ The platform must support these primary use cases:
     submission.
 15. Public and kiosk interfaces are explicit restricted audiences, not
     authenticated application routes with their client-side guard removed.
+16. Core knows devices, capabilities, providers and protocol contracts, not
+    concrete hardware platforms. Inventory and capability providers are being
+    generalized through [the C0–C9 plan](PLATFORM_NEUTRAL_NODES_PLAN.md);
+    embedded firmware is not implemented or required by the current Agent.
 
 ## 3. Target system
 

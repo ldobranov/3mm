@@ -19,6 +19,7 @@ from three_mm_protocol.installation_peer import (
     ProjectedNodeV1,
 )
 from three_mm_protocol.models import PROTOCOL_VERSION
+from three_mm_protocol.device_inventory import inventory_value
 
 
 def _value(value=None, *, source=None, observed=None, received=None, revision=None):
@@ -201,7 +202,7 @@ def installation_projection(
                     if inventory and isinstance(inventory.inventory, dict)
                     else {}
                 )
-                value = data.get(field)
+                value = inventory_value(data, field)
                 if field in {"memory_total_bytes", "root_free_bytes"} and (
                     type(value) is not int or value < 0
                 ):

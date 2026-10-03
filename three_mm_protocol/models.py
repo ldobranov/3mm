@@ -6,7 +6,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from three_mm_protocol.node_security import bounded_node_message, validate_command_payload
 
 PROTOCOL_VERSION: Literal["1.0"] = "1.0"
 DeviceId = str
@@ -44,6 +45,7 @@ class AgentHealth(ProtocolModel):
 
 
 class AgentInventory(ProtocolModel):
+    _bounded = model_validator(mode="after")(bounded_node_message)
     protocol_version: Literal["1.0"] = PROTOCOL_VERSION
     device_id: DeviceId = Field(pattern=r"^dev_[0-9a-f]{32}$")
     collected_at: datetime
@@ -64,6 +66,7 @@ class AgentInventory(ProtocolModel):
 
 
 class AgentHeartbeat(ProtocolModel):
+    _bounded = model_validator(mode="after")(bounded_node_message)
     protocol_version: Literal["1.0"] = PROTOCOL_VERSION
     device_id: DeviceId = Field(pattern=r"^dev_[0-9a-f]{32}$")
     sent_at: datetime
@@ -81,8 +84,18 @@ class AgentCommand(ProtocolModel):
     created_at: datetime
     expires_at: datetime
 
+    @model_validator(mode="after")
+    def safe_command(self):
+        if self.created_at.utcoffset() is None or self.expires_at.utcoffset() is None:
+            raise ValueError("Command timestamps require timezones")
+        if not 0 < (self.expires_at - self.created_at).total_seconds() <= 86400:
+            raise ValueError("Command deadline is invalid")
+        validate_command_payload(self.command_type, self.payload)
+        return self
+
 
 class AgentCommandResult(ProtocolModel):
+    _bounded = model_validator(mode="after")(bounded_node_message)
     protocol_version: Literal["1.0"] = PROTOCOL_VERSION
     command_id: str = Field(pattern=r"^cmd_[0-9a-f]{32}$")
     device_id: DeviceId = Field(pattern=r"^dev_[0-9a-f]{32}$")
@@ -93,6 +106,7 @@ class AgentCommandResult(ProtocolModel):
 
 
 class DeviceDesiredState(ProtocolModel):
+    _bounded = model_validator(mode="after")(bounded_node_message)
     device_id: DeviceId = Field(pattern=r"^dev_[0-9a-f]{32}$")
     revision: int = Field(ge=0)
     state: dict = Field(default_factory=dict)
@@ -100,6 +114,7 @@ class DeviceDesiredState(ProtocolModel):
 
 
 class AgentReportedState(ProtocolModel):
+    _bounded = model_validator(mode="after")(bounded_node_message)
     device_id: DeviceId = Field(pattern=r"^dev_[0-9a-f]{32}$")
     desired_revision: int = Field(ge=0)
     applied_revision: int = Field(ge=0)

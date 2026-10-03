@@ -283,6 +283,9 @@ See the [changelog](CHANGELOG.md) for user-visible changes and the
 | --- | --- |
 | [Product master plan](docs/MASTER_PLAN.md) | Local-first product sequence and optional central extensions |
 | [Architecture plan](docs/ARCHITECTURE_PLAN.md) | System boundaries and target architecture |
+| [Platform-neutral Nodes plan](docs/PLATFORM_NEUTRAL_NODES_PLAN.md) | C0–C9 inventory/provider contracts before separate embedded firmware |
+| [Node regression baseline](docs/PLATFORM_NEUTRAL_C0.md) | Existing Linux Agent behavior, focused test gate and limitations |
+| [Platform-neutral inventory](docs/PLATFORM_NEUTRAL_C1.md) | Schema 2, legacy compatibility, Agent configuration and Fleet adoption |
 | [Project rules](docs/PROJECT_RULES.md) | Compatibility, safety and development rules |
 | [Users and access](docs/ACCESS_CONTROL.md) | Roles, groups, scoped permissions and extension delegation handoff |
 | [Roadmap](docs/ROADMAP.md) | Milestones and remaining work |

@@ -38,6 +38,8 @@ from backend.db.device import (
     DeviceEvent,
     DeviceState,
     DeviceCapabilityState,
+    DeviceCapabilityProvider,
+    DeviceRuntimeFeatures,
 )
 from backend.db.module import (
     ApplicationEventCursor,

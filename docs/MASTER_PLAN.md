@@ -168,6 +168,15 @@ grant за определена инсталация, функция и срок
 backup/restore и неуспешен update запазват данните и не повтарят физически действия.
 Точният функционален обхват остава отворен до преглед на Showcontroller.
 
+### H. Platform-neutral Nodes — текуща Core задача
+
+Одобрен на 2026-10-02 [план C0–C9](PLATFORM_NEUTRAL_NODES_PLAN.md): запазваме
+peer v2 / SDK 1.3 и последната работеща база `5cc0edf`. Първо фиксираме Linux
+Agent baseline, после обобщаваме inventory и capability providers през същия
+device subsystem. Embedded mock трябва да докаже общите договори преди реален
+firmware. ESP32, board profiles и Embedded Nodes extension са отделна бъдеща
+работа; не въвеждаме хардуерни или бизнес имена в Core.
+
 ## Разпределение по чатове
 
 Този чат пази общия план, зависимостите и приемането. Следните са направления

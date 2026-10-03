@@ -25,7 +25,7 @@ def require_device(
     authorization: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_db),
 ) -> Device:
-    if not authorization or not authorization.startswith("Device "):
+    if not authorization or len(authorization) > 1024 or not authorization.startswith("Device "):
         raise _unauthorized()
     presented = authorization.removeprefix("Device ").strip()
     credential_id, separator, secret = presented.partition(":")
@@ -33,12 +33,12 @@ def require_device(
         raise _unauthorized()
 
     credential = db.scalar(
-        select(DeviceCredential).where(DeviceCredential.credential_id == credential_id)
+        select(DeviceCredential).where(DeviceCredential.credential_id == credential_id).execution_options(populate_existing=True)
     )
     if credential is None or credential.revoked_at is not None:
         raise _unauthorized()
-    device = db.get(Device, credential.device_id)
-    if device is None or device.revoked_at is not None:
+    device = db.scalar(select(Device).where(Device.id == credential.device_id).execution_options(populate_existing=True))
+    if device is None or device.approved_at is None or device.revoked_at is not None:
         raise _unauthorized()
     if not hmac.compare_digest(
         credential.secret_hash,
