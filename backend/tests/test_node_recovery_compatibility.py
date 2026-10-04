@@ -5,7 +5,8 @@ from contextlib import closing
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import create_engine
+from alembic.script import ScriptDirectory
+from sqlalchemy import MetaData, Table, create_engine
 from sqlalchemy.orm import Session
 
 import backend.database  # noqa: F401 - register complete related ORM metadata
@@ -21,7 +22,6 @@ from backend.db.module import ModuleInstallation, ModulePackage
 from backend.services.backups import build_backup_preview, read_backup_operation_status
 from backend.services.device_capability_registry import (
     registered_capabilities,
-    replace_provider,
 )
 from backend.services.device_runtime_features import (
     replace_runtime_features,
@@ -38,7 +38,6 @@ from deployment.portable_backup import create_portable_export, import_portable_b
 from deployment.restore_backup import restore_backup
 from three_mm_protocol import (
     AgentCommandResult,
-    CapabilityProviderReportV1,
     DeviceRuntimeFeaturesReportV1,
 )
 from three_mm_protocol.node_features import MANDATORY_NODE_FEATURES
@@ -47,7 +46,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PREVIOUS = "526ab1c2d3e4"
-HEAD = "748cd3e4f5a6"
+C8_HEAD = "748cd3e4f5a6"
+HEAD = ScriptDirectory(str(ROOT / "backend/alembic")).get_current_head()
 TABLES = (
     "devices",
     "device_credentials",
@@ -61,6 +61,7 @@ TABLES = (
 
 def snapshot(database):
     with closing(sqlite3.connect(database)) as connection:
+        connection.row_factory = sqlite3.Row
         existing = {
             row[0]
             for row in connection.execute(
@@ -68,7 +69,10 @@ def snapshot(database):
             )
         }
         return {
-            table: connection.execute(f"SELECT * FROM {table} ORDER BY id").fetchall()
+            table: [
+                dict(row)
+                for row in connection.execute(f"SELECT * FROM {table} ORDER BY id")
+            ]
             for table in TABLES
             if table in existing
         }
@@ -138,20 +142,24 @@ def seed(url, with_firmware):
                     secret_hash="test-firmware-hash",
                 )
             )
-            provider = replace_provider(
-                db,
-                embedded,
-                CapabilityProviderReportV1(
-                    schema_version=1,
-                    device_id=embedded.device_id,
-                    provider_type="embedded_firmware",
-                    provider_id="reference.runtime",
-                    provider_version="0.1",
-                    expected_revision=0,
-                    capabilities=({"capability_id": "gpio.digital.control"},),
-                ),
+            # Seed the historical schema, not today's ORM/service: an old
+            # backup must not acquire columns that did not exist at creation.
+            providers = Table(
+                "device_capability_providers", MetaData(), autoload_with=db.connection()
             )
-            provider.enabled = False  # Core-owned disable must survive recovery.
+            values = dict(
+                device_id=embedded.id,
+                provider_type="embedded_firmware",
+                provider_id="reference.runtime",
+                provider_version="0.1",
+                revision=1,
+                enabled=False,  # Core-owned disable must survive recovery.
+                capabilities=[{"capability_id": "gpio.digital.control", "metadata": {}}],
+                reported_at=datetime.now(UTC),
+            )
+            if "configured_capability_ids" in providers.c:
+                values["configured_capability_ids"] = ["gpio.digital.control"]
+            db.execute(providers.insert().values(**values))
             replace_runtime_features(
                 db,
                 embedded,
@@ -170,8 +178,14 @@ def seed(url, with_firmware):
 
 @pytest.mark.parametrize(
     "source_revision, fail_health",
-    [(PREVIOUS, False), (HEAD, False), (HEAD, True)],
-    ids=["old-backup-upgrade", "mixed-runtime-restore", "failed-health-rollback"],
+    [(PREVIOUS, False), (C8_HEAD, False), (C8_HEAD, True), (HEAD, False), (HEAD, True)],
+    ids=[
+        "old-backup-upgrade",
+        "mixed-runtime-upgrade",
+        "old-backup-health-rollback",
+        "mixed-runtime-restore",
+        "failed-health-rollback",
+    ],
 )
 def test_portable_restore_preserves_device_trust_providers_and_agent_evidence(
     tmp_path, monkeypatch, source_revision, fail_health
@@ -181,7 +195,7 @@ def test_portable_restore_preserves_device_trust_providers_and_agent_evidence(
     database.unlink()  # Disposable fixture's placeholder database only.
     url = f"sqlite:///{database.as_posix()}"
     _alembic(url, "upgrade", source_revision)
-    seed(url, with_firmware=source_revision == HEAD)
+    seed(url, with_firmware=source_revision != PREVIOUS)
     agent = settings.backups.agent_data_dir
     credential = AgentCredential(
         device_id=DEVICE_ID,
@@ -306,7 +320,11 @@ def test_portable_restore_preserves_device_trust_providers_and_agent_evidence(
         return
     assert restore_backup(target, **arguments).state == "completed"
     restored = snapshot(database)
-    assert all(restored[table] == rows for table, rows in expected.items())
+    for table, rows in expected.items():
+        assert len(restored[table]) == len(rows)
+        for original, current in zip(rows, restored[table], strict=True):
+            # Migration may add columns, but every original value must survive.
+            assert {column: current[column] for column in original} == original
     assert {
         path.name: path.read_bytes() for path in agent.iterdir() if path.is_file()
     } == expected_files
@@ -318,7 +336,7 @@ def test_portable_restore_preserves_device_trust_providers_and_agent_evidence(
         local = db.query(Device).filter_by(device_id=DEVICE_ID).one()
         assert registered_capabilities(db, local)[0]["provider_type"] == "agent_module"
         assert runtime_features_snapshot(db, local).source == "legacy_unadvertised"
-        if source_revision == HEAD:
+        if source_revision != PREVIOUS:
             embedded = db.query(Device).filter_by(device_id="dev_" + "b" * 32).one()
             assert registered_capabilities(db, embedded) == []
             assert runtime_features_snapshot(db, embedded).revision == 1
@@ -329,7 +347,6 @@ def test_old_release_rejects_new_schema_backup_even_if_version_matches(tmp_path)
     # Build an isolated script catalog ending at the old revision; no live
     # downgrade/drop is used to simulate an older installed release.
     import shutil
-    from alembic.script import ScriptDirectory
 
     source = ScriptDirectory(str(ROOT / "backend/alembic"))
     versions = tmp_path / "backend/alembic/versions"

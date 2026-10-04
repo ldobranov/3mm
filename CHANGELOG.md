@@ -6,7 +6,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.35] - 2026-10-04
+
+### Fixed
+
+- Historical portable-recovery fixtures seed the schema actually present in the
+  backup, verify the current Alembic head and compare every original column after
+  additive upgrades. Coverage retains old-schema restore/rollback and adds current
+  explicit capability selection preservation; no recovery migration is bypassed.
+- Node OTA regression tests use genuinely registered capability commands to verify
+  pending-work rejection, update-time mutation blocking and terminal unblocking.
+- Historical oversized-command tests isolate size rejection from missing capability
+  authority and retain both never-dispatched and already-dispatched evidence checks.
+
+### Compatibility and publication
+
+- Includes all C10–C14 and installer changes documented under beta.34. This correction
+  changes test fixtures and release documentation only, not Core/Agent behavior,
+  protocol 1.0, Application SDK 1.3 or database migrations.
+- The beta.34 tag failed six Python regression cases in CI and Release before asset
+  publication. It remains an immutable failed attempt; beta.35 is a new candidate.
+- Forty focused recovery, command-history, Node OTA and Core-route checks passed on
+  WSL/Linux with Python 3.14. Unix socket checks used an isolated Linux temporary
+  path, not the Windows-mounted checkout. The complete suite was also exercised;
+  final Python 3.13 CI and tag-driven artifact publication remain required.
+- Real Hub/Zero/Fleet acceptance remains pending successful artifact publication.
+
 ## [0.3.0-beta.34] - 2026-10-03
+
+> Failed publication candidate: no release assets were published. The changes below
+> are carried forward by beta.35 without moving or reusing this tag.
 
 ### Added
 
@@ -870,8 +899,9 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.34...HEAD
-[0.3.0-beta.34]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.34
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.35...HEAD
+[0.3.0-beta.35]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.35
+[0.3.0-beta.34]: https://github.com/ldobranov/3mm/tree/v0.3.0-beta.34
 [0.3.0-beta.33]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.33
 [0.3.0-beta.32]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.32
 [0.3.0-beta.31]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.31

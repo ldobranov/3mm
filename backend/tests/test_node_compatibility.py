@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from backend.db.device import Device, DeviceCommand, DeviceState
 from backend.tests.test_mock_embedded_protocol import (
+    CAPABILITY,
     ORIGIN,
     MockEmbeddedClient,
     approve,
@@ -84,9 +85,16 @@ def test_historical_invalid_command_preserves_dispatch_evidence(
     node = MockEmbeddedClient(ORIGIN, tmp_path, transport=transport)
     try:
         approve(core, node)
+        node.register_capability()
         device = db.scalar(select(Device).where(Device.device_id == node.device_id))
         now = datetime.now(UTC)
-        payload = {"historical": "x" * NODE_MESSAGE_BYTES}
+        # Isolate the stored size violation from missing capability authority.
+        payload = {
+            "capability_id": CAPABILITY,
+            "action": "set",
+            "arguments": {"value": False},
+            "historical": "x" * NODE_MESSAGE_BYTES,
+        }
         row = DeviceCommand(
             device_id=device.id,
             command_id="cmd_" + "a" * 32,

@@ -10,10 +10,12 @@ from backend.db.device import Device, DeviceCapabilityState, DeviceCommand, Devi
 from backend.routes.device_commands import router as command_router
 from backend.services.device_pairing import credential_secret_hash
 from backend.services.device_commands import DeviceCommandError, queue_command
+from backend.services.device_capability_registry import replace_provider
 from backend.services.node_update_approval import NodeApprovalError, approval_key_path, public_approval_key
 from backend.tests.test_node_updates_route import DATA, DEVICE_ID, SHA, TAG, make_client
 from backend.utils import jwt_utils
 from three_mm_protocol.node_updates import NodeUpdateAuthorization, canonical_node_update_authorization
+from three_mm_protocol import CapabilityProviderReportV1
 
 
 @pytest.fixture
@@ -68,6 +70,23 @@ def outcome(op, status="running"):
 def report(client, op, payload):
     return client.post(f"/api/v1/devices/{DEVICE_ID}/node-updates/{op}/report", json=payload,
                        headers={"Authorization": "Device cred_test:test-secret"})
+
+
+def register_test_control(db, device):
+    """Valid legacy capability work without adding GPIO/OTA prerequisites."""
+    replace_provider(
+        db, device, CapabilityProviderReportV1(
+            schema_version=1,
+            device_id=device.device_id,
+            provider_type="native",
+            provider_id="test.runtime",
+            provider_version="1.0",
+            expected_revision=0,
+            capabilities=({"capability_id": "test.control"},),
+        ),
+    )
+    db.commit()
+    return {"capability_id": "test.control", "action": "set", "arguments": {"value": False}}
 
 
 def test_admin_confirmation_and_exact_signed_original_deadline(setup):
@@ -275,7 +294,11 @@ def test_public_approval_key_works_through_actual_core_app_without_login(setup):
 ])
 def test_pending_physical_or_configuration_work_blocks_ota(setup, command_type):
     client, db, device, _settings, headers, _viewer, op = setup
-    queue_command(db, device=device, command_type=command_type, payload={},
+    payload = (
+        register_test_control(db, device)
+        if command_type == "application.capability.invoke" else {}
+    )
+    queue_command(db, device=device, command_type=command_type, payload=payload,
                   idempotency_key="pending", ttl_seconds=300)
     db.commit()
     response = client.post(f"/api/v1/devices/{DEVICE_ID}/node-updates/{op}/apply",
@@ -286,6 +309,7 @@ def test_pending_physical_or_configuration_work_blocks_ota(setup, command_type):
 
 def test_ota_gate_blocks_new_device_mutations_but_not_replay_and_releases_after_terminal(setup):
     client, db, device, _settings, _headers, _viewer, op = setup
+    control_payload = register_test_control(db, device)
     previous = queue_command(db, device=device, command_type="gpio.write", payload={},
                              idempotency_key="previous", ttl_seconds=300)
     previous.status = "succeeded"
@@ -297,12 +321,21 @@ def test_ota_gate_blocks_new_device_mutations_but_not_replay_and_releases_after_
     db.rollback()
     for command_type in ("gpio.write", "application.capability.invoke", "agent.gpio.configure", "module.install", "module.disable"):
         with pytest.raises(DeviceCommandError, match="device mutations are paused"):
-            queue_command(db, device=device, command_type=command_type, payload={},
+            payload = (
+                control_payload if command_type == "application.capability.invoke" else {}
+            )
+            queue_command(db, device=device, command_type=command_type, payload=payload,
                           idempotency_key="new-" + command_type, ttl_seconds=300)
         db.rollback()
     assert report(client, op, outcome(op, "succeeded")).status_code == 200
     command = queue_command(db, device=device, command_type="gpio.write", payload={},
                             idempotency_key="after-terminal", ttl_seconds=300)
+    assert command.status == "queued"
+    command = queue_command(
+        db, device=device, command_type="application.capability.invoke",
+        payload=control_payload, idempotency_key="capability-after-terminal",
+        ttl_seconds=300,
+    )
     assert command.status == "queued"
     db.rollback()
 

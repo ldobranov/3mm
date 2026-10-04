@@ -8,7 +8,7 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Beta. This source prepares **v0.3.0-beta.34**, adding
+> **Project status:** Beta. This source prepares **v0.3.0-beta.35**, retaining
 > logical device transport, versioned capability contracts, installation authority
 > and lifecycle, and separate capability discovery/configuration/availability.
 > Device protocol 1.0, Application SDK 1.3, installation peers and Node Update remain.
@@ -18,6 +18,10 @@ system.
 > remain pending. No real ESP firmware, automatic cloud connection or device update.
 > Real peer v2 HTTPS/Linux acceptance, Cloud Manager integration and public ingress
 > remain separate work.
+>
+> The beta.34 tag failed Python regression checks and published no assets.
+> Beta.35 corrects the historical recovery and command test fixtures without
+> weakening capability authorization or OTA safety; the beta.34 tag is not reused.
 
 ## What works
 
@@ -207,8 +211,8 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 After the new GitHub Release is fully published, update the Hub through
 `/system/updates` using the Beta channel. Update the Zero over SSH with the same
-Node bootstrap command above; after beta.34 publication, add
-`--tag v0.3.0-beta.34` to select that exact release. Provisioned upgrades preserve
+Node bootstrap command above; after beta.35 publication, add
+`--tag v0.3.0-beta.35` to select that exact release. Provisioned upgrades preserve
 identity and pairing, not Master reset.
 Then upload Fleet `0.1.7` on the Hub through Extensions. Updating the Fleet ZIP
 alone does not update Core or the Zero Agent. Follow the
