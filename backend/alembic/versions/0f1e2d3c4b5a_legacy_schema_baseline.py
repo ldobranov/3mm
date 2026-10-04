@@ -41,6 +41,7 @@ POST_BASELINE_TABLES = {
     "device_capability_health",
     "module_packages",
     "module_installations",
+    "theme_extension_installations",
     "application_extension_installations",
     "application_permission_grants",
     "application_kiosk_enrollments",

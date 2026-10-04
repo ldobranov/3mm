@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.sql import func
 from backend.db.base import Base
 
@@ -30,6 +30,30 @@ class ModuleInstallation(Base):
     data_retained = Column(Boolean, nullable=False, default=True)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     __table_args__ = (UniqueConstraint("device_id", "module_id", name="uq_device_module_installation"),)
+
+
+class ThemeExtensionInstallation(Base):
+    """Installation-local lifecycle, pinned to one immutable UI theme package."""
+
+    __tablename__ = "theme_extension_installations"
+    id = Column(Integer, primary_key=True)
+    module_package_id = Column(
+        Integer, ForeignKey("module_packages.id", ondelete="CASCADE"), nullable=False,
+    )
+    enabled = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    is_selected = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    installed_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+    __table_args__ = (
+        UniqueConstraint("module_package_id", name="uq_theme_extension_package"),
+        CheckConstraint("NOT is_selected OR enabled", name="ck_selected_theme_enabled"),
+        Index(
+            "uq_theme_extension_selected", "is_selected", unique=True,
+            sqlite_where=text("is_selected = 1"), postgresql_where=text("is_selected"),
+        ),
+    )
 
 
 class ApplicationExtensionInstallation(Base):

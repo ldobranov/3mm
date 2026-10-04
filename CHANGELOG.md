@@ -6,6 +6,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.36] - 2026-10-04
+
+### Added
+
+- Theme Platform T1–T3 with a closed `theme-extension v1` contract: bounded
+  localized names, light/dark colors and radii, without arbitrary CSS, JavaScript,
+  assets, routes or runtime permissions.
+- Immutable theme ZIP validation through the existing module package upload,
+  administrator-only audited enable/disable/delete and exact-version selection.
+- Additive Alembic migration `a7bf06b7c8d9` for theme lifecycle and selection;
+  existing packages, settings and historical backup upgrades remain supported.
+- Public safe appearance projection and a Core-owned browser token adapter.
+  Missing, corrupt, disabled or removed packages fall back to built-in/custom
+  appearance without changing authentication or existing Header/Menu settings.
+
+### Changed
+
+- Extensions owns the single ZIP upload and theme version/lifecycle cards.
+  Settings → Theme Customization only selects enabled themes or built-in appearance.
+- Light/dark switching, English/Bulgarian labels and existing custom colors remain
+  supported. Theme packages do not start an Agent service or invoke the compiler.
+- Product roadmap records the separate reference-theme and future Embedded Nodes
+  extension stages; neither concrete design nor firmware is bundled.
+
+### Verification and compatibility
+
+- Focused package, lifecycle, authorization, migration/recovery and frontend
+  checks passed locally, including type-check/build and isolated desktop/mobile
+  light/dark browser review. Full clean-source Linux checks and reproducible
+  Hub/ARMv6 Node builds gate publication in the release workflow.
+- Device protocol 1.0 and Application SDK 1.3 are unchanged. Child Center and
+  local/generated artifacts are excluded. Real reference-theme, deployed-device
+  and portable theme recovery acceptance remain separate work.
+
 ## [0.3.0-beta.35] - 2026-10-04
 
 ### Fixed
@@ -899,7 +933,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.35...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.36...HEAD
+[0.3.0-beta.36]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.36
 [0.3.0-beta.35]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.35
 [0.3.0-beta.34]: https://github.com/ldobranov/3mm/tree/v0.3.0-beta.34
 [0.3.0-beta.33]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.33

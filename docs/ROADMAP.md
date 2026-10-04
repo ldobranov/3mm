@@ -1,7 +1,9 @@
 # 3mm Roadmap
 
 Status: active; Milestones 0–12 completed
-Planning style: sequential milestones with a runnable result after every milestone
+Planning style: incremental milestones with a runnable result after every milestone.
+Historical numbers remain stable; current delivery priority is recorded in
+[MASTER_PLAN.md](MASTER_PLAN.md).
 
 Dates are intentionally not assigned until the current baseline is reproducible. Progress is measured by acceptance criteria, not optimistic calendar estimates.
 
@@ -446,6 +448,11 @@ models or special cases.
 Goal: turn the proven Standalone device model into a real multi-device system
 without reinstalling a Standalone device to promote it to Hub.
 
+Progress: on 2026-10-04 the owner confirmed working CME and Fleet extensions.
+Physical Zero GPIO and the basic Hub-to-Node update flow have been exercised.
+This does not automatically close every recovery, isolation or rollout criterion.
+The shared platform is also used by Standalone; Fleet is an optional consumer.
+
 Deliverables:
 
 - complete Node first-boot flow with Hub discovery or explicit Hub address;
@@ -562,6 +569,77 @@ Acceptance criteria:
 - installed code corresponds exactly to the reviewed and signed hash;
 - sandbox escape attempts fail closed;
 - removal and rollback are verified without losing extension data.
+
+## Milestone 17 — Core Theme Platform and installable themes
+
+Status: approved/current priority on 2026-10-04. T0–T3 implemented locally;
+catalog lifecycle, Settings selection and browser activation are ready for the
+reference-theme stage; live/portable acceptance remains T6. See
+[THEME_EXTENSION_PLAN.md](THEME_EXTENSION_PLAN.md) and
+[THEME_EXTENSION_V1.md](THEME_EXTENSION_V1.md).
+
+Goal: install and select a separately versioned visual package without
+rebuilding Core or allowing a theme to replace application behavior.
+
+Deliverables:
+
+- closed, declarative `theme-extension v1` contract inside manifest-v2 ZIPs;
+- safe light/dark design tokens, built-in inheritance and fallback;
+- reuse of the immutable module catalog and administrator package lifecycle;
+- installation-wide theme selection independent of interface language;
+- browser loading through a Core-owned allowlisted token adapter;
+- explicit precedence for existing custom colors and Header/Menu settings;
+- preview, disable/uninstall recovery, version rollback and backup/restore;
+- separately maintained reference theme; marketing pages remain a separate extension;
+- incremental shell/screen work with desktop/mobile light/dark visual review.
+
+Acceptance criteria:
+
+- upload, select and change theme without a Core frontend rebuild;
+- reload and language switching preserve theme and existing localized content;
+- light/dark switching continues to work;
+- missing, corrupt, incompatible, disabled or removed packages fall back safely;
+- auth, roles, navigation, Command Palette and other extensions remain functional;
+- malicious CSS/code, undeclared fields and runtime permissions are rejected;
+- concrete designs and product names do not become Core branches.
+
+Current delivery: T0 baseline/token inventory, T1 package validation, T2
+admin-only catalog/lifecycle and T3 browser activation with additive migration.
+Extensions owns the shared upload and lifecycle; Settings only selects an enabled
+exact version or built-in appearance. Focused checks and isolated desktop/mobile
+light/dark review passed. A reference theme, full application redesign and live
+portable recovery acceptance are not implied by this status.
+
+## Milestone 18 — CONERAX Embedded v0.1 / Embedded Nodes Extension
+
+Status: deferred until reference hardware is available. Added near the end of
+the product plan by owner request on 2026-10-04. See
+[EMBEDDED_NODES_EXTENSION_PLAN.md](EMBEDDED_NODES_EXTENSION_PLAN.md).
+
+Goal: implement firmware and an optional Embedded Nodes extension on top of
+the already implemented [generic C0–C14 platform](PLATFORM_NEUTRAL_NODES_PLAN.md),
+not another Core device subsystem.
+
+Deliverables:
+
+- one reference board and independent firmware runtime;
+- persistent identity, unique credentials, provisioning and explicit enrollment;
+- inventory, heartbeat, lifecycle, commands/results, events and capability state;
+- one bounded digital I/O capability and physical end-to-end acceptance;
+- optional board/provisioning/diagnostics/recovery UI in an extension;
+- signed/versioned firmware OTA with health checks and rollback, outside Core.
+
+Acceptance criteria:
+
+- Standalone + local Linux Agent + embedded node use the same device contracts;
+- Hub/Fleet can manage Linux and embedded nodes together;
+- an application consumes a capability without knowing its hardware/provider;
+- reboot/reconnect preserve identity and trust; unsafe/expired/replayed actions fail closed;
+- no concrete ESP chip, GPIO driver or firmware catalog is hardcoded in Core;
+- the Linux Agent and mock-embedded regression flow continue to work.
+
+No hardware purchase, real firmware, ESP provisioning or OTA work starts in
+the current Theme Platform task. A proven generic gap needs its own Core issue.
 
 ## Immediate work queue
 

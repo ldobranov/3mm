@@ -32,8 +32,10 @@
 
         <div v-show="activeSection === 'theme'" id="theme-settings" class="settings-anchor">
           <div class="section-cluster">
+            <ThemePackagesSection v-if="isAdmin" />
             <ThemeCustomizationSection
               v-for="themeType in ['light', 'dark']"
+              v-show="!settingsStore.activeTheme"
               :key="themeType"
               :theme-type="themeType"
               :settings="themeType === 'light' ? lightStyleSettings : darkStyleSettings"
@@ -140,6 +142,7 @@ import ApplicationSettingsSection from '@/components/settings/ApplicationSetting
 import HeaderCustomizationSection from '@/components/settings/HeaderCustomizationSection.vue';
 import MenuConfigurationSection from '@/components/settings/MenuConfigurationSection.vue';
 import ThemeCustomizationSection from '@/components/settings/ThemeCustomizationSection.vue';
+import ThemePackagesSection from '@/components/settings/ThemePackagesSection.vue';
 import NetworkConfigurationSection from '@/components/settings/NetworkConfigurationSection.vue';
 import SystemControlSection from '@/components/settings/SystemControlSection.vue';
 import BackupRecoverySection from '@/components/settings/BackupRecoverySection.vue';
@@ -160,6 +163,7 @@ export default defineComponent({
     HeaderCustomizationSection,
     MenuConfigurationSection,
     ThemeCustomizationSection,
+    ThemePackagesSection,
     NetworkConfigurationSection,
     SystemControlSection,
     BackupRecoverySection,

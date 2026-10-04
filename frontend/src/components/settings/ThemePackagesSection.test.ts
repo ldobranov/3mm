@@ -1,0 +1,56 @@
+import { flushPromises, mount } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ref } from 'vue'
+
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), delete: vi.fn(), load: vi.fn() }))
+vi.mock('@/utils/dynamic-http', () => ({ default: mocks }))
+vi.mock('@/stores/settings', () => ({ useSettingsStore: () => ({ activeTheme: null, loadThemeAppearance: mocks.load }) }))
+const language = ref('bg')
+vi.mock('@/utils/i18n', () => ({ useI18n: () => ({ t: (_key: string, fallback: string) => fallback, currentLanguage: language }) }))
+import ThemePackagesSection from './ThemePackagesSection.vue'
+const item = () => ({ module_id: 'org.example.theme', name: { en: 'Example', translations: { bg: 'Пример' } }, version: '1.0.0', sha256: 'a'.repeat(64), enabled: true, is_selected: false, is_available: true, status: 'enabled' })
+describe('Settings theme packages', () => {
+  beforeEach(() => { vi.clearAllMocks(); language.value = 'bg'; mocks.get.mockResolvedValue({ data: { items: [item()] } }) })
+  it('shows localized names, applies an exact version and returns to built-in', async () => {
+    const wrapper = mount(ThemePackagesSection)
+    await flushPromises()
+    expect(wrapper.text()).toContain('Пример · 1.0.0')
+    await wrapper.find('select').setValue('a'.repeat(64))
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.post).toHaveBeenCalledWith('/api/v1/modules/themes/selection', { sha256: 'a'.repeat(64) })
+    mocks.get.mockResolvedValue({ data: { items: [{ ...item(), is_selected: true }] } })
+    await wrapper.findAll('button').find(button => button.text() === 'Refresh')!.trigger('click')
+    await flushPromises()
+    await wrapper.find('select').setValue('')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.post).toHaveBeenLastCalledWith('/api/v1/modules/themes/selection', { sha256: null })
+    language.value = 'en'
+    await flushPromises()
+    expect(wrapper.text()).toContain('Example · 1.0.0')
+  })
+  it('offers only enabled versions and leaves upload and lifecycle in Extensions', async () => {
+    mocks.get.mockResolvedValue({ data: { items: [item(), { ...item(), version: '2.0.0', sha256: 'b'.repeat(64), enabled: false, is_available: false, status: 'staged' }] } })
+    const wrapper = mount(ThemePackagesSection)
+    await flushPromises()
+    expect(wrapper.find('input[type=file]').exists()).toBe(false)
+    expect(wrapper.findAll('form')).toHaveLength(1)
+    expect(wrapper.findAll('option')).toHaveLength(2)
+    expect(wrapper.text()).toContain('in Extensions')
+    expect(mocks.post).not.toHaveBeenCalled()
+    expect(mocks.delete).not.toHaveBeenCalled()
+  })
+  it('allows returning to built-in when the selected package is unavailable', async () => {
+    mocks.get.mockResolvedValue({ data: { items: [{ ...item(), is_selected: true, is_available: false, status: 'unavailable' }] } })
+    const wrapper = mount(ThemePackagesSection)
+    await flushPromises()
+    expect(wrapper.findAll('option')[1].attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('Package missing or invalid')
+    await wrapper.get('select').setValue('')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.post).toHaveBeenCalledWith('/api/v1/modules/themes/selection', { sha256: null })
+    expect(mocks.load).toHaveBeenCalled()
+  })
+})

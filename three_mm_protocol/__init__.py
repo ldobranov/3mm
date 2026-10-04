@@ -43,6 +43,7 @@ from three_mm_protocol.compiled_extension import (
     CompiledUiEntrypointV1,
     CompiledUiExtensionV1,
 )
+from three_mm_protocol.theme_extension import ThemeExtensionV1, ThemeTokensV1
 from three_mm_protocol.capability_builder import (
     BuilderSettingV1,
     CapabilityBindingV1,
@@ -141,6 +142,8 @@ __all__ = [
     "RuntimePageV1",
     "CompiledUiEntrypointV1",
     "CompiledUiExtensionV1",
+    "ThemeExtensionV1",
+    "ThemeTokensV1",
     "BuilderSettingV1",
     "CapabilityBindingV1",
     "CapabilityPlanV1",

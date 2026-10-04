@@ -8,9 +8,10 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Beta. This source prepares **v0.3.0-beta.35**, retaining
-> logical device transport, versioned capability contracts, installation authority
-> and lifecycle, and separate capability discovery/configuration/availability.
+> **Project status:** Beta. This source prepares **v0.3.0-beta.36**, adding
+> Theme Platform T1–T3: declarative theme ZIPs use the common Extensions upload,
+> administrator lifecycle controls and an installation-wide selector in Settings.
+> Existing device transport, capability authority and lifecycle remain unchanged.
 > Device protocol 1.0, Application SDK 1.3, installation peers and Node Update remain.
 > Release assets become available only after the tag-driven workflow succeeds;
 > the release badge above reflects published versions. Linux + independent mock
@@ -19,9 +20,10 @@ system.
 > Real peer v2 HTTPS/Linux acceptance, Cloud Manager integration and public ingress
 > remain separate work.
 >
-> The beta.34 tag failed Python regression checks and published no assets.
-> Beta.35 corrects the historical recovery and command test fixtures without
-> weakening capability authorization or OTA safety; the beta.34 tag is not reused.
+> Beta.35 is published and corrected the beta.34 regression fixtures; no tag is reused.
+> Theme validation, migration, lifecycle and browser activation are locally checked.
+> A real reference theme, full visual redesign and live theme recovery acceptance
+> remain separate stages. No concrete theme or business extension is bundled.
 
 ## What works
 
@@ -49,6 +51,10 @@ system.
 - **Extensions** — declarative runtime extensions and reviewed compiled Vue
   widgets, editors, routes and reusable components, plus the locally completed
   supervised application-service foundation for transactional extensions.
+- **Installable themes** — closed, declarative light/dark token packages without
+  CSS or executable code. Upload, enable, disable and delete exact versions in
+  Extensions; select an enabled version or built-in appearance in Settings.
+  Invalid or unavailable themes fall back safely; existing custom settings remain.
 - **AI Extension Builder** — guided intent planning, editable projects,
   automatic versions, reviewable source changes, deterministic capability
   foundations, compilation and installation.
@@ -211,8 +217,8 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 After the new GitHub Release is fully published, update the Hub through
 `/system/updates` using the Beta channel. Update the Zero over SSH with the same
-Node bootstrap command above; after beta.35 publication, add
-`--tag v0.3.0-beta.35` to select that exact release. Provisioned upgrades preserve
+Node bootstrap command above; after beta.36 publication, add
+`--tag v0.3.0-beta.36` to select that exact release. Provisioned upgrades preserve
 identity and pairing, not Master reset.
 Then upload Fleet `0.1.7` on the Hub through Extensions. Updating the Fleet ZIP
 alone does not update Core or the Zero Agent. Follow the
@@ -253,10 +259,10 @@ preflight, installation, setup Wi-Fi, administrator bootstrap, Agent pairing
 and smoke checks. The normal installer performs backup, migration, atomic
 activation, health verification and rollback.
 
-Wired-only Linux/VM installer corrections are prepared locally: absent first-boot
+Wired-only Linux/VM installer corrections are included since beta.35: absent first-boot
 state initializes Standalone without a Wi-Fi AP, required service groups are
 created, and upgrade rollback restores the previously active services. They take
-effect only after publication in release assets; see
+effect through the published release assets; see
 [VM installer behavior and remaining live checks](docs/INSTALLER_VM_RECOVERY.md).
 
 On a provisioned device, open the application at `http://<device-ip>/` or
@@ -319,6 +325,9 @@ See the [changelog](CHANGELOG.md) for user-visible changes and the
 | [Backup and restore](docs/BACKUP_AND_RESTORE.md) | Local snapshots, portable recovery and restore safety |
 | [Redacted diagnostics](docs/DIAGNOSTICS.md) | Support bundle contents and secret exclusions |
 | [Extension lifecycle](docs/EXTENSION_LIFECYCLE.md) | Package, version and data lifecycle |
+| [Theme Platform plan](docs/THEME_EXTENSION_PLAN.md) | Theme lifecycle, browser activation and remaining acceptance stages |
+| [Theme extension v1](docs/THEME_EXTENSION_V1.md) | Closed light/dark token contract and shared Extensions upload |
+| [Embedded Nodes extension plan](docs/EMBEDDED_NODES_EXTENSION_PLAN.md) | Deferred firmware/extension work outside Core |
 | [Runtime extension v1](docs/RUNTIME_EXTENSION_V1.md) | Declarative extension contract |
 | [Compiled extension v1](docs/COMPILED_EXTENSION_V1.md) | Reviewed Vue compilation boundary |
 | [Application extension v1 plan](docs/APPLICATION_EXTENSION_V1_PLAN.md) | Planned trusted business-service and integration boundary |

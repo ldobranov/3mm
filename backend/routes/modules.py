@@ -4,6 +4,7 @@ import hashlib
 import json
 import shutil
 from pathlib import Path
+from typing import Literal
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
@@ -35,8 +36,10 @@ from backend.services.application_access import (
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from three_mm_protocol.device_inventory import inventory_value
+from backend.routes.theme_extensions import router as theme_extensions_router
 
 router=APIRouter(prefix="/api/v1/modules",tags=["modules"])
+router.include_router(theme_extensions_router)
 
 class PackageResponse(BaseModel):
     module_id:str; version:str; sha256:str; size_bytes:int; manifest:dict; registrations:list[dict]
@@ -146,10 +149,12 @@ def _application_package_is_active(package: ModulePackage, db: Session) -> bool:
     ) is not None
 
 @router.post("/packages",response_model=PackageResponse)
-async def upload_package(package:UploadFile=File(...),_admin:User=Depends(require_admin),db:Session=Depends(get_db)):
+async def upload_package(package:UploadFile=File(...),_admin:User=Depends(require_admin),db:Session=Depends(get_db),expected_kind:Literal["theme"]|None=None):
     blob=await package.read(10*1024*1024+1)
     try: validated=validate_module_package(blob)
     except ModulePackageError as exc: raise HTTPException(422,str(exc)) from exc
+    if expected_kind == "theme" and validated.theme_extension is None:
+        raise HTTPException(422, "Choose a theme-extension v1 package")
     root=get_settings().backend.uploads_dir.resolve()/"modules"; root.mkdir(parents=True,exist_ok=True)
     path=root/f"{validated.sha256}.zip"
     package_created = not path.exists()
@@ -166,7 +171,10 @@ async def upload_package(package:UploadFile=File(...),_admin:User=Depends(requir
     try: db.commit()
     except IntegrityError:
         db.rollback(); record=db.scalar(select(ModulePackage).where(ModulePackage.module_id==validated.manifest.module_id,ModulePackage.version==validated.manifest.version))
-        if record.sha256!=validated.sha256: raise HTTPException(409,"published module versions are immutable")
+        if record is None or record.sha256 != validated.sha256:
+            if package_created:
+                path.unlink(missing_ok=True)
+            raise HTTPException(409,"published module versions are immutable")
     return record
 
 @router.get("/packages",response_model=list[PackageResponse])
@@ -322,6 +330,8 @@ def install_module(sha256:str,device_id:str,_admin:User=Depends(require_admin),d
     except ModulePackageError as exc: raise HTTPException(409,str(exc)) from exc
     if validated.application_extension is not None:
         raise HTTPException(409, "Application extensions run on Core, not on an Agent")
+    if validated.theme_extension is not None:
+        raise HTTPException(409, "Theme extensions run in the UI, not on an Agent")
     installation=db.scalar(select(ModuleInstallation).where(ModuleInstallation.device_id==device.id,ModuleInstallation.module_id==package.module_id))
     key = _lifecycle_idempotency_key(db, device=device, command_type="module.install", module_id=package.module_id,
         legacy_key=f"module.install:{package.module_id}:{package.sha256}", client_key=idempotency_key, admin_id=_admin.id)

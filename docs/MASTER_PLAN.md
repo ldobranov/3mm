@@ -1,6 +1,6 @@
 # 3mm — общ продуктов план и разпределение по чатове
 
-Обновен: 2026-10-02. Статус: план, не декларация за внедрени функции.
+Обновен: 2026-10-04. Статус: план, не декларация за внедрени функции.
 Този документ задава общата последователност; техническият Roadmap и отделните
 планове пазят подробностите и доказателствата за приемане. Не отваряме наново
 завършени задачи и не преименуваме историческите milestones.
@@ -26,7 +26,9 @@
 | Cloud Management extension | Организации, собственици, покани, инсталации, видимост и одобрена поддръжка | Втори пряк команден авторитет за Node |
 | Website / Store extension | Публични страници, каталог, клиентски профил, поръчки, checkout и плащания | Root управление на сървъра или права за физически устройства |
 | Entitlements extension | Планове, покупки/абонаменти и подписани разрешения за платени функции | Онлайн разрешаване на всяка локална операция |
+| Theme extension | Версиониран визуален пакет върху общия Core Theme API | Маршрути, права, бизнес логика или изпълним код |
 | Showcontroller extension — бъдеща миграция | Функциите на съществуващия самостоятелен app като отделно инсталиран пакет | Второ ядро, собствени паралелни потребители или задължителен облак |
+| Embedded Nodes extension / firmware — бъдещ етап | Board profiles, provisioning helpers, firmware и embedded diagnostics | Втори device registry или ESP-specific логика в Core |
 | Клиентски extensions | Конкретни приложения върху общите capabilities | Промяна на Core за конкретно име на extension |
 
 Имената на бъдещите extensions/repos са работни, не вече създадени продукти.
@@ -43,17 +45,21 @@
   Версиите и финалният operation report още не са приложени към тази проба.
   Стабилизацията остава в OTA чата, без паралелни корекции от този чат.
 - Release builder-ът публикува full пакети за `aarch64`, `armv7l`, `x86_64`.
-- **Готова еднокомандна инсталация на Linux PC още не е доказана.**
-  `deployment/first_boot_preflight.py` отказва `x86_64` и изисква активен
-  NetworkManager и `wlan0`. Наличен архив не означава работещ server bootstrap.
+- На 2026-10-04 собственикът потвърди, че CME и Fleet са в работещо положение.
+  Това е продуктова отправна точка, не автоматично приемане на всички негативни,
+  recovery и production security сценарии.
+- Installer/preflight вече поддържа `x86_64` и wired-only host без задължителен
+  `wlan0`/Setup AP. VM update и Core/Agent readiness са проверени от потребителя;
+  пълният clean Linux server acceptance остава отделна неприключена проба.
 - Текущите installer профили са само `full` и `node`. Сървърен режим е планиран;
   не даваме на потребители несъществуващ installer флаг.
-- Cloud enrollment, публичният магазин и лицензите не се приемат за готови
-  без проверка на съответните пакети и реален сценарий.
+- Публичният магазин и лицензите не се приемат за готови без проверка на
+  съответните пакети и реален сценарий.
 - Core G1–G4 договорите за идентичност, одобрени peers и ограничен статус са
   реализирани и минали изолирана Raspberry HTTPS/socket проба; включени са в
-  release обхвата на beta.31. Реалната CME организация/Owner UI и публичният
-  HTTPS ingress не са приети с тази проба.
+  release обхвата на beta.31. Тази конкретна проба не е проверявала реалната CME
+  организация/Owner UI или публичния HTTPS ingress; текущият работещ CME статус
+  е последващото потвърждение на собственика, описано по-горе.
 
 ## Последователност
 
@@ -106,6 +112,25 @@ TLS, отделни credentials и проверка на клиентската 
 излагане. Cloudflare е инфраструктурен вариант, не заместител на тези проверки.
 Обновяване и временна поддръжка идват след read-only приемането, с одобрение,
 одит и rollback. Node продължава да получава команди само през локалния Hub.
+
+### Следващ етап — Core Theme Platform и теми като extensions
+
+Одобрено на 2026-10-04. [Milestone 17](ROADMAP.md) и
+[Theme Extension Plan](THEME_EXTENSION_PLAN.md) следват посоката от чата
+„Предложения за тема“: професионален product интерфейс и отделно marketing UI.
+В Core остават общият Theme API, валидаторът, registry, изборът на тема и
+безопасното прилагане на tokens. Конкретните палитри/дизайни са отделни ZIP
+extensions; marketing страниците са отделно приложение, не Theme permissions.
+
+Започваме малко: T0/T1 фиксират текущите light/dark tokens и строгия
+`theme-extension v1` формат. Следват catalog/install lifecycle, избор в Settings,
+loader с fallback и отделна reference theme. Не сменяме всички екрани наведнъж.
+Settings, Header/Menu Customization, i18n, права и dynamic registrations се
+запазват; конкретната theme не заменя router, auth или Core Vue компоненти.
+
+Приемане: upload -> избор -> light/dark -> reload -> disable/uninstall ->
+вградена тема; без загуба на старите настройки и без rebuild на Core за нова
+тема. Работи локално и без облак, еднакво за Standalone и Hub/CME интерфейс.
 
 ### D. Публичен сайт, клиентски портал и магазин
 
@@ -168,14 +193,28 @@ grant за определена инсталация, функция и срок
 backup/restore и неуспешен update запазват данните и не повтарят физически действия.
 Точният функционален обхват остава отворен до преглед на Showcontroller.
 
-### H. Platform-neutral Nodes — текуща Core задача
+### H. Platform-neutral Nodes — реализирана обща Core основа
 
-Одобрен на 2026-10-02 [план C0–C9](PLATFORM_NEUTRAL_NODES_PLAN.md): запазваме
-peer v2 / SDK 1.3 и последната работеща база `5cc0edf`. Първо фиксираме Linux
-Agent baseline, после обобщаваме inventory и capability providers през същия
-device subsystem. Embedded mock трябва да докаже общите договори преди реален
-firmware. ESP32, board profiles и Embedded Nodes extension са отделна бъдеща
-работа; не въвеждаме хардуерни или бизнес имена в Core.
+[Планът C0–C14](PLATFORM_NEUTRAL_NODES_PLAN.md) вече има локална реализация и
+regression проверки; C14 consumer UI/live acceptance остава отделна проверка.
+Запазваме peer v2 / SDK 1.3. Това е общият Device Platform за Standalone,
+local Agent, Hub/Fleet и application extensions, не Fleet-only слой.
+Mock embedded остава архитектурното доказателство и regression reference.
+Не отваряме нов Core refactor само за конкретен ESP чип.
+
+### I. CONERAX Embedded v0.1 — към края, когато има хардуер
+
+[Milestone 18](ROADMAP.md) / [Embedded Nodes Extension Plan](EMBEDDED_NODES_EXTENSION_PLAN.md)
+е запазен бъдещ етап. В чата „Разширяване към ESP чипове“ е потвърдено, че
+нямаме наличен ESP; не започваме firmware или board-specific код сега.
+Първо един reference board, устойчиви identity/credentials, Wi-Fi provisioning,
+enrollment, heartbeat и една физическа capability през общите Core договори.
+После отделен Embedded Nodes extension за настройване, диагностика и OTA UI.
+
+Core е стабилен dependency: board profiles, драйвери, pin mapping, firmware
+каталог, provisioning и OTA implementation остават извън него. Нов Core договор
+се предлага само при доказана обща липса, не при всяка embedded задача.
+Този етап не блокира темите, сайта, CME, Fleet или локалната работа.
 
 ## Разпределение по чатове
 
@@ -191,6 +230,11 @@ firmware. ESP32, board profiles и Embedded Nodes extension са отделна 
 6. **Клиентски приложения** — самостоятелни extensions; подават конкретни SDK липси.
 7. **Showcontroller migration** — отделен бъдещ чат за оценката и поетапното
    прехвърляне на самостоятелния app към extension; Core/SDK липсите се предават на 1.
+8. **Теми / визуален дизайн** — конкретни themes върху общия Theme API;
+   този Core чат изпълнява T0–T3, дизайнерският чат работи по самия пакет и
+   поетапния визуален преглед. Marketing страниците остават при направление 4.
+9. **Embedded Nodes / ESP** — бъдещи firmware и extension извън Core;
+   започва при наличен хардуер след generic contract acceptance.
 
 За всяка малка задача: текущ repo/branch/commit и чужди промени; използвани версии
 на договорите; точен обхват и файлове; един демонстрируем резултат; кратки целеви
@@ -201,8 +245,8 @@ firmware. ESP32, board profiles и Embedded Nodes extension са отделна 
 
 Създаване/изпращане на задачи, commit, push, release и live промени стават само
 по изрична заявка. Linux server baseline е отложен до реална нужда;
-текущият локален OTA етап продължава отделно. Следващата задача за този чат
-се избира отделно, без автоматично започване на друго направление.
+останалите локални OTA проби продължават отделно. Текущата одобрена задача за
+този чат е Theme Platform, по малки проверими етапи.
 
 ## Свързани планове
 
@@ -211,3 +255,6 @@ firmware. ESP32, board profiles и Embedded Nodes extension са отделна 
 - [Локален продуктов план](FLEET_BUSINESS_PLAN.md) и [Node OTA](FLEET_NODE_OTA.md).
 - [Application extensions](APPLICATION_EXTENSION_V1_PLAN.md).
 - [Installation identity](INSTALLATION_IDENTITY_V1.md) и [peers](INSTALLATION_PEER_V1.md).
+- [Theme Platform](THEME_EXTENSION_PLAN.md) и [theme package contract](THEME_EXTENSION_V1.md).
+- [Общ Device Platform](PLATFORM_NEUTRAL_NODES_PLAN.md) и
+  [бъдещ Embedded extension](EMBEDDED_NODES_EXTENSION_PLAN.md).

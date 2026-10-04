@@ -148,6 +148,11 @@ const handleAuthStorageChange = (event: StorageEvent) => {
   }
 }
 
+const refreshAppearance = () => { void settingsStore.loadThemeAppearance() }
+const refreshVisibleAppearance = () => {
+  if (document.visibilityState === 'visible') refreshAppearance()
+}
+
 // Watch for authentication changes
 watch(isAuthenticated, async (newVal, oldVal) => {
   if (newVal && !oldVal) {
@@ -158,6 +163,11 @@ watch(isAuthenticated, async (newVal, oldVal) => {
 
 onMounted(async () => {
   fetchHeaderSettings()
+  // Independently load public appearance even when legacy settings/auth fail.
+  void settingsStore.loadSettings()
+  refreshAppearance()
+  window.addEventListener('settings-updated', refreshAppearance)
+  document.addEventListener('visibilitychange', refreshVisibleAppearance)
   // Listen for settings updates
   window.addEventListener('settings-updated', fetchHeaderSettings)
   // Listen for language changes
@@ -172,6 +182,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('settings-updated', refreshAppearance)
+  document.removeEventListener('visibilitychange', refreshVisibleAppearance)
   window.removeEventListener('settings-updated', fetchHeaderSettings)
   window.removeEventListener('language-changed', fetchHeaderSettings)
   window.removeEventListener('menu-refresh', syncAuthState)

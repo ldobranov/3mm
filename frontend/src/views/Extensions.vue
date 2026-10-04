@@ -74,28 +74,34 @@
               <span class="extension-version">{{ t('extensions.version', 'v') }} {{ ext.version }}</span>
             </div>
             <div class="extension-meta">
-              <span class="extension-type">{{ ext.type }}</span>
+              <span v-if="ext.source !== 'theme'" class="extension-type">{{ ext.type }}</span>
               <span v-if="ext.source !== 'legacy'" class="runtime-badge">{{ extensionSourceLabel(ext) }}</span>
               <span v-if="ext.author" class="extension-author">{{ t('extensions.by', 'by') }} {{ ext.author }}</span>
             </div>
             <p v-if="ext.description" class="extension-description">{{ ext.description }}</p>
             <div class="extension-status">
               <span :class="['status-badge', ext.status]">
-                {{ t(`extensions.${ext.status}`, ext.status) }}
+                {{ extensionStatusLabel(ext) }}
               </span>
+              <span v-if="ext.is_selected" class="selected-theme">{{ t('themePackages.selected', 'Selected') }}</span>
               <label
                 class="toggle-switch"
-                :aria-label="`${ext.name}: ${t(`extensions.${ext.status}`, ext.status)}`"
+                :aria-label="`${ext.name}: ${extensionStatusLabel(ext)}`"
               >
                 <input
                   type="checkbox"
                   :checked="ext.is_enabled"
-                  :disabled="ext.source === 'compiled' || !ext.can_manage || !ext.is_installed || operationBusy === ext.id"
+                  :disabled="ext.source === 'compiled' || !ext.can_manage || (ext.source !== 'theme' && !ext.is_installed) || (ext.source === 'theme' && ext.status === 'unavailable' && !ext.is_enabled) || operationBusy === ext.id"
                   @change="toggleExtension(ext, $event)"
                 />
                 <span class="slider"></span>
               </label>
             </div>
+            <p v-if="ext.source === 'theme'" class="theme-note">
+              {{ ext.status === 'unavailable'
+                ? t('themePackages.unavailableHelp', 'Package missing or invalid. Built-in settings are used if it was selected.')
+                : t('themePackages.manageHelp', 'Enable this version, then choose it in Settings → Theme Customization. Enabling does not change the selected theme.') }}
+            </p>
             <div v-if="ext.source !== 'compiled'" class="extension-actions">
                <div v-if="(ext.source === 'runtime' && ext.is_installed) || ext.source === 'application'" class="version-controls">
                  <label :for="`version-${ext.id}`">{{ t('extensions.version', 'Version') }}</label>
@@ -135,13 +141,15 @@
                        : t('extensions.reinstall', 'Reinstall') }}
                    </button>
                    <button
-                     v-if="ext.source === 'legacy' || (ext.source === 'runtime' && ext.is_installed && ext.can_manage) || (ext.source === 'application' && ext.can_manage)"
+                     v-if="ext.source === 'legacy' || (ext.source === 'runtime' && ext.is_installed && ext.can_manage) || ((ext.source === 'application' || ext.source === 'theme') && ext.can_manage)"
                      type="button"
                      @click="deleteExtension(ext)"
                      class="button button-sm delete-btn"
                      :disabled="operationBusy === ext.id"
                    >
-                     {{ isUninstallAction(ext)
+                     {{ ext.source === 'theme'
+                       ? t('themePackages.delete', 'Delete')
+                       : isUninstallAction(ext)
                        ? t('extensions.uninstall', 'Uninstall')
                        : ext.source === 'application'
                          ? t('extensions.deletePackage', 'Delete package')
@@ -213,6 +221,8 @@
           <div class="modal-header">
             <h2>{{ deleteAction === 'erase-data'
               ? t('extensions.eraseApplicationData', 'Erase application data')
+              : extensionToDelete?.source === 'theme'
+              ? t('themePackages.delete', 'Delete')
               : extensionToDelete && isUninstallAction(extensionToDelete)
               ? t('extensions.uninstallExtension', 'Uninstall Extension')
               : extensionToDelete?.source === 'application'
@@ -223,6 +233,8 @@
           <div class="modal-body">
             <p>{{ deleteAction === 'erase-data'
               ? t('extensions.eraseApplicationDataConfirm', 'Permanently erase all preserved data for this application? This cannot be undone, and reinstalling the package will start with an empty database.')
+              : extensionToDelete?.source === 'theme'
+              ? t('themePackages.confirmDelete', 'Delete this theme version? An active theme will return to built-in settings.')
               : extensionToDelete?.source === 'application' && extensionToDelete.is_installed
               ? t('extensions.uninstallApplicationConfirm', 'Uninstall this application extension? Its service, routes and access configuration will be removed. Its application data and uploaded package will be preserved.')
               : extensionToDelete?.source === 'application'
@@ -264,6 +276,8 @@
             <button @click="confirmDeleteExtension" class="button button-danger" :disabled="operationBusy !== null">
               {{ deleteAction === 'erase-data'
                 ? t('extensions.eraseData', 'Erase data')
+                : extensionToDelete?.source === 'theme'
+                ? t('themePackages.delete', 'Delete')
                 : extensionToDelete && isUninstallAction(extensionToDelete)
                 ? t('extensions.uninstall', 'Uninstall')
                 : extensionToDelete?.source === 'application'
@@ -295,7 +309,7 @@ const router = useRouter();
 
 interface Extension {
   id: string;
-  source: 'legacy' | 'runtime' | 'compiled' | 'application';
+  source: 'legacy' | 'runtime' | 'compiled' | 'application' | 'theme';
   name: string;
   type: string;
   version: string;
@@ -309,6 +323,18 @@ interface Extension {
   package_sha256?: string | null;
   package_sha256_by_version?: Record<string, string>;
   is_installed: boolean;
+  is_selected?: boolean;
+}
+
+interface ThemeCatalogItem {
+  module_id: string;
+  version: string;
+  sha256: string;
+  name: { en: string; translations?: Record<string, string> };
+  enabled: boolean;
+  is_installed: boolean;
+  is_selected: boolean;
+  status: string;
 }
 
 interface ModulePackageCatalogItem {
@@ -384,8 +410,12 @@ const authHeaders = () => {
 const extensionSourceLabel = (extension: Extension): string => {
   if (extension.source === 'compiled') return 'Compiled UI';
   if (extension.source === 'application') return 'Application';
+  if (extension.source === 'theme') return t('themePackages.kind', 'Theme');
   return 'Runtime';
 };
+
+const extensionStatusLabel = (extension: Extension): string =>
+  t(`${extension.source === 'theme' ? 'themePackages' : 'extensions'}.${extension.status}`, extension.status);
 
 const applicationPackageSha = (extension: Extension, version: string): string | null =>
   extension.package_sha256_by_version?.[version] || null;
@@ -526,11 +556,12 @@ const buildApplicationExtensions = (
 const loadExtensions = async () => {
   loading.value = true;
   try {
-    const [catalogResponse, compiledPackages, modulePackagesResponse, applicationInstallationsResponse] = await Promise.all([
+    const [catalogResponse, compiledPackages, modulePackagesResponse, applicationInstallationsResponse, themesResponse] = await Promise.all([
       http.get('/api/v1/runtime-extensions/catalog', { params: { language: currentLanguage.value } }),
       getCompiledUiCatalog(true),
       isAdmin.value ? http.get('/api/v1/modules/packages') : Promise.resolve({ data: [] }),
-      isAdmin.value ? http.get('/api/v1/application-extensions') : Promise.resolve({ data: [] })
+      isAdmin.value ? http.get('/api/v1/application-extensions') : Promise.resolve({ data: [] }),
+      isAdmin.value ? http.get('/api/v1/modules/themes/catalog') : Promise.resolve({ data: { items: [] } }),
     ]);
     const modulePackages = Array.isArray(modulePackagesResponse.data)
       ? modulePackagesResponse.data as ModulePackageCatalogItem[]
@@ -559,7 +590,23 @@ const loadExtensions = async () => {
       package_sha256: pkg.source_sha256,
       is_installed: true
     }));
-    extensions.value = [...(catalogResponse.data || []), ...applications, ...compiled];
+    const themes: Extension[] = (themesResponse.data?.items || []).map((item: ThemeCatalogItem) => ({
+      id: `theme:${item.sha256}`,
+      source: 'theme',
+      name: item.name.translations?.[currentLanguage.value] || item.name.en,
+      type: 'theme',
+      version: item.version,
+      description: item.module_id,
+      status: item.status,
+      is_enabled: item.enabled,
+      is_selected: item.is_selected,
+      is_installed: item.is_installed,
+      created_at: '',
+      can_manage: isAdmin.value,
+      available_versions: [item.version],
+      package_sha256: item.sha256,
+    }));
+    extensions.value = [...(catalogResponse.data || []), ...applications, ...compiled, ...themes];
     selectedVersions.value = Object.fromEntries(
       extensions.value.map(extension => [extension.id, extension.version])
     );
@@ -643,6 +690,10 @@ const toggleExtension = async (extension: Extension, event: Event) => {
   try {
     if (extension.source === 'compiled') {
       target.checked = true;
+      return;
+    } else if (extension.source === 'theme') {
+      await http.post(`/api/v1/modules/themes/packages/${extension.package_sha256}/${isEnabled ? 'enable' : 'disable'}`);
+      await Promise.all([settingsStore.loadThemeAppearance(), loadExtensions()]);
       return;
     } else if (extension.source === 'application') {
       const moduleId = extension.id.replace('application:', '');
@@ -779,6 +830,9 @@ const confirmDeleteExtension = async () => {
       await http.delete(
         `/api/v1/application-extensions/${encodeURIComponent(moduleId)}/data`,
       );
+    } else if (extensionToDelete.value.source === 'theme') {
+      await http.delete(`/api/v1/modules/themes/packages/${extensionToDelete.value.package_sha256}`);
+      await settingsStore.loadThemeAppearance();
     } else if (extensionToDelete.value.source === 'compiled') {
       const [, moduleId, version] = extensionToDelete.value.id.split(':');
       await http.delete(`/api/v1/modules/compiled-ui/packages/${encodeURIComponent(moduleId)}/${encodeURIComponent(version)}`);
@@ -1169,6 +1223,11 @@ watch(currentLanguage, async () => {
 .status-badge.active {
   color: var(--success-color);
 }
+
+.status-badge.enabled { color: var(--success-color); }
+.status-badge.unavailable { color: var(--error-color); }
+.selected-theme { margin-left: auto; color: var(--text-secondary); font-size: 0.75rem; }
+.theme-note { color: var(--text-secondary); font-size: 0.8rem; line-height: 1.5; }
 
 .status-badge.inactive,
 .status-badge.disabled,

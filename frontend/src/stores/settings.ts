@@ -1,16 +1,30 @@
 import { defineStore } from 'pinia'
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { useThemeStore } from '@/stores/theme'
 import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
 import { readSettings, upsertSettings } from '@/utils/settings-api'
 import { resolveHeaderSettings } from '@/utils/header-settings'
+import { BUILTIN_STYLES, buttonTextColor, readThemeAppearance, resolveThemeStyle, type ThemeDefinition } from '@/utils/theme-extension'
 
 export const useSettingsStore = defineStore('settings', () => {
   const themeStore = useThemeStore()
   const { currentLanguage } = useI18n()
 
   const loaded = ref(false)
+  const activeTheme = ref<ThemeDefinition | null>(null)
+  let appearanceRequest = 0
+  const loadThemeAppearance = async () => {
+    const request = ++appearanceRequest
+    let definition: ThemeDefinition | null = null
+    try {
+      definition = await readThemeAppearance(await http.getCurrentBackendUrl())
+    } catch { /* Backend discovery failure also uses the built-in settings. */ }
+    if (request === appearanceRequest) {
+      activeTheme.value = definition
+      updateCSSVariables()
+    }
+  }
   const currentLanguageCode = ref('en') // Default to English
 
   // Track language-specific settings
@@ -48,48 +62,15 @@ export const useSettingsStore = defineStore('settings', () => {
   })
 
   // Style settings for light theme
-  const lightStyleSettings = reactive({
-    bodyBg: '#ffffff',
-    contentBg: '#ffffff',
-    buttonPrimaryBg: '#007bff',
-    buttonSecondaryBg: '#6c757d',
-    buttonDangerBg: '#dc3545',
-    cardBg: '#ffffff',
-    cardBorder: '#e3e3e3',
-    panelBg: '#ffffff',
-    textPrimary: '#222222',
-    textSecondary: '#666666',
-    textMuted: '#999999',
-    borderRadiusSm: 4,
-    borderRadiusMd: 8,
-    borderRadiusLg: 12
-  })
+  const lightStyleSettings = reactive({ ...BUILTIN_STYLES.light })
 
   // Style settings for dark theme
-  const darkStyleSettings = reactive({
-    bodyBg: '#1f2937',
-    contentBg: '#1f2937',
-    buttonPrimaryBg: '#3b82f6',
-    buttonSecondaryBg: '#6b7280',
-    buttonDangerBg: '#ef4444',
-    cardBg: '#374151',
-    cardBorder: '#4b5563',
-    panelBg: '#374151',
-    textPrimary: '#e5e7eb',
-    textSecondary: '#9ca3af',
-    textMuted: '#6b7280',
-    borderRadiusSm: 4,
-    borderRadiusMd: 8,
-    borderRadiusLg: 12
-  })
+  const darkStyleSettings = reactive({ ...BUILTIN_STYLES.dark })
 
   // Computed property to get current theme settings
   const styleSettings = computed(() => {
-    if (!loaded.value) {
-      // Return default settings if not loaded yet
-      return themeStore.theme === 'dark' ? darkStyleSettings : lightStyleSettings
-    }
-    return themeStore.theme === 'dark' ? darkStyleSettings : lightStyleSettings
+    return resolveThemeStyle(activeTheme.value, themeStore.theme,
+      themeStore.theme === 'dark' ? darkStyleSettings : lightStyleSettings)
   })
 
   const loading = ref(false)
@@ -200,7 +181,7 @@ export const useSettingsStore = defineStore('settings', () => {
   // Update CSS variables
   const updateCSSVariables = () => {
     const root = document.documentElement
-    const currentSettings = themeStore.theme === 'dark' ? darkStyleSettings : lightStyleSettings
+    const currentSettings = styleSettings.value
 
     // console.log('Updating CSS variables for theme:', themeStore.theme, 'with settings:', currentSettings)
 
@@ -254,15 +235,15 @@ export const useSettingsStore = defineStore('settings', () => {
     root.style.setProperty('--secondary-color', currentSettings.buttonSecondaryBg)
 
     // Button colors
-    root.style.setProperty('--button-primary-text', '#ffffff')
+    root.style.setProperty('--button-primary-text', activeTheme.value ? buttonTextColor(currentSettings.buttonPrimaryBg) : '#ffffff')
     root.style.setProperty('--button-primary-hover', adjustColor(currentSettings.buttonPrimaryBg, -20))
     root.style.setProperty('--primary-hover', adjustColor(currentSettings.buttonPrimaryBg, -20))
     root.style.setProperty('--button-primary-border', currentSettings.buttonPrimaryBg)
-    root.style.setProperty('--button-secondary-text', '#ffffff')
+    root.style.setProperty('--button-secondary-text', activeTheme.value ? buttonTextColor(currentSettings.buttonSecondaryBg) : '#ffffff')
     root.style.setProperty('--button-secondary-hover', adjustColor(currentSettings.buttonSecondaryBg, -20))
     root.style.setProperty('--secondary-hover', adjustColor(currentSettings.buttonSecondaryBg, -20))
     root.style.setProperty('--button-secondary-border', currentSettings.buttonSecondaryBg)
-    root.style.setProperty('--button-danger-text', '#ffffff')
+    root.style.setProperty('--button-danger-text', activeTheme.value ? buttonTextColor(currentSettings.buttonDangerBg) : '#ffffff')
     root.style.setProperty('--button-danger-hover', adjustColor(currentSettings.buttonDangerBg, -20))
     root.style.setProperty('--button-danger-border', currentSettings.buttonDangerBg)
 
@@ -295,6 +276,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
     // console.log('CSS variables updated')
   }
+
+  watch(activeTheme, updateCSSVariables)
 
   // Helper function to adjust color brightness
   const adjustColor = (color: string, amount: number): string => {
@@ -480,6 +463,8 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   return {
+    activeTheme,
+    loadThemeAppearance,
     headerSettings,
     styleSettings,
     lightStyleSettings,

@@ -7,6 +7,20 @@
     "approved": "Device approved. It will connect automatically within about 30 seconds.", "rejected": "Request rejected."
   },
   "common": { "cancel": "Cancel", "error": "Error", "save": "Save", "saving": "Saving…" },
+  "themePackages": {
+    "kind": "Theme", "manageHelp": "Enable this version, then choose it in Settings → Theme Customization. Enabling does not change the selected theme.",
+    "extensionsHelp": "Upload, enable, disable and delete theme packages in Extensions.", "noneEnabled": "No enabled themes are available. Built-in settings remain available.",
+    "title": "Installed themes", "help": "The theme applies to this installation. Light/dark mode remains a separate preference. Header and menu settings are preserved.",
+    "select": "Application theme", "builtin": "Built-in — saved custom colors", "apply": "Apply theme", "refresh": "Refresh",
+    "zip": "Theme ZIP package", "upload": "Upload ZIP", "empty": "No theme packages uploaded yet.",
+    "selected": "Selected", "staged": "Uploaded", "enabled": "Enabled", "disabled": "Disabled", "unavailable": "Unavailable",
+    "enable": "Enable", "disable": "Disable", "delete": "Delete", "working": "Working…",
+    "confirmDelete": "Delete this theme version? An active theme will return to built-in settings.",
+    "failed": "The theme action failed. Refresh and check the package.", "applied": "Application theme changed.",
+    "uploaded": "ZIP uploaded. Enable it, then select it to apply.", "tooLarge": "The ZIP must be no larger than 10 MiB.",
+    "unavailableHelp": "Package missing or invalid. Built-in settings are used if it was selected.",
+    "legacyHelp": "Package colors are read-only. Choose built-in to edit your saved custom colors; they have not been erased."
+  },
   "settings": {
     "menuAudience": "Visible to", "menuAudiencePublic": "Everyone", "menuAudienceAuthenticated": "Signed-in users",
     "menuAudienceAdmin": "Administrators", "menuPublicRouteRequired": "This route requires sign-in and cannot be exposed publicly.",

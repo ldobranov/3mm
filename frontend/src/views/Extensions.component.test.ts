@@ -16,6 +16,7 @@ const settingsStore = vi.hoisted(() => ({
     cardBorder: '#ddd'
   },
   loadSettings: vi.fn(),
+  loadThemeAppearance: vi.fn(),
   updateCSSVariables: vi.fn()
 }))
 
@@ -61,6 +62,17 @@ const runtimeExtension = {
   is_installed: true
 }
 
+const themePackage = {
+  module_id: 'org.example.theme',
+  version: '1.0.0',
+  sha256: '7'.repeat(64),
+  name: { en: 'Example theme', translations: { bg: 'Примерна тема' } },
+  enabled: false,
+  is_installed: false,
+  is_selected: false,
+  status: 'staged',
+}
+
 const mountView = async () => {
   const wrapper = mount(Extensions, {
     global: {
@@ -90,6 +102,7 @@ describe('Extensions management workflow', () => {
     }])
     runtimeRoutes.reload.mockResolvedValue(undefined)
     settingsStore.loadSettings.mockResolvedValue(undefined)
+    settingsStore.loadThemeAppearance.mockResolvedValue(undefined)
   })
 
   it('shows both runtime and compiled extensions in one catalog', async () => {
@@ -374,5 +387,62 @@ describe('Extensions management workflow', () => {
       { params: { delete_data: false } }
     )
     expect(runtimeRoutes.reload).toHaveBeenCalledOnce()
+  })
+
+  it('uses the single upload and enables only the exact theme version without selecting it', async () => {
+    http.get.mockImplementation((url: string) => Promise.resolve({ data:
+      url.endsWith('/themes/catalog') ? { items: [themePackage, { ...themePackage, version: '2.0.0', sha256: '8'.repeat(64) }] }
+        : url.endsWith('/runtime-extensions/catalog') ? [runtimeExtension] : [],
+    }))
+    http.post.mockResolvedValue({ data: { module_id: themePackage.module_id } })
+    const wrapper = await mountView()
+    expect(wrapper.findAll('input[type=file]')).toHaveLength(1)
+    const cards = wrapper.findAll('.extension-card').filter(card => card.text().includes('Example theme'))
+    expect(cards).toHaveLength(2)
+    expect(cards[0].text()).toContain('Theme')
+    expect(cards[0].text()).toContain('Enabling does not change')
+    const input = wrapper.get('#extension-file')
+    Object.defineProperty(input.element, 'files', { value: [new File(['zip'], 'theme.zip')] })
+    await input.trigger('change')
+    await wrapper.get('.upload-form').trigger('submit')
+    await flushPromises()
+    expect(http.post).toHaveBeenCalledWith('/api/v1/modules/packages', expect.any(FormData))
+    expect(http.post).toHaveBeenCalledTimes(1)
+    const card = wrapper.findAll('.extension-card').find(card => card.text().includes('Example theme') && card.text().includes('1.0.0'))!
+    expect(card.get('.toggle-switch input').attributes('disabled')).toBeUndefined()
+    await card.get('.toggle-switch input').setValue(true)
+    await flushPromises()
+    expect(http.post).toHaveBeenLastCalledWith(`/api/v1/modules/themes/packages/${themePackage.sha256}/enable`)
+    expect(http.post).toHaveBeenCalledTimes(2)
+    expect(runtimeRoutes.reload).not.toHaveBeenCalled()
+  })
+
+  it('keeps disable/delete recovery for an unavailable selected theme and refreshes appearance', async () => {
+    http.get.mockImplementation((url: string) => Promise.resolve({ data:
+      url.endsWith('/themes/catalog') ? { items: [{ ...themePackage, enabled: true, is_installed: true, is_selected: true, status: 'unavailable' }] } : [],
+    }))
+    const wrapper = await mountView()
+    const card = wrapper.findAll('.extension-card').find(card => card.text().includes('Example theme'))!
+    expect(card.text()).toContain('Selected')
+    expect(card.text()).toContain('Package missing or invalid')
+    await card.get('.toggle-switch input').setValue(false)
+    await flushPromises()
+    expect(http.post).toHaveBeenCalledWith(`/api/v1/modules/themes/packages/${themePackage.sha256}/disable`)
+    expect(settingsStore.loadThemeAppearance).toHaveBeenCalledOnce()
+    await wrapper.findAll('.extension-card').find(card => card.text().includes('Example theme'))!.get('.delete-btn').trigger('click')
+    expect(wrapper.get('.modal-body').text()).toContain('An active theme will return to built-in settings')
+    expect(wrapper.find('.modal-body input[type=checkbox]').exists()).toBe(false)
+    await wrapper.get('.modal-footer .button-danger').trigger('click')
+    await flushPromises()
+    expect(http.delete).toHaveBeenCalledWith(`/api/v1/modules/themes/packages/${themePackage.sha256}`)
+    expect(settingsStore.loadThemeAppearance).toHaveBeenCalledTimes(2)
+    expect(runtimeRoutes.reload).not.toHaveBeenCalled()
+  })
+
+  it('does not request the private theme catalog for a non-administrator', async () => {
+    localStorage.setItem('role', 'user')
+    const wrapper = await mountView()
+    expect(http.get.mock.calls.some(([url]) => url === '/api/v1/modules/themes/catalog')).toBe(false)
+    expect(wrapper.find('#extension-file').exists()).toBe(false)
   })
 })

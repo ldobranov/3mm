@@ -9,12 +9,14 @@ from three_mm_protocol import (
     CompiledUiExtensionV1,
     ModuleManifestV2,
     RuntimeExtensionV1,
+    ThemeExtensionV1,
     meets_minimum_version,
 )
 
 MAX_PACKAGE_BYTES = 10 * 1024 * 1024
 MAX_EXPANDED_BYTES = 40 * 1024 * 1024
 MAX_FILES = 256
+MAX_THEME_DEFINITION_BYTES = 64 * 1024
 ALLOWED_PERMISSIONS = {
     "capabilities.invoke",
     "data.read",
@@ -44,6 +46,47 @@ class ValidatedModulePackage:
     runtime_extension: RuntimeExtensionV1 | None = None
     compiled_ui: CompiledUiExtensionV1 | None = None
     application_extension: ApplicationExtensionV1 | None = None
+    theme_extension: ThemeExtensionV1 | None = None
+
+
+def _read_theme_extension(
+    archive: zipfile.ZipFile,
+    manifest: ModuleManifestV2,
+    package_files: set[str],
+) -> ThemeExtensionV1:
+    if (
+        manifest.runtimes != ("ui",)
+        or manifest.entrypoints != {"ui": "theme-extension.json"}
+    ):
+        raise ModulePackageError("theme extensions require only the declarative UI entrypoint")
+    if manifest.permissions or manifest.registrations:
+        raise ModulePackageError("theme extensions cannot declare permissions or registrations")
+    if manifest.capabilities.provides or manifest.capabilities.consumes:
+        raise ModulePackageError("theme extensions cannot provide or consume device capabilities")
+    if (
+        manifest.dependencies or manifest.conflicts or manifest.configuration_schema
+        or manifest.configuration_defaults
+    ):
+        raise ModulePackageError("theme extensions cannot declare dependencies or configuration")
+    if manifest.compatibility.architectures != ("any",):
+        raise ModulePackageError("theme extensions must be architecture-independent")
+    if (
+        manifest.health_check.type != "json_file"
+        or manifest.health_check.path != "theme-extension.json"
+    ):
+        raise ModulePackageError("theme extension health check must reference its definition")
+    unexpected = sorted(package_files - {"manifest.json", "theme-extension.json"})
+    if unexpected:
+        raise ModulePackageError(f"theme extension contains forbidden files: {', '.join(unexpected)}")
+    try:
+        if archive.getinfo("theme-extension.json").file_size > MAX_THEME_DEFINITION_BYTES:
+            raise ModulePackageError("theme definition exceeds its size limit")
+        theme = ThemeExtensionV1.model_validate_json(archive.read("theme-extension.json"))
+    except (KeyError, ValidationError, zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
+        raise ModulePackageError(f"invalid theme-extension.json: {exc}") from exc
+    if theme.module_id != manifest.module_id or theme.version != manifest.version:
+        raise ModulePackageError("theme extension identity must match manifest v2")
+    return theme
 
 
 def _read_compiled_ui(
@@ -105,9 +148,11 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
         raw_manifest = archive.read("manifest.json")
     except KeyError as exc:
         raise ModulePackageError("manifest.json is required at package root") from exc
+    except (zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
+        raise ModulePackageError("module package manifest cannot be read") from exc
     try:
         manifest = ModuleManifestV2.model_validate(json.loads(raw_manifest))
-    except (json.JSONDecodeError, ValidationError) as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError, ValidationError) as exc:
         raise ModulePackageError(f"invalid manifest v2: {exc}") from exc
     unsupported = sorted(set(manifest.permissions) - ALLOWED_PERMISSIONS)
     if unsupported:
@@ -130,7 +175,13 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
     runtime_extension = None
     compiled_ui = None
     application_extension = None
-    if manifest.entrypoints.get("ui") == "runtime-extension.json":
+    theme_extension = None
+    if (
+        manifest.entrypoints.get("ui") == "theme-extension.json"
+        or "theme-extension.json" in package_files
+    ):
+        theme_extension = _read_theme_extension(archive, manifest, package_files)
+    elif manifest.entrypoints.get("ui") == "runtime-extension.json":
         if set(manifest.runtimes) != {"ui"}:
             raise ModulePackageError("runtime extensions may only target the UI runtime")
         if manifest.registrations:
@@ -397,4 +448,5 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
         runtime_extension=runtime_extension,
         compiled_ui=compiled_ui,
         application_extension=application_extension,
+        theme_extension=theme_extension,
     )
