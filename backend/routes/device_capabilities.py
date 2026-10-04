@@ -16,8 +16,9 @@ from backend.services.device_capability_registry import (
     provider_snapshots,
     read_provider,
     registered_capabilities,
-    replace_provider,
     set_provider_enabled,
+    configure_provider,
+    capability_catalog,
 )
 from backend.services.device_commands import (
     DeviceCommandError,
@@ -27,11 +28,18 @@ from backend.services.device_commands import (
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from backend.utils.device_auth import require_device
+from backend.services.device_protocol import DeviceOperations
+from backend.utils.device_protocol_http import call
 from three_mm_protocol import (
     CapabilityProviderControlV1,
     CapabilityProviderReportV1,
     CapabilityProviderSnapshotV1,
     CapabilityRegistrationV2,
+)
+from three_mm_protocol.capability_contracts import ContractVersion
+from three_mm_protocol.device_capabilities import CapabilityProviderReportV2, CapabilityProviderSnapshotV2
+from three_mm_protocol.capability_availability import (
+    CapabilityConfigurationV1, CapabilityAvailabilityReportV1, CapabilityDiscoveryV3,
 )
 
 router = APIRouter(prefix="/api/v1/devices", tags=["device-capabilities"])
@@ -49,6 +57,7 @@ class InvokeCapabilityRequest(BaseModel):
     capability_id: str = Field(min_length=1, max_length=160)
     action: str = Field(min_length=1, max_length=100)
     arguments: dict = Field(default_factory=dict)
+    contract_version: ContractVersion | None = None
     model_config = ConfigDict(extra="forbid")
 
 
@@ -72,15 +81,18 @@ def _own_device(device: Device, device_id: str):
 
 @router.get(
     "/{device_id}/capabilities",
-    response_model=list[CapabilityRegistrationV2] | list[CapabilityRegistration],
+    response_model=list[CapabilityDiscoveryV3] | list[CapabilityRegistrationV2] | list[CapabilityRegistration],
 )
 def list_capabilities(
     device_id: str,
-    registry_version: int = Query(default=1, ge=1, le=2),
+    registry_version: int = Query(default=1, ge=1, le=3),
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    rows = registered_capabilities(db, _device(db, device_id))
+    device = _device(db, device_id)
+    if registry_version == 3:
+        return capability_catalog(db, device)
+    rows = registered_capabilities(db, device)
     if registry_version == 2:
         return [CapabilityRegistrationV2.model_validate(row) for row in rows]
     # Legacy serialization of the same registry, not a separate capability source.
@@ -98,7 +110,7 @@ def list_capabilities(
 
 @router.get(
     "/{device_id}/capability-providers",
-    response_model=list[CapabilityProviderSnapshotV1],
+    response_model=list[CapabilityProviderSnapshotV2 | CapabilityProviderSnapshotV1],
 )
 def list_providers(
     device_id: str, _admin: User = Depends(require_admin), db: Session = Depends(get_db)
@@ -108,7 +120,7 @@ def list_providers(
 
 @router.get(
     "/{device_id}/capability-providers/{provider_type}/{provider_id}",
-    response_model=CapabilityProviderSnapshotV1,
+    response_model=CapabilityProviderSnapshotV2 | CapabilityProviderSnapshotV1,
 )
 def get_provider(
     device_id: str,
@@ -126,13 +138,13 @@ def get_provider(
 
 @router.put(
     "/{device_id}/capability-providers/{provider_type}/{provider_id}",
-    response_model=CapabilityProviderSnapshotV1,
+    response_model=CapabilityProviderSnapshotV2 | CapabilityProviderSnapshotV1,
 )
 def report_provider(
     device_id: str,
     provider_type: str,
     provider_id: str,
-    payload: CapabilityProviderReportV1,
+    payload: CapabilityProviderReportV2 | CapabilityProviderReportV1,
     device: Device = Depends(require_device),
     db: Session = Depends(get_db),
 ):
@@ -140,19 +152,12 @@ def report_provider(
     _own_device(device, payload.device_id)
     if (provider_type, provider_id) != (payload.provider_type, payload.provider_id):
         raise HTTPException(409, "Provider identity does not match the report")
-    try:
-        provider = replace_provider(db, device, payload)
-        snapshot = provider_snapshot(device, provider)
-        db.commit()
-        return snapshot
-    except CapabilityRegistryError as exc:
-        db.rollback()
-        raise HTTPException(409, str(exc)) from exc
+    return call(DeviceOperations(db, device).provider, payload)
 
 
 @router.post(
     "/{device_id}/capability-providers/{provider_type}/{provider_id}/enabled",
-    response_model=CapabilityProviderSnapshotV1,
+    response_model=CapabilityProviderSnapshotV2 | CapabilityProviderSnapshotV1,
 )
 def control_provider(
     device_id: str,
@@ -181,9 +186,30 @@ def control_provider(
         raise HTTPException(409, str(exc)) from exc
 
 
-@router.post(
-    "/{device_id}/capabilities/invoke", response_model=CapabilityCommandResponse
-)
+@router.post("/{device_id}/capability-providers/{provider_type}/{provider_id}/configuration",
+             response_model=CapabilityProviderSnapshotV2)
+def configure_capabilities(device_id: str, provider_type: str, provider_id: str,
+        payload: CapabilityConfigurationV1, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    device = _device(db, device_id)
+    try:
+        provider = configure_provider(db, device, provider_type, provider_id, payload, actor_user_id=admin.id)
+        snapshot = provider_snapshot(device, provider)
+        db.commit()
+        return snapshot
+    except CapabilityRegistryError as exc:
+        db.rollback()
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post("/{device_id}/capability-availability", response_model=dict[str, str])
+def publish_availability(device_id: str, payload: CapabilityAvailabilityReportV1,
+        device: Device = Depends(require_device), db: Session = Depends(get_db)):
+    _own_device(device, device_id)
+    call(DeviceOperations(db, device).availability, payload)
+    return {"status": "accepted"}
+
+
+@router.post("/{device_id}/capabilities/invoke", response_model=CapabilityCommandResponse)
 def invoke_capability(
     device_id: str,
     payload: InvokeCapabilityRequest,
@@ -198,7 +224,7 @@ def invoke_capability(
             db,
             device=device,
             command_type="capability.invoke",
-            payload=payload.model_dump(),
+            payload=payload.model_dump(exclude_none=True),
             idempotency_key=f"capability:{payload.capability_id}:{uuid4().hex}",
             ttl_seconds=300,
         )

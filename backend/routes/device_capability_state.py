@@ -1,7 +1,5 @@
 """Latest authenticated state for enabled device capabilities."""
 
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -13,6 +11,8 @@ from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from backend.utils.device_auth import require_device
 from three_mm_protocol import CapabilityStateReportV1, CapabilityStateSnapshotV1
+from backend.services.device_protocol import DeviceOperations, capability_snapshot
+from backend.utils.device_protocol_http import call
 
 
 router = APIRouter(prefix="/api/v1/devices", tags=["device-capability-state"])
@@ -26,19 +26,7 @@ def _device(db: Session, device_id: str) -> Device:
 
 
 def _snapshot(device: Device, row: DeviceCapabilityState) -> CapabilityStateSnapshotV1:
-    observed_at = row.observed_at
-    received_at = row.received_at
-    if observed_at.tzinfo is None:
-        observed_at = observed_at.replace(tzinfo=timezone.utc)
-    if received_at.tzinfo is None:
-        received_at = received_at.replace(tzinfo=timezone.utc)
-    return CapabilityStateSnapshotV1(
-        device_id=device.device_id,
-        capability_id=row.capability_id,
-        values=row.values,
-        observed_at=observed_at,
-        received_at=received_at,
-    )
+    return capability_snapshot(device, row)
 
 
 @router.post(
@@ -56,28 +44,7 @@ def report_capability_state(
         raise HTTPException(403, "Device identity mismatch")
     if payload.capability_id != capability_id:
         raise HTTPException(409, "Capability identity mismatch")
-    if not has_registered_capability(db, device, capability_id):
-        raise HTTPException(409, "Capability is not enabled on this device")
-    row = db.scalar(select(DeviceCapabilityState).where(
-        DeviceCapabilityState.device_id == device.id,
-        DeviceCapabilityState.capability_id == capability_id,
-    ))
-    if row is None:
-        row = DeviceCapabilityState(
-            device_id=device.id,
-            capability_id=capability_id,
-            values=payload.values,
-            observed_at=payload.observed_at,
-            received_at=datetime.now(timezone.utc),
-        )
-        db.add(row)
-    elif payload.observed_at >= row.observed_at.replace(tzinfo=payload.observed_at.tzinfo):
-        row.values = payload.values
-        row.observed_at = payload.observed_at
-        row.received_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(row)
-    return _snapshot(device, row)
+    return call(DeviceOperations(db, device).capability_state, payload)
 
 
 @router.get(

@@ -7,6 +7,7 @@ import time
 import requests
 
 from examples.mock_embedded.client import MockEmbeddedClient, ProtocolRejected
+from examples.mock_embedded.contracts import control_contract
 
 
 def main():
@@ -27,10 +28,16 @@ def main():
     parser.add_argument("--name", default="Mock embedded")
     parser.add_argument("--interval", type=float, default=5)
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--versioned-contracts", action="store_true",
+                        help="Opt into the strict v1 capability contract; requires updated Core")
+    parser.add_argument("--explicit-capabilities", action="store_true",
+                        help="Use provider v2 and health; Core administrator must configure capabilities")
     args = parser.parse_args()
     if not 1 <= args.interval <= 60:
         parser.error("interval must be 1-60 seconds")
-    node = MockEmbeddedClient(args.core_url, args.data_dir, display_name=args.name)
+    node = MockEmbeddedClient(args.core_url, args.data_dir, display_name=args.name,
+                              contract=control_contract() if args.versioned_contracts else None,
+                              explicit_capabilities=args.explicit_capabilities)
     try:
         while True:
             try:

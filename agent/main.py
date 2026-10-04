@@ -72,6 +72,8 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
             resolved_role = AgentRoleResolver(provisioning_store).resolve(resolved_role)
             provisioning_snapshot = provisioning_store.load()
         identity = AgentIdentityStore(resolved_settings.data_dir).load_or_create()
+        if (resolved_settings.data_dir / "authority-reset.json").exists():
+            raise RuntimeError("Incomplete authority reset requires local recovery; normal runtime refused")
         credential = DeviceCredentialStore(resolved_settings.data_dir).load()
         if credential is not None and credential.device_id != identity.device_id:
             raise RuntimeError("Core credential does not match Agent identity")
@@ -187,6 +189,8 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
                     ),
                     inventory_schema_version=resolved_settings.inventory_schema_version,
                     feature_negotiation=True,
+                    capability_availability=True,
+                    authority_verification=True,
                 )
 
                 publisher.start()

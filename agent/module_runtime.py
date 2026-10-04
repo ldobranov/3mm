@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Callable, Protocol
 from pydantic import ValidationError
 from three_mm_protocol import ModuleManifestV2, meets_minimum_version
+from three_mm_protocol.capability_contracts import CapabilityContractError, validate_value
+from three_mm_protocol.capability_availability import CapabilityAvailabilityReportV1, declaration_digest
+from datetime import UTC, datetime
 from agent import __version__
 
 AGENT_ALLOWED_PERMISSIONS = {"data.read", "data.write", "events.publish", "network.outbound", "process.spawn", "hardware.inventory", "hardware.gpio"}
@@ -31,6 +34,8 @@ class AgentModuleRuntime:
         self.protocol_version = protocol_version
         self.runtime_handlers = dict(runtime_handlers or {})
         self._services: dict[str, CapabilityService] = {}
+        self._contracts = {}
+        self._owners = {}
 
     def _state_path(self, module_id: str) -> Path:
         return self.root / "state" / f"{module_id}.json"
@@ -107,22 +112,47 @@ class AgentModuleRuntime:
         declared = {item.registration_id for item in manifest.registrations if item.kind in {"capability", "service"}}
         if not set(services).issubset(declared):
             raise ModuleLifecycleError("runtime exposed an undeclared capability")
+        withdrawn = {capability_id for capability_id, owner in self._owners.items()
+                     if owner == manifest.module_id and capability_id not in services}
         replaced = {
             id(self._services[capability_id]): self._services[capability_id]
-            for capability_id in services
+            for capability_id in set(services) | withdrawn
             if capability_id in self._services
         }
         for previous_service in replaced.values():
             if hasattr(previous_service, "close"):
                 previous_service.close()
+        for capability_id in withdrawn:
+            self._services.pop(capability_id, None)
+            self._contracts.pop(capability_id, None)
+            self._owners.pop(capability_id, None)
         self._services.update(services)
+        registrations = {item.registration_id: item for item in manifest.registrations}
+        for capability_id in services:
+            self._contracts[capability_id] = registrations[capability_id].contract
+            self._owners[capability_id] = manifest.module_id
 
-    def invoke(self, capability_id: str, action: str, arguments: dict) -> dict:
+    def validate_invocation(self, payload):
+        if payload.get('capability_id') not in self._services:
+            raise CapabilityContractError('Capability is unavailable')
+        contract = self._contracts.get(payload['capability_id'])
+        if contract is None:
+            if payload.get('contract_version') is not None or payload.get('contract_digest') is not None:
+                raise CapabilityContractError('Versioned capability contract is unavailable')
+            return None
+        return contract.invocation(payload, require_digest=True)
+
+    def invoke(self, capability_id: str, action: str, arguments: dict, *, contract_version=None, contract_digest=None) -> dict:
         service = self._services.get(capability_id)
         if service is None:
             raise ModuleLifecycleError("capability is unavailable")
+        definition = self.validate_invocation({'capability_id': capability_id, 'action': action,
+            'arguments': arguments, 'contract_version': contract_version, 'contract_digest': contract_digest})
         try:
-            return service.invoke(action, arguments)
+            result = service.invoke(action, arguments)
+            if definition is not None:
+                validate_value(result, definition.result_schema)
+            return result
         except ModuleLifecycleError:
             raise
         except Exception as exc:
@@ -144,8 +174,49 @@ class AgentModuleRuntime:
                     f"capability state read failed for {capability_id}"
                 ) from exc
             if isinstance(state, dict) and state:
+                contract = self._contracts.get(capability_id)
+                if contract is not None and contract.state_schema is not None:
+                    try:
+                        validate_value(state, contract.state_schema)
+                    except CapabilityContractError as exc:
+                        raise ModuleLifecycleError('Capability state violates its contract') from exc
                 result[capability_id] = state
         return result
+
+    def capability_healthy(self, capability_id):
+        """Non-mutating runtime probe; not electrical/mechanical confirmation."""
+        service = self._services.get(capability_id)
+        if service is None:
+            return False
+        try:
+            if hasattr(service, "is_available") and service.is_available() is not True:
+                return False
+            state = (service.state_for(capability_id) if hasattr(service, "state_for")
+                     else service.state() if hasattr(service, "state") else None)
+            contract = self._contracts.get(capability_id)
+            if contract is not None and contract.state_schema is not None:
+                validate_value(state, contract.state_schema)
+            return True
+        except Exception:
+            return False
+
+    def availability_reports(self, device_id):
+        observed = datetime.now(UTC)
+        for path in (self.root / "state").glob("*.json"):
+            state = json.loads(path.read_text())
+            if not state.get("enabled") or not state.get("active_version"):
+                continue
+            declarations = [{"capability_id": item["registration_id"], "metadata": item.get("metadata", {}),
+                             **({"contract": item["contract"]} if item.get("contract") is not None else {})}
+                            for item in state.get("registrations", []) if item.get("kind") == "capability"]
+            if not declarations:
+                continue
+            yield CapabilityAvailabilityReportV1(
+                device_id=device_id, provider_type="agent_module", provider_id=path.stem,
+                provider_version=state["active_version"], observed_at=observed,
+                declaration_digest=declaration_digest("agent_module", path.stem, state["active_version"], declarations),
+                capabilities=tuple({"capability_id": item["capability_id"],
+                                    "healthy": self.capability_healthy(item["capability_id"])} for item in declarations))
 
     def activate_automation(self, automation_id: str, definition) -> None:
         trigger_service = self._services.get(definition.trigger.capability_id)
@@ -187,6 +258,8 @@ class AgentModuleRuntime:
         state["enabled"] = False; self._save_state(module_id, state)
         for registration in state.get("registrations", []):
             service = self._services.pop(registration.get("registration_id"), None)
+            self._contracts.pop(registration.get("registration_id"), None)
+            self._owners.pop(registration.get("registration_id"), None)
             if service is not None and hasattr(service, "close"):
                 service.close()
         return ModuleRuntimeResult(module_id, state["active_version"], "disabled")
@@ -195,6 +268,8 @@ class AgentModuleRuntime:
         """Release active services without changing their persistent enabled state."""
         services = {id(service): service for service in self._services.values()}
         self._services.clear()
+        self._contracts.clear()
+        self._owners.clear()
         for service in services.values():
             if hasattr(service, "close"):
                 service.close()

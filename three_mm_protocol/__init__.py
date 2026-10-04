@@ -69,6 +69,7 @@ from three_mm_protocol.device_capabilities import (
     CapabilityProviderControlV1,
     CapabilityRegistrationV2,
 )
+from three_mm_protocol.capability_contracts import CapabilityContractV1, CapabilityActionV1
 from three_mm_protocol.identifier_scan import (
     IdentifierScanEventV1,
     IdentifierScanPayloadV1,
@@ -114,6 +115,8 @@ __all__ = [
     "CapabilityProviderSnapshotV1",
     "CapabilityProviderControlV1",
     "CapabilityRegistrationV2",
+    "CapabilityContractV1",
+    "CapabilityActionV1",
     "AgentRole",
     "ModuleCapabilities",
     "ModuleCompatibility",

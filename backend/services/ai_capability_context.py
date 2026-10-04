@@ -35,13 +35,15 @@ def build_automation_capability_context(db: Session) -> AutomationCapabilityCont
                     provider_id=registration["provider_id"],
                     provider_version=registration["provider_version"],
                     metadata=registration["metadata"],
+                    contract_version=registration.get("contract_version"),
+                    contract=registration.get("contract"),
                 )
             )
 
     entries.sort(
         key=lambda item: (item.device_id, item.capability_id, item.provider_id)
     )
-    if any(item.provider_type != "agent_module" for item in entries):
+    if any(item.provider_type != "agent_module" or item.contract is not None for item in entries):
         return AutomationCapabilityContextV2(capabilities=tuple(entries))
     # Existing module-only consumers retain their exact version-1 response.
     return AutomationCapabilityContextV1(

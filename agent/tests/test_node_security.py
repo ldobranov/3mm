@@ -100,7 +100,9 @@ def test_redirect_is_not_an_ack_and_credentials_are_not_forwarded(
         return result
 
     monkeypatch.setattr("agent.core_client.requests.post", redirect)
-    assert node._send_or_queue("events", {"sample": True}, "redirected") is False
+    payload = {"event_id": "evt_" + "a" * 32, "device_id": node.credential.device_id,
+        "event_type": "test.event", "occurred_at": datetime.now(UTC).isoformat(), "payload": {"sample": True}}
+    assert node._send_or_queue("events", payload, "redirected") is False
     assert node.outbox.load()[0].deduplication_key == "redirected"
 
 

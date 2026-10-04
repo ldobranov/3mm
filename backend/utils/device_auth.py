@@ -1,15 +1,13 @@
 """Authentication dependency for unique revocable device credentials."""
 
-import hmac
-from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.db.device import Device, DeviceCredential
-from backend.services.device_pairing import credential_secret_hash
+from backend.db.device import Device
+from backend.services.device_protocol import authenticate_device
+from backend.utils.device_protocol_http import call
 from backend.utils.db_utils import get_db
 
 
@@ -32,20 +30,4 @@ def require_device(
     if not separator or not credential_id or not secret:
         raise _unauthorized()
 
-    credential = db.scalar(
-        select(DeviceCredential).where(DeviceCredential.credential_id == credential_id).execution_options(populate_existing=True)
-    )
-    if credential is None or credential.revoked_at is not None:
-        raise _unauthorized()
-    device = db.scalar(select(Device).where(Device.id == credential.device_id).execution_options(populate_existing=True))
-    if device is None or device.approved_at is None or device.revoked_at is not None:
-        raise _unauthorized()
-    if not hmac.compare_digest(
-        credential.secret_hash,
-        credential_secret_hash(secret),
-    ):
-        raise _unauthorized()
-
-    credential.last_used_at = datetime.now(timezone.utc)
-    db.commit()
-    return device
+    return call(authenticate_device, db, credential_id, secret)

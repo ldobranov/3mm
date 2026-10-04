@@ -16,6 +16,9 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 import requests
+import subprocess
+from three_mm_protocol.device_platform import challenge, DevicePlatformSnapshotV1
+from three_mm_protocol.device_authority import DeviceAuthorityStore, sync_directory
 
 from three_mm_protocol import (
     AgentCommand,
@@ -33,6 +36,9 @@ from three_mm_protocol import (
     DeviceRuntimeFeaturesSnapshotV1,
 )
 from three_mm_protocol.node_features import MANDATORY_NODE_FEATURES
+from three_mm_protocol.capability_contracts import CONTRACT_FEATURE, CapabilityContractError, validate_value
+from three_mm_protocol.device_capabilities import CapabilityProviderReportV2, CapabilityProviderSnapshotV2
+from three_mm_protocol.capability_availability import AVAILABILITY_FEATURE, CapabilityAvailabilityReportV1, declaration_digest
 from three_mm_protocol.fleet_pairing import (
     NodeEnrollmentRequest,
     NodeEnrollmentResponse,
@@ -60,6 +66,8 @@ class MockEmbeddedClient:
         *,
         display_name="Mock embedded",
         transport=None,
+        contract=None,
+        explicit_capabilities=False,
     ):
         parsed = urlsplit(core_url)
         if (
@@ -76,6 +84,11 @@ class MockEmbeddedClient:
         if not 1 <= len(display_name) <= 100:
             raise ValueError("Device name must be 1-100 characters")
         self.display_name = display_name
+        self.contract = contract
+        self.explicit_capabilities = explicit_capabilities
+        self.healthy = True  # Reference-only deterministic runtime fault injection.
+        if contract is not None and contract.capability_id != CAPABILITY:
+            raise ValueError("Reference contract capability mismatch")
         self.transport = transport or requests.Session()
         if isinstance(self.transport, requests.Session):
             self.transport.trust_env = False
@@ -122,6 +135,9 @@ class MockEmbeddedClient:
                 )
         self.identity = self._get("identity")
         self.device_id = self.identity["device_id"]
+        self.authority_store = DeviceAuthorityStore(data_dir, self.device_id, self.identity["credential_id"])
+        self._authority_mode = None
+        self._verified_at = 0
 
     def close(self):
         self.db.close()
@@ -139,6 +155,8 @@ class MockEmbeddedClient:
         )
 
     def _request(self, method, path, payload=None, *, authenticated=True, timeout=10):
+        if authenticated:
+            self._ensure_authority()
         headers = (
             {
                 "Authorization": f"Device {self.identity['credential_id']}:{self.identity['secret']}"
@@ -154,6 +172,74 @@ class MockEmbeddedClient:
             timeout=timeout,
             allow_redirects=False,
         )
+
+    def _ensure_authority(self):
+        binding = self.authority_store.check_current()
+        if self._authority_mode == "legacy" and binding is None:
+            return False
+        if self._authority_mode == "signed" and time.monotonic() - self._verified_at < 30:
+            return True
+        request = challenge(self.device_id, self.identity["credential_id"], "identity")
+        response = self._request("POST", "/api/v1/pairing/authority-proof",
+                                 request.model_dump(mode="json"), authenticated=False)
+        if response.status_code in {404, 405} and binding is None:
+            self._authority_mode = "legacy"
+            return False
+        self.authority_store.verify(self._body(response), request, bootstrap=True)
+        self._authority_mode, self._verified_at = "signed", time.monotonic()
+        return True
+
+    def _exchange(self, operation, *, command_id=None):
+        request = challenge(self.device_id, self.identity["credential_id"], operation, command_id=command_id)
+        response = self._request("POST", self.prefix + "/authority-exchange", request.model_dump(mode="json"),
+                                 timeout=2 if operation == "execution_permit" else 10)
+        return self.authority_store.verify(self._body(response), request)
+
+    def platform(self):
+        return DevicePlatformSnapshotV1.model_validate(self._exchange("platform")) if self._ensure_authority() else None
+
+    def report_lifecycle(self, report):
+        return self._body(self._request("PUT", self.prefix + "/lifecycle", report.model_dump(mode="json")))
+
+    def reset_authority(self, confirmed_device_id):
+        """Foreground/local operator action; preserve ID and simulation receipts.
+
+        Retain the old credential/outbox in private SQLite history. Never send
+        old installation evidence to a new Core. Reopen the client afterwards.
+        """
+        if confirmed_device_id != self.device_id:
+            raise ValueError("Explicit stable device ID confirmation required")
+        root = self.authority_store.path.parent
+        history = root / "authority-recovery"
+        if history.is_symlink() or (history.exists() and not history.is_dir()):
+            raise ValueError("Invalid authority recovery history")
+        marker = root / "authority-reset.json"
+        descriptor = os.open(marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            json.dump({"device_id": self.device_id, "kind": "authority", "lifecycle": "recovery"}, output)
+            output.flush()
+            os.fsync(output.fileno())
+        sync_directory(root)
+        history.mkdir(mode=0o700, exist_ok=True)
+        archive_id = uuid4().hex
+        quarantine = history / archive_id
+        quarantine.mkdir(mode=0o700)
+        with self.db:
+            self._set("released." + archive_id, {"identity": self.identity, "authority": self.core_url,
+                "outbox": [dict(row) for row in self.db.execute("SELECT * FROM outbox")]})
+            self.db.execute("DELETE FROM outbox")
+            self.db.execute("DELETE FROM state WHERE key IN ('authority','desired_state','desired_revision','enabled')")
+            self._set("identity", {**self.identity, "credential_id": "cred_" + uuid4().hex,
+                "secret": secrets.token_hex(32), "request_token": secrets.token_hex(32)})
+        if self.authority_store.path.exists():
+            os.replace(self.authority_store.path, quarantine / "device-authority.json")
+        sync_directory(quarantine)
+        sync_directory(history)
+        sync_directory(root)
+        os.replace(marker, quarantine / "reset-receipt.json")
+        sync_directory(quarantine)
+        sync_directory(root)
+        return quarantine
 
     @staticmethod
     def _body(response):
@@ -216,12 +302,16 @@ class MockEmbeddedClient:
             or 1 not in protocol.capability_provider_report_versions
         ):
             raise ValueError("Core does not support this runtime's contracts")
+        if self.explicit_capabilities and (2 not in protocol.capability_provider_report_versions
+                or 3 not in protocol.capability_registry_versions):
+            raise ValueError("Core does not support explicit capability configuration/health")
         report = DeviceRuntimeFeaturesReportV1(
             device_id=self.device_id,
             runtime_name=PROVIDER,
             runtime_version=VERSION,
             features=tuple(
-                sorted(MANDATORY_NODE_FEATURES | {"application_execution_permits"})
+                sorted(MANDATORY_NODE_FEATURES | {"application_execution_permits", CONTRACT_FEATURE}
+                       | ({AVAILABILITY_FEATURE} if self.explicit_capabilities else set()))
             ),
             command_types=("capability.invoke", "application.capability.invoke"),
             expected_revision=protocol.runtime_features_revision,
@@ -286,11 +376,14 @@ class MockEmbeddedClient:
         previous = self._request("GET", path)
         revision = 0
         if previous.status_code != 404:
-            current = CapabilityProviderSnapshotV1.model_validate(self._body(previous))
+            body = self._body(previous)
+            model = CapabilityProviderSnapshotV2 if body.get("schema_version") == 2 else CapabilityProviderSnapshotV1
+            current = model.model_validate(body)
             self._check_provider(current)
             revision = current.revision
-        report = CapabilityProviderReportV1(
-            schema_version=1,
+        model = CapabilityProviderReportV2 if self.explicit_capabilities else CapabilityProviderReportV1
+        report = model(
+            schema_version=2 if self.explicit_capabilities else 1,
             device_id=self.device_id,
             provider_type="embedded_firmware",
             provider_id=PROVIDER,
@@ -299,6 +392,7 @@ class MockEmbeddedClient:
             capabilities=(
                 {
                     "capability_id": CAPABILITY,
+                    **({"contract": self.contract} if self.contract is not None else {}),
                     "metadata": {
                         "automation_channels": CHANNEL,
                         "automation_actions": "set_output",
@@ -308,13 +402,25 @@ class MockEmbeddedClient:
                 },
             ),
         )
-        result = CapabilityProviderSnapshotV1.model_validate(
-            self._body(self._request("PUT", path, report.model_dump(mode="json")))
-        )
+        body = self._body(self._request("PUT", path, report.model_dump(mode="json")))
+        model = CapabilityProviderSnapshotV2 if body.get("schema_version") == 2 else CapabilityProviderSnapshotV1
+        result = model.model_validate(body)
         self._check_provider(result)
         with self.db:
-            self._set("enabled", result.enabled)
+            self._set("enabled", result.enabled and (not isinstance(result, CapabilityProviderSnapshotV2)
+                      or CAPABILITY in result.configured_capability_ids))
         return result
+
+    def publish_availability(self, provider):
+        if not self.explicit_capabilities:
+            return
+        report = CapabilityAvailabilityReportV1(device_id=self.device_id,
+            provider_type=provider.provider_type, provider_id=provider.provider_id,
+            provider_version=provider.provider_version,
+            declaration_digest=declaration_digest(provider.provider_type, provider.provider_id,
+                provider.provider_version, [item.model_dump(mode="json") for item in provider.capabilities]),
+            observed_at=datetime.now(UTC), capabilities=({"capability_id": CAPABILITY, "healthy": self.healthy},))
+        self._body(self._request("POST", self.prefix + "/capability-availability", report.model_dump(mode="json")))
 
     def _check_provider(self, snapshot):
         if (snapshot.device_id, snapshot.provider_type, snapshot.provider_id) != (
@@ -366,7 +472,7 @@ class MockEmbeddedClient:
 
     def reconcile(self):
         desired = DeviceDesiredState.model_validate(
-            self._body(self._request("GET", self.prefix + "/desired-state"))
+            self._exchange("desired_state") if self._ensure_authority() else self._body(self._request("GET", self.prefix + "/desired-state"))
         )
         if desired.device_id != self.device_id:
             raise ValueError("Desired state identity mismatch")
@@ -429,6 +535,8 @@ class MockEmbeddedClient:
                     error = "Application execution requires a deadline of at most ten seconds"
                 elif self._get("enabled", False) is not True:
                     error = "Provider is not enabled"
+                elif self.explicit_capabilities and not self.healthy:
+                    error = "Runtime is unavailable; no mock action was executed"
                 elif (
                     command.command_type
                     not in {"capability.invoke", "application.capability.invoke"}
@@ -443,6 +551,15 @@ class MockEmbeddedClient:
                     or type(arguments["value"]) is not bool
                 ):
                     error = "Invalid mock output arguments"
+                if error is None:
+                    try:
+                        if self.contract is not None:
+                            self.contract.invocation(command.payload, require_digest=True)
+                        elif (command.payload.get("contract_version") is not None
+                              or command.payload.get("contract_digest") is not None):
+                            raise CapabilityContractError("Versioned contract is unavailable")
+                    except ValueError:
+                        error = "Capability contract is incompatible; no mock action was executed"
                 if (
                     error is None
                     and command.command_type == "application.capability.invoke"
@@ -470,7 +587,7 @@ class MockEmbeddedClient:
                     self.db.execute("BEGIN IMMEDIATE")
                     try:
                         started = time.monotonic()
-                        permit = self._body(
+                        permit = self._exchange("execution_permit", command_id=command.command_id) if self._ensure_authority() else self._body(
                             self._request(
                                 "POST",
                                 self.prefix
@@ -487,7 +604,7 @@ class MockEmbeddedClient:
                             raise ValueError(
                                 "Execution permit acknowledgement mismatch"
                             )
-                    except (requests.RequestException, ProtocolRejected, ValueError):
+                    except (requests.RequestException, ProtocolRejected, ValueError, OSError, subprocess.SubprocessError):
                         error = "Live execution authorization was unavailable or denied"
                     now = datetime.now(UTC)
                     if error is None and command.expires_at <= now:
@@ -523,6 +640,9 @@ class MockEmbeddedClient:
                         "outputs": {CHANNEL: self.output},
                     },
                 )
+                if error is None and self.contract is not None:
+                    validate_value({k: v for k, v in result.output.items() if k != "execution_state"},
+                                   self.contract.actions[command.payload["action"]].result_schema)
                 self.db.execute(
                     "INSERT INTO receipts VALUES (?,?,?,?) ON CONFLICT(key) DO UPDATE SET result=excluded.result",
                     (
@@ -544,6 +664,9 @@ class MockEmbeddedClient:
             raise
 
     def poll(self):
+        if self._ensure_authority():
+            command = self._exchange("command")["command"]
+            return self.execute(AgentCommand.model_validate(command)) if command is not None else None
         response = self._request("GET", self.prefix + "/commands/next")
         if response.status_code == 204:
             return None
@@ -557,9 +680,10 @@ class MockEmbeddedClient:
         self.publish_inventory()
         self.heartbeat()
         provider = self.register_capability()
+        self.publish_availability(provider)
         self.flush()
         self.reconcile()
-        if provider.enabled:
+        if self._get("enabled", False):
             with self.db:
                 self._queue_state(datetime.now(UTC))
         self.flush()

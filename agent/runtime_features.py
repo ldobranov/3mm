@@ -3,24 +3,26 @@
 import threading
 import time
 
-import requests
+from agent.device_transport import HttpDeviceTransport, requests  # legacy test/embedding alias
 
 from three_mm_protocol.node_features import (
     CoreNodeProtocolV1,
     DeviceRuntimeFeaturesReportV1,
     DeviceRuntimeFeaturesSnapshotV1,
 )
+from three_mm_protocol.capability_availability import AVAILABILITY_FEATURE
 
 
 class RuntimeFeaturePublisher:
-    def __init__(self, core_url, credential):
-        self.url = f"{core_url}/api/v1/devices/{credential.device_id}"
+    def __init__(self, core_url, credential, *, transport=None):
+        self.transport = transport if transport is not None else HttpDeviceTransport(core_url, credential)
         self.credential = credential
         self._lock = threading.Lock()
         self._last_check = float("-inf")
         self._last_exchange = float("-inf")
         self._declaration = None
         self._inventory_versions = (1,)
+        self.availability_enabled = False
 
     def inventory_version(self, preferred, declaration_provider):
         with self._lock:
@@ -39,17 +41,11 @@ class RuntimeFeaturePublisher:
             raise ValueError("Core supports no compatible Agent inventory schema")
 
     def _exchange(self, declaration):
-        headers = {
-            "Authorization": f"Device {self.credential.credential_id}:{self.credential.credential_secret}"
-        }
-        response = requests.get(
-            self.url + "/protocol", headers=headers, timeout=10, allow_redirects=False
-        )
-        if response.status_code in {404, 405}:
+        protocol = self.transport.protocol()
+        if protocol is None:
             self._inventory_versions = (1,)
+            self.availability_enabled = False
             return
-        response.raise_for_status()
-        protocol = CoreNodeProtocolV1.model_validate(response.json())
         if (
             protocol.device_id != self.credential.device_id
             or 1 not in protocol.runtime_feature_schema_versions
@@ -57,19 +53,16 @@ class RuntimeFeaturePublisher:
             raise ValueError("Core protocol negotiation identity/schema mismatch")
         if not set(protocol.inventory_schema_versions) & {1, 2}:
             raise ValueError("Core supports no compatible Agent inventory schema")
+        declaration = dict(declaration)
+        # Registry v3 declares the C14 health contract using an EXISTING wire
+        # field; a new field would break older strict protocol-1.0 parsers.
+        if 3 not in protocol.capability_registry_versions:
+            declaration["features"] = [feature for feature in declaration["features"] if feature != AVAILABILITY_FEATURE]
         report = DeviceRuntimeFeaturesReportV1(
             **declaration,
             expected_revision=protocol.runtime_features_revision,
         )
-        response = requests.put(
-            self.url + "/runtime-features",
-            headers=headers,
-            json=report.model_dump(mode="json"),
-            timeout=10,
-            allow_redirects=False,
-        )
-        response.raise_for_status()
-        snapshot = DeviceRuntimeFeaturesSnapshotV1.model_validate(response.json())
+        snapshot = self.transport.report_features(report)
         if (
             snapshot.device_id != self.credential.device_id
             or snapshot.source != "advertised"
@@ -83,3 +76,4 @@ class RuntimeFeaturePublisher:
         ):
             raise ValueError("Runtime feature acknowledgement mismatch")
         self._inventory_versions = protocol.inventory_schema_versions
+        self.availability_enabled = AVAILABILITY_FEATURE in declaration["features"]

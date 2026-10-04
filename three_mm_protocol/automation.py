@@ -2,7 +2,8 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, model_serializer
+from three_mm_protocol.capability_contracts import CapabilityContractV1, ContractVersion
 
 
 class StrictAutomationModel(BaseModel):
@@ -75,6 +76,16 @@ class ProviderCapabilityContextEntry(StrictAutomationModel):
     provider_id: str
     provider_version: str
     metadata: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    contract_version: ContractVersion | None = None
+    contract: CapabilityContractV1 | None = None
+
+    @model_serializer(mode="wrap")
+    def wire(self, handler):
+        data = handler(self)
+        if self.contract is None:
+            data.pop("contract", None)
+            data.pop("contract_version", None)
+        return data
 
 
 class AutomationCapabilityContextV2(AutomationCapabilityContextV1):

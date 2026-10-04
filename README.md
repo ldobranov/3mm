@@ -8,9 +8,9 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Beta. This source prepares **v0.3.0-beta.33**, adding
-> platform-neutral device inventory, provider-neutral capabilities and runtime
-> feature negotiation for the shared Standalone/Hub/application device layer.
+> **Project status:** Beta. This source prepares **v0.3.0-beta.34**, adding
+> logical device transport, versioned capability contracts, installation authority
+> and lifecycle, and separate capability discovery/configuration/availability.
 > Device protocol 1.0, Application SDK 1.3, installation peers and Node Update remain.
 > Release assets become available only after the tag-driven workflow succeeds;
 > the release badge above reflects published versions. Linux + independent mock
@@ -27,7 +27,9 @@ system.
   pairing, heartbeat, command processing, reconciliation and offline outbox.
 - **Shared Device/Node Platform** — versioned neutral inventory and one capability
   registry for module, native and firmware providers, with advertised runtime
-  features and an independent mock client. Fleet is optional, not a prerequisite.
+  features, strict optional capability contracts, authority/lifecycle and an
+  independent mock client. Discovery does not grant execution authority; fresh
+  health is distinct from persistent selection. Fleet is optional, not a prerequisite.
 - **Hardware capabilities** — deterministic mock profiles and opt-in native
   Raspberry digital input/output through the official `gpiod` bindings,
   edge-driven inputs and safe bounded output pulses.
@@ -205,8 +207,8 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 After the new GitHub Release is fully published, update the Hub through
 `/system/updates` using the Beta channel. Update the Zero over SSH with the same
-Node bootstrap command above; after beta.33 publication, add
-`--tag v0.3.0-beta.33` to select that exact release. Provisioned upgrades preserve
+Node bootstrap command above; after beta.34 publication, add
+`--tag v0.3.0-beta.34` to select that exact release. Provisioned upgrades preserve
 identity and pairing, not Master reset.
 Then upload Fleet `0.1.7` on the Hub through Extensions. Updating the Fleet ZIP
 alone does not update Core or the Zero Agent. Follow the
@@ -246,6 +248,12 @@ Start with the
 preflight, installation, setup Wi-Fi, administrator bootstrap, Agent pairing
 and smoke checks. The normal installer performs backup, migration, atomic
 activation, health verification and rollback.
+
+Wired-only Linux/VM installer corrections are prepared locally: absent first-boot
+state initializes Standalone without a Wi-Fi AP, required service groups are
+created, and upgrade rollback restores the previously active services. They take
+effect only after publication in release assets; see
+[VM installer behavior and remaining live checks](docs/INSTALLER_VM_RECOVERY.md).
 
 On a provisioned device, open the application at `http://<device-ip>/` or
 `http://<hostname>.local/`. Port `8080` remains available for compatibility.
@@ -289,7 +297,12 @@ See the [changelog](CHANGELOG.md) for user-visible changes and the
 | --- | --- |
 | [Product master plan](docs/MASTER_PLAN.md) | Local-first product sequence and optional central extensions |
 | [Architecture plan](docs/ARCHITECTURE_PLAN.md) | System boundaries and target architecture |
-| [Platform-neutral Nodes plan](docs/PLATFORM_NEUTRAL_NODES_PLAN.md) | C0–C9 inventory/provider contracts before separate embedded firmware |
+| [Platform-neutral Nodes plan](docs/PLATFORM_NEUTRAL_NODES_PLAN.md) | C0–C14 shared device, transport, authority and capability contracts |
+| [Device transport boundary](docs/PLATFORM_NEUTRAL_C10.md) | C10 logical operations, HTTP adapter and non-HTTP proof |
+| [Versioned capability contracts](docs/PLATFORM_NEUTRAL_C11.md) | C11 exact versions, bounded schemas and pre-dispatch compatibility checks |
+| [Device authority and lifecycle](docs/PLATFORM_NEUTRAL_C12_C13.md) | C12/C13 installation pins, release/recovery and separate reset policies |
+| [Capability configuration and health](docs/PLATFORM_NEUTRAL_C14.md) | C14 supported offers, Core-owned selection, fresh availability and compatible dispatch |
+| [Wired-only VM installer](docs/INSTALLER_VM_RECOVERY.md) | Standalone first boot, service groups, safe activation and rollback |
 | [Node regression baseline](docs/PLATFORM_NEUTRAL_C0.md) | Existing Linux Agent behavior, focused test gate and limitations |
 | [Platform-neutral inventory](docs/PLATFORM_NEUTRAL_C1.md) | Schema 2, legacy compatibility, Agent configuration and Fleet adoption |
 | [Project rules](docs/PROJECT_RULES.md) | Compatibility, safety and development rules |

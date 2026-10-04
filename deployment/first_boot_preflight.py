@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only host and release checks for a first 3mm Raspberry deployment."""
+"""Read-only host and release checks for a first 3mm Linux deployment."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from typing import Callable, Sequence
 
 MINIMUM_PYTHON = (3, 10)
 MINIMUM_NODE_MAJOR = 20
-SUPPORTED_RASPBERRY_ARCHITECTURES = frozenset({"aarch64", "armv7l"})
+SUPPORTED_RASPBERRY_ARCHITECTURES = frozenset({"aarch64", "armv7l", "x86_64"})
 REQUIRED_COMMANDS = (
     "bash",
     "flock",
@@ -194,8 +194,10 @@ def inspect_host(
         checks.append(
             PreflightCheck(
                 "network.wlan0",
-                wifi_ok and wlan0_state is not None,
-                wlan0_state or "wlan0 Wi-Fi interface missing",
+                wifi_ok and (wlan0_state is not None or not any(
+                    ":wifi:" in line for line in wifi_output.splitlines()
+                )),
+                wlan0_state or "wired-only host; Standalone initialization without Setup AP",
             )
         )
 

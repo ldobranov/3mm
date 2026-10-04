@@ -8,13 +8,14 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
-from backend.db.device import Device, DeviceCommand
+from backend.db.device import Device, DeviceCommand, DevicePlatformState, DeviceCredential
 from backend.db.module import ModuleInstallation
 from backend.services.device_command_notifier import device_command_notifier
 from backend.services.device_runtime_features import command_is_supported, lock_device, read_runtime_features
 from three_mm_protocol import AgentCommand, AgentCommandResult
 from three_mm_protocol.node_updates import NodeUpdateOperation
 from three_mm_protocol.node_security import validate_command_payload
+from backend.services.device_capability_registry import validate_invocation, can_dispatch_capability
 
 
 NODE_UPDATE_TERMINAL_OUTCOMES = frozenset({"succeeded", "rolled_back", "failed"})
@@ -26,6 +27,17 @@ NODE_MUTATION_COMMAND_TYPES = frozenset({
 
 class DeviceCommandError(RuntimeError):
     pass
+
+
+def require_control_authority(db, device):
+    state = db.get(DevicePlatformState, device.id, populate_existing=True)
+    active = db.scalar(select(DeviceCredential.id).where(DeviceCredential.device_id == device.id, DeviceCredential.revoked_at.is_(None)))
+    any_credential = db.scalar(select(DeviceCredential.id).where(DeviceCredential.device_id == device.id))
+    if any_credential is not None and active is None:
+        raise DeviceCommandError("Device credentials are revoked")
+    if device.revoked_at is not None or (state is not None and (
+        state.authority_status != "bound" or state.lifecycle in {"recovery", "revoked", "unowned", "enrollment_pending"})):
+        raise DeviceCommandError("Device authority is revoked/released or runtime is in recovery")
 
 
 def node_update_is_terminal(command: DeviceCommand) -> bool:
@@ -71,6 +83,8 @@ def queue_command(
     guarded_node_mutation = device.role == "node" and command_type in NODE_MUTATION_COMMAND_TYPES
     # Serialize support changes against queueing, including non-Node devices.
     lock_device(db, device)
+    db.refresh(device)
+    require_control_authority(db, device)
     existing = db.scalar(
         select(DeviceCommand).where(
             DeviceCommand.device_id == device.id,
@@ -78,9 +92,20 @@ def queue_command(
         )
     )
     if existing is not None:
-        if existing.command_type != command_type or existing.payload != payload:
+        comparable = dict(payload)
+        if (command_type in {"capability.invoke", "application.capability.invoke"}
+                and "contract_digest" not in comparable and "contract_digest" in existing.payload):
+            comparable["contract_digest"] = existing.payload["contract_digest"]
+        if existing.command_type != command_type or existing.payload != comparable:
             raise DeviceCommandError('Command idempotency key has different content')
         return existing
+    if command_type in {"capability.invoke", "application.capability.invoke"}:
+        try:
+            payload = validate_invocation(db, device, payload, prepare=True)
+            # The canonical digest is part of the final wire payload too.
+            validate_command_payload(command_type, payload)
+        except ValueError as exc:
+            raise DeviceCommandError(str(exc)) from exc
     if not command_is_supported(db, device, command_type):
         raise DeviceCommandError("Device runtime does not advertise support for this command")
     if guarded_node_mutation and any(
@@ -135,6 +160,8 @@ def deliver_next_command(
 ) -> DeviceCommand | None:
     delivered_at = now or datetime.now(timezone.utc)
     lock_device(db, device)
+    db.refresh(device)
+    require_control_authority(db, device)
     lease_expired_at = delivered_at - timedelta(seconds=delivery_lease_seconds)
     db.execute(
         update(DeviceCommand)
@@ -166,7 +193,24 @@ def deliver_next_command(
                         ModuleInstallation.device_id == device.id,
                     ).values(status="failed", error=pending.error))
     db.flush()
-    command = db.scalar(
+    # New strict work is pinned at queue time. Reject withdrawal, incompatible
+    # updates or same-version schema changes before its FIRST delivery only.
+    # Previously delivered actions keep uncertainty/receipts; never replay them
+    # as newly queued work or rewrite their evidence as not_dispatched.
+    for pending in db.scalars(select(DeviceCommand).where(
+        DeviceCommand.device_id == device.id, DeviceCommand.status == "queued",
+        DeviceCommand.delivered_at.is_(None), DeviceCommand.delivery_attempts == 0,
+        DeviceCommand.command_type.in_(("capability.invoke", "application.capability.invoke")),
+    )):
+        try:
+            validate_invocation(db, device, pending.payload)
+        except ValueError:
+            pending.status = "failed"
+            pending.error = "Capability contract unavailable or changed before dispatch"
+            pending.result = {"execution_state": "not_dispatched"}
+            pending.completed_at = delivered_at
+    db.flush()
+    candidates = db.scalars(
         select(DeviceCommand)
         .where(
             DeviceCommand.device_id == device.id,
@@ -180,8 +224,11 @@ def deliver_next_command(
             DeviceCommand.expires_at > delivered_at,
         )
         .order_by(DeviceCommand.created_at, DeviceCommand.id)
-        .limit(1)
     )
+    command = next((candidate for candidate in candidates
+                    if candidate.delivered_at is not None
+                    or candidate.command_type not in {"capability.invoke", "application.capability.invoke"}
+                    or can_dispatch_capability(db, device, candidate.payload.get("capability_id"), now=delivered_at)), None)
     if command is None:
         db.commit()
         return None

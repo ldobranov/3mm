@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend.db.device import Device, DeviceCredential, DevicePairingRequest
+from backend.db.device import Device, DeviceCredential, DevicePairingRequest, DevicePlatformState
 from backend.services.device_pairing import pairing_code_hash
 from three_mm_protocol.fleet_pairing import NodeEnrollmentRequest, NodeEnrollmentResponse
 
@@ -29,8 +29,12 @@ def enroll_node(db: Session, payload: NodeEnrollmentRequest, *, now=None):
         DevicePairingRequest.requested_device_id == payload.device_id,
     ))
     if row is None:
-        if db.scalar(select(Device.id).where(Device.device_id == payload.device_id)) is not None:
-            raise EnrollmentConflict("Device already registered; administrator recovery required")
+        existing = db.scalar(select(Device).where(Device.device_id == payload.device_id))
+        if existing is not None:
+            platform = db.get(DevicePlatformState, existing.id)
+            if platform is None or (platform.authority_status, platform.lifecycle, platform.reason) != (
+                "released", "enrollment_pending", "authority.enrollment_authorized"):
+                raise EnrollmentConflict("Device already registered; administrator recovery required")
         count = db.scalar(select(func.count()).select_from(DevicePairingRequest).where(
             DevicePairingRequest.created_by_user_id.is_(None)))
         if count >= 1000:

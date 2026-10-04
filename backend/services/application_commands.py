@@ -9,8 +9,8 @@ from backend.db.device import Device, DeviceCommand
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
 from backend.services.application_extensions import load_application_definition
 from backend.services.application_configuration import _validate_value
-from backend.services.device_commands import queue_command, commit_queued_command, _utc
-from backend.services.device_capability_registry import has_registered_capability
+from backend.services.device_commands import queue_command, commit_queued_command, _utc, require_control_authority, DeviceCommandError
+from backend.services.device_capability_registry import has_registered_capability, validate_invocation, can_dispatch_capability
 from backend.services.device_runtime_features import command_is_supported, lock_device
 from three_mm_protocol.application_commands import ApplicationCommandLookupV1, ApplicationCommandSubmitV1
 
@@ -73,6 +73,8 @@ def submit_command(db, installation, payload):
     identity = hashlib.sha256(f'{installation.id}:{device.device_id}:{request.request_id}'.encode()).hexdigest()
     command_payload = {'capability_id': binding.capability_id, 'action': binding.action, 'arguments': request.arguments,
         'binding_id': binding.binding_id, 'direction': request.direction, 'ttl_seconds': request.ttl_seconds}
+    if binding.contract_version is not None:
+        command_payload['contract_version'] = binding.contract_version
     if request.not_after is not None:
         command_payload['not_after'] = request.not_after.isoformat()
     command = queue_command(db, device=device, command_type=COMMAND_TYPE, payload=command_payload,
@@ -139,6 +141,11 @@ def command_lookup(db, installation, payload):
 def authorize_execution(db, device, command_id):
     """One live permit, never redelivered. A missing response is not retryable."""
     lock_device(db, device)
+    db.refresh(device)
+    try:
+        require_control_authority(db, device)
+    except DeviceCommandError as exc:
+        raise ValueError(str(exc)) from exc
     if not command_is_supported(db, device, COMMAND_TYPE):
         raise ValueError('Device runtime does not support application execution permits')
     record = db.get(ApplicationCommandRequest, command_id)
@@ -148,6 +155,11 @@ def authorize_execution(db, device, command_id):
     installation = db.get(ApplicationExtensionInstallation, record.installation_id)
     epoch = db.get(ApplicationCommandEpoch, record.installation_id)
     binding, target = _binding(db, installation, command.payload['binding_id'], command.payload['arguments'], command.payload['ttl_seconds'])
+    if command.payload.get('contract_version') != binding.contract_version:
+        raise ValueError('Application capability contract changed')
+    validate_invocation(db, device, command.payload)
+    if not can_dispatch_capability(db, device, binding.capability_id):
+        raise ValueError('Capability is temporarily unavailable; physical permit denied')
     if target.id != device.id or epoch is None or epoch.generation != record.generation or installation.module_package_id != record.package_id or _utc(command.expires_at) <= datetime.now(UTC):
         raise ValueError('Physical command authority expired or changed')
     changed = db.execute(update(ApplicationCommandRequest).where(

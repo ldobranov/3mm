@@ -5,12 +5,13 @@ from sqlalchemy import select
 
 from backend.db.device import Device
 from backend.services.device_runtime_features import (
-    replace_runtime_features,
     runtime_features_snapshot,
 )
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from backend.utils.device_auth import require_device
+from backend.services.device_protocol import DeviceOperations
+from backend.utils.device_protocol_http import call
 from three_mm_protocol.node_features import (
     CoreNodeProtocolV1,
     DeviceRuntimeFeaturesReportV1,
@@ -28,10 +29,7 @@ def _own(device, device_id):
 @router.get("/{device_id}/protocol", response_model=CoreNodeProtocolV1)
 def protocol(device_id: str, device=Depends(require_device), db=Depends(get_db)):
     _own(device, device_id)
-    snapshot = runtime_features_snapshot(db, device)
-    return CoreNodeProtocolV1(
-        device_id=device_id, runtime_features_revision=snapshot.revision
-    )
+    return call(DeviceOperations(db, device).protocol)
 
 
 @router.put(
@@ -45,13 +43,7 @@ def report_features(
 ):
     _own(device, device_id)
     _own(device, payload.device_id)
-    try:
-        snapshot = replace_runtime_features(db, device, payload)
-        db.commit()
-        return snapshot
-    except ValueError as exc:
-        db.rollback()
-        raise HTTPException(409, str(exc)) from exc
+    return call(DeviceOperations(db, device).features, payload)
 
 
 @router.get(

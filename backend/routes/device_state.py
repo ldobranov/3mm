@@ -12,6 +12,8 @@ from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from backend.utils.device_auth import require_device
 from three_mm_protocol import AgentReportedState, DeviceDesiredState
+from backend.services.device_protocol import DeviceOperations, state_row, desired_snapshot
+from backend.utils.device_protocol_http import call
 
 router = APIRouter(prefix="/api/v1/devices", tags=["device-state"])
 
@@ -29,26 +31,15 @@ class StateSummary(BaseModel):
     synchronized: bool
 
 def _row(db: Session, device: Device) -> DeviceState:
-    row = db.scalar(select(DeviceState).where(DeviceState.device_id == device.id))
-    if row is None:
-        row = DeviceState(device_id=device.id, desired_state={}, reported_state={})
-        db.add(row); db.commit(); db.refresh(row)
-    return row
+    return state_row(db, device)
 
 def _desired(row: DeviceState, device_id: str) -> DeviceDesiredState:
-    value = row.desired_updated_at
-    if value.tzinfo is None: value = value.replace(tzinfo=timezone.utc)
-    try:
-        return DeviceDesiredState(device_id=device_id, revision=row.desired_revision, state=row.desired_state, updated_at=value)
-    except ValueError as exc:
-        # Keep historical state for backup/recovery, without sending an invalid
-        # Node message or silently resetting its desired revision.
-        raise HTTPException(409, detail={"code": "stored_desired_state_invalid", "revision": row.desired_revision, "message": "Stored desired state requires a compatible bounded update; original data was preserved"}) from exc
+    return call(desired_snapshot, row, device_id)
 
 @router.get("/{device_id}/desired-state", response_model=DeviceDesiredState)
 def get_desired_state(device_id: str, device: Device = Depends(require_device), db: Session = Depends(get_db)) -> DeviceDesiredState:
     if device.device_id != device_id: raise HTTPException(403, "Device identity mismatch")
-    return _desired(_row(db, device), device_id)
+    return call(DeviceOperations(db, device).desired_state)
 
 @router.put("/{device_id}/desired-state", response_model=DeviceDesiredState)
 def update_desired_state(device_id: str, payload: DesiredStateUpdate, _admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> DeviceDesiredState:
@@ -69,11 +60,7 @@ def update_desired_state(device_id: str, payload: DesiredStateUpdate, _admin: Us
 @router.post("/{device_id}/reported-state", response_model=AgentReportedState)
 def report_state(device_id: str, payload: AgentReportedState, device: Device = Depends(require_device), db: Session = Depends(get_db)) -> AgentReportedState:
     if device.device_id != device_id or payload.device_id != device_id: raise HTTPException(403, "Device identity mismatch")
-    row = _row(db, device)
-    if payload.applied_revision > row.desired_revision: raise HTTPException(409, "Reported revision is ahead of desired state")
-    row.reported_revision = payload.applied_revision; row.reported_state = payload.state; row.reported_at = payload.reported_at
-    db.commit()
-    return payload
+    return call(DeviceOperations(db, device).reported_state, payload)
 
 @router.get("/{device_id}/state", response_model=StateSummary)
 def get_state(device_id: str, _admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> StateSummary:

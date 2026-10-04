@@ -38,6 +38,7 @@ from backend.routes.audit_routes import router as audit_router
 from backend.routes.auth_refresh import router as refresh_router
 from backend.routes.display_routes import router as display_router
 from backend.routes.device_pairing import router as device_pairing_router
+from backend.routes.device_platform import router as device_platform_router
 from backend.routes.device_ingest import router as device_ingest_router
 from backend.routes.device_registry import router as device_registry_router
 from backend.routes.device_commands import router as device_commands_router
@@ -284,6 +285,7 @@ app.include_router(user_router, prefix="/api/user")
 # app.include_router(page_router, prefix="/pages")
 app.include_router(display_router)
 app.include_router(device_pairing_router)
+app.include_router(device_platform_router)
 app.include_router(device_ingest_router)
 app.include_router(device_registry_router)
 app.include_router(device_commands_router)

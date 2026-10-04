@@ -371,7 +371,13 @@ cat <<EOF
 Release: $release_id
 Log while LAN access remains: journalctl -fu $unit.service
 
+EOF
+if [[ -d /sys/class/net/wlan0/wireless ]]; then
+  cat <<'EOF'
 This Wi-Fi SSH connection is expected to close when setup mode starts.
 Then join the open network "3mm Setup XXXX" from a phone. The setup page should
 open automatically; fallback: http://10.42.0.1:8895/setup
 EOF
+else
+  printf 'Without a Wi-Fi adapter, the full profile starts Standalone at %s (no Setup AP).\n' "$frontend_origin"
+fi

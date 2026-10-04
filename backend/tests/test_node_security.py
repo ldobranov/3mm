@@ -256,8 +256,13 @@ def test_neutral_contracts_have_no_runtime_driver_or_fleet_imports():
         "three_mm_protocol/device_capabilities.py",
         "three_mm_protocol/node_features.py",
         "three_mm_protocol/node_security.py",
+        "three_mm_protocol/device_platform.py",
+        "three_mm_protocol/device_authority.py",
+        "three_mm_protocol/capability_contracts.py",
+        "three_mm_protocol/capability_availability.py",
         "backend/services/device_capability_registry.py",
         "backend/services/device_runtime_features.py",
+        "backend/services/device_platform.py",
         "examples/mock_embedded/client.py",
     ]
     forbidden = {

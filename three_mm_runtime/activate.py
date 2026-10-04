@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+import argparse
 
 from three_mm_provisioning import FileNetworkRecoveryMarker, FileProvisioningStore
 from three_mm_runtime.services import DeviceRuntimePlanner, RuntimeService
@@ -31,6 +32,11 @@ def _systemctl(*arguments: str) -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+
+
+def _require_setup_interface() -> None:
+    if not Path("/sys/class/net/wlan0/wireless").is_dir():
+        raise RuntimeError("Setup AP requires the wlan0 Wi-Fi interface; application services were not stopped")
 
 
 def _bootstrap_local_agent(
@@ -72,6 +78,9 @@ def activate(data_dir: Path = Path("/var/lib/3mm/provisioning")) -> None:
         if profile is InstallProfile.NODE else tuple(UNIT_NAMES.values())
     )
     if plan.includes(RuntimeService.SETUP):
+        # Check before stopping a working Core/Agent. AP startup is a Linux
+        # adapter concern, not a generic Device/Node Platform requirement.
+        _require_setup_interface()
         _systemctl("disable", "--now", *application_units)
         _systemctl("enable", "--now", *SETUP_UNITS)
         return
@@ -85,5 +94,18 @@ def activate(data_dir: Path = Path("/var/lib/3mm/provisioning")) -> None:
     _systemctl("enable", "--now", *selected)
 
 
+def check_active(data_dir: Path = Path("/var/lib/3mm/provisioning")) -> None:
+    plan = DeviceRuntimePlanner(
+        FileProvisioningStore(data_dir),
+        FileNetworkRecoveryMarker(data_dir / "network-recovery.json"),
+    ).resolve()
+    units = SETUP_UNITS if plan.includes(RuntimeService.SETUP) else tuple(UNIT_NAMES[s] for s in plan.services)
+    for unit in units:
+        _systemctl("is-active", "--quiet", unit)
+
+
 if __name__ == "__main__":
-    activate()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check-active", action="store_true")
+    arguments = parser.parse_args()
+    check_active() if arguments.check_active else activate()

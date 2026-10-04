@@ -35,6 +35,8 @@ class NodeEnrollmentWorker:
         self._thread = None
 
     def _state(self):
+        if (self.path.parent / "authority-reset.json").exists():
+            raise ValueError("Incomplete authority reset requires local recovery")
         if self.path.exists():
             state = EnrollmentState.model_validate_json(self.path.read_text(encoding="utf-8"))
             if state.credential.device_id != self.device_id or state.credential.hub_endpoint != self.endpoint:

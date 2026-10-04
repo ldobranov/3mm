@@ -117,6 +117,8 @@ mutation_started=0
 database_backup_created=0
 environment_backup_created=0
 environment_tmp=""
+previous_active_units=()
+previous_enabled_units=()
 
 log() {
   printf '\n==> %s\n' "$1"
@@ -247,7 +249,7 @@ verify_runtime() {
     endpoint=${pair#*|}
     if systemctl is-active --quiet "$service"; then
       active_count=$((active_count + 1))
-      verify_endpoint "$endpoint"
+      verify_endpoint "$endpoint" || return 1
     fi
   done
   if [[ $active_count -eq 0 ]]; then
@@ -259,10 +261,31 @@ verify_runtime() {
 activate_runtime() {
   local source_release=$1
   local python_path
-  python_path=$(release_python "$source_release")
+  python_path=$(release_python "$source_release") || return 1
   PYTHONPATH="$source_release" \
-    "$python_path" -m three_mm_runtime.activate
+    "$python_path" -m three_mm_runtime.activate || return 1
+  # Do not accept a healthy Web/Core while the required Agent is restarting.
+  PYTHONPATH="$source_release" "$python_path" -m three_mm_runtime.activate --check-active || return 1
   verify_runtime
+}
+
+restore_runtime_units() {
+  local unit
+  for unit in "${runtime_services[@]}"; do
+    systemctl disable "$unit" >/dev/null 2>&1 || true
+  done
+  if [[ ${#previous_enabled_units[@]} -gt 0 ]]; then
+    systemctl enable "${previous_enabled_units[@]}" || return 1
+  fi
+  if [[ ${#previous_active_units[@]} -gt 0 ]]; then
+    systemctl start "${previous_active_units[@]}" || return 1
+    for unit in "${previous_active_units[@]}"; do
+      systemctl is-active --quiet "$unit" || return 1
+    done
+    verify_runtime
+  else
+    activate_runtime "$previous_release"
+  fi
 }
 
 restart_always_on_services() {
@@ -304,7 +327,7 @@ rollback() {
       if [[ $install_profile == node || -f $previous_release/deployment/systemd/3mm-update-helper.service ]]; then
         restart_always_on_services || true
       fi
-      activate_runtime "$previous_release" || {
+      restore_runtime_units || {
         systemctl --no-pager --full status "${runtime_services[@]}" >&2 || true
         echo "Rollback completed, but the previous release is not healthy." >&2
       }
@@ -383,6 +406,10 @@ fi
 if ! id -u 3mm >/dev/null 2>&1; then
   useradd --system --home-dir "$state_root" --shell /usr/sbin/nologin 3mm
 fi
+# Required even on generic Linux/VM hosts with no physical GPIO device.
+if ! getent group gpio >/dev/null 2>&1; then
+  groupadd --system gpio
+fi
 if [[ $install_profile == full ]]; then
 if ! getent group 3mm-app >/dev/null 2>&1; then
   groupadd --system 3mm-app
@@ -456,6 +483,7 @@ required_files=(
   three_mm_application_sdk/__init__.py
   three_mm_runtime/network_recovery.py
   three_mm_provisioning/network_recovery.py
+  three_mm_runtime/install_bootstrap.py
 )
 if [[ $install_profile == node ]]; then
   required_files=(
@@ -463,6 +491,7 @@ if [[ $install_profile == node ]]; then
     .3mm-install-profile .3mm-release.json deployment/node-wheels/provenance.json
     deployment/node-requirements.txt deployment/node_preflight.py
     three_mm_runtime/install_profile.py three_mm_runtime/activate.py
+    three_mm_runtime/install_bootstrap.py
     three_mm_runtime/node_recovery.py three_mm_runtime/network_recovery.py
     three_mm_runtime/node_update_helper.py deployment/apply_node_update.py
     three_mm_runtime/node_update_trust.py deployment/trust_node_update_hub.py
@@ -524,7 +553,14 @@ HOME="$deploy_home" npm_config_cache="$npm_cache" \
   --ignore-scripts --no-audit --no-fund
 fi
 
+log "Checking the runtime plan before stopping existing services"
+PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" -m three_mm_runtime.install_bootstrap \
+  --profile "$install_profile" --check-only
 log "Stopping services and backing up persistent state"
+for unit in "${runtime_services[@]}"; do
+  if systemctl is-active --quiet "$unit"; then previous_active_units+=("$unit"); fi
+  if systemctl is-enabled --quiet "$unit"; then previous_enabled_units+=("$unit"); fi
+done
 systemctl stop "${runtime_services[@]}" >/dev/null 2>&1 || true
 mutation_started=1
 if [[ $install_profile == node ]]; then
@@ -571,6 +607,11 @@ upsert_environment() {
 }
 if [[ $install_profile == full ]]; then
 upsert_environment DATABASE_URL sqlite:////var/lib/3mm/core/3mm.db
+  # Preserve the selected native/mock GPIO driver on upgrades; wired-only
+  # first installs must not implicitly enable a hardware implementation.
+  if [[ $environment_backup_created -eq 0 ]]; then
+    upsert_environment THREE_MM_GPIO_DRIVER mock
+  fi
 upsert_environment UPLOADS_DIR /var/lib/3mm/core/uploads
 upsert_environment BACKEND_EXTENSIONS_DIR /var/lib/3mm/core/extensions/backend
 upsert_environment FRONTEND_EXTENSIONS_DIR /var/lib/3mm/core/extensions/frontend
@@ -689,6 +730,10 @@ if [[ $database_existed_before_deploy -eq 0 ]]; then
       --create-development-default-if-empty
 fi
 fi
+
+log "Preparing the persistent runtime journal"
+runuser -u 3mm -- env PYTHONPATH="$release_dir" \
+  "$release_dir/.venv/bin/python" -m three_mm_runtime.install_bootstrap --profile "$install_profile"
 
 log "Activating release atomically"
 ln -sfnT "$release_dir" "$current_link"

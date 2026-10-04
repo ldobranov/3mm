@@ -6,6 +6,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.34] - 2026-10-03
+
+### Added
+
+- C10 common logical Device Protocol operations, replaceable transport boundary
+  and compatible HTTP adapter; no MQTT/WebSocket implementation or Fleet dependency.
+- C11 bounded versioned capability contracts, exact action/schema validation and
+  contract-digest checks at queue, dispatch and local runtime boundaries. Linux
+  modules and the independent firmware mock serve the same application binding.
+- C12/C13 installation authority binding, signed management, explicit reassignment
+  and recovery, separate connectivity/lifecycle and generic reset policies.
+- C14 registry v3 distinguishes supported offers, Core-owned selection and fresh
+  availability. Provider reports v2 cannot automatically activate new firmware
+  capabilities; health-aware commands wait within their original expiry.
+
+### Fixed
+
+- Wired-only Linux/VM first boot initializes Standalone without requiring a Setup
+  AP, creates required service groups and starts the local Agent safely. Upgrade
+  rollback restores the previous service set; identity and pairing are preserved.
+- Inventory-only capabilities cannot authorize raw commands or application binding.
+  Stale/unhealthy providers retain configuration without rewriting dispatched
+  evidence or replaying uncertain physical effects.
+
+### Compatibility and verification
+
+- Protocol 1.0, HTTP `/api/v1`, Application SDK 1.3 and existing Node Update remain.
+  Legacy providers retain selection until opt-in; unknown health is not fabricated.
+- Additive Alembic `859de4f5a6b7` and `96aef5a6b7c8` preserve existing identities,
+  credentials, modules, registrations and desired state. Once explicit capability
+  selection exists, downgrade requires the pre-upgrade database backup: dropping
+  the selection column would silently activate unapproved offers and is refused.
+- C10–C14 plus installer integrated local gate: 68 passed. C14/C11/provider/security
+  regression gate: 61 passed; separate transport/runtime/migration gate: 52 passed.
+  Suites overlap. Frontend type checking and production build passed. Linux CI
+  still runs the complete release checks before publication.
+- Prepared for full-profile Hub and ARMv6 Node assets. Real mixed-version
+  Hub/Zero/Fleet acceptance remains pending; no real ESP firmware, concrete
+  business extension package or business data is included.
+
 ## [0.3.0-beta.33] - 2026-10-03
 
 ### Added
@@ -830,7 +870,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.33...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.34...HEAD
+[0.3.0-beta.34]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.34
 [0.3.0-beta.33]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.33
 [0.3.0-beta.32]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.32
 [0.3.0-beta.31]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.31

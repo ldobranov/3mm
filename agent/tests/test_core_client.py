@@ -11,6 +11,7 @@ from agent.core_client import (
 )
 from three_mm_protocol.node_updates import  NodeUpdatePreparedArtifact
 from three_mm_protocol import AgentCommandResult
+from three_mm_protocol.transport import DeviceTransportError
 
 def assert_private_file(path: Path) -> None:
     if os.name == "posix":
@@ -106,7 +107,7 @@ def test_identifier_event_uses_agent_identity_and_persistent_outbox(monkeypatch,
     monkeypatch.setattr(
         "agent.core_client.CorePublisher._post",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            __import__("requests").RequestException("offline")
+            DeviceTransportError("offline")
         ),
     )
     credential = DeviceCredential(

@@ -18,6 +18,11 @@ from agent.core_client import DeviceCredential, DeviceCredentialStore
 from agent.identity import AgentIdentity, AgentIdentityStore
 from backend.db.audit_log import AuditLog
 from backend.db.device import Device, DeviceCredential as StoredDeviceCredential
+from backend.db.device import DevicePlatformState
+from backend.db.installation_identity import CoreInstallationIdentity
+from backend.services.device_registry import as_utc
+from three_mm_protocol.device_authority import AuthorityBinding, DeviceAuthorityStore
+from three_mm_protocol.installation_identity import InstallationIdentityV1
 from backend.db.user import User
 from backend.services.device_pairing import (
     approve_pairing_request,
@@ -142,6 +147,21 @@ def ensure_local_agent_pairing(
 
     store = DeviceCredentialStore(credential_dir)
     local_credential = store.load()
+    authority_store = None
+    authority_path = credential_dir / "device-authority.json"
+    core_identity = db.get(CoreInstallationIdentity, 1)
+    trusted_identity = InstallationIdentityV1(
+        installation_id=core_identity.installation_id, identity_version=core_identity.identity_version,
+        key_id=core_identity.key_id, public_key=core_identity.public_key,
+        key_generation=core_identity.key_generation, created_at=as_utc(core_identity.created_at),
+    ) if core_identity else None
+    if authority_path.exists() or authority_path.is_symlink():
+        if authority_path.is_symlink():
+            raise LocalAgentPairingError("Local authority pin cannot be a symbolic link")
+        pin = AuthorityBinding.model_validate_json(authority_path.read_bytes())
+        authority_store = DeviceAuthorityStore(credential_dir, identity.device_id, pin.credential_id)
+        if pin.installation != trusted_identity or trusted_identity is None:
+            raise LocalAgentPairingError("Local Core identity changed; explicit authority reset is required")
     device = db.scalar(select(Device).where(Device.device_id == identity.device_id))
     if (
         local_credential is not None
@@ -153,12 +173,24 @@ def ensure_local_agent_pairing(
         )
         is not None
     ):
+        if trusted_identity is not None:
+            (authority_store or DeviceAuthorityStore(credential_dir, identity.device_id, local_credential.credential_id)).pin_local(
+                trusted_identity, new_credential_id=local_credential.credential_id)
         return LocalAgentPairingResult("already_paired", identity.device_id)
 
     admin = _administrator(db, admin_email)
     if device is not None:
-        if device.revoked_at is not None:
+        platform = db.get(DevicePlatformState, device.id)
+        recovery_approved = platform is not None and (platform.authority_status, platform.lifecycle, platform.reason) == (
+            "released", "enrollment_pending", "authority.enrollment_authorized")
+        active = db.scalar(select(StoredDeviceCredential.id).where(StoredDeviceCredential.device_id == device.id,
+                                                                 StoredDeviceCredential.revoked_at.is_(None)))
+        if (device.revoked_at is not None or active is None or (platform and platform.lifecycle == "revoked")) and not recovery_approved:
             raise LocalAgentPairingError("The local Agent identity is revoked in Core")
+        if recovery_approved:
+            device.revoked_at = None
+            platform.authority_status, platform.lifecycle, platform.reason = "bound", "active", None
+            platform.revision += 1
         revoked_at = datetime.now(UTC)
         active_credentials = tuple(
             db.scalars(
@@ -182,6 +214,9 @@ def ensure_local_agent_pairing(
                 credential_secret=replacement.secret,
             )
         )
+        if trusted_identity is not None:
+            (authority_store or DeviceAuthorityStore(credential_dir, identity.device_id, replacement.credential_id)).pin_local(
+                trusted_identity, new_credential_id=replacement.credential_id)
         db.add(
             AuditLog(
                 user_id=admin.id,
@@ -235,6 +270,9 @@ def ensure_local_agent_pairing(
             credential_secret=issued_credential.secret,
         )
     )
+    if trusted_identity is not None:
+        DeviceAuthorityStore(credential_dir, identity.device_id, issued_credential.credential_id).pin_local(
+            trusted_identity, new_credential_id=issued_credential.credential_id)
     db.add(
         AuditLog(
             user_id=admin.id,

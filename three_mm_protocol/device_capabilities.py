@@ -12,9 +12,11 @@ from pydantic import (
     StrictInt,
     StrictStr,
     model_validator,
+    model_serializer,
 )
 
 from three_mm_protocol.models import ProtocolModel
+from three_mm_protocol.capability_contracts import CapabilityContractV1, registration_contract
 
 ProviderType = Annotated[
     str, Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_.-]*$")
@@ -27,12 +29,14 @@ Revision = Annotated[StrictInt, Field(ge=0, le=2_147_483_646)]
 
 class CapabilityAdvertisementV1(ProtocolModel):
     capability_id: ProviderId
+    contract: CapabilityContractV1 | None = None
     metadata: dict[str, StrictStr | StrictBool | StrictInt | StrictFloat] = Field(
         default_factory=dict
     )
 
     @model_validator(mode="after")
     def bounded_metadata(self):
+        registration_contract(self.capability_id, self.contract)
         if len(self.metadata) > 32:
             raise ValueError("Capability metadata has too many fields")
         for key, value in self.metadata.items():
@@ -45,6 +49,13 @@ class CapabilityAdvertisementV1(ProtocolModel):
         if len(json.dumps(self.metadata, ensure_ascii=False).encode()) > 8192:
             raise ValueError("Capability metadata is too large")
         return self
+
+    @model_serializer(mode="wrap")
+    def wire(self, handler):
+        data = handler(self)
+        if self.contract is None:
+            data.pop("contract", None)
+        return data
 
 
 class CapabilityProviderReportV1(ProtocolModel):
@@ -83,6 +94,16 @@ class CapabilityProviderSnapshotV1(ProtocolModel):
     reported_at: datetime
 
 
+class CapabilityProviderReportV2(CapabilityProviderReportV1):
+    """Supported offers only. Core-owned configuration selects registrations."""
+    schema_version: Literal[2]
+
+
+class CapabilityProviderSnapshotV2(CapabilityProviderSnapshotV1):
+    schema_version: Literal[2] = 2
+    configured_capability_ids: tuple[ProviderId, ...]
+
+
 class CapabilityProviderControlV1(ProtocolModel):
     expected_revision: Revision
     enabled: StrictBool
@@ -95,3 +116,13 @@ class CapabilityRegistrationV2(ProtocolModel):
     provider_version: str
     metadata: dict = Field(default_factory=dict)
     status: Literal["active"] = "active"
+    contract_version: str | None = None
+    contract: CapabilityContractV1 | None = None
+
+    @model_serializer(mode="wrap")
+    def wire(self, handler):
+        data = handler(self)
+        if self.contract is None:
+            data.pop("contract", None)
+            data.pop("contract_version", None)
+        return data

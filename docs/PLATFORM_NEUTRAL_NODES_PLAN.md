@@ -37,10 +37,21 @@ Installation peer enrollment is separate from device enrollment.
 | C7 | Authentication, identity, replay, expiry, bounds and audit validation | Hardened locally; focused security/regression checks |
 | C8 | Non-destructive migration and mixed-version compatibility | Implemented locally; migrations, portable restore/rollback and legacy recovery verified |
 | C9 | Linux + mock embedded acceptance through the same Core contracts | Local runtime/application acceptance verified; deployed Hub/Zero/Fleet gate pending |
+| C10 | Logical Device Protocol and replaceable transport adapters | Implemented locally; HTTP compatibility and non-HTTP service proof; deployment pending |
+| C11 | Versioned capability contracts, distinct from provider versions | Implemented locally; exact contracts, queue/dispatch/runtime checks, Linux + firmware application proof |
+| C12 | Device ownership, installation authority and explicit reassignment | Implemented locally; installation key pins, signed management, explicit release/recovery; live gate pending |
+| C13 | Generic lifecycle, recovery and explicit reset semantics | Implemented locally; durable lifecycle, connectivity separation and reset policies; UI/live gate pending |
+| C14 | Supported, registered/configured and available/healthy capabilities | Implemented locally; explicit selection, fresh health, deferred dispatch and migration verified; consumer UI/live gate pending |
 
 C7 and C8 constraints apply from C1 onward, not only at the end. Each stage must
 leave the current Linux Agent usable. Do not publish or deploy these changes
 without a separate request and the relevant acceptance evidence.
+
+C10–C14 were added on 2026-10-03. They extend this SAME shared platform, not a
+Fleet-only subsystem. Standalone, Hub/Fleet, local Agent, application extensions
+and AI-generated extensions consume the same contracts. Application SDK remains
+1.3; a capability contract, device protocol, provider implementation and SDK
+version are separate concerns. No new hardware implementation is authorized.
 
 ## C0 — Current behavior, not a replacement subsystem
 
@@ -216,6 +227,122 @@ An application extension requests the same capability contract (for example
 Agent module, embedded firmware or another provider. No application-specific
 hardware branching or Fleet dependency is required for invocation/state.
 
-Only after C9 starts a separate CONERAX Embedded Runtime / ESP32 MVP milestone.
+## C10 — Transport abstraction
+
+Separate logical Device Protocol operations from transport implementation.
+HTTP remains the reference adapter; MQTT/WebSocket are not implemented now.
+Enrollment, authentication, heartbeat, inventory, commands/results, events,
+capability registration/state and desired/reported state use the same protocol
+objects and Core services, without platform-to-transport rules.
+
+Protocol models and business logic must not depend on HTTP headers, URL paths,
+status codes or polling semantics. Authentication proof extraction, serialization,
+connection management and delivery waits belong to the adapter. Shared services
+enforce identity, revocation, replay/idempotency, expiry and bounds. Transport
+acknowledgement never means physical execution was confirmed.
+
+Acceptance: unchanged Linux HTTP behavior plus a mock adapter passing protocol
+objects without HTTP to the SAME Core operations. Core does not inspect the
+transport; future adapters must not change device, capability or application
+contracts. See [C10 implementation and limitations](PLATFORM_NEUTRAL_C10.md).
+
+## C11 — Versioned capability contracts
+
+Keep `capability_id`, `contract_version` and `provider_version` separate. Prefer
+an explicit contract version over renaming every capability to `.v1`. Applications
+declare a strict supported contract initially; version ranges may follow when
+needed. Provider release versions do not select the application contract.
+
+A minimal bounded contract describes actions, argument/result schemas, state and
+events. Do not prebuild a complex framework. Linux module and firmware providers
+of the same contract must be interchangeable. Reject unsupported contracts or
+actions before queueing/dispatch, not after physical execution. Define migration
+and legacy defaults explicitly; existing contract names remain compatible.
+
+Acceptance: two different provider implementations serve the same strict v1
+application request; incompatible requests fail before dispatch.
+Implemented locally in [C11 contract, compatibility and evidence](PLATFORM_NEUTRAL_C11.md).
+Legacy providers remain unversioned/unknown, not fabricated v1 implementations.
+Explicit contracts require updated Core/runtime support; existing SDK stays 1.3.
+
+## C12 — Ownership, authority binding and reassignment
+
+A stable device identity is distinct from its current installation authority
+binding and credential. Binding names a trusted installation, not merely a URL.
+Enrollment progresses from unowned through request/approval to bound. Changing
+an address, discovering another Hub or copying a credential must not grant a
+second installation authority.
+
+Define explicit authorized release/reassignment/authority reset: leave Hub A,
+invalidate its binding/credentials, request enrollment to B and bind only after
+approval. Preserve device ID unless an explicitly chosen identity reset applies.
+Old credentials must be revoked/rotated under the selected model. UX may follow
+the generic contract; do not introduce a hardware-specific pairing path.
+
+Acceptance: B is refused before reassignment, address changes alone preserve
+trust, and A cannot execute new commands after reassignment. Existing selected
+Hub trust is preserved. See [C12/C13 implementation, compatibility and limits](PLATFORM_NEUTRAL_C12_C13.md).
+
+## C13 — Lifecycle, recovery and reset semantics
+
+Define shared lifecycle concepts for Linux and mock embedded nodes: initial
+setup/provisioning, enrollment pending, active, degraded, revoked and recovery.
+Connectivity is independent: active lifecycle plus offline connectivity is valid.
+Do not persist temporary network loss as a replacement for ownership state.
+
+Recovery is a restricted safe path when normal runtime cannot be entered. Its
+implementation (Linux services/release rollback or firmware recovery partition)
+belongs outside Core. Define separately:
+
+- network reset: network configuration changes; identity/authority policy explicit;
+- authority reset: removes binding/credentials for authorized new enrollment;
+- full factory reset: network, authority, credentials and local application
+  configuration, with an explicitly chosen preserve/regenerate identity policy.
+
+Revocation denies management authority; it is not factory reset. A revoked node
+must not automatically re-enroll to bypass the decision. Acceptance includes
+separate lifecycle/connectivity, shared reset semantics and explicit recovery
+approval without hardware branches. C13 does not silently redefine existing
+Linux Master reset in earlier stages. The local implementation and generic reset
+policies are documented in [C12/C13](PLATFORM_NEUTRAL_C12_C13.md); no reset was
+executed against a deployed device for this stage.
+
+## C14 — Discovery, configuration and availability
+
+Distinguish three levels using one registry/query boundary:
+
+- supported/discoverable: a runtime/provider can offer the capability;
+- registered/configured: approved configuration activates it for this device;
+- available/healthy: the registered capability can execute safely now.
+
+Inventory may describe supported hardware/runtime features but grants no
+application binding or command authority. `has_registered_capability` answers
+the configuration question; availability/health is a separate runtime question.
+Applications bind registered capabilities. Unhealthy/offline providers retain
+registration and configuration with an explicit unavailable reason.
+
+Reconnect must not require configuration again. A firmware update's new
+capability is supported only, not automatically registered/activated. Acceptance
+tests all three levels, inventory spoofing, outage/reconnect and firmware additions.
+
+Implemented locally in [C14 contracts, compatibility and evidence](PLATFORM_NEUTRAL_C14.md).
+Registry v3 exposes the three levels through the SAME common service. Provider
+report v2 advertises offers; Core-owned selection controls registration. Legacy
+v1 providers retain their existing selection until opt-in, without inventing
+healthy status. Once explicit mode is adopted, switching report formats or
+adding a new provider cannot bypass approval. Linux module configuration still
+uses the existing approved installation/enable path. Fresh provider health is
+separate from configuration and measured capability values. New commands wait
+while unavailable, subject to expiry; uncertain dispatched work is not replayed.
+Protocol remains 1.0 and Application SDK remains 1.3.
+
+## Extended final gate
+
+C10–C14 retain the C9 Standalone, Hub/Fleet and application acceptance matrix,
+using common identity, authority, lifecycle, registry, capability contracts and
+state across runtimes/transports. Fleet is a consumer, not the owner. Verify new
+generic contracts together with existing Linux nodes before closing the milestone.
+
+Only after this extended gate starts a separate CONERAX Embedded Runtime / ESP32 MVP milestone.
 New hardware is not a reason to edit Core. A proven missing generic contract
 must be specified first, and be useful beyond a concrete board or extension.

@@ -1,6 +1,7 @@
 """Module manifest v2 contract shared by Core and Agent."""
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, model_serializer
+from three_mm_protocol.capability_contracts import CapabilityContractV1, registration_contract
 
 SEMVER_PATTERN = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
 MODULE_ID_PATTERN = r"^[a-z0-9]+(?:[.-][a-z0-9]+)+$"
@@ -42,6 +43,21 @@ class ModuleRegistration(StrictModel):
     kind: Literal["navigation", "service", "widget", "capability"]
     registration_id: str = Field(pattern=MODULE_ID_PATTERN)
     metadata: dict[str, str | bool | int] = Field(default_factory=dict)
+    contract: CapabilityContractV1 | None = None
+
+    @model_validator(mode="after")
+    def valid_contract(self):
+        if self.contract is not None and self.kind != "capability":
+            raise ValueError("Only capabilities declare a capability contract")
+        registration_contract(self.registration_id, self.contract)
+        return self
+
+    @model_serializer(mode="wrap")
+    def wire(self, handler):
+        data = handler(self)
+        if self.contract is None:
+            data.pop("contract", None)
+        return data
 
 class ModuleManifestV2(StrictModel):
     manifest_version: Literal[2]

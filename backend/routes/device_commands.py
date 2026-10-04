@@ -8,21 +8,19 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.db.device import Device, DeviceCommand
-from backend.db.module import ModuleInstallation
 from backend.db.user import User
 from backend.services.device_commands import (
     DeviceCommandError,
-    command_envelope,
     commit_queued_command,
-    deliver_next_command,
     queue_command,
-    record_command_result,
 )
 from backend.services.device_command_notifier import device_command_notifier
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from backend.utils.device_auth import require_device
 from three_mm_protocol import AgentCommand, AgentCommandResult
+from backend.services.device_protocol import DeviceOperations
+from backend.utils.device_protocol_http import call
 
 router = APIRouter(prefix="/api/v1/devices", tags=["device-commands"])
 
@@ -110,22 +108,16 @@ async def next_command(
     if device.device_id != device_id:
         raise HTTPException(status_code=403, detail="Device identity mismatch")
     revision = device_command_notifier.revision(device.id)
-    try:
-        command = deliver_next_command(db, device=device)
-        if command is None and wait_seconds > 0:
-            await device_command_notifier.wait(
-                device.id,
-                after=revision,
-                timeout=wait_seconds,
-            )
-            db.rollback()
-            command = deliver_next_command(db, device=device)
-    except DeviceCommandError as exc:
-        raise HTTPException(409, detail=str(exc)) from exc
+    operations = DeviceOperations(db, device)
+    command = call(operations.next_command)
+    if command is None and wait_seconds > 0:
+        await device_command_notifier.wait(device.id, after=revision, timeout=wait_seconds)
+        db.rollback()
+        command = call(operations.next_command)
     if command is None:
         response.status_code = status.HTTP_204_NO_CONTENT
         return response
-    return command_envelope(command, device.device_id)
+    return command
 
 
 @router.post("/{device_id}/commands/{command_id}/result", response_model=CommandStatusResponse)
@@ -138,22 +130,7 @@ def submit_command_result(
 ) -> CommandStatusResponse:
     if device.device_id != device_id or payload.command_id != command_id:
         raise HTTPException(status_code=403, detail="Command identity mismatch")
-    try:
-        command = record_command_result(db, device=device, result=payload)
-    except DeviceCommandError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if command.command_type in {"module.install", "module.disable"}:
-        installation = db.scalar(select(ModuleInstallation).where(ModuleInstallation.command_id == command.command_id))
-        if installation is not None:
-            installation.status = command.status
-            installation.error = command.error
-            if command.status == "succeeded":
-                if command.command_type == "module.install":
-                    installation.installed_version = installation.desired_version
-                    installation.enabled = True
-                else:
-                    installation.enabled = False
-            db.commit()
+    command = call(DeviceOperations(db, device).command_result, payload)
     return CommandStatusResponse.model_validate(command, from_attributes=True)
 
 
@@ -162,8 +139,4 @@ def authorize_physical_execution(device_id: str, command_id: str,
         device: Device = Depends(require_device), db: Session = Depends(get_db)):
     if device.device_id != device_id:
         raise HTTPException(403, 'Device identity mismatch')
-    from backend.services.application_commands import authorize_execution
-    try:
-        return authorize_execution(db, device, command_id)
-    except ValueError as exc:
-        raise HTTPException(409, str(exc)) from exc
+    return call(DeviceOperations(db, device).authorize_execution, command_id)

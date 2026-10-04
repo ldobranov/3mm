@@ -11,7 +11,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend.db.device import Device, DeviceCredential, DevicePairingRequest
+from backend.db.device import Device, DeviceCredential, DevicePairingRequest, DevicePlatformState, DeviceEvent
 
 DEFAULT_PAIRING_TTL = timedelta(minutes=10)
 PAIRING_TOKEN_BYTES = 18
@@ -171,7 +171,10 @@ def approve_pairing_request(
     existing = db.scalar(
         select(Device).where(Device.device_id == request.requested_device_id)
     )
-    if existing is not None:
+    platform = db.get(DevicePlatformState, existing.id) if existing else None
+    if existing is not None and (request.created_by_user_id is not None or platform is None or
+        (platform.authority_status, platform.lifecycle, platform.reason) != (
+            "released", "enrollment_pending", "authority.enrollment_authorized")):
         db.rollback()
         raise PairingApprovalError("Device identity is already registered")
 
@@ -181,13 +184,21 @@ def approve_pairing_request(
         db.rollback()
         raise PairingApprovalError("Pairing request metadata is incomplete")
 
-    device = Device(
+    device = existing or Device(
         device_id=request.requested_device_id,
         display_name=metadata["display_name"],
         role=metadata["role"],
         protocol_version=metadata["protocol_version"],
         approved_at=approved_at,
     )
+    if existing is not None:
+        device.revoked_at = None
+        platform.authority_status, platform.lifecycle, platform.reason = "bound", "active", None
+        platform.revision += 1
+        platform.updated_at = approved_at
+        db.add(DeviceEvent(device_id=device.id, event_id="evt_" + secrets.token_hex(16),
+            event_type="device.authority.bound", payload={"revision": platform.revision, "actor_id": approved_by_user_id},
+            occurred_at=approved_at))
     request.device = device
     request.approved_by_user_id = approved_by_user_id
     request.approved_at = approved_at

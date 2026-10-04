@@ -18,7 +18,7 @@ class DeviceBodyLimitMiddleware:
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "")
         protected = (
-            path.startswith("/api/v1/devices/") or path == "/api/v1/pairing/enroll"
+            path.startswith("/api/v1/devices/") or path in {"/api/v1/pairing/enroll", "/api/v1/pairing/authority-proof"}
         )
         if (
             scope["type"] != "http"

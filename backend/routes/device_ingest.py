@@ -6,9 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
-from backend.db.device import Device, DeviceHeartbeat, DeviceInventorySnapshot
+from backend.db.device import Device
 from backend.utils.db_utils import get_db
 from backend.utils.device_auth import require_device
+from backend.services.device_protocol import DeviceOperations
+from backend.utils.device_protocol_http import call
 from three_mm_protocol import AgentHeartbeat, AgentInventory, DeviceInventoryV2
 
 router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
@@ -42,14 +44,7 @@ def submit_heartbeat(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Device identity mismatch",
         )
-    db.add(
-        DeviceHeartbeat(
-            device_id=device.id,
-            protocol_version=payload.protocol_version,
-            payload=payload.model_dump(mode="json"),
-        )
-    )
-    db.commit()
+    call(DeviceOperations(db, device).heartbeat, payload)
     return HeartbeatAcceptedResponse()
 
 
@@ -69,11 +64,5 @@ def submit_inventory(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Device identity mismatch",
         )
-    db.add(
-        DeviceInventorySnapshot(
-            device_id=device.id,
-            inventory=payload.model_dump(mode="json"),
-        )
-    )
-    db.commit()
+    call(DeviceOperations(db, device).inventory, payload)
     return InventoryAcceptedResponse()

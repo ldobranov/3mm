@@ -70,7 +70,7 @@ def test_baseline_host_and_complete_release_are_ready(tmp_path: Path) -> None:
     assert all(check.passed for check in checks)
 
 
-def test_missing_wlan0_and_frontend_asset_are_reported(tmp_path: Path) -> None:
+def test_wired_only_host_allowed_but_missing_frontend_asset_reported(tmp_path: Path) -> None:
     _complete_release(tmp_path)
     (tmp_path / "frontend" / "dist" / "assets" / "app.js").unlink()
 
@@ -98,14 +98,13 @@ def test_missing_wlan0_and_frontend_asset_are_reported(tmp_path: Path) -> None:
         command_lookup=_lookup,
         runner=runner_without_wifi,
         system_name="Linux",
-        machine="aarch64",
+        machine="x86_64",
         python_version=(3, 13, 5),
         python_executable="/usr/bin/python3",
     )
     failed_names = {check.name for check in checks if not check.passed}
 
     assert failed_names == {
-        "network.wlan0",
         "release.frontend-javascript",
     }
 

@@ -10,17 +10,20 @@ import pytest
 
 
 SCRIPT = (Path(__file__).parents[1] / 'install-systemd.sh').read_text(encoding='utf-8')
-BASH = shutil.which('bash') or (
+BASH = (
     'C:/Program Files/Git/bin/bash.exe'
     if Path('C:/Program Files/Git/bin/bash.exe').is_file() else None
-)
+) or shutil.which('bash')
 pytestmark = pytest.mark.skipif(BASH is None, reason='Bash is required')
 
 
 def run(source):
-    return subprocess.run([BASH, '--noprofile', '--norc'],
-                          input='set -Eeuo pipefail\n' + source,
-                          text=True, capture_output=True, timeout=10)
+    # Bytes prevent Windows subprocess from translating shell stdin to CRLF.
+    result = subprocess.run([BASH, '--noprofile', '--norc'],
+                            input=('set -Eeuo pipefail\n' + source).encode(),
+                            capture_output=True, timeout=10)
+    return subprocess.CompletedProcess(result.args, result.returncode,
+                                       result.stdout.decode(), result.stderr.decode())
 
 
 def section(start, end):
@@ -28,11 +31,11 @@ def section(start, end):
 
 
 def test_shell_syntax():
-    result = subprocess.run([BASH, '-n'], input=SCRIPT, text=True,
+    result = subprocess.run([BASH, '-n'], input=SCRIPT.encode(),
                             capture_output=True, timeout=10)
     assert result.returncode == 0, result.stderr
     bootstrap = (Path(__file__).parents[2] / 'install.sh').read_text()
-    result = subprocess.run([BASH, '-n'], input=bootstrap, text=True,
+    result = subprocess.run([BASH, '-n'], input=bootstrap.encode(),
                             capture_output=True, timeout=10)
     assert result.returncode == 0, result.stderr
 
@@ -112,8 +115,43 @@ verify_runtime
                                           'http://127.0.0.1:8895/ready']
 
 
+def test_failed_endpoint_cannot_be_hidden_by_later_health_during_rollback():
+    result = run('install_profile=full\n' +
+                 section('verify_runtime() {', 'activate_runtime() {') + '''
+systemctl() { return 0; }
+verify_endpoint() { [[ "$1" != 'http://127.0.0.1:8890/ready' ]]; }
+# Rollback disables errexit, so explicit failure propagation is required.
+set +e
+verify_runtime
+exit $?
+''')
+    assert result.returncode == 1
+
+
 def test_backup_preparation_still_precedes_full_unit_installation():
     assert SCRIPT.index('-m deployment.prepare_backup_storage') < SCRIPT.index('install_units "$release_dir"')
+
+
+def test_wired_preflight_and_gpio_group_precede_runtime_mutation():
+    assert SCRIPT.index('groupadd --system gpio') < SCRIPT.index('install_units "$release_dir"')
+    assert SCRIPT.index('--profile "$install_profile" --check-only') < SCRIPT.index('mutation_started=1')
+
+
+def test_rollback_restores_actual_previous_units_without_replanning_setup():
+    result = run('''
+runtime_services=(3mm-core.service 3mm-web.service 3mm-agent.service 3mm-setup.service)
+previous_enabled_units=(3mm-core.service 3mm-agent.service)
+previous_active_units=(3mm-core.service 3mm-web.service 3mm-agent.service)
+systemctl() { printf '%s\\n' "$*"; }
+activate_runtime() { echo forbidden-planner; return 1; }
+verify_runtime() { echo health-verified; }
+''' + section('restore_runtime_units() {', 'restart_always_on_services() {') + '\nrestore_runtime_units\n')
+    assert result.returncode == 0, result.stderr
+    assert 'enable 3mm-core.service 3mm-agent.service' in result.stdout
+    assert 'start 3mm-core.service 3mm-web.service 3mm-agent.service' in result.stdout
+    assert 'is-active --quiet 3mm-agent.service' in result.stdout
+    assert 'forbidden-planner' not in result.stdout
+    assert 'health-verified' in result.stdout
 
 
 def test_node_environment_does_not_overwrite_hub_or_hardware_on_upgrade():
@@ -157,6 +195,7 @@ ln() { echo restore-current-link; }
 install_units() { echo restore-previous-units; }
 restart_always_on_services() { echo restart-recovery; }
 activate_runtime() { echo verify-previous-runtime; }
+restore_runtime_units() { activate_runtime "$previous_release"; }
 rm() { printf 'remove %s\\n' "$*"; }
 ''' + section('rollback() {', 'if [[ -L $current_link ]]; then') + '''
 trap rollback ERR

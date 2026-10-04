@@ -62,6 +62,18 @@ class DeviceCredential(Base):
     device = relationship("Device", back_populates="credentials")
 
 
+class DevicePlatformState(Base):
+    """Authority/lifecycle state, independent of link presence and provider type."""
+
+    __tablename__ = "device_platform_states"
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), primary_key=True)
+    authority_status = Column(String(16), nullable=False, default="bound")
+    lifecycle = Column(String(32), nullable=False, default="active")
+    revision = Column(Integer, nullable=False, default=0)
+    reason = Column(String(120), nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class DevicePairingRequest(Base):
     __tablename__ = "device_pairing_requests"
 
@@ -220,8 +232,25 @@ class DeviceCapabilityProvider(Base):
     revision = Column(Integer, nullable=False)
     enabled = Column(Boolean, nullable=False, default=True)
     capabilities = Column(JSON, nullable=False, default=list)
+    # NULL preserves legacy v1 registration. A list is an irreversible opt-in
+    # to Core-owned selection; device reports cannot add/change this list.
+    configured_capability_ids = Column(JSON, nullable=True)
     reported_at = Column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (
         UniqueConstraint("device_id", "provider_type", "provider_id", name="uq_device_capability_provider"),
+    )
+
+
+class DeviceCapabilityHealth(Base):
+    __tablename__ = "device_capability_health"
+    id = Column(Integer, primary_key=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    provider_type = Column(String(64), nullable=False)
+    provider_id = Column(String(160), nullable=False)
+    report = Column(JSON, nullable=False)
+    observed_at = Column(DateTime(timezone=True), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    __table_args__ = (
+        UniqueConstraint("device_id", "provider_type", "provider_id", name="uq_device_capability_health"),
     )

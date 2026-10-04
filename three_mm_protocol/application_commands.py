@@ -2,7 +2,8 @@
 from typing import Literal
 from datetime import UTC, datetime
 import math
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator, model_serializer
+from three_mm_protocol.capability_contracts import ContractVersion
 
 
 def validate_argument_schema(schema: dict) -> None:
@@ -46,6 +47,7 @@ class ApplicationCommandBindingV1(BaseModel):
     binding_id: str = Field(pattern=r'^[a-z][a-z0-9_]{0,95}$')
     target_device_config_key: str = Field(pattern=r'^[A-Z][A-Z0-9_]{1,63}$')
     capability_id: str = Field(pattern=r'^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$')
+    contract_version: ContractVersion | None = None
     action: str = Field(pattern=r'^[a-z][a-z0-9_]{0,95}$')
     arguments_schema: dict
     max_ttl_seconds: int = Field(default=10, ge=1, le=10, strict=True)
@@ -58,6 +60,13 @@ class ApplicationCommandBindingV1(BaseModel):
         if (self.sensor_device_config_key is None) != (self.sensor_id is None):
             raise ValueError('Passage requires both a sensor device binding and sensor identity')
         return self
+
+    @model_serializer(mode='wrap')
+    def wire(self, handler):
+        data = handler(self)
+        if self.contract_version is None:
+            data.pop('contract_version', None)
+        return data
 
 
 class ApplicationCommandSubmitV1(BaseModel):

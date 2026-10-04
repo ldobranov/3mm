@@ -27,18 +27,15 @@ from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from backend.services.node_enrollment import enroll_node, EnrollmentConflict, EnrollmentCapacity
 from three_mm_protocol.fleet_pairing import NodeEnrollmentRequest, NodeEnrollmentResponse
+from backend.services.device_protocol import enroll
+from backend.utils.device_protocol_http import call
 
 router = APIRouter(prefix="/api/v1", tags=["device-pairing"])
 
 
 @router.post("/pairing/enroll", response_model=NodeEnrollmentResponse)
 def request_node_enrollment(payload: NodeEnrollmentRequest, db: Session = Depends(get_db)):
-    try:
-        return enroll_node(db, payload)
-    except EnrollmentConflict as exc:
-        raise HTTPException(409, "Enrollment conflict; administrator recovery required") from exc
-    except EnrollmentCapacity as exc:
-        raise HTTPException(429, "Enrollment capacity reached") from exc
+    return call(enroll, db, payload)
 
 
 class PairingCodeResponse(BaseModel):

@@ -24,6 +24,8 @@ from agent.node_update_client import NodeUpdateHelperError
 from agent.node_update_execution import NodeUpdateExecution
 from three_mm_protocol.node_updates import NodeUpdatePrepareRequest
 from three_mm_protocol.passage import PassageEventV1
+from three_mm_protocol.capability_contracts import CONTRACT_FEATURE, CapabilityContractError
+from three_mm_protocol.capability_availability import AVAILABILITY_FEATURE
 from agent.inventory import platform_neutral_inventory
 from agent import __version__
 from agent.runtime_features import RuntimeFeaturePublisher
@@ -31,13 +33,17 @@ from three_mm_protocol.node_features import (
     DeviceRuntimeFeaturesV1, FEATURE_COMMANDS, MANDATORY_NODE_FEATURES,
 )
 
-import requests
+# Deprecated requests alias keeps existing embedding/test seams usable. All
+# actual HTTP I/O and acknowledgement handling is in the reference adapter.
+from agent.device_transport import HttpDeviceTransport, legacy_outbox_record, legacy_outbox_message, requests
+from three_mm_protocol.transport import DeviceTransport, DeviceTransportError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from three_mm_protocol import (
     AgentCommand, AgentCommandResult, AgentHeartbeat, AgentInventory,
-    AgentReportedState, CapabilityStateReportV1, DeviceDesiredState,
+    AgentReportedState, CapabilityStateReportV1, DeviceDesiredState, DeviceInventoryV2,
     IdentifierScanEventV1,
+    DeviceEventV1,
 )
 
 logger = logging.getLogger(__name__)
@@ -263,7 +269,7 @@ class OutboxStore:
 class CorePublisher:
     core_url: str
     credential: DeviceCredential
-    inventory_provider: Callable[[], AgentInventory]
+    inventory_provider: Callable[[], AgentInventory | DeviceInventoryV2]
     command_journal: CommandJournal
     reconciliation_store: ReconciliationStore
     outbox: OutboxStore
@@ -277,6 +283,9 @@ class CorePublisher:
     inventory_schema_version: int = 1
     # Legacy embedding/test adapter. The production Agent opts in explicitly.
     feature_negotiation: bool = False
+    capability_availability: bool = False
+    authority_verification: bool = False
+    transport: DeviceTransport | None = None
     _runtime_features: RuntimeFeaturePublisher | None = field(init=False, default=None, repr=False)
     _stop: threading.Event = field(init=False, repr=False)
     _thread: threading.Thread | None = field(init=False, default=None, repr=False)
@@ -298,13 +307,19 @@ class CorePublisher:
         self._command_thread = None
         self._event_queue = queue.Queue(maxsize=500)
         self._outbox_lock = threading.Lock()
+        if self.transport is None:
+            from three_mm_protocol.device_authority import DeviceAuthorityStore
+            authority_store = DeviceAuthorityStore(self.command_journal.path.parent,
+                self.credential.device_id, self.credential.credential_id) if self.authority_verification else None
+            self.transport = HttpDeviceTransport(self.core_url, self.credential, authority_store=authority_store)
+        if self.transport.device_id != self.credential.device_id:
+            raise ValueError("Transport device identity mismatch")
         if self.feature_negotiation:
-            self._runtime_features = RuntimeFeaturePublisher(self.core_url, self.credential)
+            self._runtime_features = RuntimeFeaturePublisher(self.core_url, self.credential, transport=self.transport)
 
     @property
     def headers(self) -> dict[str, str]:
-        value = f"Device {self.credential.credential_id}:{self.credential.credential_secret}"
-        return {"Authorization": value}
+        return getattr(self.transport, "headers", {})
 
     def start(self) -> None:
         self._event_thread = threading.Thread(
@@ -332,22 +347,16 @@ class CorePublisher:
             self._command_thread.join(timeout=COMMAND_LONG_POLL_SECONDS + 2)
 
     def _post(self, suffix: str, payload: dict) -> None:
-        response = requests.post(
-            f"{self.core_url}/api/v1/devices/{self.credential.device_id}/{suffix}",
-            json=payload,
-            headers=self.headers,
-            timeout=10,
-            allow_redirects=False,
-        )
-        response.raise_for_status()
-
-        if 300 <= getattr(response, "status_code", 200) < 400:
-            raise requests.HTTPError("Core redirect is not a message acknowledgement")
+        # Compatibility boundary for persisted pre-C10 outboxes and optional
+        # OTA callbacks, not a transport operation in the protocol contract.
+        self.transport.publish(legacy_outbox_message(suffix, payload))
 
     def _runtime_declaration(self) -> dict:
         features = set(MANDATORY_NODE_FEATURES) | {"inventory_refresh"}
         if self.module_runtime is not None:
-            features.update({"module_lifecycle", "application_execution_permits"})
+            features.update({"module_lifecycle", "application_execution_permits", CONTRACT_FEATURE})
+            if self.capability_availability:
+                features.add(AVAILABILITY_FEATURE)
         if self.automation_store is not None:
             features.add("local_automations")
         if self.gpio_configuration is not None:
@@ -372,15 +381,17 @@ class CorePublisher:
     def _publish_inventory(self) -> None:
         version = self._negotiated_inventory_version()
         report = self.inventory_provider()
-        if version == 2:
+        if version == 2 and isinstance(report, AgentInventory):
             report = platform_neutral_inventory(report)
-        self._post("inventory", report.model_dump(mode="json"))
+        if version == 1 and isinstance(report, DeviceInventoryV2):
+            raise ValueError("Inventory schema 2 cannot be downgraded to fabricated Linux inventory")
+        self._post(*legacy_outbox_record(report))
 
     def _send_or_queue(self, suffix: str, payload: dict, deduplication_key: str) -> bool:
         try:
             self._post(suffix, payload)
             return True
-        except requests.RequestException:
+        except DeviceTransportError:
             with self._outbox_lock:
                 self.outbox.enqueue(OutboxEntry(suffix=suffix, payload=payload, deduplication_key=deduplication_key))
             return False
@@ -392,15 +403,14 @@ class CorePublisher:
             for index, entry in enumerate(entries):
                 try:
                     self._post(entry.suffix, entry.payload)
-                except requests.RequestException:
+                except DeviceTransportError:
                     remaining.extend(entries[index:])
                     break
             self.outbox.save(remaining)
 
     def _submit_result(self, result: AgentCommandResult) -> None:
         self._send_or_queue(
-            f"commands/{result.command_id}/result",
-            result.model_dump(mode="json"),
+            *legacy_outbox_record(result),
             f"command-result:{result.command_id}",
         )
 
@@ -426,7 +436,7 @@ class CorePublisher:
             logger.warning("Agent event delivery queue is full; dropping event %s", payload["event_id"])
 
     def _deliver_event(self, payload: dict) -> None:
-        self._send_or_queue("events", payload, f"event:{payload['event_id']}")
+        self._send_or_queue(*legacy_outbox_record(DeviceEventV1.model_validate(payload)), f"event:{payload['event_id']}")
         try:
             self._publish_capability_states()
         except (ModuleLifecycleError, ValidationError) as exc:
@@ -448,6 +458,7 @@ class CorePublisher:
     def _publish_capability_states(self) -> None:
         if self.module_runtime is None:
             return
+        self._publish_capability_availability()
         observed_at = datetime.now(UTC)
         for capability_id, values in self.module_runtime.capability_states().items():
             report = CapabilityStateReportV1(
@@ -457,10 +468,19 @@ class CorePublisher:
                 observed_at=observed_at,
             )
             self._send_or_queue(
-                f"capabilities/{capability_id}/state",
-                report.model_dump(mode="json"),
+                *legacy_outbox_record(report),
                 f"capability-state:{capability_id}",
             )
+
+    def _publish_capability_availability(self):
+        if (self.module_runtime is None or self._runtime_features is None
+                or not self._runtime_features.availability_enabled):
+            return
+        for report in self.module_runtime.availability_reports(self.credential.device_id):
+            try:
+                self.transport.publish(report)
+            except DeviceTransportError as exc:
+                logger.warning("Ephemeral capability health was not acknowledged: %s", type(exc).__name__)
 
     def _node_execution(self) -> NodeUpdateExecution | None:
         if self.node_update_execution is None and self.node_update_transport is not None:
@@ -485,17 +505,9 @@ class CorePublisher:
 
     def _poll_command(self, *, wait_seconds: float = 0.0) -> None:
         self._negotiated_inventory_version()
-        response = requests.get(
-            f"{self.core_url}/api/v1/devices/{self.credential.device_id}/commands/next",
-            headers=self.headers,
-            params={"wait_seconds": wait_seconds},
-            timeout=max(10.0, wait_seconds + 5.0),
-            allow_redirects=False,
-        )
-        if response.status_code == 204:
+        command = self.transport.receive_command(timeout_seconds=wait_seconds)
+        if command is None:
             return
-        response.raise_for_status()
-        command = AgentCommand.model_validate(response.json())
         if command.device_id != self.credential.device_id:
             raise ValueError('Command device identity mismatch')
         cached = self.command_journal.get_for_command(command)
@@ -519,13 +531,22 @@ class CorePublisher:
             journal = PhysicalCommandJournal(self.command_journal.path.parent)
             def authorize():
                 started = time.monotonic()
-                permit = requests.post(f'{self.core_url}/api/v1/devices/{self.credential.device_id}/commands/{command.command_id}/authorize-execution', headers=self.headers, timeout=2, allow_redirects=False)
-                permit.raise_for_status()
-                body = permit.json()
+                body = self.transport.authorize_execution(command.command_id)
                 if body.get('authorized') is not True or body.get('command_id') != command.command_id or time.monotonic() - started > 2:
                     raise ValueError('Execution permit was not received promptly')
-            result = journal.execute(command, lambda: self.module_runtime.invoke(
-                command.payload['capability_id'], command.payload['action'], command.payload.get('arguments', {})),
+            def invoke_capability():
+                if (self.capability_availability
+                        and not self.module_runtime.capability_healthy(command.payload.get('capability_id'))):
+                    raise PhysicalCommandFailure('not_executed', 'Capability runtime is unavailable')
+                try:
+                    self.module_runtime.validate_invocation(command.payload)
+                except CapabilityContractError as exc:
+                    raise PhysicalCommandFailure('not_executed', str(exc)) from exc
+                return self.module_runtime.invoke(
+                    command.payload['capability_id'], command.payload['action'], command.payload.get('arguments', {}),
+                    contract_version=command.payload.get('contract_version'),
+                    contract_digest=command.payload.get('contract_digest'))
+            result = journal.execute(command, invoke_capability,
                 authorize=authorize if command.command_type == 'application.capability.invoke' else None)
             self._submit_result(result)
             self._publish_capability_states()
@@ -544,7 +565,7 @@ class CorePublisher:
                     completed_at=datetime.now(UTC),
                     output={"inventory_published": True},
                 )
-            except requests.RequestException as exc:
+            except DeviceTransportError as exc:
                 result = AgentCommandResult(
                     command_id=command.command_id,
                     device_id=self.credential.device_id,
@@ -680,21 +701,16 @@ class CorePublisher:
             started_at = time.monotonic()
             try:
                 self._poll_command(wait_seconds=COMMAND_LONG_POLL_SECONDS)
-            except (requests.RequestException, ValueError, OSError, sqlite3.Error, ModuleLifecycleError) as exc:
+            except (DeviceTransportError, ValueError, OSError, sqlite3.Error, ModuleLifecycleError) as exc:
                 logger.warning("Core command receive failed: %s", exc)
             elapsed = time.monotonic() - started_at
             if elapsed < 0.5:
                 self._stop.wait(0.5 - elapsed)
 
     def _reconcile_state(self) -> None:
-        response = requests.get(
-            f"{self.core_url}/api/v1/devices/{self.credential.device_id}/desired-state",
-            headers=self.headers,
-            timeout=10,
-            allow_redirects=False,
-        )
-        response.raise_for_status()
-        desired = DeviceDesiredState.model_validate(response.json())
+        desired = self.transport.desired_state()
+        if desired.device_id != self.credential.device_id:
+            raise ValueError("Desired state device identity mismatch")
         current = self.reconciliation_store.load()
         if desired.revision <= current.applied_revision:
             node_update_support = self._node_update_support()
@@ -752,7 +768,7 @@ class CorePublisher:
         while not self._stop.is_set():
             try:
                 self._negotiated_inventory_version()
-            except (requests.RequestException, ValueError) as exc:
+            except (DeviceTransportError, ValueError) as exc:
                 logger.warning("Core protocol negotiation failed: %s", type(exc).__name__)
                 self._stop.wait(self.interval_seconds)
                 continue
@@ -764,13 +780,13 @@ class CorePublisher:
                 execution = self._node_execution()
                 if execution is not None:
                     execution.report_pending(self._post)
-            except (requests.RequestException, NodeUpdateHelperError, ValidationError, OSError) as exc:
+            except (DeviceTransportError, NodeUpdateHelperError, ValidationError, OSError) as exc:
                 logger.warning("Core Node update outcome publish failed: %s", exc)
             if not inventory_published:
                 try:
                     self._publish_inventory()
                     inventory_published = True
-                except (requests.RequestException, ValueError) as exc:
+                except (DeviceTransportError, ValueError) as exc:
                     logger.warning("Core inventory publish failed: %s", exc)
             heartbeat = AgentHeartbeat(
                 device_id=self.credential.device_id,
@@ -779,11 +795,11 @@ class CorePublisher:
             )
             try:
                 self._send_or_queue("heartbeat", heartbeat.model_dump(mode="json"), "heartbeat")
-            except requests.RequestException as exc:
+            except DeviceTransportError as exc:
                 logger.warning("Core heartbeat publish failed: %s", exc)
             try:
                 self._reconcile_state()
-            except (requests.RequestException, ValidationError) as exc:
+            except (DeviceTransportError, ValueError) as exc:
                 logger.warning("Core state reconciliation failed: %s", exc)
             try:
                 self._publish_capability_states()
