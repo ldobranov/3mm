@@ -4,7 +4,8 @@ import { useSettingsStore } from '@/stores/settings'
 import { useThemeStore } from '@/stores/theme'
 import { useUiLabels } from '@/utils/ui-labels'
 import { useI18n } from '@/utils/i18n'
-import { designPreferences, parseThemePreferences, type ThemePreferences } from '@/utils/theme-customization'
+import { designPreferences, parseThemePreferences, themePreferencesValid, LEGACY_UI_COLOR_KEYS, type ThemePreferences } from '@/utils/theme-customization'
+import { UI_COLOR_KEYS, type UiColors } from '@/utils/ui-design'
 import http from '@/utils/dynamic-http'
 import ColorPicker from '@/components/ColorPicker.vue'
 
@@ -19,9 +20,43 @@ const defaults = computed(() => {
   return parseThemePreferences(value) ? value : { ...value, header_style: 'theme' as const }
 })
 const baseline = computed(() => settings.themePreferences || defaults.value)
-const draft = reactive<ThemePreferences>({ ...baseline.value })
+const copy = (value: ThemePreferences): ThemePreferences => JSON.parse(JSON.stringify(value))
+const draft = reactive<ThemePreferences>(copy(baseline.value))
+const replaceDraft = () => {
+  delete draft.colors
+  Object.assign(draft, copy(baseline.value))
+}
 const dirty = computed(() => JSON.stringify(draft) !== JSON.stringify(baseline.value))
-const valid = computed(() => parseThemePreferences(draft) !== null)
+const valid = computed(() => themePreferencesValid(settings.baseUiDesign, draft, settings.activeTheme?.theme_extension_version ?? null))
+const paletteMode = ref(modes.theme)
+const palette = computed(() => ({ ...settings.baseUiDesign[paletteMode.value], ...draft.colors?.[paletteMode.value] }))
+const colorGroups = computed(() => {
+  const allowed: readonly string[] = settings.activeTheme?.theme_extension_version === 2 ? UI_COLOR_KEYS : LEGACY_UI_COLOR_KEYS
+  return [
+    { title: label('colorSurfaces'), keys: ['canvas', 'content', 'surface', 'surface_alt', 'border'] },
+    { title: label('colorTexts'), keys: ['text', 'text_secondary', 'text_muted'] },
+    { title: label('colorButtons'), keys: ['accent', 'accent_text', 'secondary', 'secondary_text', 'danger', 'danger_text'] },
+    { title: label('colorStates'), keys: ['success', 'warning', 'focus'] },
+  ].map(group => ({ ...group, keys: group.keys.filter(key => allowed.includes(key)) as (keyof UiColors)[] }))
+    .filter(group => group.keys.length)
+})
+const colorLabel = (key: keyof UiColors) => label(`color_${key}`)
+const updateColor = (key: keyof UiColors, value: string) => {
+  const mode = paletteMode.value
+  const colors = { ...draft.colors, [mode]: { ...draft.colors?.[mode] } }
+  if (value.toLowerCase() === settings.baseUiDesign[mode][key].toLowerCase()) delete colors[mode]![key]
+  else colors[mode]![key] = value
+  if (!Object.keys(colors[mode]!).length) delete colors[mode]
+  if (Object.keys(colors).length) draft.colors = colors
+  else delete draft.colors
+}
+const resetPalette = () => {
+  if (!draft.colors) return
+  const colors = { ...draft.colors }
+  delete colors[paletteMode.value]
+  if (Object.keys(colors).length) draft.colors = colors
+  else delete draft.colors
+}
 const busy = ref(false)
 const message = ref('')
 const failure = ref('')
@@ -48,7 +83,7 @@ watch([baseline, () => props.sha256], () => {
   const nextBaseline = JSON.stringify(baseline.value)
   if (props.sha256 === previousHash && nextBaseline === previousBaseline) return
   if (props.sha256 !== previousHash || JSON.stringify(draft) === previousBaseline) {
-    Object.assign(draft, baseline.value)
+    replaceDraft()
     settings.setPreferencePreview(null)
     message.value = ''; failure.value = ''
   }
@@ -62,7 +97,7 @@ watch(draft, () => {
   message.value = ''; failure.value = ''
 }, { deep: true, flush: 'sync' })
 const cancel = () => {
-  Object.assign(draft, baseline.value)
+  replaceDraft()
   settings.setPreferencePreview(null)
   failure.value = ''; message.value = ''
 }
@@ -75,7 +110,7 @@ const save = async (reset = false) => {
     })
     await settings.loadThemeAppearance()
     settings.setPreferencePreview(null)
-    Object.assign(draft, baseline.value)
+    replaceDraft()
     message.value = reset ? 'resetDone' : 'saved'
     window.dispatchEvent(new Event('settings-updated'))
   } catch { failure.value = 'failed' }
@@ -112,7 +147,25 @@ onBeforeUnmount(() => settings.setPreferencePreview(null))
           <ColorPicker :label="label('headerBackground')" v-model="draft.header_background_color" />
           <ColorPicker :label="label('headerText')" v-model="draft.header_text_color" />
         </div>
-        <p v-if="!valid" class="appearance-error" role="alert">{{ label('headerContrast') }}</p>
+        <section v-if="settings.activeTheme" class="appearance-colors">
+          <h4>{{ label('themeColors') }}</h4>
+          <p class="appearance-help">{{ label('themeColorsHelp') }}</p>
+          <label class="appearance-field appearance-mode"><span>{{ label('editPalette') }}</span>
+            <select v-model="paletteMode" class="input" data-field="palette-mode">
+              <option value="light">{{ label('light') }}</option><option value="dark">{{ label('dark') }}</option>
+            </select>
+          </label>
+          <section v-for="group in colorGroups" :key="group.title" class="appearance-color-group">
+            <h5>{{ group.title }}</h5>
+            <div class="appearance-grid">
+              <ColorPicker v-for="key in group.keys" :key="key" :data-color="key"
+                :label="colorLabel(key)" :model-value="palette[key]" :placeholder="settings.baseUiDesign[paletteMode][key]"
+                @update:model-value="updateColor(key, $event)" />
+            </div>
+          </section>
+          <button type="button" class="button" data-action="reset-palette" :disabled="!draft.colors?.[paletteMode]" @click="resetPalette">{{ label('resetPalette') }}</button>
+        </section>
+        <p v-if="!valid" class="appearance-error" role="alert">{{ draft.colors ? label('colorContrast') : label('headerContrast') }}</p>
         <p class="appearance-help">{{ label('modeHelp') }}</p>
         <label class="appearance-field appearance-mode"><span>{{ label('mode') }}</span>
           <select :value="modes.theme" class="input" data-field="mode" :disabled="modeBusy" @change="changeMode">
@@ -121,9 +174,9 @@ onBeforeUnmount(() => settings.setPreferencePreview(null))
         </label>
         <p v-if="modeFailure" class="appearance-error" role="alert">{{ t('settings.saveFailed', 'Save failed') }}</p>
         <div class="appearance-actions">
-          <button type="submit" class="button button-primary" :disabled="!dirty || !valid">{{ busy ? t('settings.saving', 'Saving…') : label('saveAppearance') }}</button>
-          <button type="button" class="button" :disabled="!dirty" @click="cancel">{{ label('discardAppearance') }}</button>
-          <button type="button" class="button" :disabled="!settings.themePreferences && !dirty" @click="save(true)">{{ label('resetAppearance') }}</button>
+          <button type="submit" class="button button-primary" data-action="save" :disabled="!dirty || !valid">{{ busy ? t('settings.saving', 'Saving…') : label('saveAppearance') }}</button>
+          <button type="button" class="button" data-action="discard" :disabled="!dirty" @click="cancel">{{ label('discardAppearance') }}</button>
+          <button type="button" class="button" data-action="reset" :disabled="!settings.themePreferences && !dirty" @click="save(true)">{{ label('resetAppearance') }}</button>
         </div>
       </fieldset>
     </form>
@@ -141,6 +194,9 @@ onBeforeUnmount(() => settings.setPreferencePreview(null))
 .appearance-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; min-width: 0; }
 .appearance-field { display: grid; gap: .4rem; min-width: 0; }
 .appearance-mode { max-width: 16rem; }
+.appearance-colors { display: grid; gap: 1rem; min-width: 0; border-top: 1px solid var(--card-border); padding-top: 1rem; }
+.appearance-colors h4, .appearance-color-group h5 { margin: 0 0 .6rem; font-size: 1rem; }
+.appearance-colors > .button { justify-self: start; }
 .input { width: 100%; min-width: 0; color: var(--text-primary); background: var(--input-bg); border: 1px solid var(--input-border); }
 .appearance-check { display: flex; align-items: center; gap: .6rem; }
 .appearance-check input { flex: 0 0 auto; }

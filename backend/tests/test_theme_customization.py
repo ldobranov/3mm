@@ -11,6 +11,7 @@ from backend.db.module import ModulePackage
 from backend.db.settings import Settings
 from backend.services.theme_customization import customization_key
 from backend.tests.test_theme_extension_lifecycle import BASE, runtime, upload
+from backend.tests.test_theme_extension_v2 import install_v2
 
 
 def preferences(**changes):
@@ -80,3 +81,63 @@ def test_corrupt_customization_cannot_break_public_appearance(runtime, value):
     client, db, _, _, _, _ = runtime
     db.add(Settings(key=customization_key(None), value=value)); db.commit()
     assert client.get(f"{BASE}/appearance").json() == {"theme": None}
+
+
+def test_v2_palette_overrides_persist_independently_without_rewriting_theme(runtime):
+    client, db, admin, _, _, _ = runtime
+    digest = install_v2(client, admin)
+    client.post(f"{BASE}/selection", headers=admin, json={"sha256": digest})
+    package = db.scalar(select(ModulePackage).where(ModulePackage.sha256 == digest))
+    before = Path(package.file_path).read_bytes()
+    original = client.get(f"{BASE}/appearance").json()["theme"]
+    value = preferences(colors={"light": {"border": "#123456"}, "dark": {"border": "#ABCDEF"}})
+    assert save(client, admin, digest, value).status_code == 200
+    db.expire_all()
+    result = client.get(f"{BASE}/appearance").json()
+    assert result["customization"] == value
+    assert result["theme"] == original
+    assert Path(package.file_path).read_bytes() == before
+    client.post(f"{BASE}/selection", headers=admin, json={"sha256": None})
+    assert "customization" not in client.get(f"{BASE}/appearance").json()
+    client.post(f"{BASE}/selection", headers=admin, json={"sha256": digest})
+    assert client.get(f"{BASE}/appearance").json()["customization"] == value
+    assert save(client, admin, digest).status_code == 200
+    assert "customization" not in client.get(f"{BASE}/appearance").json()
+
+
+def test_legacy_theme_only_accepts_its_supported_color_tokens(runtime):
+    client, _, admin, _, _, _ = runtime
+    digest = upload(client, admin).json()["sha256"]
+    client.post(f"{BASE}/packages/{digest}/enable", headers=admin)
+    client.post(f"{BASE}/selection", headers=admin, json={"sha256": digest})
+    value = preferences(colors={"light": {"accent": "#123456"}, "dark": {"canvas": "#101010"}})
+    assert save(client, admin, digest, value).json()["customization"] == value
+    assert save(client, admin, digest, preferences(colors={"light": {"focus": "#123456"}})).status_code == 422
+    client.post(f"{BASE}/selection", headers=admin, json={"sha256": None})
+    assert save(client, admin, value=value).status_code == 422
+
+
+def test_palette_validation_and_existing_admin_boundary(runtime):
+    client, db, admin, user, _, _ = runtime
+    digest = install_v2(client, admin)
+    client.post(f"{BASE}/selection", headers=admin, json={"sha256": digest})
+    valid = preferences(colors={"dark": {"border": "#ABCDEF"}})
+    assert save(client, {}, digest, valid).status_code == 401
+    assert save(client, user, digest, valid).status_code == 403
+    for colors in ({}, {"light": {}}, {"sepia": {"border": "#123456"}},
+                   {"light": {"css": "#123456"}}, {"light": {"border": "url(https://bad.test)"}},
+                   {"light": {"text": "#ffffff"}}, {"dark": {"accent_text": "#57ddc2"}},
+                   {"light": {"border": ["#123456"]}}):
+        assert save(client, admin, digest, preferences(colors=colors)).status_code == 422
+    assert not list(db.scalars(select(Settings)))
+
+
+def test_restored_unreadable_palette_is_ignored_without_losing_the_theme(runtime):
+    client, db, admin, _, _, _ = runtime
+    digest = install_v2(client, admin)
+    client.post(f"{BASE}/selection", headers=admin, json={"sha256": digest})
+    db.add(Settings(key=customization_key(digest), value=json.dumps(preferences(colors={"light": {"text": "#ffffff"}}))))
+    db.commit()
+    result = client.get(f"{BASE}/appearance").json()
+    assert result["theme"]["theme_extension_version"] == 2
+    assert "customization" not in result

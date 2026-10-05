@@ -6,6 +6,38 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.40] - 2026-10-05
+
+### Added
+
+- Installed-theme color editors in Settings → Theme Customization: the 11 v1
+  legacy colors or all 17 v2 semantic colors, independent light/dark palettes,
+  local preview, explicit Save/Discard and per-palette restoration.
+- Sparse version-scoped overrides through the existing audited admin endpoint.
+  Original ZIPs, inherited values, built-in colors, branding and theme assets
+  remain unchanged. V2 effective palettes retain the package contrast policy;
+  invalid restored overrides fall back safely.
+
+### Fixed
+
+- Public uploaded logos are now served from persistent `UPLOADS_DIR` on the web
+  origin, including ports 80/8080, instead of returning the SPA or a missing asset.
+  Directory listing, traversal and symlinks are rejected; release permissions
+  and private storage remain unchanged.
+- Image editing preserves URL parameters/data URLs, reloads an unchanged logo
+  when reopened, ignores late image callbacks and disables Save until decoding.
+  Replacement uploads clear stale errors and release temporary object URLs.
+
+### Compatibility and verification
+
+- No database migration, protocol, SDK, Node runtime or dependency change.
+  Existing preferences without color overrides and both theme APIs are compatible.
+- Focused backend/web and frontend checks, type checking, production build and
+  isolated mobile light/dark color-editor review passed locally. Complete Linux
+  and frontend checks plus reproducible Hub/ARMv6 Node builds gate publication.
+  Raspberry logo/theme acceptance remains separate from local review.
+- Child Center, concrete theme ZIPs and local/generated artifacts are excluded.
+
 ## [0.3.0-beta.39] - 2026-10-05
 
 ### Added
@@ -1034,7 +1066,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.39...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.40...HEAD
+[0.3.0-beta.40]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.40
 [0.3.0-beta.39]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.39
 [0.3.0-beta.38]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.38
 [0.3.0-beta.37]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.37

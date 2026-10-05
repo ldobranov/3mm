@@ -75,7 +75,7 @@ describe('saved theme appearance controls', () => {
   it('resets saved preferences and localizes the editor without changing personal mode', async () => {
     settings.themePreferences = { ...designPreferences(settings.baseUiDesign, settings.headerSettings), navigation: 'top' }
     const wrapper = mountEditor()
-    await wrapper.findAll('button')[2].trigger('click'); await flushPromises()
+    await wrapper.get('[data-action=reset]').trigger('click'); await flushPromises()
     expect(mocks.post).toHaveBeenCalledWith('/api/v1/modules/themes/customization', { sha256: 'a'.repeat(64), preferences: null })
     expect(settings.uiDesign.layout.navigation).toBe('sidebar')
     expect(wrapper.text()).toContain('Theme defaults restored.')
@@ -102,6 +102,76 @@ describe('saved theme appearance controls', () => {
     expect(wrapper.get('[type=submit]').attributes('disabled')).toBeDefined()
     expect(settings.themePreferences).toBeNull()
     expect(localStorage.getItem('theme')).toBe('dark')
+    wrapper.unmount()
+  })
+  it('edits, previews and saves independent palettes without changing the package or built-in colors', async () => {
+    const wrapper = mountEditor()
+    const before = JSON.stringify(settings.activeTheme)
+    const legacy = { ...settings.lightStyleSettings }
+    expect(wrapper.findAll('[data-color]')).toHaveLength(17)
+    await wrapper.get('[data-color=border] input').setValue('#123456')
+    expect(settings.uiDesign.light.border).toBe('#123456')
+    expect(document.documentElement.style.getPropertyValue('--card-border')).toBe('#123456')
+    expect(document.documentElement.style.getPropertyValue('--ui-border')).toBe('#123456')
+    expect(mocks.post).not.toHaveBeenCalled()
+    await wrapper.get('[data-field=palette-mode]').setValue('dark')
+    expect(localStorage.getItem('theme')).toBeNull()
+    expect(wrapper.get('[data-color=border] input').element).toHaveProperty('value', builtinUiDesign().dark.border)
+    await wrapper.get('[data-color=border] input').setValue('#ABCDEF')
+    const saved = { ...designPreferences(settings.baseUiDesign, settings.headerSettings),
+      colors: { light: { border: '#123456' }, dark: { border: '#ABCDEF' } } }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify({ ...projection(), customization: saved }) }))
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.post).toHaveBeenCalledWith('/api/v1/modules/themes/customization', { sha256: 'a'.repeat(64), preferences: saved })
+    expect(settings.themePreferences?.colors).toEqual(saved.colors)
+    expect(JSON.stringify(settings.activeTheme)).toBe(before)
+    expect(settings.lightStyleSettings).toEqual(legacy)
+    wrapper.unmount(); await settings.loadThemeAppearance()
+    expect(settings.uiDesign.dark.border).toBe('#ABCDEF')
+  })
+  it('deep-copies saved palettes, discards drafts and resets only the selected palette', async () => {
+    settings.themePreferences = { ...designPreferences(settings.baseUiDesign, settings.headerSettings),
+      colors: { light: { border: '#123456' }, dark: { border: '#ABCDEF' } } }
+    const wrapper = mountEditor()
+    await wrapper.get('[data-color=border] input').setValue('#456789')
+    expect(settings.themePreferences.colors?.light?.border).toBe('#123456')
+    await wrapper.get('[data-action=discard]').trigger('click')
+    expect(settings.uiDesign.light.border).toBe('#123456')
+    await wrapper.get('[data-action=reset-palette]').trigger('click')
+    expect(settings.uiDesign.light.border).toBe(builtinUiDesign().light.border)
+    expect(settings.uiDesign.dark.border).toBe('#ABCDEF')
+    wrapper.unmount()
+    expect(settings.uiDesign.light.border).toBe('#123456')
+    expect(mocks.post).not.toHaveBeenCalled()
+  })
+  it('blocks unreadable or unsafe color edits from both preview and Save', async () => {
+    const wrapper = mountEditor()
+    await wrapper.get('[data-color=text] input').setValue('#ffffff')
+    expect(wrapper.get('[data-action=save]').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('4.5:1')
+    expect(settings.uiDesign.light.text).toBe(builtinUiDesign().light.text)
+    await wrapper.get('form').trigger('submit')
+    expect(mocks.post).not.toHaveBeenCalled()
+    await wrapper.get('[data-action=discard]').trigger('click')
+    expect(wrapper.find('[role=alert]').exists()).toBe(false)
+    expect(parseThemePreferences({ ...designPreferences(settings.baseUiDesign, settings.headerSettings),
+      colors: { dark: { border: 'url(https://bad.test)' } } })).toBeNull()
+    wrapper.unmount()
+  })
+  it('exposes only v1 colors, preserves both original palettes and derives readable button text', async () => {
+    settings.activeTheme = {
+      theme_extension_version: 1, design_api_version: 1, module_id: 'org.example.legacy', version: '1.0.0',
+      name: { en: 'Legacy' }, base_theme: 'builtin.default',
+      light: { body_bg: '#ABCDEF' }, dark: { body_bg: '#123456' },
+    }
+    const wrapper = mountEditor()
+    expect(wrapper.findAll('[data-color]')).toHaveLength(11)
+    expect(wrapper.find('[data-color=focus]').exists()).toBe(false)
+    expect(settings.baseUiDesign.dark.canvas).toBe('#123456')
+    await wrapper.get('[data-color=accent] input').setValue('#ffffff')
+    expect(settings.uiDesign.light.accent_text).toBe('#000000')
+    expect(document.documentElement.style.getPropertyValue('--button-primary-bg')).toBe('#ffffff')
+    expect(settings.lightStyleSettings.buttonPrimaryBg).toBe('#007bff')
     wrapper.unmount()
   })
 })

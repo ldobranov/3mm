@@ -104,6 +104,36 @@ overrides the mode-specific packaged logo. Header/Menu retain text/translations;
 `header_style` changes visual precedence only. Temporary preview uses system-font
 design and does not change installed selection.
 
+## Installation color customization
+
+Settings → Theme Customization offers the selected theme's supported color
+parameters, reusing the Core ColorPicker. v1 exposes its 11 legacy colors;
+v2 exposes all 17 semantic colors, including button foregrounds, status and
+focus. Inherited values are editable too. No concrete theme name is special-cased.
+Built-in colors retain the existing light/dark editors and storage.
+
+Light/dark palettes are edited independently. Changes preview locally, and
+**Save appearance** persists them through the existing admin-only customization
+endpoint. **Discard changes** and leaving the section remove the unsaved preview.
+**Restore this palette** removes only the currently edited mode's overrides from
+the draft; Save is still required. **Use theme defaults** clears the selected
+theme's appearance overrides, not its ZIP, branding or old built-in colors.
+
+The existing per-SHA settings JSON gains an optional sparse `colors` object:
+`{"light":{"border":"#123456"},"dark":{"border":"#ABCDEF"}}`.
+Missing colors inherit the original package. Existing preferences without
+`colors` remain compatible. Unknown tokens/modes, CSS values, non-hex values and
+wrong types are rejected. v1 cannot set v2-only tokens and retains its existing
+legacy color validation; v2 overrides must pass the original Design API 2
+contrast validation after merging with the actual package. Both modern tokens
+and legacy CSS aliases receive the effective colors. Fonts, assets, geometry,
+translations and authentication are unchanged.
+
+The immutable ZIP is never rewritten. Settings remain independent per exact
+package version, survive reload and are covered by existing database backups.
+Invalid restored overrides are ignored without disabling a healthy theme.
+No database schema migration, SDK bump or new installer is required.
+
 ## Recovery and portable restore
 
 Admin-only `/settings/ui-preview?recovery=1` bypasses installed styling and shows

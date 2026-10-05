@@ -8,7 +8,7 @@ import { resolveHeaderSettings } from '@/utils/header-settings'
 import { BUILTIN_STYLES, buttonTextColor, resolveThemeStyle, readThemeProjection } from '@/utils/theme-extension'
 import { adaptLegacyUi, parseUiDesign, uiDesignVariables, type UiDesign } from '@/utils/ui-design'
 import { parseInstalledTheme, loadThemeAssets, designLegacyStyle, type InstalledTheme, type LoadedThemeAssets } from '@/utils/theme-package-v2'
-import { applyThemePreferences, parseThemePreferences, type ThemePreferences } from '@/utils/theme-customization'
+import { applyThemePreferences, parseThemePreferences, themePreferencesValid, type ThemePreferences } from '@/utils/theme-customization'
 
 export const useSettingsStore = defineStore('settings', () => {
   const themeStore = useThemeStore()
@@ -22,7 +22,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const preferencePreview = shallowRef<ThemePreferences | null>(null)
   const setPreferencePreview = (value: unknown): boolean => {
     const parsed = value === null ? null : parseThemePreferences(value)
-    if (value !== null && !parsed) return false
+    if (value !== null && (!parsed || !themePreferencesValid(baseUiDesign.value, parsed, activeTheme.value?.theme_extension_version ?? null))) return false
     preferencePreview.value = parsed
     updateCSSVariables()
     return true
@@ -132,16 +132,31 @@ export const useSettingsStore = defineStore('settings', () => {
   const darkStyleSettings = reactive({ ...BUILTIN_STYLES.dark })
 
   // Computed property to get current theme settings
-  const styleSettings = computed(() => {
+  const baseStyleSettings = computed(() => {
     if (installedDesign.value && !appearanceRecovery.value) return designLegacyStyle(installedDesign.value, themeStore.theme)
     const legacyTheme = activeTheme.value?.theme_extension_version === 1 && !appearanceRecovery.value ? activeTheme.value : null
     return resolveThemeStyle(legacyTheme, themeStore.theme,
       themeStore.theme === 'dark' ? darkStyleSettings : lightStyleSettings)
   })
-  const baseUiDesign = computed(() => (!appearanceRecovery.value && installedDesign.value) || adaptLegacyUi(styleSettings.value, themeStore.theme))
-  const effectivePreferences = computed(() => !appearanceRecovery.value ? preferencePreview.value || themePreferences.value : null)
+  const baseUiDesign = computed(() => {
+    if (!appearanceRecovery.value && installedDesign.value) return installedDesign.value
+    const legacyTheme = activeTheme.value?.theme_extension_version === 1 && !appearanceRecovery.value ? activeTheme.value : null
+    const design = adaptLegacyUi(baseStyleSettings.value, themeStore.theme)
+    // Editing the inactive mode must use that theme's real colors, not v2 defaults.
+    for (const mode of ['light', 'dark'] as const) {
+      design[mode] = adaptLegacyUi(resolveThemeStyle(legacyTheme, mode,
+        mode === 'dark' ? darkStyleSettings : lightStyleSettings), mode)[mode]
+    }
+    return design
+  })
+  const effectivePreferences = computed(() => {
+    const value = !appearanceRecovery.value ? preferencePreview.value || themePreferences.value : null
+    return value && themePreferencesValid(baseUiDesign.value, value, activeTheme.value?.theme_extension_version ?? null) ? value : null
+  })
   const customizedDesign = computed(() => !appearanceRecovery.value && effectivePreferences.value
-    ? applyThemePreferences(baseUiDesign.value, effectivePreferences.value) : null)
+    ? applyThemePreferences(baseUiDesign.value, effectivePreferences.value, activeTheme.value?.theme_extension_version === 1) : null)
+  const styleSettings = computed(() => customizedDesign.value && effectivePreferences.value?.colors
+    ? designLegacyStyle(customizedDesign.value, themeStore.theme) : baseStyleSettings.value)
   const uiDesign = computed(() => previewDesign.value || customizedDesign.value || baseUiDesign.value)
   const appearanceHeader = computed(() => !previewDesign.value && effectivePreferences.value ? {
     ...headerSettings, backgroundColor: effectivePreferences.value.header_background_color,
@@ -359,10 +374,11 @@ export const useSettingsStore = defineStore('settings', () => {
       root.style.setProperty(key, value)
     }
     if (installedDesign.value && !previewDesign.value && !appearanceRecovery.value) {
-      const colors = installedDesign.value[themeStore.theme]
+      const colors = uiDesign.value[themeStore.theme]
       root.style.setProperty('--button-primary-text', colors.accent_text)
       root.style.setProperty('--button-secondary-text', colors.secondary_text)
       root.style.setProperty('--button-danger-text', colors.danger_text)
+      root.style.setProperty('--input-focus-border', colors.focus)
       if (themeAssets.value?.font) root.style.setProperty('--ui-font', `"${themeAssets.value.font.family}", ${root.style.getPropertyValue('--ui-font')}`)
     }
 

@@ -152,7 +152,7 @@ def theme_appearance(db: Session) -> dict:
             result = {"theme": theme.model_dump(mode="json", exclude_none=True)}
             if theme.theme_extension_version == 2:
                 result["package_sha256"] = package.sha256
-            customization = read_customization(db, package.sha256)
+            customization = read_customization(db, package.sha256, theme)
             if customization is not None:
                 result["customization"] = customization
             return result

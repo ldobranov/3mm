@@ -76,6 +76,14 @@ not move or delete them; factory reset remains a deliberate data erasure and
 requires a recovery backup to restore them.
 
 No release permissions, systemd protections or installer layout are changed.
+The static web service also reads the existing `UPLOADS_DIR` environment and
+serves these public files at `/uploads/...` on both web ports (80 and 8080).
+It does not search the frontend release for mutable assets. Missing assets,
+directory listings, traversal and symlinks return 404 instead of the SPA page.
+This keeps logo previews and the canvas editor on the application's origin;
+relative saved URLs work without hardcoded hostnames or API ports. The image
+editor preserves URL query parameters and reloads the same logo on reopening.
+
 If an older nonstandard deployment wrote images into a checkout or release,
 an administrator must copy those desired images into the configured uploads
 root before discarding that old directory. Existing URL paths can be kept;

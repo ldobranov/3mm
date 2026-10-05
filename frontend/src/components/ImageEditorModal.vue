@@ -38,7 +38,7 @@
               {{ t('common.clickToUpload', 'Click to upload or drag and drop') }}
             </p>
             <p class="file-types" v-if="maxSize > 0">
-              {{ t('common.maxSizeHint', 'Max {size}MB, Images only', { size: maxSize.toString() }) }}
+              {{ t('common.maxSizeHint', `Max ${maxSize}MB, Images only`, { size: maxSize.toString() }) }}
             </p>
           </div>
 
@@ -53,14 +53,14 @@
                   </svg>
                   {{ t('common.cancel', 'Cancel') }}
                 </button>
-                <button type="button" class="action-button" @click="resetCrop">
+                <button type="button" class="action-button" @click="resetCrop" :disabled="!originalImage || uploading">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="1,4 1,10 7,10"/>
                     <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
                   </svg>
                   {{ t('common.reset', 'Reset') }}
                 </button>
-                <button type="button" class="action-button primary" @click="applyCrop">
+                <button type="button" class="action-button primary" @click="applyCrop" :disabled="!originalImage || uploading">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="9,11 12,14 22,4"/>
                     <path d="M21,12v7a2,2,0,0,1-2,2H5a2,2,0,0,1-2-2V5a2,2,0,0,1,2-2h14"/>
@@ -185,6 +185,8 @@ const zoomLevel = ref(1);
 const uploading = ref(false);
 const uploadProgress = ref(0);
 const errorMessage = ref('');
+let imageLoad = 0;
+let pendingObjectUrl: string | null = null;
 
 // Canvas cropping state
 const isCropping = ref(false);
@@ -235,7 +237,7 @@ const validateFile = (file: File): boolean => {
 
   // Check file size
   if (file.size > maxSizeInBytes) {
-    errorMessage.value = t('common.fileTooLarge', 'File is too large. Max {size}MB', { size: props.maxSize.toString() });
+    errorMessage.value = t('common.fileTooLarge', `File is too large. Max ${props.maxSize}MB`, { size: props.maxSize.toString() });
     return false;
   }
 
@@ -244,16 +246,45 @@ const validateFile = (file: File): boolean => {
 };
 
 const loadImageForCropping = (file: File) => {
-  const img = new Image();
   const url = URL.createObjectURL(file);
+  loadCropImage(url, url);
+};
 
-  img.onload = () => {
+const clearImageLoad = () => {
+  imageLoad++;
+  if (pendingObjectUrl) URL.revokeObjectURL(pendingObjectUrl);
+  pendingObjectUrl = null;
+  originalImage.value = null;
+};
+
+const loadCropImage = (source: string, objectUrl: string | null = null) => {
+  clearImageLoad();
+  const request = imageLoad;
+  pendingObjectUrl = objectUrl;
+  errorMessage.value = '';
+  resetCrop();
+  const img = new Image();
+  // Cross-origin images must allow canvas access, not merely display.
+  img.crossOrigin = 'anonymous';
+
+  img.onload = async () => {
+    if (request !== imageLoad || !props.show) return;
     originalImage.value = img;
-    initializeCanvas();
-    URL.revokeObjectURL(url);
+    if (pendingObjectUrl) URL.revokeObjectURL(pendingObjectUrl);
+    pendingObjectUrl = null;
+    await nextTick();
+    if (request === imageLoad && props.show) initializeCanvas();
   };
 
-  img.src = url;
+  img.onerror = () => {
+    if (request !== imageLoad || !props.show) return;
+    if (pendingObjectUrl) URL.revokeObjectURL(pendingObjectUrl);
+    pendingObjectUrl = null;
+    errorMessage.value = t('common.failedLoadImage', 'Failed to load image for editing');
+  };
+
+  // Keep cache/version/signature parameters and data URLs intact.
+  img.src = source;
 };
 
 const initializeCanvas = () => {
@@ -629,51 +660,24 @@ const closeModal = () => {
 
   // Reset state
   selectedFile.value = null;
-  originalImage.value = null;
+  clearImageLoad();
   resetCrop();
   errorMessage.value = '';
   uploading.value = false;
   uploadProgress.value = 0;
 };
 
-// Watch for editing image changes
-watch(() => props.editingImage, (newImage) => {
-  if (newImage && props.show) {
-    // Load the image for editing
-    loadEditingImage(newImage);
+// Reopening the same logo must reload it, even if editingImage did not change.
+watch(() => [props.show, props.editingImage] as const, ([show, image]) => {
+  if (!show) {
+    clearImageLoad();
+    selectedFile.value = null;
+    errorMessage.value = '';
+  } else if (image) {
+    selectedFile.value = null;
+    loadCropImage(image.url);
   }
-});
-
-const loadEditingImage = async (image: { url: string; name: string }) => {
-  try {
-    // Reset crop state first
-    resetCrop();
-
-    // Load the image for editing
-    const img = new Image();
-    const imageUrl = image.url.split('?')[0]; // Remove cache buster
-
-    console.log('Loading image for editing:', imageUrl);
-
-    img.onload = () => {
-      console.log('Image loaded successfully for editing');
-      originalImage.value = img;
-      nextTick(() => {
-        initializeCanvas();
-      });
-    };
-
-    img.onerror = (error) => {
-      console.error('Failed to load image for editing:', imageUrl, error);
-      errorMessage.value = t('common.failedLoadImage', 'Failed to load image for editing');
-    };
-
-    img.src = imageUrl;
-  } catch (error) {
-    console.error('Failed to load image for editing:', error);
-    errorMessage.value = t('common.failedLoadImage', 'Failed to load image for editing');
-  }
-};
+}, { immediate: true, flush: 'post' });
 
 // Window resize handler
 const handleResize = () => {
@@ -686,18 +690,11 @@ const handleResize = () => {
 onMounted(() => {
   // Add resize listener
   window.addEventListener('resize', handleResize);
-
-  // If we have an editing image when mounted, load it
-  if (props.editingImage && props.show) {
-    loadEditingImage(props.editingImage);
-  }
 });
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
-  if (originalImage.value) {
-    URL.revokeObjectURL(originalImage.value.src);
-  }
+  clearImageLoad();
 });
 </script>
 

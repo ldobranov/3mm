@@ -8,8 +8,8 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Beta. This source prepares **v0.3.0-beta.39**, adding saved
-> Theme Customization controls and persistent settings-image storage.
+> **Project status:** Beta. This source prepares **v0.3.0-beta.40**, adding editable
+> installed-theme palettes and fixing persistent-logo loading on the web origin.
 > It retains Theme Platform V0–V4: Design API 2, native UI primitives, an opt-in
 > application shell and validated assets through the existing Extensions installer.
 > Existing device transport, capability authority and lifecycle remain unchanged.
@@ -221,8 +221,8 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 After the new GitHub Release is fully published, update the Hub through
 `/system/updates` using the Beta channel. Update the Zero over SSH with the same
-Node bootstrap command above; after beta.39 publication, add
-`--tag v0.3.0-beta.39` to select that exact release. Provisioned upgrades preserve
+Node bootstrap command above; after beta.40 publication, add
+`--tag v0.3.0-beta.40` to select that exact release. Provisioned upgrades preserve
 identity and pairing, not Master reset.
 Then upload Fleet `0.1.7` on the Hub through Extensions. Updating the Fleet ZIP
 alone does not update Core or the Zero Agent. Follow the
@@ -328,6 +328,13 @@ the exact theme version or built-in appearance; theme ZIPs remain immutable.
 mode remains separate. Uploaded settings images use persistent
 `/var/lib/3mm/core/uploads/settings`, retaining their public URLs across updates
 and participating in portable backup/restore.
+
+Since beta.40, installed themes also expose their supported color parameters in
+Theme Customization: 11 legacy colors for v1, 17 semantic colors for v2. Edit
+light/dark palettes independently, preview before Save, discard or restore a
+palette. V2 changes must retain readable contrast. Overrides are version-scoped;
+the original ZIP and built-in colors are preserved. Public uploaded logos are
+served on the same web origin on ports 80/8080, including when reopened for editing.
 
 The v2 shell preserves data-driven navigation, translations and access rules;
 legacy screens and extensions are not automatically redesigned. If installed
