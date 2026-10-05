@@ -40,8 +40,8 @@ export function parseInstalledTheme(projection: unknown): InstalledTheme | null 
   return { ...identity, theme_extension_version: 2, design_api_version: 2, design, assets, package_sha256: projection.package_sha256 }
 }
 
-export async function readInstalledTheme(baseUrl: string): Promise<InstalledTheme | null> {
-  return parseInstalledTheme(await readThemeProjection(baseUrl))
+export async function readInstalledTheme(baseUrl: string, signal?: AbortSignal): Promise<InstalledTheme | null> {
+  return parseInstalledTheme(await readThemeProjection(baseUrl, signal))
 }
 
 export function designLegacyStyle(design: UiDesign, mode: ThemeMode): StyleSettings {

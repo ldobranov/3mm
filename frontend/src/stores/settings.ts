@@ -36,34 +36,41 @@ export const useSettingsStore = defineStore('settings', () => {
     return true
   }
   let appearanceRequest = 0
-  const loadThemeAppearance = async () => {
+  const loadThemeAppearance = async (signal?: AbortSignal) => {
     const request = ++appearanceRequest
     assetController?.abort()
+    const controller = new AbortController()
+    assetController = controller
+    const abort = () => controller.abort()
+    signal?.addEventListener('abort', abort, { once: true })
+    if (signal?.aborted) abort()
     let definition: InstalledTheme | null = null
     let baseUrl = ''
     try {
-      baseUrl = await http.getCurrentBackendUrl()
-      definition = await readInstalledTheme(baseUrl)
-    } catch { /* Backend discovery failure also uses the built-in settings. */ }
-    if (request === appearanceRequest) {
+      try {
+        baseUrl = await http.getCurrentBackendUrl()
+        if (controller.signal.aborted) return
+        definition = await readInstalledTheme(baseUrl, controller.signal)
+      } catch { /* Backend discovery failure also uses the built-in settings. */ }
+      if (request !== appearanceRequest || controller.signal.aborted) return
       if (definition?.theme_extension_version === 2 && activeTheme.value?.theme_extension_version === 2 &&
         definition.package_sha256 === activeTheme.value.package_sha256 && themeAssets.value && !themeAssets.value.warnings.length) {
         activeTheme.value = definition
         updateCSSVariables()
         return // Already verified immutable resources; avoid font/logo churn on tab focus.
       }
-      clearAssets()
+      themeAssets.value?.dispose()
+      themeAssets.value = null
       activeTheme.value = definition
       updateCSSVariables()
       if (definition?.theme_extension_version === 2) {
-        assetController = new AbortController()
-        const assets = await loadThemeAssets(definition, baseUrl, assetController.signal)
-        if (request !== appearanceRequest) { assets.dispose(); return }
+        const assets = await loadThemeAssets(definition, baseUrl, controller.signal)
+        if (request !== appearanceRequest || controller.signal.aborted) { assets.dispose(); return }
         if (assets.font) document.fonts?.add(assets.font)
         themeAssets.value = assets
         updateCSSVariables()
       }
-    }
+    } finally { signal?.removeEventListener('abort', abort) }
   }
   const currentLanguageCode = ref('en') // Default to English
 
@@ -122,7 +129,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const error = ref('')
 
   // Load settings from backend
-  const loadSettings = async () => {
+  const loadSettings = async (signal?: AbortSignal) => {
     try {
       loading.value = true
       const languageCode = currentLanguage.value || 'en'
@@ -130,9 +137,10 @@ export const useSettingsStore = defineStore('settings', () => {
       
       // Load language-specific settings
       const [items, allItems] = await Promise.all([
-        readSettings(languageCode),
-        readSettings()
+        readSettings(languageCode, signal),
+        readSettings(undefined, signal)
       ])
+      if (signal?.aborted) return
       
       // Cache language-specific settings
       languageSettings.set(languageCode, items)
@@ -216,6 +224,7 @@ export const useSettingsStore = defineStore('settings', () => {
       updateCSSVariables()
       // console.log('Initial CSS variables applied on mount')
     } catch (err) {
+      if (signal?.aborted) return
       console.error('Failed to load settings:', err)
       error.value = 'Failed to load settings'
     } finally {

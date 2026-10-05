@@ -325,8 +325,8 @@
         <h2 id="update-confirm-title">{{ t('systemUpdates.confirmTitle', 'Install system update?') }}</h2>
         <p>{{ t('systemUpdates.confirmText', '3mm will install the reviewed release and restart its services. Do not remove power during the update.') }}</p>
         <dl class="confirm-summary">
-          <div><dt>{{ t('systemUpdates.releaseId', 'Release') }}</dt><dd>{{ staged.release_id }}</dd></div>
-          <div><dt>{{ t('systemUpdates.latestVersion', 'Version') }}</dt><dd>{{ staged.version }}</dd></div>
+          <div><dt>{{ t('systemUpdates.currentVersion', 'Current version') }}</dt><dd>{{ status?.current.version || status?.current.release_id || t('systemUpdates.statusCurrentUnknown', 'Current version unknown') }}</dd></div>
+          <div><dt>{{ t('systemUpdates.targetVersion', 'Version to install') }}</dt><dd>{{ staged.version }}</dd></div>
           <div><dt>{{ t('systemUpdates.channel', 'Channel') }}</dt><dd>{{ staged.channel }}</dd></div>
           <div><dt>{{ t('systemUpdates.architecture', 'Architecture') }}</dt><dd>{{ staged.architecture }}</dd></div>
         </dl>
@@ -660,7 +660,8 @@ function applyPolicyResponse(value: UpdatePolicyStatus, useCachedResult: boolean
   if (useCachedResult) {
     selectedChannel.value = value.policy.channel
     if (value.cached_check?.result) {
-      status.value = value.cached_check.result
+      // Cached catalog data must not replace freshly read installed-release metadata.
+      status.value = { ...value.cached_check.result, current: status.value?.current || value.cached_check.result.current }
       selectedChannel.value = value.cached_check.channel
     }
   }

@@ -9,6 +9,7 @@ import http from '@/utils/dynamic-http'
 import { readSettings } from '@/utils/settings-api'
 import ApplicationShell from './components/ui/ApplicationShell.vue'
 import { resolveUiShellMode } from '@/utils/ui-design'
+import { useUiLabels } from '@/utils/ui-labels'
 import '@/assets/styles.css';
 import '@/assets/ui-platform.css';
 
@@ -16,6 +17,10 @@ import '@/assets/ui-platform.css';
 const themeStore = useThemeStore()
 const settingsStore = useSettingsStore()
 const route = useRoute()
+const label = useUiLabels()
+const appearanceReady = ref(false)
+const startupController = new AbortController()
+let disposed = false
 // V1 stays legacy; v2 opts into the Core-owned shell, except protected recovery.
 const modernShell = computed(() => !settingsStore.appearanceRecovery &&
   (settingsStore.previewDesign !== null || settingsStore.installedDesign !== null))
@@ -24,9 +29,10 @@ const shellMode = computed(() => resolveUiShellMode(route.meta))
 // Authentication status
 const isAuthenticated = ref(!!localStorage.getItem('authToken'))
 
-const loadDefaults = async () => {
+const loadDefaults = async (signal?: AbortSignal) => {
   try {
-    const items = await readSettings()
+    const items = await readSettings(undefined, signal)
+    if (signal?.aborted) return
 
     const userThemeSetting = items.find((s: any) => s.key === 'user_theme')
     const userLanguageSetting = items.find((s: any) => s.key === 'user_language')
@@ -50,12 +56,13 @@ const loadDefaults = async () => {
             key: 'user_theme',
             value: currentTheme,
             description: 'User theme preference'
-          })
+          }, signal ? { signal } : undefined)
         } catch (e) {
           console.error('Failed to save user theme:', e)
         }
       }
 
+      if (signal?.aborted) return
       if (userLanguageSetting) {
         localStorage.setItem('preferredLanguage', userLanguageSetting.value)
         await setLanguage(userLanguageSetting.value)
@@ -64,12 +71,13 @@ const loadDefaults = async () => {
         const currentLanguage = localStorage.getItem('preferredLanguage') || defaultLanguage || 'en'
         localStorage.setItem('preferredLanguage', currentLanguage)
         await setLanguage(currentLanguage)
+        if (signal?.aborted) return
         try {
           await http.post('/settings/create', {
             key: 'user_language',
             value: currentLanguage,
             description: 'User language preference'
-          })
+          }, signal ? { signal } : undefined)
         } catch (e) {
           console.error('Failed to save user language:', e)
         }
@@ -97,13 +105,9 @@ const loadDefaults = async () => {
       }
     }
   } catch (e) {
+    if (signal?.aborted) return
     console.error('Failed to load defaults:', e)
-    // Fallback to safe defaults
-    const { setLanguage } = useI18n()
-    themeStore.setTheme('light')
-    localStorage.setItem('theme', 'light')
-    localStorage.setItem('preferredLanguage', 'en')
-    await setLanguage('en')
+    // Keep the already initialized browser mode/language when settings are unavailable.
   }
 }
 
@@ -137,9 +141,28 @@ watch(isAuthenticated, async (newVal, oldVal) => {
 })
 
 onMounted(async () => {
-  // Independently load public appearance even when legacy settings/auth fail.
-  void settingsStore.loadSettings()
-  refreshAppearance()
+  // Do not mount navigation/pages in the legacy layout before public appearance,
+  // saved mode, header settings and verified theme resources have settled.
+  const signal = startupController.signal
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      Promise.allSettled([
+        settingsStore.loadThemeAppearance(signal),
+        loadDefaults(signal).then(() => { if (!signal.aborted) return settingsStore.loadSettings(signal) }),
+      ]),
+      new Promise<void>(resolve => {
+        timeout = setTimeout(() => { startupController.abort(); resolve() }, 8000)
+      }),
+    ])
+  } finally {
+    clearTimeout(timeout)
+    if (!disposed) {
+      settingsStore.updateCSSVariables()
+      appearanceReady.value = true
+    }
+  }
+  if (disposed) return
   window.addEventListener('settings-updated', refreshAppearance)
   document.addEventListener('visibilitychange', refreshVisibleAppearance)
   // Listen for settings updates
@@ -150,12 +173,11 @@ onMounted(async () => {
   window.addEventListener('menu-refresh', syncAuthState)
   window.addEventListener('storage', handleAuthStorageChange)
 
-  // Load default theme and language for new users
-  await loadDefaults()
-
 })
 
 onUnmounted(() => {
+  disposed = true
+  startupController.abort()
   window.removeEventListener('settings-updated', refreshAppearance)
   document.removeEventListener('visibilitychange', refreshVisibleAppearance)
   window.removeEventListener('settings-updated', refreshSettings)
@@ -167,10 +189,15 @@ onUnmounted(() => {
 
 <template>
   <div class="app-root">
-    <ApplicationShell :active="modernShell" :design="settingsStore.uiDesign" :mode="shellMode">
-      <RouterView />
-    </ApplicationShell>
-    <CommandPalette />
+    <div v-if="!appearanceReady" class="app-startup" role="status" aria-live="polite" aria-busy="true">
+      {{ label('loading') }}…
+    </div>
+    <template v-else>
+      <ApplicationShell :active="modernShell" :design="settingsStore.uiDesign" :mode="shellMode">
+        <RouterView />
+      </ApplicationShell>
+      <CommandPalette />
+    </template>
   </div>
 </template>
 
@@ -178,7 +205,20 @@ onUnmounted(() => {
 .app-root {
   min-height: 100vh;
   background-color: var(--body-bg, #ffffff);
-  transition: background-color 0.3s ease;
+}
+
+.app-startup {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background: #f5f6f8;
+  color: #555b65;
+  font: 500 0.875rem system-ui, sans-serif;
+}
+
+:global(html.dark-mode) .app-startup {
+  background: #181b20;
+  color: #b8bdc7;
 }
 
 </style>

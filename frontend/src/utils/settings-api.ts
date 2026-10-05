@@ -8,9 +8,10 @@ export interface SettingRecord {
   language_code?: string | null
 }
 
-export async function readSettings(languageCode?: string): Promise<SettingRecord[]> {
+export async function readSettings(languageCode?: string, signal?: AbortSignal): Promise<SettingRecord[]> {
   const suffix = languageCode ? `?language=${encodeURIComponent(languageCode)}` : ''
-  const response = await http.get(`/settings/read${suffix}`)
+  const url = `/settings/read${suffix}`
+  const response = await (signal ? http.get(url, { signal }) : http.get(url))
   return response.data.items || []
 }
 

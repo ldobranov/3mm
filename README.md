@@ -8,9 +8,10 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Beta. This source prepares **v0.3.0-beta.37**, adding
-> Theme Platform V0–V4: Design API 2, native UI primitives, an opt-in application
-> shell and validated local assets through the existing Extensions installer.
+> **Project status:** Beta. This source prepares **v0.3.0-beta.38**, fixing
+> initial appearance loading and current/target version labels during update approval.
+> It retains Theme Platform V0–V4: Design API 2, native UI primitives, an opt-in
+> application shell and validated assets through the existing Extensions installer.
 > Existing device transport, capability authority and lifecycle remain unchanged.
 > Device protocol 1.0, Application SDK 1.3, installation peers and Node Update remain.
 > Release assets become available only after the tag-driven workflow succeeds;
@@ -220,8 +221,8 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 After the new GitHub Release is fully published, update the Hub through
 `/system/updates` using the Beta channel. Update the Zero over SSH with the same
-Node bootstrap command above; after beta.37 publication, add
-`--tag v0.3.0-beta.37` to select that exact release. Provisioned upgrades preserve
+Node bootstrap command above; after beta.38 publication, add
+`--tag v0.3.0-beta.38` to select that exact release. Provisioned upgrades preserve
 identity and pairing, not Master reset.
 Then upload Fleet `0.1.7` on the Hub through Extensions. Updating the Fleet ZIP
 alone does not update Core or the Zero Agent. Follow the
@@ -301,6 +302,10 @@ catalog checks with persisted retry backoff. A daily maintenance window can
 gate installation; applying outside it requires a separate explicit override.
 Background checks never download or install a release.
 
+The final approval dialog shows the installed version and the exact verified
+version to install separately. Fresh installed-release metadata takes precedence
+over an older cached catalog check; unknown metadata is not replaced by the target.
+
 See the [changelog](CHANGELOG.md) for user-visible changes and the
 [release guide](docs/RELEASING.md) for the maintainer workflow.
 
@@ -310,6 +315,11 @@ After updating Core to beta.37, upload your separate v1/v2 theme ZIP through
 **Extensions**, enable it, then select it in **Settings → Theme Customization**
 and apply. Enabling a package or updating Core does not select a new theme.
 Concrete themes are not included in the Core release archives or release assets.
+
+Since beta.38, refresh waits for appearance initialization before showing the
+application shell and pages. A brief neutral loading screen prevents the default
+layout from appearing first. Waiting is limited to eight seconds; unavailable
+resources fall back safely, retaining the browser's saved mode and language.
 
 The v2 shell preserves data-driven navigation, translations and access rules;
 legacy screens and extensions are not automatically redesigned. If installed

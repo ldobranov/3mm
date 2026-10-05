@@ -217,6 +217,40 @@ describe('System updates catalog', () => {
     })
   })
 
+  it.each([
+    [{ ...current, version: '1.1.0' }, '1.1.0'],
+    [current, 'current-release'],
+    [{ ...current, release_id: '' }, 'Current version unknown'],
+  ])('shows installed and staged versions separately, with safe metadata fallbacks', async (installed, expected) => {
+    const wrapper = mount(SystemUpdates)
+    await flushPromises()
+    ;(wrapper.vm as any).status = { ...response(), current: installed, latest: { version: '1.9.0' } }
+    ;(wrapper.vm as any).staged = {
+      release_id: 'v1.2.0', version: '1.2.0', commit: 'b'.repeat(40), channel: 'stable', architecture: 'aarch64',
+      approval_nonce: 'd'.repeat(64), dependency_plan: [], preflight: [],
+    }
+    await wrapper.vm.$nextTick()
+    await wrapper.findAll('button').find(button => button.text().includes('Review and install'))!.trigger('click')
+    const summary = wrapper.find('[role="dialog"] .confirm-summary')
+    expect(summary.findAll('dt').slice(0, 2).map(item => item.text())).toEqual(['Current version', 'Version to install'])
+    expect(summary.findAll('dd').slice(0, 2).map(item => item.text())).toEqual([expected, '1.2.0'])
+    expect(http.post).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('keeps freshly read installed metadata when loading a cached catalog check', async () => {
+    http.get.mockImplementation((url: string) => Promise.resolve({
+      data: url.endsWith('/operation') ? { state: 'idle', message: 'idle' }
+        : url.endsWith('/policy') ? policyResponse({ cached_check: {
+          channel: 'stable', result: { ...response(), current: { ...current, version: '0.9.0' } },
+        } }) : { ...response(), current: { ...current, version: '1.1.0' } },
+    }))
+    const wrapper = mount(SystemUpdates)
+    await flushPromises()
+    expect((wrapper.vm as any).status.current.version).toBe('1.1.0')
+    wrapper.unmount()
+  })
+
   it('requires a separate acknowledgement outside the maintenance window', async () => {
     http.get.mockImplementation((url: string) => Promise.resolve({
       data: url.endsWith('/operation')

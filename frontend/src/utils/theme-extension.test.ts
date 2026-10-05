@@ -81,4 +81,21 @@ describe('Theme Design API adapter and loader', () => {
     expect(document.documentElement.style.getPropertyValue('--body-bg')).toBe('#ABCDEF')
     expect(settings.activeTheme).toBeNull()
   })
+
+  it('ignores a late theme response after startup cancellation without changing the session', async () => {
+    localStorage.setItem('authToken', 'unchanged-token')
+    let respond!: (value: unknown) => void
+    const fetch = vi.fn((_url: string, _options: RequestInit) => new Promise(resolve => { respond = resolve }))
+    vi.stubGlobal('fetch', fetch)
+    const settings = useSettingsStore()
+    const controller = new AbortController()
+    const loading = settings.loadThemeAppearance(controller.signal)
+    await Promise.resolve()
+    controller.abort()
+    expect(fetch.mock.calls[0][1].signal?.aborted).toBe(true)
+    respond({ ok: true, text: async () => JSON.stringify({ theme: definition() }) })
+    await loading
+    expect(settings.activeTheme).toBeNull()
+    expect(localStorage.getItem('authToken')).toBe('unchanged-token')
+  })
 })

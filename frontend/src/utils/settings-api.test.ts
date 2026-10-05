@@ -37,6 +37,13 @@ describe('settings API', () => {
     expect(http.post).toHaveBeenCalledWith('/settings/create', { key: 'light_body_bg', value: '#fff' })
   })
 
+  it('forwards an optional startup cancellation signal', async () => {
+    http.get.mockResolvedValue({ data: { items: [] } })
+    const controller = new AbortController()
+    await readSettings('bg', controller.signal)
+    expect(http.get).toHaveBeenCalledWith('/settings/read?language=bg', { signal: controller.signal })
+  })
+
   it('matches language-specific settings by language code', async () => {
     http.get.mockResolvedValue({
       data: { items: [{ id: 3, key: 'site_name', value: 'English', language_code: 'en' }] }

@@ -6,6 +6,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.38] - 2026-10-05
+
+### Fixed
+
+- Initial page rendering waits for the selected appearance, saved mode, header
+  settings and verified theme resources before mounting navigation and content.
+  A neutral loading screen replaces the legacy-layout flash during refresh.
+- Startup waiting is bounded to eight seconds. Cancelled or late appearance
+  responses cannot overwrite the fallback; settings failures retain the browser's
+  existing light/dark mode and language, without clearing authentication.
+- System Updates final confirmation now distinguishes the installed version from
+  the exact staged version. Missing installed metadata has an explicit fallback;
+  cached catalog results no longer replace freshly read installed-release metadata.
+- English and Bulgarian labels identify both versions. Existing installation
+  acknowledgements, approval identity and maintenance-window checks are unchanged.
+
+### Verification and compatibility
+
+- All 161 frontend tests (including 44 focused checks), type checking and production build passed locally;
+  isolated desktop/mobile light/dark review confirmed delayed appearance startup
+  and separate current/target versions without executing a real update.
+- Complete frontend/Linux checks and reproducible Hub/ARMv6 Node builds gate
+  publication. No backend, database migration, Agent, SDK, protocol or deployment
+  change. Concrete themes and Child Center remain outside this Core release.
+
 ## [0.3.0-beta.37] - 2026-10-05
 
 ### Added
@@ -974,7 +999,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.37...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.38...HEAD
+[0.3.0-beta.38]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.38
 [0.3.0-beta.37]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.37
 [0.3.0-beta.36]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.36
 [0.3.0-beta.35]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.35

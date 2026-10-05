@@ -87,9 +87,12 @@ export function buttonTextColor(color: string): string {
   return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) ? '#000000' : '#ffffff'
 }
 
-export async function readThemeProjection(baseUrl: string): Promise<unknown> {
+export async function readThemeProjection(baseUrl: string, signal?: AbortSignal): Promise<unknown> {
   // Public appearance must never refresh/clear a browser's authentication.
   const controller = new AbortController()
+  const abort = () => controller.abort()
+  signal?.addEventListener('abort', abort, { once: true })
+  if (signal?.aborted) abort()
   const timeout = window.setTimeout(() => controller.abort(), 5000)
   try {
     const response = await fetch(`${baseUrl}/api/v1/modules/themes/appearance`, {
@@ -103,6 +106,7 @@ export async function readThemeProjection(baseUrl: string): Promise<unknown> {
     return null
   } finally {
     window.clearTimeout(timeout)
+    signal?.removeEventListener('abort', abort)
   }
 }
 

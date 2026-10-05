@@ -126,6 +126,7 @@
     "metadataMissing": "Release metadata is unavailable, so the installed version cannot be compared yet.",
     "catalogEyebrow": "Trusted source", "catalogTitle": "Release catalog", "repository": "Repository",
     "latestVersion": "Latest version", "channel": "Channel", "published": "Published",
+    "currentVersion": "Current version", "targetVersion": "Version to install",
     "manifestValidated": "The release manifest matches the published assets.",
     "dependenciesTitle": "System dependencies", "dependenciesText": "Packages declared by this release. Nothing is installed during a check.",
     "noDependencies": "No additional packages declared", "artifactsTitle": "Release artifacts",
