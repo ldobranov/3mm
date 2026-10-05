@@ -1,5 +1,7 @@
 <template>
+  <slot v-if="$slots.default" :navigation="navigation" />
   <nav
+    v-else
     class="navbar navbar-expand-lg"
     :style="{
       backgroundColor: settingsStore.headerSettings.backgroundColor,
@@ -138,7 +140,7 @@ export default defineComponent({
     const settingsStore = useSettingsStore();
 
     const router = useRouter();
-    const { t, currentLanguage, setLanguage } = useI18n();
+    const { t, currentLanguage, setLanguage, setPreviewLanguage } = useI18n();
     const availableLanguages = ref<string[]>(['en']);
     const selectedLanguage = ref<string>('en');
 
@@ -185,6 +187,21 @@ export default defineComponent({
     const showLanguageSwitcher = computed(() => {
       return availableLanguages.value.length > 1;
     });
+
+    // Both shells render the SAME registry, filtering and action handlers.
+    const navigation = computed(() => ({
+      items: visibleMenuItems.value,
+      label: getMenuItemLabel,
+      loggedIn: isLoggedIn.value,
+      isAdmin: isLoggedIn.value && currentRole.value === 'admin',
+      selectedLanguage: selectedLanguage.value,
+      languages: availableLanguages.value,
+      showLanguageSwitcher: showLanguageSwitcher.value,
+      changeLanguage,
+      logout: handleLogout,
+      openCommandPalette,
+      t,
+    }));
 
     // Function to handle logout
     const handleLogout = () => {
@@ -311,11 +328,12 @@ export default defineComponent({
       const target = event.target as HTMLSelectElement;
       const newLang = target.value;
       selectedLanguage.value = newLang;
-      await setLanguage(newLang);
+      if (settingsStore.previewDesign) await setPreviewLanguage(newLang);
+      else await setLanguage(newLang);
 
       // Save user preference if logged in
       const isAuthenticated = !!localStorage.getItem('authToken')
-      if (isAuthenticated) {
+      if (isAuthenticated && !settingsStore.previewDesign) {
         try {
           await http.post('/settings/create', {
             key: 'user_language',
@@ -362,6 +380,7 @@ export default defineComponent({
     });
 
     return {
+      navigation,
       menuItems,
       visibleMenuItems,
       errorMessage,

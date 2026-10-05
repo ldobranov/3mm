@@ -249,11 +249,12 @@ export async function createRouterWithDynamicRoutes() {
   // Load base application routes
   const routes: RouteRecordRaw[] = [
     { path: '/', name: 'Home', component: HomeRedirect },
-    { path: '/user/login', name: 'Login', component: Login },
-    { path: '/user/register', name: 'Register', component: () => import('../views/Register.vue') },
+    { path: '/user/login', name: 'Login', component: Login, meta: { uiShell: 'auth' } },
+    { path: '/user/register', name: 'Register', component: () => import('../views/Register.vue'), meta: { uiShell: 'auth' } },
     { path: '/user/profile', name: 'Profile', component: () => import('../views/Profile.vue'), meta: { requiresAuth: true } },
     { path: '/user/logout', name: 'Logout', component: () => import('../views/Logout.vue') },
     { path: '/settings', name: 'Settings', component: () => import('../views/Settings.vue'), meta: { requiresAuth: true, requiresRole: 'admin' } },
+    { path: '/settings/ui-preview', name: 'UiPreview', component: () => import('../views/UiPreview.vue'), meta: { requiresAuth: true, requiresRole: 'admin', uiShell: 'application' } },
     { path: '/security', name: 'Security', component: () => import('../views/Security.vue'), meta: { requiresAuth: true } },
     { path: '/users', name: 'Users', component: () => import('../views/Users.vue'), meta: { requiresAuth: true, requiresRole: 'admin' } },
     { path: '/dashboard', name: 'DashboardList', component: () => import('@/views/DashboardList.vue'), meta: { requiresAuth: true } },
@@ -278,7 +279,7 @@ export async function createRouterWithDynamicRoutes() {
         requiresRole: 'admin',
       },
     },
-    { path: '/@:username/:slug', name: 'PublicDisplay', component: () => import('@/views/PublicDisplay.vue') },
+    { path: '/@:username/:slug', name: 'PublicDisplay', component: () => import('@/views/PublicDisplay.vue'), meta: { uiShell: 'display' } },
     { path: '/:pathMatch(.*)*', name: 'NotFound', component: () => import('../views/NotFound.vue') },
   ];
 

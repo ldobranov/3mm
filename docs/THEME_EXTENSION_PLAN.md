@@ -3,6 +3,15 @@
 Approved: 2026-10-04. Current priority in [MASTER_PLAN.md](MASTER_PLAN.md).
 Roadmap reference: Milestone 17. Design context: chat “Предложения за тема”.
 
+Update 2026-10-05: T0–T3 are published in `v0.3.0-beta.36`. The stage records
+below retain their development-time checks and limitations. Full visual themes
+are planned separately in [Theme Platform v2](THEME_PLATFORM_V2_PLAN.md), still
+within Milestone 17. V0–V4 are implemented locally and prepared for beta.37;
+publication depends on the release workflow, and no live deployment is claimed.
+Concrete theme ZIP packages are excluded from the Core release;
+reference packages and live acceptance remain V5–V8. See the
+[v2 package contract](THEME_EXTENSION_V2.md).
+
 ## Goal and boundary
 
 Themes are separately versioned, installable ZIP extensions. Core owns a small
@@ -48,12 +57,12 @@ remains a separate browser preference. No session invalidation is required.
 
 | Stage | Result | Status |
 | --- | --- | --- |
-| T0 | Inspect existing stores/tokens and fix extension boundary | Recorded locally |
-| T1 | Strict theme contract and immutable ZIP validation | Implemented locally; 53 focused checks passed, including existing package regressions |
-| T2 | Theme catalog, admin install/disable/delete, pinned package identity | Implemented locally; migration and lifecycle/authorization checks passed |
-| T3 | Settings selection, generic loader, legacy precedence and fallback | Implemented locally; focused checks and isolated desktop/mobile review passed |
-| T4 | Separately maintained reference theme and preview | Planned; design chat |
-| T5 | Incremental shell and screen refinement | Planned after reference visual review |
+| T0 | Inspect existing stores/tokens and fix extension boundary | Recorded; baseline for beta.36 |
+| T1 | Strict theme contract and immutable ZIP validation | Published in beta.36; 53 focused development checks passed |
+| T2 | Theme catalog, admin install/disable/delete, pinned package identity | Published in beta.36; migration and lifecycle/authorization checks passed |
+| T3 | Settings selection, generic loader, legacy precedence and fallback | Published in beta.36; focused checks and isolated desktop/mobile review passed |
+| T4 | Separately maintained reference theme and preview | Local Graphite Mint v1 palette/package and isolated preview; live installation acceptance remains open |
+| T5 | Incremental shell and screen refinement | V0–V4 prepared for beta.37; V5–V8 remain open, no full screen redesign delivered |
 | T6 | Upgrade/recovery/visual acceptance and documentation | Planned |
 
 ### T1 — Package foundation, delivered locally
@@ -168,10 +177,17 @@ dark mode and mobile layout. Product shell evolves toward a left sidebar;
 Display Editor later becomes palette/canvas/properties. Theme tokens alone do
 not restructure App.vue or replace extension components.
 
-Introduce new shared layout/component contracts only when a real reviewed screen
-needs them. Layout slots, fonts, logos and packaged assets are future versioned
-contract additions—not already supported by T1. Review one screen before moving
-to the next; do not redesign the whole application or the deployment process.
+Graphite Mint v1 now exists locally as a separately validated palette package.
+Its isolated component/token preview is not an installed full-application theme.
+
+The [v2 delivery plan](THEME_PLATFORM_V2_PLAN.md) expands this stage: shared
+UI primitives, Core-owned shell variants, typography/density, safe local assets
+and one versioned design contract. Layout slots, fonts and packaged assets are
+v2 additions prepared for beta.37, not v1 features. Themes remain non-executable; they choose
+Core-owned variants rather than replace Vue components or application behavior.
+V1 compatibility and existing Header/Menu ownership are explicit acceptance gates.
+Review one screen before moving to the next; do not redesign the whole application
+or the deployment process. T6 live/portable acceptance is not closed by this plan.
 
 ### T6 — Acceptance
 

@@ -1,28 +1,68 @@
 import { defineStore } from 'pinia'
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, shallowRef, reactive, computed, watch, onScopeDispose } from 'vue'
 import { useThemeStore } from '@/stores/theme'
 import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
 import { readSettings, upsertSettings } from '@/utils/settings-api'
 import { resolveHeaderSettings } from '@/utils/header-settings'
-import { BUILTIN_STYLES, buttonTextColor, readThemeAppearance, resolveThemeStyle, type ThemeDefinition } from '@/utils/theme-extension'
+import { BUILTIN_STYLES, buttonTextColor, resolveThemeStyle } from '@/utils/theme-extension'
+import { adaptLegacyUi, parseUiDesign, uiDesignVariables, type UiDesign } from '@/utils/ui-design'
+import { readInstalledTheme, loadThemeAssets, designLegacyStyle, type InstalledTheme, type LoadedThemeAssets } from '@/utils/theme-package-v2'
 
 export const useSettingsStore = defineStore('settings', () => {
   const themeStore = useThemeStore()
   const { currentLanguage } = useI18n()
 
   const loaded = ref(false)
-  const activeTheme = ref<ThemeDefinition | null>(null)
+  const activeTheme = shallowRef<InstalledTheme | null>(null)
+  const installedDesign = computed(() => activeTheme.value?.theme_extension_version === 2 ? activeTheme.value.design : null)
+  const appearanceRecovery = ref(false)
+  const themeAssets = shallowRef<LoadedThemeAssets | null>(null)
+  const assetWarnings = computed(() => themeAssets.value?.warnings || [])
+  let assetController: AbortController | null = null
+  const clearAssets = () => {
+    assetController?.abort()
+    themeAssets.value?.dispose()
+    themeAssets.value = null
+  }
+  onScopeDispose(clearAssets)
+  // Browser-only preview, cleared on route exit; never persisted or sent to an API.
+  const previewDesign = shallowRef<UiDesign | null>(null)
+  const setDesignPreview = (value: unknown): boolean => {
+    const design = value === null ? null : parseUiDesign(value)
+    if (value !== null && !design) return false
+    previewDesign.value = design
+    updateCSSVariables()
+    return true
+  }
   let appearanceRequest = 0
   const loadThemeAppearance = async () => {
     const request = ++appearanceRequest
-    let definition: ThemeDefinition | null = null
+    assetController?.abort()
+    let definition: InstalledTheme | null = null
+    let baseUrl = ''
     try {
-      definition = await readThemeAppearance(await http.getCurrentBackendUrl())
+      baseUrl = await http.getCurrentBackendUrl()
+      definition = await readInstalledTheme(baseUrl)
     } catch { /* Backend discovery failure also uses the built-in settings. */ }
     if (request === appearanceRequest) {
+      if (definition?.theme_extension_version === 2 && activeTheme.value?.theme_extension_version === 2 &&
+        definition.package_sha256 === activeTheme.value.package_sha256 && themeAssets.value && !themeAssets.value.warnings.length) {
+        activeTheme.value = definition
+        updateCSSVariables()
+        return // Already verified immutable resources; avoid font/logo churn on tab focus.
+      }
+      clearAssets()
       activeTheme.value = definition
       updateCSSVariables()
+      if (definition?.theme_extension_version === 2) {
+        assetController = new AbortController()
+        const assets = await loadThemeAssets(definition, baseUrl, assetController.signal)
+        if (request !== appearanceRequest) { assets.dispose(); return }
+        if (assets.font) document.fonts?.add(assets.font)
+        themeAssets.value = assets
+        updateCSSVariables()
+      }
     }
   }
   const currentLanguageCode = ref('en') // Default to English
@@ -69,9 +109,14 @@ export const useSettingsStore = defineStore('settings', () => {
 
   // Computed property to get current theme settings
   const styleSettings = computed(() => {
-    return resolveThemeStyle(activeTheme.value, themeStore.theme,
+    if (installedDesign.value && !appearanceRecovery.value) return designLegacyStyle(installedDesign.value, themeStore.theme)
+    const legacyTheme = activeTheme.value?.theme_extension_version === 1 && !appearanceRecovery.value ? activeTheme.value : null
+    return resolveThemeStyle(legacyTheme, themeStore.theme,
       themeStore.theme === 'dark' ? darkStyleSettings : lightStyleSettings)
   })
+  const uiDesign = computed(() => previewDesign.value || (!appearanceRecovery.value && installedDesign.value) || adaptLegacyUi(styleSettings.value, themeStore.theme))
+  const brandingLogo = computed(() => headerSettings.logoUrl ||
+    (!appearanceRecovery.value && !previewDesign.value ? themeAssets.value?.logos[themeStore.theme] || '' : ''))
 
   const loading = ref(false)
   const error = ref('')
@@ -274,10 +319,24 @@ export const useSettingsStore = defineStore('settings', () => {
     root.style.setProperty('--card-shadow', themeStore.theme === 'dark' ? 'rgba(0, 0, 0, 0.3)' : 'rgba(0, 0, 0, 0.1)')
     root.style.setProperty('--card-hover-shadow', themeStore.theme === 'dark' ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.15)')
 
+    // Closed namespaced projection. Every owned variable is overwritten on mode,
+    // preview and header changes; it cannot retain values from a previous theme.
+    for (const [key, value] of Object.entries(uiDesignVariables(uiDesign.value, themeStore.theme, headerSettings))) {
+      root.style.setProperty(key, value)
+    }
+    if (installedDesign.value && !previewDesign.value && !appearanceRecovery.value) {
+      const colors = installedDesign.value[themeStore.theme]
+      root.style.setProperty('--button-primary-text', colors.accent_text)
+      root.style.setProperty('--button-secondary-text', colors.secondary_text)
+      root.style.setProperty('--button-danger-text', colors.danger_text)
+      if (themeAssets.value?.font) root.style.setProperty('--ui-font', `"${themeAssets.value.font.family}", ${root.style.getPropertyValue('--ui-font')}`)
+    }
+
     // console.log('CSS variables updated')
   }
 
   watch(activeTheme, updateCSSVariables)
+  watch(appearanceRecovery, updateCSSVariables)
 
   // Helper function to adjust color brightness
   const adjustColor = (color: string, amount: number): string => {
@@ -464,6 +523,13 @@ export const useSettingsStore = defineStore('settings', () => {
 
   return {
     activeTheme,
+    installedDesign,
+    appearanceRecovery,
+    brandingLogo,
+    assetWarnings,
+    previewDesign,
+    uiDesign,
+    setDesignPreview,
     loadThemeAppearance,
     headerSettings,
     styleSettings,

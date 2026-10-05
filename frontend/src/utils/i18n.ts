@@ -238,13 +238,13 @@ class FrontendI18n {
 
 
   // Set current language
-  async setLanguage(languageCode: string) {
+  async setLanguage(languageCode: string, persistPreference = true) {
     const existingTranslations = this.translations.get(languageCode)
     const needsLoading = !existingTranslations || Object.keys(existingTranslations).length === 0
 
     if (languageCode === this.currentLanguage.value && !needsLoading) return
 
-    localStorage.setItem('preferredLanguage', languageCode)
+    if (persistPreference) localStorage.setItem('preferredLanguage', languageCode)
     this.currentLanguage.value = languageCode
 
     await this.loadTranslations(languageCode)
@@ -254,7 +254,7 @@ class FrontendI18n {
 
     // Save to backend (async)
     try {
-      await saveCurrentUserLanguage(languageCode)
+      if (persistPreference) await saveCurrentUserLanguage(languageCode)
     } catch (error) {
       // Ignore backend errors
     }
@@ -350,10 +350,12 @@ export const useI18n = () => {
   }
 
   const setLanguage = (language: string) => i18n.setLanguage(language)
+  const setPreviewLanguage = (language: string) => i18n.setLanguage(language, false)
 
   return {
     t,
     setLanguage,
+    setPreviewLanguage,
     currentLanguage,
     availableLanguages
   }

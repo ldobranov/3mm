@@ -1,28 +1,25 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { RouterView, useRoute } from 'vue-router'
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
-import Menu from './components/Menu.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import { useThemeStore } from '@/stores/theme'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from '@/utils/i18n'
 import http from '@/utils/dynamic-http'
 import { readSettings } from '@/utils/settings-api'
-import { resolveHeaderSettings } from '@/utils/header-settings'
+import ApplicationShell from './components/ui/ApplicationShell.vue'
+import { resolveUiShellMode } from '@/utils/ui-design'
 import '@/assets/styles.css';
+import '@/assets/ui-platform.css';
 
 // Initialize stores
 const themeStore = useThemeStore()
 const settingsStore = useSettingsStore()
-const { currentLanguage } = useI18n()
-
-// Local reactive refs for header settings
-const siteName = ref('Mega Monitor')
-const headerMessage = ref('Welcome to Mega Monitor')
-const logoUrl = ref('')
-const headerBgColor = ref('#4CAF50')
-const headerTextColor = ref('#ffffff')
-const showDefaultLogo = computed(() => !logoUrl.value)
+const route = useRoute()
+// V1 stays legacy; v2 opts into the Core-owned shell, except protected recovery.
+const modernShell = computed(() => !settingsStore.appearanceRecovery &&
+  (settingsStore.previewDesign !== null || settingsStore.installedDesign !== null))
+const shellMode = computed(() => resolveUiShellMode(route.meta))
 
 // Authentication status
 const isAuthenticated = ref(!!localStorage.getItem('authToken'))
@@ -110,30 +107,8 @@ const loadDefaults = async () => {
   }
 }
 
-const fetchHeaderSettings = async () => {
-  try {
-    const languageCode = currentLanguage.value || 'en'
-    const [localizedSettings, allSettings] = await Promise.all([
-      readSettings(languageCode),
-      readSettings()
-    ])
-    const resolvedHeader = resolveHeaderSettings(localizedSettings, allSettings, languageCode)
-
-    siteName.value = resolvedHeader.siteName
-    headerMessage.value = resolvedHeader.headerMessage
-    logoUrl.value = resolvedHeader.logoUrl
-    headerBgColor.value = resolvedHeader.backgroundColor
-    headerTextColor.value = resolvedHeader.textColor
-  } catch (e) {
-    console.error('Failed to fetch header settings:', e)
-    // Set defaults
-    siteName.value = 'Mega Monitor'
-    headerMessage.value = 'Welcome to Mega Monitor'
-    logoUrl.value = ''
-    headerBgColor.value = '#4CAF50'
-    headerTextColor.value = '#ffffff'
-  }
-}
+// Header content and visual precedence have one owner, the settings store.
+const refreshSettings = () => { void settingsStore.loadSettings() }
 
 const syncAuthState = () => {
   const currentAuth = !!localStorage.getItem('authToken')
@@ -162,16 +137,15 @@ watch(isAuthenticated, async (newVal, oldVal) => {
 })
 
 onMounted(async () => {
-  fetchHeaderSettings()
   // Independently load public appearance even when legacy settings/auth fail.
   void settingsStore.loadSettings()
   refreshAppearance()
   window.addEventListener('settings-updated', refreshAppearance)
   document.addEventListener('visibilitychange', refreshVisibleAppearance)
   // Listen for settings updates
-  window.addEventListener('settings-updated', fetchHeaderSettings)
+  window.addEventListener('settings-updated', refreshSettings)
   // Listen for language changes
-  window.addEventListener('language-changed', fetchHeaderSettings)
+  window.addEventListener('language-changed', refreshSettings)
   // Same-tab auth changes use the application event; other tabs use storage.
   window.addEventListener('menu-refresh', syncAuthState)
   window.addEventListener('storage', handleAuthStorageChange)
@@ -184,57 +158,27 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('settings-updated', refreshAppearance)
   document.removeEventListener('visibilitychange', refreshVisibleAppearance)
-  window.removeEventListener('settings-updated', fetchHeaderSettings)
-  window.removeEventListener('language-changed', fetchHeaderSettings)
+  window.removeEventListener('settings-updated', refreshSettings)
+  window.removeEventListener('language-changed', refreshSettings)
   window.removeEventListener('menu-refresh', syncAuthState)
   window.removeEventListener('storage', handleAuthStorageChange)
 })
 </script>
 
 <template>
-  <div id="app" :style="{ backgroundColor: settingsStore.styleSettings.bodyBg }">
-    <header class="app-header" :style="{ backgroundColor: headerBgColor, color: headerTextColor }">
-      <Menu />
-    </header>
-
-    <RouterView />
+  <div class="app-root">
+    <ApplicationShell :active="modernShell" :design="settingsStore.uiDesign" :mode="shellMode">
+      <RouterView />
+    </ApplicationShell>
     <CommandPalette />
   </div>
 </template>
 
 <style scoped>
-#app {
+.app-root {
   min-height: 100vh;
   background-color: var(--body-bg, #ffffff);
   transition: background-color 0.3s ease;
 }
 
-header {
-  padding: 0;
-}
-
-.app-header :deep(.navbar) {
-  width: min(100% - 2rem, 1200px);
-  min-height: 64px;
-  margin: 0 auto;
-  padding: 0.5rem 0;
-}
-
-.app-header :deep(.navbar-brand) {
-  font-size: 1.1rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.app-header :deep(.nav-link) {
-  border-radius: 8px;
-  padding: 0.55rem 0.75rem;
-  font-size: 0.9rem;
-}
-
-@media (max-width: 991px) {
-  .app-header :deep(.navbar-collapse) {
-    padding: 0.75rem 0 0.5rem;
-  }
-}
 </style>

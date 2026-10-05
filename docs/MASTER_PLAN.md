@@ -1,6 +1,6 @@
 # 3mm — общ продуктов план и разпределение по чатове
 
-Обновен: 2026-10-04. Статус: план, не декларация за внедрени функции.
+Обновен: 2026-10-05. Статус: план, не декларация за внедрени функции.
 Този документ задава общата последователност; техническият Roadmap и отделните
 планове пазят подробностите и доказателствата за приемане. Не отваряме наново
 завършени задачи и не преименуваме историческите milestones.
@@ -122,11 +122,21 @@ TLS, отделни credentials и проверка на клиентската 
 безопасното прилагане на tokens. Конкретните палитри/дизайни са отделни ZIP
 extensions; marketing страниците са отделно приложение, не Theme permissions.
 
-Започваме малко: T0/T1 фиксират текущите light/dark tokens и строгия
-`theme-extension v1` формат. Следват catalog/install lifecycle, избор в Settings,
-loader с fallback и отделна reference theme. Не сменяме всички екрани наведнъж.
-Settings, Header/Menu Customization, i18n, права и dynamic registrations се
-запазват; конкретната theme не заменя router, auth или Core Vue компоненти.
+T0–T3 са публикувани в `v0.3.0-beta.36`: строг `theme-extension v1`, общият
+Extensions upload/catalog/lifecycle, избор в Settings и loader с fallback.
+Локалният Graphite Mint v1 е палитра, не цялостен нов layout; live/portable
+theme acceptance остава отделна проверка.
+
+На 2026-10-05 обхватът е разширен с [Theme Platform v2](THEME_PLATFORM_V2_PLAN.md):
+shared UI primitives, Core-owned sidebar/top-navigation shell, типография,
+плътност, component variants и safe local assets. V0–V4 са реализирани локално
+и подготвени за `v0.3.0-beta.37`; публикацията зависи от release workflow.
+V5–V8 остават предстоящи. Следват reference/preview и по един визуално приет екран.
+Конкретните theme ZIP пакети не влизат в Core release. Запазваме v1
+пакетите, старите настройки и единния upload през Extensions. Settings,
+Header/Menu Customization, i18n, права и dynamic registrations се запазват;
+конкретната theme не заменя router, auth, handlers или Core Vue компоненти.
+Device protocol, Agent и Application SDK не се преработват за визуални теми.
 
 Приемане: upload -> избор -> light/dark -> reload -> disable/uninstall ->
 вградена тема; без загуба на старите настройки и без rebuild на Core за нова
@@ -231,8 +241,9 @@ Core е стабилен dependency: board profiles, драйвери, pin mappi
 7. **Showcontroller migration** — отделен бъдещ чат за оценката и поетапното
    прехвърляне на самостоятелния app към extension; Core/SDK липсите се предават на 1.
 8. **Теми / визуален дизайн** — конкретни themes върху общия Theme API;
-   този Core чат изпълнява T0–T3, дизайнерският чат работи по самия пакет и
-   поетапния визуален преглед. Marketing страниците остават при направление 4.
+   този Core чат развива общия UI слой и v2 договора след T0–T3. Дизайнерският
+   чат може да изготвя отделните пакети по приетия договор; общите Core файлове
+   не се редактират паралелно. Marketing страниците остават при направление 4.
 9. **Embedded Nodes / ESP** — бъдещи firmware и extension извън Core;
    започва при наличен хардуер след generic contract acceptance.
 
@@ -256,5 +267,6 @@ Core е стабилен dependency: board profiles, драйвери, pin mappi
 - [Application extensions](APPLICATION_EXTENSION_V1_PLAN.md).
 - [Installation identity](INSTALLATION_IDENTITY_V1.md) и [peers](INSTALLATION_PEER_V1.md).
 - [Theme Platform](THEME_EXTENSION_PLAN.md) и [theme package contract](THEME_EXTENSION_V1.md).
+- [Theme Platform v2 — цялостни визуални теми](THEME_PLATFORM_V2_PLAN.md).
 - [Общ Device Platform](PLATFORM_NEUTRAL_NODES_PLAN.md) и
   [бъдещ Embedded extension](EMBEDDED_NODES_EXTENSION_PLAN.md).

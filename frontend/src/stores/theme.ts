@@ -37,16 +37,18 @@ export const useThemeStore = defineStore('theme', () => {
 
   // Watch for theme changes
   watch(theme, (newTheme) => {
-    localStorage.setItem('theme', newTheme)
     applyTheme(newTheme)
 
     // Update CSS variables when theme changes (defensive check)
     try {
       const settingsStore = useSettingsStore()
+      // Temporary design preview must not become the next browser preference.
+      if (!settingsStore.previewDesign) localStorage.setItem('theme', newTheme)
       if (settingsStore && typeof settingsStore.updateCSSVariables === 'function') {
         settingsStore.updateCSSVariables()
       }
     } catch (error) {
+      localStorage.setItem('theme', newTheme)
       console.warn('Settings store not ready for CSS variables update:', error)
     }
   })

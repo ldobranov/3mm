@@ -2,15 +2,15 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), delete: vi.fn(), load: vi.fn() }))
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), delete: vi.fn(), load: vi.fn(), assetWarnings: [] as string[] }))
 vi.mock('@/utils/dynamic-http', () => ({ default: mocks }))
-vi.mock('@/stores/settings', () => ({ useSettingsStore: () => ({ activeTheme: null, loadThemeAppearance: mocks.load }) }))
+vi.mock('@/stores/settings', () => ({ useSettingsStore: () => ({ activeTheme: null, assetWarnings: mocks.assetWarnings, loadThemeAppearance: mocks.load }) }))
 const language = ref('bg')
 vi.mock('@/utils/i18n', () => ({ useI18n: () => ({ t: (_key: string, fallback: string) => fallback, currentLanguage: language }) }))
 import ThemePackagesSection from './ThemePackagesSection.vue'
 const item = () => ({ module_id: 'org.example.theme', name: { en: 'Example', translations: { bg: 'Пример' } }, version: '1.0.0', sha256: 'a'.repeat(64), enabled: true, is_selected: false, is_available: true, status: 'enabled' })
 describe('Settings theme packages', () => {
-  beforeEach(() => { vi.clearAllMocks(); language.value = 'bg'; mocks.get.mockResolvedValue({ data: { items: [item()] } }) })
+  beforeEach(() => { vi.clearAllMocks(); mocks.assetWarnings.length = 0; language.value = 'bg'; mocks.get.mockResolvedValue({ data: { items: [item()] } }) })
   it('shows localized names, applies an exact version and returns to built-in', async () => {
     const wrapper = mount(ThemePackagesSection)
     await flushPromises()
@@ -52,5 +52,13 @@ describe('Settings theme packages', () => {
     await flushPromises()
     expect(mocks.post).toHaveBeenCalledWith('/api/v1/modules/themes/selection', { sha256: null })
     expect(mocks.load).toHaveBeenCalled()
+  })
+  it('reports asset fallback without preventing built-in selection', async () => {
+    mocks.assetWarnings.push('font decode failed')
+    const wrapper = mount(ThemePackagesSection)
+    await flushPromises()
+    expect(wrapper.text()).toContain('System font and saved branding remain available.')
+    expect(wrapper.get('select').attributes('disabled')).toBeUndefined()
+    expect(wrapper.findAll('option')[0].attributes('value')).toBe('')
   })
 })

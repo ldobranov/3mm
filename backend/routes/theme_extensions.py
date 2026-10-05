@@ -14,6 +14,7 @@ from backend.services.theme_extensions import (
     theme_appearance,
     theme_catalog,
     theme_package,
+    selected_theme_asset,
 )
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
@@ -31,6 +32,15 @@ class ThemeSelection(BaseModel):
 def appearance(response: Response, db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "no-store"
     return theme_appearance(db)
+
+
+@router.get("/packages/{sha256}/assets/{asset_id}")
+def appearance_asset(sha256: str, asset_id: str, db: Session = Depends(get_db)):
+    contents, media_type = selected_theme_asset(db, sha256, asset_id)
+    return Response(contents, media_type=media_type, headers={
+        "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+    })
 
 
 @router.post("/selection")

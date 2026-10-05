@@ -6,6 +6,47 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.37] - 2026-10-05
+
+### Added
+
+- Theme Platform V0–V4: closed Design API 2 with shared backend/browser defaults,
+  semantic light/dark tokens, bounded typography/spacing/density and component
+  variants, plus an adapter preserving existing v1 palette/radius values.
+- Native Vue Button/Dialog and reusable scoped UI classes, with an administrator
+  component preview. An opt-in Core-owned sidebar/top-navigation shell and mobile
+  drawer retain the existing menu registry, roles, localization and route behavior.
+- Strict `theme-extension v2` ZIP support in the existing Extensions installer,
+  catalog and lifecycle, without a second upload screen or theme compiler.
+- Declared WOFF2/PNG/WebP assets with canonical paths, hashes, byte/dimension
+  budgets and bounded container checks. Only the selected, enabled package serves
+  assets; the browser loader uses timeouts, cleanup and safe fallback.
+- Administrator recovery at `/settings/ui-preview?recovery=1` can permanently
+  clear theme selection independently of broken installed styling.
+
+### Compatibility and limits
+
+- V1 themes and built-in/custom appearance remain supported. An update does not
+  activate the v2 shell or change the selected version. Saved Header/Menu content,
+  translations and overrides remain; unrelated settings and sessions are not reset.
+- No database migration, runtime dependency, Agent/deployment redesign, device
+  protocol or Application SDK change. Concrete theme packages, including Graphite
+  Mint, and Child Center remain outside this Core commit/release.
+- Font/WebP validation checks containers, not every glyph or codec property;
+  final browser decoding may fall back. Licensed font/Cyrillic acceptance, a second
+  reference theme, installed-package preview and screen/extension UI migration
+  remain V5–V7. Live upgrade/reset/portable recovery acceptance remains V8.
+
+### Verification
+
+- 96 focused backend theme tests and all 151 frontend tests passed locally;
+  frontend type-check/build and isolated desktop/mobile light/dark/BG/EN browser
+  review passed. A local encrypted portable export/import/restore verifies v2
+  selection, package bytes and asset serving with a new recovery key.
+- Complete clean-source Linux/frontend checks and reproducible Hub/ARMv6 Node
+  artifact builds gate publication through the existing workflows. Local preview
+  and recovery checks are not a claim of deployed-device acceptance.
+
 ## [0.3.0-beta.36] - 2026-10-04
 
 ### Added
@@ -933,7 +974,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.36...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.37...HEAD
+[0.3.0-beta.37]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.37
 [0.3.0-beta.36]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.36
 [0.3.0-beta.35]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.35
 [0.3.0-beta.34]: https://github.com/ldobranov/3mm/tree/v0.3.0-beta.34

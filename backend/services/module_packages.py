@@ -1,9 +1,11 @@
 """Safe validation of immutable module v2 ZIP packages."""
-import hashlib, io, json, stat, zipfile
+import hashlib, io, json, stat, zipfile, zlib
 from dataclasses import dataclass
 from pathlib import Path
 from pydantic import ValidationError
 from backend.version import core_version as actual_core_version
+from backend.services.theme_assets import validate_theme_assets
+from three_mm_protocol.theme_extension_v2 import ThemeExtensionV2
 from three_mm_protocol import (
     ApplicationExtensionV1,
     CompiledUiExtensionV1,
@@ -46,14 +48,14 @@ class ValidatedModulePackage:
     runtime_extension: RuntimeExtensionV1 | None = None
     compiled_ui: CompiledUiExtensionV1 | None = None
     application_extension: ApplicationExtensionV1 | None = None
-    theme_extension: ThemeExtensionV1 | None = None
+    theme_extension: ThemeExtensionV1 | ThemeExtensionV2 | None = None
 
 
 def _read_theme_extension(
     archive: zipfile.ZipFile,
     manifest: ModuleManifestV2,
     package_files: set[str],
-) -> ThemeExtensionV1:
+) -> ThemeExtensionV1 | ThemeExtensionV2:
     if (
         manifest.runtimes != ("ui",)
         or manifest.entrypoints != {"ui": "theme-extension.json"}
@@ -75,14 +77,17 @@ def _read_theme_extension(
         or manifest.health_check.path != "theme-extension.json"
     ):
         raise ModulePackageError("theme extension health check must reference its definition")
-    unexpected = sorted(package_files - {"manifest.json", "theme-extension.json"})
-    if unexpected:
-        raise ModulePackageError(f"theme extension contains forbidden files: {', '.join(unexpected)}")
     try:
         if archive.getinfo("theme-extension.json").file_size > MAX_THEME_DEFINITION_BYTES:
             raise ModulePackageError("theme definition exceeds its size limit")
-        theme = ThemeExtensionV1.model_validate_json(archive.read("theme-extension.json"))
-    except (KeyError, ValidationError, zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
+        definition = json.loads(archive.read("theme-extension.json"))
+        model = ThemeExtensionV2 if isinstance(definition, dict) and definition.get("theme_extension_version") == 2 else ThemeExtensionV1
+        theme = model.model_validate(definition)
+        if isinstance(theme, ThemeExtensionV2):
+            validate_theme_assets(archive, theme)
+        elif package_files != {"manifest.json", "theme-extension.json"}:
+            raise ModulePackageError("theme extension contains forbidden files")
+    except (KeyError, ValueError, zipfile.BadZipFile, zlib.error, RuntimeError, NotImplementedError) as exc:
         raise ModulePackageError(f"invalid theme-extension.json: {exc}") from exc
     if theme.module_id != manifest.module_id or theme.version != manifest.version:
         raise ModulePackageError("theme extension identity must match manifest v2")

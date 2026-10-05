@@ -572,11 +572,14 @@ Acceptance criteria:
 
 ## Milestone 17 — Core Theme Platform and installable themes
 
-Status: approved/current priority on 2026-10-04. T0–T3 implemented locally;
-catalog lifecycle, Settings selection and browser activation are ready for the
-reference-theme stage; live/portable acceptance remains T6. See
+Status: approved/current priority on 2026-10-04; expanded on 2026-10-05.
+T0–T3 are published in `v0.3.0-beta.36`; the local reference v1 palette does not
+constitute a full UI redesign. V0–V4 are implemented locally and prepared for
+`v0.3.0-beta.37`, subject to successful release publication. V5–V8 and live
+acceptance remain open; concrete theme packages are excluded from Core releases. See
 [THEME_EXTENSION_PLAN.md](THEME_EXTENSION_PLAN.md) and
-[THEME_EXTENSION_V1.md](THEME_EXTENSION_V1.md).
+[THEME_EXTENSION_V1.md](THEME_EXTENSION_V1.md), with the expanded
+[THEME_PLATFORM_V2_PLAN.md](THEME_PLATFORM_V2_PLAN.md).
 
 Goal: install and select a separately versioned visual package without
 rebuilding Core or allowing a theme to replace application behavior.
@@ -593,6 +596,13 @@ Deliverables:
 - separately maintained reference theme; marketing pages remain a separate extension;
 - incremental shell/screen work with desktop/mobile light/dark visual review.
 
+Implemented V0–V4 additions: shared UI primitives, versioned typography/spacing/density
+and component variants, Core-owned sidebar/top-navigation layouts and bounded
+local assets. V1 packages remain compatible; themes cannot replace executable
+Vue components, routing, authorization or action handlers. Extension UI adoption
+has its own public contract, not imports from Core internals. No Agent/device
+protocol redesign or separate theme uploader is required.
+
 Acceptance criteria:
 
 - upload, select and change theme without a Core frontend rebuild;
@@ -607,8 +617,13 @@ Current delivery: T0 baseline/token inventory, T1 package validation, T2
 admin-only catalog/lifecycle and T3 browser activation with additive migration.
 Extensions owns the shared upload and lifecycle; Settings only selects an enabled
 exact version or built-in appearance. Focused checks and isolated desktop/mobile
-light/dark review passed. A reference theme, full application redesign and live
-portable recovery acceptance are not implied by this status.
+light/dark review passed. Graphite Mint v1 is a local reference palette/package;
+its preview is not full-application or live-install acceptance. A full application
+redesign and live portable recovery acceptance are not implied by this status.
+V0–V4 also include a strict v2 package/asset loader, protected built-in recovery,
+focused regression and local encrypted portable restore checks. The new shell
+is opt-in; existing installations keep their appearance. Next: V5 reference
+themes/installed-package preview, then incremental screens and live V8 acceptance.
 
 ## Milestone 18 — CONERAX Embedded v0.1 / Embedded Nodes Extension
 

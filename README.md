@@ -8,9 +8,9 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Beta. This source prepares **v0.3.0-beta.36**, adding
-> Theme Platform T1–T3: declarative theme ZIPs use the common Extensions upload,
-> administrator lifecycle controls and an installation-wide selector in Settings.
+> **Project status:** Beta. This source prepares **v0.3.0-beta.37**, adding
+> Theme Platform V0–V4: Design API 2, native UI primitives, an opt-in application
+> shell and validated local assets through the existing Extensions installer.
 > Existing device transport, capability authority and lifecycle remain unchanged.
 > Device protocol 1.0, Application SDK 1.3, installation peers and Node Update remain.
 > Release assets become available only after the tag-driven workflow succeeds;
@@ -20,10 +20,12 @@ system.
 > Real peer v2 HTTPS/Linux acceptance, Cloud Manager integration and public ingress
 > remain separate work.
 >
-> Beta.35 is published and corrected the beta.34 regression fixtures; no tag is reused.
-> Theme validation, migration, lifecycle and browser activation are locally checked.
-> A real reference theme, full visual redesign and live theme recovery acceptance
-> remain separate stages. No concrete theme or business extension is bundled.
+> Beta.36 published the compatible v1 theme platform. Theme lifecycle, v2 asset
+> loading and portable recovery are locally checked; desktop/mobile light/dark
+> review used an isolated fixture, not a live device. Installed-package preview,
+> licensed font acceptance, screen migration and live recovery remain V5–V8.
+> Updates keep the existing appearance until an administrator selects a v2 theme.
+> No concrete theme (including Graphite Mint) or business extension is bundled.
 
 ## What works
 
@@ -51,8 +53,9 @@ system.
 - **Extensions** — declarative runtime extensions and reviewed compiled Vue
   widgets, editors, routes and reusable components, plus the locally completed
   supervised application-service foundation for transactional extensions.
-- **Installable themes** — closed, declarative light/dark token packages without
-  CSS or executable code. Upload, enable, disable and delete exact versions in
+- **Installable themes** — compatible v1 palettes and v2 design packages with
+  Core-owned layout/component variants and bounded local fonts/logos, without
+  arbitrary CSS or executable code. Upload, enable, disable and delete versions in
   Extensions; select an enabled version or built-in appearance in Settings.
   Invalid or unavailable themes fall back safely; existing custom settings remain.
 - **AI Extension Builder** — guided intent planning, editable projects,
@@ -217,8 +220,8 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 After the new GitHub Release is fully published, update the Hub through
 `/system/updates` using the Beta channel. Update the Zero over SSH with the same
-Node bootstrap command above; after beta.36 publication, add
-`--tag v0.3.0-beta.36` to select that exact release. Provisioned upgrades preserve
+Node bootstrap command above; after beta.37 publication, add
+`--tag v0.3.0-beta.37` to select that exact release. Provisioned upgrades preserve
 identity and pairing, not Master reset.
 Then upload Fleet `0.1.7` on the Hub through Extensions. Updating the Fleet ZIP
 alone does not update Core or the Zero Agent. Follow the
@@ -301,6 +304,20 @@ Background checks never download or install a release.
 See the [changelog](CHANGELOG.md) for user-visible changes and the
 [release guide](docs/RELEASING.md) for the maintainer workflow.
 
+### Installing a visual theme
+
+After updating Core to beta.37, upload your separate v1/v2 theme ZIP through
+**Extensions**, enable it, then select it in **Settings → Theme Customization**
+and apply. Enabling a package or updating Core does not select a new theme.
+Concrete themes are not included in the Core release archives or release assets.
+
+The v2 shell preserves data-driven navigation, translations and access rules;
+legacy screens and extensions are not automatically redesigned. If installed
+styling becomes unusable, sign in as an administrator and open
+`/settings/ui-preview?recovery=1`, then choose **Use built-in permanently**.
+This clears only the theme selection, not saved settings or application data.
+The preview page is a component fixture, not yet an installed-package preview.
+
 ## Documentation
 
 | Document | Purpose |
@@ -327,6 +344,9 @@ See the [changelog](CHANGELOG.md) for user-visible changes and the
 | [Extension lifecycle](docs/EXTENSION_LIFECYCLE.md) | Package, version and data lifecycle |
 | [Theme Platform plan](docs/THEME_EXTENSION_PLAN.md) | Theme lifecycle, browser activation and remaining acceptance stages |
 | [Theme extension v1](docs/THEME_EXTENSION_V1.md) | Closed light/dark token contract and shared Extensions upload |
+| [Theme Platform v2 plan](docs/THEME_PLATFORM_V2_PLAN.md) | V0–V4 delivery and remaining visual/recovery acceptance |
+| [Theme Design API 2](docs/THEME_DESIGN_API_V2.md) | Shared tokens, component variants, shell modes and compatibility |
+| [Theme extension v2](docs/THEME_EXTENSION_V2.md) | Package/asset validation, lifecycle, loader and recovery |
 | [Embedded Nodes extension plan](docs/EMBEDDED_NODES_EXTENSION_PLAN.md) | Deferred firmware/extension work outside Core |
 | [Runtime extension v1](docs/RUNTIME_EXTENSION_V1.md) | Declarative extension contract |
 | [Compiled extension v1](docs/COMPILED_EXTENSION_V1.md) | Reviewed Vue compilation boundary |

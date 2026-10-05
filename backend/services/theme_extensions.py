@@ -1,6 +1,9 @@
 """Theme catalog and lifecycle using the existing immutable module package store."""
 
 import logging
+import io
+import re
+import zipfile
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -40,10 +43,12 @@ def theme_package(db: Session, sha256: str) -> ModulePackage:
     return package
 
 
-def validate_stored_theme(package: ModulePackage) -> ValidatedModulePackage:
+def validate_stored_theme(package: ModulePackage, contents: bytes | None = None) -> ValidatedModulePackage:
     try:
-        with Path(package.file_path).open("rb") as source:
-            validated = validate_module_package(source.read(MAX_PACKAGE_BYTES + 1))
+        if contents is None:
+            with Path(package.file_path).open("rb") as source:
+                contents = source.read(MAX_PACKAGE_BYTES + 1)
+        validated = validate_module_package(contents)
     except (OSError, ModulePackageError) as exc:
         raise HTTPException(
             409, "Theme package is missing or could not be validated"
@@ -143,11 +148,46 @@ def theme_appearance(db: Session) -> dict:
     if package is not None:
         try:
             theme = validate_stored_theme(package).theme_extension
-            return {"theme": theme.model_dump(mode="json", exclude_none=True)}
+            result = {"theme": theme.model_dump(mode="json", exclude_none=True)}
+            if theme.theme_extension_version == 2:
+                result["package_sha256"] = package.sha256
+            return result
         except HTTPException:
             # A damaged package must not prevent login or recovery controls.
             logger.warning("Selected theme unavailable: %s", package.sha256)
     return {"theme": None}
+
+
+def selected_theme_asset(db: Session, sha256: str, asset_id: str) -> tuple[bytes, str]:
+    """Public appearance assets only; never expose staged/catalog or arbitrary paths."""
+    if not re.fullmatch(r"[0-9a-f]{64}", sha256) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", asset_id):
+        raise HTTPException(404, "Theme asset was not found")
+    package = db.scalar(select(ModulePackage).join(ThemeExtensionInstallation).where(
+        ModulePackage.sha256 == sha256,
+        ThemeExtensionInstallation.is_selected.is_(True),
+        ThemeExtensionInstallation.enabled.is_(True),
+    ))
+    if package is None or not is_theme_package(package):
+        raise HTTPException(404, "Theme asset was not found")
+    root = get_settings().backend.uploads_dir.resolve() / "modules"
+    expected = root / f"{sha256}.zip"
+    if expected.resolve() != expected or Path(package.file_path).resolve() != expected:
+        raise HTTPException(409, "Theme asset is unavailable")
+    try:
+        with expected.open("rb") as source:
+            contents = source.read(MAX_PACKAGE_BYTES + 1)
+        if len(contents) > MAX_PACKAGE_BYTES:
+            raise HTTPException(409, "Theme asset is unavailable")
+        validated = validate_stored_theme(package, contents)
+        theme = validated.theme_extension
+        asset = next((asset for asset in getattr(theme, "assets", ()) if asset.asset_id == asset_id), None)
+        if asset is None:
+            raise HTTPException(404, "Theme asset was not found")
+        # Same validated bytes: no extract/reopen race or loose file serving.
+        with zipfile.ZipFile(io.BytesIO(contents)) as archive:
+            return archive.read(asset.path), asset.media_type
+    except OSError as exc:
+        raise HTTPException(409, "Theme asset is unavailable") from exc
 
 
 def select_theme(db: Session, sha256: str | None, actor: User) -> dict:

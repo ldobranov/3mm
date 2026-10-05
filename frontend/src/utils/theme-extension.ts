@@ -87,7 +87,7 @@ export function buttonTextColor(color: string): string {
   return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) ? '#000000' : '#ffffff'
 }
 
-export async function readThemeAppearance(baseUrl: string): Promise<ThemeDefinition | null> {
+export async function readThemeProjection(baseUrl: string): Promise<unknown> {
   // Public appearance must never refresh/clear a browser's authentication.
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), 5000)
@@ -98,10 +98,15 @@ export async function readThemeAppearance(baseUrl: string): Promise<ThemeDefinit
     if (!response.ok) return null
     const text = await response.text()
     if (text.length > 64 * 1024) return null
-    return parseThemeDefinition(JSON.parse(text)?.theme)
+    return JSON.parse(text)
   } catch {
     return null
   } finally {
     window.clearTimeout(timeout)
   }
+}
+
+export async function readThemeAppearance(baseUrl: string): Promise<ThemeDefinition | null> {
+  const projection = await readThemeProjection(baseUrl)
+  return object(projection) ? parseThemeDefinition(projection.theme) : null
 }

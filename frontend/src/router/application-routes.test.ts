@@ -31,6 +31,19 @@ function applicationPackage(audience: 'public' | 'kiosk' | 'operator' | 'adminis
 
 
 describe('application compiled routes', () => {
+  it('guards appearance preview and recovery with the existing admin boundary', async () => {
+    const api = vi.spyOn(http, 'get').mockResolvedValue({ data: { items: [] } })
+    const catalog = vi.spyOn(compiledUi, 'getCompiledUiCatalog').mockResolvedValue([])
+    try {
+      for (const [role, expected] of [['admin', '/settings/ui-preview'], ['registered', '/user/profile'], ['', '/user/login']]) {
+        localStorage.clear()
+        if (role) { localStorage.setItem('authToken', 'fixture-token'); localStorage.setItem('role', role) }
+        const router = await createRouterWithDynamicRoutes()
+        await router.push('/settings/ui-preview?recovery=1')
+        expect(router.currentRoute.value.path).toBe(expected)
+      }
+    } finally { localStorage.clear(); api.mockRestore(); catalog.mockRestore() }
+  })
   it('keeps optional Core pages protected without forcing them into the header', async () => {
     const api = vi.spyOn(http, 'get').mockResolvedValue({ data: { items: [] } })
     const catalog = vi.spyOn(compiledUi, 'getCompiledUiCatalog').mockResolvedValue([])
@@ -39,7 +52,7 @@ describe('application compiled routes', () => {
       const automatic = router.getRoutes()
         .filter(route => route.meta.menuLabel)
         .map(route => ({ path: route.path, label: String(route.meta.menuLabel) }))
-      for (const path of ['/automations/proposals', '/system/updates']) {
+      for (const path of ['/automations/proposals', '/system/updates', '/settings/ui-preview']) {
         const route = router.resolve(path)
         expect(route.meta.requiresAuth).toBe(true)
         expect(route.meta.requiresRole).toBe('admin')
