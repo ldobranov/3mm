@@ -1339,151 +1339,124 @@ def get_translations(language_code: str):
         print(f"Error serving translations for {language_code}: {e}")
         return {"frontend": {}, "backend": {}, "extensions": {}}
 
-# Global settings image upload endpoint
-from fastapi import UploadFile, File
+# Public settings assets use the same persistent root as /uploads and backup.
+from fastapi import UploadFile, File, Form
+import logging
 import uuid
 from datetime import datetime
-import os
+
+from backend.services.asset_storage import AssetPathError, AssetStorage, get_asset_storage
+
+_asset_logger = logging.getLogger(__name__)
+_IMAGE_EXTENSIONS = {
+    "image/jpeg": (".jpg", ".jpeg"),
+    "image/png": (".png",),
+    "image/gif": (".gif",),
+    "image/webp": (".webp",),
+    "image/svg+xml": (".svg",),
+}
+
+
+def _settings_asset_directory(storage: AssetStorage, directory: str) -> str:
+    # Settings endpoints cannot mutate another extension's assets.
+    if not isinstance(directory, str) or not (
+        directory == "settings" or directory.startswith("settings/")
+    ):
+        raise AssetPathError("Invalid settings directory")
+    storage.directory(directory)
+    return directory
+
+
+def _read_settings_image(file: UploadFile) -> tuple[bytes, str]:
+    extensions = _IMAGE_EXTENSIONS.get(file.content_type)
+    if extensions is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file type. Only JPEG, PNG, GIF, WebP, and SVG are allowed.",
+        )
+    file.file.seek(0)
+    content = file.file.read(2 * 1024 * 1024 + 1)
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 2MB.")
+    extension = os.path.splitext(file.filename or "")[1].lower()
+    # Never publish arbitrary filename extensions based only on the MIME label.
+    return content, extension if extension in extensions else extensions[0]
+
+
+def _asset_images(storage: AssetStorage, directory: str) -> list[dict]:
+    target = storage.directory(directory)
+    if not target.is_dir():
+        return []
+    images = []
+    extensions = tuple(ext for values in _IMAGE_EXTENSIONS.values() for ext in values)
+    for path in sorted(target.iterdir(), key=lambda item: item.name.lower()):
+        if (
+            path.is_symlink()
+            or not path.is_file()
+            or not path.name.lower().endswith(extensions)
+        ):
+            continue
+        stat = path.stat()
+        images.append({
+            "name": path.name,
+            "url": storage.public_url(directory, path.name),
+            "size": stat.st_size,
+            "modified": stat.st_mtime,
+            "type": "image",
+        })
+    return images
+
 
 @router.post("/upload/settings-image")
 def upload_settings_image(
     file: UploadFile = File(...),
     claims: dict = Depends(require_user)
 ):
-    """Upload image for global app settings (logos, etc.)"""
+    """Legacy logo upload; retain its stable URL in persistent storage."""
     try:
-        # Validate file type
-        allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"]
-        if file.content_type not in allowed_types:
-            raise HTTPException(status_code=400, detail="Invalid file type. Only JPEG, PNG, GIF, WebP, and SVG are allowed.")
-
-        # Validate file size (max 2MB for settings images)
-        file.file.seek(0, 2)
-        file_size = file.file.tell()
-        file.file.seek(0)
-        if file_size > 2 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="File too large. Maximum size is 2MB.")
-
-        # Generate simpler filename - use "logo.png" for logo uploads
-        file_extension = os.path.splitext(file.filename)[1]
-        # For logo uploads, use a simple consistent filename
-        unique_filename = f"logo{file_extension}"
-
-        # Use the same path construction as main.py to ensure consistency
-        # Get the project root path (backend directory)
-        project_root = os.path.join(os.path.dirname(__file__), '..', '..')
-        uploads_dir = os.path.join(project_root, 'uploads', 'settings')
-        os.makedirs(uploads_dir, exist_ok=True)
-
-        # Debug: log the uploads directory path
-        print(f"DEBUG: Settings upload directory: {uploads_dir}")
-        print(f"DEBUG: Settings upload directory exists: {os.path.exists(uploads_dir)}")
-        print(f"DEBUG: Project root: {project_root}")
-        print(f"DEBUG: Main uploads directory: {os.path.join(project_root, 'uploads')}")
-
-        # For logo uploads, use a simple consistent filename
-        file_extension = os.path.splitext(file.filename)[1]
-        simple_filename = f"logo{file_extension}"
-        file_path = os.path.join(uploads_dir, simple_filename)
-
-        # If file already exists, remove it first to avoid conflicts
-        if os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-                print(f"DEBUG: Removed existing logo file: {file_path}")
-            except Exception as e:
-                print(f"DEBUG: Error removing existing logo file: {e}")
-
-        # Save the file
-        with open(file_path, "wb") as buffer:
-            buffer.write(file.file.read())
-
-        # Debug: verify file was saved
-        print(f"DEBUG: Saved file to: {file_path}")
-        print(f"DEBUG: File exists after save: {os.path.exists(file_path)}")
-
+        storage = get_asset_storage(get_settings())
+        content, extension = _read_settings_image(file)
+        filename = f"logo{extension}"
+        storage.write_bytes("settings", filename, content)
         return {
-            "filename": simple_filename,
-            "url": f"/uploads/settings/{simple_filename}",
-            "message": "Settings image uploaded successfully"
+            "filename": filename,
+            "url": storage.public_url("settings", filename),
+            "message": "Settings image uploaded successfully",
         }
+    except HTTPException:
+        raise
+    except AssetPathError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except OSError as error:
+        _asset_logger.exception("Could not write settings logo")
+        raise HTTPException(status_code=500, detail="Upload failed") from error
 
-    except Exception as e:
-        print(f"Error uploading settings image: {e}")
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 @router.get("/api/images/list")
 def list_images(
     directory: str = "uploads",
     claims: dict = Depends(try_get_claims)
 ):
-    """List all images in a specific upload directory"""
+    """Legacy image library; directory names and response remain compatible."""
     try:
-        # Security: restrict to allowed directories only
-        allowed_directories = ["uploads", "uploads/settings", "uploads/store"]
-        if directory not in allowed_directories:
+        if directory not in {"uploads", "uploads/settings", "uploads/store"}:
             raise HTTPException(status_code=400, detail="Invalid directory specified")
+        storage = get_asset_storage(get_settings())
+        relative = directory.removeprefix("uploads").lstrip("/")
+        if not storage.directory(relative).is_dir():
+            return {
+                "images": [], "directory": directory,
+                "message": "Directory does not exist",
+            }
+        images = _asset_images(storage, relative)
+        return {"images": images, "directory": directory, "count": len(images)}
+    except AssetPathError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except OSError as error:
+        _asset_logger.exception("Could not list image assets")
+        raise HTTPException(status_code=500, detail="Failed to list images") from error
 
-        # Get the project root path
-        project_root = os.path.join(os.path.dirname(__file__), '..', '..')
-        target_dir = os.path.join(project_root, directory)
 
-        # Debug logging
-        print(f"DEBUG: Project root: {project_root}")
-        print(f"DEBUG: Target directory: {target_dir}")
-        print(f"DEBUG: Directory exists: {os.path.exists(target_dir)}")
-
-        # Security: ensure the path is within our project
-        if not os.path.abspath(target_dir).startswith(os.path.abspath(project_root)):
-            raise HTTPException(status_code=403, detail="Access to this directory is not allowed")
-
-        # Check if directory exists
-        if not os.path.exists(target_dir):
-            return {"images": [], "directory": directory, "message": "Directory does not exist"}
-
-        # List all image files
-        image_files = []
-        try:
-            files = os.listdir(target_dir)
-            print(f"DEBUG: Files in directory: {files}")
-        except Exception as list_error:
-            print(f"DEBUG: Error listing directory: {list_error}")
-            files = []
-
-        for filename in files:
-            file_path = os.path.join(target_dir, filename)
-
-            # Only include image files
-            if os.path.isfile(file_path) and filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg')):
-                try:
-                    # Get file stats
-                    stat = os.stat(file_path)
-                    image_files.append({
-                        "name": filename,
-                        "url": f"/{directory}/{filename}",
-                        "size": stat.st_size,
-                        "modified": stat.st_mtime,
-                        "type": "image"
-                    })
-                    print(f"DEBUG: Added image file: {filename}")
-                except Exception as e:
-                    print(f"Error reading file {filename}: {e}")
-                    continue
-
-        print(f"DEBUG: Found {len(image_files)} image files")
-        return {
-            "images": image_files,
-            "directory": directory,
-            "count": len(image_files)
-        }
-
-    except Exception as e:
-        print(f"Error listing images: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to list images: {str(e)}")
-
-# Settings extension endpoints
 @router.get("/api/settings/images/list")
 def list_settings_images(
     directory: str = "settings",
@@ -1492,280 +1465,158 @@ def list_settings_images(
     offset: int = 0,
     claims: dict = Depends(try_get_claims)
 ):
-    """List images in the settings directory"""
+    """List persistent settings assets without creating directories on GET."""
     try:
-        # Map directory to full path
-        if directory == "settings":
-            full_directory = "uploads/settings"
-        else:
-            full_directory = f"uploads/{directory}"
-
-        # Security: restrict to allowed directories only
-        allowed_directories = ["uploads/settings"]
-        if full_directory not in allowed_directories:
-            raise HTTPException(status_code=400, detail="Invalid directory specified")
-
-        # Get the project root path
-        project_root = os.path.join(os.path.dirname(__file__), '..', '..')
-        target_dir = os.path.join(project_root, full_directory)
-
-        # Ensure directory exists
-        if not os.path.exists(target_dir):
-            os.makedirs(target_dir, exist_ok=True)
-
-        # List all image files
-        image_files = []
-        try:
-            files = os.listdir(target_dir)
-        except Exception as list_error:
-            files = []
-
-        for filename in files:
-            file_path = os.path.join(target_dir, filename)
-
-            # Only include image files
-            if os.path.isfile(file_path) and filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg')):
-                try:
-                    # Get file stats
-                    stat = os.stat(file_path)
-                    image_files.append({
-                        "name": filename,
-                        "url": f"/{full_directory}/{filename}",
-                        "size": stat.st_size,
-                        "modified": stat.st_mtime,
-                        "type": "image"
-                    })
-                except Exception as e:
-                    continue
-
-        # Apply search filter if provided
+        storage = get_asset_storage(get_settings())
+        _settings_asset_directory(storage, directory)
+        images = _asset_images(storage, directory)
         if search:
-            search_lower = search.lower()
-            filtered_images = [
-                img for img in image_files
-                if search_lower in img["name"].lower() or search_lower in img["url"].lower()
+            query = search.lower()
+            images = [
+                image for image in images
+                if query in image["name"].lower() or query in image["url"].lower()
             ]
-        else:
-            filtered_images = image_files
-
-        # Apply pagination
-        total_images = len(filtered_images)
-        paginated_images = filtered_images[offset:offset + limit]
-
-        # Build breadcrumb path
-        breadcrumb = [{"name": "Settings", "path": "settings"}]
-
         return {
             "folders": [],
-            "images": paginated_images,
-            "total": total_images,
+            "images": images[offset:offset + limit],
+            "total": len(images),
             "limit": limit,
             "offset": offset,
             "directory": directory,
-            "breadcrumb": breadcrumb,
-            "can_create_folder": True
+            "breadcrumb": [{"name": "Settings", "path": "settings"}],
+            "can_create_folder": True,
         }
+    except AssetPathError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except OSError as error:
+        _asset_logger.exception("Could not list settings assets")
+        raise HTTPException(status_code=500, detail="Failed to list images") from error
 
-    except Exception as e:
-        print(f"Error listing settings images: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to list images: {str(e)}")
 
 @router.post("/api/settings/upload-image")
 def upload_settings_image_ext(
     file: UploadFile = File(...),
     directory: str = "settings",
+    form_directory: Optional[str] = Form(None, alias="directory"),
     claims: dict = Depends(require_user)
 ):
-    """Upload image for settings extension"""
+    """Support both the existing query parameter and the editor's form field."""
     try:
-        # Validate file type
-        allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"]
-        if file.content_type not in allowed_types:
-            raise HTTPException(status_code=400, detail="Invalid file type. Only JPEG, PNG, GIF, WebP, and SVG are allowed.")
-
-        # Validate file size (max 2MB for settings images)
-        file.file.seek(0, 2)
-        file_size = file.file.tell()
-        file.file.seek(0)
-        if file_size > 2 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="File too large. Maximum size is 2MB.")
-
-        # Generate unique filename
-        file_extension = os.path.splitext(file.filename)[1]
-        unique_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}{file_extension}"
-
-        # Get the project root path
-        project_root = os.path.join(os.path.dirname(__file__), '..', '..')
-        uploads_dir = os.path.join(project_root, 'uploads', directory)
-        os.makedirs(uploads_dir, exist_ok=True)
-
-        # Save the file
-        file_path = os.path.join(uploads_dir, unique_filename)
-        with open(file_path, "wb") as buffer:
-            buffer.write(file.file.read())
-
+        storage = get_asset_storage(get_settings())
+        directory = _settings_asset_directory(
+            storage, form_directory if form_directory is not None else directory
+        )
+        content, extension = _read_settings_image(file)
+        filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}{extension}"
+        storage.write_bytes(directory, filename, content)
         return {
-            "filename": unique_filename,
-            "url": f"/uploads/{directory}/{unique_filename}",
-            "message": "Settings image uploaded successfully"
+            "filename": filename,
+            "url": storage.public_url(directory, filename),
+            "message": "Settings image uploaded successfully",
         }
+    except HTTPException:
+        raise
+    except AssetPathError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except OSError as error:
+        _asset_logger.exception("Could not write settings image")
+        raise HTTPException(status_code=500, detail="Upload failed") from error
 
-    except Exception as e:
-        print(f"Error uploading settings image: {e}")
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 @router.post("/api/settings/images/folder")
 def create_settings_folder(
     data: dict,
     claims: dict = Depends(require_user)
 ):
-    """Create a folder in settings directory"""
+    """Create a folder below the settings asset namespace."""
     try:
+        storage = get_asset_storage(get_settings())
+        directory = _settings_asset_directory(storage, data.get("directory", "settings"))
         folder_name = data.get("folder_name")
-        directory = data.get("directory", "settings")
-
-        # Validate folder name
-        if not folder_name or not folder_name.strip():
+        if not isinstance(folder_name, str) or not folder_name.strip():
             raise HTTPException(status_code=400, detail="Folder name is required")
-
-        # Sanitize folder name
-        safe_name = "".join(c for c in folder_name.strip() if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        safe_name = "".join(
+            char for char in folder_name.strip() if char.isalnum() or char in (" ", "-", "_")
+        ).rstrip()
         if not safe_name:
             raise HTTPException(status_code=400, detail="Invalid folder name")
-
-        # Get the project root path
-        project_root = os.path.join(os.path.dirname(__file__), '..', '..')
-        base_dir = os.path.join(project_root, 'uploads', directory)
-        new_folder_path = os.path.join(base_dir, safe_name)
-
-        # Check if folder already exists
-        if os.path.exists(new_folder_path):
+        relative = f"{directory}/{safe_name}"
+        new_folder = storage.directory(relative)
+        if new_folder.exists():
             raise HTTPException(status_code=400, detail="Folder already exists")
-
-        os.makedirs(new_folder_path, exist_ok=True)
-
+        storage.directory(directory, create=True)
+        new_folder.mkdir()
         return {
             "message": "Folder created successfully",
             "folder": {
                 "name": safe_name,
-                "path": f"{directory}/{safe_name}".lstrip("/"),
+                "path": relative,
                 "type": "folder",
                 "image_count": 0,
-                "directory": directory
-            }
+                "directory": directory,
+            },
         }
+    except AssetPathError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except OSError as error:
+        _asset_logger.exception("Could not create settings asset folder")
+        raise HTTPException(status_code=500, detail="Failed to create folder") from error
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error creating settings folder: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create folder: {str(e)}")
 
 @router.delete("/api/settings/images/delete")
 def delete_settings_image(
     data: dict,
     claims: dict = Depends(require_user)
 ):
-    """Delete an image from settings directory"""
     try:
+        storage = get_asset_storage(get_settings())
+        directory = _settings_asset_directory(storage, data.get("directory", "settings"))
         image_name = data.get("image_name")
-        directory = data.get("directory", "settings")
-
         if not image_name:
             raise HTTPException(status_code=400, detail="Image name is required")
-
-        # Map directory to full path
-        if directory == "settings":
-            full_directory = "uploads/settings"
-        else:
-            full_directory = f"uploads/{directory}"
-
-        # Security: restrict to allowed directories only
-        allowed_directories = ["uploads/settings"]
-        if full_directory not in allowed_directories:
-            raise HTTPException(status_code=400, detail="Invalid directory specified")
-
-        # Get the project root path
-        project_root = os.path.join(os.path.dirname(__file__), '..', '..')
-        file_path = os.path.join(project_root, full_directory, image_name)
-
-        # Security: ensure the path is within our project
-        if not os.path.abspath(file_path).startswith(os.path.abspath(project_root)):
-            raise HTTPException(status_code=403, detail="Access to this file is not allowed")
-
-        # Check if file exists
-        if not os.path.exists(file_path):
+        path = storage.file(directory, image_name)
+        if not path.is_file():
             raise HTTPException(status_code=404, detail="Image not found")
-
-        # Delete the file
-        os.remove(file_path)
-
+        path.unlink()
         return {"message": "Image deleted successfully"}
+    except AssetPathError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except OSError as error:
+        _asset_logger.exception("Could not delete settings asset")
+        raise HTTPException(status_code=500, detail="Failed to delete image") from error
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error deleting settings image: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete image: {str(e)}")
 
 @router.post("/api/settings/images/rename")
 def rename_settings_image(
     data: dict,
     claims: dict = Depends(require_user)
 ):
-    """Rename an image in settings directory"""
     try:
-        current_name = data.get("current_name")
-        new_name = data.get("new_name")
-        directory = data.get("directory", "settings")
-
+        storage = get_asset_storage(get_settings())
+        directory = _settings_asset_directory(storage, data.get("directory", "settings"))
+        current_name, new_name = data.get("current_name"), data.get("new_name")
         if not current_name or not new_name:
-            raise HTTPException(status_code=400, detail="Current name and new name are required")
-
-        # Map directory to full path
-        if directory == "settings":
-            full_directory = "uploads/settings"
-        else:
-            full_directory = f"uploads/{directory}"
-
-        # Security: restrict to allowed directories only
-        allowed_directories = ["uploads/settings"]
-        if full_directory not in allowed_directories:
-            raise HTTPException(status_code=400, detail="Invalid directory specified")
-
-        # Get the project root path
-        project_root = os.path.join(os.path.dirname(__file__), '..', '..')
-        current_path = os.path.join(project_root, full_directory, current_name)
-        new_path = os.path.join(project_root, full_directory, new_name)
-
-        # Security: ensure the paths are within our project
-        if not (os.path.abspath(current_path).startswith(os.path.abspath(project_root)) and
-                os.path.abspath(new_path).startswith(os.path.abspath(project_root))):
-            raise HTTPException(status_code=403, detail="Access to these files is not allowed")
-
-        # Check if current file exists
-        if not os.path.exists(current_path):
+            raise HTTPException(
+                status_code=400, detail="Current name and new name are required"
+            )
+        current_path = storage.file(directory, current_name)
+        new_path = storage.file(directory, new_name)
+        if not current_path.is_file():
             raise HTTPException(status_code=404, detail="Image not found")
-
-        # Check if new file already exists
-        if os.path.exists(new_path):
+        if new_path.exists():
             raise HTTPException(status_code=400, detail="A file with this name already exists")
-
-        # Rename the file
-        os.rename(current_path, new_path)
-
+        current_path.rename(new_path)
         return {
             "message": "Image renamed successfully",
             "old_name": current_name,
             "new_name": new_name,
-            "new_url": f"/{full_directory}/{new_name}"
+            "new_url": storage.public_url(directory, new_name),
         }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error renaming settings image: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to rename image: {str(e)}")
+    except AssetPathError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except OSError as error:
+        _asset_logger.exception("Could not rename settings asset")
+        raise HTTPException(status_code=500, detail="Failed to rename image") from error
 
 @router.get("/api/debug/cropper")
 def debug_cropper():

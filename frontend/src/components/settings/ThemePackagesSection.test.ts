@@ -8,6 +8,7 @@ vi.mock('@/stores/settings', () => ({ useSettingsStore: () => ({ activeTheme: nu
 const language = ref('bg')
 vi.mock('@/utils/i18n', () => ({ useI18n: () => ({ t: (_key: string, fallback: string) => fallback, currentLanguage: language }) }))
 import ThemePackagesSection from './ThemePackagesSection.vue'
+vi.mock('./ThemeAppearanceSection.vue', () => ({ default: { template: '<div />' } }))
 const item = () => ({ module_id: 'org.example.theme', name: { en: 'Example', translations: { bg: 'Пример' } }, version: '1.0.0', sha256: 'a'.repeat(64), enabled: true, is_selected: false, is_available: true, status: 'enabled' })
 describe('Settings theme packages', () => {
   beforeEach(() => { vi.clearAllMocks(); mocks.assetWarnings.length = 0; language.value = 'bg'; mocks.get.mockResolvedValue({ data: { items: [item()] } }) })

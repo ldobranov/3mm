@@ -82,6 +82,14 @@ bash install.sh --help
 /etc/3mm          -> protected service configuration
 ```
 
+Uploaded logos and public assets use `UPLOADS_DIR`, configured by the installer
+as `/var/lib/3mm/core/uploads`. Settings images live in its `settings/`
+subdirectory and retain their `/uploads/settings/...` URLs. They are included
+in backup/portable recovery and are not replaced by a release update. Do not
+make `/opt/3mm/releases` writable to fix an upload error. See
+[Core asset storage](docs/CORE_ASSET_STORAGE.md) for the shared backend helper
+and the boundary between public assets and private application data.
+
 After setup, the application is available at `http://<device-ip>/` and
 `http://<hostname>.local/`. Port `8080` remains as a compatibility listener.
 

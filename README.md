@@ -8,8 +8,8 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Beta. This source prepares **v0.3.0-beta.38**, fixing
-> initial appearance loading and current/target version labels during update approval.
+> **Project status:** Beta. This source prepares **v0.3.0-beta.39**, adding saved
+> Theme Customization controls and persistent settings-image storage.
 > It retains Theme Platform V0–V4: Design API 2, native UI primitives, an opt-in
 > application shell and validated assets through the existing Extensions installer.
 > Existing device transport, capability authority and lifecycle remain unchanged.
@@ -221,8 +221,8 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 After the new GitHub Release is fully published, update the Hub through
 `/system/updates` using the Beta channel. Update the Zero over SSH with the same
-Node bootstrap command above; after beta.38 publication, add
-`--tag v0.3.0-beta.38` to select that exact release. Provisioned upgrades preserve
+Node bootstrap command above; after beta.39 publication, add
+`--tag v0.3.0-beta.39` to select that exact release. Provisioned upgrades preserve
 identity and pairing, not Master reset.
 Then upload Fleet `0.1.7` on the Hub through Extensions. Updating the Fleet ZIP
 alone does not update Core or the Zero Agent. Follow the
@@ -321,6 +321,14 @@ application shell and pages. A brief neutral loading screen prevents the default
 layout from appearing first. Waiting is limited to eight seconds; unavailable
 resources fall back safely, retaining the browser's saved mode and language.
 
+Since beta.39, **Theme Customization** owns layout, density, button/card variants
+and header colors, with Save, Discard and Reset controls. Changes are scoped to
+the exact theme version or built-in appearance; theme ZIPs remain immutable.
+**Header Customization** owns translated text and the logo. Personal light/dark
+mode remains separate. Uploaded settings images use persistent
+`/var/lib/3mm/core/uploads/settings`, retaining their public URLs across updates
+and participating in portable backup/restore.
+
 The v2 shell preserves data-driven navigation, translations and access rules;
 legacy screens and extensions are not automatically redesigned. If installed
 styling becomes unusable, sign in as an administrator and open
@@ -350,6 +358,7 @@ The preview page is a component fixture, not yet an installed-package preview.
 | [Network recovery](docs/NETWORK_RECOVERY.md) | Port 80, hostname access, setup AP and Wi-Fi recovery |
 | [Device administration](docs/DEVICE_ADMINISTRATION.md) | Menu audiences, restart and factory reset |
 | [Backup and restore](docs/BACKUP_AND_RESTORE.md) | Local snapshots, portable recovery and restore safety |
+| [Core asset storage](docs/CORE_ASSET_STORAGE.md) | Persistent public assets outside immutable releases |
 | [Redacted diagnostics](docs/DIAGNOSTICS.md) | Support bundle contents and secret exclusions |
 | [Extension lifecycle](docs/EXTENSION_LIFECYCLE.md) | Package, version and data lifecycle |
 | [Theme Platform plan](docs/THEME_EXTENSION_PLAN.md) | Theme lifecycle, browser activation and remaining acceptance stages |

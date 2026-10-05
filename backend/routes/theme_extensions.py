@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.db.user import User
+from backend.services.theme_customization import ThemeCustomizationRequest, save_customization
 from backend.services.theme_extensions import (
     delete_theme,
     disable_theme,
@@ -59,6 +60,16 @@ def selection(
 @router.get("/catalog")
 def catalog(_admin: User = Depends(require_admin), db: Session = Depends(get_db)):
     return theme_catalog(db)
+
+
+@router.post("/customization")
+def customization(
+    request: ThemeCustomizationRequest,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    save_customization(db, request, admin)
+    return theme_appearance(db)
 
 
 @router.post("/packages/{sha256}/enable")

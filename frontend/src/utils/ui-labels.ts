@@ -18,6 +18,17 @@ const en = {
   close: 'Close', ready: 'Ready', pending: 'Pending', status: 'Status', resource: 'Resource', owner: 'Owner',
   table: 'Table and status', example: 'Example resource with a longer label', currentUser: 'Current user',
   validated: 'Example validated. No data was saved.', preferences: 'Preview controls',
+  appearanceTitle: 'Layout and appearance',
+  appearanceHelp: 'Preview changes here, then save for this installation. Each theme version keeps its own settings; the ZIP package is unchanged.',
+  customHeader: 'Use custom header colors', headerBackground: 'Header background color', headerText: 'Header text color',
+  headerContrast: 'Choose valid colors with readable text (contrast at least 4.5:1).',
+  modeHelp: 'Light/dark mode is your personal preference, saved immediately. It does not change the installation for other users.',
+  saveAppearance: 'Save appearance', discardAppearance: 'Discard changes', resetAppearance: 'Use theme defaults',
+  unsavedAppearance: 'Unsaved preview — leaving this section discards your changes.',
+  saveAppearanceFailed: 'Could not save. Refresh the theme and try again; your changes remain unsaved.',
+  appearanceSaved: 'Appearance saved.', appearanceReset: 'Theme defaults restored. Branding and custom colors are preserved.',
+  componentPreview: 'Open component preview', branding: 'Branding',
+  brandingHelp: 'Site name and header message are translated per language. Your logo applies to every language. Visual settings are in Theme Customization.',
 } as const
 const bg: Record<keyof typeof en, string> = {
   navigation: 'Навигация', openMenu: 'Отвори навигацията', closeMenu: 'Затвори навигацията', skip: 'Към съдържанието',
@@ -37,6 +48,17 @@ const bg: Record<keyof typeof en, string> = {
   close: 'Затвори', ready: 'Готово', pending: 'Изчаква', status: 'Статус', resource: 'Ресурс', owner: 'Собственик',
   table: 'Таблица и статус', example: 'Примерен ресурс с по-дълъг етикет', currentUser: 'Текущ потребител',
   validated: 'Примерът е проверен. Няма записани данни.', preferences: 'Контроли за прегледа',
+  appearanceTitle: 'Оформление и външен вид',
+  appearanceHelp: 'Пробвай промените тук и ги запази за тази инсталация. Всяка версия на тема пази свои настройки; ZIP пакетът не се променя.',
+  customHeader: 'Използвай собствени цветове за хедъра', headerBackground: 'Цвят на фона на хедъра', headerText: 'Цвят на текста в хедъра',
+  headerContrast: 'Избери валидни цветове с четим текст (контраст поне 4.5:1).',
+  modeHelp: 'Светъл/тъмен режим е лична настройка и се записва веднага. Не променя изгледа за другите потребители.',
+  saveAppearance: 'Запази оформлението', discardAppearance: 'Откажи промените', resetAppearance: 'Настройки на темата',
+  unsavedAppearance: 'Незаписан преглед — напускането на тази секция отменя промените.',
+  saveAppearanceFailed: 'Записът не успя. Обнови темата и опитай отново; промените остават незаписани.',
+  appearanceSaved: 'Оформлението е запазено.', appearanceReset: 'Настройките на темата са възстановени. Логото, текстовете и старите цветове са запазени.',
+  componentPreview: 'Отвори преглед на компонентите', branding: 'Идентичност',
+  brandingHelp: 'Името и съобщението се превеждат по езици. Логото е общо за всички езици. Визуалните настройки са в Персонализиране на тема.',
 }
 export function useUiLabels() {
   const { t, currentLanguage } = useI18n()

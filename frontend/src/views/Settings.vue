@@ -32,7 +32,7 @@
 
         <div v-show="activeSection === 'theme'" id="theme-settings" class="settings-anchor">
           <div class="section-cluster">
-            <ThemePackagesSection v-if="isAdmin" />
+            <ThemePackagesSection v-if="isAdmin" :active="activeSection === 'theme'" />
             <ThemeCustomizationSection
               v-for="themeType in ['light', 'dark']"
               v-show="!settingsStore.activeTheme"
@@ -493,8 +493,8 @@ export default defineComponent({
           )
         ]);
 
-        // Logo and colors are stored once with language_code = null.
-        await settingsStore.saveHeaderSettings();
+        // Branding saves never rewrite the separately managed theme colors.
+        await settingsStore.saveHeaderSettings(false);
 
         headerTextDrafts[langCode] = {
           siteName: currentSiteName.value,

@@ -19,6 +19,7 @@ from backend.db.module import (
     ThemeExtensionInstallation,
 )
 from backend.db.user import User
+from backend.services.theme_customization import read_customization
 from backend.services.module_packages import (
     MAX_PACKAGE_BYTES,
     ModulePackageError,
@@ -151,11 +152,20 @@ def theme_appearance(db: Session) -> dict:
             result = {"theme": theme.model_dump(mode="json", exclude_none=True)}
             if theme.theme_extension_version == 2:
                 result["package_sha256"] = package.sha256
+            customization = read_customization(db, package.sha256)
+            if customization is not None:
+                result["customization"] = customization
             return result
         except HTTPException:
             # A damaged package must not prevent login or recovery controls.
             logger.warning("Selected theme unavailable: %s", package.sha256)
-    return {"theme": None}
+    result = {"theme": None}
+    # Do not apply built-in overrides when recovering from a damaged package.
+    if package is None:
+        customization = read_customization(db, None)
+        if customization is not None:
+            result["customization"] = customization
+    return result
 
 
 def selected_theme_asset(db: Session, sha256: str, asset_id: str) -> tuple[bytes, str]:

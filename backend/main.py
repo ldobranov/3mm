@@ -19,6 +19,7 @@ import backend.db.audit_log  # noqa: F401
 import backend.db.role  # noqa: F401 - Import to ensure tables are created
 import backend.db.user  # noqa: F401
 from backend.config import get_settings
+from backend.services.asset_storage import get_asset_storage
 
 # Import database and models first
 from backend.database import get_db, init_db
@@ -252,8 +253,7 @@ app.add_middleware(
 )
 
 # Mount static files for uploads
-uploads_dir = app_settings.backend.uploads_dir.resolve()
-uploads_dir.mkdir(parents=True, exist_ok=True)
+uploads_dir = get_asset_storage(app_settings).directory(create=True)
 app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 
 

@@ -46,6 +46,7 @@ const restoreInstalled = async () => {
   restoreMessage.value = null
   try {
     await http.post('/api/v1/modules/themes/selection', { sha256: null })
+    await http.post('/api/v1/modules/themes/customization', { sha256: null, preferences: null })
     await settings.loadThemeAppearance()
     restoreMessage.value = 'restoreDone'
   } catch { restoreMessage.value = 'restoreFailed' }

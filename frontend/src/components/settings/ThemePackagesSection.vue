@@ -4,6 +4,9 @@ import SettingsSection from '@/components/SettingsSection.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from '@/utils/i18n'
 import http from '@/utils/dynamic-http'
+import ThemeAppearanceSection from './ThemeAppearanceSection.vue'
+
+withDefaults(defineProps<{ active?: boolean }>(), { active: true })
 
 interface ThemeItem {
   module_id: string
@@ -78,6 +81,7 @@ onMounted(refresh)
     <p v-if="message" role="status">{{ t(`themePackages.${message}`, message) }}</p>
     <p v-if="settings.activeTheme" class="theme-help">{{ t('themePackages.legacyHelp', 'Package colors are read-only. Choose built-in to edit your saved custom colors; they have not been erased.') }}</p>
     <p v-if="settings.assetWarnings.length" role="status" class="theme-help">{{ t('themePackages.assetFallback', 'A theme font or image could not be loaded. System font and saved branding remain available.') }}</p>
+    <ThemeAppearanceSection v-if="active && loaded && !items.some(item => item.is_selected && !item.is_available)" :sha256="selectedHash || null" :disabled="busy" />
     <RouterLink :to="{ name: 'UiPreview', query: { recovery: '1' } }">{{ t('uiPlatform.recovery', 'Built-in appearance recovery') }}</RouterLink>
   </SettingsSection>
 </template>

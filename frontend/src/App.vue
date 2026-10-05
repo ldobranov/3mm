@@ -23,7 +23,7 @@ const startupController = new AbortController()
 let disposed = false
 // V1 stays legacy; v2 opts into the Core-owned shell, except protected recovery.
 const modernShell = computed(() => !settingsStore.appearanceRecovery &&
-  (settingsStore.previewDesign !== null || settingsStore.installedDesign !== null))
+  (settingsStore.previewDesign !== null || settingsStore.installedDesign !== null || settingsStore.customizedDesign != null))
 const shellMode = computed(() => resolveUiShellMode(route.meta))
 
 // Authentication status

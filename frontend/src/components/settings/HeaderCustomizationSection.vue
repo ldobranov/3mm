@@ -7,10 +7,7 @@
       :label="t('settings.currentLanguage', 'Current Language')"
     />
     <p class="header-language-note">
-      {{ t(
-        'settings.headerLanguageHelp',
-        'Site name and header message are translated per language. Logo and colors apply to every language.'
-      ) }}
+      {{ label('brandingHelp') }}
     </p>
 
     <form @submit.prevent="saveHeaderSettings">
@@ -49,7 +46,7 @@
       </div>
 
       <div class="shared-header-heading">
-        <strong>{{ t('settings.sharedHeaderAppearance', 'Shared appearance') }}</strong>
+        <strong>{{ label('branding') }}</strong>
         <small class="help-text">
           {{ t('settings.sharedHeaderAppearanceHelp', 'These settings do not change when the language changes.') }}
         </small>
@@ -94,17 +91,6 @@
       </div>
 
       <div class="form-group">
-        <ColorPicker
-          label="Header Background Color"
-          v-model="headerSettings.backgroundColor"
-        />
-        <ColorPicker
-          label="Header Text Color"
-          v-model="headerSettings.textColor"
-        />
-      </div>
-
-      <div class="form-group">
         <label class="form-label">{{ t('settings.preview', 'Preview') }}</label>
         <div class="preview-card">
           <img
@@ -142,9 +128,9 @@
 import { defineComponent, ref } from 'vue'
 import type { PropType } from 'vue'
 import { useI18n } from '@/utils/i18n'
+import { useUiLabels } from '@/utils/ui-labels'
 import SettingsSection from '@/components/SettingsSection.vue'
 import LanguageSelector from '@/components/LanguageSelector.vue'
-import ColorPicker from '@/components/ColorPicker.vue'
 import ImageUpload from '@/components/ImageUpload.vue'
 import ImageEditorModal from '@/components/ImageEditorModal.vue'
 
@@ -153,7 +139,6 @@ export default defineComponent({
   components: {
     SettingsSection,
     LanguageSelector,
-    ColorPicker,
     ImageUpload,
     ImageEditorModal
   },
@@ -205,6 +190,7 @@ export default defineComponent({
   ],
   setup(props, { emit }) {
       const { t } = useI18n()
+      const label = useUiLabels()
   
       // Modal state
       const showImageEditorModal = ref(false)
@@ -300,6 +286,7 @@ export default defineComponent({
 
     return {
       t,
+      label,
       showImageEditorModal,
       editingImage,
       handleLanguageChange,
@@ -337,8 +324,8 @@ export default defineComponent({
   padding: 1rem;
   border-radius: var(--border-radius-md, 8px);
   text-align: center;
-  background-color: v-bind('headerSettings.backgroundColor');
-  color: v-bind('headerSettings.textColor');
+  background-color: var(--ui-header-bg, var(--panel-bg));
+  color: var(--ui-header-text, var(--text-primary));
   border: 1px solid var(--color-border);
   min-height: 120px;
   display: grid;

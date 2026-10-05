@@ -63,13 +63,65 @@ variables, като заменя всички owned values при смяна/cle
 
 `adaptLegacyUi` копира ефективните 11 v1 цвята и 3 радиуса точно, включително
 zero radii. Legacy palette не минава през новото contrast ограничение, за да
-не се отказват работещи стари настройки. Adapter **не включва новия shell**.
-V1 пакети, custom colors и legacy layout продължават да работят.
+не се отказват работещи стари настройки. Adapter сам **не включва новия shell**;
+изрично запазено ново оформление го включва и за built-in/v1. V1 пакети,
+custom colors и legacy layout без ново оформление продължават да работят.
 
 Branding текст/logo и menu labels/visibility принадлежат на съществуващите
-Header/Menu настройки. `header_style: saved` използва запазените header colors
-за branding блока; `theme` използва surface/text на избрания режим. Никой
-вариант не изтрива настройките или не сменя преводите и content colors.
+Header/Menu настройки. Header Customization редактира текстовете, преводите и
+логото; визуалните header controls са в Theme Customization. `header_style:
+saved` използва header colors от запазеното оформление, ако има такова, иначе
+старите header colors; `theme` използва surface/text на избрания режим. Никой
+вариант не изтрива старите стойности или не сменя преводите и content colors.
+
+## Запазено оформление в Theme Customization
+
+Контролите от UI Preview за navigation, density, button/card variants и header
+style са достъпни в Settings → Theme Customization. Промените се виждат временно
+в реалния shell. **Save appearance** записва настройките за инсталацията;
+**Discard changes** или излизане от секцията изчиства незаписания preview.
+**Reset to theme defaults** премахва само това оформление, не темата, логото,
+преводите, менюто или старите custom colors. Light/dark остава лична настройка
+на потребителя, записвана веднага през съществуващия `user_theme` contract,
+и не се записва в общото оформление.
+
+Оформлението е отделно от immutable ZIP: package palette, typography, scale и
+assets не се редактират. Настройките са scoped към точния package SHA-256 или
+`builtin`; смяна на тема/версия не пренася overrides върху друг пакет, а връщане
+към предишния пакет възстановява неговите overrides. Ново custom header
+foreground/background трябва да е `#RRGGBB` с contrast поне 4.5:1. Старите
+нечетими header colors остават съхранени, но новият editor предлага theme
+colors, докато не се избере валиден custom pair.
+
+Admin-only `POST /api/v1/modules/themes/customization` приема:
+
+```json
+{
+  "sha256": null,
+  "preferences": {
+    "navigation": "sidebar",
+    "density": "compact",
+    "button": "solid",
+    "card": "bordered",
+    "header_style": "theme",
+    "header_background_color": "#123456",
+    "header_text_color": "#FFFFFF"
+  }
+}
+```
+
+За reset `preferences` е `null`. Неизвестни полета, CSS/URLs, неправилни типове
+или enum values се отказват. SHA, различен от текущата selection, връща 409,
+за да не може стар editor да запише настройки за вече сменена тема. Записът
+е одитиран и използва съществуващата Settings таблица с ключ
+`ui_theme_customization:<sha256|builtin>`; няма нов database model/migration.
+Тези rows участват в съществуващия backup/restore на Core settings.
+
+Public appearance projection може да съдържа допълнително `customization` със
+същия затворен набор полета. Старите клиенти могат да го игнорират. Невалидни
+или прекалено големи settings се игнорират; липсващ/невалиден selected package
+не наследява чужди overrides. Startup appearance gate прилага избраното
+оформление преди да покаже app-а, включително след refresh.
 
 ## Core-owned UI primitives и shell
 
@@ -117,8 +169,9 @@ Preview езикът не записва account/browser preference. Preview mod
 
 `/settings/ui-preview?recovery=1` е също admin-only. Изчиства временния дизайн
 и показва статичен четим recovery panel с built-in preview restore. От V4 отделен
-бутон **Use built-in permanently** изчиства installed selection през admin API;
-Header/Menu/custom colors остават. Live recovery acceptance е V8.
+бутон **Use built-in permanently** изчиства installed selection и built-in
+layout overrides през admin API; Header/Menu/custom colors остават. Overrides
+за други пакети остават за бъдещо връщане. Live recovery acceptance е V8.
 
 ## Assets — V4 пакетен слой, отделен от `design`
 

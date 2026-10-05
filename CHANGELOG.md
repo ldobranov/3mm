@@ -6,6 +6,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.39] - 2026-10-05
+
+### Added
+
+- Saved Theme Customization controls for navigation, density, button/card
+  variants and readable custom header colors, with temporary preview, explicit
+  Save, Discard and Reset. Preferences are audited, administrator-managed and
+  scoped to an exact package SHA-256 or built-in appearance.
+- Shared backend public-asset storage based on the existing `UPLOADS_DIR`, with
+  bounded namespaces, safe relative paths and atomic replacement of uploads.
+
+### Fixed
+
+- Header Customization now owns branding text, translations and logo, while
+  visual header controls live in Theme Customization. Branding saves do not
+  overwrite colors; personal light/dark remains a separate user preference.
+- Settings image upload, list, folder, rename and delete use persistent
+  `/var/lib/3mm/core/uploads`, not an immutable release directory. Existing image
+  URLs and authentication remain; form/query directory inputs share validation.
+  A failed write preserves the previous logo, and validation retains status 400.
+- UI recovery can clear built-in layout overrides without erasing branding,
+  translations, menus or the stored overrides for other installed themes.
+
+### Compatibility and verification
+
+- Existing Settings rows store preferences; no database migration, protocol,
+  SDK, Agent runtime or dependency change. Theme ZIPs and release protections
+  remain immutable; private extension storage is unchanged.
+- Complete isolated Linux suite: 1364 passed, one opt-in HTTPS acceptance test
+  skipped. Frontend suite, type checking and production build passed locally.
+  Checks include preference authorization/validation and uploaded-logo portable
+  export/import/restore with a new key. Python 3.13 CI and reproducible Hub/ARMv6
+  Node builds gate publication; local review is not deployed Raspberry acceptance.
+- Child Center, concrete themes and local/generated artifacts are excluded.
+
 ## [0.3.0-beta.38] - 2026-10-05
 
 ### Fixed
@@ -999,7 +1034,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.38...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.39...HEAD
+[0.3.0-beta.39]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.39
 [0.3.0-beta.38]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.38
 [0.3.0-beta.37]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.37
 [0.3.0-beta.36]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.36

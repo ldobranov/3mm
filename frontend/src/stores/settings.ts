@@ -5,9 +5,10 @@ import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
 import { readSettings, upsertSettings } from '@/utils/settings-api'
 import { resolveHeaderSettings } from '@/utils/header-settings'
-import { BUILTIN_STYLES, buttonTextColor, resolveThemeStyle } from '@/utils/theme-extension'
+import { BUILTIN_STYLES, buttonTextColor, resolveThemeStyle, readThemeProjection } from '@/utils/theme-extension'
 import { adaptLegacyUi, parseUiDesign, uiDesignVariables, type UiDesign } from '@/utils/ui-design'
-import { readInstalledTheme, loadThemeAssets, designLegacyStyle, type InstalledTheme, type LoadedThemeAssets } from '@/utils/theme-package-v2'
+import { parseInstalledTheme, loadThemeAssets, designLegacyStyle, type InstalledTheme, type LoadedThemeAssets } from '@/utils/theme-package-v2'
+import { applyThemePreferences, parseThemePreferences, type ThemePreferences } from '@/utils/theme-customization'
 
 export const useSettingsStore = defineStore('settings', () => {
   const themeStore = useThemeStore()
@@ -17,6 +18,15 @@ export const useSettingsStore = defineStore('settings', () => {
   const activeTheme = shallowRef<InstalledTheme | null>(null)
   const installedDesign = computed(() => activeTheme.value?.theme_extension_version === 2 ? activeTheme.value.design : null)
   const appearanceRecovery = ref(false)
+  const themePreferences = shallowRef<ThemePreferences | null>(null)
+  const preferencePreview = shallowRef<ThemePreferences | null>(null)
+  const setPreferencePreview = (value: unknown): boolean => {
+    const parsed = value === null ? null : parseThemePreferences(value)
+    if (value !== null && !parsed) return false
+    preferencePreview.value = parsed
+    updateCSSVariables()
+    return true
+  }
   const themeAssets = shallowRef<LoadedThemeAssets | null>(null)
   const assetWarnings = computed(() => themeAssets.value?.warnings || [])
   let assetController: AbortController | null = null
@@ -45,14 +55,21 @@ export const useSettingsStore = defineStore('settings', () => {
     signal?.addEventListener('abort', abort, { once: true })
     if (signal?.aborted) abort()
     let definition: InstalledTheme | null = null
+    let preferences: ThemePreferences | null = null
     let baseUrl = ''
     try {
       try {
         baseUrl = await http.getCurrentBackendUrl()
         if (controller.signal.aborted) return
-        definition = await readInstalledTheme(baseUrl, controller.signal)
+        const projection = await readThemeProjection(baseUrl, controller.signal)
+        definition = parseInstalledTheme(projection)
+        if (projection && typeof projection === 'object' && 'theme' in projection &&
+          (definition || projection.theme === null) && 'customization' in projection) {
+          preferences = parseThemePreferences(projection.customization)
+        }
       } catch { /* Backend discovery failure also uses the built-in settings. */ }
       if (request !== appearanceRequest || controller.signal.aborted) return
+      themePreferences.value = preferences
       if (definition?.theme_extension_version === 2 && activeTheme.value?.theme_extension_version === 2 &&
         definition.package_sha256 === activeTheme.value.package_sha256 && themeAssets.value && !themeAssets.value.warnings.length) {
         activeTheme.value = definition
@@ -121,7 +138,15 @@ export const useSettingsStore = defineStore('settings', () => {
     return resolveThemeStyle(legacyTheme, themeStore.theme,
       themeStore.theme === 'dark' ? darkStyleSettings : lightStyleSettings)
   })
-  const uiDesign = computed(() => previewDesign.value || (!appearanceRecovery.value && installedDesign.value) || adaptLegacyUi(styleSettings.value, themeStore.theme))
+  const baseUiDesign = computed(() => (!appearanceRecovery.value && installedDesign.value) || adaptLegacyUi(styleSettings.value, themeStore.theme))
+  const effectivePreferences = computed(() => !appearanceRecovery.value ? preferencePreview.value || themePreferences.value : null)
+  const customizedDesign = computed(() => !appearanceRecovery.value && effectivePreferences.value
+    ? applyThemePreferences(baseUiDesign.value, effectivePreferences.value) : null)
+  const uiDesign = computed(() => previewDesign.value || customizedDesign.value || baseUiDesign.value)
+  const appearanceHeader = computed(() => !previewDesign.value && effectivePreferences.value ? {
+    ...headerSettings, backgroundColor: effectivePreferences.value.header_background_color,
+    textColor: effectivePreferences.value.header_text_color,
+  } : headerSettings)
   const brandingLogo = computed(() => headerSettings.logoUrl ||
     (!appearanceRecovery.value && !previewDesign.value ? themeAssets.value?.logos[themeStore.theme] || '' : ''))
 
@@ -330,7 +355,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
     // Closed namespaced projection. Every owned variable is overwritten on mode,
     // preview and header changes; it cannot retain values from a previous theme.
-    for (const [key, value] of Object.entries(uiDesignVariables(uiDesign.value, themeStore.theme, headerSettings))) {
+    for (const [key, value] of Object.entries(uiDesignVariables(uiDesign.value, themeStore.theme, appearanceHeader.value))) {
       root.style.setProperty(key, value)
     }
     if (installedDesign.value && !previewDesign.value && !appearanceRecovery.value) {
@@ -346,6 +371,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   watch(activeTheme, updateCSSVariables)
   watch(appearanceRecovery, updateCSSVariables)
+  watch(themePreferences, updateCSSVariables)
 
   // Helper function to adjust color brightness
   const adjustColor = (color: string, amount: number): string => {
@@ -431,7 +457,7 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   // Header visuals are shared across languages; only header text is localized.
-  const saveHeaderSettings = async () => {
+  const saveHeaderSettings = async (includeColors = true) => {
     try {
       const globalSettingsToSave = [
         {
@@ -454,7 +480,7 @@ export const useSettingsStore = defineStore('settings', () => {
         }
       ]
 
-      await upsertSettings(globalSettingsToSave)
+      await upsertSettings(includeColors ? globalSettingsToSave : globalSettingsToSave.slice(0, 1))
 
       // Notify other components
       window.dispatchEvent(new Event('settings-updated'))
@@ -533,6 +559,11 @@ export const useSettingsStore = defineStore('settings', () => {
   return {
     activeTheme,
     installedDesign,
+    baseUiDesign,
+    customizedDesign,
+    themePreferences,
+    preferencePreview,
+    setPreferencePreview,
     appearanceRecovery,
     brandingLogo,
     assetWarnings,
