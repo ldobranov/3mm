@@ -269,7 +269,7 @@ def test_public_http_contract_is_optional_and_binds_only_isolated_public_queries
     route = application.public_http_routes[0]
     assert route.path == "/items/{slug}"
     assert route.methods == ("GET", "HEAD")
-    assert route.max_response_bytes == 1024 * 1024
+    assert route.max_response_bytes == 256 * 1024
 
     root = public_http_definition()
     root["public_http_routes"][0]["path"] = "/"
@@ -391,4 +391,44 @@ def test_public_http_response_is_bounded_and_transport_headers_fail_closed():
     with pytest.raises(ValidationError, match="require only a location"):
         ApplicationPublicHttpResponseV1.model_validate(
             {"status": 301, "headers": {}, "location": "/new", "body": "redirect"}
+        )
+
+
+
+def test_public_http_response_supports_bounded_cacheable_binary_assets():
+    import base64
+
+    payload = b"\x89PNG\r\n\x1a\n" + b"x" * 32
+    response = ApplicationPublicHttpResponseV1.model_validate(
+        {
+            "status": 200,
+            "content_type": "image/png",
+            "headers": {"ETag": '"asset-v1"', "Cache-Control": "public, max-age=3600"},
+            "body_base64": base64.b64encode(payload).decode("ascii"),
+        }
+    )
+    assert base64.b64decode(response.body_base64) == payload
+
+    cached = ApplicationPublicHttpResponseV1.model_validate(
+        {"status": 304, "headers": {"ETag": '"asset-v1"'}}
+    )
+    assert cached.status == 304
+
+    with pytest.raises(ValidationError, match="binary body requires a binary content type"):
+        ApplicationPublicHttpResponseV1.model_validate(
+            {
+                "status": 200,
+                "content_type": "text/html; charset=utf-8",
+                "headers": {},
+                "body_base64": base64.b64encode(payload).decode("ascii"),
+            }
+        )
+    with pytest.raises(ValidationError, match="binary body is invalid"):
+        ApplicationPublicHttpResponseV1.model_validate(
+            {
+                "status": 200,
+                "content_type": "image/png",
+                "headers": {},
+                "body_base64": "not-base64!",
+            }
         )

@@ -1,5 +1,6 @@
 """Strict contract for supervised business application extensions."""
 
+import base64
 import json
 import re
 from typing import Literal
@@ -153,13 +154,32 @@ class ApplicationRouteV1(StrictApplicationModel):
 
 
 
-PUBLIC_HTTP_CONTENT_TYPES = (
+PUBLIC_HTTP_TEXT_CONTENT_TYPES = (
     "text/html; charset=utf-8",
     "text/plain; charset=utf-8",
+    "text/css; charset=utf-8",
+    "application/javascript; charset=utf-8",
     "application/json",
+    "application/manifest+json",
     "application/xml",
     "text/xml; charset=utf-8",
+    "application/rss+xml",
+    "application/atom+xml",
 )
+PUBLIC_HTTP_BINARY_CONTENT_TYPES = (
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/avif",
+    "image/gif",
+    "image/svg+xml",
+    "image/x-icon",
+    "font/woff",
+    "font/woff2",
+    "application/pdf",
+)
+PUBLIC_HTTP_CONTENT_TYPES = PUBLIC_HTTP_TEXT_CONTENT_TYPES + PUBLIC_HTTP_BINARY_CONTENT_TYPES
+PUBLIC_HTTP_MAX_BODY_BYTES = 512 * 1024
 PUBLIC_HTTP_RESPONSE_HEADERS = frozenset({
     "cache-control",
     "content-language",
@@ -191,11 +211,12 @@ def public_http_response_schema_v1() -> dict:
         "properties": {
             "status": {
                 "type": "integer",
-                "enum": [200, 204, 301, 302, 307, 308, 400, 403, 404, 405, 410, 429, 500, 503],
+                "enum": [200, 204, 304, 301, 302, 307, 308, 400, 403, 404, 405, 410, 429, 500, 503],
             },
             "content_type": {"type": "string", "enum": list(PUBLIC_HTTP_CONTENT_TYPES)},
             "headers": {"type": "object"},
             "body": {"type": "string"},
+            "body_base64": {"type": "string"},
             "location": {"type": "string"},
         },
         "required": ["status", "headers"],
@@ -231,16 +252,32 @@ class ApplicationPublicHttpRequestV1(StrictApplicationModel):
 
 
 class ApplicationPublicHttpResponseV1(StrictApplicationModel):
-    status: Literal[200, 204, 301, 302, 307, 308, 400, 403, 404, 405, 410, 429, 500, 503]
+    status: Literal[200, 204, 304, 301, 302, 307, 308, 400, 403, 404, 405, 410, 429, 500, 503]
     content_type: Literal[
         "text/html; charset=utf-8",
         "text/plain; charset=utf-8",
+        "text/css; charset=utf-8",
+        "application/javascript; charset=utf-8",
         "application/json",
+        "application/manifest+json",
         "application/xml",
         "text/xml; charset=utf-8",
+        "application/rss+xml",
+        "application/atom+xml",
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "image/avif",
+        "image/gif",
+        "image/svg+xml",
+        "image/x-icon",
+        "font/woff",
+        "font/woff2",
+        "application/pdf",
     ] | None = None
     headers: dict[str, str] = Field(default_factory=dict, max_length=16)
-    body: str | None = Field(default=None, max_length=4 * 1024 * 1024)
+    body: str | None = Field(default=None, max_length=PUBLIC_HTTP_MAX_BODY_BYTES)
+    body_base64: str | None = Field(default=None, max_length=700 * 1024)
     location: str | None = Field(default=None, max_length=2048)
 
     @field_validator("headers")
@@ -261,17 +298,34 @@ class ApplicationPublicHttpResponseV1(StrictApplicationModel):
     @model_validator(mode="after")
     def validate_response_semantics(self):
         redirects = {301, 302, 307, 308}
+        payload_count = int(self.body is not None) + int(self.body_base64 is not None)
         if self.status in redirects:
-            if self.location is None or self.body is not None or self.content_type is not None:
+            if self.location is None or payload_count or self.content_type is not None:
                 raise ValueError("public HTTP redirects require only a location")
         elif self.location is not None:
             raise ValueError("public HTTP location is reserved for redirects")
-        if self.status == 204 and (self.body is not None or self.content_type is not None):
-            raise ValueError("public HTTP 204 responses cannot contain a body")
-        if self.body is None and self.content_type is not None:
+        if self.status in {204, 304} and (payload_count or self.content_type is not None):
+            raise ValueError("public HTTP no-body responses cannot contain content")
+        if payload_count > 1:
+            raise ValueError("public HTTP response must use one body encoding")
+        if payload_count == 0 and self.content_type is not None:
             raise ValueError("public HTTP content type requires a body")
-        if self.body is not None and self.content_type is None:
+        if payload_count == 1 and self.content_type is None:
             raise ValueError("public HTTP body requires a content type")
+        if self.body is not None:
+            if self.content_type not in PUBLIC_HTTP_TEXT_CONTENT_TYPES:
+                raise ValueError("public HTTP text body requires a text content type")
+            if len(self.body.encode("utf-8")) > PUBLIC_HTTP_MAX_BODY_BYTES:
+                raise ValueError("public HTTP response body is too large")
+        if self.body_base64 is not None:
+            if self.content_type not in PUBLIC_HTTP_BINARY_CONTENT_TYPES:
+                raise ValueError("public HTTP binary body requires a binary content type")
+            try:
+                decoded = base64.b64decode(self.body_base64, validate=True)
+            except (ValueError, TypeError) as exc:
+                raise ValueError("public HTTP binary body is invalid") from exc
+            if len(decoded) > PUBLIC_HTTP_MAX_BODY_BYTES:
+                raise ValueError("public HTTP response body is too large")
         if self.location is not None and ("\r" in self.location or "\n" in self.location):
             raise ValueError("public HTTP redirect location is invalid")
         return self
@@ -285,11 +339,26 @@ class ApplicationPublicHttpRouteV1(StrictApplicationModel):
     content_types: tuple[Literal[
         "text/html; charset=utf-8",
         "text/plain; charset=utf-8",
+        "text/css; charset=utf-8",
+        "application/javascript; charset=utf-8",
         "application/json",
+        "application/manifest+json",
         "application/xml",
         "text/xml; charset=utf-8",
-    ], ...] = Field(min_length=1, max_length=5)
-    max_response_bytes: int = Field(default=1024 * 1024, ge=1024, le=4 * 1024 * 1024)
+        "application/rss+xml",
+        "application/atom+xml",
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "image/avif",
+        "image/gif",
+        "image/svg+xml",
+        "image/x-icon",
+        "font/woff",
+        "font/woff2",
+        "application/pdf",
+    ], ...] = Field(min_length=1, max_length=20)
+    max_response_bytes: int = Field(default=256 * 1024, ge=1024, le=PUBLIC_HTTP_MAX_BODY_BYTES)
 
     @field_validator("path")
     @classmethod

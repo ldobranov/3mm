@@ -94,9 +94,11 @@ The first header allowlist is intentionally small: `Accept`,
 `Accept-Language`, `If-None-Match` and `If-Modified-Since`.
 
 `ApplicationPublicHttpResponseV1` supports a bounded set of normal page,
-redirect, client-error and service-error statuses. Its body types are limited to
-HTML, plain text, JSON and XML. Response headers are allowlisted to generic
-caching/content metadata. Redirect location is a dedicated field rather than an
+redirect, client-error and service-error statuses. Text bodies cover HTML, plain text, CSS, JavaScript, JSON, manifests and
+XML/feed formats. Bounded base64 bodies cover common web images, fonts and PDF
+documents without widening the application service's general transport limit.
+A route can opt into at most 512 KiB of decoded body data; the default is
+256 KiB. Response headers are allowlisted to generic caching/content metadata. Redirect location is a dedicated field rather than an
 arbitrary header.
 
 The handler's declared operation schemas must match the v1 public HTTP request
@@ -170,7 +172,8 @@ Status: complete on branch; full CI passed for `d9054264`.
 
 - add request, response and public route v1 contracts;
 - bind routes only to isolated public query operations;
-- enforce bounded paths, content types, statuses, headers and response sizes;
+- enforce bounded paths, text/binary content types, statuses, headers and response sizes;
+- support cache validation through ETag/Last-Modified and no-body 304 responses;
 - preserve existing Application Extension v1 packages unchanged;
 - add protocol contract tests.
 

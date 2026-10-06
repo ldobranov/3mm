@@ -270,3 +270,39 @@ def test_dispatch_fails_closed_for_method_content_type_size_and_bad_headers(
         public_web.dispatch_public_http(
             db, settings, method="GET", path="/items/example"
         )
+
+
+
+def test_dispatch_accepts_declared_bounded_binary_asset(registry, monkeypatch, tmp_path):
+    import base64
+
+    db, add, definitions = registry
+    package, _installation, current = add(
+        "org.3mm.public-asset", "/assets/{name}", 7, max_response_bytes=1024
+    )
+    route = current.public_http_routes[0].model_copy(
+        update={"content_types": ("image/png",), "max_response_bytes": 1024}
+    )
+    definitions[package.module_id] = current.model_copy(
+        update={"public_http_routes": (route,)}
+    )
+    payload = b"\x89PNG\r\n\x1a\n" + b"x" * 64
+    monkeypatch.setattr(
+        public_web,
+        "invoke_application",
+        lambda *_args, **_kwargs: {
+            "status": 200,
+            "content_type": "image/png",
+            "headers": {"ETag": '"asset-v1"'},
+            "body_base64": base64.b64encode(payload).decode("ascii"),
+        },
+    )
+    settings = ApplicationRuntimeSettings(
+        root=tmp_path / "apps",
+        key_root=tmp_path / "keys",
+        helper_socket=tmp_path / "helper.sock",
+    )
+    response = public_web.dispatch_public_http(
+        db, settings, method="GET", path="/assets/logo.png"
+    )
+    assert base64.b64decode(response.body_base64) == payload

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import re
 import uuid
 from collections.abc import Mapping, Sequence
@@ -313,6 +314,12 @@ def dispatch_public_http(
         raise ApplicationPublicWebError(
             "Public HTTP application returned an undeclared content type"
         )
-    if response.body is not None and len(response.body.encode("utf-8")) > binding.route.max_response_bytes:
+    if response.body is not None:
+        response_bytes = len(response.body.encode("utf-8"))
+    elif response.body_base64 is not None:
+        response_bytes = len(base64.b64decode(response.body_base64, validate=True))
+    else:
+        response_bytes = 0
+    if response_bytes > binding.route.max_response_bytes:
         raise ApplicationPublicWebError("Public HTTP application response is too large")
     return response
