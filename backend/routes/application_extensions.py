@@ -38,6 +38,10 @@ from backend.services.application_extensions import (
     invoke_application,
     load_application_definition,
 )
+from backend.services.application_public_web import (
+    ApplicationPublicWebError,
+    validate_public_http_candidate,
+)
 from backend.services.application_configuration import (
     ApplicationConfigurationError,
     device_configuration_keys,
@@ -297,6 +301,10 @@ def activate_application_extension(
             ApplicationExtensionInstallation.module_id == package.module_id
         )
     )
+    try:
+        validate_public_http_candidate(db, package, definition)
+    except ApplicationPublicWebError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
     requested_configuration = request.configuration if request is not None else {}
     configurable_device_keys = set(device_configuration_keys(definition))
     if set(requested_configuration) - configurable_device_keys:

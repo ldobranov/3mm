@@ -166,7 +166,7 @@ Status: complete as design review.
 
 ### P1 — versioned public HTTP contract
 
-Status: in progress.
+Status: complete on branch; full CI passed for `d9054264`.
 
 - add request, response and public route v1 contracts;
 - bind routes only to isolated public query operations;
@@ -175,6 +175,8 @@ Status: in progress.
 - add protocol contract tests.
 
 ### P2 — Core route registry and public gateway
+
+Status: in progress.
 
 - derive reserved Core paths from the running platform route inventory;
 - build active-package public route registry and deterministic conflict checks;
