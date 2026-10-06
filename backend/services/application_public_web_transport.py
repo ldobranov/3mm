@@ -32,11 +32,13 @@ class PublicWebGatewayServer:
         socket_path: Path,
         application_settings: ApplicationRuntimeSettings,
         *,
+        socket_group: str | None = None,
         session_factory: Callable[[], Session] | None = None,
         dispatcher=dispatch_public_http,
     ) -> None:
         self.socket_path = socket_path
         self.application_settings = application_settings
+        self.socket_group = socket_group
         self._session_factory = session_factory
         self._dispatcher = dispatcher
         self._stop = threading.Event()
@@ -48,7 +50,14 @@ class PublicWebGatewayServer:
         self.socket_path.unlink(missing_ok=True)
         server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         server.bind(str(self.socket_path))
-        os.chmod(self.socket_path, 0o600)
+        if self.socket_group is None:
+            os.chmod(self.socket_path, 0o600)
+        else:
+            import grp
+
+            group_id = grp.getgrnam(self.socket_group).gr_gid
+            os.chown(self.socket_path, -1, group_id)
+            os.chmod(self.socket_path, 0o660)
         server.listen(32)
         server.settimeout(1)
         self._server = server

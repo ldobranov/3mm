@@ -197,8 +197,8 @@ Core Unix-socket gateway. Public failure is not allowed to fail Core startup.
   resident public-web process;
 - make root ownership explicit on that surface;
 - ensure extension failure cannot block local administration;
-- keep the public process away from Core state, credentials and the shared
-  service environment;
+- run the public process as a dedicated OS identity and keep it away from Core
+  state, privileged helper sockets, credentials and the shared service environment;
 - leave trusted public origin/host and TLS ingress to an explicit deployment
   binding without trusting arbitrary Host headers for canonical identity.
 

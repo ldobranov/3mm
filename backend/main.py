@@ -187,6 +187,7 @@ async def lifespan(app: FastAPI):
     public_web_gateway = PublicWebGatewayServer(
         app_settings.public_web.gateway_socket,
         app_settings.applications,
+        socket_group=app_settings.public_web.gateway_group,
     )
     public_web_gateway_started = False
     try:

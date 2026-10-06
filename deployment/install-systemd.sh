@@ -425,7 +425,14 @@ if ! id -u 3mm-app >/dev/null 2>&1; then
   useradd --system --gid 3mm-app --home-dir "$state_root/application-extensions" \
     --shell /usr/sbin/nologin 3mm-app
 fi
-usermod -a -G 3mm-app 3mm
+if ! getent group 3mm-public >/dev/null 2>&1; then
+  groupadd --system 3mm-public
+fi
+if ! id -u 3mm-public >/dev/null 2>&1; then
+  useradd --system --gid 3mm-public --home-dir /nonexistent \
+    --shell /usr/sbin/nologin 3mm-public
+fi
+usermod -a -G 3mm-app,3mm-public 3mm
 fi
 
 install -d -o root -g root -m 0755 "$install_root" "$releases_root" /etc/3mm
@@ -666,7 +673,8 @@ upsert_environment THREE_MM_APPLICATION_ROOT /var/lib/3mm/application-extensions
 upsert_environment THREE_MM_APPLICATION_KEY_ROOT /etc/3mm/application-extensions
 upsert_environment THREE_MM_APPLICATION_HELPER_SOCKET /run/3mm/update-helper.sock
 upsert_environment THREE_MM_APPLICATION_PLATFORM_SOCKET /var/lib/3mm/application-extensions/platform/platform.sock
-upsert_environment THREE_MM_PUBLIC_WEB_GATEWAY_SOCKET /run/3mm-public-web/core.sock
+upsert_environment THREE_MM_PUBLIC_WEB_GATEWAY_SOCKET /run/3mm-public-web.sock
+upsert_environment THREE_MM_PUBLIC_WEB_GATEWAY_GROUP 3mm-public
 
 if [[ -s $ai_master_key_file ]]; then
   ai_master_key=$(cat "$ai_master_key_file")

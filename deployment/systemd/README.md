@@ -25,7 +25,9 @@ The public-web socket listens only on loopback port 8081. It starts the
 unprivileged `3mm-public-web.service` only when a request arrives; the process
 exits again after an idle window. It receives no service environment file,
 cannot read `/var/lib/3mm` or `/etc/3mm`, runs in a private network namespace
-and reaches Core only through `/run/3mm-public-web/core.sock`. The normal
+and runs as the dedicated `3mm-public` identity. Core shares only the
+`/run/3mm-public-web.sock` gateway with that group; the public process does not
+inherit the `3mm` or `3mm-app` identities. The normal
 administrative SPA stays on ports 80/8080 and does not share public route
 ownership. External public-domain/TLS ingress is a separate deployment layer
 that should proxy only to the loopback public listener.

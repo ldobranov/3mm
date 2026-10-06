@@ -214,3 +214,22 @@ false
         assert '/etc/systemd/system/3mm-node-recovery.service' in result.stdout
         assert '/etc/systemd/system/3mm-agent.service' in result.stdout
         assert 'verify-previous-runtime' not in result.stdout
+
+
+
+def test_full_profile_creates_separate_public_web_identity():
+    source = section('if [[ $install_profile == full ]]; then\nif ! getent group 3mm-app',
+                     'install -d -o root -g root -m 0755 "$install_root"')
+    result = run('''
+install_profile=full
+state_root=/test/state
+getent() { return 1; }
+id() { return 1; }
+groupadd() { printf 'groupadd %s\\n' "$*"; }
+useradd() { printf 'useradd %s\\n' "$*"; }
+usermod() { printf 'usermod %s\\n' "$*"; }
+''' + source)
+    assert result.returncode == 0, result.stderr
+    assert 'groupadd --system 3mm-public' in result.stdout
+    assert 'useradd --system --gid 3mm-public --home-dir /nonexistent --shell /usr/sbin/nologin 3mm-public' in result.stdout
+    assert 'usermod -a -G 3mm-app,3mm-public 3mm' in result.stdout

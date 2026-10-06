@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import socket
+from pathlib import Path
 
 import pytest
 
@@ -104,3 +105,49 @@ def test_public_web_gateway_does_not_leak_core_error_details(tmp_path):
         gateway.stop()
     assert error.value.status_code == 404
     assert "sensitive" not in str(error.value)
+
+
+
+def test_public_web_gateway_can_expose_only_its_socket_to_a_dedicated_group(
+    monkeypatch, tmp_path
+):
+    import grp
+    import os
+
+    settings = ApplicationRuntimeSettings(
+        root=tmp_path / "apps",
+        key_root=tmp_path / "keys",
+        helper_socket=tmp_path / "helper.sock",
+    )
+    socket_path = tmp_path / "public-web.sock"
+    chowns = []
+    real_chmod = os.chmod
+
+    class Group:
+        gr_gid = 4321
+
+    monkeypatch.setattr(grp, "getgrnam", lambda name: Group())
+    monkeypatch.setattr(
+        "backend.services.application_public_web_transport.os.chown",
+        lambda path, uid, gid: chowns.append((Path(path), uid, gid)),
+    )
+    modes = []
+    monkeypatch.setattr(
+        "backend.services.application_public_web_transport.os.chmod",
+        lambda path, mode: (modes.append((Path(path), mode)), real_chmod(path, mode))[1],
+    )
+    gateway = PublicWebGatewayServer(
+        socket_path,
+        settings,
+        socket_group="3mm-public",
+        session_factory=FakeSession,
+        dispatcher=lambda *_args, **_kwargs: ApplicationPublicHttpResponseV1(
+            status=204, headers={}
+        ),
+    )
+    gateway.start()
+    try:
+        assert chowns == [(socket_path, -1, 4321)]
+        assert (socket_path, 0o660) in modes
+    finally:
+        gateway.stop()

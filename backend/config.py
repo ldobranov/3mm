@@ -103,6 +103,7 @@ class ApplicationRuntimeSettings(BaseModel):
 
 class PublicWebSettings(BaseModel):
     gateway_socket: Path = PROJECT_ROOT / ".runtime" / "public-web" / "core.sock"
+    gateway_group: str | None = Field(default=None, max_length=64)
 
 
 class AppSettings(BaseModel):
@@ -257,6 +258,8 @@ def get_settings() -> AppSettings:
         applications["platform_socket"] = application_platform_socket
     if public_web_gateway_socket := os.getenv("THREE_MM_PUBLIC_WEB_GATEWAY_SOCKET"):
         public_web["gateway_socket"] = public_web_gateway_socket
+    if public_web_gateway_group := os.getenv("THREE_MM_PUBLIC_WEB_GATEWAY_GROUP"):
+        public_web["gateway_group"] = public_web_gateway_group
 
     backend["database_url"] = _normalize_database_url(
         backend.get("database_url", BackendSettings().database_url)

@@ -7,7 +7,7 @@ Conflicts=3mm-setup.service
 Type=simple
 User=3mm
 Group=3mm
-SupplementaryGroups=3mm-app
+SupplementaryGroups=3mm-app 3mm-public
 WorkingDirectory=/opt/3mm/current
 EnvironmentFile=-/etc/3mm/3mm.env
 Environment=BACKEND_EXTENSIONS_DIR=/var/lib/3mm/core/extensions/backend
@@ -21,8 +21,6 @@ Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30s
 StateDirectory=3mm/core
-RuntimeDirectory=3mm-public-web
-RuntimeDirectoryMode=0700
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
