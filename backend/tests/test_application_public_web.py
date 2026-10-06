@@ -20,7 +20,7 @@ from three_mm_protocol import (
 )
 
 
-def definition(module_id: str, path: str, *, max_response_bytes: int = 1024 * 1024):
+def definition(module_id: str, path: str, *, max_response_bytes: int = 256 * 1024):
     value = application_definition(module_id=module_id)
     value["operations"].append(
         {
