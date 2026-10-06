@@ -52,7 +52,7 @@ def registry(monkeypatch, tmp_path: Path):
     db = Session(engine)
     definitions: dict[str, ApplicationExtensionV1] = {}
 
-    def add(module_id: str, path: str, digit: int, *, active: bool = True, max_response_bytes: int = 1024 * 1024):
+    def add(module_id: str, path: str, digit: int, *, active: bool = True, max_response_bytes: int = 256 * 1024):
         current = definition(module_id, path, max_response_bytes=max_response_bytes)
         definitions[module_id] = current
         package = ModulePackage(

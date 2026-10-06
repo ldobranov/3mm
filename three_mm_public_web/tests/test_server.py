@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from threading import Thread
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 import pytest
 
@@ -97,15 +97,17 @@ def test_public_http_adapter_writes_binary_assets_and_redirects():
     client.response = ApplicationPublicHttpResponseV1.model_validate(
         {"status": 301, "headers": {}, "location": "/new"}
     )
+
+    class NoRedirect(HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+
     with running(client) as base:
-        opener = __import__("urllib.request", fromlist=["build_opener"]).build_opener(
-            __import__("urllib.request", fromlist=["HTTPRedirectHandler"]).HTTPRedirectHandler()
-        )
-        client.error = PublicWebCoreError(404)
-        # Directly verify the adapter-generated public error after the redirect target.
+        opener = build_opener(NoRedirect())
         with pytest.raises(HTTPError) as error:
             opener.open(base + "/old", timeout=2)
-        assert error.value.code == 404
+        assert error.value.code == 301
+        assert error.value.headers["Location"] == "/new"
 
 
 def test_public_http_adapter_returns_closed_errors_for_methods_and_core_failure():
