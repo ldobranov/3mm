@@ -22,6 +22,8 @@ REQUIRED_SOURCE_FILES = {
     "install.sh": b"#!/usr/bin/env bash\n",
     "backend/requirements.txt": b"fastapi==0.141.1\n",
     "backend/services/update_staging.py": b"print('stage')\n",
+    "backend/services/application_public_web.py": b"print('public registry')\n",
+    "backend/services/application_public_web_transport.py": b"print('public gateway')\n",
     "deployment/install-systemd.sh": b"#!/usr/bin/env bash\n",
     "deployment/apply_staged_update.py": b"print('apply')\n",
     "deployment/bootstrap-local-agent.py": b"print('bootstrap agent')\n",
@@ -35,11 +37,16 @@ REQUIRED_SOURCE_FILES = {
     "deployment/systemd/3mm-core.service": b"[Unit]\n",
     "deployment/systemd/3mm-update-helper.service": b"[Unit]\n",
     "deployment/systemd/3mm-web.service": b"[Unit]\n",
+    "deployment/systemd/3mm-public-web.socket": b"[Socket]\n",
+    "deployment/systemd/3mm-public-web.service": b"[Service]\n",
     "frontend/compiler/package.json": b'{"name":"compiler"}\n',
     "three_mm_runtime/update_helper.py": b"print('helper')\n",
     "three_mm_runtime/application_activation.py": b"print('activate app')\n",
     "three_mm_runtime/application_host.py": b"print('host app')\n",
     "three_mm_runtime/application_transport.py": b"print('transport app')\n",
+    "three_mm_public_web/__init__.py": b"# public web\n",
+    "three_mm_public_web/__main__.py": b"print('public main')\n",
+    "three_mm_public_web/server.py": b"print('public server')\n",
     "three_mm_application_sdk/__init__.py": b"# sdk\n",
     "frontend/dist/stale.js": b"must not survive\n",
 }
@@ -146,6 +153,8 @@ def test_release_archives_are_reproducible_and_installer_compatible(
             assert "frontend/dist/stale.js" not in names
             assert "deployment/install-systemd.sh" in names
             assert "deployment/factory_reset.py" in names
+            assert "deployment/systemd/3mm-public-web.socket" in names
+            assert "three_mm_public_web/server.py" in names
             assert "install.sh" in names
             assert all(member.mtime == EPOCH for member in archive.getmembers())
             metadata = json.load(archive.extractfile(".3mm-release.json"))

@@ -62,6 +62,7 @@ def test_standalone_runtime_disables_setup_before_applications(tmp_path, monkeyp
         "3mm-core.service",
         "3mm-web.service",
         "3mm-agent.service",
+        "3mm-public-web.socket",
     )
 
 
@@ -89,6 +90,7 @@ def test_node_runtime_does_not_attempt_local_core_pairing(tmp_path, monkeypatch)
 
     activation.activate(tmp_path)
 
+    assert ("disable", "--now", "3mm-core.service", "3mm-web.service", "3mm-public-web.socket") in calls
     assert calls[-1] == ("enable", "--now", "3mm-agent.service")
 
 
@@ -112,7 +114,8 @@ def test_health_requires_each_selected_service(tmp_path, monkeypatch):
     monkeypatch.setattr(activation, "_systemctl", lambda *args: calls.append(args))
     activation.check_active(tmp_path)
     assert calls == [("is-active", "--quiet", unit) for unit in (
-        "3mm-core.service", "3mm-web.service", "3mm-agent.service")]
+        "3mm-core.service", "3mm-web.service", "3mm-agent.service",
+        "3mm-public-web.socket")]
 
     def agent_failed(*args):
         if args[-1] == "3mm-agent.service":

@@ -19,7 +19,16 @@ The shared runtime planner determines which units an installer enables:
 |---|---|
 | Unprovisioned or interrupted setup | `3mm-network-helper.service`, `3mm-setup-ap.service`, `3mm-setup.service` |
 | Node | `3mm-agent.service` |
-| Hub or Standalone | `3mm-core.service`, `3mm-web.service`, `3mm-agent.service` |
+| Hub or Standalone | `3mm-core.service`, `3mm-web.service`, `3mm-agent.service`, `3mm-public-web.socket` |
+
+The public-web socket listens only on loopback port 8081. It starts the
+unprivileged `3mm-public-web.service` only when a request arrives; the process
+exits again after an idle window. It receives no service environment file,
+cannot read `/var/lib/3mm` or `/etc/3mm`, runs in a private network namespace
+and reaches Core only through `/run/3mm-public-web/core.sock`. The normal
+administrative SPA stays on ports 80/8080 and does not share public route
+ownership. External public-domain/TLS ingress is a separate deployment layer
+that should proxy only to the loopback public listener.
 
 `3mm-update-helper.service` is always enabled after a successful immutable
 installation. It exposes only a group-restricted Unix socket and can schedule

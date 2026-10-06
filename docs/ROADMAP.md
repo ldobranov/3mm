@@ -659,8 +659,8 @@ the current Theme Platform task. A proven generic gap needs its own Core issue.
 
 ## Milestone 19 — Public Web Runtime & Extension Contract
 
-Status: implementation started on 2026-10-06. P0 baseline is complete and P1
-contract work is in progress on a focused branch. See
+Status: implementation started on 2026-10-06. P0–P2 are complete on the
+focused branch; P3 isolated public runtime/deployment work is in progress. See
 [PUBLIC_WEB_EXTENSION_PLAN.md](PUBLIC_WEB_EXTENSION_PLAN.md).
 
 Goal: let separately installed application extensions publish real public web

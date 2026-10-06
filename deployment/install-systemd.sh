@@ -91,6 +91,7 @@ runtime_services=(
   3mm-agent.service
   3mm-core.service
   3mm-web.service
+  3mm-public-web.socket
   3mm-setup.service
   3mm-setup-ap.service
   3mm-network-helper.service
@@ -102,6 +103,7 @@ installed_units=(
   "${runtime_services[@]}"
   "${always_on_services[@]}"
   3mm-application-extension@.service
+  3mm-public-web.service
 )
 if [[ $install_profile == node ]]; then
   runtime_services=(3mm-agent.service 3mm-setup.service 3mm-setup-ap.service 3mm-network-helper.service)
@@ -155,6 +157,11 @@ install_units() {
   local unit
   for unit in "${installed_units[@]}"; do
     if [[ ! -f $source_release/deployment/systemd/$unit ]]; then
+      if [[ ( $unit == 3mm-public-web.socket || $unit == 3mm-public-web.service ) && $require_update_helper == 0 ]]; then
+        systemctl disable --now "$unit" >/dev/null 2>&1 || true
+        rm -f -- "/etc/systemd/system/$unit"
+        continue
+      fi
       if [[ $unit == 3mm-application-extension@.service && $require_update_helper == 0 ]]; then
         systemctl stop '3mm-application-extension@*.service' >/dev/null 2>&1 || true
         rm -f -- "/etc/systemd/system/$unit"
@@ -393,7 +400,7 @@ assert_release_path "$release_dir"
 
 if [[ $install_profile == node && -z $previous_release ]]; then
   # Never take ownership of units/state from an unrecognized installation.
-  for unit in "${installed_units[@]}" 3mm-core.service 3mm-web.service 3mm-update-helper.service; do
+  for unit in "${installed_units[@]}" 3mm-core.service 3mm-web.service 3mm-public-web.socket 3mm-public-web.service 3mm-update-helper.service; do
     if systemctl cat "$unit" >/dev/null 2>&1; then
       fail "Existing 3mm unit without a managed Node release: $unit"
     fi
@@ -458,6 +465,8 @@ required_files=(
   frontend/dist/index.html
   backend/requirements.txt
   backend/services/update_staging.py
+  backend/services/application_public_web.py
+  backend/services/application_public_web_transport.py
   deployment/apply_staged_update.py
   deployment/bootstrap-local-agent.py
   deployment/create_backup.py
@@ -472,6 +481,8 @@ required_files=(
   deployment/update-dependency-allowlist.json
   deployment/systemd/3mm-core.service
   deployment/systemd/3mm-web.service
+  deployment/systemd/3mm-public-web.socket
+  deployment/systemd/3mm-public-web.service
   deployment/systemd/3mm-agent.service
   deployment/systemd/3mm-captive-portal-dnsmasq.conf
   deployment/systemd/3mm-update-helper.service
@@ -480,6 +491,9 @@ required_files=(
   three_mm_runtime/application_activation.py
   three_mm_runtime/application_host.py
   three_mm_runtime/application_transport.py
+  three_mm_public_web/__init__.py
+  three_mm_public_web/__main__.py
+  three_mm_public_web/server.py
   three_mm_application_sdk/__init__.py
   three_mm_runtime/network_recovery.py
   three_mm_provisioning/network_recovery.py
@@ -652,6 +666,7 @@ upsert_environment THREE_MM_APPLICATION_ROOT /var/lib/3mm/application-extensions
 upsert_environment THREE_MM_APPLICATION_KEY_ROOT /etc/3mm/application-extensions
 upsert_environment THREE_MM_APPLICATION_HELPER_SOCKET /run/3mm/update-helper.sock
 upsert_environment THREE_MM_APPLICATION_PLATFORM_SOCKET /var/lib/3mm/application-extensions/platform/platform.sock
+upsert_environment THREE_MM_PUBLIC_WEB_GATEWAY_SOCKET /run/3mm-public-web/core.sock
 
 if [[ -s $ai_master_key_file ]]; then
   ai_master_key=$(cat "$ai_master_key_file")

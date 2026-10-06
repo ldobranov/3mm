@@ -51,6 +51,8 @@ def test_profile_selects_only_its_units(profile):
     assert ('3mm-core.service' in units) == (profile == 'full')
     assert ('3mm-update-helper.service' in units) == (profile == 'full')
     assert ('3mm-application-extension@.service' in units) == (profile == 'full')
+    assert ('3mm-public-web.socket' in units) == (profile == 'full')
+    assert ('3mm-public-web.service' in units) == (profile == 'full')
     assert ('3mm-node-recovery.service' in units) == (profile == 'node')
 
 

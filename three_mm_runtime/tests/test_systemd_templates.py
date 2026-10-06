@@ -15,6 +15,8 @@ PRIVILEGED_UNITS = {
     "update_helper": SYSTEMD_DIR / "3mm-update-helper.service",
 }
 APPLICATION_TEMPLATE = SYSTEMD_DIR / "3mm-application-extension@.service"
+PUBLIC_WEB_SERVICE = SYSTEMD_DIR / "3mm-public-web.service"
+PUBLIC_WEB_SOCKET = SYSTEMD_DIR / "3mm-public-web.socket"
 CAPTIVE_DNS_CONFIG = SYSTEMD_DIR / "3mm-captive-portal-dnsmasq.conf"
 
 
@@ -154,15 +156,40 @@ def test_application_extensions_run_as_a_separate_network_isolated_identity() ->
     assert unit["PartOf"] == "3mm-core.service"
 
 
-def test_only_helpers_own_the_shared_runtime_socket_directory() -> None:
+def test_runtime_socket_directories_are_narrowly_owned() -> None:
     setup = _directives(UNITS["setup"])
+    core = _directives(UNITS["core"])
     network_helper = _directives(PRIVILEGED_UNITS["helper"])
 
     assert "RuntimeDirectory" not in setup
-    for name in ("core", "web", "agent"):
+    for name in ("web", "agent"):
         assert "RuntimeDirectory" not in _directives(UNITS[name])
+    assert core["RuntimeDirectory"] == "3mm-public-web"
+    assert core["RuntimeDirectoryMode"] == "0700"
     assert network_helper["RuntimeDirectory"] == "3mm"
     assert network_helper["RuntimeDirectoryPreserve"] == "yes"
+
+
+def test_public_web_is_socket_activated_without_core_state_or_secret_environment() -> None:
+    listener = _directives(PUBLIC_WEB_SOCKET)
+    service = _directives(PUBLIC_WEB_SERVICE)
+
+    assert listener["ListenStream"] == "127.0.0.1:8081"
+    assert listener["Service"] == "3mm-public-web.service"
+    assert listener["PartOf"] == "3mm-core.service"
+    assert service["User"] == "3mm"
+    assert service["Group"] == "3mm"
+    assert "EnvironmentFile" not in service
+    assert "-m three_mm_public_web" in service["ExecStart"]
+    assert "--core-socket /run/3mm-public-web/core.sock" in service["ExecStart"]
+    assert "--systemd-socket" in service["ExecStart"]
+    assert "--idle-seconds 60" in service["ExecStart"]
+    assert service["PrivateNetwork"] == "true"
+    assert service["PrivateDevices"] == "true"
+    assert service["RestrictAddressFamilies"] == "AF_UNIX AF_INET AF_INET6"
+    assert service["InaccessiblePaths"] == "/var/lib/3mm /etc/3mm"
+    assert service["NoNewPrivileges"] == "true"
+    assert service["ProtectSystem"] == "strict"
 
 
 def test_units_use_the_shared_provisioning_directory() -> None:

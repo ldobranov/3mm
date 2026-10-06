@@ -109,15 +109,14 @@ a new Core branch for every public application.
 
 Stage P2 will add a Core-owned registry over active application packages.
 Within one package duplicate public paths are already invalid. Cross-package
-conflicts, reserved Core paths and public-surface ownership are checked before a
-candidate becomes live.
+conflicts are checked before a candidate becomes live. The public listener is a
+separate surface from the administrative SPA, so public paths never shadow Core
+API, settings or recovery routes even when the same path text exists on both
+surfaces.
 
-The reserved path set is derived from actual Core/admin/API surfaces during P2;
-it is not duplicated prematurely in the protocol package.
-
-No extension can claim administrative API or recovery paths. Root ownership is
-possible only on the explicitly enabled public surface, never by silently
-shadowing the administrative SPA.
+Root ownership is therefore meaningful only on the public surface. External
+public-domain/TLS ingress must target that surface explicitly; it is never
+inferred from an untrusted Host header.
 
 ## Runtime shape
 
@@ -181,7 +180,6 @@ Status: complete on branch; full CI passed for `d9054264`.
 
 Status: complete on branch at `1e9e6653`; full CI passed.
 
-- derive reserved Core paths from the running platform route inventory;
 - build active-package public route registry and deterministic conflict checks;
 - dispatch GET/HEAD to supervised application operations;
 - validate request and response models at the gateway;
@@ -190,16 +188,19 @@ Status: complete on branch at `1e9e6653`; full CI passed.
 
 ### P3 — isolated public surface and ownership
 
-Status: in progress. The runtime boundary uses a separate public HTTP process
-and a local Core Unix-socket gateway; public failure is not allowed to fail
-Core startup.
+Status: runtime isolation is implemented on branch; deployment wiring is in progress.
+The boundary uses a separate socket-activated public HTTP process and a local
+Core Unix-socket gateway. Public failure is not allowed to fail Core startup.
 
 - separate public ownership from the administrative SPA/recovery surface;
-- add administrator-controlled public-surface enable/binding state;
+- use loopback socket activation so installations without public traffic keep no
+  resident public-web process;
 - make root ownership explicit on that surface;
 - ensure extension failure cannot block local administration;
-- define trusted public origin/host handling without trusting arbitrary Host
-  headers for canonical identity.
+- keep the public process away from Core state, credentials and the shared
+  service environment;
+- leave trusted public origin/host and TLS ingress to an explicit deployment
+  binding without trusting arbitrary Host headers for canonical identity.
 
 TLS/custom-domain/cloud ingress automation is not required to prove v1 unless a
 generic platform gap is found during acceptance.
