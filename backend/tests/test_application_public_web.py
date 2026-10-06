@@ -306,3 +306,85 @@ def test_dispatch_accepts_declared_bounded_binary_asset(registry, monkeypatch, t
         db, settings, method="GET", path="/assets/logo.png"
     )
     assert base64.b64decode(response.body_base64) == payload
+
+
+
+def test_public_route_ownership_reconstructs_after_upgrade_disable_restart_rollback_and_uninstall(
+    registry,
+):
+    db, add, definitions = registry
+    module_id = "org.3mm.public-lifecycle"
+    first_package, installation, first_definition = add(
+        module_id, "/version-one/{slug}", 3
+    )
+
+    assert [item.route.path for item in public_web.build_public_route_registry(db)] == [
+        "/version-one/{slug}"
+    ]
+
+    second_package = ModulePackage(
+        module_id=module_id,
+        version="2.0.0",
+        manifest={},
+        sha256="4" * 64,
+        size_bytes=1,
+        file_path="unused-v2",
+        registrations=[],
+    )
+    db.add(second_package)
+    db.flush()
+    definitions[module_id] = definition(module_id, "/version-two/{slug}").model_copy(
+        update={"version": "2.0.0"}
+    )
+    installation.module_package_id = second_package.id
+    installation.active_version = second_package.version
+    db.commit()
+
+    assert [item.route.path for item in public_web.build_public_route_registry(db)] == [
+        "/version-two/{slug}"
+    ]
+
+    installation.enabled = False
+    installation.status = "disabled"
+    db.commit()
+    assert public_web.build_public_route_registry(db) == ()
+
+    installation.enabled = True
+    installation.status = "active"
+    db.commit()
+    restarted = Session(db.get_bind())
+    try:
+        assert [item.route.path for item in public_web.build_public_route_registry(restarted)] == [
+            "/version-two/{slug}"
+        ]
+    finally:
+        restarted.close()
+
+    definitions[module_id] = first_definition
+    installation.module_package_id = first_package.id
+    installation.active_version = first_package.version
+    db.commit()
+
+    assert [item.route.path for item in public_web.build_public_route_registry(db)] == [
+        "/version-one/{slug}"
+    ]
+    with pytest.raises(ApplicationPublicWebError) as stale:
+        public_web.resolve_public_route(db, "GET", "/version-two/example")
+    assert stale.value.status_code == 404
+
+    db.delete(installation)
+    db.commit()
+    assert public_web.build_public_route_registry(db) == ()
+
+
+def test_public_route_registry_fails_closed_on_inconsistent_active_package(registry):
+    db, add, _definitions = registry
+    _package, installation, _definition = add(
+        "org.3mm.public-inconsistent", "/safe", 5
+    )
+    installation.active_version = "9.9.9"
+    db.commit()
+
+    with pytest.raises(ApplicationPublicWebError, match="inconsistent") as error:
+        public_web.build_public_route_registry(db)
+    assert error.value.status_code == 503
