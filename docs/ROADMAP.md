@@ -656,6 +656,42 @@ Acceptance criteria:
 No hardware purchase, real firmware, ESP provisioning or OTA work starts in
 the current Theme Platform task. A proven generic gap needs its own Core issue.
 
+
+## Milestone 19 — Public Web Runtime & Extension Contract
+
+Status: implementation started on 2026-10-06. P0 baseline is complete and P1
+contract work is in progress on a focused branch. See
+[PUBLIC_WEB_EXTENSION_PLAN.md](PUBLIC_WEB_EXTENSION_PLAN.md).
+
+Goal: let separately installed application extensions publish real public web
+responses without putting website, shop, SEO or framework-specific behavior in
+Core.
+
+Deliverables:
+
+- closed, versioned public HTTP request/response and route contracts;
+- Core-owned active route registry with reserved-path and conflict checks;
+- isolated public gateway to supervised application services;
+- bounded methods, content types, statuses, headers, timeouts and response size;
+- explicit public-surface/root ownership separate from administrative recovery;
+- transactional activation, disable, rollback, uninstall and restore behavior;
+- neutral HTML/XML/text/redirect reference application;
+- deterministic failure tests and physical Raspberry acceptance.
+
+Acceptance criteria:
+
+- public GET/HEAD routes work without rebuilding the Core frontend;
+- extensions can return HTML, JSON, XML, text, redirects, 404 and 410 through
+  the same generic contract;
+- duplicate/reserved routes, forbidden headers and malformed/oversized responses
+  fail closed before they can affect unrelated Core behavior;
+- public failures never make the administrative/recovery surface unavailable;
+- lifecycle changes leave no stale route ownership;
+- the neutral reference passes laptop and physical acceptance;
+- a later website/shop can implement friendly URLs, metadata, structured data,
+  discovery resources and redirects without a shop- or SEO-specific Core edit.
+
+
 ## Immediate work queue
 
 These are the first concrete tasks after approval of this plan:

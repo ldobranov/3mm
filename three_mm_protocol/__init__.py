@@ -90,9 +90,14 @@ from three_mm_protocol.application_extension import (
     ApplicationLifecycleV1,
     ApplicationOperationV1,
     ApplicationPermissionV1,
+    ApplicationPublicHttpRequestV1,
+    ApplicationPublicHttpResponseV1,
+    ApplicationPublicHttpRouteV1,
     ApplicationRouteV1,
     ApplicationServiceV1,
     ApplicationStorageV1,
+    public_http_request_schema_v1,
+    public_http_response_schema_v1,
 )
 
 __all__ = [
@@ -165,7 +170,12 @@ __all__ = [
     "ApplicationLifecycleV1",
     "ApplicationOperationV1",
     "ApplicationPermissionV1",
+    "ApplicationPublicHttpRequestV1",
+    "ApplicationPublicHttpResponseV1",
+    "ApplicationPublicHttpRouteV1",
     "ApplicationRouteV1",
     "ApplicationServiceV1",
     "ApplicationStorageV1",
+    "public_http_request_schema_v1",
+    "public_http_response_schema_v1",
 ]
