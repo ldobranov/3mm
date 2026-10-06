@@ -1,0 +1,225 @@
+{
+  "application_extension_version": 1,
+  "module_id": "org.3mm.public-web-reference",
+  "version": "1.0.0",
+  "service": {
+    "artifact": "service/public_web_reference-1.0.0-py3-none-any.whl",
+    "artifact_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "entrypoint": "public_web_reference.service:create_service",
+    "health_operation_id": "health"
+  },
+  "operations": [
+    {
+      "operation_id": "health",
+      "kind": "query",
+      "audiences": [
+        "internal"
+      ],
+      "idempotency": "forbidden",
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "operation_id": "render_public",
+      "kind": "query",
+      "audiences": [
+        "public"
+      ],
+      "idempotency": "forbidden",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "HEAD"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "path_params": {
+            "type": "object"
+          },
+          "query": {
+            "type": "object"
+          },
+          "headers": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "method",
+          "path",
+          "path_params",
+          "query",
+          "headers"
+        ],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "integer",
+            "enum": [
+              200,
+              204,
+              304,
+              301,
+              302,
+              307,
+              308,
+              400,
+              403,
+              404,
+              405,
+              410,
+              429,
+              500,
+              503
+            ]
+          },
+          "content_type": {
+            "type": "string",
+            "enum": [
+              "text/html; charset=utf-8",
+              "text/plain; charset=utf-8",
+              "text/css; charset=utf-8",
+              "application/javascript; charset=utf-8",
+              "application/json",
+              "application/manifest+json",
+              "application/xml",
+              "text/xml; charset=utf-8",
+              "application/rss+xml",
+              "application/atom+xml",
+              "image/png",
+              "image/jpeg",
+              "image/webp",
+              "image/avif",
+              "image/gif",
+              "image/svg+xml",
+              "image/x-icon",
+              "font/woff",
+              "font/woff2",
+              "application/pdf"
+            ]
+          },
+          "headers": {
+            "type": "object"
+          },
+          "body": {
+            "type": "string"
+          },
+          "body_base64": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "headers"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "public_http_routes": [
+    {
+      "route_id": "home",
+      "path": "/",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "handler_operation_id": "render_public",
+      "content_types": [
+        "text/html; charset=utf-8"
+      ]
+    },
+    {
+      "route_id": "item",
+      "path": "/items/{slug}",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "handler_operation_id": "render_public",
+      "content_types": [
+        "text/html; charset=utf-8"
+      ]
+    },
+    {
+      "route_id": "feed",
+      "path": "/feed.xml",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "handler_operation_id": "render_public",
+      "content_types": [
+        "application/xml"
+      ]
+    },
+    {
+      "route_id": "info",
+      "path": "/info.txt",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "handler_operation_id": "render_public",
+      "content_types": [
+        "text/plain; charset=utf-8"
+      ]
+    },
+    {
+      "route_id": "old_item",
+      "path": "/old-item",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "handler_operation_id": "render_public",
+      "content_types": [
+        "text/html; charset=utf-8"
+      ]
+    },
+    {
+      "route_id": "gone",
+      "path": "/gone",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "handler_operation_id": "render_public",
+      "content_types": [
+        "text/plain; charset=utf-8"
+      ]
+    }
+  ],
+  "storage": {
+    "schema_revision": "0001",
+    "migration_entrypoint": "public_web_reference.migrations:get_migrations",
+    "classifications": [
+      "private"
+    ],
+    "contains_personal_data": false
+  }
+}

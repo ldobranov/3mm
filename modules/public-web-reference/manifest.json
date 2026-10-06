@@ -1,0 +1,38 @@
+{
+  "manifest_version": 2,
+  "module_id": "org.3mm.public-web-reference",
+  "name": "Public Web Reference",
+  "version": "1.0.0",
+  "runtimes": [
+    "core"
+  ],
+  "entrypoints": {
+    "core": "application-extension.json"
+  },
+  "compatibility": {
+    "protocol": "1.0",
+    "architectures": [
+      "any"
+    ]
+  },
+  "capabilities": {
+    "provides": [],
+    "consumes": []
+  },
+  "permissions": [
+    "data.read",
+    "data.write",
+    "process.spawn"
+  ],
+  "configuration_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "configuration_defaults": {},
+  "registrations": [],
+  "health_check": {
+    "type": "json_file",
+    "path": "application-extension.json"
+  }
+}
