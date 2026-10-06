@@ -179,7 +179,7 @@ Status: complete on branch; full CI passed for `d9054264`.
 
 ### P2 — Core route registry and public gateway
 
-Status: in progress.
+Status: complete on branch at `1e9e6653`; full CI passed.
 
 - derive reserved Core paths from the running platform route inventory;
 - build active-package public route registry and deterministic conflict checks;
@@ -189,6 +189,10 @@ Status: in progress.
 - return explicit 404/405/503 behavior without SPA fallback ambiguity.
 
 ### P3 — isolated public surface and ownership
+
+Status: in progress. The runtime boundary uses a separate public HTTP process
+and a local Core Unix-socket gateway; public failure is not allowed to fail
+Core startup.
 
 - separate public ownership from the administrative SPA/recovery surface;
 - add administrator-controlled public-surface enable/binding state;
