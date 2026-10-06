@@ -55,6 +55,14 @@ def _template_segments(path: str) -> tuple[str, ...]:
     return tuple(path.removeprefix("/").split("/"))
 
 
+def _route_specificity(path: str) -> int:
+    return sum(
+        1
+        for segment in _template_segments(path)
+        if _PARAMETER_SEGMENT.fullmatch(segment) is None
+    )
+
+
 def _routes_overlap(left: str, right: str) -> bool:
     left_segments = _template_segments(left)
     right_segments = _template_segments(right)
@@ -71,7 +79,15 @@ def _routes_overlap(left: str, right: str) -> bool:
 def _validate_bindings(bindings: Sequence[PublicRouteBinding]) -> None:
     for index, left in enumerate(bindings):
         for right in bindings[index + 1 :]:
-            if _routes_overlap(left.route.path, right.route.path):
+            if not _routes_overlap(left.route.path, right.route.path):
+                continue
+            cross_application = left.module_id != right.module_id
+            ambiguous_same_application = (
+                left.route.path == right.route.path
+                or _route_specificity(left.route.path)
+                == _route_specificity(right.route.path)
+            )
+            if cross_application or ambiguous_same_application:
                 raise ApplicationPublicWebError(
                     "Public HTTP route conflict: "
                     f"{left.module_id}:{left.route.route_id} ({left.route.path}) overlaps "
@@ -202,7 +218,15 @@ def resolve_public_route(
         raise ApplicationPublicWebError("Public HTTP method is not allowed", status_code=405)
     normalized_path = _normalized_request_path(path)
     path_match: tuple[PublicRouteBinding, dict[str, str]] | None = None
-    for binding in build_public_route_registry(db):
+    registry = sorted(
+        build_public_route_registry(db),
+        key=lambda item: (
+            -_route_specificity(item.route.path),
+            item.route.path,
+            item.module_id,
+        ),
+    )
+    for binding in registry:
         parameters = _match_template(binding.route.path, normalized_path)
         if parameters is None:
             continue

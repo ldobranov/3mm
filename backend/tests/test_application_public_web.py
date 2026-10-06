@@ -111,7 +111,7 @@ def test_registry_reconstructs_only_active_routes_and_matches_parameters(registr
     assert missing.value.status_code == 404
 
 
-def test_candidate_rejects_static_dynamic_and_internal_overlaps(registry):
+def test_candidate_rejects_cross_application_overlap_but_allows_internal_specificity(registry):
     db, add, _definitions = registry
     add("org.3mm.public-one", "/items/{slug}", 1)
 
@@ -148,8 +148,21 @@ def test_candidate_rejects_static_dynamic_and_internal_overlaps(registry):
             )
         }
     )
+    public_web.validate_public_http_candidate(db, package, overlapping_self)
+
+    ambiguous_self = definition(package.module_id, "/a/{value}/fixed")
+    ambiguous_self = ambiguous_self.model_copy(
+        update={
+            "public_http_routes": ambiguous_self.public_http_routes
+            + (
+                ambiguous_self.public_http_routes[0].model_copy(
+                    update={"route_id": "second", "path": "/a/static/{value}"}
+                ),
+            )
+        }
+    )
     with pytest.raises(ApplicationPublicWebError, match="overlaps"):
-        public_web.validate_public_http_candidate(db, package, overlapping_self)
+        public_web.validate_public_http_candidate(db, package, ambiguous_self)
 
 
 def test_dispatch_filters_credentials_and_validates_response(registry, monkeypatch, tmp_path):
@@ -388,3 +401,25 @@ def test_public_route_registry_fails_closed_on_inconsistent_active_package(regis
     with pytest.raises(ApplicationPublicWebError, match="inconsistent") as error:
         public_web.build_public_route_registry(db)
     assert error.value.status_code == 503
+
+
+
+def test_same_application_static_route_wins_over_parameter_route(registry):
+    db, add, definitions = registry
+    package, _installation, current = add(
+        "org.3mm.public-specificity", "/items/{slug}", 8
+    )
+    static_route = current.public_http_routes[0].model_copy(
+        update={"route_id": "items_new", "path": "/items/new"}
+    )
+    definitions[package.module_id] = current.model_copy(
+        update={"public_http_routes": current.public_http_routes + (static_route,)}
+    )
+
+    binding, params = public_web.resolve_public_route(db, "GET", "/items/new")
+    assert binding.route.route_id == "items_new"
+    assert params == {}
+
+    binding, params = public_web.resolve_public_route(db, "GET", "/items/example")
+    assert binding.route.route_id == "public_page"
+    assert params == {"slug": "example"}
