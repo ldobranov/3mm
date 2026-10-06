@@ -659,8 +659,9 @@ the current Theme Platform task. A proven generic gap needs its own Core issue.
 
 ## Milestone 19 — Public Web Runtime & Extension Contract
 
-Status: implementation started on 2026-10-06. P0–P2 are complete on the
-focused branch; P3 isolated public runtime/deployment work is in progress. See
+Status: P0–P5 completed on the focused branch on 2026-10-06 with full Python
+and frontend CI green. P6 physical Raspberry acceptance remains open; the
+milestone is not complete until that acceptance passes. See
 [PUBLIC_WEB_EXTENSION_PLAN.md](PUBLIC_WEB_EXTENSION_PLAN.md).
 
 Goal: let separately installed application extensions publish real public web
@@ -683,8 +684,9 @@ Acceptance criteria:
 - public GET/HEAD routes work without rebuilding the Core frontend;
 - extensions can return HTML, JSON, XML, text, redirects, 404 and 410 through
   the same generic contract;
-- duplicate/reserved routes, forbidden headers and malformed/oversized responses
-  fail closed before they can affect unrelated Core behavior;
+- cross-extension overlaps, ambiguous same-extension routes, forbidden headers
+  and malformed/oversized responses fail closed; the public surface cannot
+  shadow the administrative/API surface;
 - public failures never make the administrative/recovery surface unavailable;
 - lifecycle changes leave no stale route ownership;
 - the neutral reference passes laptop and physical acceptance;

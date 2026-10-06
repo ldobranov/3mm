@@ -107,7 +107,7 @@ a new Core branch for every public application.
 
 ## Route ownership
 
-Stage P2 will add a Core-owned registry over active application packages.
+Core reconstructs the public route registry from active application packages.
 Within one package duplicate public paths are already invalid. Cross-package
 conflicts are checked before a candidate becomes live. The public listener is a
 separate surface from the administrative SPA, so public paths never shadow Core
@@ -167,7 +167,9 @@ Status: complete as design review.
 
 ### P1 — versioned public HTTP contract
 
-Status: complete on branch; full CI passed for `d9054264`.
+Status: complete on branch. The base contract landed in `d9054264`; bounded
+asset/cache response support was finalized in `966cff74`, with subsequent full
+CI green.
 
 - add request, response and public route v1 contracts;
 - bind routes only to isolated public query operations;
@@ -178,7 +180,8 @@ Status: complete on branch; full CI passed for `d9054264`.
 
 ### P2 — Core route registry and public gateway
 
-Status: complete on branch at `1e9e6653`; full CI passed.
+Status: complete on branch. Registry/dispatch landed in `1e9e6653`; route
+specificity was finalized in `f3969562`. Full CI passed.
 
 - build active-package public route registry and deterministic conflict checks;
 - dispatch GET/HEAD to supervised application operations;
@@ -188,9 +191,11 @@ Status: complete on branch at `1e9e6653`; full CI passed.
 
 ### P3 — isolated public surface and ownership
 
-Status: runtime isolation is implemented on branch; deployment wiring is in progress.
-The boundary uses a separate socket-activated public HTTP process and a local
-Core Unix-socket gateway. Public failure is not allowed to fail Core startup.
+Status: complete on branch. Runtime isolation landed in `1b9da531`, deployment
+wiring in `2d8582fa`, and the dedicated `3mm-public` OS identity/security
+boundary in `9fc0d31d`. Full CI passed. The boundary uses a separate
+socket-activated public HTTP process and a local Core Unix-socket gateway.
+Public failure is not allowed to fail Core startup.
 
 - separate public ownership from the administrative SPA/recovery surface;
 - use loopback socket activation so installations without public traffic keep no
@@ -207,6 +212,10 @@ generic platform gap is found during acceptance.
 
 ### P4 — lifecycle and recovery
 
+Status: complete on branch at `36e681a2`; full CI passed. Route ownership is
+reconstructed from active installation/package state rather than a second
+persistent route table.
+
 - activation/disable/rollback/uninstall route ownership tests;
 - restart and restore reconstruction;
 - bounded diagnostics with no request credentials or private content leakage;
@@ -214,7 +223,11 @@ generic platform gap is found during acceptance.
 
 ### P5 — neutral reference application
 
-Create a reference application with no shop or SEO semantics:
+Status: complete on branch at `2ae1c3b3`; full Python and frontend CI passed.
+The reference is a real deterministic Application Extension package with no UI,
+connector, hardware, secret or SEO dependency.
+
+The reference application provides:
 
 - `/` -> HTML;
 - `/items/{slug}` -> HTML;
@@ -229,6 +242,8 @@ extension name in Core.
 
 ### P6 — Raspberry acceptance
 
+Status: open. See [PUBLIC_WEB_PHYSICAL_ACCEPTANCE.md](PUBLIC_WEB_PHYSICAL_ACCEPTANCE.md).
+
 On a provisioned physical installation verify direct HTTP GET/HEAD behavior,
 redirects, errors, extension disable/rollback/restart and simultaneous access to
 the administrative recovery UI. Record resource impact and recovery behavior.
@@ -241,7 +256,9 @@ Milestone 19 is complete only when:
   through declared public routes;
 - GET and HEAD work without rebuilding the Core frontend;
 - redirects and explicit 404/410 responses work through the generic contract;
-- duplicate or reserved routes fail before they become live;
+- overlapping routes between extensions and ambiguous same-extension routes
+  fail before they become live; the separate public surface cannot shadow the
+  administrative/API surface;
 - public request credentials and administrator session data never reach the
   application handler;
 - forbidden response headers, malformed responses and oversized bodies fail
