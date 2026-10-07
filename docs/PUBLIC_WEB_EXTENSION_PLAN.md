@@ -1,6 +1,6 @@
 # Public Web Runtime & Extension Contract
 
-Status: implementation started on 2026-10-06
+Status: **completed on the focused branch on 2026-10-07**. Physical Raspberry acceptance passed on runtime commit `996760f6`.
 Milestone: 19
 Base: `401372c6` / `0.3.0-beta.40`
 
@@ -242,11 +242,14 @@ extension name in Core.
 
 ### P6 — Raspberry acceptance
 
-Status: open. See [PUBLIC_WEB_PHYSICAL_ACCEPTANCE.md](PUBLIC_WEB_PHYSICAL_ACCEPTANCE.md).
+Status: **complete on 2026-10-07**. See
+[PUBLIC_WEB_PHYSICAL_ACCEPTANCE.md](PUBLIC_WEB_PHYSICAL_ACCEPTANCE.md).
 
-On a provisioned physical installation verify direct HTTP GET/HEAD behavior,
-redirects, errors, extension disable/rollback/restart and simultaneous access to
-the administrative recovery UI. Record resource impact and recovery behavior.
+The accepted physical runtime is commit `996760f6` /
+`996760f669fd-20261007065735` on a Raspberry Pi 3B+ with Debian 13. Direct
+GET/HEAD behavior, redirects, 404/410, disable/re-enable, fail-closed application
+failure, Admin/Core independence, socket activation, idle shutdown, resource
+impact and OS/file-access isolation all passed.
 
 ## Acceptance criteria
 
@@ -272,8 +275,10 @@ Milestone 19 is complete only when:
   HTML metadata, structured data, XML/text discovery resources and redirects
   without adding a concrete Core route or business model.
 
-If building that later extension requires a shop-, SEO- or provider-specific
-Core endpoint, this milestone is incomplete.
+Milestone 19 is complete at the generic platform boundary above. If a later
+website/shop proves that it needs a shop-, SEO- or provider-specific Core
+endpoint, that is not part of this accepted contract and must be reviewed as a
+new generic platform requirement rather than added ad hoc.
 
 ## Explicitly out of scope
 

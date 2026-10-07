@@ -53,11 +53,17 @@ pre-1.0.
   do the same on rollback. This preserves all Application Extension runtimes
   across deploys without reviving disabled or failed installations.
 - Milestone P0-P5 Python/frontend CI passed on the focused branch through
-  commit `94567a2b`.
-- This Test-channel release exists only for Raspberry P6 physical acceptance.
-  Milestone 19 is not complete until the documented public HTTP, lifecycle,
-  isolation, idle-resource and administrative-recovery checks pass on
-  `rasp-3mm`.
+  commit `94567a2b`; CI run 129 passed for the final accepted runtime commit
+  `996760f6`.
+- Raspberry P6 passed on a Pi 3B+ / Debian 13 using immutable release
+  `996760f669fd-20261007065735`. HTTP GET/HEAD, redirect/404/410, lifecycle
+  disable/re-enable, fail-closed service failure, Admin/Core independence,
+  socket activation, idle exit, resource impact and isolation all passed.
+- The neutral reference package SHA-256
+  `5007ae614b1061d944a6c4f5e3410671b613219e3a32acafca8753bc3a1b6439`
+  matched the stored package bytes. Public-process RSS was 36,460 KiB after a
+  successful request; the process exited after the 60-second idle window while
+  the listener socket remained active.
 
 ## [0.3.0-beta.40] - 2026-10-05
 

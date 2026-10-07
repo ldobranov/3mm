@@ -659,10 +659,11 @@ the current Theme Platform task. A proven generic gap needs its own Core issue.
 
 ## Milestone 19 — Public Web Runtime & Extension Contract
 
-Status: P0–P5 completed on the focused branch on 2026-10-06 with full Python
-and frontend CI green. P6 physical Raspberry acceptance remains open; the
-milestone is not complete until that acceptance passes. See
-[PUBLIC_WEB_EXTENSION_PLAN.md](PUBLIC_WEB_EXTENSION_PLAN.md).
+Status: **completed on 2026-10-07** on the focused branch. P0–P5 passed full
+Python/frontend CI and P6 passed physical Raspberry acceptance on runtime commit
+`996760f6` / release `996760f669fd-20261007065735`. See
+[PUBLIC_WEB_EXTENSION_PLAN.md](PUBLIC_WEB_EXTENSION_PLAN.md) and
+[PUBLIC_WEB_PHYSICAL_ACCEPTANCE.md](PUBLIC_WEB_PHYSICAL_ACCEPTANCE.md).
 
 Goal: let separately installed application extensions publish real public web
 responses without putting website, shop, SEO or framework-specific behavior in

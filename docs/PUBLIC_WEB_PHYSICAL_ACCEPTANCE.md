@@ -1,6 +1,6 @@
 # Public Web Physical Acceptance
 
-Status: required before Milestone 19 can be closed.
+Status: **PASSED on 2026-10-07. Milestone 19 physical acceptance is complete.**
 
 This procedure validates the public-web runtime on a provisioned full
 Standalone/Hub installation. It does not publish a release, expose a public
@@ -154,16 +154,101 @@ paths.
 
 ## Acceptance record
 
-Record:
+Physical acceptance passed on 2026-10-07.
 
-- exact Core commit/release;
-- device model and OS;
-- package SHA-256;
-- every HTTP status above;
-- public process memory after first request;
-- idle shutdown result;
-- disable/re-enable result;
-- application-service failure isolation result;
-- confirmation that Admin Web/Core stayed healthy.
+### Accepted runtime
 
-Milestone 19 is not complete until this physical record passes.
+- branch: `milestone/public-web-foundation`;
+- commit: `996760f669fd5448b5636e36812c058848cc5c16`;
+- immutable release: `996760f669fd-20261007065735`;
+- project version: `0.3.0-test.1`;
+- release metadata: `includes_working_tree=false`;
+- CI run 129 for the accepted runtime commit: passed;
+- target: Raspberry Pi 3 Model B Plus Rev 1.4;
+- OS: Debian GNU/Linux 13 (trixie).
+
+### Reference package
+
+- module: `org.3mm.public-web-reference`;
+- version: `1.0.0`;
+- instance: `b1481f1cd27e1ff0ca9b1bf5`;
+- package SHA-256:
+  `5007ae614b1061d944a6c4f5e3410671b613219e3a32acafca8753bc3a1b6439`;
+- stored package existed and its independently recomputed SHA-256 matched;
+- final lifecycle state: `enabled=1`, `status=active`.
+
+### HTTP results
+
+| Request | Result |
+| --- | --- |
+| `GET /` | 200, `text/html; charset=utf-8` |
+| `GET /items/example` | 200, `text/html; charset=utf-8` |
+| `HEAD /items/example` | 200, no body, `Content-Length: 139` matching GET |
+| `GET /feed.xml` | 200, `application/xml` |
+| `GET /info.txt` | 200, `text/plain; charset=utf-8` |
+| `GET /old-item` | 301, `Location: /items/example` |
+| `GET /gone` | 410 |
+| `GET /missing` | 404 |
+
+No tested public response exposed administrator-session data, raw Core
+exceptions or application-service socket details.
+
+### Lifecycle and failure isolation
+
+- disabling the reference through Extensions changed `GET /` to 404 and
+  stopped/disabled only its supervised service; Core remained healthy;
+- re-enabling restored the supervised service and `GET /` returned 200;
+- manually stopping only the reference service produced fail-closed 503 while
+  Core returned `{"status":"ok"}` and Admin Web on port 8080 returned 200;
+- after starting the reference service, an early request during its startup
+  window still returned 503, then recovered to 200 about six seconds later
+  without restarting Core or the public listener;
+- repeated immutable deployment during P6 restored every database-authoritative
+  `enabled + active` Application Extension service after Core activation.
+
+### Socket activation, resources and isolation
+
+After a successful request the public process had:
+
+- RSS: 36,460 KiB (about 35.6 MiB);
+- observed CPU usage: 1.823 seconds;
+- `MemoryCurrent` was not reported by systemd on this host, so RSS was recorded
+  directly from the process.
+
+After 65 seconds without traffic:
+
+- `3mm-public-web.service`: inactive;
+- `3mm-public-web.socket`: active;
+- the next request returned 200 and socket activation restarted the service.
+
+The dedicated identities were distinct: `3mm`, `3mm-app`, and
+`3mm-public`. The public service reported `PrivateNetwork=yes`,
+`PrivateDevices=yes`, `ProtectSystem=strict`, and inaccessible paths
+`/var/lib/3mm /etc/3mm`. As `3mm-public`, all three explicit isolation
+checks passed:
+
+- no read access to `/etc/3mm/3mm.env`;
+- no read access to `/var/lib/3mm/core/3mm.db`;
+- no write access to `/run/3mm/update-helper.sock`.
+
+### P6 deployment defects closed during acceptance
+
+Physical testing exposed three generic deployment/runtime gaps before the final
+pass:
+
+- `bafacbe6`: Core now owns a dedicated `/run/3mm-public-web` runtime
+  directory and the isolated public process uses its bounded Core socket;
+- `59e6cab8`: the installer writes the same socket path to persistent service
+  configuration so it cannot override the systemd boundary with a stale path;
+- `996760f6`: immutable full deployments and rollback reconcile supervised
+  Application Extension services from authoritative `enabled + active`
+  database state instead of leaving them stopped with Core.
+
+These are generic platform/deployment fixes; none introduces website, shop, SEO,
+provider or reference-application semantics into Core.
+
+### Conclusion
+
+**PASS.** Milestone 19 physical acceptance is complete for the local isolated
+public-web runtime. This record does not claim public DNS, TLS, custom-domain or
+Internet-ingress acceptance, which remain outside Milestone 19.
