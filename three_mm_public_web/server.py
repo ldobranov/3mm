@@ -155,7 +155,7 @@ class PublicWebHTTPServer(ThreadingHTTPServer):
 
 class PublicWebRequestHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    server_version = "CONERAX-Public-Web/1"
+    server_version = "3mm-Public-Web/1"
     sys_version = ""
 
     @property

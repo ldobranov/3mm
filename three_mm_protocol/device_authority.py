@@ -44,7 +44,7 @@ def verify_ed25519(key, signature, message):
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
     except ImportError:
         # Already a reviewed Node dependency; no ARMv6 cryptography wheel needed.
-        with tempfile.TemporaryDirectory(prefix="conerax-authority-") as temp:
+        with tempfile.TemporaryDirectory(prefix="3mm-authority-") as temp:
             root = Path(temp)
             for name, data in {
                 "key.der": bytes.fromhex("302a300506032b6570032100") + key,

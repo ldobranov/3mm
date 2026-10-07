@@ -1,5 +1,5 @@
 [Unit]
-Description=CONERAX isolated public web runtime
+Description=3mm isolated public web runtime
 Requires=3mm-core.service
 After=3mm-core.service
 PartOf=3mm-core.service 3mm-public-web.socket

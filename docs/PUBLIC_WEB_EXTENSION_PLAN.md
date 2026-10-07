@@ -6,7 +6,7 @@ Base: `401372c6` / `0.3.0-beta.40`
 
 ## Goal
 
-Let CONERAX safely host public web applications as separately installed
+Let 3mm safely host public web applications as separately installed
 Application Extensions without teaching Core about a website, shop, blog,
 product catalog, SEO provider, search engine or frontend framework.
 

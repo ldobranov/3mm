@@ -20,7 +20,7 @@ def embedded_inventory(device_id="dev_" + "a" * 32):
             "system": "mock-embedded",
             "model": "Test board",
         },
-        "runtime": {"name": "conerax-embedded-test", "version": "0.1.0"},
+        "runtime": {"name": "3mm-embedded-test", "version": "0.1.0"},
         "resources": {"memory_total_bytes": 409600, "flash_total_bytes": 4194304},
         "capabilities": ["gpio.digital.control"],
     }

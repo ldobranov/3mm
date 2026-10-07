@@ -1,5 +1,5 @@
 [Unit]
-Description=CONERAX public web listener
+Description=3mm public web listener
 Requires=3mm-core.service
 After=3mm-core.service
 PartOf=3mm-core.service

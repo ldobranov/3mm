@@ -625,7 +625,7 @@ focused regression and local encrypted portable restore checks. The new shell
 is opt-in; existing installations keep their appearance. Next: V5 reference
 themes/installed-package preview, then incremental screens and live V8 acceptance.
 
-## Milestone 18 — CONERAX Embedded v0.1 / Embedded Nodes Extension
+## Milestone 18 — 3mm Embedded v0.1 / Embedded Nodes Extension
 
 Status: deferred until reference hardware is available. Added near the end of
 the product plan by owner request on 2026-10-04. See

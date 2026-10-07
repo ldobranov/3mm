@@ -1,1 +1,1 @@
-"""Socket-activated public HTTP runtime for CONERAX application extensions."""
+"""Socket-activated public HTTP runtime for 3mm application extensions."""

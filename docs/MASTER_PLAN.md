@@ -212,7 +212,7 @@ local Agent, Hub/Fleet и application extensions, не Fleet-only слой.
 Mock embedded остава архитектурното доказателство и regression reference.
 Не отваряме нов Core refactor само за конкретен ESP чип.
 
-### I. CONERAX Embedded v0.1 — към края, когато има хардуер
+### I. 3mm Embedded v0.1 — към края, когато има хардуер
 
 [Milestone 18](ROADMAP.md) / [Embedded Nodes Extension Plan](EMBEDDED_NODES_EXTENSION_PLAN.md)
 е запазен бъдещ етап. В чата „Разширяване към ESP чипове“ е потвърдено, че

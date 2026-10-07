@@ -13,7 +13,7 @@ Fleet or hardware drivers. The legacy-named shared `fleet_pairing` file supplies
 enrollment DTOs only; enrollment itself is a common Core API, not a Fleet API.
 
 The client reports an embedded/mock-embedded platform without Linux values.
-It registers firmware provider `conerax-embedded-test` and capability
+It registers firmware provider `3mm-embedded-test` and capability
 `gpio.digital.control` directly, without a ModulePackage/ModuleInstallation.
 The supported action is `set_output`, channel `gpio.output.1`, boolean `value`.
 This is the same invocation contract used by the Linux module in the mixed test.
