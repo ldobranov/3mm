@@ -48,6 +48,10 @@ pre-1.0.
   environment, preventing stale deployment configuration from overriding the
   systemd boundary. No Core state directory, database or secret permissions are
   widened.
+- Immutable full deployments now reconcile application services from the
+  persisted `enabled + active` installation state after Core activation, and
+  do the same on rollback. This preserves all Application Extension runtimes
+  across deploys without reviving disabled or failed installations.
 - Milestone P0-P5 Python/frontend CI passed on the focused branch through
   commit `94567a2b`.
 - This Test-channel release exists only for Raspberry P6 physical acceptance.

@@ -290,6 +290,21 @@ def test_installer_restarts_always_on_services_after_link_activation() -> None:
     assert "restart_always_on_services || true" in installer
 
 
+def test_installer_reconciles_active_application_services_after_core_activation() -> None:
+    installer = INSTALLER.read_text(encoding="utf-8")
+
+    assert "start_active_application_services()" in installer
+    assert "WHERE enabled = 1 AND status = 'active'" in installer
+    assert 're.fullmatch(' in installer
+    assert 'r"[0-9a-f]{24}"' in installer
+    activation = installer.index('activate_runtime "$release_dir"')
+    applications = installer.index(
+        'start_active_application_services "$release_dir"', activation
+    )
+    assert activation < applications
+    assert 'start_active_application_services "$previous_release"' in installer
+
+
 def test_node_starts_update_helpers_before_runtime() -> None:
     installer = INSTALLER.read_text(encoding="utf-8")
 
