@@ -88,6 +88,12 @@ loader are legacy compatibility features. New features must not depend on them.
 They remain frozen until existing installations and data are migrated to Module
 Manifest v2 or explicitly archived.
 
+The shared catalog treats this as an adapter boundary, not as a conversion.
+Native packages expose their stable `module_id` and `native-v2` compatibility
+mode. Legacy rows expose only a local `legacy:<database-id>` catalog identity,
+`legacy-trusted` mode and `migration_required=true`. Core must not invent a
+globally stable module ID for legacy data that never had one.
+
 The following are not new extension formats:
 
 - an Extension Project is an editable workspace;

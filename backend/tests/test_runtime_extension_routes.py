@@ -7,6 +7,7 @@ import pytest
 from backend.db.base import Base
 from backend.db.user import User
 from backend.db.module import ModulePackage
+from backend.db.extension import Extension
 from backend.db.runtime_extension import RuntimeEntityRecord
 from backend.routes.runtime_extensions import router
 from backend.utils import jwt_utils
@@ -177,6 +178,11 @@ def test_catalog_exposes_active_runtime_extensions():
         assert response.json() == [{
             "id": "runtime:org.3mm.contacts",
             "source": "runtime",
+            "module_id": "org.3mm.contacts",
+            "compatibility_mode": "native-v2",
+            "migration_required": False,
+            "publisher": None,
+            "extension_api": None,
             "name": "Contacts",
             "type": "runtime",
             "version": "1.0.0",
@@ -330,3 +336,38 @@ def test_runtime_uninstall_preserves_data_by_default_and_can_delete_it_explicitl
         assert db.query(RuntimeEntityRecord).count() == 0
     finally:
         db.close(); engine.dispose()
+
+def test_catalog_marks_legacy_identity_without_inventing_module_id():
+    client, db, engine, _admin_headers, user_headers = make_client()
+    try:
+        user = db.query(User).filter(User.username == "user").one()
+        db.add(
+            Extension(
+                user_id=user.id,
+                name="Legacy Demo",
+                type="widget",
+                version="1.0.0",
+                description="Old extension format",
+                author="Legacy Author",
+                manifest={"name": "Legacy Demo", "version": "1.0.0", "type": "widget"},
+                file_path="/tmp/legacy-demo.zip",
+                status="inactive",
+                is_enabled=False,
+            )
+        )
+        db.commit()
+
+        response = client.get("/api/v1/runtime-extensions/catalog", headers=user_headers)
+        assert response.status_code == 200
+        item = next(entry for entry in response.json() if entry["source"] == "legacy")
+
+        assert item["id"].startswith("legacy:")
+        assert item["module_id"] is None
+        assert item["compatibility_mode"] == "legacy-trusted"
+        assert item["migration_required"] is True
+        assert item["publisher"] is None
+        assert item["extension_api"] is None
+    finally:
+        db.close()
+        engine.dispose()
+

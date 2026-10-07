@@ -20,6 +20,10 @@ from backend.services.runtime_extensions import (
     parsed_definition,
     validate_record_data,
 )
+from backend.services.extension_domain import (
+    legacy_extension_identity,
+    native_extension_identity,
+)
 from backend.utils.auth_dep import require_admin, require_user
 from backend.utils.db_utils import get_db
 from three_mm_protocol import RuntimeExtensionV1
@@ -49,6 +53,11 @@ class RecordResponse(BaseModel):
 class CatalogExtensionResponse(BaseModel):
     id: str
     source: str
+    module_id: str | None = None
+    compatibility_mode: str
+    migration_required: bool
+    publisher: dict[str, str] | None = None
+    extension_api: str | None = None
     name: str
     type: str
     version: str
@@ -184,10 +193,17 @@ def list_extension_catalog(
             runtime.append(item)
             seen_module_ids.add(item.module_id)
 
-    items = [
-        CatalogExtensionResponse(
-            id=f"legacy:{item.id}",
+    items = []
+    for item in legacy:
+        identity = legacy_extension_identity(item.id)
+        items.append(CatalogExtensionResponse(
+            id=identity.catalog_id,
             source="legacy",
+            module_id=identity.module_id,
+            compatibility_mode=identity.compatibility_mode,
+            migration_required=identity.migration_required,
+            publisher=identity.publisher,
+            extension_api=identity.extension_api,
             name=item.name,
             type=item.type,
             version=item.version,
@@ -197,13 +213,22 @@ def list_extension_catalog(
             is_enabled=item.is_enabled,
             created_at=item.created_at,
             can_manage=True,
+        ))
+
+    for item in runtime:
+        package = packages_by_module.get(item.module_id)
+        identity = native_extension_identity(
+            item.module_id,
+            package.manifest if package is not None else None,
         )
-        for item in legacy
-    ]
-    items.extend(
-        CatalogExtensionResponse(
-            id=f"runtime:{item.module_id}",
+        items.append(CatalogExtensionResponse(
+            id=identity.catalog_id,
             source="runtime",
+            module_id=identity.module_id,
+            compatibility_mode=identity.compatibility_mode,
+            migration_required=identity.migration_required,
+            publisher=identity.publisher,
+            extension_api=identity.extension_api,
             name=_localized_value(item.definition["name"], language),
             type="runtime",
             version=item.version,
@@ -213,19 +238,22 @@ def list_extension_catalog(
             created_at=item.created_at,
             can_manage=claims.get("role") == "admin",
             available_versions=versions_by_module[item.module_id],
-            package_sha256=(
-                packages_by_module[item.module_id].sha256
-                if item.module_id in packages_by_module
-                else None
-            ),
-        )
-        for item in runtime
-    )
+            package_sha256=package.sha256 if package is not None else None,
+        ))
+
     installed_module_ids = {item.module_id for item in runtime}
-    items.extend(
-        CatalogExtensionResponse(
-            id=f"runtime:{package.module_id}",
+    for package in packages_by_module.values():
+        if package.module_id in installed_module_ids:
+            continue
+        identity = native_extension_identity(package.module_id, package.manifest)
+        items.append(CatalogExtensionResponse(
+            id=identity.catalog_id,
             source="runtime",
+            module_id=identity.module_id,
+            compatibility_mode=identity.compatibility_mode,
+            migration_required=identity.migration_required,
+            publisher=identity.publisher,
+            extension_api=identity.extension_api,
             name=package.manifest.get("name") or package.module_id,
             type="runtime",
             version=package.version,
@@ -237,10 +265,7 @@ def list_extension_catalog(
             available_versions=[package.version],
             package_sha256=package.sha256,
             is_installed=False,
-        )
-        for package in packages_by_module.values()
-        if package.module_id not in installed_module_ids
-    )
+        ))
     return items
 
 
