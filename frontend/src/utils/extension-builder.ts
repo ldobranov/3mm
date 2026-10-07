@@ -58,6 +58,7 @@ export type CapabilityPlan = {
 }
 
 export type ExtensionSpec = {
+  module_id?: string
   name: string
   version: string
   type: 'extension' | 'widget'
@@ -166,6 +167,11 @@ export const getHttpErrorMessage = (error: unknown): string => {
     if (typeof error.message === 'string') return error.message
   }
   return String(error)
+}
+
+export const createGeneratedModuleId = (value: string): string => {
+  const slug = (value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'widget'
+  return `org.3mm.generated.${slug}`
 }
 
 export const deriveExtensionNamespace = (name: string): string => {
@@ -288,6 +294,7 @@ export const createManifestPreview = (spec: ExtensionSpec): Record<string, unkno
     dependencies: spec.dependencies
   }
 
+  if (spec.module_id) manifest.module_id = spec.module_id
   if (spec.provides) manifest.provides = spec.provides
   if (spec.consumes) manifest.consumes = spec.consumes
   return manifest

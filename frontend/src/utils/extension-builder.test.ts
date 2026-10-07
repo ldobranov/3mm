@@ -4,6 +4,7 @@ import {
   capabilityChannels,
   createCapabilityConfigSchema,
   createCrudEntityGoalBlock,
+  createGeneratedModuleId,
   createGuidedProjectName,
   createInitialExtensionSpec,
   createManifestPreview,
@@ -49,6 +50,7 @@ describe('extension builder model', () => {
     first.frontend_routes[0].path = '/changed'
 
     expect(second.frontend_routes[0].path).toBe('/my')
+    expect(createGeneratedModuleId('GPIO Status Widget')).toBe('org.3mm.generated.gpio-status-widget')
     expect(deriveExtensionNamespace('Store Extension')).toBe('store')
     expect(extensionNameToSnakeCase('GPIOStatusExtension')).toBe('gpiostatus')
     expect(createGuidedProjectName('', 'status light widget for GPIO')).toBe('StatusLightWidget')
@@ -101,6 +103,7 @@ describe('extension builder model', () => {
 
   it('creates consistent manifest and package previews', () => {
     const spec = createInitialExtensionSpec()
+    spec.module_id = 'org.3mm.generated.preview'
     spec.locales.directory = 'translations'
     spec.provides = {
       content_embedders: {
@@ -109,6 +112,7 @@ describe('extension builder model', () => {
     }
 
     expect(createManifestPreview(spec)).toMatchObject({
+      module_id: 'org.3mm.generated.preview',
       name: 'MyExtension',
       locales: { directory: 'translations/' },
       provides: spec.provides

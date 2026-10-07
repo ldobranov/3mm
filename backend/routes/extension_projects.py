@@ -9,6 +9,7 @@ import json
 import re
 import uuid
 import zipfile
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -40,10 +41,12 @@ from backend.schemas.ai_extension_builder import ExtensionSpec
 from backend.utils.ai_extension_builder.generator import _ai_refine_files
 from backend.utils.secure_settings import SecureSettingsError, decrypt_secret
 from backend.config import get_settings
+from three_mm_protocol.module_manifest import MODULE_ID_PATTERN
 
 
 router = APIRouter(prefix="/api/v1/extension-projects", tags=["extension-projects"])
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+MODULE_ID_RE = re.compile(MODULE_ID_PATTERN)
 SEMVER_PATTERN = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-dev\.(\d+))?$")
 MAX_ARTIFACT_BYTES = 10 * 1024 * 1024
 
@@ -53,6 +56,43 @@ def _slug(value: str) -> str:
     if not result or not SLUG_PATTERN.fullmatch(result):
         raise HTTPException(422, "Project slug must contain lowercase letters, numbers, and single hyphens")
     return result
+
+
+def _generated_module_id(slug: str) -> str:
+    return f"org.3mm.generated.{slug}"
+
+
+def _extension_spec_container(spec: dict) -> dict:
+    nested = spec.get("extension_spec")
+    return nested if isinstance(nested, dict) else spec
+
+
+def _project_module_id(project: ExtensionProject) -> str:
+    container = _extension_spec_container(project.spec or {})
+    module_id = container.get("module_id")
+    if isinstance(module_id, str) and MODULE_ID_RE.fullmatch(module_id):
+        return module_id
+    return _generated_module_id(project.slug)
+
+
+def _normalize_project_spec(
+    spec: dict,
+    *,
+    slug: str,
+    expected_module_id: str | None = None,
+) -> dict:
+    normalized = deepcopy(spec or {})
+    container = _extension_spec_container(normalized)
+    declared = container.get("module_id")
+    if declared is not None and (
+        not isinstance(declared, str) or not MODULE_ID_RE.fullmatch(declared)
+    ):
+        raise HTTPException(422, "Project module_id is invalid")
+    module_id = declared or expected_module_id or _generated_module_id(slug)
+    if expected_module_id is not None and module_id != expected_module_id:
+        raise HTTPException(409, "Project module_id is immutable")
+    container["module_id"] = module_id
+    return normalized
 
 
 def _safe_files(files) -> list[tuple[str, str, str]]:
@@ -99,9 +139,9 @@ def _next_version(current: str, kind: str) -> str:
     return f"{major}.{minor}.{patch + 1}"
 
 
-def _artifact(payload: str | None) -> tuple[bytes | None, str | None]:
+def _artifact(payload: str | None) -> tuple[bytes | None, str | None, str | None]:
     if payload is None:
-        return None, None
+        return None, None, None
     try:
         content = base64.b64decode(payload, validate=True)
     except (binascii.Error, ValueError) as exc:
@@ -118,11 +158,14 @@ def _artifact(payload: str | None) -> tuple[bytes | None, str | None]:
                 manifest.get("manifest_version") == 2
                 and (manifest.get("entrypoints") or {}).get("ui") == "compiled-ui.json"
             )
+            artifact_module_id = manifest.get("module_id")
+            if not isinstance(artifact_module_id, str):
+                artifact_module_id = None
     except HTTPException:
         raise
     except (zipfile.BadZipFile, json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise HTTPException(422, "Build artifact is not a valid extension ZIP") from exc
-    return content, "compiled" if is_compiled else "legacy"
+    return content, "compiled" if is_compiled else "legacy", artifact_module_id
 
 
 def _build_response(build: ExtensionProjectBuild) -> ProjectBuildResponse:
@@ -160,13 +203,14 @@ def create_project(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    slug = _slug(payload.slug or payload.name)
     project = ExtensionProject(
         project_id=f"extproj_{uuid.uuid4().hex}",
         owner_user_id=admin.id,
         name=payload.name.strip(),
-        slug=_slug(payload.slug or payload.name),
+        slug=slug,
         project_type=payload.project_type,
-        spec=payload.spec,
+        spec=_normalize_project_spec(payload.spec, slug=slug),
         status="draft",
         current_version="0.0.0",
         revision=1,
@@ -300,7 +344,11 @@ def update_project(
     if payload.name is not None:
         project.name = payload.name.strip()
     if payload.spec is not None:
-        project.spec = payload.spec
+        project.spec = _normalize_project_spec(
+            payload.spec,
+            slug=project.slug,
+            expected_module_id=_project_module_id(project),
+        )
     if payload.status is not None:
         project.status = payload.status
     project.revision += 1
@@ -349,7 +397,9 @@ def create_build(
         if exists is not None:
             raise HTTPException(409, "This project version already has a successful build")
     files_snapshot = {item.path: item.content for item in project.files}
-    artifact, package_kind = _artifact(payload.artifact_base64)
+    artifact, package_kind, artifact_module_id = _artifact(payload.artifact_base64)
+    if package_kind == "compiled" and artifact_module_id != _project_module_id(project):
+        raise HTTPException(409, "Build artifact module_id does not match this project")
     build_id = f"extbuild_{uuid.uuid4().hex}"
     artifact_path = None
     artifact_sha256 = hashlib.sha256(artifact).hexdigest() if artifact else None

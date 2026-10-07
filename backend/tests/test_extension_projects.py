@@ -45,18 +45,20 @@ def _client():
     return client, db, admin_headers, user_headers
 
 
-def _compiled_artifact(version: str) -> bytes:
+def _compiled_artifact(
+    version: str, module_id: str = "org.3mm.generated.clock-project"
+) -> bytes:
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:
         archive.writestr("manifest.json", json.dumps({
             "manifest_version": 2,
-            "module_id": "clock.project",
+            "module_id": module_id,
             "version": version,
             "entrypoints": {"ui": "compiled-ui.json"},
         }))
         archive.writestr("compiled-ui.json", json.dumps({
             "compiled_ui_version": 1,
-            "module_id": "clock.project",
+            "module_id": module_id,
             "version": version,
             "entrypoints": [{
                 "entrypoint_id": "widget",
@@ -80,12 +82,20 @@ def test_project_source_is_persistent_and_build_versions_are_server_managed(monk
     assert created.status_code == 201
     project = created.json()
     assert project["slug"] == "clock-project"
+    assert project["spec"]["module_id"] == "org.3mm.generated.clock-project"
     assert project["current_version"] == "0.0.0"
     assert project["files"][0]["sha256"]
     assert client.get(
         f"/api/v1/extension-projects/{project['project_id']}/next-version?change_kind=minor",
         headers=headers,
     ).json()["next_version"] == "0.1.0"
+
+    wrong_identity = _compiled_artifact("0.0.1", "org.example.other")
+    rejected = client.post(f"/api/v1/extension-projects/{project['project_id']}/builds", headers=headers, json={
+        "expected_revision": 1, "change_kind": "patch", "status": "built",
+        "artifact_base64": base64.b64encode(wrong_identity).decode(),
+    })
+    assert rejected.status_code == 409
 
     first_artifact = _compiled_artifact("0.0.1")
     first = client.post(f"/api/v1/extension-projects/{project['project_id']}/builds", headers=headers, json={
@@ -101,7 +111,7 @@ def test_project_source_is_persistent_and_build_versions_are_server_managed(monk
     admin = db.query(User).filter(User.email == "projects@example.com").one()
     display = Display(user_id=admin.id, title="Project preview", slug="project-preview", is_public=True)
     display.widgets.append(Widget(
-        type="compiled:clock.project:0.0.1:widget",
+        type="compiled:org.3mm.generated.clock-project:0.0.1:widget",
         config={"timezone": "Europe/Sofia"},
         x=2,
         y=3,
@@ -129,7 +139,7 @@ def test_project_source_is_persistent_and_build_versions_are_server_managed(monk
     assert installed.json()["status"] == "installed"
     db.expire_all()
     upgraded_widget = db.get(Widget, widget_id)
-    assert upgraded_widget.type == "compiled:clock.project:0.1.0:widget"
+    assert upgraded_widget.type == "compiled:org.3mm.generated.clock-project:0.1.0:widget"
     assert upgraded_widget.config == {"timezone": "Europe/Sofia"}
     assert (upgraded_widget.x, upgraded_widget.y, upgraded_widget.width, upgraded_widget.height) == (2, 3, 4, 2)
     downloaded = client.get(
@@ -148,7 +158,7 @@ def test_project_source_is_persistent_and_build_versions_are_server_managed(monk
     assert next(item for item in history if item["build_id"] == first.json()["build_id"])["status"] == "installed"
     assert next(item for item in history if item["build_id"] == second.json()["build_id"])["status"] == "built"
     db.expire_all()
-    assert db.get(Widget, widget_id).type == "compiled:clock.project:0.0.1:widget"
+    assert db.get(Widget, widget_id).type == "compiled:org.3mm.generated.clock-project:0.0.1:widget"
     assert len(client.get(f"/api/v1/extension-projects/{project['project_id']}/builds", headers=headers).json()) == 2
     db.close()
 
@@ -164,6 +174,16 @@ def test_project_writes_require_admin_and_reject_stale_or_unsafe_updates():
         "expected_revision": 1, "name": "Safer Widget",
     })
     assert changed.status_code == 200
+    assert changed.json()["spec"]["module_id"] == "org.3mm.generated.safe-widget"
+    identity_change = client.patch(
+        f"/api/v1/extension-projects/{project['project_id']}",
+        headers=admin_headers,
+        json={
+            "expected_revision": changed.json()["revision"],
+            "spec": {"module_id": "org.example.replacement"},
+        },
+    )
+    assert identity_change.status_code == 409
     stale = client.patch(f"/api/v1/extension-projects/{project['project_id']}", headers=admin_headers, json={
         "expected_revision": 1, "name": "Overwrite",
     })

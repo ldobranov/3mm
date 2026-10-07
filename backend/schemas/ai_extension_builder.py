@@ -3,6 +3,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Literal, Optional
 from three_mm_protocol import CapabilityPlanV1
+from three_mm_protocol.module_manifest import MODULE_ID_PATTERN
 
 
 class LocaleConfig(BaseModel):
@@ -38,6 +39,7 @@ class ConsumesConfig(BaseModel):
 
 
 class ExtensionSpec(BaseModel):
+    module_id: Optional[str] = Field(default=None, pattern=MODULE_ID_PATTERN, max_length=160)
     name: str
     version: str
     type: Literal["extension", "widget"] = "extension"

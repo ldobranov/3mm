@@ -148,6 +148,8 @@ def clarify_extension_spec(
                 suggested = ExtensionSpec.model_validate(suggested_raw)
             except Exception:
                 suggested = draft_spec
+        if draft_spec.module_id is not None:
+            suggested = suggested.model_copy(update={"module_id": draft_spec.module_id})
 
         questions: List[ClarifyQuestion] = []
         if isinstance(questions_raw, list):

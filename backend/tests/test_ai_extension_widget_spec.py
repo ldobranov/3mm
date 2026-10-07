@@ -23,6 +23,10 @@ def widget_spec(**updates) -> ExtensionSpec:
 def test_compiled_module_id_is_stable_and_namespaced():
     assert compiled_module_id("GPIO Status Widget") == "org.3mm.generated.gpio-status-widget"
     assert compiled_module_id("---") == "org.3mm.generated.widget"
+    assert (
+        compiled_module_id("Renamed Widget", "org.example.stable-widget")
+        == "org.example.stable-widget"
+    )
 
 
 def test_normalization_upgrades_legacy_clock_fields_without_mutating_draft():

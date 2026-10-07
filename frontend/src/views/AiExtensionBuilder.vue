@@ -934,6 +934,7 @@ import {
   createCapabilityConfigSchema,
   createCrudDefaultTable,
   createCrudEntityGoalBlock,
+  createGeneratedModuleId,
   createGuidedProjectName,
   createInitialExtensionSpec,
   createManifestPreview,
@@ -1215,7 +1216,15 @@ const hydrateProject = (project: ExtensionProject) => {
   const storedSpec = (stored.extension_spec || stored) as ExtensionSpec
   const builderState = (stored.builder_state || {}) as Record<string, any>
   Object.keys(touched).forEach(key => { touched[key as keyof typeof touched] = true })
-  spec.value = { ...createInitialExtensionSpec(), ...JSON.parse(JSON.stringify(storedSpec)), version: project.current_version }
+  const hydratedSpec = {
+    ...createInitialExtensionSpec(),
+    ...JSON.parse(JSON.stringify(storedSpec)),
+    version: project.current_version
+  }
+  if (!hydratedSpec.module_id) {
+    hydratedSpec.module_id = createGeneratedModuleId(project.slug)
+  }
+  spec.value = hydratedSpec
   templateKey.value = builderState.template_key || 'simple'
   if (builderState.crud_model) {
     crudModel.table = builderState.crud_model.table || ''
@@ -1340,6 +1349,9 @@ const generateGuided = async () => {
 }
 
 const persistProject = async (): Promise<ExtensionProject> => {
+  if (!spec.value.module_id) {
+    spec.value.module_id = createGeneratedModuleId(activeProject.value?.slug || spec.value.name)
+  }
   if (!activeProject.value) {
     activeProject.value = await createExtensionProject({
       name: spec.value.name.trim(),

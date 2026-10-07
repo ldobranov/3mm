@@ -5,7 +5,9 @@ import re
 from backend.schemas.ai_extension_builder import ExtensionSpec
 
 
-def compiled_module_id(name: str) -> str:
+def compiled_module_id(name: str, module_id: str | None = None) -> str:
+    if module_id:
+        return module_id
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "widget"
     return f"org.3mm.generated.{slug}"
 

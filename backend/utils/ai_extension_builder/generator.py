@@ -956,7 +956,7 @@ def _build_compiled_widget_zip(
     spec: ExtensionSpec, instructions: Optional[str], use_ai: bool, model: Optional[str],
     ai_provider: Optional[str], groq_api_key: Optional[str], openrouter_api_key: Optional[str],
 ) -> Tuple[BuildReport, str, Dict[str, str]]:
-    module_id = compiled_module_id(spec.name)
+    module_id = compiled_module_id(spec.name, spec.module_id)
     widget_id = "widget"
     editor_id = "widget_editor"
     contract = {

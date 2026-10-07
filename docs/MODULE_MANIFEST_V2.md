@@ -33,6 +33,11 @@ The AI Extension Builder consumes the same shared `EXTENSION_API_VERSION`
 constant when it emits manifest-v2 packages. AI-generated packages therefore do
 not have a separate manifest or compatibility path.
 
+AI projects pin a `module_id` when the project is first persisted. Renaming the
+display name must not change that identity. Older projects without a stored ID
+derive it once from the project's immutable slug; build history then rejects a
+compiled artifact whose `module_id` does not match the project.
+
 The initial deny-by-default permission policy recognizes `data.read`,
 `data.write`, `events.consume`, `events.publish`, `network.outbound`,
 `process.spawn`, `secrets.use`, `hardware.inventory`, and `hardware.gpio`.
