@@ -33,10 +33,7 @@ async function bootstrap() {
   // Start auth lifecycle (activity-aware refresh + auto-logout on expiry)
   initAuthLifecycle();
 
-  // Refresh extensions now that auth is initialized (to load enabled extensions from database)
-  await extensionRelationships.refreshExtensions();
-
-  // Reload extension translations now that enabled extensions are known
+  // All discovery consumers share the public catalog loaded during bootstrap.
   await i18n.loadExtensionTranslationsForEnabledExtensions();
 
   app.mount('#app');

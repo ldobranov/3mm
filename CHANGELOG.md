@@ -6,6 +6,54 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.42] - 2026-10-07
+
+### Added
+
+- Target-owned Update Contract v2 for full-profile artifacts: independently
+  versioned deployment requirements, fixed installer entrypoint and bounded
+  required regular files, validated by staging, privileged apply and the builder.
+- Shared Frontend Bootstrap/Data Access v1: one cached runtime configuration and
+  enabled-extension catalog for router, i18n and extension relationships, with
+  single-flight requests, five-second fetch deadlines and failure cooldowns.
+
+### Fixed
+
+- The UI updater executes the verified target artifact's immutable installer,
+  not the installed release's older installer. A root-private archive/installer
+  snapshot is rehashed and revalidated; syntax preflight precedes dependency
+  changes. Concurrent staging rewrites cannot replace executable bytes.
+- Update scheduling/installer diagnostics remain in their systemd journals.
+  Failure status identifies preflight or installer exit code without claiming
+  successful rollback merely because installation failed.
+- HTTP interceptors no longer perform discovery or backend probes. Verified
+  empty catalogs remain authoritative; transient failures retain verified data.
+  Backend changes invalidate transport/catalog and fence old responses; selecting
+  an older enabled extension version overrides a higher bundled version.
+- Uncertain mutations are not automatically replayed. GET/HEAD has at most one
+  network retry; 403 and anonymous/public 401 do not trigger token refresh/logout.
+  Existing private authenticated 401 refresh behavior remains supported.
+
+### Compatibility and verification
+
+- Manifest v1, release metadata, official artifact checks, the installed dependency
+  allowlist, approval, Public Web isolation, theme controls and the separate Node
+  update workflow remain. Legacy artifacts use a stable compatible minimum.
+  No database migration, Application SDK or Device Protocol change is required.
+- All 205 frontend tests, type checking and production build passed locally.
+  The complete Linux/Python suite passed 1,462 tests with one opt-in HTTPS test
+  skipped; all 39 deployment tests also passed. Exact staged-source full-profile
+  packaging passed locally. GitHub repeats the canonical Python 3.13 checks and
+  gates publication on reproducible full-profile/ARMv6 Node builds.
+  Concurrent bootstrap regression requires one runtime-config
+  request and one catalog request; this does not count other application APIs.
+- On the existing Raspberry/WSL development hosts, manually bootstrap official
+  beta.42 after publication, then test a subsequent release through the UI.
+  Real clean-install, failed-unit rollback, Public Web and browser CPU/request
+  acceptance remain pending; isolated fake-installer rollback is not live proof.
+- Child Center, concrete themes, local/generated artifacts and unrelated draft
+  plans are excluded. Publishing this release does not deploy to any device.
+
 ## [0.3.0-beta.41] - 2026-10-07
 
 ### Added
@@ -1167,7 +1215,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.41...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.42...HEAD
+[0.3.0-beta.42]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.42
 [0.3.0-beta.41]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.41
 [0.3.0-test.1]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-test.1
 [0.3.0-beta.40]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.40

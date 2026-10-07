@@ -54,6 +54,22 @@ def test_helper_rejects_commands_paths_and_packages_from_the_request(
     assert response == {"ok": False, "error": "invalid_request"}
 
 
+def test_scheduler_diagnostics_are_not_discarded(monkeypatch, caplog):
+    from types import SimpleNamespace
+
+    def run(arguments, **kwargs):
+        assert "stdout" not in kwargs and "stderr" not in kwargs
+        assert kwargs["timeout"] == 30
+        return SimpleNamespace(returncode=5)
+
+    monkeypatch.setattr(update_helper.subprocess, "run", run)
+    assert (
+        update_helper.SubprocessUpdateCommandRunner().run(("/usr/bin/systemd-run",))
+        == 5
+    )
+    assert "exited with code 5" in caplog.text
+
+
 def test_helper_revalidates_stage_and_schedules_fixed_worker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -590,7 +606,9 @@ def test_application_uninstall_uses_fixed_runtime_roots(tmp_path: Path) -> None:
     ]
 
 
-def test_application_data_erase_uses_only_the_fixed_instance_root(tmp_path: Path) -> None:
+def test_application_data_erase_uses_only_the_fixed_instance_root(
+    tmp_path: Path,
+) -> None:
     calls = []
 
     class Boundary:

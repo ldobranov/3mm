@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import type { RouteRecordRaw } from 'vue-router';
 import Login from '../views/Login.vue';
 import { getAvailableExtensions } from '@/utils/extension-relationships';
-import http from '@/utils/dynamic-http';
+import { getExtensionCatalog } from '@/utils/extension-catalog';
 import { getCompiledUiCatalog, loadCompiledComponent } from '@/utils/compiled-ui';
 import type { CompiledUiPackage } from '@/utils/compiled-ui';
 
@@ -46,9 +46,8 @@ async function loadExtensionRoutes(): Promise<RouteRecordRaw[]> {
   let extensionApiAvailable = false;
 
   try {
-    const response = await http.get('/api/extensions/public');
+    const items = await getExtensionCatalog();
     extensionApiAvailable = true;
-    const items = response.data?.items || [];
     for (const item of items) {
       if (item?.name && item?.version) {
         enabledExtensions.push({ name: item.name, version: item.version });

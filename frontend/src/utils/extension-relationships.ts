@@ -6,7 +6,7 @@
 import { ref, reactive, markRaw } from 'vue'
 import http from '@/utils/dynamic-http'
 import { i18n } from '@/utils/i18n'
-import { getToken } from '@/utils/auth'
+import { getExtensionCatalog } from './extension-catalog'
 import { loadBundledExtensionComponent } from '@/utils/extension-components'
 
 const bundledManifestModules = import.meta.glob('../extensions/*/manifest.json', {
@@ -393,31 +393,23 @@ class FrontendExtensionRelationships {
         }
       }
 
-      // Check if user is authenticated before trying to call the API
-      const token = getToken()
-      if (!token) {
-        console.log('User not authenticated, using filesystem discovery only')
-        // Cache the discovered extensions
-        this.discoveredExtensions = filesystemExtensions
-        return filesystemExtensions
-      }
-
       // Preferred: use public endpoint to get enabled extensions + versions
       const enabledExtensions: string[] = []
       try {
-        const response = await http.get('/api/extensions/public')
-        const publicExtensions = response.data.items || []
+        const publicExtensions = await getExtensionCatalog()
         for (const ext of publicExtensions) {
           if (ext?.name && ext?.version) {
             enabledExtensions.push(ext.name)
-            this.setExtensionVersion(ext.name, ext.version)
+            // Enabled catalog is authoritative, even when an older version is
+            // selected. Bundled higher versions must not override a rollback.
+            if (this.extensionVersions[ext.name] !== ext.version) {
+              delete this.manifestCache.value[ext.name]
+            }
+            this.extensionVersions[ext.name] = ext.version
           }
         }
 
-        // If API returns nothing (unexpected), fall back to filesystem.
-        if (enabledExtensions.length === 0) {
-          enabledExtensions.push(...filesystemExtensions)
-        }
+        // A verified empty catalog is authoritative, not a discovery failure.
       } catch (error) {
         console.warn('Failed to fetch /api/extensions/public, falling back to filesystem discovery:', error)
         enabledExtensions.push(...filesystemExtensions)
@@ -479,6 +471,7 @@ class FrontendExtensionRelationships {
   // Refresh extension discovery (useful when extensions are enabled/disabled)
   async refreshExtensions(): Promise<void> {
     console.log('Refreshing extension discovery...')
+    await getExtensionCatalog(true).catch(() => {})
     await this.discoverExtensions()
     // Re-preload manifests for newly discovered extensions
     await Promise.all(this.discoveredExtensions.map(ext => this.preloadManifest(ext)))

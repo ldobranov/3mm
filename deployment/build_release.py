@@ -16,6 +16,19 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
+try:  # Both module imports and the workflow's direct script invocation.
+    from .deployment_contract import (
+        CONTRACT_PATH,
+        DeploymentContractError,
+        validate_deployment_contract,
+    )
+except ImportError:
+    from deployment_contract import (
+        CONTRACT_PATH,
+        DeploymentContractError,
+        validate_deployment_contract,
+    )
+
 SUPPORTED_ARCHITECTURES = ("aarch64", "armv7l", "x86_64")
 COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 SEMVER_PATTERN = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
@@ -100,6 +113,8 @@ def read_source_payload(source_archive: Path) -> list[PayloadFile]:
         raise ReleaseBuildError("Source archive is invalid") from exc
 
     required = {
+        CONTRACT_PATH,
+        "deployment/deployment_contract.py",
         "VERSION",
         "install.sh",
         "backend/requirements.txt",
@@ -298,6 +313,14 @@ def build_release_assets(
         )
     frontend_payload = read_frontend_payload(frontend_dist)
     payload = source_payload + frontend_payload
+    contract_file = next(item for item in source_payload if item.name == CONTRACT_PATH)
+    try:
+        validate_deployment_contract(
+            contract_file.data,
+            {item.name for item in payload} | {".3mm-release.json"},
+        )
+    except DeploymentContractError as exc:
+        raise ReleaseBuildError(str(exc)) from exc
     packages = read_dependencies(dependencies_file)
     created_at = datetime.fromtimestamp(source_date_epoch, tz=UTC).isoformat()
 

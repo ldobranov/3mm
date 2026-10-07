@@ -4,21 +4,86 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import logging
 import os
+import stat
 import subprocess
+import tarfile
+import tempfile
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Protocol, Sequence
 
 from backend.services.update_staging import (
     UpdateOperationStatus,
+    StagedUpdate,
     UpdateStagingError,
     inspect_installed_dependencies,
     revalidate_official_release,
     validate_staged_payload,
+    verify_release_archive,
     write_operation_status,
 )
+from deployment.deployment_contract import INSTALLER_PATH, MAX_INSTALLER_BYTES
+
+LOGGER = logging.getLogger(__name__)
+
+
+def _prepare_target(
+    stage_root: Path, private_root: Path, staged: StagedUpdate, owner_uid: int
+):
+    """Freeze approved bytes before executing anything from a service-writable stage.
+
+    No tar extraction to disk: only the fixed, regular installer is copied. The
+    root-private snapshot is rehashed and revalidated; concurrent stage rewrites
+    cannot substitute the code or payload after privileged verification.
+    """
+    snapshot = private_root / "release.tar.gz"
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    descriptor = os.open(stage_root / "staged-release.tar.gz", flags)
+    digest = hashlib.sha256()
+    received = 0
+    with os.fdopen(descriptor, "rb") as source, snapshot.open("xb") as output:
+        info = os.fstat(source.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != owner_uid:
+            raise UpdateStagingError("Target archive ownership or file type changed")
+        os.chmod(snapshot, 0o600)
+        while chunk := source.read(1024 * 1024):
+            received += len(chunk)
+            if received > staged.artifact_size_bytes:
+                raise UpdateStagingError("Target archive size changed during snapshot")
+            digest.update(chunk)
+            output.write(chunk)
+        output.flush()
+        os.fsync(output.fileno())
+    if (
+        received != staged.artifact_size_bytes
+        or digest.hexdigest() != staged.artifact_sha256
+    ):
+        raise UpdateStagingError("Target archive checksum changed during snapshot")
+    contract = verify_release_archive(
+        snapshot,
+        release_id=staged.release_id,
+        version=staged.version,
+        commit=staged.commit,
+        architecture=staged.architecture,
+        dependencies=staged.dependencies,
+    )
+    installer = private_root / "install-systemd.sh"
+    with tarfile.open(snapshot, "r:gz") as archive:
+        member = next(
+            item
+            for item in archive.getmembers()
+            if PurePosixPath(item.name).as_posix() == INSTALLER_PATH
+        )
+        if not member.isfile() or not 0 < member.size <= MAX_INSTALLER_BYTES:
+            raise UpdateStagingError("Verified target installer is invalid")
+        with archive.extractfile(member) as source, installer.open("xb") as output:
+            os.chmod(installer, 0o700)
+            output.write(source.read(MAX_INSTALLER_BYTES + 1))
+    return snapshot, installer, contract
 
 
 def _service_ids(user_name: str, group_name: str) -> tuple[int, int]:
@@ -52,8 +117,12 @@ class SubprocessApplyCommandRunner:
                 timeout=40 * 60,
                 env=environment,
             )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise UpdateStagingError("Update command did not complete") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise UpdateStagingError(
+                f"{arguments[0]} exceeded the 40-minute deadline; check 3mm-update-apply logs"
+            ) from exc
+        except OSError as exc:
+            raise UpdateStagingError(f"Could not start {arguments[0]}: {exc}") from exc
         return result.returncode
 
 
@@ -90,7 +159,6 @@ def apply_staged_update(
     requested_by_user_id: int,
     service_user: str = "3mm",
     service_group: str = "3mm",
-    installer: Path = Path("/opt/3mm/current/deployment/install-systemd.sh"),
     repository: str = "ldobranov/3mm",
     manifest_asset_name: str = "3mm-update-manifest.json",
     runner: ApplyCommandRunner | None = None,
@@ -104,6 +172,7 @@ def apply_staged_update(
     started_at = datetime.now(UTC)
     staged = None
     error_code = "validation_failed"
+    private = None
     try:
         staged = validate_staged_payload(
             stage_root,
@@ -119,6 +188,18 @@ def apply_staged_update(
         if catalog_checker is not None:
             catalog_arguments["catalog_checker"] = catalog_checker
         revalidate_official_release(staged, **catalog_arguments)
+        error_code = "target_preflight_failed"
+        private = tempfile.TemporaryDirectory(prefix="3mm-update-target-")
+        archive_path, installer, contract = _prepare_target(
+            stage_root,
+            Path(private.name),
+            staged,
+            user_id,
+        )
+        if command_runner.run(("/usr/bin/bash", "-n", str(installer))) != 0:
+            raise UpdateStagingError(
+                "Target installer syntax preflight failed; check 3mm-update-apply logs"
+            )
         write_operation_status(
             status_file,
             UpdateOperationStatus(
@@ -170,7 +251,6 @@ def apply_staged_update(
                 raise UpdateStagingError("Approved dependencies remain unavailable")
 
         error_code = "installer_failed"
-        archive_path = stage_root / "staged-release.tar.gz"
         installer_result = command_runner.run(
             (
                 "/usr/bin/bash",
@@ -184,7 +264,8 @@ def apply_staged_update(
         )
         if installer_result != 0:
             raise UpdateStagingError(
-                "Immutable installer failed and invoked its rollback boundary"
+                f"Target installer exited with code {installer_result}; check journalctl -u "
+                "3mm-update-apply.service for the failure and rollback result"
             )
 
         completed_at = datetime.now(UTC)
@@ -204,6 +285,8 @@ def apply_staged_update(
             {
                 "completed_at": completed_at.isoformat(),
                 "dependencies": staged.dependencies,
+                "deployment_contract_version": contract.schema_version,
+                "installer_source": "verified_target_artifact",
                 "release_id": staged.release_id,
                 "requested_by_user_id": requested_by_user_id,
                 "result": "succeeded",
@@ -215,7 +298,8 @@ def apply_staged_update(
             ("/usr/bin/systemctl", "try-restart", "3mm-update-helper.service")
         )
         return 0
-    except (KeyError, UpdateStagingError) as exc:
+    except (KeyError, OSError, tarfile.TarError, UpdateStagingError) as exc:
+        LOGGER.exception("Update %s failed at %s", release_id, error_code)
         completed_at = datetime.now(UTC)
         failed = UpdateOperationStatus(
             state="failed",
@@ -244,6 +328,9 @@ def apply_staged_update(
         except UpdateStagingError:
             pass
         return 1
+    finally:
+        if private is not None:
+            private.cleanup()
 
 
 def _parser() -> argparse.ArgumentParser:

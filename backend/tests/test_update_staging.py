@@ -31,8 +31,10 @@ from backend.services.update_staging import (
     revalidate_official_release,
     stage_latest_update,
     validate_staged_payload,
+    verify_release_archive,
     write_operation_status,
 )
+from deployment.deployment_contract import CONTRACT_PATH, LEGACY_REQUIRED_FILES
 
 COMMIT = "b" * 40
 
@@ -422,3 +424,93 @@ def test_root_revalidation_rejects_an_official_release_that_is_not_newer(
             release_metadata_file=tmp_path / ".3mm-release.json",
             catalog_checker=lambda _settings, **_kwargs: official,
         )
+
+
+def verify_test_archive(path):
+    return verify_release_archive(
+        path,
+        release_id="v1.2.0",
+        version="1.2.0",
+        commit=COMMIT,
+        architecture="aarch64",
+        dependencies=["ca-certificates", "python3"],
+    )
+
+
+def test_target_contract_accepts_future_unit_without_installed_release_knowledge(
+    tmp_path,
+):
+    contract = {
+        "schema_version": 2,
+        "profile": "full",
+        "installer": "deployment/install-systemd.sh",
+        "installer_api": "immutable-full-v1",
+        "required_files": sorted(
+            LEGACY_REQUIRED_FILES | {"deployment/systemd/future.service"}
+        ),
+    }
+    archive = tmp_path / "target.tar.gz"
+    write_release_archive(
+        archive,
+        extra_entries={
+            CONTRACT_PATH: json.dumps(contract).encode(),
+            "deployment/systemd/future.service": b"[Service]\nUser=future\n",
+        },
+    )
+    assert verify_test_archive(archive).schema_version == 2
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"schema_version": 3},
+        {"profile": "node"},
+        {"installer": "/tmp/arbitrary.sh"},
+        {"installer_api": "arbitrary-shell"},
+        {"command": "untrusted"},
+        {"required_files": ["../outside"]},
+        {"required_files": ["deployment/systemd/missing.service"]},
+    ],
+)
+def test_target_contract_fails_closed_for_unsupported_or_unsafe_requirements(
+    tmp_path, change
+):
+    contract = {
+        "schema_version": 2,
+        "profile": "full",
+        "installer": "deployment/install-systemd.sh",
+        "installer_api": "immutable-full-v1",
+        "required_files": sorted(LEGACY_REQUIRED_FILES),
+    }
+    contract.update(change)
+    archive = tmp_path / "target.tar.gz"
+    write_release_archive(
+        archive, extra_entries={CONTRACT_PATH: json.dumps(contract).encode()}
+    )
+    with pytest.raises(UpdateStagingError, match="deployment"):
+        verify_test_archive(archive)
+
+
+def test_required_directory_cannot_impersonate_an_installer_file(tmp_path):
+    original = tmp_path / "original.tar.gz"
+    target = tmp_path / "directory.tar.gz"
+    write_release_archive(original)
+    with (
+        tarfile.open(original, "r:gz") as source,
+        tarfile.open(target, "w:gz") as output,
+    ):
+        for member in source.getmembers():
+            if member.name == "deployment/install-systemd.sh":
+                member.type = tarfile.DIRTYPE
+                member.size = 0
+                output.addfile(member)
+            else:
+                output.addfile(member, source.extractfile(member))
+    with pytest.raises(UpdateStagingError, match="incomplete"):
+        verify_test_archive(target)
+
+
+def test_legacy_contract_does_not_require_new_public_web_units(tmp_path):
+    archive = tmp_path / "legacy.tar.gz"
+    write_release_archive(archive)
+    assert verify_test_archive(archive).schema_version == 1

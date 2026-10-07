@@ -14,6 +14,7 @@ from deployment.build_release import (
     build_release_assets,
     read_dependencies,
 )
+from deployment.deployment_contract import CONTRACT_PATH
 
 COMMIT = "a" * 40
 EPOCH = 1_787_728_000
@@ -50,6 +51,11 @@ REQUIRED_SOURCE_FILES = {
     "three_mm_application_sdk/__init__.py": b"# sdk\n",
     "frontend/dist/stale.js": b"must not survive\n",
 }
+TARGET_CONTRACT = json.loads(Path(CONTRACT_PATH).read_text(encoding="utf-8"))
+REQUIRED_SOURCE_FILES[CONTRACT_PATH] = json.dumps(TARGET_CONTRACT).encode()
+for required in TARGET_CONTRACT["required_files"]:
+    if required not in {".3mm-release.json", "frontend/dist/index.html"}:
+        REQUIRED_SOURCE_FILES.setdefault(required, b"placeholder\n")
 
 
 def write_source_archive(
@@ -156,6 +162,7 @@ def test_release_archives_are_reproducible_and_installer_compatible(
             assert "deployment/systemd/3mm-public-web.socket" in names
             assert "three_mm_public_web/server.py" in names
             assert "install.sh" in names
+            assert json.load(archive.extractfile(CONTRACT_PATH)) == TARGET_CONTRACT
             assert all(member.mtime == EPOCH for member in archive.getmembers())
             metadata = json.load(archive.extractfile(".3mm-release.json"))
             assert metadata["architecture"] == artifact["architecture"]
@@ -178,6 +185,18 @@ def test_builder_rejects_unsafe_source_paths(tmp_path: Path) -> None:
     write_dependencies(tmp_path / "dependencies.json")
 
     with pytest.raises(ReleaseBuildError, match="Unsafe archive path"):
+        build(tmp_path)
+
+
+def test_builder_rejects_incomplete_target_owned_contract(tmp_path):
+    files = dict(REQUIRED_SOURCE_FILES)
+    contract = dict(TARGET_CONTRACT)
+    contract["required_files"] = sorted(
+        contract["required_files"] + ["deployment/systemd/future.service"]
+    )
+    files[CONTRACT_PATH] = json.dumps(contract).encode()
+    write_source_archive(tmp_path / "source.tar", files)
+    with pytest.raises(ReleaseBuildError, match="future.service"):
         build(tmp_path)
 
 

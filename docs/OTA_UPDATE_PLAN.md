@@ -208,3 +208,48 @@ Still pending:
 - Web process access to `sudo`, `apt`, `systemctl` or writable system paths;
 - changing NetworkManager;
 - accepting prereleases or unvalidated branch snapshots.
+
+## Update Contract v2 — target-owned deployment (beta.42)
+
+The UI updater no longer executes the installed release's
+`/opt/3mm/current/deployment/install-systemd.sh` against a new artifact. Like
+`install.sh`, it selects `deployment/install-systemd.sh` from the verified
+**target** artifact. The target installer remains responsible for users, units,
+immutable activation, database migration, health checks and rollback. Public
+Web's separate identity, sockets, gateway and isolation are preserved.
+
+New full artifacts contain `deployment/deployment-contract.json`, independently
+versioned from the unchanged Manifest v1 and release metadata. Contract v2
+declares the fixed installer entrypoint, `immutable-full-v1` argument interface,
+`full` profile and a bounded, sorted list of required regular files. It is not a
+command language. Unknown versions, command fields, unsafe paths, directory
+substitutes and incomplete target requirements fail before installation.
+The release builder validates the target's declaration before publishing.
+Older full artifacts without this file retain a stable legacy minimum; the
+installed Core does not impose its newest Public Web files on older targets.
+
+The privileged apply worker revalidates the official manifest and short-lived
+approval as before. It then copies the archive into a root-private workspace,
+checks the copy's exact size, SHA-256, identity and contract again, extracts only
+the fixed installer and performs `bash -n` before dependency changes. Both the
+installer and its archive argument come from that snapshot, so service-owned
+staging files cannot replace executable bytes after verification. The workspace
+is removed at completion; original staging data stays available for diagnostics.
+
+Scheduling stdout/stderr are retained in the update-helper journal. Installer
+stdout/stderr remain in the apply journal; failures identify the phase and
+installer exit code rather than asserting that rollback succeeded. Inspect:
+
+```sh
+sudo journalctl -u 3mm-update-helper.service -u 3mm-update-apply.service -n 150 --no-pager
+```
+
+No bridge release or tag rewriting is planned. After beta.42 publication, the
+two existing development devices will receive it manually through
+`install.sh --tag v0.3.0-beta.42`; an older installed updater cannot gain the fix
+before executing its first update.
+Real Raspberry/WSL clean-install, failed-unit rollback and a subsequent UI update
+are **pending**; isolated test doubles are not physical acceptance.
+
+See [PLATFORM_STABILITY_ACCEPTANCE.md](PLATFORM_STABILITY_ACCEPTANCE.md) for the
+combined update and frontend acceptance gates.

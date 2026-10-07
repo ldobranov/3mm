@@ -108,6 +108,14 @@ offline wheelhouse. It has a `node` profile marker and Python/architecture
 metadata. Its separate manifest keeps existing Core OTA clients compatible.
 Node assets start with the next Fleet release, not historical beta.19.
 
+Since beta.42, full-profile artifacts also contain
+`deployment/deployment-contract.json`. The builder validates the target-owned
+contract against the exact exported source and prebuilt frontend. The contract
+is versioned separately from Manifest v1 and is not an additional release asset
+or a command language. The UI updater uses the verified target installer and
+archive from one root-private snapshot; the target installer owns activation,
+health checking and rollback. Node packaging/update remains separate.
+
 ## Dependency boundary
 
 [`deployment/release-dependencies.json`](../deployment/release-dependencies.json)
@@ -138,6 +146,13 @@ provenance. Do not reuse beta.19 for Fleet publication. Follow
 must not be inferred from a successful Agent-only install/rollback test.
 
 ## Device acceptance
+
+For the first beta.42 correction, manually bootstrap the existing development
+hosts through `install.sh --tag v0.3.0-beta.42` after complete publication.
+Their older installed updater cannot use the new worker yet. Then use a
+subsequent official release for the UI update/rollback acceptance below and
+the [platform stability gates](PLATFORM_STABILITY_ACCEPTANCE.md). No live
+deployment or physical acceptance is implied by publishing a release.
 
 Open **System updates** as an administrator and use the same channel as the
 release:

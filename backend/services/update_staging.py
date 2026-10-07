@@ -21,6 +21,16 @@ from urllib.request import Request, urlopen
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from backend.config import BackendSettings, FrontendSettings, UpdateCatalogSettings
+from deployment.deployment_contract import (
+    CONTRACT_PATH,
+    DeploymentContract,
+    DeploymentContractError,
+    LEGACY_REQUIRED_FILES,
+    MAX_CONTRACT_BYTES,
+    MAX_INSTALLER_BYTES,
+    INSTALLER_PATH,
+    validate_deployment_contract,
+)
 from backend.services.system_updates import (
     PACKAGE_PATTERN,
     SEMVER_PATTERN,
@@ -40,31 +50,7 @@ TRUSTED_DOWNLOAD_HOSTS = frozenset(
         "release-assets.githubusercontent.com",
     }
 )
-REQUIRED_RELEASE_FILES = frozenset(
-    {
-        ".3mm-release.json",
-        "backend/requirements.txt",
-        "backend/services/update_staging.py",
-        "backend/services/application_public_web.py",
-        "backend/services/application_public_web_transport.py",
-        "deployment/apply_staged_update.py",
-        "deployment/install-systemd.sh",
-        "deployment/migrate_database.py",
-        "deployment/release-dependencies.json",
-        "deployment/systemd/3mm-agent.service",
-        "deployment/systemd/3mm-core.service",
-        "deployment/systemd/3mm-update-helper.service",
-        "deployment/systemd/3mm-web.service",
-        "deployment/systemd/3mm-public-web.socket",
-        "deployment/systemd/3mm-public-web.service",
-        "deployment/update-dependency-allowlist.json",
-        "frontend/dist/index.html",
-        "three_mm_runtime/update_helper.py",
-        "three_mm_public_web/__init__.py",
-        "three_mm_public_web/__main__.py",
-        "three_mm_public_web/server.py",
-    }
-)
+REQUIRED_RELEASE_FILES = LEGACY_REQUIRED_FILES
 
 
 class UpdateStagingError(RuntimeError):
@@ -320,11 +306,13 @@ def verify_release_archive(
     commit: str,
     architecture: str,
     dependencies: Sequence[str] | None = None,
-) -> None:
+) -> DeploymentContract:
     names: set[str] = set()
+    regular_files: set[str] = set()
     total_size = 0
     metadata: object | None = None
     archive_dependencies: object | None = None
+    contract_data: bytes | None = None
     try:
         with tarfile.open(archive_path, mode="r:gz") as archive:
             members = archive.getmembers()
@@ -343,9 +331,26 @@ def verify_release_archive(
                     raise UpdateStagingError(
                         f"Update archive contains an unsupported entry: {name}"
                     )
+                regular_files.add(name)
                 total_size += member.size
                 if total_size > MAX_EXPANDED_BYTES:
                     raise UpdateStagingError("Expanded update archive is too large")
+                if (
+                    name == INSTALLER_PATH
+                    and not 0 < member.size <= MAX_INSTALLER_BYTES
+                ):
+                    raise UpdateStagingError("Target installer size is invalid")
+                if name == CONTRACT_PATH:
+                    if member.size > MAX_CONTRACT_BYTES:
+                        raise UpdateStagingError(
+                            "Target deployment contract is too large"
+                        )
+                    source = archive.extractfile(member)
+                    if source is None:
+                        raise UpdateStagingError(
+                            "Target deployment contract could not be read"
+                        )
+                    contract_data = source.read(MAX_CONTRACT_BYTES + 1)
                 if name == ".3mm-release.json":
                     if member.size > MAX_METADATA_BYTES:
                         raise UpdateStagingError("Release metadata is too large")
@@ -369,9 +374,12 @@ def verify_release_archive(
     except (OSError, tarfile.TarError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise UpdateStagingError("Update archive is invalid") from exc
 
-    missing = sorted(REQUIRED_RELEASE_FILES - names)
-    if missing:
-        raise UpdateStagingError(f"Update archive is incomplete: {', '.join(missing)}")
+    if CONTRACT_PATH in names and contract_data is None:
+        raise UpdateStagingError("Target deployment contract must be a regular file")
+    try:
+        contract = validate_deployment_contract(contract_data, regular_files)
+    except DeploymentContractError as exc:
+        raise UpdateStagingError(str(exc)) from exc
     if not isinstance(metadata, dict) or metadata != {
         "architecture": architecture,
         "branch": "main",
@@ -411,6 +419,7 @@ def verify_release_archive(
         raise UpdateStagingError(
             "Embedded release dependencies do not match the trusted manifest"
         )
+    return contract
 
 
 def inspect_database(database_url: str) -> str:
@@ -602,7 +611,7 @@ def stage_latest_update(
     candidate_path.unlink(missing_ok=True)
     downloader(artifact, candidate_path, settings)
     try:
-        verify_release_archive(
+        contract = verify_release_archive(
             candidate_path,
             release_id=latest.release_id,
             version=latest.version,
@@ -636,6 +645,11 @@ def stage_latest_update(
                 name="archive.identity",
                 passed=True,
                 detail="SHA-256, size, structure and release identity verified",
+            ),
+            PreflightCheck(
+                name="deployment.contract",
+                passed=True,
+                detail=f"Target deployment contract v{contract.schema_version}; verified target installer selected",
             ),
             PreflightCheck(
                 name="storage.free",

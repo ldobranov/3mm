@@ -8,8 +8,9 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Beta. This source prepares **v0.3.0-beta.41**, combining the
-> accepted local Theme Platform V5 work with the merged Milestone 19 foundation.
+> **Project status:** Beta. This source prepares **v0.3.0-beta.42**, adding
+> target-owned Update Contract v2 and shared Frontend Bootstrap/Data Access v1
+> to the accepted Theme Platform V5 and merged Milestone 19 foundation.
 > It includes the generic Public Web Runtime and Application
 > Extension HTTP contract while keeping the administrative SPA isolated on its
 > existing surface. The release contains no Shop or SEO-specific Core logic.
@@ -70,7 +71,13 @@ system.
   retention.
 - **OTA updates** — architecture-specific reproducible artifacts, validated
   manifests, Stable/Beta/Test channels, cached read-only background checks,
-  maintenance-window enforcement and explicit administrator approval.
+  maintenance-window enforcement and explicit administrator approval. Full-profile
+  updates execute the verified target artifact's installer from a root-private
+  snapshot, with versioned preflight and persistent failure diagnostics.
+- **Shared frontend bootstrap** — cached runtime configuration and public
+  extension discovery shared by routing, translations and extension consumers,
+  with single-flight requests, bounded timeouts and failure cooldowns. HTTP
+  interceptors do not perform discovery or replay uncertain mutations.
 - **Optional installation peers** — encrypted installation identity, verified
   HTTPS enrollment with separate local consent and receiver approval, limited
   status sharing, revocation and durable retries. Peer v2 binds an opaque
@@ -222,11 +229,20 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 ### Updating a paired Hub and Zero
 
-After the new GitHub Release is fully published, update the Hub through
-`/system/updates` using the Beta channel. Update the Zero over SSH with the same
-Node bootstrap command above; after beta.41 publication, add
-`--tag v0.3.0-beta.41` to select that exact release once published. Provisioned upgrades preserve
-identity and pairing, not Master reset.
+After beta.42 is fully published, manually install this first corrected
+full-profile release on the two existing development hosts (Raspberry/WSL):
+
+```bash
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.42
+```
+
+An older installed updater cannot acquire the target-installer fix before it
+runs. Test a subsequent official release through `/system/updates` using the
+Beta channel; no bridge release or reset is required. Update the Zero over SSH
+with the Node bootstrap command above and add `--tag v0.3.0-beta.42` to select
+this exact release. Provisioned upgrades preserve identity and pairing, not
+Master reset. Real update/rollback and browser request/CPU checks remain pending;
+see [platform stability acceptance](docs/PLATFORM_STABILITY_ACCEPTANCE.md).
 Then upload Fleet `0.1.7` on the Hub through Extensions. Updating the Fleet ZIP
 alone does not update Core or the Zero Agent. Follow the
 [GPIO configuration guide](docs/FLEET_GPIO_CONFIGURATION.md) before enabling outputs.
@@ -304,6 +320,14 @@ explicit administrator approval. Administrators can opt into cached background
 catalog checks with persisted retry backoff. A daily maintenance window can
 gate installation; applying outside it requires a separate explicit override.
 Background checks never download or install a release.
+
+Since beta.42, full-profile artifacts include their own versioned deployment
+contract and required-file declaration. The privileged updater revalidates the
+approved official bytes, freezes a private archive/installer snapshot and checks
+installer syntax before dependency changes. Unknown contracts fail closed;
+legacy artifacts retain a compatible minimum. Release metadata and Manifest v1,
+the dependency allowlist, explicit approval, immutable layout and rollback owner
+remain unchanged. Node updates use their existing separate workflow.
 
 The final approval dialog shows the installed version and the exact verified
 version to install separately. Fresh installed-release metadata takes precedence
@@ -404,6 +428,7 @@ offline browser capable of fetching missing resources.
 | [Installation peers v2](docs/INSTALLATION_PEER_V2.md) | SDK 1.3 verified intent, exact consent review and reapproval boundaries |
 | [Module Manifest v2](docs/MODULE_MANIFEST_V2.md) | Package envelope and identities |
 | [OTA update plan](docs/OTA_UPDATE_PLAN.md) | Update architecture and acceptance stages |
+| [Platform stability acceptance](docs/PLATFORM_STABILITY_ACCEPTANCE.md) | Target-owned updater, shared bootstrap and pending real-device checks |
 | [Release guide](docs/RELEASING.md) | Versioning, publication and verification |
 | [Fleet GPIO configuration](docs/FLEET_GPIO_CONFIGURATION.md) | Compatible updates and one safe output without SSH |
 | [Fleet Node OTA](docs/FLEET_NODE_OTA.md) | Signed Hub approval, Node trust and independent installation outcomes |

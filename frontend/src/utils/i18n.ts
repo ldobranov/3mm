@@ -6,6 +6,7 @@ import { ref, computed } from 'vue'
 import { readFrontendTranslations, saveCurrentUserLanguage } from '@/utils/language-api'
 import coreEnglish from '@/locales/en.json'
 import coreBulgarian from '@/locales/bg.json'
+import { getExtensionCatalog } from './extension-catalog'
 
 interface Translations {
   [key: string]: any
@@ -219,9 +220,7 @@ class FrontendI18n {
   async loadExtensionTranslationsForEnabledExtensions() {
     try {
       // Get enabled extensions from API
-      const { default: http } = await import('@/utils/dynamic-http')
-      const response = await http.get('/api/extensions/public')
-      const extensions = response.data?.items || []
+      const extensions = await getExtensionCatalog()
 
       const currentLanguage = this.getCurrentLanguage()
 

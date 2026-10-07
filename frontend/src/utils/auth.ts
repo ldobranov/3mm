@@ -1,5 +1,5 @@
 import axios from 'axios';
-import http from '@/utils/dynamic-http';
+import { getBackendUrl } from './runtime-config';
 
 export function getToken(): string {
   return localStorage.getItem('authToken') || '';
@@ -32,7 +32,7 @@ async function refreshTokenResult(): Promise<RefreshResult> {
   const token = getToken();
   if (!token) return 'rejected';
   try {
-    const backendUrl = await http.getCurrentBackendUrl();
+    const backendUrl = await getBackendUrl();
     const res = await axios.post(`${backendUrl}/api/user/refresh`, {}, {
       headers: { Authorization: `Bearer ${token}` },
     });

@@ -64,13 +64,15 @@ class SubprocessUpdateCommandRunner:
             result = subprocess.run(
                 list(arguments),
                 check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                # Keep systemd scheduling diagnostics in the helper journal.
                 timeout=30,
                 env={**os.environ, "LC_ALL": "C"},
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
+            LOGGER.exception("Update worker scheduling command did not complete")
             raise UpdateStagingError("Update worker could not be scheduled") from exc
+        if result.returncode != 0:
+            LOGGER.error("Update scheduling command exited with code %s", result.returncode)
         return result.returncode
 
 
@@ -671,6 +673,7 @@ def _handle_request(
             requested_by_user_id=user_id,
         )
     except Exception:
+        LOGGER.exception("Verified update could not be scheduled")
         if service_gid is not None:
             try:
                 write_operation_status(
