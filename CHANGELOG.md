@@ -41,6 +41,10 @@ pre-1.0.
 
 ### Verification
 
+- Raspberry P6 exposed and the branch fixes a production-only systemd wiring
+  gap: Core now owns a dedicated `/run/3mm-public-web` runtime directory and
+  publishes the bounded gateway socket there for the isolated `3mm-public`
+  identity. No Core state directory, database or secret permissions are widened.
 - Milestone P0-P5 Python/frontend CI passed on the focused branch through
   commit `94567a2b`.
 - This Test-channel release exists only for Raspberry P6 physical acceptance.

@@ -16,11 +16,15 @@ Environment=COMPILED_UI_ARTIFACTS_DIR=/var/lib/3mm/core/extensions/compiled
 Environment=THREE_MM_APPLICATION_ROOT=/var/lib/3mm/application-extensions
 Environment=THREE_MM_APPLICATION_KEY_ROOT=/etc/3mm/application-extensions
 Environment=THREE_MM_APPLICATION_PLATFORM_SOCKET=/var/lib/3mm/application-extensions/platform/platform.sock
+Environment=THREE_MM_PUBLIC_WEB_GATEWAY_SOCKET=/run/3mm-public-web/core.sock
+Environment=THREE_MM_PUBLIC_WEB_GATEWAY_GROUP=3mm-public
 ExecStart=/opt/3mm/current/.venv/bin/python -m uvicorn backend.main:app --host 0.0.0.0 --port 8887
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30s
 StateDirectory=3mm/core
+RuntimeDirectory=3mm-public-web
+RuntimeDirectoryMode=0755
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

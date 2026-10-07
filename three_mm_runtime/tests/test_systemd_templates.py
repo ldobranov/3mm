@@ -158,10 +158,13 @@ def test_application_extensions_run_as_a_separate_network_isolated_identity() ->
 
 def test_runtime_socket_directories_are_narrowly_owned() -> None:
     setup = _directives(UNITS["setup"])
+    core = _directives(UNITS["core"])
     network_helper = _directives(PRIVILEGED_UNITS["helper"])
 
     assert "RuntimeDirectory" not in setup
-    for name in ("core", "web", "agent"):
+    assert core["RuntimeDirectory"] == "3mm-public-web"
+    assert core["RuntimeDirectoryMode"] == "0755"
+    for name in ("web", "agent"):
         assert "RuntimeDirectory" not in _directives(UNITS[name])
     assert network_helper["RuntimeDirectory"] == "3mm"
     assert network_helper["RuntimeDirectoryPreserve"] == "yes"
@@ -178,7 +181,7 @@ def test_public_web_is_socket_activated_without_core_state_or_secret_environment
     assert service["Group"] == "3mm-public"
     assert "EnvironmentFile" not in service
     assert "-m three_mm_public_web" in service["ExecStart"]
-    assert "--core-socket /run/3mm-public-web.sock" in service["ExecStart"]
+    assert "--core-socket /run/3mm-public-web/core.sock" in service["ExecStart"]
     assert "--systemd-socket" in service["ExecStart"]
     assert "--idle-seconds 60" in service["ExecStart"]
     assert service["PrivateNetwork"] == "true"
@@ -187,7 +190,12 @@ def test_public_web_is_socket_activated_without_core_state_or_secret_environment
     assert service["InaccessiblePaths"] == "/var/lib/3mm /etc/3mm"
     assert service["NoNewPrivileges"] == "true"
     assert service["ProtectSystem"] == "strict"
-    assert "3mm-public" in _directives(UNITS["core"])["SupplementaryGroups"].split()
+    core = _directives(UNITS["core"])
+    assert "3mm-public" in core["SupplementaryGroups"].split()
+    assert core["Environment"] == "THREE_MM_PUBLIC_WEB_GATEWAY_GROUP=3mm-public"
+    core_text = UNITS["core"].read_text(encoding="utf-8")
+    assert "Environment=THREE_MM_PUBLIC_WEB_GATEWAY_SOCKET=/run/3mm-public-web/core.sock" in core_text
+    assert "Environment=THREE_MM_PUBLIC_WEB_GATEWAY_GROUP=3mm-public" in core_text
 
 
 def test_units_use_the_shared_provisioning_directory() -> None:
