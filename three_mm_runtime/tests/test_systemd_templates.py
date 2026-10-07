@@ -227,6 +227,12 @@ def test_installer_preserves_identity_and_delegates_network_mutation() -> None:
     assert "THREE_MM_NETWORK_RECOVERY_POLICY_FILE" in installer
     assert "THREE_MM_NETWORK_RECOVERY_MARKER_FILE" in installer
     assert "THREE_MM_BACKUP_IMPORT_DIR" in installer
+    assert (
+        "upsert_environment THREE_MM_PUBLIC_WEB_GATEWAY_SOCKET "
+        "/run/3mm-public-web/core.sock"
+    ) in installer
+    assert "THREE_MM_PUBLIC_WEB_GATEWAY_GROUP 3mm-public" in installer
+    assert "/run/3mm-public-web.sock" not in installer
     assert "deployment/portable_backup.py" in installer
     assert "http://$device_hostname.local" in installer
     assert "frontend_primary_origin=$frontend_scheme://$frontend_host" in installer

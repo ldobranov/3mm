@@ -673,7 +673,7 @@ upsert_environment THREE_MM_APPLICATION_ROOT /var/lib/3mm/application-extensions
 upsert_environment THREE_MM_APPLICATION_KEY_ROOT /etc/3mm/application-extensions
 upsert_environment THREE_MM_APPLICATION_HELPER_SOCKET /run/3mm/update-helper.sock
 upsert_environment THREE_MM_APPLICATION_PLATFORM_SOCKET /var/lib/3mm/application-extensions/platform/platform.sock
-upsert_environment THREE_MM_PUBLIC_WEB_GATEWAY_SOCKET /run/3mm-public-web.sock
+upsert_environment THREE_MM_PUBLIC_WEB_GATEWAY_SOCKET /run/3mm-public-web/core.sock
 upsert_environment THREE_MM_PUBLIC_WEB_GATEWAY_GROUP 3mm-public
 
 if [[ -s $ai_master_key_file ]]; then
