@@ -1,6 +1,6 @@
 """Administrator-only lifecycle; theme appearance loading is a separate boundary."""
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -16,6 +16,8 @@ from backend.services.theme_extensions import (
     theme_catalog,
     theme_package,
     selected_theme_asset,
+    preview_theme_appearance,
+    preview_theme_asset,
 )
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
@@ -55,6 +57,29 @@ def selection(
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(409, "Theme selection changed; refresh and retry") from exc
+
+
+@router.get("/preview")
+def preview(
+    response: Response,
+    sha256: str | None = Query(None, pattern=r"^[0-9a-f]{64}$"),
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    response.headers["Cache-Control"] = "no-store"
+    return preview_theme_appearance(db, sha256)
+
+
+@router.get("/packages/{sha256}/preview/assets/{asset_id}")
+def preview_asset(
+    sha256: str, asset_id: str,
+    _admin: User = Depends(require_admin), db: Session = Depends(get_db),
+):
+    contents, media_type = preview_theme_asset(db, sha256, asset_id)
+    return Response(contents, media_type=media_type, headers={
+        "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+    })
 
 
 @router.get("/catalog")

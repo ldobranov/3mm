@@ -7,6 +7,38 @@ export const LEGACY_UI_COLOR_KEYS = [
 ] as const
 export type ThemeColorOverrides = Partial<Record<'light' | 'dark', Partial<UiColors>>>
 
+export const THEME_VARIANTS = {
+  navigation: ['sidebar', 'top'], density: ['compact', 'comfortable'],
+  button: ['solid', 'outline'], card: ['bordered', 'raised'], header_style: ['saved', 'theme'],
+} as const
+export type ThemeOptionField = keyof typeof THEME_VARIANTS
+export type ThemeCustomizationOptions = Record<ThemeOptionField, string[]> & { colors: (keyof UiColors)[] }
+
+export function parseCustomizationOptions(value: unknown, design: UiDesign): ThemeCustomizationOptions | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const source = value as Record<string, unknown>
+  if (Object.keys(source).some(key => ![...Object.keys(THEME_VARIANTS), 'colors'].includes(key))) return null
+  const defaults = { navigation: design.layout.navigation, density: design.layout.density,
+    button: design.components.button, card: design.components.card, header_style: design.header_style }
+  const result = {} as ThemeCustomizationOptions
+  for (const key of [...Object.keys(THEME_VARIANTS), 'colors'] as (ThemeOptionField | 'colors')[]) {
+    const offered = source[key] === undefined ? [] : source[key]
+    const allowed: readonly string[] = key === 'colors' ? UI_COLOR_KEYS : THEME_VARIANTS[key]
+    if (!Array.isArray(offered) || offered.length > allowed.length || new Set(offered).size !== offered.length ||
+        offered.some(option => typeof option !== 'string' || !allowed.includes(option)) ||
+        (key !== 'colors' && offered.length && !offered.includes(defaults[key]))) return null
+    Object.assign(result, { [key]: [...offered] })
+  }
+  return result
+}
+
+export function themeCustomizationOptions(theme: { theme_extension_version: 1 | 2; customization_options?: ThemeCustomizationOptions } | null): ThemeCustomizationOptions {
+  if (theme?.theme_extension_version === 2 && theme.customization_options) return theme.customization_options
+  // Old packages did not declare an editor. Preserve their existing controls.
+  return { ...Object.fromEntries(Object.entries(THEME_VARIANTS).map(([key, values]) => [key, [...values]])),
+    colors: theme ? [...(theme.theme_extension_version === 2 ? UI_COLOR_KEYS : LEGACY_UI_COLOR_KEYS)] : [] } as ThemeCustomizationOptions
+}
+
 export interface ThemePreferences {
   navigation: 'sidebar' | 'top'
   density: 'compact' | 'comfortable'
@@ -46,8 +78,14 @@ export function parseThemePreferences(value: unknown): ThemePreferences | null {
   return result
 }
 
-export function themePreferencesValid(design: UiDesign, preferences: ThemePreferences, version: 1 | 2 | null): boolean {
+export function themePreferencesValid(design: UiDesign, preferences: ThemePreferences, version: 1 | 2 | null, options?: ThemeCustomizationOptions): boolean {
   if (!parseThemePreferences(preferences)) return false
+  if (options) {
+    const defaults = designPreferences(design, { backgroundColor: '#ffffff', textColor: '#000000' })
+    if ((Object.keys(THEME_VARIANTS) as ThemeOptionField[]).some(key =>
+      !(options[key].length ? options[key] : [defaults[key]]).includes(preferences[key])) ||
+      Object.values(preferences.colors || {}).some(palette => Object.keys(palette).some(key => !options.colors.includes(key as keyof UiColors)))) return false
+  }
   if (!preferences.colors) return true
   if (version === null) return false
   if (version === 1) return Object.values(preferences.colors).every(palette =>

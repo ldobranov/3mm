@@ -574,9 +574,15 @@ Acceptance criteria:
 
 Status: approved/current priority on 2026-10-04; expanded on 2026-10-05.
 T0–T3 are published in `v0.3.0-beta.36`; the local reference v1 palette does not
-constitute a full UI redesign. V0–V4 are implemented locally and prepared for
-`v0.3.0-beta.37`, subject to successful release publication. V5–V8 and live
-acceptance remain open; concrete theme packages are excluded from Core releases. See
+constitute a full UI redesign. V0–V4 are published, with the working baseline
+and installation color customization in `v0.3.0-beta.40`. On 2026-10-07 V5
+installed-package preview/Cancel/Apply and two actual reference ZIPs with licensed
+Cyrillic font proof were checked locally on one Core build and approved by the owner.
+The integrated package-declared editor and idle-tab retention are checked locally.
+Prepared for `v0.3.0-beta.41`, subject to successful publication; deploy is separate.
+V6–V8 and full live recovery acceptance remain open.
+See [V5 report](THEME_PLATFORM_V2_V5_REPORT.md). Concrete theme packages are
+excluded from Core releases. See
 [THEME_EXTENSION_PLAN.md](THEME_EXTENSION_PLAN.md) and
 [THEME_EXTENSION_V1.md](THEME_EXTENSION_V1.md), with the expanded
 [THEME_PLATFORM_V2_PLAN.md](THEME_PLATFORM_V2_PLAN.md).
@@ -622,8 +628,15 @@ its preview is not full-application or live-install acceptance. A full applicati
 redesign and live portable recovery acceptance are not implied by this status.
 V0–V4 also include a strict v2 package/asset loader, protected built-in recovery,
 focused regression and local encrypted portable restore checks. The new shell
-is opt-in; existing installations keep their appearance. Next: V5 reference
-themes/installed-package preview, then incremental screens and live V8 acceptance.
+is opt-in; existing installations keep their appearance. V5 preview now uses
+temporary package resources with admin-only access for inactive assets; Cancel
+cleans up without selection writes. Isolated desktop/mobile/light/dark/BG/EN
+review is not live acceptance. V5 also includes the second distinct reference ZIP,
+actual Extensions upload/enable and real local WOFF2 decoding/Cyrillic proof.
+Owner review passed; release preparation includes the integrated live editor and
+last-verified appearance retention on temporary refresh failures. Delivery remains
+subject to the beta.41 workflow. Next: V6 / DashboardList,
+one screen at a time, followed by extension UI contract and live V8 acceptance.
 
 ## Milestone 18 — 3mm Embedded v0.1 / Embedded Nodes Extension
 

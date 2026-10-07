@@ -157,7 +157,13 @@ def _woff2(data: bytes) -> None:
         stored = base128() if transformed else original
         original_total += original
         transformed_total += stored
-    if original_total > expanded or transformed_total > MAX_THEME_ASSET_BYTES or offset + compressed != len(data):
+    stream_end = offset + compressed
+    # Common WOFF2 encoders align the file with up to three zero bytes.
+    # Accept only that alignment, never an extra payload or another data block.
+    padding = data[stream_end:]
+    if (original_total > expanded or transformed_total > MAX_THEME_ASSET_BYTES
+            or stream_end > len(data) or len(padding) > 3 or any(padding)
+            or (padding and len(data) % 4)):
         raise ValueError("WOFF2 expanded tables or stream length exceed limits")
 
 

@@ -86,6 +86,26 @@ def validate_color_overrides(preferences: ThemePreferences, theme=None) -> None:
     validate_design(design)  # Same bounded palette and contrast policy as v2 packages.
 
 
+def validate_preferences(preferences: ThemePreferences, theme=None) -> None:
+    validate_color_overrides(preferences, theme)
+    options = getattr(theme, "customization_options", None)
+    if options is None:
+        return  # Compatibility for built-in, v1 and existing v2 packages.
+    defaults = {
+        **{key: theme.design["layout"][key] for key in ("navigation", "density")},
+        **{key: theme.design["components"][key] for key in ("button", "card")},
+        "header_style": theme.design["header_style"],
+    }
+    for key, default in defaults.items():
+        offered = getattr(options, key)
+        if getattr(preferences, key) not in (offered or (default,)):
+            raise ValueError("This appearance option is not offered by the theme")
+    if preferences.colors is not None:
+        for palette in preferences.colors.model_dump(exclude_none=True).values():
+            if palette.keys() - set(options.colors):
+                raise ValueError("This color is not editable in the theme")
+
+
 def read_customization(db: Session, sha256: str | None, theme=None) -> dict | None:
     row = db.scalar(select(Settings).where(
         Settings.key == customization_key(sha256),
@@ -95,7 +115,7 @@ def read_customization(db: Session, sha256: str | None, theme=None) -> dict | No
         return None
     try:
         preferences = ThemePreferences.model_validate_json(row.value)
-        validate_color_overrides(preferences, theme)
+        validate_preferences(preferences, theme)
         return preferences.model_dump(exclude_none=True)
     except (ValueError, ValidationError):
         # Corrupt restored/legacy settings must never prevent login or recovery.
@@ -109,12 +129,12 @@ def save_customization(db: Session, request: ThemeCustomizationRequest, actor: U
     ))
     if (selected.sha256 if selected else None) != request.sha256:
         raise HTTPException(409, "Theme selection changed; refresh before saving")
-    if request.preferences is not None and request.preferences.colors is not None:
+    if request.preferences is not None:
         from backend.services.theme_extensions import validate_stored_theme
 
         theme = validate_stored_theme(selected).theme_extension if selected else None
         try:
-            validate_color_overrides(request.preferences, theme)
+            validate_preferences(request.preferences, theme)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
     rows = list(db.scalars(select(Settings).where(

@@ -97,6 +97,31 @@ class ThemeAssetV2(StrictThemeModel):
         return self
 
 
+ThemeColorKey = Literal[
+    "canvas", "content", "surface", "surface_alt", "text", "text_secondary", "text_muted",
+    "border", "accent", "accent_text", "secondary", "secondary_text", "danger", "danger_text",
+    "success", "warning", "focus",
+]
+
+
+class ThemeCustomizationOptionsV2(StrictThemeModel):
+    """A package chooses editable controls, never code or arbitrary CSS keys."""
+    navigation: tuple[Literal["sidebar", "top"], ...] = Field(default=(), max_length=2)
+    density: tuple[Literal["compact", "comfortable"], ...] = Field(default=(), max_length=2)
+    button: tuple[Literal["solid", "outline"], ...] = Field(default=(), max_length=2)
+    card: tuple[Literal["bordered", "raised"], ...] = Field(default=(), max_length=2)
+    header_style: tuple[Literal["saved", "theme"], ...] = Field(default=(), max_length=2)
+    colors: tuple[ThemeColorKey, ...] = Field(default=(), max_length=17)
+
+    @model_validator(mode="after")
+    def unique_options(self):
+        for field in type(self).model_fields:
+            values = getattr(self, field)
+            if len(set(values)) != len(values):
+                raise ValueError("Theme customization options must be unique")
+        return self
+
+
 class ThemeExtensionV2(StrictThemeModel):
     theme_extension_version: Literal[2]
     design_api_version: Literal[2]
@@ -106,6 +131,7 @@ class ThemeExtensionV2(StrictThemeModel):
     base_theme: Literal["builtin.default"] = "builtin.default"
     design: dict[str, Any]
     assets: tuple[ThemeAssetV2, ...] = Field(default=(), max_length=MAX_THEME_ASSETS)
+    customization_options: ThemeCustomizationOptionsV2 | None = None
 
     @field_validator("design", mode="before")
     @classmethod
@@ -124,4 +150,14 @@ class ThemeExtensionV2(StrictThemeModel):
             values = [getattr(asset, key) for asset in self.assets]
             if len(set(values)) != len(values):
                 raise ValueError("theme asset ids, paths and roles must be unique")
+        if self.customization_options is not None:
+            defaults = {
+                **{key: self.design["layout"][key] for key in ("navigation", "density")},
+                **{key: self.design["components"][key] for key in ("button", "card")},
+                "header_style": self.design["header_style"],
+            }
+            for key, default in defaults.items():
+                offered = getattr(self.customization_options, key)
+                if offered and default not in offered:
+                    raise ValueError("Theme customization choices must include the package default")
         return self

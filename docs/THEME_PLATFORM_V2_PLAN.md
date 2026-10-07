@@ -1,7 +1,12 @@
 # 3mm Theme Platform v2 — цялостни визуални теми
 
-Дата: 2026-10-05. Статус: V0–V4 реализирани локално, подготвени за beta.37;
-V5–V8 предстоящи. Публикацията зависи от release workflow; няма live deploy.
+Обновен: 2026-10-07. Статус: V0–V4 са публикувани; работещата основа,
+включително персоналните цветове на темите, е в beta.40. V5 е изпълнен и проверен
+локално с два действителни ZIP пакета и лицензиран шрифт с кирилица и е одобрен
+от собственика. Допълненията за idle tab и общ редактор са проверени локално;
+подготвени за beta.41, при успешен release workflow. Deploy остава отделен.
+V6–V8 остават отворени; пълно
+live/recovery приемане не се подразбира от успешен release.
 Обхват: продължение на Milestone 17, не нов device/extension subsystem.
 Свързани: [продуктов план](MASTER_PLAN.md), [доставка T0–T6](THEME_EXTENSION_PLAN.md),
 [действащ договор v1](THEME_EXTENSION_V1.md).
@@ -135,9 +140,11 @@ Backup/portable restore включва избрания immutable пакет и 
 
 ## 6. Етапи и конкретно приемане
 
-V0–V4 са **реализирани локално**; V5–V8 са предстоящи. V3/V4 имат fixture visual
-review, но очаква потребителски преглед и бъдещ live acceptance. T0–T3 остават историческата
-v1 доставка. [Baseline и карта на зависимостите](THEME_PLATFORM_V2_BASELINE.md).
+V0–V4 са **публикувани**; собственикът потвърди работещите теми и корекции на
+логото до beta.40. V5 е изпълнен локално и одобрен; чака доставка. V6–V8 остават
+отворени. Локален visual review и успешно публикуване не заменят пълното
+live/recovery приемане. T0–T3 остават
+историческата v1 доставка. [Baseline и карта на зависимостите](THEME_PLATFORM_V2_BASELINE.md).
 [Договор V1–V3](THEME_DESIGN_API_V2.md), [отчет](THEME_PLATFORM_V2_V1_V3_REPORT.md).
 
 ### V0 — Baseline и карта на зависимостите
@@ -227,8 +234,54 @@ Graphite Mint 2.0 — отделен локален v2 ZIP, извън Core comm
 решение на собственика; качва се отделно през Extensions. Има
 sidebar/compact/raised варианти и две локални PNG марки, без промени по Core.
 Четири package проверки и fixture browser review в light/dark/BG/mobile минават;
-v1 остава непроменен. Това **не затваря V5**: вторият reference пакет, installed-
-package preview/cancel/apply и проба с реален лицензиран шрифт още предстоят.
+v1 остава непроменен.
+
+Втора част изпълнена локално на 2026-10-07: Settings → Theme Customization има
+**Преглед на тема**, **Отказ** и съществуващото **Приложи тема**. Прегледът зарежда
+точния enabled пакет, неговите настройки, шрифт и изображения в временен browser
+context. Няма промяна на глобалния избор, ZIP или одита до Apply. Cancel, напускане
+на секцията и неуспешно зареждане освобождават временните assets и връщат текущия
+изглед/предишния светъл или тъмен режим; закъснели отговори не възстановяват preview.
+Palette редакторът е скрит през този preview, за да не записва чуждия пакет.
+
+Неактивните assets са достъпни само през новите admin-only preview GET endpoints;
+публичното обслужване остава selected-only. Прилагат се същите ZIP/path/hash/type/
+size проверки. Няма DB migration, SDK промяна или промяна на public-web runtime.
+45 целеви backend проверки и 42 frontend проверки минаха, включително shell и
+initial appearance regressions; има managed-path отказ, type-check/build и
+изолиран desktop/390px light/dark BG/EN
+browser review. Preview/Cancel не записват; Apply прави един изричен selection запис.
+Тази реализация не е deployed и няма commit/release в тази задача.
+
+Останалото V5 е изпълнено локално на 2026-10-07: **Slate Copper 2.0.0** е втори
+отделен ZIP — top navigation, comfortable density, outline buttons, bordered
+cards и локален variable WOFF2 шрифт. Slate Reference Sans е производен на
+лицензирания Inter: преименуван съгласно OFL, с пълния лиценз в ZIP и font metadata,
+проверени 66 български кирилски символа и реално browser decoding. Няма нова
+runtime dependency. Поправен е само общият WOFF2 container validator за до три
+нулеви байта за 4-byte alignment; произволни допълнителни данни се отказват.
+
+Graphite Mint и Slate Copper са едновременно enabled върху един локален Core.
+Действителният Slate ZIP е качен и включен през общия Extensions UI, после
+проверен с Preview → Cancel → Apply → reload, BG/EN, desktop и mobile light/dark.
+Preview/Cancel оставят избора и theme одита непроменени и освобождават шрифта.
+Apply изпраща един selection POST/transaction; съществуващият одит записва
+двете променени installations (стар избор false, нов избор true), не една audit
+entry. Reload запазва избора и зарежда локалния шрифт.
+
+56 целеви backend проверки минаха (включително 11 нови WOFF2 проверки);
+предходните 42 frontend проверки и type-check остават доказателството за preview,
+а frontend build е повторен успешно. [Отчет V5](THEME_PLATFORM_V2_V5_REPORT.md)
+описва пакетите, font provenance, снимките и границите на изолирания сценарий.
+Това е **локално V5 приемане**, не live Raspberry или цялото V8. Конкретните ZIP
+пакети остават извън Core; preview и font поправката не са в beta.40.
+Собственикът одобри V5 на 2026-10-07. Следват две scoped корекции: при временна
+мрежова грешка табът запазва последната валидна тема; Theme Customization обединява
+декларативни package options, цветове и живи компонентни примери. Старият preview
+bookmark води към общия редактор, а защитеният recovery остава независим.
+Подробности: [пакетен договор](THEME_EXTENSION_V2.md).
+Тези промени се преглеждат отделно; не започват автоматично DashboardList/V6.
+Доставка остава отделно поискана.
 
 ### V6 — Екрани, един по един
 
@@ -291,5 +344,5 @@ marketing pages, нови business/device APIs или цялостна авто�
 чужди extensions. Ако по-късно се поиска изпълним theme plugin, той изисква
 отделен trust/security milestone, не разширяване на декларативния v2 по подразбиране.
 
-Следващата малка задача след потребителския преглед е **V5: reference v2 теми
-и installed-package preview**, не redesign на всички екрани наведнъж.
+Следващата малка задача след потребителския преглед е **V6 / DashboardList**,
+не redesign на всички екрани. Публикуване и live V8 проверки се заявяват отделно.

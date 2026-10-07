@@ -35,7 +35,7 @@
             <ThemePackagesSection v-if="isAdmin" :active="activeSection === 'theme'" />
             <ThemeCustomizationSection
               v-for="themeType in ['light', 'dark']"
-              v-show="!settingsStore.activeTheme"
+              v-show="!settingsStore.activeTheme && !settingsStore.isPackagePreview"
               :key="themeType"
               :theme-type="themeType"
               :settings="themeType === 'light' ? lightStyleSettings : darkStyleSettings"
@@ -123,7 +123,7 @@
 
 <script lang="ts">
 import { defineComponent, ref, reactive, onMounted, computed, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useThemeStore } from '@/stores/theme';
 import { useSettingsStore } from '@/stores/settings';
 import { useI18n } from '@/utils/i18n';
@@ -173,11 +173,15 @@ export default defineComponent({
     const themeStore = useThemeStore();
     const settingsStore = useSettingsStore();
     const router = useRouter();
+    const route = useRoute();
     const { t, currentLanguage } = useI18n();
     
     // Reactive state
     const availableLanguages = ref<string[]>(['en']);
     const activeSection = ref('application');
+    watch(() => route.query.section, section => {
+      if (section === 'theme') activeSection.value = 'theme';
+    }, { immediate: true });
     const menus = ref<any[]>([]);
     const loading = ref(false);
     const activeMenuId = ref<number | null>(null);

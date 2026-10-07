@@ -1,6 +1,6 @@
 # 3mm — общ продуктов план и разпределение по чатове
 
-Обновен: 2026-10-05. Статус: план, не декларация за внедрени функции.
+Обновен: 2026-10-07. Статус: план, не декларация за внедрени функции.
 Този документ задава общата последователност; техническият Roadmap и отделните
 планове пазят подробностите и доказателствата за приемане. Не отваряме наново
 завършени задачи и не преименуваме историческите milestones.
@@ -129,9 +129,17 @@ theme acceptance остава отделна проверка.
 
 На 2026-10-05 обхватът е разширен с [Theme Platform v2](THEME_PLATFORM_V2_PLAN.md):
 shared UI primitives, Core-owned sidebar/top-navigation shell, типография,
-плътност, component variants и safe local assets. V0–V4 са реализирани локално
-и подготвени за `v0.3.0-beta.37`; публикацията зависи от release workflow.
-V5–V8 остават предстоящи. Следват reference/preview и по един визуално приет екран.
+плътност, component variants и safe local assets. V0–V4 са публикувани;
+работещата основа и персоналните цветове на темите са в `v0.3.0-beta.40`.
+На 2026-10-07 V5 е реализиран и проверен локално: installed-package preview/
+Cancel/Apply, два действителни reference ZIP пакета и лицензиран шрифт с кирилица.
+Общият Extensions installer, reload и desktop/mobile light/dark/BG/EN са проверени
+в изолирана среда; виж [отчета V5](THEME_PLATFORM_V2_V5_REPORT.md).
+V5 е одобрен от собственика; общият редактор и запазването на темата при временен
+мрежов отказ също са проверени локално. Подготвени за `v0.3.0-beta.41`;
+публикуването зависи от release workflow, а deploy остава отделен. V6–V8 са
+отворени; следва V6 / DashboardList, по един визуално приет екран.
+Локален review не е live/recovery acceptance.
 Конкретните theme ZIP пакети не влизат в Core release. Запазваме v1
 пакетите, старите настройки и единния upload през Extensions. Settings,
 Header/Menu Customization, i18n, права и dynamic registrations се запазват;

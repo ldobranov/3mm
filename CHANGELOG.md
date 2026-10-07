@@ -6,6 +6,48 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.41] - 2026-10-07
+
+### Added
+
+- Theme Customization now combines the selected theme's editable appearance
+  controls and live button/form/dialog/table samples, using its real local font
+  and independent light/dark palette preview. Save/Discard/Reset remain explicit.
+- Optional, closed v2 `customization_options` lets packages declare editable
+  variants and semantic colors. Core and browser reject unsupported choices;
+  existing v1/v2 packages without the declaration remain compatible. New packages
+  using this field require beta.41 or newer Core.
+- Read-only administrator installed-package preview with temporary verified
+  resources, Cancel cleanup and exact-package Apply. Public asset serving remains
+  selected-only; ordinary UI preview bookmarks redirect to Theme Customization,
+  while explicit built-in recovery remains protected and independent.
+- Carries the merged, physically accepted generic Public Web Runtime foundation
+  described under the historical test.1 source section below, without bundling a
+  Shop, business extension or concrete visual theme.
+
+### Fixed
+
+- Idle/focused tabs retain the last verified theme, preferences and resources on
+  failed or invalid appearance refreshes. A verified explicit fallback is still
+  honored; authentication is not cleared and underlying DNS faults are not hidden.
+- Valid encoder-produced WOFF2 zero alignment padding is accepted within the
+  existing bounded container checks. Excess, nonzero or misaligned padding and
+  truncated/unsafe resources remain rejected.
+
+### Compatibility and verification
+
+- V5 was approved after two actual separate theme packages and a licensed local
+  font with Bulgarian glyphs passed isolated UI acceptance. The integrated editor
+  was checked in desktop/mobile light/dark and EN/BG, including Save and reload.
+- All 190 frontend tests, TypeScript checking and the production build passed.
+  The complete local Linux/Python 3.14 suite passed 1,438 tests; six route tests
+  then passed with temporary sockets on the Linux filesystem rather than NTFS.
+  One opt-in HTTPS acceptance test remains skipped. GitHub repeats the complete
+  suite on Python 3.13 and gates publication on reproducible full-profile/ARMv6
+  Node builds. Physical upgrade/restart/rollback/portable-theme recovery remain V8.
+- No new database migration, runtime dependency, device protocol or Application
+  SDK change. Child Center, theme ZIPs and local/generated artifacts are excluded.
+
 ## [0.3.0-test.1] - 2026-10-07
 
 ### Added
@@ -1125,7 +1167,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-test.1...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.41...HEAD
+[0.3.0-beta.41]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.41
 [0.3.0-test.1]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-test.1
 [0.3.0-beta.40]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.40
 [0.3.0-beta.39]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.39

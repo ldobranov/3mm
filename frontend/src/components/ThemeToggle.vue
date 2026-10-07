@@ -12,10 +12,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useThemeStore } from '@/stores/theme'
+import { useSettingsStore } from '@/stores/settings'
 import http from '@/utils/dynamic-http'
 
 const props = withDefaults(defineProps<{ persistPreference?: boolean }>(), { persistPreference: true })
 const themeStore = useThemeStore()
+const settings = useSettingsStore()
 
 const isDark = computed(() => themeStore.isDark())
 
@@ -25,7 +27,7 @@ const toggleTheme = async () => {
 
   // Save user preference if logged in
   const isAuthenticated = !!localStorage.getItem('authToken')
-  if (isAuthenticated && props.persistPreference) {
+  if (isAuthenticated && props.persistPreference && !settings.isPackagePreview) {
     try {
       await http.post('/settings/create', {
         key: 'user_theme',

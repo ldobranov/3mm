@@ -31,6 +31,29 @@ describe('saved theme appearance controls', () => {
     settings = useSettingsStore(); await settings.loadThemeAppearance()
   })
   afterEach(() => { vi.unstubAllGlobals(); document.documentElement.style.cssText = '' })
+  it('shows live samples of the selected theme beside its controls, without a separate preview link', async () => {
+    const wrapper = mountEditor()
+    expect(wrapper.find('.component-preview').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Live component preview')
+    expect(wrapper.text()).not.toContain('Open component preview')
+    await wrapper.get('[data-field=button]').setValue('outline')
+    expect(settings.uiDesign.components.button).toBe('outline')
+    expect(mocks.post).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('renders only the choices and colors offered by the package', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify({
+      ...projection(), theme: { ...projection().theme, customization_options: { navigation: ['sidebar', 'top'], colors: ['border'] } },
+    }) }))
+    await settings.loadThemeAppearance()
+    const wrapper = mountEditor()
+    expect(wrapper.find('[data-field=navigation]').exists()).toBe(true)
+    for (const field of ['density', 'button', 'card', 'custom-header']) expect(wrapper.find(`[data-field=${field}]`).exists()).toBe(false)
+    expect(wrapper.findAll('[data-color]')).toHaveLength(1)
+    expect(wrapper.find('[data-color=border]').exists()).toBe(true)
+    expect(settings.setPreferencePreview({ ...designPreferences(settings.baseUiDesign, settings.headerSettings), density: 'comfortable' })).toBe(false)
+    wrapper.unmount()
+  })
   it('previews without writes, saves exact-theme preferences and reloads them', async () => {
     const wrapper = mountEditor()
     await wrapper.get('[data-field=navigation]').setValue('top')
@@ -116,6 +139,8 @@ describe('saved theme appearance controls', () => {
     expect(mocks.post).not.toHaveBeenCalled()
     await wrapper.get('[data-field=palette-mode]').setValue('dark')
     expect(localStorage.getItem('theme')).toBeNull()
+    expect(wrapper.get('.component-preview').attributes('data-mode')).toBe('dark')
+    expect(wrapper.get('.component-preview').attributes('style')).toContain(`--ui-surface: ${builtinUiDesign().dark.surface}`)
     expect(wrapper.get('[data-color=border] input').element).toHaveProperty('value', builtinUiDesign().dark.border)
     await wrapper.get('[data-color=border] input').setValue('#ABCDEF')
     const saved = { ...designPreferences(settings.baseUiDesign, settings.headerSettings),

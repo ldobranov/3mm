@@ -8,10 +8,11 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Beta. This source prepares **v0.3.0-test.1** for Milestone 19
-> physical acceptance. It adds the generic Public Web Runtime and Application
+> **Project status:** Beta. This source prepares **v0.3.0-beta.41**, combining the
+> accepted local Theme Platform V5 work with the merged Milestone 19 foundation.
+> It includes the generic Public Web Runtime and Application
 > Extension HTTP contract while keeping the administrative SPA isolated on its
-> existing surface. The test release contains no Shop or SEO-specific Core logic.
+> existing surface. The release contains no Shop or SEO-specific Core logic.
 > Existing device transport, capability authority and lifecycle remain unchanged.
 > Device protocol 1.0, Application SDK 1.3, installation peers and Node Update remain.
 > Release assets become available only after the tag-driven workflow succeeds;
@@ -24,7 +25,8 @@ system.
 > Beta.36 published the compatible v1 theme platform. Theme lifecycle, v2 asset
 > loading and portable recovery are locally checked; desktop/mobile light/dark
 > review used an isolated fixture, not a live device. Installed-package preview,
-> licensed font acceptance, screen migration and live recovery remain V5–V8.
+> licensed font/Cyrillic proof and the integrated theme editor passed local V5
+> review; V6–V8 screen migration, extension UI adoption and live recovery remain.
 > Updates keep the existing appearance until an administrator selects a v2 theme.
 > No concrete theme (including Graphite Mint) or business extension is bundled.
 
@@ -58,7 +60,8 @@ system.
   Core-owned layout/component variants and bounded local fonts/logos, without
   arbitrary CSS or executable code. Upload, enable, disable and delete versions in
   Extensions; select an enabled version or built-in appearance in Settings.
-  Invalid or unavailable themes fall back safely; existing custom settings remain.
+  Invalid or disabled packages fall back safely; temporary network failures retain
+  the last verified theme. Existing custom settings remain.
 - **AI Extension Builder** — guided intent planning, editable projects,
   automatic versions, reviewable source changes, deterministic capability
   foundations, compilation and installation.
@@ -221,8 +224,8 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 After the new GitHub Release is fully published, update the Hub through
 `/system/updates` using the Beta channel. Update the Zero over SSH with the same
-Node bootstrap command above; after beta.40 publication, add
-`--tag v0.3.0-beta.40` to select that exact release. Provisioned upgrades preserve
+Node bootstrap command above; after beta.41 publication, add
+`--tag v0.3.0-beta.41` to select that exact release once published. Provisioned upgrades preserve
 identity and pairing, not Master reset.
 Then upload Fleet `0.1.7` on the Hub through Extensions. Updating the Fleet ZIP
 alone does not update Core or the Zero Agent. Follow the
@@ -341,7 +344,24 @@ legacy screens and extensions are not automatically redesigned. If installed
 styling becomes unusable, sign in as an administrator and open
 `/settings/ui-preview?recovery=1`, then choose **Use built-in permanently**.
 This clears only the theme selection, not saved settings or application data.
-The preview page is a component fixture, not yet an installed-package preview.
+Since beta.41, Theme Customization combines layout/color controls with live
+component samples using the selected package's actual design and local font.
+Optional `customization_options` in a v2 package declares which bounded variants
+and colors are editable; omitted declarations preserve older packages' controls.
+Packages using that new field require beta.41 or newer Core. Changes remain
+version-scoped and are persisted only by **Save appearance**.
+
+**Preview theme** can temporarily load another enabled package without changing
+the installation selection; Cancel restores the selected appearance. Apply that
+package before editing its saved controls. Preview assets require administrator
+access; public serving remains selected-only. Theme ZIPs remain separate uploads,
+not Core release assets. Ordinary `/settings/ui-preview` bookmarks redirect to
+the integrated editor; the explicit recovery URL above remains independent.
+
+An idle tab retains its last verified theme, preferences and loaded resources if
+appearance refresh fails. A verified deselection or disabled/corrupt package still
+uses built-in fallback. This does not repair DNS/network outages or make a fresh
+offline browser capable of fetching missing resources.
 
 ## Documentation
 
@@ -370,7 +390,7 @@ The preview page is a component fixture, not yet an installed-package preview.
 | [Extension lifecycle](docs/EXTENSION_LIFECYCLE.md) | Package, version and data lifecycle |
 | [Theme Platform plan](docs/THEME_EXTENSION_PLAN.md) | Theme lifecycle, browser activation and remaining acceptance stages |
 | [Theme extension v1](docs/THEME_EXTENSION_V1.md) | Closed light/dark token contract and shared Extensions upload |
-| [Theme Platform v2 plan](docs/THEME_PLATFORM_V2_PLAN.md) | V0–V4 delivery and remaining visual/recovery acceptance |
+| [Theme Platform v2 plan](docs/THEME_PLATFORM_V2_PLAN.md) | V0–V5 delivery and remaining screen/recovery acceptance |
 | [Theme Design API 2](docs/THEME_DESIGN_API_V2.md) | Shared tokens, component variants, shell modes and compatibility |
 | [Theme extension v2](docs/THEME_EXTENSION_V2.md) | Package/asset validation, lifecycle, loader and recovery |
 | [Embedded Nodes extension plan](docs/EMBEDDED_NODES_EXTENSION_PLAN.md) | Deferred firmware/extension work outside Core |

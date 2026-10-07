@@ -1,5 +1,6 @@
 import { parseThemeDefinition, readThemeProjection, type ThemeDefinition, type StyleSettings, type ThemeMode } from './theme-extension'
 import { parseUiDesign, UI_ASSET_BUDGET, type UiDesign } from './ui-design'
+import { parseCustomizationOptions, type ThemeCustomizationOptions } from './theme-customization'
 
 export interface ThemeAsset {
   asset_id: string; path: string; sha256: string
@@ -10,6 +11,7 @@ export interface ThemePackageV2 {
   theme_extension_version: 2; design_api_version: 2
   module_id: string; version: string; name: ThemeDefinition['name']; base_theme: 'builtin.default'
   design: UiDesign; assets: ThemeAsset[]; package_sha256: string
+  customization_options?: ThemeCustomizationOptions
 }
 export type InstalledTheme = ThemeDefinition | ThemePackageV2
 const record = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
@@ -20,12 +22,14 @@ export function parseInstalledTheme(projection: unknown): InstalledTheme | null 
   const value = projection.theme
   if (value.theme_extension_version === 1) return parseThemeDefinition(value)
   if (value.theme_extension_version !== 2 || value.design_api_version !== 2 || !hash(projection.package_sha256) ||
-    Object.keys(value).some(key => !['theme_extension_version', 'design_api_version', 'module_id', 'version', 'name', 'base_theme', 'design', 'assets'].includes(key))) return null
+    Object.keys(value).some(key => !['theme_extension_version', 'design_api_version', 'module_id', 'version', 'name', 'base_theme', 'design', 'assets', 'customization_options'].includes(key))) return null
   const identity = parseThemeDefinition({ theme_extension_version: 1, design_api_version: 1, module_id: value.module_id,
     version: value.version, name: value.name, base_theme: value.base_theme, light: { radius_sm: 0 }, dark: { radius_sm: 0 } })
   const design = parseUiDesign(value.design)
   const assets = value.assets ?? []
   if (!identity || !design || !Array.isArray(assets) || assets.length > UI_ASSET_BUDGET.maxFiles) return null
+  const options = value.customization_options === undefined ? undefined : parseCustomizationOptions(value.customization_options, design)
+  if (options === null) return null
   for (const asset of assets) {
     if (!record(asset) || Object.keys(asset).some(key => !['asset_id', 'path', 'sha256', 'media_type', 'role', 'license'].includes(key)) ||
       typeof asset.asset_id !== 'string' || !/^[a-z][a-z0-9_-]{0,63}$/.test(asset.asset_id) || !hash(asset.sha256) ||
@@ -37,7 +41,8 @@ export function parseInstalledTheme(projection: unknown): InstalledTheme | null 
       (asset.role === 'font' && !asset.license)) return null
   }
   for (const key of ['asset_id', 'path', 'role']) if (new Set(assets.map(asset => asset[key])).size !== assets.length) return null
-  return { ...identity, theme_extension_version: 2, design_api_version: 2, design, assets, package_sha256: projection.package_sha256 }
+  return { ...identity, theme_extension_version: 2, design_api_version: 2, design, assets, package_sha256: projection.package_sha256,
+    ...(options ? { customization_options: options } : {}) }
 }
 
 export async function readInstalledTheme(baseUrl: string, signal?: AbortSignal): Promise<InstalledTheme | null> {
@@ -55,7 +60,7 @@ export function designLegacyStyle(design: UiDesign, mode: ThemeMode): StyleSetti
 export interface LoadedThemeAssets {
   font: FontFace | null; logos: Partial<Record<ThemeMode, string>>; warnings: string[]; dispose: () => void
 }
-export async function loadThemeAssets(theme: ThemePackageV2, baseUrl: string, signal: AbortSignal): Promise<LoadedThemeAssets> {
+export async function loadThemeAssets(theme: ThemePackageV2, baseUrl: string, signal: AbortSignal, previewToken?: string): Promise<LoadedThemeAssets> {
   const result: LoadedThemeAssets = { font: null, logos: {}, warnings: [], dispose: () => {
     if (result.font) document.fonts?.delete(result.font)
     Object.values(result.logos).forEach(url => URL.revokeObjectURL(url))
@@ -72,8 +77,11 @@ export async function loadThemeAssets(theme: ThemePackageV2, baseUrl: string, si
     })])
     try {
       // Core owns the URL; never use package path as an HTTP URL or a CSS value.
-      const response = await fetch(`${baseUrl}/api/v1/modules/themes/packages/${theme.package_sha256}/assets/${asset.asset_id}`, {
+      const scope = previewToken ? 'preview/assets' : 'assets'
+      const response = await fetch(`${baseUrl}/api/v1/modules/themes/packages/${theme.package_sha256}/${scope}/${asset.asset_id}`, {
         credentials: 'omit', cache: 'no-store', signal: controller.signal,
+        // Preview resources are protected. Never send credentials to the public loader.
+        ...(previewToken ? { headers: { Authorization: `Bearer ${previewToken}` } } : {}),
       })
       const limit = asset.role === 'font' ? UI_ASSET_BUDGET.maxFontBytes : UI_ASSET_BUDGET.maxImageBytes
       if (!response.ok || response.headers.get('content-type')?.split(';')[0] !== asset.media_type || !response.body) throw new Error('unavailable')

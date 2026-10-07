@@ -2,13 +2,19 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), delete: vi.fn(), load: vi.fn(), assetWarnings: [] as string[] }))
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), delete: vi.fn(), load: vi.fn(),
+  getCurrentBackendUrl: vi.fn().mockResolvedValue(''), previewThemeAppearance: vi.fn().mockResolvedValue(true), clearPackagePreview: vi.fn(),
+  assetWarnings: [] as string[], previewAssetWarnings: [] as string[] }))
 vi.mock('@/utils/dynamic-http', () => ({ default: mocks }))
-vi.mock('@/stores/settings', () => ({ useSettingsStore: () => ({ activeTheme: null, assetWarnings: mocks.assetWarnings, loadThemeAppearance: mocks.load }) }))
+vi.mock('@/stores/settings', () => ({ useSettingsStore: () => ({ activeTheme: null, assetWarnings: mocks.assetWarnings,
+  previewAssetWarnings: mocks.previewAssetWarnings, previewThemeAppearance: mocks.previewThemeAppearance,
+  clearPackagePreview: mocks.clearPackagePreview, loadThemeAppearance: mocks.load }) }))
+vi.mock('@/stores/theme', () => ({ useThemeStore: () => ({ theme: 'light', setTheme: vi.fn() }) }))
 const language = ref('bg')
 vi.mock('@/utils/i18n', () => ({ useI18n: () => ({ t: (_key: string, fallback: string) => fallback, currentLanguage: language }) }))
 import ThemePackagesSection from './ThemePackagesSection.vue'
 vi.mock('./ThemeAppearanceSection.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('./ThemeComponentPreview.vue', () => ({ default: { template: '<div class="component-preview" />' } }))
 const item = () => ({ module_id: 'org.example.theme', name: { en: 'Example', translations: { bg: 'Пример' } }, version: '1.0.0', sha256: 'a'.repeat(64), enabled: true, is_selected: false, is_available: true, status: 'enabled' })
 describe('Settings theme packages', () => {
   beforeEach(() => { vi.clearAllMocks(); mocks.assetWarnings.length = 0; language.value = 'bg'; mocks.get.mockResolvedValue({ data: { items: [item()] } }) })
@@ -61,5 +67,40 @@ describe('Settings theme packages', () => {
     expect(wrapper.text()).toContain('System font and saved branding remain available.')
     expect(wrapper.get('select').attributes('disabled')).toBeUndefined()
     expect(wrapper.findAll('option')[0].attributes('value')).toBe('')
+  })
+  it('previews without a selection write, cancels, and applies only on explicit submit', async () => {
+    const wrapper = mount(ThemePackagesSection)
+    await flushPromises()
+    await wrapper.get('#installed-theme').setValue('a'.repeat(64))
+    const clickPreview = () => wrapper.findAll('button').find(button => button.text() === 'Преглед на тема')!.trigger('click')
+    await clickPreview()
+    await flushPromises()
+    expect(mocks.get).toHaveBeenCalledWith('/api/v1/modules/themes/preview', expect.objectContaining({ params: { sha256: 'a'.repeat(64) } }))
+    expect(mocks.previewThemeAppearance).toHaveBeenCalledOnce()
+    expect(wrapper.text()).toContain('Преглед на тема: Пример · 1.0.0')
+    expect(mocks.post).not.toHaveBeenCalled()
+    await wrapper.findAll('button').find(button => button.text() === 'Отказ')!.trigger('click')
+    expect(wrapper.find('.theme-preview').exists()).toBe(false)
+    expect(wrapper.get('#installed-theme').element).toHaveProperty('value', '')
+    await wrapper.get('#installed-theme').setValue('a'.repeat(64))
+    await clickPreview(); await flushPromises()
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.post).toHaveBeenCalledOnce()
+    expect(mocks.post).toHaveBeenCalledWith('/api/v1/modules/themes/selection', { sha256: 'a'.repeat(64) })
+    expect(wrapper.find('.theme-preview').exists()).toBe(false)
+    wrapper.unmount()
+  })
+  it('ignores a late preview response after leaving the section', async () => {
+    const wrapper = mount(ThemePackagesSection)
+    await flushPromises()
+    let complete!: (response: unknown) => void
+    mocks.get.mockReturnValueOnce(new Promise(resolve => { complete = resolve }))
+    await wrapper.findAll('button').find(button => button.text() === 'Преглед на тема')!.trigger('click')
+    await wrapper.setProps({ active: false })
+    complete({ data: { theme: null } }); await flushPromises()
+    expect(mocks.previewThemeAppearance).not.toHaveBeenCalled()
+    expect(wrapper.find('.theme-preview').exists()).toBe(false)
+    expect(mocks.post).not.toHaveBeenCalled()
+    wrapper.unmount()
   })
 })

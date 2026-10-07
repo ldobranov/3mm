@@ -1,6 +1,7 @@
 # Theme Design API 2 — UI contract
 
-Статус: реализиран локално UI договор, built-in preview и V4 installed v2 loader.
+Статус: реализиран UI договор и installed v2 loader. Локално preview е обединен
+с Theme Customization; старият bookmark води към редактора на избраната тема.
 ZIP envelope/assets са отделно в [Theme extension v2](THEME_EXTENSION_V2.md).
 Общият installer/catalog приема v1/v2. Device protocol и SDK 1.3 не се променят.
 
@@ -76,8 +77,11 @@ saved` използва header colors от запазеното оформлен
 
 ## Запазено оформление в Theme Customization
 
-Контролите от UI Preview за navigation, density, button/card variants и header
-style са достъпни в Settings → Theme Customization. Промените се виждат временно
+Контролите и живите UI примери са в Settings → Theme Customization. Новите v2
+пакети могат да заявят позволените варианти и цветове чрез
+`customization_options`; старите запазват досегашните контроли.
+Виж [пакетния договор](THEME_EXTENSION_V2.md#package-declared-editor-options).
+Промените се виждат временно
 в реалния shell. **Save appearance** записва настройките за инсталацията;
 **Discard changes** или излизане от секцията изчиства незаписания preview.
 **Reset to theme defaults** премахва само това оформление, не темата, логото,
@@ -156,20 +160,20 @@ Desktop предлага sidebar или top navigation; mobile предлага 
 
 ## Preview и recovery — текущ обхват
 
-Администратор отваря `/settings/ui-preview` след локален frontend build.
-Маршрутът не се добавя принудително в Menu Editor. Може да се пробват layout,
-density, button/card variants, mode и header precedence. Demo validation не
-изпълнява device/application действия и не сменя installed theme selection.
+Администратор отваря Settings → Theme Customization. Контроли и живи примери
+използват текущия пакет и шрифт, а не твърдо зададена демонстрационна тема.
+Примерите за бутони, форми, таблица и диалог не изпълняват device/application
+действия. Изборът на редактирана палитра променя само цветовете на примерите,
+не личния светъл/тъмен режим. Изборът на друг пакет предлага read-only
+Preview/Cancel; Apply го избира изрично, после неговите настройки могат да се
+редактират и запишат. Preview не е sandbox за browsing по live страници.
 
-Preview езикът не записва account/browser preference. Preview mode не се
-записва като нова browser preference, а ThemeToggle не записва account preference.
-На route exit preview се изчиства и началните locale/mode се възстановяват.
-Нормалната app initialization и действията извън preview запазват досегашното
-си поведение. Preview не е sandbox за произволно browsing по live страници.
+Старият `/settings/ui-preview` пренасочва към `/settings?section=theme`,
+без втори редактор и без принудително menu registration.
 
 `/settings/ui-preview?recovery=1` е също admin-only. Изчиства временния дизайн
-и показва статичен четим recovery panel с built-in preview restore. От V4 отделен
-бутон **Use built-in permanently** изчиства installed selection и built-in
+и показва статичен четим recovery panel. Бутон **Use built-in permanently**
+изчиства installed selection и built-in
 layout overrides през admin API; Header/Menu/custom colors остават. Overrides
 за други пакети остават за бъдещо връщане. Live recovery acceptance е V8.
 

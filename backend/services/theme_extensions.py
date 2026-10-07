@@ -168,15 +168,47 @@ def theme_appearance(db: Session) -> dict:
     return result
 
 
+def preview_theme_appearance(db: Session, sha256: str | None) -> dict:
+    """Read-only admin projection; never select, enable or write preferences."""
+    theme = None
+    if sha256 is not None:
+        package = theme_package(db, sha256)
+        installation = installation_for(db, package)
+        if installation is None or not installation.enabled:
+            raise HTTPException(409, "Enable the theme before previewing it")
+        expected = get_settings().backend.uploads_dir.resolve() / "modules" / f"{sha256}.zip"
+        if expected.resolve() != expected or Path(package.file_path).resolve() != expected:
+            raise HTTPException(409, "Theme preview is unavailable")
+        theme = validate_stored_theme(package).theme_extension
+    result = {"theme": theme.model_dump(mode="json", exclude_none=True) if theme else None}
+    if theme is not None and theme.theme_extension_version == 2:
+        result["package_sha256"] = sha256
+    customization = read_customization(db, sha256, theme)
+    if customization is not None:
+        result["customization"] = customization
+    return result
+
+
 def selected_theme_asset(db: Session, sha256: str, asset_id: str) -> tuple[bytes, str]:
     """Public appearance assets only; never expose staged/catalog or arbitrary paths."""
+    return _theme_asset(db, sha256, asset_id, selected_only=True)
+
+
+def preview_theme_asset(db: Session, sha256: str, asset_id: str) -> tuple[bytes, str]:
+    """Admin-only preview uses the same bounded, revalidated immutable bytes."""
+    return _theme_asset(db, sha256, asset_id, selected_only=False)
+
+
+def _theme_asset(db: Session, sha256: str, asset_id: str, *, selected_only: bool) -> tuple[bytes, str]:
     if not re.fullmatch(r"[0-9a-f]{64}", sha256) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", asset_id):
         raise HTTPException(404, "Theme asset was not found")
-    package = db.scalar(select(ModulePackage).join(ThemeExtensionInstallation).where(
+    query = select(ModulePackage).join(ThemeExtensionInstallation).where(
         ModulePackage.sha256 == sha256,
-        ThemeExtensionInstallation.is_selected.is_(True),
         ThemeExtensionInstallation.enabled.is_(True),
-    ))
+    )
+    if selected_only:
+        query = query.where(ThemeExtensionInstallation.is_selected.is_(True))
+    package = db.scalar(query)
     if package is None or not is_theme_package(package):
         raise HTTPException(404, "Theme asset was not found")
     root = get_settings().backend.uploads_dir.resolve() / "modules"

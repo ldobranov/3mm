@@ -5,10 +5,11 @@ import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
 import { readSettings, upsertSettings } from '@/utils/settings-api'
 import { resolveHeaderSettings } from '@/utils/header-settings'
+import { getToken } from '@/utils/auth'
 import { BUILTIN_STYLES, buttonTextColor, resolveThemeStyle, readThemeProjection } from '@/utils/theme-extension'
 import { adaptLegacyUi, parseUiDesign, uiDesignVariables, type UiDesign } from '@/utils/ui-design'
 import { parseInstalledTheme, loadThemeAssets, designLegacyStyle, type InstalledTheme, type LoadedThemeAssets } from '@/utils/theme-package-v2'
-import { applyThemePreferences, parseThemePreferences, themePreferencesValid, type ThemePreferences } from '@/utils/theme-customization'
+import { applyThemePreferences, parseThemePreferences, themePreferencesValid, themeCustomizationOptions, type ThemePreferences } from '@/utils/theme-customization'
 
 export const useSettingsStore = defineStore('settings', () => {
   const themeStore = useThemeStore()
@@ -16,19 +17,68 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const loaded = ref(false)
   const activeTheme = shallowRef<InstalledTheme | null>(null)
-  const installedDesign = computed(() => activeTheme.value?.theme_extension_version === 2 ? activeTheme.value.design : null)
+  const appearanceUnavailable = ref(false)
+  // The installed selection is never overwritten by a browser-only package preview.
+  const packagePreview = shallowRef<{ theme: InstalledTheme | null; preferences: ThemePreferences | null; assets: LoadedThemeAssets | null } | null>(null)
+  const isPackagePreview = computed(() => packagePreview.value !== null)
+  const displayTheme = computed(() => packagePreview.value ? packagePreview.value.theme : activeTheme.value)
+  const installedDesign = computed(() => displayTheme.value?.theme_extension_version === 2 ? displayTheme.value.design : null)
   const appearanceRecovery = ref(false)
   const themePreferences = shallowRef<ThemePreferences | null>(null)
   const preferencePreview = shallowRef<ThemePreferences | null>(null)
   const setPreferencePreview = (value: unknown): boolean => {
     const parsed = value === null ? null : parseThemePreferences(value)
-    if (value !== null && (!parsed || !themePreferencesValid(baseUiDesign.value, parsed, activeTheme.value?.theme_extension_version ?? null))) return false
+    if (value !== null && (!parsed || !themePreferencesValid(baseUiDesign.value, parsed, activeTheme.value?.theme_extension_version ?? null, themeCustomizationOptions(activeTheme.value)))) return false
     preferencePreview.value = parsed
     updateCSSVariables()
     return true
   }
   const themeAssets = shallowRef<LoadedThemeAssets | null>(null)
   const assetWarnings = computed(() => themeAssets.value?.warnings || [])
+  const previewAssetWarnings = computed(() => packagePreview.value?.assets?.warnings || [])
+  let previewController: AbortController | null = null
+  let previewRequest = 0
+  const clearPackagePreview = () => {
+    ++previewRequest
+    previewController?.abort()
+    previewController = null
+    packagePreview.value?.assets?.dispose()
+    packagePreview.value = null
+    updateCSSVariables()
+  }
+  const previewThemeAppearance = async (projection: unknown, baseUrl: string, signal: AbortSignal): Promise<boolean> => {
+    clearPackagePreview()
+    if (!projection || typeof projection !== 'object' || !('theme' in projection) || signal.aborted) return false
+    const definition = parseInstalledTheme(projection)
+    if (!definition && projection.theme !== null) return false
+    const preferences = 'customization' in projection ? parseThemePreferences(projection.customization) : null
+    const request = previewRequest
+    const controller = new AbortController()
+    previewController = controller
+    const abort = () => controller.abort()
+    signal.addEventListener('abort', abort, { once: true })
+    packagePreview.value = { theme: definition, preferences, assets: null }
+    updateCSSVariables()
+    try {
+      if (definition?.theme_extension_version === 2) {
+        const token = getToken()
+        if (!token && definition.assets.length) throw new Error('Preview requires authentication')
+        const assets = await loadThemeAssets(definition, baseUrl, controller.signal, token)
+        if (request !== previewRequest || controller.signal.aborted) {
+          assets.dispose()
+          if (request === previewRequest) clearPackagePreview()
+          return false
+        }
+        if (assets.font) document.fonts?.add(assets.font)
+        packagePreview.value = { theme: definition, preferences, assets }
+        updateCSSVariables()
+      }
+      return request === previewRequest && !controller.signal.aborted
+    } catch {
+      if (request === previewRequest) clearPackagePreview()
+      return false
+    } finally { signal.removeEventListener('abort', abort) }
+  }
   let assetController: AbortController | null = null
   const clearAssets = () => {
     assetController?.abort()
@@ -36,6 +86,7 @@ export const useSettingsStore = defineStore('settings', () => {
     themeAssets.value = null
   }
   onScopeDispose(clearAssets)
+  onScopeDispose(clearPackagePreview)
   // Browser-only preview, cleared on route exit; never persisted or sent to an API.
   const previewDesign = shallowRef<UiDesign | null>(null)
   const setDesignPreview = (value: unknown): boolean => {
@@ -63,12 +114,23 @@ export const useSettingsStore = defineStore('settings', () => {
         if (controller.signal.aborted) return
         const projection = await readThemeProjection(baseUrl, controller.signal)
         definition = parseInstalledTheme(projection)
+        // A failed request is not an explicit built-in selection. Keep the last
+        // verified theme, preferences and decoded resources across tab wake-up.
+        if (!projection || typeof projection !== 'object' || !('theme' in projection) ||
+            (!definition && projection.theme !== null)) {
+          if (request === appearanceRequest && !controller.signal.aborted) appearanceUnavailable.value = true
+          return
+        }
         if (projection && typeof projection === 'object' && 'theme' in projection &&
           (definition || projection.theme === null) && 'customization' in projection) {
           preferences = parseThemePreferences(projection.customization)
         }
-      } catch { /* Backend discovery failure also uses the built-in settings. */ }
+      } catch {
+        if (request === appearanceRequest && !controller.signal.aborted) appearanceUnavailable.value = true
+        return
+      }
       if (request !== appearanceRequest || controller.signal.aborted) return
+      appearanceUnavailable.value = false
       themePreferences.value = preferences
       if (definition?.theme_extension_version === 2 && activeTheme.value?.theme_extension_version === 2 &&
         definition.package_sha256 === activeTheme.value.package_sha256 && themeAssets.value && !themeAssets.value.warnings.length) {
@@ -134,13 +196,13 @@ export const useSettingsStore = defineStore('settings', () => {
   // Computed property to get current theme settings
   const baseStyleSettings = computed(() => {
     if (installedDesign.value && !appearanceRecovery.value) return designLegacyStyle(installedDesign.value, themeStore.theme)
-    const legacyTheme = activeTheme.value?.theme_extension_version === 1 && !appearanceRecovery.value ? activeTheme.value : null
+    const legacyTheme = displayTheme.value?.theme_extension_version === 1 && !appearanceRecovery.value ? displayTheme.value : null
     return resolveThemeStyle(legacyTheme, themeStore.theme,
       themeStore.theme === 'dark' ? darkStyleSettings : lightStyleSettings)
   })
   const baseUiDesign = computed(() => {
     if (!appearanceRecovery.value && installedDesign.value) return installedDesign.value
-    const legacyTheme = activeTheme.value?.theme_extension_version === 1 && !appearanceRecovery.value ? activeTheme.value : null
+    const legacyTheme = displayTheme.value?.theme_extension_version === 1 && !appearanceRecovery.value ? displayTheme.value : null
     const design = adaptLegacyUi(baseStyleSettings.value, themeStore.theme)
     // Editing the inactive mode must use that theme's real colors, not v2 defaults.
     for (const mode of ['light', 'dark'] as const) {
@@ -150,11 +212,11 @@ export const useSettingsStore = defineStore('settings', () => {
     return design
   })
   const effectivePreferences = computed(() => {
-    const value = !appearanceRecovery.value ? preferencePreview.value || themePreferences.value : null
-    return value && themePreferencesValid(baseUiDesign.value, value, activeTheme.value?.theme_extension_version ?? null) ? value : null
+    const value = !appearanceRecovery.value ? (packagePreview.value ? packagePreview.value.preferences : preferencePreview.value || themePreferences.value) : null
+    return value && themePreferencesValid(baseUiDesign.value, value, displayTheme.value?.theme_extension_version ?? null, themeCustomizationOptions(displayTheme.value)) ? value : null
   })
   const customizedDesign = computed(() => !appearanceRecovery.value && effectivePreferences.value
-    ? applyThemePreferences(baseUiDesign.value, effectivePreferences.value, activeTheme.value?.theme_extension_version === 1) : null)
+    ? applyThemePreferences(baseUiDesign.value, effectivePreferences.value, displayTheme.value?.theme_extension_version === 1) : null)
   const styleSettings = computed(() => customizedDesign.value && effectivePreferences.value?.colors
     ? designLegacyStyle(customizedDesign.value, themeStore.theme) : baseStyleSettings.value)
   const uiDesign = computed(() => previewDesign.value || customizedDesign.value || baseUiDesign.value)
@@ -163,7 +225,7 @@ export const useSettingsStore = defineStore('settings', () => {
     textColor: effectivePreferences.value.header_text_color,
   } : headerSettings)
   const brandingLogo = computed(() => headerSettings.logoUrl ||
-    (!appearanceRecovery.value && !previewDesign.value ? themeAssets.value?.logos[themeStore.theme] || '' : ''))
+    (!appearanceRecovery.value && !previewDesign.value ? (packagePreview.value ? packagePreview.value.assets : themeAssets.value)?.logos[themeStore.theme] || '' : ''))
 
   const loading = ref(false)
   const error = ref('')
@@ -329,15 +391,15 @@ export const useSettingsStore = defineStore('settings', () => {
     root.style.setProperty('--secondary-color', currentSettings.buttonSecondaryBg)
 
     // Button colors
-    root.style.setProperty('--button-primary-text', activeTheme.value ? buttonTextColor(currentSettings.buttonPrimaryBg) : '#ffffff')
+    root.style.setProperty('--button-primary-text', displayTheme.value ? buttonTextColor(currentSettings.buttonPrimaryBg) : '#ffffff')
     root.style.setProperty('--button-primary-hover', adjustColor(currentSettings.buttonPrimaryBg, -20))
     root.style.setProperty('--primary-hover', adjustColor(currentSettings.buttonPrimaryBg, -20))
     root.style.setProperty('--button-primary-border', currentSettings.buttonPrimaryBg)
-    root.style.setProperty('--button-secondary-text', activeTheme.value ? buttonTextColor(currentSettings.buttonSecondaryBg) : '#ffffff')
+    root.style.setProperty('--button-secondary-text', displayTheme.value ? buttonTextColor(currentSettings.buttonSecondaryBg) : '#ffffff')
     root.style.setProperty('--button-secondary-hover', adjustColor(currentSettings.buttonSecondaryBg, -20))
     root.style.setProperty('--secondary-hover', adjustColor(currentSettings.buttonSecondaryBg, -20))
     root.style.setProperty('--button-secondary-border', currentSettings.buttonSecondaryBg)
-    root.style.setProperty('--button-danger-text', activeTheme.value ? buttonTextColor(currentSettings.buttonDangerBg) : '#ffffff')
+    root.style.setProperty('--button-danger-text', displayTheme.value ? buttonTextColor(currentSettings.buttonDangerBg) : '#ffffff')
     root.style.setProperty('--button-danger-hover', adjustColor(currentSettings.buttonDangerBg, -20))
     root.style.setProperty('--button-danger-border', currentSettings.buttonDangerBg)
 
@@ -379,7 +441,8 @@ export const useSettingsStore = defineStore('settings', () => {
       root.style.setProperty('--button-secondary-text', colors.secondary_text)
       root.style.setProperty('--button-danger-text', colors.danger_text)
       root.style.setProperty('--input-focus-border', colors.focus)
-      if (themeAssets.value?.font) root.style.setProperty('--ui-font', `"${themeAssets.value.font.family}", ${root.style.getPropertyValue('--ui-font')}`)
+      const assets = packagePreview.value ? packagePreview.value.assets : themeAssets.value
+      if (assets?.font) root.style.setProperty('--ui-font', `"${assets.font.family}", ${root.style.getPropertyValue('--ui-font')}`)
     }
 
     // console.log('CSS variables updated')
@@ -574,6 +637,11 @@ export const useSettingsStore = defineStore('settings', () => {
 
   return {
     activeTheme,
+    appearanceUnavailable,
+    isPackagePreview,
+    previewAssetWarnings,
+    previewThemeAppearance,
+    clearPackagePreview,
     installedDesign,
     baseUiDesign,
     customizedDesign,
