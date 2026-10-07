@@ -12,6 +12,19 @@ from three_mm_protocol.models import (
     AgentInventory,
     AgentRole,
 )
+from three_mm_protocol.extension_registry import (
+    REGISTRY_API_PREFIX,
+    REGISTRY_PROTOCOL_VERSION,
+    ExtensionRegistryExtensionV1,
+    ExtensionRegistryVersionSummaryV1,
+    ExtensionRegistryVersionV1,
+    ExtensionRegistryVersionsV1,
+    registry_extension_path,
+    registry_manifest_path,
+    registry_package_path,
+    registry_version_path,
+    registry_versions_path,
+)
 from three_mm_protocol.extension_distribution import (
     MAX_EXTENSION_PACKAGE_BYTES,
     ExtensionArtifactSignatureV1,
@@ -115,6 +128,17 @@ from three_mm_protocol.application_extension import (
 
 __all__ = [
     "PROTOCOL_VERSION",
+    "REGISTRY_API_PREFIX",
+    "REGISTRY_PROTOCOL_VERSION",
+    "ExtensionRegistryExtensionV1",
+    "ExtensionRegistryVersionSummaryV1",
+    "ExtensionRegistryVersionV1",
+    "ExtensionRegistryVersionsV1",
+    "registry_extension_path",
+    "registry_manifest_path",
+    "registry_package_path",
+    "registry_version_path",
+    "registry_versions_path",
     "MAX_EXTENSION_PACKAGE_BYTES",
     "ExtensionArtifactSignatureV1",
     "ExtensionArtifactV1",
