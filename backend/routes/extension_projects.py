@@ -15,6 +15,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
@@ -41,6 +42,7 @@ from backend.schemas.ai_extension_builder import ExtensionSpec
 from backend.utils.ai_extension_builder.generator import _ai_refine_files
 from backend.utils.secure_settings import SecureSettingsError, decrypt_secret
 from backend.config import get_settings
+from three_mm_protocol import ModuleManifestV2
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN
 
 
@@ -164,11 +166,23 @@ def _artifact(payload: str | None) -> tuple[bytes | None, str | None, str | None
             if "manifest.json" not in names:
                 raise HTTPException(422, "Build artifact is missing manifest.json")
             manifest = json.loads(archive.read("manifest.json"))
+            if isinstance(manifest, dict) and manifest.get("manifest_version") == 2:
+                try:
+                    manifest = ModuleManifestV2.model_validate(manifest).model_dump(
+                        mode="json", exclude_none=True
+                    )
+                except ValidationError as exc:
+                    raise HTTPException(
+                        422, f"Build artifact has invalid Manifest v2: {exc}"
+                    ) from exc
             is_compiled = (
-                manifest.get("manifest_version") == 2
+                isinstance(manifest, dict)
+                and manifest.get("manifest_version") == 2
                 and (manifest.get("entrypoints") or {}).get("ui") == "compiled-ui.json"
             )
-            artifact_module_id = manifest.get("module_id")
+            artifact_module_id = (
+                manifest.get("module_id") if isinstance(manifest, dict) else None
+            )
             if not isinstance(artifact_module_id, str):
                 artifact_module_id = None
     except HTTPException:

@@ -54,8 +54,23 @@ def _compiled_artifact(
         archive.writestr("manifest.json", json.dumps({
             "manifest_version": 2,
             "module_id": module_id,
+            "name": "Clock",
             "version": version,
+            "runtimes": ["ui"],
             "entrypoints": {"ui": "compiled-ui.json"},
+            "compatibility": {
+                "protocol": "1.0",
+                "extension_api": "1.0",
+                "architectures": ["any"],
+            },
+            "capabilities": {"provides": [], "consumes": []},
+            "permissions": [],
+            "dependencies": {},
+            "conflicts": [],
+            "configuration_schema": {},
+            "configuration_defaults": {},
+            "health_check": {"type": "json_file", "path": "compiled-ui.json"},
+            "registrations": [],
         }))
         archive.writestr("compiled-ui.json", json.dumps({
             "compiled_ui_version": 1,

@@ -3,6 +3,8 @@ import json
 from backend.schemas.ai_extension_builder import ExtensionSpec
 from backend.utils.ai_extension_builder import generator
 from three_mm_protocol import (
+    EXTENSION_API_VERSION,
+    ModuleManifestV2,
     BuilderSettingV1,
     CapabilityBindingV1,
     CapabilityPlanV1,
@@ -269,6 +271,8 @@ def test_capability_plan_produces_a_deterministic_gpio_indicator():
     )
 
     manifest = json.loads(files["manifest.json"])
+    validated_manifest = ModuleManifestV2.model_validate(manifest)
+    assert validated_manifest.compatibility.extension_api == EXTENSION_API_VERSION
     contract = json.loads(files["compiled-ui.json"])
     widget = files["source/frontend/Widget.vue"]
     assert manifest["capabilities"]["consumes"] == ["gpio.digital.input"]

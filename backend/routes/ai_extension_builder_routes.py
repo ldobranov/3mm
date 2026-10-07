@@ -16,6 +16,7 @@ from backend.schemas.ai_extension_builder import (
 from backend.utils.auth_dep import require_user
 from backend.utils.ai_extension_builder.generator import (
     IncompleteAIGenerationError,
+    InvalidGeneratedManifestError,
     build_extension_zip,
     package_extension_zip,
 )
@@ -278,7 +279,7 @@ def generate_extension(
             groq_api_key=groq_key,
             openrouter_api_key=openrouter_key,
         )
-    except IncompleteAIGenerationError as exc:
+    except (IncompleteAIGenerationError, InvalidGeneratedManifestError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return GenerateExtensionResponse(report=report, zip_base64=zip_b64, files_text=files_text)
 
@@ -294,5 +295,8 @@ def package_extension(
     """
 
     _require_admin(claims)
-    report, zip_b64, files_text = package_extension_zip(payload.spec, payload.files_text)
+    try:
+        report, zip_b64, files_text = package_extension_zip(payload.spec, payload.files_text)
+    except InvalidGeneratedManifestError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return GenerateExtensionResponse(report=report, zip_base64=zip_b64, files_text=files_text)

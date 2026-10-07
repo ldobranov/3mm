@@ -10,6 +10,8 @@ from typing import Dict, List, Tuple, Optional
 
 import logging
 
+from pydantic import ValidationError
+
 from backend.schemas.ai_extension_builder import (
     BuildReport,
     BuildWarning,
@@ -23,7 +25,7 @@ from backend.utils.ai_extension_builder.widget_spec import (
     compiled_module_id,
     normalize_widget_spec,
 )
-from three_mm_protocol import EXTENSION_API_VERSION
+from three_mm_protocol import EXTENSION_API_VERSION, ModuleManifestV2
 
 
 logger = logging.getLogger(__name__)
@@ -31,6 +33,20 @@ logger = logging.getLogger(__name__)
 
 class IncompleteAIGenerationError(RuntimeError):
     """Raised when AI leaves a compiled widget as a non-functional scaffold."""
+
+
+class InvalidGeneratedManifestError(ValueError):
+    """Raised when native AI output violates the shared Manifest v2 contract."""
+
+
+def _validated_manifest_v2(data: Dict) -> Dict:
+    try:
+        parsed = ModuleManifestV2.model_validate(data)
+    except ValidationError as exc:
+        raise InvalidGeneratedManifestError(
+            f"Generated Manifest v2 is invalid: {exc}"
+        ) from exc
+    return parsed.model_dump(mode="json", exclude_none=True)
 
 
 def _extension_namespace(name: str) -> str:
@@ -987,6 +1003,7 @@ def _build_compiled_widget_zip(
         "health_check": {"type": "json_file", "path": "compiled-ui.json"},
         "registrations": [{"kind": "widget", "registration_id": f"{module_id}.widget", "metadata": {"entrypoint_id": widget_id}}],
     }
+    manifest = _validated_manifest_v2(manifest)
     files_text = {
         "manifest.json": json.dumps(manifest, ensure_ascii=False, indent=2),
         "compiled-ui.json": json.dumps(contract, ensure_ascii=False, indent=2),
@@ -1296,6 +1313,7 @@ def package_extension_zip(
                     for permission in binding.permissions
                 }) if normalized.capability_plan else [],
             })
+            manifest = _validated_manifest_v2(manifest)
             contract["version"] = normalized.version
             if normalized.capability_plan:
                 contract["capability_plan"] = normalized.capability_plan.model_dump(mode="json")
