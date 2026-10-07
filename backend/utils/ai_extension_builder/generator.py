@@ -23,6 +23,7 @@ from backend.utils.ai_extension_builder.widget_spec import (
     compiled_module_id,
     normalize_widget_spec,
 )
+from three_mm_protocol import EXTENSION_API_VERSION
 
 
 logger = logging.getLogger(__name__)
@@ -975,7 +976,7 @@ def _build_compiled_widget_zip(
     manifest = {
         "manifest_version": 2, "module_id": module_id, "name": spec.name, "version": spec.version,
         "description": spec.description, "runtimes": ["ui"], "entrypoints": {"ui": "compiled-ui.json"},
-        "compatibility": {"protocol": "1.0", "agent": ">=0.1.0", "core": ">=0.1.0", "architectures": ["any"]},
+        "compatibility": {"protocol": "1.0", "extension_api": EXTENSION_API_VERSION, "agent": ">=0.1.0", "core": ">=0.1.0", "architectures": ["any"]},
         "capabilities": {
             "provides": [],
             "consumes": sorted({binding.capability_id for binding in spec.capability_plan.bindings}) if spec.capability_plan else [],

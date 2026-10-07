@@ -5,7 +5,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 from pydantic import ValidationError
-from three_mm_protocol import ModuleManifestV2, meets_minimum_version
+from three_mm_protocol import (
+    EXTENSION_API_VERSION,
+    ModuleManifestV2,
+    meets_minimum_version,
+    supports_extension_api,
+)
 from three_mm_protocol.capability_contracts import CapabilityContractError, validate_value
 from three_mm_protocol.capability_availability import CapabilityAvailabilityReportV1, declaration_digest
 from datetime import UTC, datetime
@@ -28,10 +33,19 @@ class CapabilityService(Protocol):
 RuntimeHandler = Callable[[ModuleManifestV2, Path], dict[str, CapabilityService] | None]
 
 class AgentModuleRuntime:
-    def __init__(self, data_dir: Path, *, architecture: str, protocol_version: str = "1.0", runtime_handlers: dict[str, RuntimeHandler] | None = None):
+    def __init__(
+        self,
+        data_dir: Path,
+        *,
+        architecture: str,
+        protocol_version: str = "1.0",
+        extension_api_version: str = EXTENSION_API_VERSION,
+        runtime_handlers: dict[str, RuntimeHandler] | None = None,
+    ):
         self.root = data_dir / "modules"
         self.architecture = architecture
         self.protocol_version = protocol_version
+        self.extension_api_version = extension_api_version
         self.runtime_handlers = dict(runtime_handlers or {})
         self._services: dict[str, CapabilityService] = {}
         self._contracts = {}
@@ -61,6 +75,10 @@ class AgentModuleRuntime:
             raise ModuleLifecycleError("package does not target Agent")
         if manifest.compatibility.protocol != self.protocol_version:
             raise ModuleLifecycleError("incompatible protocol")
+        if not supports_extension_api(
+            self.extension_api_version, manifest.compatibility.extension_api
+        ):
+            raise ModuleLifecycleError("incompatible Extension API")
         if not meets_minimum_version(__version__, manifest.compatibility.agent):
             raise ModuleLifecycleError("incompatible Agent runtime version")
         if self.architecture not in manifest.compatibility.architectures and "any" not in manifest.compatibility.architectures:

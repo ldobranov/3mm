@@ -7,12 +7,14 @@ from backend.version import core_version as actual_core_version
 from backend.services.theme_assets import validate_theme_assets
 from three_mm_protocol.theme_extension_v2 import ThemeExtensionV2
 from three_mm_protocol import (
+    EXTENSION_API_VERSION,
     ApplicationExtensionV1,
     CompiledUiExtensionV1,
     ModuleManifestV2,
     RuntimeExtensionV1,
     ThemeExtensionV1,
     meets_minimum_version,
+    supports_extension_api,
 )
 
 MAX_PACKAGE_BYTES = 10 * 1024 * 1024
@@ -129,7 +131,14 @@ def _read_compiled_ui(
         )
     return compiled_ui, source_files
 
-def validate_module_package(package: bytes, *, architecture: str | None = None, protocol_version: str = "1.0", core_version: str | None = None) -> ValidatedModulePackage:
+def validate_module_package(
+    package: bytes,
+    *,
+    architecture: str | None = None,
+    protocol_version: str = "1.0",
+    extension_api_version: str = EXTENSION_API_VERSION,
+    core_version: str | None = None,
+) -> ValidatedModulePackage:
     if not package or len(package) > MAX_PACKAGE_BYTES:
         raise ModulePackageError("module package size is outside the allowed range")
     try:
@@ -164,6 +173,10 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
         raise ModulePackageError(f"unsupported permissions: {', '.join(unsupported)}")
     if manifest.compatibility.protocol != protocol_version:
         raise ModulePackageError("incompatible protocol version")
+    if not supports_extension_api(
+        extension_api_version, manifest.compatibility.extension_api
+    ):
+        raise ModulePackageError("incompatible Extension API version")
     if "core" in manifest.runtimes:
         try:
             version = core_version if core_version is not None else actual_core_version()

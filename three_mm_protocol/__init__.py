@@ -13,12 +13,15 @@ from three_mm_protocol.models import (
     AgentRole,
 )
 from three_mm_protocol.module_manifest import (
+    EXTENSION_API_VERSION,
     ModuleCapabilities,
     ModuleCompatibility,
     ModuleHealthCheck,
     ModuleManifestV2,
+    ModulePublisher,
     ModuleRegistration,
     meets_minimum_version,
+    supports_extension_api,
 )
 from three_mm_protocol.automation import (
     AutomationCapabilityContextV1,
@@ -124,12 +127,15 @@ __all__ = [
     "CapabilityContractV1",
     "CapabilityActionV1",
     "AgentRole",
+    "EXTENSION_API_VERSION",
     "ModuleCapabilities",
     "ModuleCompatibility",
     "ModuleHealthCheck",
     "ModuleManifestV2",
+    "ModulePublisher",
     "ModuleRegistration",
     "meets_minimum_version",
+    "supports_extension_api",
     "AutomationCapabilityContextV1",
     "AutomationCapabilityContextV2",
     "AutomationDefinitionV1",
