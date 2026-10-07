@@ -12,6 +12,7 @@ import {
   deriveExtensionNamespace,
   extensionNameToSnakeCase,
   getHttpErrorMessage,
+  readManifestModuleId,
   routeRequiresAuth,
   setRouteRequiresAuth,
   type BuilderCapability,
@@ -51,6 +52,8 @@ describe('extension builder model', () => {
 
     expect(second.frontend_routes[0].path).toBe('/my')
     expect(createGeneratedModuleId('GPIO Status Widget')).toBe('org.3mm.generated.gpio-status-widget')
+    expect(readManifestModuleId('{"module_id":"org.3mm.generated.original"}')).toBe('org.3mm.generated.original')
+    expect(readManifestModuleId('{"module_id":"Invalid ID"}')).toBeNull()
     expect(deriveExtensionNamespace('Store Extension')).toBe('store')
     expect(extensionNameToSnakeCase('GPIOStatusExtension')).toBe('gpiostatus')
     expect(createGuidedProjectName('', 'status light widget for GPIO')).toBe('StatusLightWidget')

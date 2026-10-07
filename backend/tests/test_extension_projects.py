@@ -15,6 +15,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend.db.base import Base
 from backend.db.display import Display
+from backend.db.extension_project import ExtensionProject, ExtensionProjectFile
 from backend.db.user import User
 from backend.db.widget import Widget
 from backend.routes.extension_projects import router
@@ -246,3 +247,42 @@ def test_modify_existing_returns_reviewable_diff_without_mutating_source(monkeyp
     unchanged = client.get(f"/api/v1/extension-projects/{created['project_id']}", headers=headers).json()
     assert {item["path"]: item["content"] for item in unchanged["files"]}["source/frontend/Widget.vue"] == "<template>Clock</template>"
     db.close()
+
+def test_existing_project_without_pinned_id_preserves_manifest_identity():
+    client, db, headers, _ = _client()
+    created = client.post(
+        "/api/v1/extension-projects",
+        headers=headers,
+        json={"name": "Renamed Project", "project_type": "widget", "spec": {}},
+    ).json()
+    project = db.query(ExtensionProject).filter(
+        ExtensionProject.project_id == created["project_id"]
+    ).one()
+    project.spec = {}
+    manifest_content = json.dumps({"module_id": "org.3mm.generated.original-name"})
+    project.files.append(
+        ExtensionProjectFile(
+            path="manifest.json",
+            content=manifest_content,
+            sha256=hashlib.sha256(manifest_content.encode()).hexdigest(),
+        )
+    )
+    db.commit()
+
+    updated = client.patch(
+        f"/api/v1/extension-projects/{created['project_id']}",
+        headers=headers,
+        json={
+            "expected_revision": 1,
+            "name": "Different Display Name",
+            "spec": {"module_id": "org.3mm.generated.original-name"},
+        },
+    )
+
+    assert updated.status_code == 200
+    assert (
+        updated.json()["spec"]["module_id"]
+        == "org.3mm.generated.original-name"
+    )
+    db.close()
+

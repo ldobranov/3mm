@@ -72,6 +72,16 @@ def _project_module_id(project: ExtensionProject) -> str:
     module_id = container.get("module_id")
     if isinstance(module_id, str) and MODULE_ID_RE.fullmatch(module_id):
         return module_id
+    for project_file in project.files:
+        if project_file.path != "manifest.json":
+            continue
+        try:
+            manifest = json.loads(project_file.content)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        module_id = manifest.get("module_id") if isinstance(manifest, dict) else None
+        if isinstance(module_id, str) and MODULE_ID_RE.fullmatch(module_id):
+            return module_id
     return _generated_module_id(project.slug)
 
 

@@ -942,6 +942,7 @@ import {
   deriveExtensionNamespace,
   extensionNameToSnakeCase,
   getHttpErrorMessage,
+  readManifestModuleId,
   routeRequiresAuth,
   setRouteRequiresAuth,
   type BuildReport,
@@ -1222,7 +1223,10 @@ const hydrateProject = (project: ExtensionProject) => {
     version: project.current_version
   }
   if (!hydratedSpec.module_id) {
-    hydratedSpec.module_id = createGeneratedModuleId(project.slug)
+    const storedManifest = project.files.find(file => file.path === 'manifest.json')
+    hydratedSpec.module_id = (
+      storedManifest ? readManifestModuleId(storedManifest.content) : null
+    ) || createGeneratedModuleId(project.slug)
   }
   spec.value = hydratedSpec
   templateKey.value = builderState.template_key || 'simple'

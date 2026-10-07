@@ -174,6 +174,18 @@ export const createGeneratedModuleId = (value: string): string => {
   return `org.3mm.generated.${slug}`
 }
 
+export const readManifestModuleId = (content: string): string | null => {
+  try {
+    const value = JSON.parse(content)
+    const moduleId = value && typeof value === 'object' ? value.module_id : null
+    return typeof moduleId === 'string' && /^[a-z0-9]+(?:[.-][a-z0-9]+)+$/.test(moduleId)
+      ? moduleId
+      : null
+  } catch {
+    return null
+  }
+}
+
 export const deriveExtensionNamespace = (name: string): string => {
   const base = (name || '').replace(/Extension$/i, '').trim() || name
   return base.toLowerCase().replace(/[^a-z0-9]/g, '')

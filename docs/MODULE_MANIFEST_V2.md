@@ -35,8 +35,10 @@ not have a separate manifest or compatibility path.
 
 AI projects pin a `module_id` when the project is first persisted. Renaming the
 display name must not change that identity. Older projects without a stored ID
-derive it once from the project's immutable slug; build history then rejects a
-compiled artifact whose `module_id` does not match the project.
+first preserve a valid `module_id` from their stored generated `manifest.json`;
+only projects that never produced such a manifest fall back to the immutable
+project slug. Build history rejects a compiled artifact whose `module_id` does
+not match the project.
 
 The initial deny-by-default permission policy recognizes `data.read`,
 `data.write`, `events.consume`, `events.publish`, `network.outbound`,
