@@ -57,3 +57,26 @@ strict configuration keys, secret-reference fields, service artifact and UI
 route entrypoints are validated together. Until the supervised Stage 2 runtime
 exists, the package upload endpoint rejects this otherwise valid format so no
 service or route can be partially activated.
+
+
+## Extension Distribution v1
+
+The public distribution filename for a Module Manifest v2 artifact is `.cxp`
+(3mm Extension Package). A `.cxp` remains ZIP-compatible and uses the existing
+immutable package bytes, validator, SHA-256 identity and `ModulePackage` store.
+Existing local `.zip` uploads remain backward-compatible; Extension Platform v2
+does not create a second package format or package database.
+
+Registry authenticity is detached from the archive. A publisher signs the
+domain-separated canonical tuple represented by `ExtensionArtifactV1`:
+`module_id`, semantic `version`, `publisher_id`, exact `sha256` and
+`size_bytes`, plus the publisher `key_id`. Core first verifies the downloaded
+bytes against that metadata, then verifies the detached Ed25519 publisher
+signature against an explicitly trusted publisher key, and finally runs the
+existing strict `validate_module_package()` boundary.
+
+The detached design is intentional: signing never rewrites the package bytes,
+so mirrors and private registries can distribute the exact same immutable
+artifact without changing its SHA-256 identity. Registry/source trust and key
+management are separate from the package contract and are introduced by the
+next Distribution stage.

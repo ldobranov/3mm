@@ -8,6 +8,7 @@ from backend.services.theme_assets import validate_theme_assets
 from three_mm_protocol.theme_extension_v2 import ThemeExtensionV2
 from three_mm_protocol import (
     EXTENSION_API_VERSION,
+    MAX_EXTENSION_PACKAGE_BYTES,
     ApplicationExtensionV1,
     CompiledUiExtensionV1,
     ModuleManifestV2,
@@ -16,7 +17,7 @@ from three_mm_protocol import (
     module_compatibility_issues,
 )
 
-MAX_PACKAGE_BYTES = 10 * 1024 * 1024
+MAX_PACKAGE_BYTES = MAX_EXTENSION_PACKAGE_BYTES
 MAX_EXPANDED_BYTES = 40 * 1024 * 1024
 MAX_FILES = 256
 MAX_THEME_DEFINITION_BYTES = 64 * 1024

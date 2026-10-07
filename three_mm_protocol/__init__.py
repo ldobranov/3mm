@@ -12,6 +12,15 @@ from three_mm_protocol.models import (
     AgentInventory,
     AgentRole,
 )
+from three_mm_protocol.extension_distribution import (
+    MAX_EXTENSION_PACKAGE_BYTES,
+    ExtensionArtifactSignatureV1,
+    ExtensionArtifactV1,
+    ExtensionPublisherKeyV1,
+    canonical_extension_artifact_signature,
+    verify_extension_artifact_bytes,
+    verify_extension_artifact_signature,
+)
 from three_mm_protocol.module_manifest import (
     EXTENSION_API_VERSION,
     ModuleCapabilities,
@@ -106,6 +115,13 @@ from three_mm_protocol.application_extension import (
 
 __all__ = [
     "PROTOCOL_VERSION",
+    "MAX_EXTENSION_PACKAGE_BYTES",
+    "ExtensionArtifactSignatureV1",
+    "ExtensionArtifactV1",
+    "ExtensionPublisherKeyV1",
+    "canonical_extension_artifact_signature",
+    "verify_extension_artifact_bytes",
+    "verify_extension_artifact_signature",
     "AgentHealth",
     "AgentHeartbeat",
     "AgentCommand",
