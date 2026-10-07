@@ -21,6 +21,7 @@ from three_mm_protocol.module_manifest import (
     ModulePublisher,
     ModuleRegistration,
     meets_minimum_version,
+    module_compatibility_issues,
     supports_extension_api,
 )
 from three_mm_protocol.automation import (
@@ -135,6 +136,7 @@ __all__ = [
     "ModulePublisher",
     "ModuleRegistration",
     "meets_minimum_version",
+    "module_compatibility_issues",
     "supports_extension_api",
     "AutomationCapabilityContextV1",
     "AutomationCapabilityContextV2",

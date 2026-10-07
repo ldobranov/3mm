@@ -8,8 +8,7 @@ from pydantic import ValidationError
 from three_mm_protocol import (
     EXTENSION_API_VERSION,
     ModuleManifestV2,
-    meets_minimum_version,
-    supports_extension_api,
+    module_compatibility_issues,
 )
 from three_mm_protocol.capability_contracts import CapabilityContractError, validate_value
 from three_mm_protocol.capability_availability import CapabilityAvailabilityReportV1, declaration_digest
@@ -71,17 +70,24 @@ class AgentModuleRuntime:
             manifest = ModuleManifestV2.model_validate(json.loads(archive.read("manifest.json")))
         except (zipfile.BadZipFile, KeyError, json.JSONDecodeError, ValidationError) as exc:
             raise ModuleLifecycleError("invalid module package") from exc
-        if "agent" not in manifest.runtimes:
+        compatibility_issues = module_compatibility_issues(
+            manifest,
+            runtime="agent",
+            runtime_version=__version__,
+            architecture=self.architecture,
+            protocol_version=self.protocol_version,
+            extension_api_version=self.extension_api_version,
+            require_runtime=True,
+        )
+        if "runtime" in compatibility_issues:
             raise ModuleLifecycleError("package does not target Agent")
-        if manifest.compatibility.protocol != self.protocol_version:
+        if "protocol" in compatibility_issues:
             raise ModuleLifecycleError("incompatible protocol")
-        if not supports_extension_api(
-            self.extension_api_version, manifest.compatibility.extension_api
-        ):
+        if "extension_api" in compatibility_issues:
             raise ModuleLifecycleError("incompatible Extension API")
-        if not meets_minimum_version(__version__, manifest.compatibility.agent):
+        if {"runtime_version", "runtime_version_invalid"} & set(compatibility_issues):
             raise ModuleLifecycleError("incompatible Agent runtime version")
-        if self.architecture not in manifest.compatibility.architectures and "any" not in manifest.compatibility.architectures:
+        if "architecture" in compatibility_issues:
             raise ModuleLifecycleError("incompatible architecture")
         if set(manifest.permissions) - AGENT_ALLOWED_PERMISSIONS:
             raise ModuleLifecycleError("permission policy rejected package")

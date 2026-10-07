@@ -8,7 +8,11 @@ from pydantic import ValidationError
 
 from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
 from backend.services.module_packages import ModulePackageError, validate_module_package
-from three_mm_protocol import EXTENSION_API_VERSION, ModuleManifestV2
+from three_mm_protocol import (
+    EXTENSION_API_VERSION,
+    ModuleManifestV2,
+    module_compatibility_issues,
+)
 
 
 def manifest(**changes):
@@ -87,3 +91,28 @@ def test_agent_rejects_unsupported_extension_api(tmp_path):
 
     with pytest.raises(ModuleLifecycleError, match="Extension API"):
         runtime.install(blob, expected_sha256=hashlib.sha256(blob).hexdigest())
+
+
+def test_shared_compatibility_evaluator_is_runtime_neutral():
+    parsed = ModuleManifestV2.model_validate(manifest())
+
+    assert module_compatibility_issues(
+        parsed,
+        runtime="core",
+        runtime_version="0.1.0",
+        architecture="aarch64",
+    ) == ()
+    assert module_compatibility_issues(
+        parsed,
+        runtime="agent",
+        runtime_version="0.0.1",
+        architecture="x86_64",
+        require_runtime=True,
+    ) == ("runtime_version", "architecture")
+    assert module_compatibility_issues(
+        parsed,
+        runtime="core",
+        runtime_version="0.1.0",
+        architecture="aarch64",
+        require_runtime=True,
+    ) == ("runtime",)

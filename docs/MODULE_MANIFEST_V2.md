@@ -22,7 +22,10 @@ Registry/publishing layer may require it without changing Core package identity.
 
 Core validates archive size, expanded size, file count, paths, symbolic links,
 permissions, compatibility, and SHA-256 integrity before accepting or sending a
-package. A published `(module_id, version)` is immutable.
+package. Core and Agent call the shared `module_compatibility_issues()` evaluator,
+so protocol, Extension API, runtime-version and architecture decisions cannot drift
+between hosts. The evaluator returns machine-readable issue codes for future SDK
+and AI planning surfaces. A published `(module_id, version)` is immutable.
 
 Agent stages outside the active release, validates again, and runs the declared
 health check. Only a healthy release becomes active. A failed update leaves the

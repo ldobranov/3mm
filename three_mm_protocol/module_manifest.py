@@ -1,6 +1,8 @@
-"""Module manifest v2 contract shared by Core and Agent."""
+"""Module manifest v2 contract shared by Core, Agent and extension tooling."""
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field, model_validator, model_serializer
+
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
+
 from three_mm_protocol.capability_contracts import CapabilityContractV1, registration_contract
 
 SEMVER_PATTERN = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
@@ -8,14 +10,26 @@ MODULE_ID_PATTERN = r"^[a-z0-9]+(?:[.-][a-z0-9]+)+$"
 PUBLISHER_ID_PATTERN = r"^[a-z0-9]+(?:[.-][a-z0-9]+)*$"
 EXTENSION_API_VERSION = "1.0"
 
+CompatibilityIssueCode = Literal[
+    "runtime",
+    "protocol",
+    "extension_api",
+    "runtime_version",
+    "runtime_version_invalid",
+    "architecture",
+]
+
+
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+
 
 class ModulePublisher(StrictModel):
     """Stable publisher identity metadata for distribution and registry layers."""
 
     id: str = Field(pattern=PUBLISHER_ID_PATTERN, max_length=120)
     name: str = Field(min_length=1, max_length=120)
+
 
 class ModuleCompatibility(StrictModel):
     protocol: str = Field(pattern=r"^\d+\.\d+$")
@@ -24,9 +38,11 @@ class ModuleCompatibility(StrictModel):
     core: str = Field(default=">=0.1.0", pattern=r"^>=\d+\.\d+\.\d+$")
     architectures: tuple[str, ...] = Field(min_length=1)
 
+
 class ModuleCapabilities(StrictModel):
     provides: tuple[str, ...] = ()
     consumes: tuple[str, ...] = ()
+
 
 class ModuleHealthCheck(StrictModel):
     type: Literal["file_exists", "json_file"]
@@ -39,20 +55,25 @@ class ModuleHealthCheck(StrictModel):
             raise ValueError("health check path must stay inside module data")
         return self
 
+
 def supports_extension_api(supported: str, requested: str) -> bool:
     """Accept the same API major and any supported minor at or above the request."""
     supported_major, supported_minor = (int(part) for part in supported.split("."))
     requested_major, requested_minor = (int(part) for part in requested.split("."))
     return supported_major == requested_major and supported_minor >= requested_minor
 
+
 def meets_minimum_version(current: str, requirement: str) -> bool:
     """Evaluate the deliberately small manifest-v2 `>=x.y.z` contract."""
     required = requirement.removeprefix(">=")
+
     def parts(value: str) -> tuple[int, int, int]:
         clean = value.split("-", 1)[0].split("+", 1)[0]
         major, minor, patch = clean.split(".")
         return int(major), int(minor), int(patch)
+
     return parts(current) >= parts(required)
+
 
 class ModuleRegistration(StrictModel):
     kind: Literal["navigation", "service", "widget", "capability"]
@@ -73,6 +94,7 @@ class ModuleRegistration(StrictModel):
         if self.contract is None:
             data.pop("contract", None)
         return data
+
 
 class ModuleManifestV2(StrictModel):
     manifest_version: Literal[2]
@@ -105,3 +127,65 @@ class ModuleManifestV2(StrictModel):
         if len(set(ids)) != len(ids):
             raise ValueError("registration IDs must be unique")
         return self
+
+
+def module_compatibility_issues(
+    manifest: ModuleManifestV2,
+    *,
+    runtime: Literal["core", "agent", "ui"] | None = None,
+    runtime_version: str | None = None,
+    architecture: str | None = None,
+    protocol_version: str = "1.0",
+    extension_api_version: str = EXTENSION_API_VERSION,
+    require_runtime: bool = False,
+) -> tuple[CompatibilityIssueCode, ...]:
+    """Evaluate one shared compatibility contract without runtime-specific policy.
+
+    Core uses this while cataloging packages and only requires Core compatibility
+    when a package actually targets Core. Agent uses the same evaluator with
+    `require_runtime=True` before installation. The returned codes are stable,
+    machine-readable input for developer tooling and the AI Extension Generator.
+    """
+
+    issues: list[CompatibilityIssueCode] = []
+
+    if runtime is not None and require_runtime and runtime not in manifest.runtimes:
+        issues.append("runtime")
+
+    if manifest.compatibility.protocol != protocol_version:
+        issues.append("protocol")
+
+    try:
+        api_supported = supports_extension_api(
+            extension_api_version, manifest.compatibility.extension_api
+        )
+    except (TypeError, ValueError):
+        api_supported = False
+    if not api_supported:
+        issues.append("extension_api")
+
+    if runtime in {"core", "agent"} and runtime in manifest.runtimes:
+        requirement = (
+            manifest.compatibility.core
+            if runtime == "core"
+            else manifest.compatibility.agent
+        )
+        if runtime_version is None:
+            issues.append("runtime_version_invalid")
+        else:
+            try:
+                runtime_supported = meets_minimum_version(runtime_version, requirement)
+            except (TypeError, ValueError):
+                issues.append("runtime_version_invalid")
+            else:
+                if not runtime_supported:
+                    issues.append("runtime_version")
+
+    if (
+        architecture
+        and architecture not in manifest.compatibility.architectures
+        and "any" not in manifest.compatibility.architectures
+    ):
+        issues.append("architecture")
+
+    return tuple(issues)

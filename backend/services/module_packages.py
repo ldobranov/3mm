@@ -13,8 +13,7 @@ from three_mm_protocol import (
     ModuleManifestV2,
     RuntimeExtensionV1,
     ThemeExtensionV1,
-    meets_minimum_version,
-    supports_extension_api,
+    module_compatibility_issues,
 )
 
 MAX_PACKAGE_BYTES = 10 * 1024 * 1024
@@ -171,21 +170,27 @@ def validate_module_package(
     unsupported = sorted(set(manifest.permissions) - ALLOWED_PERMISSIONS)
     if unsupported:
         raise ModulePackageError(f"unsupported permissions: {', '.join(unsupported)}")
-    if manifest.compatibility.protocol != protocol_version:
+    try:
+        runtime_version = core_version if core_version is not None else actual_core_version()
+    except (TypeError, ValueError) as exc:
+        raise ModulePackageError("Core runtime version is unavailable or invalid") from exc
+    compatibility_issues = module_compatibility_issues(
+        manifest,
+        runtime="core",
+        runtime_version=runtime_version,
+        architecture=architecture,
+        protocol_version=protocol_version,
+        extension_api_version=extension_api_version,
+    )
+    if "protocol" in compatibility_issues:
         raise ModulePackageError("incompatible protocol version")
-    if not supports_extension_api(
-        extension_api_version, manifest.compatibility.extension_api
-    ):
+    if "extension_api" in compatibility_issues:
         raise ModulePackageError("incompatible Extension API version")
-    if "core" in manifest.runtimes:
-        try:
-            version = core_version if core_version is not None else actual_core_version()
-            compatible = meets_minimum_version(version, manifest.compatibility.core)
-        except ValueError as exc:
-            raise ModulePackageError("Core runtime version is unavailable or invalid") from exc
-        if not compatible:
-            raise ModulePackageError("incompatible Core runtime version")
-    if architecture and architecture not in manifest.compatibility.architectures and "any" not in manifest.compatibility.architectures:
+    if "runtime_version_invalid" in compatibility_issues:
+        raise ModulePackageError("Core runtime version is unavailable or invalid")
+    if "runtime_version" in compatibility_issues:
+        raise ModulePackageError("incompatible Core runtime version")
+    if "architecture" in compatibility_issues:
         raise ModulePackageError("incompatible CPU architecture")
     package_files = {
         item.filename.replace("\\", "/") for item in infos if not item.is_dir()
