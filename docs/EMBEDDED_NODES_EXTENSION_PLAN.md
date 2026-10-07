@@ -1,4 +1,4 @@
-# CONERAX Embedded v0.1 — future extension and firmware
+# 3mm Embedded v0.1 — future extension and firmware
 
 Recorded: 2026-10-04, by owner request near the end of the product milestones.
 Roadmap reference: Milestone 18. Design context: chat “Разширяване към ESP чипове”.

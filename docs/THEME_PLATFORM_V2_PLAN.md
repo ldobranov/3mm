@@ -1,4 +1,4 @@
-# CONERAX Theme Platform v2 — цялостни визуални теми
+# 3mm Theme Platform v2 — цялостни визуални теми
 
 Дата: 2026-10-05. Статус: V0–V4 реализирани локално, подготвени за beta.37;
 V5–V8 предстоящи. Публикацията зависи от release workflow; няма live deploy.

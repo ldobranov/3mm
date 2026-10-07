@@ -101,6 +101,11 @@ class ApplicationRuntimeSettings(BaseModel):
     )
 
 
+class PublicWebSettings(BaseModel):
+    gateway_socket: Path = PROJECT_ROOT / ".runtime" / "public-web" / "core.sock"
+    gateway_group: str | None = Field(default=None, max_length=64)
+
+
 class AppSettings(BaseModel):
     frontend: FrontendSettings = Field(default_factory=FrontendSettings)
     backend: BackendSettings = Field(default_factory=BackendSettings)
@@ -112,6 +117,7 @@ class AppSettings(BaseModel):
     applications: ApplicationRuntimeSettings = Field(
         default_factory=ApplicationRuntimeSettings
     )
+    public_web: PublicWebSettings = Field(default_factory=PublicWebSettings)
 
     @property
     def database_url(self) -> str:
@@ -168,6 +174,7 @@ def get_settings() -> AppSettings:
     network_recovery = dict(data.get("network_recovery") or {})
     backups = dict(data.get("backups") or {})
     applications = dict(data.get("applications") or {})
+    public_web = dict(data.get("public_web") or {})
 
     if database_url := os.getenv("DATABASE_URL"):
         backend["database_url"] = database_url
@@ -249,6 +256,10 @@ def get_settings() -> AppSettings:
         applications["helper_socket"] = application_helper
     if application_platform_socket := os.getenv("THREE_MM_APPLICATION_PLATFORM_SOCKET"):
         applications["platform_socket"] = application_platform_socket
+    if public_web_gateway_socket := os.getenv("THREE_MM_PUBLIC_WEB_GATEWAY_SOCKET"):
+        public_web["gateway_socket"] = public_web_gateway_socket
+    if public_web_gateway_group := os.getenv("THREE_MM_PUBLIC_WEB_GATEWAY_GROUP"):
+        public_web["gateway_group"] = public_web_gateway_group
 
     backend["database_url"] = _normalize_database_url(
         backend.get("database_url", BackendSettings().database_url)
@@ -261,4 +272,5 @@ def get_settings() -> AppSettings:
         network_recovery=NetworkRecoverySettings.model_validate(network_recovery),
         backups=BackupSettings.model_validate(backups),
         applications=ApplicationRuntimeSettings.model_validate(applications),
+        public_web=PublicWebSettings.model_validate(public_web),
     )

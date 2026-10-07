@@ -1,5 +1,6 @@
 """Strict contract for supervised business application extensions."""
 
+import base64
 import json
 import re
 from typing import Literal
@@ -152,6 +153,244 @@ class ApplicationRouteV1(StrictApplicationModel):
         return self
 
 
+
+PUBLIC_HTTP_TEXT_CONTENT_TYPES = (
+    "text/html; charset=utf-8",
+    "text/plain; charset=utf-8",
+    "text/css; charset=utf-8",
+    "application/javascript; charset=utf-8",
+    "application/json",
+    "application/manifest+json",
+    "application/xml",
+    "text/xml; charset=utf-8",
+    "application/rss+xml",
+    "application/atom+xml",
+)
+PUBLIC_HTTP_BINARY_CONTENT_TYPES = (
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/avif",
+    "image/gif",
+    "image/svg+xml",
+    "image/x-icon",
+    "font/woff",
+    "font/woff2",
+    "application/pdf",
+)
+PUBLIC_HTTP_CONTENT_TYPES = PUBLIC_HTTP_TEXT_CONTENT_TYPES + PUBLIC_HTTP_BINARY_CONTENT_TYPES
+PUBLIC_HTTP_MAX_BODY_BYTES = 512 * 1024
+PUBLIC_HTTP_RESPONSE_HEADERS = frozenset({
+    "cache-control",
+    "content-language",
+    "etag",
+    "last-modified",
+    "link",
+    "vary",
+})
+
+
+def public_http_request_schema_v1() -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "method": {"type": "string", "enum": ["GET", "HEAD"]},
+            "path": {"type": "string"},
+            "path_params": {"type": "object"},
+            "query": {"type": "object"},
+            "headers": {"type": "object"},
+        },
+        "required": ["method", "path", "path_params", "query", "headers"],
+        "additionalProperties": False,
+    }
+
+
+def public_http_response_schema_v1() -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "status": {
+                "type": "integer",
+                "enum": [200, 204, 304, 301, 302, 307, 308, 400, 403, 404, 405, 410, 429, 500, 503],
+            },
+            "content_type": {"type": "string", "enum": list(PUBLIC_HTTP_CONTENT_TYPES)},
+            "headers": {"type": "object"},
+            "body": {"type": "string"},
+            "body_base64": {"type": "string"},
+            "location": {"type": "string"},
+        },
+        "required": ["status", "headers"],
+        "additionalProperties": False,
+    }
+
+
+class ApplicationPublicHttpRequestV1(StrictApplicationModel):
+    method: Literal["GET", "HEAD"]
+    path: str = Field(min_length=1, max_length=2048)
+    path_params: dict[str, str] = Field(default_factory=dict, max_length=32)
+    query: dict[str, tuple[str, ...]] = Field(default_factory=dict, max_length=64)
+    headers: dict[str, str] = Field(default_factory=dict, max_length=8)
+
+    @model_validator(mode="after")
+    def validate_request_bounds(self):
+        if not self.path.startswith("/") or any(char in self.path for char in ("\r", "\n", "\x00")):
+            raise ValueError("public HTTP request path is invalid")
+        for name, value in self.path_params.items():
+            if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", name) or len(value) > 2048:
+                raise ValueError("public HTTP path parameter is invalid")
+        for name, values in self.query.items():
+            if not name or len(name) > 128 or len(values) > 32:
+                raise ValueError("public HTTP query is too large")
+            if any(len(value) > 4096 for value in values):
+                raise ValueError("public HTTP query value is too large")
+        allowed_headers = {"accept", "accept-language", "if-none-match", "if-modified-since"}
+        if set(self.headers) - allowed_headers:
+            raise ValueError("public HTTP request contains an undeclared forwarded header")
+        if any(len(value) > 4096 or "\r" in value or "\n" in value for value in self.headers.values()):
+            raise ValueError("public HTTP request header is invalid")
+        return self
+
+
+class ApplicationPublicHttpResponseV1(StrictApplicationModel):
+    status: Literal[200, 204, 304, 301, 302, 307, 308, 400, 403, 404, 405, 410, 429, 500, 503]
+    content_type: Literal[
+        "text/html; charset=utf-8",
+        "text/plain; charset=utf-8",
+        "text/css; charset=utf-8",
+        "application/javascript; charset=utf-8",
+        "application/json",
+        "application/manifest+json",
+        "application/xml",
+        "text/xml; charset=utf-8",
+        "application/rss+xml",
+        "application/atom+xml",
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "image/avif",
+        "image/gif",
+        "image/svg+xml",
+        "image/x-icon",
+        "font/woff",
+        "font/woff2",
+        "application/pdf",
+    ] | None = None
+    headers: dict[str, str] = Field(default_factory=dict, max_length=16)
+    body: str | None = Field(default=None, max_length=PUBLIC_HTTP_MAX_BODY_BYTES)
+    body_base64: str | None = Field(default=None, max_length=700 * 1024)
+    location: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("headers")
+    @classmethod
+    def validate_headers(cls, value):
+        normalized: dict[str, str] = {}
+        for name, item in value.items():
+            key = name.lower()
+            if key not in PUBLIC_HTTP_RESPONSE_HEADERS:
+                raise ValueError("public HTTP response header is not allowed")
+            if len(item) > 4096 or "\r" in item or "\n" in item:
+                raise ValueError("public HTTP response header is invalid")
+            if key in normalized:
+                raise ValueError("public HTTP response headers must be unique")
+            normalized[key] = item
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_response_semantics(self):
+        redirects = {301, 302, 307, 308}
+        payload_count = int(self.body is not None) + int(self.body_base64 is not None)
+        if self.status in redirects:
+            if self.location is None or payload_count or self.content_type is not None:
+                raise ValueError("public HTTP redirects require only a location")
+        elif self.location is not None:
+            raise ValueError("public HTTP location is reserved for redirects")
+        if self.status in {204, 304} and (payload_count or self.content_type is not None):
+            raise ValueError("public HTTP no-body responses cannot contain content")
+        if payload_count > 1:
+            raise ValueError("public HTTP response must use one body encoding")
+        if payload_count == 0 and self.content_type is not None:
+            raise ValueError("public HTTP content type requires a body")
+        if payload_count == 1 and self.content_type is None:
+            raise ValueError("public HTTP body requires a content type")
+        if self.body is not None:
+            if self.content_type not in PUBLIC_HTTP_TEXT_CONTENT_TYPES:
+                raise ValueError("public HTTP text body requires a text content type")
+            if len(self.body.encode("utf-8")) > PUBLIC_HTTP_MAX_BODY_BYTES:
+                raise ValueError("public HTTP response body is too large")
+        if self.body_base64 is not None:
+            if self.content_type not in PUBLIC_HTTP_BINARY_CONTENT_TYPES:
+                raise ValueError("public HTTP binary body requires a binary content type")
+            try:
+                decoded = base64.b64decode(self.body_base64, validate=True)
+            except (ValueError, TypeError) as exc:
+                raise ValueError("public HTTP binary body is invalid") from exc
+            if len(decoded) > PUBLIC_HTTP_MAX_BODY_BYTES:
+                raise ValueError("public HTTP response body is too large")
+        if self.location is not None and ("\r" in self.location or "\n" in self.location):
+            raise ValueError("public HTTP redirect location is invalid")
+        return self
+
+
+class ApplicationPublicHttpRouteV1(StrictApplicationModel):
+    route_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    path: str = Field(min_length=1, max_length=240)
+    methods: tuple[Literal["GET", "HEAD"], ...] = ("GET", "HEAD")
+    handler_operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    content_types: tuple[Literal[
+        "text/html; charset=utf-8",
+        "text/plain; charset=utf-8",
+        "text/css; charset=utf-8",
+        "application/javascript; charset=utf-8",
+        "application/json",
+        "application/manifest+json",
+        "application/xml",
+        "text/xml; charset=utf-8",
+        "application/rss+xml",
+        "application/atom+xml",
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "image/avif",
+        "image/gif",
+        "image/svg+xml",
+        "image/x-icon",
+        "font/woff",
+        "font/woff2",
+        "application/pdf",
+    ], ...] = Field(min_length=1, max_length=20)
+    max_response_bytes: int = Field(default=256 * 1024, ge=1024, le=PUBLIC_HTTP_MAX_BODY_BYTES)
+
+    @field_validator("path")
+    @classmethod
+    def validate_path_template(cls, value):
+        if not value.startswith("/") or "//" in value or "\\" in value or "%" in value or "?" in value or "#" in value:
+            raise ValueError("public HTTP route path is invalid")
+        if value == "/":
+            return value
+        if value.endswith("/"):
+            raise ValueError("public HTTP route path cannot end with a slash")
+        parameters: list[str] = []
+        for segment in value.split("/")[1:]:
+            if segment in {"", ".", ".."}:
+                raise ValueError("public HTTP route path contains an invalid segment")
+            match = re.fullmatch(r"\{([a-z][a-z0-9_]{0,63})\}", segment)
+            if match:
+                parameters.append(match.group(1))
+            elif "{" in segment or "}" in segment or any(ord(char) < 32 or char.isspace() for char in segment):
+                raise ValueError("public HTTP route path contains an invalid segment")
+        if len(parameters) != len(set(parameters)):
+            raise ValueError("public HTTP route parameters must be unique")
+        return value
+
+    @model_validator(mode="after")
+    def validate_route_semantics(self):
+        if not self.methods or "GET" not in self.methods or len(self.methods) != len(set(self.methods)):
+            raise ValueError("public HTTP routes require one GET method and unique methods")
+        if len(self.content_types) != len(set(self.content_types)):
+            raise ValueError("public HTTP route content types must be unique")
+        return self
+
+
 class ApplicationEventSubscriptionV1(StrictApplicationModel):
     subscription_id: str = Field(pattern=IDENTIFIER_PATTERN)
     event_type: str = Field(pattern=APPLICATION_EVENT_PATTERN, max_length=160)
@@ -263,6 +502,7 @@ class ApplicationExtensionV1(StrictApplicationModel):
         max_length=128,
     )
     routes: tuple[ApplicationRouteV1, ...] = Field(default=(), max_length=64)
+    public_http_routes: tuple[ApplicationPublicHttpRouteV1, ...] = Field(default=(), max_length=64)
     event_subscriptions: tuple[ApplicationEventSubscriptionV1, ...] = Field(
         default=(),
         max_length=64,
@@ -291,6 +531,8 @@ class ApplicationExtensionV1(StrictApplicationModel):
         permission_ids = [item.permission_id for item in self.permissions]
         operation_ids = [item.operation_id for item in self.operations]
         route_ids = [item.route_id for item in self.routes]
+        public_http_route_ids = [item.route_id for item in self.public_http_routes]
+        public_http_paths = [item.path for item in self.public_http_routes]
         route_entrypoints = [item.entrypoint_id for item in self.routes]
         subscription_ids = [item.subscription_id for item in self.event_subscriptions]
         connector_ids = [item.connector_id for item in self.connectors]
@@ -298,7 +540,8 @@ class ApplicationExtensionV1(StrictApplicationModel):
         for label, values in (
             ("permission IDs", permission_ids),
             ("operation IDs", operation_ids),
-            ("route IDs", route_ids),
+            ("route IDs", route_ids + public_http_route_ids),
+            ("public HTTP paths", public_http_paths),
             ("route entrypoints", route_entrypoints),
             ("subscription IDs", subscription_ids),
             ("connector IDs", connector_ids),
@@ -310,6 +553,16 @@ class ApplicationExtensionV1(StrictApplicationModel):
 
         known_permissions = set(permission_ids)
         operations = {item.operation_id: item for item in self.operations}
+        for route in self.public_http_routes:
+            operation = operations.get(route.handler_operation_id)
+            if operation is None:
+                raise ValueError("public HTTP route references an unknown operation")
+            if operation.kind != "query" or operation.audiences != ("public",) or operation.idempotency != "forbidden":
+                raise ValueError("public HTTP route handlers must be isolated public queries")
+            if operation.input_schema != public_http_request_schema_v1():
+                raise ValueError("public HTTP route handler must use the v1 request schema")
+            if operation.output_schema != public_http_response_schema_v1():
+                raise ValueError("public HTTP route handler must use the v1 response schema")
         if self.peer_receiver:
             if "installation.peers.receive" not in self.platform_permissions:
                 raise ValueError("Peer receiver requires its platform permission")

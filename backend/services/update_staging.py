@@ -45,6 +45,8 @@ REQUIRED_RELEASE_FILES = frozenset(
         ".3mm-release.json",
         "backend/requirements.txt",
         "backend/services/update_staging.py",
+        "backend/services/application_public_web.py",
+        "backend/services/application_public_web_transport.py",
         "deployment/apply_staged_update.py",
         "deployment/install-systemd.sh",
         "deployment/migrate_database.py",
@@ -53,9 +55,14 @@ REQUIRED_RELEASE_FILES = frozenset(
         "deployment/systemd/3mm-core.service",
         "deployment/systemd/3mm-update-helper.service",
         "deployment/systemd/3mm-web.service",
+        "deployment/systemd/3mm-public-web.socket",
+        "deployment/systemd/3mm-public-web.service",
         "deployment/update-dependency-allowlist.json",
         "frontend/dist/index.html",
         "three_mm_runtime/update_helper.py",
+        "three_mm_public_web/__init__.py",
+        "three_mm_public_web/__main__.py",
+        "three_mm_public_web/server.py",
     }
 )
 

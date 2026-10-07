@@ -1,13 +1,13 @@
-# CONERAX / 3mm — Platform-neutral Nodes and Capabilities
+# 3mm — Platform-neutral Nodes and Capabilities
 
 Approved direction: 2026-10-02. Base: `5cc0edf` / `v0.3.0-beta.32`, including
 installation peer v2, Application SDK 1.3 and Node Update. This plan does not
-rename existing packages, IDs or endpoints. CONERAX is the product direction;
+rename existing packages, IDs or endpoints. 3mm remains the product identity;
 the existing 3mm contracts remain compatible.
 
 ## Scope — shared Device/Node Platform, not Fleet-only
 
-This milestone changes the common CONERAX Device/Node Platform used by
+This milestone changes the common 3mm Device/Node Platform used by
 Standalone, Hub/Fleet, the local Agent and application extensions. Fleet is
 only one consumer of this layer, not its owner or a prerequisite. Embedded
 devices must also be manageable by a Standalone installation without Fleet
@@ -132,7 +132,7 @@ independent registry/query mechanisms are not.
 The reference client does not import/use `AgentModuleRuntime` to obtain its
 capabilities. It has stable identity and credential storage, advertises
 `platform.family=embedded`, `platform.system=mock-embedded`, runtime
-`conerax-embedded-test` and a firmware/native `gpio.digital.control` provider.
+`3mm-embedded-test` and a firmware/native `gpio.digital.control` provider.
 
 Through actual device HTTP contracts: enroll with approval -> inventory ->
 heartbeat -> register capability -> invoke -> mock execution -> command result
@@ -343,6 +343,6 @@ using common identity, authority, lifecycle, registry, capability contracts and
 state across runtimes/transports. Fleet is a consumer, not the owner. Verify new
 generic contracts together with existing Linux nodes before closing the milestone.
 
-Only after this extended gate starts a separate CONERAX Embedded Runtime / ESP32 MVP milestone.
+Only after this extended gate starts a separate 3mm Embedded Runtime / ESP32 MVP milestone.
 New hardware is not a reason to edit Core. A proven missing generic contract
 must be specified first, and be useful beyond a concrete board or extension.

@@ -1,0 +1,14 @@
+[Unit]
+Description=3mm public web listener
+Requires=3mm-core.service
+After=3mm-core.service
+PartOf=3mm-core.service
+Conflicts=3mm-setup.service
+
+[Socket]
+ListenStream=127.0.0.1:8081
+NoDelay=true
+Service=3mm-public-web.service
+
+[Install]
+WantedBy=sockets.target

@@ -16,6 +16,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 from three_mm_protocol.installation_identity import InstallationIdentityV1
 from three_mm_protocol.node_security import MODULE_COMMAND_BYTES, validate_node_json
 
+# Legacy beta.40 wire-domain token. Keep until a versioned authority-contract migration; this is not product branding.
 DOMAIN = b"conerax.device.authority.v1\n"
 DEVICE = r"^dev_[0-9a-f]{32}$"
 CREDENTIAL = r"^cred_[0-9a-f]{32}$"

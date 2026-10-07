@@ -1,7 +1,13 @@
 import pytest
 from pydantic import ValidationError
 
-from three_mm_protocol import ApplicationExtensionV1
+from three_mm_protocol import (
+    ApplicationExtensionV1,
+    ApplicationPublicHttpRequestV1,
+    ApplicationPublicHttpResponseV1,
+    public_http_request_schema_v1,
+    public_http_response_schema_v1,
+)
 
 
 def definition(**changes):
@@ -229,3 +235,200 @@ def test_service_artifact_is_a_safe_wheel_path(artifact):
 
     with pytest.raises(ValidationError, match="safe wheel"):
         ApplicationExtensionV1.model_validate(value)
+
+
+def public_http_definition():
+    value = definition()
+    value["operations"].append(
+        {
+            "operation_id": "render_public",
+            "kind": "query",
+            "audiences": ["public"],
+            "idempotency": "forbidden",
+            "input_schema": public_http_request_schema_v1(),
+            "output_schema": public_http_response_schema_v1(),
+        }
+    )
+    value["public_http_routes"] = [
+        {
+            "route_id": "public_item",
+            "path": "/items/{slug}",
+            "methods": ["GET", "HEAD"],
+            "handler_operation_id": "render_public",
+            "content_types": ["text/html; charset=utf-8", "application/xml"],
+        }
+    ]
+    return value
+
+
+def test_public_http_contract_is_optional_and_binds_only_isolated_public_queries():
+    legacy = ApplicationExtensionV1.model_validate(definition())
+    assert legacy.public_http_routes == ()
+
+    application = ApplicationExtensionV1.model_validate(public_http_definition())
+    route = application.public_http_routes[0]
+    assert route.path == "/items/{slug}"
+    assert route.methods == ("GET", "HEAD")
+    assert route.max_response_bytes == 256 * 1024
+
+    root = public_http_definition()
+    root["public_http_routes"][0]["path"] = "/"
+    assert ApplicationExtensionV1.model_validate(root).public_http_routes[0].path == "/"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "items/{slug}",
+        "/items//{slug}",
+        "/items/{slug}/",
+        "/items/{slug}/{slug}",
+        "/items/{slug:.*}",
+        "/items/%2e%2e/private",
+        "/items/../private",
+        "/items/bad path",
+    ],
+)
+def test_public_http_route_templates_reject_ambiguous_or_unsafe_paths(path):
+    value = public_http_definition()
+    value["public_http_routes"][0]["path"] = path
+
+    with pytest.raises(ValidationError, match="public HTTP route"):
+        ApplicationExtensionV1.model_validate(value)
+
+
+def test_public_http_routes_reject_duplicate_paths_and_ui_route_ids():
+    value = public_http_definition()
+    value["public_http_routes"].append(
+        {**value["public_http_routes"][0], "route_id": "another_public"}
+    )
+    with pytest.raises(ValidationError, match="public HTTP paths"):
+        ApplicationExtensionV1.model_validate(value)
+
+    value = public_http_definition()
+    value["public_http_routes"][0]["route_id"] = "operations"
+    with pytest.raises(ValidationError, match="route IDs"):
+        ApplicationExtensionV1.model_validate(value)
+
+
+@pytest.mark.parametrize(
+    "change, message",
+    [
+        ({"handler_operation_id": "missing"}, "unknown operation"),
+        ({"handler_operation_id": "approve"}, "isolated public queries"),
+    ],
+)
+def test_public_http_routes_require_declared_public_query_handlers(change, message):
+    value = public_http_definition()
+    value["public_http_routes"][0].update(change)
+
+    with pytest.raises(ValidationError, match=message):
+        ApplicationExtensionV1.model_validate(value)
+
+
+def test_public_http_handlers_require_the_exact_versioned_transport_schemas():
+    value = public_http_definition()
+    handler = next(item for item in value["operations"] if item["operation_id"] == "render_public")
+    handler["input_schema"] = {
+        "type": "object", "properties": {}, "required": [], "additionalProperties": False
+    }
+    with pytest.raises(ValidationError, match="v1 request schema"):
+        ApplicationExtensionV1.model_validate(value)
+
+    value = public_http_definition()
+    handler = next(item for item in value["operations"] if item["operation_id"] == "render_public")
+    handler["output_schema"] = {
+        "type": "object", "properties": {}, "required": [], "additionalProperties": False
+    }
+    with pytest.raises(ValidationError, match="v1 response schema"):
+        ApplicationExtensionV1.model_validate(value)
+
+
+def test_public_http_request_forwards_only_bounded_noncredential_headers():
+    request = ApplicationPublicHttpRequestV1.model_validate(
+        {
+            "method": "GET",
+            "path": "/items/test",
+            "path_params": {"slug": "test"},
+            "query": {"page": ["1"]},
+            "headers": {"accept-language": "bg-BG"},
+        }
+    )
+    assert request.path_params == {"slug": "test"}
+
+    with pytest.raises(ValidationError, match="undeclared forwarded header"):
+        ApplicationPublicHttpRequestV1.model_validate(
+            {
+                "method": "GET",
+                "path": "/",
+                "path_params": {},
+                "query": {},
+                "headers": {"authorization": "Bearer secret"},
+            }
+        )
+
+
+def test_public_http_response_is_bounded_and_transport_headers_fail_closed():
+    response = ApplicationPublicHttpResponseV1.model_validate(
+        {
+            "status": 200,
+            "content_type": "text/html; charset=utf-8",
+            "headers": {"Cache-Control": "public, max-age=60"},
+            "body": "<h1>Hello</h1>",
+        }
+    )
+    assert response.headers == {"cache-control": "public, max-age=60"}
+
+    redirect = ApplicationPublicHttpResponseV1.model_validate(
+        {"status": 301, "headers": {}, "location": "/items/new"}
+    )
+    assert redirect.location == "/items/new"
+
+    with pytest.raises(ValidationError, match="header is not allowed"):
+        ApplicationPublicHttpResponseV1.model_validate(
+            {"status": 200, "headers": {"Set-Cookie": "session=bad"}}
+        )
+    with pytest.raises(ValidationError, match="require only a location"):
+        ApplicationPublicHttpResponseV1.model_validate(
+            {"status": 301, "headers": {}, "location": "/new", "body": "redirect"}
+        )
+
+
+
+def test_public_http_response_supports_bounded_cacheable_binary_assets():
+    import base64
+
+    payload = b"\x89PNG\r\n\x1a\n" + b"x" * 32
+    response = ApplicationPublicHttpResponseV1.model_validate(
+        {
+            "status": 200,
+            "content_type": "image/png",
+            "headers": {"ETag": '"asset-v1"', "Cache-Control": "public, max-age=3600"},
+            "body_base64": base64.b64encode(payload).decode("ascii"),
+        }
+    )
+    assert base64.b64decode(response.body_base64) == payload
+
+    cached = ApplicationPublicHttpResponseV1.model_validate(
+        {"status": 304, "headers": {"ETag": '"asset-v1"'}}
+    )
+    assert cached.status == 304
+
+    with pytest.raises(ValidationError, match="binary body requires a binary content type"):
+        ApplicationPublicHttpResponseV1.model_validate(
+            {
+                "status": 200,
+                "content_type": "text/html; charset=utf-8",
+                "headers": {},
+                "body_base64": base64.b64encode(payload).decode("ascii"),
+            }
+        )
+    with pytest.raises(ValidationError, match="binary body is invalid"):
+        ApplicationPublicHttpResponseV1.model_validate(
+            {
+                "status": 200,
+                "content_type": "image/png",
+                "headers": {},
+                "body_base64": "not-base64!",
+            }
+        )

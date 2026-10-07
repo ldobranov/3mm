@@ -30,7 +30,7 @@ Minimal example, deliberately without Linux fields:
   "device_id": "dev_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "collected_at": "2026-10-03T00:00:00Z",
   "platform": {"family": "embedded", "system": "mock-embedded", "model": "Test board"},
-  "runtime": {"name": "conerax-embedded-test", "version": "0.1.0"},
+  "runtime": {"name": "3mm-embedded-test", "version": "0.1.0"},
   "resources": {"memory_total_bytes": 409600, "flash_total_bytes": 4194304},
   "capabilities": ["gpio.digital.control"]
 }

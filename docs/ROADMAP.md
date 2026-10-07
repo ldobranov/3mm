@@ -625,7 +625,7 @@ focused regression and local encrypted portable restore checks. The new shell
 is opt-in; existing installations keep their appearance. Next: V5 reference
 themes/installed-package preview, then incremental screens and live V8 acceptance.
 
-## Milestone 18 — CONERAX Embedded v0.1 / Embedded Nodes Extension
+## Milestone 18 — 3mm Embedded v0.1 / Embedded Nodes Extension
 
 Status: deferred until reference hardware is available. Added near the end of
 the product plan by owner request on 2026-10-04. See
@@ -655,6 +655,45 @@ Acceptance criteria:
 
 No hardware purchase, real firmware, ESP provisioning or OTA work starts in
 the current Theme Platform task. A proven generic gap needs its own Core issue.
+
+
+## Milestone 19 — Public Web Runtime & Extension Contract
+
+Status: **completed on 2026-10-07** on the focused branch. P0–P5 passed full
+Python/frontend CI and P6 passed physical Raspberry acceptance on runtime commit
+`996760f6` / release `996760f669fd-20261007065735`. See
+[PUBLIC_WEB_EXTENSION_PLAN.md](PUBLIC_WEB_EXTENSION_PLAN.md) and
+[PUBLIC_WEB_PHYSICAL_ACCEPTANCE.md](PUBLIC_WEB_PHYSICAL_ACCEPTANCE.md).
+
+Goal: let separately installed application extensions publish real public web
+responses without putting website, shop, SEO or framework-specific behavior in
+Core.
+
+Deliverables:
+
+- closed, versioned public HTTP request/response and route contracts;
+- Core-owned active route registry with reserved-path and conflict checks;
+- isolated public gateway to supervised application services;
+- bounded methods, content types, statuses, headers, timeouts and response size;
+- explicit public-surface/root ownership separate from administrative recovery;
+- transactional activation, disable, rollback, uninstall and restore behavior;
+- neutral HTML/XML/text/redirect reference application;
+- deterministic failure tests and physical Raspberry acceptance.
+
+Acceptance criteria:
+
+- public GET/HEAD routes work without rebuilding the Core frontend;
+- extensions can return HTML, JSON, XML, text, redirects, 404 and 410 through
+  the same generic contract;
+- cross-extension overlaps, ambiguous same-extension routes, forbidden headers
+  and malformed/oversized responses fail closed; the public surface cannot
+  shadow the administrative/API surface;
+- public failures never make the administrative/recovery surface unavailable;
+- lifecycle changes leave no stale route ownership;
+- the neutral reference passes laptop and physical acceptance;
+- a later website/shop can implement friendly URLs, metadata, structured data,
+  discovery resources and redirects without a shop- or SEO-specific Core edit.
+
 
 ## Immediate work queue
 

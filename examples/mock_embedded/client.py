@@ -45,7 +45,7 @@ from three_mm_protocol.fleet_pairing import (
 )
 
 CAPABILITY = "gpio.digital.control"
-PROVIDER = "conerax-embedded-test"
+PROVIDER = "3mm-embedded-test"
 CHANNEL = "gpio.output.1"
 VERSION = "0.2.0"
 

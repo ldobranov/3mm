@@ -392,3 +392,60 @@ def test_uninstall_removes_core_registration_and_preserves_package(monkeypatch, 
     finally:
         db.close()
         engine.dispose()
+
+
+
+def test_activation_rejects_public_route_conflict_before_runtime_mutation(
+    monkeypatch, tmp_path
+):
+    (
+        client,
+        db,
+        engine,
+        _admin,
+        _operator,
+        installation,
+        package,
+        admin_token,
+        _operator_token,
+    ) = environment(monkeypatch, tmp_path)
+    helper_calls = []
+    monkeypatch.setattr(
+        application_extensions,
+        "validate_public_http_candidate",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            application_extensions.ApplicationPublicWebError(
+                "Public HTTP route conflict", status_code=409
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        application_extensions.UpdateHelperClient,
+        "activate_application_extension",
+        lambda *_args, **_kwargs: helper_calls.append(True),
+    )
+    try:
+        before = (
+            installation.module_package_id,
+            installation.active_version,
+            installation.status,
+            installation.enabled,
+        )
+        response = client.post(
+            f"/api/v1/application-extensions/packages/{package.sha256}/activate",
+            headers=headers(admin_token),
+            json={"configuration": {}},
+        )
+        db.refresh(installation)
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Public HTTP route conflict"
+        assert helper_calls == []
+        assert (
+            installation.module_package_id,
+            installation.active_version,
+            installation.status,
+            installation.enabled,
+        ) == before
+    finally:
+        db.close()
+        engine.dispose()

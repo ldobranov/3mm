@@ -29,12 +29,16 @@ REQUIRED_COMMANDS = (
 )
 REQUIRED_RELEASE_FILES = (
     "backend/requirements.txt",
+    "backend/services/application_public_web.py",
+    "backend/services/application_public_web_transport.py",
     "deployment/bootstrap-local-agent.py",
     "deployment/install-systemd.sh",
     "deployment/local_agent_pairing.py",
     "deployment/migrate_database.py",
     "deployment/systemd/3mm-agent.service",
     "deployment/systemd/3mm-core.service",
+    "deployment/systemd/3mm-public-web.socket",
+    "deployment/systemd/3mm-public-web.service",
     "deployment/systemd/3mm-network-helper.service",
     "deployment/systemd/3mm-setup-ap.service",
     "deployment/systemd/3mm-setup.service",
@@ -43,6 +47,9 @@ REQUIRED_RELEASE_FILES = (
     "deployment/update-dependency-allowlist.json",
     "frontend/compiler/package.json",
     "frontend/dist/index.html",
+    "three_mm_public_web/__init__.py",
+    "three_mm_public_web/__main__.py",
+    "three_mm_public_web/server.py",
 )
 
 

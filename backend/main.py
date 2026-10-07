@@ -67,6 +67,7 @@ from backend.services.update_policy import system_update_check_manager
 from backend.services.application_events import retry_application_events_once
 from backend.services.application_jobs import ApplicationJobScheduler
 from backend.services.application_platform import ApplicationPlatformServer
+from backend.services.application_public_web_transport import PublicWebGatewayServer
 
 # Import all route routers
 from backend.routes.settings import router as settings_router
@@ -183,6 +184,19 @@ async def lifespan(app: FastAPI):
         app_settings.applications.key_root,
     )
     application_platform.start()
+    public_web_gateway = PublicWebGatewayServer(
+        app_settings.public_web.gateway_socket,
+        app_settings.applications,
+        socket_group=app_settings.public_web.gateway_group,
+    )
+    public_web_gateway_started = False
+    try:
+        public_web_gateway.start()
+        public_web_gateway_started = True
+    except Exception:
+        # Public web is optional. Its local gateway must never prevent
+        # administration/recovery from starting.
+        logger.exception("Public web gateway is unavailable")
     await update_manager.start_update_worker()
     await performance_monitor.start_monitoring()
     await system_update_check_manager.start()
@@ -211,6 +225,8 @@ async def lifespan(app: FastAPI):
             await application_event_task
         with suppress(asyncio.CancelledError):
             await application_job_task
+        if public_web_gateway_started:
+            public_web_gateway.stop()
         application_platform.stop()
         await performance_monitor.stop_monitoring()
         await update_manager.stop_update_worker()

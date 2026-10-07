@@ -8,10 +8,10 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Beta. This source prepares **v0.3.0-beta.40**, adding editable
-> installed-theme palettes and fixing persistent-logo loading on the web origin.
-> It retains Theme Platform V0–V4: Design API 2, native UI primitives, an opt-in
-> application shell and validated assets through the existing Extensions installer.
+> **Project status:** Beta. This source prepares **v0.3.0-test.1** for Milestone 19
+> physical acceptance. It adds the generic Public Web Runtime and Application
+> Extension HTTP contract while keeping the administrative SPA isolated on its
+> existing surface. The test release contains no Shop or SEO-specific Core logic.
 > Existing device transport, capability authority and lifecycle remain unchanged.
 > Device protocol 1.0, Application SDK 1.3, installation peers and Node Update remain.
 > Release assets become available only after the tag-driven workflow succeeds;

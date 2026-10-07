@@ -15,6 +15,8 @@ UNIT_NAMES = {
     RuntimeService.WEB: "3mm-web.service",
     RuntimeService.AGENT: "3mm-agent.service",
 }
+PUBLIC_WEB_SOCKET_UNIT = "3mm-public-web.socket"
+
 SETUP_UNITS = (
     "3mm-network-helper.service",
     "3mm-setup-ap.service",
@@ -75,7 +77,8 @@ def activate(data_dir: Path = Path("/var/lib/3mm/provisioning")) -> None:
     validate_profile_role(profile, plan.role)
     application_units = (
         (UNIT_NAMES[RuntimeService.AGENT],)
-        if profile is InstallProfile.NODE else tuple(UNIT_NAMES.values())
+        if profile is InstallProfile.NODE
+        else tuple(UNIT_NAMES.values()) + (PUBLIC_WEB_SOCKET_UNIT,)
     )
     if plan.includes(RuntimeService.SETUP):
         # Check before stopping a working Core/Agent. AP startup is a Linux
@@ -87,6 +90,8 @@ def activate(data_dir: Path = Path("/var/lib/3mm/provisioning")) -> None:
     if plan.includes(RuntimeService.CORE) and plan.includes(RuntimeService.AGENT):
         _bootstrap_local_agent(data_dir)
     selected = tuple(UNIT_NAMES[item] for item in plan.services)
+    if profile is InstallProfile.FULL and plan.includes(RuntimeService.CORE):
+        selected += (PUBLIC_WEB_SOCKET_UNIT,)
     unselected = tuple(unit for unit in application_units if unit not in selected)
     _systemctl("disable", "--now", *SETUP_UNITS)
     if unselected:
@@ -100,6 +105,8 @@ def check_active(data_dir: Path = Path("/var/lib/3mm/provisioning")) -> None:
         FileNetworkRecoveryMarker(data_dir / "network-recovery.json"),
     ).resolve()
     units = SETUP_UNITS if plan.includes(RuntimeService.SETUP) else tuple(UNIT_NAMES[s] for s in plan.services)
+    if not plan.includes(RuntimeService.SETUP) and plan.includes(RuntimeService.CORE):
+        units += (PUBLIC_WEB_SOCKET_UNIT,)
     for unit in units:
         _systemctl("is-active", "--quiet", unit)
 

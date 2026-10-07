@@ -6,6 +6,65 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-test.1] - 2026-10-07
+
+### Added
+
+- Milestone 19 Public Web Runtime foundation: application extensions can declare
+  bounded GET/HEAD public routes and return validated HTML, JSON, XML, plain-text,
+  redirect and explicit error responses without registering framework routers in
+  Core.
+- A Core-owned public route registry with deterministic specificity and
+  cross-extension conflict rejection. Route ownership is reconstructed from
+  active application state and follows activation, disable, rollback, uninstall
+  and restore instead of using a second persistent routing database.
+- A separate socket-activated public web surface backed by a local Core
+  Unix-socket gateway. The public process uses a dedicated `3mm-public` identity,
+  loopback-only listener, private network/device namespaces and no direct access
+  to Core database, environment secrets or update-helper mutation paths.
+- Neutral `org.3mm.public-web-reference` acceptance package covering root and
+  parameterized HTML pages, XML and text resources, permanent redirects, 410 and
+  generic 404 behavior without shop or SEO semantics.
+
+### Security and compatibility
+
+- Public requests forward only a bounded allowlist of non-credential headers.
+  Authorization, administrator cookies and internal transport headers are not
+  exposed to application handlers.
+- Public responses use allowlisted content types/status codes/headers, bounded
+  response sizes and fail-closed validation for malformed, slow or unavailable
+  application services.
+- The existing administrative SPA remains on ports 80/8080 and is independent
+  from the public listener. Existing Application Extension packages without
+  public HTTP routes remain compatible; no database migration or Agent protocol
+  change is required.
+
+### Verification
+
+- Raspberry P6 exposed and the branch fixes a production-only systemd wiring
+  gap: Core now owns a dedicated `/run/3mm-public-web` runtime directory and
+  publishes the bounded gateway socket there for the isolated `3mm-public`
+  identity. The installer writes the same socket path into the persistent Core
+  environment, preventing stale deployment configuration from overriding the
+  systemd boundary. No Core state directory, database or secret permissions are
+  widened.
+- Immutable full deployments now reconcile application services from the
+  persisted `enabled + active` installation state after Core activation, and
+  do the same on rollback. This preserves all Application Extension runtimes
+  across deploys without reviving disabled or failed installations.
+- Milestone P0-P5 Python/frontend CI passed on the focused branch through
+  commit `94567a2b`; CI run 129 passed for the final accepted runtime commit
+  `996760f6`.
+- Raspberry P6 passed on a Pi 3B+ / Debian 13 using immutable release
+  `996760f669fd-20261007065735`. HTTP GET/HEAD, redirect/404/410, lifecycle
+  disable/re-enable, fail-closed service failure, Admin/Core independence,
+  socket activation, idle exit, resource impact and isolation all passed.
+- The neutral reference package SHA-256
+  `5007ae614b1061d944a6c4f5e3410671b613219e3a32acafca8753bc3a1b6439`
+  matched the stored package bytes. Public-process RSS was 36,460 KiB after a
+  successful request; the process exited after the 60-second idle window while
+  the listener socket remained active.
+
 ## [0.3.0-beta.40] - 2026-10-05
 
 ### Added
@@ -1066,7 +1125,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.40...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-test.1...HEAD
+[0.3.0-test.1]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-test.1
 [0.3.0-beta.40]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.40
 [0.3.0-beta.39]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.39
 [0.3.0-beta.38]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.38

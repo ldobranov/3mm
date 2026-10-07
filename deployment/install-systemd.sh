@@ -91,6 +91,7 @@ runtime_services=(
   3mm-agent.service
   3mm-core.service
   3mm-web.service
+  3mm-public-web.socket
   3mm-setup.service
   3mm-setup-ap.service
   3mm-network-helper.service
@@ -102,6 +103,7 @@ installed_units=(
   "${runtime_services[@]}"
   "${always_on_services[@]}"
   3mm-application-extension@.service
+  3mm-public-web.service
 )
 if [[ $install_profile == node ]]; then
   runtime_services=(3mm-agent.service 3mm-setup.service 3mm-setup-ap.service 3mm-network-helper.service)
@@ -155,6 +157,11 @@ install_units() {
   local unit
   for unit in "${installed_units[@]}"; do
     if [[ ! -f $source_release/deployment/systemd/$unit ]]; then
+      if [[ ( $unit == 3mm-public-web.socket || $unit == 3mm-public-web.service ) && $require_update_helper == 0 ]]; then
+        systemctl disable --now "$unit" >/dev/null 2>&1 || true
+        rm -f -- "/etc/systemd/system/$unit"
+        continue
+      fi
       if [[ $unit == 3mm-application-extension@.service && $require_update_helper == 0 ]]; then
         systemctl stop '3mm-application-extension@*.service' >/dev/null 2>&1 || true
         rm -f -- "/etc/systemd/system/$unit"
@@ -299,6 +306,61 @@ restart_always_on_services() {
   done
 }
 
+start_active_application_services() {
+  local source_release=$1
+  if [[ $install_profile != full || ! -f $database ]]; then
+    return
+  fi
+  local python_path
+  python_path=$(release_python "$source_release") || return 1
+  local application_units=()
+  mapfile -t application_units < <(
+    "$python_path" - "$database" <<'PY'
+import re
+import sqlite3
+import sys
+
+database = sys.argv[1]
+connection = sqlite3.connect(database)
+try:
+    tables = {
+        row[0]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+    if "application_extension_installations" not in tables:
+        raise SystemExit(0)
+    rows = connection.execute(
+        """
+        SELECT instance_id
+        FROM application_extension_installations
+        WHERE enabled = 1 AND status = 'active'
+        ORDER BY module_id
+        """
+    )
+    for (instance_id,) in rows:
+        if not isinstance(instance_id, str) or re.fullmatch(
+            r"[0-9a-f]{24}", instance_id
+        ) is None:
+            raise SystemExit("Active application instance id is invalid")
+        print(f"3mm-application-extension@{instance_id}.service")
+finally:
+    connection.close()
+PY
+  )
+  if [[ ${#application_units[@]} -eq 0 ]]; then
+    return
+  fi
+  systemctl start "${application_units[@]}"
+  local service
+  for service in "${application_units[@]}"; do
+    if ! systemctl is-active --quiet "$service"; then
+      fail "Active application service did not become active: $service"
+    fi
+  done
+}
+
 rollback() {
   local exit_code=$?
   trap - ERR
@@ -330,6 +392,10 @@ rollback() {
       restore_runtime_units || {
         systemctl --no-pager --full status "${runtime_services[@]}" >&2 || true
         echo "Rollback completed, but the previous release is not healthy." >&2
+      }
+      start_active_application_services "$previous_release" || {
+        systemctl --no-pager --full status '3mm-application-extension@*.service' >&2 || true
+        echo "Rollback restored Core, but active application services are not healthy." >&2
       }
     elif [[ $install_profile == node ]]; then
       # Failed first install: do not leave enabled units or a dangling current link.
@@ -393,7 +459,7 @@ assert_release_path "$release_dir"
 
 if [[ $install_profile == node && -z $previous_release ]]; then
   # Never take ownership of units/state from an unrecognized installation.
-  for unit in "${installed_units[@]}" 3mm-core.service 3mm-web.service 3mm-update-helper.service; do
+  for unit in "${installed_units[@]}" 3mm-core.service 3mm-web.service 3mm-public-web.socket 3mm-public-web.service 3mm-update-helper.service; do
     if systemctl cat "$unit" >/dev/null 2>&1; then
       fail "Existing 3mm unit without a managed Node release: $unit"
     fi
@@ -418,7 +484,14 @@ if ! id -u 3mm-app >/dev/null 2>&1; then
   useradd --system --gid 3mm-app --home-dir "$state_root/application-extensions" \
     --shell /usr/sbin/nologin 3mm-app
 fi
-usermod -a -G 3mm-app 3mm
+if ! getent group 3mm-public >/dev/null 2>&1; then
+  groupadd --system 3mm-public
+fi
+if ! id -u 3mm-public >/dev/null 2>&1; then
+  useradd --system --gid 3mm-public --home-dir /nonexistent \
+    --shell /usr/sbin/nologin 3mm-public
+fi
+usermod -a -G 3mm-app,3mm-public 3mm
 fi
 
 install -d -o root -g root -m 0755 "$install_root" "$releases_root" /etc/3mm
@@ -458,6 +531,8 @@ required_files=(
   frontend/dist/index.html
   backend/requirements.txt
   backend/services/update_staging.py
+  backend/services/application_public_web.py
+  backend/services/application_public_web_transport.py
   deployment/apply_staged_update.py
   deployment/bootstrap-local-agent.py
   deployment/create_backup.py
@@ -472,6 +547,8 @@ required_files=(
   deployment/update-dependency-allowlist.json
   deployment/systemd/3mm-core.service
   deployment/systemd/3mm-web.service
+  deployment/systemd/3mm-public-web.socket
+  deployment/systemd/3mm-public-web.service
   deployment/systemd/3mm-agent.service
   deployment/systemd/3mm-captive-portal-dnsmasq.conf
   deployment/systemd/3mm-update-helper.service
@@ -480,6 +557,9 @@ required_files=(
   three_mm_runtime/application_activation.py
   three_mm_runtime/application_host.py
   three_mm_runtime/application_transport.py
+  three_mm_public_web/__init__.py
+  three_mm_public_web/__main__.py
+  three_mm_public_web/server.py
   three_mm_application_sdk/__init__.py
   three_mm_runtime/network_recovery.py
   three_mm_provisioning/network_recovery.py
@@ -652,6 +732,8 @@ upsert_environment THREE_MM_APPLICATION_ROOT /var/lib/3mm/application-extensions
 upsert_environment THREE_MM_APPLICATION_KEY_ROOT /etc/3mm/application-extensions
 upsert_environment THREE_MM_APPLICATION_HELPER_SOCKET /run/3mm/update-helper.sock
 upsert_environment THREE_MM_APPLICATION_PLATFORM_SOCKET /var/lib/3mm/application-extensions/platform/platform.sock
+upsert_environment THREE_MM_PUBLIC_WEB_GATEWAY_SOCKET /run/3mm-public-web/core.sock
+upsert_environment THREE_MM_PUBLIC_WEB_GATEWAY_GROUP 3mm-public
 
 if [[ -s $ai_master_key_file ]]; then
   ai_master_key=$(cat "$ai_master_key_file")
@@ -746,6 +828,7 @@ if [[ $install_profile == node ]]; then
 else
   activate_runtime "$release_dir"
   restart_always_on_services
+  start_active_application_services "$release_dir"
 fi
 if [[ $test_fail_after_health == 1 ]]; then
   fail "Injected post-health deployment failure for rollback acceptance."
