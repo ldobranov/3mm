@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
+import backend.services.module_packages as module_packages
 from backend.services.module_packages import ModulePackageError, validate_module_package
 from three_mm_protocol import (
     EXTENSION_API_VERSION,
@@ -116,3 +117,14 @@ def test_shared_compatibility_evaluator_is_runtime_neutral():
         architecture="aarch64",
         require_runtime=True,
     ) == ("runtime",)
+
+
+def test_agent_only_package_does_not_depend_on_core_runtime_version(monkeypatch):
+    def unexpected_core_version_lookup():
+        raise AssertionError("Agent-only compatibility must not read Core version")
+
+    monkeypatch.setattr(
+        module_packages, "actual_core_version", unexpected_core_version_lookup
+    )
+
+    validate_module_package(package(manifest()))

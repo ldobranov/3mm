@@ -170,10 +170,12 @@ def validate_module_package(
     unsupported = sorted(set(manifest.permissions) - ALLOWED_PERMISSIONS)
     if unsupported:
         raise ModulePackageError(f"unsupported permissions: {', '.join(unsupported)}")
-    try:
-        runtime_version = core_version if core_version is not None else actual_core_version()
-    except (TypeError, ValueError) as exc:
-        raise ModulePackageError("Core runtime version is unavailable or invalid") from exc
+    runtime_version = None
+    if "core" in manifest.runtimes:
+        try:
+            runtime_version = core_version if core_version is not None else actual_core_version()
+        except (TypeError, ValueError) as exc:
+            raise ModulePackageError("Core runtime version is unavailable or invalid") from exc
     compatibility_issues = module_compatibility_issues(
         manifest,
         runtime="core",
