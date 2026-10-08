@@ -19,7 +19,7 @@ IMPORT_PATTERN = re.compile(
     r"(?:from\s+|import\s*\(\s*)['\"]([^'\"]+)['\"]",
     re.MULTILINE,
 )
-ALLOWED_BARE_IMPORTS = {"vue"}
+ALLOWED_BARE_IMPORTS = {"vue", "@3mm/ui/v1"}
 
 
 class CompiledUiBuildError(RuntimeError):

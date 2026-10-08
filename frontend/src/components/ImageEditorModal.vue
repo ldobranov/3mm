@@ -3,8 +3,8 @@
     <div class="image-editor-modal" @click.stop>
       <div class="modal-header">
         <h3>{{ editingImage ? t('common.editExistingImage', 'Edit Existing Image') : t('common.editImage', 'Edit Image') }}</h3>
-        <button type="button" class="close-button" @click="closeModal">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button type="button" class="close-button" :aria-label="t('common.close', 'Close')" @click="closeModal">
+          <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -751,7 +751,7 @@ onUnmounted(() => {
 }
 
 .close-button:hover {
-  background: var(--card-bg-hover, #f8f9fa);
+  background: var(--ui-surface-alt, var(--card-bg-hover, #f8f9fa));
   color: var(--text-primary, #222222);
 }
 
@@ -768,18 +768,18 @@ onUnmounted(() => {
 }
 
 .upload-area {
-  border: 2px dashed var(--card-border, #e3e3e3);
+  border: 2px dashed var(--ui-border, var(--card-border, #e3e3e3));
   border-radius: var(--border-radius-md, 8px);
   padding: 2rem;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  background: var(--card-bg, #ffffff);
+  background: var(--ui-surface-alt, var(--card-bg, #ffffff));
 }
 
 .upload-area:hover:not(.disabled) {
-  border-color: var(--button-primary-bg, #007bff);
-  background: var(--card-bg-hover, #f8f9fa);
+  border-color: var(--ui-accent, var(--button-primary-bg, #007bff));
+  background: var(--ui-surface, var(--card-bg, #ffffff));
 }
 
 .upload-area.disabled {
@@ -789,19 +789,19 @@ onUnmounted(() => {
 }
 
 .upload-icon {
-  color: var(--text-secondary, #666666);
+  color: var(--ui-text-muted, var(--text-secondary, #666666));
   margin-bottom: 1rem;
 }
 
 .upload-text {
   font-weight: 500;
-  color: var(--text-primary, #222222);
+  color: var(--ui-text, var(--text-primary, #222222));
   margin: 0 0 0.5rem 0;
 }
 
 .file-types {
   font-size: 0.875rem;
-  color: var(--text-secondary, #666666);
+  color: var(--ui-text-muted, var(--text-secondary, #666666));
   margin: 0;
 }
 

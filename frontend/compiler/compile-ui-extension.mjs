@@ -15,7 +15,7 @@ const result = await build({
   build: {
     outDir: output, emptyOutDir: true, cssCodeSplit: false, minify: true, sourcemap: false,
     rollupOptions: {
-      input, external: ['vue'], preserveEntrySignatures: 'strict',
+      input, external: ['vue', '@3mm/ui/v1'], preserveEntrySignatures: 'strict',
       output: { format: 'es', entryFileNames: 'assets/[name]-[hash].mjs', chunkFileNames: 'assets/chunk-[hash].mjs', assetFileNames: 'assets/[name]-[hash][extname]' }
     }
   }

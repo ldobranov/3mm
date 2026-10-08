@@ -55,4 +55,15 @@ describe('Support diagnostics settings', () => {
     expect(click).toHaveBeenCalled()
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:diagnostics')
   })
+
+  it('names all status badges instead of relying on colour alone', async () => {
+    http.get.mockResolvedValueOnce({ data: {
+      estimated_size_bytes: 1, check_count: 3, warning_count: 2,
+      checks: ['ok', 'warning', 'error'].map(status => ({ name: status, status, summary: status })),
+    } })
+    const wrapper = mount(DiagnosticsSection)
+    await flushPromises()
+    expect(wrapper.findAll('.check-state').map(badge => badge.text())).toEqual(['Ready', 'Warning', 'Error'])
+    expect(wrapper.findAll('.check-state').every(badge => badge.classes().includes('ui-badge'))).toBe(true)
+  })
 })

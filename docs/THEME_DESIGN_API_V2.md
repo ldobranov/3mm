@@ -144,6 +144,13 @@ Public appearance projection може да съдържа допълнителн
 Mobile controls са минимум 44 px; focus е видим; reduced-motion премахва
 анимациите. Няма нов component framework.
 
+V7 предоставя тези primitives на reviewed compiled application UI през
+публичния, отделно версиониран `@3mm/ui/v1`, не чрез imports на вътрешни Core
+компоненти. `UiSurface` наследява host appearance и legacy adapter; contract
+exports са само Surface/Button/Dialog/version. Поддържаните classes, read-only
+tokens, compatibility и executable-code граница са в
+[Public Extension UI v1](EXTENSION_UI_V1.md). Application SDK 1.3 остава непроменен.
+
 `ApplicationShell` използва същия `Menu` registry чрез scoped slot. Данните,
 audience/route filtering, динамичните registrations, език, logout и palette
 handlers не са дублирани. Content parent остава mounted при layout/preview

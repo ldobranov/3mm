@@ -12,13 +12,13 @@
         <strong>{{ t('diagnostics.safeTitle', 'Safe by design') }}</strong>
         <span>{{ t('diagnostics.safeHelp', 'The bundle contains system metadata and health results, never passwords, keys, tokens, Wi-Fi profiles, database content or logs.') }}</span>
       </div>
-      <button type="button" class="button button-primary" :disabled="downloading || loading" @click="downloadBundle">
+      <button type="button" class="ui-button ui-button--primary" :disabled="downloading || loading" @click="downloadBundle">
         <i class="bi bi-download" aria-hidden="true"></i>
         {{ downloading ? t('diagnostics.downloading', 'Preparing…') : t('diagnostics.download', 'Download diagnostics') }}
       </button>
     </div>
 
-    <div v-if="loading" class="loading-row">{{ t('diagnostics.loading', 'Checking device…') }}</div>
+    <div v-if="loading" class="loading-row" role="status">{{ t('diagnostics.loading', 'Checking device…') }}</div>
     <template v-else-if="preview">
       <div class="diagnostic-meta">
         <span>{{ preview.check_count }} {{ t('diagnostics.checks', 'checks') }}</span>
@@ -27,7 +27,7 @@
       </div>
       <div class="check-list">
         <article v-for="check in preview.checks" :key="check.name" class="check-row">
-          <span class="check-dot" :class="check.status"></span>
+          <span class="check-state ui-badge" :class="'check-state--' + check.status">{{ t('diagnostics.status.' + check.status, { ok: 'Ready', warning: 'Warning', error: 'Error' }[check.status]) }}</span>
           <div><strong>{{ check.name }}</strong><small>{{ check.summary }}</small></div>
         </article>
       </div>
@@ -102,48 +102,26 @@ onMounted(loadPreview)
 </script>
 
 <style scoped>
-.section-intro { margin: 0 0 1rem; color: var(--text-secondary); }
-
-.diagnostic-summary {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.9rem;
-  padding: 1rem;
-  border: 1px solid var(--card-border);
-  border-radius: var(--border-radius-md);
-  background: var(--panel-bg);
-}
-
-.summary-icon {
-  display: grid;
-  place-items: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: var(--border-radius-sm);
-  color: var(--button-primary-bg);
-  background: color-mix(in srgb, var(--button-primary-bg) 12%, transparent);
-}
-
-.summary-copy strong,
-.summary-copy span,
-.check-row small { display: block; }
-.summary-copy span,
-.check-row small { color: var(--text-secondary); }
-
-.diagnostic-meta { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0 0.65rem; }
-.diagnostic-meta span { padding: 0.3rem 0.55rem; border: 1px solid var(--card-border); border-radius: 999px; color: var(--text-secondary); font-size: 0.8rem; }
-.check-list { display: grid; gap: 0.5rem; }
-.check-row { display: flex; align-items: center; gap: 0.7rem; padding: 0.7rem; border: 1px solid var(--card-border); border-radius: var(--border-radius-sm); }
-.check-dot { width: 0.65rem; height: 0.65rem; border-radius: 50%; background: var(--button-danger-bg); }
-.check-dot.ok { background: #22a06b; }
-.check-dot.warning { background: #d97706; }
-.loading-row { padding: 1rem 0; color: var(--text-secondary); }
-.diagnostic-notice { margin-bottom: 0.85rem; padding: 0.75rem; border: 1px solid var(--card-border); border-radius: var(--border-radius-sm); }
-.diagnostic-notice.error { border-color: color-mix(in srgb, var(--button-danger-bg) 42%, var(--card-border)); }
-
-@media (max-width: 640px) {
+.section-intro { margin-bottom: calc(var(--ui-space) * 4); color: var(--ui-text-secondary); }
+.diagnostic-summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: calc(var(--ui-space) * 4); padding: calc(var(--ui-space) * 4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface-alt); }
+.summary-icon { display: grid; place-items: center; width: 2.5rem; height: 2.5rem; border-radius: var(--ui-radius-sm); color: var(--ui-accent); background: var(--ui-surface); }
+.summary-copy strong, .summary-copy span, .check-row small { display: block; }
+.summary-copy span, .check-row small { color: var(--ui-text-secondary); }
+.summary-copy, .check-row > div { min-width: 0; overflow-wrap: anywhere; }
+.diagnostic-meta { display: flex; flex-wrap: wrap; gap: calc(var(--ui-space) * 2); margin: calc(var(--ui-space) * 4) 0; color: var(--ui-text-secondary); font-size: .9em; }
+.diagnostic-meta span { padding: calc(var(--ui-space) * 2); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); }
+.check-list { display: grid; gap: calc(var(--ui-space) * 2); }
+.check-row { display: flex; align-items: center; gap: calc(var(--ui-space) * 3); padding: calc(var(--ui-space) * 3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); }
+.check-state { flex-shrink: 0; }
+.ui-v2 .check-state.check-state--ok { color: var(--ui-success); }
+.ui-v2 .check-state.check-state--warning { color: var(--ui-warning); }
+.ui-v2 .check-state.check-state--error { color: var(--ui-danger); }
+.loading-row { padding: calc(var(--ui-space) * 4) 0; color: var(--ui-text-secondary); }
+.diagnostic-notice { margin-bottom: calc(var(--ui-space) * 3); padding: calc(var(--ui-space) * 3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); overflow-wrap: anywhere; }
+.diagnostic-notice.error { color: var(--ui-danger); }
+@media (max-width: 720px) {
   .diagnostic-summary { grid-template-columns: auto minmax(0, 1fr); }
-  .diagnostic-summary .button { grid-column: 1 / -1; width: 100%; }
+  .diagnostic-summary .ui-button { grid-column: 1 / -1; width: 100%; }
+  .check-row { flex-wrap: wrap; align-items: flex-start; }
 }
 </style>

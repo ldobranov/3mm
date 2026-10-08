@@ -5,15 +5,17 @@
       <input
         type="color"
         :value="modelValue"
+        :aria-label="label"
         @input="handleColorChange"
-        class="color-picker"
+        class="color-picker ui-control"
       />
       <input
         type="text"
         :value="modelValue"
+        :aria-label="label"
         @input="handleTextChange"
         :placeholder="placeholder"
-        class="color-text-input"
+        class="color-text-input ui-control"
       />
     </div>
   </div>
@@ -59,5 +61,8 @@ export default defineComponent({
 </script>
 
 <style scoped>
-/* Uses .color-input-group and .color-* classes from styles.css */
+/* Shared control styling is opt-in through the Settings ui-v2 boundary. */
+.ui-v2 .color-input-group { display: grid; grid-template-columns: 3rem minmax(0, 1fr); gap: calc(var(--ui-space) * 2); min-width: 0; }
+.ui-v2 .color-picker { width: 3rem; padding: calc(var(--ui-space) * 1.5); cursor: pointer; }
+.ui-v2 .color-text-input { width: 100%; min-width: 0; max-width: none; font-family: ui-monospace, monospace; }
 </style>

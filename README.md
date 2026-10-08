@@ -8,9 +8,10 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Beta. This source prepares **v0.3.0-beta.42**, adding
-> target-owned Update Contract v2 and shared Frontend Bootstrap/Data Access v1
-> to the accepted Theme Platform V5 and merged Milestone 19 foundation.
+> **Project status:** Beta. This source prepares **v0.3.0-beta.43**, delivering
+> accepted Theme Platform V6 screens, the V7 public extension UI contract and
+> durable localhost/WSL browser-access policy for console and UI updates.
+> Target-owned Update Contract v2 and shared Frontend Bootstrap/Data Access v1 remain.
 > It includes the generic Public Web Runtime and Application
 > Extension HTTP contract while keeping the administrative SPA isolated on its
 > existing surface. The release contains no Shop or SEO-specific Core logic.
@@ -27,7 +28,9 @@ system.
 > loading and portable recovery are locally checked; desktop/mobile light/dark
 > review used an isolated fixture, not a live device. Installed-package preview,
 > licensed font/Cyrillic proof and the integrated theme editor passed local V5
-> review; V6–V8 screen migration, extension UI adoption and live recovery remain.
+> review. V6 screens and V7 shared extension UI are accepted locally; live
+> upgrade/rollback/portable recovery acceptance remains V8. Existing extensions
+> adopt the public controls separately; their business behavior is not rewritten.
 > Updates keep the existing appearance until an administrator selects a v2 theme.
 > No concrete theme (including Graphite Mint) or business extension is bundled.
 
@@ -63,6 +66,10 @@ system.
   Extensions; select an enabled version or built-in appearance in Settings.
   Invalid or disabled packages fall back safely; temporary network failures retain
   the last verified theme. Existing custom settings remain.
+- **Shared extension UI** — `@3mm/ui/v1` exposes the same native Surface,
+  Button and Dialog primitives used by Core. Reviewed compiled UI can inherit
+  the current theme without private Core imports, copied styles or a second Vue
+  runtime. Application SDK 1.3 and existing Vue-only packages remain compatible.
 - **AI Extension Builder** — guided intent planning, editable projects,
   automatic versions, reviewable source changes, deterministic capability
   foundations, compilation and installation.
@@ -229,17 +236,17 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 ### Updating a paired Hub and Zero
 
-After beta.42 is fully published, manually install this first corrected
-full-profile release on the two existing development hosts (Raspberry/WSL):
+From a working beta.42 full installation, select **Beta** in `/system/updates`
+and stage the published beta.43 release. Older installations can first manually
+bootstrap the current corrected full-profile release (Raspberry/WSL):
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.42
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.43
 ```
 
 An older installed updater cannot acquire the target-installer fix before it
-runs. Test a subsequent official release through `/system/updates` using the
-Beta channel; no bridge release or reset is required. Update the Zero over SSH
-with the Node bootstrap command above and add `--tag v0.3.0-beta.42` to select
+runs. No bridge release or reset is required. Update the Zero over SSH
+with the Node bootstrap command above and add `--tag v0.3.0-beta.43` to select
 this exact release. Provisioned upgrades preserve identity and pairing, not
 Master reset. Real update/rollback and browser request/CPU checks remain pending;
 see [platform stability acceptance](docs/PLATFORM_STABILITY_ACCEPTANCE.md).
@@ -387,6 +394,21 @@ appearance refresh fails. A verified deselection or disabled/corrupt package sti
 uses built-in fallback. This does not repair DNS/network outages or make a fresh
 offline browser capable of fetching missing resources.
 
+Since beta.43, DashboardList, Extensions, Settings and Display Editor use the
+shared semantic controls. The Display Editor is a palette/canvas/properties
+workspace with sequential mobile sections and local canvas scrolling. Dynamic
+widgets/editors, owner checks, API payloads and unsaved drafts remain supported.
+`@3mm/ui/v1` is the separate [public extension UI contract](docs/EXTENSION_UI_V1.md),
+not a new Application SDK version. The optional UI-only reference source is in
+`modules/ui-reference`; build/upload its ZIP separately. It is not auto-installed.
+Live restart, rollback and portable-theme recovery checks remain V8.
+
+Beta.43 also preserves explicit frontend origins and custom allowed browser
+origins on console/UI upgrades, adding localhost/127.0.0.1 on ports 80/8080.
+Invalid/wildcard policies fail before services stop; full-profile activation
+checks local browser CORS as well as readiness. See the
+[installation guide](INSTALLATION_GUIDE.md). Node policy remains unchanged.
+
 ## Documentation
 
 | Document | Purpose |
@@ -414,7 +436,8 @@ offline browser capable of fetching missing resources.
 | [Extension lifecycle](docs/EXTENSION_LIFECYCLE.md) | Package, version and data lifecycle |
 | [Theme Platform plan](docs/THEME_EXTENSION_PLAN.md) | Theme lifecycle, browser activation and remaining acceptance stages |
 | [Theme extension v1](docs/THEME_EXTENSION_V1.md) | Closed light/dark token contract and shared Extensions upload |
-| [Theme Platform v2 plan](docs/THEME_PLATFORM_V2_PLAN.md) | V0–V5 delivery and remaining screen/recovery acceptance |
+| [Theme Platform v2 plan](docs/THEME_PLATFORM_V2_PLAN.md) | V0–V7 delivery and remaining live recovery acceptance |
+| [Public extension UI v1](docs/EXTENSION_UI_V1.md) | Versioned shared controls, CSS tokens and reviewed compiled UI boundary |
 | [Theme Design API 2](docs/THEME_DESIGN_API_V2.md) | Shared tokens, component variants, shell modes and compatibility |
 | [Theme extension v2](docs/THEME_EXTENSION_V2.md) | Package/asset validation, lifecycle, loader and recovery |
 | [Embedded Nodes extension plan](docs/EMBEDDED_NODES_EXTENSION_PLAN.md) | Deferred firmware/extension work outside Core |

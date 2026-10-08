@@ -44,6 +44,20 @@ export default defineConfig({
     vueJsx(),
     vueDevTools(),
     {
+      name: 'extension-ui-import-map',
+      apply: 'build',
+      buildStart() {
+        this.emitFile({ type: 'chunk', name: 'extension-ui-v1', preserveSignature: 'strict',
+          id: fileURLToPath(new URL('./src/extension-ui/v1.ts', import.meta.url)) })
+      },
+      generateBundle: { order: 'post', handler(_options, bundle) {
+        const entry = Object.values(bundle).find(item => item.type === 'chunk' && item.name === 'extension-ui-v1')
+        const html = bundle['index.html']
+        if (entry?.type !== 'chunk' || html?.type !== 'asset') throw new Error('Public UI entry/import map is missing')
+        html.source = String(html.source).replace('/compiled-ui/ui-v1.mjs', `/${entry.fileName}`)
+      } },
+    },
+    {
       name: 'compiled-ui-vue-runtime',
       writeBundle(options) {
         if (!options.dir) return

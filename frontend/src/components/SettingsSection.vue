@@ -1,7 +1,7 @@
 <template>
-  <div class="settings-card">
+  <div class="settings-card ui-section">
     <div class="settings-card-header">
-      <h3>{{ title }}</h3>
+      <h2>{{ title }}</h2>
     </div>
     <slot />
   </div>
@@ -26,22 +26,24 @@ export default defineComponent({
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
-  padding-bottom: 0.85rem;
-  border-bottom: 1px solid var(--card-border, #e3e3e3);
+  gap: calc(var(--ui-space, 4px) * 4);
+  margin-bottom: calc(var(--ui-space, 4px) * 5);
+  padding-bottom: calc(var(--ui-space, 4px) * 4);
+  border-bottom: 1px solid var(--ui-border, var(--card-border));
 }
 
-.settings-card-header h3 {
+.settings-card-header h2 {
   margin: 0;
   font-size: 1.05rem;
   font-weight: 650;
   letter-spacing: -0.02em;
-  color: var(--text-primary, #222222);
+  color: var(--ui-text, var(--text-primary));
+  overflow-wrap: anywhere;
 }
 
-:root[data-theme="dark"] .settings-card-header,
-.dark .settings-card-header {
-  border-bottom-color: var(--card-border, #4b5563);
+.settings-card {
+  box-shadow: none;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 </style>

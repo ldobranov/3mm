@@ -1,6 +1,6 @@
 <template>
-  <div class="form-section">
-    <label class="form-label">{{ t('settings.applicationTheme', 'Application Theme') }}</label>
+  <fieldset class="form-section theme-selector">
+    <legend class="form-label">{{ label || t('settings.applicationTheme', 'Application Theme') }}</legend>
     <div class="theme-options">
       <label class="theme-option">
         <input
@@ -10,7 +10,7 @@
           :checked="modelValue === 'light'"
           @change="handleChange"
         />
-        <i class="bi bi-sun-fill"></i>
+        <i class="bi bi-sun-fill" aria-hidden="true"></i>
         {{ t('settings.lightMode', 'Light Mode') }}
       </label>
       <label class="theme-option">
@@ -21,14 +21,14 @@
           :checked="modelValue === 'dark'"
           @change="handleChange"
         />
-        <i class="bi bi-moon-fill"></i>
+        <i class="bi bi-moon-fill" aria-hidden="true"></i>
         {{ t('settings.darkMode', 'Dark Mode') }}
       </label>
     </div>
     <small class="help-text">
       {{ t('settings.chooseTheme', 'Choose your preferred application theme') }}
     </small>
-  </div>
+  </fieldset>
 </template>
 
 <script lang="ts">
@@ -38,6 +38,7 @@ import { useI18n } from '@/utils/i18n'
 export default defineComponent({
   name: 'ThemeSelector',
   props: {
+    label: { type: String, default: '' },
     modelValue: {
       type: String,
       required: true
@@ -62,8 +63,11 @@ export default defineComponent({
 </script>
 
 <style scoped>
+.theme-selector { border: 0; padding: 0; min-width: 0; }
+.theme-selector legend { font-size: inherit; }
 .theme-options {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 0.5rem;
 }

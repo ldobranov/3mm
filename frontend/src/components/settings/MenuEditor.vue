@@ -7,7 +7,7 @@
           {{ t('settings.menuLanguageHelp', 'Configure complete menu structure for the selected language') }}
         </p>
       </div>
-      <span class="menu-editor-count">
+      <span class="menu-editor-count ui-badge">
         {{ menu.items.length }}
       </span>
     </div>
@@ -31,12 +31,13 @@
         <div class="menu-item-content">
           <div class="menu-item-grid">
             <div class="menu-editor-field">
-              <label class="form-label menu-item-field-label">
+              <label class="form-label menu-item-field-label" :for="`menu-item-label-${index}`">
                 {{ t('settings.label', 'Label') }} ({{ menuLanguage.toUpperCase() }})
               </label>
               <input
                 type="text"
-                class="input menu-item-label"
+                class="input ui-control menu-item-label"
+                :id="`menu-item-label-${index}`"
                 :value="navigationLabelForEditing(item.label, menuLanguage)"
                 @input="updateMenuItemLabel(index, $event)"
                 :placeholder="`${t('settings.label', 'Label')} ${t('settings.in', 'in')} ${menuLanguage.toUpperCase()}`"
@@ -50,11 +51,12 @@
             </div>
 
             <div class="menu-editor-field">
-              <label class="form-label menu-item-field-label">
+              <label class="form-label menu-item-field-label" :for="`menu-item-path-${index}`">
                 {{ t('settings.path', 'Path') }}
               </label>
               <select
-                class="select menu-item-path-input"
+                class="select ui-control menu-item-path-input"
+                :id="`menu-item-path-${index}`"
                 :value="isKnownRoute(item.path) ? item.path : '__custom__'"
                 @change="updateMenuItemRoute(index, $event)"
               >
@@ -66,7 +68,8 @@
               <input
                 v-if="!isKnownRoute(item.path)"
                 type="text"
-                class="input menu-item-path-input"
+                class="input ui-control menu-item-path-input"
+                :aria-label="t('settings.customPath', 'Custom path')"
                 :value="item.path"
                 :placeholder="t('settings.customPathPlaceholder', '/custom-path')"
                 @input="updateMenuItemPath(index, $event)"
@@ -74,11 +77,12 @@
             </div>
 
             <div class="menu-editor-field">
-              <label class="form-label menu-item-field-label">
+              <label class="form-label menu-item-field-label" :for="`menu-item-audience-${index}`">
                 {{ t('settings.menuAudience', 'Visible to') }}
               </label>
               <select
-                class="select menu-item-access-input"
+                class="select ui-control menu-item-access-input"
+                :id="`menu-item-audience-${index}`"
                 :value="item.audience || defaultAudienceForPath(item.path)"
                 @change="updateMenuItemAudience(index, $event)"
               >
@@ -97,14 +101,14 @@
 
         <div class="menu-item-actions">
           <button
-            class="button button-outline button-sm menu-item-action"
+            class="ui-button menu-item-action"
             type="button"
             @click="duplicateMenuItem(index)"
           >
             {{ t('common.duplicate', 'Duplicate') }}
           </button>
           <button
-            class="button button-outline button-sm menu-item-action menu-item-danger"
+            class="ui-button ui-button--danger menu-item-action menu-item-danger"
             type="button"
             @click="removeMenuItem(index)"
           >
@@ -123,18 +127,19 @@
 
       <div class="menu-editor-add-grid">
         <div class="menu-editor-field">
-          <label class="form-label">{{ t('settings.label', 'Label') }} ({{ menuLanguage.toUpperCase() }})</label>
+          <label class="form-label" for="new-item-label">{{ t('settings.label', 'Label') }} ({{ menuLanguage.toUpperCase() }})</label>
           <input
             type="text"
-            class="input menu-editor-input"
+            class="input ui-control menu-editor-input"
+            id="new-item-label"
             :placeholder="`${t('settings.label', 'Label')} ${t('settings.in', 'in')} ${menuLanguage.toUpperCase()}`"
             v-model="newItem.label"
           />
         </div>
 
         <div class="menu-editor-field">
-          <label class="form-label">{{ t('settings.path', 'Path') }}</label>
-          <select v-model="newItem.path" class="select menu-editor-input" @change="handleNewRouteChange">
+          <label class="form-label" for="new-item-path">{{ t('settings.path', 'Path') }}</label>
+          <select id="new-item-path" v-model="newItem.path" class="select ui-control menu-editor-input" @change="handleNewRouteChange">
             <option disabled value="">{{ t('settings.chooseRoute', 'Choose a route') }}</option>
             <option v-for="route in routeOptions" :key="route.path" :value="route.path">
               {{ route.label }}{{ route.adminOnly ? ' · Admin' : '' }} — {{ route.path }}
@@ -145,14 +150,15 @@
             v-if="newItem.path === '__custom__'"
             v-model.trim="newItemCustomPath"
             type="text"
-            class="input menu-editor-input"
+            class="input ui-control menu-editor-input"
+            :aria-label="t('settings.customPath', 'Custom path')"
             :placeholder="t('settings.customPathPlaceholder', '/custom-path')"
           />
         </div>
 
         <div class="menu-editor-field">
-          <label class="form-label">{{ t('settings.menuAudience', 'Visible to') }}</label>
-          <select v-model="newItem.audience" class="select menu-editor-input">
+          <label class="form-label" for="new-item-audience">{{ t('settings.menuAudience', 'Visible to') }}</label>
+          <select id="new-item-audience" v-model="newItem.audience" class="select ui-control menu-editor-input">
             <option value="public" :disabled="!isPublicRoute(resolvedNewItemPath)">{{ t('settings.menuAudiencePublic', 'Everyone') }}</option>
             <option value="authenticated">{{ t('settings.menuAudienceAuthenticated', 'Signed-in users') }}</option>
             <option value="admin">{{ t('settings.menuAudienceAdmin', 'Administrators') }}</option>
@@ -161,7 +167,7 @@
       </div>
 
       <button
-        class="button button-primary"
+        class="ui-button ui-button--primary"
         type="button"
         @click="addMenuItem"
       >
@@ -366,174 +372,25 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.menu-editor {
-  display: grid;
-  gap: 1rem;
-}
-
-.menu-editor-title {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  padding-bottom: 0.85rem;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.menu-editor-title strong {
-  font-size: 0.95rem;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-}
-
-.menu-editor-subtitle {
-  margin: 0.35rem 0 0;
-  font-size: 0.88rem;
-  color: var(--text-secondary);
-}
-
-.menu-editor-count {
-  min-width: 2.2rem;
-  padding: 0.3rem 0.6rem;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  text-align: center;
-  font-size: 0.82rem;
-  font-weight: 650;
-  color: var(--text-secondary);
-  background: var(--panel-bg);
-}
-
-.menu-item {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 0.75rem;
-  padding: 0.9rem;
-  margin-bottom: 0.65rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--border-radius-sm);
-  background-color: var(--card-bg);
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
-}
-
-.drag-handle {
-  cursor: move;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  margin-top: 1.65rem;
-  font-size: 1rem;
-  color: var(--text-muted);
-  border-radius: 999px;
-  background: var(--panel-bg);
-}
-
-.menu-item-content {
-  min-width: 0;
-}
-
-.menu-item-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(10rem, 0.8fr);
-  gap: 0.75rem;
-}
-
-.menu-editor-field {
-  display: grid;
-  gap: 0.35rem;
-}
-
-.menu-item-field-label {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-}
-
-.menu-item-label,
-.menu-item-path-input,
-.menu-item-access-input,
-.menu-editor-input {
-  width: 100%;
-}
-
-.menu-item-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  justify-content: flex-start;
-}
-
-.menu-item-action {
-  min-width: 6.5rem;
-}
-
-.menu-item-danger {
-  border-color: var(--button-danger-bg);
-  color: var(--button-danger-bg);
-}
-
-.menu-items-empty {
-  padding: 1rem;
-  border: 1px dashed var(--color-border);
-  border-radius: var(--border-radius-sm);
-  background: var(--panel-bg);
-  color: var(--text-secondary);
-}
-
-.menu-items-empty p {
-  margin: 0;
-}
-
-.menu-editor-add {
-  padding-top: 1rem;
-  border-top: 1px solid var(--color-border);
-  display: grid;
-  gap: 0.75rem;
-}
-
-.menu-editor-add h4 {
-  margin: 0;
-  font-size: 0.95rem;
-}
-
-.menu-editor-add-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  gap: 0.75rem;
-}
-
-:root[data-theme="dark"] .menu-item,
-.dark .menu-item,
-:root[data-theme="dark"] .menu-editor-title,
-.dark .menu-editor-title,
-:root[data-theme="dark"] .menu-editor-add,
-.dark .menu-editor-add,
-:root[data-theme="dark"] .menu-items-empty,
-.dark .menu-items-empty,
-:root[data-theme="dark"] .menu-editor-count,
-.dark .menu-editor-count {
-  border-color: var(--color-border);
-}
-
+.menu-editor { display: grid; gap: calc(var(--ui-space) * 4); min-width: 0; }
+.menu-editor-title { display: flex; align-items: flex-start; justify-content: space-between; gap: calc(var(--ui-space) * 4); padding-bottom: calc(var(--ui-space) * 3); border-bottom: 1px solid var(--ui-border); }
+.menu-editor-title strong, .menu-editor-add h4 { font-size: 1rem; font-weight: 650; }
+.menu-editor-subtitle { margin-top: var(--ui-space); font-size: .9em; color: var(--ui-text-secondary); }
+.menu-item { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: calc(var(--ui-space) * 3); padding: calc(var(--ui-space) * 4); margin-bottom: calc(var(--ui-space) * 3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); background: var(--ui-surface); }
+.drag-handle { cursor: move; display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; margin-top: 1.65rem; color: var(--ui-text-muted); border-radius: var(--ui-radius-sm); background: var(--ui-surface-alt); }
+.menu-item-content, .menu-editor-field { min-width: 0; }
+.menu-item-grid, .menu-editor-add-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: calc(var(--ui-space) * 3); }
+.menu-editor-field { display: grid; align-content: start; gap: calc(var(--ui-space) * 2); }
+.menu-item-field-label { color: var(--ui-text-secondary); font-size: .9em; }
+.menu-item-actions { grid-column: 2; display: flex; flex-wrap: wrap; gap: calc(var(--ui-space) * 2); }
+.menu-items-empty { padding: calc(var(--ui-space) * 4); border: 1px dashed var(--ui-border); border-radius: var(--ui-radius-sm); background: var(--ui-surface-alt); color: var(--ui-text-secondary); }
+.menu-editor-add { padding-top: calc(var(--ui-space) * 4); border-top: 1px solid var(--ui-border); display: grid; gap: calc(var(--ui-space) * 3); }
+.menu-editor-add h4 { margin: 0; }
+.menu-editor-add > .ui-button { justify-self: start; }
 @media (max-width: 900px) {
-  .menu-item {
-    grid-template-columns: 1fr;
-  }
-
-  .drag-handle {
-    margin-top: 0;
-  }
-
-  .menu-item-grid,
-  .menu-editor-add-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .menu-item-actions {
-    flex-direction: row;
-    justify-content: flex-start;
-  }
+  .menu-item { grid-template-columns: minmax(0, 1fr); }
+  .drag-handle { margin-top: 0; }
+  .menu-item-grid, .menu-editor-add-grid { grid-template-columns: minmax(0, 1fr); }
+  .menu-item-actions { grid-column: 1; }
 }
 </style>

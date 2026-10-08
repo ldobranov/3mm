@@ -104,4 +104,12 @@ describe('logo image editor loading', () => {
     await wrapper.setProps({ show: true, editingImage: { url, name: 'logo.svg' } })
     expect(images[0].src).toBe(url)
   })
+
+  it('names the close control and closes without uploading', async () => {
+    const wrapper = open()
+    expect(wrapper.get('.close-button').attributes('aria-label')).toBe('Close')
+    await wrapper.get('.close-button').trigger('click')
+    expect(wrapper.emitted('update:show')).toEqual([[false]])
+    expect(api.post).not.toHaveBeenCalled()
+  })
 })

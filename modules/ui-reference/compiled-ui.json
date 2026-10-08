@@ -1,0 +1,15 @@
+{
+  "compiled_ui_version": 1,
+  "module_id": "org.3mm.ui-reference",
+  "version": "1.0.0",
+  "entrypoints": [
+    {
+      "entrypoint_id": "reference",
+      "kind": "route",
+      "source": "source/frontend/UiReference.vue",
+      "route": "/ui-reference",
+      "label": { "en": "UI reference", "translations": { "bg": "UI пример" } },
+      "requires_role": "admin"
+    }
+  ]
+}

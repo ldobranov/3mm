@@ -1,11 +1,17 @@
 # 3mm Theme Platform v2 — цялостни визуални теми
 
-Обновен: 2026-10-07. Статус: V0–V4 са публикувани; работещата основа,
+Обновен: 2026-10-08. Статус: V0–V4 са публикувани; работещата основа,
 включително персоналните цветове на темите, е в beta.40. V5 е изпълнен и проверен
 локално с два действителни ZIP пакета и лицензиран шрифт с кирилица и е одобрен
 от собственика. Допълненията за idle tab и общ редактор са проверени локално;
 подготвени за beta.41, при успешен release workflow. Deploy остава отделен.
-V6–V8 остават отворени; пълно
+V6 / DashboardList е одобрен от собственика на 2026-10-07.
+V6 / Extensions е одобрен от собственика на 2026-10-07.
+V6 / Settings: navigation, общи cards и Application/Header формите са одобрени.
+Останалите вътрешни форми са одобрени с продължението на собственика на 2026-10-08.
+V6 / Display Editor е одобрен от собственика на 2026-10-08; V6 е приет локално.
+V7 е изпълнен локално и одобрен за доставка на 2026-10-08. V6/V7 се подготвят
+за beta.43; публикацията се допуска само след успешен release workflow. V8 остава отворен; пълно
 live/recovery приемане не се подразбира от успешен release.
 Обхват: продължение на Milestone 17, не нов device/extension subsystem.
 Свързани: [продуктов план](MASTER_PLAN.md), [доставка T0–T6](THEME_EXTENSION_PLAN.md),
@@ -141,8 +147,8 @@ Backup/portable restore включва избрания immutable пакет и 
 ## 6. Етапи и конкретно приемане
 
 V0–V4 са **публикувани**; собственикът потвърди работещите теми и корекции на
-логото до beta.40. V5 е изпълнен локално и одобрен; чака доставка. V6–V8 остават
-отворени. Локален visual review и успешно публикуване не заменят пълното
+логото до beta.40. V5 и V6 са изпълнени локално и одобрени; чакат доставка.
+V7 е одобрен за доставка с beta.43; V8 остава отворен. Локален visual review и успешно публикуване не заменят пълното
 live/recovery приемане. T0–T3 остават
 историческата v1 доставка. [Baseline и карта на зависимостите](THEME_PLATFORM_V2_BASELINE.md).
 [Договор V1–V3](THEME_DESIGN_API_V2.md), [отчет](THEME_PLATFORM_V2_V1_V3_REPORT.md).
@@ -295,6 +301,60 @@ bookmark води към общия редактор, а защитеният re
 API и бизнес поведение не се променят без доказана необходимост. Екраните извън
 този обхват остават legacy-compatible и се вписват като следващи малки задачи.
 
+На 2026-10-07 **DashboardList е изпълнен локално и одобрен от собственика**.
+Картите, статусите и действията използват общите theme
+tokens/варианти; Create/Delete използват споделения native dialog. Запазени са
+API заявките, ownership проверката и preview/editor destinations. Няма backend,
+SDK или router промяна. 8 component теста и 2 UI primitive теста, type-check и
+frontend build минаха. Изолиран browser review включва desktop/mobile, light/dark,
+BG/EN, дълги текстове, Escape/focus и безопасен начален фокус върху Delete → Cancel.
+Проверен е и built-in/legacy adapter. Това не е live auth или recovery приемане.
+[Отчет за DashboardList](THEME_PLATFORM_V2_V6_DASHBOARD_REPORT.md).
+**Extensions е изпълнен локално и одобрен от собственика на 2026-10-07.** Единният upload,
+каталогът, статусите, switches и lifecycle controls използват общи tokens и
+component варианти. Конфигурацията и потвържденията използват споделения native
+dialog с безопасен Cancel фокус, Escape/focus return и защита на текущата заявка.
+Запазени са API payloads, разграничението uninstall/delete/erase, permissions и
+read-only compiled UI controls. 17 Extensions теста, 8 DashboardList теста и
+2 UI primitive теста, type-check и frontend build минаха. Изолираният browser
+review включва desktop/mobile, light/dark, BG/EN и две палитри; не е live lifecycle
+или recovery приемане. [Отчет за Extensions](THEME_PLATFORM_V2_V6_EXTENSIONS_REPORT.md).
+**Settings — първа част е изпълнена локално и одобрена от собственика.**
+Навигацията е компактна desktop секция и именуван native select на mobile;
+общите panels, Application и Header формите използват UI tokens/варианти.
+Запазени са mounted sections и незаписаните drafts, language bindings,
+споделеното лого, API payloads и съществуващите permission условия. Поправен е
+white hover фонът на upload зоната на image editor в dark mode. Няма backend,
+SDK, router или deployment промяна. 41 целеви frontend теста, type-check и build
+минаха; browser review включва desktop/mobile, BG/EN и light/dark, две theme
+палитри и built-in adapter. Използван е изолиран fixture, без live writes.
+[Отчет за Settings](THEME_PLATFORM_V2_V6_SETTINGS_REPORT.md).
+**Settings — останалите форми са изпълнени локално и одобрени на 2026-10-08.**
+Menu/Network/Backup/Diagnostics/Device control и built-in color/radius controls
+използват semantic tokens, общи controls/actions и responsive подредба. Запазени
+са API handlers, native confirm/prompt, menu audience/localization/reorder и
+точната reset фраза. Diagnostics има текстови status badges; поправен е оставащ
+Bootstrap muted цвят в dark network forms и legacy hex input width.
+51 целеви теста в 10 файла, type-check и frontend build минаха. Browser review:
+Graphite/light/desktop, Copper/dark/390px/BG, built-in/light/desktop и mobile/EN;
+дълги backup IDs се пренасят без хоризонтално преливане. Това е изолиран fixture,
+не live backup/recovery проверка. Собственикът продължи към Display Editor след
+приемането на тази втора част.
+
+**Display Editor е изпълнен локално и одобрен от собственика на 2026-10-08.** Workspace:
+palette / canvas / properties; на тесен екран секциите са последователни,
+а платното има собствено хоризонтално превъртане без промяна на grid координатите.
+Изборът на widget работи и през native select, без drag-and-drop. Dynamic legacy
+и compiled editors продължават да се зареждат през съществуващите resolver-и.
+Preview → Cancel и смяна на widget връщат оригиналния config; закъснели editor
+responses и preview timers не сменят новия избор. Save затваря панела само след
+успех; грешка запазва draft. Settings използва shared native dialog и същия API.
+28 целеви теста, type-check и frontend build минаха. Browser review: две theme
+палитри, light/dark, BG/EN, desktop/390px, long labels, локален preview/cancel,
+failed save и Escape/focus. Няма backend, SDK, router или deployment промяна;
+public DisplayCanvas и GridStack алгоритъмът не са променяни. Това не е live
+save/layout/drag-and-drop приемане. [Отчет](THEME_PLATFORM_V2_V6_DISPLAY_EDITOR_REPORT.md).
+
 ### V7 — UI договор за extensions
 
 Документираме tokens/classes и поддържания начин за reusable UI през публичния
@@ -304,6 +364,19 @@ extension boundary. Няма imports от вътрешни Core файлове �
 Приемане: неутрален reference application използва същите primitives при двете
 теми. Legacy extension с hardcoded CSS продължава да работи, но не се обещава,
 че автоматично ще изглежда като новата тема. Миграцията му е задача за неговия чат.
+
+Изпълнено локално на 2026-10-08: публичен browser module `@3mm/ui/v1`
+(Surface/Button/Dialog/version), hashed host import map и същият Vue runtime.
+Shell предоставя само read-only component variants, не Core stores. Съществуващият
+install-time compiler допуска точно този import; няма промяна на catalog,
+route/auth/API, database, Device Protocol или Application SDK 1.3.
+Неутрален UI-only reference ZIP минава през действителния validator/compiler и
+frontend loader. 17 frontend и 9 backend проверки, type-check/build и browser
+review с две themes, legacy adapter, mobile, BG/EN и native dialog минават.
+Няма автоматична миграция на бизнес extensions или обещание за theme-aware
+hardcoded CSS. [Публичен договор](EXTENSION_UI_V1.md),
+[отчет V7](THEME_PLATFORM_V2_V7_REPORT.md). Собственикът одобри доставка на 2026-10-08;
+live installed-package и upgrade/recovery приемането остават V8.
 
 ### V8 — Реално upgrade/recovery приемане и доставка
 
@@ -319,6 +392,9 @@ CHANGELOG и milestone report описват провереното, не пре
 
 Ред: **V0 → V1 → V2 → V3 → V4 → V5 → V6/V7 → V8**.
 V6 има отделна visual gate за всеки екран; не означава обща задача за четири redesign-а.
+По решение на собственика от 2026-10-07 завършваме този theme milestone преди
+реализацията на следващия Extension Platform v2 milestone; неговият план остава
+подготвен, но не започнат в тази задача.
 
 - Малки diff-ове; без несвързан cleanup или редакция на бизнес extensions.
 - При frontend промени: `npm run build-only` и релевантни целеви проверки;
@@ -344,5 +420,7 @@ marketing pages, нови business/device APIs или цялостна авто�
 чужди extensions. Ако по-късно се поиска изпълним theme plugin, той изисква
 отделен trust/security milestone, не разширяване на декларативния v2 по подразбиране.
 
-Следващата малка задача след потребителския преглед е **V6 / DashboardList**,
-не redesign на всички екрани. Публикуване и live V8 проверки се заявяват отделно.
+V6/V7 са одобрени локално; не започваме автоматично redesign на други екрани.
+По заявка на собственика се подготвя beta.43. След successful workflow собственикът
+ще обнови устройствата; live upgrade/recovery проверките остават V8.
+M17 не се затваря преди V8.

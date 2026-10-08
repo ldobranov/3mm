@@ -67,6 +67,9 @@ def test_dependency_branch_and_validation_order(profile):
 release_dir=/test/release
 deploy_home=/test/home
 npm_cache=/test/npm
+environment_file=/test/env
+device_hostname=test-host
+frontend_origin=http://localhost
 log() { :; }
 python3() { printf 'venv\\n'; }
 test_python() { printf 'python %s\\n' "$*"; }

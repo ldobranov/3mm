@@ -1,0 +1,123 @@
+import { defineComponent } from 'vue'
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Widget } from '@/stores/widgets'
+
+const loaders = vi.hoisted(() => ({ bundled: vi.fn(), find: vi.fn(), catalog: vi.fn(), compiled: vi.fn(), extensions: vi.fn() }))
+vi.mock('@/utils/extension-components', () => ({ loadBundledExtensionComponentByPath: loaders.bundled }))
+vi.mock('@/utils/compiled-ui', () => ({ findCompiledEntrypoint: loaders.find, getCompiledUiCatalog: loaders.catalog, loadCompiledComponent: loaders.compiled }))
+vi.mock('@/stores/widgets', () => ({ useWidgetsStore: () => ({ fetchAvailableExtensions: loaders.extensions }) }))
+vi.mock('@/utils/i18n', () => ({ useI18n: () => ({ t: (_key: string, fallback: string) => fallback }) }))
+import EditorPanel from './EditorPanel.vue'
+
+const editor = defineComponent({ props: ['config'], emits: ['update:modelValue'], template: '<label>Title<input :value="config.title" @input="$emit(\'update:modelValue\', { title: $event.target.value })" /></label>' })
+const widget = (id = 1, type = 'extension:7'): Widget => ({ id, type, display_id: 2, config: { title: `Widget ${id}` }, x: 0, y: 0, width: 3, height: 2, z_index: 1 })
+const mounted: Array<ReturnType<typeof mount>> = []
+async function setup() {
+  const wrapper = mount(EditorPanel, { props: { modelValue: true, widget: widget() } })
+  mounted.push(wrapper)
+  await flushPromises()
+  return wrapper
+}
+
+describe('Docked dynamic widget properties', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.clearAllMocks()
+    loaders.extensions.mockResolvedValue([{ id: 7, name: 'GenericWidget', version: '1.0.0', frontend_editor: 'Editor.vue' }])
+    loaders.bundled.mockResolvedValue(editor)
+    loaders.compiled.mockResolvedValue(editor)
+    loaders.find.mockResolvedValue(null)
+  })
+  afterEach(() => { mounted.splice(0).forEach(wrapper => wrapper.unmount()); vi.useRealTimers() })
+  it('loads the registered editor and debounces local preview without a modal', async () => {
+    const wrapper = await setup()
+    expect(loaders.bundled).toHaveBeenCalledWith('/src/extensions/GenericWidget_1.0.0/Editor.vue')
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    await wrapper.find('input').setValue('Preview')
+    await vi.advanceTimersByTimeAsync(150)
+    expect(wrapper.emitted('preview')?.at(-1)).toEqual([{ id: 1, config: { title: 'Preview' } }])
+  })
+  it('cancels pending preview and uses localized action labels', async () => {
+    const wrapper = await setup()
+    await wrapper.find('input').setValue('Discard')
+    await wrapper.find('.properties-actions button').trigger('click')
+    await vi.advanceTimersByTimeAsync(200)
+    expect(wrapper.emitted('cancel')).toEqual([[1]])
+    expect(wrapper.emitted('update:modelValue')).toEqual([[false]])
+    expect(wrapper.emitted('preview')).toBeUndefined()
+    expect(wrapper.find('.properties-actions').text()).toContain('Cancel')
+  })
+  it('emits save without closing early, clears preview and protects in-flight persistence', async () => {
+    const wrapper = await setup()
+    await wrapper.find('input').setValue('Saved')
+    await wrapper.find('.ui-button--primary').trigger('click')
+    await vi.advanceTimersByTimeAsync(200)
+    expect(wrapper.emitted('save')).toEqual([[{ id: 1, config: { title: 'Saved' } }]])
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(wrapper.emitted('preview')).toBeUndefined()
+    await wrapper.setProps({ saving: true })
+    expect(wrapper.find('fieldset').attributes('disabled')).toBeDefined()
+    await wrapper.find('.widget-properties').trigger('keydown', { key: 'Escape' })
+    expect(wrapper.emitted('cancel')).toBeUndefined()
+    await wrapper.setProps({ saving: false, error: 'Failed to save' })
+    expect(wrapper.find('[role="alert"]').text()).toBe('Failed to save')
+    expect((wrapper.find('input').element as HTMLInputElement).value).toBe('Saved')
+  })
+  it('ignores a stale editor response after switching widgets', async () => {
+    let resolveFirst!: (value: unknown) => void
+    loaders.bundled.mockReturnValueOnce(new Promise(resolve => { resolveFirst = resolve }))
+    const wrapper = await setup()
+    await wrapper.setProps({ widget: widget(2) })
+    await flushPromises()
+    const stale = defineComponent({ template: '<p>Stale editor</p>' })
+    resolveFirst(stale)
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Stale editor')
+    await wrapper.find('input').setValue('Second')
+    await vi.advanceTimersByTimeAsync(200)
+    expect(wrapper.emitted('preview')?.at(-1)).toEqual([{ id: 2, config: { title: 'Second' } }])
+  })
+  it('does not preview after closing or unmounting', async () => {
+    const wrapper = await setup()
+    await wrapper.find('input').setValue('Closed')
+    await wrapper.setProps({ modelValue: false })
+    await vi.advanceTimersByTimeAsync(200)
+    expect(wrapper.emitted('preview')).toBeUndefined()
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+    await wrapper.find('input').setValue('Unmounted')
+    wrapper.unmount()
+    await vi.advanceTimersByTimeAsync(200)
+    expect(wrapper.emitted('preview')).toBeUndefined()
+  })
+  it('handles keyboard only within the panel, not global toolbar buttons', async () => {
+    const wrapper = await setup()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+    expect(wrapper.emitted('save')).toBeUndefined()
+    await wrapper.find('.properties-actions button').trigger('keydown', { key: 'Enter' })
+    expect(wrapper.emitted('save')).toBeUndefined()
+    await wrapper.find('input').trigger('keydown', { key: 'Enter' })
+    expect(wrapper.emitted('save')).toHaveLength(1)
+    await wrapper.find('input').trigger('keydown', { key: 'Escape' })
+    expect(wrapper.emitted('cancel')).toEqual([[1]])
+  })
+  it('resolves a compiled editor through the existing catalog contract', async () => {
+    loaders.find.mockResolvedValue({ pkg: { entrypoints: [{ kind: 'editor', entrypoint_id: 'editor', target_entrypoint_id: 'widget' }] }, entrypoint: { entrypoint_id: 'widget' } })
+    const wrapper = await setup()
+    await wrapper.setProps({ widget: widget(2, 'compiled:org.reference:1.0.0:widget') })
+    await flushPromises()
+    expect(loaders.compiled).toHaveBeenCalled()
+    expect(wrapper.find('input').exists()).toBe(true)
+  })
+  it('shows missing/error states without exposing an unusable Save', async () => {
+    loaders.bundled.mockResolvedValueOnce(null)
+    const wrapper = await setup()
+    expect(wrapper.text()).toContain('does not provide editable settings')
+    expect(wrapper.find('.ui-button--primary').attributes('disabled')).toBeDefined()
+    loaders.bundled.mockRejectedValueOnce(new Error('Unavailable editor'))
+    await wrapper.setProps({ widget: widget(2) })
+    await flushPromises()
+    expect(wrapper.find('[role="alert"]').text()).toContain('Unavailable editor')
+  })
+})

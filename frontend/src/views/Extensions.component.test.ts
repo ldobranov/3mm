@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const http = vi.hoisted(() => ({
   get: vi.fn(),
@@ -10,11 +10,7 @@ const http = vi.hoisted(() => ({
 const compiledUi = vi.hoisted(() => ({ getCatalog: vi.fn() }))
 const runtimeRoutes = vi.hoisted(() => ({ reload: vi.fn() }))
 const settingsStore = vi.hoisted(() => ({
-  styleSettings: {
-    cardBg: '#fff',
-    textPrimary: '#111',
-    cardBorder: '#ddd'
-  },
+  uiDesign: { components: { card: 'raised', button: 'outline' } },
   loadSettings: vi.fn(),
   loadThemeAppearance: vi.fn(),
   updateCSSVariables: vi.fn()
@@ -45,6 +41,9 @@ vi.mock('@/utils/i18n', async () => {
 })
 
 import Extensions from './Extensions.vue'
+
+const nativeMethods = ['showModal', 'close'].map(name => ({ name, descriptor: Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, name) }))
+const mounted: Array<ReturnType<typeof mount>> = []
 
 const runtimeExtension = {
   id: 'runtime:org.3mm.clock',
@@ -81,12 +80,23 @@ const mountView = async () => {
       }
     }
   })
+  mounted.push(wrapper)
   await flushPromises()
   return wrapper
 }
 
 describe('Extensions management workflow', () => {
+  afterEach(() => {
+    mounted.splice(0).forEach(wrapper => wrapper.unmount())
+    vi.restoreAllMocks()
+    for (const { name, descriptor } of nativeMethods) {
+      if (descriptor) Object.defineProperty(HTMLDialogElement.prototype, name, descriptor)
+      else Reflect.deleteProperty(HTMLDialogElement.prototype, name)
+    }
+  })
   beforeEach(() => {
+    Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function(this: HTMLDialogElement) { this.open = true } })
+    Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function(this: HTMLDialogElement) { this.open = false; this.dispatchEvent(new Event('close')) } })
     vi.clearAllMocks()
     localStorage.clear()
     localStorage.setItem('role', 'admin')
@@ -206,8 +216,16 @@ describe('Extensions management workflow', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Reader device')
+    expect(wrapper.get('dialog').attributes('aria-labelledby')).toBe(wrapper.get('dialog h2').attributes('id'))
+    expect(wrapper.get('#application-config-READER_DEVICE_ID').attributes('autofocus')).toBeDefined()
+    expect(wrapper.get('.ui-dialog-actions .version-btn').attributes('disabled')).toBeDefined()
+    await wrapper.get('dialog').trigger('cancel')
+    expect(wrapper.find('dialog').exists()).toBe(false)
+    expect(http.post).not.toHaveBeenCalled()
+    await card.findAll('button').find(button => button.text() === 'Install and activate')!.trigger('click')
+    await flushPromises()
     await wrapper.get('#application-config-READER_DEVICE_ID').setValue(deviceId)
-    await wrapper.get('.modal-footer .version-btn').trigger('click')
+    await wrapper.get('.ui-dialog-actions .version-btn').trigger('click')
     await flushPromises()
 
     expect(http.post).toHaveBeenCalledWith(
@@ -258,7 +276,7 @@ describe('Extensions management workflow', () => {
 
     await uninstall!.trigger('click')
     expect(wrapper.text()).toContain('application data and uploaded package will be preserved')
-    await wrapper.find('.modal-footer .button-danger').trigger('click')
+    await wrapper.find('.ui-dialog-actions .ui-button--danger').trigger('click')
     await flushPromises()
 
     expect(http.delete).toHaveBeenCalledWith(
@@ -294,7 +312,7 @@ describe('Extensions management workflow', () => {
       .find(button => button.text() === 'Delete package')
 
     await remove!.trigger('click')
-    await wrapper.find('.modal-footer .button-danger').trigger('click')
+    await wrapper.find('.ui-dialog-actions .ui-button--danger').trigger('click')
     await flushPromises()
 
     expect(http.delete).toHaveBeenCalledWith(
@@ -330,7 +348,7 @@ describe('Extensions management workflow', () => {
 
     await erase!.trigger('click')
     expect(wrapper.text()).toContain('This cannot be undone')
-    await wrapper.find('.modal-footer .button-danger').trigger('click')
+    await wrapper.find('.ui-dialog-actions .ui-button--danger').trigger('click')
     await flushPromises()
 
     expect(http.delete).toHaveBeenCalledWith(
@@ -379,7 +397,7 @@ describe('Extensions management workflow', () => {
     await uninstall!.trigger('click')
     expect(wrapper.text()).toContain('Data will be preserved')
 
-    await wrapper.find('.modal-footer .button-danger').trigger('click')
+    await wrapper.find('.ui-dialog-actions .ui-button--danger').trigger('click')
     await flushPromises()
 
     expect(http.delete).toHaveBeenCalledWith(
@@ -432,7 +450,7 @@ describe('Extensions management workflow', () => {
     await wrapper.findAll('.extension-card').find(card => card.text().includes('Example theme'))!.get('.delete-btn').trigger('click')
     expect(wrapper.get('.modal-body').text()).toContain('An active theme will return to built-in settings')
     expect(wrapper.find('.modal-body input[type=checkbox]').exists()).toBe(false)
-    await wrapper.get('.modal-footer .button-danger').trigger('click')
+    await wrapper.get('.ui-dialog-actions .ui-button--danger').trigger('click')
     await flushPromises()
     expect(http.delete).toHaveBeenCalledWith(`/api/v1/modules/themes/packages/${themePackage.sha256}`)
     expect(settingsStore.loadThemeAppearance).toHaveBeenCalledTimes(2)
@@ -444,5 +462,74 @@ describe('Extensions management workflow', () => {
     const wrapper = await mountView()
     expect(http.get.mock.calls.some(([url]) => url === '/api/v1/modules/themes/catalog')).toBe(false)
     expect(wrapper.find('#extension-file').exists()).toBe(false)
+  })
+  it('uses the common theme variants and keeps compiled controls read-only', async () => {
+    const wrapper = await mountView()
+    expect(wrapper.attributes('data-card')).toBe('raised')
+    expect(wrapper.attributes('data-button')).toBe('outline')
+    expect(wrapper.findAll('.extension-card.ui-section')).toHaveLength(2)
+    expect(wrapper.findAll('[style]')).toHaveLength(0)
+    const compiled = wrapper.findAll('.extension-card').find(card => card.text().includes('Indicator'))!
+    expect(compiled.get('input[type=checkbox]').attributes('disabled')).toBeDefined()
+    expect(compiled.get('input[type=checkbox]').attributes('aria-label')).toContain('Indicator')
+    expect(compiled.find('.extension-actions').exists()).toBe(false)
+    expect(http.post).not.toHaveBeenCalled()
+  })
+
+  it('cancels a destructive confirmation with Escape and leaves data unchanged', async () => {
+    const wrapper = await mountView()
+    await wrapper.get('.extension-card .delete-btn').trigger('click')
+    expect(wrapper.get('dialog button[autofocus]').text()).toBe('Cancel')
+    expect(wrapper.get('dialog').attributes('aria-labelledby')).toBe(wrapper.get('dialog h2').attributes('id'))
+    expect(wrapper.get('dialog input[type=checkbox]').element).toHaveProperty('checked', false)
+    await wrapper.get('dialog').trigger('cancel')
+    expect(wrapper.find('dialog').exists()).toBe(false)
+    expect(http.delete).not.toHaveBeenCalled()
+  })
+
+  it('keeps the removal target and dialog stable while its request is pending', async () => {
+    let finish!: (result: { data: object }) => void
+    http.delete.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const wrapper = await mountView()
+    await wrapper.get('.extension-card .delete-btn').trigger('click')
+    await wrapper.get('.ui-dialog-actions .ui-button--danger').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.ui-dialog-actions button[autofocus]').attributes('disabled')).toBeDefined()
+    await wrapper.get('dialog').trigger('cancel')
+    await wrapper.get('dialog .ui-button--quiet').trigger('click')
+    expect(wrapper.find('dialog').exists()).toBe(true)
+    expect(http.delete).toHaveBeenCalledOnce()
+    finish({ data: {} })
+    await flushPromises()
+    expect(wrapper.find('dialog').exists()).toBe(false)
+    expect(http.delete).toHaveBeenCalledWith(
+      '/api/v1/runtime-extensions/definitions/org.3mm.clock', { params: { delete_data: false } },
+    )
+  })
+
+  it('keeps a non-manageable package disabled without removing its catalog entry', async () => {
+    localStorage.setItem('role', 'user')
+    http.get.mockResolvedValue({ data: [{ ...runtimeExtension, can_manage: false }] })
+    const wrapper = await mountView()
+    const card = wrapper.get('.extension-card')
+    expect(card.text()).toContain('Clock')
+    expect(card.get('input[type=checkbox]').attributes('disabled')).toBeDefined()
+    expect(card.get('.version-btn').attributes('disabled')).toBeDefined()
+    expect(card.find('.delete-btn').exists()).toBe(false)
+    expect(wrapper.find('.ai-builder-link').exists()).toBe(false)
+  })
+
+  it('shows removal errors inside the open dialog and allows a safe cancellation', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    http.delete.mockRejectedValueOnce({ response: { data: { detail: 'Removal rejected.' } } })
+    const wrapper = await mountView()
+    await wrapper.get('.extension-card .delete-btn').trigger('click')
+    await wrapper.get('.ui-dialog-actions .ui-button--danger').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('dialog [role=alert]').text()).toBe('Removal rejected.')
+    expect(wrapper.get('dialog button[autofocus]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('dialog').trigger('cancel')
+    expect(wrapper.find('dialog').exists()).toBe(false)
+    expect(http.delete).toHaveBeenCalledOnce()
   })
 })

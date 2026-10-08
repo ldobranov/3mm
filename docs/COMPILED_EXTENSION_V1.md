@@ -46,4 +46,17 @@ The compiler runs in a temporary workspace, resolves only bundled build dependen
 
 Compiled source may import only the stable Extension Host SDK and an allowlisted set of frontend dependencies. Imports from arbitrary Core source paths are rejected. Backend Python, shell commands, package-manager hooks and runtime dependency downloads are outside compiled-UI v1.
 
+The implemented bare-import allowlist is `vue` and, on V7-enabled builds,
+`@3mm/ui/v1`. The latter is a separately versioned **presentation-only** browser
+contract: Surface/Button/Dialog, scoped native classes and read-only tokens.
+It exposes no Core stores, router, credentials or application API client. The
+host import map resolves it to a hashed module in the prebuilt frontend; the
+installer does not bundle another Vue or download dependencies. Existing
+Vue-only packages remain unchanged. See [Public Extension UI v1](EXTENSION_UI_V1.md)
+and the [neutral UI reference](../modules/ui-reference/README.md).
+
+This is reviewed executable code, not a browser security sandbox. The public
+UI contract does not weaken backend authorization and does not make arbitrary
+global CSS a supported theme integration. Declarative theme ZIPs are separate.
+
 The Stage 3 frontend loader resolves widget, route, editor and component entrypoints from validated catalog metadata and loads only the immutable JavaScript/CSS URLs that include the reviewed source hash. Persisted compiled widget types include module ID, version and entrypoint ID. Core never branches on a concrete extension name.

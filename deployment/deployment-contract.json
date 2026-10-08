@@ -16,6 +16,7 @@
     "deployment/deployment_contract.py",
     "deployment/factory_reset.py",
     "deployment/first_boot_preflight.py",
+    "deployment/frontend_access.py",
     "deployment/install-systemd.sh",
     "deployment/local_agent_pairing.py",
     "deployment/migrate_database.py",

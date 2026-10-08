@@ -13,7 +13,7 @@
         </div>
         <button
           type="button"
-          class="button button-secondary"
+          class="ui-button"
           :disabled="busy !== null"
           @click="restartDevice"
         >
@@ -29,7 +29,7 @@
         </div>
         <button
           type="button"
-          class="button button-danger"
+          class="ui-button ui-button--danger"
           :disabled="busy !== null"
           @click="factoryReset"
         >
@@ -92,69 +92,20 @@ async function factoryReset() {
 </script>
 
 <style scoped>
-.section-intro {
-  margin: 0 0 1rem;
-  color: var(--text-secondary);
-}
-
-.control-grid {
-  display: grid;
-  gap: 0.85rem;
-}
-
-.control-card {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.9rem;
-  padding: 1rem;
-  border: 1px solid var(--card-border);
-  border-radius: var(--border-radius-md);
-  background: var(--panel-bg);
-}
-
-.control-icon {
-  display: grid;
-  place-items: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: var(--border-radius-sm);
-  color: var(--button-primary-bg);
-  background: color-mix(in srgb, var(--button-primary-bg) 12%, transparent);
-}
-
-.control-copy strong {
-  display: block;
-  color: var(--text-primary);
-}
-
-.control-copy p {
-  margin: 0.25rem 0 0;
-  color: var(--text-secondary);
-  font-size: 0.88rem;
-}
-
-.danger-card {
-  border-color: color-mix(in srgb, var(--button-danger-bg) 42%, var(--card-border));
-}
-
-.danger-icon {
-  color: var(--button-danger-bg);
-  background: color-mix(in srgb, var(--button-danger-bg) 12%, transparent);
-}
-
-.notice {
-  margin-top: 1rem;
-}
-
+.section-intro { margin-bottom: calc(var(--ui-space) * 4); color: var(--ui-text-secondary); }
+.control-grid { display: grid; gap: calc(var(--ui-space) * 4); }
+.control-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: calc(var(--ui-space) * 4); padding: calc(var(--ui-space) * 4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface-alt); }
+.control-icon { display: grid; place-items: center; width: 2.5rem; height: 2.5rem; border-radius: var(--ui-radius-sm); color: var(--ui-accent); background: var(--ui-surface); }
+.control-copy { min-width: 0; overflow-wrap: anywhere; }
+.control-copy strong { display: block; color: var(--ui-text); }
+.control-copy p { margin-top: var(--ui-space); color: var(--ui-text-secondary); font-size: .9em; }
+.danger-card { border-color: color-mix(in srgb, var(--ui-danger) 42%, var(--ui-border)); }
+.danger-icon { color: var(--ui-danger); }
+.notice { margin-top: calc(var(--ui-space) * 4); padding: calc(var(--ui-space) * 3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); overflow-wrap: anywhere; }
+.notice-error { color: var(--ui-danger); }
+.notice-success { color: var(--ui-success); }
 @media (max-width: 720px) {
-  .control-card {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .control-card .button {
-    grid-column: 1 / -1;
-    width: 100%;
-  }
+  .control-card { grid-template-columns: auto minmax(0, 1fr); }
+  .control-card .ui-button { grid-column: 1 / -1; width: 100%; }
 }
 </style>

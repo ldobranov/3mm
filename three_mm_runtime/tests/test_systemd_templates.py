@@ -234,9 +234,12 @@ def test_installer_preserves_identity_and_delegates_network_mutation() -> None:
     assert "THREE_MM_PUBLIC_WEB_GATEWAY_GROUP 3mm-public" in installer
     assert "/run/3mm-public-web.sock" not in installer
     assert "deployment/portable_backup.py" in installer
-    assert "http://$device_hostname.local" in installer
-    assert "frontend_primary_origin=$frontend_scheme://$frontend_host" in installer
-    assert "frontend_compat_origin=$frontend_scheme://$frontend_host:8080" in installer
+    # Origin normalization and compatibility aliases belong to the shared policy.
+    # Its behavior is covered by deployment/tests/test_frontend_access.py.
+    assert '"$release_dir/deployment/frontend_access.py"' in installer
+    assert '--environment "$environment_file" --frontend-origin "$frontend_origin"' in installer
+    assert '--hostname "$device_hostname"' in installer
+    assert 'upsert_environment CORS_ORIGINS "$frontend_cors_origins"' in installer
     # The AP unit needs its writable directory before systemd builds its namespace.
     # Permit only directory preparation; connections and DNS remain helper-owned.
     network_directory = (
@@ -316,8 +319,8 @@ def test_node_starts_update_helpers_before_runtime() -> None:
     block = installer[activation:end]
 
     node_start = block.index('if [[ $install_profile == node ]]')
-    else_start = block.index("else", node_start)
-    fi_start = block.index("fi", else_start)
+    else_start = block.index("\nelse\n", node_start)
+    fi_start = block.index("\nfi\n", else_start)
 
     node_branch = block[node_start:else_start]
     full_branch = block[else_start:fi_start]
@@ -328,8 +331,10 @@ def test_node_starts_update_helpers_before_runtime() -> None:
     )
     assert (
         full_branch.index('activate_runtime "$release_dir"')
+        < full_branch.index("verify_frontend_access")
         < full_branch.index("restart_always_on_services")
     )
+    assert "verify_frontend_access" not in node_branch
 
 
 def test_deploy_accepts_setup_or_application_runtime() -> None:

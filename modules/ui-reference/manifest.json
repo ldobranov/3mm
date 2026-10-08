@@ -1,0 +1,14 @@
+{
+  "manifest_version": 2,
+  "module_id": "org.3mm.ui-reference",
+  "name": "UI Contract Reference",
+  "version": "1.0.0",
+  "description": "Neutral, UI-only reference for the public @3mm/ui/v1 presentation contract. No device or business operations.",
+  "runtimes": ["ui"],
+  "entrypoints": { "ui": "compiled-ui.json" },
+  "compatibility": { "protocol": "1.0", "architectures": ["any"] },
+  "capabilities": { "provides": [], "consumes": [] },
+  "permissions": [],
+  "health_check": { "type": "json_file", "path": "compiled-ui.json" },
+  "registrations": []
+}

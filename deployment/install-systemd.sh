@@ -13,11 +13,6 @@ fi
 release_archive=$(realpath "$1")
 release_id=$2
 frontend_origin=$3
-frontend_scheme=${frontend_origin%%://*}
-frontend_host_port=${frontend_origin#*://}
-frontend_host=${frontend_host_port%%:*}
-frontend_primary_origin=$frontend_scheme://$frontend_host
-frontend_compat_origin=$frontend_scheme://$frontend_host:8080
 device_hostname=$(hostname -s)
 identity_source=${4:-}
 expected_archive_sha256=${5:-}
@@ -263,6 +258,21 @@ verify_runtime() {
     echo "Runtime planner did not activate an application or setup service." >&2
     return 1
   fi
+}
+
+verify_frontend_access() {
+  local origin status
+  for origin in http://localhost http://127.0.0.1; do
+    status=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' \
+      -X OPTIONS http://127.0.0.1:8887/ready \
+      -H "Origin: $origin" \
+      -H 'Access-Control-Request-Method: GET' \
+      -H 'Access-Control-Request-Headers: authorization') || return 1
+    if [[ $status != 200 ]]; then
+      fail "Frontend CORS health check failed for $origin (HTTP $status)."
+      return 1
+    fi
+  done
 }
 
 activate_runtime() {
@@ -543,6 +553,7 @@ required_files=(
   deployment/restore_backup.py
   deployment/restore_application_extensions.py
   deployment/factory_reset.py
+  deployment/frontend_access.py
   deployment/migrate_database.py
   deployment/update-dependency-allowlist.json
   deployment/systemd/3mm-core.service
@@ -634,6 +645,14 @@ HOME="$deploy_home" npm_config_cache="$npm_cache" \
 fi
 
 log "Checking the runtime plan before stopping existing services"
+if [[ $install_profile == full ]]; then
+  # The same target-owned policy runs for console and approved UI updates.
+  # Validate/merge before stopping services; never replace custom allowed origins.
+  frontend_cors_origins=$("$release_dir/.venv/bin/python" \
+    "$release_dir/deployment/frontend_access.py" \
+    --environment "$environment_file" --frontend-origin "$frontend_origin" \
+    --hostname "$device_hostname")
+fi
 PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" -m three_mm_runtime.install_bootstrap \
   --profile "$install_profile" --check-only
 log "Stopping services and backing up persistent state"
@@ -698,7 +717,7 @@ upsert_environment FRONTEND_EXTENSIONS_DIR /var/lib/3mm/core/extensions/frontend
 upsert_environment COMPILED_UI_ARTIFACTS_DIR /var/lib/3mm/core/extensions/compiled
 upsert_environment BACKEND_HOST 0.0.0.0
 upsert_environment BACKEND_PORT 8887
-upsert_environment CORS_ORIGINS "[\"$frontend_origin\",\"$frontend_primary_origin\",\"$frontend_compat_origin\",\"http://$device_hostname.local\",\"http://$device_hostname.local:8080\"]"
+upsert_environment CORS_ORIGINS "$frontend_cors_origins"
 upsert_environment DEVICE_OFFLINE_AFTER_SECONDS 90
 upsert_environment THREE_MM_AGENT_HOST 127.0.0.1
 upsert_environment THREE_MM_AGENT_PORT 8890
@@ -827,6 +846,11 @@ if [[ $install_profile == node ]]; then
   activate_runtime "$release_dir"
 else
   activate_runtime "$release_dir"
+  # Setup-only first boot has no Core listener. Check browser access only when
+  # Core is selected; do not impose the new policy on an older rollback release.
+  if systemctl is-active --quiet 3mm-core.service; then
+    verify_frontend_access
+  fi
   restart_always_on_services
   start_active_application_services "$release_dir"
 fi

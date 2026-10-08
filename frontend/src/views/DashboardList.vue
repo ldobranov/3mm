@@ -1,15 +1,19 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, useId } from 'vue';
 import { useDisplaysStore } from '@/stores/displays';
 import { useSettingsStore } from '@/stores/settings';
 import { useI18n } from '@/utils/i18n';
+import { useUiLabels } from '@/utils/ui-labels';
+import UiButton from '@/components/ui/UiButton.vue';
+import UiDialog from '@/components/ui/UiDialog.vue';
 import http from '@/utils/dynamic-http';
 
 const { t, currentLanguage } = useI18n();
 
 const store = useDisplaysStore();
 const settingsStore = useSettingsStore();
-const styleSettings = computed(() => settingsStore.styleSettings);
+const label = useUiLabels();
+const formId = useId();
 const title = ref('');
 const slug = ref('');
 const isPublic = ref(false);
@@ -71,6 +75,15 @@ function closeModal() {
   isPublic.value = false;
 }
 
+// Preserve the former backdrop dismissal while using the shared native dialog.
+function closeOnBackdrop(event: MouseEvent, close: () => void) {
+  const dialog = event.currentTarget as HTMLDialogElement;
+  if (event.target !== dialog) return;
+  const bounds = dialog.getBoundingClientRect();
+  if (event.clientX < bounds.left || event.clientX > bounds.right ||
+      event.clientY < bounds.top || event.clientY > bounds.bottom) close();
+}
+
 async function createDisplay() {
   if (!title.value || !slug.value) return;
   
@@ -126,277 +139,156 @@ function getOwnerUsername(display: any): string {
 </script>
 
 <template>
-  <div class="view" :key="currentLanguage">
-    <div class="view-header">
+  <div class="view dashboard-view ui-v2" :key="currentLanguage"
+    :data-card="settingsStore.uiDesign.components.card"
+    :data-button="settingsStore.uiDesign.components.button">
+    <header class="view-header dashboard-heading">
       <h1 class="view-title">{{ t('dashboard.title', 'Dashboard Management') }}</h1>
-      <button
-        class="button button-primary"
-        @click="openCreateModal"
-      >
-        <i class="bi bi-plus-circle" style="margin-right: 0.5rem;"></i>{{ t('dashboard.createNew', 'Create New Dashboard') }}
-      </button>
+      <UiButton variant="primary" class="dashboard-create" @click="openCreateModal">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i>{{ t('dashboard.createNew', 'Create New Dashboard') }}
+      </UiButton>
+    </header>
+
+    <div class="dashboard-section-heading">
+      <h2>{{ t('dashboard.existingDashboards', 'Existing Dashboards') }}</h2>
+      <span class="ui-badge">{{ allDisplays.length }}</span>
     </div>
 
-    <h2 class="view-subtitle">{{ t('dashboard.existingDashboards', 'Existing Dashboards') }}</h2>
-    <div v-if="allDisplays.length === 0" class="alert alert-info">
-      <i class="bi bi-info-circle" style="margin-right: 0.5rem;"></i>
-      {{ t('dashboard.noDashboards', 'No dashboards available. Create your first dashboard using the button above!') }}
+    <div v-if="allDisplays.length === 0" class="ui-section dashboard-empty" role="status">
+      <i class="bi bi-grid-1x2" aria-hidden="true"></i>
+      <p class="ui-muted">{{ t('dashboard.noDashboards', 'No dashboards available. Create your first dashboard using the button above!') }}</p>
     </div>
-    
-    <div v-else class="grid">
-      <div v-for="d in allDisplays" :key="d.id" class="card dashboard-card" :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
-        <h3 class="dashboard-title">
-          {{ d.title || d.name }}
-          <span v-if="!isOwner(d)" class="shared-indicator">
-            ({{ t('dashboard.sharedWithYou', 'Shared with you') }})
-          </span>
-        </h3>
-        <div class="dashboard-meta">
-          <span class="chip" :class="d.is_public ? 'chip-public' : 'chip-private'">
+
+    <div v-else class="dashboard-grid">
+      <article v-for="d in allDisplays" :key="d.id" class="ui-section dashboard-card">
+        <div class="dashboard-meta ui-row">
+          <span class="ui-badge">
+            <i :class="d.is_public ? 'bi bi-globe2' : 'bi bi-lock'" aria-hidden="true"></i>
             {{ d.is_public ? t('dashboard.public', 'Public') : t('dashboard.private', 'Private') }}
           </span>
+          <span v-if="!isOwner(d)" class="ui-badge shared-indicator">
+            <i class="bi bi-people" aria-hidden="true"></i>{{ t('dashboard.sharedWithYou', 'Shared with you') }}
+          </span>
         </div>
-        <div class="dashboard-slug">{{ t('dashboard.slug', 'Slug') }}: /{{ d.slug }}</div>
+        <h3 class="dashboard-title">{{ d.title || d.name }}</h3>
+        <dl class="dashboard-details">
+          <div><dt>{{ label('owner') }}</dt><dd>{{ getOwnerUsername(d) }}</dd></div>
+          <div><dt>{{ t('dashboard.slug', 'Slug') }}</dt><dd class="dashboard-slug">/{{ d.slug }}</dd></div>
+        </dl>
         <div class="dashboard-actions">
           <router-link
             v-if="d.slug"
-            class="button button-outline button-sm"
+            class="ui-button ui-button--secondary"
             :to="{ name: 'PublicDisplay', params: { username: getOwnerUsername(d), slug: d.slug } }"
           >
-            <i class="bi bi-eye"></i>{{ t('dashboard.preview', 'Preview') }}
+            <i class="bi bi-eye" aria-hidden="true"></i>{{ t('dashboard.preview', 'Preview') }}
           </router-link>
           <router-link
-            class="button button-outline button-sm"
+            class="ui-button ui-button--secondary"
             :to="`/dashboard/${d.id}/edit`"
           >
-            <i class="bi bi-pencil"></i>{{ isOwner(d) ? t('dashboard.edit', 'Edit') : t('dashboard.view', 'View') }}
+            <i class="bi bi-pencil" aria-hidden="true"></i>{{ isOwner(d) ? t('dashboard.edit', 'Edit') : t('dashboard.view', 'View') }}
           </router-link>
-          <button
-            v-if="isOwner(d)"
-            class="button button-outline button-sm button-danger"
-            @click="confirmDelete(d)"
-          >
-            <i class="bi bi-trash"></i>{{ t('dashboard.delete', 'Delete') }}
-          </button>
+          <UiButton v-if="isOwner(d)" variant="danger" class="dashboard-delete"
+            :title="t('dashboard.delete', 'Delete')" :aria-label="t('dashboard.delete', 'Delete')" @click="confirmDelete(d)">
+            <i class="bi bi-trash" aria-hidden="true"></i><span class="visually-hidden">{{ t('dashboard.delete', 'Delete') }}</span>
+          </UiButton>
         </div>
-      </div>
+      </article>
     </div>
 
-    <!-- Create Dashboard Modal -->
-    <teleport to="body">
-      <div v-if="showModal">
-        <div class="modal-backdrop" @click="closeModal"></div>
-        
-        <div class="modal-container">
-          <div class="modal-surface modal-lg" role="dialog" aria-modal="true" @click.stop :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
-            <div style="display:flex; align-items:center; justify-content:space-between; padding-bottom:0.5rem; border-bottom:1px solid var(--card-border);">
-              <h5 class="view-subtitle" style="margin:0;">{{ t('dashboard.createNew', 'Create New Dashboard') }}</h5>
-              <button type="button" class="button button-outline button-sm" @click="closeModal">×</button>
-            </div>
+    <UiDialog v-if="showModal" :open="showModal"
+      :title="t('dashboard.createNew', 'Create New Dashboard')" :close-label="label('close')"
+      @update:open="!$event && closeModal()" @click="closeOnBackdrop($event, closeModal)">
+      <form :id="formId" @submit.prevent="createDisplay" class="modal-form ui-stack">
+        <label class="ui-field">
+          <span>{{ t('dashboard.titleLabel', 'Title') }}</span>
+          <input type="text" class="ui-control" v-model="title" autofocus
+            :placeholder="t('dashboard.titlePlaceholder', 'Dashboard title')" required />
+        </label>
+        <label class="ui-field">
+          <span>{{ t('dashboard.slugLabel', 'Slug') }}</span>
+          <input type="text" class="ui-control" v-model="slug"
+            :placeholder="t('dashboard.slugPlaceholder', 'dashboard-slug')" :aria-describedby="`${formId}-url`" required />
+        </label>
+        <p :id="`${formId}-url`" class="ui-help dashboard-url">{{ t('dashboard.urlLabel', 'URL') }}: /@{{ currentUsername }}/{{ slug || 'dashboard-slug' }}</p>
+        <label class="ui-check"><input type="checkbox" v-model="isPublic" />
+          <span>{{ t('dashboard.makePublic', 'Make dashboard public') }}</span>
+        </label>
+      </form>
+      <template #actions>
+        <UiButton @click="closeModal">{{ t('common.cancel', 'Cancel') }}</UiButton>
+        <UiButton variant="primary" type="submit" :form="formId">
+          <i class="bi bi-plus-lg" aria-hidden="true"></i>{{ t('dashboard.create', 'Create') }}
+        </UiButton>
+      </template>
+    </UiDialog>
 
-            <form @submit.prevent="createDisplay" class="modal-form">
-              <div class="form-group">
-                <label class="form-label">{{ t('dashboard.titleLabel', 'Title') }}</label>
-                <input
-                  type="text"
-                  class="input"
-                  v-model="title"
-                  :placeholder="t('dashboard.titlePlaceholder', 'Dashboard title')"
-                  required
-                />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">{{ t('dashboard.slugLabel', 'Slug') }}</label>
-                <input
-                  type="text"
-                  class="input"
-                  v-model="slug"
-                  :placeholder="t('dashboard.slugPlaceholder', 'dashboard-slug')"
-                  required
-                />
-                <div class="form-help">{{ t('dashboard.urlLabel', 'URL') }}: /@{{ currentUsername }}/{{ slug || 'dashboard-slug' }}</div>
-              </div>
-
-              <div class="form-group">
-                <label class="checkbox-label">
-                  <input
-                    type="checkbox"
-                    class="input"
-                    id="isPublic"
-                    v-model="isPublic"
-                  />
-                  <span>{{ t('dashboard.makePublic', 'Make dashboard public') }}</span>
-                </label>
-              </div>
-
-              <div class="modal-actions">
-                <button type="button" class="button button-secondary" @click="closeModal">
-                  {{ t('common.cancel', 'Cancel') }}
-                </button>
-                <button type="submit" class="button button-primary">
-                  <i class="bi bi-save"></i>{{ t('dashboard.create', 'Create') }}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+    <UiDialog v-if="showDeleteModal" v-model:open="showDeleteModal"
+      :title="t('dashboard.confirmDelete', 'Confirm Delete')" :close-label="label('close')"
+      @click="closeOnBackdrop($event, () => { showDeleteModal = false })">
+      <div class="ui-stack">
+        <p class="dashboard-delete-message">{{ t('dashboard.confirmDeleteMessage', 'Are you sure you want to delete the dashboard') }} "{{ dashboardToDelete?.title || dashboardToDelete?.name }}"?</p>
+        <p class="dashboard-warning"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+          {{ t('dashboard.deleteWarning', 'This action cannot be undone. All widgets in this dashboard will be deleted.') }}
+        </p>
       </div>
-    </teleport>
-
-    <!-- Delete Confirmation Modal -->
-    <teleport to="body">
-      <div v-if="showDeleteModal">
-        <div class="modal-backdrop" @click="showDeleteModal = false"></div>
-        
-        <div class="modal-container">
-          <div class="modal-surface modal-sm" role="dialog" aria-modal="true" @click.stop :style="{ backgroundColor: styleSettings.cardBg, color: styleSettings.textPrimary, borderColor: styleSettings.cardBorder }">
-            <div style="display:flex; align-items:center; justify-content:space-between; padding-bottom:0.5rem; border-bottom:1px solid var(--card-border);">
-              <h5 class="view-subtitle" style="margin:0;">{{ t('dashboard.confirmDelete', 'Confirm Delete') }}</h5>
-              <button type="button" class="button button-outline button-sm" @click="showDeleteModal = false">×</button>
-            </div>
-            <div class="modal-content">
-              <p>{{ t('dashboard.confirmDeleteMessage', 'Are you sure you want to delete the dashboard') }} "{{ dashboardToDelete?.title || dashboardToDelete?.name }}"?</p>
-              <p class="warning-text">
-                <i class="bi bi-exclamation-triangle"></i>
-                {{ t('dashboard.deleteWarning', 'This action cannot be undone. All widgets in this dashboard will be deleted.') }}
-              </p>
-            </div>
-            <div class="modal-actions">
-              <button class="button button-secondary" @click="showDeleteModal = false">
-                {{ t('common.cancel', 'Cancel') }}
-              </button>
-              <button class="button button-danger" @click="deleteDisplay">
-                <i class="bi bi-trash"></i>{{ t('dashboard.delete', 'Delete') }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </teleport>
+      <template #actions>
+        <UiButton autofocus @click="showDeleteModal = false">{{ t('common.cancel', 'Cancel') }}</UiButton>
+        <UiButton variant="danger" @click="deleteDisplay">
+          <i class="bi bi-trash" aria-hidden="true"></i>{{ t('dashboard.delete', 'Delete') }}
+        </UiButton>
+      </template>
+    </UiDialog>
   </div>
 </template>
 
 <style scoped>
-/* Dashboard List styles */
-.grid {
+.dashboard-view { background: transparent; }
+.dashboard-heading { gap: calc(var(--ui-space) * 4); margin-bottom: calc(var(--ui-space) * 8); padding: 0; text-align: left; }
+.dashboard-heading h1 { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.dashboard-create { flex-shrink: 0; }
+.dashboard-section-heading { display: flex; align-items: center; gap: calc(var(--ui-space) * 3); margin-bottom: calc(var(--ui-space) * 4); }
+.dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 1rem;
-  margin-top: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: calc(var(--ui-space) * 5);
 }
-
 .dashboard-card {
-  padding: 1.5rem;
-  border-radius: var(--border-radius-md);
-  box-shadow: var(--card-shadow);
-  transition: box-shadow 0.2s ease;
-}
-
-.dashboard-card:hover {
-  box-shadow: var(--card-hover-shadow);
-}
-
-.dashboard-title {
-  margin: 0 0 0.75rem 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.shared-indicator {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  font-weight: normal;
-}
-
-.dashboard-meta {
-  margin-bottom: 0.75rem;
-}
-
-.chip {
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--border-radius-sm);
-  font-size: 0.75rem;
-  font-weight: 500;
-  text-transform: uppercase;
-}
-
-.chip-public {
-  background-color: rgba(25, 135, 84, 0.15);
-  color: #198754;
-}
-
-.chip-private {
-  background-color: rgba(108, 117, 125, 0.15);
-  color: #6c757d;
-}
-
-.dashboard-slug {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin-bottom: 1rem;
-}
-
-.dashboard-actions {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.modal-form {
-  padding-top: 1rem;
-  display: grid;
-  gap: 0.75rem;
-}
-
-.form-group {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: calc(var(--ui-space) * 4);
 }
-
-.form-label {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text-primary);
+.dashboard-title {
+  margin: 0;
+  font-size: 1.15em;
+  line-height: 1.4;
+  font-weight: 650;
+  color: var(--ui-text);
+  overflow-wrap: anywhere;
 }
-
-.form-help {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  margin-top: 0.25rem;
+.dashboard-details { display: grid; gap: calc(var(--ui-space) * 2); margin: 0; }
+.dashboard-details > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: calc(var(--ui-space) * 3); }
+.dashboard-details dt { color: var(--ui-text-muted); font-weight: 400; font-size: .9em; }
+.dashboard-details dd { margin: 0; color: var(--ui-text-secondary); font-size: .9em; overflow-wrap: anywhere; }
+.dashboard-slug { font-family: ui-monospace, Consolas, monospace; }
+.dashboard-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  gap: calc(var(--ui-space) * 2);
+  margin-top: auto;
+  padding-top: calc(var(--ui-space) * 4);
+  border-top: 1px solid var(--ui-border);
 }
-
-.checkbox-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  color: var(--text-primary);
-}
-
-.modal-content {
-  padding-top: 0.75rem;
-}
-
-.warning-text {
-  color: var(--button-danger-text);
-  margin: 0.5rem 0 0 0;
-}
-
-.warning-text i {
-  margin-right: 0.25rem;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  border-top: 1px solid var(--card-border);
-  padding-top: 0.5rem;
+.dashboard-actions > .ui-button { min-width: 0; padding-inline: calc(var(--ui-space) * 2); overflow-wrap: anywhere; }
+.dashboard-actions > .dashboard-delete { min-width: var(--ui-control-height); }
+.dashboard-empty { display: grid; justify-items: center; gap: calc(var(--ui-space) * 4); text-align: center; padding-block: calc(var(--ui-space) * 12); }
+.dashboard-empty > i { font-size: 2rem; color: var(--ui-accent); }
+.dashboard-warning { color: var(--ui-danger); }
+.dashboard-url, .dashboard-delete-message { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .dashboard-heading { align-items: stretch; flex-direction: column; }
+  .dashboard-actions > a .bi { display: none; }
+  .dashboard-actions > .dashboard-delete { min-width: 44px; }
 }
 </style>

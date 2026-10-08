@@ -39,4 +39,19 @@ describe('System control settings', () => {
       confirmation: 'FACTORY RESET',
     })
   })
+
+  it('does not restart when the confirmation is cancelled', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => false))
+    const wrapper = mount(SystemControlSection)
+    await wrapper.findAll('button')[0].trigger('click')
+    expect(http.post).not.toHaveBeenCalled()
+    expect(wrapper.findAll('button').every(button => !button.attributes('disabled'))).toBe(true)
+  })
+
+  it.each([null, 'factory reset'])('does not reset with a cancelled or incorrect phrase (%s)', async phrase => {
+    vi.stubGlobal('prompt', vi.fn(() => phrase))
+    const wrapper = mount(SystemControlSection)
+    await wrapper.findAll('button')[1].trigger('click')
+    expect(http.post).not.toHaveBeenCalled()
+  })
 })

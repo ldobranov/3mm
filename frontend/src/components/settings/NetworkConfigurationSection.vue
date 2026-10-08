@@ -1,7 +1,6 @@
 <template>
-  <div class="settings-section">
+  <SettingsSection class="settings-section" :title="t('settings.networkConfiguration', 'Network Configuration')">
     <div class="section-header">
-      <h3 class="section-title">{{ t('settings.networkConfiguration', 'Network Configuration') }}</h3>
       <p class="section-description">
         {{ t('settings.networkDescription', 'Configure how the frontend connects to the backend server. This is useful when deploying to different environments or using external IP addresses.') }}
       </p>
@@ -39,12 +38,12 @@
               {{ t('networkRecovery.localAddressHelp', 'Available on this local network through the device hostname. Port 8080 remains supported.') }}
             </small>
           </div>
-          <button type="button" class="btn btn-outline-primary" @click="useLocalHostname">
+          <button type="button" class="ui-button" @click="useLocalHostname">
             {{ t('networkRecovery.useLocalAddress', 'Use this hostname') }}
           </button>
         </div>
 
-        <label class="recovery-toggle">
+        <label class="recovery-toggle ui-check">
           <input
             :checked="recoveryStatus?.automatic_setup_enabled ?? true"
             :disabled="loadingRecovery || savingRecovery || startingSetup"
@@ -68,11 +67,11 @@
           </div>
           <button
             type="button"
-            class="btn btn-warning recovery-button"
+            class="ui-button ui-button--primary recovery-button"
             :disabled="loadingRecovery || savingRecovery || startingSetup || recoveryStatus?.setup_active"
             @click="startSetupMode"
           >
-            <span v-if="startingSetup" class="spinner-border spinner-border-sm me-2"></span>
+            <span v-if="startingSetup" class="ui-spinner" aria-hidden="true"></span>
             {{ recoveryStatus?.setup_active
               ? t('networkRecovery.setupActive', 'Setup mode active')
               : t('networkRecovery.startSetup', 'Start setup Wi-Fi') }}
@@ -89,7 +88,7 @@
       <!-- Auto-detection section -->
       <div class="auto-detect-section">
         <h4>{{ t('settings.autoDetection', 'Auto-Detection') }}</h4>
-        <p class="text-muted">
+        <p class="network-help">
           {{ t('settings.autoDetectionDescription', 'Automatically detect the correct URLs based on your current location.') }}
         </p>
         
@@ -111,9 +110,9 @@
         <button 
           @click="detectConfiguration" 
           :disabled="detecting"
-          class="btn btn-outline-primary"
+          class="ui-button"
         >
-          <span v-if="detecting" class="spinner-border spinner-border-sm me-2"></span>
+          <span v-if="detecting" class="ui-spinner" aria-hidden="true"></span>
           {{ t('settings.detectConfiguration', 'Detect Configuration') }}
         </button>
 
@@ -121,9 +120,9 @@
           v-if="detectedConfig && !isCurrentConfigDetected"
           @click="applyDetectedConfiguration" 
           :disabled="applying"
-          class="btn btn-primary ms-2"
+          class="ui-button ui-button--primary detect-apply"
         >
-          <span v-if="applying" class="spinner-border spinner-border-sm me-2"></span>
+          <span v-if="applying" class="ui-spinner" aria-hidden="true"></span>
           {{ t('settings.applyDetected', 'Apply Detected Configuration') }}
         </button>
       </div>
@@ -133,7 +132,7 @@
       <!-- Manual configuration section -->
       <div class="manual-config-section">
         <h4>{{ t('settings.manualConfiguration', 'Manual Configuration') }}</h4>
-        <p class="text-muted">
+        <p class="network-help">
           {{ t('settings.manualDescription', 'Configure the URLs used by the browser. A hostname may be entered with or without http://.') }}
         </p>
 
@@ -149,7 +148,7 @@
               type="text"
               inputmode="url"
               required
-              class="form-control"
+              class="ui-control"
               :placeholder="t('settings.backendUrlPlaceholder', defaultBackendUrl)"
             />
             <div class="form-text">
@@ -166,7 +165,7 @@
               v-model="configForm.frontend_url"
               type="text"
               inputmode="url"
-              class="form-control"
+              class="ui-control"
               :placeholder="t('settings.frontendUrlPlaceholder', 'http://localhost:5173')"
             />
             <div class="form-text">
@@ -181,7 +180,7 @@
             <textarea
               id="description"
               v-model="configForm.description"
-              class="form-control"
+              class="ui-control"
               rows="2"
               :placeholder="t('settings.descriptionPlaceholder', 'Configuration description (optional)')"
             ></textarea>
@@ -194,7 +193,7 @@
               <div class="config-item">
                 <strong>{{ t('settings.backendUrl', 'Backend URL') }}:</strong>
                 <code>{{ currentConfig.backend_url }}</code>
-                <span v-if="currentConfig.is_default" class="badge bg-secondary">{{ t('settings.default', 'Default') }}</span>
+                <span v-if="currentConfig.is_default" class="ui-badge">{{ t('settings.default', 'Default') }}</span>
               </div>
               <div class="config-item" v-if="currentConfig.frontend_url">
                 <strong>{{ t('settings.frontendUrl', 'Frontend URL') }}:</strong>
@@ -211,9 +210,9 @@
             <button 
               type="submit" 
               :disabled="saving || !configForm.backend_url"
-              class="btn btn-primary"
+              class="ui-button ui-button--primary"
             >
-              <span v-if="saving" class="spinner-border spinner-border-sm me-2"></span>
+              <span v-if="saving" class="ui-spinner" aria-hidden="true"></span>
               {{ t('settings.saveConfiguration', 'Save Configuration') }}
             </button>
 
@@ -221,7 +220,7 @@
               type="button"
               @click="resetToDefaults"
               :disabled="saving"
-              class="btn btn-outline-secondary"
+              class="ui-button"
             >
               {{ t('settings.resetToDefaults', 'Reset to Defaults') }}
             </button>
@@ -230,9 +229,9 @@
               type="button"
               @click="testConnection"
               :disabled="saving || testing || !configForm.backend_url"
-              class="btn btn-outline-info"
+              class="ui-button"
             >
-              <span v-if="testing" class="spinner-border spinner-border-sm me-2"></span>
+              <span v-if="testing" class="ui-spinner" aria-hidden="true"></span>
               {{ t('settings.testConnection', 'Test Connection') }}
             </button>
           </div>
@@ -240,19 +239,20 @@
       </div>
 
       <!-- Connection test result -->
-      <div v-if="connectionTest" class="connection-test-result" :class="connectionTest.success ? 'alert alert-success' : 'alert alert-danger'">
+      <div v-if="connectionTest" class="connection-test-result" :class="connectionTest.success ? 'result-success' : 'result-error'" role="status">
         <strong>{{ connectionTest.success ? t('settings.connectionSuccessful', 'Connection Successful!') : t('settings.connectionFailed', 'Connection Failed!') }}</strong>
-        <p v-if="connectionTest.message" class="mb-0">{{ connectionTest.message }}</p>
-        <p v-if="connectionTest.error" class="mb-0 text-danger">{{ connectionTest.error }}</p>
+        <p v-if="connectionTest.message" >{{ connectionTest.message }}</p>
+        <p v-if="connectionTest.error" >{{ connectionTest.error }}</p>
       </div>
     </div>
-  </div>
+  </SettingsSection>
 </template>
 
 <script lang="ts">
 import { defineComponent, ref, reactive, onMounted, computed } from 'vue';
 import http from '@/utils/dynamic-http';
 import { useI18n } from '@/utils/i18n';
+import SettingsSection from '@/components/SettingsSection.vue';
 
 interface ConfigForm {
   backend_url: string;
@@ -295,6 +295,7 @@ interface NetworkRecoveryStatus {
 
 export default defineComponent({
   name: 'NetworkConfigurationSection',
+  components: { SettingsSection },
   emits: ['config-updated'],
   setup(props, { emit }) {
     const { t } = useI18n();
@@ -695,637 +696,45 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.settings-section {
-  background: var(--card-bg, #ffffff);
-  border: 1px solid var(--card-border, #e3e3e3);
-  border-radius: var(--border-radius-md, 8px);
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-.section-header {
-  margin-bottom: 1.5rem;
-}
-
-.section-title {
-  margin: 0 0 0.5rem 0;
-  color: var(--text-primary, #222222);
-  font-size: 1.25rem;
-  font-weight: 600;
-}
-
-.section-description {
-  margin: 0;
-  color: var(--text-secondary, #666666);
-  font-size: 0.9rem;
-}
-
-.network-config-container {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.device-recovery-section {
-  display: grid;
-  gap: 1rem;
-  padding: 1.1rem;
-  border: 1px solid var(--card-border, #e3e3e3);
-  border-radius: var(--border-radius-md, 8px);
-  background: var(--panel-bg, #f8f9fa);
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-.recovery-heading {
-  display: flex;
-  gap: 0.85rem;
-  align-items: flex-start;
-  min-width: 0;
-}
-
-.recovery-heading > div:last-child,
-.recovery-actions > div,
-.recovery-toggle span {
-  min-width: 0;
-}
-
-.recovery-heading h4,
-.recovery-actions strong {
-  color: var(--text-primary, #222222);
-}
-
-.recovery-heading h4 {
-  margin: 0 0 0.25rem;
-  font-size: 1.05rem;
-}
-
-.recovery-heading p,
-.recovery-actions p {
-  margin: 0;
-  color: var(--text-secondary, #666666);
-  font-size: 0.88rem;
-}
-
-.recovery-icon {
-  display: grid;
-  flex: 0 0 2.25rem;
-  width: 2.25rem;
-  height: 2.25rem;
-  place-items: center;
-  border-radius: 0.65rem;
-  color: var(--button-primary-bg, #2563eb);
-  background: color-mix(in srgb, var(--button-primary-bg, #2563eb) 12%, transparent);
-}
-
-.link-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: fit-content;
-  color: var(--text-secondary, #666666);
-  font-size: 0.85rem;
-}
-
-.status-dot {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 50%;
-  background: #94a3b8;
-}
-
-.link-status[data-state="connected"] .status-dot {
-  background: #16a34a;
-}
-
-.link-status[data-state="disconnected"] .status-dot {
-  background: #dc2626;
-}
-
-.local-access-card {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.9rem;
-  border: 1px solid var(--card-border, #e3e3e3);
-  border-radius: var(--border-radius-sm, 4px);
-  background: var(--card-bg, #ffffff);
-}
-
-.local-access-card > div {
-  display: grid;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-.local-access-link {
-  color: var(--button-primary-bg, #2563eb);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  overflow-wrap: anywhere;
-}
-
-.local-access-card small {
-  color: var(--text-secondary, #666666);
-  line-height: 1.4;
-}
-
-.recovery-toggle {
-  display: flex;
-  gap: 0.8rem;
-  align-items: flex-start;
-  padding: 0.9rem;
-  border: 1px solid var(--card-border, #e3e3e3);
-  border-radius: var(--border-radius-sm, 4px);
-  background: var(--card-bg, #ffffff);
-  cursor: pointer;
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-.recovery-toggle input {
-  width: 1.1rem;
-  height: 1.1rem;
-  margin-top: 0.1rem;
-  accent-color: var(--button-primary-bg, #2563eb);
-}
-
-.recovery-toggle span {
-  display: grid;
-  gap: 0.25rem;
-}
-
-.recovery-toggle strong {
-  color: var(--text-primary, #222222);
-  font-size: 0.92rem;
-}
-
-.recovery-toggle small {
-  color: var(--text-secondary, #666666);
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.recovery-actions {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  justify-content: space-between;
-  min-width: 0;
-}
-
-.recovery-button {
-  flex: 0 0 auto;
-}
-
-.btn-warning {
-  border-color: #d97706;
-  color: #ffffff;
-  background: #d97706;
-}
-
-.btn-warning:hover:not(:disabled) {
-  border-color: #b45309;
-  background: #b45309;
-}
-
-.recovery-notice {
-  padding: 0.75rem 0.85rem;
-  border: 1px solid color-mix(in srgb, #16a34a 35%, transparent);
-  border-radius: var(--border-radius-sm, 4px);
-  color: #166534;
-  background: color-mix(in srgb, #16a34a 10%, transparent);
-  font-size: 0.86rem;
-}
-
-.recovery-notice.error {
-  border-color: color-mix(in srgb, #dc2626 35%, transparent);
-  color: #991b1b;
-  background: color-mix(in srgb, #dc2626 10%, transparent);
-}
-
-.auto-detect-section,
-.manual-config-section {
-  padding: 1rem;
-  border: 1px solid var(--card-border, #e3e3e3);
-  border-radius: var(--border-radius-sm, 4px);
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-.auto-detect-section h4,
-.manual-config-section h4 {
-  margin: 0 0 0.5rem 0;
-  color: var(--text-primary, #222222);
-  font-size: 1.1rem;
-}
-
-.detected-info {
-  background: var(--panel-bg, #f8f9fa);
-  border: 1px solid var(--card-border, #e3e3e3);
-  border-radius: var(--border-radius-sm, 4px);
-  padding: 1rem;
-  margin: 1rem 0;
-}
-
-.info-row {
-  display: flex;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
-.info-row:last-child {
-  margin-bottom: 0;
-}
-
-.info-row strong {
-  margin-right: 0.5rem;
-  min-width: 120px;
-}
-
-.info-row code {
-  background: var(--content-bg, #f8f9fa);
-  padding: 0.2rem 0.4rem;
-  border-radius: 3px;
-  font-size: 0.85rem;
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.form-group {
-  margin-bottom: 1rem;
-}
-
-.form-label {
-  display: block;
-  margin-bottom: 0.25rem;
-  font-weight: 500;
-  color: var(--text-primary, #222222);
-}
-
-.form-label .required {
-  color: #dc3545;
-  margin-left: 0.2rem;
-}
-
-.form-control {
-  width: 100%;
-  padding: 0.5rem;
-  border: 1px solid var(--card-border, #e3e3e3);
-  border-radius: var(--border-radius-sm, 4px);
-  background: var(--input-bg, #ffffff);
-  color: var(--text-primary, #222222);
-  font-size: 0.9rem;
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-.form-control:focus {
-  outline: none;
-  border-color: var(--button-primary-bg, #007bff);
-  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
-}
-
-.form-text {
-  font-size: 0.8rem;
-  color: var(--text-muted, #999999);
-  margin-top: 0.25rem;
-}
-
-.current-config {
-  background: var(--panel-bg, #f8f9fa);
-  border: 1px solid var(--card-border, #e3e3e3);
-  border-radius: var(--border-radius-sm, 4px);
-  padding: 1rem;
-  margin: 1rem 0;
-}
-
-.current-config h5 {
-  margin: 0 0 1rem 0;
-  color: var(--text-primary, #222222);
-  font-size: 1rem;
-}
-
-.config-details {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.config-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.config-item strong {
-  min-width: 100px;
-  font-size: 0.9rem;
-}
-
-.config-item code {
-  background: var(--content-bg, #f8f9fa);
-  padding: 0.2rem 0.4rem;
-  border-radius: 3px;
-  font-size: 0.85rem;
-  flex: 1;
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.btn {
-  padding: 0.5rem 1rem;
-  border: 1px solid transparent;
-  border-radius: var(--border-radius-sm, 4px);
-  font-size: 0.9rem;
-  font-weight: 500;
-  text-decoration: none;
-  cursor: pointer;
-  transition: all 0.15s ease-in-out;
-  display: inline-flex;
-  align-items: center;
-}
-
-.btn-primary {
-  background: var(--button-primary-bg, #007bff);
-  border-color: var(--button-primary-bg, #007bff);
-  color: var(--button-primary-text, #ffffff);
-}
-
-.btn-primary:hover {
-  background: var(--button-primary-hover, #0056b3);
-  border-color: var(--button-primary-hover, #0056b3);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-outline-primary {
-  background: transparent;
-  border-color: var(--button-primary-bg, #007bff);
-  color: var(--button-primary-bg, #007bff);
-}
-
-.btn-outline-primary:hover {
-  background: var(--button-primary-bg, #007bff);
-  color: var(--button-primary-text, #ffffff);
-}
-
-.btn-outline-secondary {
-  background: transparent;
-  border-color: var(--button-secondary-bg, #6c757d);
-  color: var(--button-secondary-bg, #6c757d);
-}
-
-.btn-outline-secondary:hover {
-  background: var(--button-secondary-bg, #6c757d);
-  color: var(--button-secondary-text, #ffffff);
-}
-
-.btn-outline-info {
-  background: transparent;
-  border-color: #17a2b8;
-  color: #17a2b8;
-}
-
-.btn-outline-info:hover {
-  background: #17a2b8;
-  color: #ffffff;
-}
-
-.connection-test-result {
-  margin-top: 1rem;
-  padding: 1rem;
-  border-radius: var(--border-radius-sm, 4px);
-}
-
-.alert {
-  padding: 0.75rem;
-  margin-bottom: 1rem;
-  border: 1px solid transparent;
-  border-radius: var(--border-radius-sm, 4px);
-}
-
-.alert-success {
-  color: #155724;
-  background-color: #d4edda;
-  border-color: #c3e6cb;
-}
-
-.alert-danger {
-  color: #721c24;
-  background-color: #f8d7da;
-  border-color: #f5c6cb;
-}
-
-.text-muted {
-  color: var(--text-muted, #999999);
-  font-size: 0.9rem;
-}
-
-.badge {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  border-radius: 0.25rem;
-}
-
-.bg-secondary {
-  background-color: #6c757d !important;
-  color: #ffffff;
-}
-
-.spinner-border {
-  width: 1rem;
-  height: 1rem;
-}
-
-.spinner-border-sm {
-  width: 0.75rem;
-  height: 0.75rem;
-}
-
-/* Dark theme adjustments */
-:root[data-theme="dark"] .settings-section,
-.dark .settings-section {
-  background: var(--card-bg, #374151);
-  border-color: var(--card-border, #4b5563);
-}
-
-:root[data-theme="dark"] .section-title,
-.dark .section-title {
-  color: var(--text-primary, #e5e7eb);
-}
-
-:root[data-theme="dark"] .section-description,
-.dark .section-description {
-  color: var(--text-secondary, #9ca3af);
-}
-
-:root[data-theme="dark"] .auto-detect-section,
-.dark .auto-detect-section,
-:root[data-theme="dark"] .manual-config-section,
-.dark .manual-config-section {
-  border-color: var(--card-border, #4b5563);
-}
-
-:root[data-theme="dark"] .device-recovery-section,
-.dark .device-recovery-section {
-  background: var(--panel-bg, #1f2937);
-  border-color: var(--card-border, #4b5563);
-}
-
-:root[data-theme="dark"] .recovery-toggle,
-.dark .recovery-toggle,
-:root[data-theme="dark"] .local-access-card,
-.dark .local-access-card {
-  background: var(--card-bg, #111827);
-  border-color: var(--card-border, #4b5563);
-}
-
-:root[data-theme="dark"] .recovery-notice,
-.dark .recovery-notice {
-  color: #86efac;
-}
-
-:root[data-theme="dark"] .recovery-notice.error,
-.dark .recovery-notice.error {
-  color: #fca5a5;
-}
-
-@media (max-width: 640px) {
-  .settings-section {
-    padding: 1rem;
-    margin-bottom: 1rem;
-  }
-
-  .section-header {
-    margin-bottom: 1rem;
-  }
-
-  .network-config-container {
-    gap: 1rem;
-  }
-
-  .device-recovery-section,
-  .auto-detect-section,
-  .manual-config-section {
-    padding: 0.85rem;
-  }
-
-  .recovery-heading {
-    gap: 0.7rem;
-  }
-
-  .recovery-toggle {
-    gap: 0.65rem;
-    padding: 0.75rem;
-  }
-
-  .recovery-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .local-access-card {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .local-access-card .btn {
-    justify-content: center;
-    width: 100%;
-  }
-
-  .recovery-button {
-    justify-content: center;
-    width: 100%;
-  }
-
-  .info-row,
-  .config-item {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .info-row strong,
-  .config-item strong {
-    min-width: 0;
-  }
-
-  .auto-detect-section > .btn,
-  .action-buttons .btn {
-    justify-content: center;
-    width: 100%;
-  }
-
-  .auto-detect-section > .btn.ms-2 {
-    margin-top: 0.5rem;
-    margin-left: 0 !important;
-  }
-}
-
-:root[data-theme="dark"] .auto-detect-section h4,
-.dark .auto-detect-section h4,
-:root[data-theme="dark"] .manual-config-section h4,
-.dark .manual-config-section h4 {
-  color: var(--text-primary, #e5e7eb);
-}
-
-:root[data-theme="dark"] .detected-info,
-.dark .detected-info,
-:root[data-theme="dark"] .current-config,
-.dark .current-config {
-  background: var(--panel-bg, #374151);
-  border-color: var(--card-border, #4b5563);
-}
-
-:root[data-theme="dark"] .form-control,
-.dark .form-control {
-  background: var(--input-bg, #374151);
-  border-color: var(--input-border, #4b5563);
-  color: var(--text-primary, #e5e7eb);
-}
-
-:root[data-theme="dark"] .form-label,
-.dark .form-label {
-  color: var(--text-primary, #e5e7eb);
-}
-
-:root[data-theme="dark"] .form-text,
-.dark .form-text {
-  color: var(--text-muted, #6b7280);
-}
-
-:root[data-theme="dark"] .config-item code,
-.dark .config-item code,
-:root[data-theme="dark"] .info-row code,
-.dark .info-row code {
-  background: var(--panel-bg, #374151);
-  color: var(--text-primary, #e5e7eb);
+.section-header { margin-bottom: calc(var(--ui-space) * 5); }
+.section-description, .network-help, .recovery-heading p, .recovery-actions p, .local-access-card small, .recovery-toggle small { color: var(--ui-text-secondary); font-size: .9em; }
+.network-config-container { display: grid; gap: calc(var(--ui-space) * 5); min-width: 0; }
+.network-config-container hr { display: none; }
+.device-recovery-section, .auto-detect-section, .manual-config-section { display: grid; gap: calc(var(--ui-space) * 4); padding: calc(var(--ui-space) * 4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); min-width: 0; }
+.device-recovery-section { background: var(--ui-surface-alt); }
+.recovery-heading { display: flex; gap: calc(var(--ui-space) * 3); align-items: flex-start; }
+.recovery-heading > div:last-child, .recovery-actions > div, .recovery-toggle span { min-width: 0; }
+.recovery-heading h4, .auto-detect-section h4, .manual-config-section h4 { margin: 0; font-size: 1rem; color: var(--ui-text); }
+.recovery-icon { display: grid; flex: 0 0 2.25rem; height: 2.25rem; place-items: center; border-radius: var(--ui-radius-sm); color: var(--ui-accent); background: var(--ui-surface); }
+.link-status { display: flex; align-items: center; gap: calc(var(--ui-space) * 2); color: var(--ui-text-secondary); font-size: .9em; }
+.status-dot { flex: 0 0 .6rem; height: .6rem; border-radius: 50%; background: var(--ui-text-muted); }
+.link-status[data-state="connected"] .status-dot { background: var(--ui-success); }
+.link-status[data-state="disconnected"] .status-dot { background: var(--ui-danger); }
+.local-access-card, .recovery-toggle { padding: calc(var(--ui-space) * 4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); background: var(--ui-surface); }
+.local-access-card, .recovery-actions { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--ui-space) * 4); }
+.local-access-card > div, .recovery-toggle span { display: grid; gap: var(--ui-space); min-width: 0; }
+.local-access-link { overflow-wrap: anywhere; font-family: ui-monospace, monospace; }
+.recovery-toggle { margin: 0; }
+.recovery-notice, .connection-test-result { padding: calc(var(--ui-space) * 3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); overflow-wrap: anywhere; }
+.recovery-notice { color: var(--ui-success); }
+.recovery-notice.error, .result-error { color: var(--ui-danger); }
+.result-success { color: var(--ui-success); }
+.detect-apply { justify-self: start; }
+.auto-detect-section > .ui-button { justify-self: start; }
+.detected-info, .current-config { padding: calc(var(--ui-space) * 4); background: var(--ui-surface-alt); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); display: grid; gap: calc(var(--ui-space) * 3); }
+.current-config h5 { margin: 0; font-size: 1rem; }
+.info-row, .config-item { display: flex; align-items: baseline; flex-wrap: wrap; gap: calc(var(--ui-space) * 2); min-width: 0; }
+.info-row strong, .config-item strong { flex: 0 0 auto; }
+.info-row code, .config-item code { color: var(--ui-text-secondary); min-width: 0; overflow-wrap: anywhere; }
+.config-details, .manual-config-section form { display: grid; gap: calc(var(--ui-space) * 4); min-width: 0; }
+.form-group { display: grid; gap: calc(var(--ui-space) * 2); margin: 0; min-width: 0; }
+.form-label { margin: 0; color: var(--ui-text); }
+.required { color: var(--ui-danger); }
+.form-text { margin: 0; font-size: .85em; color: var(--ui-text-muted); }
+.action-buttons { display: flex; flex-wrap: wrap; gap: calc(var(--ui-space) * 2); }
+@media (max-width: 720px) {
+  .local-access-card, .recovery-actions { flex-direction: column; align-items: stretch; }
+  .info-row, .config-item { align-items: flex-start; flex-direction: column; }
+  .auto-detect-section > .ui-button, .action-buttons .ui-button { width: 100%; }
 }
 </style>

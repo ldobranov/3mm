@@ -159,6 +159,7 @@ def test_release_archives_are_reproducible_and_installer_compatible(
             assert "frontend/dist/stale.js" not in names
             assert "deployment/install-systemd.sh" in names
             assert "deployment/factory_reset.py" in names
+            assert "deployment/frontend_access.py" in names
             assert "deployment/systemd/3mm-public-web.socket" in names
             assert "three_mm_public_web/server.py" in names
             assert "install.sh" in names

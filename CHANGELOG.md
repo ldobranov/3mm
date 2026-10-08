@@ -6,6 +6,49 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.43] - 2026-10-08
+
+### Added
+
+- Theme Platform V6 screen migration: theme-aware DashboardList, Extensions and
+  Settings, plus a palette/canvas/properties Display Editor workspace. Mobile
+  sections, long labels, light/dark and existing dynamic navigation remain supported.
+- Public browser UI contract `@3mm/ui/v1`, exposing shared Surface/Button/Dialog
+  primitives and a contract version through a hashed host module/import map.
+  Reviewed compiled extensions share the host Vue runtime and presentation tokens,
+  without importing Core stores, router, credentials or API clients.
+- An optional neutral UI-only reference package source demonstrating the public
+  controls, native validation and accessible dialog under different themes.
+  Its ZIP is uploaded separately; it is not automatically installed.
+
+### Fixed
+
+- Display Editor preserves the original widget configuration on preview/cancel
+  and selection changes; stale editor responses and preview timers cannot change
+  the new selection. Failed saves keep the draft and successful saves close it.
+- Shared native dialogs retain safe Cancel focus, keyboard containment and focus
+  return. Dark-mode upload hover, network help text and legacy color input sizing
+  follow the active theme rather than obsolete Bootstrap presentation.
+- Full-profile console updates preserve the saved frontend URL unless explicitly
+  overridden. The verified target installer merges custom allowed browser origins
+  with LAN/mDNS and localhost/127.0.0.1 on ports 80/8080, instead of overwriting them.
+  Invalid/wildcard policies fail before stopping services; active Core postflight
+  checks browser CORS as well as readiness. Older rollback and Node policy remain.
+
+### Compatibility and verification
+
+- Theme packages, users, permissions, API payloads, dynamic widgets/editors and
+  existing Vue-only compiled packages remain compatible. No database migration
+  or runtime dependency change; Application SDK 1.3 and Device Protocol 1.0 remain.
+- V6/V7 passed local desktop/mobile, light/dark, EN/BG visual review and were
+  approved for delivery. All 255 frontend tests and 98 installer/deployment checks
+  passed; type-check/build passed.
+  The complete Linux/Python suite and reproducible full-profile/ARMv6 Node builds
+  gate publication through GitHub. Live upgrade, restart, rollback and portable
+  theme recovery remain V8; successful publication does not close Milestone 17.
+- Concrete themes, Child Center, local/generated files and unrelated draft plans
+  are excluded. This release task does not update or reset any device.
+
 ## [0.3.0-beta.42] - 2026-10-07
 
 ### Added
@@ -1215,7 +1258,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.42...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.43...HEAD
+[0.3.0-beta.43]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.43
 [0.3.0-beta.42]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.42
 [0.3.0-beta.41]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.41
 [0.3.0-test.1]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-test.1

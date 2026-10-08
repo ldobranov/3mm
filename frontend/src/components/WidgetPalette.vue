@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue';
-import { useSettingsStore } from '@/stores/settings';
+import { ref, onMounted } from 'vue';
+import UiButton from '@/components/ui/UiButton.vue';
+import { useI18n } from '@/utils/i18n';
 import { useWidgetsStore } from '@/stores/widgets';
 import type { ExtensionWidget } from '@/stores/widgets';
 
-const settingsStore = useSettingsStore();
 const widgetsStore = useWidgetsStore();
-const styleSettings = computed(() => settingsStore.styleSettings);
+const { t } = useI18n();
+const loading = ref(true);
+const loadError = ref('');
 
 const extensionWidgets = ref<ExtensionWidget[]>([]);
 
@@ -17,7 +19,8 @@ onMounted(async () => {
     extensionWidgets.value = await widgetsStore.fetchAvailableExtensions();
   } catch (error) {
     console.error('Failed to load extension widgets:', error);
-  }
+    loadError.value = error instanceof Error ? error.message : String(error);
+  } finally { loading.value = false; }
 });
 
 function setDragData(ev: DragEvent, type: string) {
@@ -40,6 +43,9 @@ function getWidgetIcon(name: string): string {
 
 <template>
   <div class="widget-palette">
+    <p v-if="loading" class="ui-help" role="status">{{ t('dashboard.editor.loadingWidgets', 'Loading widgets…') }}</p>
+    <p v-else-if="loadError" class="ui-error" role="alert">{{ t('dashboard.editor.widgetsFailed', 'Could not load available widgets.') }} {{ loadError }}</p>
+    <p v-else-if="!extensionWidgets.length" class="ui-help" role="status">{{ t('dashboard.editor.noWidgets', 'No widget extensions are available.') }}</p>
     <!-- Extension widgets only -->
     <div
       v-for="ext in extensionWidgets"
@@ -48,61 +54,19 @@ function getWidgetIcon(name: string): string {
       draggable="true"
       @dragstart="setDragData($event, ext.widget_type || `extension:${ext.id}`)"
     >
-      <button class="palette-button" @click="emit('add', ext.widget_type || `extension:${ext.id}`)">
-        <i :class="getWidgetIcon(ext.name)"></i>
+      <UiButton class="palette-button" @click="emit('add', ext.widget_type || `extension:${ext.id}`)">
+        <i :class="['bi', getWidgetIcon(ext.name)]" aria-hidden="true"></i>
         <span>{{ ext.name }}</span>
-      </button>
+      </UiButton>
     </div>
   </div>
 </template>
 
 <style scoped>
-.widget-palette {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.palette-item {
-  display: flex;
-}
-
-.palette-button {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  background-color: var(--button-primary-bg);
-  color: var(--button-primary-text);
-  border: 1px solid var(--button-primary-border);
-  border-radius: var(--border-radius-md);
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-decoration: none;
-}
-
-.palette-button:hover {
-  background-color: var(--button-primary-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--card-shadow);
-}
-
-.palette-button:active {
-  transform: translateY(0);
-}
-
-.palette-button i {
-  font-size: 1rem;
-}
-
-.palette-item[draggable="true"] {
-  cursor: grab;
-}
-
-.palette-item[draggable="true"]:active {
-  cursor: grabbing;
-}
+.widget-palette { display: grid; gap: calc(var(--ui-space) * 2); min-width: 0; }
+.palette-item { display: flex; min-width: 0; cursor: grab; }
+.palette-item:active { cursor: grabbing; }
+.palette-button { width: 100%; justify-content: flex-start; text-align: left; }
+.palette-button span { min-width: 0; overflow-wrap: anywhere; }
+.palette-button i { flex: 0 0 auto; color: var(--ui-text-secondary); }
 </style>

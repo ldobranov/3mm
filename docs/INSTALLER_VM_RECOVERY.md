@@ -54,3 +54,34 @@ The user's manual beta.33 VM recovery demonstrated healthy Core/Agent/Web, but
 did not exercise this new installer code. After a release containing these changes,
 verify a clean wired-only VM and a failed upgrade rollback, then confirm provisioned
 Hub/Zero identity and pairing are unchanged. Do not use a Master reset as an OTA test.
+
+## Browser-origin recovery — 2026-10-07
+
+On the existing WSL host, the beta.42 console installation completed successfully:
+Core, Agent, Web and the update helper were active. Browser preflight requests
+from `http://localhost` returned HTTP 400 `Disallowed CORS origin`, while requests
+from the configured WSL IP returned 200. The old installer replaced
+`CORS_ORIGINS` with LAN/mDNS addresses and omitted local browser origins.
+
+The new full-profile installer uses the bounded stdlib `frontend_access` policy
+to preserve custom allowed origins and include localhost/127.0.0.1 on ports
+80 and 8080. Invalid/wildcard policy entries fail before services stop. Console
+bootstrap keeps the saved frontend URL unless explicitly overridden; UI update
+already passes the configured URL to the verified target installer. New-release
+CORS health checks run only when Core is active, not during Setup-only first boot
+or when restoring an older rollback release. Node environment behavior is unchanged.
+
+Live recovery changed only `/etc/3mm/3mm.env` after a root-only 0600 backup, then
+restarted Core. Windows localhost preflight now returns 200 with the expected
+allow-origin header. Configured LAN access still works; an untrusted origin still
+returns 400. Core/Agent readiness passed and the immutable beta.42 release pointer
+and local Agent identity were unchanged. No database, users, extension packages,
+provisioning or network configuration was reset or rewritten.
+
+Focused automated checks cover clean origin generation, console URL preservation
+and explicit overrides, UI worker argument preservation, safe policy merging,
+environment injection rejection, bounds, Node isolation, shell syntax, browser
+health failures and target artifact packaging. This is not a live clean install
+or an end-to-end UI update of the new unpublished source. Publish a subsequent
+release before exercising that flow; do not reinstall beta.42 as a durability test
+because that older artifact still has its original overwrite policy.

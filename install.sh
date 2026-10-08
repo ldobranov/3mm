@@ -33,7 +33,7 @@ Options:
   --profile full|node        Full app (default) or minimal Node (ARMv6/Python 3.13)
   --channel stable|beta|test  Release channel (default: beta)
   --tag vX.Y.Z[-suffix]      Install one exact published release
-  --frontend-origin URL      Public HTTP(S) origin; defaults to this device IP
+  --frontend-origin URL      Public HTTP(S) origin; preserves existing URL on update
   -h, --help                 Show this help
 
 The job is detached before 3mm changes Wi-Fi into its setup access point, so
@@ -104,14 +104,41 @@ case "$architecture" in
 esac
 fi
 
-if [[ -z $frontend_origin ]]; then
-  primary_address=$(hostname -I | tr ' ' '\n' | sed '/^$/d' | head -n 1)
-  [[ $primary_address =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || \
-    fail "could not detect a LAN IPv4 address; use --frontend-origin"
-  frontend_origin="http://$primary_address"
-fi
-[[ $frontend_origin =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || \
-  fail "frontend origin must be a plain HTTP(S) origin without a path"
+select_frontend_origin() {
+  local environment_file=$1
+  # Read data, never source a privileged environment file as shell code.
+  # Explicit CLI/environment overrides win; Node configuration is not consumed.
+  if [[ -z $frontend_origin && $install_profile == full && -f $environment_file ]]; then
+    frontend_origin=$(python3 - "$environment_file" <<'PY'
+import sys
+from pathlib import Path
+
+with Path(sys.argv[1]).open("rb") as source:
+    data = source.read(1024 * 1024 + 1)
+if len(data) > 1024 * 1024:
+    raise SystemExit("Stored service environment is too large")
+value = ""
+for line in data.decode("utf-8").splitlines():
+    key, separator, candidate = line.partition("=")
+    if separator and key.strip() == "FRONTEND_URL":
+        value = candidate.strip()
+if len(value) >= 2 and value[0] in {"'", '"'} and value[-1] == value[0]:
+    value = value[1:-1]
+print(value)
+PY
+    ) || return 1
+  fi
+  if [[ -z $frontend_origin ]]; then
+    local primary_address
+    primary_address=$(hostname -I | tr ' ' '\n' | sed '/^$/d' | head -n 1)
+    [[ $primary_address =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || \
+      fail "could not detect a LAN IPv4 address; use --frontend-origin"
+    frontend_origin="http://$primary_address"
+  fi
+  [[ $frontend_origin =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || \
+    fail "frontend origin must be a plain HTTP(S) origin without a path"
+}
+select_frontend_origin /etc/3mm/3mm.env
 
 install -d -o root -g root -m 0700 "$THREE_MM_BOOTSTRAP_ROOT"
 stage=$(mktemp -d "$THREE_MM_BOOTSTRAP_ROOT/bootstrap.XXXXXX")

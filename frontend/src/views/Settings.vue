@@ -1,29 +1,42 @@
 <template>
-  <div class="view">
+  <div class="view settings-view ui-v2"
+    :data-card="settingsStore.uiDesign.components.card"
+    :data-button="settingsStore.uiDesign.components.button">
     <div class="view-header">
       <h1 class="view-title">{{ t('settings.title', 'Settings') }}</h1>
     </div>
 
-    <div v-if="loading" class="text-center" style="padding: 2rem 0;">
-      <div class="spinner" role="status" aria-label="Loading"></div>
+    <div v-if="loading" class="settings-loading ui-section" role="status">
+      <span class="ui-spinner" aria-hidden="true"></span>
+      {{ t('common.loading', 'Loading...') }}
     </div>
 
     <div v-else class="settings-shell">
-      <aside class="settings-nav" aria-label="Settings sections">
+      <aside class="settings-nav ui-section" :aria-label="t('settings.title', 'Settings')">
+        <label class="settings-mobile-nav ui-field">
+          <span>{{ t('settings.title', 'Settings') }}</span>
+          <select class="ui-control" v-model="activeSection" aria-controls="settings-content">
+            <option v-for="section in settingsSections" :key="section.id" :value="section.id">{{ section.label }}</option>
+          </select>
+        </label>
+        <nav class="settings-desktop-nav" :aria-label="t('settings.title', 'Settings')">
         <button
           v-for="section in settingsSections"
           :key="section.id"
           type="button"
           class="settings-nav-item"
           :class="{ active: activeSection === section.id }"
+          :aria-current="activeSection === section.id ? 'true' : undefined"
+          aria-controls="settings-content"
           @click="activeSection = section.id"
         >
           <i :class="section.icon" aria-hidden="true"></i>
           <span>{{ section.label }}</span>
         </button>
+        </nav>
       </aside>
 
-      <section class="settings-content">
+      <section id="settings-content" class="settings-content" :aria-label="settingsSections.find(section => section.id === activeSection)?.label">
         <div v-show="activeSection === 'application'" id="application-settings" class="settings-anchor">
           <ApplicationSettingsSection
             :available-languages="availableLanguages"
@@ -116,8 +129,8 @@
       </section>
     </div>
 
-    <div v-if="errorMessage" class="alert alert-danger" style="margin-top: 1rem;">{{ errorMessage }}</div>
-    <div v-if="successMessage" class="alert alert-success" style="margin-top: 1rem;">{{ successMessage }}</div>
+    <div v-if="errorMessage" class="settings-notice settings-notice--error" role="alert">{{ errorMessage }}</div>
+    <div v-if="successMessage" class="settings-notice settings-notice--success" role="status">{{ successMessage }}</div>
   </div>
 </template>
 
@@ -765,113 +778,29 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.settings-shell {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 1rem;
-  align-items: start;
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.settings-nav {
-  position: sticky;
-  top: 1rem;
-  display: grid;
-  gap: 0.5rem;
-  padding: 1rem;
-  border: 1px solid var(--card-border, #e3e3e3);
-  border-radius: var(--border-radius-md, 8px);
-  background: var(--card-bg, #ffffff);
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-.settings-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  width: 100%;
-  padding: 0.7rem 0.85rem;
-  border-radius: var(--border-radius-sm, 4px);
-  text-decoration: none;
-  color: var(--text-primary, #222222);
-  background: transparent;
-  border: 1px solid transparent;
-  font-size: 0.95rem;
-  text-align: left;
-  cursor: pointer;
-  min-width: 0;
-}
-
-.settings-nav-item span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.settings-nav-item:hover,
-.settings-nav-item:focus {
-  background: var(--panel-bg, #f8f9fa);
-  border-color: var(--card-border, #e3e3e3);
-}
-
-.settings-nav-item.active {
-  color: var(--button-primary-bg, #2563eb);
-  background: color-mix(in srgb, var(--button-primary-bg, #2563eb) 10%, transparent);
-  border-color: color-mix(in srgb, var(--button-primary-bg, #2563eb) 24%, transparent);
-}
-
-.settings-nav-item i {
-  width: 1.1rem;
-  text-align: center;
-}
-
-.settings-content {
-  min-width: 0;
-  max-width: 100%;
-  display: grid;
-  gap: 1rem;
-}
-
-.settings-anchor {
-  scroll-margin-top: 1rem;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.section-cluster {
-  display: grid;
-  gap: 1rem;
-}
-
-@media (max-width: 1024px) {
-  .settings-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .settings-nav {
-    position: static;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  }
-}
-
-@media (max-width: 768px) {
-  .settings-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    padding: 0.75rem;
-  }
-
-  .settings-nav-item {
-    padding: 0.65rem;
-    font-size: 0.9rem;
-  }
-}
-
-@media (max-width: 380px) {
-  .settings-nav {
-    grid-template-columns: 1fr;
-  }
+.settings-view { background: transparent; }
+.view-header { margin-bottom: calc(var(--ui-space) * 6); padding: 0; text-align: left; }
+.view-title { margin: 0; overflow-wrap: anywhere; }
+.settings-shell { display: grid; grid-template-columns: 204px minmax(0, 1fr); gap: calc(var(--ui-space) * 5); align-items: start; min-width: 0; }
+.settings-nav.ui-section { position: sticky; top: calc(var(--ui-space) * 4); padding: calc(var(--ui-space) * 2); }
+.settings-desktop-nav { display: grid; gap: var(--ui-space); }
+.settings-mobile-nav.ui-field { display: none; }
+.settings-nav-item { display: flex; align-items: center; gap: calc(var(--ui-space) * 3); width: 100%; min-width: 0; min-height: var(--ui-control-height); padding: calc(var(--ui-space) * 3); border: 1px solid transparent; border-radius: var(--ui-radius-sm); color: var(--ui-text-secondary); background: transparent; font-weight: 550; text-align: left; cursor: pointer; }
+.settings-nav-item span { min-width: 0; overflow-wrap: anywhere; }
+.settings-nav-item:hover { color: var(--ui-text); background: var(--ui-surface-alt); }
+.settings-nav-item.active { color: var(--ui-accent); background: color-mix(in srgb, var(--ui-accent) 10%, var(--ui-surface)); border-color: color-mix(in srgb, var(--ui-accent) 35%, var(--ui-border)); }
+.settings-nav-item i { flex: 0 0 1.2em; text-align: center; }
+.settings-content, .settings-anchor { min-width: 0; max-width: 100%; }
+.settings-content, .section-cluster { display: grid; gap: calc(var(--ui-space) * 4); }
+.settings-anchor { scroll-margin-top: calc(var(--ui-space) * 4); }
+.settings-loading { display: flex; gap: calc(var(--ui-space) * 3); align-items: center; justify-content: center; }
+.settings-notice { margin-top: calc(var(--ui-space) * 4); padding: calc(var(--ui-space) * 4); border: 1px solid currentColor; border-radius: var(--ui-radius-sm); overflow-wrap: anywhere; }
+.settings-notice--error { color: var(--ui-danger); }
+.settings-notice--success { color: var(--ui-success); }
+@media (max-width: 1100px) {
+  .settings-shell { grid-template-columns: minmax(0, 1fr); }
+  .settings-nav.ui-section { position: static; padding: calc(var(--ui-space) * 4); }
+  .settings-desktop-nav { display: none; }
+  .settings-mobile-nav.ui-field { display: grid; }
 }
 </style>

@@ -93,9 +93,10 @@ def test_compiler_publishes_content_addressed_artifact_atomically(monkeypatch, t
     assert Path(calls[0][3]).parent.parent == artifact.path.parent
 
 
-def test_compiler_rejects_non_allowlisted_import_before_execution(monkeypatch, tmp_path):
+@pytest.mark.parametrize("imported", ["@/stores/auth", "@/components/ui/UiButton.vue", "@3mm/ui/v2", "@3mm/ui/v1/context"])
+def test_compiler_rejects_non_allowlisted_import_before_execution(monkeypatch, tmp_path, imported):
     blob = package(
-        "<script setup>import value from '@/stores/auth'</script><template>{{ value }}</template>"
+        f"<script setup>import value from '{imported}'</script><template>{{{{ value }}}}</template>"
     )
     validated = validate_module_package(blob)
     monkeypatch.setenv("COMPILED_UI_ARTIFACTS_DIR", str(tmp_path / "artifacts"))
@@ -107,6 +108,18 @@ def test_compiler_rejects_non_allowlisted_import_before_execution(monkeypatch, t
 
     with pytest.raises(CompiledUiBuildError, match="import is not allowed"):
         compile_ui_package(blob, validated)
+
+
+def test_compiler_accepts_the_exact_public_ui_contract(monkeypatch, tmp_path):
+    blob = package(
+        '<script setup>import { UiSurface, UiButton } from "@3mm/ui/v1"</script>'
+        '<template><UiSurface><UiButton>Local action</UiButton></UiSurface></template>'
+    )
+    calls = []
+    monkeypatch.setenv("COMPILED_UI_ARTIFACTS_DIR", str(tmp_path / "artifacts"))
+    monkeypatch.setattr(compiled_ui.subprocess, "run", fake_compiler(calls))
+    assert compile_ui_package(blob, validate_module_package(blob)).entrypoints
+    assert len(calls) == 1
 
 
 def test_failed_build_does_not_publish_partial_artifact(monkeypatch, tmp_path):

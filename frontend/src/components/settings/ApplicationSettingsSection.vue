@@ -30,7 +30,7 @@
           <input
             id="session-duration-hours"
             v-model.number="sessionDurationHours"
-            class="input"
+            class="input ui-control"
             type="number"
             :min="sessionDurationMinimum"
             :max="sessionDurationMaximum"
@@ -41,19 +41,19 @@
           </small>
         </div>
         <div class="settings-actions">
-          <button class="button button-primary" :disabled="sessionDurationSaving" @click="saveSessionDuration">
+          <button class="ui-button ui-button--primary" :disabled="sessionDurationSaving" @click="saveSessionDuration">
             {{ sessionDurationSaving ? t('common.saving', 'Saving…') : t('settings.sessionDuration.save', 'Save session duration') }}
           </button>
-          <span v-if="sessionDurationMessage" class="help-text">{{ sessionDurationMessage }}</span>
+          <span v-if="sessionDurationMessage" class="help-text" role="status">{{ sessionDurationMessage }}</span>
         </div>
       </div>
 
-      <div class="admin-info" style="margin-top: 1rem;">
-        <h3 style="margin: 0 0 0.5rem;">{{ t('settings.aiProvider.title', 'AI Provider (Extension Builder)') }}</h3>
+      <div class="admin-info ai-settings-card">
+        <h3>{{ t('settings.aiProvider.title', 'AI Provider (Extension Builder)') }}</h3>
 
         <div class="form-group">
-          <label class="form-label">{{ t('settings.aiProvider.provider', 'Provider') }}</label>
-          <select class="input" v-model="aiProvider">
+          <label class="form-label" for="ai-provider">{{ t('settings.aiProvider.provider', 'Provider') }}</label>
+          <select id="ai-provider" class="input ui-control" v-model="aiProvider">
             <option value="">{{ t('settings.aiProvider.auto', 'Auto') }}</option>
             <option value="openrouter">OpenRouter</option>
             <option value="groq">Groq</option>
@@ -64,9 +64,9 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">{{ t('settings.aiProvider.groqKey', 'Groq API Key') }}</label>
+          <label class="form-label" for="groq-api-key">{{ t('settings.aiProvider.groqKey', 'Groq API Key') }}</label>
           <input
-            class="input"
+            id="groq-api-key" class="input ui-control"
             type="password"
             v-model="groqKeyInput"
             :placeholder="t('settings.aiProvider.keyPlaceholder', 'Leave blank to keep current')"
@@ -75,15 +75,15 @@
             {{ t('settings.aiProvider.groqStatus', 'Configured:') }}
             <strong>{{ aiStatus.has_groq_key ? t('common.yes', 'Yes') : t('common.no', 'No') }}</strong>
           </small>
-          <button class="button button-secondary" @click="clearGroqKey" style="margin-top: 0.5rem;">
+          <button class="ui-button ui-button--secondary clear-key-button" @click="clearGroqKey">
             {{ t('settings.aiProvider.clearGroq', 'Clear Groq key') }}
           </button>
         </div>
 
         <div class="form-group">
-          <label class="form-label">{{ t('settings.aiProvider.openrouterKey', 'OpenRouter API Key') }}</label>
+          <label class="form-label" for="openrouter-api-key">{{ t('settings.aiProvider.openrouterKey', 'OpenRouter API Key') }}</label>
           <input
-            class="input"
+            id="openrouter-api-key" class="input ui-control"
             type="password"
             v-model="openrouterKeyInput"
             :placeholder="t('settings.aiProvider.keyPlaceholder', 'Leave blank to keep current')"
@@ -92,16 +92,16 @@
             {{ t('settings.aiProvider.openrouterStatus', 'Configured:') }}
             <strong>{{ aiStatus.has_openrouter_key ? t('common.yes', 'Yes') : t('common.no', 'No') }}</strong>
           </small>
-          <button class="button button-secondary" @click="clearOpenRouterKey" style="margin-top: 0.5rem;">
+          <button class="ui-button ui-button--secondary clear-key-button" @click="clearOpenRouterKey">
             {{ t('settings.aiProvider.clearOpenrouter', 'Clear OpenRouter key') }}
           </button>
         </div>
 
-        <div style="display: flex; gap: 0.75rem; align-items: center; margin-top: 0.75rem;">
-          <button class="button button-primary" @click="saveAiSettings">
+        <div class="settings-actions">
+          <button class="ui-button ui-button--primary" @click="saveAiSettings">
             {{ t('settings.aiProvider.save', 'Save AI settings') }}
           </button>
-          <span v-if="aiSaveMessage" class="help-text">{{ aiSaveMessage }}</span>
+          <span v-if="aiSaveMessage" class="help-text" role="status">{{ aiSaveMessage }}</span>
         </div>
       </div>
     </template>
@@ -324,77 +324,11 @@ export default defineComponent({
 </script>
 
 <style scoped>
-/* Uses existing .form-group, .form-label, .input, .help-text, .button, .button-primary classes */
-
-.admin-info,
-.user-preferences-info,
-.guest-info {
-  padding: 1rem;
-  background-color: var(--color-background-soft);
-  border-radius: var(--border-radius-sm);
-  margin-bottom: 1rem;
-  border: 1px solid var(--card-border, #e3e3e3);
-}
-
-.user-preferences-info p,
-.admin-info p,
-.guest-info p {
-  margin: 0.5rem 0;
-  color: var(--color-text-secondary);
-}
-
-.admin-info {
-  background-color: var(--color-background-soft);
-  border-left: 3px solid var(--color-primary);
-}
-
-.guest-info {
-  background-color: var(--color-background-soft);
-  border-left: 3px solid var(--color-warning);
-}
-
-.admin-info {
-  display: grid;
-  gap: 1rem;
-}
-
-.admin-info h3 {
-  margin: 0;
-  font-size: 0.98rem;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  color: var(--text-primary, #222222);
-}
-
-.session-settings-card {
-  margin-top: 1rem;
-}
-
-.session-duration-control {
-  max-width: 18rem;
-}
-
-.settings-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-}
-
-.admin-info .form-group {
-  margin-bottom: 0;
-}
-
-.admin-info button {
-  min-height: 2.3rem;
-}
-
-:root[data-theme="dark"] .user-preferences-info,
-:root[data-theme="dark"] .admin-info,
-:root[data-theme="dark"] .guest-info,
-.dark .user-preferences-info,
-.dark .admin-info,
-.dark .guest-info {
-  border-color: var(--card-border, #4b5563);
-}
+.admin-info, .user-preferences-info, .guest-info { display: grid; gap: calc(var(--ui-space) * 4); padding: calc(var(--ui-space) * 4); background: var(--ui-surface-alt); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); margin-bottom: calc(var(--ui-space) * 4); min-width: 0; }
+.user-preferences-info p, .admin-info p, .guest-info p { margin: 0; color: var(--ui-text-secondary); }
+.admin-info h3 { margin: 0; font-size: 1rem; font-weight: 650; color: var(--ui-text); }
+.session-duration-control { max-width: 22rem; }
+.settings-actions { display: flex; flex-wrap: wrap; gap: calc(var(--ui-space) * 3); align-items: center; }
+.admin-info .form-group { display: grid; gap: calc(var(--ui-space) * 2); margin-bottom: 0; min-width: 0; }
+.clear-key-button { justify-self: start; }
 </style>

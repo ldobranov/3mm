@@ -2,7 +2,7 @@
   <SettingsSection :title="t('backups.title', 'Backup and recovery')">
     <div class="backup-heading">
       <p>{{ t('backups.description', 'Create encrypted local backups and restore this Standalone device to an earlier state.') }}</p>
-      <button type="button" class="button button-secondary button-sm" :disabled="loading" @click="refreshAll">
+      <button type="button" class="ui-button" :disabled="loading" @click="refreshAll">
         <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
         {{ loading ? t('backups.refreshing', 'Refreshing…') : t('backups.refresh', 'Refresh') }}
       </button>
@@ -13,7 +13,7 @@
 
     <article class="preview-card">
       <div class="preview-status">
-        <span class="status-dot" :class="preview?.ready ? 'ready' : 'blocked'"></span>
+        <span class="status-dot" aria-hidden="true" :class="preview?.ready ? 'ready' : 'blocked'"></span>
         <div>
           <strong>{{ preview?.ready ? t('backups.ready', 'Ready to back up') : t('backups.notReady', 'Backup is not ready') }}</strong>
           <small v-if="operation">{{ operationLabel }}</small>
@@ -27,7 +27,7 @@
       <ul v-if="preview?.issues.length" class="issue-list">
         <li v-for="issue in preview.issues" :key="`${issue.code}-${issue.message}`">{{ issue.message }}</li>
       </ul>
-      <button type="button" class="button button-primary" :disabled="!preview?.ready || controlsBusy" @click="createBackup">
+      <button type="button" class="ui-button ui-button--primary" :disabled="!preview?.ready || controlsBusy" @click="createBackup">
         {{ actionBusy === 'create' ? t('backups.starting', 'Starting…') : t('backups.create', 'Create backup') }}
       </button>
     </article>
@@ -47,7 +47,7 @@
         accept=".3mmrecovery,application/octet-stream"
         @change="restoreFromFile"
       />
-      <button type="button" class="button button-secondary" :disabled="controlsBusy" @click="chooseRestoreFile">
+      <button type="button" class="ui-button" :disabled="controlsBusy" @click="chooseRestoreFile">
         <i class="bi bi-upload" aria-hidden="true"></i>
         {{ actionBusy === 'restore-file' ? t('backups.importing', 'Checking file…') : t('backups.restoreFile', 'Restore from file') }}
       </button>
@@ -58,7 +58,7 @@
         <h4>{{ t('backups.savedTitle', 'Saved backups') }}</h4>
         <p>{{ t('backups.retention', 'The five newest backups are kept automatically on this device.') }}</p>
       </div>
-      <span class="count-badge">{{ catalog.length }} / {{ retentionCount }}</span>
+      <span class="count-badge ui-badge">{{ catalog.length }} / {{ retentionCount }}</span>
     </div>
     <ul v-if="catalogIssues.length" class="issue-list">
       <li v-for="issue in catalogIssues" :key="`${issue.code}-${issue.message}`">{{ issue.message }}</li>
@@ -77,11 +77,11 @@
           <small>{{ item.backup_id }}</small>
         </div>
         <div class="backup-actions">
-          <button type="button" class="button button-secondary button-sm" :disabled="controlsBusy" @click="downloadBackup(item)">
+          <button type="button" class="ui-button" :disabled="controlsBusy" @click="downloadBackup(item)">
             <i class="bi bi-download" aria-hidden="true"></i>
             {{ actionBusy === `export:${item.backup_id}` ? t('backups.preparingDownload', 'Preparing…') : t('backups.download', 'Download') }}
           </button>
-          <button type="button" class="button button-secondary button-sm" :disabled="controlsBusy" @click="restoreBackup(item)">
+          <button type="button" class="ui-button" :disabled="controlsBusy" @click="restoreBackup(item)">
             {{ actionBusy === item.backup_id ? t('backups.starting', 'Starting…') : t('backups.restore', 'Restore') }}
           </button>
         </div>
@@ -294,125 +294,40 @@ onMounted(refreshAll)
 </script>
 
 <style scoped>
-.backup-heading,
-.catalog-heading,
-.preview-status,
-.backup-row {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-}
-
-.backup-heading,
-.catalog-heading {
-  justify-content: space-between;
-}
-
-.backup-heading p,
-.catalog-heading p {
-  margin: 0;
-  color: var(--text-secondary);
-}
-
-.preview-card {
-  margin-top: 1rem;
-  padding: 1rem;
-  border: 1px solid var(--card-border);
-  border-radius: var(--border-radius-md);
-  background: var(--panel-bg);
-}
-
-.portable-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-top: 0.75rem;
-  padding: 1rem;
-  border: 1px solid var(--card-border);
-  border-radius: var(--border-radius-md);
-  background: var(--card-bg);
-}
-
-.portable-copy { display: flex; align-items: flex-start; gap: 0.8rem; }
-.portable-copy > i { color: var(--button-primary-bg); font-size: 1.35rem; }
-.portable-copy strong { color: var(--text-primary); }
-.portable-copy p { margin: 0.2rem 0 0; color: var(--text-secondary); }
-
-.preview-status small,
-.backup-copy span,
-.backup-copy small {
-  display: block;
-  color: var(--text-secondary);
-}
-
-.status-dot {
-  width: 0.7rem;
-  height: 0.7rem;
-  border-radius: 50%;
-  background: var(--button-danger-bg);
-}
-
-.status-dot.ready { background: #22a06b; }
-
-.backup-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.65rem;
-  margin: 1rem 0;
-}
-
-.backup-metrics div {
-  padding: 0.75rem;
-  border: 1px solid var(--card-border);
-  border-radius: var(--border-radius-sm);
-  background: var(--card-bg);
-}
-
-.backup-metrics dt { color: var(--text-secondary); font-size: 0.78rem; }
-.backup-metrics dd { margin: 0.2rem 0 0; color: var(--text-primary); font-weight: 650; }
-
-.issue-list { margin: 0 0 1rem; color: var(--text-secondary); }
-.catalog-heading { margin: 1.25rem 0 0.75rem; }
-.catalog-heading h4 { margin: 0 0 0.2rem; color: var(--text-primary); font-size: 1rem; }
-
-.count-badge {
-  flex: 0 0 auto;
-  padding: 0.25rem 0.55rem;
-  border-radius: 999px;
-  color: var(--text-secondary);
-  background: var(--panel-bg);
-  border: 1px solid var(--card-border);
-  font-size: 0.8rem;
-}
-
-.backup-list { display: grid; gap: 0.65rem; }
-.backup-row { padding: 0.8rem; border: 1px solid var(--card-border); border-radius: var(--border-radius-md); }
-.backup-icon { color: var(--button-primary-bg); font-size: 1.2rem; }
-.backup-copy { min-width: 0; flex: 1; }
-.backup-actions { display: flex; gap: 0.5rem; }
-.backup-copy small { overflow-wrap: anywhere; font-size: 0.72rem; }
-.empty-state { padding: 1rem; border: 1px dashed var(--card-border); border-radius: var(--border-radius-md); color: var(--text-secondary); }
-
-.backup-notice {
-  margin-top: 0.85rem;
-  padding: 0.75rem;
-  border: 1px solid color-mix(in srgb, var(--button-primary-bg) 35%, var(--card-border));
-  border-radius: var(--border-radius-sm);
-  color: var(--text-primary);
-  background: color-mix(in srgb, var(--button-primary-bg) 8%, var(--card-bg));
-}
-
-.backup-notice.error { border-color: color-mix(in srgb, var(--button-danger-bg) 42%, var(--card-border)); }
-
-@media (max-width: 640px) {
-  .backup-heading,
-  .catalog-heading { align-items: flex-start; }
-  .backup-metrics { grid-template-columns: 1fr; }
+.backup-heading, .catalog-heading, .preview-status, .backup-row { display: flex; align-items: center; gap: calc(var(--ui-space) * 3); min-width: 0; }
+.backup-heading, .catalog-heading { justify-content: space-between; }
+.backup-heading p, .catalog-heading p, .portable-copy p, .preview-status small, .backup-copy span, .backup-copy small { color: var(--ui-text-secondary); }
+.preview-card, .portable-card { margin-top: calc(var(--ui-space) * 4); padding: calc(var(--ui-space) * 4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); min-width: 0; }
+.preview-card { background: var(--ui-surface-alt); }
+.portable-card { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--ui-space) * 4); }
+.portable-copy { display: flex; align-items: flex-start; gap: calc(var(--ui-space) * 3); min-width: 0; }
+.portable-copy > i, .backup-icon { color: var(--ui-accent); font-size: 1.25rem; }
+.portable-copy p { margin-top: var(--ui-space); }
+.preview-status small, .backup-copy span, .backup-copy small { display: block; }
+.status-dot { flex: 0 0 .7rem; height: .7rem; border-radius: 50%; background: var(--ui-danger); }
+.status-dot.ready { background: var(--ui-success); }
+.backup-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: calc(var(--ui-space) * 3); margin: calc(var(--ui-space) * 4) 0; }
+.backup-metrics div { padding: calc(var(--ui-space) * 3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); background: var(--ui-surface); }
+.backup-metrics dt { color: var(--ui-text-secondary); font-size: .85em; }
+.backup-metrics dd { margin: var(--ui-space) 0 0; color: var(--ui-text); font-weight: 650; }
+.issue-list { margin: calc(var(--ui-space) * 3) 0; color: var(--ui-warning); overflow-wrap: anywhere; }
+.catalog-heading { margin: calc(var(--ui-space) * 5) 0 calc(var(--ui-space) * 3); }
+.catalog-heading h4 { margin: 0; font-size: 1rem; }
+.count-badge { flex: 0 0 auto; }
+.backup-list { display: grid; gap: calc(var(--ui-space) * 3); }
+.backup-row { padding: calc(var(--ui-space) * 4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); }
+.backup-copy { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.backup-actions { display: flex; flex-wrap: wrap; gap: calc(var(--ui-space) * 2); }
+.backup-copy small { font-size: .8em; }
+.empty-state { padding: calc(var(--ui-space) * 4); border: 1px dashed var(--ui-border); border-radius: var(--ui-radius-sm); color: var(--ui-text-secondary); }
+.backup-notice { margin-top: calc(var(--ui-space) * 3); padding: calc(var(--ui-space) * 3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); color: var(--ui-text); overflow-wrap: anywhere; }
+.backup-notice.error { color: var(--ui-danger); }
+@media (max-width: 720px) {
+  .backup-heading, .catalog-heading { align-items: flex-start; flex-wrap: wrap; }
+  .backup-metrics { grid-template-columns: minmax(0, 1fr); }
   .backup-row { align-items: flex-start; flex-wrap: wrap; }
   .backup-actions { width: 100%; }
-  .backup-actions .button { flex: 1; }
+  .backup-actions .ui-button { flex: 1; }
   .portable-card { align-items: stretch; flex-direction: column; }
-  .portable-card > .button { width: 100%; }
 }
 </style>

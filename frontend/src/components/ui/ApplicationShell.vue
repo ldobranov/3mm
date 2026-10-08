@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Menu from '../Menu.vue'
 import ThemeToggle from '../ThemeToggle.vue'
@@ -8,8 +8,13 @@ import UiDialog from './UiDialog.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useUiLabels } from '@/utils/ui-labels'
 import type { UiDesign, UiShellMode } from '@/utils/ui-design'
+import { extensionUiKey } from '@/extension-ui/context'
 
 const props = withDefaults(defineProps<{ design: UiDesign; mode: UiShellMode; active?: boolean }>(), { active: true })
+provide(extensionUiKey, computed(() => Object.freeze({
+  button: props.design.components.button,
+  card: props.design.components.card,
+})))
 const settings = useSettingsStore()
 const label = useUiLabels()
 const route = useRoute()

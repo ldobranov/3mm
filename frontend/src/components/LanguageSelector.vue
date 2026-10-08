@@ -1,9 +1,9 @@
 <template>
   <div class="form-section">
-    <label class="form-label">{{ label }} ({{ modelValue.toUpperCase() }})</label>
+    <label class="form-label ui-field"><span>{{ label }} ({{ modelValue.toUpperCase() }})</span>
     <select
       :value="modelValue"
-      class="select"
+      class="select ui-control"
       @change="handleChange"
     >
       <option
@@ -14,6 +14,7 @@
         {{ lang.toUpperCase() }}
       </option>
     </select>
+    </label>
   </div>
 </template>
 

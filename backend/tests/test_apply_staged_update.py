@@ -78,10 +78,15 @@ def prepare_worker(
     return statuses, audits
 
 
+@pytest.mark.parametrize(
+    "frontend_origin", ["http://localhost", "http://192.168.1.88:8080"]
+)
 def test_worker_installs_only_missing_allowlisted_dependencies_then_uses_installer(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, frontend_origin: str
 ) -> None:
-    staged = staged_update(tmp_path)
+    staged = staged_update(tmp_path).model_copy(
+        update={"frontend_origin": frontend_origin}
+    )
     statuses, audits = prepare_worker(monkeypatch, staged)
     commands: list[tuple[str, ...]] = []
     inspections = iter(
@@ -120,7 +125,7 @@ def test_worker_installs_only_missing_allowlisted_dependencies_then_uses_install
     assert commands[3][2] != str(tmp_path / "stage" / "staged-release.tar.gz")
     assert commands[3][3:] == (
         "v1.2.0",
-        "http://192.168.1.88:8080",
+        frontend_origin,
         "",
         staged.artifact_sha256,
     )

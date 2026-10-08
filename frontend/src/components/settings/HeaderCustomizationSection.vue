@@ -10,7 +10,7 @@
       {{ label('brandingHelp') }}
     </p>
 
-    <form @submit.prevent="saveHeaderSettings">
+    <form class="ui-stack" @submit.prevent="saveHeaderSettings">
       <div class="form-group">
         <label for="site-name" class="form-label">
           {{ t('settings.siteName', 'Site Name') }} ({{ headerLanguage.toUpperCase() }})
@@ -20,7 +20,7 @@
           :value="currentSiteName"
           @input="handleSiteNameChange"
           type="text"
-          class="input"
+          class="input ui-control"
           :placeholder="`Site name in ${headerLanguage.toUpperCase()}`"
         />
         <small v-if="!currentSiteName" class="help-text">
@@ -37,7 +37,7 @@
           :value="currentHeaderMessage"
           @input="handleHeaderMessageChange"
           type="text"
-          class="input"
+          class="input ui-control"
           :placeholder="`Header message in ${headerLanguage.toUpperCase()}`"
         />
         <small v-if="!currentHeaderMessage" class="help-text">
@@ -65,7 +65,7 @@
             <div class="upload-controls">
               <button
                 type="button"
-                class="button button-primary button-sm"
+                class="ui-button ui-button--primary"
                 @click="openImageEditor"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -80,7 +80,7 @@
               <button
                 v-if="headerSettings.logoUrl"
                 type="button"
-                class="button button-danger button-sm"
+                class="ui-button ui-button--danger"
                 @click="removeLogo"
               >
                 {{ t('settings.remove', 'Remove') }}
@@ -104,7 +104,7 @@
         </div>
       </div>
 
-      <button type="submit" class="button button-primary" :disabled="savingHeader">
+      <button type="submit" class="ui-button ui-button--primary" :disabled="savingHeader">
         {{ savingHeader ? t('settings.saving', 'Saving...') : t('settings.saveHeaderSettings', 'Save Header Settings') }}
       </button>
     </form>
@@ -308,90 +308,15 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.logo-upload-container {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.logo-preview {
-  max-height: 60px;
-  max-width: 200px;
-}
-
-.preview-card {
-  padding: 1rem;
-  border-radius: var(--border-radius-md, 8px);
-  text-align: center;
-  background-color: var(--ui-header-bg, var(--panel-bg));
-  color: var(--ui-header-text, var(--text-primary));
-  border: 1px solid var(--color-border);
-  min-height: 120px;
-  display: grid;
-  gap: 0.4rem;
-  place-items: center;
-}
-
-.preview-logo {
-  max-height: 60px;
-  margin-bottom: 10px;
-  display: block;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.preview-title {
-  font-weight: bold;
-  font-size: 1.25rem;
-  margin-bottom: 0.5rem;
-}
-
-.preview-message {
-  font-size: 0.875rem;
-  opacity: 0.9;
-}
-
-.form-group {
-  margin-bottom: 1rem;
-}
-
-.form-group:last-of-type {
-  margin-bottom: 0;
-}
-
-.header-language-note {
-  margin: -0.25rem 0 1rem;
-  color: var(--text-secondary, #666666);
-  font-size: 0.875rem;
-}
-
-.shared-header-heading {
-  display: grid;
-  gap: 0.25rem;
-  margin: 1.25rem 0 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--card-border, #e3e3e3);
-}
-</style>
-
-<style scoped>
-.image-upload-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-}
-
-.upload-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-:root[data-theme="dark"] .preview-card,
-.dark .preview-card {
-  border-color: var(--card-border, #4b5563);
-}
-
+.logo-upload-container, .upload-controls { display: flex; align-items: center; flex-wrap: wrap; gap: calc(var(--ui-space) * 3); min-width: 0; }
+.logo-preview, .preview-logo { max-height: 60px; max-width: min(200px, 100%); object-fit: contain; }
+.preview-card { padding: calc(var(--ui-space) * 5); border-radius: var(--ui-radius-md); text-align: center; background: var(--ui-header-bg, var(--ui-surface-alt)); color: var(--ui-header-text, var(--ui-text)); border: 1px solid var(--ui-border); min-height: 120px; display: grid; gap: calc(var(--ui-space) * 2); place-items: center; overflow-wrap: anywhere; }
+.preview-title { font-weight: 650; font-size: 1.25rem; }
+.preview-message { font-size: .9rem; }
+.form-group { display: grid; gap: calc(var(--ui-space) * 2); margin: 0; min-width: 0; }
+.header-language-note { margin: 0 0 calc(var(--ui-space) * 5); color: var(--ui-text-secondary); font-size: .9rem; }
+.shared-header-heading { display: grid; gap: var(--ui-space); padding-top: calc(var(--ui-space) * 4); border-top: 1px solid var(--ui-border); }
+.image-upload-wrapper { min-width: 0; }
+form > .ui-button { justify-self: start; }
+@media (max-width: 600px) { .upload-controls .ui-button, form > .ui-button { width: 100%; } }
 </style>

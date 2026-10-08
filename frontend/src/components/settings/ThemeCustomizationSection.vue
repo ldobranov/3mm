@@ -1,6 +1,6 @@
 <template>
   <SettingsSection :title="sectionTitle">
-    <form @submit.prevent>
+    <form class="ui-stack" @submit.prevent>
       <!-- Dynamic Color Sections -->
       <div
         v-for="config in colorConfigs"
@@ -40,7 +40,7 @@
               :min="radius.min"
               :max="radius.max"
               step="1"
-              class="input"
+              class="radius-input"
               :value="settings[radius.key]"
               @input="settings[radius.key] = parseInt(($event.target as HTMLInputElement).value)"
             />
@@ -58,13 +58,13 @@
             {{ t('settings.previewText', 'This is how your styled components will look.') }}
           </p>
           <div class="preview-buttons">
-            <button class="preview-button-primary">
+            <button type="button" class="ui-button ui-button--primary">
               {{ t('settings.primaryButton', 'Primary Button') }}
             </button>
-            <button class="preview-button-secondary">
+            <button type="button" class="ui-button ui-button--secondary">
               {{ t('settings.secondaryButton', 'Secondary Button') }}
             </button>
-            <button class="preview-button-danger">
+            <button type="button" class="ui-button ui-button--danger">
               {{ t('settings.dangerButton', 'Danger Button') }}
             </button>
           </div>
@@ -73,7 +73,7 @@
 
       <button
         type="submit"
-        class="button button-primary"
+        class="ui-button ui-button--primary"
         :disabled="saving"
         @click="handleSave"
       >
@@ -234,86 +234,15 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.form-section {
-  padding: 1rem;
-  border: 1px solid var(--card-border, #e3e3e3);
-  border-radius: var(--border-radius-sm, 4px);
-  background: var(--panel-bg, #f8f9fa);
-}
-
-.form-section + .form-section {
-  margin-top: 1rem;
-}
-
-.form-section h4 {
-  margin: 0 0 0.85rem 0;
-  font-size: 0.95rem;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  color: var(--text-primary, #222222);
-}
-
-.form-field + .form-field {
-  margin-top: 0.85rem;
-}
-
-.range-input-group {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.75rem;
-  align-items: center;
-}
-
-.range-value {
-  min-width: 3rem;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  color: var(--text-secondary, #666666);
-}
-
-.preview-card {
-  padding: 1rem;
-  border-radius: var(--border-radius-md, 8px);
-  border: 1px solid var(--card-border, #e3e3e3);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0)),
-    var(--card-bg, #ffffff);
-}
-
-.preview-card h5 {
-  margin: 0 0 0.5rem 0;
-  font-size: 0.95rem;
-}
-
-.preview-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.preview-buttons button {
-  min-height: 2.3rem;
-  padding: 0.5rem 0.85rem;
-  border: 0;
-  border-radius: var(--border-radius-sm, 4px);
-}
-
-.preview-text {
-  margin: 0 0 1rem 0;
-  opacity: 0.8;
-  color: var(--text-secondary, #666666);
-}
-
-:root[data-theme="dark"] .form-section,
-.dark .form-section,
-:root[data-theme="dark"] .preview-card,
-.dark .preview-card {
-  background: var(--panel-bg, #374151);
-  border-color: var(--card-border, #4b5563);
-}
-
-:root[data-theme="dark"] .form-section h4,
-.dark .form-section h4 {
-  color: var(--text-primary, #e5e7eb);
-}
+.form-section { display: grid; gap: calc(var(--ui-space) * 4); padding: calc(var(--ui-space) * 4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); background: var(--ui-surface-alt); }
+.form-section h4 { margin: 0; font-size: 1rem; font-weight: 650; color: var(--ui-text); }
+.form-field { margin: 0; min-width: 0; }
+.range-input-group { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: calc(var(--ui-space) * 3); align-items: center; }
+.radius-input { width: 100%; min-width: 0; accent-color: var(--ui-accent); }
+.range-value { min-width: 3rem; font-variant-numeric: tabular-nums; text-align: right; color: var(--ui-text-secondary); }
+.preview-card { padding: calc(var(--ui-space) * 4); border-radius: var(--ui-radius-md); border: 1px solid var(--ui-border); background: var(--ui-surface); }
+.preview-card h5 { margin: 0 0 calc(var(--ui-space) * 2); font-size: 1rem; }
+.preview-text { margin-bottom: calc(var(--ui-space) * 4); color: var(--ui-text-secondary); }
+.preview-buttons { display: flex; flex-wrap: wrap; gap: calc(var(--ui-space) * 2); }
+form > .ui-button { justify-self: start; }
 </style>
