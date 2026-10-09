@@ -126,6 +126,7 @@ def read_source_payload(source_archive: Path) -> list[PayloadFile]:
         "deployment/factory_reset.py",
         "deployment/local_agent_pairing.py",
         "deployment/restore_application_extensions.py",
+        "deployment/authority_recovery.py",
         "deployment/install-systemd.sh",
         "deployment/migrate_database.py",
         "deployment/update-dependency-allowlist.json",

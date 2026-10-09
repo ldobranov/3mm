@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Protocol, Sequence
 
 from deployment.prepare_backup_storage import prepare_backup_storage
+from deployment.authority_recovery import fence_recovered_authority
 
 STATE_ROOT = Path("/var/lib/3mm")
 INSTALL_ROOT = Path("/opt/3mm")
@@ -169,6 +170,7 @@ def perform_factory_reset(
             str(release / "deployment" / "migrate_database.py"),
         )
     )
+    fence_recovered_authority(state_root / "core/3mm.db", reason="factory_reset")
     command_runner.run(
         (
             "/usr/sbin/runuser",

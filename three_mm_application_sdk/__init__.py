@@ -29,7 +29,7 @@ class ApplicationPlatformError(RuntimeError):
 
 
 class ApplicationPlatformClient:
-    """Signed Unix-socket access to platform connectors and checkpoints."""
+    """Signed installation-scoped platform access over the existing Unix socket."""
 
     def __init__(self, socket_path: Path, instance_id: str, secret: bytes) -> None:
         self.socket_path = socket_path
@@ -122,6 +122,34 @@ class ApplicationPlatformClient:
 
     def get_checkpoint(self, checkpoint_id: str) -> dict[str, object]:
         return self._call("checkpoint.get", {"checkpoint_id": checkpoint_id})
+
+    def publish_event(self, publication_id: str, *, event_id: str,
+            payload: Mapping[str, object], occurred_at: datetime) -> dict[str, object]:
+        """Publish one exact declared event; persist/reuse the SAME ID on retry.
+
+        No automatic outbox drain, replay, device fallback or new ID on timeout.
+        Old Core runtimes reject this additive SDK 1.3 method as unsupported.
+        """
+        from three_mm_protocol.application_event_publication import (
+            ApplicationEventPublishRequestV1, ApplicationEventPublicationReceiptV1,
+        )
+        request = ApplicationEventPublishRequestV1(publication_request_version=1,
+            publication_id=publication_id, event_id=event_id, payload=dict(payload), occurred_at=occurred_at)
+        try:
+            result = self._call('event.publish', {'publication': request.model_dump(mode='json')})
+        except ApplicationPlatformError as error:
+            # Earlier gateways route unknown actions through checkpoint parsing.
+            # Report that explicit refusal; never retry through device ingestion.
+            if str(error) in {'Checkpoint identity is invalid', 'Platform action is unsupported'}:
+                raise ApplicationPlatformError('Core does not support application event publication') from error
+            raise
+        try:
+            receipt = ApplicationEventPublicationReceiptV1.model_validate(result)
+        except ValueError as error:
+            raise ApplicationPlatformError('Publication receipt is invalid') from error
+        if receipt.event_id != request.event_id or receipt.publication_id != request.publication_id:
+            raise ApplicationPlatformError('Publication receipt does not match')
+        return receipt.model_dump(mode='json')
 
     def get_installation_identity(self) -> dict[str, object]:
         """Read whole-Core public identity; requires declared platform permission."""

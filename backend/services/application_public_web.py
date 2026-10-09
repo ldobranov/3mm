@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from backend.config import ApplicationRuntimeSettings
@@ -116,13 +116,19 @@ def _active_bindings(
     db: Session,
     *,
     exclude_module_id: str | None = None,
+    include_activating: bool = False,
 ) -> list[PublicRouteBinding]:
+    available = (
+        ApplicationExtensionInstallation.enabled.is_(True)
+        & (ApplicationExtensionInstallation.status == "active")
+    )
+    if include_activating:
+        available = or_(available, ApplicationExtensionInstallation.status == "activating")
     installations = list(
         db.scalars(
             select(ApplicationExtensionInstallation)
             .where(
-                ApplicationExtensionInstallation.enabled.is_(True),
-                ApplicationExtensionInstallation.status == "active",
+                available,
             )
             .order_by(ApplicationExtensionInstallation.module_id)
         )
@@ -135,7 +141,10 @@ def _active_bindings(
         if (
             package is None
             or package.module_id != installation.module_id
-            or package.version != installation.active_version
+            or (
+                installation.status == "active"
+                and package.version != installation.active_version
+            )
         ):
             raise ApplicationPublicWebError(
                 "Active application package is unavailable or inconsistent"
@@ -165,7 +174,10 @@ def validate_public_http_candidate(
 
     if not definition.public_http_routes:
         return
-    bindings = _active_bindings(db, exclude_module_id=definition.module_id)
+    # Pending candidates reserve routes too. They are never publicly dispatched.
+    bindings = _active_bindings(
+        db, exclude_module_id=definition.module_id, include_activating=True
+    )
     bindings.extend(_binding(definition, package, None))
     _validate_bindings(bindings)
 

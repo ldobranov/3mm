@@ -40,17 +40,17 @@ def invalidate_commands(db, installation_id):
         .values(status='failed', error='Application lifecycle invalidated this physical authorization', result={'execution_state': 'unknown'}))
 
 
-def _definition(db, installation):
+def _definition(db, installation, prepared_definition=None):
     if not installation or not installation.enabled or installation.status != 'active':
         raise ValueError('Application command authority is inactive')
     package = db.get(ModulePackage, installation.module_package_id)
     if package is None or package.module_id != installation.module_id or package.version != installation.active_version:
         raise ValueError('Application version is inconsistent')
-    return load_application_definition(package)
+    return prepared_definition if prepared_definition is not None else load_application_definition(package)
 
 
-def _binding(db, installation, binding_id, arguments, ttl):
-    definition = _definition(db, installation)
+def _binding(db, installation, binding_id, arguments, ttl, prepared_definition=None):
+    definition = _definition(db, installation, prepared_definition)
     binding = next((b for b in definition.command_bindings if b.binding_id == binding_id), None)
     if binding is None or ttl > binding.max_ttl_seconds:
         raise ValueError('Command binding or TTL is not authorized')
@@ -65,7 +65,15 @@ def _binding(db, installation, binding_id, arguments, ttl):
 
 def submit_command(db, installation, payload):
     request = ApplicationCommandSubmitV1.model_validate(payload)
-    binding, device = _binding(db, installation, request.binding_id, request.arguments, request.ttl_seconds)
+    from backend.services.application_authority_management import effect_admission
+    with effect_admission(db, installation.id, 'command:' + request.binding_id) as admission:
+        return _submit_command(db, installation, request, admission)
+
+
+def _submit_command(db, installation, request, admission):
+    binding, device = _binding(db, installation, request.binding_id, request.arguments, request.ttl_seconds, admission.definition)
+    from backend.services.application_authority_management import lock_compatibility_admission
+    lock_compatibility_admission(db, installation, required=admission.compatibility)
     epoch = db.get(ApplicationCommandEpoch, installation.id)
     if epoch is None:
         epoch = ApplicationCommandEpoch(installation_id=installation.id, generation=uuid.uuid4().hex)
@@ -87,7 +95,7 @@ def submit_command(db, installation, payload):
     if record.generation != epoch.generation or record.package_id != installation.module_package_id:
         raise ValueError('Request belongs to an invalidated generation; it cannot be replayed')
     commit_queued_command(db, device=device, command=command)
-    return command_status(db, installation, command.command_id)
+    return _command_snapshot(db, installation, record)
 
 
 def command_status(db, installation, command_id):
@@ -140,6 +148,22 @@ def command_lookup(db, installation, payload):
 
 def authorize_execution(db, device, command_id):
     """One live permit, never redelivered. A missing response is not retryable."""
+    # Resolve ownership before taking device locks. Opt-in lock order is always
+    # key -> Core guard -> device -> one-use permit, never device -> key.
+    record = db.get(ApplicationCommandRequest, command_id)
+    command = db.scalar(select(DeviceCommand).where(
+        DeviceCommand.command_id == command_id, DeviceCommand.device_id == device.id))
+    if record is None or command is None or command.command_type != COMMAND_TYPE:
+        raise ValueError('Physical command is not available for this device')
+    from backend.services.application_authority_management import effect_admission
+    with effect_admission(db, record.installation_id, 'command:' + command.payload['binding_id']) as admission:
+        if admission.compatibility:
+            from backend.services.application_authority_management import lock_compatibility_admission
+            lock_compatibility_admission(db, db.get(ApplicationExtensionInstallation, record.installation_id), required=True)
+        return _authorize_execution(db, device, command_id, admission.definition)
+
+
+def _authorize_execution(db, device, command_id, prepared_definition):
     lock_device(db, device)
     db.refresh(device)
     try:
@@ -154,7 +178,7 @@ def authorize_execution(db, device, command_id):
         raise ValueError('Physical command is not available for this device')
     installation = db.get(ApplicationExtensionInstallation, record.installation_id)
     epoch = db.get(ApplicationCommandEpoch, record.installation_id)
-    binding, target = _binding(db, installation, command.payload['binding_id'], command.payload['arguments'], command.payload['ttl_seconds'])
+    binding, target = _binding(db, installation, command.payload['binding_id'], command.payload['arguments'], command.payload['ttl_seconds'], prepared_definition)
     if command.payload.get('contract_version') != binding.contract_version:
         raise ValueError('Application capability contract changed')
     validate_invocation(db, device, command.payload)

@@ -4,6 +4,7 @@ Shared by Standalone/local Agent, Hub and extensions. No Fleet or hardware names
 """
 
 import base64
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -18,7 +19,12 @@ from backend.db.device import (
 )
 from backend.services.installation_identity import _load_or_create
 from backend.services.device_registry import as_utc, is_device_online
-from backend.services.device_runtime_features import lock_device
+from backend.services.authority_metadata import (
+    AuthorityMetadataError,
+    authority_transaction,
+    read_authority_guard,
+    read_device_control,
+)
 from backend.services.device_protocol import DeviceOperations
 from three_mm_protocol.device_platform import (
     AuthorityProofV1,
@@ -88,16 +94,23 @@ def _effective_lifecycle(db, device, row):
     )
 
 
-def platform_snapshot(db, device, *, now=None, offline_after=None):
-    if offline_after is None:
-        from backend.config import get_settings
+def _offline_after():
+    from backend.config import get_settings
 
-        offline_after = timedelta(
-            seconds=get_settings().backend.device_offline_after_seconds
-        )
+    return timedelta(seconds=get_settings().backend.device_offline_after_seconds)
+
+
+def platform_snapshot(db, device, *, now=None, offline_after=None):
     # Initialize/decrypt identity before taking transactional device locks.
     identity, _ = _load_or_create(db)
     row = _state(db, device)
+    return _snapshot(
+        db, device, row, identity, now=now,
+        offline_after=offline_after if offline_after is not None else _offline_after(),
+    )
+
+
+def _snapshot(db, device, row, identity, *, offline_after, now=None):
     latest = db.scalar(
         select(DeviceHeartbeat)
         .where(DeviceHeartbeat.device_id == device.id)
@@ -123,6 +136,47 @@ def platform_snapshot(db, device, *, now=None, offline_after=None):
             else "offline"
         ),
     )
+
+
+@contextmanager
+def _lifecycle_write(db, device):
+    """Commit-owning boundary for known read-only auth/preflight AUTOBEGIN only.
+
+    Reject pending ORM work/explicit transactions before identity initialization
+    (which can commit). Not an adapter for callers with flushed SQL writes.
+    Identity decryption/configuration happen outside the short guard transaction;
+    device ownership and all mutable decisions are re-read after its first write.
+    Missing existing metadata must never be lazily repaired by these writers.
+    """
+    transaction = db.get_transaction()
+    if (
+        db.new or db.dirty or db.deleted or db.in_nested_transaction()
+        or (transaction is not None and transaction.origin.name != "AUTOBEGIN")
+    ):
+        raise AuthorityMetadataError()
+    device_pk, device_id = device.id, device.device_id
+    read_authority_guard(db)
+    read_device_control(db, device_pk)
+    identity, _ = _load_or_create(db)
+    offline_after = _offline_after()
+    db.rollback()
+    with authority_transaction(db) as mutation:
+        current = db.scalar(
+            select(Device)
+            .where(Device.id == device_pk, Device.device_id == device_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if current is None:
+            raise AuthorityMetadataError()
+        read_device_control(db, current.id)
+        row = db.get(DevicePlatformState, current.id, populate_existing=True)
+
+        def snapshot():
+            db.flush()
+            return _snapshot(db, current, row, identity, offline_after=offline_after)
+
+        yield mutation, current, row, snapshot
 
 
 def management_payload(db, device, request):
@@ -165,98 +219,93 @@ def _audit(db, device, event_type, payload):
     )
 
 
-def report_lifecycle(db, device, report):
-    if report.device_id != device.device_id:
-        raise DeviceProtocolError("Lifecycle device mismatch", kind="forbidden")
-    _load_or_create(db)
-    lock_device(db, device)
-    db.refresh(device)
-    row = _state(db, device)
-    if row.authority_status != "bound" or _effective_lifecycle(db, device, row) in {
-        "revoked",
-        "unowned",
-    }:
-        raise DeviceProtocolError(
-            "Revoked/released authority needs administrator recovery", kind="forbidden"
+def report_lifecycle(db, device, report, *, credential_id):
+    with _lifecycle_write(db, device) as (mutation, device, row, snapshot):
+        if report.device_id != device.device_id:
+            raise DeviceProtocolError("Lifecycle device mismatch", kind="forbidden")
+        # Authentication is committed before entry. Recheck the actual presented
+        # credential under the guard, even if another credential remains active.
+        credential = db.scalar(
+            select(DeviceCredential.id).where(
+                DeviceCredential.device_id == device.id,
+                DeviceCredential.credential_id == credential_id,
+                DeviceCredential.revoked_at.is_(None),
+            )
         )
-    if (row.lifecycle, row.reason) == (
-        report.lifecycle,
-        report.reason,
-    ) and report.expected_revision in {row.revision, row.revision - 1}:
-        db.commit()
-        return platform_snapshot(db, device)
-    if report.expected_revision != row.revision or row.revision >= 2147483646:
-        raise DeviceProtocolError("Lifecycle revision changed; read and retry")
-    row.lifecycle, row.reason, row.revision, row.updated_at = (
-        report.lifecycle,
-        report.reason,
-        row.revision + 1,
-        datetime.now(UTC),
-    )
-    _audit(
-        db,
-        device,
-        "device.lifecycle.updated",
-        {"lifecycle": row.lifecycle, "revision": row.revision, "reason": row.reason},
-    )
-    db.commit()
-    return platform_snapshot(db, device)
+        if credential is None or device.revoked_at is not None:
+            raise DeviceProtocolError("Authority credential is revoked", kind="unauthorized")
+        if row.authority_status != "bound" or _effective_lifecycle(db, device, row) in {
+            "revoked", "unowned",
+        }:
+            raise DeviceProtocolError(
+                "Revoked/released authority needs administrator recovery", kind="forbidden"
+            )
+        if (
+            (row.lifecycle, row.reason) == (report.lifecycle, report.reason)
+            and report.expected_revision in {row.revision, row.revision - 1}
+        ):
+            return snapshot()
+        if report.expected_revision != row.revision or row.revision >= 2147483646:
+            raise DeviceProtocolError("Lifecycle revision changed; read and retry")
+        # Reason-only diagnostics retain the public revision/audit behavior but
+        # do not change control authority. State A -> B -> A never reuses it.
+        if row.lifecycle != report.lifecycle:
+            mutation.advance_device_control(read_device_control(db, device.id))
+        row.lifecycle, row.reason, row.revision, row.updated_at = (
+            report.lifecycle, report.reason, row.revision + 1, datetime.now(UTC),
+        )
+        _audit(
+            db, device, "device.lifecycle.updated",
+            {"lifecycle": row.lifecycle, "revision": row.revision, "reason": row.reason},
+        )
+        return snapshot()
 
 
 def release_authority(db, device, *, expected_revision, confirmed_device_id, actor_id):
-    if confirmed_device_id != device.device_id:
-        raise DeviceProtocolError("Explicit device identity confirmation is required")
-    _load_or_create(db)
-    lock_device(db, device)
-    db.refresh(device)
-    row = _state(db, device)
-    if row.authority_status == "released" and expected_revision in {
-        row.revision,
-        row.revision - 1,
-    }:
-        return platform_snapshot(db, device)
-    if expected_revision != row.revision or row.revision >= 2147483646:
-        raise DeviceProtocolError("Authority revision changed; read and retry")
-    now = datetime.now(UTC)
-    device.revoked_at = now
-    db.execute(
-        update(DeviceCredential)
-        .where(
-            DeviceCredential.device_id == device.id,
-            DeviceCredential.revoked_at.is_(None),
+    with _lifecycle_write(db, device) as (mutation, device, row, snapshot):
+        if confirmed_device_id != device.device_id:
+            raise DeviceProtocolError("Explicit device identity confirmation is required")
+        if row.authority_status == "released" and expected_revision in {
+            row.revision, row.revision - 1,
+        }:
+            return snapshot()
+        if expected_revision != row.revision or row.revision >= 2147483646:
+            raise DeviceProtocolError("Authority revision changed; read and retry")
+        mutation.advance_device_control(read_device_control(db, device.id))
+        now = datetime.now(UTC)
+        device.revoked_at = now
+        db.execute(
+            update(DeviceCredential)
+            .where(
+                DeviceCredential.device_id == device.id,
+                DeviceCredential.revoked_at.is_(None),
+            )
+            .values(revoked_at=now)
         )
-        .values(revoked_at=now)
-    )
-    # Never call delivered/unconfirmed actions cancelled or replayable.
-    db.execute(
-        update(DeviceCommand)
-        .where(
-            DeviceCommand.device_id == device.id,
-            DeviceCommand.status == "queued",
-            DeviceCommand.delivered_at.is_(None),
-            DeviceCommand.delivery_attempts == 0,
+        # Never call delivered/unconfirmed actions cancelled or replayable.
+        db.execute(
+            update(DeviceCommand)
+            .where(
+                DeviceCommand.device_id == device.id,
+                DeviceCommand.status == "queued",
+                DeviceCommand.delivered_at.is_(None),
+                DeviceCommand.delivery_attempts == 0,
+            )
+            .values(
+                status="failed", completed_at=now,
+                result={"execution_state": "not_dispatched"},
+                error="Installation authority released before dispatch",
+            )
         )
-        .values(
-            status="failed",
-            completed_at=now,
-            result={"execution_state": "not_dispatched"},
-            error="Installation authority released before dispatch",
+        row.authority_status, row.lifecycle, row.reason = (
+            "released", "unowned", "authority.released",
         )
-    )
-    row.authority_status, row.lifecycle, row.reason = (
-        "released",
-        "unowned",
-        "authority.released",
-    )
-    row.revision, row.updated_at = row.revision + 1, now
-    _audit(
-        db,
-        device,
-        "device.authority.released",
-        {"revision": row.revision, "actor_id": actor_id},
-    )
-    db.commit()
-    return platform_snapshot(db, device)
+        row.revision, row.updated_at = row.revision + 1, now
+        _audit(
+            db, device, "device.authority.released",
+            {"revision": row.revision, "actor_id": actor_id},
+        )
+        return snapshot()
 
 
 def prepare_reenrollment(
@@ -265,39 +314,33 @@ def prepare_reenrollment(
     """Explicit administrator recovery; no credential/authority is granted here."""
     from backend.db.device import DevicePairingRequest
 
-    if confirmed_device_id != device.device_id:
-        raise DeviceProtocolError("Explicit device identity confirmation is required")
-    _load_or_create(db)
-    lock_device(db, device)
-    row = _state(db, device)
-    if (
-        row.authority_status != "released"
-        or expected_revision != row.revision
-        or row.revision >= 2147483646
-    ):
-        raise DeviceProtocolError(
-            "Release authority and read its revision before preparing enrollment"
+    with _lifecycle_write(db, device) as (mutation, device, row, snapshot):
+        if confirmed_device_id != device.device_id:
+            raise DeviceProtocolError("Explicit device identity confirmation is required")
+        if (
+            row.authority_status != "released" or expected_revision != row.revision
+            or row.revision >= 2147483646
+        ):
+            raise DeviceProtocolError(
+                "Release authority and read its revision before preparing enrollment"
+            )
+        mutation.advance_device_control(read_device_control(db, device.id))
+        # Retain old approvals as historical records, freeing only the active Node
+        # enrollment index. Old tokens cannot complete or regain their credential.
+        for previous in db.scalars(
+            select(DevicePairingRequest).where(
+                DevicePairingRequest.requested_device_id == device.device_id,
+                DevicePairingRequest.created_by_user_id.is_(None),
+            )
+        ):
+            previous.requested_metadata = {
+                **previous.requested_metadata, "archived_device_id": device.device_id,
+            }
+            previous.requested_device_id = None
+        row.lifecycle, row.reason = "enrollment_pending", "authority.enrollment_authorized"
+        row.revision, row.updated_at = row.revision + 1, datetime.now(UTC)
+        _audit(
+            db, device, "device.authority.enrollment_prepared",
+            {"revision": row.revision, "actor_id": actor_id},
         )
-    # Retain old approvals as historical records, freeing only the active Node
-    # enrollment index. Old tokens cannot complete or regain their credential.
-    for previous in db.scalars(
-        select(DevicePairingRequest).where(
-            DevicePairingRequest.requested_device_id == device.device_id,
-            DevicePairingRequest.created_by_user_id.is_(None),
-        )
-    ):
-        previous.requested_metadata = {
-            **previous.requested_metadata,
-            "archived_device_id": device.device_id,
-        }
-        previous.requested_device_id = None
-    row.lifecycle, row.reason = "enrollment_pending", "authority.enrollment_authorized"
-    row.revision, row.updated_at = row.revision + 1, datetime.now(UTC)
-    _audit(
-        db,
-        device,
-        "device.authority.enrollment_prepared",
-        {"revision": row.revision, "actor_id": actor_id},
-    )
-    db.commit()
-    return platform_snapshot(db, device)
+        return snapshot()

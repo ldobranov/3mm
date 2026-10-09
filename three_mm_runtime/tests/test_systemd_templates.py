@@ -131,7 +131,8 @@ def test_update_helper_exposes_only_a_local_hardened_scheduler() -> None:
     assert helper["RuntimeDirectoryPreserve"] == "yes"
     assert helper["ReadWritePaths"] == (
         "/var/lib/3mm/backups /var/lib/3mm/core/backup-imports "
-        "/var/lib/3mm/application-extensions /etc/3mm/application-extensions"
+        "/var/lib/3mm/application-extensions /etc/3mm/application-extensions "
+        "/run/lock"
     )
     assert (
         "--network-recovery-policy /var/lib/3mm/core/network-recovery-policy.json"

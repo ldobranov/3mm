@@ -1,9 +1,12 @@
 # 3mm — общ продуктов план и разпределение по чатове
 
-Обновен: 2026-10-07. Статус: план, не декларация за внедрени функции.
+Обновен: 2026-10-08. Статус: план; внедреното и приетото са изрично отбелязани.
 Този документ задава общата последователност; техническият Roadmap и отделните
 планове пазят подробностите и доказателствата за приемане. Не отваряме наново
 завършени задачи и не преименуваме историческите milestones.
+
+Следващ одобрен Core milestone: **20 — Extension Platform v2**, със старт WP0
+(налично → липсващо). Одобрен е планът; реализацията още не е започнала.
 
 ## Цел
 
@@ -48,6 +51,9 @@
 - На 2026-10-04 собственикът потвърди, че CME и Fleet са в работещо положение.
   Това е продуктова отправна точка, не автоматично приемане на всички негативни,
   recovery и production security сценарии.
+- На 2026-10-08 собственикът прие Theme Platform / Milestone 17 за приключен
+  след публикуването на beta.43. CI/release са успешни; разширените live
+  rollback/restore проби остават общи platform-stability проверки, не преминали тестове.
 - Installer/preflight вече поддържа `x86_64` и wired-only host без задължителен
   `wlan0`/Setup AP. VM update и Core/Agent readiness са проверени от потребителя;
   пълният clean Linux server acceptance остава отделна неприключена проба.
@@ -113,7 +119,33 @@ TLS, отделни credentials и проверка на клиентската 
 Обновяване и временна поддръжка идват след read-only приемането, с одобрение,
 одит и rollback. Node продължава да получава команди само през локалния Hub.
 
-### Следващ етап — Core Theme Platform и теми като extensions
+### Следващ Core milestone — Extension Platform v2
+
+Одобрен на 2026-10-07 като [Milestone 20](ROADMAP.md#milestone-20--extension-platform-v2).
+Подробният [Core план](../EXTENSION_PLATFORM_V2_CORE_PLAN.md) развива наличната
+платформа, без втори extension/device subsystem. Обхватът е общ за Standalone,
+Hub/Fleet, local Agent и application extensions; Fleet/облакът не са условие.
+
+Първо **WP0**: карта „използваме → допълваме → липсва → отлагаме“, с проверими
+доказателства, текущи версии, съвместимост, security граници и един малък първи
+резултат. Това е анализ/договор, не нов runtime. SDK 1.3, идентичностите,
+данните, конфигурацията, правата и device bindings се запазват. Номерът „v2“ на
+плана не преномерира автоматично manifest, SDK или Core release.
+
+След приемането на WP0: общ модел и публични договори с ранен isolation design;
+локален package и доказана изолация/approval/rollback; пълен lifecycle/recovery;
+registry distribution; накрая optional offline entitlements. Signature,
+publisher trust, runtime policy и разрешени права са отделни проверки.
+Capability invocation остава през общия provider-neutral Device слой, без
+паралелен GPIO/Fleet механизъм. Rollback не повтаря неясни външни плащания или
+физически действия; управлението и recovery не зависят от cloud/лиценз.
+
+Marketplace и AI Generator са отделни consumers на приетите договори, не
+нова реализация вътре в Core. WP0 съпоставя overlap с M15/M16; M17 е приключен
+по финалното приемане на собственика, а отложеният ESP M18 не блокира M20.
+В тази редакция не започваме код, release или live промени.
+
+### Приключена UI линия — Core Theme Platform и теми като extensions
 
 Одобрено на 2026-10-04. [Milestone 17](ROADMAP.md) и
 [Theme Extension Plan](THEME_EXTENSION_PLAN.md) следват посоката от чата
@@ -136,10 +168,12 @@ Cancel/Apply, два действителни reference ZIP пакета и ли
 Общият Extensions installer, reload и desktop/mobile light/dark/BG/EN са проверени
 в изолирана среда; виж [отчета V5](THEME_PLATFORM_V2_V5_REPORT.md).
 V5 е одобрен от собственика; общият редактор и запазването на темата при временен
-мрежов отказ също са проверени локално. Подготвени за `v0.3.0-beta.41`;
-публикуването зависи от release workflow, а deploy остава отделен. V6–V8 са
-отворени; следва V6 / DashboardList, по един визуално приет екран.
-Локален review не е live/recovery acceptance.
+мрежов отказ са доставени в `v0.3.0-beta.41`. V6 / DashboardList, Extensions,
+Settings и Display Editor и V7 / публичен UI договор са одобрени и публикувани
+в `v0.3.0-beta.43` с успешни CI/release проверки. На 2026-10-08 собственикът
+приема резултата за приключен: **M17 е затворен**.
+Разширените live rollback/restore проби не са потвърдени с отделен отчет;
+проследяват се като общи platform-stability проверки, без нова theme реализация.
 Конкретните theme ZIP пакети не влизат в Core release. Запазваме v1
 пакетите, старите настройки и единния upload през Extensions. Settings,
 Header/Menu Customization, i18n, права и dynamic registrations се запазват;
@@ -239,8 +273,9 @@ Core е стабилен dependency: board profiles, драйвери, pin mappi
 Този чат пази общия план, зависимостите и приемането. Следните са направления
 за съществуващи или изрично поискани нови чатове, не вече изпратени задачи:
 
-1. **Core / SDK / Linux** — общите договори от B; server baseline само при
-   възникнала нужда и отделна заявка; без бизнес UI.
+1. **Core / SDK / Linux** — общите договори от B и следващият Milestone 20,
+   започващ с WP0; server baseline само при възникнала нужда и отделна заявка;
+   без бизнес UI и без реализация на AI Generator/Marketplace.
 2. **Локален Fleet / Zero** — текущо OTA, настройване без SSH и физическо приемане.
 3. **Cloud Management extension** — собственост и read-only видимост, после поддръжка.
 4. **Website / Store extension** — публичният сайт, клиентският портал и sandbox checkout.
@@ -249,7 +284,7 @@ Core е стабилен dependency: board profiles, драйвери, pin mappi
 7. **Showcontroller migration** — отделен бъдещ чат за оценката и поетапното
    прехвърляне на самостоятелния app към extension; Core/SDK липсите се предават на 1.
 8. **Теми / визуален дизайн** — конкретни themes върху общия Theme API;
-   този Core чат развива общия UI слой и v2 договора след T0–T3. Дизайнерският
+   общият Core UI слой и v2 договор са доставени с приключения M17. Дизайнерският
    чат може да изготвя отделните пакети по приетия договор; общите Core файлове
    не се редактират паралелно. Marketing страниците остават при направление 4.
 9. **Embedded Nodes / ESP** — бъдещи firmware и extension извън Core;
@@ -264,8 +299,10 @@ Core е стабилен dependency: board profiles, драйвери, pin mappi
 
 Създаване/изпращане на задачи, commit, push, release и live промени стават само
 по изрична заявка. Linux server baseline е отложен до реална нужда;
-останалите локални OTA проби продължават отделно. Текущата одобрена задача за
-този чат е Theme Platform, по малки проверими етапи.
+останалите локални OTA проби продължават отделно. Следващият одобрен Core
+milestone за този чат е Extension Platform v2, започващ с WP0 след изрична
+заявка за работа. Theme Platform / M17 е приключен по приемане на собственика;
+конкретни теми и миграция на чужди extension интерфейси остават отделни задачи.
 
 ## Свързани планове
 
@@ -273,6 +310,7 @@ Core е стабилен dependency: board profiles, драйвери, pin mappi
 - [Технически Roadmap](ROADMAP.md) и [Fleet delivery](FLEET_PLAN.md).
 - [Локален продуктов план](FLEET_BUSINESS_PLAN.md) и [Node OTA](FLEET_NODE_OTA.md).
 - [Application extensions](APPLICATION_EXTENSION_V1_PLAN.md).
+- [Следващ Milestone 20 — Extension Platform v2](../EXTENSION_PLATFORM_V2_CORE_PLAN.md).
 - [Installation identity](INSTALLATION_IDENTITY_V1.md) и [peers](INSTALLATION_PEER_V1.md).
 - [Theme Platform](THEME_EXTENSION_PLAN.md) и [theme package contract](THEME_EXTENSION_V1.md).
 - [Theme Platform v2 — цялостни визуални теми](THEME_PLATFORM_V2_PLAN.md).

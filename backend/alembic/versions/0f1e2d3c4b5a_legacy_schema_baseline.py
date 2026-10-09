@@ -18,6 +18,10 @@ depends_on = None
 
 
 POST_BASELINE_TABLES = {
+    "application_native_reviews", "application_authority_plans",
+    "application_authority_grants", "application_authority_actions",
+    "application_policy_reviews", "application_policy_review_decisions",
+    "core_authority_guard",
     "installation_peer_origin", "installation_peer_inbound",
     "installation_peer_outbound", "installation_peer_nonces", "installation_peer_audit",
     "core_installation_identity",

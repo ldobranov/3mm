@@ -6,6 +6,72 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.44] - 2026-10-09
+
+### Added
+
+- Milestone 20 read-only manifest-v2 package inspection and installed-to-candidate
+  declaration comparison in Extensions. Inspection does not install, approve code,
+  resolve dependencies or grant resource access.
+- Common authority metadata, device mutation coordination, exact installed
+  application policy subjects, local review keys and audited review/approval/apply/
+  revocation. Resources are bound to current package, configuration, device/connector
+  state and lifecycle; user roles remain a separate authorization layer.
+- Administrator resource-access controls for supported reviewed-native headless
+  command, connector and device-event adapters, with explicit first adoption while
+  disabled and fail-closed handling of stale, unsupported or uncertain authority.
+- Optional closed application-event-publication sidecar, additive SDK 1.3
+  `publish_event`, signed local broker admission and a common producer-aware event
+  journal. Stable event IDs, timestamps and content yield durable receipts;
+  lost acknowledgements can be reconciled without a second publication.
+- Additive migrations for authority metadata, review records, installed grants,
+  event authority epochs and application producers. Existing event identities,
+  device history, delivery cursors and subscriptions are retained without fake devices.
+
+### Fixed
+
+- Application/device lifecycle writers, local pairing recovery and privileged
+  helper operations share authority fences. Late completions cannot revive a
+  superseded operation; lost helper responses require explicit reconciliation.
+- Restore, failed-update rollback and factory reset coordinate authority recovery
+  before services resume. Uncertain physical, external and fiscal work is not replayed.
+- Unsupported scoped adapters cannot inherit legacy execution after explicit
+  adoption. Existing compatibility installations are not automatically converted.
+- CI and Release now also run deployment and Application SDK suites explicitly.
+- Historical theme migration checks verify membership in the current single
+  migration lineage rather than incorrectly requiring the theme revision to stay
+  the newest head. Helper hardening tests include the existing shared release lock.
+
+### Test Beta boundary
+
+- WP4 and Milestone 20 remain open. Scoped storage/platform/frontend-host
+  contracts and neutral Standalone/Hub/SDK acceptance are not complete;
+  new-artifact WP3 recovery and malicious-code WP5 isolation are separate gates.
+- Reviewed-native code is not sandboxed. No remote/AI executable trust, global
+  grants, automatic adoption, new application-to-application event consumption,
+  automatic outbox drain or uncertain-operation retry is introduced.
+- Device Protocol 1.0, existing HTTP APIs, Application SDK 1.3, themes, installation
+  peers and Node Update remain compatible. Concrete themes/business extensions
+  and local/generated artifacts are not included; no device is deployed by release.
+- Keep a verified pre-upgrade backup. Once new authority or application-event
+  history is used, destructive schema downgrade is refused rather than losing
+  approvals or historical evidence. Live acceptance starts on a disposable VM;
+  see the test Beta checklist. GitHub gates publication on complete Python 3.13/
+  frontend checks and reproducible full-profile/ARMv6 Node packages.
+
+### Local verification
+
+- All 290 frontend tests, type-check and production build passed. The first
+  parallel frontend attempt hit an import-time timeout; the complete suite passed
+  with two workers without changing application deadlines or test assertions.
+- The complete isolated Linux/Python 3.14 suite exercised 2,336 cases: 2,330 passed,
+  four environment/opt-in skips and the two stale expectations corrected above.
+  The subsequent complete affected theme/runtime files plus deployment and SDK
+  suites passed 136 tests. These runs overlap and are not summed as unique tests.
+- Exact staged-source full-profile packaging passed locally. GitHub repeats the
+  complete canonical Python 3.13 and frontend checks before publishing; local
+  checks do not imply deployed VM/Raspberry acceptance.
+
 ## [0.3.0-beta.43] - 2026-10-08
 
 ### Added
@@ -1258,7 +1324,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.43...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.44...HEAD
+[0.3.0-beta.44]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.44
 [0.3.0-beta.43]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.43
 [0.3.0-beta.42]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.42
 [0.3.0-beta.41]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.41

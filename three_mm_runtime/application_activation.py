@@ -78,6 +78,28 @@ class SystemdApplicationSupervisor:
     def stop(self, instance_id: str) -> None:
         self._run(["disable", "--now"], instance_id)
 
+    def recover_disabled(self, instance_id: str) -> dict[str, str]:
+        """Quiesce, then verify; never infer rollback/activation from active.json."""
+        _validate_instance_id(instance_id)
+        self.stop(instance_id)
+        try:
+            result = subprocess.run(
+                ["/usr/bin/systemctl", "show", f"3mm-application-extension@{instance_id}.service",
+                 "--no-pager", "--property=LoadState,ActiveState,SubState,UnitFileState,MainPID,Job"],
+                check=True, capture_output=True, text=True, timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise ApplicationActivationError("Application runtime could not be verified stopped") from exc
+        evidence = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+        if (set(evidence) != {"LoadState", "ActiveState", "SubState", "UnitFileState", "MainPID", "Job"}
+                or evidence["LoadState"] != "loaded"
+                or evidence["ActiveState"] not in {"inactive", "failed"}
+                or evidence["SubState"] not in {"dead", "failed"}
+                or evidence["UnitFileState"] not in {"disabled", "masked"}
+                or evidence["MainPID"] != "0" or evidence["Job"] not in {"", "0"}):
+            raise ApplicationActivationError("Application runtime is not confirmed stopped and disabled")
+        return evidence
+
 
 @dataclass(frozen=True, slots=True)
 class ActivatedApplication:

@@ -124,6 +124,31 @@ describe('Extensions management workflow', () => {
     expect(wrapper.text()).toContain('Compiled UI')
   })
 
+  it.each([['admin', true, true], ['admin', false, false], ['user', true, false]])(
+    'authority entry is scoped to an installed administrator-managed application (%s, %s)',
+    async (role, installed, visible) => {
+      localStorage.setItem('role', String(role))
+      http.get.mockImplementation((url: string) => Promise.resolve({ data:
+        url === '/api/v1/modules/packages' ? [{ module_id: 'org.example.reference', version: '1.0.0', sha256: '1'.repeat(64),
+          manifest: { name: 'Reference application', entrypoints: { core: 'application-extension.json' } } }]
+        : url === '/api/v1/application-extensions' && installed ? [{ module_id: 'org.example.reference', active_version: '1.0.0', status: 'disabled', enabled: false }]
+        : url === '/api/v1/runtime-extensions/catalog' ? [runtimeExtension] : [],
+      }))
+      const wrapper = await mountView()
+      expect(wrapper.find('.authority-manage-btn').exists()).toBe(visible)
+      expect(http.get.mock.calls.some(([url]) => url.endsWith('/authority'))).toBe(false)
+      expect(wrapper.findAll('.extension-card').filter(card => !card.text().includes('Reference application'))
+        .every(card => !card.find('.authority-manage-btn').exists())).toBe(true)
+      if (visible) {
+        http.get.mockRejectedValueOnce({ response: { status: 409, data: { detail: { code: 'native_review_unavailable' } } } })
+        await wrapper.get('.authority-manage-btn').trigger('click'); await flushPromises()
+        expect(http.get).toHaveBeenLastCalledWith('/api/v1/application-extensions/org.example.reference/authority', { timeout: 12000 })
+        expect(wrapper.get('dialog h2').text()).toBe('Application resource access')
+      }
+      expect(http.post).not.toHaveBeenCalled()
+    },
+  )
+
   it('shows and activates a staged application extension', async () => {
     const packageSha = 'c'.repeat(64)
     http.get.mockImplementation((url: string) => {

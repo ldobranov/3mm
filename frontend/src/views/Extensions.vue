@@ -43,6 +43,7 @@
             {{ uploading ? t('extensions.uploading', 'Uploading...') : t('extensions.uploadExtensionButton', 'Upload Extension') }}
           </UiButton>
         </form>
+        <PackageInspection :file="selectedFile" :disabled="uploading" />
         <div v-if="uploadError" class="error-message" role="alert">{{ uploadError }}</div>
         <div v-if="uploadSuccess" class="success-message" role="status">{{ uploadSuccess }}</div>
       </div>
@@ -132,6 +133,11 @@
                    {{ t('extensions.runtimeDataPreserved', 'Data is preserved when disabled') }}
                  </span>
                  <div class="extension-action-buttons">
+                   <UiButton v-if="isAdmin && ext.source === 'application' && ext.is_installed && ext.can_manage"
+                     class="authority-manage-btn" :disabled="operationBusy !== null"
+                     @click="authorityTarget = { moduleId: ext.id.replace('application:', ''), name: ext.name }">
+                     <i class="bi bi-shield-check" aria-hidden="true"></i>{{ authorityLabel('manage') }}
+                   </UiButton>
                    <UiButton
                      v-if="ext.source === 'runtime' && !ext.is_installed && ext.can_manage"
                      type="button"
@@ -174,6 +180,10 @@
         </div>
       </div>
     </section>
+
+    <ApplicationAuthorityDialog v-if="isAdmin && authorityTarget" :key="authorityTarget.moduleId"
+      :module-id="authorityTarget.moduleId" :name="authorityTarget.name"
+      @close="authorityTarget = null" @changed="loadExtensions" />
 
     <!-- Application installation configuration -->
     <UiDialog v-if="showConfigurationModal" :open="showConfigurationModal"
@@ -298,12 +308,17 @@ import { getCompiledUiCatalog } from '@/utils/compiled-ui';
 import { useUiLabels } from '@/utils/ui-labels';
 import UiButton from '@/components/ui/UiButton.vue';
 import UiDialog from '@/components/ui/UiDialog.vue';
+import PackageInspection from '@/components/extensions/PackageInspection.vue';
+import ApplicationAuthorityDialog from '@/components/extensions/ApplicationAuthorityDialog.vue';
+import { useAuthorityLabels } from '@/components/extensions/authority-labels';
 
 const { t, currentLanguage } = useI18n();
 const settingsStore = useSettingsStore();
 const themeStore = useThemeStore();
 const router = useRouter();
 const label = useUiLabels();
+const authorityLabel = useAuthorityLabels();
+const authorityTarget = ref<{ moduleId: string; name: string } | null>(null);
 
 
 interface Extension {

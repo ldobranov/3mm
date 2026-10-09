@@ -12,14 +12,16 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
-from sqlalchemy.pool import StaticPool
 
 from backend.db.base import Base
-from backend.db.device import Device, DeviceCommand
+from backend.db.authority import CoreAuthorityGuard
+from backend.db.device import Device, DeviceCommand, DeviceCredential, DevicePlatformState
 from backend.db.module import ModuleInstallation, ModulePackage
+from backend.db.user import User
 from backend.routes.device_commands import submit_command_result
 from backend.routes.modules import router
 from backend.services.module_packages import validate_module_package
+from backend.services.device_pairing import credential_secret_hash
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from three_mm_protocol import AgentCommandResult
@@ -31,11 +33,18 @@ MODULE_ID = "org.3mm.lifecycle-test"
 
 @pytest.fixture
 def lifecycle(tmp_path):
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    engine = create_engine(f"sqlite:///{(tmp_path / 'modules.db').as_posix()}",
+                           connect_args={"check_same_thread": False, "timeout": 3})
     Base.metadata.create_all(engine)
     db = Session(engine)
     device = Device(device_id=DEVICE_ID, role="node", protocol_version="1.0", approved_at=datetime.now(timezone.utc))
     db.add(device)
+    db.flush()
+    db.add_all([
+        CoreAuthorityGuard(singleton_id=1), DevicePlatformState(device_id=device.id),
+        DeviceCredential(device_id=device.id, credential_id="cred_lifecycle", secret_hash=credential_secret_hash("test-secret")),
+        User(id=1, username="admin1", role="admin"), User(id=2, username="admin2", role="admin"),
+    ])
     db.commit()
     app = FastAPI()
     app.include_router(router)
@@ -73,11 +82,11 @@ def lifecycle(tmp_path):
         submit_command_result(DEVICE_ID, command_id,
             AgentCommandResult(command_id=command_id, device_id=DEVICE_ID, status=status,
                 completed_at=datetime.now(timezone.utc), error="test failure" if status == "failed" else None),
-            device=device, db=db)
+            device=device, db=db, authorization="Device cred_lifecycle:test-secret")
 
     package = add_package()
     with TestClient(app) as client:
-        yield SimpleNamespace(client=client, db=db, admin=admin, package=package,
+        yield SimpleNamespace(client=client, db=db, admin=admin, package=package, device=device,
             add_package=add_package, complete=complete,
             install=f"/api/v1/modules/packages/{package.sha256}/devices/{DEVICE_ID}/install",
             disable=f"/api/v1/modules/{MODULE_ID}/devices/{DEVICE_ID}/disable")

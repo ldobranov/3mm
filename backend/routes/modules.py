@@ -3,14 +3,17 @@ import base64
 import hashlib
 import json
 import shutil
+import zipfile
+import zlib
 from pathlib import Path
 from typing import Literal
-from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 from backend.config import get_settings
 from backend.db.device import Device, DeviceCommand, DeviceInventorySnapshot
 from backend.db.module import (
@@ -20,8 +23,18 @@ from backend.db.module import (
 )
 from backend.db.widget import Widget
 from backend.db.user import User
-from backend.services.device_commands import DeviceCommandError, commit_queued_command, queue_command
-from backend.services.module_packages import ModulePackageError, validate_module_package
+from backend.services.device_commands import DeviceCommandError, queue_command
+from backend.services.device_command_notifier import device_command_notifier
+from backend.services.device_authority import device_authority_write, require_device_authority_session
+from backend.services.authority_metadata import AuthorityMetadataError
+from backend.services.device_module_authority import module_control_snapshot, record_module_transition
+from backend.services.module_packages import MAX_PACKAGE_BYTES, ModulePackageError, validate_module_package
+from backend.services.module_inspection import PackageInspectionResponse, describe_module_package
+from backend.services.application_authority_inspection import (
+    AuthorityInspectionBaseline,
+    inspect_application_authority,
+)
+from backend.version import core_version
 from backend.services.compiled_ui import (
     CompiledUiBuildError,
     compile_ui_package,
@@ -147,6 +160,80 @@ def _application_package_is_active(package: ModulePackage, db: Session) -> bool:
             ApplicationExtensionInstallation.status == "active",
         )
     ) is not None
+
+
+@router.post(
+    "/packages/inspect",
+    response_model=PackageInspectionResponse,
+    openapi_extra={"requestBody": {"required": True, "content": {
+        "application/zip": {"schema": {"type": "string", "format": "binary"}}
+    }}},
+)
+async def inspect_package(
+    request: Request,
+    response: Response,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+    include_authority_review: bool = False,
+):
+    """Bounded in-memory ZIP review; deliberately not the multipart upload path."""
+    response.headers["Cache-Control"] = "no-store"
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type not in {"application/zip", "application/octet-stream"}:
+        raise HTTPException(415, "Send a manifest-v2 ZIP as the raw request body")
+    length = request.headers.get("content-length")
+    normalized_length = length.lstrip("0") if length else ""
+    if length and length.isdecimal() and (
+        len(normalized_length) > 8 or int(normalized_length or "0") > MAX_PACKAGE_BYTES
+    ):
+        raise HTTPException(413, "module package exceeds the 10 MiB size limit")
+    blob = bytearray()
+    async for chunk in request.stream():
+        if len(blob) + len(chunk) > MAX_PACKAGE_BYTES:
+            raise HTTPException(413, "module package exceeds the 10 MiB size limit")
+        blob.extend(chunk)
+    version = core_version()
+    try:
+        validated = await run_in_threadpool(
+            validate_module_package, bytes(blob), core_version=version,
+        )
+    except (ModulePackageError, zipfile.BadZipFile, zlib.error, RuntimeError,
+            NotImplementedError, RecursionError, UnicodeError) as exc:
+        raise HTTPException(422, f"Package inspection failed (manifest v2 required): {str(exc)[:1000]}") from exc
+    # Even a caller's pending ORM state must not be flushed by this read operation.
+    with db.no_autoflush:
+        existing_sha256 = db.scalar(select(ModulePackage.sha256).where(
+            ModulePackage.module_id == validated.manifest.module_id,
+            ModulePackage.version == validated.manifest.version,
+        ))
+    result = describe_module_package(
+        validated, core_version=version, existing_sha256=existing_sha256,
+    )
+    if include_authority_review:
+        baseline = None
+        if validated.application_extension is not None:
+            # Only the actual installation pointer selects the old artifact; never
+            # a caller ID, uploaded version, or lexicographically newest catalog row.
+            with db.no_autoflush:
+                row = db.execute(select(
+                    ModulePackage.module_id, ModulePackage.version, ModulePackage.sha256,
+                    ApplicationExtensionInstallation.active_version,
+                    ApplicationExtensionInstallation.status,
+                    ApplicationExtensionInstallation.configuration,
+                ).select_from(ApplicationExtensionInstallation).outerjoin(
+                    ModulePackage,
+                    ModulePackage.id == ApplicationExtensionInstallation.module_package_id,
+                ).where(
+                    ApplicationExtensionInstallation.module_id == validated.manifest.module_id,
+                )).one_or_none()
+                if row is not None:
+                    baseline = AuthorityInspectionBaseline(*row)
+        result.authority_review = await run_in_threadpool(
+            inspect_application_authority, validated, baseline=baseline,
+            uploads_root=get_settings().backend.uploads_dir, core_version=version,
+        )
+    return result
+
 
 @router.post("/packages",response_model=PackageResponse)
 async def upload_package(package:UploadFile=File(...),_admin:User=Depends(require_admin),db:Session=Depends(get_db),expected_kind:Literal["theme"]|None=None):
@@ -323,37 +410,96 @@ def _queue_lifecycle_command(db: Session, *, device: Device, **values):
 @router.post("/packages/{sha256}/devices/{device_id}/install",response_model=InstallationResponse)
 def install_module(sha256:str,device_id:str,_admin:User=Depends(require_admin),db:Session=Depends(get_db),
                    idempotency_key:str|None=Header(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")):
+    try:
+        require_device_authority_session(db)
+    except AuthorityMetadataError as exc:
+        raise HTTPException(409, str(exc)) from exc
     package=db.scalar(select(ModulePackage).where(ModulePackage.sha256==sha256)); device=db.scalar(select(Device).where(Device.device_id==device_id))
     if not package or not device: raise HTTPException(404,"package or device was not found")
-    blob=Path(package.file_path).read_bytes()
-    try: validated=validate_module_package(blob,architecture=_device_architecture(db,device),protocol_version=device.protocol_version)
-    except ModulePackageError as exc: raise HTTPException(409,str(exc)) from exc
+    # Read and validate immutable bytes before the short DB-only write scope.
+    package_identity = (package.id, package.module_id, package.version, package.sha256)
+    runtime_identity = (_device_architecture(db, device), device.protocol_version)
+    admin_id = _admin.id
+    try:
+        blob = Path(package.file_path).read_bytes()
+        validated = validate_module_package(blob, architecture=runtime_identity[0], protocol_version=runtime_identity[1])
+    except ModulePackageError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(409, "Module package could not be read") from exc
+    if (validated.manifest.module_id, validated.manifest.version, validated.sha256) != package_identity[1:]:
+        raise HTTPException(409, "Module package identity changed")
     if validated.application_extension is not None:
         raise HTTPException(409, "Application extensions run on Core, not on an Agent")
     if validated.theme_extension is not None:
         raise HTTPException(409, "Theme extensions run in the UI, not on an Agent")
-    installation=db.scalar(select(ModuleInstallation).where(ModuleInstallation.device_id==device.id,ModuleInstallation.module_id==package.module_id))
-    key = _lifecycle_idempotency_key(db, device=device, command_type="module.install", module_id=package.module_id,
-        legacy_key=f"module.install:{package.module_id}:{package.sha256}", client_key=idempotency_key, admin_id=_admin.id)
-    command, replay = _queue_lifecycle_command(db,device=device,command_type="module.install",payload={"package_base64":base64.b64encode(blob).decode(),"sha256":package.sha256,"module_id":package.module_id,"version":package.version},idempotency_key=key,ttl_seconds=900)
-    if replay and installation is not None:
-        return installation
-    if installation is None:
-        installation=ModuleInstallation(device_id=device.id,module_package_id=package.id,module_id=package.module_id,desired_version=package.version,status="queued",enabled=True,data_retained=True); db.add(installation)
-    installation.module_package_id=package.id; installation.desired_version=package.version; installation.status=command.status; installation.command_id=command.command_id; installation.enabled=True; installation.error=None
-    commit_queued_command(db,device=device,command=command); db.refresh(installation); return installation
+    encoded = base64.b64encode(blob).decode()
+    try:
+        with device_authority_write(db, device) as (mutation, current):
+            package = db.get(ModulePackage, package_identity[0], populate_existing=True)
+            if (package is None or (package.id, package.module_id, package.version, package.sha256) != package_identity
+                    or (_device_architecture(db, current), current.protocol_version) != runtime_identity):
+                raise HTTPException(409, "Module package or device runtime changed; retry")
+            installation = db.scalar(select(ModuleInstallation).where(
+                ModuleInstallation.device_id == current.id, ModuleInstallation.module_id == package.module_id,
+            ).execution_options(populate_existing=True))
+            before = module_control_snapshot(installation)
+            key = _lifecycle_idempotency_key(db, device=current, command_type="module.install", module_id=package.module_id,
+                legacy_key=f"module.install:{package.module_id}:{package.sha256}", client_key=idempotency_key, admin_id=admin_id)
+            command, replay = _queue_lifecycle_command(db, device=current, command_type="module.install",
+                payload={"package_base64": encoded, "sha256": package.sha256, "module_id": package.module_id, "version": package.version},
+                idempotency_key=key, ttl_seconds=900)
+            if replay and installation is None:
+                raise HTTPException(409, "Module installation requires recovery")
+            if not replay:
+                if installation is None:
+                    installation = ModuleInstallation(device_id=current.id, module_id=package.module_id, data_retained=True)
+                    db.add(installation)
+                installation.module_package_id = package.id
+                installation.desired_version = package.version
+                installation.status, installation.command_id = command.status, command.command_id
+                installation.enabled, installation.error = True, None
+                record_module_transition(db, mutation, current, installation, before, source="install_requested", admin_id=admin_id)
+            response = InstallationResponse.model_validate(installation)
+            device_pk = current.id
+    except AuthorityMetadataError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if not replay:
+        device_command_notifier.notify(device_pk)
+    return response
 
 @router.post("/{module_id}/devices/{device_id}/disable",response_model=InstallationResponse)
 def disable_module(module_id:str,device_id:str,_admin:User=Depends(require_admin),db:Session=Depends(get_db),
                    idempotency_key:str|None=Header(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")):
+    try:
+        require_device_authority_session(db)
+    except AuthorityMetadataError as exc:
+        raise HTTPException(409, str(exc)) from exc
     device=db.scalar(select(Device).where(Device.device_id==device_id)); installation=db.scalar(select(ModuleInstallation).where(ModuleInstallation.device_id==device.id,ModuleInstallation.module_id==module_id)) if device else None
     if not installation: raise HTTPException(404,"module installation was not found")
-    key = _lifecycle_idempotency_key(db, device=device, command_type="module.disable", module_id=module_id,
-        legacy_key=f"module.disable:{module_id}:{installation.installed_version}", client_key=idempotency_key, admin_id=_admin.id)
-    command, replay = _queue_lifecycle_command(db,device=device,command_type="module.disable",payload={"module_id":module_id},idempotency_key=key,ttl_seconds=300)
-    if replay:
-        return installation
-    installation.command_id=command.command_id; installation.status=command.status; commit_queued_command(db,device=device,command=command); db.refresh(installation); return installation
+    admin_id = _admin.id
+    try:
+        with device_authority_write(db, device) as (mutation, current):
+            installation = db.scalar(select(ModuleInstallation).where(
+                ModuleInstallation.device_id == current.id, ModuleInstallation.module_id == module_id,
+            ).execution_options(populate_existing=True))
+            if installation is None:
+                raise HTTPException(404, "module installation was not found")
+            before = module_control_snapshot(installation)
+            key = _lifecycle_idempotency_key(db, device=current, command_type="module.disable", module_id=module_id,
+                legacy_key=f"module.disable:{module_id}:{installation.installed_version}", client_key=idempotency_key, admin_id=admin_id)
+            command, replay = _queue_lifecycle_command(db, device=current, command_type="module.disable",
+                payload={"module_id": module_id}, idempotency_key=key, ttl_seconds=300)
+            if not replay:
+                installation.command_id, installation.status = command.command_id, command.status
+                record_module_transition(db, mutation, current, installation, before, source="disable_requested", admin_id=admin_id)
+            response = InstallationResponse.model_validate(installation)
+            device_pk = current.id
+    except AuthorityMetadataError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if not replay:
+        device_command_notifier.notify(device_pk)
+    return response
 
 @router.get("/registrations",response_model=list[dict])
 def registrations(_admin:User=Depends(require_admin),db:Session=Depends(get_db)):

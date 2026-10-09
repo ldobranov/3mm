@@ -1,10 +1,11 @@
 """Persistent Core registry models for managed devices."""
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from backend.db.base import Base
+from backend.db.authority import new_authority_generation
 
 
 class Device(Base):
@@ -70,8 +71,13 @@ class DevicePlatformState(Base):
     authority_status = Column(String(16), nullable=False, default="bound")
     lifecycle = Column(String(32), nullable=False, default="active")
     revision = Column(Integer, nullable=False, default=0)
+    # Internal control identity, separate from published lifecycle revision.
+    control_generation = Column(String(32), nullable=False, default=new_authority_generation)
     reason = Column(String(120), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    __table_args__ = (
+        CheckConstraint("length(control_generation) = 32", name="ck_device_control_generation"),
+    )
 
 
 class DevicePairingRequest(Base):
@@ -149,12 +155,25 @@ class DeviceHeartbeat(Base):
 class DeviceEvent(Base):
     __tablename__ = "device_events"
     id = Column(Integer, primary_key=True)
-    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Shared journal: application producers are not fake managed devices.
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=True, index=True)
+    producer_kind = Column(String(16), nullable=False, default="device", server_default="device")
+    application_producer = Column(JSON(none_as_null=True), nullable=True)
+    publication_declaration = Column(JSON(none_as_null=True), nullable=True)
+    publication_receipt = Column(JSON(none_as_null=True), nullable=True)
+    authority_epoch = Column(String(32), nullable=True)
     event_id = Column(String(64), nullable=False, unique=True, index=True)
-    event_type = Column(String(120), nullable=False)
+    event_type = Column(String(160), nullable=False)
     payload = Column(JSON, nullable=False, default=dict)
     occurred_at = Column(DateTime(timezone=True), nullable=False, index=True)
     received_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    __table_args__ = (CheckConstraint(
+        "(producer_kind = 'device' AND device_id IS NOT NULL AND application_producer IS NULL "
+        "AND publication_declaration IS NULL AND publication_receipt IS NULL AND authority_epoch IS NULL) OR "
+        "(producer_kind = 'application' AND device_id IS NULL AND application_producer IS NOT NULL "
+        "AND publication_declaration IS NOT NULL AND publication_receipt IS NOT NULL "
+        "AND authority_epoch IS NOT NULL AND length(authority_epoch) = 32)",
+        name="ck_event_producer"),)
 
 
 class DeviceCommand(Base):

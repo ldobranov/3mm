@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from backend.db.device import Device, DeviceCommand, DevicePlatformState, DeviceCredential
 from backend.db.module import ModuleInstallation
 from backend.services.device_command_notifier import device_command_notifier
+from backend.services.device_authority import device_authority_write
+from backend.services.device_module_authority import module_control_snapshot, record_module_transition
 from backend.services.device_runtime_features import command_is_supported, lock_device, read_runtime_features
 from three_mm_protocol import AgentCommand, AgentCommandResult
 from three_mm_protocol.node_updates import NodeUpdateOperation
@@ -158,6 +160,44 @@ def deliver_next_command(
     now: datetime | None = None,
     delivery_lease_seconds: int = 30,
 ) -> DeviceCommand | None:
+    # Module pre-dispatch rejection can change authority. Take the common guard
+    # BEFORE device/command locks, even when the poll ultimately has no work.
+    with device_authority_write(db, device) as (mutation, current):
+        command, recovery_required = _deliver_next_command(
+            db, device=current, mutation=mutation, now=now,
+            delivery_lease_seconds=delivery_lease_seconds,
+        )
+    if recovery_required:
+        # Commit proven non-dispatch evidence before returning the existing error.
+        raise DeviceCommandError("Stored command requires recovery; automatic dispatch refused")
+    if command is not None:
+        db.refresh(command)
+    return command
+
+
+def _update_module_receipt(db, device, command, mutation, *, source):
+    if command.command_type not in {"module.install", "module.disable"}:
+        return
+    # A delayed old receipt must never overwrite the current installation episode.
+    installation = db.scalar(select(ModuleInstallation).where(
+        ModuleInstallation.command_id == command.command_id,
+        ModuleInstallation.device_id == device.id,
+    ).execution_options(populate_existing=True))
+    if installation is None:
+        return
+    before = module_control_snapshot(installation)
+    installation.status, installation.error = command.status, command.error
+    if command.status == "succeeded":
+        if command.command_type == "module.install":
+            installation.installed_version = installation.desired_version
+            installation.enabled = True
+        else:
+            installation.enabled = False
+    record_module_transition(db, mutation, device, installation, before, source=source)
+
+
+def _deliver_next_command(db, *, device, mutation, now, delivery_lease_seconds):
+    mutation.require_session(db)
     delivered_at = now or datetime.now(timezone.utc)
     lock_device(db, device)
     db.refresh(device)
@@ -187,11 +227,7 @@ def deliver_next_command(
                 pending.error = "Runtime support withdrawn before dispatch"
                 pending.result = {"execution_state": "not_dispatched"}
                 pending.completed_at = delivered_at
-                if pending.command_type in {"module.install", "module.disable"}:
-                    db.execute(update(ModuleInstallation).where(
-                        ModuleInstallation.command_id == pending.command_id,
-                        ModuleInstallation.device_id == device.id,
-                    ).values(status="failed", error=pending.error))
+                _update_module_receipt(db, device, pending, mutation, source="not_dispatched")
     db.flush()
     # New strict work is pinned at queue time. Reject withdrawal, incompatible
     # updates or same-version schema changes before its FIRST delivery only.
@@ -230,11 +266,10 @@ def deliver_next_command(
                     or candidate.command_type not in {"capability.invoke", "application.capability.invoke"}
                     or can_dispatch_capability(db, device, candidate.payload.get("capability_id"), now=delivered_at)), None)
     if command is None:
-        db.commit()
-        return None
+        return None, False
     try:
         command_envelope(command, device.device_id)
-    except ValueError as exc:
+    except ValueError:
         # Historical rows are not rewritten by migration. Invalid work must
         # not gain a delivery attempt merely because stricter DTOs reject it.
         if command.delivered_at is None and not command.delivery_attempts:
@@ -242,17 +277,14 @@ def deliver_next_command(
             command.result = {**(command.result or {}), "execution_state": "not_dispatched", "recovery_code": "stored_command_invalid"}
             command.error = "Stored command cannot satisfy the Node contract"
             command.completed_at = delivered_at
-            db.execute(update(ModuleInstallation).where(ModuleInstallation.command_id == command.command_id, ModuleInstallation.device_id == device.id).values(status="failed", error=command.error))
+            _update_module_receipt(db, device, command, mutation, source="not_dispatched")
         # Already dispatched work stays uncertain, with its original receipt
         # and delivery evidence. Never label it not_dispatched or replay it.
-        db.commit()
-        raise DeviceCommandError("Stored command requires recovery; automatic dispatch refused") from exc
+        return None, True
     command.status = "delivered"
     command.delivered_at = delivered_at
     command.delivery_attempts = (command.delivery_attempts or 0) + 1
-    db.commit()
-    db.refresh(command)
-    return command
+    return command, False
 
 
 def command_envelope(command: DeviceCommand, device_id: str) -> AgentCommand:
@@ -268,13 +300,23 @@ def command_envelope(command: DeviceCommand, device_id: str) -> AgentCommand:
 
 
 def record_command_result(
-    db: Session, *, device: Device, result: AgentCommandResult
+    db: Session, *, device: Device, result: AgentCommandResult, credential_id=None,
 ) -> DeviceCommand:
+    with device_authority_write(db, device, credential_id=credential_id) as (mutation, current):
+        command, expired = _record_command_result(db, device=current, result=result, mutation=mutation)
+    if expired:
+        raise DeviceCommandError("Command has expired")
+    db.refresh(command)
+    return command
+
+
+def _record_command_result(db, *, device, result, mutation):
+    mutation.require_session(db)
     command = db.scalar(
         select(DeviceCommand).where(
             DeviceCommand.command_id == result.command_id,
             DeviceCommand.device_id == device.id,
-        )
+        ).with_for_update().execution_options(populate_existing=True)
     )
     if command is None:
         raise DeviceCommandError("Command was not found")
@@ -287,13 +329,15 @@ def record_command_result(
     if result.device_id != device.device_id:
         raise DeviceCommandError("Device identity mismatch")
     if command.status in {"succeeded", "failed"}:
-        return command
+        # Repair only the old two-commit gap from the persisted first receipt;
+        # conflicting retries cannot change it or a newer installation episode.
+        _update_module_receipt(db, device, command, mutation, source="agent_result")
+        return command, False
     if command.status != "delivered":
         raise DeviceCommandError("Command has not been delivered")
     if _utc(command.expires_at) <= _utc(result.completed_at):
         command.status = "expired"
-        db.commit()
-        raise DeviceCommandError("Command has expired")
+        return command, True
     command.status = result.status
     if command.command_type == "agent.update.apply":
         # Handoff acknowledgement is not installation completion. Independent
@@ -303,6 +347,5 @@ def record_command_result(
         command.result = result.output
     command.error = result.error
     command.completed_at = result.completed_at
-    db.commit()
-    db.refresh(command)
-    return command
+    _update_module_receipt(db, device, command, mutation, source="agent_result")
+    return command, False

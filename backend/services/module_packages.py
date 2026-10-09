@@ -6,6 +6,10 @@ from pydantic import ValidationError
 from backend.version import core_version as actual_core_version
 from backend.services.theme_assets import validate_theme_assets
 from three_mm_protocol.theme_extension_v2 import ThemeExtensionV2
+from three_mm_protocol.application_event_publication import (
+    ApplicationEventPublicationsV1, parse_application_publications,
+    validate_application_publications,
+)
 from three_mm_protocol import (
     ApplicationExtensionV1,
     CompiledUiExtensionV1,
@@ -49,6 +53,7 @@ class ValidatedModulePackage:
     compiled_ui: CompiledUiExtensionV1 | None = None
     application_extension: ApplicationExtensionV1 | None = None
     theme_extension: ThemeExtensionV1 | ThemeExtensionV2 | None = None
+    application_publications: ApplicationEventPublicationsV1 | None = None
 
 
 def _read_theme_extension(
@@ -181,6 +186,7 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
     compiled_ui = None
     application_extension = None
     theme_extension = None
+    application_publications = None
     if (
         manifest.entrypoints.get("ui") == "theme-extension.json"
         or "theme-extension.json" in package_files
@@ -380,6 +386,19 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
             "application-extension.json",
             service_artifact,
         }
+        if "application-event-publications.json" in package_files:
+            try:
+                if archive.getinfo("application-event-publications.json").file_size > 65536:
+                    raise ValueError("Publication declaration exceeds its size limit")
+                application_publications = validate_application_publications(
+                    parse_application_publications(archive.read("application-event-publications.json")),
+                    application_extension,
+                )
+                if {item.event_type for item in application_publications.publications} != emitted_events:
+                    raise ValueError("Publication declarations must cover the exact emitted event set")
+            except (ValueError, KeyError, UnicodeError, RecursionError) as exc:
+                raise ModulePackageError("Invalid application publication declaration") from exc
+            allowed_files.add("application-event-publications.json")
         if "ui" in manifest.runtimes:
             if manifest.entrypoints.get("ui") != "compiled-ui.json":
                 raise ModulePackageError(
@@ -454,4 +473,5 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
         compiled_ui=compiled_ui,
         application_extension=application_extension,
         theme_extension=theme_extension,
+        application_publications=application_publications,
     )

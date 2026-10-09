@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 import backend.database  # noqa: F401 - register complete model metadata
 from backend.db.audit_log import AuditLog
+from backend.db.authority import CoreAuthorityGuard
 from backend.db.base import Base
 from backend.db.device import DeviceCredential, DevicePairingRequest
 from backend.db.user import User
@@ -42,7 +43,7 @@ def make_client() -> tuple[TestClient, Session, str, str]:
         hashed_password=hash_password("test-password"),
         role="user",
     )
-    db.add_all([admin, user])
+    db.add_all([admin, user, CoreAuthorityGuard(singleton_id=1)])
     db.commit()
     app = FastAPI()
     app.include_router(router)
@@ -288,4 +289,44 @@ def test_pending_list_and_rejection_are_admin_only_secret_free_and_final():
         audit = db.query(AuditLog).filter_by(action="DEVICE_PAIRING_REJECTED").one()
         assert audit.entity_id == issued["request_id"]
     finally:
+        db.close()
+
+
+@pytest.mark.parametrize("suffix", ["credentials/replace", "credentials/cred_unknown/revoke"])
+def test_credential_authority_mutations_remain_admin_only(suffix):
+    client, db, _, user_token = make_client()
+    try:
+        endpoint = "/api/v1/devices/dev_" + "a" * 32 + "/" + suffix
+        assert client.post(endpoint).status_code == 401
+        assert client.post(endpoint, headers={"Authorization": f"Bearer {user_token}"}).status_code == 403
+        assert db.get(CoreAuthorityGuard, 1).revision == 1
+        assert db.query(DeviceCredential).count() == 0
+    finally:
+        client.close()
+        db.close()
+
+
+def test_missing_authority_guard_returns_conflict_without_approving_device():
+    client, db, admin_token, _ = make_client()
+    try:
+        headers = {"Authorization": f"Bearer {admin_token}"}
+        issued = client.post("/api/v1/pairing-codes", headers=headers).json()
+        device_id = "dev_" + "a" * 32
+        assert client.post("/api/v1/pairing/claim", json={
+            "code": issued["code"], "device_id": device_id,
+            "public_key": "ssh-ed25519 test-agent-public-key",
+            "display_name": "Test node", "role": "node", "protocol_version": "1.0",
+        }).status_code == 202
+        db.delete(db.get(CoreAuthorityGuard, 1))
+        db.commit()
+        response = client.post(f"/api/v1/pairing/requests/{issued['request_id']}/approve", headers=headers)
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Authority metadata is unavailable or stale"
+        assert db.get(DevicePairingRequest, issued["request_id"]).approved_at is None
+        assert db.execute(Base.metadata.tables["devices"].select()).first() is None
+        assert db.get(CoreAuthorityGuard, 1) is None
+        assert client.post(f"/api/v1/devices/{device_id}/credentials/replace", headers=headers).status_code == 409
+        assert client.post(f"/api/v1/devices/{device_id}/credentials/cred_unknown/revoke", headers=headers).status_code == 409
+    finally:
+        client.close()
         db.close()

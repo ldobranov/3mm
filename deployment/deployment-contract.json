@@ -10,6 +10,7 @@
     "backend/services/application_public_web_transport.py",
     "backend/services/update_staging.py",
     "deployment/apply_staged_update.py",
+    "deployment/authority_recovery.py",
     "deployment/backup_compatibility.py",
     "deployment/bootstrap-local-agent.py",
     "deployment/create_backup.py",

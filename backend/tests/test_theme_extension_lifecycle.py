@@ -388,10 +388,14 @@ def test_theme_migration_is_additive_reversible_and_enforces_selection_constrain
             migration.op = original
     engine.dispose()
     root = Path(__file__).parents[2]
-    assert (
-        ScriptDirectory(str(root / "backend/alembic")).get_current_head()
-        == migration.revision
-    )
+    script = ScriptDirectory(str(root / "backend/alembic"))
+    head = script.get_current_head()
+    assert head is not None
+    # Later additive migrations must keep the theme revision in the single
+    # current lineage; the historical theme migration is no longer the head.
+    assert migration.revision in {
+        revision.revision for revision in script.iterate_revisions(head, "base")
+    }
     baseline = import_module(
         "backend.alembic.versions.0f1e2d3c4b5a_legacy_schema_baseline"
     )

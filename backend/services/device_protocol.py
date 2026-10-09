@@ -19,8 +19,8 @@ from backend.db.device import (
     DeviceEvent,
     DeviceCapabilityState,
 )
-from backend.db.module import ModuleInstallation
 from backend.services.device_pairing import credential_secret_hash
+from backend.services.authority_metadata import AuthorityMetadataError
 from backend.services.node_enrollment import (
     enroll_node,
     EnrollmentConflict,
@@ -143,8 +143,9 @@ class DeviceOperations:
     credentials/principals as a substitute for revocation checks on a long-lived connection.
     """
 
-    def __init__(self, db, device):
+    def __init__(self, db, device, *, credential_id=None):
         self.db, self.device = db, device
+        self.credential_id = credential_id
 
     def own(self, device_id):
         if self.device.device_id != device_id:
@@ -182,30 +183,37 @@ class DeviceOperations:
 
     def features(self, report):
         self.own(report.device_id)
+        self._require_credential_id()
         try:
-            snapshot = replace_runtime_features(self.db, self.device, report)
-            self.db.commit()
-            return snapshot
+            return replace_runtime_features(self.db, self.device, report,
+                                            credential_id=self.credential_id)
+        except DeviceProtocolError:
+            raise  # Preserve authentication/ownership rejection, not HTTP 409.
         except ValueError as exc:
             self.db.rollback()
             raise DeviceProtocolError(str(exc)) from exc
 
     def provider(self, report):
         self.own(report.device_id)
+        self._require_credential_id()
         try:
-            row = replace_provider(self.db, self.device, report)
+            row = replace_provider(self.db, self.device, report,
+                                   credential_id=self.credential_id)
             snapshot = provider_snapshot(self.device, row)
-            self.db.commit()
             return snapshot
-        except CapabilityRegistryError as exc:
+        except (CapabilityRegistryError, AuthorityMetadataError) as exc:
             self.db.rollback()
             raise DeviceProtocolError(str(exc)) from exc
+
+    def _require_credential_id(self):
+        if not self.credential_id:
+            raise DeviceProtocolError("Authenticated device credential is required", kind="unauthorized")
 
     def next_command(self):
         try:
             command = deliver_next_command(self.db, device=self.device)
             return command_envelope(command, self.device.device_id) if command else None
-        except DeviceCommandError as exc:
+        except (DeviceCommandError, AuthorityMetadataError) as exc:
             raise DeviceProtocolError(str(exc)) from exc
 
     def availability(self, report):
@@ -220,25 +228,12 @@ class DeviceOperations:
 
     def command_result(self, report):
         self.own(report.device_id)
+        self._require_credential_id()
         try:
-            command = record_command_result(self.db, device=self.device, result=report)
-        except DeviceCommandError as exc:
+            command = record_command_result(self.db, device=self.device, result=report,
+                                            credential_id=self.credential_id)
+        except (DeviceCommandError, AuthorityMetadataError) as exc:
             raise DeviceProtocolError(str(exc)) from exc
-        if command.command_type in {"module.install", "module.disable"}:
-            installation = self.db.scalar(
-                select(ModuleInstallation).where(
-                    ModuleInstallation.command_id == command.command_id
-                )
-            )
-            if installation is not None:
-                installation.status, installation.error = command.status, command.error
-                if command.status == "succeeded":
-                    if command.command_type == "module.install":
-                        installation.installed_version = installation.desired_version
-                        installation.enabled = True
-                    else:
-                        installation.enabled = False
-                self.db.commit()
         return command
 
     def authorize_execution(self, command_id):
@@ -313,7 +308,8 @@ class DeviceOperations:
             select(DeviceEvent).where(DeviceEvent.event_id == report.event_id)
         )
         if existing is not None and (
-            existing.device_id != self.device.id
+            existing.producer_kind != "device"
+            or existing.device_id != self.device.id
             or existing.event_type != report.event_type
             or existing.payload != report.payload
             or _utc(existing.occurred_at) != _utc(report.occurred_at)

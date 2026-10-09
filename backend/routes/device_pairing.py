@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.audit_log import AuditLog
 from backend.db.user import User
+from backend.services.authority_metadata import AuthorityMetadataError
 from backend.services.device_pairing import (
     DeviceCredentialRevocationError,
     PairingApprovalError,
@@ -214,22 +215,11 @@ def approve_pairing(
             request_id=request_id,
             approved_by_user_id=admin.id,
         )
-    except PairingApprovalError as exc:
+    except (PairingApprovalError, AuthorityMetadataError) as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
         ) from exc
 
-    db.add(
-        AuditLog(
-            user_id=admin.id,
-            action="DEVICE_PAIRING_APPROVED",
-            entity_type="device",
-            entity_id=device.id,
-            entity_name=device.device_id,
-            changes={"pairing_request_id": request_id},
-        )
-    )
-    db.commit()
     return PairingApprovalResponse(request_id=request_id, device_id=device.device_id)
 
 
@@ -247,7 +237,7 @@ def complete_pairing(
             code=payload.code,
             requested_device_id=payload.device_id,
         )
-    except PairingCompletionError as exc:
+    except (PairingCompletionError, AuthorityMetadataError) as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Pairing request is not ready for completion",
@@ -274,23 +264,15 @@ def revoke_credential(
             db,
             device_id=device_id,
             credential_id=credential_id,
+            actor_id=admin.id,
         )
+    except AuthorityMetadataError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except DeviceCredentialRevocationError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
 
-    db.add(
-        AuditLog(
-            user_id=admin.id,
-            action="DEVICE_CREDENTIAL_REVOKED",
-            entity_type="device",
-            entity_id=credential.device_id,
-            entity_name=device_id,
-            changes={"credential_id": credential_id},
-        )
-    )
-    db.commit()
     return CredentialRevocationResponse(
         device_id=device_id,
         credential_id=credential_id,
@@ -307,17 +289,11 @@ def replace_credential(
     db: Session = Depends(get_db),
 ) -> DeviceCredentialResponse:
     try:
-        credential = issue_replacement_device_credential(db, device_id=device_id)
+        credential = issue_replacement_device_credential(db, device_id=device_id, actor_id=admin.id)
+    except AuthorityMetadataError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except DeviceCredentialRevocationError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    db.add(AuditLog(
-        user_id=admin.id,
-        action="DEVICE_CREDENTIAL_REPLACED",
-        entity_type="device",
-        entity_name=device_id,
-        changes={"credential_id": credential.credential_id},
-    ))
-    db.commit()
     return DeviceCredentialResponse(
         device_id=device_id,
         credential_id=credential.credential_id,

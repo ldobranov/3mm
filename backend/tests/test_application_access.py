@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 import backend.database  # noqa: F401 - register the complete Core model graph
 from backend.config import ApplicationRuntimeSettings
 from backend.db.base import Base
+from backend.db.authority import CoreAuthorityGuard
 from backend.db.device import Device
 from backend.db.module import (
     ApplicationExtensionInstallation,
@@ -65,7 +66,7 @@ def environment(monkeypatch, tmp_path, blob=None):
     db = Session(engine)
     admin = User(username="admin", email="admin@example.com", hashed_password="x", role="admin")
     operator = User(username="operator", email="operator@example.com", hashed_password="x", role="user")
-    db.add_all([admin, operator])
+    db.add_all([admin, operator, CoreAuthorityGuard(singleton_id=1)])
     db.commit()
 
     blob = blob or application_package()
@@ -155,7 +156,7 @@ def test_application_activation_selects_and_persists_a_managed_device(
     monkeypatch.setattr(
         application_extensions.UpdateHelperClient,
         "activate_application_extension",
-        lambda _self, sha256, user_id, configuration: helper_calls.append(
+        lambda _self, sha256, user_id, configuration, _lifecycle: helper_calls.append(
             (sha256, user_id, configuration)
         )
         or {
@@ -349,7 +350,7 @@ def test_uninstall_removes_core_registration_and_preserves_package(monkeypatch, 
     monkeypatch.setattr(
         application_extensions.UpdateHelperClient,
         "uninstall_application_extension",
-        lambda _self, instance_id, user_id: helper_calls.append(
+        lambda _self, instance_id, user_id, _lifecycle: helper_calls.append(
             (instance_id, user_id)
         ),
     )

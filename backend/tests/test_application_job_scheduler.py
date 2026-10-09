@@ -11,6 +11,7 @@ from sqlalchemy.orm import sessionmaker
 import backend.database
 from backend.config import ApplicationRuntimeSettings
 from backend.db.base import Base
+from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation, ApplicationJobState as State, ModulePackage
 from backend.services import application_jobs as jobs
 from backend.tests.test_application_jobs import job_definition
@@ -26,6 +27,9 @@ def environment(tmp_path, monkeypatch):
     monkeypatch.setattr(jobs, 'load_application_definition', lambda package: definition)
     records = []
     with sessions() as db:
+        # create_all builds tables, not the singleton seeded by the M20
+        # migration. Recovery must exercise a complete authority baseline.
+        db.add(CoreAuthorityGuard(singleton_id=1))
         for digit in ('1', '2'):
             package = ModulePackage(module_id=f'org.example.app{digit}', version='1.0.0', manifest={}, sha256=digit*64, size_bytes=1, file_path='unused', registrations=[])
             db.add(package); db.flush()

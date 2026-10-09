@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -27,6 +28,7 @@ from backend.db.user import User
 from backend.services.application_connectors import (
     ApplicationConnectorError,
     bind_application_connector,
+    prepare_application_connector_binding,
 )
 from backend.services.application_extensions import (
     ApplicationGatewayError,
@@ -35,7 +37,14 @@ from backend.services.application_extensions import (
 from backend.services.application_secrets import (
     ApplicationSecretError,
     create_secret_reference,
+    read_secret_authority,
+    revoke_secret_reference,
     rotate_secret_reference,
+)
+from backend.services.authority_metadata import (
+    AuthorityMetadataError,
+    authority_transaction,
+    read_application_authority,
 )
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
@@ -125,6 +134,38 @@ def _secret_response(reference: ApplicationSecretReference) -> dict[str, object]
     }
 
 
+def _application_authority(db, module_id):
+    installation = _installation(db, module_id)
+    try:
+        return read_application_authority(db, installation.id)
+    except AuthorityMetadataError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+def _secret_authority(db, application, secret_ref):
+    reference = read_secret_authority(db, application, secret_ref)
+    if reference is None:
+        raise HTTPException(404, "Application credential was not found")
+    return reference
+
+
+@contextmanager
+def _authority_write(db):
+    """End this endpoint's read-only auth/preflight, then take the guard first.
+
+    Only these management endpoints use this scope, before adding any writes.
+    Never discard pending work or reuse preflight ORM state as current authority.
+    """
+    try:
+        if db.new or db.dirty or db.deleted:
+            raise AuthorityMetadataError()
+        db.rollback()
+        with authority_transaction(db) as authority:
+            yield authority
+    except AuthorityMetadataError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
 @router.get("/{module_id}/secrets")
 def list_application_secrets(
     module_id: str,
@@ -147,20 +188,20 @@ def create_application_secret(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    installation = _installation(db, module_id)
+    actor_id = admin.id
+    application = _application_authority(db, module_id)
     try:
-        reference = create_secret_reference(
-            db,
-            installation_id=installation.id,
-            label=request.label,
-            credential_kind=request.credential_kind,
-            value=request.value,
-        )
+        with _authority_write(db) as authority:
+            reference = create_secret_reference(
+                db, application=application, label=request.label,
+                credential_kind=request.credential_kind, value=request.value,
+                authority=authority,
+            )
+            db.add(AuditLog(user_id=actor_id, action="APPLICATION_SECRET_CREATED", entity_type="application_extension", entity_name=module_id, changes={"secret_ref": reference.secret_ref, "credential_kind": reference.credential_kind}))
+            response = _secret_response(reference)
     except ApplicationSecretError as exc:
         raise HTTPException(422, str(exc)) from exc
-    db.add(AuditLog(user_id=admin.id, action="APPLICATION_SECRET_CREATED", entity_type="application_extension", entity_name=module_id, changes={"secret_ref": reference.secret_ref, "credential_kind": reference.credential_kind}))
-    db.commit()
-    return _secret_response(reference)
+    return response
 
 
 @router.put("/{module_id}/secrets/{secret_ref}")
@@ -171,17 +212,17 @@ def rotate_application_secret(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    installation = _installation(db, module_id)
-    reference = db.scalar(select(ApplicationSecretReference).where(ApplicationSecretReference.application_installation_id == installation.id, ApplicationSecretReference.secret_ref == secret_ref))
-    if reference is None:
-        raise HTTPException(404, "Application credential was not found")
+    actor_id = admin.id
+    application = _application_authority(db, module_id)
+    expected = _secret_authority(db, application, secret_ref)
     try:
-        rotate_secret_reference(db, reference, request.value)
+        with _authority_write(db) as authority:
+            reference = rotate_secret_reference(db, expected, request.value, authority=authority)
+            db.add(AuditLog(user_id=actor_id, action="APPLICATION_SECRET_ROTATED", entity_type="application_extension", entity_name=module_id, changes={"secret_ref": secret_ref, "version": reference.version}))
+            response = _secret_response(reference)
     except ApplicationSecretError as exc:
         raise HTTPException(422, str(exc)) from exc
-    db.add(AuditLog(user_id=admin.id, action="APPLICATION_SECRET_ROTATED", entity_type="application_extension", entity_name=module_id, changes={"secret_ref": secret_ref, "version": reference.version}))
-    db.commit()
-    return _secret_response(reference)
+    return response
 
 
 @router.delete("/{module_id}/secrets/{secret_ref}")
@@ -191,13 +232,12 @@ def revoke_application_secret(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    installation = _installation(db, module_id)
-    reference = db.scalar(select(ApplicationSecretReference).where(ApplicationSecretReference.application_installation_id == installation.id, ApplicationSecretReference.secret_ref == secret_ref))
-    if reference is None:
-        raise HTTPException(404, "Application credential was not found")
-    reference.revoked_at = datetime.now(UTC)
-    db.add(AuditLog(user_id=admin.id, action="APPLICATION_SECRET_REVOKED", entity_type="application_extension", entity_name=module_id, changes={"secret_ref": secret_ref}))
-    db.commit()
+    actor_id = admin.id
+    application = _application_authority(db, module_id)
+    expected = _secret_authority(db, application, secret_ref)
+    with _authority_write(db) as authority:
+        revoke_secret_reference(db, expected, authority=authority)
+        db.add(AuditLog(user_id=actor_id, action="APPLICATION_SECRET_REVOKED", entity_type="application_extension", entity_name=module_id, changes={"secret_ref": secret_ref}))
     return {"status": "revoked", "secret_ref": secret_ref}
 
 
@@ -209,14 +249,19 @@ def configure_application_connector(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    actor_id = admin.id
     installation = _installation(db, module_id)
     try:
-        binding = bind_application_connector(db, installation, connector_id, request.destination_origin, request.secret_ref)
+        plan = prepare_application_connector_binding(db, installation, connector_id, request.destination_origin, request.secret_ref)
+        with _authority_write(db) as authority:
+            binding = bind_application_connector(db, plan, authority=authority)
+            db.add(AuditLog(user_id=actor_id, action="APPLICATION_CONNECTOR_CONFIGURED", entity_type="application_extension", entity_name=module_id, changes={"connector_id": connector_id, "destination_origin": binding.destination_origin, "uses_credential": binding.secret_reference_id is not None}))
+            response = {"connector_id": binding.connector_id, "destination_origin": binding.destination_origin, "enabled": binding.enabled, "uses_credential": binding.secret_reference_id is not None}
     except ApplicationConnectorError as exc:
         raise HTTPException(422, str(exc)) from exc
-    db.add(AuditLog(user_id=admin.id, action="APPLICATION_CONNECTOR_CONFIGURED", entity_type="application_extension", entity_name=module_id, changes={"connector_id": connector_id, "destination_origin": binding.destination_origin, "uses_credential": binding.secret_reference_id is not None}))
-    db.commit()
-    return {"connector_id": binding.connector_id, "destination_origin": binding.destination_origin, "enabled": binding.enabled, "uses_credential": binding.secret_reference_id is not None}
+    except AuthorityMetadataError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return response
 
 
 @router.get("/{module_id}/operational-status")

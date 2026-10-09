@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import tempfile
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable, Literal
 
@@ -16,9 +15,7 @@ from sqlalchemy.orm import Session
 
 from agent.core_client import DeviceCredential, DeviceCredentialStore
 from agent.identity import AgentIdentity, AgentIdentityStore
-from backend.db.audit_log import AuditLog
 from backend.db.device import Device, DeviceCredential as StoredDeviceCredential
-from backend.db.device import DevicePlatformState
 from backend.db.installation_identity import CoreInstallationIdentity
 from backend.services.device_registry import as_utc
 from three_mm_protocol.device_authority import AuthorityBinding, DeviceAuthorityStore
@@ -29,7 +26,8 @@ from backend.services.device_pairing import (
     claim_pairing_code,
     complete_pairing_request,
     issue_pairing_code,
-    issue_replacement_device_credential,
+    recover_device_credential,
+    DeviceCredentialRevocationError,
 )
 from three_mm_protocol import PROTOCOL_VERSION, AgentRole
 from three_mm_provisioning import (
@@ -180,33 +178,10 @@ def ensure_local_agent_pairing(
 
     admin = _administrator(db, admin_email)
     if device is not None:
-        platform = db.get(DevicePlatformState, device.id)
-        recovery_approved = platform is not None and (platform.authority_status, platform.lifecycle, platform.reason) == (
-            "released", "enrollment_pending", "authority.enrollment_authorized")
-        active = db.scalar(select(StoredDeviceCredential.id).where(StoredDeviceCredential.device_id == device.id,
-                                                                 StoredDeviceCredential.revoked_at.is_(None)))
-        if (device.revoked_at is not None or active is None or (platform and platform.lifecycle == "revoked")) and not recovery_approved:
-            raise LocalAgentPairingError("The local Agent identity is revoked in Core")
-        if recovery_approved:
-            device.revoked_at = None
-            platform.authority_status, platform.lifecycle, platform.reason = "bound", "active", None
-            platform.revision += 1
-        revoked_at = datetime.now(UTC)
-        active_credentials = tuple(
-            db.scalars(
-                select(StoredDeviceCredential).where(
-                    StoredDeviceCredential.device_id == device.id,
-                    StoredDeviceCredential.revoked_at.is_(None),
-                )
-            )
-        )
-        for stored in active_credentials:
-            stored.revoked_at = revoked_at
-        replacement = issue_replacement_device_credential(
-            db,
-            device_id=identity.device_id,
-            now=revoked_at,
-        )
+        try:
+            replacement = recover_device_credential(db, device_id=identity.device_id, actor_id=admin.id)
+        except DeviceCredentialRevocationError as exc:
+            raise LocalAgentPairingError(str(exc)) from exc
         store.save(
             DeviceCredential(
                 device_id=replacement.device_id,
@@ -217,22 +192,6 @@ def ensure_local_agent_pairing(
         if trusted_identity is not None:
             (authority_store or DeviceAuthorityStore(credential_dir, identity.device_id, replacement.credential_id)).pin_local(
                 trusted_identity, new_credential_id=replacement.credential_id)
-        db.add(
-            AuditLog(
-                user_id=admin.id,
-                action="DEVICE_CREDENTIAL_REPLACED",
-                entity_type="device",
-                entity_id=device.id,
-                entity_name=device.device_id,
-                changes={
-                    "source": "local-bootstrap-recovery",
-                    "revoked_credential_ids": [
-                        stored.credential_id for stored in active_credentials
-                    ],
-                },
-            )
-        )
-        db.commit()
         return LocalAgentPairingResult("repaired", identity.device_id)
 
     resolved_public_key = (public_key or "").strip()
@@ -257,6 +216,7 @@ def ensure_local_agent_pairing(
         db,
         request_id=issued.request_id,
         approved_by_user_id=admin.id,
+        source="local-bootstrap",
     )
     issued_credential = complete_pairing_request(
         db,
@@ -273,20 +233,6 @@ def ensure_local_agent_pairing(
     if trusted_identity is not None:
         DeviceAuthorityStore(credential_dir, identity.device_id, issued_credential.credential_id).pin_local(
             trusted_identity, new_credential_id=issued_credential.credential_id)
-    db.add(
-        AuditLog(
-            user_id=admin.id,
-            action="DEVICE_PAIRING_APPROVED",
-            entity_type="device",
-            entity_id=device.id,
-            entity_name=device.device_id,
-            changes={
-                "pairing_request_id": issued.request_id,
-                "source": "local-bootstrap",
-            },
-        )
-    )
-    db.commit()
     return LocalAgentPairingResult("paired", identity.device_id)
 
 

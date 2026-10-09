@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -127,10 +127,13 @@ def submit_command_result(
     payload: AgentCommandResult,
     device: Device = Depends(require_device),
     db: Session = Depends(get_db),
+    authorization: str | None = Header(default=None),
 ) -> CommandStatusResponse:
     if device.device_id != device_id or payload.command_id != command_id:
         raise HTTPException(status_code=403, detail="Command identity mismatch")
-    command = call(DeviceOperations(db, device).command_result, payload)
+    # require_device validated this exact header; never choose another active key.
+    credential_id = authorization.removeprefix("Device ").strip().partition(":")[0] if isinstance(authorization, str) else None
+    command = call(DeviceOperations(db, device, credential_id=credential_id).command_result, payload)
     return CommandStatusResponse.model_validate(command, from_attributes=True)
 
 

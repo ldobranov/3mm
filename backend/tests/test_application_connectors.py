@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from backend.db.base import Base
+from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import (
     ApplicationConnectorAttempt,
     ApplicationExtensionInstallation,
@@ -16,13 +17,16 @@ from backend.db.module import (
 from backend.services.application_connectors import (
     ApplicationConnectorError,
     bind_application_connector,
+    prepare_application_connector_binding,
     execute_connector_request,
 )
 from backend.services.application_secrets import (
     create_secret_reference,
     decrypt_secret_reference,
     rotate_secret_reference,
+    read_secret_authority,
 )
+from backend.services.authority_metadata import authority_transaction, read_application_authority
 from three_mm_protocol import ApplicationExtensionV1
 
 
@@ -48,20 +52,42 @@ def connector_db(monkeypatch):
     Base.metadata.create_all(engine)
     db = Session(engine)
     package = ModulePackage(module_id="org.3mm.connector-test", version="1.0.0", manifest={}, sha256="b" * 64, size_bytes=1, file_path="unused", registrations=[])
-    db.add(package); db.flush()
+    db.add_all([package, CoreAuthorityGuard(singleton_id=1)]); db.flush()
     installation = ApplicationExtensionInstallation(module_id=package.module_id, module_package_id=package.id, instance_id="1" * 24, active_version="1.0.0", status="active", enabled=True, socket_path="unused")
     db.add(installation); db.commit()
     yield db, installation
     db.close(); engine.dispose()
 
 
+def create_credential(db, installation, **kwargs):
+    application = read_application_authority(db, installation.id)
+    db.rollback()
+    with authority_transaction(db) as authority:
+        return create_secret_reference(db, application=application, authority=authority, **kwargs)
+
+
+def rotate_credential(db, installation, secret, value):
+    application = read_application_authority(db, installation.id)
+    expected = read_secret_authority(db, application, secret.secret_ref)
+    db.rollback()
+    with authority_transaction(db) as authority:
+        rotate_secret_reference(db, expected, value, authority=authority)
+
+
+def bind_connector(db, installation, connector_id, origin, secret_ref):
+    plan = prepare_application_connector_binding(db, installation, connector_id, origin, secret_ref)
+    db.rollback()
+    with authority_transaction(db) as authority:
+        return bind_application_connector(db, plan, authority=authority)
+
+
 def test_secret_rotation_and_connector_success_do_not_disclose_credentials(connector_db):
     db, installation = connector_db
-    secret = create_secret_reference(db, installation_id=installation.id, label="Test", credential_kind="basic", value={"username": "api-user", "password": "private-pass"})
+    secret = create_credential(db, installation, label="Test", credential_kind="basic", value={"username": "api-user", "password": "private-pass"})
     assert "private-pass" not in secret.encrypted_value
     assert decrypt_secret_reference(secret)["username"] == "api-user"
-    rotate_secret_reference(db, secret, {"username": "new-user", "password": "new-pass"})
-    binding = bind_application_connector(db, installation, "business_api", "http://127.0.0.1:9999", secret.secret_ref)
+    rotate_credential(db, installation, secret, {"username": "new-user", "password": "new-pass"})
+    binding = bind_connector(db, installation, "business_api", "http://127.0.0.1:9999", secret.secret_ref)
     captured = {}
 
     class Response:
@@ -86,8 +112,8 @@ def test_secret_rotation_and_connector_success_do_not_disclose_credentials(conne
 
 def test_mutation_timeout_is_ambiguous_and_is_not_blindly_replayed(connector_db):
     db, installation = connector_db
-    secret = create_secret_reference(db, installation_id=installation.id, label="Test", credential_kind="basic", value={"username": "u", "password": "p"})
-    bind_application_connector(db, installation, "business_api", "https://example.test", secret.secret_ref)
+    secret = create_credential(db, installation, label="Test", credential_kind="basic", value={"username": "u", "password": "p"})
+    bind_connector(db, installation, "business_api", "https://example.test", secret.secret_ref)
     calls = []
 
     def timeout(*args, **kwargs):

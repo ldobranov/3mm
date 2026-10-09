@@ -96,7 +96,8 @@ class ApplicationPlatformServer:
             payload += chunk
         if b"\n" not in payload or len(payload) > MAX_PLATFORM_MESSAGE_BYTES:
             raise ValueError("Platform request is invalid")
-        value = json.loads(payload.split(b"\n", 1)[0])
+        from backend.services.application_authority_context import _unique_object
+        value = json.loads(payload.split(b"\n", 1)[0], object_pairs_hook=_unique_object)
         if not isinstance(value, dict):
             raise ValueError("Platform request is invalid")
         return value
@@ -132,7 +133,7 @@ class ApplicationPlatformServer:
                             ApplicationExtensionInstallation.instance_id == instance_id,
                         )
                     )
-                    if installation is None or (request.get('action') != 'command.lookup' and (
+                    if installation is None or (request.get('action') not in {'command.lookup', 'event.publish'} and (
                         not installation.enabled or installation.status != 'active'
                     )):
                         raise ValueError("Application installation is not active")
@@ -157,6 +158,14 @@ class ApplicationPlatformServer:
 
     def _dispatch(self, db, installation, request: dict[str, object]) -> dict[str, object]:
         action = request.get("action")
+        mode = db.scalar(select(ApplicationExtensionInstallation.authority_mode).where(
+            ApplicationExtensionInstallation.id == installation.id))
+        if mode != 'compatibility' and action not in {
+                'command.submit', 'command.status', 'command.lookup', 'connector.request', 'event.publish'}:
+            raise ValueError('Platform action has no supported resource grant')
+        if action == 'event.publish':
+            from backend.services.application_event_publication import publish_application_event
+            return publish_application_event(db, installation, request.get('publication'))
         if action in {"installation.peers.enroll", "installation.peers.list", "installation.peers.capabilities", "installation.peers.approve", "installation.peers.revoke", "installation.peers.rotate", "installation.peers.report", "installation.status.get"}:
             from backend.services import installation_peers as peers
             from backend.services.installation_projection import installation_projection
@@ -291,6 +300,11 @@ class ApplicationPlatformServer:
                 value={},
             )
             db.add(checkpoint)
+        from backend.services.application_authority_management import lock_compatibility_admission
+        # An adoption racing this legacy write must commit before or after it,
+        # not admit an ungranted write after the new mode takes effect.
+        with db.no_autoflush:
+            lock_compatibility_admission(db, installation, required=True)
         checkpoint.revision = current_revision + 1
         checkpoint.value = value
         db.commit()

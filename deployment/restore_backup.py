@@ -38,6 +38,7 @@ from deployment.create_backup import (
 from deployment.release_smoke import ReleaseEndpoints, SmokeFailure, verify_release
 from deployment.backup_compatibility import validate_release_path
 from deployment.installation_peer_recovery import quarantine_restored_installation_peers
+from deployment.authority_recovery import fence_recovered_authority
 from three_mm_protocol import PROTOCOL_VERSION, BackupManifestV1
 from three_mm_provisioning import ProvisioningSnapshot, ProvisioningState
 
@@ -525,6 +526,7 @@ def restore_backup(
                 host_config=host_config,
             )
             controller.migrate()
+            fence_recovered_authority(state_root / "core/3mm.db", reason="backup_restore")
             controller.activate_and_verify()
             remove_rollback = True
         except Exception as restore_error:
@@ -533,12 +535,21 @@ def restore_backup(
                 try:
                     controller.stop(RUNTIME_SERVICES)
                     _rollback_switches(switches)
+                    fence_recovered_authority(
+                        state_root / "core/3mm.db", reason="restore_rollback", allow_legacy=True
+                    )
                     controller.activate_and_verify()
                     remove_rollback = True
                 except Exception as exc:
                     rollback_error = exc
             else:
                 try:
+                    # _switch_state rolls its own partial switches back before
+                    # raising; even that recovery must not reuse old authority.
+                    controller.stop(RUNTIME_SERVICES)
+                    fence_recovered_authority(
+                        state_root / "core/3mm.db", reason="restore_rollback", allow_legacy=True
+                    )
                     controller.activate_and_verify()
                     remove_rollback = True
                 except Exception as exc:

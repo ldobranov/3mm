@@ -8,6 +8,7 @@ import logging
 import os
 import socket
 import subprocess
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, Sequence
@@ -40,6 +41,7 @@ from three_mm_runtime.application_activation import (
     SystemdApplicationSupervisor,
     uninstall_application_instance,
 )
+from three_mm_runtime.application_lifecycle import application_lifecycle_operation
 
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_RESPONSE_BYTES = 1024 * 1024
@@ -282,6 +284,9 @@ class UpdateMutationBoundary:
     def stop_application_extension(self, instance_id: str) -> None:
         SystemdApplicationSupervisor().stop(instance_id)
 
+    def recover_application_extension(self, instance_id: str) -> None:
+        SystemdApplicationSupervisor().recover_disabled(instance_id)
+
     def uninstall_application_extension(
         self,
         instance_id: str,
@@ -321,10 +326,11 @@ def _handle_request(
     application_key_root: Path = Path("/etc/3mm/application-extensions"),
     application_user: str = "3mm-app",
     application_group: str = "3mm-app",
+    application_database: Path = Path("/var/lib/3mm/core/3mm.db"),
 ) -> dict[str, object]:
     if isinstance(payload, dict) and set(payload) in (
-        {"action", "sha256", "requested_by_user_id"},
-        {"action", "sha256", "requested_by_user_id", "configuration"},
+        {"action", "sha256", "requested_by_user_id", "lifecycle"},
+        {"action", "sha256", "requested_by_user_id", "configuration", "lifecycle"},
     ):
         sha256 = payload.get("sha256")
         user_id = payload.get("requested_by_user_id")
@@ -343,15 +349,18 @@ def _handle_request(
             service_uid, service_gid = _service_ids(
                 application_user, application_group
             )
-            activated = activate_application_package(
-                application_upload_root / f"{sha256}.zip",
-                sha256,
-                configuration=configuration,
-                root=application_root,
-                key_root=application_key_root,
-                service_uid=service_uid,
-                service_gid=service_gid,
-            )
+            with application_lifecycle_operation(
+                payload, database=application_database, state_root=state_root
+            ):
+                activated = activate_application_package(
+                    application_upload_root / f"{sha256}.zip",
+                    sha256,
+                    configuration=configuration,
+                    root=application_root,
+                    key_root=application_key_root,
+                    service_uid=service_uid,
+                    service_gid=service_gid,
+                )
         except Exception:
             LOGGER.exception("Application extension activation failed")
             return {"ok": False, "error": "application_activation_failed"}
@@ -365,20 +374,23 @@ def _handle_request(
             "socket_path": str(activated.socket_path),
         }
 
-    if isinstance(payload, dict) and set(payload) == {
-        "action",
-        "instance_id",
-        "requested_by_user_id",
-    }:
+    if isinstance(payload, dict) and set(payload) in (
+        {"action", "instance_id", "requested_by_user_id"},
+        {"action", "instance_id", "requested_by_user_id", "lifecycle"},
+    ):
         instance_id = payload.get("instance_id")
         user_id = payload.get("requested_by_user_id")
         action = payload.get("action")
         if (
-            action not in {
+            not isinstance(action, str)
+            or action not in {
                 "disable_application_extension",
                 "erase_application_extension_data",
                 "uninstall_application_extension",
+                "recover_application_extension",
             }
+            or (action != "erase_application_extension_data" and "lifecycle" not in payload)
+            or (action == "erase_application_extension_data" and "lifecycle" in payload)
             or not isinstance(instance_id, str)
             or not __import__("re").fullmatch(r"[0-9a-f]{24}", instance_id)
             or not isinstance(user_id, int)
@@ -388,32 +400,39 @@ def _handle_request(
             return {"ok": False, "error": "invalid_request"}
         try:
             selected_boundary = boundary or UpdateMutationBoundary()
-            if action == "uninstall_application_extension":
-                selected_boundary.uninstall_application_extension(
-                    instance_id,
-                    root=application_root,
-                    key_root=application_key_root,
-                )
-            elif action == "erase_application_extension_data":
-                selected_boundary.erase_application_extension_data(
-                    instance_id,
-                    root=application_root,
-                )
-            else:
-                selected_boundary.stop_application_extension(instance_id)
+            scope = (nullcontext() if action == "erase_application_extension_data"
+                     else application_lifecycle_operation(
+                         payload, database=application_database, state_root=state_root
+                     ))
+            with scope:
+                if action == "uninstall_application_extension":
+                    selected_boundary.uninstall_application_extension(
+                        instance_id, root=application_root, key_root=application_key_root,
+                    )
+                elif action == "erase_application_extension_data":
+                    selected_boundary.erase_application_extension_data(instance_id, root=application_root)
+                elif action == "recover_application_extension":
+                    selected_boundary.recover_application_extension(instance_id)
+                else:
+                    selected_boundary.stop_application_extension(instance_id)
         except Exception:
+            LOGGER.exception("Application extension lifecycle failed: %s", action)
             error = {
                 "uninstall_application_extension": "application_uninstall_failed",
                 "erase_application_extension_data": "application_data_erase_failed",
+                "recover_application_extension": "application_recovery_failed",
             }.get(action, "application_disable_failed")
             return {"ok": False, "error": error}
-        return {
+        response = {
             "ok": True,
             "status": {
                 "uninstall_application_extension": "uninstalled",
                 "erase_application_extension_data": "erased",
             }.get(action, "disabled"),
         }
+        if action == "recover_application_extension":
+            response.update(instance_id=instance_id, lifecycle=payload["lifecycle"], quiescent=True)
+        return response
 
     if isinstance(payload, dict) and set(payload) == {
         "action",
@@ -697,6 +716,34 @@ def _handle_request(
     return {"ok": True, "status": "queued"}
 
 
+def _serve_connection(connection, **request_arguments):
+    """A lost caller/partial request must not kill the privileged helper."""
+    connection.settimeout(10.0)
+    try:
+        request = b""
+        while len(request) <= MAX_REQUEST_BYTES:
+            chunk = connection.recv(1024)
+            if not chunk:
+                break
+            request += chunk
+            if b"\n" in request:
+                break
+        if len(request) > MAX_REQUEST_BYTES:
+            raise ValueError("request_too_large")
+        payload = json.loads(request.split(b"\n", 1)[0])
+        response = _handle_request(payload, **request_arguments)
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError):
+        response = {"ok": False, "error": "invalid_request"}
+    encoded = json.dumps(response, separators=(",", ":")).encode("utf-8") + b"\n"
+    if len(encoded) > MAX_RESPONSE_BYTES:
+        encoded = b'{"ok":false,"error":"response_too_large"}\n'
+    try:
+        connection.sendall(encoded)
+    except OSError:
+        # The action may have completed. No replay; Core must reconcile it.
+        LOGGER.warning("Helper caller disconnected before receiving its response")
+
+
 def serve(
     socket_path: Path,
     *,
@@ -748,41 +795,20 @@ def serve(
                 recovery_monitor.poll()
                 continue
             with connection:
-                request = b""
-                while len(request) <= MAX_REQUEST_BYTES:
-                    chunk = connection.recv(1024)
-                    if not chunk:
-                        break
-                    request += chunk
-                    if b"\n" in request:
-                        break
-                try:
-                    if len(request) > MAX_REQUEST_BYTES:
-                        raise ValueError("request_too_large")
-                    payload = json.loads(request.split(b"\n", 1)[0])
-                    response = _handle_request(
-                        payload,
-                        stage_root=stage_root,
-                        state_root=state_root,
-                        allowlist=allowlist,
-                        status_file=state_root / "status.json",
-                        service_group=group_name,
-                        boundary=boundary,
-                        provisioning_data_dir=provisioning_data_dir,
-                        backup_root=backup_root,
-                        application_upload_root=application_upload_root,
-                        application_root=application_root,
-                        application_key_root=application_key_root,
-                    )
-                except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
-                    response = {"ok": False, "error": "invalid_request"}
-                encoded = (
-                    json.dumps(response, separators=(",", ":")).encode("utf-8")
-                    + b"\n"
+                _serve_connection(
+                    connection,
+                    stage_root=stage_root,
+                    state_root=state_root,
+                    allowlist=allowlist,
+                    status_file=state_root / "status.json",
+                    service_group=group_name,
+                    boundary=boundary,
+                    provisioning_data_dir=provisioning_data_dir,
+                    backup_root=backup_root,
+                    application_upload_root=application_upload_root,
+                    application_root=application_root,
+                    application_key_root=application_key_root,
                 )
-                if len(encoded) > MAX_RESPONSE_BYTES:
-                    encoded = b'{"ok":false,"error":"response_too_large"}\n'
-                connection.sendall(encoded)
 
 
 def main() -> None:

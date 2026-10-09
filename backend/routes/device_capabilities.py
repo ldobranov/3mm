@@ -2,7 +2,7 @@
 
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -29,6 +29,7 @@ from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from backend.utils.device_auth import require_device
 from backend.services.device_protocol import DeviceOperations
+from backend.services.authority_metadata import AuthorityMetadataError
 from backend.utils.device_protocol_http import call
 from three_mm_protocol import (
     CapabilityProviderControlV1,
@@ -145,6 +146,7 @@ def report_provider(
     provider_type: str,
     provider_id: str,
     payload: CapabilityProviderReportV2 | CapabilityProviderReportV1,
+    authorization: str | None = Header(default=None),
     device: Device = Depends(require_device),
     db: Session = Depends(get_db),
 ):
@@ -152,7 +154,9 @@ def report_provider(
     _own_device(device, payload.device_id)
     if (provider_type, provider_id) != (payload.provider_type, payload.provider_id):
         raise HTTPException(409, "Provider identity does not match the report")
-    return call(DeviceOperations(db, device).provider, payload)
+    # require_device validated this exact header and its secret before entry.
+    credential_id = (authorization or "").removeprefix("Device ").strip().partition(":")[0]
+    return call(DeviceOperations(db, device, credential_id=credential_id).provider, payload)
 
 
 @router.post(
@@ -179,9 +183,8 @@ def control_provider(
             actor_user_id=admin.id,
         )
         snapshot = provider_snapshot(device, provider)
-        db.commit()
         return snapshot
-    except CapabilityRegistryError as exc:
+    except (CapabilityRegistryError, AuthorityMetadataError) as exc:
         db.rollback()
         raise HTTPException(409, str(exc)) from exc
 
@@ -194,9 +197,8 @@ def configure_capabilities(device_id: str, provider_type: str, provider_id: str,
     try:
         provider = configure_provider(db, device, provider_type, provider_id, payload, actor_user_id=admin.id)
         snapshot = provider_snapshot(device, provider)
-        db.commit()
         return snapshot
-    except CapabilityRegistryError as exc:
+    except (CapabilityRegistryError, AuthorityMetadataError) as exc:
         db.rollback()
         raise HTTPException(409, str(exc)) from exc
 

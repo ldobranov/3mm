@@ -1,4 +1,34 @@
 {
+  "authorityReview": {
+    "title": "Permission request changes", "added": "Added", "removed": "Removed", "changed": "Changed", "unresolved": "Unresolved",
+    "warning": "Declarations only, not approved access. Added or changed requests may expand authority. This snapshot can become stale; it never authorizes installation or actions.",
+    "unstable": "The installation is changing or has an inconsistent version. Compare again after it settles.",
+    "unavailable": "The installed baseline could not be verified. No comparison was made; this is not treated as a new installation.",
+    "notAvailable": "This Core did not return an authority comparison.",
+    "bindingMissing": "Unresolved binding", "configurationMissing": "Effective configuration is not available.",
+    "configurationInvalid": "The saved settings are incomplete or incompatible with this package.",
+    "frontendUnknown": "Executable frontend effects cannot be determined from declarations.",
+    "peerUnknown": "Approved peer scope is not available.", "unresolvedScope": "This scope could not be resolved.",
+    "noInstallation": "No application installation exists. Showing new declarations; configuration remains unresolved.",
+    "savedConfiguration": "Compared with the installed package, including a disabled installation. Saved settings are reused for the candidate preview only; nothing is saved.",
+    "previous": "Installed baseline", "candidate": "Selected package", "before": "Before", "after": "After", "summary": "Change summary",
+    "artifactChanged": "The artifact has changed. An empty permission diff would not make the new code trusted or approved.",
+    "noChanges": "No declaration changes found. This is not permission approval.",
+    "potentialExpansion": "May expand access; requires review, not an automatic grant.",
+    "notChecked": "Approved grants, device availability/contracts, stored connector bindings and credential rotations, publisher/signature trust, dependencies and OS/browser isolation are not checked."
+  },
+  "packageInspection": {
+    "title": "Package inspection", "inspect": "Inspect package",
+    "help": "Read-only review of manifest-v2 ZIP packages. No installation or code execution; legacy packages are not supported here.",
+    "sizeLimit": "Choose a non-empty ZIP no larger than 10 MiB.", "failed": "The package could not be inspected. Nothing was installed.",
+    "new": "New package — not in the catalog", "exact": "This exact package is already in the catalog",
+    "conflict": "Version conflict — this ID/version has different contents in the catalog",
+    "identity": "Package ID", "kind": "Package type / runtimes", "size": "Size", "core": "Core compatibility",
+    "coreMatched": "Requirement matches the running Core", "notChecked": "Not checked", "device": "Device / Agent compatibility",
+    "permissions": "Declared permissions — not approved", "provides": "Provides capabilities", "consumes": "Consumes capabilities",
+    "warning": "Publisher and signature are not verified. Dependencies and conflicts are declared, not resolved. Inspection is not approval and does not guarantee installation; uploading remains a separate action.",
+    "declarations": "All declarations, configuration and runtime descriptors"
+  },
   "fleetPairing": {
     "title": "New devices", "help": "Devices request access automatically after Wi-Fi setup. Add only a device you recognize. Names are supplied by the device.",
     "refresh": "Refresh", "loading": "Looking for requests…", "empty": "No devices are waiting for approval.",

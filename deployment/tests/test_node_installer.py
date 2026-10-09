@@ -236,3 +236,75 @@ usermod() { printf 'usermod %s\\n' "$*"; }
     assert 'groupadd --system 3mm-public' in result.stdout
     assert 'useradd --system --gid 3mm-public --home-dir /nonexistent --shell /usr/sbin/nologin 3mm-public' in result.stdout
     assert 'usermod -a -G 3mm-app,3mm-public 3mm' in result.stdout
+
+
+@pytest.mark.parametrize('failure', ['', 'stop', 'database', 'fence', 'environment'])
+def test_full_rollback_fences_before_any_restart_and_fails_closed(failure):
+    result = run(f'test_failure="{failure}"\n' + '''
+install_profile=full
+mutation_started=1
+previous_release=/
+rollback_link_updated=0
+release_created=0
+environment_tmp=''
+release_archive=/test/archive
+release_dir=/test/new
+current_link=/test/current
+runtime_services=(3mm-core.service 3mm-agent.service)
+always_on_services=(3mm-update-helper.service)
+installed_units=("${runtime_services[@]}")
+systemctl() { echo stop-runtime; [[ $test_failure != stop ]]; }
+restore_database() { echo restore-database; [[ $test_failure != database ]]; }
+fence_rollback_authority() { echo fence-authority; [[ $test_failure != fence ]]; }
+restore_environment() { echo restore-environment; [[ $test_failure != environment ]]; }
+ln() { :; }
+install_units() { :; }
+restart_always_on_services() { echo restart-helper; }
+restore_runtime_units() { echo restart-runtime; }
+start_active_application_services() { echo restart-apps; }
+rm() { echo cleanup; }
+''' + section('rollback() {', 'if [[ -L $current_link ]]; then') + '''
+trap rollback ERR
+false
+''')
+    assert result.returncode == 1, result.stderr
+    if failure:
+        assert 'restart-' not in result.stdout
+        assert 'cleanup' not in result.stdout  # Keep candidate and recovery evidence.
+    else:
+        assert result.stdout.index('restore-database') < result.stdout.index('fence-authority')
+        assert result.stdout.index('fence-authority') < result.stdout.index('restart-runtime')
+        assert result.stdout.index('restart-runtime') < result.stdout.index('restart-apps')
+
+
+def test_full_rollback_uses_candidate_stdlib_recovery_not_previous_runtime(tmp_path):
+    database = tmp_path / 'disposable.db'
+    database.touch()
+    result = run(f'database="{database.as_posix()}"\n' + '''
+install_profile=full
+release_dir=/test/new
+python3() { printf '%s\\n' "$*"; }
+''' + section('fence_rollback_authority() {', 'restore_environment() {') + '''
+fence_rollback_authority
+''')
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == '/test/new/deployment/authority_recovery.py --reason deployment_rollback --allow-legacy'
+
+
+@pytest.mark.parametrize('missing_backup', [False, True])
+def test_actual_database_restore_propagates_failure_with_errexit_disabled(tmp_path, missing_backup):
+    if not missing_backup:
+        (tmp_path / '3mm.db').touch()
+    result = run(f'backup_root="{tmp_path.as_posix()}"\n' + '''
+database_backup_created=1
+database_existed_before_deploy=1
+database=/test/live.db
+install() { echo failed-copy; return 1; }
+rm() { echo unsafe-cleanup; return 0; }
+''' + section('restore_database() {', 'fence_rollback_authority() {') + '''
+set +e
+restore_database
+exit $?
+''')
+    assert result.returncode == 1, result.stderr
+    assert 'unsafe-cleanup' not in result.stdout

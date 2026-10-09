@@ -10,9 +10,11 @@ V6 / Extensions е одобрен от собственика на 2026-10-07.
 V6 / Settings: navigation, общи cards и Application/Header формите са одобрени.
 Останалите вътрешни форми са одобрени с продължението на собственика на 2026-10-08.
 V6 / Display Editor е одобрен от собственика на 2026-10-08; V6 е приет локално.
-V7 е изпълнен локално и одобрен за доставка на 2026-10-08. V6/V7 се подготвят
-за beta.43; публикацията се допуска само след успешен release workflow. V8 остава отворен; пълно
-live/recovery приемане не се подразбира от успешен release.
+V7 е изпълнен локално и одобрен за доставка на 2026-10-08. V6/V7 са публикувани
+в beta.43 с успешни CI/release workflows. На 2026-10-08 собственикът потвърди,
+че резултатът му харесва, и изрично прие работата за приключена: **Milestone 17 е затворен**.
+Разширените live/recovery сценарии не се обявяват за проверени; остават отделни
+общи platform-stability проверки, а не блокираща theme задача.
 Обхват: продължение на Milestone 17, не нов device/extension subsystem.
 Свързани: [продуктов план](MASTER_PLAN.md), [доставка T0–T6](THEME_EXTENSION_PLAN.md),
 [действащ договор v1](THEME_EXTENSION_V1.md).
@@ -147,9 +149,10 @@ Backup/portable restore включва избрания immutable пакет и 
 ## 6. Етапи и конкретно приемане
 
 V0–V4 са **публикувани**; собственикът потвърди работещите теми и корекции на
-логото до beta.40. V5 и V6 са изпълнени локално и одобрени; чакат доставка.
-V7 е одобрен за доставка с beta.43; V8 остава отворен. Локален visual review и успешно публикуване не заменят пълното
-live/recovery приемане. T0–T3 остават
+логото до beta.40. V5–V7 са изпълнени, одобрени и доставени до beta.43.
+Milestone 17 е затворен по финалното приемане на собственика на 2026-10-08.
+Това не е доказателство за всички live/recovery сценарии от първоначалния V8;
+непотвърдените проби остават в общата platform-stability линия. T0–T3 остават
 историческата v1 доставка. [Baseline и карта на зависимостите](THEME_PLATFORM_V2_BASELINE.md).
 [Договор V1–V3](THEME_DESIGN_API_V2.md), [отчет](THEME_PLATFORM_V2_V1_V3_REPORT.md).
 
@@ -375,8 +378,9 @@ frontend loader. 17 frontend и 9 backend проверки, type-check/build и 
 review с две themes, legacy adapter, mobile, BG/EN и native dialog минават.
 Няма автоматична миграция на бизнес extensions или обещание за theme-aware
 hardcoded CSS. [Публичен договор](EXTENSION_UI_V1.md),
-[отчет V7](THEME_PLATFORM_V2_V7_REPORT.md). Собственикът одобри доставка на 2026-10-08;
-live installed-package и upgrade/recovery приемането остават V8.
+[отчет V7](THEME_PLATFORM_V2_V7_REPORT.md). Собственикът одобри доставка на 2026-10-08
+и след публикуването прие работата за приключена. Разширените live
+installed-package и upgrade/recovery сценарии не са потвърдени с отделен отчет.
 
 ### V8 — Реално upgrade/recovery приемане и доставка
 
@@ -387,6 +391,20 @@ selection → restart → rollback → portable backup/restore. Destructive rese
 Приемане: packages/assets/selection се възстановяват; повредена тема не блокира
 Settings; unrelated данни и device trust са запазени. README, package/UI contract,
 CHANGELOG и milestone report описват провереното, не предполагаемото.
+
+Доставка: **приета и приключена по решение на собственика на 2026-10-08**.
+beta.43 е публикуван от commit `4415cee2c108f66838bde9cae9dcf94cfa5642a8`;
+[CI](https://github.com/ldobranov/3mm/actions/runs/37726306634) и
+[release workflow](https://github.com/ldobranov/3mm/actions/runs/37726306648)
+минаха успешно. Публикувани са full пакети за aarch64/armv7l/x86_64 и ARMv6 Node.
+Локално минаха 255 frontend теста, type-check/build и 98 installer/deployment проверки.
+
+Собственикът прие резултата за приключен след release-а; няма приложен подробен
+live отчет за restart, rollback, portable restore или destructive reset.
+Не маркираме тези проби като преминали. Те се проследяват отделно в
+[Platform stability acceptance](PLATFORM_STABILITY_ACCEPTANCE.md), с допълнителна
+theme проверка за package/assets/selection при recovery. Затварянето не разрешава
+live mutations или reset и не означава миграция на чужди extension интерфейси.
 
 ## 7. Работен ред и бюджет
 
@@ -420,7 +438,7 @@ marketing pages, нови business/device APIs или цялостна авто�
 чужди extensions. Ако по-късно се поиска изпълним theme plugin, той изисква
 отделен trust/security milestone, не разширяване на декларативния v2 по подразбиране.
 
-V6/V7 са одобрени локално; не започваме автоматично redesign на други екрани.
-По заявка на собственика се подготвя beta.43. След successful workflow собственикът
-ще обнови устройствата; live upgrade/recovery проверките остават V8.
-M17 не се затваря преди V8.
+V6/V7 са публикувани в beta.43; Milestone 17 е приключен по финалното приемане
+на собственика. Не започваме автоматично redesign на други екрани или следващия
+milestone. Непотвърдените разширени recovery проби остават общи operational
+проверки, не доказано изпълнени theme acceptance сценарии.

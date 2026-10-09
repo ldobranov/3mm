@@ -28,6 +28,7 @@ from backend.db.device import (
     DeviceCommand,
     DeviceCredential as StoredCredential,
     DeviceRuntimeFeatures,
+    DevicePlatformState,
 )
 from backend.db.module import (
     ModulePackage,
@@ -104,6 +105,7 @@ def pair(core, monkeypatch, tmp_path):
     )
     db.add(device)
     db.flush()
+    db.add(DevicePlatformState(device_id=device.id))
     db.add(
         StoredCredential(
             device_id=device.id,

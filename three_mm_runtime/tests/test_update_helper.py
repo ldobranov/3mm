@@ -519,6 +519,8 @@ def test_application_activation_uses_only_the_fixed_sha_package_path(
     monkeypatch, tmp_path: Path
 ) -> None:
     captured = []
+    from contextlib import nullcontext
+    monkeypatch.setattr(update_helper, "application_lifecycle_operation", lambda *_a, **_kw: nullcontext())
     sha256 = "a" * 64
     monkeypatch.setattr(update_helper, "_service_ids", lambda *_args: (1200, 1201))
     monkeypatch.setattr(
@@ -545,6 +547,7 @@ def test_application_activation_uses_only_the_fixed_sha_package_path(
             "action": "activate_application_extension",
             "sha256": sha256,
             "requested_by_user_id": 7,
+            "lifecycle": {},  # Ticket validation is covered by test_application_lifecycle.
         },
         stage_root=tmp_path / "stage",
         state_root=tmp_path / "state",
@@ -575,8 +578,10 @@ def test_application_activation_uses_only_the_fixed_sha_package_path(
     assert injected == {"ok": False, "error": "invalid_request"}
 
 
-def test_application_uninstall_uses_fixed_runtime_roots(tmp_path: Path) -> None:
+def test_application_uninstall_uses_fixed_runtime_roots(tmp_path: Path, monkeypatch) -> None:
     calls = []
+    from contextlib import nullcontext
+    monkeypatch.setattr(update_helper, "application_lifecycle_operation", lambda *_a, **_kw: nullcontext())
 
     class Boundary:
         def uninstall_application_extension(self, instance_id, **kwargs):
@@ -587,6 +592,7 @@ def test_application_uninstall_uses_fixed_runtime_roots(tmp_path: Path) -> None:
             "action": "uninstall_application_extension",
             "instance_id": "b" * 24,
             "requested_by_user_id": 7,
+            "lifecycle": {},
         },
         stage_root=tmp_path / "stage",
         state_root=tmp_path / "state",

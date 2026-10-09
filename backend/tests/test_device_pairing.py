@@ -3,7 +3,8 @@ from datetime import datetime, timedelta, timezone
 import backend.database  # noqa: F401 - register complete model metadata
 import pytest
 from backend.db.base import Base
-from backend.db.device import Device, DeviceCredential, DevicePairingRequest
+from backend.db.device import Device, DeviceCredential, DevicePairingRequest, DevicePlatformState
+from backend.db.authority import CoreAuthorityGuard
 from backend.db.user import User
 from backend.services.device_pairing import (
     PairingApprovalError,
@@ -28,6 +29,7 @@ def db() -> Session:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     with Session(engine) as session:
+        session.add(CoreAuthorityGuard(singleton_id=1))
         session.add(
             User(
                 username="owner",
@@ -62,6 +64,9 @@ def test_replacement_credential_preserves_device_identity(db: Session) -> None:
         protocol_version="1.0",
         approved_at=datetime.now(timezone.utc),
     ))
+    db.commit()
+    device = db.scalar(select(Device).where(Device.device_id == device_id))
+    db.add(DevicePlatformState(device_id=device.id))
     db.commit()
     replacement = issue_replacement_device_credential(db, device_id=device_id)
     assert replacement.device_id == device_id

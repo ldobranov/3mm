@@ -1,6 +1,6 @@
 """Optional signed management/lifecycle adapter. Legacy device routes stay intact."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -76,12 +76,15 @@ async def exchange(
 def lifecycle(
     device_id: str,
     payload: LifecycleReportV1,
+    authorization: str | None = Header(default=None),
     device: Device = Depends(require_device),
     db: Session = Depends(get_db),
 ):
     if device_id != device.device_id:
         raise HTTPException(403, "Device identity mismatch")
-    return _signed_call(report_lifecycle, db, device, payload)
+    # require_device has validated this exact header, including the secret.
+    credential_id = (authorization or "").removeprefix("Device ").strip().partition(":")[0]
+    return _signed_call(report_lifecycle, db, device, payload, credential_id=credential_id)
 
 
 def _device(db, device_id):

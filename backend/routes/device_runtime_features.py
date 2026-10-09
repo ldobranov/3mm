@@ -1,6 +1,6 @@
 """Negotiation and diagnostics on the common device API, not Fleet."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
 
 from backend.db.device import Device
@@ -38,12 +38,14 @@ def protocol(device_id: str, device=Depends(require_device), db=Depends(get_db))
 def report_features(
     device_id: str,
     payload: DeviceRuntimeFeaturesReportV1,
+    authorization: str | None = Header(default=None),
     device=Depends(require_device),
     db=Depends(get_db),
 ):
     _own(device, device_id)
     _own(device, payload.device_id)
-    return call(DeviceOperations(db, device).features, payload)
+    credential_id = (authorization or "").removeprefix("Device ").strip().partition(":")[0]
+    return call(DeviceOperations(db, device, credential_id=credential_id).features, payload)
 
 
 @router.get(

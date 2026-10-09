@@ -197,19 +197,29 @@ release_python() {
 }
 
 restore_database() {
-  if [[ $database_backup_created -eq 1 && -f $backup_root/3mm.db ]]; then
-    install -o 3mm -g 3mm -m 0640 "$backup_root/3mm.db" "$database"
-    rm -f -- "${database}-wal" "${database}-shm"
+  if [[ $database_backup_created -eq 1 ]]; then
+    [[ -f $backup_root/3mm.db ]] || return 1
+    install -o 3mm -g 3mm -m 0640 "$backup_root/3mm.db" "$database" || return 1
+    rm -f -- "${database}-wal" "${database}-shm" || return 1
   elif [[ $database_existed_before_deploy -eq 0 ]]; then
-    rm -f -- "$database" "${database}-wal" "${database}-shm"
+    rm -f -- "$database" "${database}-wal" "${database}-shm" || return 1
+  fi
+}
+
+fence_rollback_authority() {
+  if [[ $install_profile == full && -f $database ]]; then
+    # Use the candidate's stdlib-only recovery code, not the old release which
+    # may predate M20. The release lock is still held; no services may start yet.
+    python3 "$release_dir/deployment/authority_recovery.py" \
+      --reason deployment_rollback --allow-legacy || return 1
   fi
 }
 
 restore_environment() {
   if [[ $environment_backup_created -eq 1 ]]; then
-    install -o root -g 3mm -m 0640 "$backup_root/3mm.env" "$environment_file"
+    install -o root -g 3mm -m 0640 "$backup_root/3mm.env" "$environment_file" || return 1
   elif [[ -f $backup_root/environment-was-absent ]]; then
-    rm -f -- "$environment_file"
+    rm -f -- "$environment_file" || return 1
   fi
 }
 
@@ -379,13 +389,22 @@ rollback() {
   echo "Deployment failed; restoring ${previous_release:-the previous system state}." >&2
 
   if [[ $mutation_started -eq 1 ]]; then
-    systemctl stop "${runtime_services[@]}" >/dev/null 2>&1 || true
+    if ! systemctl stop "${runtime_services[@]}" >/dev/null 2>&1; then
+      echo "Rollback could not stop runtime; state preserved for manual recovery." >&2
+      exit "$exit_code"
+    fi
     if [[ $install_profile == full ]]; then
-      restore_database
+      if ! systemctl stop '3mm-application-extension@*.service' || ! restore_database || ! fence_rollback_authority; then
+        echo "Rollback authority fencing failed; services remain stopped and recovery state is preserved." >&2
+        exit "$exit_code"
+      fi
     else
       systemctl stop "${always_on_services[@]}" >/dev/null 2>&1 || true
     fi
-    restore_environment
+    if ! restore_environment; then
+      echo "Rollback environment restore failed; services remain stopped and recovery state is preserved." >&2
+      exit "$exit_code"
+    fi
     if [[ -n $previous_release && -d $previous_release ]]; then
       ln -sfnT "$previous_release" "$current_link"
       if [[ $rollback_link_updated -eq 1 ]]; then
@@ -552,6 +571,7 @@ required_files=(
   deployment/backup_compatibility.py
   deployment/restore_backup.py
   deployment/restore_application_extensions.py
+  deployment/authority_recovery.py
   deployment/factory_reset.py
   deployment/frontend_access.py
   deployment/migrate_database.py
@@ -662,6 +682,11 @@ for unit in "${runtime_services[@]}"; do
 done
 systemctl stop "${runtime_services[@]}" >/dev/null 2>&1 || true
 mutation_started=1
+if [[ $install_profile == full ]]; then
+  # Application helpers share our release lock; also quiesce running apps before
+  # copying/restoring the DB. Refuse mutation if systemd cannot stop the runtime.
+  systemctl stop "${runtime_services[@]}" '3mm-application-extension@*.service'
+fi
 if [[ $install_profile == node ]]; then
   systemctl stop "${always_on_services[@]}" >/dev/null 2>&1 || true
 fi

@@ -5,7 +5,11 @@ from __future__ import annotations
 import hashlib
 import secrets
 import uuid
+from contextlib import contextmanager
+from copy import deepcopy
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -50,6 +54,14 @@ from backend.services.application_configuration import (
 from backend.services.application_access import (
     application_permission_ids, ApplicationPrincipal,
     can_access_application_route, can_access_application_operation,
+)
+from backend.services.application_commands import invalidate_commands
+from backend.services.authority_metadata import (
+    ApplicationAuthoritySnapshot,
+    AuthorityMetadataError,
+    authority_transaction,
+    read_application_authority,
+    read_authority_guard,
 )
 from backend.utils.auth_dep import require_admin, require_user
 from backend.utils.db_utils import get_db
@@ -122,6 +134,145 @@ class KioskSessionRequest(BaseModel):
     credential: str = Field(min_length=32, max_length=160)
 
     model_config = ConfigDict(extra="forbid")
+
+
+class ApplicationLifecycleRecoveryRequest(BaseModel):
+    confirmed_external_outcome_reviewed: Literal[True]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+@dataclass(frozen=True)
+class _LifecycleTicket:
+    application: ApplicationAuthoritySnapshot
+    operation: str
+    state: tuple
+    guard_generation: str
+
+
+def _helper_lifecycle(ticket):
+    return {
+        "installation_id": ticket.application.installation_id,
+        "module_id": ticket.application.module_id,
+        "instance_id": ticket.state[2],
+        "incarnation": ticket.application.incarnation,
+        "epoch": ticket.application.epoch,
+        "guard_generation": ticket.guard_generation,
+    }
+
+
+def _lifecycle_state(installation):
+    return (
+        installation.module_package_id, installation.previous_package_id,
+        installation.instance_id, installation.active_version,
+        installation.status, installation.enabled, installation.socket_path,
+        deepcopy(installation.configuration),
+    )
+
+
+def _package_state(package):
+    return (
+        package.id, package.module_id, package.version, package.sha256,
+        package.file_path, deepcopy(package.manifest),
+    )
+
+
+@contextmanager
+def _lifecycle_write(db, *, expected_guard=None):
+    """Close this route's known read-only preflight; never span helper I/O."""
+    try:
+        if db.new or db.dirty or db.deleted:
+            raise AuthorityMetadataError()
+        db.rollback()
+        with authority_transaction(db, expected_guard=expected_guard) as authority:
+            yield authority
+    except AuthorityMetadataError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+def _lifecycle_audit(db, actor_id, module_id, action, **changes):
+    db.add(AuditLog(
+        user_id=actor_id, action=action, entity_type="application_extension",
+        entity_name=module_id, changes=changes,
+    ))
+
+
+@contextmanager
+def _activation_authority(db, expected, sha256, configuration, guard):
+    if expected is None or expected.mode == 'compatibility':
+        yield
+        return
+    from backend.services.application_authority_management import configured_manager, AuthorityManagementError
+    from backend.services.application_authority_keys import AuthorityReviewKeyError
+    try:
+        with configured_manager(db.get_bind().engine).native_activation(
+                expected.installation_id, sha256, configuration, guard):
+            yield
+    except (AuthorityManagementError, AuthorityReviewKeyError, ValueError):
+        raise HTTPException(409, 'Reviewed native artifact authority is unavailable; staged activation is not supported') from None
+
+
+def _start_lifecycle(db, authority, installation, operation, actor_id):
+    current = authority.advance_application_epoch(
+        read_application_authority(db, installation.id)
+    )
+    installation.status = operation
+    installation.enabled = False
+    installation.error = None
+    invalidate_commands(db, installation.id)
+    _lifecycle_audit(
+        db, actor_id, installation.module_id, "APPLICATION_EXTENSION_LIFECYCLE_STARTED",
+        operation=operation, version=installation.active_version,
+    )
+    db.flush()
+    return _LifecycleTicket(current, operation, _lifecycle_state(installation), authority.guard.generation)
+
+
+def _lock_lifecycle(db, authority, ticket):
+    if authority.guard.generation != ticket.guard_generation:
+        authority.reject()
+    authority.lock_application(ticket.application, lifecycle_status=ticket.operation)
+    installation = db.get(
+        ApplicationExtensionInstallation, ticket.application.installation_id,
+        populate_existing=True,
+    )
+    if installation is None or _lifecycle_state(installation) != ticket.state:
+        authority.reject()
+    authority.advance_application_epoch(ticket.application)
+    return installation
+
+
+def _lifecycle_failed(db, ticket, actor_id):
+    # A helper timeout/rejection is not proof of filesystem/runtime rollback.
+    # Do not retry the helper, restore old authority, or release unknown jobs.
+    with _lifecycle_write(db) as authority:
+        installation = _lock_lifecycle(db, authority, ticket)
+        installation.status = "recovery_required"
+        installation.enabled = False
+        installation.error = "Application lifecycle outcome is unconfirmed; administrative recovery is required"
+        _lifecycle_audit(
+            db, actor_id, installation.module_id, "APPLICATION_EXTENSION_LIFECYCLE_FAILED",
+            operation=ticket.operation, outcome="execution_unconfirmed",
+        )
+
+
+def _prepare_lifecycle(db, module_id):
+    try:
+        guard = read_authority_guard(db)
+        installation = _installation(db, module_id)
+        return guard, read_application_authority(db, installation.id), _lifecycle_state(installation)
+    except AuthorityMetadataError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+def _recheck_lifecycle(db, authority, expected, state):
+    authority.lock_application(expected)
+    installation = db.get(
+        ApplicationExtensionInstallation, expected.installation_id, populate_existing=True
+    )
+    if installation is None or _lifecycle_state(installation) != state:
+        authority.reject()
+    return installation
 
 
 def _installation(db: Session, module_id: str) -> ApplicationExtensionInstallation:
@@ -289,6 +440,11 @@ def activate_application_extension(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    actor_id = admin.id
+    try:
+        guard = read_authority_guard(db)
+    except AuthorityMetadataError as exc:
+        raise HTTPException(409, str(exc)) from exc
     package = db.scalar(select(ModulePackage).where(ModulePackage.sha256 == sha256))
     if package is None:
         raise HTTPException(404, "Application package was not found")
@@ -300,6 +456,17 @@ def activate_application_extension(
         select(ApplicationExtensionInstallation).where(
             ApplicationExtensionInstallation.module_id == package.module_id
         )
+    )
+    try:
+        expected = read_application_authority(db, installation.id) if installation else None
+    except AuthorityMetadataError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    state = _lifecycle_state(installation) if installation else None
+    candidate = _package_state(package)
+    package_id, module_id, version = package.id, package.module_id, package.version
+    helper = UpdateHelperClient(
+        get_settings().applications.helper_socket,
+        timeout_seconds=definition.service.startup_timeout_seconds + 10,
     )
     try:
         validate_public_http_candidate(db, package, definition)
@@ -335,70 +502,75 @@ def activate_application_extension(
             422,
             "Select an available device for: " + ", ".join(unavailable),
         )
-    if installation is None:
-        installation = ApplicationExtensionInstallation(
-            module_id=package.module_id,
-            module_package_id=package.id,
-            instance_id=application_instance_id(package.module_id),
-            socket_path="pending",
-            status="activating",
-            enabled=False,
+    with _activation_authority(db, expected, sha256, resolved_configuration, guard), _lifecycle_write(db, expected_guard=guard) as authority:
+        package = db.get(ModulePackage, package_id, populate_existing=True)
+        if package is None or _package_state(package) != candidate:
+            authority.reject()
+        if expected is None:
+            if db.scalar(select(ApplicationExtensionInstallation.id).where(
+                ApplicationExtensionInstallation.module_id == module_id
+            )) is not None:
+                authority.reject()
+            installation = ApplicationExtensionInstallation(
+                module_id=module_id, module_package_id=package_id,
+                instance_id=application_instance_id(module_id),
+                socket_path="pending", status="staged", enabled=False,
+            )
+            db.add(installation)
+            db.flush()
+        else:
+            installation = _recheck_lifecycle(db, authority, expected, state)
+        # Device revocation is not yet a participating authority writer.
+        current_devices = set(db.scalars(
+            select(Device.device_id).where(Device.revoked_at.is_(None))
+        ))
+        if any(resolved_configuration.get(key) not in current_devices
+               for key in configurable_device_keys):
+            authority.reject()
+        installation.previous_package_id = (
+            installation.module_package_id if installation.enabled else None
         )
-        db.add(installation)
-    previous_package_id = (
-        installation.module_package_id if installation.enabled else None
-    )
-    installation.previous_package_id = previous_package_id
-    installation.module_package_id = package.id
-    installation.status = "activating"
-    from backend.services.application_commands import invalidate_commands
-    if installation.id is not None:
-        invalidate_commands(db, installation.id)
-    installation.error = None
-    db.commit()
+        installation.module_package_id = package_id
+        installation.configuration = resolved_configuration
+        ticket = _start_lifecycle(db, authority, installation, "activating", actor_id)
     try:
-        result = UpdateHelperClient(
-            get_settings().applications.helper_socket,
-            timeout_seconds=definition.service.startup_timeout_seconds + 10,
-        ).activate_application_extension(
-            sha256,
-            admin.id,
-            resolved_configuration,
+        result = helper.activate_application_extension(
+            sha256, actor_id, resolved_configuration, _helper_lifecycle(ticket)
         )
-        if result.get("module_id") != package.module_id or result.get("version") != package.version:
+        if (
+            not isinstance(result, dict)
+            or result.get("module_id") != module_id or result.get("version") != version
+            or result.get("sha256", sha256) != sha256
+            or not isinstance(result.get("instance_id"), str)
+            or len(result["instance_id"]) != 24
+            or any(c not in "0123456789abcdef" for c in result["instance_id"])
+            or not isinstance(result.get("socket_path"), str) or not result["socket_path"]
+        ):
             raise UpdateHelperError("Application helper returned another package identity")
-        installation.instance_id = str(result["instance_id"])
-        installation.socket_path = str(result["socket_path"])
-        installation.active_version = package.version
+    except UpdateHelperError as exc:
+        _lifecycle_failed(db, ticket, actor_id)
+        raise HTTPException(409, "Application extension activation failed; recovery is required") from exc
+    with _lifecycle_write(db) as authority:
+        installation = _lock_lifecycle(db, authority, ticket)
+        package = db.get(ModulePackage, package_id, populate_existing=True)
+        if package is None or _package_state(package) != candidate:
+            authority.reject()
+        installation.instance_id = result["instance_id"]
+        installation.socket_path = result["socket_path"]
+        installation.active_version = version
         installation.status = "active"
         installation.enabled = True
         installation.activated_at = datetime.now(UTC)
         installation.health_checked_at = datetime.now(UTC)
         installation.error = None
         installation.configuration = resolved_configuration
-    except (KeyError, UpdateHelperError) as exc:
-        installation.module_package_id = previous_package_id or package.id
-        installation.status = "active" if previous_package_id else "failed"
-        installation.enabled = previous_package_id is not None
-        installation.error = str(exc)
-        db.commit()
-        raise HTTPException(409, "Application extension activation failed") from exc
-    db.add(
-        AuditLog(
-            user_id=admin.id,
-            action="APPLICATION_EXTENSION_ACTIVATED",
-            entity_type="application_extension",
-            entity_name=package.module_id,
-            changes={
-                "version": package.version,
-                "sha256": package.sha256,
-                "configuration_keys": sorted(resolved_configuration),
-            },
+        _lifecycle_audit(
+            db, actor_id, module_id, "APPLICATION_EXTENSION_ACTIVATED",
+            version=version, sha256=sha256,
+            configuration_keys=sorted(resolved_configuration),
         )
-    )
-    db.commit()
-    db.refresh(installation)
-    return installation
+        response = ApplicationInstallationResponse.model_validate(installation)
+    return response
 
 
 @router.post("/{module_id}/disable", response_model=ApplicationInstallationResponse)
@@ -407,35 +579,28 @@ def disable_application_extension(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    installation = _installation(db, module_id)
-    from backend.services.application_commands import invalidate_commands
-    previous_status = installation.status
-    installation.status = 'disabling'
-    invalidate_commands(db, installation.id)
-    db.commit()
+    actor_id = admin.id
+    guard, expected, state = _prepare_lifecycle(db, module_id)
+    helper = UpdateHelperClient(get_settings().applications.helper_socket)
+    instance_id = state[2]
+    with _lifecycle_write(db, expected_guard=guard) as authority:
+        installation = _recheck_lifecycle(db, authority, expected, state)
+        ticket = _start_lifecycle(db, authority, installation, "disabling", actor_id)
     try:
-        UpdateHelperClient(
-            get_settings().applications.helper_socket
-        ).disable_application_extension(installation.instance_id, admin.id)
+        helper.disable_application_extension(instance_id, actor_id, _helper_lifecycle(ticket))
     except UpdateHelperError as exc:
-        installation.status = previous_status
-        db.commit()
-        raise HTTPException(409, "Application extension could not be disabled") from exc
-    installation.enabled = False
-    installation.status = "disabled"
-    installation.error = None
-    db.add(
-        AuditLog(
-            user_id=admin.id,
-            action="APPLICATION_EXTENSION_DISABLED",
-            entity_type="application_extension",
-            entity_name=module_id,
-            changes={"version": installation.active_version},
+        _lifecycle_failed(db, ticket, actor_id)
+        raise HTTPException(409, "Application extension could not be disabled; recovery is required") from exc
+    with _lifecycle_write(db) as authority:
+        installation = _lock_lifecycle(db, authority, ticket)
+        installation.status = "disabled"
+        installation.error = None
+        _lifecycle_audit(
+            db, actor_id, module_id, "APPLICATION_EXTENSION_DISABLED",
+            version=installation.active_version,
         )
-    )
-    db.commit()
-    db.refresh(installation)
-    return installation
+        response = ApplicationInstallationResponse.model_validate(installation)
+    return response
 
 
 @router.delete("/{module_id}")
@@ -444,24 +609,26 @@ def uninstall_application_extension(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    installation = _installation(db, module_id)
-    version = installation.active_version
-    from backend.services.application_commands import invalidate_commands
     from backend.db.application_command import ApplicationCommandEpoch, ApplicationCommandRequest
-    previous_status = installation.status
-    installation.status = 'uninstalling'
     from backend.services.installation_peers import invalidate_application_peers
-    invalidate_application_peers(db, installation.module_id)
-    invalidate_commands(db, installation.id)
-    db.commit()
+    actor_id = admin.id
+    guard, expected, state = _prepare_lifecycle(db, module_id)
+    instance_id, version = state[2], state[3]
+    helper = UpdateHelperClient(get_settings().applications.helper_socket)
+    with _lifecycle_write(db, expected_guard=guard) as authority:
+        installation = _recheck_lifecycle(db, authority, expected, state)
+        if db.scalar(select(ApplicationJobState.id).where(
+            ApplicationJobState.application_installation_id == installation.id,
+            ApplicationJobState.lease_token.is_not(None),
+        )) is not None:
+            raise HTTPException(409, "Disable the application and resolve outstanding job claims before uninstalling")
+        invalidate_application_peers(db, module_id)
+        ticket = _start_lifecycle(db, authority, installation, "uninstalling", actor_id)
     try:
-        UpdateHelperClient(
-            get_settings().applications.helper_socket
-        ).uninstall_application_extension(installation.instance_id, admin.id)
+        helper.uninstall_application_extension(instance_id, actor_id, _helper_lifecycle(ticket))
     except UpdateHelperError as exc:
-        installation.status = previous_status
-        db.commit()
-        raise HTTPException(409, "Application extension could not be uninstalled") from exc
+        _lifecycle_failed(db, ticket, actor_id)
+        raise HTTPException(409, "Application extension could not be uninstalled; recovery is required") from exc
 
     owned_models = (
         ApplicationConnectorAttempt,
@@ -475,32 +642,75 @@ def uninstall_application_extension(
         ApplicationSecretReference,
         ApplicationSyncCheckpoint,
     )
-    for model in owned_models:
-        db.execute(
-            delete(model).where(
-                model.application_installation_id == installation.id
+    with _lifecycle_write(db) as authority:
+        installation = _lock_lifecycle(db, authority, ticket)
+        for model in owned_models:
+            db.execute(
+                delete(model).where(model.application_installation_id == installation.id)
             )
+        db.execute(delete(role_application_grants).where(role_application_grants.c.installation_id == installation.id))
+        db.execute(delete(ApplicationCommandRequest).where(ApplicationCommandRequest.installation_id == installation.id))
+        db.execute(delete(ApplicationCommandEpoch).where(ApplicationCommandEpoch.installation_id == installation.id))
+        db.delete(installation)
+        _lifecycle_audit(
+            db, actor_id, module_id, "APPLICATION_EXTENSION_UNINSTALLED",
+            version=version, data_preserved=True,
         )
-    db.execute(delete(role_application_grants).where(role_application_grants.c.installation_id == installation.id))
-    db.execute(delete(ApplicationCommandRequest).where(ApplicationCommandRequest.installation_id == installation.id))
-    db.execute(delete(ApplicationCommandEpoch).where(ApplicationCommandEpoch.installation_id == installation.id))
-    db.delete(installation)
-    db.add(
-        AuditLog(
-            user_id=admin.id,
-            action="APPLICATION_EXTENSION_UNINSTALLED",
-            entity_type="application_extension",
-            entity_name=module_id,
-            changes={"version": version, "data_preserved": True},
-        )
-    )
-    db.commit()
     return {
         "status": "uninstalled",
         "module_id": module_id,
         "version": version,
         "data_preserved": True,
     }
+
+
+@router.post("/{module_id}/lifecycle/recover", response_model=ApplicationInstallationResponse)
+def recover_application_extension(
+    module_id: str,
+    request: ApplicationLifecycleRecoveryRequest,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Explicitly reconcile uncertain runtime work to disabled, never to active."""
+    actor_id = admin.id
+    guard, expected, state = _prepare_lifecycle(db, module_id)
+    if state[4] not in {"activating", "disabling", "uninstalling", "recovering", "recovery_required"}:
+        raise HTTPException(409, "Only an interrupted or unconfirmed lifecycle can be recovered")
+    helper = UpdateHelperClient(get_settings().applications.helper_socket, timeout_seconds=45)
+    with _lifecycle_write(db, expected_guard=guard) as authority:
+        # Unlike ordinary management, recovery can supersede an exact pending
+        # ticket. The helper serialization/fresh DB check fences delayed work.
+        authority.lock_application(expected, lifecycle_status=state[4])
+        installation = db.get(ApplicationExtensionInstallation, expected.installation_id, populate_existing=True)
+        if installation is None or _lifecycle_state(installation) != state:
+            authority.reject()
+        ticket = _start_lifecycle(db, authority, installation, "recovering", actor_id)
+    context = _helper_lifecycle(ticket)
+    try:
+        result = helper.recover_application_extension(state[2], actor_id, context)
+        if (not isinstance(result, dict) or result.get("status") != "disabled"
+                or result.get("instance_id") != state[2] or result.get("lifecycle") != context
+                or result.get("quiescent") is not True):
+            raise UpdateHelperError("Application runtime recovery evidence is invalid")
+    except UpdateHelperError as exc:
+        _lifecycle_failed(db, ticket, actor_id)
+        raise HTTPException(409, "Application runtime could not be confirmed stopped; recovery is required") from exc
+    with _lifecycle_write(db) as authority:
+        installation = _lock_lifecycle(db, authority, ticket)
+        installation.status = "disabled"
+        installation.enabled = False
+        # We proved quiescence, not which package/data migration succeeded.
+        installation.active_version = None
+        installation.health_checked_at = None
+        installation.error = None
+        _lifecycle_audit(
+            db, actor_id, module_id, "APPLICATION_EXTENSION_LIFECYCLE_RECOVERED",
+            previous_status=state[4], outcome="stopped_disabled",
+            external_outcome_reviewed=request.confirmed_external_outcome_reviewed,
+            data_preserved=True,
+        )
+        response = ApplicationInstallationResponse.model_validate(installation)
+    return response
 
 
 @router.delete("/{module_id}/data")

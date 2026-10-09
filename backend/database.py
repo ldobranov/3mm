@@ -26,6 +26,9 @@ from backend.db.role import Role
 from backend.db.installation_identity import CoreInstallationIdentity
 from backend.db.installation_peer import InstallationPeerOrigin, InstallationPeerInbound, InstallationPeerOutbound, InstallationPeerNonce, InstallationPeerAudit
 from backend.db.application_command import ApplicationCommandEpoch, ApplicationCommandRequest
+from backend.db.authority import CoreAuthorityGuard
+from backend.db.application_policy_review import ApplicationPolicyReview, ApplicationPolicyReviewDecision
+from backend.db.application_authority_grant import ApplicationNativeReview, ApplicationAuthorityPlan, ApplicationAuthorityGrant, ApplicationAuthorityAction
 from backend.db.notification import Notification
 from backend.db.extension import Extension
 from backend.db.device import (

@@ -1,12 +1,13 @@
 """C8 real migrations + encrypted/portable recovery on disposable state only."""
 
 import sqlite3
+import secrets
 from contextlib import closing
 from datetime import UTC, datetime
 
 import pytest
 from alembic.script import ScriptDirectory
-from sqlalchemy import MetaData, Table, create_engine
+from sqlalchemy import MetaData, Table, create_engine, inspect
 from sqlalchemy.orm import Session
 
 import backend.database  # noqa: F401 - register complete related ORM metadata
@@ -24,7 +25,6 @@ from backend.services.device_capability_registry import (
     registered_capabilities,
 )
 from backend.services.device_runtime_features import (
-    replace_runtime_features,
     runtime_features_snapshot,
 )
 from backend.tests.test_backup_preview import DEVICE_ID, _settings
@@ -160,19 +160,36 @@ def seed(url, with_firmware):
             if "configured_capability_ids" in providers.c:
                 values["configured_capability_ids"] = ["gpio.digital.control"]
             db.execute(providers.insert().values(**values))
-            replace_runtime_features(
-                db,
-                embedded,
-                DeviceRuntimeFeaturesReportV1(
-                    device_id=embedded.device_id,
-                    runtime_name="reference",
-                    runtime_version="0.1",
-                    features=tuple(sorted(MANDATORY_NODE_FEATURES)),
-                    command_types=("capability.invoke",),
-                    expected_revision=0,
-                ),
+            features = DeviceRuntimeFeaturesReportV1(
+                device_id=embedded.device_id,
+                runtime_name="reference",
+                runtime_version="0.1",
+                features=tuple(sorted(MANDATORY_NODE_FEATURES)),
+                command_types=("capability.invoke",),
+                expected_revision=0,
             )
+            # Historical backups must not run today's guarded writer or acquire
+            # metadata/columns absent in the original release.
+            runtime_features = Table(
+                "device_runtime_features", MetaData(), autoload_with=db.connection()
+            )
+            db.execute(runtime_features.insert().values(
+                device_id=embedded.id, revision=1,
+                declaration=features.model_dump(mode="json", exclude={"expected_revision"}),
+                received_at=datetime.now(UTC),
+            ))
         db.commit()
+        # Current-schema seed represents approved devices, which now create
+        # platform metadata explicitly; historical backups retain their schema.
+        platform = (Table("device_platform_states", MetaData(), autoload_with=db.connection())
+                    if inspect(db.connection()).has_table("device_platform_states") else None)
+        if platform is not None and "control_generation" in platform.c:
+            for device_id in db.query(Device.id).all():
+                db.execute(platform.insert().values(
+                    device_id=device_id[0], authority_status="bound", lifecycle="active",
+                    revision=0, control_generation=secrets.token_hex(16),
+                ))
+            db.commit()
     engine.dispose()
 
 
@@ -231,6 +248,7 @@ def test_portable_restore_preserves_device_trust_providers_and_agent_evidence(
 
     class Runtime:
         fail_once = fail_health
+        generations = []
 
         def stop(self, _services):
             pass
@@ -242,6 +260,14 @@ def test_portable_restore_preserves_device_trust_providers_and_agent_evidence(
             _alembic(url, "upgrade", "head")
 
         def activate_and_verify(self):
+            with closing(sqlite3.connect(database)) as connection:
+                generation, revision = connection.execute(
+                    "SELECT generation, revision FROM core_authority_guard"
+                ).fetchone()
+                assert revision == 2
+                assert generation != live_generation
+                assert generation not in self.generations
+                self.generations.append(generation)
             if self.fail_once:
                 self.fail_once = False
                 raise RuntimeError("injected health failure")
@@ -286,6 +312,8 @@ def test_portable_restore_preserves_device_trust_providers_and_agent_evidence(
         )
     )
     live = snapshot(database)
+    with closing(sqlite3.connect(database)) as connection:
+        live_generation = connection.execute("SELECT generation FROM core_authority_guard").fetchone()[0]
     live_files = {
         path.name: path.read_bytes() for path in agent.iterdir() if path.is_file()
     }
@@ -341,6 +369,12 @@ def test_portable_restore_preserves_device_trust_providers_and_agent_evidence(
             assert registered_capabilities(db, embedded) == []
             assert runtime_features_snapshot(db, embedded).revision == 1
     engine.dispose()
+
+    if source_revision == HEAD:
+        # Repeating the exact same encrypted backup cannot restore its former
+        # review identity, nor the identity of the first successful restore.
+        assert restore_backup(target, **arguments).state == "completed"
+        assert len(runtime.generations) == 2
 
 
 def test_old_release_rejects_new_schema_backup_even_if_version_matches(tmp_path):

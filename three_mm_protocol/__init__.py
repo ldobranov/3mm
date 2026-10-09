@@ -99,6 +99,15 @@ from three_mm_protocol.application_extension import (
     public_http_request_schema_v1,
     public_http_response_schema_v1,
 )
+from three_mm_protocol.application_event_publication import (
+    ApplicationEventProducerV1,
+    ApplicationEventPublicationV1,
+    ApplicationEventPublicationsV1,
+    ApplicationEventPublishRequestV1,
+    ApplicationEventPublicationReceiptV1,
+    DeviceEventProducerV1,
+    PlatformEventV1,
+)
 
 __all__ = [
     "PROTOCOL_VERSION",
@@ -178,4 +187,11 @@ __all__ = [
     "ApplicationStorageV1",
     "public_http_request_schema_v1",
     "public_http_response_schema_v1",
+    "ApplicationEventProducerV1",
+    "ApplicationEventPublicationV1",
+    "ApplicationEventPublicationsV1",
+    "ApplicationEventPublishRequestV1",
+    "ApplicationEventPublicationReceiptV1",
+    "DeviceEventProducerV1",
+    "PlatformEventV1",
 ]

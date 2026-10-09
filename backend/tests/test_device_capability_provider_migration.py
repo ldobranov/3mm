@@ -131,6 +131,7 @@ def test_populated_upgrade_and_sqlite_backup_preserve_module_and_native_provider
             ),
         )
         provider.enabled = False
+        db.commit()  # Finish fixture construction before the next guarded writer.
         replace_runtime_features(
             db,
             device,

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 import backend.database  # register model metadata
 from backend.db.base import Base
+from backend.db.authority import CoreAuthorityGuard
 from backend.db.device import (
     Device,
     DeviceCredential as StoredCredential,
@@ -67,6 +68,7 @@ class MemoryTransport:
                 self.credential.credential_id,
                 self.credential.credential_secret,
             ),
+            credential_id=self.credential.credential_id,
         )
 
     def enroll(self, request):
@@ -123,7 +125,7 @@ def node(monkeypatch):
             role="admin",
             hashed_password="not-used",
         )
-        db.add(admin)
+        db.add_all([admin, CoreAuthorityGuard(singleton_id=1)])
         db.commit()
         credential = DeviceCredential(
             device_id="dev_" + "a" * 32,

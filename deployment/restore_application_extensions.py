@@ -12,6 +12,7 @@ from pathlib import Path
 import json
 
 from three_mm_runtime.application_activation import activate_application_package
+from deployment.authority_recovery import fence_recovered_authority
 
 
 DATABASE = Path("/var/lib/3mm/core/3mm.db")
@@ -36,21 +37,11 @@ def restore_application_extensions(
     key_root: Path = KEY_ROOT,
     service_ids: tuple[int, int] | None = None,
 ) -> tuple[str, ...]:
+    # Also fence direct root recovery calls, before any application can start.
+    fence_recovered_authority(database, reason="backup_restore")
     connection = sqlite3.connect(database)
     connection.row_factory = sqlite3.Row
     try:
-        # Never restore outstanding physical authority, even on the same SD card.
-        # Commit this before any service activation; normal restart does not run it.
-        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        if 'application_command_epochs' in tables:
-            connection.execute("UPDATE application_command_epochs SET generation=lower(hex(randomblob(16)))")
-        if 'device_commands' in tables:
-            connection.execute("UPDATE device_commands SET status='failed', error='Restore invalidated physical authority' WHERE command_type IN ('application.capability.invoke', 'capability.invoke') AND status IN ('queued', 'delivered')")
-        if 'application_job_states' in tables:
-            columns = {row[1] for row in connection.execute('PRAGMA table_info(application_job_states)')}
-            if 'lease_token' in columns:
-                connection.execute("UPDATE application_job_states SET lease_token=lower(hex(randomblob(16))), lease_until=NULL, last_outcome='unknown', last_error='restore_unconfirmed' WHERE lease_token IS NOT NULL OR last_outcome='running'")
-        connection.commit()
         rows = list(
             connection.execute(
                 """
@@ -112,8 +103,8 @@ def restore_application_extensions(
                 ),
             )
             restored.append(activated.module_id)
-
-        connection.commit()
+            # No SQLite write transaction across the next external activation.
+            connection.commit()
     finally:
         connection.close()
 

@@ -1,4 +1,6 @@
 from pathlib import Path
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -85,3 +87,42 @@ def test_factory_reset_recreates_all_runtime_mount_paths(
         1003,
     )
     assert modes[state_root / "application-extensions" / "platform"] == 0o750
+
+
+@pytest.mark.parametrize("fence_fails", [False, True])
+def test_reset_fences_fresh_database_before_any_activation(tmp_path, monkeypatch, fence_fails):
+    import deployment.factory_reset as reset
+
+    calls = []
+    monkeypatch.setitem(sys.modules, "pwd", SimpleNamespace(getpwnam=lambda _name: SimpleNamespace(pw_uid=1)))
+    monkeypatch.setitem(sys.modules, "grp", SimpleNamespace(getgrnam=lambda _name: SimpleNamespace(gr_gid=2)))
+    monkeypatch.setattr(reset, "_remove_persistent_children", lambda *_a: calls.append("remove-state"))
+    monkeypatch.setattr(reset, "_remove_application_keys", lambda: calls.append("remove-keys"))
+    monkeypatch.setattr(reset, "_prepare_state_directories", lambda *_a: calls.append("prepare"))
+
+    def fence(path, *, reason):
+        assert path == tmp_path / "core/3mm.db" and reason == "factory_reset"
+        calls.append("fence")
+        if fence_fails:
+            raise RuntimeError("fence failed")
+
+    def run(arguments):
+        if "stop" in arguments:
+            calls.append("stop")
+        elif any(str(value).endswith("migrate_database.py") for value in arguments):
+            calls.append("migrate")
+        elif "backend.scripts.bootstrap_admin" in arguments:
+            calls.append("bootstrap")
+        elif "three_mm_runtime.activate" in arguments:
+            calls.append("activate")
+        else:
+            calls.append("refresh-helper")
+
+    monkeypatch.setattr(reset, "fence_recovered_authority", fence)
+    if fence_fails:
+        with pytest.raises(RuntimeError, match="fence failed"):
+            reset.perform_factory_reset(release=tmp_path / "release", state_root=tmp_path, runner=SimpleNamespace(run=run))
+        assert calls == ["stop", "remove-state", "remove-keys", "prepare", "migrate", "fence"]
+    else:
+        reset.perform_factory_reset(release=tmp_path / "release", state_root=tmp_path, runner=SimpleNamespace(run=run))
+        assert calls == ["stop", "remove-state", "remove-keys", "prepare", "migrate", "fence", "bootstrap", "activate", "refresh-helper"]

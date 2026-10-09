@@ -1,10 +1,13 @@
 import sqlite3
 from pathlib import Path
+import pytest
 
 from deployment import restore_application_extensions as restore_module
+from backend.tests.test_authority_recovery import add_metadata
 
 
-def test_restore_reactivates_only_enabled_application_packages(monkeypatch, tmp_path):
+@pytest.mark.parametrize("second_enabled", [False, True])
+def test_restore_reactivates_only_enabled_application_packages(monkeypatch, tmp_path, second_enabled):
     database = tmp_path / "3mm.db"
     with sqlite3.connect(database) as connection:
         connection.executescript(
@@ -55,16 +58,25 @@ def test_restore_reactivates_only_enabled_application_packages(monkeypatch, tmp_
             """,
             ("org.3mm.disabled", "1" * 24, "disabled.sock"),
         )
+        add_metadata(connection, applications_exist=True)
+        if second_enabled:
+            connection.execute("UPDATE application_extension_installations SET status='active', enabled=1 WHERE module_id='org.3mm.disabled'")
 
     captured = []
 
     def activate(path, sha256, **kwargs):
+        # Fresh authority is independently visible and no write transaction is
+        # held while external activation runs, even for multiple packages.
+        with sqlite3.connect(database, timeout=0.1) as connection:
+            guard = connection.execute("SELECT generation, revision FROM core_authority_guard").fetchone()
+            assert guard[0] != "a" * 32 and guard[1] == 2
+            connection.execute("UPDATE core_authority_guard SET revision=revision")
         captured.append((path, sha256, kwargs))
         return type(
             "Activated",
             (),
             {
-                "module_id": "org.3mm.active",
+                "module_id": "org.3mm.active" if sha256 == "a" * 64 else "org.3mm.disabled",
                 "version": "1.0.0",
                 "instance_id": "c" * 24,
                 "socket_path": tmp_path / "apps" / ("c" * 24) / "run/service.sock",
@@ -83,7 +95,7 @@ def test_restore_reactivates_only_enabled_application_packages(monkeypatch, tmp_
         service_ids=(1200, 1201),
     )
 
-    assert restored == ("org.3mm.active",)
+    assert restored == (("org.3mm.active", "org.3mm.disabled") if second_enabled else ("org.3mm.active",))
     assert captured[0][0] == upload_root / f"{'a' * 64}.zip"
     assert captured[0][2]["service_uid"] == 1200
     assert captured[0][2]["configuration"] == {"READER_DEVICE_ID": "dev_11111111111111111111111111111111"}

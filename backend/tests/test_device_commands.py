@@ -10,7 +10,8 @@ from three_mm_protocol import AgentCommand, AgentCommandResult
 
 import backend.database  # noqa: F401
 from backend.db.base import Base
-from backend.db.device import Device, DeviceCommand
+from backend.db.authority import CoreAuthorityGuard
+from backend.db.device import Device, DeviceCommand, DevicePlatformState
 from backend.routes.device_commands import next_command
 from backend.services.device_commands import (
     command_envelope,
@@ -27,6 +28,11 @@ from backend.services.device_command_notifier import (
 DEVICE_ID = "dev_0123456789abcdef0123456789abcdef"
 
 
+def _seed_authority(db, device):
+    db.add_all([CoreAuthorityGuard(singleton_id=1), DevicePlatformState(device_id=device.id)])
+    db.commit()
+
+
 def test_command_lifecycle_and_idempotent_queueing() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -41,6 +47,7 @@ def test_command_lifecycle_and_idempotent_queueing() -> None:
         )
         db.add(device)
         db.commit()
+        _seed_authority(db, device)
 
         first = queue_command(
             db,
@@ -103,6 +110,7 @@ def test_queue_is_rollback_safe_and_only_commit_wakes_the_agent() -> None:
         )
         db.add(device)
         db.commit()
+        _seed_authority(db, device)
         revision = device_command_notifier.revision(device.id)
 
         queue_command(
@@ -174,6 +182,7 @@ def test_long_poll_delivers_a_newly_committed_command_without_heartbeat_delay(
             approved_at=now,
         ))
         setup_db.commit()
+        _seed_authority(setup_db, setup_db.scalar(select(Device)))
 
     def queue_later() -> None:
         time.sleep(0.05)
@@ -229,6 +238,7 @@ def test_unacknowledged_command_is_redelivered_after_lease() -> None:
         )
         db.add(device)
         db.commit()
+        _seed_authority(db, device)
         command = queue_command(
             db,
             device=device,
@@ -265,6 +275,7 @@ def test_expired_command_is_not_delivered() -> None:
         )
         db.add(device)
         db.commit()
+        _seed_authority(db, device)
         command = queue_command(
             db,
             device=device,

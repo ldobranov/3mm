@@ -6,6 +6,8 @@ from uuid import uuid4
 from sqlalchemy import select, update
 
 from backend.db.device import Device, DeviceEvent, DeviceRuntimeFeatures
+from backend.services.device_authority import device_authority_write
+from backend.services.authority_metadata import read_device_control
 from three_mm_protocol.node_features import DeviceRuntimeFeaturesSnapshotV1
 
 
@@ -44,10 +46,16 @@ def command_is_supported(db, device, command_type):
     return row is None or command_type in row.declaration["command_types"]
 
 
-def replace_runtime_features(db, device, report):
+def replace_runtime_features(db, device, report, *, credential_id=None):
+    """Commit declaration, control generation and audit together, never telemetry."""
+    with device_authority_write(db, device, credential_id=credential_id) as (mutation, current):
+        return _replace_runtime_features(db, current, report, mutation)
+
+
+def _replace_runtime_features(db, device, report, mutation):
+    mutation.require_session(db)
     if report.device_id != device.device_id:
         raise ValueError("Runtime feature report identity mismatch")
-    lock_device(db, device)
     row = read_runtime_features(db, device)
     revision = row.revision if row is not None else 0
     declaration = report.model_dump(mode="json", exclude={"expected_revision"})
@@ -59,6 +67,7 @@ def replace_runtime_features(db, device, report):
         return runtime_features_snapshot(db, device)
     if report.expected_revision != revision or revision >= 2_147_483_646:
         raise ValueError("Runtime feature revision changed; read protocol and retry")
+    mutation.advance_device_control(read_device_control(db, device.id))
     now = datetime.now(UTC)
     if row is None:
         row = DeviceRuntimeFeatures(device_id=device.id)

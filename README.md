@@ -8,28 +8,30 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Beta. This source prepares **v0.3.0-beta.43**, delivering
-> accepted Theme Platform V6 screens, the V7 public extension UI contract and
-> durable localhost/WSL browser-access policy for console and UI updates.
-> Target-owned Update Contract v2 and shared Frontend Bootstrap/Data Access v1 remain.
-> It includes the generic Public Web Runtime and Application
-> Extension HTTP contract while keeping the administrative SPA isolated on its
-> existing surface. The release contains no Shop or SEO-specific Core logic.
-> Existing device transport, capability authority and lifecycle remain unchanged.
-> Device protocol 1.0, Application SDK 1.3, installation peers and Node Update remain.
+> **Project status:** Test Beta. This source prepares **v0.3.0-beta.44**, a bounded
+> Milestone 20 Extension Platform v2 delivery, not completion of WP4 or Milestone 20.
+> It adds read-only package inspection, exact resource review/approval/apply,
+> reviewed-native command/connector/device-event access and signed application
+> event publication through the existing SDK transport. Existing installations
+> retain compatibility mode; no automatic grants or adoption of business extensions.
+> First adoption requires a disabled application, a recoverable backup and a local
+> code-trust record for the exact package. Reviewed-native execution is **not a sandbox**.
+> Scoped storage/platform/frontend-host contracts and neutral end-to-end WP4
+> acceptance remain open. New-artifact staging/recovery and WP5 isolation are separate.
+> Device Protocol 1.0, Application SDK 1.3, themes, peers and Node Update remain.
+> Additive database migrations preserve history and fence restored authority;
+> destructive downgrade after using the new authority is refused. Keep a verified
+> pre-upgrade backup. See the [test Beta checklist](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md).
 > Release assets become available only after the tag-driven workflow succeeds;
-> the release badge above reflects published versions. Linux + independent mock
-> embedded/application acceptance passed locally; deployed Hub/Zero/Fleet checks
-> remain pending. No real ESP firmware, automatic cloud connection or device update.
-> Real peer v2 HTTPS/Linux acceptance, Cloud Manager integration and public ingress
-> remain separate work.
+> publication is not live deployment, hardware/fiscal acceptance or remote-code trust.
 >
 > Beta.36 published the compatible v1 theme platform. Theme lifecycle, v2 asset
 > loading and portable recovery are locally checked; desktop/mobile light/dark
 > review used an isolated fixture, not a live device. Installed-package preview,
 > licensed font/Cyrillic proof and the integrated theme editor passed local V5
-> review. V6 screens and V7 shared extension UI are accepted locally; live
-> upgrade/rollback/portable recovery acceptance remains V8. Existing extensions
+> review. V6 screens and V7 shared extension UI were published in beta.43; the owner
+> accepted Milestone 17 as complete. Extended live upgrade/rollback/portable recovery
+> checks remain separate operational work. Existing extensions
 > adopt the public controls separately; their business behavior is not rewritten.
 > Updates keep the existing appearance until an administrator selects a v2 theme.
 > No concrete theme (including Graphite Mint) or business extension is bundled.
@@ -60,6 +62,12 @@ system.
 - **Extensions** — declarative runtime extensions and reviewed compiled Vue
   widgets, editors, routes and reusable components, plus the locally completed
   supervised application-service foundation for transactional extensions.
+- **Extension resource access (test Beta)** — inspect declared package requests
+  without installation, then review and explicitly approve/apply exact installed
+  resources for supported reviewed-native headless applications. Revocation and
+  lifecycle/recovery changes fence new effects without replaying uncertain work.
+  Application event publication has content-bound durable receipts; declarations
+  alone grant nothing. User roles and application resource rights remain separate.
 - **Installable themes** — compatible v1 palettes and v2 design packages with
   Core-owned layout/component variants and bounded local fonts/logos, without
   arbitrary CSS or executable code. Upload, enable, disable and delete versions in
@@ -236,17 +244,18 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 ### Updating a paired Hub and Zero
 
-From a working beta.42 full installation, select **Beta** in `/system/updates`
-and stage the published beta.43 release. Older installations can first manually
+For this test Beta, first export a pre-upgrade backup and update a disposable VM.
+From a working beta.43 full installation, select **Beta** in `/system/updates`
+and stage the published beta.44 release. Older installations can first manually
 bootstrap the current corrected full-profile release (Raspberry/WSL):
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.43
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.44
 ```
 
 An older installed updater cannot acquire the target-installer fix before it
 runs. No bridge release or reset is required. Update the Zero over SSH
-with the Node bootstrap command above and add `--tag v0.3.0-beta.43` to select
+with the Node bootstrap command above and add `--tag v0.3.0-beta.44` to select
 this exact release. Provisioned upgrades preserve identity and pairing, not
 Master reset. Real update/rollback and browser request/CPU checks remain pending;
 see [platform stability acceptance](docs/PLATFORM_STABILITY_ACCEPTANCE.md).
@@ -401,7 +410,7 @@ widgets/editors, owner checks, API payloads and unsaved drafts remain supported.
 `@3mm/ui/v1` is the separate [public extension UI contract](docs/EXTENSION_UI_V1.md),
 not a new Application SDK version. The optional UI-only reference source is in
 `modules/ui-reference`; build/upload its ZIP separately. It is not auto-installed.
-Live restart, rollback and portable-theme recovery checks remain V8.
+Extended live restart, rollback and portable-theme recovery checks remain separate.
 
 Beta.43 also preserves explicit frontend origins and custom allowed browser
 origins on console/UI upgrades, adding localhost/127.0.0.1 on ports 80/8080.
@@ -444,6 +453,8 @@ checks local browser CORS as well as readiness. See the
 | [Runtime extension v1](docs/RUNTIME_EXTENSION_V1.md) | Declarative extension contract |
 | [Compiled extension v1](docs/COMPILED_EXTENSION_V1.md) | Reviewed Vue compilation boundary |
 | [Application extension v1 plan](docs/APPLICATION_EXTENSION_V1_PLAN.md) | Planned trusted business-service and integration boundary |
+| [Extension Platform v2 plan](EXTENSION_PLATFORM_V2_CORE_PLAN.md) | Milestone 20 scope, implemented slices and remaining WP4/WP5 gates |
+| [Extension Platform test Beta](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md) | beta.44 scope, backup requirements and bounded live smoke checks |
 | [Application commands and passage](docs/APPLICATION_COMMANDS.md) | Scoped SDK commands, crash/restore safety and correlated sensor evidence |
 | [Application job scheduler](docs/APPLICATION_JOB_SCHEDULER.md) | Interval scheduling, bounded concurrency and unknown-outcome recovery |
 | [Installation identity v1](docs/INSTALLATION_IDENTITY_V1.md) | Stable identity, bounded proofs, backup and clone boundaries |

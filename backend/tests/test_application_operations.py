@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 import backend.database  # noqa: F401 - register the complete model graph
 from backend.db.base import Base
+from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
 from backend.db.user import User
 from backend.routes.application_operations import router
@@ -46,7 +47,7 @@ def test_application_secrets_are_admin_only_and_never_return_plaintext(
         file_path="unused",
         registrations=[],
     )
-    db.add_all([admin, operator, package])
+    db.add_all([admin, operator, package, CoreAuthorityGuard(singleton_id=1)])
     db.flush()
     db.add(
         ApplicationExtensionInstallation(

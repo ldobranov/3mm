@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import select
 from backend.tests.test_application_access import environment
 from backend.tests.test_module_packages import application_package, application_manifest, application_definition
-from backend.db.device import Device, DeviceCommand
+from backend.db.device import Device, DeviceCommand, DevicePlatformState
 from backend.db.module import ModulePackage, ModuleInstallation
 from backend.db.application_command import ApplicationCommandEpoch, ApplicationCommandRequest
 from backend.services.application_commands import submit_command, command_status, authorize_execution, invalidate_commands
@@ -36,6 +36,7 @@ def setup(monkeypatch, tmp_path):
     hardware = ModulePackage(module_id='org.example.hardware', version='1.0.0', manifest={}, sha256='e'*64, size_bytes=1, file_path='unused', registrations=[{'kind': 'capability', 'registration_id': c} for c in ('gpio.digital.output', 'access.passage.v1')])
     db.add(hardware); db.flush()
     for device in devices:
+        db.add(DevicePlatformState(device_id=device.id))
         db.add(ModuleInstallation(device_id=device.id, module_package_id=hardware.id, module_id=hardware.module_id, desired_version='1.0.0', status='succeeded', enabled=True))
     installation.configuration = {'OUTPUT_DEVICE_ID': devices[0].device_id, 'SENSOR_DEVICE_ID': devices[1].device_id}
     db.commit()

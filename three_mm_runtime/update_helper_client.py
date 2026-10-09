@@ -80,6 +80,7 @@ class UpdateHelperClient:
         sha256: str,
         requested_by_user_id: int,
         configuration: dict[str, object] | None = None,
+        lifecycle: dict[str, object] | None = None,
     ) -> dict[str, object]:
         return self._request(
             {
@@ -87,6 +88,7 @@ class UpdateHelperClient:
                 "sha256": sha256,
                 "requested_by_user_id": requested_by_user_id,
                 "configuration": configuration or {},
+                "lifecycle": lifecycle,
             },
             expected_status="active",
         )
@@ -95,12 +97,14 @@ class UpdateHelperClient:
         self,
         instance_id: str,
         requested_by_user_id: int,
+        lifecycle: dict[str, object] | None = None,
     ) -> None:
         self._request(
             {
                 "action": "disable_application_extension",
                 "instance_id": instance_id,
                 "requested_by_user_id": requested_by_user_id,
+                "lifecycle": lifecycle,
             },
             expected_status="disabled",
         )
@@ -109,14 +113,25 @@ class UpdateHelperClient:
         self,
         instance_id: str,
         requested_by_user_id: int,
+        lifecycle: dict[str, object] | None = None,
     ) -> None:
         self._request(
             {
                 "action": "uninstall_application_extension",
                 "instance_id": instance_id,
                 "requested_by_user_id": requested_by_user_id,
+                "lifecycle": lifecycle,
             },
             expected_status="uninstalled",
+        )
+
+    def recover_application_extension(
+        self, instance_id: str, requested_by_user_id: int, lifecycle: dict[str, object],
+    ) -> dict[str, object]:
+        return self._request(
+            {"action": "recover_application_extension", "instance_id": instance_id,
+             "requested_by_user_id": requested_by_user_id, "lifecycle": lifecycle},
+            expected_status="disabled",
         )
 
     def erase_application_extension_data(

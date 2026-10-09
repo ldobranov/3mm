@@ -1,7 +1,8 @@
 # Theme Platform v2 — V7 / Extension UI contract
 
-Дата: 2026-10-08. Статус: изпълнен и проверен локално, одобрен от собственика
-за доставка с beta.43. V6 / Display Editor е одобрен на същата дата. V8 остава отворен.
+Дата: 2026-10-08. Статус: изпълнен, одобрен и публикуван с beta.43.
+V6 / Display Editor е одобрен на същата дата. След публикацията собственикът
+прие резултата за приключен; M17 е затворен, без претенция за пълен live recovery отчет.
 
 ## Реализирано
 
@@ -73,13 +74,16 @@ Reference ZIP остава в `.runtime/ui-reference-1.0.0.zip`, не е auto-in
 и не е задължителна част от release. Изисква Core build, публикуващ този UI
 entry; стар release без него не може да зареди новите imports.
 
-## Следващ gate
+## Доставка и финално приемане
 
-След owner approval: V8 — поискани release/full suite, след тях реален
-upgrade, restart, rollback и portable backup/restore тест. Destructive reset
-изисква отделно одобрение и проверен backup. V7 не доказва live auth/lifecycle,
-реални business actions, recovery или Raspberry deployment.
+Поисканите release/full suite минаха; beta.43 е публикуван от `4415cee` с
+успешни CI/release workflows и Hub/Node пакети. На 2026-10-08 собственикът
+потвърди, че резултатът му харесва, и изрично прие работата за приключена.
+Разширените restart/rollback/portable recovery проби не са потвърдени с отделен
+live отчет; остават общи platform-stability проверки. Destructive reset изисква
+отделно одобрение и проверен backup. V7 сам по себе си не доказва live auth/lifecycle,
+реални business actions или recovery.
 
 Самата V7 реализация не извърши commit, push, release или deploy. Последвалата
 заявка за beta.43 разрешава публикацията, не обновяване или reset на устройство.
-M17 не е затворен.
+M17 е затворен по последвалото финално приемане; виж [записа V8](THEME_PLATFORM_V2_PLAN.md#v8--реално-upgraderecovery-приемане-и-доставка).

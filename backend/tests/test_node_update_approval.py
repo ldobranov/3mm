@@ -7,6 +7,8 @@ import pytest
 from sqlalchemy import select
 
 from backend.db.device import Device, DeviceCapabilityState, DeviceCommand, DeviceCredential, DeviceEvent, DeviceHeartbeat, DeviceState
+from backend.db.device import DevicePlatformState
+from backend.db.authority import CoreAuthorityGuard
 from backend.routes.device_commands import router as command_router
 from backend.services.device_pairing import credential_secret_hash
 from backend.services.device_commands import DeviceCommandError, queue_command
@@ -29,6 +31,8 @@ def setup(tmp_path, monkeypatch):
     device = db.scalar(select(Device).where(Device.device_id == DEVICE_ID))
     key = public_approval_key(settings.updates)
     db.add_all([
+        CoreAuthorityGuard(singleton_id=1),
+        DevicePlatformState(device_id=device.id),
         DeviceHeartbeat(device_id=device.id, protocol_version="1.0", payload={}, received_at=datetime.now(UTC)),
         DeviceCredential(device_id=device.id, credential_id="cred_test", secret_hash=credential_secret_hash("test-secret")),
         DeviceState(device_id=device.id, reported_at=datetime.now(UTC), reported_state={"node_update": {

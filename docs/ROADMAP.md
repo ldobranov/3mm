@@ -572,15 +572,19 @@ Acceptance criteria:
 
 ## Milestone 17 — Core Theme Platform and installable themes
 
-Status: approved/current priority on 2026-10-04; expanded on 2026-10-05.
+Status: **completed by owner acceptance on 2026-10-08**, delivered through
+`v0.3.0-beta.43` with successful CI and reproducible Hub/Node release builds.
+Originally approved on 2026-10-04 and expanded on 2026-10-05.
 T0–T3 are published in `v0.3.0-beta.36`; the local reference v1 palette does not
 constitute a full UI redesign. V0–V4 are published, with the working baseline
 and installation color customization in `v0.3.0-beta.40`. On 2026-10-07 V5
 installed-package preview/Cancel/Apply and two actual reference ZIPs with licensed
 Cyrillic font proof were checked locally on one Core build and approved by the owner.
 The integrated package-declared editor and idle-tab retention are checked locally.
-Prepared for `v0.3.0-beta.41`, subject to successful publication; deploy is separate.
-V6–V8 and full live recovery acceptance remain open.
+The integrated editor was delivered in `v0.3.0-beta.41`; approved V6 screens and
+the V7 public UI contract were delivered in `v0.3.0-beta.43`. The owner explicitly
+accepted the result as finished after publication. Extended live rollback/restore
+scenarios remain unverified platform-stability checks, not claimed test passes.
 See [V5 report](THEME_PLATFORM_V2_V5_REPORT.md). Concrete theme packages are
 excluded from Core releases. See
 [THEME_EXTENSION_PLAN.md](THEME_EXTENSION_PLAN.md) and
@@ -619,7 +623,7 @@ Acceptance criteria:
 - malicious CSS/code, undeclared fields and runtime permissions are rejected;
 - concrete designs and product names do not become Core branches.
 
-Current delivery: T0 baseline/token inventory, T1 package validation, T2
+Initial delivery: T0 baseline/token inventory, T1 package validation, T2
 admin-only catalog/lifecycle and T3 browser activation with additive migration.
 Extensions owns the shared upload and lifecycle; Settings only selects an enabled
 exact version or built-in appearance. Focused checks and isolated desktop/mobile
@@ -633,10 +637,14 @@ temporary package resources with admin-only access for inactive assets; Cancel
 cleans up without selection writes. Isolated desktop/mobile/light/dark/BG/EN
 review is not live acceptance. V5 also includes the second distinct reference ZIP,
 actual Extensions upload/enable and real local WOFF2 decoding/Cyrillic proof.
-Owner review passed; release preparation includes the integrated live editor and
-last-verified appearance retention on temporary refresh failures. Delivery remains
-subject to the beta.41 workflow. Next: V6 / DashboardList,
-one screen at a time, followed by extension UI contract and live V8 acceptance.
+Owner review passed; beta.41 delivered the integrated live editor and last-verified
+appearance retention on temporary refresh failures. beta.43 delivered the accepted
+DashboardList, Extensions, Settings and Display Editor, plus `@3mm/ui/v1` for
+reviewed extensions. See the closure/evidence record in the
+[v2 plan](THEME_PLATFORM_V2_PLAN.md#v8--реално-upgraderecovery-приемане-и-доставка).
+Owner acceptance closes this theme milestone, not all physical recovery/security
+gates; remaining operational checks use [platform stability](PLATFORM_STABILITY_ACCEPTANCE.md).
+No automatic redesign of other screens or migration of business extensions follows.
 
 ## Milestone 18 — 3mm Embedded v0.1 / Embedded Nodes Extension
 
@@ -707,6 +715,68 @@ Acceptance criteria:
 - a later website/shop can implement friendly URLs, metadata, structured data,
   discovery resources and redirects without a shop- or SEO-specific Core edit.
 
+
+## Milestone 20 — Extension Platform v2
+
+Status: **approved as the next Core milestone on 2026-10-07**. Planning only;
+implementation has not started. The first delivery is WP0, an evidence-backed
+baseline and gap map, not a new runtime or manifest rollout. See
+[EXTENSION_PLATFORM_V2_CORE_PLAN.md](../EXTENSION_PLATFORM_V2_CORE_PLAN.md).
+
+Goal: evolve the existing extension platform into a stable, secure distribution
+and lifecycle contract without creating a parallel extension/device subsystem.
+Scope covers **Standalone, Hub/Fleet, local Agent and application extensions**;
+Fleet and cloud are consumers, not prerequisites.
+
+Delivery order (the original work-package numbers remain stable):
+
+1. **WP0 — Baseline and gap map:** classify existing contracts as reuse, extend,
+   missing or deferred; record compatibility evidence, security boundaries and
+   the smallest first implementation slice.
+2. **WP1 + WP4 contracts + WP5 design:** normalize the existing extension types,
+   public SDK/API contracts, identity/ownership and runtime isolation policy.
+3. **WP2 local packages + WP5 enforcement + focused WP3 lifecycle:** prove one
+   neutral local package, explicit approval, health checks and failed-activation
+   rollback before accepting untrusted executable distribution.
+4. **WP3 — Complete lifecycle/recovery:** bounded dependency planning, durable
+   operation recovery and matching code/data rollback through existing engines.
+5. **WP2 — Registry distribution:** verified immutable artifacts and explicit
+   source/publisher policy through the same local validation/approval pipeline.
+6. **WP6 — Optional entitlements:** signed, installation-bound offline grants,
+   without mandatory cloud or unsafe interruption of in-flight operations.
+7. **Final acceptance:** clean installation plus non-destructive upgrade of an
+   existing installation, including compatibility and negative security cases.
+
+Compatibility and architecture gates:
+
+- SDK 1.3 and existing supported package/type contracts remain compatible;
+  plan “v2”, manifest, SDK, distribution envelope and Core release versions are
+  independent. A new contract version needs an explicit compatibility decision.
+- Preserve module identities, configuration, grants, device bindings and data.
+  Applications, Agent modules, declarative/compiled UI, themes and languages
+  keep their own payload/runtime contracts under shared lifecycle adapters.
+- Device capability, runtime feature, user grant, publisher trust and signature
+  validity are distinct concepts; a valid signature does not make code safe.
+- Isolation includes cross-extension files, credentials, sockets and browser
+  authority. Shared service identity or an iframe alone is not proof of safety.
+- Activation/migration/recovery reuse the existing mutation locks, job leases,
+  outboxes and quarantine semantics. Code rollback never replays an uncertain
+  payment, connector POST or physical action.
+- Management, export and recovery remain available offline. Licensing cannot
+  bypass local permissions or become a fleet-wide remote kill switch.
+
+Acceptance: existing extension types and SDK clients still work; human and AI
+packages pass the same public pipeline; an application consumes capabilities
+from Linux modules or embedded/native providers without knowing their runtime;
+dependency failures, permission escalation, isolation violations, interrupted
+activation and restore fail safely with verified recovery evidence.
+
+Dependencies and boundaries: WP0 reuses completed milestones and maps overlap
+with Milestone 15 hardening. Milestone 16 owns the separate AI Generator, using
+the public contracts and isolation accepted here; it does not build a second
+host. Milestone 17 is closed by owner acceptance; deferred Milestone 18 hardware
+does not block this generic platform work. Marketplace UI, business logic and
+real ESP firmware are outside Milestone 20.
 
 ## Immediate work queue
 
@@ -819,6 +889,10 @@ These are the first concrete tasks after approval of this plan:
 - [x] Add protected connector secrets, destination broker, scheduler/checkpoints and reconciliation states.
 - [x] Accept the complete neutral reference application before starting the separate child-center extension.
 - [ ] Add fleet rollout rings only after Hub/Node orchestration exists.
+- [ ] Deliver Milestone 20 WP0: existing-to-missing contract map, compatibility
+  baseline, threat model and the smallest proposed implementation slice.
+- [ ] Accept the WP0 findings and version/security decisions before beginning
+  Milestone 20 implementation.
 
 ## Explicitly deferred
 

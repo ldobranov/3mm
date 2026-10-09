@@ -28,6 +28,8 @@ from three_mm_protocol import CapabilityProviderReportV1, CapabilityProviderSnap
 from three_mm_protocol.capability_contracts import CONTRACT_FEATURE, registration_contract
 from backend.services.device_runtime_features import read_runtime_features
 from backend.services.device_registry import as_utc, is_device_online
+from backend.services.device_authority import device_authority_write
+from backend.services.authority_metadata import read_device_control
 from three_mm_protocol.device_capabilities import CapabilityProviderSnapshotV2
 from three_mm_protocol.capability_availability import (
     AVAILABILITY_FEATURE, CapabilityDiscoveryV3, declaration_digest,
@@ -189,7 +191,7 @@ def provider_snapshots(
 
 
 def _lock_device(db: Session, device: Device):
-    # Serialize replacements/controls for this device in SQLite and PostgreSQL.
+    # Serialize health evidence with device changes, without advancing authority.
     changed = db.execute(
         update(Device)
         .where(
@@ -227,15 +229,21 @@ def _clear_state(db: Session, device: Device, declarations):
         )
 
 
-def replace_provider(db: Session, device: Device, report: CapabilityProviderReportV1):
+def replace_provider(db: Session, device: Device, report: CapabilityProviderReportV1, *, credential_id=None):
     """Replace one provider atomically, never Core-owned enabled or module state.
 
-    Caller commits with the response or rolls back CapabilityRegistryError.
+    Own the resource/control-generation/audit commit; callers enter with only
+    read-only preflight, not pending work. Device adapters pass authenticated ID.
     Empty declarations withdraw capabilities but retain the revision tombstone.
     """
+    with device_authority_write(db, device, credential_id=credential_id) as (mutation, current):
+        return _replace_provider(db, current, report, mutation)
+
+
+def _replace_provider(db, device, report, mutation):
+    mutation.require_session(db)
     if report.device_id != device.device_id:
         raise CapabilityRegistryError("Provider report identity does not match device")
-    _lock_device(db, device)
     providers = _providers(db, device)
     provider = next(
         (
@@ -280,6 +288,7 @@ def replace_provider(db: Session, device: Device, report: CapabilityProviderRepo
     if total > 256:
         raise CapabilityRegistryError("Device advertised capability limit reached")
     _check_conflicts(db, device, providers, provider, declarations)
+    mutation.advance_device_control(read_device_control(db, device.id))
     _clear_state(
         db, device, [*(provider.capabilities if provider else []), *declarations]
     )
@@ -320,7 +329,13 @@ def replace_provider(db: Session, device: Device, report: CapabilityProviderRepo
 
 
 def configure_provider(db, device, provider_type, provider_id, request, *, actor_user_id):
-    _lock_device(db, device)
+    with device_authority_write(db, device) as (mutation, current):
+        return _configure_provider(db, current, provider_type, provider_id, request,
+                                   actor_user_id=actor_user_id, mutation=mutation)
+
+
+def _configure_provider(db, device, provider_type, provider_id, request, *, actor_user_id, mutation):
+    mutation.require_session(db)
     provider = read_provider(db, device, provider_type, provider_id)
     if provider is None or provider.configured_capability_ids is None:
         raise CapabilityRegistryError("Explicit configuration requires a v2 provider")
@@ -332,6 +347,7 @@ def configure_provider(db, device, provider_type, provider_id, request, *, actor
     if sorted(ids) == sorted(provider.configured_capability_ids):
         return provider
     _check_conflicts(db, device, _providers(db, device), provider, provider.capabilities)
+    mutation.advance_device_control(read_device_control(db, device.id))
     provider.configured_capability_ids = sorted(ids)
     provider.revision += 1
     db.add(AuditLog(user_id=actor_user_id, action="UPDATE", entity_type="device_capability_configuration",
@@ -481,7 +497,15 @@ def set_provider_enabled(
     enabled: bool,
     actor_user_id: int,
 ):
-    _lock_device(db, device)
+    with device_authority_write(db, device) as (mutation, current):
+        return _set_provider_enabled(db, current, provider_type, provider_id,
+            expected_revision=expected_revision, enabled=enabled,
+            actor_user_id=actor_user_id, mutation=mutation)
+
+
+def _set_provider_enabled(db, device, provider_type, provider_id, *, expected_revision,
+                          enabled, actor_user_id, mutation):
+    mutation.require_session(db)
     providers = _providers(db, device)
     provider = next(
         (
@@ -503,6 +527,7 @@ def set_provider_enabled(
         raise CapabilityRegistryError("Provider revision limit reached")
     if enabled:
         _check_conflicts(db, device, providers, provider, provider.capabilities)
+    mutation.advance_device_control(read_device_control(db, device.id))
     _clear_state(db, device, provider.capabilities)
     provider.enabled = enabled
     provider.revision += 1

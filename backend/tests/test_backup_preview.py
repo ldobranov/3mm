@@ -13,6 +13,7 @@ from backend.services.backups import (
 )
 from deployment.create_backup import ARCHIVE_MAGIC, RUNTIME_SERVICES, create_backup
 from deployment.restore_backup import restore_backup
+from backend.tests.test_authority_recovery import add_metadata
 from deployment.portable_backup import (
     PORTABLE_MAGIC,
     create_portable_export,
@@ -34,6 +35,9 @@ def _settings(tmp_path: Path) -> AppSettings:
             "INSERT INTO alembic_version (version_num) VALUES (?)",
             ("18d2e3f4a5b6",),
         )
+        # Fake migrate()/activation below still exercise the real recovery fence.
+        # Historical migration coverage uses separate real Alembic databases.
+        add_metadata(connection)
         connection.commit()
     finally:
         connection.close()
@@ -547,7 +551,7 @@ def test_restore_switch_failure_restarts_existing_state(
             apply_ownership=False,
         )
 
-    assert calls == ["stop", "verify"]
+    assert calls == ["stop", "stop", "verify"]
     status = read_backup_operation_status(settings.backups.storage_dir / "status.json")
     assert status.state == "rolled_back"
 

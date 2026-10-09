@@ -5,6 +5,7 @@ import backend.database  # noqa: F401 - register complete model metadata
 import pytest
 from agent.core_client import DeviceCredentialStore
 from backend.db.audit_log import AuditLog
+from backend.db.authority import CoreAuthorityGuard
 from backend.db.base import Base
 from backend.db.device import Device, DeviceCredential, DevicePairingRequest
 from backend.db.user import User
@@ -28,6 +29,7 @@ def db() -> Session:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     with Session(engine) as session:
+        session.add(CoreAuthorityGuard(singleton_id=1))
         session.add(
             User(
                 username="admin",

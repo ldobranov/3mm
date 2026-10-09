@@ -116,11 +116,15 @@ def invoke_application(
             phase=DispatchPhase.NOT_DISPATCHED, retryable=True) from exc
     if len(secret) != 32:
         raise ApplicationGatewayError("Application transport key is invalid")
+    # A durable admission callback may commit/expire ORM state. Keep the IPC
+    # target paired with this key; do not lazily reload a changed installation
+    # or hold a newly opened DB transaction across the service invocation.
+    socket_path = Path(installation.socket_path)
     if require_ready:
         # This reserved host operation reads platform storage only; it does not
         # invoke the extension job. Failure says nothing about any historical job.
         try:
-            readiness = ApplicationServiceClient(Path(installation.socket_path), secret, 2).invoke(
+            readiness = ApplicationServiceClient(socket_path, secret, 2).invoke(
                 'three_mm.platform.status', {},
                 {'audience': 'internal', 'correlation_id': 'job-readiness'})
             if not isinstance(readiness.get('revision'), str) or not readiness['revision'] or not isinstance(readiness.get('outbox'), dict):
@@ -132,7 +136,7 @@ def invoke_application(
         raise ApplicationGatewayError('Application job lifecycle changed', phase=DispatchPhase.NOT_DISPATCHED)
     try:
         result = ApplicationServiceClient(
-            Path(installation.socket_path),
+            socket_path,
             secret,
             operation.timeout_seconds,
         ).invoke(operation_id, payload, context)

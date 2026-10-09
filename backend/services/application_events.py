@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import threading
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from backend.config import ApplicationRuntimeSettings
@@ -32,7 +32,61 @@ _worker_lock = threading.Lock()
 
 def _manifest_section(package: ModulePackage, key: str) -> dict:
     value = (package.manifest or {}).get(key)
-    return value if isinstance(value, dict) else {}
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _subscription_allowed(installation, package, subscription, event, device) -> bool:
+    """Match current declarations; enforced mode ALSO needs a live sealed grant.
+
+    Compatibility keeps its existing declared subscription contract, but every
+    attempt must match today's source/binding, not only the original enqueue.
+    """
+    configuration = _manifest_section(package, "configuration_defaults")
+    configuration.update(installation.configuration or {})
+    return (
+        installation.authority_mode in {"compatibility", "enforced"}
+        and installation.enabled
+        and installation.status == "active"
+        and installation.module_package_id == package.id
+        and installation.module_id == package.module_id
+        and installation.active_version == package.version
+        and device.revoked_at is None
+        and device.approved_at is not None
+        and subscription.event_type == event.event_type
+        and subscription.capability_id == event.payload.get("capability_id")
+        and subscription.capability_id
+        in (_manifest_section(package, "capabilities").get("consumes") or [])
+        and "events.consume" in ((package.manifest or {}).get("permissions") or [])
+        and configuration.get(subscription.device_scope_config_key) == device.device_id
+    )
+
+
+def _granted_definition(subscription, admission):
+    if not admission.compatibility and not any(
+            current == subscription for current in admission.definition.event_subscriptions):
+        raise ValueError("Event subscription changed")
+
+
+def _event_granted(db, installation, subscription):
+    if installation.authority_mode == "compatibility":
+        return True
+    from backend.services.application_authority_management import effect_admission
+    try:
+        with effect_admission(db, installation.id, f"event:{subscription.subscription_id}") as admission:
+            if admission.compatibility:
+                raise ValueError("Event authority mode changed")
+            _granted_definition(subscription, admission)
+            db.commit()
+            admission()
+        return True
+    except ValueError:
+        db.rollback()
+        return False
+
+
+def _delivery_epoch_current(installation, delivery):
+    return delivery.authority_epoch == (
+        installation.authority_epoch if installation.authority_mode == "enforced" else None)
 
 
 def _cursor(
@@ -109,6 +163,15 @@ def _event_payload(event: DeviceEvent, device: Device) -> dict[str, object]:
     }
 
 
+def _deny_delivery(db, installation, subscription, delivery, event) -> None:
+    delivery.status = "dead_letter"
+    delivery.last_error = "Event subscription authority is unavailable or changed"
+    cursor = _cursor(db, installation.id, subscription.subscription_id)
+    _record_terminal_delivery(cursor, event, acknowledged=False)
+    _prune_dead_letters(db, installation.id, subscription.subscription_id, cursor)
+    db.commit()
+
+
 def _drain_subscription(
     db: Session,
     settings: ApplicationRuntimeSettings,
@@ -129,13 +192,15 @@ def _drain_subscription(
         )
     )
     for delivery in deliveries:
+        db.refresh(installation)
+        db.refresh(package)
         event = db.get(DeviceEvent, delivery.device_event_id)
         if event is None:
             delivery.status = "dead_letter"
             delivery.last_error = "Device event is unavailable"
             db.commit()
             continue
-        device = db.get(Device, event.device_id)
+        device = db.get(Device, event.device_id, populate_existing=True)
         if device is None or not passage_delivery_allowed(db, installation, event):
             delivery.status = "dead_letter"
             delivery.last_error = "Source device or passage authority is unavailable"
@@ -144,7 +209,58 @@ def _drain_subscription(
             _prune_dead_letters(db, installation.id, subscription.subscription_id, cursor)
             db.commit()
             continue
-        delivery.attempts += 1
+        if (not _subscription_allowed(installation, package, subscription, event, device)
+                or not _delivery_epoch_current(installation, delivery)
+                or not _event_granted(db, installation, subscription)):
+            _deny_delivery(db, installation, subscription, delivery, event)
+            continue
+        artifact_sha256 = package.sha256
+        authority_mode, authority_epoch = installation.authority_mode, installation.authority_epoch
+        denied = False
+        attempted = False
+
+        def before_dispatch():
+            nonlocal denied, attempted
+            from backend.services.application_authority_management import effect_admission, lock_compatibility_admission
+
+            try:
+                # Enforced: key -> guard -> application -> source device. Legacy
+                # stays row-only. Neither lease/transaction spans service IPC.
+                with effect_admission(db, installation.id, f"event:{subscription.subscription_id}") as admission, db.no_autoflush:
+                    if admission.compatibility:
+                        lock_compatibility_admission(db, installation, required=True)
+                    _granted_definition(subscription, admission)
+                    changed = db.execute(update(Device).where(
+                        Device.id == device.id,
+                        Device.device_id == device.device_id,
+                        Device.revoked_at.is_(None),
+                        Device.approved_at.is_not(None),
+                    ).values(updated_at=Device.updated_at)
+                        .execution_options(synchronize_session=False)).rowcount
+                    if changed != 1:
+                        raise ValueError("Event source is unavailable")
+                    db.refresh(installation)
+                    db.refresh(package)
+                    db.refresh(device)
+                    if (package.sha256 != artifact_sha256
+                            or installation.authority_mode != authority_mode
+                            or installation.authority_epoch != authority_epoch
+                            or not _delivery_epoch_current(installation, delivery)
+                            or not _subscription_allowed(installation, package, subscription, event, device)
+                            or not passage_delivery_allowed(db, installation, event)):
+                        raise ValueError("Event authority changed")
+                    # The attempt is durable before dispatch. Later revocation
+                    # cannot recall already admitted data/handler execution.
+                    delivery.attempts += 1
+                    db.commit()
+                    admission()
+                    attempted = True
+                return True
+            except ValueError:
+                db.rollback()
+                denied = True
+                return False
+
         try:
             invoke_application(
                 installation,
@@ -158,8 +274,16 @@ def _drain_subscription(
                     "idempotency_key": event.event_id,
                 },
                 required_audience="internal",
+                before_dispatch=before_dispatch,
             )
+            if not attempted:
+                raise ApplicationGatewayError("Event admission was not confirmed")
         except ApplicationGatewayError as exc:
+            if denied:
+                _deny_delivery(db, installation, subscription, delivery, event)
+                continue
+            if not attempted:
+                delivery.attempts += 1  # Bounded pre-dispatch gateway failures.
             delivery.last_error = str(exc)[:500]
             if delivery.attempts < MAX_DELIVERY_ATTEMPTS:
                 db.commit()
@@ -184,7 +308,10 @@ def enqueue_application_event(
     settings: ApplicationRuntimeSettings,
 ) -> None:
     """Match, persist and deliver one event without delaying Agent acceptance."""
-    device = db.get(Device, event.device_id)
+    # V1 subscriptions select managed devices, never an application's stream.
+    if event.producer_kind != "device":
+        return
+    device = db.get(Device, event.device_id, populate_existing=True)
     if device is None:
         return
     rows = db.execute(
@@ -197,27 +324,20 @@ def enqueue_application_event(
             ApplicationExtensionInstallation.enabled.is_(True),
             ApplicationExtensionInstallation.status == "active",
         )
+        .execution_options(populate_existing=True)
     ).all()
     for installation, package in rows:
+        if installation.authority_mode not in {"compatibility", "enforced"}:
+            continue
         if not passage_delivery_allowed(db, installation, event):
             continue
         try:
             definition = load_application_definition(package)
         except ApplicationGatewayError:
             continue
-        permissions = set((package.manifest or {}).get("permissions") or [])
-        capabilities = set(_manifest_section(package, "capabilities").get("consumes") or [])
-        configuration = _manifest_section(package, "configuration_defaults")
-        configuration.update(installation.configuration or {})
         for subscription in definition.event_subscriptions:
-            if (
-                subscription.event_type != event.event_type
-                or subscription.capability_id != event.payload.get("capability_id")
-                or subscription.capability_id not in capabilities
-                or "events.consume" not in permissions
-                or configuration.get(subscription.device_scope_config_key)
-                != device.device_id
-            ):
+            if (not _subscription_allowed(installation, package, subscription, event, device)
+                    or not _event_granted(db, installation, subscription)):
                 continue
             delivery = db.scalar(
                 select(ApplicationEventDelivery).where(
@@ -249,6 +369,7 @@ def enqueue_application_event(
                     application_installation_id=installation.id,
                     subscription_id=subscription.subscription_id,
                     device_event_id=event.id,
+                    authority_epoch=installation.authority_epoch if installation.authority_mode == "enforced" else None,
                     status=(
                         "dead_letter"
                         if backlog >= subscription.max_backlog
@@ -293,6 +414,7 @@ def retry_application_events(
             ApplicationExtensionInstallation.enabled.is_(True),
             ApplicationExtensionInstallation.status == "active",
         )
+        .execution_options(populate_existing=True)
     ).all()
     for installation, package in rows:
         try:

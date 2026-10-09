@@ -1,6 +1,7 @@
 from sqlalchemy import JSON, Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.sql import func
 from backend.db.base import Base
+from backend.db.authority import new_authority_generation
 
 class ModulePackage(Base):
     __tablename__ = "module_packages"
@@ -70,6 +71,10 @@ class ApplicationExtensionInstallation(Base):
     enabled = Column(Boolean, nullable=False, default=False, index=True)
     socket_path = Column(Text, nullable=False)
     configuration = Column(JSON, nullable=False, default=dict)
+    # Existing installs remain compatibility; opt-in enforced grants are Core-only.
+    authority_incarnation = Column(String(32), nullable=False, default=new_authority_generation)
+    authority_epoch = Column(String(32), nullable=False, default=new_authority_generation)
+    authority_mode = Column(String(16), nullable=False, default="compatibility", server_default="compatibility")
     error = Column(Text, nullable=True)
     activated_at = Column(DateTime(timezone=True), nullable=True)
     health_checked_at = Column(DateTime(timezone=True), nullable=True)
@@ -78,6 +83,11 @@ class ApplicationExtensionInstallation(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+    __table_args__ = (
+        CheckConstraint("length(authority_incarnation) = 32", name="ck_application_authority_incarnation"),
+        CheckConstraint("length(authority_epoch) = 32", name="ck_application_authority_epoch"),
+        CheckConstraint("authority_mode IN ('compatibility', 'review_required', 'enforced')", name="ck_application_authority_mode"),
     )
 
 
@@ -171,6 +181,9 @@ class ApplicationEventDelivery(Base):
     )
     status = Column(String(24), nullable=False, default="pending", index=True)
     attempts = Column(Integer, nullable=False, default=0)
+    # NULL = legacy delivery, never an inferred enforced grant. A retry belongs
+    # to its admitted grant epoch, not a later reapproval of the same subscription.
+    authority_epoch = Column(String(32), nullable=True)
     last_error = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(
@@ -267,6 +280,7 @@ class ApplicationConnectorBinding(Base):
         nullable=True,
     )
     enabled = Column(Boolean, nullable=False, default=True)
+    authority_revision = Column(String(32), nullable=False, default=new_authority_generation)
     last_outcome = Column(String(32), nullable=True)
     last_http_status = Column(Integer, nullable=True)
     last_checked_at = Column(DateTime(timezone=True), nullable=True)
@@ -275,6 +289,7 @@ class ApplicationConnectorBinding(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
     __table_args__ = (
+        CheckConstraint("length(authority_revision) = 32", name="ck_connector_authority_revision"),
         UniqueConstraint(
             "application_installation_id",
             "connector_id",

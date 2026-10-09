@@ -13,12 +13,14 @@ from sqlalchemy.pool import StaticPool
 import backend.database  # noqa: F401
 from backend.db.audit_log import AuditLog
 from backend.db.base import Base
+from backend.db.authority import CoreAuthorityGuard
 from backend.db.device import (
     Device,
     DeviceCapabilityProvider,
     DeviceCapabilityState,
     DeviceCredential,
     DeviceEvent,
+    DevicePlatformState,
 )
 from backend.db.module import ModuleInstallation, ModulePackage
 from backend.db.user import User
@@ -65,7 +67,7 @@ def core(monkeypatch):
         )
         for char in ("1", "2")
     ]
-    db.add_all([admin, viewer, *devices])
+    db.add_all([admin, viewer, *devices, CoreAuthorityGuard(singleton_id=1)])
     db.flush()
     credentials = [
         DeviceCredential(
@@ -75,7 +77,7 @@ def core(monkeypatch):
         )
         for i, device in enumerate(devices)
     ]
-    db.add_all(credentials)
+    db.add_all([*credentials, *(DevicePlatformState(device_id=device.id) for device in devices)])
     db.commit()
     app = FastAPI()
     for item in (router, state_router, commands_router, builder_router):

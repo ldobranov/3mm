@@ -10,7 +10,7 @@ NODE_JSON_ITEMS = 8192
 MODULE_ARCHIVE_BYTES = 10 * 1024 * 1024
 MODULE_COMMAND_BYTES = 4 * ((MODULE_ARCHIVE_BYTES + 2) // 3) + NODE_MESSAGE_BYTES
 CORE_DEVICE_AUDIT_EVENTS = frozenset(
-    {"runtime.features.updated", "capability.provider.updated", "device.lifecycle.updated", "device.authority.released", "device.authority.enrollment_prepared", "device.authority.bound"}
+    {"runtime.features.updated", "capability.provider.updated", "device.lifecycle.updated", "device.authority.released", "device.authority.enrollment_prepared", "device.authority.bound", "device.module.lifecycle.updated"}
 )
 
 

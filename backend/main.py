@@ -28,6 +28,7 @@ from backend.routes.ai_extension_builder_routes import (
     router as ai_extension_builder_router,
 )
 from backend.routes.application_extensions import router as application_extensions_router
+from backend.routes.application_authority import router as application_authority_router
 from backend.routes.application_events import router as application_events_router
 from backend.routes.application_operations import router as application_operations_router
 from backend.routes.installation_peers import router as installation_peers_router
@@ -314,6 +315,7 @@ app.include_router(device_capability_state_router)
 app.include_router(device_events_router)
 app.include_router(modules_router)
 app.include_router(application_extensions_router)
+app.include_router(application_authority_router)
 app.include_router(application_events_router)
 app.include_router(application_operations_router)
 app.include_router(installation_peers_router)
