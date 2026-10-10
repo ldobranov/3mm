@@ -224,9 +224,17 @@ def _declarations(
 
     for job in app.jobs:
         scopes[f"job:{job.job_id}"] = job.model_dump(mode="json")
-    storage = app.storage.model_dump(mode="json")
+    # Keep legacy own_storage bytes stable. Each optional storage contract is an
+    # explicit request, not an inferred grant for the other storage family.
+    storage = app.storage.model_dump(mode="json", exclude={"private_files", "relational"})
     storage["classifications"] = sorted(app.storage.classifications)
     scopes["own_storage"] = storage
+    if app.storage.private_files is not None:
+        scopes["storage:private_files"] = app.storage.private_files.model_dump(mode="json")
+        issue("storage:private_files", "private_file_grant_not_evaluated")
+    if app.storage.relational is not None:
+        scopes["storage:relational"] = app.storage.relational.model_dump(mode="json")
+        issue("storage:relational", "relational_storage_grant_not_evaluated")
     scopes["lifecycle"] = app.lifecycle.model_dump(mode="json")
     if package.compiled_ui is not None:
         # This is native, same-origin integration, not a sandboxed authority set.

@@ -96,6 +96,8 @@ from three_mm_protocol.application_extension import (
     ApplicationRouteV1,
     ApplicationServiceV1,
     ApplicationStorageV1,
+    ApplicationPrivateFilesV1,
+    ApplicationRelationalStorageV1,
     public_http_request_schema_v1,
     public_http_response_schema_v1,
 )
@@ -185,6 +187,8 @@ __all__ = [
     "ApplicationRouteV1",
     "ApplicationServiceV1",
     "ApplicationStorageV1",
+    "ApplicationPrivateFilesV1",
+    "ApplicationRelationalStorageV1",
     "public_http_request_schema_v1",
     "public_http_response_schema_v1",
     "ApplicationEventProducerV1",

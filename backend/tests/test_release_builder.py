@@ -162,6 +162,12 @@ def test_release_archives_are_reproducible_and_installer_compatible(
             assert "deployment/frontend_access.py" in names
             assert "deployment/systemd/3mm-public-web.socket" in names
             assert "three_mm_public_web/server.py" in names
+            assert "three_mm_application_sdk/files.py" in names
+            assert "three_mm_application_sdk/file_wire.py" in names
+            assert "three_mm_application_sdk/scoped_files.py" in names
+            assert "three_mm_runtime/application_file_executor.py" in names
+            assert "backend/services/application_files.py" in names
+            assert "three_mm_runtime/application_files_snapshot.py" in names
             assert "install.sh" in names
             assert json.load(archive.extractfile(CONTRACT_PATH)) == TARGET_CONTRACT
             assert all(member.mtime == EPOCH for member in archive.getmembers())
@@ -198,6 +204,22 @@ def test_builder_rejects_incomplete_target_owned_contract(tmp_path):
     files[CONTRACT_PATH] = json.dumps(contract).encode()
     write_source_archive(tmp_path / "source.tar", files)
     with pytest.raises(ReleaseBuildError, match="future.service"):
+        build(tmp_path)
+
+
+@pytest.mark.parametrize("required", [
+    "three_mm_application_sdk/files.py",
+    "three_mm_application_sdk/file_wire.py",
+    "three_mm_application_sdk/scoped_files.py",
+    "three_mm_runtime/application_file_executor.py",
+    "backend/services/application_files.py",
+    "three_mm_runtime/application_files_snapshot.py",
+])
+def test_builder_requires_the_sdk_private_file_adapter(tmp_path, required):
+    files = dict(REQUIRED_SOURCE_FILES)
+    del files[required]
+    write_source_archive(tmp_path / "source.tar", files)
+    with pytest.raises(ReleaseBuildError, match=required):
         build(tmp_path)
 
 

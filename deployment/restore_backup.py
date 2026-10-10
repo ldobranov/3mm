@@ -26,6 +26,8 @@ from backend.config import AppSettings
 from backend.services.installation_identity import validate_identity_backup
 from backend.services.backups import (
     BackupOperationStatus,
+    validate_application_backup_inventory,
+    validate_application_backup_state,
     write_backup_operation_status,
 )
 from deployment.create_backup import (
@@ -252,6 +254,7 @@ def _validate_and_stage(
         if manifest.backup_id != expected_backup_id:
             raise ValueError("Backup ID does not match the selected archive")
         _validate_compatibility(manifest)
+        validate_application_backup_inventory(manifest.entries)
 
         expected = {
             f"payload/{entry.area}/{entry.path}": entry for entry in manifest.entries
@@ -278,6 +281,7 @@ def _validate_and_stage(
             if digest.hexdigest() != entry.sha256:
                 raise ValueError("Backup payload checksum failed")
 
+    validate_application_backup_state(staging / "payload/applications")
     _validate_database(
         staging / "payload/core/3mm.db",
         manifest.compatibility.database_revision,
@@ -346,6 +350,16 @@ def _prepare_payload(
         directory_mode=0o750,
         apply_ownership=apply_ownership,
     )
+    # SDK namespaces remain private after full-state recovery. The legacy/native
+    # application directory layout and service account selection are unchanged.
+    for namespace in applications.glob("*/data/sdk-files"):
+        _chown_tree(
+            namespace,
+            application_uid,
+            application_gid,
+            directory_mode=0o700,
+            apply_ownership=apply_ownership,
+        )
     # Runtime-only platform sockets are intentionally excluded from backups,
     # but systemd requires their parent to exist before Core can start.
     platform_directory = applications / "platform"
@@ -492,6 +506,10 @@ def restore_backup(
             _decrypt_archive(archive, key_file, decrypted)
             manifest = _validate_and_stage(decrypted, staging, backup_id)
             decrypted.unlink()
+            validate_application_backup_state(
+                settings.backups.application_extensions_dir,
+                validate_files=False,
+            )
             quarantine_restored_installation_peers(staging / "payload/core/3mm.db")
             _prepare_payload(
                 staging / "payload",

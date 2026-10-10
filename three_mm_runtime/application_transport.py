@@ -121,6 +121,8 @@ class ApplicationServiceClient:
         operation_id: str,
         payload: dict[str, object],
         context: dict[str, object],
+        *,
+        relational_invocation: dict[str, object] | None = None,
     ) -> dict[str, object]:
         request_id = uuid.uuid4().hex
         request = sign_message(
@@ -131,6 +133,10 @@ class ApplicationServiceClient:
                 "operation_id": operation_id,
                 "payload": payload,
                 "context": context,
+                **(
+                    {"relational_invocation": relational_invocation}
+                    if relational_invocation is not None else {}
+                ),
             },
             self._secret,
         )

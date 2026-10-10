@@ -10,15 +10,24 @@ import socket
 import sys
 import time
 from collections import deque
+from contextlib import ExitStack, nullcontext
 from pathlib import Path
 
 from three_mm_application_sdk import (
     ApplicationContext,
+    ApplicationFileLimits,
+    ApplicationFileStorage,
+    ApplicationFileStorageError,
     ApplicationMigration,
     ApplicationPlatformClient,
+    ApplicationScopedFileStorage,
     ApplicationStorage,
     OperationContext,
 )
+from three_mm_protocol.application_extension import ApplicationPrivateFilesV1
+from three_mm_application_sdk.file_wire import MAX_SCOPED_FILE_BYTES
+from three_mm_runtime.application_file_executor import ApplicationFileExecutor
+from three_mm_runtime.application_relational_runtime import PreparedRelationalRuntime
 from three_mm_runtime.application_transport import (
     ApplicationTransportError,
     read_message,
@@ -28,11 +37,72 @@ from three_mm_runtime.application_transport import (
 )
 
 
+class _AwaitingFileAuthority(ApplicationFileStorage):
+    """Declared files never fall back to ungranted native SDK access.
+
+    This is a cooperative reviewed-native denial, not OS isolation. All public
+    file operations enter _locked before filesystem access. Requests outside the
+    supported scoped transport never acquire a native-helper fallback. The
+    trusted backup/rollback adapter remains independent.
+    """
+
+    def _locked(self, *, write: bool):
+        raise ApplicationFileStorageError(
+            "Declared private files require supported applied storage authority"
+        )
+
+
+def _private_file_adapter(storage_metadata, data_dir, platform=None):
+    request = storage_metadata.get("private_files")
+    if request is None:
+        if storage_metadata.get("relational") is not None:
+            # Opting into scoped DB authority never grants the undeclared legacy
+            # file helper. A separate exact private-files declaration is needed.
+            return _AwaitingFileAuthority(data_dir)
+        return None  # Existing undeclared SDK 1.0–1.3 behavior is unchanged.
+    try:
+        declaration = ApplicationPrivateFilesV1.model_validate(request)
+    except ValueError:
+        raise RuntimeError("Application private file metadata is invalid") from None
+    adapter = ApplicationScopedFileStorage if declaration.max_file_bytes <= MAX_SCOPED_FILE_BYTES else _AwaitingFileAuthority
+    return adapter(
+        data_dir,
+        mode=declaration.mode,
+        limits=ApplicationFileLimits(
+            declaration.max_file_bytes,
+            declaration.max_total_bytes,
+            declaration.max_files,
+        ),
+        **({"platform": platform} if adapter is ApplicationScopedFileStorage else {}),
+    )
+
+
+def _require_supported_storage(metadata, relational_runtime=None, instance_root=None):
+    storage = metadata.get("storage")
+    if not isinstance(storage, dict):
+        raise RuntimeError("Application storage metadata is invalid")
+    if storage.get("relational") is not None:
+        if type(relational_runtime) is not PreparedRelationalRuntime:
+            raise RuntimeError(
+                "Application relational storage runtime is not implemented "
+                "without a prepared lifecycle"
+            )
+        relational_runtime.require_metadata(metadata, instance_root)
+    return storage
+
+
 def _load_service(
     metadata: dict[str, object],
     instance_root: Path,
     platform_secret: bytes | None = None,
+    *,
+    relational_runtime=None,
 ):
+    storage_metadata = _require_supported_storage(
+        metadata, relational_runtime, instance_root
+    )
+    if relational_runtime is not None and os.geteuid() == 0:
+        raise RuntimeError("Relational application code must run as a non-root service")
     wheel_name = metadata.get("wheel")
     entrypoint = metadata.get("entrypoint")
     if not isinstance(wheel_name, str) or not isinstance(entrypoint, str):
@@ -43,42 +113,46 @@ def _load_service(
         raise RuntimeError("Application service wheel is unavailable")
     module_name, factory_name = entrypoint.split(":", 1)
     sys.path.insert(0, str(wheel))
-    storage_metadata = metadata.get("storage")
-    if not isinstance(storage_metadata, dict):
-        raise RuntimeError("Application storage metadata is invalid")
     migration_entrypoint = storage_metadata.get("migration_entrypoint")
     target_revision = storage_metadata.get("schema_revision")
     if not isinstance(migration_entrypoint, str) or not isinstance(target_revision, str):
         raise RuntimeError("Application storage metadata is invalid")
-    migration_module, migration_factory_name = migration_entrypoint.split(":", 1)
-    migration_factory = getattr(
-        importlib.import_module(migration_module), migration_factory_name
+    # Validate before importing migrations, opening SQLite or calling package code.
+    # A declaration is not a grant and must not select the legacy file adapter.
+    platform = (
+        ApplicationPlatformClient(Path(metadata["platform_socket"]), metadata["instance_id"], platform_secret)
+        if platform_secret is not None and isinstance(metadata.get("platform_socket"), str)
+        and isinstance(metadata.get("instance_id"), str) else None
     )
-    migrations = migration_factory()
-    if not isinstance(migrations, (list, tuple)) or not all(
-        isinstance(item, ApplicationMigration) for item in migrations
-    ):
-        raise RuntimeError("Application migration entrypoint is invalid")
-    storage = ApplicationStorage(instance_root / "data")
-    storage.migrate(migrations, target_revision)
-    factory = getattr(importlib.import_module(module_name), factory_name)
+    file_storage = _private_file_adapter(storage_metadata, instance_root / "data", platform)
+    if relational_runtime is None:
+        migration_module, migration_factory_name = migration_entrypoint.split(":", 1)
+        migration_factory = getattr(
+            importlib.import_module(migration_module), migration_factory_name
+        )
+        migrations = migration_factory()
+        if not isinstance(migrations, (list, tuple)) or not all(
+            isinstance(item, ApplicationMigration) for item in migrations
+        ):
+            raise RuntimeError("Application migration entrypoint is invalid")
+        storage = ApplicationStorage(instance_root / "data")
+        storage.migrate(migrations, target_revision)
+        factory = getattr(importlib.import_module(module_name), factory_name)
+    else:
+        # Normal restart never imports/runs migration code. Both the wheel and
+        # prepared schema were checked before any package service import.
+        from three_mm_runtime.application_relational_migrations import _migration_factory
+
+        storage = relational_runtime.storage(platform)
+        factory = _migration_factory(wheel, entrypoint)
     context = ApplicationContext(
         module_id=str(metadata["module_id"]),
         version=str(metadata["version"]),
         data_dir=instance_root / "data",
         configuration=dict(metadata.get("configuration") or {}),
         storage=storage,
-        platform=(
-            ApplicationPlatformClient(
-                Path(str(metadata["platform_socket"])),
-                str(metadata["instance_id"]),
-                platform_secret,
-            )
-            if platform_secret is not None
-            and isinstance(metadata.get("platform_socket"), str)
-            and isinstance(metadata.get("instance_id"), str)
-            else None
-        ),
+        file_storage=file_storage,
+        platform=platform,
     )
     service = factory(context)
     if not callable(getattr(service, "handle", None)):
@@ -93,11 +167,53 @@ def serve(instance: str, root: Path, key_root: Path, group_id: int | None = None
     metadata = json.loads((instance_root / "active.json").read_text(encoding="utf-8"))
     if not isinstance(metadata, dict) or metadata.get("instance_id") != instance:
         raise RuntimeError("Application service metadata is invalid")
+    relational = metadata.get("storage", {}).get("relational") is not None
+    if not relational:
+        _require_supported_storage(metadata)
     secret = (key_root / f"{instance}.key").read_bytes()
     if len(secret) != 32:
         raise RuntimeError("Application service key is invalid")
-    service = _load_service(metadata, instance_root, secret)
-    storage = ApplicationStorage(instance_root / "data")
+    with ExitStack() as executors:
+        runtime = None
+        if relational:
+            try:
+                runtime = executors.enter_context(
+                    PreparedRelationalRuntime(instance_root, metadata, secret, group_id)
+                )
+            except (ValueError, KeyError, OSError) as error:
+                raise RuntimeError(
+                    "Application relational storage runtime is not implemented "
+                    "without a verified prepared lifecycle"
+                ) from error
+        _require_supported_storage(metadata, runtime, instance_root)
+        request = metadata.get("storage", {}).get("private_files")
+        if request is not None:
+            declaration = ApplicationPrivateFilesV1.model_validate(request)
+            if declaration.max_file_bytes <= MAX_SCOPED_FILE_BYTES:
+                # Factory/handler SDK calls wait on Core; never call back into
+                # their occupied serial service.sock. Own one bounded worker.
+                executors.enter_context(ApplicationFileExecutor(instance_root, metadata, secret, group_id))
+        if runtime is None:
+            service = _load_service(metadata, instance_root, secret)
+            _serve_requests(metadata, instance_root, secret, service, group_id)
+        else:
+            service = _load_service(
+                metadata, instance_root, secret, relational_runtime=runtime
+            )
+            _serve_requests(
+                metadata, instance_root, secret, service, group_id,
+                relational_runtime=runtime,
+            )
+
+
+def _serve_requests(
+    metadata, instance_root, secret, service, group_id, *, relational_runtime=None
+):
+    _require_supported_storage(metadata, relational_runtime, instance_root)
+    storage = (
+        ApplicationStorage(instance_root / "data")
+        if relational_runtime is None else None
+    )
     socket_path = instance_root / "run" / "service.sock"
     socket_path.unlink(missing_ok=True)
     recent: deque[tuple[str, int]] = deque(maxlen=4096)
@@ -142,7 +258,10 @@ def serve(instance: str, root: Path, key_root: Path, group_id: int | None = None
                             )
                         response = {
                             "ok": True,
-                            "result": storage.status(),
+                            "result": (
+                                storage.status() if relational_runtime is None
+                                else relational_runtime.readiness()
+                            ),
                         }
                         send_message(
                             connection,
@@ -192,7 +311,23 @@ def serve(instance: str, root: Path, key_root: Path, group_id: int | None = None
                             "Application operation forbids an idempotency key"
                         )
                     context = OperationContext.from_platform(raw_context)
-                    result = service.handle(operation_id, payload, context)
+                    ticket = request.get("relational_invocation")
+                    if relational_runtime is None:
+                        if ticket is not None:
+                            raise ApplicationTransportError("Unexpected relational invocation")
+                        boundary = nullcontext()
+                    elif operation_id == metadata.get("health_operation_id"):
+                        if ticket is not None:
+                            raise ApplicationTransportError(
+                                "Health cannot acquire relational SQL authority"
+                            )
+                        boundary = nullcontext()
+                    else:
+                        boundary = relational_runtime.session.invocation(
+                            ticket, operation_id=operation_id
+                        )
+                    with boundary:
+                        result = service.handle(operation_id, payload, context)
                     if not isinstance(result, dict):
                         raise ApplicationTransportError(
                             "Application operation returned an invalid result"

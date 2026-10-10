@@ -33,6 +33,12 @@ SDK or a distribution envelope. `contracts` maps stable contract IDs to:
 - `runtime_support: reviewed_native_scoped`: accepted optional application ZIP
   declaration plus signed runtime publication; exact installed-artifact native
   review and applied local resource grants remain mandatory. Not a sandbox.
+- `declaration_support`, when present: support for an optional nested authoring
+  declaration. `runtime_authority: reviewed_native_scoped_local` indicates bounded
+  installed headless execution with exact applied grants. `core_admin_review_api`
+  exposes those exact resources in the existing admin review dialog; native code
+  trust remains `local_core_only`. Its narrower runtime bound is explicit; this is
+  not feature negotiation, general installer support or hostile-code isolation.
 
 Each schema can be extracted and used independently. URNs are identifiers, not
 network locations or publisher identities; no network resolution is needed.
@@ -105,3 +111,21 @@ marks it `reviewed_native_scoped`. The six existing models, supported SDK versio
 and catalog version are unchanged. Schema validity still grants no rights,
 publisher trust, executable isolation or automatic installation. See the
 [approved publication scope and evidence](EXTENSION_PLATFORM_V2_EVENT_PUBLICATION.md).
+
+2026-10-09 bounded file-request follow-up: application descriptor v1 optionally
+accepts `storage.private_files` contract v1 with explicit read/read-write mode and
+bounded file/count limits, requiring SDK 1.3. It selects one installation-owned
+logical namespace, never a host path. Existing undeclared SDK 1.0–1.3 packages
+remain valid; no manifest/SDK/catalog version or contract count is changed.
+JSON Schema describes its structure; coherent limits and SDK gating also require
+the authoritative validator. The initial slice marked storage authority **not
+implemented**. The subsequent bounded execution supports installed reviewed-native
+local grants through the existing manager, signed SDK gateway and target-owned
+worker. The catalog marks `reviewed_native_scoped_local` with
+`authority_administration: core_admin_review_api`, local-only native attestation
+and `runtime_max_file_bytes: 1048576`; larger requests remain unsupported, not
+silently clamped. The existing admin HTTP review/dialog now exposes exact file
+read/write resources, owner/package pins and limits with separate approve/apply.
+It refuses incomplete or foreign bindings, not silently hiding rights. Inspection
+never infers a grant, even for unchanged declarations. See
+[file execution, evidence and remaining gates](EXTENSION_PLATFORM_V2_PRIVATE_FILES.md).

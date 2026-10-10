@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from sqlalchemy.orm import object_session
+
 from backend.config import ApplicationRuntimeSettings
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
 from backend.services.module_packages import ModulePackageError, validate_module_package
@@ -134,12 +136,46 @@ def invoke_application(
                 phase=DispatchPhase.NOT_DISPATCHED, retryable=True) from exc
     if before_dispatch is not None and not before_dispatch():
         raise ApplicationGatewayError('Application job lifecycle changed', phase=DispatchPhase.NOT_DISPATCHED)
+    ticket = None
+    if definition.storage.relational is not None:
+        if (
+            context.get("audience") != required_audience
+            or "relational_invocation" in context
+        ):
+            raise ApplicationGatewayError(
+                "Relational operation context is invalid",
+                phase=DispatchPhase.NOT_DISPATCHED,
+            )
+        if operation_id != definition.service.health_operation_id:
+            from backend.services.application_relational import (
+                RelationalAuthorityError,
+                prepare_host_invocation,
+            )
+
+            db = object_session(installation)
+            if db is None:
+                raise ApplicationGatewayError(
+                    "Relational invocation requires the Core authority session",
+                    phase=DispatchPhase.NOT_DISPATCHED,
+                )
+            try:
+                ticket = prepare_host_invocation(
+                    db, installation.id, operation_id,
+                    required_audience=required_audience, transport_secret=secret,
+                )
+            except RelationalAuthorityError as exc:
+                raise ApplicationGatewayError(
+                    str(exc), phase=DispatchPhase.NOT_DISPATCHED
+                ) from exc
     try:
         result = ApplicationServiceClient(
             socket_path,
             secret,
             operation.timeout_seconds,
-        ).invoke(operation_id, payload, context)
+        ).invoke(
+            operation_id, payload, context,
+            **({"relational_invocation": ticket} if ticket is not None else {}),
+        )
     except ApplicationTransportError as exc:
         raise ApplicationGatewayError(str(exc), phase=exc.phase, retryable=exc.retryable) from exc
     validate_operation_payload(result, operation.output_schema)

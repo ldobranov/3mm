@@ -19,6 +19,7 @@ from three_mm_protocol.application_commands import ApplicationCommandBindingV1
 from three_mm_protocol.application_event_publication import ApplicationEventPublicationV1
 from three_mm_protocol.application_extension import (
     ApplicationConnectorV1, ApplicationEventSubscriptionV1, ApplicationOperationV1,
+    ApplicationPrivateFilesV1, ApplicationRelationalStorageV1, SERVICE_ENTRYPOINT_PATTERN,
 )
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN, SEMVER_PATTERN
 
@@ -38,6 +39,12 @@ SecretRef = Annotated[str, Field(pattern=r"^secret_[0-9a-f]{32}$")]
 ScopeKey = Annotated[str, Field(pattern=r"^(command|connector):[a-z][a-z0-9_]{0,95}$")]
 ResourceScopeKey = Annotated[str, Field(pattern=r"^(command|connector|event):[a-z][a-z0-9_]{0,95}$")]
 PublicationScopeKey = Annotated[str, Field(pattern=r"^(command|connector|event|publication):[a-z][a-z0-9_]{0,95}$")]
+StorageScopeKey = Annotated[str, Field(
+    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:private_files_(?:read|write))$"
+)]
+RelationalScopeKey = Annotated[str, Field(
+    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write))$"
+)]
 Revision = Annotated[int, Field(ge=1, le=MAX_INTEGER)]
 Timestamp = Annotated[int, Field(ge=0, le=MAX_INTEGER)]
 Blocker = Literal[
@@ -118,6 +125,94 @@ class AuthorityPolicy(ContextModel):
         return self
 
 
+class AuthorityPolicyV4(AuthorityPolicy):
+    # Internal policy/context v4 only. Old models retain their exact vocabulary.
+    allowed_scopes: tuple[StorageScopeKey, ...] = Field(max_length=130)
+    required_scopes: tuple[StorageScopeKey, ...] = Field(max_length=130)
+
+
+class AuthorityPolicyV5(AuthorityPolicy):
+    allowed_scopes: tuple[RelationalScopeKey, ...] = Field(max_length=132)
+    required_scopes: tuple[RelationalScopeKey, ...] = Field(max_length=132)
+
+
+class ResolvedRelationalScope(ContextModel):
+    """Core-owned SQLite request identity; no path or runtime admission permit."""
+
+    declaration: ApplicationRelationalStorageV1
+    owner: AuthorityPrincipal
+    package_artifact_sha256: Digest
+    service_artifact_sha256: Digest
+    schema_revision: str = Field(pattern=r"^[a-z0-9][a-z0-9_.-]{0,63}$")
+    migration_entrypoint: str = Field(pattern=SERVICE_ENTRYPOINT_PATTERN)
+    resource_profile: Literal["owned_sqlite_request_v1"] = "owned_sqlite_request_v1"
+    operation: Literal["read", "write"]
+
+    @model_validator(mode="after")
+    def declared_operation(self):
+        if self.operation == "write" and self.declaration.mode != "read_write":
+            raise ValueError("Read-only database cannot request write authority")
+        return self
+
+
+def _validate_relational_scopes(scopes, principal, artifact_sha256, *, complete):
+    if not scopes:
+        if complete:
+            raise ValueError("Relational context requires its complete request")
+        return
+    first = scopes[0]
+    identity = first.model_dump(exclude={"operation"})
+    operations = set()
+    for scope in scopes:
+        if (scope.owner != principal or scope.package_artifact_sha256 != artifact_sha256
+                or scope.model_dump(exclude={"operation"}) != identity
+                or scope.operation in operations):
+            raise ValueError("Relational scopes need one exact owned artifact request")
+        operations.add(scope.operation)
+    expected = {"read", "write"} if first.declaration.mode == "read_write" else {"read"}
+    # Unlike file rules, a database profile cannot be narrowed to one half of
+    # read_write. Empty evidence can deny it; nonempty rules must be complete.
+    if operations != expected:
+        raise ValueError("Relational profile requires every declared operation")
+
+
+class ResolvedPrivateFileScope(ContextModel):
+    """Exact Core-resolved request, not a path, signed permit or executable grant."""
+
+    declaration: ApplicationPrivateFilesV1
+    owner: AuthorityPrincipal
+    package_artifact_sha256: Digest
+    operation: Literal["read", "write"]
+
+    @model_validator(mode="after")
+    def declared_operation(self):
+        if self.operation == "write" and self.declaration.mode != "read_write":
+            raise ValueError("Read-only files cannot request write authority")
+        return self
+
+
+def _validate_private_file_scopes(scopes, principal, artifact_sha256, *, complete):
+    """One installation/namespace/declaration; policy may select a strict subset."""
+    if not scopes:
+        if complete:
+            raise ValueError("Storage context requires its complete file request")
+        return
+    declaration = scopes[0].declaration
+    operations = set()
+    for scope in scopes:
+        if (
+            scope.owner != principal
+            or scope.package_artifact_sha256 != artifact_sha256
+            or scope.declaration != declaration
+            or scope.operation in operations
+        ):
+            raise ValueError("Private file scopes need one exact owned artifact request")
+        operations.add(scope.operation)
+    expected = {"read", "write"} if declaration.mode == "read_write" else {"read"}
+    if complete and operations != expected:
+        raise ValueError("Storage context requires every declared file operation")
+
+
 class ResolvedCommandScope(ContextModel):
     declaration: ApplicationCommandBindingV1
     target_device_id: DeviceId
@@ -193,6 +288,8 @@ class AuthorityReviewContextV1(ContextModel):
             f"connector:{s.declaration.connector_id}" for s in self.connectors
         ] + [f"event:{s.declaration.subscription_id}" for s in getattr(self, "events", ())]
         keys += [f"publication:{s.declaration.publication_id}" for s in getattr(self, "publications", ())]
+        keys += [f"storage:private_files_{s.operation}" for s in getattr(self, "private_files", ())]
+        keys += [f"storage:relational_{s.operation}" for s in getattr(self, "relational", ())]
         if len(keys) != len(set(keys)):
             raise ValueError("Scope identities must be unique")
         if (set(self.policy.allowed_scopes) | set(self.policy.required_scopes)) - set(
@@ -227,6 +324,42 @@ class AuthorityReviewContextV3(AuthorityReviewContextV2):
     publications: tuple[ResolvedPublicationScope, ...] = Field(max_length=32)
 
 
+class AuthorityReviewContextV4(AuthorityReviewContextV3):
+    context_version: Literal[4]
+    policy: AuthorityPolicyV4
+    private_files: tuple[ResolvedPrivateFileScope, ...] = Field(min_length=1, max_length=2)
+
+    @model_validator(mode="after")
+    def exact_storage_request(self):
+        _validate_private_file_scopes(
+            self.private_files, self.principal, self.candidate.sha256, complete=True
+        )
+        return self
+
+
+class AuthorityReviewContextV5(AuthorityReviewContextV3):
+    context_version: Literal[5]
+    policy: AuthorityPolicyV5
+    private_files: tuple[ResolvedPrivateFileScope, ...] = Field(max_length=2)
+    relational: tuple[ResolvedRelationalScope, ...] = Field(min_length=1, max_length=2)
+
+    @model_validator(mode="after")
+    def exact_storage_requests(self):
+        _validate_private_file_scopes(
+            self.private_files, self.principal, self.candidate.sha256,
+            complete=bool(self.private_files),
+        )
+        _validate_relational_scopes(
+            self.relational, self.principal, self.candidate.sha256, complete=True,
+        )
+        expected = {f"storage:relational_{s.operation}" for s in self.relational}
+        for values in (self.policy.allowed_scopes, self.policy.required_scopes):
+            actual = {key for key in values if key.startswith("storage:relational_")}
+            if actual and actual != expected:
+                raise ValueError("Policy must select the whole relational profile")
+        return self
+
+
 class AuthoritySelectionV1(ContextModel):
     selection_version: Literal[1]
     # IDs only: no caller-supplied replacement scope, schema or target.
@@ -249,8 +382,18 @@ class AuthoritySelectionV3(AuthoritySelectionV1):
     scopes: tuple[PublicationScopeKey, ...] = Field(max_length=128)
 
 
+class AuthoritySelectionV4(AuthoritySelectionV1):
+    selection_version: Literal[4]
+    scopes: tuple[StorageScopeKey, ...] = Field(max_length=130)
+
+
+class AuthoritySelectionV5(AuthoritySelectionV1):
+    selection_version: Literal[5]
+    scopes: tuple[RelationalScopeKey, ...] = Field(max_length=132)
+
+
 class AuthorityContextIssue(ContextModel):
-    scope: PublicationScopeKey | None = None
+    scope: RelationalScopeKey | None = None
     reason: Literal[
         "invalid_context",
         "invalid_selection",
@@ -385,9 +528,9 @@ def _canonical_bytes(value) -> bytes:
     return encoded.encode("ascii")
 
 
-def _parse_versioned(v1, v2, value, field, v3=None):
-    # V1 records retain their exact canonical shape/fingerprint. Unknown versions
-    # and mixed V1/V2 inputs never silently downgrade or gain event authority.
+def _parse_versioned(v1, v2, value, field, v3=None, v4=None, v5=None):
+    # Existing records retain their exact canonical shape/fingerprint. Callers
+    # must explicitly opt into each new version; none silently gain authority.
     if isinstance(value, BaseModel):
         value = value.model_dump(mode="python")
     if type(value) is str:
@@ -399,6 +542,10 @@ def _parse_versioned(v1, v2, value, field, v3=None):
     models = {1: v1, 2: v2}
     if v3 is not None:
         models[3] = v3
+    if v4 is not None:
+        models[4] = v4
+    if v5 is not None:
+        models[5] = v5
     if type(version) is not int or version not in models:
         raise ValueError("Unsupported internal authority version")
     return _parse(models[version], value)
@@ -425,6 +572,10 @@ def _context_fingerprint(context, selection):
         data["events"].sort(key=lambda s: s["declaration"]["subscription_id"])
     if "publications" in data:
         data["publications"].sort(key=lambda s: s["declaration"]["publication_id"])
+    if "private_files" in data:
+        data["private_files"].sort(key=lambda s: s["operation"])
+    if "relational" in data:
+        data["relational"].sort(key=lambda s: s["operation"])
     encoded = _canonical_bytes(
         {
             "context": data,
@@ -445,13 +596,21 @@ def review_authority_context(
     """
     failures = (ValueError, TypeError, RecursionError, OverflowError)
     try:
-        context = _parse_versioned(AuthorityReviewContextV1, AuthorityReviewContextV2, context, "context_version", AuthorityReviewContextV3)
+        context = _parse_versioned(
+            AuthorityReviewContextV1, AuthorityReviewContextV2, context,
+            "context_version", AuthorityReviewContextV3, AuthorityReviewContextV4,
+            AuthorityReviewContextV5,
+        )
     except failures:
         return AuthorityContextReview(
             reviewable=False, issues=(AuthorityContextIssue(reason="invalid_context"),)
         )
     try:
-        selection = _parse_versioned(AuthoritySelectionV1, AuthoritySelectionV2, selection, "selection_version", AuthoritySelectionV3)
+        selection = _parse_versioned(
+            AuthoritySelectionV1, AuthoritySelectionV2, selection,
+            "selection_version", AuthoritySelectionV3, AuthoritySelectionV4,
+            AuthoritySelectionV5,
+        )
         if context.context_version != selection.selection_version:
             raise ValueError("Authority versions must match")
     except failures:
@@ -478,7 +637,13 @@ def review_authority_context(
         f"connector:{s.declaration.connector_id}" for s in context.connectors
     } | {f"event:{s.declaration.subscription_id}" for s in getattr(context, "events", ())}
     known |= {f"publication:{s.declaration.publication_id}" for s in getattr(context, "publications", ())}
+    known |= {f"storage:private_files_{s.operation}" for s in getattr(context, "private_files", ())}
+    relational_keys = {f"storage:relational_{s.operation}" for s in getattr(context, "relational", ())}
+    known |= relational_keys
     selected = set(selection.scopes)
+    if selected & relational_keys and selected & relational_keys != relational_keys:
+        for scope in relational_keys - selected:
+            issue("required_scope_omitted", scope)
     for scope in selected - known:
         issue("unknown_selected_scope", scope)
     for scope in (selected & known) - set(context.policy.allowed_scopes):

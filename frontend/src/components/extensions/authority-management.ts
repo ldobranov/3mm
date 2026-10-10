@@ -20,18 +20,62 @@ export interface AuthorityPlan {
   scopes: string[]
   artifact_sha256: string
   expires_in_seconds: number
-  resources: { commands: unknown[]; connectors: unknown[]; events?: unknown[]; publications?: unknown[] }
+  resources: { commands: unknown[]; connectors: unknown[]; events?: unknown[]; publications?: unknown[]; private_files?: AuthorityPrivateFileResource[] }
   isolation_proven: false
   historical?: boolean
   replayed?: boolean
 }
+export interface AuthorityPrivateFileResource {
+  declaration: {
+    file_contract_version: 1; namespace: 'private_files'; mode: 'read' | 'read_write'
+    max_file_bytes: number; max_total_bytes: number; max_files: number
+  }
+  owner: { core_installation_id: string; application_installation_id: string; incarnation: string; module_id: string }
+  package_artifact_sha256: string
+  operation: 'read' | 'write'
+}
 export type Decision = 'approve' | 'deny' | 'apply'
-const id = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{32}$/.test(value)
-const digest = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value)
+const id = (value: unknown): value is string => typeof value === 'string' && value.length === 32 && /^[0-9a-f]{32}$/.test(value)
+const digest = (value: unknown): value is string => typeof value === 'string' && value.length === 64 && /^[0-9a-f]{64}$/.test(value)
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const scopes = (value: unknown): value is string[] => Array.isArray(value) && value.length <= 128
-  && value.every(item => typeof item === 'string' && /^(command|connector|event|publication):[a-z][a-z0-9_]{0,95}$/.test(item))
+  && value.every(item => typeof item === 'string' && item.trim() === item && /^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:private_files_(?:read|write))$/.test(item))
   && new Set(value).size === value.length
+
+function privateFilesMatch(resources: Record<string, unknown>, selected: string[], status: AuthorityStatus, moduleId?: string): boolean {
+  const files = (resources.private_files || []) as unknown[]
+  const keys: string[] = []
+  let binding: string | undefined
+  const exact = (value: Record<string, unknown>, fields: string[]) => Object.keys(value).length === fields.length && fields.every(key => key in value)
+  const identity = (value: unknown) => typeof value === 'string' && value.trim() === value && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/.test(value)
+  const bounded = (value: unknown, maximum: number) => Number.isSafeInteger(value) && Number(value) >= 1 && Number(value) <= maximum
+  for (const item of files) {
+    if (!object(item) || !exact(item, ['declaration', 'owner', 'package_artifact_sha256', 'operation'])
+      || !object(item.declaration) || !object(item.owner)) return false
+    const declaration = item.declaration, owner = item.owner
+    if (!exact(declaration, ['file_contract_version', 'namespace', 'mode', 'max_file_bytes', 'max_total_bytes', 'max_files'])
+      || declaration.file_contract_version !== 1 || declaration.namespace !== 'private_files'
+      || !['read', 'read_write'].includes(String(declaration.mode))
+      || !bounded(declaration.max_file_bytes, 1048576) || !bounded(declaration.max_total_bytes, 67108864)
+      || !bounded(declaration.max_files, 1024) || Number(declaration.max_file_bytes) > Number(declaration.max_total_bytes)
+      || !exact(owner, ['core_installation_id', 'application_installation_id', 'incarnation', 'module_id'])
+      || !identity(owner.core_installation_id) || !identity(owner.incarnation)
+      || owner.application_installation_id !== String(status.installation_id)
+      || typeof owner.module_id !== 'string' || owner.module_id.trim() !== owner.module_id || owner.module_id.length > 160 || !/^[a-z0-9]+(?:[.-][a-z0-9]+)+$/.test(owner.module_id)
+      || moduleId !== undefined && owner.module_id !== moduleId
+      || item.package_artifact_sha256 !== status.artifact_sha256
+      || !['read', 'write'].includes(String(item.operation)) || item.operation === 'write' && declaration.mode !== 'read_write') return false
+    const currentBinding = JSON.stringify([owner.core_installation_id, owner.application_installation_id, owner.incarnation, owner.module_id,
+      declaration.file_contract_version, declaration.namespace, declaration.mode, declaration.max_file_bytes, declaration.max_total_bytes, declaration.max_files])
+    if (binding !== undefined && binding !== currentBinding) return false
+    binding = currentBinding
+    keys.push(`storage:private_files_${item.operation}`)
+  }
+  const expected = selected.filter(key => key.startsWith('storage:'))
+  return new Set(keys).size === keys.length && keys.length === expected.length && keys.every(key => expected.includes(key))
+    && (!files.length || keys.includes('storage:private_files_read')
+      && ((files[0] as AuthorityPrivateFileResource).declaration.mode === 'read' ? keys.length === 1 : keys.length === 2))
+}
 
 function resourceScopesMatch(resources: Record<string, unknown>, selected: string[]): boolean {
   const keys: string[] = []
@@ -82,7 +126,7 @@ export function readAuthorityStatus(value: unknown): AuthorityStatus {
   return value as unknown as AuthorityStatus
 }
 
-export function readAuthorityPlan(value: unknown, status: AuthorityStatus): AuthorityPlan {
+export function readAuthorityPlan(value: unknown, status: AuthorityStatus, moduleId?: string): AuthorityPlan {
   if (!object(value) || !id(value.plan_id) || !id(value.revision) || !digest(value.fingerprint)
     || value.state !== 'review_required' || value.artifact_sha256 !== status.artifact_sha256
     || value.isolation_proven !== false || !scopes(value.scopes)
@@ -92,9 +136,12 @@ export function readAuthorityPlan(value: unknown, status: AuthorityStatus): Auth
     || !Array.isArray(value.resources.connectors) || value.resources.connectors.length > 32
     || !(value.resources.events === undefined || Array.isArray(value.resources.events) && value.resources.events.length <= 32)
     || !(value.resources.publications === undefined || Array.isArray(value.resources.publications) && value.resources.publications.length <= 32)
+    || !(value.resources.private_files === undefined || Array.isArray(value.resources.private_files) && value.resources.private_files.length <= 2)
+    || Object.keys(value.resources).some(key => !['commands', 'connectors', 'events', 'publications', 'private_files'].includes(key))
     || value.resources.commands.length + value.resources.connectors.length + ((value.resources.events as unknown[] | undefined)?.length || 0)
-      + ((value.resources.publications as unknown[] | undefined)?.length || 0) !== value.scopes.length
+      + ((value.resources.publications as unknown[] | undefined)?.length || 0) + ((value.resources.private_files as unknown[] | undefined)?.length || 0) !== value.scopes.length
     || !resourceScopesMatch(value.resources, value.scopes)
+    || !privateFilesMatch(value.resources, value.scopes, status, moduleId)
     || value.historical === true || value.replayed === true) {
     throw new Error('Unsupported authority review')
   }

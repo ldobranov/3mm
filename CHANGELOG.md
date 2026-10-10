@@ -6,6 +6,79 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.45] - 2026-10-10
+
+### Added
+
+- Exact private-file declarations and separate read/write resource review through
+  the existing administrator approval/apply/revoke flow. Signed SDK operations
+  use the owned namespace, bounded paths/bytes and durable content-bound receipts;
+  declarations and filesystem availability alone do not grant access.
+- Additive SDK 1.3 relational-storage descriptors, exact grants, bounded own-SQLite
+  transactions, signed Core admission and atomic business/outbox/receipt commit.
+  Completion follows SQL unlock; metadata-only status can reconcile existing
+  history without replaying an uncertain transaction.
+- Explicit one-use local-administrator preparation and pinned business migrations
+  in a separate actual non-root worker. Protected lifecycle publication retains
+  verified database/files preimages and fails closed on schema, key, grant or
+  worker-stop uncertainty; package factory code never runs in the root helper.
+- Explicit candidate recovery and read-only confirmation of fully published
+  recovery with a lost finish acknowledgement. Fresh human authority/epoch and
+  verified evidence are required; partial recovery remains blocked, not retried.
+- Normal application host/scoped SDK execution for an already verified prepared
+  database. Core supplies the enclosing invocation ticket; factory/health have no
+  implicit SQL grant, readiness does not inspect business/outbox data, and restart
+  neither imports nor executes business migrations.
+
+### Fixed
+
+- File/database activation snapshots retain interrupted candidate evidence and
+  verify preimages before rollback. Backup/restore refuses pending storage recovery
+  rather than deleting markers or treating restored grants as fresh authority.
+- Migration imports must originate in the exact pinned wheel, including parent
+  modules; a preloaded Core/foreign module cannot replace the migration entrypoint.
+  Regression tests witness a committed forward step before a later failure and
+  verify restored schema, business/outbox data and private files independently.
+- Release deployment validation requires the new scoped-file backend/SDK/runtime
+  files, with negative missing-file artifact checks.
+- Legacy dispatch/peer-host fixtures explicitly include the existing storage
+  contract; malformed metadata is still refused in production. Route lifespan
+  tests use disposable application roots/Unix sockets instead of a checkout path
+  that may be mounted from Windows without Unix-socket support.
+
+### Test Beta boundary
+
+- WP4 and Milestone 20 remain open. Fresh namespace/key setup, prepared-database
+  upgrade, general relational restore/rollback/rekey and partial interrupted
+  recovery still require implementation. Relational generic activation/native/
+  source gates remain closed; an explicitly prepared runtime test fixture is not
+  public fresh-install or upgrade acceptance.
+- Scoped platform/frontend-host adapters and neutral Standalone/Hub acceptance
+  are separate remaining WP4 gates. Reviewed-native execution is not a malicious-
+  code sandbox; WP5 isolation and new-artifact staging remain separate work.
+- Existing SDK 1.0–1.3 applications retain compatibility mode with no automatic
+  adoption or grants. SDK 1.3, Device Protocol 1.0, themes, peers and Node Update
+  remain compatible. No concrete theme/business extension, local data or live
+  deployment is included. Keep a verified pre-upgrade backup and test on a
+  disposable VM using the updated Beta acceptance checklist.
+
+### Local verification
+
+- The complete isolated Linux/Python 3.14.4 suite passed 2,970 tests, with three
+  expected non-POSIX/opt-in HTTPS skips and five passing subtests. Actual root/
+  non-root storage, migration, normal-host and recovery cases ran, not just the
+  previous 226-test targeted selection. Deployment and SDK suites passed another
+  282 tests in a separate complete run.
+- All 299 frontend tests, type-check and production build passed. An initial
+  parallel import-time timeout disappeared in the complete one-worker rerun;
+  assertions and application/test deadlines were unchanged.
+- The first complete Python run exposed the legacy-fixture and Windows-mount
+  socket issues above. The full suite was repeated successfully after test-only
+  corrections; production storage guards were not weakened.
+- GitHub repeats the canonical Python 3.13/Node 22 suites and deterministic full-
+  profile/ARMv6 Node builds before publication. Automated checks do not substitute
+  for disposable-VM upgrade/rollback acceptance or close WP4.
+
 ## [0.3.0-beta.44] - 2026-10-09
 
 ### Added
@@ -1324,7 +1397,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.44...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.45...HEAD
+[0.3.0-beta.45]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.45
 [0.3.0-beta.44]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.44
 [0.3.0-beta.43]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.43
 [0.3.0-beta.42]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.42

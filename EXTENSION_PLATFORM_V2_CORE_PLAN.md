@@ -97,6 +97,7 @@ implementation. This plan is not an already supported wire specification.
 | Application SDK | Keep SDK 1.3 and supported earlier versions; no automatic SDK 2 bump |
 | Device protocol | Reuse accepted C0–C14 contracts and provider-neutral registry |
 | Distribution envelope / registry | Independently versioned; exact new schema selected in WP1/WP2 |
+| Developer Kit | Independently versioned, reproducible bundle with exact compatible Core/SDK/contract references; not an SDK-major bump |
 
 “Extension Platform v2” is the milestone name. A new object containing
 `schema_version: 2` is not automatically compatible with Module Manifest v2.
@@ -403,6 +404,12 @@ and neither fixture success nor reviewed-native execution proves WP5 isolation.
 
 WP4 closure checklist (remaining work, not additional numbered work packages):
 
+Source audit (2026-10-09): the own SQLite SDK and public UI presentation primitives
+already exist; their presence is not scoped relational/platform/frontend authority.
+The exact residual contracts, current denial boundaries and acceptance sequence
+are recorded in the [WP4 closure audit](docs/EXTENSION_PLATFORM_V2_WP4_CLOSURE_AUDIT.md).
+This audit changes no runtime permissions and does not close WP4.
+
 1. Admin management UI: exact-resource review, approve/apply/revoke and actionable
    stale/recovery states: implemented/tested locally for the bounded headless
    command/connector profile, visually accepted by the owner on **2026-10-09**.
@@ -434,6 +441,83 @@ also displays exact publication resources, with frontend checks and fixture-base
 browser review. Cross-application consumer grants and WP5 isolation are not inferred.
 See [approved scope, runtime evidence and remaining gates](docs/EXTENSION_PLATFORM_V2_EVENT_PUBLICATION.md).
 WP4 remains open for the explicit checklist above; no live rollout is claimed.
+
+Private-file SDK follow-up (2026-10-09, local): the existing host-owned data root
+now has an additive `context.files` helper with logical IDs, read/read-write modes,
+bounded content/count, digest CAS, pinned POSIX directory access, nonblocking
+process locks and synced atomic replacement. SDK 1.3, SQLite/outbox and broker
+denial of unsupported authority families remain unchanged. This is a cooperative
+reviewed-native adapter, not authenticated storage approval, OS disk quota or WP5
+isolation. A subsequent bounded activation slice now snapshots SQLite plus SDK
+files, restores both before restarting on ordinary failure and retains stopped/
+review-required evidence when rollback is uncertain. A further local slice verifies
+SDK files through existing encrypted Standalone backup and downloaded portable
+recovery with a fresh key, preserves private modes, rejects unsafe imported/source
+namespaces and blocks backup/restore from discarding pending activation evidence.
+Service/health/migration boundaries in these fixtures are doubles; no Hub/Fleet
+full-state recovery is added. Explicit interrupted recovery, live acceptance and
+approved storage policy remain gates; arbitrary native files and external effects
+are not part of activation rollback. WP4 is still open.
+See [private-file scope and limits](docs/EXTENSION_PLATFORM_V2_PRIVATE_FILES.md).
+
+Private-file declaration slice (2026-10-09, local): optional descriptor-v1
+`storage.private_files` now declares one own logical namespace, explicit mode and
+strict SDK-compatible file/count bounds with its own contract version. SDK remains
+1.3; existing undeclared packages are unchanged. The existing inspection diff
+shows exact requests, and the source/authority manager refuses storage adoption
+even through another selected scope or old native review. Catalog metadata says
+runtime authority is not implemented. This is contract/negative-authority work,
+not an effective storage grant or runtime quota. Guarded signed runtime admission
+and per-operation checks must precede removal of this blocker. No WP4 closure,
+live rollout or new database migration is claimed.
+
+Host file-policy follow-up (2026-10-09, local): activation retains the validated
+file request in protected runtime metadata; the host validates it before package
+migration/import and binds an own-root SDK adapter. Declared get/list/put/delete
+all refuse unsupported authority before file I/O, instead of silently acquiring
+the legacy helper. Old undeclared SDK 1.0–1.3 applications remain compatible;
+failed activation restores the exact previous metadata. No Core write permission,
+new storage root, applied file grant or isolation is introduced. The remaining
+positive executor must use the target-owned runtime boundary and serialize
+current signed authority/revocation against file operations.
+
+Exact file-policy inputs (2026-10-09, local): internal version 4 extends the same
+pure policy/context evaluator with separate own-file read and write scopes. Whole
+Core/application/incarnation identity, exact package digest, requested mode and
+strict limits participate in policy identity and review fingerprint. Complete
+requests cannot hide operations; policy subsets do not imply additional rights.
+Old internal versions 1–3 retain their shape and behavior. This implements review
+contracts only: synthetic evidence is not authenticated authority. Production
+storage adoption, the host file denial and catalog's unsupported status remain
+unchanged until sealed current-source approval/admission and target-owned execution
+are wired and tested. No new Core file writer, writable mount, database model,
+SDK version or live grant is introduced; WP4 remains open.
+
+Bounded file execution (2026-10-09, local): real installed sources and the existing
+sealed native-review/approve/apply cycle now bind internal version-4 own-file read/
+write grants. The signed SDK gateway commits admission before target-owned IPC;
+Core gains no application-data write access. A separate bounded worker in the same
+application host avoids serial service-socket deadlock, pins its current nonce/
+artifact/declaration and rejects expired/reused permits. Mutations reuse the sealed
+authority action journal for metadata-only admissions/completions; uncertain or
+historical requests never redispatch, including after worker restart or revocation.
+Read-only requests never grant writes; requests above 1 MiB/file remain unsupported
+rather than clamped. The catalog marks bounded local reviewed-native authority,
+not sandbox support. Exact current-source, signed transport, real POSIX filesystem,
+lost response, key/recovery drift and revocation ordering are tested locally.
+The existing admin HTTP review/dialog now accepts the two exact private-file
+scope IDs and presents separate read/write cards, owner/package bindings and exact
+limits. It refuses incomplete, mixed, foreign or unsupported resources; local
+native attestation and distinct approve/apply/adoption gates remain mandatory.
+This is neither a file browser nor native-trust creation through the UI.
+Focused HTTP/execution/authority/schema checks passed (138 Linux tests), as did
+49 frontend tests, type checking and the production build. The isolated dialog
+was reviewed in light/dark, EN/BG and mobile with no real permission mutations;
+owner visual acceptance is still separate from automated/local verification.
+Relational policy, remaining platform/frontend contracts and
+neutral Standalone/Hub live acceptance still keep WP4 open. No SDK-major change,
+new database model, live grant, deployment or release is included. See the same
+[private-file delivery report](docs/EXTENSION_PLATFORM_V2_PRIVATE_FILES.md).
 
 New-artifact staging/adoption recovery belongs to the agreed WP3 lifecycle work;
 malicious-code/backend/frontend isolation belongs to WP5. Neither is claimed by
@@ -609,6 +693,50 @@ overriding authentication.
 
 ## Delivery order and gates
 
+### Final deliverable — Developer Kit v1
+
+Owner-approved on **2026-10-09**; planned, not yet packaged or accepted. This is
+the final developer-facing result of M20, not a seventh implementation work
+package, new runtime, second capability registry or AI-specific execution path.
+Build its contents incrementally from accepted WP1/WP4 contracts and WP2/WP3/WP5
+evidence; assemble and verify the versioned bundle at final acceptance.
+
+Required contents:
+
+- Public SDK/API contracts, generated JSON schemas and a compatibility/support
+  matrix derived from authoritative models. Pin Core, SDK, Device Protocol,
+  descriptor and UI-host versions separately; retain SDK 1.3 compatibility.
+- Provider-neutral capability contracts/catalog with arguments/results, events,
+  required grants, feature requirements and bounds. Reuse the common registry;
+  a known capability is not necessarily present or authorized on an installation.
+- Public Vue UI components/design tokens and the accepted frontend host/bridge
+  API, with light/dark, i18n and responsive examples. No private Core stores,
+  administrator tokens or new frontend framework in developer-facing examples.
+- Small neutral reference extensions and starter templates for supported
+  applications, Agent modules, declarative UI and themes. Preserve type-specific
+  packaging/runtime constraints; include executable examples only for proven,
+  explicitly supported trust classes, not an invented future sandbox.
+- A bounded offline/local test harness using disposable data, mock devices and
+  connectors, the normal validators/packager and positive/negative rights tests.
+  Cover lifecycle/recovery fixtures without real GPIO, payments or fiscal effects.
+- A human-readable quickstart plus machine-readable contract index, examples and
+  AI authoring instructions. Mark each contract supported, experimental,
+  declaration-only or unsupported with required versions and remaining limits.
+  Human developers and AI follow identical review, testing and installation rules.
+
+The bundle has its own immutable version/digest and reproducible build/validation
+instructions, with no secrets, local generated state or mandatory cloud service.
+Do not copy schema definitions into templates as a competing source of truth.
+Catalog/schema/template consistency is tested against the exact supported release.
+
+Acceptance: from a clean checkout/environment, a developer or AI can author a
+neutral extension using only the Kit, validate/test/package it, then install and
+review it through the ordinary supported lifecycle without patching Core. Prove
+this in Standalone and Hub with Linux or mock embedded capability providers;
+public/kiosk/operator/admin and denied/foreign/revoked access remain covered.
+Mock/harness success does not replace live recovery, isolation or release gates.
+Kit v1 is not accepted merely because documents/templates exist.
+
 | Delivery | Work packages | Result |
 | --- | --- | --- |
 | D0 | WP0 | Accepted reuse/gap map, baseline and threat model; no runtime changes |
@@ -617,7 +745,7 @@ overriding authentication.
 | D3 | WP3 full lifecycle/recovery | Dependency plans, journal/restart/portable recovery and cross-type acceptance |
 | D4 | WP2 registry | Same lifecycle from approved private/local test registry; no marketplace |
 | D5 | WP6 | Optional signed offline entitlement with safe denial/recovery |
-| D6 | Final acceptance | Clean install and existing-install upgrade without product-specific branches |
+| D6 | Final acceptance + Developer Kit v1 | Clean install/upgrade plus reproducible developer/AI author-to-install proof without product-specific Core branches |
 
 WP5 is a prerequisite throughout, not postponed until after untrusted distribution.
 Each delivery has a small demonstration, focused checks, explicit gaps and separate
@@ -645,6 +773,9 @@ Release/deploy continues through the normal explicitly requested workflow.
   export, recovery and physical safety.
 - Human/generator reference artifacts share public contracts and acceptance,
   without product-specific Core branches or AI exemptions.
+- Versioned Developer Kit v1 ships authoritative contracts/catalog, public UI
+  components, supported reference packages/templates and bounded harness, with
+  the clean author-to-install acceptance above and explicit unsupported features.
 
 Automated/local success is not live recovery or production-security acceptance.
 Record source/version, evidence, physical/VM scope and outstanding limits.

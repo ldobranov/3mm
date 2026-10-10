@@ -1,12 +1,15 @@
-# Extension Platform v2 — beta.44 test acceptance
+# Extension Platform v2 — beta.45 test acceptance
 
 Status: test-release checklist, not completed live acceptance or WP4 closure.
 
 ## Scope and compatibility
 
 This release delivers the implemented M20 package-inspection and installed-only
-resource-authority slices, common lifecycle/recovery fences and application event
-publication. It does not finish WP4, new-artifact staging/adoption, WP5 isolation,
+resource-authority slices, common lifecycle/recovery fences, application event
+publication and scoped private-file execution. It also includes the bounded
+relational-storage foundation: exact grants, signed admission/atomic receipts,
+explicit protected preparation/recovery and normal SDK execution for a verified
+prepared database. It does not finish WP4, new-artifact staging/adoption, WP5 isolation,
 remote distribution or commercial entitlement work.
 
 Existing applications remain in compatibility mode. Updating Core does not grant
@@ -25,7 +28,7 @@ separate uploads. Publication does not update the VM, Hub or Zero.
    off-device. Record the installed release and local Agent device ID. Snapshot
    the VM as an independent fallback; do not keep two active clones with one identity.
 2. After all seven release assets are published, select Beta in System Updates,
-   stage `v0.3.0-beta.44`, review preflight and explicitly install that version.
+   stage `v0.3.0-beta.45`, review preflight and explicitly install that version.
 3. Require a durable successful update result. Check the active release and Core,
    Agent, Web and update-helper service health independently. Core/Agent readiness
    must pass and the Agent identity must remain unchanged.
@@ -68,6 +71,26 @@ guides; never fabricate native trust or grants directly in the database.
   disable; a new event must not be admitted through that history exception.
 - Device-event subscriptions remain device-only; publication does not implicitly
   authorize another application's consumption. Do not exercise turnstiles/payments.
+- For a supported private-file fixture, review read and write separately, then
+  verify exact owned paths, declared bounds and current grants through the SDK.
+  Foreign/undeclared paths, revoked rights and changed content under one operation
+  ID must fail. Lost acknowledgements must use the existing receipt, not replay.
+
+## Relational storage boundary — not a public installation recipe
+
+The automated root/non-root disposable tests exercise a protected, explicitly
+prepared database, the normal host and signed SDK transport. They cover atomic
+business/outbox/receipt commit, read-only/revoked access, metadata-only factory/
+health, restart without migrations and uncertain completion without replay.
+These tests do not prove the public first-install/upgrade coordinator or a
+complete relational portable restore/key lifecycle.
+
+Generic activation/native/source guards remain closed for relational packages.
+Do not remove guards, edit grants/database rows or manually re-enable a business
+application to reproduce an internal fixture. Fresh namespace/key setup,
+prepared-database upgrade and partial interrupted-recovery resolution still
+require implementation and separate acceptance. Preserve all pending recovery
+evidence; a blocked backup is not permission to delete its markers.
 
 The broader neutral Standalone/Hub, human/kiosk and recovery acceptance remains
 an explicit WP4 gate; this checklist does not mark it complete.
@@ -92,5 +115,8 @@ authority rows or force-dropping the new schema. Preserve failed recovery eviden
 - [Local review-key administration](EXTENSION_PLATFORM_V2_REVIEW_KEYS.md)
 - [Authority apply](EXTENSION_PLATFORM_V2_AUTHORITY_APPLY.md)
 - [Application event publication](EXTENSION_PLATFORM_V2_EVENT_PUBLICATION.md)
+- [Private files](EXTENSION_PLATFORM_V2_PRIVATE_FILES.md)
+- [Relational storage contract and remaining gates](EXTENSION_PLATFORM_V2_RELATIONAL_STORAGE_CONTRACT.md)
+- [WP4 closure audit](EXTENSION_PLATFORM_V2_WP4_CLOSURE_AUDIT.md)
 - [Recovery fences](EXTENSION_PLATFORM_V2_RECOVERY_FENCES.md)
 - [Release procedure](RELEASING.md)

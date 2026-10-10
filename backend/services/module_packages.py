@@ -10,6 +10,7 @@ from three_mm_protocol.application_event_publication import (
     ApplicationEventPublicationsV1, parse_application_publications,
     validate_application_publications,
 )
+from three_mm_protocol.application_extension import parse_application_extension
 from three_mm_protocol import (
     ApplicationExtensionV1,
     CompiledUiExtensionV1,
@@ -231,10 +232,10 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
                 "application extension registrations belong in application-extension.json"
             )
         try:
-            application_extension = ApplicationExtensionV1.model_validate_json(
+            application_extension = parse_application_extension(
                 archive.read("application-extension.json")
             )
-        except (KeyError, ValidationError) as exc:
+        except (KeyError, ValueError, UnicodeError, RecursionError) as exc:
             raise ModulePackageError(
                 f"invalid application-extension.json: {exc}"
             ) from exc

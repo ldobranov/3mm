@@ -8,7 +8,6 @@ import json
 import os
 import secrets
 import shutil
-import sqlite3
 import subprocess
 import time
 import zipfile
@@ -24,6 +23,15 @@ from backend.services.application_configuration import (
 from three_mm_runtime.application_transport import (
     ApplicationServiceClient,
     ApplicationTransportError,
+)
+from three_mm_runtime.application_files_snapshot import (
+    capture_private_files,
+    restore_private_files,
+)
+from three_mm_runtime.application_database_snapshot import (
+    capture_database,
+    restore_database,
+    validate_database_restore,
 )
 
 
@@ -121,6 +129,23 @@ def _validate_instance_id(instance_id: str) -> None:
         raise ApplicationActivationError("Application instance identity is invalid")
 
 
+def _require_no_pending_rollback(instance_root: Path) -> None:
+    if any(instance_root.glob(".activation-*.rollback")) or any(
+        instance_root.glob(".database-*.rollback")
+    ):
+        raise ApplicationActivationError(
+            "Application has an unfinished rollback; explicit recovery review is required"
+        )
+
+
+def _stop_for_data(supervisor: ApplicationSupervisor, instance_id: str) -> None:
+    if isinstance(supervisor, SystemdApplicationSupervisor):
+        supervisor.recover_disabled(instance_id)
+    else:
+        # Test/alternate supervisors must honor stop's quiescence contract.
+        supervisor.stop(instance_id)
+
+
 def uninstall_application_instance(
     instance_id: str,
     *,
@@ -131,6 +156,8 @@ def uninstall_application_instance(
     """Remove one application runtime while preserving its mutable data."""
     _validate_instance_id(instance_id)
 
+    _require_no_pending_rollback(root / instance_id)
+
     selected_supervisor = supervisor or SystemdApplicationSupervisor()
     selected_supervisor.stop(instance_id)
 
@@ -138,8 +165,6 @@ def uninstall_application_instance(
     (instance_root / "active.json").unlink(missing_ok=True)
     shutil.rmtree(instance_root / "releases", ignore_errors=True)
     shutil.rmtree(instance_root / "run", ignore_errors=True)
-    for snapshot in instance_root.glob(".database-*.rollback"):
-        snapshot.unlink(missing_ok=True)
     (key_root / f"{instance_id}.key").unlink(missing_ok=True)
 
 
@@ -153,6 +178,7 @@ def erase_application_instance_data(
     _validate_instance_id(instance_id)
     selected_supervisor = supervisor or SystemdApplicationSupervisor()
     instance_root = root / instance_id
+    _require_no_pending_rollback(instance_root)
     if selected_supervisor.is_enabled(instance_id) or (instance_root / "active.json").exists():
         raise ApplicationActivationError(
             "Application data cannot be erased while the service is installed"
@@ -166,9 +192,18 @@ def erase_application_instance_data(
 
 def _write_atomic(path: Path, payload: bytes, mode: int) -> None:
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(6)}.tmp")
-    temporary.write_bytes(payload)
+    with temporary.open("wb") as stream:
+        stream.write(payload)
+        stream.flush()
+        os.fsync(stream.fileno())
     os.chmod(temporary, mode)
     os.replace(temporary, path)
+    if os.name == "posix":
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
 
 
 def _set_owner(path: Path, uid: int | None, gid: int | None) -> None:
@@ -189,17 +224,7 @@ def _prepare_directory(
 
 
 def _snapshot_database(source: Path, destination: Path) -> bool:
-    if not source.is_file():
-        return False
-    source_connection = sqlite3.connect(source)
-    destination_connection = sqlite3.connect(destination)
-    try:
-        source_connection.backup(destination_connection)
-    finally:
-        destination_connection.close()
-        source_connection.close()
-    os.chmod(destination, 0o600)
-    return True
+    return capture_database(source, destination)
 
 
 def _restore_database(
@@ -209,21 +234,7 @@ def _restore_database(
     service_uid: int | None,
     service_gid: int | None,
 ) -> None:
-    for suffix in ("-wal", "-shm"):
-        Path(f"{database}{suffix}").unlink(missing_ok=True)
-    if existed:
-        source_connection = sqlite3.connect(snapshot)
-        destination_connection = sqlite3.connect(database)
-        try:
-            source_connection.backup(destination_connection)
-        finally:
-            destination_connection.close()
-            source_connection.close()
-        snapshot.unlink(missing_ok=True)
-        os.chmod(database, 0o600)
-        _set_owner(database, service_uid, service_gid)
-    else:
-        database.unlink(missing_ok=True)
+    restore_database(database, snapshot, existed, service_uid, service_gid)
 
 
 def _wait_for_health(
@@ -259,6 +270,35 @@ def _wait_for_health(
     ) from last_error
 
 
+def _application_metadata(validated, configuration, instance_id, root):
+    """Validated author metadata only; neither a grant nor permission to start."""
+    definition = validated.application_extension
+    return {
+        "instance_id": instance_id,
+        "module_id": definition.module_id,
+        "version": definition.version,
+        "sha256": validated.sha256,
+        "wheel": "service.whl",
+        "entrypoint": definition.service.entrypoint,
+        "health_operation_id": definition.service.health_operation_id,
+        "startup_timeout_seconds": definition.service.startup_timeout_seconds,
+        "shutdown_timeout_seconds": definition.service.shutdown_timeout_seconds,
+        "configuration": configuration,
+        "platform_socket": str(root / "platform" / "platform.sock"),
+        "storage": {
+            "schema_revision": definition.storage.schema_revision,
+            "migration_entrypoint": definition.storage.migration_entrypoint,
+            **({"private_files": definition.storage.private_files.model_dump(mode="json")}
+               if definition.storage.private_files is not None else {}),
+        },
+        "operations": [
+            {"operation_id": operation.operation_id,
+             "audiences": list(operation.audiences), "idempotency": operation.idempotency}
+            for operation in definition.operations
+        ],
+    }
+
+
 def activate_application_package(
     package_path: Path,
     expected_sha256: str,
@@ -285,6 +325,12 @@ def activate_application_package(
     definition = validated.application_extension
     if definition is None:
         raise ApplicationActivationError("Package is not an application extension")
+    if definition.storage.relational is not None:
+        # Do not discard the new request and activate legacy writable SQLite.
+        # Refuse before creating paths/keys or stopping the existing service.
+        raise ApplicationActivationError(
+            "Application relational storage runtime is not implemented"
+        )
     try:
         resolved_configuration = resolve_application_configuration(
             validated.manifest.configuration_schema,
@@ -297,12 +343,21 @@ def activate_application_package(
 
     instance_id = application_instance_id(definition.module_id)
     instance_root = root / instance_id
+    _require_no_pending_rollback(instance_root)
+    if os.path.lexists(instance_root / "relational.json"):
+        # A legacy candidate must not silently downgrade a prepared scoped DB.
+        # Restoring old lineage is not fresh authority; lifecycle review is needed.
+        raise ApplicationActivationError(
+            "Application relational lifecycle requires explicit recovery review"
+        )
     releases_root = instance_root / "releases"
     release_root = releases_root / validated.sha256
     data_root = instance_root / "data"
     run_root = instance_root / "run"
     socket_path = run_root / "service.sock"
     key_path = key_root / f"{instance_id}.key"
+    if data_root.is_symlink():
+        raise ApplicationActivationError("Application data directory is invalid")
     _prepare_directory(instance_root, uid=0 if service_uid is not None else None, gid=service_gid)
     _prepare_directory(releases_root, uid=0 if service_uid is not None else None, gid=service_gid)
     _prepare_directory(release_root, uid=0 if service_uid is not None else None, gid=service_gid)
@@ -333,31 +388,7 @@ def activate_application_package(
     _set_owner(wheel_path, 0 if service_uid is not None else None, service_gid)
     _set_owner(key_path, 0 if service_uid is not None else None, service_gid)
 
-    metadata = {
-        "instance_id": instance_id,
-        "module_id": definition.module_id,
-        "version": definition.version,
-        "sha256": validated.sha256,
-        "wheel": "service.whl",
-        "entrypoint": definition.service.entrypoint,
-        "health_operation_id": definition.service.health_operation_id,
-        "startup_timeout_seconds": definition.service.startup_timeout_seconds,
-        "shutdown_timeout_seconds": definition.service.shutdown_timeout_seconds,
-        "configuration": resolved_configuration,
-        "platform_socket": str(root / "platform" / "platform.sock"),
-        "storage": {
-            "schema_revision": definition.storage.schema_revision,
-            "migration_entrypoint": definition.storage.migration_entrypoint,
-        },
-        "operations": [
-            {
-                "operation_id": operation.operation_id,
-                "audiences": list(operation.audiences),
-                "idempotency": operation.idempotency,
-            }
-            for operation in definition.operations
-        ],
-    }
+    metadata = _application_metadata(validated, resolved_configuration, instance_id, root)
     active_path = instance_root / "active.json"
     previous = active_path.read_bytes() if active_path.exists() else None
     selected_supervisor = supervisor or SystemdApplicationSupervisor()
@@ -365,29 +396,53 @@ def activate_application_package(
         selected_supervisor.is_enabled(instance_id) if previous is not None else False
     )
     database = data_root / "state.sqlite3"
-    database_snapshot = instance_root / f".database-{validated.sha256}.rollback"
-    database_snapshot.unlink(missing_ok=True)
+    rollback_root = instance_root / f".activation-{secrets.token_hex(16)}.rollback"
+    rollback_root.mkdir(mode=0o700)
+    database_snapshot = rollback_root / "state.sqlite3"
+    # Retained after an uncertain stop/restore; never reused by another activation.
+    recovery_record = {
+        "schema_version": 1, "candidate_sha256": validated.sha256,
+        "previous_present": previous is not None,
+        "previous_was_enabled": previous_was_enabled,
+        "database_present": None,
+    }
+
+    def record_phase(phase: str) -> None:
+        _write_atomic(
+            rollback_root / "activation.json",
+            json.dumps(dict(recovery_record, phase=phase), sort_keys=True).encode("utf-8"),
+            0o600,
+        )
+
+    record_phase("preparing")
+    if previous is not None:
+        _write_atomic(rollback_root / "previous-active.json", previous, 0o600)
+    if previous is not None or database.exists() or (data_root / "sdk-files").exists():
+        try:
+            _stop_for_data(selected_supervisor, instance_id)
+        except Exception as exc:
+            raise ApplicationActivationError(
+                "Application stop is unconfirmed; activation requires recovery review"
+            ) from exc
     try:
-        if previous_was_enabled:
-            selected_supervisor.stop(instance_id)
         database_existed = _snapshot_database(database, database_snapshot)
+        capture_private_files(data_root, rollback_root)
+        recovery_record["database_present"] = database_existed
+        record_phase("prepared")
     except Exception as exc:
-        if previous_was_enabled:
-            try:
-                selected_supervisor.restart(instance_id)
-            except Exception:
-                pass
-        database_snapshot.unlink(missing_ok=True)
+        # No candidate ran, but unsafe/incomplete preimages need operator review.
+        # Keep the old pointer and stopped service, rather than silently restarting.
         raise ApplicationActivationError(
-            "Application data could not be staged for activation"
+            "Application data could not be staged; recovery review is required"
         ) from exc
-    _write_atomic(
-        active_path,
-        json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode("utf-8"),
-        0o640,
-    )
-    _set_owner(active_path, 0 if service_uid is not None else None, service_gid)
     try:
+        record_phase("starting")
+        _write_atomic(
+            active_path,
+            json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode("utf-8"),
+            0o640,
+        )
+        _set_owner(active_path, 0 if service_uid is not None else None, service_gid)
         selected_supervisor.restart(instance_id)
         _wait_for_health(
             metadata,
@@ -396,9 +451,13 @@ def activate_application_package(
             client_factory=client_factory,
             sleep=sleep,
         )
+        record_phase("healthy")
     except Exception as exc:
         try:
-            selected_supervisor.stop(instance_id)
+            _stop_for_data(selected_supervisor, instance_id)
+            record_phase("restoring")
+            validate_database_restore(database, database_snapshot, database_existed)
+            restore_private_files(data_root, rollback_root, service_uid, service_gid)
             _restore_database(
                 database,
                 database_snapshot,
@@ -415,17 +474,42 @@ def activate_application_package(
                     0 if service_uid is not None else None,
                     service_gid,
                 )
-                if previous_was_enabled:
-                    selected_supervisor.restart(instance_id)
-                else:
-                    selected_supervisor.stop(instance_id)
-        except Exception:
-            pass
+            record_phase("restored")
+            if previous_was_enabled:
+                selected_supervisor.restart(instance_id)
+        except Exception as rollback_error:
+            raise ApplicationActivationError(
+                "Application activation failed; rollback is unconfirmed and requires recovery review"
+            ) from rollback_error
+        try:
+            shutil.rmtree(rollback_root)
+        except OSError as cleanup_error:
+            try:
+                _stop_for_data(selected_supervisor, instance_id)
+            except Exception as stop_error:
+                raise ApplicationActivationError(
+                    "Application rollback cleanup failed and stop is unconfirmed; recovery review is required"
+                ) from stop_error
+            raise ApplicationActivationError(
+                "Application rollback completed; runtime stopped for evidence cleanup recovery review"
+            ) from cleanup_error
         raise ApplicationActivationError(
             "Application activation failed; the previous version was restored"
         ) from exc
-    finally:
-        database_snapshot.unlink(missing_ok=True)
+    # Cleanup only after candidate health or complete rollback, never in finally.
+    # Cleanup failure keeps the evidence and blocks the next activation.
+    try:
+        shutil.rmtree(rollback_root)
+    except OSError as exc:
+        try:
+            _stop_for_data(selected_supervisor, instance_id)
+        except Exception as stop_error:
+            raise ApplicationActivationError(
+                "Application activation cleanup failed and stop is unconfirmed; recovery review is required"
+            ) from stop_error
+        raise ApplicationActivationError(
+            "Application passed health checks; runtime stopped for rollback evidence cleanup recovery review"
+        ) from exc
     return ActivatedApplication(
         module_id=definition.module_id,
         version=definition.version,

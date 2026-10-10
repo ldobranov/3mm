@@ -17,6 +17,17 @@ from typing import Callable, Iterator, Mapping, Protocol, Sequence
 import uuid
 from datetime import UTC, datetime
 
+from three_mm_application_sdk.files import (
+    ApplicationFile,
+    ApplicationFileLimits,
+    ApplicationFileStorage,
+    ApplicationFileStorageError,
+)
+from three_mm_application_sdk.scoped_files import (
+    ApplicationFileExecutionUnconfirmed,
+    ApplicationScopedFileStorage,
+)
+
 
 REVISION_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$")
 PLATFORM_MESSAGE_LIMIT = 6 * 1024 * 1024
@@ -44,6 +55,11 @@ class ApplicationPlatformClient:
         ).encode("utf-8")
 
     def _call(self, action: str, payload: dict[str, object]) -> dict[str, object]:
+        from three_mm_application_sdk.transaction_guard import (
+            require_outside_relational_transaction,
+        )
+
+        require_outside_relational_transaction()
         request_id = f"platform_{uuid.uuid4().hex}"
         request: dict[str, object] = {
             "version": 1,
@@ -530,6 +546,27 @@ class ApplicationContext:
     storage: ApplicationStorage
     platform: ApplicationPlatformClient | None = None
     clock: Clock = field(default_factory=SystemClock)
+    # Trusted host adapter, not a package-supplied grant. Keyword-only preserves
+    # the old constructor/clock positions for SDK 1.0–1.3 applications.
+    file_storage: ApplicationFileStorage | None = field(
+        default=None, kw_only=True, repr=False
+    )
+
+    def __post_init__(self) -> None:
+        if self.file_storage is not None and (
+            not isinstance(self.file_storage, ApplicationFileStorage)
+            or self.file_storage.data_dir != self.data_dir
+        ):
+            raise ValueError("Private file adapter must belong to this context")
+
+    @property
+    def files(self) -> ApplicationFileStorage:
+        """Host-selected own-file adapter; legacy defaults do not imply a grant."""
+        return (
+            self.file_storage
+            if self.file_storage is not None
+            else ApplicationFileStorage(self.data_dir)
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -594,6 +631,12 @@ __all__ = [
     "SUPPORTED_SDK_VERSIONS",
     "verify_installation_proof",
     "ApplicationContext",
+    "ApplicationFile",
+    "ApplicationFileLimits",
+    "ApplicationFileStorage",
+    "ApplicationFileStorageError",
+    "ApplicationFileExecutionUnconfirmed",
+    "ApplicationScopedFileStorage",
     "ApplicationMigration",
     "ApplicationOutboxItem",
     "ApplicationPlatformClient",

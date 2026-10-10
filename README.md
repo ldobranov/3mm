@@ -8,16 +8,20 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Test Beta. This source prepares **v0.3.0-beta.44**, a bounded
+> **Project status:** Test Beta. This source prepares **v0.3.0-beta.45**, a bounded
 > Milestone 20 Extension Platform v2 delivery, not completion of WP4 or Milestone 20.
-> It adds read-only package inspection, exact resource review/approval/apply,
-> reviewed-native command/connector/device-event access and signed application
-> event publication through the existing SDK transport. Existing installations
+> It extends exact resource review/approval/apply with private-file access and a
+> bounded relational-storage foundation: signed transaction admission/receipts,
+> explicit non-root migration/recovery and normal SDK execution for verified
+> prepared databases. Existing command/connector/device-event access and signed
+> application event publication remain. Existing installations
 > retain compatibility mode; no automatic grants or adoption of business extensions.
 > First adoption requires a disabled application, a recoverable backup and a local
 > code-trust record for the exact package. Reviewed-native execution is **not a sandbox**.
-> Scoped storage/platform/frontend-host contracts and neutral end-to-end WP4
-> acceptance remain open. New-artifact staging/recovery and WP5 isolation are separate.
+> General database install/upgrade/restore/key lifecycle, scoped platform/frontend
+> adapters and neutral end-to-end WP4 acceptance remain open. Relational generic
+> activation/native/source gates remain closed; a prepared-runtime fixture is not
+> public fresh-install acceptance. New-artifact staging and WP5 isolation are separate.
 > Device Protocol 1.0, Application SDK 1.3, themes, peers and Node Update remain.
 > Additive database migrations preserve history and fence restored authority;
 > destructive downgrade after using the new authority is refused. Keep a verified
@@ -68,6 +72,12 @@ system.
   lifecycle/recovery changes fence new effects without replaying uncertain work.
   Application event publication has content-bound durable receipts; declarations
   alone grant nothing. User roles and application resource rights remain separate.
+- **Private storage (test Beta)** — exact private-file read/write review, signed
+  SDK execution, bounded paths/bytes and durable receipts. Relational declarations,
+  transaction grants, atomic SQLite receipts and protected preparation/recovery
+  support a verified prepared database through the existing SDK transport.
+  Normal restart does not run migrations; uncertain completion is not replayed.
+  General database lifecycle and public activation remain gated, not auto-enabled.
 - **Installable themes** — compatible v1 palettes and v2 design packages with
   Core-owned layout/component variants and bounded local fonts/logos, without
   arbitrary CSS or executable code. Upload, enable, disable and delete versions in
@@ -245,17 +255,17 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 ### Updating a paired Hub and Zero
 
 For this test Beta, first export a pre-upgrade backup and update a disposable VM.
-From a working beta.43 full installation, select **Beta** in `/system/updates`
-and stage the published beta.44 release. Older installations can first manually
+From a working beta.43/beta.44 full installation, select **Beta** in `/system/updates`
+and stage the published beta.45 release. Older installations can first manually
 bootstrap the current corrected full-profile release (Raspberry/WSL):
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.44
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.45
 ```
 
 An older installed updater cannot acquire the target-installer fix before it
 runs. No bridge release or reset is required. Update the Zero over SSH
-with the Node bootstrap command above and add `--tag v0.3.0-beta.44` to select
+with the Node bootstrap command above and add `--tag v0.3.0-beta.45` to select
 this exact release. Provisioned upgrades preserve identity and pairing, not
 Master reset. Real update/rollback and browser request/CPU checks remain pending;
 see [platform stability acceptance](docs/PLATFORM_STABILITY_ACCEPTANCE.md).
@@ -454,7 +464,10 @@ checks local browser CORS as well as readiness. See the
 | [Compiled extension v1](docs/COMPILED_EXTENSION_V1.md) | Reviewed Vue compilation boundary |
 | [Application extension v1 plan](docs/APPLICATION_EXTENSION_V1_PLAN.md) | Planned trusted business-service and integration boundary |
 | [Extension Platform v2 plan](EXTENSION_PLATFORM_V2_CORE_PLAN.md) | Milestone 20 scope, implemented slices and remaining WP4/WP5 gates |
-| [Extension Platform test Beta](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md) | beta.44 scope, backup requirements and bounded live smoke checks |
+| [Extension Platform test Beta](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md) | beta.45 scope, backup requirements and bounded live smoke checks |
+| [Private application files](docs/EXTENSION_PLATFORM_V2_PRIVATE_FILES.md) | Exact file grants, signed SDK operations, limits and recovery evidence |
+| [Relational storage contract](docs/EXTENSION_PLATFORM_V2_RELATIONAL_STORAGE_CONTRACT.md) | Prepared-runtime foundation and remaining database lifecycle gates |
+| [WP4 closure audit](docs/EXTENSION_PLATFORM_V2_WP4_CLOSURE_AUDIT.md) | Verified coverage and explicit remaining work; WP4 is not closed |
 | [Application commands and passage](docs/APPLICATION_COMMANDS.md) | Scoped SDK commands, crash/restore safety and correlated sensor evidence |
 | [Application job scheduler](docs/APPLICATION_JOB_SCHEDULER.md) | Interval scheduling, bounded concurrency and unknown-outcome recovery |
 | [Installation identity v1](docs/INSTALLATION_IDENTITY_V1.md) | Stable identity, bounded proofs, backup and clone boundaries |

@@ -1,11 +1,26 @@
 from fastapi.testclient import TestClient
 from uuid import uuid4
 
+import pytest
+
+from backend import main
 from backend.database import SessionLocal
 from backend.db.user import User
 from backend.main import app
 from backend.utils.auth import hash_password
 from backend.utils.jwt_utils import create_access_token
+
+
+@pytest.fixture(autouse=True)
+def isolated_application_runtime(tmp_path, monkeypatch):
+    # Exercise real lifespan sockets on disposable native storage, not the
+    # checkout (which may be a Windows mount without Unix-socket support).
+    settings = main.app_settings.model_copy(deep=True)
+    settings.applications.root = tmp_path / "applications"
+    settings.applications.key_root = tmp_path / "keys"
+    settings.applications.platform_socket = tmp_path / "platform.sock"
+    settings.public_web.gateway_socket = tmp_path / "public-web.sock"
+    monkeypatch.setattr(main, "app_settings", settings)
 
 
 def auth_headers(role: str) -> dict[str, str]:

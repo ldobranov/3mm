@@ -44,6 +44,11 @@ const publicationResource = () => ({
   operation: { operation_id: 'record', kind: 'command', idempotency: 'required', emitted_events: ['example.record.changed.v1'] },
   service_artifact_sha256: 'c'.repeat(64),
 })
+const fileResource = (operation: 'read' | 'write' = 'read', mode: 'read' | 'read_write' = 'read_write') => ({
+  declaration: { file_contract_version: 1, namespace: 'private_files', mode, max_file_bytes: 128, max_total_bytes: 200, max_files: 2 },
+  owner: { core_installation_id: 'installation_' + identity('b'), application_installation_id: '7', incarnation: identity('c'), module_id: 'org.example.reference' },
+  package_artifact_sha256: 'a'.repeat(64), operation,
+})
 const nativeMethods = ['showModal', 'close'].map(name => ({ name, descriptor: Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, name) }))
 beforeEach(() => {
   vi.resetAllMocks()
@@ -76,6 +81,43 @@ async function review(wrapper: VueWrapper) {
 }
 
 describe('installed authority control', () => {
+  it.each(['read', 'read_write'] as const)('shows exact %s file rights without auto approval or apply', async mode => {
+    const files = mode === 'read' ? [fileResource('read', mode)] : [fileResource('read'), fileResource('write')]
+    const current = { ...status(), scopes: [...status().scopes, ...files.map(file => `storage:private_files_${file.operation}`)] }
+    http.get.mockResolvedValue({ data: current })
+    http.post.mockResolvedValue({ data: { ...plan(), scopes: current.scopes, resources: { ...plan().resources, private_files: files } } })
+    const wrapper = await open()
+    expect(http.post).not.toHaveBeenCalled()
+    await review(wrapper)
+    expect(wrapper.findAll('.authority-file')).toHaveLength(files.length)
+    expect(wrapper.text()).toContain('Application-owned private files')
+    expect(wrapper.text()).toContain('Read files · get / list')
+    expect(wrapper.text().includes('Write files · put / delete')).toBe(mode === 'read_write')
+    expect(wrapper.text()).toContain('128 bytes')
+    expect(wrapper.text()).toContain('200 bytes')
+    expect(wrapper.text()).toContain('org.example.reference · #7')
+    expect(wrapper.text()).toContain('installation_' + identity('b'))
+    expect(wrapper.text()).toContain(identity('c'))
+    expect(wrapper.text()).toContain('a'.repeat(64))
+    expect(button(wrapper, 'Approve review').attributes('disabled')).toBeDefined()
+    expect(http.post.mock.calls[0]?.[1].scopes).toEqual(current.scopes)
+    await wrapper.find('input[type=checkbox]').setValue(true)
+    http.post.mockResolvedValueOnce({ data: decision('approved_pending_apply') })
+    await button(wrapper, 'Approve review').trigger('click'); await flushPromises()
+    expect(wrapper.emitted('changed')).toBeUndefined()
+    expect(button(wrapper, 'Apply rights').exists()).toBe(true)
+    expect(http.post).toHaveBeenCalledTimes(2)
+  })
+  it('does not present an incomplete or foreign file review for approval', async () => {
+    const current = { ...status(), scopes: [...status().scopes, 'storage:private_files_read', 'storage:private_files_write'] }
+    http.get.mockResolvedValue({ data: current })
+    http.post.mockResolvedValue({ data: { ...plan(), scopes: current.scopes, resources: { ...plan().resources, private_files: [fileResource('read')] } } })
+    const wrapper = await open(); await review(wrapper)
+    expect(wrapper.find('[role=alert]').exists()).toBe(true)
+    expect(wrapper.find('.authority-review-plan').exists()).toBe(false)
+    expect(wrapper.find('input[type=checkbox]').exists()).toBe(false)
+    expect(http.post).toHaveBeenCalledTimes(1)
+  })
   it('shows publication schema, limits and artifact independently from device subscriptions', async () => {
     const current = { ...status(), scopes: [...status().scopes, 'publication:changed'] }
     http.get.mockResolvedValue({ data: current })
@@ -211,6 +253,39 @@ describe('installed authority control', () => {
 })
 
 describe('authority response boundaries', () => {
+  it('refuses missing, duplicate, foreign, unbounded or injected private-file bindings', () => {
+    const current = readAuthorityStatus({ ...status(), scopes: [...status().scopes, 'storage:private_files_read', 'storage:private_files_write'] })
+    const value = { ...plan(), scopes: current.scopes, resources: { ...plan().resources, private_files: [fileResource('read'), fileResource('write')] } }
+    expect(readAuthorityPlan(value, current, 'org.example.reference').resources.private_files).toHaveLength(2)
+    const original = fileResource('write')
+    for (const wrong of [null, { ...original, operation: 'delete' }, { ...original, path: '/opt/3mm/current' },
+      { ...original, package_artifact_sha256: 'd'.repeat(64) },
+      { ...original, owner: { ...original.owner, application_installation_id: '8' } },
+      { ...original, owner: { ...original.owner, module_id: 'org.example.foreign' } },
+      { ...original, owner: { ...original.owner, incarnation: identity('d') } },
+      { ...original, owner: { ...original.owner, core_installation_id: 'foreign' } },
+      { ...original, declaration: { ...original.declaration, mode: 'read' } },
+      { ...original, declaration: { ...original.declaration, namespace: 'other' } },
+      { ...original, declaration: { ...original.declaration, file_contract_version: true } },
+      { ...original, declaration: { ...original.declaration, max_file_bytes: 1048577 } },
+      { ...original, declaration: { ...original.declaration, max_total_bytes: 67108865 } },
+      { ...original, declaration: { ...original.declaration, max_files: 1025 } },
+      { ...original, declaration: { ...original.declaration, max_files: true } },
+      { ...original, declaration: { ...original.declaration, max_file_bytes: 0 } },
+      { ...original, declaration: { ...original.declaration, max_file_bytes: 201 } },
+      { ...original, declaration: { ...original.declaration, max_files: 3 } },
+      { ...original, declaration: { ...original.declaration, path: '/var/lib/3mm/core' } }]) {
+      expect(() => readAuthorityPlan({ ...value, resources: { ...value.resources, private_files: [fileResource('read'), wrong] } }, current, 'org.example.reference')).toThrow()
+    }
+    for (const files of [[], [fileResource('write')], [fileResource('read'), fileResource('read')]]) {
+      expect(() => readAuthorityPlan({ ...value, resources: { ...value.resources, private_files: files } }, current)).toThrow()
+    }
+    expect(() => readAuthorityPlan({ ...value, resources: plan().resources }, current)).toThrow()
+    expect(() => readAuthorityPlan({ ...value, resources: { ...value.resources, arbitrary_files: [] } }, current)).toThrow()
+  })
+  it.each(['storage:*', 'storage:private_files', 'storage:other_read', 'storage:private_files_delete', 'storage:private_files_write\n'])('refuses unsupported file scope %s', scope => {
+    expect(() => readAuthorityStatus({ ...status(), scopes: [scope] })).toThrow()
+  })
   it('refuses mismatched publication operations, unbounded schemas and malformed receipts', () => {
     const current = readAuthorityStatus({ ...status(), scopes: [...status().scopes, 'publication:changed'] })
     const value = { ...plan(), scopes: current.scopes, resources: { ...plan().resources, publications: [publicationResource()] } }

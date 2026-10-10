@@ -86,6 +86,29 @@ def extension_schema_catalog() -> dict:
         }
         if model is ApplicationEventPublicationsV1:
             contracts[contract_id]["runtime_support"] = "reviewed_native_scoped"
+        if model is ApplicationExtensionV1:
+            # Bounded reviewed-native authority, not general installer or
+            # hostile-code support. Structural validity still grants no rights.
+            contracts[contract_id]["declaration_support"] = {
+                "storage.private_files": {
+                    "contract_version": 1,
+                    "sdk_version": "1.3",
+                    "runtime_authority": "reviewed_native_scoped_local",
+                    "authority_administration": "core_admin_review_api",
+                    "native_trust_administration": "local_core_only",
+                    "runtime_max_file_bytes": 1024 * 1024,
+                },
+                "storage.relational": {
+                    "contract_version": 1,
+                    "sdk_version": "1.3",
+                    "declaration_validation": "supported",
+                    "runtime_authority": "not_implemented",
+                    "authority_administration": "core_admin_review_metadata_only",
+                    "native_trust_administration": "local_core_only",
+                    "activation": "blocked",
+                    "limit_class": "cooperative_v1",
+                },
+            }
     return {
         "catalog_version": 1,
         "schema_mode": "validation",
@@ -95,6 +118,7 @@ def extension_schema_catalog() -> dict:
             "Custom model validators, cross-document references and archive rules remain authoritative.",
             "Opaque dictionaries (including theme v2 design and application schemas) need their existing semantic validators.",
             "Schema validity grants no publisher trust, permissions, compatibility or installation approval.",
+            "Raw application descriptors require parse_application_extension; structural schemas cannot reject duplicate JSON keys.",
             "reviewed_native_scoped requires an exact installed artifact, local code review and applied resource grant; it is not isolation or cross-application stream access.",
         ],
         "contracts": contracts,

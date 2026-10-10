@@ -28,9 +28,18 @@ from three_mm_protocol import (
     BackupProtectionV1,
 )
 from three_mm_provisioning import ProvisioningSnapshot, ProvisioningState
+from three_mm_application_sdk.files import (
+    ApplicationFileLimits,
+    ApplicationFileStorage,
+    ApplicationFileStorageError,
+    FILE_ID,
+)
 
 
 BACKUP_ID_PATTERN = r"^bkp_\d{8}T\d{6}Z_[0-9a-f]{8}$"
+PRIVATE_FILE_BACKUP_LIMITS = ApplicationFileLimits(
+    16 * 1024 * 1024, 64 * 1024 * 1024, 1024
+)
 
 
 class StrictPreviewModel(BaseModel):
@@ -203,6 +212,91 @@ def checksum_file(path: Path) -> tuple[int, str]:
 def _logical_entry_path(prefix: str, relative: PurePosixPath | None = None) -> str:
     base = PurePosixPath(prefix)
     return (base / relative).as_posix() if relative is not None else base.as_posix()
+
+
+def validate_application_backup_state(
+    applications: Path,
+    *,
+    validate_files: bool = True,
+) -> None:
+    """Read-only recovery guard; never adopt or delete incomplete activation data.
+
+    Reuse the SDK namespace validation only when present. Legacy SQLite/native
+    data remains supported; no grant or new storage authority is inferred.
+    """
+    if applications.is_symlink():
+        raise ValueError("Application backup root is invalid")
+    if not applications.exists():
+        return
+    if not applications.is_dir():
+        raise ValueError("Application backup root is invalid")
+    for instance in sorted(applications.iterdir()):
+        if not re.fullmatch(r"[0-9a-f]{24}", instance.name):
+            continue  # Existing runtime-only platform area is not application data.
+        if instance.is_symlink() or not instance.is_dir():
+            raise ValueError("Application backup instance is invalid")
+        if any(instance.glob(".activation-*.rollback")) or any(
+            instance.glob(".database-*.rollback")
+        ):
+            raise ValueError(
+                "Application rollback evidence requires recovery review before backup or restore"
+            )
+        if not validate_files:
+            continue  # A restore may repair damaged live data, not erase evidence.
+        data = instance / "data"
+        if data.is_symlink() or (data.exists() and not data.is_dir()):
+            raise ValueError("Application backup data directory is invalid")
+        namespace = data / "sdk-files"
+        if namespace.is_symlink():
+            raise ValueError("Application private file namespace is invalid")
+        if namespace.exists():
+            try:
+                ApplicationFileStorage(
+                    data,
+                    mode="read",
+                    limits=PRIVATE_FILE_BACKUP_LIMITS,
+                ).list_entries()
+                if (namespace / ".lock").stat().st_size != 0:
+                    raise ValueError("Application private file lock is invalid")
+            except (OSError, ApplicationFileStorageError) as exc:
+                raise ValueError(
+                    "Application private files require recovery review"
+                ) from exc
+
+
+def validate_application_backup_inventory(entries: tuple[BackupEntryV1, ...]) -> None:
+    """Validate private namespace shape/quotas before writing imported payloads."""
+    inventories: dict[str, dict[str, int]] = {}
+    for entry in entries:
+        if entry.area != "applications":
+            continue
+        parts = PurePosixPath(entry.path).parts
+        if (
+            len(parts) < 3
+            or not re.fullmatch(r"[0-9a-f]{24}", parts[0])
+            or parts[1] != "data"
+        ):
+            raise ValueError("Backup application entry is outside its data namespace")
+        if parts[2] != "sdk-files":
+            continue  # Preserve unrelated legacy application-owned native data.
+        if len(parts) != 4:
+            raise ValueError("Backup private file namespace is invalid")
+        name = parts[3]
+        if name == ".lock":
+            if entry.size_bytes != 0:
+                raise ValueError("Backup private file lock is invalid")
+        elif not name.startswith("blob_") or not FILE_ID.fullmatch(name[5:]):
+            raise ValueError("Backup private file identity is invalid")
+        elif entry.size_bytes > PRIVATE_FILE_BACKUP_LIMITS.max_file_bytes:
+            raise ValueError("Backup private file size limit exceeded")
+        inventories.setdefault(parts[0], {})[name] = entry.size_bytes
+    for files in inventories.values():
+        if ".lock" not in files:
+            raise ValueError("Backup private file namespace is incomplete")
+        if len(files) - 1 > PRIVATE_FILE_BACKUP_LIMITS.max_files:
+            raise ValueError("Backup private file count limit exceeded")
+        if sum(files.values()) > PRIVATE_FILE_BACKUP_LIMITS.max_total_bytes:
+            raise ValueError("Backup private file total size limit exceeded")
 
 
 def _scan_source(
@@ -568,8 +662,33 @@ def build_backup_preview(
                 severity="error", code="compatibility.installation_identity",
                 message="Installation identity recovery material is missing or invalid",
             ))
+        applications_ready = True
+        try:
+            validate_application_backup_state(
+                settings.backups.application_extensions_dir
+            )
+        except (OSError, ValueError) as exc:
+            applications_ready = False
+            issues.append(
+                BackupPreviewIssue(
+                    severity="error",
+                    code="state.application_data_invalid",
+                    message=str(exc),
+                )
+            )
         for source in _backup_sources(settings, database_path):
-            entries.extend(_scan_source(source, issues))
+            if source.area != "applications" or applications_ready:
+                entries.extend(_scan_source(source, issues))
+        try:
+            validate_application_backup_inventory(tuple(entries))
+        except ValueError as exc:
+            issues.append(
+                BackupPreviewIssue(
+                    severity="error",
+                    code="state.application_inventory_invalid",
+                    message=str(exc),
+                )
+            )
 
     entries.sort(key=lambda entry: (entry.area, entry.path))
     estimated_bytes = sum(entry.size_bytes for entry in entries)

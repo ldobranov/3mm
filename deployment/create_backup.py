@@ -23,6 +23,7 @@ from backend.services.backups import (
     checksum_file,
     prune_backup_catalog,
     resolve_backup_entry,
+    validate_application_backup_state,
     write_backup_catalog_item,
     write_backup_operation_status,
 )
@@ -204,6 +205,13 @@ def create_backup(
     archive_path: Path | None = None
     metadata_path: Path | None = None
     try:
+        # Refuse pending activation evidence without stopping/restarting any
+        # review-required application. The CLI holds the existing mutation lock;
+        # full file validation is repeated below after ordinary runtime quiescence.
+        validate_application_backup_state(
+            settings.backups.application_extensions_dir,
+            validate_files=False,
+        )
         service_controller.stop(RUNTIME_SERVICES)
         stopped = True
         preview = build_backup_preview(settings)

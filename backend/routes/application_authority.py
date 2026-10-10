@@ -19,7 +19,7 @@ from backend.utils.db_utils import get_db
 router = APIRouter(prefix='/api/v1/application-extensions', tags=['application-authority'])
 Identifier = Annotated[str, Field(pattern=r'^[0-9a-f]{32}$')]
 Digest = Annotated[str, Field(pattern=r'^[0-9a-f]{64}$')]
-Scope = Annotated[str, Field(pattern=r'^(command|connector|event|publication):[a-z][a-z0-9_]{0,95}$')]
+Scope = Annotated[str, Field(pattern=r'^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write))$')]
 
 
 class ReviewRequest(BaseModel):

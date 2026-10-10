@@ -133,11 +133,11 @@ class ApplicationPlatformServer:
                             ApplicationExtensionInstallation.instance_id == instance_id,
                         )
                     )
-                    if installation is None or (request.get('action') not in {'command.lookup', 'event.publish'} and (
+                    if installation is None or (request.get('action') not in {'command.lookup', 'event.publish', 'files.execute', 'files.status', 'relational.complete', 'relational.status'} and (
                         not installation.enabled or installation.status != 'active'
                     )):
                         raise ValueError("Application installation is not active")
-                    result = self._dispatch(db, installation, request)
+                    result = self._dispatch(db, installation, request, transport_secret=secret)
                 finally:
                     db.close()
                 response: dict[str, object] = {"ok": True, "result": result}
@@ -156,13 +156,59 @@ class ApplicationPlatformServer:
             ).hexdigest()
             connection.sendall(json.dumps(signed, separators=(",", ":")).encode("utf-8") + b"\n")
 
-    def _dispatch(self, db, installation, request: dict[str, object]) -> dict[str, object]:
+    def _dispatch(self, db, installation, request: dict[str, object], *, transport_secret=None) -> dict[str, object]:
         action = request.get("action")
         mode = db.scalar(select(ApplicationExtensionInstallation.authority_mode).where(
             ApplicationExtensionInstallation.id == installation.id))
         if mode != 'compatibility' and action not in {
-                'command.submit', 'command.status', 'command.lookup', 'connector.request', 'event.publish'}:
+                'command.submit', 'command.status', 'command.lookup', 'connector.request', 'event.publish', 'files.execute', 'files.status', 'relational.admit', 'relational.complete', 'relational.status'}:
             raise ValueError('Platform action has no supported resource grant')
+        if action in {'relational.admit', 'relational.complete', 'relational.status'}:
+            from backend.services.application_relational import (
+                admit_host_transaction,
+                record_host_commit,
+                transaction_status,
+            )
+            from three_mm_runtime.application_relational_session import MAX_METADATA_BYTES
+
+            fields = {
+                "version", "request_id", "timestamp", "instance_id", "action",
+                "signature",
+            }
+            fields |= {
+                "relational.admit": {"transaction_id", "mode"},
+                "relational.complete": {"receipt"},
+                "relational.status": {"transaction_id"},
+            }[action]
+            if (
+                type(transport_secret) is not bytes
+                or len(transport_secret) != 32
+                or set(request) != fields
+                or type(request.get("version")) is not int
+                or request["version"] != 1
+                or len(json.dumps(request, allow_nan=False).encode("utf-8"))
+                > MAX_METADATA_BYTES
+            ):
+                raise ValueError("Relational transport metadata is invalid")
+            identifier = installation.id  # Freeze before resolver rollback/IPC.
+            if action == "relational.admit":
+                return admit_host_transaction(
+                    db, identifier, request["transaction_id"], request["mode"],
+                    transport_secret=transport_secret,
+                )
+            if action == "relational.complete":
+                return record_host_commit(
+                    db, identifier, request["receipt"],
+                    transport_secret=transport_secret,
+                )
+            return transaction_status(db, identifier, request["transaction_id"])
+        if action in {'files.execute', 'files.status'}:
+            from backend.services.application_files import execute_private_file, file_operation_status
+            if type(transport_secret) is not bytes or len(transport_secret) != 32:
+                raise ValueError('Private files require authenticated instance transport')
+            if action == 'files.status':
+                return file_operation_status(db, installation, request.get('file_request_id'))
+            return execute_private_file(db, installation, request.get('file_request'), transport_secret=transport_secret)
         if action == 'event.publish':
             from backend.services.application_event_publication import publish_application_event
             return publish_application_event(db, installation, request.get('publication'))

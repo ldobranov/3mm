@@ -2,6 +2,7 @@
 
 import base64
 import json
+import math
 import re
 from typing import Literal
 
@@ -436,6 +437,72 @@ class ApplicationJobV1(StrictApplicationModel):
     singleton: Literal[True] = True
 
 
+class ApplicationPrivateFilesV1(StrictApplicationModel):
+    """Requested SDK-file bounds, never a host path, grant or OS disk quota.
+
+    The sole logical namespace belongs to the installation resolved by Core.
+    Classification and lifecycle requirements come from its enclosing storage.
+    All limits/mode are explicit; omission must not mean unlimited authority.
+    """
+
+    file_contract_version: Literal[1]
+    namespace: Literal["private_files"] = "private_files"
+    mode: Literal["read", "read_write"]
+    max_file_bytes: int = Field(strict=True, ge=1, le=16 * 1024 * 1024)
+    max_total_bytes: int = Field(strict=True, ge=1, le=64 * 1024 * 1024)
+    max_files: int = Field(strict=True, ge=1, le=1024)
+
+    @field_validator("file_contract_version", mode="before")
+    @classmethod
+    def integer_contract_version(cls, value):
+        if type(value) is not int:
+            raise ValueError("Private file contract version must be an integer")
+        return value
+
+    @model_validator(mode="after")
+    def coherent_limits(self):
+        if self.max_file_bytes > self.max_total_bytes:
+            raise ValueError("Private file limits are inconsistent")
+        return self
+
+
+class ApplicationRelationalStorageV1(StrictApplicationModel):
+    """Requested own-SQLite access and cooperative bounds, never a grant.
+
+    Structural support is deliberately separate from runtime/admission support.
+    No path, owner, approved policy or lifecycle credential is author supplied.
+    """
+
+    contract_version: Literal[1]
+    mode: Literal["read", "read_write"]
+    limit_class: Literal["cooperative_v1"]
+    max_database_bytes: int = Field(strict=True, ge=64 * 1024, le=256 * 1024 * 1024)
+    auxiliary_pause_bytes: int = Field(strict=True, ge=64 * 1024, le=64 * 1024 * 1024)
+    max_statement_bytes: int = Field(strict=True, ge=1, le=64 * 1024)
+    max_value_bytes: int = Field(strict=True, ge=1, le=1024 * 1024)
+    max_result_bytes: int = Field(strict=True, ge=1, le=1024 * 1024)
+    max_result_rows: int = Field(strict=True, ge=1, le=1000)
+    max_transaction_ms: int = Field(strict=True, ge=100, le=30000)
+    max_busy_ms: int = Field(strict=True, ge=0, le=5000)
+
+    @field_validator("contract_version", mode="before")
+    @classmethod
+    def integer_contract_version(cls, value):
+        if type(value) is not int:
+            raise ValueError("Relational storage contract version must be an integer")
+        return value
+
+    @model_validator(mode="after")
+    def coherent_limits(self):
+        if (
+            self.max_value_bytes > self.max_result_bytes
+            or self.max_value_bytes > self.max_database_bytes
+            or self.max_busy_ms > self.max_transaction_ms
+        ):
+            raise ValueError("Relational storage limits are inconsistent")
+        return self
+
+
 class ApplicationStorageV1(StrictApplicationModel):
     engine: Literal["sqlite"] = "sqlite"
     schema_revision: str = Field(pattern=r"^[a-z0-9][a-z0-9_.-]{0,63}$")
@@ -446,6 +513,8 @@ class ApplicationStorageV1(StrictApplicationModel):
     export_operation_id: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
     erasure_operation_id: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
     backup_required: Literal[True] = True
+    private_files: ApplicationPrivateFilesV1 | None = None
+    relational: ApplicationRelationalStorageV1 | None = None
 
     @model_validator(mode="after")
     def validate_data_lifecycle(self):
@@ -518,6 +587,10 @@ class ApplicationExtensionV1(StrictApplicationModel):
 
     @model_validator(mode="after")
     def validate_references(self):
+        if self.storage.private_files is not None and self.service.sdk_version != "1.3":
+            raise ValueError("Private file declarations require SDK 1.3")
+        if self.storage.relational is not None and self.service.sdk_version != "1.3":
+            raise ValueError("Relational storage declarations require SDK 1.3")
         if len(self.platform_permissions) != len(set(self.platform_permissions)):
             raise ValueError("platform permissions must be unique")
         if self.platform_permissions and self.service.sdk_version == "1.0":
@@ -657,3 +730,47 @@ class ApplicationExtensionV1(StrictApplicationModel):
             if retention.kind != "job" or retention.audiences != ("internal",):
                 raise ValueError("data retention must be an internal job")
         return self
+
+
+def parse_application_extension(raw: bytes | str) -> ApplicationExtensionV1:
+    """Authoritative raw descriptor parsing, including duplicate-key refusal.
+
+    Typed dict validation cannot recover keys already discarded by a JSON
+    decoder. Package validation must use this entrypoint, not structural schemas
+    or BaseModel.model_validate_json alone. The byte ceiling matches the existing
+    package expanded-data ceiling; valid legacy declarations remain supported.
+    """
+    if isinstance(raw, bytes):
+        if len(raw) > 40 * 1024 * 1024:
+            raise ValueError("Application declaration exceeds its size limit")
+        raw = raw.decode("utf-8")
+    elif not isinstance(raw, str):
+        raise ValueError("Application declaration must be UTF-8 JSON")
+    if len(raw.encode("utf-8")) > 40 * 1024 * 1024:
+        raise ValueError("Application declaration exceeds its size limit")
+
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Application declaration contains duplicate JSON keys")
+            result[key] = value
+        return result
+
+    def finite_constant(_value):
+        raise ValueError("Application declaration contains non-finite JSON values")
+
+    def finite_float(value):
+        parsed = float(value)
+        if not math.isfinite(parsed):
+            finite_constant(value)
+        return parsed
+
+    return ApplicationExtensionV1.model_validate(
+        json.loads(
+            raw,
+            object_pairs_hook=unique_object,
+            parse_constant=finite_constant,
+            parse_float=finite_float,
+        )
+    )

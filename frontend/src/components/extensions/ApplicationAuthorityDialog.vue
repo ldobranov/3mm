@@ -74,7 +74,7 @@ async function createReview() {
       request_id: authorityRequestId(), native_review_id: nativeId.value, scopes: [...status.value.scopes],
     }, { timeout: 12000 })
     if (current !== generation) return
-    plan.value = readAuthorityPlan(response.data, status.value)
+    plan.value = readAuthorityPlan(response.data, status.value, props.moduleId)
     deadline = started + plan.value.expires_in_seconds * 1000
     now.value = Date.now()
   } catch (cause) { if (current === generation) { clearReview(); error.value = failure(cause, true) } }
@@ -180,6 +180,30 @@ onMounted(refresh)
             </article>
           </div>
         </template>
+        <div v-if="plan.resources.private_files?.length" class="authority-resources">
+          <h4>{{ label('privateFiles') }}</h4>
+          <p class="ui-help">{{ label('fileBoundary') }}</p>
+          <article v-for="file in plan.resources.private_files" :key="file.operation" class="authority-resource authority-file">
+            <h5>{{ label(file.operation === 'read' ? 'fileRead' : 'fileWrite') }}</h5>
+            <code>storage:private_files_{{ file.operation }}</code>
+            <dl class="authority-file-limits">
+              <dt>{{ label('fileOwner') }}</dt><dd>{{ file.owner.module_id }} · #{{ file.owner.application_installation_id }}</dd>
+              <dt>{{ label('fileNamespace') }}</dt><dd>{{ file.declaration.namespace }}</dd>
+              <dt>{{ label('fileMode') }}</dt><dd>{{ label(file.declaration.mode === 'read' ? 'fileReadOnly' : 'fileReadWrite') }}</dd>
+              <dt>{{ label('fileMaximum') }}</dt><dd>{{ file.declaration.max_file_bytes }} {{ label('fileBytes') }}</dd>
+              <dt>{{ label('fileTotal') }}</dt><dd>{{ file.declaration.max_total_bytes }} {{ label('fileBytes') }}</dd>
+              <dt>{{ label('fileCount') }}</dt><dd>{{ file.declaration.max_files }}</dd>
+            </dl>
+            <details class="authority-file-binding">
+              <summary tabindex="0">{{ label('fileBinding') }}</summary>
+              <dl class="authority-file-limits">
+                <dt>{{ label('fileCore') }}</dt><dd><code>{{ file.owner.core_installation_id }}</code></dd>
+                <dt>{{ label('fileIncarnation') }}</dt><dd><code>{{ file.owner.incarnation }}</code></dd>
+                <dt>{{ label('digest') }}</dt><dd><code>{{ file.package_artifact_sha256 }}</code></dd>
+              </dl>
+            </details>
+          </article>
+        </div>
         <p v-if="!plan.scopes.length" class="ui-help">{{ label('empty') }}</p>
         <label v-if="plan.state === 'review_required'" class="ui-check authority-acknowledge">
           <input type="checkbox" v-model="acknowledged" :disabled="busy || expired" />{{ label('acknowledge') }}
@@ -228,7 +252,13 @@ onMounted(refresh)
 .authority-resource { min-width: 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); background: var(--ui-surface-alt); padding: calc(var(--ui-space) * 3); }
 .authority-resource h5 { font-size: .95em; margin: 0 0 calc(var(--ui-space) * 2); overflow-wrap: anywhere; }
 .authority-resource pre { margin: 0; font-size: .8em; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; color: var(--ui-text-secondary); }
+.authority-file code { font-size: .8em; color: var(--ui-text-secondary); overflow-wrap: anywhere; }
+.authority-file-limits { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--ui-space) calc(var(--ui-space) * 3); margin: calc(var(--ui-space) * 3) 0 0; font-size: .9em; }
+.authority-file-limits dt { font-weight: 500; color: var(--ui-text-secondary); }
+.authority-file-limits dd { margin: 0; overflow-wrap: anywhere; }
+.authority-file-binding { margin-top: calc(var(--ui-space) * 3); }
+.authority-file-binding summary { cursor: pointer; font-size: .9em; }
 .authority-acknowledge { align-items: flex-start; }
 .authority-revoke { border-top: 1px solid var(--ui-danger); padding-top: calc(var(--ui-space) * 4); }
-@media (max-width: 600px) { .authority-create { width: 100%; } }
+@media (max-width: 600px) { .authority-create { width: 100%; } .authority-file-limits { grid-template-columns: minmax(0, 1fr); } .authority-file-limits dd { margin-bottom: calc(var(--ui-space) * 2); } }
 </style>

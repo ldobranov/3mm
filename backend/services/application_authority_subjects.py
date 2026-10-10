@@ -17,7 +17,7 @@ from backend.services.application_authority_context import (
     ContextModel, ResolvedCommandScope, _bounded_json, _canonical_bytes, _parse,
 )
 from backend.services.application_authority_keys import AuthorityReviewKeyError, CoreReviewKeyStore
-from backend.services.application_authority_policy import PolicyBinding, PolicySubjectV1, PolicySubjectV2, PolicySubjectV3
+from backend.services.application_authority_policy import PolicyBinding, PolicySubjectV1, PolicySubjectV2, PolicySubjectV3, PolicySubjectV4, PolicySubjectV5
 from backend.services.authority_metadata import AuthorityGuardSnapshot
 
 
@@ -30,7 +30,7 @@ SOURCE_BLOCKERS = frozenset({
 
 class InstalledPolicySubject(ContextModel):
     subject_scope: Literal["installed_artifact_only"] = "installed_artifact_only"
-    subject: PolicySubjectV1 | PolicySubjectV2 | PolicySubjectV3 | None = None
+    subject: PolicySubjectV1 | PolicySubjectV2 | PolicySubjectV3 | PolicySubjectV4 | PolicySubjectV5 | None = None
     guard: AuthorityGuardSnapshot | None = None
     issues: tuple[sources.SourceIssue, ...]
     reviewable: Literal[False] = False
@@ -91,15 +91,17 @@ def _compose(db, installation_id, pin, package, keys):
     }
     if unexpected:
         raise sources._Unavailable("source_unavailable")
-    version = 3 if resolved.publications else 2 if resolved.events else 1
-    model = {1: PolicySubjectV1, 2: PolicySubjectV2, 3: PolicySubjectV3}[version]
+    version = 5 if resolved.relational else 4 if resolved.private_files else 3 if resolved.publications else 2 if resolved.events else 1
+    model = {1: PolicySubjectV1, 2: PolicySubjectV2, 3: PolicySubjectV3, 4: PolicySubjectV4, 5: PolicySubjectV5}[version]
     subject = _parse(model, model(subject_version=version,
         binding=PolicyBinding(principal=resolved.principal, candidate=resolved.baseline.artifact,
             baseline=resolved.baseline, configuration=identity, recovery_generation=resolved.guard.generation),
         commands=commands, connectors=resolved.connectors,
         has_executable_frontend=package.compiled_ui is not None, blockers=blockers,
         **({"events": resolved.events} if version >= 2 else {}),
-        **({"publications": resolved.publications} if version == 3 else {})))
+        **({"publications": resolved.publications} if version >= 3 else {}),
+        **({"private_files": resolved.private_files} if version >= 4 else {}),
+        **({"relational": resolved.relational} if version == 5 else {})))
     return InstalledPolicySubject(subject=subject, guard=resolved.guard,
         issues=tuple(sources.SourceIssue(reason=reason) for reason in (
             "policy_evidence_unavailable", *blockers)))

@@ -10,6 +10,7 @@ from unittest.mock import patch
 from types import SimpleNamespace
 
 from three_mm_runtime import application_transport as transport
+from three_mm_protocol.application_extension import ApplicationStorageV1
 from backend.services import application_extensions as gateway
 
 
@@ -99,7 +100,8 @@ class ApplicationDispatchTests(unittest.TestCase):
         app = SimpleNamespace(enabled=True, status='active', instance_id='a'*24, socket_path=str(self.path))
         operation = SimpleNamespace(operation_id='job', audiences=['internal'], idempotency='required',
             input_schema={}, output_schema={'properties': {'done': {'type': 'boolean'}}, 'required': ['done']}, timeout_seconds=0.1)
-        with patch.object(gateway, 'load_application_definition', return_value=SimpleNamespace(operations=[operation])):
+        storage = ApplicationStorageV1(schema_revision='0001', migration_entrypoint='fixture:migrations')
+        with patch.object(gateway, 'load_application_definition', return_value=SimpleNamespace(operations=[operation], storage=storage)):
             return gateway.invoke_application(app, object(), SimpleNamespace(key_root=self.root), 'job', {},
                 {'idempotency_key': 'stable'}, required_audience='internal', require_ready=True, before_dispatch=before_dispatch)
 

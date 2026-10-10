@@ -29,7 +29,7 @@ from backend.db.module import (
 )
 from backend.services.application_authority_context import (
     AuthorityArtifact, AuthorityBaseline, AuthorityPrincipal, Digest, ResolvedConnectorScope,
-    ResolvedCredential, ResolvedEventScope, ResolvedPublicationScope, StoredConnectorScope, _bounded_json, _canonical_bytes,
+    ResolvedCredential, ResolvedEventScope, ResolvedPublicationScope, ResolvedPrivateFileScope, ResolvedRelationalScope, StoredConnectorScope, _bounded_json, _canonical_bytes,
 )
 from backend.services.application_authority_inspection import (
     AuthorityInspectionBaseline, _read_baseline,
@@ -46,6 +46,7 @@ from three_mm_protocol.capability_contracts import CONTRACT_FEATURE, registratio
 from three_mm_protocol.device_capabilities import ProviderId, ProviderType
 from three_mm_protocol.installation_identity import InstallationIdentityV1
 from three_mm_protocol.node_features import DeviceRuntimeFeaturesV1
+from three_mm_application_sdk.file_wire import MAX_SCOPED_FILE_BYTES
 
 
 class SourceModel(BaseModel):
@@ -111,6 +112,8 @@ class InstalledAuthoritySources(SourceModel):
     connectors: tuple[ResolvedConnectorScope, ...] = ()
     events: tuple[ResolvedEventScope, ...] = ()
     publications: tuple[ResolvedPublicationScope, ...] = ()
+    private_files: tuple[ResolvedPrivateFileScope, ...] = ()
+    relational: tuple[ResolvedRelationalScope, ...] = ()
     issues: tuple[SourceIssue, ...]
     not_checked: tuple[str, ...] = (
         "candidate_staging_and_configuration_identity", "policy_trust_and_isolation_evidence",
@@ -404,6 +407,29 @@ def _resolve(db, installation_id, pin, package):
         pending.append(SourceIssue(reason="command_schema_containment_not_evaluated"))
     if any(binding.sensor_id is not None for binding in app.command_bindings):
         pending.append(SourceIssue(reason="sensor_contract_unresolved"))
+    private_files = ()
+    relational = ()
+    if app.storage.relational is not None:
+        # Resolve the request only, without opening application SQLite or
+        # importing migrations. Runtime/lifecycle remains explicitly blocked.
+        declaration = app.storage.relational
+        relational = tuple(ResolvedRelationalScope(declaration=declaration,
+            owner=principal, package_artifact_sha256=pin.sha256,
+            service_artifact_sha256=app.service.artifact_sha256,
+            schema_revision=app.storage.schema_revision,
+            migration_entrypoint=app.storage.migration_entrypoint,
+            operation=operation)
+            for operation in (('read', 'write') if declaration.mode == 'read_write' else ('read',)))
+    if app.storage.private_files is not None:
+        declaration = app.storage.private_files
+        if declaration.max_file_bytes > MAX_SCOPED_FILE_BYTES:
+            # The declaration/helper ceiling is wider than this first bounded
+            # transport. Never silently clamp an author's requested bounds.
+            pending.append(SourceIssue(scope="storage:private_files", reason="unsupported_scope_family"))
+        else:
+            private_files = tuple(ResolvedPrivateFileScope(declaration=declaration,
+                owner=principal, package_artifact_sha256=pin.sha256, operation=operation)
+                for operation in (('read', 'write') if declaration.mode == 'read_write' else ('read',)))
     emitted = {event for operation in app.operations for event in operation.emitted_events}
     publication_complete = bool(publications) and emitted == {item.declaration.event_type for item in publications}
     if (app.public_http_routes or app.jobs or app.platform_permissions
@@ -426,7 +452,8 @@ def _resolve(db, installation_id, pin, package):
     result = InstalledAuthoritySources(sources_resolved=True, guard=guard, principal=principal,
         baseline=AuthorityBaseline(artifact=AuthorityArtifact(version=pin.version, sha256=pin.sha256),
             authority_epoch=authority.epoch, grant_revision=grant_revision, enforcement_mode=authority.mode),
-        commands=commands, connectors=connectors, events=events, publications=publications, issues=tuple(pending))
+        commands=commands, connectors=connectors, events=events, publications=publications,
+        private_files=private_files, relational=relational, issues=tuple(pending))
     _bounded_json(result.model_dump(mode="json"))  # Total redacted output budget too.
     return result
 
