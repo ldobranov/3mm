@@ -10,6 +10,10 @@ from backend.services.diagnostics import (
     build_diagnostic_preview,
     serialize_diagnostic_bundle,
 )
+from backend.services.operational_alerts import (
+    OperationalAlertSummary,
+    build_operational_alert_summary,
+)
 from backend.utils.auth_dep import require_admin
 
 
@@ -30,3 +34,8 @@ def diagnostics_bundle(_admin: User = Depends(require_admin)) -> Response:
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/alerts", response_model=OperationalAlertSummary)
+def operational_alerts(_admin: User = Depends(require_admin)) -> OperationalAlertSummary:
+    return build_operational_alert_summary(get_settings())

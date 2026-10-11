@@ -510,6 +510,16 @@ Acceptance criteria:
 
 ## Milestone 15 — Production hardening and operations
 
+Status: **partial foundations integrated for beta.47 on 2026-10-11**, not closed.
+This slice includes manual bounded audit retention, read-only administrator alert
+summaries, shared-lock backup-key rotation and production TLS/compatibility
+guidance. Existing redacted diagnostics and restore paths are reused. Ed25519
+release helpers are tested but not connected to publisher/catalog/installer trust;
+trusted repositories and signing-key policy remain open. Fleet rollout/maintenance
+coordination, live TLS ingress, cross-host recovery and end-to-end credential
+rotation acceptance remain separate. See [security guidance](PRODUCTION_SECURITY_GUIDE.md)
+and [compatibility boundary](RELEASE_COMPATIBILITY_AND_MIGRATION.md).
+
 Goal: make small real installations supportable and establish the security
 boundary required before arbitrary AI-generated executable code is considered.
 
@@ -718,9 +728,11 @@ Acceptance criteria:
 
 ## Milestone 20 — Extension Platform v2
 
-Status: **approved as the next Core milestone on 2026-10-07**. Planning only;
-implementation has not started. The first delivery is WP0, an evidence-backed
-baseline and gap map, not a new runtime or manifest rollout. See
+Status: **in progress**, approved on 2026-10-07. Bounded implementation slices
+are published through beta.46; beta.47 corrects production private-file traversal.
+WP4 and Milestone 20 are not closed: database lifecycle/recovery, scoped platform/
+frontend adapters and neutral end-to-end acceptance remain gated. See
+[WP4 closure audit](EXTENSION_PLATFORM_V2_WP4_CLOSURE_AUDIT.md) and
 [EXTENSION_PLATFORM_V2_CORE_PLAN.md](../EXTENSION_PLATFORM_V2_CORE_PLAN.md).
 
 Goal: evolve the existing extension platform into a stable, secure distribution

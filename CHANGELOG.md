@@ -6,6 +6,54 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.47] - 2026-10-11
+
+### Fixed
+
+- SDK private-file directory traversal accepts production search-only ancestors
+  via pinned Linux `O_PATH` descriptors while retaining no-symlink checks and a
+  readable owned data leaf. No release/state permissions, grants, receipts or
+  Application SDK 1.3 contract are widened. This corrects beta.46's blocked file
+  access despite an effective exact grant; live VM acceptance follows the update.
+- TLS guidance now supplies an explicit HTTPS API URL at the Web proxy's exact
+  `/runtime-config.json` route. A stored Core URL alone cannot override the shipped
+  port configuration on a fresh browser. nginx examples preserve Host; direct Core
+  port exposure remains blocked by operator firewall policy, not assumed loopback.
+  The same-host Caddy example avoids claiming Web's existing port 80 and documents
+  the separate certificate/DNS and configuration-validation requirements.
+
+### Added
+
+- Milestone 15 foundations from the reviewed Ubuntu work: SQL-counted audit
+  retention with bounded ID selection, conservative evidence preservation,
+  administrator-only dry run and explicitly confirmed/audited purge.
+- Administrator-only, read-only operational alerts for backup, storage and
+  diagnostics failures; no notifications, automatic purge or state mutation.
+- Root-local backup-key rotation serialized by the shared backup/restore/update
+  mutation lock. Existing archives block rotation unless explicitly acknowledged;
+  installation does not rotate keys and the helper does not re-encrypt archives.
+- Opt-in detached Ed25519 manifest helpers and negative verification tests. These
+  are not wired into publication/catalog/installer trust; this release is not
+  advertised as signed. Private repository trust and key policy remain separate.
+- Production-security and compatibility/migration guides with explicit remaining
+  M15 gates, plus HTTPS bootstrap/override, authorization, bounded retention and
+  actual non-root private-file permission regressions.
+
+### Compatibility and verification
+
+- No database schema, runtime dependency, SDK or Device Protocol change. Existing
+  identity, credentials, extensions, data, appearance and authority modes remain.
+  Unrelated local/generated files and concrete themes/business packages are excluded.
+- Full Python, deployment/SDK and frontend checks plus reproducible full-profile
+  and ARMv6 Node builds gate publication. M15 and WP4/Milestone 20 remain open:
+  signing integration, fleet coordination and live security/recovery acceptance
+  are not inferred from unit tests or a successful release. Keep a verified backup
+  and perform the scoped-file test on a disposable updated VM first.
+- Local Linux Python 3.14.4 verification: 3008 default-suite tests passed (four
+  explicit skips), 300 deployment/SDK tests passed, and separate non-root worker
+  coverage passed. All 313 frontend tests, type-check and production build passed;
+  GitHub repeats the release checks on Python 3.13 and Node 22.
+
 ## [0.3.0-beta.46] - 2026-10-11
 
 ### Fixed
@@ -1433,7 +1481,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.46...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.47...HEAD
+[0.3.0-beta.47]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.47
 [0.3.0-beta.46]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.46
 [0.3.0-beta.45]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.45
 [0.3.0-beta.44]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.44

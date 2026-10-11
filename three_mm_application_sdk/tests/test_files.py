@@ -2,6 +2,8 @@ import hashlib
 import multiprocessing
 import os
 from pathlib import Path
+import stat
+import tempfile
 
 import pytest
 
@@ -14,7 +16,6 @@ from three_mm_application_sdk import (
     ApplicationStorage,
 )
 from three_mm_application_sdk import files as files_module
-
 
 POSIX = os.name == "posix"
 posix_only = pytest.mark.skipif(
@@ -122,6 +123,115 @@ def test_modes_and_reads_never_initialize_namespace(storage):
     assert reader.get("a") == saved
     with pytest.raises(ApplicationFileStorageError, match="read-only"):
         reader.delete("a", expected_sha256=saved.sha256)
+
+
+def _process_permission_probe(data_dir, uid, gid, scenario, result):
+    try:
+        if os.geteuid() == 0:
+            os.setgroups([])
+            os.setgid(gid)
+            os.setuid(uid)
+        assert os.geteuid() != 0  # Root would hide the deployment failure.
+        data = Path(data_dir)
+        storage = ApplicationFileStorage(data, limits=ApplicationFileLimits(8, 12, 2))
+        if scenario != "search_only":
+            for operation in (
+                lambda: storage.get("a"),
+                lambda: storage.put("a", b"old", expected_sha256=None),
+            ):
+                try:
+                    operation()
+                except ApplicationFileStorageError:
+                    pass
+                else:
+                    raise AssertionError("Filesystem permission denial was bypassed")
+        else:
+            assert os.access(data.parent, os.X_OK)
+            assert not os.access(data.parent, os.R_OK)
+            try:
+                os.listdir(data.parent)
+            except PermissionError:
+                pass
+            else:
+                raise AssertionError("Protected parent became listable")
+            assert storage.get("a") is None
+            assert storage.list_entries() == []
+            assert not (data / "sdk-files").exists()
+            saved = storage.put("a", b"old", expected_sha256=None)
+            restarted = ApplicationFileStorage(data, limits=storage.limits)
+            assert restarted.get("a") == saved
+            assert restarted.list_entries() == [("a", 3)]
+            changed = restarted.put("a", b"new", expected_sha256=saved.sha256)
+            assert restarted.get("a") == changed
+            restarted.delete("a", expected_sha256=changed.sha256)
+            assert restarted.get("a") is None
+            assert restarted.list_entries() == []
+        result.send(("ok", None))
+    except BaseException as error:
+        result.send((type(error).__name__, str(error)))
+    finally:
+        result.close()
+
+
+@pytest.mark.skipif(
+    not POSIX or not hasattr(os, "O_PATH"), reason="Linux directory search semantics"
+)
+@pytest.mark.parametrize("scenario", ["search_only", "no_search", "unreadable_data"])
+def test_real_non_root_permissions_under_protected_state_root(scenario):
+    # Only disposable paths change ownership/mode. A fork inherits the already
+    # imported SDK, so a root-run suite can drop privileges without needing to
+    # expose pytest's private temp parents or the checkout to another user.
+    uid, gid = (65534, 65534) if os.geteuid() == 0 else (os.geteuid(), os.getegid())
+    with tempfile.TemporaryDirectory(prefix="3mm-file-permissions-") as temporary:
+        root = Path(temporary)
+        root.chmod(0o711)
+        protected = root / "state"
+        protected.mkdir()
+        data = protected / "data"
+        data.mkdir(mode=0o700)
+        if os.geteuid() == 0:
+            os.chown(data, uid, gid)
+        data.chmod(0o300 if scenario == "unreadable_data" else 0o700)
+        protected.chmod(0o000 if scenario == "no_search" else 0o111)
+        context = multiprocessing.get_context("fork")
+        receiver, sender = context.Pipe(duplex=False)
+        process = context.Process(
+            target=_process_permission_probe,
+            args=(str(data), uid, gid, scenario, sender),
+        )
+        try:
+            process.start()
+            sender.close()
+            assert receiver.poll(15), "Non-root permission probe timed out"
+            assert receiver.recv() == ("ok", None)
+            process.join(timeout=5)
+            assert process.exitcode == 0
+            assert stat.S_IMODE(protected.stat().st_mode) == (
+                0o000 if scenario == "no_search" else 0o111
+            )
+            if scenario != "search_only":
+                protected.chmod(0o700)
+                assert not (data / "sdk-files").exists()
+        finally:
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5)
+            receiver.close()
+            sender.close()
+            protected.chmod(0o700)
+            data.chmod(0o700)
+
+
+@posix_only
+def test_without_o_path_preserves_supported_readable_directory_walk(
+    storage, monkeypatch
+):
+    monkeypatch.delattr(files_module.os, "O_PATH", raising=False)
+    assert storage.get("a") is None
+    saved = storage.put("a", b"old", expected_sha256=None)
+    assert storage.get("a") == saved
+    storage.delete("a", expected_sha256=saved.sha256)
+    assert storage.list_entries() == []
 
 
 @posix_only

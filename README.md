@@ -8,7 +8,7 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Test Beta. This source prepares **v0.3.0-beta.46**, a bounded
+> **Project status:** Test Beta. This source prepares **v0.3.0-beta.47**, a bounded
 > Milestone 20 Extension Platform v2 delivery, not completion of WP4 or Milestone 20.
 > It extends exact resource review/approval/apply with private-file access and a
 > bounded relational-storage foundation: signed transaction admission/receipts,
@@ -31,6 +31,11 @@ system.
 > pre-upgrade backup. See the [test Beta checklist](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md).
 > Release assets become available only after the tag-driven workflow succeeds;
 > publication is not live deployment, hardware/fiscal acceptance or remote-code trust.
+> Beta.47 fixes scoped private-file traversal on production search-only ancestors
+> without widening permissions. It also integrates a bounded Milestone 15 slice:
+> manual audit retention, administrator-only operational alerts, guarded backup-key
+> rotation and corrected TLS/API bootstrap guidance. Release-signing helpers are
+> opt-in only; publisher/catalog/installer signing and full M15 acceptance remain open.
 >
 > Beta.36 published the compatible v1 theme platform. Theme lifecycle, v2 asset
 > loading and portable recovery are locally checked; desktop/mobile light/dark
@@ -65,7 +70,10 @@ system.
   to first-boot setup.
 - **Backup and diagnostics** — encrypted local snapshots, transactional
   restore with rollback, password-protected disaster-recovery downloads and
-  secret-redacted diagnostic bundles.
+  secret-redacted diagnostic bundles. Administrator-only alert summaries and
+  explicit bounded audit retention are available; no notifications or automatic
+  purge are scheduled. Backup-key rotation is root-local, dry-run-first and shares
+  the backup/restore/update mutation lock; existing archives are never re-encrypted.
 - **Extensions** — declarative runtime extensions and reviewed compiled Vue
   widgets, editors, routes and reusable components, plus the locally completed
   supervised application-service foundation for transactional extensions.
@@ -262,17 +270,17 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 ### Updating a paired Hub and Zero
 
 For this test Beta, first export a pre-upgrade backup and update a disposable VM.
-From a working beta.43–beta.45 full installation, select **Beta** in `/system/updates`
-and stage the published beta.46 release. Older installations can first manually
+From a working beta.43–beta.46 full installation, select **Beta** in `/system/updates`
+and stage the published beta.47 release. Older installations can first manually
 bootstrap the current corrected full-profile release (Raspberry/WSL):
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.46
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.47
 ```
 
 An older installed updater cannot acquire the target-installer fix before it
 runs. No bridge release or reset is required. Update the Zero over SSH
-with the Node bootstrap command above and add `--tag v0.3.0-beta.46` to select
+with the Node bootstrap command above and add `--tag v0.3.0-beta.47` to select
 this exact release. Provisioned upgrades preserve identity and pairing, not
 Master reset. Real update/rollback and browser request/CPU checks remain pending;
 see [platform stability acceptance](docs/PLATFORM_STABILITY_ACCEPTANCE.md).
@@ -459,6 +467,8 @@ checks local browser CORS as well as readiness. See the
 | [Backup and restore](docs/BACKUP_AND_RESTORE.md) | Local snapshots, portable recovery and restore safety |
 | [Core asset storage](docs/CORE_ASSET_STORAGE.md) | Persistent public assets outside immutable releases |
 | [Redacted diagnostics](docs/DIAGNOSTICS.md) | Support bundle contents and secret exclusions |
+| [Production security guidance](docs/PRODUCTION_SECURITY_GUIDE.md) | Two-origin TLS/bootstrap, administrator policy, rotation and remaining acceptance |
+| [Release compatibility](docs/RELEASE_COMPATIBILITY_AND_MIGRATION.md) | Persistent state, migration boundaries and remaining M15 work |
 | [Extension lifecycle](docs/EXTENSION_LIFECYCLE.md) | Package, version and data lifecycle |
 | [Theme Platform plan](docs/THEME_EXTENSION_PLAN.md) | Theme lifecycle, browser activation and remaining acceptance stages |
 | [Theme extension v1](docs/THEME_EXTENSION_V1.md) | Closed light/dark token contract and shared Extensions upload |

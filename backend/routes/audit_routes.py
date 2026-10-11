@@ -1,14 +1,25 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session as DBSession
 from sqlalchemy import desc, and_
 from typing import List, Optional
 from datetime import datetime, timedelta
 from backend.db.audit_log import AuditLog, AuditLogSchema
 from backend.db.user import User
+from backend.services import audit_retention
 from backend.utils.db_utils import get_db
-from backend.utils.auth_dep import require_user
+from backend.utils.auth_dep import require_admin, require_user
 
 router = APIRouter()
+
+
+class AuditRetentionApplyRequest(BaseModel):
+    retention_days: int
+    confirmation: str = ""
+    max_batch: int = 1000
+
+    model_config = ConfigDict(extra="forbid")
+
 
 @router.get("/audit-logs", response_model=List[AuditLogSchema])
 def get_audit_logs(
@@ -137,3 +148,64 @@ def get_entity_history(
     ).order_by(desc(AuditLog.timestamp)).limit(limit).all()
     
     return logs
+
+
+@router.get("/audit-logs/retention-plan")
+def get_audit_retention_plan(
+    admin: User = Depends(require_admin),
+    db: DBSession = Depends(get_db),
+    retention_days: int = Query(
+        audit_retention.DEFAULT_RETENTION_DAYS,
+        ge=audit_retention.MIN_RETENTION_DAYS,
+        le=audit_retention.MAX_RETENTION_DAYS,
+    ),
+):
+    """Admin-only dry run: what an age-based purge would remove, without doing it."""
+    try:
+        plan = audit_retention.plan_audit_retention(
+            db,
+            now=datetime.utcnow(),
+            retention_days=retention_days,
+        )
+    except audit_retention.AuditRetentionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "retention_days": retention_days,
+        "cutoff": plan.cutoff.isoformat() + "Z",
+        "candidate_total": plan.candidate_total,
+        "protected_evidential": plan.protected_evidential,
+        "confirm_to_apply": "AUDIT RETENTION",
+    }
+
+
+@router.post("/audit-logs/retention")
+def apply_audit_retention(
+    payload: AuditRetentionApplyRequest,
+    admin: User = Depends(require_admin),
+    db: DBSession = Depends(get_db),
+):
+    """Admin-only bounded purge of old, non-evidential audit records."""
+    if payload.confirmation != "AUDIT RETENTION":
+        raise HTTPException(status_code=409, detail="Confirmation does not match")
+    try:
+        deleted = audit_retention.apply_audit_retention(
+            db,
+            now=datetime.utcnow(),
+            retention_days=payload.retention_days,
+            max_batch=payload.max_batch,
+        )
+    except audit_retention.AuditRetentionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    db.add(
+        AuditLog(
+            user_id=admin.id,
+            action="AUDIT_RETENTION_APPLIED",
+            entity_type="audit_log",
+            changes={
+                "retention_days": payload.retention_days,
+                "deleted": deleted,
+            },
+        )
+    )
+    db.commit()
+    return {"deleted": deleted}

@@ -34,6 +34,55 @@ afterEach(() => {
 })
 
 describe('shared bootstrap data and authentication transport', () => {
+  it('bootstraps a fresh HTTPS browser from the proxy config without guessing public :8887', async () => {
+    vi.stubGlobal('location', { protocol: 'https:', hostname: '3mm.example.test' })
+    fetcher.mockResolvedValue(json({ backend_url: 'https://api.3mm.example.test/' }))
+    const { getBackendUrl } = await import('./runtime-config')
+    expect(await getBackendUrl()).toBe('https://api.3mm.example.test')
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual(['/runtime-config.json'])
+  })
+
+  it('does not consult a stored Core URL when the shipped port config already resolved', async () => {
+    vi.stubGlobal('location', { protocol: 'https:', hostname: '3mm.example.test' })
+    fetcher.mockImplementation(async (url: string) =>
+      json(
+        url === '/runtime-config.json'
+          ? { backend_port: 8887 }
+          : { backend_url: 'https://api.3mm.example.test' },
+      ),
+    )
+    const { getBackendUrl } = await import('./runtime-config')
+    expect(await getBackendUrl()).toBe('https://3mm.example.test:8887')
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual(['/runtime-config.json'])
+  })
+
+  it('uses the stored URL fallback only when runtime config is unavailable', async () => {
+    vi.stubGlobal('location', { protocol: 'https:', hostname: '3mm.example.test' })
+    fetcher.mockImplementation(async (url: string) =>
+      url === '/runtime-config.json'
+        ? json({}, 404)
+        : json({ backend_url: 'https://api.3mm.example.test' }),
+    )
+    const { getBackendUrl } = await import('./runtime-config')
+    expect(await getBackendUrl()).toBe('https://api.3mm.example.test')
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      '/runtime-config.json',
+      '/frontend-config',
+    ])
+  })
+
+  it('keeps a browser override ahead of the proxy config until explicitly cleared', async () => {
+    vi.stubGlobal('location', { protocol: 'https:', hostname: '3mm.example.test' })
+    localStorage.setItem('mm_backend_url_override', 'https://old.example.test/')
+    fetcher.mockResolvedValue(json({ backend_url: 'https://api.3mm.example.test' }))
+    const { getBackendUrl, clearBackendOverride } = await import('./runtime-config')
+    expect(await getBackendUrl()).toBe('https://old.example.test')
+    expect(fetcher).not.toHaveBeenCalled()
+    clearBackendOverride()
+    expect(await getBackendUrl()).toBe('https://api.3mm.example.test')
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
   it('shares exactly one config and catalog request across router, i18n and relationships', async () => {
     const { getExtensionCatalog } = await import('./extension-catalog')
     const { i18n } = await import('./i18n')

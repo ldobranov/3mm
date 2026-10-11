@@ -118,20 +118,24 @@ class ApplicationFileStorage:
     def _open_data(self) -> int:
         # Walk without resolving symlinks, including ancestors. Each open is
         # relative to a pinned directory descriptor, not a checked-then-used path.
+        # Linux O_PATH pins ancestors without requiring permission to list them:
+        # the installation state root is deliberately search-only for apps.
+        # Open the pinned data directory for reading only at the end, so its
+        # descriptor still supports the namespace operations and durable fsync.
         path = self.data_dir.absolute()
         if ".." in path.parts:
             raise ApplicationFileStorageError("Private data directory is invalid")
-        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-        fd = os.open(path.anchor, flags)
+        flags = os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        search_flags = getattr(os, "O_PATH", os.O_RDONLY) | flags
+        fd = os.open(path.anchor, search_flags)
         try:
             for component in path.parts[1:]:
-                child = os.open(component, flags, dir_fd=fd)
+                child = os.open(component, search_flags, dir_fd=fd)
                 os.close(fd)
                 fd = child
-            return fd
-        except BaseException:
+            return os.open(".", os.O_RDONLY | flags, dir_fd=fd)
+        finally:
             os.close(fd)
-            raise
 
     @contextmanager
     def _locked(self, *, write: bool) -> Iterator[int | None]:

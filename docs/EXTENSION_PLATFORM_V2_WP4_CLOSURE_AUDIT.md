@@ -1,6 +1,6 @@
 # M20 — проверка на остатъка за приключване на WP4
 
-Първоначален audit: 2026-10-09; последно обновяване: 2026-10-10. Проверен checkout:
+Първоначален audit: 2026-10-09; последно обновяване: 2026-10-11. Първоначално проверен checkout:
 `main`, HEAD `3ce8607`, с наличните локални непубликувани промени. SDK остава
 **1.3**. Първоначалната проверка е source-only; последващите targeted тестове
 са записани по-долу. Това не е live приемане или приключване на WP4.
@@ -251,7 +251,56 @@ platform/transport, file host и unprepared relational gate. Двата фина
 само при записано покритие или изрично одобрена промяна на scope, не чрез
 обявяване на оставащите отказани операции за реализирани.
 
+## Live beta.46 — отказ при private-file достъп, 2026-10-11
+
+В WSL VM е възпроизведен `get: blocked` при active/enforced приложение с
+`grant_effective: true` и работещ файлов worker. Причината е SDK directory walk:
+`O_RDONLY` изисква read право и върху `/var/lib/3mm`, която правилно е `0710` —
+само search/traversal за `3mm-app`. Това не е липсващ grant и не изисква `chmod`
+на production state или immutable release.
+
+Локалната поправка pin-ва Linux ancestors с `O_PATH`, `O_DIRECTORY`, `O_NOFOLLOW`
+и `O_CLOEXEC`, после отваря pinned data directory с `O_RDONLY` за namespace I/O и
+`fsync`. Symlinks, липсващ search достъп и unreadable data leaf остават отказани.
+На POSIX без `O_PATH` се запазва предишният protected readable-directory walk;
+няма path-based fallback. SDK **1.3**, grants, receipts, лимити и Core API не се
+променят.
+
+Проверка: **332 passed** върху Linux/Python **3.14.4** — целият SDK и targeted
+Core file execution/authority, WP4 package, worker/host, snapshots и activation.
+Новите permission tests използват actual non-root процес; root-run повторението
+на SDK file suite също минава **42 tests**, със свалени UID/GID за permission
+cases. Това е припокриващ се поднабор, не допълнителен unique-test total.
+Двата нови положителни regression cases се провалят с directory walk-а от beta.46
+и минават с поправката. Frontend production build също минава.
+
+Отделна read-only проверка с реалния `3mm-app` UID и локалния поправен SDK отваря
+data descriptor на тестовата инсталация, като запазва state mode `0710` и отказа
+за прочит на родителската папка. Не изпълнява live file get/put, не редактира
+release, не рестартира приложение и не създава или променя права. Инсталираната
+beta.46 остава непоправена до нов release/update; пълният live scoped-file flow
+след update и общото WP4 acceptance остават отворени.
+
 ## Проверени източници
+
+### Release кандидат beta.47 — пълни локални проверки, 2026-10-11
+
+- Пълният default Python пакет върху изолиран Linux checkout и Python **3.14.4**,
+  с root за реалните protected-helper cases: **3008 passed, 4 skipped**, още
+  **5 subtests passed**. Два skip-а са non-POSIX откази; третият е opt-in HTTPS
+  acceptance, а четвъртият е worker permission test, който изисква non-root.
+- Отделното non-root повторение на целия file-worker suite минава **12 tests**,
+  включително пропуснатия от root-run положителен search-only случай. Това е
+  припокриващо се покритие, не допълнителен unique-test total.
+- Пълните deployment и Application SDK suites минават **300 tests** с non-root
+  Linux потребител. Реалните migration workers с отделен UID/GID също са
+  изпълнени в пълния root-run, не са заменени с mocks или skips.
+- Frontend: **313 tests / 44 files**, TypeScript check и production build минават.
+  След ограничение на паметта в Windows тестовете са повторени с един worker;
+  assertions, timeouts, scripts и production поведение не са променени.
+- GitHub Python **3.13**/Node **22** CI и tag-driven reproducible builds остават
+  задължителният gate за публикуване на точния commit. Тези локални проверки не
+  са live scoped-file, HTTPS ingress, hardware или M15/WP4 completion acceptance.
 
 ### Release кандидат beta.45 — пълни проверки, 2026-10-10
 

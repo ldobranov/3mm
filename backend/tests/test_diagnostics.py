@@ -142,3 +142,35 @@ def test_diagnostic_bundle_download_is_admin_only(monkeypatch: pytest.MonkeyPatc
         assert response.json()["schema_version"] == 1
     finally:
         db.close()
+
+
+def test_operational_alerts_are_admin_only_and_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.services.operational_alerts import OperationalAlert, OperationalAlertSummary
+
+    client, db, admin_token, viewer_token = _client()
+    probes = []
+    def summary(settings):
+        probes.append(settings)
+        return OperationalAlertSummary(
+            generated_at=datetime(2026, 10, 11, tzinfo=UTC), alert_count=1,
+            alerts=(OperationalAlert(severity="warning", code="storage.low_free_space",
+                                     message="Backup storage is below the configured minimum free threshold"),),
+        )
+    monkeypatch.setattr("backend.routes.diagnostics.build_operational_alert_summary", summary)
+    try:
+        assert client.get("/api/v1/diagnostics/alerts").status_code == 401
+        assert client.get(
+            "/api/v1/diagnostics/alerts",
+            headers={"Authorization": f"Bearer {viewer_token}"},
+        ).status_code == 403
+        assert probes == []
+        response = client.get(
+            "/api/v1/diagnostics/alerts",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert response.status_code == 200
+        assert response.json()["alert_count"] == 1
+        assert len(probes) == 1
+        assert not db.new and not db.dirty and not db.deleted
+    finally:
+        db.close()

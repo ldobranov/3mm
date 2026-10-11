@@ -15,7 +15,6 @@ from three_mm_runtime.application_file_executor import (
 )
 from three_mm_runtime.application_transport import ApplicationTransportError
 
-
 pytestmark = pytest.mark.skipif(
     os.name != "posix", reason="POSIX worker, filesystem and clock"
 )
@@ -55,6 +54,56 @@ def put():
         "expected_sha256": None,
         "content_base64": base64.b64encode(b"on").decode("ascii"),
     }
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "O_PATH") or getattr(os, "geteuid", lambda: 0)() == 0,
+    reason="Run as a real non-root Linux worker to enforce directory permissions",
+)
+def test_file_worker_reads_and_writes_beneath_search_only_ancestor(runtime):
+    root, metadata, secret = runtime
+    protected = root.parent
+    original_mode = protected.stat().st_mode & 0o777
+    protected.chmod(0o111)
+    try:
+        with pytest.raises(PermissionError):
+            list(protected.iterdir())
+        with ApplicationFileExecutor(root, metadata, secret) as worker:
+            read = {
+                "file_request_version": 1,
+                "request_id": uuid.uuid4().hex,
+                "operation": "get",
+                "file_id": "logo",
+            }
+            hello = call_file_executor(worker.path, secret, "hello", {})
+            assert call_file_executor(
+                worker.path,
+                secret,
+                "execute",
+                {"admission": permit(hello), "request": read},
+            ) == {"file": None}
+            assert not (root / "data/sdk-files").exists()
+            hello = call_file_executor(worker.path, secret, "hello", {})
+            saved = call_file_executor(
+                worker.path,
+                secret,
+                "execute",
+                {"admission": permit(hello), "request": put()},
+            )
+            assert saved["file"]["size_bytes"] == 2
+            read["request_id"] = uuid.uuid4().hex
+            hello = call_file_executor(worker.path, secret, "hello", {})
+            found = call_file_executor(
+                worker.path,
+                secret,
+                "execute",
+                {"admission": permit(hello), "request": read},
+            )
+            assert base64.b64decode(found["file"]["content_base64"]) == b"on"
+            assert found["file"]["sha256"] == saved["file"]["sha256"]
+        assert protected.stat().st_mode & 0o777 == 0o111
+    finally:
+        protected.chmod(original_mode)
 
 
 @pytest.mark.parametrize(
