@@ -1,0 +1,59 @@
+{
+  "application_extension_version": 1,
+  "module_id": "org.3mm.wp4-test",
+  "version": "1.0.0",
+  "service": {
+    "artifact": "service/wp4_test-1.0.0-py3-none-any.whl",
+    "artifact_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sdk_version": "1.3",
+    "entrypoint": "wp4_test.service:create_service",
+    "health_operation_id": "health"
+  },
+  "operations": [
+    {
+      "operation_id": "health", "kind": "query", "audiences": ["internal"], "idempotency": "forbidden",
+      "output_schema": {"type": "object", "properties": {"status": {"type": "string", "enum": ["ready"]}}, "required": ["status"], "additionalProperties": false}
+    },
+    {
+      "operation_id": "echo", "kind": "query", "audiences": ["administrator"], "idempotency": "forbidden",
+      "input_schema": {"type": "object", "properties": {"message": {"type": "string", "maxLength": 256}}, "required": ["message"], "additionalProperties": false},
+      "output_schema": {"type": "object", "properties": {"message": {"type": "string", "maxLength": 256}}, "required": ["message"], "additionalProperties": false}
+    },
+    {
+      "operation_id": "file_get", "kind": "query", "audiences": ["administrator"], "idempotency": "forbidden",
+      "output_schema": {
+        "type": "object", "properties": {
+          "status": {"enum": ["found", "missing", "blocked"]}, "text": {"type": "string", "maxLength": 256},
+          "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+        }, "required": ["status", "text", "sha256"], "additionalProperties": false
+      }
+    },
+    {
+      "operation_id": "file_put", "kind": "command", "audiences": ["administrator"], "idempotency": "required",
+      "input_schema": {
+        "type": "object", "properties": {
+          "request_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+          "text": {"type": "string", "maxLength": 256},
+          "expected_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+        }, "required": ["request_id", "text", "expected_sha256"], "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object", "properties": {
+          "status": {"enum": ["stored", "blocked", "unconfirmed"]},
+          "request_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+          "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+        }, "required": ["status", "request_id", "sha256"], "additionalProperties": false
+      }
+    },
+    {
+      "operation_id": "file_receipt", "kind": "query", "audiences": ["administrator"], "idempotency": "forbidden",
+      "input_schema": {"type": "object", "properties": {"request_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"}}, "required": ["request_id"], "additionalProperties": false},
+      "output_schema": {"type": "object", "properties": {"status": {"enum": ["available", "blocked"]}, "receipt": {"type": ["object", "null"]}}, "required": ["status", "receipt"], "additionalProperties": false}
+    }
+  ],
+  "storage": {
+    "schema_revision": "0001", "migration_entrypoint": "wp4_test.migrations:get_migrations",
+    "classifications": ["private"], "contains_personal_data": false,
+    "private_files": {"file_contract_version": 1, "namespace": "private_files", "mode": "read_write", "max_file_bytes": 1024, "max_total_bytes": 4096, "max_files": 4}
+  }
+}

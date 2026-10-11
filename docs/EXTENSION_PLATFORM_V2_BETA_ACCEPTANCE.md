@@ -1,4 +1,4 @@
-# Extension Platform v2 — beta.45 test acceptance
+# Extension Platform v2 — beta.46 test acceptance
 
 Status: test-release checklist, not completed live acceptance or WP4 closure.
 
@@ -28,7 +28,7 @@ separate uploads. Publication does not update the VM, Hub or Zero.
    off-device. Record the installed release and local Agent device ID. Snapshot
    the VM as an independent fallback; do not keep two active clones with one identity.
 2. After all seven release assets are published, select Beta in System Updates,
-   stage `v0.3.0-beta.45`, review preflight and explicitly install that version.
+   stage `v0.3.0-beta.46`, review preflight and explicitly install that version.
 3. Require a durable successful update result. Check the active release and Core,
    Agent, Web and update-helper service health independently. Core/Agent readiness
    must pass and the Agent identity must remain unchanged.
@@ -39,7 +39,11 @@ separate uploads. Publication does not update the VM, Hub or Zero.
    and current-to-candidate changes, with no install, grant or helper action merely
    from inspection. Cancel and verify the installed catalog has not changed.
 6. Open Application access / Права на приложението for an existing application.
-   Confirm compatibility/unsupported status is explicit. Ordinary users cannot
+   Confirm the actual compatibility/review-required/enforced mode and package
+   digest are shown. A missing/invalid local review key or unsupported scoped
+   adapter must show an explicit blocked-review reason with no review/revoke
+   controls or effective-grant claim. Invalid package/guard evidence still fails
+   closed. Refresh must not create keys, trust or grants. Ordinary users cannot
    approve/apply/revoke resources. Do not adopt a real business extension to make
    an unsupported screen appear supported.
 7. Restart Core and recheck identity, compatibility status and preserved data.
@@ -55,6 +59,16 @@ curl --max-time 10 -fsS http://127.0.0.1:8890/ready
 ```
 
 ## Scoped runtime acceptance — separate neutral fixture
+
+A ready-to-build, headless Manifest v2 fixture is now available:
+[WP4 Test](../modules/wp4-test/README.md). It exercises installation, admin echo
+and bounded private-file access with no devices, connectors or background work.
+It is a separate uploaded package, not a bundled Core/business extension. Its
+safe first phase works without adopting an application. The installed-status UI
+fix is included in beta.46, not the existing beta.45 tag. Successful status does
+not make the adapter eligible or authorize resource execution.
+This fixture covers private files only, not the event/command/connector and
+relational acceptance gates below.
 
 Use only a reviewed headless fixture, mock devices and a non-effecting connector
 on the disposable VM. Follow the public-contract and local key-administration

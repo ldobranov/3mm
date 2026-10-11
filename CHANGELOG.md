@@ -6,6 +6,42 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.46] - 2026-10-11
+
+### Fixed
+
+- Installed Application access can report verified package, lifecycle and actual
+  authority mode when a local review key is unavailable or the scoped adapter is
+  unsupported. Status-only responses expose no usable grants, review/revoke
+  controls or native-trust choices; invalid package/guard evidence still fails
+  closed. Reading or refreshing status never creates keys, repairs metadata,
+  trusts code, adopts applications or enables fallback permissions.
+- English/Bulgarian status messages distinguish missing-key and unsupported-
+  adapter cases from failed status reads. Existing review/apply/revoke writers,
+  authentication and effective resource checks are unchanged.
+
+### Added
+
+- Separate neutral WP4 Test Manifest v2 / SDK 1.3 package source, deterministic
+  ZIP builder and loopback-only manual probe. Admin echo and one bounded synthetic
+  private file support pre-grant refusal, explicit signed SDK access, same-ID
+  receipts, conflict and revocation testing. It has no frontend, devices,
+  connectors, events or automatic actions and refuses a legacy file fallback.
+- The test ZIP is uploaded separately through Extensions, not bundled or installed
+  by a Core update. It ships no trust/grants; native Python is not sandboxed.
+
+### Compatibility and verification
+
+- No new database migration, runtime dependency, Application SDK or Device
+  Protocol change. Existing business applications retain their mode, data and
+  rights. Concrete themes/business packages and local/generated data are excluded.
+- WP4/Milestone 20 remain open: database lifecycle/recovery, scoped platform/
+  frontend adapters and broader neutral live acceptance are separate gates.
+  Keep a verified pre-upgrade backup and start with the disposable-VM checklist.
+- Complete Linux/Python, deployment/SDK and frontend checks plus deterministic
+  full-profile/ARMv6 Node builds gate publication. A published release is not
+  live upgrade/rollback acceptance or permission to adopt business extensions.
+
 ## [0.3.0-beta.45] - 2026-10-10
 
 ### Added
@@ -1397,7 +1433,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.45...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.46...HEAD
+[0.3.0-beta.46]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.46
 [0.3.0-beta.45]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.45
 [0.3.0-beta.44]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.44
 [0.3.0-beta.43]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.43

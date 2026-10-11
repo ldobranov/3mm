@@ -81,6 +81,48 @@ async function review(wrapper: VueWrapper) {
 }
 
 describe('installed authority control', () => {
+  it.each(['compatibility', 'enforced', 'review_required'])('shows actual %s status with a missing key and no adoption actions', async mode => {
+    http.get.mockResolvedValue({ data: { ...status(), mode, review_available: false,
+      review_blockers: ['review_key_unavailable'], scopes: [], native_reviews: [],
+      grant_effective: false, grant_record_revision: null, grant_state: 'unavailable' } })
+    const wrapper = await open()
+    expect(wrapper.text()).toContain('The local Core review key is missing or unavailable')
+    expect(wrapper.text()).toContain('a'.repeat(64))
+    expect(wrapper.find('select').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('First adoption requires')
+    expect(wrapper.text()).not.toContain('No current local code review is available')
+    expect(wrapper.text()).not.toContain('Current rights are effective')
+    expect(wrapper.findAll('button').map(item => item.text())).not.toContain('Revoke rights')
+    expect(http.post).not.toHaveBeenCalled()
+  })
+
+  it('explains unsupported packages without suggesting key creation or adoption', async () => {
+    http.get.mockResolvedValue({ data: { ...status(), mode: 'compatibility', review_available: false,
+      review_blockers: ['unsupported_authority'], scopes: [], native_reviews: [],
+      grant_effective: false, grant_record_revision: null, grant_state: null } })
+    const wrapper = await open()
+    expect(wrapper.text()).toContain('This package is outside the current scoped-access adapter')
+    expect(wrapper.text()).toContain('Existing compatibility access unchanged')
+    expect(wrapper.find('select').exists()).toBe(false)
+    expect(http.post).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { review_available: false }, { review_blockers: [] },
+    { review_available: true, review_blockers: ['review_key_unavailable'] },
+    { review_available: false, review_blockers: ['unrecognized'] },
+    { review_available: false, review_blockers: ['review_key_unavailable'] },
+  ])('rejects incomplete or authority-bearing status-only responses %j', changed => {
+    expect(() => readAuthorityStatus({ ...status(), ...changed })).toThrow()
+  })
+
+  it('never accepts a plan against status-only evidence', () => {
+    const current = readAuthorityStatus({ ...status(), review_available: false,
+      review_blockers: ['review_key_unavailable'], scopes: [], native_reviews: [],
+      grant_effective: false, grant_record_revision: null, grant_state: null })
+    expect(() => readAuthorityPlan({ ...plan(), scopes: [], resources: { commands: [], connectors: [] } }, current)).toThrow()
+  })
+
   it.each(['read', 'read_write'] as const)('shows exact %s file rights without auto approval or apply', async mode => {
     const files = mode === 'read' ? [fileResource('read', mode)] : [fileResource('read'), fileResource('write')]
     const current = { ...status(), scopes: [...status().scopes, ...files.map(file => `storage:private_files_${file.operation}`)] }

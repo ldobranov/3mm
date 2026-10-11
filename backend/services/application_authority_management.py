@@ -39,10 +39,14 @@ from backend.services.application_authority_policy import (
     CorePolicyEvidenceV5, PolicySubjectV5,
     evaluate_authority_policy, _scopes,
 )
-from backend.services.application_authority_sources import _prepare_installed_package, _read_snapshot
+from backend.services.application_authority_sources import (
+    _prepare_installed_package, _read_snapshot, _package_pin, _core_identity,
+)
 from backend.services.application_authority_subjects import _compose
 from backend.services.application_policy_reviews import _actor, PolicyReviewStoreError
-from backend.services.authority_metadata import authority_transaction, read_application_authority
+from backend.services.authority_metadata import (
+    authority_transaction, read_application_authority, read_authority_guard,
+)
 
 
 class AuthorityManagementError(Exception):
@@ -407,6 +411,35 @@ class ApplicationAuthorityManager:
 
     def inspect(self, installation_id):
         prepared = self._prepare(installation_id)
+        try:
+            return self._inspect_reviewable(installation_id, prepared)
+        except AuthorityReviewKeyError:
+            blocker = "review_key_unavailable"
+        except AuthorityManagementError as exc:
+            if exc.reason != "unsupported_authority":
+                raise
+            blocker = "unsupported_authority"
+        # Installed status is not an approval. Do not need a review key to show
+        # the actual mode, but still require a verified artifact and valid Core
+        # metadata in a fresh read-only snapshot. Never interpret unsigned grants.
+        with _read_snapshot(self.engine) as db:
+            read_authority_guard(db)
+            _core_identity(db)
+            application = read_application_authority(db, installation_id)
+            pin = _package_pin(db, installation_id)
+            if pin != prepared[0]:
+                raise AuthorityManagementError("artifact_unavailable")
+            row = db.get(Grant, installation_id)
+            return {"installation_id": installation_id, "mode": application.mode,
+                "installation_status": pin.status, "installation_enabled": pin.enabled,
+                "artifact_sha256": pin.sha256, "scopes": [], "native_reviews": [],
+                "grant_revision": row.revision if row else None,
+                "grant_record_revision": None, "grant_effective": False,
+                "grant_state": "unavailable" if row else None,
+                "review_available": False, "review_blockers": [blocker],
+                "execution_class": "reviewed_native_only", "isolation_proven": False}
+
+    def _inspect_reviewable(self, installation_id, prepared):
         with self.keys.locked() as key, _read_snapshot(self.engine) as db:
             subject = self._subject(db, key, installation_id, prepared)
             row = db.get(Grant, installation_id)
@@ -446,6 +479,7 @@ class ApplicationAuthorityManager:
                 "grant_revision": row.revision if row else None, "grant_record_revision": grant["revision"] if grant else None,
                 "grant_effective": effective and installation.enabled,
                 "grant_state": grant["state"] if grant else ('unavailable' if row else None),
+                "review_available": True, "review_blockers": [],
                 "execution_class": "reviewed_native_only", "isolation_proven": False,
                 **({'runtime_blockers': ['relational_runtime_unavailable']} if getattr(subject, 'relational', ()) else {})}
 

@@ -29,10 +29,12 @@ const remaining = computed(() => Math.max(0, Math.ceil((deadline - now.value) / 
 const expired = computed(() => !!plan.value && remaining.value === 0)
 const adoptionBlocked = computed(() => status.value?.mode === 'compatibility'
   && (status.value.installation_enabled || status.value.installation_status !== 'disabled'))
-const canReview = computed(() => !!status.value && !!nativeId.value && !busy.value)
+const reviewAvailable = computed(() => !!status.value && status.value.review_available !== false)
+const canReview = computed(() => reviewAvailable.value && !!nativeId.value && !busy.value)
 const canDecide = computed(() => !!plan.value && !busy.value && !expired.value)
-const canRevoke = computed(() => status.value?.grant_state === 'active' && !!status.value.grant_record_revision && !busy.value)
-const statusLabel = computed(() => status.value?.mode === 'compatibility' ? 'compatAccess' : status.value?.grant_effective ? 'effective'
+const canRevoke = computed(() => reviewAvailable.value && status.value?.grant_state === 'active' && !!status.value.grant_record_revision && !busy.value)
+const statusLabel = computed(() => !reviewAvailable.value && status.value?.mode !== 'compatibility' ? 'statusOnly'
+  : status.value?.mode === 'compatibility' ? 'compatAccess' : status.value?.grant_effective ? 'effective'
   : status.value?.grant_state === 'active' && !status.value.installation_enabled ? 'inactive' : 'stale')
 
 function clearReview() { plan.value = null; acknowledged.value = false; deadline = 0; confirmRevoke.value = false }
@@ -158,9 +160,10 @@ onMounted(refresh)
           <span class="ui-badge" :class="{ 'authority-effective': status.grant_effective }">{{ label(statusLabel) }}</span>
         </div>
         <div class="authority-artifact"><span class="ui-help">{{ label('digest') }}</span><code>{{ status.artifact_sha256 }}</code></div>
-        <p v-if="status.mode === 'compatibility'" class="authority-note">{{ label(adoptionBlocked ? 'adoption' : 'adoptionReady') }}</p>
-        <p v-if="!status.native_reviews.length" class="ui-help">{{ label('noNative') }}</p>
-        <div v-else class="authority-chooser ui-field">
+        <p v-for="blocker in status.review_blockers || []" :key="blocker" class="authority-note" role="status">{{ label(blocker === 'review_key_unavailable' ? 'reviewKeyUnavailable' : 'unsupportedStatus') }}</p>
+        <p v-if="reviewAvailable && status.mode === 'compatibility'" class="authority-note">{{ label(adoptionBlocked ? 'adoption' : 'adoptionReady') }}</p>
+        <p v-if="reviewAvailable && !status.native_reviews.length" class="ui-help">{{ label('noNative') }}</p>
+        <div v-else-if="reviewAvailable" class="authority-chooser ui-field">
           <label :for="inputId">{{ label('nativeReview') }}</label>
           <select :id="inputId" class="ui-control" v-model="nativeId" :disabled="busy || !!plan" @change="clearReview">
             <option v-for="review in status.native_reviews" :key="review.native_review_id" :value="review.native_review_id">{{ review.native_review_id }}</option>

@@ -11,6 +11,8 @@ export interface AuthorityStatus {
   grant_state: 'active' | 'revoked' | 'unavailable' | null
   grant_effective: boolean
   isolation_proven: false
+  review_available?: boolean
+  review_blockers?: Array<'review_key_unavailable' | 'unsupported_authority'>
 }
 export interface AuthorityPlan {
   plan_id: string
@@ -123,11 +125,24 @@ export function readAuthorityStatus(value: unknown): AuthorityStatus {
     || !value.native_reviews.every(item => object(item) && id(item.native_review_id) && id(item.revision))) {
     throw new Error('Unsupported authority status')
   }
+  // Older Core responses remain supported. A status-only response must not
+  // smuggle effective authority, review choices or usable grant revisions.
+  if (value.review_available !== undefined || value.review_blockers !== undefined) {
+    if (typeof value.review_available !== 'boolean' || !Array.isArray(value.review_blockers)
+      || value.review_blockers.length > 2 || new Set(value.review_blockers).size !== value.review_blockers.length
+      || !value.review_blockers.every(reason => ['review_key_unavailable', 'unsupported_authority'].includes(String(reason)))
+      || value.review_available && value.review_blockers.length !== 0
+      || !value.review_available && (!value.review_blockers.length || value.grant_effective
+        || value.grant_record_revision !== null || value.scopes.length || value.native_reviews.length
+        || value.grant_state !== null && value.grant_state !== 'unavailable')) {
+      throw new Error('Unsupported authority availability')
+    }
+  }
   return value as unknown as AuthorityStatus
 }
 
 export function readAuthorityPlan(value: unknown, status: AuthorityStatus, moduleId?: string): AuthorityPlan {
-  if (!object(value) || !id(value.plan_id) || !id(value.revision) || !digest(value.fingerprint)
+  if (status.review_available === false || !object(value) || !id(value.plan_id) || !id(value.revision) || !digest(value.fingerprint)
     || value.state !== 'review_required' || value.artifact_sha256 !== status.artifact_sha256
     || value.isolation_proven !== false || !scopes(value.scopes)
     || value.scopes.length !== status.scopes.length || value.scopes.some(scope => !status.scopes.includes(scope))
