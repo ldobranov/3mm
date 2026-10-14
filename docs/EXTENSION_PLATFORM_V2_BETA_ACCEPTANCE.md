@@ -1,4 +1,4 @@
-# Extension Platform v2 — beta.46 test acceptance
+# Extension Platform v2 — beta.49 test acceptance
 
 Status: test-release checklist, not completed live acceptance or WP4 closure.
 
@@ -28,7 +28,10 @@ separate uploads. Publication does not update the VM, Hub or Zero.
    off-device. Record the installed release and local Agent device ID. Snapshot
    the VM as an independent fallback; do not keep two active clones with one identity.
 2. After all seven release assets are published, select Beta in System Updates,
-   stage `v0.3.0-beta.46`, review preflight and explicitly install that version.
+   stage `v0.3.0-beta.49`, review preflight and explicitly install that version.
+   If an earlier failed relational preparation left a recovery checkpoint,
+   encrypted backup/restore is blocked. Preserve its evidence and a verified VM
+   snapshot; an update is not recovery and does not authorize another preparation.
 3. Require a durable successful update result. Check the active release and Core,
    Agent, Web and update-helper service health independently. Core/Agent readiness
    must pass and the Agent identity must remain unchanged.
@@ -69,6 +72,52 @@ fix is included in beta.46, not the existing beta.45 tag. Successful status does
 not make the adapter eligible or authorize resource execution.
 This fixture covers private files only, not the event/command/connector and
 relational acceptance gates below.
+
+### Owner-reported beta.48 private-file regression — 2026-10-14
+
+The updated Ubuntu/WSL VM reports beta.48, four active Core/Agent/Web/helper
+services and both readiness endpoints ready with its unchanged Agent identity.
+The existing private-file fixture retains effective grant revision 3, its original
+text/digest and completed historical receipt. The owner confirmed a Core restart;
+the same checks still pass, and the earlier denied request still has no receipt.
+This accepts the private-file update/Core-restart regression only, not a whole
+VM reboot, relational lifecycle, portable restore or WP4/M20 closure.
+
+A separate [WP4 Relational Test](../modules/wp4-relational-test/README.md) now
+provides a bounded own-database package, catalog-only upload/manual probes and
+an explicit stepwise VM procedure for the beta.48 local-admin controls. Its
+preflight does not provision accounts, authorize code or prepare/start a database.
+Stop at a missing prerequisite or uncertain result; never bypass generic guards.
+
+### beta.48 relational live preparation refusal — 2026-10-14
+
+The separate relational fixture was cataloged, inertly registered and locally
+native-reviewed; a fresh own-database read/write plan was approved and applied.
+The first preparation created its namespace/key, but the hardened helper lacked
+effective `CAP_SETUID` for the non-root migration child. Core retains an
+`execution_unconfirmed` migration action; the runtime rollback records
+`restored_not_started`, with no database or published active/relational metadata.
+The fixture is stopped/disabled; the original key, staged wheel and checkpoint
+were retained. This is failed relational acceptance, not WP4 completion.
+
+The beta.49 fix retains only `CAP_SETUID` across helper exec without
+removing `NoNewPrivileges`/kernel/filesystem protections, and checks effective
+UID/GID transition capabilities before preparation effects. An opt-in real
+systemd regression proves a non-root migration with zero child capabilities and
+an early refusal without the prerequisite. It uses isolated disposable test
+paths, not the installed fixture. Publication and the VM update/recovery are
+separate gates; no installed checkpoint is cleared by this change.
+
+Targeted verification: 38 isolated Linux cases passed including both real
+systemd launch cases; a fresh wider isolated root run passed 95 migration,
+installation and fixture cases. An earlier wider run's single signed-SDK refusal
+passed separately and then in the complete rerun; diagnostics were added only
+to the test harness, without production retries or permission fallback.
+
+The current empty-bootstrap and prepared-candidate recovery contracts do not
+cover this restored-empty migration checkpoint. Explicit reconciliation of that
+source/evidence remains a gate. Do not erase markers, renew an old ticket or
+rerun fresh preparation to manufacture successful acceptance.
 
 Use only a reviewed headless fixture, mock devices and a non-effecting connector
 on the disposable VM. Follow the public-contract and local key-administration

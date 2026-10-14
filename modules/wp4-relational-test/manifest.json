@@ -1,0 +1,15 @@
+{
+  "manifest_version": 2,
+  "module_id": "org.3mm.wp4-relational-test",
+  "name": "WP4 Relational Test",
+  "version": "1.0.0",
+  "runtimes": ["core"],
+  "entrypoints": {"core": "application-extension.json"},
+  "compatibility": {"protocol": "1.0", "architectures": ["any"]},
+  "capabilities": {"provides": [], "consumes": []},
+  "permissions": ["data.read", "data.write", "process.spawn"],
+  "configuration_schema": {"type": "object", "properties": {}, "additionalProperties": false},
+  "configuration_defaults": {},
+  "registrations": [],
+  "health_check": {"type": "json_file", "path": "application-extension.json"}
+}

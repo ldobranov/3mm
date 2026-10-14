@@ -6,6 +6,68 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.49] - 2026-10-14
+
+### Fixed
+
+- The hardened update helper retains `CAP_SETUID` across its own exec so it can
+  launch the migration child as the application UID. `NoNewPrivileges`, kernel
+  and filesystem protections remain; migration children have no supplementary
+  groups or effective/ambient capabilities and never execute as Root.
+- Preparation checks effective UID/GID-switch capabilities before creating
+  namespace/key material or migration checkpoints. Missing privilege is refused
+  before runtime filesystem effects, instead of failing at the child UID drop.
+  This is not automatic reconciliation of already-issued Core authority actions.
+
+### Added
+
+- Separate headless WP4 Relational Test Manifest v2 / SDK 1.3 fixture, deterministic
+  builder, catalog/manual probes and stepwise local-admin acceptance procedure.
+  It requests only bounded owned relational read/write, with explicit migration,
+  same-ID replay/conflict and revocation tests; no business, network or hardware
+  actions. Its ZIP is uploaded separately, never installed or trusted by Core update.
+- Negative prerequisite tests and opt-in real systemd regression using the actual
+  helper hardening. Disposable owned-database tests verify the non-root child and
+  signed SDK path independently from the installed VM's failed preparation.
+
+### Compatibility and test boundary
+
+- No database schema, runtime dependency, Device Protocol or Application SDK version
+  change. Existing identity, credentials, applications, themes and grants remain.
+  Local/generated artifacts, concrete business packages and parallel M21 work are
+  excluded; reviewed-native execution is still not a sandbox.
+- The beta.48 restored-empty migration checkpoint is retained, not automatically
+  reconciled or replayed. Pending application recovery blocks encrypted backup/
+  restore and is not repaired by Core update; preserve the original evidence and
+  use explicit recovery or a verified VM snapshot before repeating preparation.
+  General relational recovery and WP4/M20 closure remain open.
+- Complete Python, separate deployment/SDK and frontend checks plus reproducible
+  full-profile/ARMv6 Node builds gate publication. Publication does not deploy any
+  device or prove VM recovery, hardware acceptance or general database lifecycle.
+
+### Local validation
+
+- The complete canonical non-root Linux collection passed **3,353 tests**, with
+  **397 explicit skips** and **5 passing subtests**. JUnit was reconciled against
+  all **3,750 collected IDs**; ZIP fixture DOS timestamps alone were normalized
+  for comparison. Skips cover actual-root boundaries, non-POSIX-only refusals,
+  opt-in HTTPS and opt-in systemd; they are not reported as passing coverage.
+  The separate complete non-root deployment/Application SDK run passed **300 tests**.
+  These suites overlap; their counts are not added as unique test coverage.
+- The fresh isolated native migration/installation, fixture, privilege and
+  systemd-template run passed **133 tests**, with no skips. This includes both
+  real hardened systemd launch cases: refusal without effective UID-switch
+  privilege and a successful non-root migration with zero child capabilities.
+- Frontend: **313 tests / 44 files**, TypeScript check and production build pass.
+  The initial bootstrap timeout and follow-on failure passed separately and in
+  the full repeat, without changing assertions or application/test deadlines.
+- Local test environments were corrected, not production permissions: non-root
+  provisioning tests use an isolated `XDG_DATA_HOME`; real `PrivateTmp` tests use
+  source outside `/tmp`/`/var/tmp`. Both failed attempts are retained as diagnostics.
+  The earlier all-root default run was deliberately interrupted and is not
+  reported as a completed full-suite result. Local Python is **3.14.4**; GitHub
+  repeats the canonical checks on Python **3.13** and Node **22**.
+
 ## [0.3.0-beta.48] - 2026-10-14
 
 ### Added
@@ -1549,7 +1611,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.48...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.49...HEAD
+[0.3.0-beta.49]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.49
 [0.3.0-beta.48]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.48
 [0.3.0-beta.47]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.47
 [0.3.0-beta.46]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.46

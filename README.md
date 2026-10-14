@@ -8,7 +8,7 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Test Beta. This source prepares **v0.3.0-beta.48**, a bounded
+> **Project status:** Test Beta. This source prepares **v0.3.0-beta.49**, a bounded
 > Milestone 20 Extension Platform v2 delivery, not completion of WP4 or Milestone 20.
 > It extends exact resource review/approval/apply with private-file access and a
 > bounded relational-storage foundation: signed transaction admission/receipts,
@@ -40,10 +40,19 @@ system.
 > pre-upgrade backup. See the [test Beta checklist](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md).
 > Release assets become available only after the tag-driven workflow succeeds;
 > publication is not live deployment, hardware/fiscal acceptance or remote-code trust.
-> Beta.48 local validation covers all 3,697 default Python cases (3,693 passing,
-> four explained skips), separate non-root deployment/SDK/file permissions and
-> 313 frontend tests, type-check and build. GitHub checks/reproducible publication
-> and subsequent live VM update/reboot acceptance remain separate gates.
+> Beta.49 fixes the hardened helper's non-root migration launcher and checks
+> effective UID/GID-switch privileges before preparation creates namespaces, keys or
+> checkpoints. Child workers retain no effective/ambient capabilities; existing
+> filesystem protections and NoNewPrivileges remain. A separate relational test
+> package exercises bounded own-SQLite access through the existing SDK. It is not
+> installed by an update. The beta.48 failed restored-empty migration checkpoint
+> still requires explicit recovery; this fix does not clear it or replay work.
+> Complete Python/frontend checks and reproducible publication gate the release;
+> subsequent live VM update/recovery acceptance remains separate.
+> Beta.49 local checks pass the full canonical non-root Python collection
+> (3,353 passed / 397 explicit skips), 300 deployment/SDK tests, 133 separate
+> root/systemd tests and 313 frontend tests, type-check and build. Counts overlap;
+> skipped privileged cases and broader live recovery are not claimed as completed.
 > Beta.47 fixes scoped private-file traversal on production search-only ancestors
 > without widening permissions. It also integrates a bounded Milestone 15 slice:
 > manual audit retention, administrator-only operational alerts, guarded backup-key
@@ -100,6 +109,12 @@ system.
   for admin echo, bounded private-file access and content-bound receipts. Build and
   upload [WP4 Test](modules/wp4-test/README.md) separately through Extensions;
   the ZIP is not bundled or installed by Core updates and ships no trust/grants.
+- **Separate relational WP4 test package** — build/upload
+  [WP4 Relational Test](modules/wp4-relational-test/README.md) for bounded own-SQLite
+  migrations, explicit grants, replay/conflict and revocation checks. Catalog upload,
+  local native review, preparation and start remain separate actions; no Core update
+  automatically trusts, grants or activates it. Application records are not Core
+  transaction receipts; reviewed-native execution is not a sandbox.
 - **Private storage (test Beta)** — exact private-file read/write review, signed
   SDK execution, bounded paths/bytes and durable receipts. Relational declarations,
   transaction grants, atomic SQLite receipts and protected preparation/recovery
@@ -283,17 +298,20 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 ### Updating a paired Hub and Zero
 
 For this test Beta, first export a pre-upgrade backup and update a disposable VM.
-From a working beta.43–beta.47 full installation, select **Beta** in `/system/updates`
-and stage the published beta.48 release. Older installations can first manually
+From a working beta.43–beta.48 full installation, select **Beta** in
+`/system/updates` and stage the published beta.49 release. Pending relational
+checkpoints block encrypted backup/restore and are not repaired by an update.
+Preserve the evidence and an independent verified VM snapshot; do not repeat
+preparation until explicit recovery. Older installations can manually
 bootstrap the current corrected full-profile release (Raspberry/WSL):
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.48
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.49
 ```
 
 An older installed updater cannot acquire the target-installer fix before it
 runs. No bridge release or reset is required. Update the Zero over SSH
-with the Node bootstrap command above and add `--tag v0.3.0-beta.48` to select
+with the Node bootstrap command above and add `--tag v0.3.0-beta.49` to select
 this exact release. Provisioned upgrades preserve identity and pairing, not
 Master reset. Real update/rollback and browser request/CPU checks remain pending;
 see [platform stability acceptance](docs/PLATFORM_STABILITY_ACCEPTANCE.md).
@@ -494,7 +512,7 @@ checks local browser CORS as well as readiness. See the
 | [Compiled extension v1](docs/COMPILED_EXTENSION_V1.md) | Reviewed Vue compilation boundary |
 | [Application extension v1 plan](docs/APPLICATION_EXTENSION_V1_PLAN.md) | Planned trusted business-service and integration boundary |
 | [Extension Platform v2 plan](EXTENSION_PLATFORM_V2_CORE_PLAN.md) | Milestone 20 scope, implemented slices and remaining WP4/WP5 gates |
-| [Extension Platform test Beta](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md) | beta.46 scope, backup requirements and bounded live smoke checks |
+| [Extension Platform test Beta](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md) | beta.49 scope, retained recovery evidence and bounded live smoke checks |
 | [Private application files](docs/EXTENSION_PLATFORM_V2_PRIVATE_FILES.md) | Exact file grants, signed SDK operations, limits and recovery evidence |
 | [Relational storage contract](docs/EXTENSION_PLATFORM_V2_RELATIONAL_STORAGE_CONTRACT.md) | Prepared-runtime foundation and remaining database lifecycle gates |
 | [WP4 closure audit](docs/EXTENSION_PLATFORM_V2_WP4_CLOSURE_AUDIT.md) | Verified coverage and explicit remaining work; WP4 is not closed |

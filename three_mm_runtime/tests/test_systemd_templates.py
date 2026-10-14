@@ -127,6 +127,9 @@ def test_update_helper_exposes_only_a_local_hardened_scheduler() -> None:
     assert "/run/3mm/update-helper.sock" in helper["ExecStart"]
     assert helper["ProtectSystem"] == "strict"
     assert helper["ProtectHome"] == "true"
+    assert helper["NoNewPrivileges"] == "true"
+    assert helper["ProtectKernelTunables"] == "true"
+    assert helper["AmbientCapabilities"].split() == ["CAP_SETUID"]
     assert helper["RestrictAddressFamilies"] == "AF_UNIX"
     assert helper["RuntimeDirectoryPreserve"] == "yes"
     assert helper["ReadWritePaths"] == (

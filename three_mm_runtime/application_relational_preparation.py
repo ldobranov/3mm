@@ -54,6 +54,7 @@ from three_mm_runtime.application_files_snapshot import (
 from three_mm_runtime.application_lifecycle import _release_lock, _runtime_lock
 from three_mm_runtime.application_relational_migrations import (
     MigrationWorkerUnconfirmed,
+    require_migration_worker_privileges,
     run_business_migrations,
 )
 from three_mm_runtime.application_relational_session import (
@@ -223,6 +224,10 @@ def _prepare_relational_database(
         raise RelationalPreparationError("Protected relational helper unavailable")
     if migrate and service_gid == 0:
         raise RelationalPreparationError("Migration service group must be non-root")
+    if migrate:
+        # Also guard non-fresh initial/forward preparation before its authority
+        # checkpoints/preimages. A missing UID transition is not uncertain SQL.
+        require_migration_worker_privileges()
     model = (
         _RelationalMigrationPreparationTicket
         if migrate

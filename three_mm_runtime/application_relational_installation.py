@@ -16,6 +16,9 @@ from three_mm_application_sdk.relational_wire import (
     verify_metadata,
 )
 from three_mm_runtime.application_lifecycle import _release_lock, _runtime_lock
+from three_mm_runtime.application_relational_migrations import (
+    require_migration_worker_privileges,
+)
 from three_mm_runtime.application_relational_namespace import (
     _exclusive_file,
     _roots,
@@ -115,6 +118,9 @@ def prepare_fresh_relational_installation(
         )
     ):
         raise RelationalPreparationError("Explicit fresh preparation unavailable")
+    # A deployed root helper may lack UID-switch capabilities despite UID 0.
+    # Fail before tickets, a fresh secret, handoff, namespace or key creation.
+    require_migration_worker_privileges()
     root, key_root, state_root = _roots((root, key_root, state_root), coordinator_uid)
     secret = secrets.token_bytes(32)
     source = _RelationalNamespacePreparationTicket.model_validate(

@@ -54,6 +54,47 @@ MAX_WORKER_MS = 30000
 MAX_MIGRATIONS = 128
 
 
+class MigrationWorkerPrivilegesUnavailable(RuntimeError):
+    """Refuse preparation BEFORE creating namespace/key or invoking migrations."""
+
+
+def require_migration_worker_privileges():
+    """Linux helper prerequisite, not a permission for application code.
+
+    Root with NoNewPrivileges can still lack CAP_SETUID after systemd exec.
+    Popen's UID/GID/group drop needs both bits. Check the effective set, never
+    assume UID 0 or a bounding-set entry permits a privilege transition.
+    """
+    if os.name != "posix" or os.geteuid() != 0:
+        raise MigrationWorkerPrivilegesUnavailable("Root migration helper required")
+    try:
+        with Path("/proc/self/status").open("r", encoding="ascii") as status:
+            contents = status.read(8193)
+        fields = [
+            line.split()[1:]
+            for line in contents.splitlines()
+            if line.startswith("CapEff:")
+        ]
+        if (
+            len(contents) > 8192
+            or len(fields) != 1
+            or len(fields[0]) != 1
+            or len(fields[0][0]) != 16
+            or any(char not in "0123456789abcdefABCDEF" for char in fields[0][0])
+        ):
+            raise ValueError("Effective capability evidence unavailable")
+        effective = int(fields[0][0], 16)
+    except (OSError, ValueError, UnicodeError) as error:
+        raise MigrationWorkerPrivilegesUnavailable(
+            "Migration helper capabilities unavailable"
+        ) from error
+    required = (1 << 6) | (1 << 7)  # Linux CAP_SETGID / CAP_SETUID.
+    if effective & required != required:
+        raise MigrationWorkerPrivilegesUnavailable(
+            "Migration helper requires effective CAP_SETUID and CAP_SETGID"
+        )
+
+
 class MigrationWorkerUnconfirmed(RuntimeError):
     """A worker/group may still be alive: NEVER restore or publish live data."""
 
@@ -191,6 +232,7 @@ def run_business_migrations(
         or ticket.get("worker_profile_sha256") != migration_worker_profile_digest()
     ):
         raise ValueError("Migration preparation authority unavailable")
+    require_migration_worker_privileges()
     boot, now = _clock()
     if (
         boot != ticket["boot_id"]
