@@ -8,7 +8,7 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Test Beta. This source prepares **v0.3.0-beta.47**, a bounded
+> **Project status:** Test Beta. This source prepares **v0.3.0-beta.48**, a bounded
 > Milestone 20 Extension Platform v2 delivery, not completion of WP4 or Milestone 20.
 > It extends exact resource review/approval/apply with private-file access and a
 > bounded relational-storage foundation: signed transaction admission/receipts,
@@ -25,12 +25,25 @@ system.
 > adapters and neutral end-to-end WP4 acceptance remain open. Relational generic
 > activation/native/source gates remain closed; a prepared-runtime fixture is not
 > public fresh-install acceptance. New-artifact staging and WP5 isolation are separate.
+> Beta.48 adds explicit local-admin inert registration, first namespace/key/
+> migration preparation, one-shot activation, stop-only interrupted-start recovery,
+> confirmed reactivation and enable-only boot control through the existing helper
+> and fixed non-root Core metadata worker. Root-managed boot requires current
+> native trust and exact rights before package import; lost acknowledgements do
+> not retry or restore permissions. These commands are opt-in, not update hooks.
+> Account provisioning, prepared-DB upgrade/general restore/rekey/nonempty recovery,
+> live systemd/reboot and broader Standalone/Hub acceptance remain open. Start on a
+> disposable VM with a verified pre-upgrade backup, not an existing business service.
 > Device Protocol 1.0, Application SDK 1.3, themes, peers and Node Update remain.
 > Additive database migrations preserve history and fence restored authority;
 > destructive downgrade after using the new authority is refused. Keep a verified
 > pre-upgrade backup. See the [test Beta checklist](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md).
 > Release assets become available only after the tag-driven workflow succeeds;
 > publication is not live deployment, hardware/fiscal acceptance or remote-code trust.
+> Beta.48 local validation covers all 3,697 default Python cases (3,693 passing,
+> four explained skips), separate non-root deployment/SDK/file permissions and
+> 313 frontend tests, type-check and build. GitHub checks/reproducible publication
+> and subsequent live VM update/reboot acceptance remain separate gates.
 > Beta.47 fixes scoped private-file traversal on production search-only ancestors
 > without widening permissions. It also integrates a bounded Milestone 15 slice:
 > manual audit retention, administrator-only operational alerts, guarded backup-key
@@ -270,17 +283,17 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 ### Updating a paired Hub and Zero
 
 For this test Beta, first export a pre-upgrade backup and update a disposable VM.
-From a working beta.43–beta.46 full installation, select **Beta** in `/system/updates`
-and stage the published beta.47 release. Older installations can first manually
+From a working beta.43–beta.47 full installation, select **Beta** in `/system/updates`
+and stage the published beta.48 release. Older installations can first manually
 bootstrap the current corrected full-profile release (Raspberry/WSL):
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.47
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.48
 ```
 
 An older installed updater cannot acquire the target-installer fix before it
 runs. No bridge release or reset is required. Update the Zero over SSH
-with the Node bootstrap command above and add `--tag v0.3.0-beta.47` to select
+with the Node bootstrap command above and add `--tag v0.3.0-beta.48` to select
 this exact release. Provisioned upgrades preserve identity and pairing, not
 Master reset. Real update/rollback and browser request/CPU checks remain pending;
 see [platform stability acceptance](docs/PLATFORM_STABILITY_ACCEPTANCE.md).

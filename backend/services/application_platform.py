@@ -137,7 +137,15 @@ class ApplicationPlatformServer:
                         not installation.enabled or installation.status != 'active'
                     )):
                         raise ValueError("Application installation is not active")
-                    result = self._dispatch(db, installation, request, transport_secret=secret)
+                    if request.get("action") == "relational.boot.startup":
+                        import struct
+
+                        if not hasattr(socket, "SO_PEERCRED"):
+                            raise ValueError("Boot startup peer unavailable")
+                        peer = tuple(struct.unpack("3i", connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)))
+                        result = self._dispatch(db, installation, request, transport_secret=secret, peer_credentials=peer)
+                    else:
+                        result = self._dispatch(db, installation, request, transport_secret=secret)
                 finally:
                     db.close()
                 response: dict[str, object] = {"ok": True, "result": result}
@@ -156,13 +164,23 @@ class ApplicationPlatformServer:
             ).hexdigest()
             connection.sendall(json.dumps(signed, separators=(",", ":")).encode("utf-8") + b"\n")
 
-    def _dispatch(self, db, installation, request: dict[str, object], *, transport_secret=None) -> dict[str, object]:
+    def _dispatch(self, db, installation, request: dict[str, object], *, transport_secret=None, peer_credentials=None) -> dict[str, object]:
         action = request.get("action")
         mode = db.scalar(select(ApplicationExtensionInstallation.authority_mode).where(
             ApplicationExtensionInstallation.id == installation.id))
         if mode != 'compatibility' and action not in {
-                'command.submit', 'command.status', 'command.lookup', 'connector.request', 'event.publish', 'files.execute', 'files.status', 'relational.admit', 'relational.complete', 'relational.status'}:
+                'command.submit', 'command.status', 'command.lookup', 'connector.request', 'event.publish', 'files.execute', 'files.status', 'relational.admit', 'relational.complete', 'relational.status', 'relational.boot.startup'}:
             raise ValueError('Platform action has no supported resource grant')
+        if action == "relational.boot.startup":
+            from backend.services.application_relational_startup import admit_boot_startup
+
+            if (set(request) != {"version", "request_id", "timestamp", "instance_id", "action", "signature", "runtime_nonce"}
+                    or type(request.get("version")) is not int or request["version"] != 1
+                    or len(json.dumps(request, allow_nan=False).encode("utf-8")) > 8192
+                    or self.socket_path.name != "platform.sock" or self.socket_path.parent.name != "platform"):
+                raise ValueError("Boot startup metadata is invalid")
+            return admit_boot_startup(db, installation.id, request["runtime_nonce"], transport_secret=transport_secret,
+                runtime_root=self.socket_path.parent.parent, peer_credentials=peer_credentials)
         if action in {'relational.admit', 'relational.complete', 'relational.status'}:
             from backend.services.application_relational import (
                 admit_host_transaction,

@@ -111,6 +111,201 @@ class _RelationalMigrationPreparationTicket(_RelationalPreparationTicket):
     worker_profile_sha256: Digest
 
 
+class _RelationalNamespacePreparationTicket(_RelationalPreparationTicket):
+    """Local helper dependencies, not package-selected paths or SQL authority."""
+
+    action: Literal["create_owned_namespace"]
+    service_uid: Annotated[int, Field(strict=True, ge=1, le=2147483647)]
+    service_gid: Annotated[int, Field(strict=True, ge=1, le=2147483647)]
+    coordinator_uid: Annotated[int, Field(strict=True, ge=1, le=2147483647)]
+    transport_key_sha256: Digest
+
+    @model_validator(mode="after")
+    def separate_principals(self):
+        if self.coordinator_uid == self.service_uid:
+            raise ValueError("Core and application principals must be distinct")
+        return self
+
+
+class _RelationalNamespacePreparationResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    version: Annotated[int, Field(strict=True, ge=1, le=1)]
+    preparation_id: Identity
+    ticket_sha256: Digest
+    outcome: Literal["namespace_created_not_started"]
+    signature: Digest
+
+
+class _RelationalActivationTicket(_RelationalNamespacePreparationTicket):
+    """One LOCAL start of an already prepared database, never a SQL permit.
+
+    The inherited preparation_id identifies this activation, not a new database
+    preparation. Source lineage and lifecycle bytes must remain unchanged.
+    """
+
+    action: Literal["activate_prepared_service"]
+    source_preparation_id: Identity
+    prepared_lifecycle_sha256: Digest
+
+
+class _RelationalActivationResult(_RelationalPreparationResult):
+    outcome: Literal["active_review_required"]
+
+
+class _RelationalActivationRecoveryTicket(_RelationalActivationTicket):
+    """Fresh LOCAL stop/reconciliation only; inherited grant fields are history.
+
+    This never renews the source start ticket or authorizes SQL, permissions,
+    migrations, namespace replacement, key rotation or another start.
+    """
+
+    action: Literal["reconcile_prepared_start"]
+    source_activation_id: Identity
+    source_activation_revision: Identity
+    source_ticket_sha256: Digest
+    source_state: Literal[
+        "recorded", "execution_unconfirmed", "activation_unconfirmed", "activated"
+    ]
+
+
+class _RelationalActivationRecoveryResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    version: Annotated[int, Field(strict=True, ge=1, le=1)]
+    preparation_id: Identity
+    ticket_sha256: Digest
+    source_activation_id: Identity
+    lifecycle_sha256: Digest
+    witness_sha256: Digest
+    outcome: Literal["stopped_review_required"]
+    signature: Digest
+
+
+class _RelationalReactivationRecoveryTicket(_RelationalActivationRecoveryTicket):
+    """Same stop-only contract, distinct source witness for a repeated start."""
+
+    action: Literal["reconcile_reactivated_start"]
+
+
+class _RelationalReactivationTicket(_RelationalActivationTicket):
+    """Fresh one-use start after an exact confirmed stop, not ticket renewal.
+
+    Historical stop evidence is bounded and embedded for Root verification;
+    only the outer ticket's fresh grant/epoch/clock authorizes the new start.
+    """
+
+    action: Literal["reactivate_prepared_service"]
+    origin_activation_id: Identity
+    source_recovery_id: Identity
+    source_recovery_revision: Identity
+    source_activation_revision: Identity
+    source_recovery_ticket: (
+        _RelationalActivationRecoveryTicket | _RelationalReactivationRecoveryTicket
+    )
+    source_recovery_receipt: _RelationalActivationRecoveryResult
+
+
+class _RelationalBootEnableTicket(_RelationalActivationTicket):
+    """Fresh LOCAL consent to enable an already running exact prepared unit.
+
+    Not start/restart, a migration ticket, SQL authority or a durable grant.
+    Historical start digests bind the protected successful Root witness; only
+    the outer fresh clock/current grant/epoch permits the one enable action.
+    """
+
+    action: Literal["enable_prepared_boot"]
+    source_activation_id: Identity
+    source_activation_revision: Identity
+    source_activation_action: Literal[
+        "activate_prepared_service", "reactivate_prepared_service"
+    ]
+    source_ticket_sha256: Digest
+    source_receipt_sha256: Digest
+
+
+class _RelationalBootEnableResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    version: Annotated[int, Field(strict=True, ge=1, le=1)]
+    preparation_id: Identity
+    ticket_sha256: Digest
+    source_activation_id: Identity
+    lifecycle_sha256: Digest
+    witness_sha256: Digest
+    outcome: Literal["boot_enabled_not_started"]
+    signature: Digest
+
+
+class _RelationalBootStartupPermit(BaseModel):
+    """Short fresh pre-import handoff, never an enable ticket or SQL grant."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    version: Annotated[int, Field(strict=True, ge=1, le=1)]
+    action: Literal["boot_startup"]
+    instance_id: Annotated[str, Field(pattern=r"^[0-9a-f]{24}$")]
+    runtime_nonce: Identity
+    boot_enable_id: Identity
+    policy_sha256: Digest
+    lifecycle_sha256: Digest
+    authority_epoch: Identity
+    recovery_generation: Identity
+    grant_record_revision: Identity
+    process_pid: Annotated[int, Field(strict=True, ge=1, le=2147483647)]
+    process_start_ticks: Annotated[int, Field(strict=True, ge=1, le=9007199254740990)]
+    service_uid: Annotated[int, Field(strict=True, ge=1, le=2147483647)]
+    service_gid: Annotated[int, Field(strict=True, ge=1, le=2147483647)]
+    boot_id: Annotated[
+        str,
+        Field(
+            pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        ),
+    ]
+    issued_at_ms: Millis
+    deadline_ms: Millis
+    signature: Digest
+
+    @model_validator(mode="after")
+    def budget(self):
+        if not 0 < self.deadline_ms - self.issued_at_ms <= 5000:
+            raise ValueError("Invalid boot startup budget")
+        return self
+
+
+def _activation_ticket(value):
+    model, purpose = (
+        (_RelationalReactivationTicket, "reactivation")
+        if type(value) is dict and value.get("action") == "reactivate_prepared_service"
+        else (_RelationalActivationTicket, "activation")
+    )
+    return model.model_validate(value).model_dump(mode="json"), purpose
+
+
+def _activation_recovery_ticket(value):
+    model, purpose = (
+        (_RelationalReactivationRecoveryTicket, "reactivation_recovery")
+        if type(value) is dict and value.get("action") == "reconcile_reactivated_start"
+        else (_RelationalActivationRecoveryTicket, "activation_recovery")
+    )
+    return model.model_validate(value).model_dump(mode="json"), purpose
+
+
+class _RelationalNamespaceRecoveryTicket(_RelationalNamespacePreparationTicket):
+    """Fresh human choice for EMPTY bootstrap state, never database recovery."""
+
+    action: Literal["confirm_owned_namespace", "quarantine_owned_namespace"]
+    source_preparation_id: Identity
+    source_ticket_sha256: Digest
+
+
+class _RelationalNamespaceRecoveryResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    version: Annotated[int, Field(strict=True, ge=1, le=1)]
+    preparation_id: Identity
+    ticket_sha256: Digest
+    outcome: Literal[
+        "namespace_confirmed_not_started", "namespace_quarantined_not_started"
+    ]
+    signature: Digest
+
+
 class _RelationalRecoveryTicket(_RelationalPreparationTicket):
     """Explicit acceptance of an exact published candidate, never SQL replay."""
 
@@ -147,9 +342,13 @@ def migration_worker_profile_digest():
 
 def _preparation_ticket(value):
     model, purpose = (
-        (_RelationalMigrationPreparationTicket, "migration_preparation")
-        if type(value) is dict and value.get("action") == "prepare_migrated_schema"
-        else (_RelationalPreparationTicket, "preparation")
+        (_RelationalNamespacePreparationTicket, "namespace_preparation")
+        if type(value) is dict and value.get("action") == "create_owned_namespace"
+        else (
+            (_RelationalMigrationPreparationTicket, "migration_preparation")
+            if type(value) is dict and value.get("action") == "prepare_migrated_schema"
+            else (_RelationalPreparationTicket, "preparation")
+        )
     )
     return model.model_validate(value).model_dump(mode="json"), purpose
 
@@ -157,6 +356,8 @@ def _preparation_ticket(value):
 def prepared_lifecycle(ticket, secret):
     ticket, purpose = _preparation_ticket(ticket)
     verify_metadata(secret, purpose, ticket)
+    if purpose == "namespace_preparation":
+        raise ValueError("Namespace preparation is not database lifecycle authority")
     return _lifecycle(ticket, secret)
 
 
@@ -209,6 +410,20 @@ def sign_metadata(secret, purpose, value):
             "preparation",
             "preparation_result",
             "migration_preparation",
+            "namespace_preparation",
+            "namespace_preparation_result",
+            "activation",
+            "activation_result",
+            "activation_recovery",
+            "activation_recovery_result",
+            "reactivation",
+            "reactivation_result",
+            "reactivation_recovery",
+            "boot_enable",
+            "boot_enable_result",
+            "boot_startup",
+            "namespace_recovery",
+            "namespace_recovery_result",
             "recovery",
             "recovery_result",
             "recovery_confirmation",

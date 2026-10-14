@@ -1,6 +1,7 @@
 """Internal, read-only persisted-source resolution, NOT an approval context.
 
-Only an existing stable installation is supported, not a staged candidate. The
+Existing stable installations and explicitly sealed inert registrations are
+supported, not ordinary staged candidates. The
 separate installed authority coordinator consumes these sources and authenticates
 policy/key/evidence. This read-only module alone cannot produce a reviewable
 fingerprint, issuer decision or executable authority.
@@ -192,10 +193,19 @@ def _package_pin(db, installation_id):
       .where(ApplicationExtensionInstallation.id == installation_id)).one_or_none()
     if (
         row is None or row.module_id != row.package_module_id
-        or row.active_version != row.version
         or (row.status, row.enabled) not in {("active", True), ("disabled", False)}
     ):
         raise _Unavailable("installation_unavailable")
+    if row.active_version != row.version:
+        # Only explicit inert registration may have no active version. This is
+        # a preliminary pin, NOT authenticated authority: _resolve requires the
+        # exact sealed provenance under the final key/snapshot before composition.
+        from backend.db.application_authority_grant import ApplicationAuthorityAction
+        from backend.services.application_relational_registration import registration_id
+        if (row.active_version is not None or (row.status, row.enabled) != ("disabled", False)
+                or read_application_authority(db, installation_id).mode == "compatibility"
+                or db.get(ApplicationAuthorityAction, registration_id(db, installation_id)) is None):
+            raise _Unavailable("installation_unavailable")
     return row
 
 
@@ -381,11 +391,14 @@ def _configuration(db, installation_id, package):
     return configuration
 
 
-def _resolve(db, installation_id, pin, package):
+def _resolve(db, installation_id, pin, package, *, registration_key=None):
     guard = read_authority_guard(db)  # Establish the final snapshot before resources.
     current = _package_pin(db, installation_id)
     if current != pin:
         raise _Unavailable("artifact_changed")
+    if pin.active_version is None:
+        from backend.services.application_relational_registration import verify_registration
+        verify_registration(db, registration_key, installation_id, pin, package)
     authority = read_application_authority(db, installation_id)
     principal = AuthorityPrincipal(core_installation_id=_core_identity(db),
         application_installation_id=str(installation_id), incarnation=authority.incarnation,

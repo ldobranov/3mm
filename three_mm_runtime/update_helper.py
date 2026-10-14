@@ -327,7 +327,43 @@ def _handle_request(
     application_user: str = "3mm-app",
     application_group: str = "3mm-app",
     application_database: Path = Path("/var/lib/3mm/core/3mm.db"),
+    relational_peer_uid: int | None = None,
 ) -> dict[str, object]:
+    if isinstance(payload, dict) and payload.get("action") in ("prepare_application_relational", "activate_application_relational", "recover_application_relational_start", "reactivate_application_relational", "enable_application_relational_boot"):
+        from three_mm_runtime.application_relational_control import (
+            CoreMetadataClient, preparation_request, prepare_installed_application,
+            activation_request, activate_installed_application,
+            activation_recovery_request, recover_installed_application_start,
+            reactivation_request, reactivate_installed_application,
+            boot_enable_request, enable_installed_application_boot,
+        )
+        activating = payload["action"] == "activate_application_relational"
+        recovering = payload["action"] == "recover_application_relational_start"
+        reactivating = payload["action"] == "reactivate_application_relational"
+        enabling_boot = payload["action"] == "enable_application_relational_boot"
+        validator = boot_enable_request if enabling_boot else reactivation_request if reactivating else activation_recovery_request if recovering else activation_request if activating else preparation_request
+        operation = enable_installed_application_boot if enabling_boot else reactivate_installed_application if reactivating else recover_installed_application_start if recovering else activate_installed_application if activating else prepare_installed_application
+        try:
+            validator(payload)
+        except (ValueError, TypeError):
+            return {"ok": False, "error": "invalid_request"}
+        try:
+            core_uid, _core_gid = _service_ids(service_user, service_group)
+            if type(relational_peer_uid) is not int or relational_peer_uid != core_uid:
+                return {"ok": False, "error": "invalid_request"}
+            service_uid, service_gid = _service_ids(application_user, application_group)
+            result = operation(payload,
+                metadata=CoreMetadataClient(core_uid=core_uid, core_user=service_user,
+                    core_group=service_group, database=application_database, application_root=application_root),
+                upload_root=application_upload_root, root=application_root,
+                key_root=application_key_root, state_root=state_root,
+                service_uid=service_uid, service_gid=service_gid, coordinator_uid=core_uid)
+            return {"ok": True, "status": "boot_enabled_not_started" if enabling_boot else "stopped_review_required" if recovering else "active_review_required" if (activating or reactivating) else "prepared_not_started",
+                "boot" if enabling_boot else "reactivation" if reactivating else "recovery" if recovering else "activation" if activating else "preparation": result}
+        except Exception:
+            # Deliberately no traceback: this private request contains a human token.
+            LOGGER.warning("Relational local lifecycle unconfirmed; explicit review required")
+            return {"ok": False, "error": "relational_boot_enable_unconfirmed" if enabling_boot else "relational_reactivation_unconfirmed" if reactivating else "relational_start_recovery_unconfirmed" if recovering else "relational_activation_unconfirmed" if activating else "relational_preparation_unconfirmed"}
     if isinstance(payload, dict) and set(payload) in (
         {"action", "sha256", "requested_by_user_id", "lifecycle"},
         {"action", "sha256", "requested_by_user_id", "configuration", "lifecycle"},
@@ -730,9 +766,16 @@ def _serve_connection(connection, **request_arguments):
                 break
         if len(request) > MAX_REQUEST_BYTES:
             raise ValueError("request_too_large")
-        payload = json.loads(request.split(b"\n", 1)[0])
+        from backend.services.application_authority_context import _unique_object
+        payload = json.loads(request.split(b"\n", 1)[0], object_pairs_hook=_unique_object)
+        if isinstance(payload, dict) and payload.get("action") in ("prepare_application_relational", "activate_application_relational", "recover_application_relational_start", "reactivate_application_relational", "enable_application_relational_boot"):
+            if os.name != "posix" or not hasattr(socket, "SO_PEERCRED"):
+                raise ValueError("Local Core peer credentials required")
+            import struct
+            credentials = connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
+            request_arguments["relational_peer_uid"] = struct.unpack("3i", credentials)[1]
         response = _handle_request(payload, **request_arguments)
-    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError, RecursionError):
         response = {"ok": False, "error": "invalid_request"}
     encoded = json.dumps(response, separators=(",", ":")).encode("utf-8") + b"\n"
     if len(encoded) > MAX_RESPONSE_BYTES:

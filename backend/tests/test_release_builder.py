@@ -52,6 +52,40 @@ REQUIRED_SOURCE_FILES = {
     "frontend/dist/stale.js": b"must not survive\n",
 }
 TARGET_CONTRACT = json.loads(Path(CONTRACT_PATH).read_text(encoding="utf-8"))
+RELATIONAL_RELEASE_FILES = (
+    "backend/services/application_authority_admin.py",
+    "backend/services/application_platform.py",
+    "backend/services/application_relational.py",
+    "backend/services/application_relational_activation.py",
+    "backend/services/application_relational_activation_recovery.py",
+    "backend/services/application_relational_admin_worker.py",
+    "backend/services/application_relational_boot.py",
+    "backend/services/application_relational_lifecycle.py",
+    "backend/services/application_relational_namespace_recovery.py",
+    "backend/services/application_relational_reactivation.py",
+    "backend/services/application_relational_recovery.py",
+    "backend/services/application_relational_recovery_confirmation.py",
+    "backend/services/application_relational_registration.py",
+    "backend/services/application_relational_startup.py",
+    "three_mm_application_sdk/relational_wire.py",
+    "three_mm_runtime/application_relational_activation.py",
+    "three_mm_runtime/application_relational_activation_recovery.py",
+    "three_mm_runtime/application_relational_boot.py",
+    "three_mm_runtime/application_relational_boot_policy.py",
+    "three_mm_runtime/application_relational_control.py",
+    "three_mm_runtime/application_relational_installation.py",
+    "three_mm_runtime/application_relational_migrations.py",
+    "three_mm_runtime/application_relational_namespace.py",
+    "three_mm_runtime/application_relational_namespace_recovery.py",
+    "three_mm_runtime/application_relational_preparation.py",
+    "three_mm_runtime/application_relational_reactivation.py",
+    "three_mm_runtime/application_relational_recovery.py",
+    "three_mm_runtime/application_relational_recovery_confirmation.py",
+    "three_mm_runtime/application_relational_runtime.py",
+    "three_mm_runtime/application_relational_session.py",
+    "three_mm_runtime/application_relational_startup.py",
+    "three_mm_runtime/update_helper_client.py",
+)
 REQUIRED_SOURCE_FILES[CONTRACT_PATH] = json.dumps(TARGET_CONTRACT).encode()
 for required in TARGET_CONTRACT["required_files"]:
     if required not in {".3mm-release.json", "frontend/dist/index.html"}:
@@ -168,6 +202,7 @@ def test_release_archives_are_reproducible_and_installer_compatible(
             assert "three_mm_runtime/application_file_executor.py" in names
             assert "backend/services/application_files.py" in names
             assert "three_mm_runtime/application_files_snapshot.py" in names
+            assert set(RELATIONAL_RELEASE_FILES) <= names
             assert "install.sh" in names
             assert json.load(archive.extractfile(CONTRACT_PATH)) == TARGET_CONTRACT
             assert all(member.mtime == EPOCH for member in archive.getmembers())
@@ -207,15 +242,28 @@ def test_builder_rejects_incomplete_target_owned_contract(tmp_path):
         build(tmp_path)
 
 
-@pytest.mark.parametrize("required", [
-    "three_mm_application_sdk/files.py",
-    "three_mm_application_sdk/file_wire.py",
-    "three_mm_application_sdk/scoped_files.py",
-    "three_mm_runtime/application_file_executor.py",
-    "backend/services/application_files.py",
-    "three_mm_runtime/application_files_snapshot.py",
-])
+@pytest.mark.parametrize(
+    "required",
+    [
+        "three_mm_application_sdk/files.py",
+        "three_mm_application_sdk/file_wire.py",
+        "three_mm_application_sdk/scoped_files.py",
+        "three_mm_runtime/application_file_executor.py",
+        "backend/services/application_files.py",
+        "three_mm_runtime/application_files_snapshot.py",
+    ],
+)
 def test_builder_requires_the_sdk_private_file_adapter(tmp_path, required):
+    files = dict(REQUIRED_SOURCE_FILES)
+    del files[required]
+    write_source_archive(tmp_path / "source.tar", files)
+    with pytest.raises(ReleaseBuildError, match=required):
+        build(tmp_path)
+
+
+@pytest.mark.parametrize("required", RELATIONAL_RELEASE_FILES)
+def test_builder_requires_relational_lifecycle_and_boot_files(tmp_path, required):
+    assert required in TARGET_CONTRACT["required_files"]
     files = dict(REQUIRED_SOURCE_FILES)
     del files[required]
     write_source_archive(tmp_path / "source.tar", files)

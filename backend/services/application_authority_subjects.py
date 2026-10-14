@@ -6,6 +6,7 @@ read-only. The result cannot mint permissions or clear missing policy evidence.
 """
 
 import hashlib
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Literal
 
@@ -77,7 +78,7 @@ def _commands(package, resolved):
 
 
 def _compose(db, installation_id, pin, package, keys):
-    resolved = sources._resolve(db, installation_id, pin, package)
+    resolved = sources._resolve(db, installation_id, pin, package, registration_key=keys)
     configuration = sources._configuration(db, installation_id, package)
     commands = _commands(package, resolved)
     # All three use the same real DB read transaction. No external Session cache
@@ -120,8 +121,13 @@ def resolve_installed_policy_subject(engine: Engine, installation_id: int, *,
     try:
         pin, package = sources._prepare_installed_package(engine, installation_id, uploads_root, core_version)
         keys = CoreReviewKeyStore(engine, review_key_directory)
-        with sources._read_snapshot(engine) as db:
-            result = _compose(db, installation_id, pin, package, keys)
+        with ExitStack() as leases:
+            # Preserve the legacy reader's resource-before-key diagnostics. A
+            # never-active registration additionally authenticates its sealed
+            # provenance: acquire that key BEFORE opening the DB snapshot.
+            key = leases.enter_context(keys.locked()) if pin.active_version is None else keys
+            db = leases.enter_context(sources._read_snapshot(engine))
+            result = _compose(db, installation_id, pin, package, key)
             _bounded_json(result.model_dump(mode="json"))
             return result
     except AuthorityReviewKeyError:

@@ -112,7 +112,6 @@ def _load_service(
     if release_dir.resolve() not in wheel.parents or not wheel.is_file():
         raise RuntimeError("Application service wheel is unavailable")
     module_name, factory_name = entrypoint.split(":", 1)
-    sys.path.insert(0, str(wheel))
     migration_entrypoint = storage_metadata.get("migration_entrypoint")
     target_revision = storage_metadata.get("schema_revision")
     if not isinstance(migration_entrypoint, str) or not isinstance(target_revision, str):
@@ -124,6 +123,11 @@ def _load_service(
         if platform_secret is not None and isinstance(metadata.get("platform_socket"), str)
         and isinstance(metadata.get("instance_id"), str) else None
     )
+    if relational_runtime is not None:
+        # Root-managed boot requires CURRENT Core trust BEFORE changing the
+        # import path or importing any wheel module. No SQL/grant fallback.
+        relational_runtime.require_boot_startup(platform)
+    sys.path.insert(0, str(wheel))
     file_storage = _private_file_adapter(storage_metadata, instance_root / "data", platform)
     if relational_runtime is None:
         migration_module, migration_factory_name = migration_entrypoint.split(":", 1)

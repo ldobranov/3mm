@@ -6,6 +6,74 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.48] - 2026-10-14
+
+### Added
+
+- Explicit local-administrator inert relational registration, preserving
+  `active_version: null` until a separately authorized healthy activation.
+  Normal exact native review/approval/apply runs without fictitious active state.
+- First owned namespace/key handoff and business migration preparation through
+  the existing privileged helper and fixed non-root Core metadata writer. Fresh
+  namespace and migrations require separate confirmations; packages never run as
+  Root. Empty-bootstrap confirmation/quarantine retain recoverable evidence.
+- Separate `activate-relational`, metadata-only inspection, stop-only
+  interrupted-start recovery and `reactivate-relational` commands. One-use sealed
+  source reservations, current human/native/exact rights and protected Root
+  witnesses prevent automatic restart, grant restoration or uncertain replay.
+- `enable-relational-boot`: explicit enable-only consent for an exact healthy
+  initial/repeated start. Root publishes required/pending markers before any unit
+  enable and confirms the policy only after exact Core and Root confirmation.
+- Root-managed cold host admission checks current native trust, exact rights,
+  durable consent and real kernel process/peer identity before wheel import or
+  factory execution. A fresh five-second, one-use nonce-bound permit is distinct
+  from SQL/migration/start authority; missing/stale/partial proof refuses import.
+- Verified stopped/disabled reconciliation archives only matching boot metadata,
+  preserving original witnesses, key, database, lineage and uncertain history.
+- The target-owned deployment contract requires all relational lifecycle/boot
+  components; incomplete archives are refused without changing the legacy
+  minimum for older releases. CI/release job budgets accommodate the full POSIX
+  process and deliberate lost-response suite without weakening test assertions.
+
+### Compatibility and test Beta boundary
+
+- No database model/migration, runtime dependency, public Device Protocol or
+  Application SDK version change. SDK 1.3 and existing compatibility applications
+  remain; new commands do not automatically adopt, prepare, activate or enable
+  applications during Core update. Generic relational activation gates stay closed.
+- Exact local authority is required independently from user access and native
+  code review. Secrets/tokens are private-pipe inputs, never argv or output;
+  actual Core OS peer/UID, not caller JSON or Core group membership, authorizes
+  the privileged helper. Unknown acknowledgements require fresh local review.
+- WP4/M20 remain open: account provisioning, prepared-DB upgrade/general backup/
+  rollback/rekey/nonempty recovery, scoped platform/frontend adapters and full
+  Standalone/Hub/live systemd/reboot acceptance are not completed by publication.
+  Reviewed-native code is not a sandbox; WP5 remains separate.
+- Keep a verified pre-upgrade backup and test on a disposable VM first. Existing
+  business extensions, concrete themes, local/generated data and M21 work are
+  excluded. This release does not deploy or reboot any device.
+- Complete Python, deployment/SDK and frontend checks plus reproducible
+  full-profile/ARMv6 Node builds gate publication. Targeted boot-control proof
+  passed 446 distinct cases; that is not the complete release suite or live proof.
+
+### Local release validation
+
+- The entire default Python collection ran as Root in two isolated, disjoint
+  native Linux checkouts: **3,693 passed, 4 expected skips, 5 passing subtests**.
+  JUnit was checked against all **3,697 collected test IDs**; no case is missing
+  or counted twice. Only ZIP fixture DOS timestamps were normalized for ID
+  comparison; their remaining bytes and all assertions are unchanged.
+- The skips are two non-POSIX-only refusal tests, opt-in live HTTPS acceptance
+  and the real non-root directory-permission case. The latter passed in the
+  separate non-root file-worker run. Deployment/SDK **300 tests** and file-worker
+  **12 tests** passed together as non-root (**312 total**, not additional unique
+  coverage on top of the default suite).
+- Frontend: **313 tests / 44 files**, TypeScript check and production build pass.
+  Python **3.14.4** was used locally; canonical GitHub Python **3.13**/Node **22**
+  checks and reproducible builds remain the publication gate.
+- Earlier interrupted runs are not counted as completed proof. These checks
+  do not deploy/reboot live systems or close the remaining WP4/M20 acceptance.
+
 ## [0.3.0-beta.47] - 2026-10-11
 
 ### Fixed
@@ -1481,7 +1549,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.47...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.48...HEAD
+[0.3.0-beta.48]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.48
 [0.3.0-beta.47]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.47
 [0.3.0-beta.46]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.46
 [0.3.0-beta.45]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.45

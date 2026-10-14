@@ -244,7 +244,7 @@ def _send(connection, value):
     connection.sendall(encoded)
 
 
-def _call_host_metadata(path, secret, *, timeout=2):
+def _call_host_metadata(path, secret, *, timeout=2, expected_peer=None):
     identifier = uuid.uuid4().hex
     request = sign_message(
         {
@@ -259,6 +259,22 @@ def _call_host_metadata(path, secret, *, timeout=2):
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
         connection.settimeout(timeout)
         connection.connect(str(path))
+        if expected_peer is not None:
+            import struct
+
+            if (
+                not hasattr(socket, "SO_PEERCRED")
+                or tuple(
+                    struct.unpack(
+                        "3i",
+                        connection.getsockopt(
+                            socket.SOL_SOCKET, socket.SO_PEERCRED, 12
+                        ),
+                    )
+                )
+                != expected_peer
+            ):
+                raise ApplicationTransportError("Relational host process changed")
         _send(connection, request)
         response = verify_message(
             _read(connection), secret, expected_request_id=identifier

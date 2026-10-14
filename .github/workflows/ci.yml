@@ -16,7 +16,8 @@ jobs:
   python:
     name: Python tests (Linux)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # POSIX lifecycle/peer tests include deliberate bounded lost-response waits.
+    timeout-minutes: 60
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

@@ -1,4 +1,4 @@
-"""Private LOCAL-admin existing-schema preparation, not an install/SDK endpoint.
+"""Private LOCAL-admin namespace/schema preparation, not an install/SDK endpoint.
 
 Uses the same exact reviews/grants and sealed Action journal. No business SQL,
 runtime files or helper calls occur while Core leases are held. No staged new
@@ -26,6 +26,8 @@ from backend.services.authority_metadata import (
 from three_mm_application_sdk.relational_wire import (
     _preparation_ticket,
     _RelationalMigrationPreparationTicket,
+    _RelationalNamespacePreparationResult,
+    _RelationalNamespacePreparationTicket,
     _RelationalPreparationResult,
     _RelationalPreparationTicket,
     canonical,
@@ -38,6 +40,46 @@ from three_mm_application_sdk.relational_wire import (
 from three_mm_runtime.application_activation import application_instance_id
 
 MAX_PREPARATION_ACTIONS = 4096
+
+
+def issue_namespace_preparation(
+    manager,
+    installation_id,
+    *,
+    actor_token,
+    request_id,
+    expected_grant_record_revision,
+    confirm_fresh_owned_namespace,
+    transport_secret,
+    service_uid,
+    service_gid,
+    coordinator_uid,
+):
+    """Separate LOCAL consent to fresh directories/key, never DB/package code.
+
+    Credentials and the freshly generated per-instance secret are trusted local
+    coordinator dependencies. Neither is read from application configuration.
+    This private action does not expose key bytes, install, migrate or enable.
+    """
+    if confirm_fresh_owned_namespace is not True:
+        raise authority.AuthorityManagementError("namespace_confirmation_required")
+    if type(transport_secret) is not bytes or len(transport_secret) != 32:
+        raise ValueError("Invalid namespace key dependency")
+    return _issue_preparation(
+        manager,
+        installation_id,
+        actor_token=actor_token,
+        request_id=request_id,
+        expected_grant_record_revision=expected_grant_record_revision,
+        transport_secret=transport_secret,
+        migrate=False,
+        namespace_credentials={
+            "service_uid": service_uid,
+            "service_gid": service_gid,
+            "coordinator_uid": coordinator_uid,
+            "transport_key_sha256": hashlib.sha256(transport_secret).hexdigest(),
+        },
+    )
 
 
 def _current(manager, db, key, installation_id, prepared):
@@ -151,6 +193,7 @@ def _issue_preparation(
     expected_grant_record_revision,
     transport_secret,
     migrate,
+    namespace_credentials=None,
 ):
     action = "prepare_migrated_schema" if migrate else "prepare_existing_schema"
     operation = "relational_prepare_migrated" if migrate else "relational_prepare"
@@ -160,6 +203,11 @@ def _issue_preparation(
         else _RelationalPreparationTicket
     )
     purpose = "migration_preparation" if migrate else "preparation"
+    if namespace_credentials is not None:
+        action = "create_owned_namespace"
+        operation = "relational_prepare_namespace"
+        model = _RelationalNamespacePreparationTicket
+        purpose = "namespace_preparation"
     expected = authority._identifier(expected_grant_record_revision)
     prepared = manager._prepare(installation_id)
     with manager._write(
@@ -167,7 +215,11 @@ def _issue_preparation(
         actor_token,
         request_id,
         operation,
-        {"grant_record_revision": expected, "action": action},
+        {
+            "grant_record_revision": expected,
+            "action": action,
+            **(namespace_credentials or {}),
+        },
     ) as (db, key, mutation, actor, result):
         if result:
             raise authority.AuthorityManagementError("preparation_ticket_consumed")
@@ -192,6 +244,7 @@ def _issue_preparation(
                     "action": action,
                     "preparation_id": request_id,
                     "database_lineage": authority.new_authority_generation(),
+                    **(namespace_credentials or {}),
                     **(
                         {"worker_profile_sha256": migration_worker_profile_digest()}
                         if migrate
@@ -232,10 +285,21 @@ def preparation_checkpoint(
     """
     ticket, purpose = _preparation_ticket(ticket)
     verify_metadata(transport_secret, purpose, ticket)
+    namespace = ticket["action"] == "create_owned_namespace"
+    if (
+        namespace
+        and ticket["transport_key_sha256"]
+        != hashlib.sha256(transport_secret).hexdigest()
+    ):
+        raise authority.AuthorityManagementError("namespace_key_changed")
     operation = (
-        "relational_prepare_migrated"
-        if ticket["action"] == "prepare_migrated_schema"
-        else "relational_prepare"
+        "relational_prepare_namespace"
+        if namespace
+        else (
+            "relational_prepare_migrated"
+            if ticket["action"] == "prepare_migrated_schema"
+            else "relational_prepare"
+        )
     )
     if (
         ticket["action"] == "prepare_migrated_schema"
@@ -262,6 +326,8 @@ def preparation_checkpoint(
             or value["data"]["result"]["ticket"] != ticket
         ):
             raise authority.AuthorityManagementError("preparation_unavailable")
+        if namespace and value["data"].get("namespace_recovery_id") is not None:
+            raise authority.AuthorityManagementError("namespace_preparation_superseded")
         grant, definition = _current(manager, db, key, installation_id, prepared)
         boot, now = authority._clock()
         if (
@@ -297,16 +363,28 @@ def preparation_checkpoint(
                         "preparation_ticket_consumed"
                     )
                 return {"state": "execution_unconfirmed"}
-            receipt = _RelationalPreparationResult.model_validate(receipt).model_dump(
-                mode="json"
+            result_model = (
+                _RelationalNamespacePreparationResult
+                if namespace
+                else _RelationalPreparationResult
             )
-            verify_metadata(transport_secret, "preparation_result", receipt)
+            receipt = result_model.model_validate(receipt).model_dump(mode="json")
+            verify_metadata(
+                transport_secret,
+                "namespace_preparation_result" if namespace else "preparation_result",
+                receipt,
+            )
+            expected_digest = hashlib.sha256(
+                canonical(
+                    ticket
+                    if namespace
+                    else prepared_lifecycle(ticket, transport_secret)
+                )
+            ).hexdigest()
             if (
                 receipt["preparation_id"] != ticket["preparation_id"]
-                or receipt["lifecycle_sha256"]
-                != hashlib.sha256(
-                    canonical(prepared_lifecycle(ticket, transport_secret))
-                ).hexdigest()
+                or receipt["ticket_sha256" if namespace else "lifecycle_sha256"]
+                != expected_digest
             ):
                 raise authority.AuthorityManagementError("preparation_receipt_changed")
             if value["state"] == "prepared":
@@ -314,7 +392,7 @@ def preparation_checkpoint(
                     raise authority.AuthorityManagementError(
                         "preparation_receipt_changed"
                     )
-                return {"state": "prepared_not_started", "historical": True}
+                return {"state": receipt["outcome"], "historical": True}
             value["state"] = "prepared"
             value["data"]["receipt"] = receipt
         value["revision"] = authority.new_authority_generation()
@@ -333,7 +411,5 @@ def preparation_checkpoint(
         )
         mutation.advance_guard_revision()
     return {
-        "state": (
-            "prepared_not_started" if phase == "finish" else "execution_unconfirmed"
-        )
+        "state": (receipt["outcome"] if phase == "finish" else "execution_unconfirmed")
     }

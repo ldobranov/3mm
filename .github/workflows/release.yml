@@ -16,7 +16,8 @@ jobs:
   build-and-publish:
     name: Build and publish immutable release
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Full lifecycle proof precedes both reproducible full/Node build passes.
+    timeout-minutes: 90
     steps:
       - name: Check out the tagged commit
         uses: actions/checkout@v7

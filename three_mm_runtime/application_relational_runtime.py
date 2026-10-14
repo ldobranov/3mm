@@ -27,6 +27,7 @@ class PreparedRelationalRuntime:
     def __init__(self, instance_root, metadata, secret, group_id=None):
         self.root, self.metadata, self.secret = Path(instance_root), metadata, secret
         self.session = _RelationalHostSession(self.root, secret, group_id)
+        self._boot_startup_attempted = False
         # Bind the caller's entire active metadata to the protected source, not
         # just its declaration. Validation/import cannot use an altered copy.
         saved = _decode((self.root / "active.json").read_bytes(), limit=131072)
@@ -97,6 +98,11 @@ class PreparedRelationalRuntime:
                 secret=self.secret,
             ),
         )
+
+    def require_boot_startup(self, platform):
+        from three_mm_runtime.application_relational_startup import require_boot_startup
+
+        require_boot_startup(self, platform)
 
     def readiness(self):
         # Reserved host health inspects only SDK/lifecycle metadata. Empty
