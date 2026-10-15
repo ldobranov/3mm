@@ -64,7 +64,7 @@ class _RelationalReceiptStore:
             },
         )
 
-    def _validate(self, connection):
+    def _validate_metadata(self, connection):
         rows = connection.execute(
             "SELECT name, type, tbl_name, sql FROM sqlite_schema WHERE "
             "name IN ('three_mm_relational_lineage', 'three_mm_relational_commits') "
@@ -80,6 +80,9 @@ class _RelationalReceiptStore:
         ).fetchone()
         if lineage is None or _decode(lineage[0]) != self.__expected:
             raise ValueError("Receipt metadata lineage requires lifecycle recovery")
+
+    def _validate(self, connection):
+        self._validate_metadata(connection)
         revision = connection.execute(
             "SELECT revision FROM three_mm_schema_migrations ORDER BY rowid DESC LIMIT 1"
         ).fetchone()

@@ -194,6 +194,7 @@ def _issue_preparation(
     transport_secret,
     migrate,
     namespace_credentials=None,
+    recovery_source=None,
 ):
     action = "prepare_migrated_schema" if migrate else "prepare_existing_schema"
     operation = "relational_prepare_migrated" if migrate else "relational_prepare"
@@ -219,6 +220,11 @@ def _issue_preparation(
             "grant_record_revision": expected,
             "action": action,
             **(namespace_credentials or {}),
+            **(
+                {"recovery_source": list(recovery_source)}
+                if recovery_source is not None
+                else {}
+            ),
         },
     ) as (db, key, mutation, actor, result):
         if result:
@@ -235,6 +241,31 @@ def _issue_preparation(
         ):
             raise authority.AuthorityManagementError("preparation_unavailable")
         boot, now = authority._clock()
+        if recovery_source is not None:
+            from backend.services.application_relational_preparation_recovery import (
+                reserve_preparation_resumption,
+            )
+
+            if not migrate or namespace_credentials is not None:
+                raise authority.AuthorityManagementError(
+                    "invalid_preparation_resumption"
+                )
+            reserve_preparation_resumption(
+                db,
+                key,
+                installation_id,
+                recovery_source,
+                transport_secret=transport_secret,
+                request_id=request_id,
+                bindings=_bindings(
+                    db,
+                    installation_id,
+                    prepared,
+                    grant,
+                    definition,
+                    mutation.guard.generation,
+                ),
+            )
         result["ticket"] = model.model_validate(
             sign_metadata(
                 transport_secret,
@@ -328,6 +359,8 @@ def preparation_checkpoint(
             raise authority.AuthorityManagementError("preparation_unavailable")
         if namespace and value["data"].get("namespace_recovery_id") is not None:
             raise authority.AuthorityManagementError("namespace_preparation_superseded")
+        if value["data"].get("preparation_recovery_id") is not None:
+            raise authority.AuthorityManagementError("preparation_superseded")
         grant, definition = _current(manager, db, key, installation_id, prepared)
         boot, now = authority._clock()
         if (

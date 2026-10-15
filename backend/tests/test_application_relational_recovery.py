@@ -1,5 +1,6 @@
 """Exact installed authority + real root/SQLite candidate recovery, no live data."""
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -60,12 +61,18 @@ from backend.tests.test_application_relational_preparation import (
 )
 from three_mm_application_sdk.relational_receipts import _RelationalReceiptStore
 from three_mm_application_sdk.relational_wire import (
+    _RelationalBootEnableTicket,
     _RelationalRecoveryTicket,
     canonical,
     recovered_lifecycle,
     sign_metadata,
 )
 from three_mm_runtime import application_relational_recovery as helper
+from three_mm_runtime.application_relational_boot_policy import (
+    confirm_boot_policy,
+    publish_pending_boot,
+    read_boot_policy,
+)
 from three_mm_runtime.application_relational_session import _prepared
 
 pytestmark = [
@@ -540,3 +547,122 @@ def test_recovery_interruption_retains_preimage_and_blocks_readiness(
                 )["database_lineage"]
                 == ticket["database_lineage"]
             )
+
+
+@pytest.mark.parametrize(
+    "shape", ["required", "policy", "both", "link", "directory", "pending", "confirmed"]
+)
+def test_boot_evidence_blocks_relineage_without_archiving_or_repair(published, shape):
+    state = published
+    ticket = issue(state)
+    required = state.instance / "boot-required.json"
+    policy = state.instance / "boot-authority.json"
+    boot_policy = None
+    if shape in {"pending", "confirmed"}:
+        # Disposable test-only key and structural boot publication. This tests
+        # valid protected metadata, not new Core boot consent or a live service.
+        lifecycle_sha = hashlib.sha256(
+            (state.instance / "relational.json").read_bytes()
+        ).hexdigest()
+        boot_ticket = _RelationalBootEnableTicket.model_validate(
+            sign_metadata(
+                SECRET,
+                "boot_enable",
+                {
+                    **state.source,
+                    "action": "enable_prepared_boot",
+                    "preparation_id": identity(),
+                    "source_preparation_id": state.source["preparation_id"],
+                    "prepared_lifecycle_sha256": lifecycle_sha,
+                    "service_uid": 1200,
+                    "service_gid": 1201,
+                    "coordinator_uid": 1202,
+                    "transport_key_sha256": hashlib.sha256(SECRET).hexdigest(),
+                    "source_activation_id": identity(),
+                    "source_activation_revision": identity(),
+                    "source_activation_action": "activate_prepared_service",
+                    "source_ticket_sha256": "c" * 64,
+                    "source_receipt_sha256": "d" * 64,
+                },
+            )
+        ).model_dump(mode="json")
+        publish_pending_boot(state.instance, boot_ticket, SECRET)
+        if shape == "confirmed":
+            confirm_boot_policy(
+                state.instance,
+                boot_ticket,
+                sign_metadata(
+                    SECRET,
+                    "boot_enable_result",
+                    {
+                        "version": 1,
+                        "preparation_id": boot_ticket["preparation_id"],
+                        "ticket_sha256": hashlib.sha256(
+                            canonical(boot_ticket)
+                        ).hexdigest(),
+                        "source_activation_id": boot_ticket["source_activation_id"],
+                        "lifecycle_sha256": lifecycle_sha,
+                        "witness_sha256": "e" * 64,
+                        "outcome": "boot_enabled_not_started",
+                    },
+                ),
+                SECRET,
+            )
+        boot_policy = read_boot_policy(
+            state.instance, SECRET, confirmed=shape == "confirmed"
+        )
+        assert boot_policy["phase"] == "boot_" + shape
+    elif shape == "link":
+        required.symlink_to(state.instance / "missing-boot-evidence")
+    elif shape == "directory":
+        policy.mkdir(mode=0o700)
+    else:
+        for path in (
+            (required, policy)
+            if shape == "both"
+            else (required,) if shape == "required" else (policy,)
+        ):
+            path.write_bytes(b"retained boot evidence")
+    paths = [
+        state.database,
+        state.instance / "active.json",
+        state.instance / "relational.json",
+    ]
+    before = [path.read_bytes() for path in paths]
+    initial_calls = list(state.calls)
+    evidence = sorted(path.name for path in state.instance.glob(".recovery-evidence-*"))
+
+    def no_checkpoint(*args, **kwargs):
+        pytest.fail("Recovery touched Core before boot reconciliation")
+
+    with pytest.raises(ValueError, match="Boot policy requires explicit"):
+        run(state, ticket, no_checkpoint)
+    assert [path.read_bytes() for path in paths] == before
+    assert state.calls == initial_calls
+    assert action(state, ticket)["state"] == "recorded"
+    assert not list(state.instance.glob(".database-*.rollback"))
+    assert (
+        sorted(path.name for path in state.instance.glob(".recovery-evidence-*"))
+        == evidence
+    )
+    assert (
+        state.transport_keys / (state.instance.name + ".key")
+    ).read_bytes() == SECRET
+    if boot_policy is not None:
+        assert (
+            read_boot_policy(state.instance, SECRET, confirmed=shape == "confirmed")
+            == boot_policy
+        )
+    elif shape == "link":
+        assert required.is_symlink() and os.readlink(required) == str(
+            state.instance / "missing-boot-evidence"
+        )
+    elif shape == "directory":
+        assert policy.is_dir()
+    else:
+        assert all(
+            path.read_bytes() == b"retained boot evidence"
+            for path in (required, policy)
+            if path.exists()
+        )
+    preserved(state)

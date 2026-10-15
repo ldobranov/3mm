@@ -251,6 +251,25 @@ class UpdateHelperClient:
             expected_status="disabled",
         )
 
+    def reconcile_relational_preparation(self, payload):
+        from three_mm_runtime.application_relational_preparation_recovery_control import preparation_recovery_request
+        from three_mm_application_sdk.relational_preparation_recovery_wire import _EmptyPreparationRecoveryResult
+        from three_mm_application_sdk.relational_wire import _RelationalPreparationResult
+        payload = preparation_recovery_request(payload)
+        resume = payload["action"] == "resume_application_relational_preparation"
+        try:
+            response = self._request(payload, expected_status="prepared_not_started" if resume else "restored_empty_not_started")
+            name = "preparation" if resume else "recovery"
+            if type(response) is not dict or set(response) != {"ok", "status", name}:
+                raise ValueError("Invalid preparation recovery response")
+            model = _RelationalPreparationResult if resume else _EmptyPreparationRecoveryResult
+            result = model.model_validate(response[name]).model_dump(mode="json")
+            if result["preparation_id"] != payload["request_id"]:
+                raise ValueError("Preparation recovery response identity changed")
+            return result
+        except (UpdateHelperError, ValueError, KeyError, TypeError, RecursionError):
+            raise UpdateHelperError("Preparation reconciliation is unconfirmed. Do not retry; retain evidence for fresh local review.") from None
+
     def erase_application_extension_data(
         self,
         instance_id: str,
@@ -264,6 +283,21 @@ class UpdateHelperClient:
             },
             expected_status="erased",
         )
+
+    def application_relational_upgrade(self, payload):
+        from three_mm_runtime.application_relational_upgrade_control import upgrade_request, response_model, response_status
+        payload = upgrade_request(payload)
+        try:
+            response = self._request(payload, expected_status=response_status(payload["action"]))
+            if type(response) is not dict or set(response) != {"ok", "status", "upgrade"}:
+                raise ValueError("Invalid local upgrade response")
+            result = response_model(payload["action"]).model_validate(response["upgrade"]).model_dump(mode="json")
+            if (result["preparation_id"] != payload["request_id"]
+                or "source_upgrade_id" in result and result["source_upgrade_id"] != payload["source_action_id"]):
+                raise ValueError("Upgrade response identity changed")
+            return result
+        except (UpdateHelperError, ValueError, KeyError, TypeError, RecursionError):
+            raise UpdateHelperError("Relational upgrade/reconciliation is unconfirmed. Do not retry; retain evidence for fresh local review.") from None
 
     def request_restore(self, backup_id: str, requested_by_user_id: int) -> None:
         self._request(
@@ -337,7 +371,8 @@ class UpdateHelperClient:
                         break
             if len(response) > MAX_RESPONSE_BYTES:
                 raise ValueError("response_too_large")
-            if payload.get("action") in {"prepare_application_relational", "activate_application_relational", "recover_application_relational_start", "reactivate_application_relational", "enable_application_relational_boot"}:
+            from three_mm_runtime.application_relational_upgrade_control import ACTIONS as UPGRADE_ACTIONS
+            if payload.get("action") in {"prepare_application_relational", "activate_application_relational", "recover_application_relational_start", "reactivate_application_relational", "enable_application_relational_boot", "recover_application_relational_preparation", "resume_application_relational_preparation"} | UPGRADE_ACTIONS:
                 from backend.services.application_authority_context import _unique_object
                 result = json.loads(response.split(b"\n", 1)[0], object_pairs_hook=_unique_object)
             else:
@@ -350,6 +385,7 @@ class UpdateHelperClient:
                     and isinstance(result.get("message"), str)):
                 raise UpdateHelperError(result["message"])
             messages = {
+                "relational_empty_preparation_unconfirmed": "Preparation reconciliation is unconfirmed. Do not retry; retain evidence for fresh local review.",
                 "relational_boot_enable_unconfirmed": "Relational boot enable is unconfirmed. Do not retry; retain evidence for explicit stop/review.",
                 "relational_preparation_unconfirmed": "Relational preparation is unconfirmed. Do not retry; preserve evidence and review recovery.",
                 "relational_activation_unconfirmed": "Relational activation is unconfirmed. Do not retry; preserve evidence and review recovery.",

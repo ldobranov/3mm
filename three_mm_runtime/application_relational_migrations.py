@@ -26,6 +26,11 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from three_mm_application_sdk import ApplicationMigration, ApplicationStorage
+from three_mm_application_sdk.relational_upgrade_receipts import receipt_metadata_digest
+from three_mm_application_sdk.relational_upgrade_wire import (
+    _RelationalUpgradeTicket,
+    upgrade_worker_profile_digest,
+)
 from three_mm_application_sdk.relational_wire import (
     Digest,
     Millis,
@@ -140,6 +145,11 @@ def _stop_worker(process):
         time.sleep(0.01)
 
 
+class _PreparedMigrationSource(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    receipt_metadata_sha256: Digest
+
+
 class _WorkerPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
     instance_root: Annotated[str, Field(min_length=1, max_length=4096)]
@@ -151,6 +161,7 @@ class _WorkerPlan(BaseModel):
     schema_revision: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9_.-]{0,63}$")]
     declaration: ApplicationRelationalStorageV1
     database_present: bool
+    prepared_source: _PreparedMigrationSource | None = None
     service_uid: Annotated[int, Field(strict=True, ge=1)]
     service_gid: Annotated[int, Field(strict=True, ge=1)]
     boot_id: Annotated[
@@ -167,6 +178,8 @@ class _WorkerPlan(BaseModel):
         if (
             not Path(self.instance_root).is_absolute()
             or not 0 < self.deadline_ms - self.issued_at_ms <= MAX_WORKER_MS
+            or self.prepared_source is not None
+            and not self.database_present
         ):
             raise ValueError("Invalid migration worker plan")
         return self
@@ -225,11 +238,55 @@ def run_business_migrations(
     locks/preimages remain held; no Core lease is held across this process.
     No retry/repair is possible here. Failure requires enclosing rollback/review.
     """
+    return _run_migrations(
+        instance,
+        ticket,
+        definition,
+        database_present=database_present,
+        service_uid=service_uid,
+        service_gid=service_gid,
+        prepared_source=None,
+    )
+
+
+def run_prepared_upgrade_migrations(
+    instance, ticket, definition, *, receipt_metadata_sha256, service_uid, service_gid
+):
+    ticket = _RelationalUpgradeTicket.model_validate(ticket).model_dump(mode="json")
+    source = _PreparedMigrationSource(receipt_metadata_sha256=receipt_metadata_sha256)
+    return _run_migrations(
+        instance,
+        ticket,
+        definition,
+        database_present=True,
+        service_uid=service_uid,
+        service_gid=service_gid,
+        prepared_source=source,
+    )
+
+
+def _run_migrations(
+    instance,
+    ticket,
+    definition,
+    *,
+    database_present,
+    service_uid,
+    service_gid,
+    prepared_source,
+):
+    upgrade = prepared_source is not None
     if (
         os.name != "posix"
         or os.geteuid() != 0
-        or ticket.get("action") != "prepare_migrated_schema"
-        or ticket.get("worker_profile_sha256") != migration_worker_profile_digest()
+        or ticket.get("action")
+        != ("upgrade_prepared_schema" if upgrade else "prepare_migrated_schema")
+        or ticket.get("worker_profile_sha256")
+        != (
+            upgrade_worker_profile_digest()
+            if upgrade
+            else migration_worker_profile_digest()
+        )
     ):
         raise ValueError("Migration preparation authority unavailable")
     require_migration_worker_privileges()
@@ -248,6 +305,7 @@ def run_business_migrations(
             "schema_revision": ticket["schema_revision"],
             "declaration": definition.storage.relational.model_dump(mode="json"),
             "database_present": database_present,
+            "prepared_source": prepared_source,
             "service_uid": service_uid,
             "service_gid": service_gid,
             "boot_id": boot,
@@ -409,7 +467,13 @@ class _MigrationStorage(ApplicationStorage):
                 != maximum
             ):
                 raise ValueError("Migration database exceeds profile")
-            if connection.execute(
+            if self.plan.prepared_source is not None:
+                if (
+                    receipt_metadata_digest(connection)
+                    != self.plan.prepared_source.receipt_metadata_sha256
+                ):
+                    raise ValueError("Prepared receipt metadata changed during upgrade")
+            elif connection.execute(
                 "SELECT name FROM sqlite_schema WHERE name IN ('three_mm_relational_lineage','three_mm_relational_commits')"
             ).fetchone():
                 raise ValueError("Prepared database requires recovery review")
@@ -453,8 +517,21 @@ class _MigrationStorage(ApplicationStorage):
             )
         # SQLite ALTER authorization reports the OLD name only. Check reserved
         # names after DDL as well, before the SDK inserts history/commits.
+        allowed = ["three_mm_schema_migrations", "three_mm_outbox"]
+        if self.plan.prepared_source is not None:
+            allowed.extend(
+                ["three_mm_relational_lineage", "three_mm_relational_commits"]
+            )
+            if (
+                receipt_metadata_digest(connection)
+                != self.plan.prepared_source.receipt_metadata_sha256
+            ):
+                raise ValueError("Migration changed prepared receipt metadata")
         unexpected = connection.execute(
-            "SELECT name FROM sqlite_schema WHERE lower(name) GLOB 'three_mm_*' AND name NOT IN ('three_mm_schema_migrations','three_mm_outbox')"
+            "SELECT name FROM sqlite_schema WHERE lower(name) GLOB 'three_mm_*' AND name NOT IN ("
+            + ",".join("?" for _ in allowed)
+            + ")",
+            allowed,
         ).fetchone()
         if unexpected:
             raise ValueError("Migration changed reserved SDK metadata")

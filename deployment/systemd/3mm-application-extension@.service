@@ -4,7 +4,9 @@ After=3mm-core.service
 PartOf=3mm-core.service
 
 [Service]
-Type=simple
+# Start succeeds only after exec under the configured non-root principal.
+# Type=simple acknowledges the fork before credential/namespace setup completes.
+Type=exec
 User=3mm-app
 Group=3mm-app
 WorkingDirectory=/opt/3mm/current

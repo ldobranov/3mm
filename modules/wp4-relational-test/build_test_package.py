@@ -21,14 +21,23 @@ def _write(archive, name, data):
     archive.writestr(entry, data)
 
 
-def build_package():
+def build_package(*, upgrade_candidate=False):
+    if type(upgrade_candidate) is not bool:
+        raise ValueError("Choose an explicit test package variant")
+    version = "1.1.0" if upgrade_candidate else VERSION
     files = {
         "wp4_relational_test/" + path.name: path.read_bytes().replace(b"\r\n", b"\n")
         for path in sorted((ROOT / "service/wp4_relational_test").glob("*.py"))
     }
-    dist = f"wp4_relational_test-{VERSION}.dist-info"
+    if upgrade_candidate:
+        files["wp4_relational_test/migrations.py"] = (
+            (ROOT / "upgrade_candidate_migrations.py")
+            .read_bytes()
+            .replace(b"\r\n", b"\n")
+        )
+    dist = f"wp4_relational_test-{version}.dist-info"
     files[dist + "/METADATA"] = (
-        f"Metadata-Version: 2.1\nName: wp4-relational-test\nVersion: {VERSION}\n"
+        f"Metadata-Version: 2.1\nName: wp4-relational-test\nVersion: {version}\n"
     ).encode()
     files[dist + "/WHEEL"] = (
         b"Wheel-Version: 1.0\nGenerator: 3mm\nRoot-Is-Purelib: true\nTag: py3-none-any\n"
@@ -51,6 +60,12 @@ def build_package():
         wheel.getvalue()
     ).hexdigest()
     manifest = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))
+    if upgrade_candidate:
+        manifest["version"] = definition["version"] = version
+        definition["service"][
+            "artifact"
+        ] = f"service/wp4_relational_test-{version}-py3-none-any.whl"
+        definition["storage"]["schema_revision"] = "0002"
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:
         for name, value in (
@@ -69,10 +84,15 @@ def build_package():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--upgrade-candidate",
+        action="store_true",
+        help="Build separate 1.1.0/schema 0002 candidate; leaves the original 1.0.0 unchanged",
+    )
     args = parser.parse_args()
     from backend.services.module_packages import validate_module_package
 
-    payload = build_package()
+    payload = build_package(upgrade_candidate=args.upgrade_candidate)
     validate_module_package(payload)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_bytes(payload)

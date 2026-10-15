@@ -6,6 +6,79 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.50] - 2026-10-15
+
+### Added
+
+- Explicit local-administrator recovery/resumption for an exactly verified
+  restored-empty preparation checkpoint. Original keys, failed actions and
+  rollback evidence are retained; migration requires separate fresh consent.
+- Bounded inert adoption of a newer cataloged relational package after confirmed
+  exact-source stop. It preserves installation identity/configuration/history,
+  executes no package code and grants no trust or rights. Fresh native review,
+  normal resource review/approval/apply and explicit upgrade remain separate.
+- Prepared-database forward upgrade through signed, exact-owner/package/schema/
+  grant/boot-bound helper actions and actual non-root migration workers. Separate
+  local commands confirm a fully published upgrade or witnessed rollback, or
+  explicitly finish a fixed interrupted `restoring` phase without rerunning
+  application migrations. Unknown outcomes remain unknown; no automatic replay.
+- Separate opt-in relational test candidate 1.1.0/schema 0002 and administrator
+  procedure. Its deterministic ZIP is uploaded separately, not a Core release
+  asset or fresh-install package; the original 1.0.0 fixture bytes are unchanged.
+- Target-owned deployment preflight requires the new upgrade/recovery components;
+  regression tests reject an archive missing any required component.
+
+### Fixed
+
+- Atomic replacement of protected Root witnesses preserves owner/group metadata.
+- Application systemd services use Type=exec so process-principal admission does
+  not race the shell's pre-exec identity. No filesystem or authority guard is relaxed.
+- Upgrade receipts preserve original transaction history across schema lineage;
+  old acknowledgements cannot authorize new work or changed request content.
+
+### Compatibility and test boundary
+
+- No Core database migration, dependency, Device Protocol or Application SDK
+  version change. SDK 1.3, identities, credentials, appearance and compatibility
+  applications remain. Core update does not adopt, trust, grant, migrate, start,
+  retry uncertain work or remove recovery evidence.
+- The controlled neutral fixture passed signed SDK/replay/conflict/revocation,
+  real systemd restart and actual WSL cold-start checks using protected trial
+  code, not the unchanged beta.49 installation. Normal beta.50 update and live
+  candidate upgrade/partial-restore acceptance remain separate gates.
+- WP4/M20 remain open. General installation/OS-account provisioning, portable
+  restore/rekey/nonempty recovery, broader Standalone/Hub and scoped UI/platform
+  acceptance are not inferred from this release. Reviewed-native is not a sandbox.
+  No concrete business/theme package, generated ZIP, local data or M21 work is included.
+- Preserve a verified pre-upgrade backup and independent VM snapshot. Pending
+  recovery still blocks backup/restore; update is not permission to erase markers.
+  GitHub gates publication on full Python/frontend checks and reproducible
+  full-profile/ARMv6 Node builds. Publication does not deploy a device or close WP4.
+
+### Local release verification
+
+- Complete canonical non-root Linux/Python 3.14.4 collection: **3,553 passed,
+  575 explicit skips and 5 passing subtests**, with no failures. Root-only,
+  non-POSIX-only and opt-in cases are not counted as passed. Existing dependency/
+  datetime warnings remain; no assertions or application/test deadlines were changed.
+- Frontend: **313 tests / 44 files**, TypeScript check and production build pass.
+  The initial parallel bootstrap timeout/follow-on failure passed in the complete
+  one-worker rerun; test and application behavior were unchanged.
+- Separate complete non-root deployment/Application SDK collection: **343 passed**.
+  This is distinct from the canonical collection, not a claim that overlapping
+  regression runs represent additional unique coverage.
+- Separate isolated root/Linux recovery/upgrade regression: **484 passed, no
+  skips**, including real non-root migrations, local administrator CLI, Unix peer
+  credentials, candidate adoption and partial-restore paths. Disposable supervisor
+  adapters are not live systemd/VM upgrade acceptance. These tests overlap the
+  canonical collection and are not added as unique coverage. An early root attempt
+  was stopped after fixture setup errors; the complete successful run used its
+  own private temporary environment, without changing production guards or tests.
+- Tests use isolated writable state and private temporary storage, not installed
+  Core/application databases. The initial environment-only Python run was stopped
+  and is not counted as completed proof. GitHub repeats canonical Python 3.13/
+  Node 22 checks and reproducible builds before publication.
+
 ## [0.3.0-beta.49] - 2026-10-14
 
 ### Fixed
@@ -1611,7 +1684,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.49...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.50...HEAD
+[0.3.0-beta.50]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.50
 [0.3.0-beta.49]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.49
 [0.3.0-beta.48]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.48
 [0.3.0-beta.47]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.47

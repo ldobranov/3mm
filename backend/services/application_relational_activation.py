@@ -27,6 +27,11 @@ from backend.services.authority_metadata import (
     authority_transaction,
     read_application_authority,
 )
+from three_mm_application_sdk.relational_upgrade_wire import (
+    _RelationalUpgradeResult,
+    _RelationalUpgradeTicket,
+    upgraded_lifecycle,
+)
 from three_mm_application_sdk.relational_wire import (
     _activation_ticket,
     _preparation_ticket,
@@ -55,22 +60,46 @@ STABLE_FIELDS = (
 def _source(db, key, installation_id, identifier, secret, bindings):
     row = db.get(Action, identifier, populate_existing=True)
     value = authority._load(db, key, "action", row, identifier)
-    ticket, purpose = _preparation_ticket(value["data"]["result"]["ticket"])
-    receipt = _RelationalPreparationResult.model_validate(
-        value["data"]["receipt"]
-    ).model_dump(mode="json")
+    upgrade = value["data"].get("operation") == "relational_upgrade_prepared"
+    if upgrade:
+        ticket = _RelationalUpgradeTicket.model_validate(
+            value["data"]["result"]["ticket"]
+        ).model_dump(mode="json")
+        purpose, receipt_purpose, expected_state = (
+            "database_upgrade",
+            "database_upgrade_result",
+            "upgraded",
+        )
+        receipt_model = _RelationalUpgradeResult
+        lifecycle = upgraded_lifecycle(ticket, secret)
+        expected_operation = "relational_upgrade_prepared"
+        from backend.services.application_relational_upgrade_confirmation import (
+            require_confirmed_upgrade,
+        )
+
+        require_confirmed_upgrade(db, key, value, ticket, secret)
+    else:
+        ticket, purpose = _preparation_ticket(value["data"]["result"]["ticket"])
+        receipt_purpose, expected_state, receipt_model = (
+            "preparation_result",
+            "prepared",
+            _RelationalPreparationResult,
+        )
+        lifecycle = prepared_lifecycle(ticket, secret)
+        expected_operation = {
+            "prepare_existing_schema": "relational_prepare",
+            "prepare_migrated_schema": "relational_prepare_migrated",
+        }.get(ticket["action"])
+    receipt = receipt_model.model_validate(value["data"]["receipt"]).model_dump(
+        mode="json"
+    )
     verify_metadata(secret, purpose, ticket)
-    verify_metadata(secret, "preparation_result", receipt)
-    lifecycle_digest = hashlib.sha256(
-        canonical(prepared_lifecycle(ticket, secret))
-    ).hexdigest()
-    expected_operation = {
-        "prepare_existing_schema": "relational_prepare",
-        "prepare_migrated_schema": "relational_prepare_migrated",
-    }.get(ticket["action"])
+    verify_metadata(secret, receipt_purpose, receipt)
+    lifecycle_digest = hashlib.sha256(canonical(lifecycle)).hexdigest()
     if (
         value["installation_id"] != installation_id
-        or value["state"] != "prepared"
+        or value["state"] != expected_state
+        or value["data"].get("upgrade_id") is not None
         or expected_operation is None
         or value["data"]["operation"] != expected_operation
         or ticket["preparation_id"] != identifier

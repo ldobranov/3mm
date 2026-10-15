@@ -203,6 +203,7 @@ def _prepare_relational_database(
     service_gid,
     checkpoint,
     supervisor=None,
+    resumption=None,
 ):
     """Initial preparation only; callers cannot supply paths via the ticket.
 
@@ -287,6 +288,13 @@ def _prepare_relational_database(
                 raise RelationalPreparationError(
                     "Application own namespace unavailable"
                 )
+        # Boot publication depends on namespace preparation; resolve this
+        # metadata-only fence after module initialization, without an import cycle.
+        from three_mm_runtime.application_relational_boot_policy import (
+            require_no_boot_gate,
+        )
+
+        require_no_boot_gate(instance)
         if not migrate or os.path.lexists(database):
             _regular(database)
         _require_no_pending_rollback(instance)
@@ -307,6 +315,16 @@ def _prepare_relational_database(
                     "Partial publication requires recovery"
                 )
         secret = _key(key_path)
+        if resumption is not None:
+            from three_mm_runtime.application_relational_preparation_recovery import (
+                validate_preparation_resumption,
+            )
+
+            if not migrate:
+                raise RelationalPreparationError(
+                    "Resumption requires migration consent"
+                )
+            validate_preparation_resumption(instance, *resumption, secret)
         verify_metadata(secret, purpose, ticket)
         _live(ticket)
         if checkpoint(ticket, "authorize") != {"state": "authorized_not_started"}:

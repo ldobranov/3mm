@@ -354,6 +354,8 @@ def activate_prepared_relational_service(
                     dict(evidence, phase="active_review_required", receipt=result)
                 ),
                 0o600,
+                uid=0,
+                gid=0,
             )
             marker.rename(history)
             _sync_directory(state_root)

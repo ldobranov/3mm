@@ -192,6 +192,11 @@ def accept_prepared_relational_candidate(
                 or info.st_mode & 0o022
             ):
                 raise RelationalRecoveryError("Recovery own namespace unavailable")
+        from three_mm_runtime.application_relational_boot_policy import (
+            require_no_boot_gate,
+        )
+
+        require_no_boot_gate(instance)
         secret = _key(key_path)
         verify_metadata(secret, "recovery", ticket)
         _live(ticket)

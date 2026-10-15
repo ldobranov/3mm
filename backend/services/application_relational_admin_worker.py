@@ -25,6 +25,12 @@ from backend.services.application_authority_sources import _configuration
 from backend.services.application_policy_reviews import _actor
 from backend.services.authority_metadata import authority_transaction
 from three_mm_application_sdk.relational_wire import canonical
+from three_mm_runtime.application_relational_preparation_recovery_control import (
+    METADATA_ACTIONS as PREPARATION_RECOVERY_OPERATIONS,
+)
+from three_mm_runtime.application_relational_upgrade_control import (
+    METADATA_ACTIONS as UPGRADE_OPERATIONS,
+)
 
 MAX_FRAME = 64 * 1024
 RECOVERY_OPERATIONS = {
@@ -47,6 +53,26 @@ def _fields(value, names):
 
 def dispatch(manager, value, *, application_root=None):
     """Only Root's fixed metadata dialect, never a generic function/method RPC."""
+    if (
+        type(value) is dict
+        and type(value.get("action")) is str
+        and value["action"] in UPGRADE_OPERATIONS
+    ):
+        from three_mm_runtime.application_relational_upgrade_control import (
+            upgrade_metadata,
+        )
+
+        return upgrade_metadata(manager, value)
+    if (
+        type(value) is dict
+        and type(value.get("action")) is str
+        and value["action"] in PREPARATION_RECOVERY_OPERATIONS
+    ):
+        from three_mm_runtime.application_relational_preparation_recovery_control import (
+            preparation_recovery_metadata,
+        )
+
+        return preparation_recovery_metadata(manager, value)
     if (
         type(value) is dict
         and type(value.get("action")) is str
@@ -484,6 +510,8 @@ def main():
             | RECOVERY_OPERATIONS
             | REACTIVATION_OPERATIONS
             | BOOT_OPERATIONS
+            | PREPARATION_RECOVERY_OPERATIONS
+            | UPGRADE_OPERATIONS
         ):
             # Root supplies this fixed dependency through protected worker argv,
             # never a JSON field. Refuse Core/helper layout divergence before

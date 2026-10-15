@@ -3,6 +3,7 @@
 import json
 import os
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -106,6 +107,28 @@ def test_verified_restore_keeps_candidate_and_exact_original_presence(paths, exi
         assert not snapshot.exists()
     with pytest.raises(ValueError, match="recovery review"):
         snapshots.restore_database(database, snapshot, existed, None, None)
+
+
+def test_restore_reads_verified_wal_backup_without_creating_preimage_sidecars(paths):
+    database, snapshot = paths
+    with closing(sqlite3.connect(database)) as keeper:
+        keeper.execute("PRAGMA journal_mode=WAL")
+        keeper.execute("CREATE TABLE records(value TEXT)")
+        keeper.execute("INSERT INTO records VALUES ('committed in WAL')")
+        keeper.commit()
+        assert snapshots.capture_database(database, snapshot)
+    before = snapshot.read_bytes()
+    with closing(sqlite3.connect(database)) as candidate:
+        candidate.execute("UPDATE records SET value='candidate'")
+        candidate.commit()
+    snapshots.restore_database(database, snapshot, True, os.getuid(), os.getgid())
+    assert snapshot.read_bytes() == before
+    assert not any(
+        snapshot.with_name(snapshot.name + suffix).exists()
+        for suffix in ("-wal", "-shm", "-journal")
+    )
+    snapshots._preimage(snapshot, True)
+    assert value(database) == [("committed in WAL",)]
 
 
 @pytest.mark.parametrize(

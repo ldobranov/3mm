@@ -599,3 +599,72 @@ def test_existing_helper_locks_exclude_overlapping_preparation(prepared_paths):
         with pytest.raises(BlockingIOError):
             run(state, ticket)
     assert not state.calls and not list(state.instance.glob(".activation-*.rollback"))
+
+
+@ROOT_ONLY
+@pytest.mark.parametrize("migrate", [False, True])
+@pytest.mark.parametrize("name", ["boot-required.json", "boot-authority.json"])
+@pytest.mark.parametrize("link", [False, True])
+def test_boot_gate_blocks_initial_preparation_before_checkpoint_or_data_change(
+    prepared_paths, migrate, name, link
+):
+    state = prepared_paths
+    ticket = (
+        coordinator.issue_migrated_schema_preparation(
+            state.manager,
+            1,
+            actor_token=state.token,
+            request_id=identity(),
+            expected_grant_record_revision=state.manager.inspect(1)[
+                "grant_record_revision"
+            ],
+            confirm_owned_business_migrations=True,
+            transport_secret=SECRET,
+        )
+        if migrate
+        else issue(state)
+    )
+    marker = state.instance / name
+    if link:
+        marker.symlink_to(state.instance / "missing-boot-evidence")
+    else:
+        marker.write_bytes(b"retained boot evidence")
+    before = state.database.read_bytes()
+
+    def no_checkpoint(*args, **kwargs):
+        pytest.fail("Preparation touched Core before boot reconciliation")
+
+    if migrate:
+        with pytest.raises(ValueError, match="Boot policy requires explicit"):
+            helper.prepare_migrated_relational_database(
+                state.archive,
+                ticket,
+                configuration=state.configuration,
+                root=state.runtime,
+                key_root=state.transport_keys,
+                state_root=state.helper_state,
+                service_uid=1200,
+                service_gid=1201,
+                supervisor=state.supervisor,
+                checkpoint=no_checkpoint,
+            )
+    else:
+        with pytest.raises(ValueError, match="Boot policy requires explicit"):
+            run(state, ticket, no_checkpoint)
+    assert os.path.lexists(marker)
+    assert (
+        marker.is_symlink()
+        if link
+        else marker.read_bytes() == b"retained boot evidence"
+    )
+    assert state.database.read_bytes() == before
+    assert (state.instance / "active.json").read_bytes() == state.previous
+    assert not (state.instance / "relational.json").exists()
+    assert not list(state.instance.glob(".activation-*.rollback"))
+    assert not list((state.instance / "releases").iterdir())
+    assert not state.calls
+    assert action(state, ticket)["state"] == "recorded"
+    assert (
+        state.transport_keys / (state.instance.name + ".key")
+    ).read_bytes() == SECRET
+    preserved(state)

@@ -239,15 +239,31 @@ effects. Existing hardening stays on. A separate real systemd regression proves
 the dropped-UID migration child has no effective/ambient capabilities, no extra
 groups and `NoNewPrivileges=1`; without the capability it refuses before effects.
 This is a process/deployment prerequisite, not a new SDK permission or app capability.
-The exact fixture ZIP/SDK 1.3/protocol remain unchanged. The fix is not yet a
-published release and does not alter the VM's immutable beta.48 files.
+The exact fixture ZIP/SDK 1.3/protocol remain unchanged. The launcher fix is
+published in beta.49; updating it does not reconcile the old checkpoint.
 
 The interrupted fixture remains stopped with its existing key/evidence. Do not
 repeat fresh preparation or delete its rollback marker. beta.48's empty-bootstrap
 recovery refuses staged wheels/migration evidence, while its prepared-candidate
 recovery requires an already prepared database. Neither is a recipe for this
-`restored_not_started` migration checkpoint. Its explicit reconciliation is a
-separate remaining WP4 gate; successful isolated launcher tests do not close it.
+`restored_not_started` migration checkpoint. A narrow
+[restored-empty recovery and separately authorized resumption](../../docs/EXTENSION_PLATFORM_V2_RESTORED_EMPTY_RECOVERY.md)
+is delivered in **beta.50, not beta.49**. It preserves the key and
+wheel and archives only verified empty rollback evidence. Follow that procedure
+only after a release includes the new commands, then return to step 3 with the
+new database preparation ID. Live reconciliation is still a WP4 gate; successful
+isolated launcher/recovery tests do not close it.
+
+The owner's later [controlled VM trial](../../docs/EXTENSION_PLATFORM_V2_RELATIONAL_VM_TRIAL.md)
+accepted this exact empty recovery, separate preparation, non-root start and
+actual signed SDK SQL/revoke gates without another release. A subsequent separate
+authorization also accepted controlled restart, enable-only boot consent and an
+actual WSL cold start: signed SDK data/count, grants, original key and device
+identity survived, with current-process startup admission verified. It used
+protected one-shot code snapshots and a fixture-only `Type=exec` override,
+initially ephemeral and then protected/persistent for reboot; these fixes/commands
+are consolidated in beta.50. Do not treat the trial as a general beta.49 installation/recovery
+recipe, physical Raspberry acceptance or broader WP4 closure.
 
 Verification of this local fix on 2026-10-14: **38 cases passed** under isolated
 Linux root, including both real systemd launcher cases (missing prerequisite and
@@ -395,8 +411,11 @@ Only after separate explicit agreement, restart the disposable VM/WSL (stop othe
 development work first). Verify real unit PID/UID/GID, Core/Agent readiness and
 identity, current grant state, admitted SDK reads and unchanged records/count. Reboot
 does not itself permit repairs/regrants. Missing/expired/changed trust must fail
-closed before package import. Live restart/refusal and genuine interrupted-start
-acceptance remain unclaimed until their actual outputs are reviewed.
+closed before package import. The dated controlled-trial report above records
+accepted normal restart/cold-boot outputs for the exact fixture and its protected
+override. Genuine interrupted-start fault injection, changed-trust boot refusal
+and general installation acceptance are still separate gates; do not infer them
+from a successful healthy boot.
 
 ## Verification and remaining scope
 

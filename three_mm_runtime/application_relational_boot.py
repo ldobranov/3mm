@@ -289,6 +289,8 @@ def enable_prepared_relational_boot(
                 record_path,
                 canonical(dict(evidence, phase="enabled_unconfirmed", receipt=result)),
                 0o600,
+                uid=0,
+                gid=0,
             )
             if checkpoint(ticket, "finish", receipt=result) != {
                 "state": "boot_enabled_not_started"
@@ -300,6 +302,8 @@ def enable_prepared_relational_boot(
                     dict(evidence, phase="boot_enabled_not_started", receipt=result)
                 ),
                 0o600,
+                uid=0,
+                gid=0,
             )
             confirm_boot_policy(instance, ticket, result, secret)
             return result

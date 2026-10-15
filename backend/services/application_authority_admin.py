@@ -2,7 +2,7 @@
 
 Run as the Core service account with its existing environment and local DB.
 Login tokens are prompted without echo, never CLI arguments or printed output.
-Trust commands execute no source code. Explicit preparation/start commands call
+Trust commands execute no source code. Explicit relational lifecycle commands call
 the fixed local helper with separate consent, without approving runtime rights.
 """
 
@@ -82,6 +82,28 @@ def main():
     boot.add_argument('--expected-grant-record-revision', required=True)
     boot.add_argument('--request-id', required=True)
     boot.add_argument('--confirm-enable-prepared-boot', required=True, action='store_true')
+    prep_status = commands.add_parser('inspect-relational-preparation', help='Read sealed failed migration revision; no runtime effects')
+    prep_recovery = commands.add_parser('recover-relational-preparation', help='Reconcile ONLY a restored-empty initial checkpoint; never migrate or start')
+    for command in (prep_status, prep_recovery):
+        command.add_argument('--installation-id', required=True, type=int)
+        command.add_argument('--source-preparation-id', required=True)
+        command.add_argument('--source-namespace-id', required=True)
+        command.add_argument('--expected-grant-record-revision', required=True)
+    prep_recovery.add_argument('--expected-preparation-revision', required=True)
+    prep_recovery.add_argument('--request-id', required=True)
+    prep_recovery.add_argument('--confirm-restored-empty-checkpoint', required=True, action='store_true')
+    resume = commands.add_parser('resume-relational-preparation', help='Separate fresh migration consent AFTER confirmed empty recovery; never start')
+    resume.add_argument('--installation-id', required=True, type=int)
+    resume.add_argument('--source-recovery-id', required=True)
+    resume.add_argument('--expected-recovery-revision', required=True)
+    resume.add_argument('--expected-grant-record-revision', required=True)
+    resume.add_argument('--request-id', required=True)
+    resume.add_argument('--confirm-owned-business-migrations', required=True, action='store_true')
+    resume_status = commands.add_parser('inspect-relational-preparation-recovery', help='Read sealed empty-recovery revision; no runtime effects')
+    resume_status.add_argument('--installation-id', required=True, type=int)
+    resume_status.add_argument('--source-recovery-id', required=True)
+    from backend.services.application_relational_upgrade_cli import add_commands, COMMANDS as UPGRADE_COMMANDS, LOCAL_COMMANDS
+    add_commands(commands)
     args = parser.parse_args()
     from backend.database import engine
     manager = configured_manager(engine)
@@ -107,6 +129,9 @@ def main():
                     entity_type='core_authority', changes={'key_id': key.key_id, 'operation': args.command}))
                 mutation.advance_guard_revision()
             result = {'key_id': key.key_id, 'permission_approval': 'not_evaluated'}
+        elif args.command in set(UPGRADE_COMMANDS) | LOCAL_COMMANDS | {'inspect-relational-upgrade'}:
+            from backend.services.application_relational_upgrade_cli import execute
+            result = execute(manager, args, token)
         elif args.command == 'native-review':
             with args.review_document.open('rb') as document:
                 contents = document.read(1_048_577)
@@ -131,6 +156,35 @@ def main():
                 artifact_sha256=args.artifact_sha256, configuration=configuration,
                 actor_token=token, request_id=args.request_id,
                 confirm_register_without_start=args.confirm_register_without_start)
+        elif args.command == 'inspect-relational-preparation':
+            from backend.services.application_relational_preparation_recovery import inspect_empty_preparation_source
+            result = inspect_empty_preparation_source(manager, args.installation_id,
+                actor_token=token, source_preparation_id=args.source_preparation_id,
+                source_namespace_id=args.source_namespace_id,
+                expected_grant_record_revision=args.expected_grant_record_revision)
+        elif args.command == 'inspect-relational-preparation-recovery':
+            from backend.services.application_relational_preparation_recovery import inspect_empty_recovery_record
+            result = inspect_empty_recovery_record(manager, args.installation_id,
+                actor_token=token, source_recovery_id=args.source_recovery_id)
+        elif args.command in {'recover-relational-preparation', 'resume-relational-preparation'}:
+            with Session(engine) as db, authority_transaction(db):
+                _actor(db, token)
+            from backend.config import get_settings
+            from three_mm_runtime.update_helper_client import UpdateHelperClient
+            resumed = args.command == 'resume-relational-preparation'
+            payload = {'action': 'resume_application_relational_preparation' if resumed else 'recover_application_relational_preparation',
+                'installation_id': args.installation_id, 'actor_token': token,
+                'expected_grant_record_revision': args.expected_grant_record_revision, 'request_id': args.request_id}
+            if resumed:
+                payload.update(source_recovery_id=args.source_recovery_id, expected_recovery_revision=args.expected_recovery_revision,
+                    confirm_owned_business_migrations=args.confirm_owned_business_migrations)
+            else:
+                payload.update(source_preparation_id=args.source_preparation_id, source_namespace_id=args.source_namespace_id,
+                    expected_preparation_revision=args.expected_preparation_revision,
+                    confirm_restored_empty_checkpoint=args.confirm_restored_empty_checkpoint)
+            recovered = UpdateHelperClient(get_settings().applications.helper_socket, timeout_seconds=180).reconcile_relational_preparation(payload)
+            result = {'status': 'prepared_not_started' if resumed else 'restored_empty_not_started',
+                'preparation' if resumed else 'recovery': recovered, 'permission_approval': 'not_evaluated'}
         elif args.command == 'prepare-relational':
             with Session(engine) as db, authority_transaction(db):
                 _actor(db, token)
@@ -204,6 +258,10 @@ def main():
                 expected_revision=args.expected_revision)
         print(json.dumps(result, sort_keys=True))
     except (AuthorityManagementError, AuthorityReviewKeyError, PolicyReviewStoreError, OSError, ValueError, RuntimeError):
+        if args.command in UPGRADE_COMMANDS:
+            raise SystemExit('Relational upgrade/reconciliation is unconfirmed. Do not retry; retain evidence for fresh local review.') from None
+        if args.command in {'recover-relational-preparation', 'resume-relational-preparation'}:
+            raise SystemExit('Preparation reconciliation is unconfirmed. Do not retry; retain evidence for fresh local review.') from None
         if args.command == 'enable-relational-boot':
             raise SystemExit('Relational boot enable is unconfirmed. Do not retry; retain evidence for explicit stop/review.') from None
         if args.command in {'activate-relational', 'reactivate-relational'}:

@@ -190,9 +190,20 @@ def erase_application_instance_data(
         pass
 
 
-def _write_atomic(path: Path, payload: bytes, mode: int) -> None:
+def _write_atomic(
+    path: Path, payload: bytes, mode: int, *, uid: int | None = None, gid: int | None = None
+) -> None:
+    # Protected witnesses must not inherit the helper's service primary group
+    # when replacing an initially root:root file. Legacy callers stay unchanged.
+    if uid is not None or gid is not None:
+        if (os.name != "posix" or type(uid) is not int or type(gid) is not int
+                or uid < 0 or gid < 0):
+            raise ValueError("Atomic metadata ownership is invalid")
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(6)}.tmp")
     with temporary.open("wb") as stream:
+        if uid is not None:
+            os.fchown(stream.fileno(), uid, gid)
+            os.fchmod(stream.fileno(), mode)
         stream.write(payload)
         stream.flush()
         os.fsync(stream.fileno())

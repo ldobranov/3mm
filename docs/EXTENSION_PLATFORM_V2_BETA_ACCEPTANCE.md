@@ -1,4 +1,4 @@
-# Extension Platform v2 — beta.49 test acceptance
+# Extension Platform v2 — beta.50 test acceptance
 
 Status: test-release checklist, not completed live acceptance or WP4 closure.
 
@@ -28,7 +28,7 @@ separate uploads. Publication does not update the VM, Hub or Zero.
    off-device. Record the installed release and local Agent device ID. Snapshot
    the VM as an independent fallback; do not keep two active clones with one identity.
 2. After all seven release assets are published, select Beta in System Updates,
-   stage `v0.3.0-beta.49`, review preflight and explicitly install that version.
+   stage `v0.3.0-beta.50`, review preflight and explicitly install that version.
    If an earlier failed relational preparation left a recovery checkpoint,
    encrypted backup/restore is blocked. Preserve its evidence and a verified VM
    snapshot; an update is not recovery and does not authorize another preparation.
@@ -114,10 +114,37 @@ installation and fixture cases. An earlier wider run's single signed-SDK refusal
 passed separately and then in the complete rerun; diagnostics were added only
 to the test harness, without production retries or permission fallback.
 
-The current empty-bootstrap and prepared-candidate recovery contracts do not
-cover this restored-empty migration checkpoint. Explicit reconciliation of that
-source/evidence remains a gate. Do not erase markers, renew an old ticket or
-rerun fresh preparation to manufacture successful acceptance.
+Beta.49's empty-bootstrap and prepared-candidate recovery contracts do not
+cover this restored-empty migration checkpoint. A separate bounded
+[restored-empty recovery/resumption](EXTENSION_PLATFORM_V2_RESTORED_EMPTY_RECOVERY.md)
+is included in beta.50, not beta.49. Its controlled VM trial is
+recorded below; beta.50 update acceptance remains a separate gate.
+It retains the existing key/wheel and archives only verified empty rollback
+evidence; migration needs a separate new consent. Do not erase markers, renew an
+old ticket or rerun fresh preparation to manufacture successful acceptance.
+
+### Controlled relational VM trial — 2026-10-14
+
+The owner authorized a scoped prototype trial without another release. Verified
+root-owned code snapshots and one-shot workers reconciled the exact empty
+checkpoint and separately prepared the fixture, preserving the old failed source,
+original key and all evidence. The trial exposed/fixed root-witness replacement
+ownership and the `Type=simple` pre-exec principal race. Only this fixture has a
+`Type=exec` override, initially ephemeral and then protected/persistent
+for the separately authorized WSL reboot; installed beta.49 code remains immutable.
+
+Prepared start, real signed SDK read/write, exact replay, changed-content conflict,
+ATTACH refusal and revoke/regrant passed. One business record remains; the denied
+write is absent. Subsequent controlled stop/recovery and new start passed, followed
+by separate enable-only boot consent and an actual WSL shutdown/cold start. The
+fixture started automatically; verified current-process sealed admission, kernel
+principal, original key, grant revision 11, text/digest/count 1 and denied-write
+absence were preserved. Core/Agent readiness and unchanged device identity passed.
+The early Core-not-ready startup refused before factory import; the existing
+systemd restart policy later admitted a fresh process without manual start/regrant.
+This accepts the exact controlled fixture's restart/boot gate, not the public
+unpatched beta.49 installation path, physical Raspberry boot or broader WP4
+closure. See the [exact trial boundary and evidence](EXTENSION_PLATFORM_V2_RELATIONAL_VM_TRIAL.md).
 
 Use only a reviewed headless fixture, mock devices and a non-effecting connector
 on the disposable VM. Follow the public-contract and local key-administration
@@ -150,10 +177,17 @@ complete relational portable restore/key lifecycle.
 
 Generic activation/native/source guards remain closed for relational packages.
 Do not remove guards, edit grants/database rows or manually re-enable a business
-application to reproduce an internal fixture. Fresh namespace/key setup,
-prepared-database upgrade and partial interrupted-recovery resolution still
-require implementation and separate acceptance. Preserve all pending recovery
-evidence; a blocked backup is not permission to delete its markers.
+application to reproduce an internal fixture. Beta.50 additions now
+include preparation/resumption, bounded local adoption of a newer catalog
+version after confirmed exact-source stop, prepared-database forward upgrade, readonly
+published-upgrade/rollback confirmation, explicit completion of a partial
+`restoring` checkpoint and closed local-administrator/helper commands. See the
+[exact upgrade/restore boundary and admin flow](EXTENSION_PLATFORM_V2_RELATIONAL_UPGRADE.md).
+The local adoption command executes no package code and creates no trust/rights;
+fresh native review, normal resource approval and explicit migration are separate.
+These are not capabilities of the unchanged beta.49 release, a general candidate
+installer/adoption path or completed live upgrade/restore acceptance. Preserve
+all pending recovery evidence; a blocked backup is not permission to delete markers.
 
 The broader neutral Standalone/Hub, human/kiosk and recovery acceptance remains
 an explicit WP4 gate; this checklist does not mark it complete.

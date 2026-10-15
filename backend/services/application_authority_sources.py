@@ -197,14 +197,17 @@ def _package_pin(db, installation_id):
     ):
         raise _Unavailable("installation_unavailable")
     if row.active_version != row.version:
-        # Only explicit inert registration may have no active version. This is
-        # a preliminary pin, NOT authenticated authority: _resolve requires the
+        # Only explicit inert registration/adoption may have no active version.
+        # This preliminary pin is NOT authenticated authority: _resolve requires the
         # exact sealed provenance under the final key/snapshot before composition.
         from backend.db.application_authority_grant import ApplicationAuthorityAction
-        from backend.services.application_relational_registration import registration_id
+        from backend.services.application_relational_registration import (
+            candidate_registration_id, registration_id,
+        )
         if (row.active_version is not None or (row.status, row.enabled) != ("disabled", False)
                 or read_application_authority(db, installation_id).mode == "compatibility"
-                or db.get(ApplicationAuthorityAction, registration_id(db, installation_id)) is None):
+                or (db.get(ApplicationAuthorityAction, registration_id(db, installation_id)) is None
+                    and db.get(ApplicationAuthorityAction, candidate_registration_id(db, installation_id, row)) is None)):
             raise _Unavailable("installation_unavailable")
     return row
 

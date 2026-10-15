@@ -54,6 +54,18 @@ def boot_gate_present(instance):
     )
 
 
+def require_no_boot_gate(instance):
+    """Fence lineage/preparation helpers that cannot reconcile boot authority.
+
+    Caller holds the Root mutation locks and validates protected parent paths.
+    Even partial, malformed or dangling-link evidence is a gate, not absence.
+    This neither disables a unit nor archives boot records: only the separate
+    exact-source, verified-stop coordinator has that authority.
+    """
+    if boot_gate_present(instance):
+        raise ValueError("Boot policy requires explicit stopped-boot reconciliation")
+
+
 def _read(path, *, gid):
     info = _regular(path, protected=True)
     if (

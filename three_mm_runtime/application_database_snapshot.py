@@ -85,11 +85,20 @@ def _snapshot_sidecars(snapshot):
         raise ValueError("Application database snapshot has unexpected sidecars")
 
 
-def _backup(source, destination):
+def _backup(source, destination, *, closed_preimage=False):
     """Only an existing source; bounded waits, no readonly immutable WAL fiction."""
     deadline = time.monotonic() + SNAPSHOT_TIMEOUT
+    # Only restore_database passes this after validating the protected closed
+    # backup manifest/hash and absence of sidecars. Never use immutable for a
+    # live database: committed WAL pages would otherwise be silently ignored.
+    if closed_preimage:
+        _snapshot_sidecars(source)
     reader = sqlite3.connect(
-        source.absolute().as_uri() + "?mode=ro", uri=True, timeout=0
+        source.absolute().as_uri()
+        + "?mode=ro"
+        + ("&immutable=1" if closed_preimage else ""),
+        uri=True,
+        timeout=0,
     )
     writer = None
     try:
@@ -211,7 +220,7 @@ def restore_database(database, snapshot, existed, service_uid, service_gid):
         for suffix in ("", *_SIDECARS)
     ]
     if existed:
-        _backup(snapshot, staged)
+        _backup(snapshot, staged, closed_preimage=True)
         if service_uid is not None and service_gid is not None:
             os.chown(staged, service_uid, service_gid)
         _sync(staged)

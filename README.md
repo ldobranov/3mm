@@ -8,7 +8,7 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Test Beta. This source prepares **v0.3.0-beta.49**, a bounded
+> **Project status:** Test Beta. This source prepares **v0.3.0-beta.50**, a bounded
 > Milestone 20 Extension Platform v2 delivery, not completion of WP4 or Milestone 20.
 > It extends exact resource review/approval/apply with private-file access and a
 > bounded relational-storage foundation: signed transaction admission/receipts,
@@ -21,7 +21,7 @@ system.
 > This read-only status never repairs keys, trusts code or enables permissions.
 > First adoption requires a disabled application, a recoverable backup and a local
 > code-trust record for the exact package. Reviewed-native execution is **not a sandbox**.
-> General database install/upgrade/restore/key lifecycle, scoped platform/frontend
+> General database install/restore/key lifecycle, scoped platform/frontend
 > adapters and neutral end-to-end WP4 acceptance remain open. Relational generic
 > activation/native/source gates remain closed; a prepared-runtime fixture is not
 > public fresh-install acceptance. New-artifact staging and WP5 isolation are separate.
@@ -31,8 +31,8 @@ system.
 > and fixed non-root Core metadata worker. Root-managed boot requires current
 > native trust and exact rights before package import; lost acknowledgements do
 > not retry or restore permissions. These commands are opt-in, not update hooks.
-> Account provisioning, prepared-DB upgrade/general restore/rekey/nonempty recovery,
-> live systemd/reboot and broader Standalone/Hub acceptance remain open. Start on a
+> Account provisioning, general restore/rekey/nonempty recovery and broader
+> Standalone/Hub acceptance remain open. Start on a
 > disposable VM with a verified pre-upgrade backup, not an existing business service.
 > Device Protocol 1.0, Application SDK 1.3, themes, peers and Node Update remain.
 > Additive database migrations preserve history and fence restored authority;
@@ -45,14 +45,19 @@ system.
 > checkpoints. Child workers retain no effective/ambient capabilities; existing
 > filesystem protections and NoNewPrivileges remain. A separate relational test
 > package exercises bounded own-SQLite access through the existing SDK. It is not
-> installed by an update. The beta.48 failed restored-empty migration checkpoint
-> still requires explicit recovery; this fix does not clear it or replay work.
+> installed by an update. Beta.50 adds explicit restored-empty recovery/resumption,
+> inert adoption of a newer catalog version, prepared-database forward upgrade,
+> published-upgrade/rollback confirmation and completion of an interrupted restore.
+> Each action needs fresh local administration; update does not clear checkpoints,
+> run migrations, trust code, grant rights or start applications. Protected witness
+> replacement retains ownership and Type=exec avoids the pre-exec principal race.
+> A controlled fixture passed actual systemd/WSL cold-start checks; public beta.50
+> update, candidate upgrade and recovery acceptance still require the VM test.
 > Complete Python/frontend checks and reproducible publication gate the release;
 > subsequent live VM update/recovery acceptance remains separate.
-> Beta.49 local checks pass the full canonical non-root Python collection
-> (3,353 passed / 397 explicit skips), 300 deployment/SDK tests, 133 separate
-> root/systemd tests and 313 frontend tests, type-check and build. Counts overlap;
-> skipped privileged cases and broader live recovery are not claimed as completed.
+> Complete local verification is recorded in CHANGELOG; canonical Python 3.13 and
+> Node 22 checks run again on GitHub before publication. Privileged tests, controlled
+> fixture trials and broader live recovery are distinct evidence, not WP4 closure.
 > Beta.47 fixes scoped private-file traversal on production search-only ancestors
 > without widening permissions. It also integrates a bounded Milestone 15 slice:
 > manual audit retention, administrator-only operational alerts, guarded backup-key
@@ -121,6 +126,12 @@ system.
   support a verified prepared database through the existing SDK transport.
   Normal restart does not run migrations; uncertain completion is not replayed.
   General database lifecycle and public activation remain gated, not auto-enabled.
+- **Explicit relational upgrade/recovery (test Beta)** — exact-source stopped
+  catalog-version adoption, forward-only owned-database migration and separate
+  published-result/rollback/partial-restore reconciliation through the existing
+  privileged helper and non-root Core worker. Fresh native review and resource
+  grants remain separate; no automatic retry, activation or evidence deletion.
+  See the [local administrator flow](docs/EXTENSION_PLATFORM_V2_RELATIONAL_UPGRADE.md).
 - **Installable themes** — compatible v1 palettes and v2 design packages with
   Core-owned layout/component variants and bounded local fonts/logos, without
   arbitrary CSS or executable code. Upload, enable, disable and delete versions in
@@ -298,20 +309,20 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 ### Updating a paired Hub and Zero
 
 For this test Beta, first export a pre-upgrade backup and update a disposable VM.
-From a working beta.43–beta.48 full installation, select **Beta** in
-`/system/updates` and stage the published beta.49 release. Pending relational
+From a working beta.43–beta.49 full installation, select **Beta** in
+`/system/updates` and stage the published beta.50 release. Pending relational
 checkpoints block encrypted backup/restore and are not repaired by an update.
 Preserve the evidence and an independent verified VM snapshot; do not repeat
 preparation until explicit recovery. Older installations can manually
 bootstrap the current corrected full-profile release (Raspberry/WSL):
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.49
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.50
 ```
 
 An older installed updater cannot acquire the target-installer fix before it
 runs. No bridge release or reset is required. Update the Zero over SSH
-with the Node bootstrap command above and add `--tag v0.3.0-beta.49` to select
+with the Node bootstrap command above and add `--tag v0.3.0-beta.50` to select
 this exact release. Provisioned upgrades preserve identity and pairing, not
 Master reset. Real update/rollback and browser request/CPU checks remain pending;
 see [platform stability acceptance](docs/PLATFORM_STABILITY_ACCEPTANCE.md).
@@ -512,7 +523,8 @@ checks local browser CORS as well as readiness. See the
 | [Compiled extension v1](docs/COMPILED_EXTENSION_V1.md) | Reviewed Vue compilation boundary |
 | [Application extension v1 plan](docs/APPLICATION_EXTENSION_V1_PLAN.md) | Planned trusted business-service and integration boundary |
 | [Extension Platform v2 plan](EXTENSION_PLATFORM_V2_CORE_PLAN.md) | Milestone 20 scope, implemented slices and remaining WP4/WP5 gates |
-| [Extension Platform test Beta](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md) | beta.49 scope, retained recovery evidence and bounded live smoke checks |
+| [Extension Platform test Beta](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md) | beta.50 scope, retained recovery evidence and bounded live smoke checks |
+| [Relational upgrade and recovery](docs/EXTENSION_PLATFORM_V2_RELATIONAL_UPGRADE.md) | Local candidate adoption, explicit migration, confirmation and partial-restore flow |
 | [Private application files](docs/EXTENSION_PLATFORM_V2_PRIVATE_FILES.md) | Exact file grants, signed SDK operations, limits and recovery evidence |
 | [Relational storage contract](docs/EXTENSION_PLATFORM_V2_RELATIONAL_STORAGE_CONTRACT.md) | Prepared-runtime foundation and remaining database lifecycle gates |
 | [WP4 closure audit](docs/EXTENSION_PLATFORM_V2_WP4_CLOSURE_AUDIT.md) | Verified coverage and explicit remaining work; WP4 is not closed |

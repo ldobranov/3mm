@@ -42,6 +42,7 @@ from three_mm_runtime.application_activation import (
     uninstall_application_instance,
 )
 from three_mm_runtime.application_lifecycle import application_lifecycle_operation
+from three_mm_runtime.application_relational_upgrade_control import ACTIONS as UPGRADE_ACTIONS
 
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_RESPONSE_BYTES = 1024 * 1024
@@ -329,7 +330,32 @@ def _handle_request(
     application_database: Path = Path("/var/lib/3mm/core/3mm.db"),
     relational_peer_uid: int | None = None,
 ) -> dict[str, object]:
-    if isinstance(payload, dict) and payload.get("action") in ("prepare_application_relational", "activate_application_relational", "recover_application_relational_start", "reactivate_application_relational", "enable_application_relational_boot"):
+    if (type(payload) is dict and type(payload.get("action")) is str
+        and payload["action"] in UPGRADE_ACTIONS):
+        from three_mm_runtime.application_relational_control import CoreMetadataClient
+        from three_mm_runtime.application_relational_upgrade_control import (
+            installed_upgrade, response_status, upgrade_request,
+        )
+        try:
+            upgrade_request(payload)
+        except (ValueError, TypeError):
+            return {"ok": False, "error": "invalid_request"}
+        try:
+            core_uid, _ = _service_ids(service_user, service_group)
+            if type(relational_peer_uid) is not int or relational_peer_uid != core_uid:
+                return {"ok": False, "error": "invalid_request"}
+            service_uid, service_gid = _service_ids(application_user, application_group)
+            result = installed_upgrade(payload,
+                metadata=CoreMetadataClient(core_uid=core_uid, core_user=service_user,
+                    core_group=service_group, database=application_database, application_root=application_root),
+                upload_root=application_upload_root, root=application_root,
+                key_root=application_key_root, state_root=state_root,
+                service_uid=service_uid, service_gid=service_gid, coordinator_uid=core_uid)
+            return {"ok": True, "status": response_status(payload["action"]), "upgrade": result}
+        except Exception:
+            LOGGER.warning("Relational upgrade/reconciliation unconfirmed; retain evidence for local review")
+            return {"ok": False, "error": "relational_upgrade_unconfirmed"}
+    if isinstance(payload, dict) and payload.get("action") in ("prepare_application_relational", "activate_application_relational", "recover_application_relational_start", "reactivate_application_relational", "enable_application_relational_boot", "recover_application_relational_preparation", "resume_application_relational_preparation"):
         from three_mm_runtime.application_relational_control import (
             CoreMetadataClient, preparation_request, prepare_installed_application,
             activation_request, activate_installed_application,
@@ -341,8 +367,13 @@ def _handle_request(
         recovering = payload["action"] == "recover_application_relational_start"
         reactivating = payload["action"] == "reactivate_application_relational"
         enabling_boot = payload["action"] == "enable_application_relational_boot"
+        recovering_preparation = payload["action"] in {"recover_application_relational_preparation", "resume_application_relational_preparation"}
+        resuming_preparation = payload["action"] == "resume_application_relational_preparation"
         validator = boot_enable_request if enabling_boot else reactivation_request if reactivating else activation_recovery_request if recovering else activation_request if activating else preparation_request
         operation = enable_installed_application_boot if enabling_boot else reactivate_installed_application if reactivating else recover_installed_application_start if recovering else activate_installed_application if activating else prepare_installed_application
+        if recovering_preparation:
+            from three_mm_runtime.application_relational_preparation_recovery_control import preparation_recovery_request, recover_installed_preparation
+            validator, operation = preparation_recovery_request, recover_installed_preparation
         try:
             validator(payload)
         except (ValueError, TypeError):
@@ -358,11 +389,16 @@ def _handle_request(
                 upload_root=application_upload_root, root=application_root,
                 key_root=application_key_root, state_root=state_root,
                 service_uid=service_uid, service_gid=service_gid, coordinator_uid=core_uid)
+            if recovering_preparation:
+                return {"ok": True, "status": "prepared_not_started" if resuming_preparation else "restored_empty_not_started",
+                    "preparation" if resuming_preparation else "recovery": result}
             return {"ok": True, "status": "boot_enabled_not_started" if enabling_boot else "stopped_review_required" if recovering else "active_review_required" if (activating or reactivating) else "prepared_not_started",
                 "boot" if enabling_boot else "reactivation" if reactivating else "recovery" if recovering else "activation" if activating else "preparation": result}
         except Exception:
             # Deliberately no traceback: this private request contains a human token.
             LOGGER.warning("Relational local lifecycle unconfirmed; explicit review required")
+            if recovering_preparation:
+                return {"ok": False, "error": "relational_empty_preparation_unconfirmed"}
             return {"ok": False, "error": "relational_boot_enable_unconfirmed" if enabling_boot else "relational_reactivation_unconfirmed" if reactivating else "relational_start_recovery_unconfirmed" if recovering else "relational_activation_unconfirmed" if activating else "relational_preparation_unconfirmed"}
     if isinstance(payload, dict) and set(payload) in (
         {"action", "sha256", "requested_by_user_id", "lifecycle"},
@@ -768,7 +804,7 @@ def _serve_connection(connection, **request_arguments):
             raise ValueError("request_too_large")
         from backend.services.application_authority_context import _unique_object
         payload = json.loads(request.split(b"\n", 1)[0], object_pairs_hook=_unique_object)
-        if isinstance(payload, dict) and payload.get("action") in ("prepare_application_relational", "activate_application_relational", "recover_application_relational_start", "reactivate_application_relational", "enable_application_relational_boot"):
+        if isinstance(payload, dict) and (payload.get("action") in ("prepare_application_relational", "activate_application_relational", "recover_application_relational_start", "reactivate_application_relational", "enable_application_relational_boot", "recover_application_relational_preparation", "resume_application_relational_preparation") or type(payload.get("action")) is str and payload["action"] in UPGRADE_ACTIONS):
             if os.name != "posix" or not hasattr(socket, "SO_PEERCRED"):
                 raise ValueError("Local Core peer credentials required")
             import struct

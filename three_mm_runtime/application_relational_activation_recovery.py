@@ -286,6 +286,8 @@ def reconcile_interrupted_relational_start(
                 record_path,
                 canonical(dict(evidence, phase="stopped_unconfirmed", receipt=result)),
                 0o600,
+                uid=0,
+                gid=0,
             )
             if checkpoint(ticket, "finish", receipt=result) != {
                 "state": "stopped_review_required"
@@ -297,6 +299,8 @@ def reconcile_interrupted_relational_start(
                     dict(evidence, phase="stopped_review_required", receipt=result)
                 ),
                 0o600,
+                uid=0,
+                gid=0,
             )
             return result
         except Exception as exc:

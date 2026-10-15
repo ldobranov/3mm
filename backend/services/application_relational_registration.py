@@ -52,6 +52,20 @@ def registration_id(db, installation_id):
     ).hexdigest()[:32]
 
 
+def candidate_registration_id(db, installation_id, pin):
+    """Per-artifact inert provenance; never replace first-registration history."""
+    return hashlib.sha256(
+        b"3mm:m20:inert-candidate:v1\x00"
+        + _canonical_bytes(
+            {
+                "registration": registration_id(db, installation_id),
+                "package_id": pin.module_package_id,
+                "sha256": pin.sha256,
+            }
+        )
+    ).hexdigest()[:32]
+
+
 def _binding(db, key, installation_id, pin, package):
     current = read_application_authority(db, installation_id)
     principal = AuthorityPrincipal(
@@ -74,9 +88,16 @@ def _binding(db, key, installation_id, pin, package):
 
 
 def verify_registration(db, key, installation_id, pin, package):
-    """Authenticate never-active provenance before subject/review/preparation."""
+    """Authenticate inert binding provenance before subject/review/preparation."""
     if key is None:
         raise sources._Unavailable("installation_unavailable")
+    candidate_id = candidate_registration_id(db, installation_id, pin)
+    candidate = db.get(Action, candidate_id)
+    if candidate is not None:
+        from backend.services.application_relational_candidate import verify_candidate
+
+        verify_candidate(db, key, installation_id, pin, package, candidate)
+        return
     identifier = registration_id(db, installation_id)
     proof = authority._load(db, key, "action", db.get(Action, identifier), identifier)
     if (
