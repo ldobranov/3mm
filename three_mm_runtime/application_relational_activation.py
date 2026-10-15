@@ -268,6 +268,17 @@ def activate_prepared_relational_service(
                 verify_stopped_source(state_root, ticket, secret)
 
         verify_prepared()
+        if purpose == "activation":
+            from three_mm_runtime.application_relational_activation_recovery import (
+                _activation_marker,
+            )
+
+            # A closed legacy witness remains byte-for-byte intact. A NEW
+            # separately consented start gets its own path, never a retry of
+            # the old action or permission inferred from the historical stop.
+            marker = _activation_marker(
+                state_root, instance.name, ticket["preparation_id"], secret
+            )
         if (
             os.path.lexists(marker)
             or os.path.lexists(history)

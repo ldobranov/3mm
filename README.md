@@ -8,7 +8,7 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Test Beta. This source prepares **v0.3.0-beta.50**, a bounded
+> **Project status:** Test Beta. This source prepares **v0.3.0-beta.51**, a bounded
 > Milestone 20 Extension Platform v2 delivery, not completion of WP4 or Milestone 20.
 > It extends exact resource review/approval/apply with private-file access and a
 > bounded relational-storage foundation: signed transaction admission/receipts,
@@ -58,6 +58,11 @@ system.
 > Complete local verification is recorded in CHANGELOG; canonical Python 3.13 and
 > Node 22 checks run again on GitHub before publication. Privileged tests, controlled
 > fixture trials and broader live recovery are distinct evidence, not WP4 closure.
+> Beta.51 fixes post-upgrade start admission when an older instance-wide witness
+> has an exactly verified completed stop/recovery. The old evidence stays intact;
+> a separately approved start uses its own witness. The already consumed failed
+> start still requires explicit inspection/stop/recovery before fresh reactivation.
+> Updating Core neither retries it nor grants permissions or starts the application.
 > Beta.47 fixes scoped private-file traversal on production search-only ancestors
 > without widening permissions. It also integrates a bounded Milestone 15 slice:
 > manual audit retention, administrator-only operational alerts, guarded backup-key
@@ -309,20 +314,20 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 ### Updating a paired Hub and Zero
 
 For this test Beta, first export a pre-upgrade backup and update a disposable VM.
-From a working beta.43–beta.49 full installation, select **Beta** in
-`/system/updates` and stage the published beta.50 release. Pending relational
+From a working beta.43–beta.50 full installation, select **Beta** in
+`/system/updates` and stage the published beta.51 release. Pending relational
 checkpoints block encrypted backup/restore and are not repaired by an update.
 Preserve the evidence and an independent verified VM snapshot; do not repeat
 preparation until explicit recovery. Older installations can manually
 bootstrap the current corrected full-profile release (Raspberry/WSL):
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.50
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.51
 ```
 
 An older installed updater cannot acquire the target-installer fix before it
 runs. No bridge release or reset is required. Update the Zero over SSH
-with the Node bootstrap command above and add `--tag v0.3.0-beta.50` to select
+with the Node bootstrap command above and add `--tag v0.3.0-beta.51` to select
 this exact release. Provisioned upgrades preserve identity and pairing, not
 Master reset. Real update/rollback and browser request/CPU checks remain pending;
 see [platform stability acceptance](docs/PLATFORM_STABILITY_ACCEPTANCE.md).

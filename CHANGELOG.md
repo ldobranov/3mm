@@ -6,6 +6,54 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.51] - 2026-10-15
+
+### Fixed
+
+- Relational start admission distinguishes an exactly verified historical
+  instance-wide activation witness from a pending new action. Only a protected
+  Root-owned final stop/recovery envelope with an authentic, fully bound receipt
+  closes the old blocker; the original witness, outcome and key remain unchanged.
+- A separately approved activation uses its own per-action pending witness.
+  Explicit stop/recovery also handles a new recorded refusal with no own witness,
+  without treating absence as proof that execution never occurred. Pending finish,
+  changed keys, mismatched receipts and invalid evidence still fail closed.
+
+### Compatibility and acceptance boundary
+
+- No database migration, dependency, endpoint, Device Protocol or Application SDK
+  version change. SDK 1.3, identities, appearance and compatibility applications
+  remain. No concrete business/theme/test ZIP or parallel M21 work is included.
+- Existing one-use sources, current native trust/rights, authority epochs,
+  exact-source stop and non-root health checks remain required. Update does not
+  clear evidence, migrate, restore permissions, start an application or replay an
+  uncertain activation. A consumed beta.50 start requires fresh authenticated
+  inspection/stop/recovery, then separate reactivation and runtime-rights review.
+- These checks do not close WP4/M20. Live post-upgrade runtime/data acceptance and
+  the broader lifecycle/Standalone/Hub gates remain open. Reviewed-native execution
+  is not a sandbox; an application record is not a Core SQL receipt. Preserve the
+  existing recovery evidence and independent verified VM snapshot.
+
+### Local verification
+
+- Isolated Root/Linux historical-start and lifecycle regression: **607 passed,
+  no skips**, including **27 new cases**. The final 27-case rerun also passes after
+  stronger schema/business/outbox assertions and the recorded-refusal recovery →
+  fresh reactivation flow. These overlapping runs are not added as unique coverage.
+- Frontend: **313 tests / 44 files**, TypeScript and production build pass. An
+  initial parallel bootstrap timeout/follow-on failure passed in the complete
+  explicit one-worker rerun; no test timeout or application behavior was changed.
+- Complete canonical non-root Linux/Python 3.14.4 collection: **3,553 passed,
+  602 explicit skips and 5 passing subtests**, no failures. Root-only/opt-in and
+  non-POSIX-only cases are not counted as passed. Existing dependency/datetime
+  warnings remain; no assertions, permissions or test deadlines were relaxed.
+- Separate complete deployment/Application SDK collection: **343 passed**.
+  Test source was exported from the reviewed index into an isolated Linux tree
+  with private temporary/application state, not installed Core/application data.
+- Black/isort and scoped whitespace checks pass. GitHub repeats canonical
+  Python 3.13/Node 22 checks and reproducible full-profile/ARMv6 Node builds before
+  publication. Live VM acceptance is separate.
+
 ## [0.3.0-beta.50] - 2026-10-15
 
 ### Added
@@ -1684,7 +1732,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.50...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.51...HEAD
+[0.3.0-beta.51]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.51
 [0.3.0-beta.50]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.50
 [0.3.0-beta.49]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.49
 [0.3.0-beta.48]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.48

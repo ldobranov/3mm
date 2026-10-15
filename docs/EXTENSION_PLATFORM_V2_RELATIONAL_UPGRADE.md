@@ -174,6 +174,36 @@ approve/apply, the existing explicit activation coordinator accepts the complete
 upgrade as its exact prepared source; creating that start consent alone starts
 nothing. Public activation/adoption guards remain closed.
 
+### Beta.51 fix: historical start evidence
+
+The live beta.50 trial completed the 1.0.0/0001 to 1.1.0/0002 upgrade but exposed
+a start preflight collision: a legacy instance-wide `activation_unconfirmed`
+witness remained after an explicitly confirmed stop. Preserving it was correct;
+treating its mere presence as a pending NEW start was not.
+
+The local fix leaves that witness and its recovery evidence byte-for-byte intact.
+Only a protected Root-owned 0600 `stopped_review_required` recovery envelope,
+written after durable Core finish, with a valid purpose-separated signed receipt
+matching the exact original witness digest, action, lifecycle, ticket and recovery
+filename, identifies it as historical. A signed receipt retained under
+`stopped_unconfirmed` is insufficient. Searches remain bounded to 32 recoveries;
+changed keys, missing/mismatched proofs, links and invalid ownership/modes refuse.
+Legacy Root-only 0600 recovery files may retain the Core group: no group access
+is granted by that mode.
+
+A separately consented new activation then uses its own per-action pending path,
+without overwriting/removing the legacy file. First-start legacy paths remain
+compatible. Recovery reads both formats and can explicitly stop a new `recorded`
+attempt with no own witness, but never interprets absence as proof it never ran.
+Current package/lineage, administrator, grant/epoch, one-use source, kernel stop
+and non-root health checks are unchanged. No automatic start/retry, migration,
+permission restoration, new endpoint, SDK version or Core schema change is added.
+
+This fix is not deployed by editing the immutable VM release. The already issued
+failed activation must first use authenticated inspection and a fresh explicit
+stop/recovery under the fixed helper; it is never redelivered as a new start.
+Live post-upgrade data/runtime acceptance and WP4 closure remain pending.
+
 ## Failure and uncertainty
 
 Ordinary failure after mutation, before attempting finish, restores the verified
@@ -376,6 +406,37 @@ rekey/account provisioning and broader neutral Standalone/Hub acceptance remain 
 
 ## Verification
 
+### Historical start evidence — 2026-10-15, local post-beta.50 fix
+
+- The new process regression first reproduced the live blocker against the old
+  helper: actual stop/recovery, inert catalog adoption, fresh review/approve/apply
+  and non-root forward migration succeeded, then activation refused the retained
+  legacy marker. No production paths or installed-binding SQL bypass were used.
+- **607 isolated Linux checks passed** across historical witnesses, activation,
+  recovery/reactivation, boot, their closed control adapters, candidate adoption,
+  upgrades and published/rollback/partial-restore reconciliation. This includes
+  the **27 new cases**, not 607 plus 27. No POSIX/Root cases were skipped.
+- A separate final **27-case rerun passed** after strengthening assertions for
+  schema history/business rows/outbox and the exact next operator flow: a new
+  recorded refusal is explicitly stopped, then separately reactivated and given
+  fresh runtime rights. This overlaps the larger run and is not added to its count.
+- Four actual Root/non-root process scenarios preserve the old witness/key and
+  exercise successful post-upgrade startup plus interruptions at issue, begin and
+  finish. Closure-negative cases include validly signed but wrongly bound
+  receipts, pending finish, changed keys, links, modes/owners, duplicate JSON,
+  over-budget evidence and conflicting own paths. No original outcome is repaired.
+- Black/isort and scoped whitespace checks passed; frontend `npm run build-only`
+  passed (340 modules). Existing datetime/Pydantic/AnyIO and short test-JWT-key
+  warnings remain outside this fix. These are targeted checks, not a full release
+  suite or live systemd post-upgrade acceptance.
+
+Tests ran in private mount namespaces/private `/tmp`, with disposable process
+supervisors, not live VM unit mutations. No production data, key, grant, marker,
+immutable release or M21 checkout was changed by these checks. The fix is included
+in the beta.51 release candidate; full release checks/publication are separate.
+The VM's consumed beta.50 activation still needs its separate authenticated
+inspection/recovery after the fixed helper is deployed.
+
 ### Local candidate adoption — 2026-10-15
 
 - Fresh isolated Linux regression: **322 passed, 1 expected non-POSIX case
@@ -518,6 +579,7 @@ was no commit, push, release or public activation/authorization bypass.
 - [Core consent and checkpoints](../backend/services/application_relational_upgrade.py)
 - [Inert local candidate adoption](../backend/services/application_relational_candidate.py)
 - [Candidate admission/security and process tests](../backend/tests/test_application_relational_candidate.py)
+- [Historical start collision and recovery regression](../backend/tests/test_application_relational_historical_start.py)
 - [Deterministic original/candidate fixture tests](../backend/tests/test_wp4_relational_candidate_package.py)
 - [Protected Root upgrade](../three_mm_runtime/application_relational_upgrade.py)
 - [Core published-upgrade confirmation](../backend/services/application_relational_upgrade_confirmation.py)

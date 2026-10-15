@@ -8,6 +8,7 @@ Fresh Core tickets may reconcile lost recovery ACKs by another verified stop.
 
 import hashlib
 import os
+import re
 import stat
 from itertools import islice
 
@@ -39,8 +40,128 @@ class RelationalActivationRecoveryError(RuntimeError):
     pass
 
 
+def _protected_evidence(path):
+    info = _regular(path, protected=True)
+    # 0600 grants no group access. Older Root-written recovery files retained
+    # the Core group, which is immaterial to this Root-only evidence boundary.
+    if stat.S_IMODE(info.st_mode) != 0o600 or not 0 < info.st_size <= 8192:
+        raise ValueError("Start evidence is not protected/bounded")
+    value = _decode(path.read_bytes())
+    if type(value) is not dict or type(value.get("version")) is not int:
+        raise ValueError("Invalid start evidence")
+    return value
+
+
+def _confirmed_legacy_witness(state_root, instance, secret):
+    """Recognize historical closure, never grant start or remove old evidence.
+
+    Only Root's final stopped_review_required envelope (written AFTER the durable
+    Core finish) plus its matching signed stop receipt closes a legacy witness.
+    A signed receipt with stopped_unconfirmed is deliberately insufficient.
+    The current start still needs its own ticket, authorization and verified stop.
+    """
+    marker = state_root / ("relational-activation-" + instance + ".json")
+    value = _protected_evidence(marker)
+    required = {
+        "version",
+        "activation_id",
+        "ticket_sha256",
+        "prepared_lifecycle_sha256",
+        "phase",
+    }
+    phase = value.get("phase")
+    if (
+        value["version"] != 1
+        or phase not in {"activation_unconfirmed", "active_review_required"}
+        or set(value)
+        != required | ({"receipt"} if phase == "active_review_required" else set())
+        or type(value.get("activation_id")) is not str
+        or re.fullmatch(r"[0-9a-f]{32}", value["activation_id"]) is None
+        or any(
+            type(value.get(name)) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", value[name]) is None
+            for name in ("ticket_sha256", "prepared_lifecycle_sha256")
+        )
+    ):
+        raise ValueError("Legacy start witness changed")
+    if phase == "active_review_required":
+        original = _RelationalActivationResult.model_validate(
+            value["receipt"]
+        ).model_dump(mode="json")
+        verify_metadata(secret, "activation_result", original)
+        if (
+            original["preparation_id"] != value["activation_id"]
+            or original["lifecycle_sha256"] != value["prepared_lifecycle_sha256"]
+        ):
+            raise ValueError("Legacy start receipt changed")
+    witness_sha = hashlib.sha256(
+        canonical({"location": "pending", "evidence": value})
+    ).hexdigest()
+    prefix = "relational-start-recovery-" + instance + "-"
+    paths = tuple(islice(state_root.glob(prefix + "*.json"), 33))
+    if len(paths) > 32:
+        raise ValueError("Start recovery evidence budget exceeded")
+    for path in paths:
+        evidence = _protected_evidence(path)
+        if (
+            evidence.get("source_activation_id") != value["activation_id"]
+            or evidence.get("phase") != "stopped_review_required"
+        ):
+            continue
+        receipt = _RelationalActivationRecoveryResult.model_validate(
+            evidence.get("receipt")
+        ).model_dump(mode="json")
+        verify_metadata(secret, "activation_recovery_result", receipt)
+        if (
+            set(evidence)
+            != {
+                "version",
+                "recovery_id",
+                "source_activation_id",
+                "ticket_sha256",
+                "witness_sha256",
+                "phase",
+                "receipt",
+            }
+            or evidence["version"] != 1
+            or path.name != prefix + receipt["preparation_id"] + ".json"
+            or evidence["recovery_id"] != receipt["preparation_id"]
+            or evidence["ticket_sha256"] != receipt["ticket_sha256"]
+            or evidence["witness_sha256"] != witness_sha
+            or receipt["source_activation_id"] != value["activation_id"]
+            or receipt["lifecycle_sha256"] != value["prepared_lifecycle_sha256"]
+            or receipt["witness_sha256"] != witness_sha
+        ):
+            raise ValueError("Legacy stop evidence changed")
+        return value["activation_id"]
+    raise ValueError("Legacy start witness requires confirmed recovery")
+
+
+def _activation_marker(state_root, instance, identifier, secret):
+    """Keep legacy paths readable; allocate a distinct pending path after closure."""
+    legacy = state_root / ("relational-activation-" + instance + ".json")
+    pending = state_root / (
+        "relational-activation-" + instance + "-" + identifier + ".pending.json"
+    )
+    if os.path.lexists(legacy):
+        value = _protected_evidence(legacy)
+        if value.get("activation_id") == identifier:
+            if os.path.lexists(pending):
+                raise ValueError("Conflicting start witnesses require evidence review")
+            return legacy
+        _confirmed_legacy_witness(state_root, instance, secret)
+        return pending
+    return pending if os.path.lexists(pending) else legacy
+
+
 def _witness(state_root, ticket, secret):
-    marker = state_root / ("relational-activation-" + ticket["instance_id"] + ".json")
+    marker = (
+        _activation_marker(
+            state_root, ticket["instance_id"], ticket["source_activation_id"], secret
+        )
+        if ticket["action"] != "reconcile_reactivated_start"
+        else None
+    )
     history = state_root / (
         "relational-activation-"
         + ticket["instance_id"]
