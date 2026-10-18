@@ -524,6 +524,105 @@ malicious-code/backend/frontend isolation belongs to WP5. Neither is claimed by
 this installed-only backend cycle. Do not silently expand its runtime trust class
 to finish the checklist.
 
+Scoped checkpoint follow-up (2026-10-15, local): optional bounded SDK-1.3
+checkpoint declarations now join internal version-6 exact owned review/grants,
+the existing signed SDK transport and current-authority runtime admission. Reads
+and writes have separate per-ID scopes; conditional SQL CAS and the existing
+owner/ID unique constraint prevent stale/concurrent overwrite. Scoped writes and
+sealed metadata-only machine audit commit atomically, with a 4096-total-Action
+installation cap and no automatic pruning/replay. Existing SDK calls/result shapes
+and older authority versions remain compatible; mixed SQL start consent explicitly
+selects v5/v6 without relaxing lifecycle gates. The administrator dialog shows
+exact checkpoint bindings/limits with separate acknowledgment/approve/apply.
+Full frontend checks pass (344 tests/46 files, type-check/build), as do final
+Windows protocol/SDK/context checks (998 passed, 22 Linux-specific skips),
+310 distinct native Linux cases including separate actual Root helper execution,
+and additive fixture visual inspection. Evidence and limits are in the
+[checkpoint contract and delivery report](docs/EXTENSION_PLATFORM_V2_CHECKPOINTS.md).
+There is no VM change, version bump, commit/push/release or WP4 closure. Next are
+scoped identity/peers/status and remaining frontend/common acceptance, not another
+checkpoint implementation. Accepted bounded beta.51 SQL evidence is unchanged.
+
+Existing public identity follow-up (2026-10-16, implemented/tested locally):
+this bounded slice reuses SDK 1.3 `installation.identity.get` and matching
+descriptor/manifest `installation.identity.read` declarations, with a separate
+`platform:installation.identity.read` resource. Internal v7 binds the exact existing
+public Core identity to owner/incarnation/artifact/configuration/current authority;
+the public-only reader cannot initialize, decrypt, sign or repair keys. Legacy
+compatibility identity/proof behavior remains unchanged. Mixed SQL start consent
+retains exact v5/v6/v7 handling without a new lifecycle bypass. Final checks pass:
+403 distinct native Linux cases, 1119 Windows cases (45 POSIX-specific skips),
+357 frontend tests/47 files, type-check/build and isolated light/dark/EN/BG/mobile
+browser review. Cross-platform/subset results overlap and are not added together.
+Owner visual/live acceptance remains separate; this is not a rollout or WP4
+closure. Proofs, peers/status, jobs/public routes and compiled UI
+remain outside this scoped read. See the
+[bounded identity-read contract and verified local evidence](docs/EXTENSION_PLATFORM_V2_IDENTITY_READ.md).
+
+Existing local status follow-up (2026-10-16, implemented/tested locally): SDK 1.3
+`installation.status.get` now has an exact per-existing-link scoped adapter and
+EN/BG administrator resource cards. Internal v8 pins the complete bounded current
+outbound set, public sender/receiver identities, owner/artifact/instance,
+origin/target and local consent revision/selected fields. Current grant admission
+and locked binding comparison precede projection; the transaction ends before
+key release. No identity/private-key access, link creation, enrollment, proof or
+remote reporting is granted. Old authority versions and compatibility response
+shapes remain preserved. Final checks passed 867 distinct native Linux cases,
+the Windows-only refusal, 369 frontend tests/49 files, type-check and build.
+Isolated desktop light/EN, dark/BG and 390px mobile status-card inspection also
+passes, including 64 devices, empty selections and expanded long public bindings.
+Verification and separate owner visual/live acceptance are tracked
+in the [status-read delivery report](docs/EXTENSION_PLATFORM_V2_STATUS_READ.md).
+This does not close Block 1 or WP4; the remaining peer/signing/platform/frontend
+contracts and neutral acceptance remain open. No release or VM change is included.
+
+Public peer-listing preparation (2026-10-16, local): compatibility/admin history
+now uses explicit presentation SQL columns and the public expiry JSON field,
+rather than loading whole credentials/report caches into peer ORM entities.
+Existing v1/v2 response, metadata proof-state checks, historical tombstones,
+ordering and per-direction bounds remain unchanged. This is not current-peer
+admission or a new scoped grant; the peer-operation blocker remains in place.
+Final checks pass 273 native Linux cases without skips, 27 focused Windows cases
+and the frontend build; malformed expiry metadata fails closed without disclosure.
+See the [boundary, regression evidence and next exact-action contract](docs/EXTENSION_PLATFORM_V2_PEER_READ_FOUNDATION.md).
+
+Exact peer-action requests (2026-10-16, local): optional SDK-1.3 `peer_bindings`
+validate bounded direction/action sets, saved configuration references and existing
+manifest permission groups. The advisory comparison keeps actions/targets separate
+without claiming live peer authority. New requests remain blocked by source and
+adoption gates; compatibility SDK/receiver helpers cannot inherit broad legacy
+peer access or generic signing. Explicit human cleanup/tombstones remain intact.
+This is declaration/inspection/negative-runtime support, not a positive grant,
+new SDK/peer wire version or WP4 closure. The next executor is exact-peer read,
+followed by separately fenced mutation/network phases, not another checkpoint
+slice. Verification passed 1256 native Linux cases, 866 Windows cases plus the
+separate Windows-only refusal, and the frontend build; platform selections overlap.
+See [contract, verification and remaining boundaries](docs/EXTENSION_PLATFORM_V2_PEER_BINDING_REQUESTS.md).
+
+Exact peer-read sources (2026-10-16, local): an internal source reader resolves
+the complete configured read-only set against actual installed owner/artifact/
+instance, public Core/peer pins, signed v1/v2 metadata and direction-specific
+consent/proof-state rules. It refuses foreign/revoked/unverified/aliased or mixed
+requests without partial output, and separates stable bindings from changing
+observations. This is not a positive SDK/grant adapter: source/adoption/legacy
+dispatch blockers remain, and versioned review/admission is the next step.
+Verification passed 460 native Linux cases without skips, 78 focused Windows
+cases without skips and the frontend build; platform/earlier selections overlap.
+See [source boundary, verification and remaining integration](docs/EXTENSION_PLATFORM_V2_PEER_READ_SOURCES.md).
+
+Exact peer-read context/policy follow-up (2026-10-16, local): internal v9 now
+represents separate `peer:<logical_binding_id>:read` selections over the shared
+strict current-source binding type. Whole owner/instance/package/service/public
+pins, direction/target and v1/v2 consent/metadata participate in exact comparison;
+aliases, wider declarations, contradictory mixed identity/status resources and
+oversized complete requests fail closed. Versions 1–8 retain pinned canonical
+policy/context vectors. This is a pure contract, not a persisted grant or SDK
+reader: installed source/adoption and legacy dispatch blockers remain. Next are
+explicit sealed review/approve/apply integration, exact management presentation
+and fresh current-grant admission, without clearing independent receiver consent.
+See [verification, strict version boundary and remaining integration](docs/EXTENSION_PLATFORM_V2_PEER_READ_CONTEXT.md).
+Block 1 and WP4 stay open; no release or VM change is included.
+
 ## WP5 — Isolation and permission enforcement
 
 Goal: prove executable third-party isolation before remote installation/untrusted

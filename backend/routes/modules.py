@@ -40,6 +40,7 @@ from backend.services.compiled_ui import (
     compile_ui_package,
     compiled_artifacts_dir,
     load_compiled_ui_artifact,
+    application_ui_artifact,
 )
 from backend.services.application_access import (
     application_permission_ids,
@@ -81,13 +82,14 @@ def _compiled_catalog_item(
     authorization: str | None,
 ) -> dict | None:
     validated = _validated_compiled_package(package)
-    try:
-        artifact = load_compiled_ui_artifact(validated)
-    except CompiledUiBuildError as exc:
-        raise HTTPException(409, str(exc)) from exc
+    application = validated.application_extension
+    if application is None:
+        try:
+            artifact = load_compiled_ui_artifact(validated)
+        except CompiledUiBuildError as exc:
+            raise HTTPException(409, str(exc)) from exc
     base = f"/api/v1/modules/compiled-ui/assets/{package.module_id}/{package.version}/{package.sha256}"
     entrypoints = []
-    application = validated.application_extension
     route_policies = (
         {item.entrypoint_id: item for item in application.routes}
         if application is not None
@@ -106,12 +108,18 @@ def _compiled_catalog_item(
         )
         if installation is None:
             return None
+        try:
+            artifact = application_ui_artifact(db, installation, validated)
+        except CompiledUiBuildError:
+            return None  # One unreviewed application must not hide unrelated UI.
         if principal.kind == "user" and principal.user_id is not None:
             permission_ids = application_permission_ids(
                 db,
                 installation.id,
                 principal.user_id,
             )
+    if artifact.built_ui_sha256:
+        base += f'/build/{artifact.built_ui_sha256}'
     for entrypoint in validated.compiled_ui.entrypoints:
         policy = route_policies.get(entrypoint.entrypoint_id)
         if application is not None:
@@ -145,6 +153,7 @@ def _compiled_catalog_item(
         "name": package.manifest.get("name") or package.module_id,
         "version": package.version,
         "source_sha256": package.sha256,
+        **({'built_ui_sha256': artifact.built_ui_sha256} if artifact.built_ui_sha256 else {}),
         "styles": [f"{base}/{path}" for path in artifact.styles],
         "entrypoints": entrypoints,
     }
@@ -344,8 +353,17 @@ def compiled_ui_asset(module_id:str,version:str,sha256:str,asset_path:str,db:Ses
     validated = _validated_compiled_package(package)
     try:
         artifact = load_compiled_ui_artifact(validated)
+        if validated.application_extension is not None:
+            installation = db.scalar(select(ApplicationExtensionInstallation).where(
+                ApplicationExtensionInstallation.module_package_id == package.id))
+            artifact = application_ui_artifact(db, installation, validated)
     except CompiledUiBuildError as exc:
         raise HTTPException(404, str(exc)) from exc
+    if artifact.built_ui_sha256:
+        prefix = f'build/{artifact.built_ui_sha256}/'
+        if not asset_path.startswith(prefix):
+            raise HTTPException(404, 'compiled UI build changed')
+        asset_path = asset_path[len(prefix):]
     target = (artifact.path / asset_path).resolve()
     if artifact.path.resolve() not in target.parents or not target.is_file():
         raise HTTPException(404, "compiled UI asset was not found")
@@ -355,6 +373,17 @@ def compiled_ui_asset(module_id:str,version:str,sha256:str,asset_path:str,db:Ses
         ".css": "text/css; charset=utf-8",
         ".json": "application/json",
     }.get(target.suffix.lower())
+    if artifact.built_ui_sha256:
+        from backend.services.compiled_ui_provenance import read_asset, UiBuildEvidenceError
+        # Do not expose build/source metadata through an executable asset route.
+        if not asset_path.startswith('assets/'):
+            raise HTTPException(404, 'compiled UI asset was not found')
+        try:
+            content = read_asset(artifact, asset_path)
+        except UiBuildEvidenceError:
+            raise HTTPException(404, 'compiled UI asset changed') from None
+        return Response(content, media_type=media_type, headers={
+            'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff'})
     return FileResponse(
         target,
         media_type=media_type,

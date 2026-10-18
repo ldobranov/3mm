@@ -306,6 +306,7 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
         }
         referenced_config.update(item.target_device_config_key for item in application_extension.command_bindings)
         referenced_config.update(item.sensor_device_config_key for item in application_extension.command_bindings if item.sensor_device_config_key)
+        referenced_config.update(item.peer_id_config_key for item in application_extension.peer_bindings)
         referenced_config.update(
             item.destination_config_key
             for item in application_extension.connectors

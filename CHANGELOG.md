@@ -6,6 +6,77 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.52] - 2026-10-18
+
+### Added
+
+- Exact checkpoint read/write grants with bounded values, current-owner binding,
+  compare-and-swap revisions and metadata-only machine audit. Signed SDK access
+  never falls back to legacy persistence after scoped adoption.
+- Existing public installation identity reads without private-key access or lazy
+  creation; local status reads bind the current outbound consent. Exact optional
+  peer-read grants select existing outbound bindings without unfiltered listing,
+  signing, peer mutation or network fallback. Administrator EN/BG review controls
+  expose these exact resources through the existing approve/apply/revoke flow.
+- Public application frontend contract `@3mm/application-ui/v1`: fresh `getInfo`
+  and one-shot `invoke`, bound to module/source/build/entrypoint/audience, without
+  private Core stores, tokens or a general HTTP client. The reference components
+  use this host and preserve an uncertain command's original request identity.
+- Separate reviewed-native UI profile using existing artifact/grant records.
+  Whole-output inventory, source/compiler hashes and toolchain versions produce
+  the exact build pin. Local code review additionally requires explicit same-origin
+  UI-risk acceptance; inspection/review alone grants no service resource rights.
+- Read-only local `inspect-ui-build` administration and a current closeout/coverage
+  checklist. The deployment contract requires the new runtime/compiler files;
+  missing-file regression checks reject incomplete target archives.
+
+### Fixed
+
+- Scoped jobs/public HTTP handlers are refused at discovery/claim/dispatch and
+  the shared gateway instead of reaching legacy execution. Unknown/expired job
+  claims retain evidence and cannot become a new safe-to-retry occurrence.
+- Reviewed UI catalog/assets/operations require current native code trust and
+  exact build identity. Verified asset bytes are read before response creation;
+  source-identical rebuilds do not inherit old native/resource approvals.
+- SQL start-consent parsing retains existing v5 grants and accepts the exact
+  checkpoint/identity/status subject versions without rewriting their bindings.
+
+### Compatibility and test boundary
+
+- No database migration, dependency or Device Protocol/Application SDK version
+  change. Existing SDK 1.0–1.3 applications retain compatibility behavior and do
+  not acquire grants, native trust, migration/start actions or a different theme
+  during update. Legacy compiled output is not silently rebuilt or promoted.
+- Reviewed-native and same-origin browser code are **not sandboxes**. Human and
+  kiosk permissions stay independent of service grants. Unsupported proof/peer
+  mutation/receiver, jobs/public-route and mixed SQL/peer profiles remain refused.
+- This is a consolidated test Beta, not WP4/M20 closure. Neutral Standalone/Hub,
+  disposable-VM upgrade/recovery and owner acceptance remain separate gates.
+  Preserve a verified pre-upgrade backup and the existing recovery evidence.
+  No concrete theme/business/test ZIP, local data or parallel M21 work is bundled.
+- Publication is gated by complete Python/frontend checks and reproducible
+  full-profile/ARMv6 Node builds; publication does not deploy or reboot a device.
+
+### Verification
+
+- The complete native Linux/Python 3.14.4 default collection contains **5,076
+  cases**. The first full snapshot passed 4,460 and exposed 14 stale gateway/
+  unsupported-permission test fixtures; corrected whole-file reruns confirm all
+  14. Thus **4,474 distinct default cases** have successful results across these
+  runs, plus five transport subtests; **602 platform-gated skips** remain explicit.
+  Assertions/admission rules were not weakened. GitHub repeats the complete
+  exact-tag collection with canonical Python 3.13 before publication.
+- Deployment/Application SDK checks: **372 passed**. Exact staged-source
+  event/gateway/release regressions: **121 passed**; registration: **31 passed,
+  one Root-gated skip**; final dispatch/gateway: **8 passed**, five subtests.
+  These corrective runs overlap the default collection and are not added to it.
+- Actual Root/helper start-consent checks: **15 passed**, no skips, in a disposable
+  mount namespace. This targeted privileged run does not claim coverage of all
+  Root/systemd-gated cases or a deployed-device acceptance test.
+- Frontend: **453 tests / 52 files passed**, TypeScript check and production
+  build passed. Existing deprecation/test-key warnings remain visible. Local
+  sources/logs are disposable; no installed VM, service or grant was changed.
+
 ## [0.3.0-beta.51] - 2026-10-15
 
 ### Fixed
@@ -1732,7 +1803,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.51...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.52...HEAD
+[0.3.0-beta.52]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.52
 [0.3.0-beta.51]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.51
 [0.3.0-beta.50]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.50
 [0.3.0-beta.49]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.49

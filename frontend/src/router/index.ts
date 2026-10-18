@@ -5,6 +5,7 @@ import { getAvailableExtensions } from '@/utils/extension-relationships';
 import { getExtensionCatalog } from '@/utils/extension-catalog';
 import { getCompiledUiCatalog, loadCompiledComponent } from '@/utils/compiled-ui';
 import type { CompiledUiPackage } from '@/utils/compiled-ui';
+import { withApplicationHost } from '@/utils/application-host';
 
 const extensionManifests = import.meta.glob('../extensions/*/manifest.json', { eager: true });
 const extensionComponents = import.meta.glob('../extensions/*/*.vue');
@@ -209,7 +210,10 @@ export function compiledRouteRecords(packages: CompiledUiPackage[]): RouteRecord
       routes.push({
         path: entrypoint.route!,
         name: `compiled-${pkg.module_id}-${pkg.version}-${entrypoint.entrypoint_id}`,
-        component: () => loadCompiledComponent(pkg, entrypoint),
+        component: async () => {
+          const component = await loadCompiledComponent(pkg, entrypoint);
+          return isApplicationRoute ? withApplicationHost(pkg, entrypoint, component) : component;
+        },
         meta: {
           requiresAuth: isApplicationRoute
             ? audience === 'operator' || audience === 'administrator'

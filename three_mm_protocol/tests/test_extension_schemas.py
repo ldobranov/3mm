@@ -162,6 +162,16 @@ def test_real_cli_outputs_only_the_catalog():
     assert result.stdout.endswith("\n")
 
 
+def test_scoped_public_identity_support_is_not_key_creation_or_proof_authority():
+    support = extension_schema_catalog()["contracts"]["application-extension.v1"]["declaration_support"]
+    identity = support["platform_permissions.installation.identity.read"]
+    assert identity["sdk_version"] == "1.3"
+    assert identity["runtime_authority"] == "reviewed_native_scoped_local"
+    assert identity["existing_public_identity_only"] is True
+    assert identity["creates_identity"] is identity["signing_or_possession_proof"] is False
+    assert not any("installation.identity.prove" in name or "installation.peers" in name for name in support)
+
+
 def test_export_does_not_import_core_agent_runtime_or_sdk():
     result = run_export(
         "-c",
@@ -177,3 +187,41 @@ assert len(extension_schema_catalog()['contracts']) == 7
 """,
     )
     assert result.stdout == result.stderr == ""
+
+
+def test_scoped_status_read_only_advertises_existing_local_consent_not_peer_mutation():
+    support = extension_schema_catalog()["contracts"]["application-extension.v1"]["declaration_support"]
+    status = support["platform_permissions.installation.status.read"]
+    assert status["sdk_version"] == "1.3"
+    assert status["runtime_authority"] == "reviewed_native_scoped_local"
+    assert status["existing_local_outbound_consent_only"] is True
+    assert status["max_existing_links"] == 32
+    assert status["creates_identity"] is status["signing_enrollment_or_reporting"] is False
+
+
+def test_execution_profiles_report_missing_features_without_grant_or_sandbox_claims():
+    catalog = extension_schema_catalog()
+    profiles = catalog["contracts"]["application-extension.v1"]["execution_profiles"]
+    scoped = profiles["reviewed_native_scoped"]
+    assert scoped["frontend"] == "headless_only"
+    assert scoped["missing_feature_behavior"] == "refused_without_compatibility_fallback"
+    assert scoped["provides"] == "exact_event_publications_only"
+    assert set(scoped["unsupported_features"]) == {
+        "installation.identity.prove", "peer_mutations", "unfiltered_peer_listing",
+        "peer_receiver", "jobs", "public_http_routes", "compiled_ui_resource_authority",
+        "arbitrary_capability_provides", "relational_with_peer_bindings",
+    }
+    assert profiles["compatibility"]["scoped_resource_authority"] is False
+    host = profiles["application_frontend_host_v1"]
+    assert host["import"] == "@3mm/application-ui/v1"
+    assert host["resource_authority"] == "separate"
+    assert host["token_or_general_http_exposure"] is host["browser_isolation"] is False
+    ui = profiles['reviewed_native_scoped_ui']
+    assert ui['execution_profile'] == 'supervised_reviewed_native_ui_v1'
+    assert ui['host_binding'] == 'source_and_built_ui_sha256'
+    assert ui['same_origin_ui_risk_acceptance'] == 'required_separately'
+    assert ui['legacy_build_without_evidence'] == 'compatibility_only'
+    assert ui['browser_or_os_isolation'] is False
+    # Independent catalog calls must not share nested policy lists.
+    scoped["unsupported_features"].clear()
+    assert extension_schema_catalog() != catalog

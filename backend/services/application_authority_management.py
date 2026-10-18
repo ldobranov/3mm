@@ -6,6 +6,7 @@ OS/browser isolation proof. No staged artifact, unsupported scope or UI bypass.
 """
 
 from contextlib import contextmanager, ExitStack
+from dataclasses import dataclass
 import hashlib
 import json
 import os
@@ -13,7 +14,7 @@ from pathlib import Path
 import re
 import time
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -29,7 +30,11 @@ from backend.services.application_authority_context import (
     AuthorityReviewContextV3, AuthoritySelectionV3,
     AuthorityReviewContextV4, AuthoritySelectionV4,
     AuthorityReviewContextV5, AuthoritySelectionV5,
-    _bounded_json, _canonical_bytes, _parse, _parse_versioned, review_authority_context,
+    AuthorityReviewContextV6, AuthoritySelectionV6,
+    AuthorityReviewContextV7, AuthoritySelectionV7,
+    AuthorityReviewContextV8, AuthoritySelectionV8,
+    AuthorityReviewContextV9, AuthoritySelectionV9,
+    MAX_INTEGER, _bounded_json, _canonical_bytes, _parse, _parse_versioned, review_authority_context,
 )
 from backend.services.application_authority_keys import CoreReviewKeyStore, AuthorityReviewKeyError
 from backend.services.application_authority_policy import (
@@ -37,6 +42,10 @@ from backend.services.application_authority_policy import (
     CorePolicyEvidenceV3, PolicySubjectV3,
     CorePolicyEvidenceV4, PolicySubjectV4,
     CorePolicyEvidenceV5, PolicySubjectV5,
+    CorePolicyEvidenceV6, PolicySubjectV6,
+    CorePolicyEvidenceV7, PolicySubjectV7,
+    CorePolicyEvidenceV8, PolicySubjectV8,
+    CorePolicyEvidenceV9, PolicySubjectV9,
     evaluate_authority_policy, _scopes,
 )
 from backend.services.application_authority_sources import (
@@ -47,6 +56,9 @@ from backend.services.application_policy_reviews import _actor, PolicyReviewStor
 from backend.services.authority_metadata import (
     authority_transaction, read_application_authority, read_authority_guard,
 )
+
+
+MAX_CHECKPOINT_ACTIONS_PER_INSTALLATION = 4096
 
 
 class AuthorityManagementError(Exception):
@@ -123,12 +135,25 @@ def _resource_identity(subject):
 
 
 def _resources(subject):
-    return {name: getattr(subject, name) for name in ("commands", "connectors", "events", "publications", "private_files", "relational")
+    return {name: getattr(subject, name) for name in ("commands", "connectors", "events", "publications", "private_files", "relational", "checkpoints", "identities", "status_projections", "peer_reads")
         if hasattr(subject, name)}
 
 
 def _subject_scopes(subject):
     return _scopes(**_resources(subject))
+
+
+@dataclass(frozen=True)
+class _PreparedAuthority:
+    pin: object
+    package: object
+    built_ui_sha256: str | None = None
+
+    def __iter__(self):
+        return iter((self.pin, self.package))
+
+    def __getitem__(self, index):
+        return (self.pin, self.package)[index]
 
 
 class ApplicationAuthorityManager:
@@ -138,29 +163,50 @@ class ApplicationAuthorityManager:
 
     def _prepare(self, installation_id):
         try:
-            return _prepare_installed_package(self.engine, installation_id, self.uploads_root, self.core_version)
+            pin, package = _prepare_installed_package(self.engine, installation_id, self.uploads_root, self.core_version)
+            build = None
+            if package.compiled_ui is not None:
+                from backend.services.compiled_ui import load_compiled_ui_artifact, CompiledUiBuildError
+                try:
+                    build = load_compiled_ui_artifact(package).built_ui_sha256
+                except CompiledUiBuildError:
+                    pass  # Old/missing/changed outputs cannot acquire scoped UI trust.
+            return _PreparedAuthority(pin, package, build)
         except (SQLAlchemyError, ValueError, OSError):
             raise AuthorityManagementError('artifact_unavailable') from None
 
     def _subject(self, db, key, installation_id, prepared):
         result = _compose(db, installation_id, *prepared, key)
-        if result.subject is None or result.subject.blockers or result.subject.has_executable_frontend:
+        subject = result.subject
+        if subject is not None and subject.has_executable_frontend and prepared.built_ui_sha256:
+            value = subject.model_dump(mode='json')
+            value['binding']['candidate']['built_ui_sha256'] = prepared.built_ui_sha256
+            value['blockers'] = [item for item in value['blockers'] if item != 'frontend_authority_unresolved']
+            subject = _parse(type(subject), value)
+        if subject is None or subject.blockers or (subject.has_executable_frontend and not prepared.built_ui_sha256):
             raise AuthorityManagementError("unsupported_authority")
-        return result.subject
+        return subject
 
     def _policy(self, db, key, subject, native_id):
         native = _load(db, key, "native", db.get(Native, _identifier(native_id), populate_existing=True), native_id)
         if (native["state"] != "reviewed_native" or native["installation_id"] != int(subject.binding.principal.application_installation_id)
                 or _canonical_bytes(native["data"]["binding"]) != _canonical_bytes(_native_binding(subject))):
             raise AuthorityManagementError("native_review_unavailable")
+        ui = subject.has_executable_frontend
+        if ui and native['data'].get('accepts_same_origin_ui_risk') is not True:
+            raise AuthorityManagementError("native_review_unavailable")
         scopes = tuple(sorted(_subject_scopes(subject)))
-        model = {1: CorePolicyEvidenceV1, 2: CorePolicyEvidenceV2, 3: CorePolicyEvidenceV3, 4: CorePolicyEvidenceV4, 5: CorePolicyEvidenceV5}[subject.subject_version]
+        # The new per-peer read family is an explicit selectable subset. Keep
+        # every older family's existing required-scope semantics unchanged.
+        required = tuple(scope for scope in scopes
+            if subject.subject_version != 9 or not scope.startswith('peer:'))
+        model = {1: CorePolicyEvidenceV1, 2: CorePolicyEvidenceV2, 3: CorePolicyEvidenceV3, 4: CorePolicyEvidenceV4, 5: CorePolicyEvidenceV5, 6: CorePolicyEvidenceV6, 7: CorePolicyEvidenceV7, 8: CorePolicyEvidenceV8, 9: CorePolicyEvidenceV9}[subject.subject_version]
         evidence = model(evidence_version=subject.subject_version, binding=subject.binding,
             policy_revision=native["revision"], trust_revision=native["revision"],
             trust_class="reviewed_local_artifact", execution_class="reviewed_native",
-            execution_profile="supervised_reviewed_native_v1", profile_revision="1",
+            execution_profile="supervised_reviewed_native_ui_v1" if ui else "supervised_reviewed_native_v1", profile_revision="1",
             native_review_revision=native["revision"], isolation_proof_revision=None,
-            required_scopes=scopes, **_resources(subject))
+            required_scopes=required, **_resources(subject))
         result = evaluate_authority_policy(subject, evidence)
         if not result.policy_resolved:
             raise AuthorityManagementError("policy_unavailable")
@@ -205,7 +251,8 @@ class ApplicationAuthorityManager:
             raise AuthorityManagementError() from None
 
     def record_native_review(self, installation_id, *, actor_token, request_id, artifact_sha256,
-            review_document_sha256, native_code_review_completed, accepts_native_host_risk):
+            review_document_sha256, native_code_review_completed, accepts_native_host_risk,
+            accepts_same_origin_ui_risk=False, built_ui_sha256=None):
         """LOCAL administrative code-review attestation; deliberately NO HTTP route.
 
         The operator actually reviews the exact code and supplies its review
@@ -215,6 +262,10 @@ class ApplicationAuthorityManager:
         if native_code_review_completed is not True or accepts_native_host_risk is not True:
             raise AuthorityManagementError("native_review_required")
         request = {"artifact_sha256": _digest(artifact_sha256), "review_document_sha256": _digest(review_document_sha256)}
+        if accepts_same_origin_ui_risk is not False or built_ui_sha256 is not None:
+            if accepts_same_origin_ui_risk is not True:
+                raise AuthorityManagementError('ui_review_required')
+            request.update(accepts_same_origin_ui_risk=True, built_ui_sha256=_digest(built_ui_sha256))
         prepared = self._prepare(installation_id)
         with self._write(installation_id, actor_token, request_id, "native_review", request) as (db, key, mutation, actor, result):
             if result:
@@ -222,6 +273,11 @@ class ApplicationAuthorityManager:
             subject = self._subject(db, key, installation_id, prepared)
             if subject.binding.candidate.sha256 != artifact_sha256:
                 raise AuthorityManagementError("artifact_changed")
+            if subject.has_executable_frontend:
+                if not request.get('accepts_same_origin_ui_risk') or built_ui_sha256 != subject.binding.candidate.built_ui_sha256:
+                    raise AuthorityManagementError('ui_review_required')
+            elif accepts_same_origin_ui_risk or built_ui_sha256 is not None:
+                raise AuthorityManagementError('invalid_request')
             identifier = new_authority_generation()
             value = _envelope("native", identifier, installation_id, "reviewed_native", {
                 "binding": _native_binding(subject), "actor": actor, **request,
@@ -230,13 +286,26 @@ class ApplicationAuthorityManager:
             result.update(native_review_id=identifier, native_revision=value["revision"], permission_approval="not_evaluated")
         return result
 
+    def require_ui_trust(self, installation_id, built_ui_sha256):
+        """Code trust only: never approve resource grants or human route access."""
+        expected = _digest(built_ui_sha256)
+        prepared = self._prepare(installation_id)  # Filesystem I/O outside key/DB guard.
+        with self.keys.locked() as key, _read_snapshot(self.engine) as db:
+            subject = self._subject(db, key, installation_id, prepared)
+            if not subject.has_executable_frontend or subject.binding.candidate.built_ui_sha256 != expected:
+                raise AuthorityManagementError('artifact_changed')
+            grant = _load(db, key, 'grant', db.get(Grant, installation_id), installation_id)
+            native, _ = self._policy(db, key, subject, grant['data']['native_review_id'])
+            if native['revision'] != grant['data']['native_revision']:
+                raise AuthorityManagementError('native_review_unavailable')
+
     def create_review(self, installation_id, *, actor_token, request_id, native_review_id, scopes):
         # Validate bounded identifiers before storage; the Core-resolved subject
         # selects the internal version, never an HTTP caller's version hint.
-        requested = _parse(AuthoritySelectionV5, {"selection_version": 5, "scopes": scopes})
-        request_version = 5 if any(scope.startswith('storage:relational_') for scope in requested.scopes) else 4 if any(scope.startswith('storage:') for scope in requested.scopes) else 3 if any(scope.startswith('publication:') for scope in requested.scopes) else (
+        requested = _parse(AuthoritySelectionV9, {"selection_version": 9, "scopes": scopes})
+        request_version = 9 if any(scope.startswith('peer:') for scope in requested.scopes) else 8 if any(scope.startswith('status:') for scope in requested.scopes) else 7 if 'platform:installation.identity.read' in requested.scopes else 6 if any(scope.startswith('checkpoint:') for scope in requested.scopes) else 5 if any(scope.startswith('storage:relational_') for scope in requested.scopes) else 4 if any(scope.startswith('storage:') for scope in requested.scopes) else 3 if any(scope.startswith('publication:') for scope in requested.scopes) else (
             2 if any(scope.startswith('event:') for scope in requested.scopes) else 1)
-        request_selection = _parse({1: AuthoritySelectionV1, 2: AuthoritySelectionV2, 3: AuthoritySelectionV3, 4: AuthoritySelectionV4, 5: AuthoritySelectionV5}[request_version],
+        request_selection = _parse({1: AuthoritySelectionV1, 2: AuthoritySelectionV2, 3: AuthoritySelectionV3, 4: AuthoritySelectionV4, 5: AuthoritySelectionV5, 6: AuthoritySelectionV6, 7: AuthoritySelectionV7, 8: AuthoritySelectionV8, 9: AuthoritySelectionV9}[request_version],
             {'selection_version': request_version, 'scopes': scopes})
         request = {"native_review_id": _identifier(native_review_id), "selection": request_selection.model_dump(mode="json")}
         prepared = self._prepare(installation_id)
@@ -244,11 +313,11 @@ class ApplicationAuthorityManager:
             if result:
                 return result
             subject = self._subject(db, key, installation_id, prepared)
-            selection_model = {1: AuthoritySelectionV1, 2: AuthoritySelectionV2, 3: AuthoritySelectionV3, 4: AuthoritySelectionV4, 5: AuthoritySelectionV5}[subject.subject_version]
+            selection_model = {1: AuthoritySelectionV1, 2: AuthoritySelectionV2, 3: AuthoritySelectionV3, 4: AuthoritySelectionV4, 5: AuthoritySelectionV5, 6: AuthoritySelectionV6, 7: AuthoritySelectionV7, 8: AuthoritySelectionV8, 9: AuthoritySelectionV9}[subject.subject_version]
             selection = _parse(selection_model, {'selection_version': subject.subject_version, 'scopes': scopes})
             native, policy = self._policy(db, key, subject, native_review_id)
             boot, now = _clock()
-            context_model = {1: AuthorityReviewContextV1, 2: AuthorityReviewContextV2, 3: AuthorityReviewContextV3, 4: AuthorityReviewContextV4, 5: AuthorityReviewContextV5}[subject.subject_version]
+            context_model = {1: AuthorityReviewContextV1, 2: AuthorityReviewContextV2, 3: AuthorityReviewContextV3, 4: AuthorityReviewContextV4, 5: AuthorityReviewContextV5, 6: AuthorityReviewContextV6, 7: AuthorityReviewContextV7, 8: AuthorityReviewContextV8, 9: AuthorityReviewContextV9}[subject.subject_version]
             context = context_model(context_version=subject.subject_version, **subject.binding.model_dump(exclude={"recovery_generation"}),
                 policy=policy, issued_at_ms=now, expires_at_ms=now + 900_000, **_resources(subject))
             context = _parse(context_model, context)
@@ -277,8 +346,8 @@ class ApplicationAuthorityManager:
         if _canonical_bytes(plan["data"]["subject"]) != _canonical_bytes(subject.model_dump(mode="json")):
             raise AuthorityManagementError("stale_review")
         native, policy = self._policy(db, key, subject, plan["data"]["native_review_id"])
-        context = _parse_versioned(AuthorityReviewContextV1, AuthorityReviewContextV2, plan["data"]["context"], 'context_version', AuthorityReviewContextV3, AuthorityReviewContextV4, AuthorityReviewContextV5)
-        selection = _parse_versioned(AuthoritySelectionV1, AuthoritySelectionV2, plan["data"]["selection"], 'selection_version', AuthoritySelectionV3, AuthoritySelectionV4, AuthoritySelectionV5)
+        context = _parse_versioned(AuthorityReviewContextV1, AuthorityReviewContextV2, plan["data"]["context"], 'context_version', AuthorityReviewContextV3, AuthorityReviewContextV4, AuthorityReviewContextV5, AuthorityReviewContextV6, AuthorityReviewContextV7, AuthorityReviewContextV8, AuthorityReviewContextV9)
+        selection = _parse_versioned(AuthoritySelectionV1, AuthoritySelectionV2, plan["data"]["selection"], 'selection_version', AuthoritySelectionV3, AuthoritySelectionV4, AuthoritySelectionV5, AuthoritySelectionV6, AuthoritySelectionV7, AuthoritySelectionV8, AuthoritySelectionV9)
         boot, now = _clock()
         review = review_authority_context(context, selection, now_ms=now)
         if (boot != plan["data"]["boot_id"] or not review.reviewable
@@ -393,17 +462,17 @@ class ApplicationAuthorityManager:
         row = db.get(Grant, installation_id, populate_existing=True)
         grant = _load(db, key, "grant", row, installation_id)
         data = grant["data"]
-        from backend.services.application_authority_context import AuthorityPolicy, AuthorityPolicyV4, AuthorityPolicyV5
-        approved = _parse_versioned(PolicySubjectV1, PolicySubjectV2, data["subject"], 'subject_version', PolicySubjectV3, PolicySubjectV4, PolicySubjectV5)
+        from backend.services.application_authority_context import AuthorityPolicy, AuthorityPolicyV4, AuthorityPolicyV5, AuthorityPolicyV6, AuthorityPolicyV7, AuthorityPolicyV8, AuthorityPolicyV9
+        approved = _parse_versioned(PolicySubjectV1, PolicySubjectV2, data["subject"], 'subject_version', PolicySubjectV3, PolicySubjectV4, PolicySubjectV5, PolicySubjectV6, PolicySubjectV7, PolicySubjectV8, PolicySubjectV9)
         native, _policy = self._policy(db, key, subject, data["native_review_id"])
         # Re-evaluate the exact approved binding with the CURRENT Core adapter.
         # Its old baseline is not rewritten to pretend this was a fresh approval.
         # Resource equality below separately pins today's effective resources.
         _, approved_policy = self._policy(db, key, approved, data['native_review_id'])
-        selection = _parse_versioned(AuthoritySelectionV1, AuthoritySelectionV2, data["selection"], 'selection_version', AuthoritySelectionV3, AuthoritySelectionV4, AuthoritySelectionV5)
+        selection = _parse_versioned(AuthoritySelectionV1, AuthoritySelectionV2, data["selection"], 'selection_version', AuthoritySelectionV3, AuthoritySelectionV4, AuthoritySelectionV5, AuthoritySelectionV6, AuthoritySelectionV7, AuthoritySelectionV8, AuthoritySelectionV9)
         if (current.mode != "enforced" or grant["state"] != "active" or row.revision != data["grant_revision"]
                 or current.epoch != data["authority_epoch"] or native["revision"] != data["native_revision"]
-                or approved_policy != _parse({4: AuthorityPolicyV4, 5: AuthorityPolicyV5}.get(approved.subject_version, AuthorityPolicy), data['policy'])
+                or approved_policy != _parse({4: AuthorityPolicyV4, 5: AuthorityPolicyV5, 6: AuthorityPolicyV6, 7: AuthorityPolicyV7, 8: AuthorityPolicyV8, 9: AuthorityPolicyV9}.get(approved.subject_version, AuthorityPolicy), data['policy'])
                 or selection.selection_version != approved.subject_version
                 or _resource_identity(subject) != _resource_identity(approved) or scope not in selection.scopes):
             raise AuthorityManagementError("grant_not_current")
@@ -442,6 +511,9 @@ class ApplicationAuthorityManager:
     def _inspect_reviewable(self, installation_id, prepared):
         with self.keys.locked() as key, _read_snapshot(self.engine) as db:
             subject = self._subject(db, key, installation_id, prepared)
+            runtime_blockers = []
+            if getattr(subject, 'relational', ()):
+                runtime_blockers.append('relational_runtime_unavailable')
             row = db.get(Grant, installation_id)
             grant = None
             if row is not None:
@@ -468,7 +540,7 @@ class ApplicationAuthorityManager:
                 try:
                     for scope in scopes:
                         self._require_grant(db, key, installation_id, prepared, scope)
-                    effective = bool(scopes) and prepared[0].status == "active" and not getattr(subject, 'relational', ())
+                    effective = bool(scopes) and prepared[0].status == "active" and not runtime_blockers
                 except (AuthorityManagementError, AuthorityReviewKeyError, ValueError, TypeError, KeyError, AttributeError):
                     pass
             installation = db.get(ApplicationExtensionInstallation, installation_id)
@@ -481,7 +553,7 @@ class ApplicationAuthorityManager:
                 "grant_state": grant["state"] if grant else ('unavailable' if row else None),
                 "review_available": True, "review_blockers": [],
                 "execution_class": "reviewed_native_only", "isolation_proven": False,
-                **({'runtime_blockers': ['relational_runtime_unavailable']} if getattr(subject, 'relational', ()) else {})}
+                **({'runtime_blockers': runtime_blockers} if runtime_blockers else {})}
 
 
 def configured_manager(engine):
@@ -501,6 +573,10 @@ def effect_admission(db, installation_id, scope):
     Compatibility is unchanged. Opt-in grants never fall back to legacy access.
     Caller MUST commit its queue/attempt/one-use permit before close/release.
     """
+    if isinstance(scope, str) and scope.startswith('peer:'):
+        # Exact reads use the dedicated key -> guard -> peer-row adapter, never
+        # this generic lease, legacy list, signer or mutation fallback.
+        raise ValueError('Peer reads require the dedicated adapter')
     if isinstance(scope, str) and scope.startswith('storage:relational_'):
         # These grants are review metadata until the bounded transaction/lifecycle
         # adapter exists. Never issue a compatibility or generic effect lease.
@@ -526,7 +602,7 @@ def effect_admission(db, installation_id, scope):
             if db.execute(update(CoreAuthorityGuard).where(CoreAuthorityGuard.singleton_id == 1)
                     .values(revision=CoreAuthorityGuard.revision)).rowcount != 1:
                 raise AuthorityManagementError()
-            manager._require_grant(db, key, installation_id, prepared, scope)
+            grant = manager._require_grant(db, key, installation_id, prepared, scope)
             installation = db.get(ApplicationExtensionInstallation, installation_id, populate_existing=True)
             if not installation.enabled or installation.status != "active":
                 raise AuthorityManagementError("installation_inactive")
@@ -536,6 +612,53 @@ def effect_admission(db, installation_id, scope):
                 lease.close()  # Durable attempt/queue/permit committed first.
             release.definition, release.compatibility = prepared[1].application_extension, False
             release.publications = prepared[1].application_publications
+            if grant["data"]["subject"]["subject_version"] in {7, 8, 9}:
+                from backend.services.application_authority_context import ResolvedIdentityScope
+                # _require_grant re-resolved today's full public identity and
+                # compared it to this exact sealed subject under the same guard.
+                release.identities = tuple(_parse(ResolvedIdentityScope, item)
+                    for item in grant["data"]["subject"]["identities"])
+            if grant["data"]["subject"]["subject_version"] in {8, 9}:
+                from backend.services.application_authority_context import ResolvedStatusScope
+                release.status_projections = tuple(_parse(ResolvedStatusScope, item)
+                    for item in grant["data"]["subject"]["status_projections"])
+            if isinstance(scope, str) and scope.startswith('checkpoint:') and scope.endswith(':write'):
+                checkpoint_recorded = False
+
+                def record_checkpoint_write(checkpoint_id, expected_revision, revision):
+                    """Bounded machine audit only, never a value/receipt/replay key."""
+                    nonlocal checkpoint_recorded
+                    if (released or checkpoint_recorded or type(checkpoint_id) is not str
+                            or re.fullmatch(r'[a-z][a-z0-9_]{0,95}', checkpoint_id) is None
+                            or scope != f'checkpoint:{checkpoint_id}:write'
+                            or type(expected_revision) is not int or type(revision) is not int
+                            or not 0 <= expected_revision < MAX_INTEGER
+                            or revision != expected_revision + 1):
+                        raise ValueError('Checkpoint audit metadata is invalid')
+                    # Never prune evidential action records in an SDK operation.
+                    # A full journal needs explicit Core maintenance, not overwrite.
+                    count = db.scalar(select(func.count()).select_from(Action).where(
+                        Action.installation_id == installation_id))
+                    if type(count) is not int or count >= MAX_CHECKPOINT_ACTIONS_PER_INSTALLATION:
+                        raise ValueError('Checkpoint action journal is full')
+                    current = read_application_authority(db, installation_id)
+                    principal = {
+                        'core_installation_id': _core_identity(db),
+                        'application_installation_id': str(installation_id),
+                        'incarnation': current.incarnation, 'module_id': current.module_id,
+                    }
+                    record_id = new_authority_generation()
+                    _save(db, key, 'action', Action(request_id=record_id, installation_id=installation_id),
+                        _envelope('action', record_id, installation_id, 'completed', {
+                            'operation': 'checkpoint_put', 'actor': ['application', str(installation_id)],
+                            'principal': principal, 'scope': scope,
+                            'package_artifact_sha256': prepared[0].sha256,
+                            'checkpoint_id': checkpoint_id, 'expected_revision': expected_revision,
+                            'revision': revision,
+                        }))
+                    checkpoint_recorded = True
+
+                release.record_checkpoint_write = record_checkpoint_write
             yield release
     except (AuthorityManagementError, AuthorityReviewKeyError, SQLAlchemyError, ValueError, OSError):
         if released:

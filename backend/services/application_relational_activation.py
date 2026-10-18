@@ -19,8 +19,19 @@ from backend.db.audit_log import AuditLog
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.services import application_authority_management as authority
 from backend.services import application_relational_lifecycle as preparation
-from backend.services.application_authority_context import AuthorityPolicyV5, _parse
-from backend.services.application_authority_policy import PolicySubjectV5
+from backend.services.application_authority_context import (
+    AuthorityPolicyV5,
+    AuthorityPolicyV6,
+    AuthorityPolicyV7,
+    AuthorityPolicyV8,
+    _parse,
+)
+from backend.services.application_authority_policy import (
+    PolicySubjectV5,
+    PolicySubjectV6,
+    PolicySubjectV7,
+    PolicySubjectV8,
+)
 from backend.services.application_commands import invalidate_commands
 from backend.services.application_policy_reviews import _actor
 from backend.services.authority_metadata import (
@@ -208,7 +219,20 @@ def _start_consent(manager, db, key, installation_id, prepared, ticket):
     row = db.get(Grant, installation_id, populate_existing=True)
     grant = authority._load(db, key, "grant", row, installation_id)
     data = grant["data"]
-    approved = _parse(PolicySubjectV5, data["subject"])
+    # Existing SQL-only grants retain their exact v5 shape. Mixed checkpoint or
+    # public-identity/status requests use v6/v7/v8, preserving start-consent binding.
+    subject_data = data["subject"]
+    version = subject_data.get("subject_version") if type(subject_data) is dict else None
+    models = {
+        5: (PolicySubjectV5, AuthorityPolicyV5),
+        6: (PolicySubjectV6, AuthorityPolicyV6),
+        7: (PolicySubjectV7, AuthorityPolicyV7),
+        8: (PolicySubjectV8, AuthorityPolicyV8),
+    }
+    if type(version) is not int or version not in models:
+        raise authority.AuthorityManagementError("activation_consent_changed")
+    subject_model, policy_model = models[version]
+    approved = _parse(subject_model, subject_data)
     native, _ = manager._policy(db, key, subject, data["native_review_id"])
     _, policy = manager._policy(db, key, approved, data["native_review_id"])
     if (
@@ -216,7 +240,7 @@ def _start_consent(manager, db, key, installation_id, prepared, ticket):
         or grant["revision"] != ticket["grant_record_revision"]
         or row.revision != data["grant_revision"]
         or native["revision"] != data["native_revision"]
-        or policy != _parse(AuthorityPolicyV5, data["policy"])
+        or policy != _parse(policy_model, data["policy"])
         or authority._resource_identity(subject)
         != authority._resource_identity(approved)
     ):

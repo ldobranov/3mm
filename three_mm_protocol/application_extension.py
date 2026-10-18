@@ -437,6 +437,26 @@ class ApplicationJobV1(StrictApplicationModel):
     singleton: Literal[True] = True
 
 
+class ApplicationCheckpointV1(StrictApplicationModel):
+    """One requested own checkpoint, never a grant or a caller-selected owner.
+
+    The value is bounded JSON progress/state, not a database backup. Read and
+    write authority are reviewed separately against this exact declaration.
+    """
+
+    contract_version: Literal[1]
+    checkpoint_id: str = Field(pattern=r"^[a-z][a-z0-9_]{0,95}$", max_length=96)
+    mode: Literal["read", "read_write"]
+    max_value_bytes: int = Field(strict=True, ge=1, le=256 * 1024)
+
+    @field_validator("contract_version", mode="before")
+    @classmethod
+    def integer_contract_version(cls, value):
+        if type(value) is not int:
+            raise ValueError("Checkpoint contract version must be an integer")
+        return value
+
+
 class ApplicationPrivateFilesV1(StrictApplicationModel):
     """Requested SDK-file bounds, never a host path, grant or OS disk quota.
 
@@ -538,6 +558,50 @@ class ApplicationLifecycleV1(StrictApplicationModel):
     rollback: Literal["transactional"] = "transactional"
 
 
+class ApplicationPeerBindingV1(StrictApplicationModel):
+    """An exact existing-peer action request, never consent or a live grant.
+
+    Core resolves the saved configuration reference, owner and public peer pins.
+    Inbox discovery, link creation and arbitrary signing are not this contract.
+    Runtime support is deliberately separate from structural package support.
+    """
+
+    contract_version: Literal[1]
+    binding_id: str = Field(pattern=r"^[a-z][a-z0-9_]{0,95}$", max_length=96)
+    direction: Literal["inbound", "outbound"]
+    peer_id_config_key: str = Field(pattern=CONFIG_KEY_PATTERN, max_length=64)
+    operations: tuple[Literal["read", "enroll", "rotate", "report", "approve", "revoke"], ...] = Field(
+        min_length=1, max_length=5,
+    )
+
+    @field_validator("contract_version", mode="before")
+    @classmethod
+    def integer_contract_version(cls, value):
+        if type(value) is not int:
+            raise ValueError("Peer binding contract version must be an integer")
+        return value
+
+    @model_validator(mode="after")
+    def validate_direction_operations(self):
+        allowed = (
+            {"read", "approve", "revoke"} if self.direction == "inbound"
+            else {"read", "enroll", "rotate", "report", "revoke"}
+        )
+        if len(self.operations) != len(set(self.operations)):
+            raise ValueError("Peer binding operations must be unique")
+        if set(self.operations) - allowed:
+            raise ValueError("Peer binding operations do not match their direction")
+        return self
+
+    def required_platform_permissions(self) -> frozenset[str]:
+        # Existing coarse groups remain package requests, not executable rights.
+        permissions = {"installation.peers.receive" if self.direction == "inbound"
+            else "installation.peers.enroll"}
+        if "report" in self.operations:
+            permissions.update({"installation.peers.report", "installation.status.read"})
+        return frozenset(permissions)
+
+
 class ApplicationPeerReceiverV1(StrictApplicationModel):
     peer_version: Literal[1, 2] = 1
     bootstrap_operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
@@ -562,6 +626,7 @@ class ApplicationExtensionV1(StrictApplicationModel):
         "installation.peers.report", "installation.status.read",
     ], ...] = Field(default=(), max_length=6)
     peer_receiver: ApplicationPeerReceiverV1 | None = None
+    peer_bindings: tuple[ApplicationPeerBindingV1, ...] = Field(default=(), max_length=32)
     permissions: tuple[ApplicationPermissionV1, ...] = Field(
         default=(),
         max_length=128,
@@ -581,12 +646,24 @@ class ApplicationExtensionV1(StrictApplicationModel):
         max_length=32,
     )
     jobs: tuple[ApplicationJobV1, ...] = Field(default=(), max_length=64)
+    checkpoints: tuple[ApplicationCheckpointV1, ...] = Field(default=(), max_length=32)
     command_bindings: tuple[ApplicationCommandBindingV1, ...] = Field(default=(), max_length=64)
     storage: ApplicationStorageV1
     lifecycle: ApplicationLifecycleV1 = Field(default_factory=ApplicationLifecycleV1)
 
     @model_validator(mode="after")
     def validate_references(self):
+        if self.peer_bindings and self.service.sdk_version != "1.3":
+            raise ValueError("Peer binding declarations require SDK 1.3")
+        for binding in self.peer_bindings:
+            if binding.required_platform_permissions() - set(self.platform_permissions):
+                raise ValueError("Peer binding requires its exact platform permission groups")
+            if "approve" in binding.operations and self.peer_receiver is None:
+                raise ValueError("Peer approval bindings require a receiver declaration")
+        if len({(item.direction, item.peer_id_config_key) for item in self.peer_bindings}) != len(self.peer_bindings):
+            raise ValueError("Peer binding configuration references must be unique per direction")
+        if self.checkpoints and self.service.sdk_version != "1.3":
+            raise ValueError("Checkpoint declarations require SDK 1.3")
         if self.storage.private_files is not None and self.service.sdk_version != "1.3":
             raise ValueError("Private file declarations require SDK 1.3")
         if self.storage.relational is not None and self.service.sdk_version != "1.3":
@@ -619,6 +696,8 @@ class ApplicationExtensionV1(StrictApplicationModel):
             ("subscription IDs", subscription_ids),
             ("connector IDs", connector_ids),
             ("job IDs", job_ids),
+            ("checkpoint IDs", [item.checkpoint_id for item in self.checkpoints]),
+            ("peer binding IDs", [item.binding_id for item in self.peer_bindings]),
             ("command bindings", [item.binding_id for item in self.command_bindings]),
         ):
             if len(values) != len(set(values)):

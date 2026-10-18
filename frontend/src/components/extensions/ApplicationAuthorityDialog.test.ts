@@ -2,10 +2,11 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const http = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
+const locale = vi.hoisted(() => ({ language: 'en' }))
 vi.mock('@/utils/dynamic-http', () => ({ default: http }))
 vi.mock('@/utils/i18n', async () => {
   const { ref } = await import('vue')
-  return { useI18n: () => ({ currentLanguage: ref('en'), t: (_key: string, fallback: string) => fallback }) }
+  return { useI18n: () => ({ currentLanguage: ref(locale.language), t: (_key: string, fallback: string) => fallback }) }
 })
 import ApplicationAuthorityDialog from './ApplicationAuthorityDialog.vue'
 import { readAuthorityStatus, readAuthorityPlan, readAuthorityDecision } from './authority-management'
@@ -49,9 +50,43 @@ const fileResource = (operation: 'read' | 'write' = 'read', mode: 'read' | 'read
   owner: { core_installation_id: 'installation_' + identity('b'), application_installation_id: '7', incarnation: identity('c'), module_id: 'org.example.reference' },
   package_artifact_sha256: 'a'.repeat(64), operation,
 })
+const relationalResource = (operation: 'read' | 'write' = 'read', mode: 'read' | 'read_write' = 'read_write') => ({
+  declaration: { contract_version: 1, mode, limit_class: 'cooperative_v1', max_database_bytes: 1048576,
+    auxiliary_pause_bytes: 262144, max_statement_bytes: 2048, max_value_bytes: 1024,
+    max_result_bytes: 4096, max_result_rows: 16, max_transaction_ms: 5000, max_busy_ms: 500 },
+  owner: fileResource().owner, package_artifact_sha256: 'a'.repeat(64), service_artifact_sha256: 'c'.repeat(64),
+  schema_revision: '0002', migration_entrypoint: 'reference_app.migrations:get_migrations',
+  resource_profile: 'owned_sqlite_request_v1', operation,
+})
+const relationalStatus = (mode: 'read' | 'read_write' = 'read_write', files = false) => ({
+  ...status(), scopes: ['storage:relational_read', ...(mode === 'read_write' ? ['storage:relational_write'] : []),
+    ...(files ? ['storage:private_files_read'] : [])],
+  grant_effective: false, review_available: true, review_blockers: [], runtime_blockers: ['relational_runtime_unavailable'],
+})
+const relationalPlan = (mode: 'read' | 'read_write' = 'read_write', files = false) => ({
+  ...plan(), scopes: relationalStatus(mode, files).scopes,
+  resources: { commands: [], connectors: [], private_files: files ? [fileResource('read', 'read')] : [],
+    relational: mode === 'read' ? [relationalResource('read', mode)] : [relationalResource('read'), relationalResource('write')] },
+})
+const checkpointResource = (operation: 'read' | 'write' = 'read', mode: 'read' | 'read_write' = 'read_write') => ({
+  declaration: { contract_version: 1, checkpoint_id: 'progress', mode, max_value_bytes: 4096 },
+  owner: fileResource().owner, package_artifact_sha256: 'a'.repeat(64), operation,
+})
+const identityResource = () => ({
+  owner: { ...fileResource().owner, core_installation_id: 'inst_' + identity('b') },
+  package_artifact_sha256: 'a'.repeat(64), operation: 'installation.identity.read',
+  identity: { identity_version: 1, installation_id: 'inst_' + identity('b'), algorithm: 'ed25519',
+    key_id: '21fe31dfa154a261626bf854046fd2271b7bed4b6abe45aa58877ef47f9721b9',
+    public_key: '11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=', key_generation: 1,
+    created_at: '2026-10-16T00:12:34.123456Z' },
+})
+const identityStatus = () => ({ ...status(), scopes: ['platform:installation.identity.read'] })
+const identityPlan = () => ({ ...plan(), scopes: identityStatus().scopes,
+  resources: { commands: [], connectors: [], identities: [identityResource()] } })
 const nativeMethods = ['showModal', 'close'].map(name => ({ name, descriptor: Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, name) }))
 beforeEach(() => {
   vi.resetAllMocks()
+  locale.language = 'en'
   http.get.mockResolvedValue({ data: status() })
   http.post.mockResolvedValue({ data: plan() })
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function(this: HTMLDialogElement) { this.open = true } })
@@ -81,6 +116,247 @@ async function review(wrapper: VueWrapper) {
 }
 
 describe('installed authority control', () => {
+  it('reviews public identity metadata only, with distinct acknowledgment, approval and apply', async () => {
+    http.get.mockResolvedValue({ data: identityStatus() })
+    http.post.mockResolvedValue({ data: identityPlan() })
+    const wrapper = await open()
+    expect(http.post).not.toHaveBeenCalled()
+    await review(wrapper)
+    expect(wrapper.findAll('.authority-identity')).toHaveLength(1)
+    for (const text of ['Public installation identity', 'Read public identity', 'platform:installation.identity.read',
+      'does not prove key possession, ownership, signature validity or peer consent', 'not a cryptographic verifier',
+      'org.example.reference · #7', 'inst_' + identity('b'), 'ed25519', identityResource().identity.key_id,
+      identityResource().identity.public_key, 'Key generation', 'Identity version', '2026-10-16T00:12:34.123456Z',
+      identity('c'), 'a'.repeat(64)]) {
+      expect(wrapper.text()).toContain(text)
+    }
+    expect(wrapper.findAll('textarea, input:not([type=checkbox])')).toHaveLength(0)
+    expect(button(wrapper, 'Approve review').attributes('disabled')).toBeDefined()
+    await wrapper.find('input[type=checkbox]').setValue(true)
+    http.post.mockResolvedValueOnce({ data: decision('approved_pending_apply') })
+    await button(wrapper, 'Approve review').trigger('click'); await flushPromises()
+    expect(http.post).toHaveBeenCalledTimes(2)
+    expect(wrapper.emitted('changed')).toBeUndefined()
+    expect(wrapper.text()).toContain('Approved, not applied')
+    http.post.mockResolvedValueOnce({ data: decision('applied', identity('a')) })
+    await button(wrapper, 'Apply rights').trigger('click'); await flushPromises()
+    expect(http.post).toHaveBeenCalledTimes(3)
+    expect(http.post.mock.calls.map(call => call[0])).toEqual([base + '/reviews',
+      base + '/reviews/' + identity('4') + '/approve', base + '/reviews/' + identity('4') + '/apply'])
+    expect(http.post.mock.calls[0]?.[1].scopes).toEqual(['platform:installation.identity.read'])
+    expect(http.get).toHaveBeenCalledTimes(2)
+    expect(wrapper.emitted('changed')).toHaveLength(1)
+  })
+
+  it('keeps mixed public identity, checkpoint, file and SQL cards separate without upgrading SQL runtime status', async () => {
+    const current = { ...relationalStatus('read', true), scopes: [...relationalStatus('read', true).scopes,
+      'checkpoint:progress:read', 'platform:installation.identity.read'] }
+    http.get.mockResolvedValue({ data: current })
+    http.post.mockResolvedValue({ data: { ...plan(), scopes: current.scopes, resources: { commands: [], connectors: [],
+      private_files: [{ ...fileResource('read', 'read'), owner: identityResource().owner }],
+      relational: [{ ...relationalResource('read', 'read'), owner: identityResource().owner }],
+      checkpoints: [{ ...checkpointResource('read', 'read'), owner: identityResource().owner }], identities: [identityResource()] } } })
+    const wrapper = await open(); await review(wrapper)
+    for (const family of ['identity', 'checkpoint', 'file', 'relational']) {
+      expect(wrapper.findAll('.authority-' + family)).toHaveLength(1)
+    }
+    expect(wrapper.text()).toContain('Relational runtime not confirmed')
+    expect(wrapper.find('.authority-effective').exists()).toBe(false)
+    expect(button(wrapper, 'Approve review').attributes('disabled')).toBeDefined()
+    expect(http.post).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects unexpected private identity data before displaying or offering approval', async () => {
+    http.get.mockResolvedValue({ data: identityStatus() })
+    http.post.mockResolvedValue({ data: { ...identityPlan(), resources: { ...identityPlan().resources,
+      identities: [{ ...identityResource(), identity: { ...identityResource().identity, private_key: 'do-not-render-key' } }] } } })
+    const wrapper = await open(); await review(wrapper)
+    expect(wrapper.find('[role=alert]').exists()).toBe(true)
+    expect(wrapper.find('.authority-review-plan').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('do-not-render-key')
+    expect(wrapper.find('input[type=checkbox]').exists()).toBe(false)
+    expect(http.post).toHaveBeenCalledTimes(1)
+  })
+
+  it('explains the read-only public identity and absence of possession proof in Bulgarian', async () => {
+    locale.language = 'bg'
+    http.get.mockResolvedValue({ data: identityStatus() })
+    http.post.mockResolvedValue({ data: identityPlan() })
+    const wrapper = await open()
+    await button(wrapper, 'Прегледай заявения достъп').trigger('click'); await flushPromises()
+    expect(wrapper.text()).toContain('Публична идентичност на инсталацията')
+    expect(wrapper.text()).toContain('Четене на публичната идентичност')
+    expect(wrapper.text()).toContain('не доказва притежание на ключ, собственост, валидност на подпис или peer съгласие')
+    expect(wrapper.text()).toContain('Публичен ключ · Base64')
+    expect(wrapper.text()).toContain('Поколение на ключа')
+    expect(wrapper.text()).toContain('Създадена на · UTC')
+    expect(button(wrapper, 'Одобри прегледа').attributes('disabled')).toBeDefined()
+    expect(http.post).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['read', 'read_write'] as const)('shows exact %s checkpoint rights with separate acknowledgement, approve and apply', async mode => {
+    const checkpoints = mode === 'read' ? [checkpointResource('read', mode)] : [checkpointResource('read'), checkpointResource('write')]
+    const current = { ...relationalStatus('read', true), scopes: [...relationalStatus('read', true).scopes,
+      ...checkpoints.map(item => `checkpoint:${item.declaration.checkpoint_id}:${item.operation}`)] }
+    const reviewed = { ...relationalPlan('read', true), scopes: current.scopes,
+      resources: { ...relationalPlan('read', true).resources, checkpoints } }
+    http.get.mockResolvedValue({ data: current })
+    http.post.mockResolvedValue({ data: reviewed })
+    const wrapper = await open()
+    expect(http.post).not.toHaveBeenCalled()
+    await review(wrapper)
+    expect(wrapper.findAll('.authority-checkpoint')).toHaveLength(checkpoints.length)
+    expect(wrapper.findAll('.authority-file')).toHaveLength(1)
+    expect(wrapper.findAll('.authority-relational')).toHaveLength(1)
+    for (const text of ['Application-owned checkpoints', 'Read checkpoint · progress', 'checkpoint:progress:read',
+      'Maximum checkpoint value', '4096 bytes', 'org.example.reference · #7', 'installation_' + identity('b'),
+      identity('c'), 'a'.repeat(64), 'does not expose their contents, Core tokens or browser storage']) {
+      expect(wrapper.text()).toContain(text)
+    }
+    expect(wrapper.text().includes('checkpoint:progress:write')).toBe(mode === 'read_write')
+    expect(button(wrapper, 'Approve review').attributes('disabled')).toBeDefined()
+    expect(http.post.mock.calls[0]?.[1].scopes).toEqual(current.scopes)
+    await wrapper.find('input[type=checkbox]').setValue(true)
+    http.post.mockResolvedValueOnce({ data: decision('approved_pending_apply') })
+    await button(wrapper, 'Approve review').trigger('click'); await flushPromises()
+    expect(http.post).toHaveBeenCalledTimes(2)
+    expect(wrapper.emitted('changed')).toBeUndefined()
+    expect(wrapper.text()).toContain('Approved, not applied')
+    http.post.mockResolvedValueOnce({ data: decision('applied', identity('a')) })
+    await button(wrapper, 'Apply rights').trigger('click'); await flushPromises()
+    expect(http.post).toHaveBeenCalledTimes(3)
+    expect(http.post.mock.calls[2]?.[0]).toBe(base + '/reviews/' + identity('4') + '/apply')
+    expect(http.get).toHaveBeenCalledTimes(2)
+    expect(wrapper.emitted('changed')).toHaveLength(1)
+    expect(wrapper.find('.authority-effective').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Relational runtime not confirmed')
+  })
+
+  it('does not offer approval for partial checkpoint operations', async () => {
+    const current = { ...status(), scopes: ['checkpoint:progress:read', 'checkpoint:progress:write'] }
+    http.get.mockResolvedValue({ data: current })
+    http.post.mockResolvedValue({ data: { ...plan(), scopes: current.scopes,
+      resources: { commands: [], connectors: [], checkpoints: [checkpointResource('read')] } } })
+    const wrapper = await open(); await review(wrapper)
+    expect(wrapper.find('[role=alert]').exists()).toBe(true)
+    expect(wrapper.find('.authority-review-plan').exists()).toBe(false)
+    expect(wrapper.find('input[type=checkbox]').exists()).toBe(false)
+    expect(http.post).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows checkpoint ownership and limits in Bulgarian without exposing checkpoint content controls', async () => {
+    locale.language = 'bg'
+    const current = { ...status(), scopes: ['checkpoint:progress:read'] }
+    http.get.mockResolvedValue({ data: current })
+    http.post.mockResolvedValue({ data: { ...plan(), scopes: current.scopes,
+      resources: { commands: [], connectors: [], checkpoints: [checkpointResource('read', 'read')] } } })
+    const wrapper = await open()
+    await button(wrapper, 'Прегледай заявения достъп').trigger('click'); await flushPromises()
+    expect(wrapper.text()).toContain('Собствени checkpoints на приложението')
+    expect(wrapper.text()).toContain('Четене на checkpoint · progress')
+    expect(wrapper.text()).toContain('Максимална стойност на checkpoint')
+    expect(wrapper.text()).toContain('4096 байта')
+    expect(wrapper.text()).toContain('Одобрението не разкрива съдържанието им')
+    expect(wrapper.findAll('textarea, input:not([type=checkbox])')).toHaveLength(0)
+    expect(button(wrapper, 'Одобри прегледа').attributes('disabled')).toBeDefined()
+    expect(http.post).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads relational authority without inventing runtime success or making a mutation', async () => {
+    http.get.mockResolvedValue({ data: relationalStatus() })
+    const wrapper = await open()
+    expect(wrapper.text()).not.toContain('Authority could not be read')
+    expect(wrapper.text()).not.toContain('review key is missing')
+    expect(wrapper.text()).toContain('Relational runtime not confirmed')
+    expect(wrapper.text()).toContain('Applying rights does not start, migrate or repair the runtime')
+    expect(wrapper.find('.authority-effective').exists()).toBe(false)
+    expect(button(wrapper, 'Review requested access').attributes('disabled')).toBeUndefined()
+    expect(button(wrapper, 'Revoke rights').exists()).toBe(true)
+    expect(http.get).toHaveBeenCalledTimes(1)
+    expect(http.post).not.toHaveBeenCalled()
+  })
+
+  it.each(['read', 'read_write'] as const)('renders the exact %s SQL profile and separates approve from apply', async mode => {
+    http.get.mockResolvedValue({ data: relationalStatus(mode, true) })
+    http.post.mockResolvedValue({ data: relationalPlan(mode, true) })
+    const wrapper = await open(); await review(wrapper)
+    expect(wrapper.findAll('.authority-relational')).toHaveLength(mode === 'read' ? 1 : 2)
+    expect(wrapper.findAll('.authority-file')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Application-owned SQL database')
+    expect(wrapper.text()).toContain('cooperative limits')
+    expect(wrapper.text()).toContain('storage:relational_read')
+    expect(wrapper.text().includes('storage:relational_write')).toBe(mode === 'read_write')
+    for (const text of ['org.example.reference · #7', '0002', 'reference_app.migrations:get_migrations',
+      'owned_sqlite_request_v1', 'cooperative_v1', '1048576 bytes', '262144 bytes', '2048 bytes',
+      '1024 bytes', '4096 bytes', 'Maximum result rows', '5000 ms', '500 ms', 'c'.repeat(64)]) {
+      expect(wrapper.text()).toContain(text)
+    }
+    expect(http.post.mock.calls[0]?.[1].scopes).toEqual(relationalStatus(mode, true).scopes)
+    expect(button(wrapper, 'Approve review').attributes('disabled')).toBeDefined()
+    await wrapper.find('input[type=checkbox]').setValue(true)
+    http.post.mockResolvedValueOnce({ data: decision('approved_pending_apply') })
+    await button(wrapper, 'Approve review').trigger('click'); await flushPromises()
+    expect(http.post).toHaveBeenCalledTimes(2)
+    expect(wrapper.emitted('changed')).toBeUndefined()
+    http.post.mockResolvedValueOnce({ data: decision('applied', identity('a')) })
+    await button(wrapper, 'Apply rights').trigger('click'); await flushPromises()
+    expect(http.post).toHaveBeenCalledTimes(3)
+    expect(http.post.mock.calls[2]?.[0]).toBe(base + '/reviews/' + identity('4') + '/apply')
+    expect(wrapper.emitted('changed')).toHaveLength(1)
+    expect(http.get).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('Relational runtime not confirmed')
+    expect(wrapper.find('.authority-effective').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Current rights are effective')
+  })
+
+  it('does not offer approval for an incomplete relational review', async () => {
+    http.get.mockResolvedValue({ data: relationalStatus() })
+    http.post.mockResolvedValue({ data: { ...relationalPlan(), resources: { ...relationalPlan().resources,
+      relational: [relationalResource('read')] } } })
+    const wrapper = await open(); await review(wrapper)
+    expect(wrapper.find('[role=alert]').exists()).toBe(true)
+    expect(wrapper.find('.authority-review-plan').exists()).toBe(false)
+    expect(wrapper.find('input[type=checkbox]').exists()).toBe(false)
+    expect(http.post).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps revoked relational rights distinct from unconfirmed runtime evidence', async () => {
+    http.get.mockResolvedValue({ data: relationalStatus() })
+    const wrapper = await open()
+    await button(wrapper, 'Revoke rights').trigger('click')
+    http.post.mockResolvedValueOnce({ data: { state: 'revoked' } })
+    http.get.mockResolvedValueOnce({ data: { ...relationalStatus(), mode: 'review_required', grant_state: 'revoked' } })
+    await button(wrapper, 'Confirm revocation').trigger('click'); await flushPromises()
+    expect(wrapper.find('.authority-status').text()).toContain('No current effective rights')
+    expect(wrapper.find('.authority-runtime').text()).toContain('does not confirm the prepared relational runtime')
+    expect(wrapper.find('.authority-effective').exists()).toBe(false)
+    expect(wrapper.findAll('button').map(item => item.text())).not.toContain('Revoke rights')
+    expect(http.post).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps stopped relational applications distinct from unconfirmed runtime evidence', async () => {
+    http.get.mockResolvedValue({ data: { ...relationalStatus(), installation_enabled: false, installation_status: 'disabled' } })
+    const wrapper = await open()
+    expect(wrapper.find('.authority-status').text()).toContain('Rights saved, application stopped')
+    expect(wrapper.find('.authority-runtime').exists()).toBe(true)
+    expect(http.post).not.toHaveBeenCalled()
+  })
+
+  it('explains relational runtime evidence and review limits in Bulgarian', async () => {
+    locale.language = 'bg'
+    http.get.mockResolvedValue({ data: relationalStatus() })
+    http.post.mockResolvedValue({ data: relationalPlan() })
+    const wrapper = await open()
+    expect(wrapper.text()).toContain('SQL runtime не е потвърден')
+    expect(wrapper.text()).toContain('Прилагането на права не стартира, мигрира или поправя runtime-а')
+    await button(wrapper, 'Прегледай заявения достъп').trigger('click'); await flushPromises()
+    expect(wrapper.text()).toContain('Собствена SQL база на приложението')
+    expect(wrapper.text()).toContain('Максимален размер на базата')
+    expect(wrapper.text()).toContain('Артефакт на службата · SHA-256')
+    expect(wrapper.text()).toContain('1048576 байта')
+    expect(button(wrapper, 'Одобри прегледа').attributes('disabled')).toBeDefined()
+  })
+
   it.each(['compatibility', 'enforced', 'review_required'])('shows actual %s status with a missing key and no adoption actions', async mode => {
     http.get.mockResolvedValue({ data: { ...status(), mode, review_available: false,
       review_blockers: ['review_key_unavailable'], scopes: [], native_reviews: [],

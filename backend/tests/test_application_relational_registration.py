@@ -350,9 +350,10 @@ def test_duplicate_request_id_cannot_select_a_different_uploaded_package(fresh):
 
 def test_unsupported_platform_declaration_rolls_back_inert_registration(fresh):
     definition = fresh.validated.application_extension.model_dump(mode="json")
-    definition["platform_permissions"] = ["installation.identity.read"]
+    # Public identity reads now have a scoped adapter; signing/proof still does not.
+    definition["platform_permissions"] = ["installation.identity.prove"]
     manifest = fresh.validated.manifest.model_dump(mode="json")
-    manifest["permissions"].append("installation.identity.read")
+    manifest["permissions"].append("installation.identity.prove")
     output = io.BytesIO()
     with zipfile.ZipFile(fresh.archive) as old, zipfile.ZipFile(output, "w") as target:
         target.writestr("manifest.json", json.dumps(manifest))

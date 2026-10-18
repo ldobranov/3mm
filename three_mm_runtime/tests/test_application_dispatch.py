@@ -9,8 +9,10 @@ import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
 
+import backend.database  # Register all ORM relationships for standalone runs.
 from three_mm_runtime import application_transport as transport
 from three_mm_protocol.application_extension import ApplicationStorageV1
+from backend.db.module import ApplicationExtensionInstallation
 from backend.services import application_extensions as gateway
 
 
@@ -97,11 +99,14 @@ class ApplicationDispatchTests(unittest.TestCase):
 
     def invoke_job(self, *, before_dispatch=None):
         (self.root / ('a'*24 + '.key')).write_bytes(self.secret)
-        app = SimpleNamespace(enabled=True, status='active', instance_id='a'*24, socket_path=str(self.path))
-        operation = SimpleNamespace(operation_id='job', audiences=['internal'], idempotency='required',
+        app = ApplicationExtensionInstallation(enabled=True, status='active', authority_mode='compatibility',
+            instance_id='a'*24, socket_path=str(self.path))
+        operation = SimpleNamespace(operation_id='job', kind='job', audiences=['internal'], idempotency='required',
             input_schema={}, output_schema={'properties': {'done': {'type': 'boolean'}}, 'required': ['done']}, timeout_seconds=0.1)
         storage = ApplicationStorageV1(schema_revision='0001', migration_entrypoint='fixture:migrations')
-        with patch.object(gateway, 'load_application_definition', return_value=SimpleNamespace(operations=[operation], storage=storage)):
+        package = SimpleNamespace(compiled_ui=None, application_extension=SimpleNamespace(
+            operations=[operation], storage=storage, public_http_routes=[]))
+        with patch.object(gateway, 'load_application_package', return_value=package):
             return gateway.invoke_application(app, object(), SimpleNamespace(key_root=self.root), 'job', {},
                 {'idempotency_key': 'stable'}, required_audience='internal', require_ready=True, before_dispatch=before_dispatch)
 

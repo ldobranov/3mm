@@ -14,6 +14,10 @@ const inputId = useId()
 const base = `/api/v1/application-extensions/${encodeURIComponent(props.moduleId)}/authority`
 const status = ref<AuthorityStatus | null>(null)
 const plan = ref<AuthorityPlan | null>(null)
+// A changed selection keeps the public cards, never an approvable old plan.
+const peerDraft = ref<AuthorityPlan | null>(null)
+const selectedPeers = ref<string[]>([])
+const peerReview = computed(() => plan.value || peerDraft.value)
 const nativeId = ref('')
 const busy = ref(false)
 const acknowledged = ref(false)
@@ -33,11 +37,22 @@ const reviewAvailable = computed(() => !!status.value && status.value.review_ava
 const canReview = computed(() => reviewAvailable.value && !!nativeId.value && !busy.value)
 const canDecide = computed(() => !!plan.value && !busy.value && !expired.value)
 const canRevoke = computed(() => reviewAvailable.value && status.value?.grant_state === 'active' && !!status.value.grant_record_revision && !busy.value)
+const relationalUnconfirmed = computed(() => status.value?.runtime_blockers?.includes('relational_runtime_unavailable') === true)
+const peerUnconfirmed = computed(() => status.value?.runtime_blockers?.includes('peer_read_runtime_unavailable') === true)
 const statusLabel = computed(() => !reviewAvailable.value && status.value?.mode !== 'compatibility' ? 'statusOnly'
   : status.value?.mode === 'compatibility' ? 'compatAccess' : status.value?.grant_effective ? 'effective'
-  : status.value?.grant_state === 'active' && !status.value.installation_enabled ? 'inactive' : 'stale')
+  : status.value?.grant_state !== 'active' ? 'stale' : !status.value.installation_enabled ? 'inactive'
+  : peerUnconfirmed.value ? 'peerUnconfirmed' : relationalUnconfirmed.value ? 'relationalUnconfirmed' : 'stale')
 
-function clearReview() { plan.value = null; acknowledged.value = false; deadline = 0; confirmRevoke.value = false }
+function clearReview() { plan.value = null; peerDraft.value = null; acknowledged.value = false; deadline = 0; confirmRevoke.value = false }
+function selectPeer(scope: string, event: Event) {
+  const reviewed = peerReview.value
+  if (!reviewed || busy.value || reviewed.state !== 'review_required'
+    || !status.value?.scopes.includes(scope)) return
+  const checked = (event.target as HTMLInputElement).checked
+  selectedPeers.value = checked ? [...new Set([...selectedPeers.value, scope])] : selectedPeers.value.filter(item => item !== scope)
+  clearReview(); peerDraft.value = reviewed; notice.value = null; error.value = null
+}
 function failure(cause: unknown, mutation = false): AuthorityLabel {
   const response = (cause as { response?: { status?: number; data?: { detail?: { code?: string } } } })?.response
   switch (response?.data?.detail?.code) {
@@ -55,6 +70,7 @@ async function loadStatus(currentGeneration = generation) {
   if (currentGeneration !== generation) return
   const current = readAuthorityStatus(response.data)
   status.value = current
+  selectedPeers.value = [] // Every fresh status begins with explicit opt-in.
   if (!current.native_reviews.some(item => item.native_review_id === nativeId.value)) {
     nativeId.value = current.native_reviews[0]?.native_review_id || ''
   }
@@ -69,14 +85,15 @@ async function refresh() {
 }
 async function createReview() {
   if (!canReview.value || !status.value) return
+  const requested = status.value.scopes.filter(scope => !scope.startsWith('peer:') || selectedPeers.value.includes(scope))
   clearReview(); error.value = null; notice.value = null; busy.value = true
   const current = generation, started = Date.now()
   try {
     const response = await http.post(base + '/reviews', {
-      request_id: authorityRequestId(), native_review_id: nativeId.value, scopes: [...status.value.scopes],
+      request_id: authorityRequestId(), native_review_id: nativeId.value, scopes: requested,
     }, { timeout: 12000 })
     if (current !== generation) return
-    plan.value = readAuthorityPlan(response.data, status.value, props.moduleId)
+    plan.value = readAuthorityPlan(response.data, status.value, props.moduleId, requested)
     deadline = started + plan.value.expires_in_seconds * 1000
     now.value = Date.now()
   } catch (cause) { if (current === generation) { clearReview(); error.value = failure(cause, true) } }
@@ -161,6 +178,8 @@ onMounted(refresh)
         </div>
         <div class="authority-artifact"><span class="ui-help">{{ label('digest') }}</span><code>{{ status.artifact_sha256 }}</code></div>
         <p v-for="blocker in status.review_blockers || []" :key="blocker" class="authority-note" role="status">{{ label(blocker === 'review_key_unavailable' ? 'reviewKeyUnavailable' : 'unsupportedStatus') }}</p>
+        <p v-if="relationalUnconfirmed" class="authority-note authority-runtime" role="status">{{ label('relationalRuntime') }}</p>
+        <p v-if="peerUnconfirmed" class="authority-note authority-runtime" role="status">{{ label('peerRuntime') }}</p>
         <p v-if="reviewAvailable && status.mode === 'compatibility'" class="authority-note">{{ label(adoptionBlocked ? 'adoption' : 'adoptionReady') }}</p>
         <p v-if="reviewAvailable && !status.native_reviews.length" class="ui-help">{{ label('noNative') }}</p>
         <div v-else-if="reviewAvailable" class="authority-chooser ui-field">
@@ -168,12 +187,69 @@ onMounted(refresh)
           <select :id="inputId" class="ui-control" v-model="nativeId" :disabled="busy || !!plan" @change="clearReview">
             <option v-for="review in status.native_reviews" :key="review.native_review_id" :value="review.native_review_id">{{ review.native_review_id }}</option>
           </select>
-          <UiButton v-if="!plan" class="authority-create" :disabled="!canReview" @click="createReview">{{ label('create') }}</UiButton>
+          <UiButton v-if="!plan" class="authority-create" :disabled="!canReview" @click="createReview">{{ label(peerDraft ? 'reviewSelection' : 'create') }}</UiButton>
         </div>
       </template>
+      <section v-if="peerReview?.resources.peer_reads?.length" class="authority-resources authority-peer-choices" :aria-label="label('peerReads')">
+        <h4>{{ label('peerReads') }}</h4>
+        <p class="ui-help">{{ label('peerBoundary') }}</p>
+        <p class="ui-help">{{ label('peerSelection') }}</p>
+        <p v-if="peerDraft" class="authority-note" role="status">{{ label('selectionChanged') }}</p>
+        <article v-for="peer in peerReview.resources.peer_reads" :key="peer.declaration.binding_id" class="authority-resource authority-peer-read">
+          <label class="ui-check authority-peer-choice">
+            <input type="checkbox" :checked="selectedPeers.includes(`peer:${peer.declaration.binding_id}:read`)"
+              :disabled="busy || peerReview.state !== 'review_required' || !!plan && expired"
+              @change="selectPeer(`peer:${peer.declaration.binding_id}:read`, $event)" />
+            <span>{{ label('peerRead') }} · <code>{{ peer.declaration.binding_id }}</code></span>
+          </label>
+          <span class="ui-badge authority-peer-selection">{{ label(selectedPeers.includes(`peer:${peer.declaration.binding_id}:read`) ? 'peerSelected' : 'peerUnselected') }}</span>
+          <code>peer:{{ peer.declaration.binding_id }}:read</code>
+          <dl class="authority-file-limits">
+            <dt>{{ label('fileOwner') }}</dt><dd>{{ peer.owner.module_id }} · #{{ peer.owner.application_installation_id }}</dd>
+            <dt>{{ label('peerDirection') }}</dt><dd>{{ label('peerOutbound') }}</dd>
+            <dt>{{ label('statusLink') }}</dt><dd><code>{{ peer.peer_id }}</code></dd>
+            <dt>{{ label('statusReceiver') }}</dt><dd><code>{{ peer.receiver_identity.installation_id }}</code></dd>
+            <dt>{{ label('statusOrigin') }}</dt><dd><code>{{ peer.origin }}</code></dd>
+            <dt>{{ label('statusTarget') }}</dt><dd><code>{{ peer.target_module_id }}</code></dd>
+            <dt>{{ label('statusRevision') }}</dt><dd>{{ peer.consent_revision }}</dd>
+            <dt>{{ label('statusSummary') }}</dt><dd>{{ peer.consent.summary_fields.join(', ') || label('statusNone') }}</dd>
+            <dt>{{ label('statusNodes') }}</dt><dd><ul v-if="peer.consent.node_ids.length" class="authority-status-nodes"><li v-for="node in peer.consent.node_ids" :key="node"><code>{{ node }}</code></li></ul><span v-else>{{ label('statusNone') }}</span></dd>
+            <dt>{{ label('statusFields') }}</dt><dd>{{ peer.consent.node_fields.join(', ') || label('statusNone') }}</dd>
+          </dl>
+          <details class="authority-file-binding">
+            <summary tabindex="0">{{ label('fileBinding') }}</summary>
+            <dl class="authority-file-limits">
+              <dt>{{ label('peerVersion') }}</dt><dd>{{ peer.peer_version }}</dd>
+              <dt>{{ label('peerConfig') }}</dt><dd><code>{{ peer.declaration.peer_id_config_key }}</code></dd>
+              <dt>{{ label('fileCore') }}</dt><dd><code>{{ peer.owner.core_installation_id }}</code></dd>
+              <dt>{{ label('fileIncarnation') }}</dt><dd><code>{{ peer.owner.incarnation }}</code></dd>
+              <dt>{{ label('statusInstance') }}</dt><dd><code>{{ peer.application_instance_id }}</code></dd>
+              <dt>{{ label('digest') }}</dt><dd><code>{{ peer.package_artifact_sha256 }}</code></dd>
+              <dt>{{ label('serviceDigest') }}</dt><dd><code>{{ peer.service_artifact_sha256 }}</code></dd>
+              <template v-if="peer.enrollment_metadata">
+                <dt>{{ label('peerIntent') }}</dt><dd><code>{{ peer.enrollment_metadata.application_intent }}</code></dd>
+                <dt>{{ label('peerMetadataHash') }}</dt><dd><code>{{ peer.enrollment_metadata.metadata_hash }}</code></dd>
+              </template>
+            </dl>
+            <template v-for="pin in (['sender_identity', 'receiver_identity'] as const)" :key="pin">
+              <h6 class="authority-pin-heading">{{ label(pin === 'sender_identity' ? 'statusSender' : 'statusReceiverIdentity') }}</h6>
+              <dl class="authority-file-limits">
+                <dt>{{ label('identityVersion') }}</dt><dd>{{ peer[pin].identity_version }}</dd>
+                <dt>{{ label('fileCore') }}</dt><dd><code>{{ peer[pin].installation_id }}</code></dd>
+                <dt>{{ label('identityAlgorithm') }}</dt><dd>{{ peer[pin].algorithm }}</dd>
+                <dt>{{ label('identityKeyId') }}</dt><dd><code>{{ peer[pin].key_id }}</code></dd>
+                <dt>{{ label('identityPublicKey') }}</dt><dd><code>{{ peer[pin].public_key }}</code></dd>
+                <dt>{{ label('identityGeneration') }}</dt><dd>{{ peer[pin].key_generation }}</dd>
+                <dt>{{ label('identityCreated') }}</dt><dd><code>{{ peer[pin].created_at }}</code></dd>
+              </dl>
+            </template>
+          </details>
+        </article>
+        <UiButton v-if="peerDraft" class="authority-create" :disabled="!canReview" @click="createReview">{{ label('reviewSelection') }}</UiButton>
+      </section>
       <section v-if="plan" class="authority-review-plan ui-stack" :aria-label="label('review')">
         <div class="authority-review-heading"><h3>{{ label('review') }}</h3><small class="ui-help">{{ label('expires') }} {{ remaining }} {{ label('seconds') }}</small></div>
-        <p class="ui-help">{{ label('fullBindings') }}</p>
+        <p class="ui-help">{{ label(plan.resources.peer_reads?.length ? 'peerSelection' : 'fullBindings') }}</p>
         <p v-if="expired" class="authority-error" role="alert">{{ label('expired') }}</p>
         <template v-for="kind in (['commands', 'connectors', 'events', 'publications'] as const)" :key="kind">
           <div v-if="plan.resources[kind]?.length" class="authority-resources">
@@ -207,7 +283,129 @@ onMounted(refresh)
             </details>
           </article>
         </div>
-        <p v-if="!plan.scopes.length" class="ui-help">{{ label('empty') }}</p>
+        <div v-if="plan.resources.relational?.length" class="authority-resources">
+          <h4>{{ label('relational') }}</h4>
+          <p class="ui-help">{{ label('relationalBoundary') }}</p>
+          <article v-for="database in plan.resources.relational" :key="database.operation" class="authority-resource authority-relational">
+            <h5>{{ label(database.operation === 'read' ? 'relationalRead' : 'relationalWrite') }}</h5>
+            <code>storage:relational_{{ database.operation }}</code>
+            <dl class="authority-file-limits">
+              <dt>{{ label('fileOwner') }}</dt><dd>{{ database.owner.module_id }} · #{{ database.owner.application_installation_id }}</dd>
+              <dt>{{ label('fileMode') }}</dt><dd>{{ label(database.declaration.mode === 'read' ? 'fileReadOnly' : 'fileReadWrite') }}</dd>
+              <dt>{{ label('relationalSchema') }}</dt><dd><code>{{ database.schema_revision }}</code></dd>
+              <dt>{{ label('relationalMigration') }}</dt><dd><code>{{ database.migration_entrypoint }}</code></dd>
+              <dt>{{ label('relationalProfile') }}</dt><dd><code>{{ database.resource_profile }}</code></dd>
+              <dt>{{ label('relationalContract') }}</dt><dd>{{ database.declaration.contract_version }}</dd>
+              <dt>{{ label('relationalLimits') }}</dt><dd><code>{{ database.declaration.limit_class }}</code></dd>
+              <dt>{{ label('relationalDatabase') }}</dt><dd>{{ database.declaration.max_database_bytes }} {{ label('fileBytes') }}</dd>
+              <dt>{{ label('relationalAuxiliary') }}</dt><dd>{{ database.declaration.auxiliary_pause_bytes }} {{ label('fileBytes') }}</dd>
+              <dt>{{ label('relationalStatement') }}</dt><dd>{{ database.declaration.max_statement_bytes }} {{ label('fileBytes') }}</dd>
+              <dt>{{ label('relationalValue') }}</dt><dd>{{ database.declaration.max_value_bytes }} {{ label('fileBytes') }}</dd>
+              <dt>{{ label('relationalResult') }}</dt><dd>{{ database.declaration.max_result_bytes }} {{ label('fileBytes') }}</dd>
+              <dt>{{ label('relationalRows') }}</dt><dd>{{ database.declaration.max_result_rows }}</dd>
+              <dt>{{ label('relationalTransaction') }}</dt><dd>{{ database.declaration.max_transaction_ms }} {{ label('milliseconds') }}</dd>
+              <dt>{{ label('relationalBusy') }}</dt><dd>{{ database.declaration.max_busy_ms }} {{ label('milliseconds') }}</dd>
+            </dl>
+            <details class="authority-file-binding">
+              <summary tabindex="0">{{ label('fileBinding') }}</summary>
+              <dl class="authority-file-limits">
+                <dt>{{ label('fileCore') }}</dt><dd><code>{{ database.owner.core_installation_id }}</code></dd>
+                <dt>{{ label('fileIncarnation') }}</dt><dd><code>{{ database.owner.incarnation }}</code></dd>
+                <dt>{{ label('digest') }}</dt><dd><code>{{ database.package_artifact_sha256 }}</code></dd>
+                <dt>{{ label('serviceDigest') }}</dt><dd><code>{{ database.service_artifact_sha256 }}</code></dd>
+              </dl>
+            </details>
+          </article>
+        </div>
+        <div v-if="plan.resources.checkpoints?.length" class="authority-resources">
+          <h4>{{ label('checkpoints') }}</h4>
+          <p class="ui-help">{{ label('checkpointBoundary') }}</p>
+          <article v-for="checkpoint in plan.resources.checkpoints" :key="`${checkpoint.declaration.checkpoint_id}:${checkpoint.operation}`" class="authority-resource authority-checkpoint">
+            <h5>{{ label(checkpoint.operation === 'read' ? 'checkpointRead' : 'checkpointWrite') }} · {{ checkpoint.declaration.checkpoint_id }}</h5>
+            <code>checkpoint:{{ checkpoint.declaration.checkpoint_id }}:{{ checkpoint.operation }}</code>
+            <dl class="authority-file-limits">
+              <dt>{{ label('checkpointId') }}</dt><dd><code>{{ checkpoint.declaration.checkpoint_id }}</code></dd>
+              <dt>{{ label('fileOwner') }}</dt><dd>{{ checkpoint.owner.module_id }} · #{{ checkpoint.owner.application_installation_id }}</dd>
+              <dt>{{ label('fileMode') }}</dt><dd>{{ label(checkpoint.declaration.mode === 'read' ? 'fileReadOnly' : 'fileReadWrite') }}</dd>
+              <dt>{{ label('relationalContract') }}</dt><dd>{{ checkpoint.declaration.contract_version }}</dd>
+              <dt>{{ label('checkpointMaximum') }}</dt><dd>{{ checkpoint.declaration.max_value_bytes }} {{ label('fileBytes') }}</dd>
+            </dl>
+            <details class="authority-file-binding">
+              <summary tabindex="0">{{ label('fileBinding') }}</summary>
+              <dl class="authority-file-limits">
+                <dt>{{ label('fileCore') }}</dt><dd><code>{{ checkpoint.owner.core_installation_id }}</code></dd>
+                <dt>{{ label('fileIncarnation') }}</dt><dd><code>{{ checkpoint.owner.incarnation }}</code></dd>
+                <dt>{{ label('digest') }}</dt><dd><code>{{ checkpoint.package_artifact_sha256 }}</code></dd>
+              </dl>
+            </details>
+          </article>
+        </div>
+        <div v-if="plan.resources.identities?.length" class="authority-resources">
+          <h4>{{ label('identities') }}</h4>
+          <p class="ui-help">{{ label('identityBoundary') }}</p>
+          <article v-for="identityResource in plan.resources.identities" :key="identityResource.operation" class="authority-resource authority-identity">
+            <h5>{{ label('identityRead') }}</h5>
+            <code>platform:{{ identityResource.operation }}</code>
+            <dl class="authority-file-limits">
+              <dt>{{ label('fileOwner') }}</dt><dd>{{ identityResource.owner.module_id }} · #{{ identityResource.owner.application_installation_id }}</dd>
+              <dt>{{ label('identityVersion') }}</dt><dd>{{ identityResource.identity.identity_version }}</dd>
+              <dt>{{ label('fileCore') }}</dt><dd><code>{{ identityResource.identity.installation_id }}</code></dd>
+              <dt>{{ label('identityAlgorithm') }}</dt><dd><code>{{ identityResource.identity.algorithm }}</code></dd>
+              <dt>{{ label('identityKeyId') }}</dt><dd><code>{{ identityResource.identity.key_id }}</code></dd>
+              <dt>{{ label('identityPublicKey') }}</dt><dd><code>{{ identityResource.identity.public_key }}</code></dd>
+              <dt>{{ label('identityGeneration') }}</dt><dd>{{ identityResource.identity.key_generation }}</dd>
+              <dt>{{ label('identityCreated') }}</dt><dd><code>{{ identityResource.identity.created_at }}</code></dd>
+            </dl>
+            <details class="authority-file-binding">
+              <summary tabindex="0">{{ label('fileBinding') }}</summary>
+              <dl class="authority-file-limits">
+                <dt>{{ label('fileIncarnation') }}</dt><dd><code>{{ identityResource.owner.incarnation }}</code></dd>
+                <dt>{{ label('digest') }}</dt><dd><code>{{ identityResource.package_artifact_sha256 }}</code></dd>
+              </dl>
+            </details>
+          </article>
+        </div>
+        <div v-if="plan.resources.status_projections?.length" class="authority-resources">
+          <h4>{{ label('statusProjections') }}</h4>
+          <p class="ui-help">{{ label('statusBoundary') }}</p>
+          <article v-for="projection in plan.resources.status_projections" :key="projection.link_id" class="authority-resource authority-status-projection">
+            <h5>{{ label('statusRead') }}</h5>
+            <code>status:{{ projection.link_id }}:read</code>
+            <dl class="authority-file-limits">
+              <dt>{{ label('fileOwner') }}</dt><dd>{{ projection.owner.module_id }} · #{{ projection.owner.application_installation_id }}</dd>
+              <dt>{{ label('statusReceiver') }}</dt><dd><code>{{ projection.receiver_identity.installation_id }}</code></dd>
+              <dt>{{ label('statusOrigin') }}</dt><dd><code>{{ projection.origin }}</code></dd>
+              <dt>{{ label('statusTarget') }}</dt><dd><code>{{ projection.target_module_id }}</code></dd>
+              <dt>{{ label('statusRevision') }}</dt><dd>{{ projection.consent_revision }}</dd>
+              <dt>{{ label('statusSummary') }}</dt><dd>{{ projection.consent.summary_fields.join(', ') || label('statusNone') }}</dd>
+              <dt>{{ label('statusNodes') }}</dt><dd><ul v-if="projection.consent.node_ids.length" class="authority-status-nodes"><li v-for="node in projection.consent.node_ids" :key="node"><code>{{ node }}</code></li></ul><span v-else>{{ label('statusNone') }}</span></dd>
+              <dt>{{ label('statusFields') }}</dt><dd>{{ projection.consent.node_fields.join(', ') || label('statusNone') }}</dd>
+            </dl>
+            <details class="authority-file-binding">
+              <summary tabindex="0">{{ label('fileBinding') }}</summary>
+              <dl class="authority-file-limits">
+                <dt>{{ label('statusLink') }}</dt><dd><code>{{ projection.link_id }}</code></dd>
+                <dt>{{ label('fileCore') }}</dt><dd><code>{{ projection.owner.core_installation_id }}</code></dd>
+                <dt>{{ label('fileIncarnation') }}</dt><dd><code>{{ projection.owner.incarnation }}</code></dd>
+                <dt>{{ label('statusInstance') }}</dt><dd><code>{{ projection.application_instance_id }}</code></dd>
+                <dt>{{ label('digest') }}</dt><dd><code>{{ projection.package_artifact_sha256 }}</code></dd>
+              </dl>
+              <template v-for="pin in (['sender_identity', 'receiver_identity'] as const)" :key="pin">
+                <h6 class="authority-pin-heading">{{ label(pin === 'sender_identity' ? 'statusSender' : 'statusReceiverIdentity') }}</h6>
+                <dl class="authority-file-limits">
+                  <dt>{{ label('identityVersion') }}</dt><dd>{{ projection[pin].identity_version }}</dd>
+                  <dt>{{ label('fileCore') }}</dt><dd><code>{{ projection[pin].installation_id }}</code></dd>
+                  <dt>{{ label('identityAlgorithm') }}</dt><dd>{{ projection[pin].algorithm }}</dd>
+                  <dt>{{ label('identityKeyId') }}</dt><dd><code>{{ projection[pin].key_id }}</code></dd>
+                  <dt>{{ label('identityPublicKey') }}</dt><dd><code>{{ projection[pin].public_key }}</code></dd>
+                  <dt>{{ label('identityGeneration') }}</dt><dd>{{ projection[pin].key_generation }}</dd>
+                  <dt>{{ label('identityCreated') }}</dt><dd><code>{{ projection[pin].created_at }}</code></dd>
+                </dl>
+              </template>
+            </details>
+          </article>
+        </div>
+        <p v-if="!plan.scopes.length" class="ui-help">{{ label(plan.resources.peer_reads?.length ? 'peerEmpty' : 'empty') }}</p>
         <label v-if="plan.state === 'review_required'" class="ui-check authority-acknowledge">
           <input type="checkbox" v-model="acknowledged" :disabled="busy || expired" />{{ label('acknowledge') }}
         </label>
@@ -255,7 +453,12 @@ onMounted(refresh)
 .authority-resource { min-width: 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); background: var(--ui-surface-alt); padding: calc(var(--ui-space) * 3); }
 .authority-resource h5 { font-size: .95em; margin: 0 0 calc(var(--ui-space) * 2); overflow-wrap: anywhere; }
 .authority-resource pre { margin: 0; font-size: .8em; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; color: var(--ui-text-secondary); }
-.authority-file code { font-size: .8em; color: var(--ui-text-secondary); overflow-wrap: anywhere; }
+.authority-file code, .authority-relational code, .authority-checkpoint code, .authority-identity code, .authority-status-projection code, .authority-peer-read code { font-size: .8em; color: var(--ui-text-secondary); overflow-wrap: anywhere; }
+.authority-peer-choice { align-items: flex-start; margin: 0 0 calc(var(--ui-space) * 2); overflow-wrap: anywhere; }
+.authority-peer-choice code { font-size: 1em; }
+.authority-peer-selection { margin: 0 calc(var(--ui-space) * 2) var(--ui-space) 0; }
+.authority-status-nodes { margin: 0; padding-left: 1.1em; max-height: 12rem; overflow: auto; }
+.authority-pin-heading { font-size: .9em; margin: calc(var(--ui-space) * 4) 0 0; }
 .authority-file-limits { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--ui-space) calc(var(--ui-space) * 3); margin: calc(var(--ui-space) * 3) 0 0; font-size: .9em; }
 .authority-file-limits dt { font-weight: 500; color: var(--ui-text-secondary); }
 .authority-file-limits dd { margin: 0; overflow-wrap: anywhere; }

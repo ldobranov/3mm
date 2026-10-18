@@ -6,34 +6,35 @@
       Label
       <input v-model.trim="label" maxlength="120" />
     </label>
-    <button type="button" :disabled="!label || busy" @click="submit">Submit</button>
+    <button type="button" :disabled="!label || busy || unconfirmed" @click="submit">Submit</button>
     <p v-if="message" role="status">{{ message }}</p>
   </main>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { ApplicationHostError, useApplicationHost } from '@3mm/application-ui/v1'
 
+const host = useApplicationHost()
+const unconfirmed = ref(false)
 const label = ref('')
 const busy = ref(false)
 const message = ref('')
 
 async function submit() {
+  if (busy.value || unconfirmed.value) return
   busy.value = true
   message.value = ''
+  const requestId = crypto.randomUUID()
   try {
-    const token = localStorage.getItem('applicationKioskToken') || ''
-    const response = await fetch('/api/v1/application-extensions/org.3mm.application-reference/kiosk/operations/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ payload: { label: label.value }, idempotency_key: crypto.randomUUID() }),
-    })
-    if (!response.ok) throw new Error('Registration failed')
-    const result = await response.json()
+    const result = await host.invoke('register', { label: label.value }, { idempotencyKey: requestId })
     message.value = `Created ${result.record_id}`
     label.value = ''
   } catch (error) {
-    message.value = error instanceof Error ? error.message : 'Registration failed'
+    unconfirmed.value = error instanceof ApplicationHostError && ['unconfirmed', 'disposed'].includes(error.code)
+    message.value = unconfirmed.value
+      ? `Outcome unconfirmed. Preserve request ${requestId} for review; do not resubmit.`
+      : error instanceof Error ? error.message : 'Registration failed'
   } finally {
     busy.value = false
   }

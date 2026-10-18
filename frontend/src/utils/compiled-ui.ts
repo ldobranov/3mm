@@ -24,6 +24,7 @@ export interface CompiledUiPackage {
   name: string
   version: string
   source_sha256: string
+  built_ui_sha256?: string
   styles: string[]
   entrypoints: CompiledUiEntrypoint[]
 }

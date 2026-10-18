@@ -1,4 +1,4 @@
-# Extension Platform v2 — beta.50 test acceptance
+# Extension Platform v2 — beta.52 test acceptance
 
 Status: test-release checklist, not completed live acceptance or WP4 closure.
 
@@ -11,6 +11,13 @@ relational-storage foundation: exact grants, signed admission/atomic receipts,
 explicit protected preparation/recovery and normal SDK execution for a verified
 prepared database. It does not finish WP4, new-artifact staging/adoption, WP5 isolation,
 remote distribution or commercial entitlement work.
+
+Beta.52 additionally carries exact checkpoint, existing public identity,
+consent-bound local-status and outbound peer-read adapters, plus the public
+application UI host and exact-build reviewed UI profile. These are opt-in
+resource/native reviews, not an automatic conversion of installed applications.
+The current [closeout checklist](EXTENSION_PLATFORM_V2_WP4_CLOSEOUT.md) records
+local integration evidence and the remaining common Standalone/Hub acceptance.
 
 Existing applications remain in compatibility mode. Updating Core does not grant
 new resources, adopt applications or record executable code as trusted. First
@@ -28,7 +35,7 @@ separate uploads. Publication does not update the VM, Hub or Zero.
    off-device. Record the installed release and local Agent device ID. Snapshot
    the VM as an independent fallback; do not keep two active clones with one identity.
 2. After all seven release assets are published, select Beta in System Updates,
-   stage `v0.3.0-beta.50`, review preflight and explicitly install that version.
+   stage `v0.3.0-beta.52`, review preflight and explicitly install that version.
    If an earlier failed relational preparation left a recovery checkpoint,
    encrypted backup/restore is blocked. Preserve its evidence and a verified VM
    snapshot; an update is not recovery and does not authorize another preparation.
@@ -56,6 +63,7 @@ Read-only console checks after the update:
 
 ```bash
 readlink /opt/3mm/current
+cat /opt/3mm/current/VERSION
 systemctl is-active 3mm-core 3mm-agent 3mm-web 3mm-update-helper
 curl --max-time 10 -fsS http://127.0.0.1:8887/ready
 curl --max-time 10 -fsS http://127.0.0.1:8890/ready

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import object_session
 
 from backend.config import ApplicationRuntimeSettings
@@ -22,7 +23,7 @@ class ApplicationGatewayError(RuntimeError):
         self.retryable = retryable
 
 
-def load_application_definition(package: ModulePackage) -> ApplicationExtensionV1:
+def load_application_package(package: ModulePackage):
     try:
         validated = validate_module_package(Path(package.file_path).read_bytes())
     except ModulePackageError as exc:
@@ -31,7 +32,11 @@ def load_application_definition(package: ModulePackage) -> ApplicationExtensionV
         raise ApplicationGatewayError("Application package is no longer valid") from exc
     if validated.sha256 != package.sha256 or validated.application_extension is None:
         raise ApplicationGatewayError("Application package identity is invalid")
-    return validated.application_extension
+    return validated
+
+
+def load_application_definition(package: ModulePackage) -> ApplicationExtensionV1:
+    return load_application_package(package).application_extension
 
 
 def find_operation(
@@ -100,10 +105,45 @@ def invoke_application(
 ) -> dict[str, object]:
     if not installation.enabled or installation.status != "active":
         raise ApplicationGatewayError("Application extension is not active")
-    definition = load_application_definition(package)
+    validated = load_application_package(package)
+    definition = validated.application_extension
     operation = find_operation(definition, operation_id)
+    if operation.kind == "job" or any(
+        route.handler_operation_id == operation_id
+        for route in definition.public_http_routes
+    ):
+        # These entry paths do not yet have scoped authority adapters. Check at
+        # the shared gateway too: direct callers cannot bypass scheduler/HTTP
+        # gates. An attached Session must not substitute a cached old mode.
+        db = object_session(installation)
+        mode = (
+            db.scalar(
+                select(ApplicationExtensionInstallation.authority_mode).where(
+                    ApplicationExtensionInstallation.id == installation.id
+                )
+            )
+            if db is not None
+            else installation.authority_mode
+        )
+        if mode != "compatibility":
+            raise ApplicationGatewayError(
+                "Operation has no supported scoped resource grant",
+                phase=DispatchPhase.NOT_DISPATCHED,
+            )
     if required_audience not in operation.audiences:
         raise ApplicationGatewayError("Application operation is not available here")
+    if validated.compiled_ui is not None:
+        from backend.services.compiled_ui import application_ui_artifact, CompiledUiBuildError
+        db = object_session(installation)
+        # Refuse unsupported entry paths above without UI filesystem/key I/O.
+        # Compatibility keeps its legacy gateway, including old build outputs.
+        mode = db.scalar(select(ApplicationExtensionInstallation.authority_mode).where(
+            ApplicationExtensionInstallation.id == installation.id)) if db is not None else installation.authority_mode
+        if mode != 'compatibility':
+            try:
+                application_ui_artifact(db, installation, validated)
+            except CompiledUiBuildError as exc:
+                raise ApplicationGatewayError(str(exc), phase=DispatchPhase.NOT_DISPATCHED) from exc
     idempotency_key = context.get("idempotency_key")
     if operation.idempotency == "required" and not isinstance(idempotency_key, str):
         raise ApplicationGatewayError("Application command requires an idempotency key")

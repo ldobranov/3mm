@@ -296,7 +296,9 @@ def dispatch_public_http(
     binding, path_params = resolve_public_route(db, method, path)
     if binding.installation_id is None:
         raise ApplicationPublicWebError("Public HTTP route is not active")
-    installation = db.get(ApplicationExtensionInstallation, binding.installation_id)
+    installation = db.get(
+        ApplicationExtensionInstallation, binding.installation_id, populate_existing=True
+    )
     package = db.get(ModulePackage, binding.package_id)
     if (
         installation is None
@@ -308,6 +310,10 @@ def dispatch_public_http(
         or installation.active_version != package.version
     ):
         raise ApplicationPublicWebError("Public HTTP application is unavailable")
+    if installation.authority_mode != "compatibility":
+        # Registry ownership is not a scoped execution grant. Keep the route
+        # reserved (and other applications usable), but never invoke its code.
+        raise ApplicationPublicWebError("Public HTTP has no supported scoped resource grant")
 
     try:
         request = ApplicationPublicHttpRequestV1.model_validate(

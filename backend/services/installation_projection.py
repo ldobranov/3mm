@@ -1,6 +1,7 @@
 """Consent-first status projection. No credentials/config/capability serializer."""
 
 from datetime import UTC, datetime, timedelta
+from dataclasses import replace
 from pathlib import Path
 
 from sqlalchemy import select, update
@@ -9,12 +10,14 @@ from backend.config import get_settings
 from backend.db.device import Device, DeviceHeartbeat, DeviceInventorySnapshot
 from backend.db.installation_peer import InstallationPeerOutbound
 from backend.services.device_registry import as_utc, is_device_online
-from backend.services.installation_identity import _load_or_create
+from backend.services.installation_status_binding import (
+    ExistingStatusBinding,
+    read_existing_status_binding,
+)
 from backend.version import core_version
 from three_mm_application_sdk import SDK_VERSION
 from three_mm_protocol.installation_peer import (
     InstallationProjectionV1,
-    ProjectionConsentV1,
     ProjectionValueV1,
     ProjectedNodeV1,
 )
@@ -50,7 +53,6 @@ def _timestamp(value):
 def installation_projection(
     db, application, link_id: str, *, now=None
 ) -> InstallationProjectionV1:
-    now = now or datetime.now(UTC)
     if not application.enabled or application.status != "active":
         raise ValueError("Application installation is not active")
     # A database write lock serializes withdrawal with the complete projection.
@@ -66,15 +68,59 @@ def installation_projection(
     ).rowcount
     if changed != 1:
         raise ValueError("Local reporting consent is unavailable or withdrawn")
-    link = db.scalar(
-        select(InstallationPeerOutbound)
-        .where(InstallationPeerOutbound.link_id == link_id)
-        .execution_options(populate_existing=True)
-    )
-    consent = ProjectionConsentV1.model_validate(link.consent)
-    identity, _ = _load_or_create(db)
-    if identity.model_dump(mode="json") != link.sender_identity:
-        raise ValueError("Local installation identity changed")
+    binding = read_existing_status_binding(db, application, link_id)
+    return _project_consented_status(db, binding, now=now)
+
+
+def bound_installation_projection(
+    db, application, expected: ExistingStatusBinding, *, now=None
+) -> InstallationProjectionV1:
+    """Recheck an exact trusted snapshot under the consent row's write lock.
+
+    NOT authorization by itself: the future scoped adapter must hold current
+    Core authority/key leases around this call and commit before releasing them.
+    No network, private key or inner commit is allowed in this local phase.
+    """
+    if type(expected) is not ExistingStatusBinding:
+        raise ValueError("Exact local reporting binding is required")
+    if db.new or db.dirty or db.deleted or db.in_nested_transaction():
+        raise ValueError("Bound status projection requires a clean session")
+    # Only lock the current application instance's live row. Historical links
+    # and caller-chosen replacement receivers cannot inherit a prior binding.
+    changed = db.execute(
+        update(InstallationPeerOutbound)
+        .where(
+            InstallationPeerOutbound.link_id == expected.link_id,
+            InstallationPeerOutbound.module_id == application.module_id,
+            InstallationPeerOutbound.application_instance_id == application.instance_id,
+            InstallationPeerOutbound.state.in_(("new", "pending", "active")),
+        )
+        .values(consent_revision=InstallationPeerOutbound.consent_revision)
+    ).rowcount
+    if changed != 1:
+        raise ValueError("Local reporting consent is unavailable or withdrawn")
+    current = read_existing_status_binding(db, application, expected.link_id)
+
+    def canonical(binding):
+        consent = binding.consent
+        return replace(
+            binding,
+            consent=consent.model_copy(
+                update={
+                    name: tuple(sorted(getattr(consent, name)))
+                    for name in ("summary_fields", "node_ids", "node_fields")
+                }
+            ),
+        )
+
+    if canonical(current) != canonical(expected):
+        raise ValueError("Local reporting binding changed; fresh review is required")
+    return _project_consented_status(db, current, now=now)
+
+
+def _project_consented_status(db, binding, *, now=None):
+    now = now or datetime.now(UTC)
+    consent = binding.consent
     summary = {}
     root = Path(__file__).resolve().parents[2]
     sources = {
@@ -216,8 +262,8 @@ def installation_projection(
                 )
         nodes.append(ProjectedNodeV1(device_id=device_id, fields=fields))
     return InstallationProjectionV1(
-        installation_id=identity.installation_id,
-        consent_revision=link.consent_revision,
+        installation_id=binding.sender_identity.installation_id,
+        consent_revision=binding.consent_revision,
         generated_at=now,
         summary=summary,
         nodes=tuple(nodes),

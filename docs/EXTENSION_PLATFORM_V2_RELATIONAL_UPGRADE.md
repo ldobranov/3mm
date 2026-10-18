@@ -2,8 +2,9 @@
 
 Status: implemented private Core/Root foundation, published-upgrade confirmation
 and witnessed completed-rollback confirmation, explicit partial-restore completion
-and local administrator/helper wiring, delivered in beta.50. This is not live
-upgrade acceptance, a general package installer or WP4 closure. SDK stays 1.3.
+and local administrator/helper wiring, delivered in beta.50, with the historical
+start-evidence fix in beta.51. The bounded owner-VM upgrade/recovery scenario is
+accepted below; this is not a general package installer or WP4 closure. SDK stays 1.3.
 Bounded LOCAL inert adoption of a newer uploaded version is now implemented;
 the browser/general installer adoption path remains closed.
 
@@ -22,7 +23,8 @@ disposable paths. The new adoption integration instead uploads a separate catalo
 version and uses the actual local adoption writer, fresh native review/approval
 and non-root forward migration, without a test-only installation/grant rebind.
 The older worker test seam is not an operator installation procedure.
-The accepted live beta.49 fixture, immutable release and M21 checkout are untouched.
+The isolated foundation work left the accepted live beta.49 fixture, immutable
+release and M21 checkout untouched. Later owner-VM acceptance is recorded below.
 
 ## Bounded local version adoption — beta.50
 
@@ -80,8 +82,10 @@ A repeated identical adoption request can return only the authenticated historic
 metadata receipt; it cannot rebind again or select another package. Any failed
 transaction rolls back provenance, pointers, fencing and reservation together.
 
-This command is not yet deployed to the immutable beta.49 VM. No production/live
-upgrade or interrupted-restore acceptance is inferred from isolated process tests.
+The initial isolated verification below predates deployment to the beta.49 VM.
+Neither those process tests nor release publication imply live acceptance. The
+later bounded owner-VM adoption/upgrade/recovery result is recorded separately;
+live interrupted-restore acceptance is not inferred from it.
 
 ### Separate neutral upgrade candidate
 
@@ -202,7 +206,10 @@ permission restoration, new endpoint, SDK version or Core schema change is added
 This fix is not deployed by editing the immutable VM release. The already issued
 failed activation must first use authenticated inspection and a fresh explicit
 stop/recovery under the fixed helper; it is never redelivered as a new start.
-Live post-upgrade data/runtime acceptance and WP4 closure remain pending.
+The owner subsequently deployed the official beta.51 release and completed this
+explicit recovery/reactivation flow with preserved application data, replay/
+conflict and SDK SQL-boundary checks, as recorded below. Broader WP4 closure
+remains pending.
 
 ## Failure and uncertainty
 
@@ -389,8 +396,8 @@ starts/enables a service, grants access or retries an uncertain operation.
 The separate `adopt-relational-version` command supplies only the bounded stopped
 candidate-binding step, not the general installer/UI. Migration still requires
 the exact target to be freshly reviewed/approved; editing installation/grant rows
-remains unsupported. The current VM's
-immutable beta.49 does not acquire these commands until the beta.50 update.
+remains unsupported. The initial beta.49 VM did not contain these commands; they
+were delivered in beta.50. The later beta.51 owner-VM result is recorded below.
 
 ### Still outside this slice
 
@@ -405,6 +412,75 @@ substitutes and must refuse unknown upgrade markers. General portable restore/
 rekey/account provisioning and broader neutral Standalone/Hub acceptance remain open.
 
 ## Verification
+
+### Owner VM beta.51 — accepted bounded upgrade/recovery, 2026-10-15
+
+Evidence source: the owner's terminal commands/results supplied in this task,
+not an agent-run fault injection or a fresh direct audit of protected VM files.
+Core reports **0.3.0-beta.51**, published commit
+`3a36a7996bac33ed3d883a36687e2fd5df17376e`; Core, Agent, Web and update-helper
+are active and Core `/ready` returns `ready`. The official update was performed
+by the owner, not by modifying immutable release files.
+
+The separately uploaded neutral application is installation **5**, incarnation
+`3e47f86550ad5361135bdea78a8f20be`, module
+`org.3mm.wp4-relational-test`. Its prepared 1.0.0/schema 0001 database was upgraded
+under beta.50 to the reviewed **1.1.0/schema 0002** candidate:
+
+- ZIP: `8358fdccc644d299aacef7af1cc80cef3d34df86ff1fa8de5bea6d0d21ed727c`.
+- Service wheel: `8bed90332035d2f60a8bd54e3f3bc4cd64a5dc702e136b997fb2e88cc29d9783`.
+- Completed upgrade: `25bae0b135f048d7b7a98f7993c8e62a`.
+- Protected lifecycle digest reported by upgrade/recovery/reactivation:
+  `4632ed6fdfa028f16ddf5b729c5b5b9e8999a2e3c36e8efe99b7e4727ab0873f`.
+
+The post-upgrade beta.50 start had refused the retained historical witness.
+Under beta.51, exact local administrator inspection still reported that consumed
+start `6817beedd5a643edada42e5149675198` as `recorded`, revision
+`e3edca4ed6f135094b6ad332626f0583`, with no recovery. It was **not retried**.
+Separate fresh decisions then completed:
+
+| Action | Exact result |
+| --- | --- |
+| Explicit stop/recovery | `826bd0750c6b4d829bbc280bd2af0743`, `stopped_review_required`; subsequent inspection confirms revision `09e381c0a6bac55c21b61689b317bd15` |
+| Pre-start review/approve/apply | Plan `035686014fd62b2ffbd377d0bfaa83d6`, grant revision **14**, record `114a7fb2536c71c6bf2585a6e1f9e435` |
+| Separately consented reactivation | `be0480a402304b8f8e73acbae940b961`, `active_review_required`, boot autostart **false** |
+| Fresh post-start review/approve/apply | Plan `135e12055e7b657a0351b2d0f319b14f`, grant revision **15**, state `applied` |
+
+Both resource reviews pinned the exact candidate/wheel, owner and schema 0002,
+and requested only `storage:relational_read` / `storage:relational_write` under
+the existing cooperative profile. Commands, connectors, events, publications and
+private-file resources were empty. No new executable trust, migration, automatic
+rights restoration or boot enabling was performed in this recovery sequence.
+
+Actual calls through `modules/wp4-relational-test/probe.py` then verified:
+
+- `get` returns `found`, text **`WP4 relational beta50 test`**, SHA-256
+  **`70e62e3db81d22892487c07a199ce1479cfb8c68589dc58f3c0153962ca786ee`**,
+  and **`write_count: 2`**.
+- Old business request `5e963465c882465da737aa771b9cf7f2` is still `found`,
+  explicitly labeled `application_record_not_core_receipt`, with the same hash.
+- Repeating its original text returns `replayed`; using the same ID with
+  `WP4 relational beta51 changed` returns `conflict`. A following `get` retains
+  the original text/hash and count **2**. This is business-effect deduplication,
+  not an exactly-once transport guarantee or proof of a Core SQL receipt;
+  the probe reports `transaction_id: null`.
+- `boundary` returns `blocked` for the fixture's read-session
+  `ATTACH ':memory:'` attempt. A separate subsequent `get` succeeds with the same
+  text/hash/count, so the denial is paired with working current SDK admission.
+  No real foreign file/database was targeted.
+
+Accepted scope: this exact installed-candidate forward-upgrade and historical-
+start recovery/reactivation path, followed by current SDK read, retained business
+record, replay/conflict and SQL-authorizer checks on the owner VM. The shown flow
+does not delete recovery evidence or edit installation/grant rows, and does not
+rerun the consumed activation or the migration.
+
+Not claimed by these outputs: direct byte comparisons of Root witnesses/keys,
+inspection of complete schema history/outbox/private files, live interrupted-
+restore/rollback fault injection, post-upgrade boot enabling/reboot, general
+install/portable restore/rekey/account provisioning, broader Standalone/Hub or
+scoped platform/frontend acceptance. Reviewed-native remains **not a sandbox**;
+the declared cooperative bounds are not OS quotas. **WP4/M20 remain open.**
 
 ### Historical start evidence — 2026-10-15, local post-beta.50 fix
 
@@ -433,9 +509,10 @@ rekey/account provisioning and broader neutral Standalone/Hub acceptance remain 
 Tests ran in private mount namespaces/private `/tmp`, with disposable process
 supervisors, not live VM unit mutations. No production data, key, grant, marker,
 immutable release or M21 checkout was changed by these checks. The fix is included
-in the beta.51 release candidate; full release checks/publication are separate.
-The VM's consumed beta.50 activation still needs its separate authenticated
-inspection/recovery after the fixed helper is deployed.
+in the published beta.51 release after the full release checks recorded in
+[CHANGELOG](../CHANGELOG.md). The later owner-VM scenario above separately records
+authenticated recovery of the consumed beta.50 activation after that update;
+the isolated test results alone are not its live evidence.
 
 ### Local candidate adoption — 2026-10-15
 

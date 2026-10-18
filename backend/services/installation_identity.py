@@ -14,7 +14,8 @@ from types import SimpleNamespace
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend.db.installation_identity import CoreInstallationIdentity
@@ -31,6 +32,44 @@ from three_mm_protocol.installation_identity import (
 
 class InstallationIdentityError(RuntimeError):
     pass
+
+
+def read_existing_installation_identity(db: Session) -> InstallationIdentityV1:
+    """Read an initialized public binding without creating or using a key.
+
+    This is neither possession proof nor a claim that the private key is usable.
+    Its caller owns authorization and the transaction; no commit/rollback or
+    compatibility-mode lazy initialization belongs in this read-only helper.
+    """
+    try:
+        # Explicit projection is intentional: an ORM entity would also select
+        # encrypted_private_key, although public identity does not need it.
+        columns = CoreInstallationIdentity.__table__.c
+        with db.no_autoflush:
+            row = db.execute(
+                select(
+                    columns.installation_id,
+                    columns.identity_version,
+                    columns.key_generation,
+                    columns.key_id,
+                    columns.public_key,
+                    columns.created_at,
+                ).where(columns.singleton_id == 1)
+            ).one_or_none()
+        if row is None:
+            raise ValueError("missing public identity")
+        value = dict(row._mapping)
+        created = value["created_at"]
+        if not isinstance(created, datetime):
+            raise ValueError("invalid public identity timestamp")
+        # SQLite drops tzinfo; the existing column is always stored as UTC.
+        if created.tzinfo is None:
+            value["created_at"] = created.replace(tzinfo=UTC)
+        return InstallationIdentityV1.model_validate(value)
+    except (SQLAlchemyError, ValueError, TypeError, AttributeError, OverflowError) as exc:
+        raise InstallationIdentityError(
+            "Existing installation public identity is unavailable or invalid"
+        ) from exc
 
 
 def _cipher(key: str | None = None) -> Fernet:

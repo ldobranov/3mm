@@ -39,14 +39,16 @@ class Claim:
 def _active(claim):
     return (Installation.id == claim.installation_id, Installation.enabled.is_(True),
             Installation.status == 'active', Installation.module_package_id == claim.package_id,
-            Installation.instance_id == claim.instance_id)
+            Installation.instance_id == claim.instance_id,
+            Installation.authority_mode == 'compatibility')
 
 
 def discover_jobs(db, cache=None):
     cache = cache if cache is not None else {}
     rows = db.execute(select(Installation, ModulePackage).join(ModulePackage,
         ModulePackage.id == Installation.module_package_id).where(
-        Installation.enabled.is_(True), Installation.status == 'active')).all()
+        Installation.enabled.is_(True), Installation.status == 'active',
+        Installation.authority_mode == 'compatibility')).all()
     candidates = []
     states = {(s.application_installation_id, s.job_id): s for s in db.scalars(select(State))}
     for installation, package in rows:
@@ -72,6 +74,7 @@ def claim_job(db, installation_id, package_id, instance_id, job, *, now=None):
     """The installation UPDATE locks before inspecting sibling jobs, across processes."""
     locked = db.execute(update(Installation).where(Installation.id == installation_id,
         Installation.enabled.is_(True), Installation.status == 'active',
+        Installation.authority_mode == 'compatibility',
         Installation.module_package_id == package_id, Installation.instance_id == instance_id)
         .values(updated_at=Installation.updated_at).execution_options(synchronize_session=False)).rowcount
     if not locked:
@@ -131,13 +134,18 @@ def execute_job(db, settings, claim, *, stop=None, now=None):
     if state is None or state.lease_token != claim.token:
         db.rollback()
         return
+    # A mode/lifecycle refusal only cancels a still-live queued claim. It is
+    # never evidence that an expired/unknown external operation did not run.
+    if state.last_outcome != 'running':
+        db.rollback()
+        return
+    if state.lease_until is None or _aware(state.lease_until) <= started:
+        state.last_outcome, state.last_error = 'unknown', 'lease_expired'
+        db.commit()
+        return
     if not active or (stop is not None and stop.is_set()):
         db.execute(update(State).where(State.id == claim.state_id, State.lease_token == claim.token)
             .values(lease_token=None, lease_until=None, last_outcome='cancelled', last_error='lifecycle_changed'))
-        db.commit()
-        return
-    if state.last_outcome != 'running' or state.lease_until is None or _aware(state.lease_until) <= started:
-        state.last_outcome, state.last_error = 'unknown', 'lease_expired'
         db.commit()
         return
     installation = db.get(Installation, claim.installation_id, populate_existing=True)

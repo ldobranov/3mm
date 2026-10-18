@@ -5,6 +5,9 @@ import http from '@/utils/dynamic-http'
 import * as compiledUi from '@/utils/compiled-ui'
 import { mergeNavigationItems } from '@/utils/menu-navigation'
 import type { CompiledUiPackage } from '@/utils/compiled-ui'
+import { defineComponent, h } from 'vue'
+import { mount } from '@vue/test-utils'
+import { useApplicationHost, type ApplicationHost } from '@/extension-ui/application-v1'
 
 
 function applicationPackage(audience: 'public' | 'kiosk' | 'operator' | 'administrator'): CompiledUiPackage {
@@ -31,6 +34,22 @@ function applicationPackage(audience: 'public' | 'kiosk' | 'operator' | 'adminis
 
 
 describe('application compiled routes', () => {
+  it('provides the public host at the actual dynamic route boundary and disposes it on unmount', async () => {
+    let host!: ApplicationHost
+    const child = defineComponent({ setup() { host = useApplicationHost(); return () => h('p', 'Loaded application') } })
+    const loader = vi.spyOn(compiledUi, 'loadCompiledComponent').mockResolvedValue(child)
+    try {
+      const pkg = applicationPackage('operator')
+      const route = compiledRouteRecords([pkg])[0]
+      const component = await (route.component as () => Promise<ReturnType<typeof defineComponent>>)()
+      const wrapper = mount(component)
+      expect(wrapper.text()).toBe('Loaded application')
+      expect(Object.keys(host)).toEqual(['getInfo', 'invoke'])
+      expect(loader).toHaveBeenCalledWith(pkg, pkg.entrypoints[0])
+      wrapper.unmount()
+      await expect(host.getInfo()).rejects.toMatchObject({ code: 'disposed' })
+    } finally { loader.mockRestore() }
+  })
   it('guards appearance preview and recovery with the existing admin boundary', async () => {
     const api = vi.spyOn(http, 'get').mockResolvedValue({ data: { items: [] } })
     const catalog = vi.spyOn(compiledUi, 'getCompiledUiCatalog').mockResolvedValue([])

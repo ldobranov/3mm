@@ -30,7 +30,7 @@ from backend.db.module import (
 )
 from backend.services.application_authority_context import (
     AuthorityArtifact, AuthorityBaseline, AuthorityPrincipal, Digest, ResolvedConnectorScope,
-    ResolvedCredential, ResolvedEventScope, ResolvedPublicationScope, ResolvedPrivateFileScope, ResolvedRelationalScope, StoredConnectorScope, _bounded_json, _canonical_bytes,
+    ResolvedCredential, ResolvedEventScope, ResolvedPublicationScope, ResolvedPrivateFileScope, ResolvedRelationalScope, ResolvedCheckpointScope, ResolvedIdentityScope, ResolvedStatusScope, ResolvedPeerReadScope, StoredConnectorScope, _bounded_json, _canonical_bytes,
 )
 from backend.services.application_authority_inspection import (
     AuthorityInspectionBaseline, _read_baseline,
@@ -115,6 +115,10 @@ class InstalledAuthoritySources(SourceModel):
     publications: tuple[ResolvedPublicationScope, ...] = ()
     private_files: tuple[ResolvedPrivateFileScope, ...] = ()
     relational: tuple[ResolvedRelationalScope, ...] = ()
+    checkpoints: tuple[ResolvedCheckpointScope, ...] = ()
+    identities: tuple[ResolvedIdentityScope, ...] = ()
+    status_projections: tuple[ResolvedStatusScope, ...] = ()
+    peer_reads: tuple[ResolvedPeerReadScope, ...] = ()
     issues: tuple[SourceIssue, ...]
     not_checked: tuple[str, ...] = (
         "candidate_staging_and_configuration_identity", "policy_trust_and_isolation_evidence",
@@ -425,6 +429,57 @@ def _resolve(db, installation_id, pin, package, *, registration_key=None):
         pending.append(SourceIssue(reason="sensor_contract_unresolved"))
     private_files = ()
     relational = ()
+    checkpoints = tuple(ResolvedCheckpointScope(declaration=declaration,
+        owner=principal, package_artifact_sha256=pin.sha256, operation=operation)
+        for declaration in app.checkpoints
+        for operation in (('read', 'write') if declaration.mode == 'read_write' else ('read',)))
+    identities = ()
+    status_projections = ()
+    peer_reads = ()
+    identity_read = "installation.identity.read"
+    status_read = "installation.status.read"
+    # First installed peer profile is read-only OUTBOUND metadata. Receiver
+    # callbacks/business consent, mutations and relational start consent remain
+    # independent unsupported families, not permissions implied by a read.
+    peer_read_profile = bool(app.peer_bindings) and (
+        app.service.sdk_version == "1.3" and app.peer_receiver is None
+        and app.storage.relational is None
+        and all(item.direction == "outbound" and item.operations == ("read",)
+            for item in app.peer_bindings)
+    )
+    peer_permissions = {"installation.peers.enroll"} if peer_read_profile else set()
+    if peer_read_profile:
+        from backend.services.installation_peer_read_sources import read_configured_peer_sources
+
+        try:
+            peer_reads = tuple(item.binding for item in read_configured_peer_sources(
+                db, installation_id, package, allow_stopped=True))
+            if not peer_reads or any(item.owner != principal for item in peer_reads):
+                raise ValueError()
+        except (ValueError, RuntimeError, TypeError, AttributeError):
+            peer_reads = ()
+            pending.append(SourceIssue(reason="peer_authority_unresolved"))
+    if identity_read in app.platform_permissions and app.service.sdk_version == "1.3":
+        from backend.services.installation_identity import read_existing_installation_identity
+
+        try:
+            identity = read_existing_installation_identity(db)
+            identities = (ResolvedIdentityScope(owner=principal, package_artifact_sha256=pin.sha256,
+                operation=identity_read, identity=identity),)
+        except (ValueError, RuntimeError, TypeError, AttributeError):
+            raise _Unavailable("identity_unavailable") from None
+    if status_read in app.platform_permissions and app.service.sdk_version == "1.3":
+        from backend.services.application_status_read import resolve_status_scopes
+
+        application = db.execute(select(
+            ApplicationExtensionInstallation.module_id, ApplicationExtensionInstallation.instance_id,
+            ApplicationExtensionInstallation.enabled, ApplicationExtensionInstallation.status,
+        ).where(ApplicationExtensionInstallation.id == installation_id)).one()
+        try:
+            status_projections = resolve_status_scopes(db, application, principal, pin.sha256)
+        except (ValueError, RuntimeError, TypeError, AttributeError):
+            # Never silently grant an empty/partly resolved requested family.
+            pending.append(SourceIssue(reason="peer_authority_unresolved"))
     if app.storage.relational is not None:
         # Resolve the request only, without opening application SQLite or
         # importing migrations. Runtime/lifecycle remains explicitly blocked.
@@ -448,11 +503,14 @@ def _resolve(db, installation_id, pin, package, *, registration_key=None):
                 for operation in (('read', 'write') if declaration.mode == 'read_write' else ('read',)))
     emitted = {event for operation in app.operations for event in operation.emitted_events}
     publication_complete = bool(publications) and emitted == {item.declaration.event_type for item in publications}
-    if (app.public_http_routes or app.jobs or app.platform_permissions
+    if (app.public_http_routes or app.jobs or set(app.platform_permissions) - {identity_read, status_read} - peer_permissions
+            or {identity_read, status_read} & set(app.platform_permissions) and app.service.sdk_version != "1.3"
             or set(package.manifest.capabilities.provides) - (emitted if publication_complete else set())
             or (emitted or "events.publish" in package.manifest.permissions) and not publication_complete):
         pending.append(SourceIssue(reason="unsupported_scope_family"))
-    if app.peer_receiver is not None or any(permission.startswith("installation.peers.") for permission in app.platform_permissions):
+    if (app.peer_bindings and not peer_read_profile or app.peer_receiver is not None
+            or any(permission.startswith("installation.peers.") and permission not in peer_permissions
+                for permission in app.platform_permissions)):
         pending.append(SourceIssue(reason="peer_authority_unresolved"))
     if package.compiled_ui is not None:
         pending.append(SourceIssue(reason="frontend_authority_unresolved"))
@@ -469,7 +527,8 @@ def _resolve(db, installation_id, pin, package, *, registration_key=None):
         baseline=AuthorityBaseline(artifact=AuthorityArtifact(version=pin.version, sha256=pin.sha256),
             authority_epoch=authority.epoch, grant_revision=grant_revision, enforcement_mode=authority.mode),
         commands=commands, connectors=connectors, events=events, publications=publications,
-        private_files=private_files, relational=relational, issues=tuple(pending))
+        private_files=private_files, relational=relational, checkpoints=checkpoints,
+        identities=identities, status_projections=status_projections, peer_reads=peer_reads, issues=tuple(pending))
     _bounded_json(result.model_dump(mode="json"))  # Total redacted output budget too.
     return result
 

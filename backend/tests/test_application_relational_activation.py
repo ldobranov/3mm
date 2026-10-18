@@ -239,6 +239,96 @@ def test_new_permission_review_between_preparation_and_start_preserves_lineage(
     checkpoint(state, ticket, "finish", receipt=receipt(ticket))
 
 
+@pytest.fixture
+def checkpoint_prepared(stopped, request):
+    """Real v6/v7 sealed review; helper receipts remain the existing unit fixture."""
+    from dataclasses import replace
+
+    from backend.tests.test_application_relational_review_api import store_package
+    from three_mm_protocol.tests.test_application_checkpoints import checkpoint_request
+
+    state = stopped
+    definition = state.validated.application_extension.model_dump(mode="json")
+    definition["checkpoints"] = [checkpoint_request()]
+    version = getattr(request, "param", 6)
+    if version == 7:
+        definition["platform_permissions"] = ["installation.identity.read"]
+        manifest = state.validated.manifest.model_dump(mode="json")
+        manifest["permissions"].append("installation.identity.read")
+        state.validated = replace(
+            state.validated,
+            manifest=type(state.validated.manifest).model_validate(manifest),
+        )
+    store_package(state, definition)
+    proof = native(state)
+    apply(state, proof["native_review_id"])
+    state.native_id = proof["native_review_id"]
+    source = issue_preparation(state)
+    preparation_checkpoint(state, source, "begin")
+    preparation_checkpoint(
+        state,
+        source,
+        "finish",
+        receipt=sign_metadata(
+            SECRET,
+            "preparation_result",
+            {
+                "version": 1,
+                "preparation_id": source["preparation_id"],
+                "lifecycle_sha256": hashlib.sha256(
+                    canonical(prepared_lifecycle(source, SECRET))
+                ).hexdigest(),
+                "outcome": "prepared_not_started",
+            },
+        ),
+    )
+    state.source = source
+    state.subject_version = version
+    return state
+
+
+@pytest.mark.parametrize("checkpoint_prepared", [6, 7], indirect=True)
+@pytest.mark.parametrize(
+    "drift", ["none", "checkpoint_bound", "policy_scope", "future", "boolean", "string"]
+)
+def test_mixed_checkpoint_grant_preserves_exact_historical_start_consent(
+    checkpoint_prepared, drift
+):
+    state = checkpoint_prepared
+    ticket = issue(state, state.source)
+    checkpoint(state, ticket, "begin")
+    with state.keys.locked() as key, Session(state.engine) as db, db.begin():
+        row = db.get(Grant, 1)
+        value = authority._load(db, key, "grant", row, 1)
+        assert value["data"]["subject"]["subject_version"] == state.subject_version
+        if drift == "checkpoint_bound":
+            for scope in value["data"]["subject"]["checkpoints"]:
+                scope["declaration"]["max_value_bytes"] += 1
+        elif drift == "policy_scope":
+            value["data"]["policy"]["allowed_scopes"].append("checkpoint:foreign:read")
+        elif drift != "none":
+            value["data"]["subject"]["subject_version"] = {
+                "future": 8, "boolean": True, "string": str(state.subject_version)
+            }[drift]
+        if drift != "none":
+            # Deliberately authenticated malformed metadata in a disposable DB:
+            # parsing and exact comparison must reject it even with a valid seal.
+            authority._save(db, key, "grant", row, value)
+    if drift != "none":
+        with pytest.raises((authority.AuthorityManagementError, ValueError)):
+            checkpoint(state, ticket, "check")
+        assert journal(state, ticket)["state"] == "execution_unconfirmed"
+        with Session(state.engine) as db:
+            installation = db.get(Installation, 1)
+            assert not installation.enabled and installation.authority_mode == "review_required"
+        return
+    assert checkpoint(state, ticket, "check") == {"state": "execution_unconfirmed"}
+    assert checkpoint(state, ticket, "finish", receipt=receipt(ticket)) == {
+        "state": "active_review_required"
+    }
+    assert not state.manager.inspect(1)["grant_effective"]
+
+
 @pytest.mark.parametrize(
     "changes",
     [

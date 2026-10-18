@@ -8,7 +8,7 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Test Beta. This source prepares **v0.3.0-beta.51**, a bounded
+> **Project status:** Test Beta. This source prepares **v0.3.0-beta.52**, a bounded
 > Milestone 20 Extension Platform v2 delivery, not completion of WP4 or Milestone 20.
 > It extends exact resource review/approval/apply with private-file access and a
 > bounded relational-storage foundation: signed transaction admission/receipts,
@@ -21,8 +21,14 @@ system.
 > This read-only status never repairs keys, trusts code or enables permissions.
 > First adoption requires a disabled application, a recoverable backup and a local
 > code-trust record for the exact package. Reviewed-native execution is **not a sandbox**.
-> General database install/restore/key lifecycle, scoped platform/frontend
-> adapters and neutral end-to-end WP4 acceptance remain open. Relational generic
+> Exact checkpoint, existing public identity, consent-bound local status and
+> outbound peer-read adapters now have local execution/revocation coverage.
+> Beta.52 adds a public module-bound frontend host and an exact-build reviewed UI
+> profile; human/kiosk access remains separate from service resource grants.
+> Compiled output requires local code review and explicit same-origin UI risk
+> acceptance. Old builds without provenance remain compatibility-only.
+> General database install/restore/key lifecycle and neutral end-to-end WP4
+> Standalone/Hub acceptance remain open. Relational generic
 > activation/native/source gates remain closed; a prepared-runtime fixture is not
 > public fresh-install acceptance. New-artifact staging and WP5 isolation are separate.
 > Beta.48 adds explicit local-admin inert registration, first namespace/key/
@@ -111,10 +117,17 @@ system.
   supervised application-service foundation for transactional extensions.
 - **Extension resource access (test Beta)** — inspect declared package requests
   without installation, then review and explicitly approve/apply exact installed
-  resources for supported reviewed-native headless applications. Revocation and
+  resources for supported reviewed-native headless applications or the separate
+  exact-build reviewed UI profile. Revocation and
   lifecycle/recovery changes fence new effects without replaying uncertain work.
   Application event publication has content-bound durable receipts; declarations
   alone grant nothing. User roles and application resource rights remain separate.
+- **Public application UI host (test Beta)** — `@3mm/application-ui/v1` exposes
+  only fresh `getInfo()` and module-bound `invoke()`. Source/build/entrypoint and
+  audience stay bound; the host exposes no token, private store or general HTTP
+  client and never automatically retries an uncertain command. Local native UI
+  review pins the entire compiled build; this is not browser isolation. See the
+  [public contract and local review flow](docs/EXTENSION_PLATFORM_V2_PUBLIC_CONTRACTS.md).
 - **Separate WP4 test package** — a neutral, headless Manifest v2 / SDK 1.3 fixture
   for admin echo, bounded private-file access and content-bound receipts. Build and
   upload [WP4 Test](modules/wp4-test/README.md) separately through Extensions;
@@ -314,20 +327,20 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 ### Updating a paired Hub and Zero
 
 For this test Beta, first export a pre-upgrade backup and update a disposable VM.
-From a working beta.43–beta.50 full installation, select **Beta** in
-`/system/updates` and stage the published beta.51 release. Pending relational
+From a working beta.43–beta.51 full installation, select **Beta** in
+`/system/updates` and stage the published beta.52 release. Pending relational
 checkpoints block encrypted backup/restore and are not repaired by an update.
 Preserve the evidence and an independent verified VM snapshot; do not repeat
 preparation until explicit recovery. Older installations can manually
 bootstrap the current corrected full-profile release (Raspberry/WSL):
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.51
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.52
 ```
 
 An older installed updater cannot acquire the target-installer fix before it
 runs. No bridge release or reset is required. Update the Zero over SSH
-with the Node bootstrap command above and add `--tag v0.3.0-beta.51` to select
+with the Node bootstrap command above and add `--tag v0.3.0-beta.52` to select
 this exact release. Provisioned upgrades preserve identity and pairing, not
 Master reset. Real update/rollback and browser request/CPU checks remain pending;
 see [platform stability acceptance](docs/PLATFORM_STABILITY_ACCEPTANCE.md).
@@ -533,6 +546,7 @@ checks local browser CORS as well as readiness. See the
 | [Private application files](docs/EXTENSION_PLATFORM_V2_PRIVATE_FILES.md) | Exact file grants, signed SDK operations, limits and recovery evidence |
 | [Relational storage contract](docs/EXTENSION_PLATFORM_V2_RELATIONAL_STORAGE_CONTRACT.md) | Prepared-runtime foundation and remaining database lifecycle gates |
 | [WP4 closure audit](docs/EXTENSION_PLATFORM_V2_WP4_CLOSURE_AUDIT.md) | Verified coverage and explicit remaining work; WP4 is not closed |
+| [Current WP4 closeout checklist](docs/EXTENSION_PLATFORM_V2_WP4_CLOSEOUT.md) | Current integration evidence and remaining neutral/live acceptance |
 | [Application commands and passage](docs/APPLICATION_COMMANDS.md) | Scoped SDK commands, crash/restore safety and correlated sensor evidence |
 | [Application job scheduler](docs/APPLICATION_JOB_SCHEDULER.md) | Interval scheduling, bounded concurrency and unknown-outcome recovery |
 | [Installation identity v1](docs/INSTALLATION_IDENTITY_V1.md) | Stable identity, bounded proofs, backup and clone boundaries |

@@ -147,6 +147,21 @@ def _declarations(
     if app.peer_receiver is not None:
         scopes["peer_receiver"] = app.peer_receiver.model_dump(mode="json")
         issue("peer_receiver", "approved_peer_scope_not_supplied")
+    for peer in app.peer_bindings:
+        # Declaration diff only. Configured IDs are not verified current peers,
+        # receiver approval or permission to discover the module's inbox/history.
+        peer_id = binding(f"peer:{peer.binding_id}", peer.peer_id_config_key, r"peer_[0-9a-f]{32}")
+        for operation in peer.operations:
+            key = f"peer:{peer.binding_id}:{operation}"
+            scopes[key] = {
+                "contract_version": peer.contract_version,
+                "binding_id": peer.binding_id,
+                "direction": peer.direction,
+                "peer_id_config_key": peer.peer_id_config_key,
+                "peer_id": peer_id,
+                "operation": operation,
+            }
+            issue(key, "peer_runtime_authority_not_implemented")
     for permission in app.permissions:
         scopes[f"human_permission:{permission.permission_id}"] = {}
 
@@ -224,6 +239,13 @@ def _declarations(
 
     for job in app.jobs:
         scopes[f"job:{job.job_id}"] = job.model_dump(mode="json")
+    for checkpoint in app.checkpoints:
+        # Author requests stay per-ID and per-operation; empty legacy packages
+        # gain neither synthetic declarations nor executable checkpoint rights.
+        for operation in (("read", "write") if checkpoint.mode == "read_write" else ("read",)):
+            key = f"checkpoint:{checkpoint.checkpoint_id}:{operation}"
+            scopes[key] = checkpoint.model_dump(mode="json")
+            issue(key, "checkpoint_grant_not_evaluated")
     # Keep legacy own_storage bytes stable. Each optional storage contract is an
     # explicit request, not an inferred grant for the other storage family.
     storage = app.storage.model_dump(mode="json", exclude={"private_files", "relational"})

@@ -2,7 +2,9 @@ from pathlib import Path
 
 import pytest
 
+import backend.database  # Register all ORM relationships for standalone runs.
 from backend.config import ApplicationRuntimeSettings
+from backend.db.module import ApplicationExtensionInstallation
 from backend.services import application_extensions
 from backend.services.application_extensions import (
     ApplicationGatewayError,
@@ -26,7 +28,8 @@ def records(tmp_path: Path):
     package.sha256 = validated.sha256
     package.module_id = validated.manifest.module_id
     package.version = validated.manifest.version
-    installation = Record()
+    installation = ApplicationExtensionInstallation()
+    installation.authority_mode = "compatibility"
     installation.enabled = True
     installation.status = "active"
     installation.instance_id = "a" * 24

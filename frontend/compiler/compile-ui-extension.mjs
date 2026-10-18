@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
+import { createRequire } from 'node:module'
 import vue from '@vitejs/plugin-vue'
-import { build } from 'vite'
+import { build, version as viteVersion } from 'vite'
 
 const [, , workspaceArg, outputArg] = process.argv
 if (!workspaceArg || !outputArg) throw new Error('usage: compile-ui-extension.mjs <workspace> <output>')
@@ -15,7 +16,7 @@ const result = await build({
   build: {
     outDir: output, emptyOutDir: true, cssCodeSplit: false, minify: true, sourcemap: false,
     rollupOptions: {
-      input, external: ['vue', '@3mm/ui/v1'], preserveEntrySignatures: 'strict',
+      input, external: ['vue', '@3mm/ui/v1', '@3mm/application-ui/v1'], preserveEntrySignatures: 'strict',
       output: { format: 'es', entryFileNames: 'assets/[name]-[hash].mjs', chunkFileNames: 'assets/chunk-[hash].mjs', assetFileNames: 'assets/[name]-[hash][extname]' }
     }
   }
@@ -32,3 +33,8 @@ for (const item of contract.entrypoints) {
   if (!entries[item.entrypoint_id]) throw new Error(`compiler did not emit entrypoint: ${item.entrypoint_id}`)
 }
 await writeFile(resolve(output, 'entrypoints.json'), `${JSON.stringify({ entries, styles: [...styles].sort() }, null, 2)}\n`, 'utf8')
+const require = createRequire(import.meta.url)
+await writeFile(resolve(output, 'build-toolchain.json'), JSON.stringify({
+  node: process.versions.node, vite: viteVersion,
+  vue_plugin: JSON.parse(await readFile(resolve(dirname(require.resolve('@vitejs/plugin-vue')), '../package.json'), 'utf8')).version,
+}), 'utf8')

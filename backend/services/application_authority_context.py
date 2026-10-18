@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -20,8 +21,13 @@ from three_mm_protocol.application_event_publication import ApplicationEventPubl
 from three_mm_protocol.application_extension import (
     ApplicationConnectorV1, ApplicationEventSubscriptionV1, ApplicationOperationV1,
     ApplicationPrivateFilesV1, ApplicationRelationalStorageV1, SERVICE_ENTRYPOINT_PATTERN,
+    ApplicationCheckpointV1, ApplicationPeerBindingV1,
 )
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN, SEMVER_PATTERN
+from three_mm_protocol.installation_identity import InstallationIdentityV1
+from three_mm_protocol.installation_identity import InstallationProofRequestV1
+from three_mm_protocol.installation_peer import PEER_ID_PATTERN, ProjectionConsentV1
+from three_mm_protocol.installation_peer_v2 import PeerEnrollmentMetadataV2
 
 from backend.services.application_connectors import validate_destination_origin
 
@@ -44,6 +50,18 @@ StorageScopeKey = Annotated[str, Field(
 )]
 RelationalScopeKey = Annotated[str, Field(
     pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write))$"
+)]
+CheckpointScopeKey = Annotated[str, Field(
+    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write))$"
+)]
+IdentityScopeKey = Annotated[str, Field(
+    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read)$"
+)]
+StatusScopeKey = Annotated[str, Field(
+    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read)$"
+)]
+PeerScopeKey = Annotated[str, Field(
+    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read)$"
 )]
 Revision = Annotated[int, Field(ge=1, le=MAX_INTEGER)]
 Timestamp = Annotated[int, Field(ge=0, le=MAX_INTEGER)]
@@ -134,6 +152,293 @@ class AuthorityPolicyV4(AuthorityPolicy):
 class AuthorityPolicyV5(AuthorityPolicy):
     allowed_scopes: tuple[RelationalScopeKey, ...] = Field(max_length=132)
     required_scopes: tuple[RelationalScopeKey, ...] = Field(max_length=132)
+
+
+class AuthorityPolicyV6(AuthorityPolicy):
+    allowed_scopes: tuple[CheckpointScopeKey, ...] = Field(max_length=196)
+    required_scopes: tuple[CheckpointScopeKey, ...] = Field(max_length=196)
+
+
+class AuthorityPolicyV7(AuthorityPolicy):
+    allowed_scopes: tuple[IdentityScopeKey, ...] = Field(max_length=197)
+    required_scopes: tuple[IdentityScopeKey, ...] = Field(max_length=197)
+
+
+class AuthorityPolicyV8(AuthorityPolicy):
+    allowed_scopes: tuple[StatusScopeKey, ...] = Field(max_length=229)
+    required_scopes: tuple[StatusScopeKey, ...] = Field(max_length=229)
+
+
+class AuthorityPolicyV9(AuthorityPolicy):
+    allowed_scopes: tuple[PeerScopeKey, ...] = Field(max_length=261)
+    required_scopes: tuple[PeerScopeKey, ...] = Field(max_length=261)
+
+
+class ResolvedIdentityScope(ContextModel):
+    """Exact public Core identity read, not key access or a possession proof."""
+
+    owner: AuthorityPrincipal
+    package_artifact_sha256: Digest
+    operation: Literal["installation.identity.read"]
+    identity: InstallationIdentityV1
+
+    @field_validator("identity", mode="before")
+    @classmethod
+    def exact_public_identity(cls, value):
+        if isinstance(value, InstallationIdentityV1):
+            value = value.model_dump(mode="json")
+        if (type(value) is not dict or set(value) != {
+                "identity_version", "algorithm", "installation_id", "key_id",
+                "public_key", "key_generation", "created_at"}
+                or type(value.get("identity_version")) is not int
+                or type(value.get("key_generation")) is not int
+                or any(type(value.get(field)) is not str for field in (
+                    "algorithm", "installation_id", "key_id", "public_key", "created_at"))):
+            raise ValueError("Identity scope requires exact public identity metadata")
+        # The legacy public model's wildcard before-validator changes datetime
+        # parsing to Python-input mode. Types are fixed above; parse only its
+        # public timestamp with the existing timezone-aware contract.
+        return InstallationIdentityV1.model_validate(value)
+
+
+def _validate_identity_scopes(scopes, principal, artifact_sha256, *, complete):
+    if not scopes:
+        if complete:
+            raise ValueError("Identity context requires its exact public request")
+        return
+    if (len(scopes) != 1 or scopes[0].owner != principal
+            or scopes[0].package_artifact_sha256 != artifact_sha256
+            or scopes[0].identity.installation_id != principal.core_installation_id):
+        raise ValueError("Identity scope needs one exact owned artifact and Core identity")
+
+
+class ResolvedStatusScope(ContextModel):
+    """Local projection only, not enrollment, reporting or remote possession."""
+
+    owner: AuthorityPrincipal
+    package_artifact_sha256: Digest
+    operation: Literal["installation.status.read"]
+    link_id: str = Field(pattern=PEER_ID_PATTERN)
+    application_instance_id: str = Field(pattern=r"^[0-9a-f]{24}$")
+    sender_identity: InstallationIdentityV1
+    receiver_identity: InstallationIdentityV1
+    origin: str = Field(max_length=255)
+    target_module_id: str = Field(pattern=MODULE_ID_PATTERN, max_length=160)
+    consent_revision: Revision
+    consent: ProjectionConsentV1
+
+    @field_validator("sender_identity", "receiver_identity", mode="before")
+    @classmethod
+    def exact_public_identity(cls, value):
+        return ResolvedIdentityScope.exact_public_identity(value)
+
+    @field_validator("origin")
+    @classmethod
+    def canonical_origin(cls, value):
+        return InstallationProofRequestV1.canonical_origin(value)
+
+    @field_validator("consent", mode="before")
+    @classmethod
+    def exact_consent(cls, value):
+        if isinstance(value, ProjectionConsentV1):
+            value = value.model_dump(mode="json")
+        fields = {"summary_fields": 3, "node_ids": 64, "node_fields": 9}
+        if (type(value) is not dict or set(value) != set(fields) | {"consent_version"}
+                or type(value.get("consent_version")) is not int
+                or any(type(value[name]) is not list or len(value[name]) > limit
+                    or any(type(item) is not str for item in value[name])
+                    for name, limit in fields.items())):
+            raise ValueError("Status scope requires exact bounded local consent")
+        consent = ProjectionConsentV1.model_validate(value)
+        # Sets only in this NEW resource. Do not change compatibility response
+        # order or the canonical bytes of existing context versions 1 through 7.
+        return consent.model_copy(update={name: tuple(sorted(getattr(consent, name))) for name in fields})
+
+
+def _validate_status_scopes(scopes, principal, artifact_sha256, identities=(), *, complete):
+    if not scopes:
+        if complete:
+            raise ValueError("Status context requires an existing consented link")
+        return
+    links = set()
+    first = scopes[0]
+    for scope in scopes:
+        if (scope.owner != principal or scope.package_artifact_sha256 != artifact_sha256
+                or scope.sender_identity.installation_id != principal.core_installation_id
+                or scope.receiver_identity.installation_id == principal.core_installation_id
+                or scope.sender_identity != first.sender_identity
+                or scope.application_instance_id != first.application_instance_id
+                or scope.link_id in links):
+            raise ValueError("Status scopes require exact owned public peer bindings")
+        links.add(scope.link_id)
+    if identities and identities[0].identity != first.sender_identity:
+        raise ValueError("Status and identity resources require the same public Core identity")
+
+
+class ResolvedPeerReadScope(ContextModel):
+    """Exact existing public peer binding; never credentials or mutation authority."""
+
+    declaration: ApplicationPeerBindingV1
+    owner: AuthorityPrincipal
+    package_artifact_sha256: Digest
+    service_artifact_sha256: Digest
+    application_instance_id: str = Field(pattern=r"^[0-9a-f]{24}$")
+    peer_id: str = Field(pattern=PEER_ID_PATTERN)
+    peer_version: Literal[1, 2]
+    sender_identity: InstallationIdentityV1
+    receiver_identity: InstallationIdentityV1
+    origin: str = Field(max_length=255)
+    target_module_id: str = Field(pattern=MODULE_ID_PATTERN, max_length=160)
+    consent_revision: Revision | None = None
+    consent: ProjectionConsentV1 | None = None
+    enrollment_metadata: PeerEnrollmentMetadataV2 | None = None
+
+    @field_validator("peer_version", mode="before")
+    @classmethod
+    def integer_peer_version(cls, value):
+        if type(value) is not int:
+            raise ValueError("Peer wire version must be an integer")
+        return value
+
+    @field_validator("sender_identity", "receiver_identity", mode="before")
+    @classmethod
+    def exact_public_identity(cls, value):
+        return ResolvedIdentityScope.exact_public_identity(value)
+
+    @field_validator("origin")
+    @classmethod
+    def canonical_origin(cls, value):
+        return InstallationProofRequestV1.canonical_origin(value)
+
+    @field_validator("consent", mode="before")
+    @classmethod
+    def exact_consent(cls, value):
+        return None if value is None else ResolvedStatusScope.exact_consent(value)
+
+    @field_validator("enrollment_metadata", mode="before")
+    @classmethod
+    def exact_metadata(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, PeerEnrollmentMetadataV2):
+            value = value.model_dump(mode="json")
+        if (type(value) is not dict or set(value) != {
+                "metadata_version", "application_intent", "consent_revision",
+                "consent", "metadata_hash"}
+                or type(value.get("metadata_version")) is not int
+                or type(value.get("consent_revision")) is not int
+                or not 1 <= value["consent_revision"] <= MAX_INTEGER
+                or any(type(value.get(name)) is not str for name in (
+                    "application_intent", "metadata_hash"))):
+            raise ValueError("Peer scope requires exact verified public metadata")
+        # Do not silently canonicalize a noncanonical signed v2 record. The
+        # wire model checks its original ordering and metadata hash as well.
+        ResolvedStatusScope.exact_consent(value["consent"])
+        return PeerEnrollmentMetadataV2.model_validate(value)
+
+    @model_validator(mode="after")
+    def exact_read_binding(self):
+        local, remote = (
+            (self.sender_identity, self.receiver_identity)
+            if self.declaration.direction == "outbound"
+            else (self.receiver_identity, self.sender_identity)
+        )
+        if (self.declaration.operations != ("read",)
+                or local.installation_id != self.owner.core_installation_id
+                or remote.installation_id == local.installation_id
+                or self.declaration.direction == "inbound"
+                and self.target_module_id != self.owner.module_id):
+            raise ValueError("Peer read requires exact owned public direction and target")
+        if self.peer_version == 1:
+            if self.enrollment_metadata is not None:
+                raise ValueError("V1 peer cannot invent v2 metadata")
+            if self.declaration.direction == "inbound":
+                if self.consent is not None or self.consent_revision is not None:
+                    raise ValueError("V1 inbound peer has no local consent metadata")
+            elif self.consent is None or self.consent_revision is None:
+                raise ValueError("Outbound peer requires its exact local consent")
+        elif (self.enrollment_metadata is None
+                or self.consent != self.enrollment_metadata.consent
+                or self.consent_revision != self.enrollment_metadata.consent_revision):
+            raise ValueError("V2 peer requires its exact verified consent metadata")
+        return self
+
+
+def _validate_peer_read_scopes(scopes, principal, artifact_sha256, identities=(),
+        status_projections=(), *, complete):
+    if not scopes:
+        if complete:
+            raise ValueError("Peer context requires its complete existing read request")
+        return
+    first = scopes[0]
+    local = (first.sender_identity if first.declaration.direction == "outbound"
+        else first.receiver_identity)
+    bindings, references, peers = set(), set(), set()
+    for scope in scopes:
+        declaration = scope.declaration
+        public = (scope.sender_identity if declaration.direction == "outbound"
+            else scope.receiver_identity)
+        reference = (declaration.direction, declaration.peer_id_config_key)
+        peer = (declaration.direction, scope.peer_id)
+        if (scope.owner != principal or scope.package_artifact_sha256 != artifact_sha256
+                or scope.service_artifact_sha256 != first.service_artifact_sha256
+                or scope.application_instance_id != first.application_instance_id
+                or public != local or declaration.binding_id in bindings
+                or reference in references or peer in peers):
+            raise ValueError("Peer scopes require distinct exact owned public bindings")
+        bindings.add(declaration.binding_id)
+        references.add(reference)
+        peers.add(peer)
+    if identities and identities[0].identity != local:
+        raise ValueError("Peer and identity resources require the same public Core identity")
+    for status in status_projections:
+        if status.sender_identity != local or status.application_instance_id != first.application_instance_id:
+            raise ValueError("Peer and status resources require one current Core instance")
+        for scope in scopes:
+            if scope.declaration.direction == "outbound" and scope.peer_id == status.link_id:
+                if any(getattr(scope, name) != getattr(status, name) for name in (
+                        "sender_identity", "receiver_identity", "origin", "target_module_id",
+                        "consent_revision", "consent")):
+                    raise ValueError("Peer and status resources disagree on a shared link")
+
+
+class ResolvedCheckpointScope(ContextModel):
+    """One exact installation-owned checkpoint request, never a caller path."""
+
+    declaration: ApplicationCheckpointV1
+    owner: AuthorityPrincipal
+    package_artifact_sha256: Digest
+    operation: Literal["read", "write"]
+
+    @model_validator(mode="after")
+    def declared_operation(self):
+        if self.operation == "write" and self.declaration.mode != "read_write":
+            raise ValueError("Read-only checkpoint cannot request write authority")
+        return self
+
+
+def _validate_checkpoint_scopes(scopes, principal, artifact_sha256, *, complete):
+    """Each ID has one exact declaration; policy rules may select either half."""
+    if not scopes:
+        if complete:
+            raise ValueError("Checkpoint context requires its complete request")
+        return
+    declarations, operations = {}, {}
+    for scope in scopes:
+        identifier = scope.declaration.checkpoint_id
+        if (scope.owner != principal or scope.package_artifact_sha256 != artifact_sha256
+                or identifier in declarations and declarations[identifier] != scope.declaration
+                or scope.operation in operations.get(identifier, set())):
+            raise ValueError("Checkpoint scopes need exact owned artifact requests")
+        declarations[identifier] = scope.declaration
+        operations.setdefault(identifier, set()).add(scope.operation)
+    if len(declarations) > 32:
+        raise ValueError("Checkpoint declaration count exceeds limits")
+    if complete:
+        for identifier, declaration in declarations.items():
+            expected = {"read", "write"} if declaration.mode == "read_write" else {"read"}
+            if operations[identifier] != expected:
+                raise ValueError("Checkpoint context requires every declared operation")
 
 
 class ResolvedRelationalScope(ContextModel):
@@ -290,6 +595,10 @@ class AuthorityReviewContextV1(ContextModel):
         keys += [f"publication:{s.declaration.publication_id}" for s in getattr(self, "publications", ())]
         keys += [f"storage:private_files_{s.operation}" for s in getattr(self, "private_files", ())]
         keys += [f"storage:relational_{s.operation}" for s in getattr(self, "relational", ())]
+        keys += [f"checkpoint:{s.declaration.checkpoint_id}:{s.operation}" for s in getattr(self, "checkpoints", ())]
+        keys += [f"platform:{s.operation}" for s in getattr(self, "identities", ())]
+        keys += [f"status:{s.link_id}:read" for s in getattr(self, "status_projections", ())]
+        keys += [f"peer:{s.declaration.binding_id}:read" for s in getattr(self, "peer_reads", ())]
         if len(keys) != len(set(keys)):
             raise ValueError("Scope identities must be unique")
         if (set(self.policy.allowed_scopes) | set(self.policy.required_scopes)) - set(
@@ -360,6 +669,112 @@ class AuthorityReviewContextV5(AuthorityReviewContextV3):
         return self
 
 
+class AuthorityReviewContextV6(AuthorityReviewContextV3):
+    context_version: Literal[6]
+    policy: AuthorityPolicyV6
+    private_files: tuple[ResolvedPrivateFileScope, ...] = Field(max_length=2)
+    relational: tuple[ResolvedRelationalScope, ...] = Field(max_length=2)
+    checkpoints: tuple[ResolvedCheckpointScope, ...] = Field(min_length=1, max_length=64)
+
+    @model_validator(mode="after")
+    def exact_owned_requests(self):
+        _validate_private_file_scopes(
+            self.private_files, self.principal, self.candidate.sha256,
+            complete=bool(self.private_files),
+        )
+        _validate_relational_scopes(
+            self.relational, self.principal, self.candidate.sha256,
+            complete=bool(self.relational),
+        )
+        _validate_checkpoint_scopes(
+            self.checkpoints, self.principal, self.candidate.sha256, complete=True,
+        )
+        expected = {f"storage:relational_{s.operation}" for s in self.relational}
+        for values in (self.policy.allowed_scopes, self.policy.required_scopes):
+            actual = {key for key in values if key.startswith("storage:relational_")}
+            if actual and actual != expected:
+                raise ValueError("Policy must select the whole relational profile")
+        return self
+
+
+class AuthorityReviewContextV7(AuthorityReviewContextV6):
+    context_version: Literal[7]
+    policy: AuthorityPolicyV7
+    checkpoints: tuple[ResolvedCheckpointScope, ...] = Field(max_length=64)
+    identities: tuple[ResolvedIdentityScope, ...] = Field(min_length=1, max_length=1)
+
+    @model_validator(mode="after")
+    def exact_owned_requests(self):
+        _validate_private_file_scopes(self.private_files, self.principal,
+            self.candidate.sha256, complete=bool(self.private_files))
+        _validate_relational_scopes(self.relational, self.principal,
+            self.candidate.sha256, complete=bool(self.relational))
+        _validate_checkpoint_scopes(self.checkpoints, self.principal,
+            self.candidate.sha256, complete=bool(self.checkpoints))
+        _validate_identity_scopes(self.identities, self.principal,
+            self.candidate.sha256, complete=True)
+        expected = {f"storage:relational_{s.operation}" for s in self.relational}
+        for values in (self.policy.allowed_scopes, self.policy.required_scopes):
+            actual = {key for key in values if key.startswith("storage:relational_")}
+            if actual and actual != expected:
+                raise ValueError("Policy must select the whole relational profile")
+        return self
+
+
+class AuthorityReviewContextV8(AuthorityReviewContextV7):
+    context_version: Literal[8]
+    policy: AuthorityPolicyV8
+    identities: tuple[ResolvedIdentityScope, ...] = Field(max_length=1)
+    status_projections: tuple[ResolvedStatusScope, ...] = Field(min_length=1, max_length=32)
+
+    @model_validator(mode="after")
+    def exact_owned_requests(self):
+        _validate_private_file_scopes(self.private_files, self.principal,
+            self.candidate.sha256, complete=bool(self.private_files))
+        _validate_relational_scopes(self.relational, self.principal,
+            self.candidate.sha256, complete=bool(self.relational))
+        _validate_checkpoint_scopes(self.checkpoints, self.principal,
+            self.candidate.sha256, complete=bool(self.checkpoints))
+        _validate_identity_scopes(self.identities, self.principal,
+            self.candidate.sha256, complete=bool(self.identities))
+        _validate_status_scopes(self.status_projections, self.principal,
+            self.candidate.sha256, self.identities, complete=True)
+        expected = {f"storage:relational_{s.operation}" for s in self.relational}
+        for values in (self.policy.allowed_scopes, self.policy.required_scopes):
+            actual = {key for key in values if key.startswith("storage:relational_")}
+            if actual and actual != expected:
+                raise ValueError("Policy must select the whole relational profile")
+        return self
+
+
+class AuthorityReviewContextV9(AuthorityReviewContextV8):
+    context_version: Literal[9]
+    policy: AuthorityPolicyV9
+    status_projections: tuple[ResolvedStatusScope, ...] = Field(max_length=32)
+    peer_reads: tuple[ResolvedPeerReadScope, ...] = Field(min_length=1, max_length=32)
+
+    @model_validator(mode="after")
+    def exact_owned_requests(self):
+        _validate_private_file_scopes(self.private_files, self.principal,
+            self.candidate.sha256, complete=bool(self.private_files))
+        _validate_relational_scopes(self.relational, self.principal,
+            self.candidate.sha256, complete=bool(self.relational))
+        _validate_checkpoint_scopes(self.checkpoints, self.principal,
+            self.candidate.sha256, complete=bool(self.checkpoints))
+        _validate_identity_scopes(self.identities, self.principal,
+            self.candidate.sha256, complete=bool(self.identities))
+        _validate_status_scopes(self.status_projections, self.principal,
+            self.candidate.sha256, self.identities, complete=bool(self.status_projections))
+        _validate_peer_read_scopes(self.peer_reads, self.principal,
+            self.candidate.sha256, self.identities, self.status_projections, complete=True)
+        expected = {f"storage:relational_{s.operation}" for s in self.relational}
+        for values in (self.policy.allowed_scopes, self.policy.required_scopes):
+            actual = {key for key in values if key.startswith("storage:relational_")}
+            if actual and actual != expected:
+                raise ValueError("Policy must select the whole relational profile")
+        return self
+
+
 class AuthoritySelectionV1(ContextModel):
     selection_version: Literal[1]
     # IDs only: no caller-supplied replacement scope, schema or target.
@@ -392,8 +807,28 @@ class AuthoritySelectionV5(AuthoritySelectionV1):
     scopes: tuple[RelationalScopeKey, ...] = Field(max_length=132)
 
 
+class AuthoritySelectionV6(AuthoritySelectionV1):
+    selection_version: Literal[6]
+    scopes: tuple[CheckpointScopeKey, ...] = Field(max_length=196)
+
+
+class AuthoritySelectionV7(AuthoritySelectionV1):
+    selection_version: Literal[7]
+    scopes: tuple[IdentityScopeKey, ...] = Field(max_length=197)
+
+
+class AuthoritySelectionV8(AuthoritySelectionV1):
+    selection_version: Literal[8]
+    scopes: tuple[StatusScopeKey, ...] = Field(max_length=229)
+
+
+class AuthoritySelectionV9(AuthoritySelectionV1):
+    selection_version: Literal[9]
+    scopes: tuple[PeerScopeKey, ...] = Field(max_length=261)
+
+
 class AuthorityContextIssue(ContextModel):
-    scope: RelationalScopeKey | None = None
+    scope: PeerScopeKey | None = None
     reason: Literal[
         "invalid_context",
         "invalid_selection",
@@ -483,9 +918,38 @@ def _unique_object(pairs):
     return result
 
 
+def _model_data(value):
+    """Revalidate typed inputs without widening the plain-JSON context dialect.
+
+    Identity v7 is the first internal resource containing a public datetime.
+    Encode only that known field; keep the old Python-mode handling so arbitrary
+    objects/sets in constructed v1-v6 models do not become JSON permissions.
+    """
+    data = value.model_dump(mode="python")
+    resources = [data] if isinstance(value, ResolvedIdentityScope) else data.get("identities", ())
+    for resource in resources:
+        identity = resource.get("identity") if type(resource) is dict else None
+        if type(identity) is dict and isinstance(identity.get("created_at"), datetime):
+            created = identity["created_at"]
+            if created.utcoffset() is None:
+                raise ValueError("Public identity timestamp must be timezone-aware")
+            identity["created_at"] = created.isoformat()
+    resources = ([data] if isinstance(value, (ResolvedStatusScope, ResolvedPeerReadScope))
+        else [*data.get("status_projections", ()), *data.get("peer_reads", ())])
+    for resource in resources:
+        for name in ("sender_identity", "receiver_identity"):
+            identity = resource.get(name) if type(resource) is dict else None
+            if type(identity) is dict and isinstance(identity.get("created_at"), datetime):
+                created = identity["created_at"]
+                if created.utcoffset() is None:
+                    raise ValueError("Public peer timestamp must be timezone-aware")
+                identity["created_at"] = created.isoformat()
+    return data
+
+
 def _parse(model, value):
     if isinstance(value, model):
-        value = value.model_dump(mode="python")  # Revalidate even constructed models.
+        value = _model_data(value)  # Revalidate even constructed models.
     if type(value) is str:
         if len(value.encode("utf-8")) > MAX_CONTEXT_BYTES:
             raise ValueError("Context exceeds limits")
@@ -528,11 +992,11 @@ def _canonical_bytes(value) -> bytes:
     return encoded.encode("ascii")
 
 
-def _parse_versioned(v1, v2, value, field, v3=None, v4=None, v5=None):
+def _parse_versioned(v1, v2, value, field, v3=None, v4=None, v5=None, v6=None, v7=None, v8=None, v9=None):
     # Existing records retain their exact canonical shape/fingerprint. Callers
     # must explicitly opt into each new version; none silently gain authority.
     if isinstance(value, BaseModel):
-        value = value.model_dump(mode="python")
+        value = _model_data(value)
     if type(value) is str:
         if len(value.encode("utf-8")) > MAX_CONTEXT_BYTES:
             raise ValueError("Context exceeds limits")
@@ -546,6 +1010,14 @@ def _parse_versioned(v1, v2, value, field, v3=None, v4=None, v5=None):
         models[4] = v4
     if v5 is not None:
         models[5] = v5
+    if v6 is not None:
+        models[6] = v6
+    if v7 is not None:
+        models[7] = v7
+    if v8 is not None:
+        models[8] = v8
+    if v9 is not None:
+        models[9] = v9
     if type(version) is not int or version not in models:
         raise ValueError("Unsupported internal authority version")
     return _parse(models[version], value)
@@ -576,6 +1048,14 @@ def _context_fingerprint(context, selection):
         data["private_files"].sort(key=lambda s: s["operation"])
     if "relational" in data:
         data["relational"].sort(key=lambda s: s["operation"])
+    if "checkpoints" in data:
+        data["checkpoints"].sort(key=lambda s: (s["declaration"]["checkpoint_id"], s["operation"]))
+    if "identities" in data:
+        data["identities"].sort(key=lambda s: s["operation"])
+    if "status_projections" in data:
+        data["status_projections"].sort(key=lambda s: s["link_id"])
+    if "peer_reads" in data:
+        data["peer_reads"].sort(key=lambda s: s["declaration"]["binding_id"])
     encoded = _canonical_bytes(
         {
             "context": data,
@@ -599,7 +1079,7 @@ def review_authority_context(
         context = _parse_versioned(
             AuthorityReviewContextV1, AuthorityReviewContextV2, context,
             "context_version", AuthorityReviewContextV3, AuthorityReviewContextV4,
-            AuthorityReviewContextV5,
+            AuthorityReviewContextV5, AuthorityReviewContextV6, AuthorityReviewContextV7, AuthorityReviewContextV8, AuthorityReviewContextV9,
         )
     except failures:
         return AuthorityContextReview(
@@ -609,7 +1089,7 @@ def review_authority_context(
         selection = _parse_versioned(
             AuthoritySelectionV1, AuthoritySelectionV2, selection,
             "selection_version", AuthoritySelectionV3, AuthoritySelectionV4,
-            AuthoritySelectionV5,
+            AuthoritySelectionV5, AuthoritySelectionV6, AuthoritySelectionV7, AuthoritySelectionV8, AuthoritySelectionV9,
         )
         if context.context_version != selection.selection_version:
             raise ValueError("Authority versions must match")
@@ -640,6 +1120,10 @@ def review_authority_context(
     known |= {f"storage:private_files_{s.operation}" for s in getattr(context, "private_files", ())}
     relational_keys = {f"storage:relational_{s.operation}" for s in getattr(context, "relational", ())}
     known |= relational_keys
+    known |= {f"checkpoint:{s.declaration.checkpoint_id}:{s.operation}" for s in getattr(context, "checkpoints", ())}
+    known |= {f"platform:{s.operation}" for s in getattr(context, "identities", ())}
+    known |= {f"status:{s.link_id}:read" for s in getattr(context, "status_projections", ())}
+    known |= {f"peer:{s.declaration.binding_id}:read" for s in getattr(context, "peer_reads", ())}
     selected = set(selection.scopes)
     if selected & relational_keys and selected & relational_keys != relational_keys:
         for scope in relational_keys - selected:

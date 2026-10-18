@@ -204,6 +204,25 @@ class ApplicationPlatformClient:
                 PeerInboundStatusV2.model_validate(value)
         return result
 
+    def read_installation_peer(self, binding_id: str) -> dict[str, object]:
+        """Read one configured outbound binding under an exact current grant.
+
+        Additive SDK 1.3 operation. Old Core refuses; never fall back to listing,
+        enrollment or remote calls. Credential expiry is intentionally unknown.
+        """
+        from three_mm_protocol.application_peer_read import ApplicationPeerReadV1
+
+        if type(binding_id) is not str or re.fullmatch(r"[a-z][a-z0-9_]{0,95}", binding_id) is None:
+            raise ValueError("Peer binding identity is invalid")
+        result = self._call("installation.peers.read", {"binding_id": binding_id})
+        try:
+            response = ApplicationPeerReadV1.model_validate(result)
+        except ValueError as error:
+            raise ApplicationPlatformError("Peer read response is invalid") from error
+        if response.binding_id != binding_id:
+            raise ApplicationPlatformError("Peer read response does not match")
+        return response.model_dump(mode="json")
+
     def approve_installation_peer(self, binding_id: str, *, expected_generation: int,
                                   expected_metadata_revision: int | None = None,
                                   expected_metadata_hash: str | None = None) -> dict[str, object]:

@@ -1,6 +1,13 @@
 # M20 WP4 — installed authority review, apply and revocation
 
-Date: 2026-10-09. Status: **implemented and tested locally, not deployed**.
+Original delivery: 2026-10-09, implemented and tested locally at that time.
+The local relational management-UI follow-up dated 2026-10-15 is recorded below;
+the bounded existing-public-identity read follow-up dated 2026-10-16 is implemented
+and verified locally. Neither closes WP4 or
+claims deployment; see the dated boundaries below.
+The subsequent [existing local status adapter](EXTENSION_PLATFORM_V2_STATUS_READ.md)
+adds internal v8 exact per-link read resources and administrator cards locally;
+its verification and pending visual/live acceptance are recorded separately.
 This delivers the bounded backend command/connector/event-consumption cycle and
 its management UI, not all WP4 or WP5. The owner accepted the command/connector
 management UI and the additive event-resource view on **2026-10-09**.
@@ -339,3 +346,86 @@ WP3 new-artifact staging/data-recovery and WP5 malicious-code OS/browser isolati
 remain separate, required gates. There is no remote/untrusted executable acceptance,
 publisher ownership proof, deployed rollout, PostgreSQL race rehearsal or release
 claim in this delivery.
+
+## Relational management-UI follow-up — 2026-10-15
+
+The owner-VM beta.51 screenshot exposed a frontend DTO mismatch, not evidence of
+a missing Core review key: the same installed reviewed relational package was
+usable through the SDK, while the dialog rejected its `storage:relational_read`
+and `storage:relational_write` scopes. The existing administrator REST route
+already accepts these exact scopes and returns the relational resource array.
+No backend, key, grant, runtime or VM change is made by this fix.
+
+The existing dialog now parses and renders the exact own-database read/read-write
+review: owner/Core/incarnation, package and service SHA-256, schema revision,
+migration entrypoint, `owned_sqlite_request_v1` profile, contract/limit class and
+all eight cooperative bounds. Limits and enum types match the descriptor contract;
+unknown paths/fields/profiles, wrong installation/module/package, inconsistent
+bindings, duplicate/incomplete operations and incoherent limits are refused.
+Mixed private-file/relational reviews require the same owner, and each storage
+family matches only its own scopes. Historical receipts remain non-authoritative.
+
+`runtime_blockers: ["relational_runtime_unavailable"]` is a separate conservative
+generic-status limitation. It does not make a readable review into a key failure,
+and this UI never turns `grant_effective: false` green because an apply succeeded.
+The operator is told to check the prepared runtime through the application SDK;
+applying rights does not start, migrate, repair or recover it. Revoked/no-current
+rights and stopped-application state retain badge priority. Review/revoke remain
+available only under the existing authoritative review/native/grant conditions.
+Opening/refreshing stays read-only; acknowledgment, approve, apply and revoke
+confirmation remain separate. There are no lifecycle buttons or automatic retries.
+
+Local verification:
+
+- Full frontend suite: **331 passed / 45 files**, including 46 dialog cases and
+  11 focused relational parser cases. TypeScript checking and the production
+  build passed (340 modules). The focused cases are part of the full total.
+- Existing backend relational HTTP regression: **21 passed** on an exact-HEAD
+  native Linux snapshot, non-root UID and private mount namespace/private `/tmp`.
+  It covers real administrator auth, read/read-write/mixed resources, separate
+  decisions, revocation and negative wildcard/path/partial/drift cases. Production
+  data/services and the parallel development checkout were untouched.
+- Isolated browser fixture: desktop Slate Copper/light/EN, Graphite Mint/dark/BG
+  and 390px mobile dark/BG; exact bounds/bindings, wrapping, scrolling and disabled
+  approval before acknowledgment were inspected. Screenshot evidence is ignored
+  under `.runtime/m20-relational-ui/`. The fixture has no real credentials or
+  backend and cannot create live grants; this is not VM/end-to-end acceptance.
+
+This bounded frontend compatibility slice is ready for owner visual review.
+There is no new dependency, SDK/manifest/schema version, commit, push or release.
+The accepted bounded VM upgrade/recovery evidence remains separate in
+[the relational upgrade report](EXTENSION_PLATFORM_V2_RELATIONAL_UPGRADE.md).
+General WP4 platform/frontend/Standalone-Hub and recovery gates remain open;
+no public catalog runtime/isolation support is expanded here.
+
+## Existing public identity read — 2026-10-16, verified locally
+
+This bounded slice reuses SDK 1.3 `get_installation_identity()` and the
+existing descriptor/manifest `installation.identity.read` permission. Exact
+resource `platform:installation.identity.read` joins the same native-review,
+separate review/approve/apply and current-authority admission cycle, with full
+public Core identity/owner/artifact binding in internal version 7. Final integrated
+verification passes 403 distinct native Linux cases, 1119 Windows cases (45
+POSIX-specific skips) and 357 frontend tests/47 files, plus type-check/build and
+isolated desktop light/EN, dark/BG and 390px mobile browser inspection. Overlapping
+cross-platform/subset runs are not added together. Owner visual/live acceptance
+is still separate; these are targeted checks, not the full release suite.
+
+The new public-only reader selects explicit existing public columns and validates
+their key binding/UTC timestamp. It never reads an encrypted private column,
+initializes an identity, decrypts/signs, repairs keys or controls its caller's
+transaction. Missing/corrupt public identity is a refusal. Legacy compatibility
+identity/proof initialization and encrypted-key behavior remain unchanged.
+
+Core review-key, public identity/key, configuration, incarnation/artifact and
+recovery drift must invalidate scoped access. A readable public identity is not
+proof that its private key is usable, local/cloud ownership or human permission.
+Proof, peers/status, jobs/public routes and executable frontend families remain
+unsupported in this bounded scoped profile. No network report, helper start,
+automatic setup/regrant or hidden fallback is added. Existing SQL start consent
+explicitly retains exact v5/v6/v7 bindings without changing its lifecycle gates.
+
+See [the identity-read contract and final local evidence](EXTENSION_PLATFORM_V2_IDENTITY_READ.md).
+No VM key/grant/service, immutable release, SDK-major or database model change is
+claimed. This is not a release or the remaining neutral Standalone/Hub and WP4
+acceptance.

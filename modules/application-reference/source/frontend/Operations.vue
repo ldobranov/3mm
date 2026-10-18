@@ -14,7 +14,9 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useApplicationHost } from '@3mm/application-ui/v1'
 
+const host = useApplicationHost()
 const recordId = ref('')
 const record = ref<Record<string, unknown> | null>(null)
 const error = ref('')
@@ -25,14 +27,7 @@ async function load() {
   error.value = ''
   record.value = null
   try {
-    const token = localStorage.getItem('authToken') || ''
-    const response = await fetch('/api/v1/application-extensions/org.3mm.application-reference/operator/operations/get_record', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ payload: { record_id: recordId.value } }),
-    })
-    if (!response.ok) throw new Error('Record lookup failed')
-    record.value = await response.json()
+    record.value = await host.invoke('get_record', { record_id: recordId.value })
   } catch (reason) {
     error.value = reason instanceof Error ? reason.message : 'Record lookup failed'
   } finally {

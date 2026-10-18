@@ -39,6 +39,7 @@ from backend.services.installation_identity import (
     prove_installation_identity,
 )
 from backend.services.installation_projection import installation_projection
+from backend.services.installation_peer_listing import public_peer_records
 from three_mm_protocol.installation_identity import (
     InstallationIdentityV1,
     InstallationProofRequestV1,
@@ -166,6 +167,10 @@ def _application(db, module_id, *, permission=None, receiver=False):
     ):
         _deny("Application package is unavailable")
     definition = load_application_definition(package)
+    if definition.peer_bindings:
+        # Opting into narrower declarations must never inherit the broad legacy
+        # helper, including inbound machine callbacks and resumable network work.
+        _deny("Scoped peer binding runtime is not implemented")
     if (
         definition.service.sdk_version not in ("1.2", "1.3")
         or permission
@@ -828,6 +833,13 @@ def invalidate_application_peers(db, module_id):
 
 
 def outbound_status(row):
+    expires_at = (
+        row.credential.get("claims", {}).get("expires_at") if row.credential else None
+    )
+    return _outbound_public_status(row, expires_at)
+
+
+def _outbound_public_status(row, credential_expires_at):
     result = {
         "link_id": row.link_id,
         "state": row.state,
@@ -837,11 +849,7 @@ def outbound_status(row):
         "receiver_identity": row.receiver_identity,
         "target_module_id": row.target_module_id,
         "remote_binding_id": row.remote_binding_id,
-        "credential_expires_at": (
-            row.credential.get("claims", {}).get("expires_at")
-            if row.credential
-            else None
-        ),
+        "credential_expires_at": credential_expires_at,
     }
     metadata = _metadata(row)
     if metadata is not None:
@@ -873,25 +881,12 @@ def _inbound_status(row):
 
 
 def list_peers(db, application):
-    incoming = list(
-        db.scalars(
-            select(InstallationPeerInbound)
-            .where(InstallationPeerInbound.module_id == application.module_id)
-            .order_by(InstallationPeerInbound.created_at.desc())
-            .limit(100)
-        )
-    )
-    outgoing = list(
-        db.scalars(
-            select(InstallationPeerOutbound)
-            .where(InstallationPeerOutbound.module_id == application.module_id)
-            .order_by(InstallationPeerOutbound.created_at.desc())
-            .limit(100)
-        )
-    )
+    incoming, outgoing = public_peer_records(db, application)
     return {
         "inbound": [_inbound_status(row) for row in incoming],
-        "outbound": [outbound_status(row) for row in outgoing],
+        "outbound": [
+            _outbound_public_status(row, row.credential_expires_at) for row in outgoing
+        ],
     }
 
 

@@ -93,7 +93,7 @@ def test_compiler_publishes_content_addressed_artifact_atomically(monkeypatch, t
     assert Path(calls[0][3]).parent.parent == artifact.path.parent
 
 
-@pytest.mark.parametrize("imported", ["@/stores/auth", "@/components/ui/UiButton.vue", "@3mm/ui/v2", "@3mm/ui/v1/context"])
+@pytest.mark.parametrize("imported", ["@/stores/auth", "@/components/ui/UiButton.vue", "@3mm/ui/v2", "@3mm/ui/v1/context", "@3mm/application-ui/v2", "@3mm/application-ui/v1/internal"])
 def test_compiler_rejects_non_allowlisted_import_before_execution(monkeypatch, tmp_path, imported):
     blob = package(
         f"<script setup>import value from '{imported}'</script><template>{{{{ value }}}}</template>"
@@ -114,6 +114,18 @@ def test_compiler_accepts_the_exact_public_ui_contract(monkeypatch, tmp_path):
     blob = package(
         '<script setup>import { UiSurface, UiButton } from "@3mm/ui/v1"</script>'
         '<template><UiSurface><UiButton>Local action</UiButton></UiSurface></template>'
+    )
+    calls = []
+    monkeypatch.setenv("COMPILED_UI_ARTIFACTS_DIR", str(tmp_path / "artifacts"))
+    monkeypatch.setattr(compiled_ui.subprocess, "run", fake_compiler(calls))
+    assert compile_ui_package(blob, validate_module_package(blob)).entrypoints
+    assert len(calls) == 1
+
+
+def test_compiler_accepts_public_application_host_without_private_imports(monkeypatch, tmp_path):
+    blob = package(
+        '<script setup>import { useApplicationHost } from "@3mm/application-ui/v1"; '
+        'const host = useApplicationHost()</script><template>Reference</template>'
     )
     calls = []
     monkeypatch.setenv("COMPILED_UI_ARTIFACTS_DIR", str(tmp_path / "artifacts"))

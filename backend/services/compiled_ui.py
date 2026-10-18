@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import hashlib
 import json
 import os
 import re
@@ -13,13 +14,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from backend.services.module_packages import ValidatedModulePackage
+from backend.services.compiled_ui_provenance import record_build, read_build, UiBuildEvidenceError
 
 
 IMPORT_PATTERN = re.compile(
     r"(?:from\s+|import\s*\(\s*)['\"]([^'\"]+)['\"]",
     re.MULTILINE,
 )
-ALLOWED_BARE_IMPORTS = {"vue", "@3mm/ui/v1"}
+ALLOWED_BARE_IMPORTS = {"vue", "@3mm/ui/v1", "@3mm/application-ui/v1"}
 
 
 class CompiledUiBuildError(RuntimeError):
@@ -34,6 +36,7 @@ class CompiledUiArtifact:
     path: Path
     entrypoints: dict[str, str]
     styles: tuple[str, ...]
+    built_ui_sha256: str | None = None
 
 
 def compiled_artifacts_dir() -> Path:
@@ -69,6 +72,10 @@ def _validate_source_imports(workspace: Path) -> None:
 
 def _load_artifact(path: Path, validated: ValidatedModulePackage) -> CompiledUiArtifact:
     try:
+        built_ui_sha256 = read_build(path, validated)
+    except UiBuildEvidenceError as exc:
+        raise CompiledUiBuildError("Compiled UI build evidence is unavailable") from exc
+    try:
         metadata = json.loads((path / "artifact.json").read_text(encoding="utf-8"))
         index = json.loads((path / "entrypoints.json").read_text(encoding="utf-8"))
         entries = index["entries"]
@@ -97,6 +104,7 @@ def _load_artifact(path: Path, validated: ValidatedModulePackage) -> CompiledUiA
         path=path,
         entrypoints=entries,
         styles=styles,
+        built_ui_sha256=built_ui_sha256,
     )
 
 
@@ -134,9 +142,11 @@ def compile_ui_package(
             archive.extractall(workspace)
 
         _validate_source_imports(workspace)
+        compiler = _compiler_script()
+        compiler_sha256 = hashlib.sha256(compiler.read_bytes()).hexdigest()
         command = [
             _compiler_node(),
-            str(_compiler_script()),
+            str(compiler),
             str(workspace),
             str(output),
         ]
@@ -194,6 +204,12 @@ def compile_ui_package(
             encoding="utf-8",
         )
 
+        try:
+            if hashlib.sha256(compiler.read_bytes()).hexdigest() != compiler_sha256:
+                raise UiBuildEvidenceError("Compiler changed during build")
+            record_build(output, validated, compiler_sha256)
+        except (UiBuildEvidenceError, OSError, ValueError) as exc:
+            raise CompiledUiBuildError("Compiled UI build evidence could not be recorded") from exc
         _load_artifact(output, validated)
         try:
             output.rename(destination)
@@ -216,3 +232,25 @@ def load_compiled_ui_artifact(validated: ValidatedModulePackage) -> CompiledUiAr
     if not destination.is_dir():
         raise CompiledUiBuildError("compiled UI artifact is not available")
     return _load_artifact(destination, validated)
+
+
+def application_ui_artifact(db, installation, validated, *, expected_build=None):
+    """Independent code trust gate; never grant human or service permissions."""
+    from sqlalchemy import select
+    from backend.db.module import ApplicationExtensionInstallation
+    from backend.services.application_authority_keys import AuthorityReviewKeyError
+    from backend.services.application_authority_management import configured_manager, AuthorityManagementError
+
+    artifact = load_compiled_ui_artifact(validated)
+    if expected_build is not None and expected_build != artifact.built_ui_sha256:
+        raise CompiledUiBuildError('Application UI build changed; reload the interface')
+    if db is None:
+        raise CompiledUiBuildError('Application UI requires the Core authority session')
+    mode = db.scalar(select(ApplicationExtensionInstallation.authority_mode).where(
+        ApplicationExtensionInstallation.id == installation.id))
+    if mode != 'compatibility':
+        try:
+            configured_manager(db.get_bind().engine).require_ui_trust(installation.id, artifact.built_ui_sha256)
+        except (AuthorityManagementError, AuthorityReviewKeyError, OSError, ValueError, TypeError, KeyError):
+            raise CompiledUiBuildError('Application UI code trust is unavailable') from None
+    return artifact

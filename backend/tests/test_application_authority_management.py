@@ -371,14 +371,34 @@ def test_no_new_artifact_or_configuration_can_reuse_native_activation(installed)
 
 
 def test_unsupported_signed_platform_actions_never_fall_back_to_legacy(installed, tmp_path):
+    import hashlib
+    import hmac
+    import time
     from backend.services.application_platform import ApplicationPlatformServer
     s = installed
     activate_grant(s)
     server = ApplicationPlatformServer(tmp_path / 'unused.sock', tmp_path)
     with Session(s.engine) as db:
-        for action in ('checkpoint.put', 'installation.identity.get', 'installation.peers.enroll'):
+        for action in ('installation.identity.prove', 'installation.peers.enroll'):
             with pytest.raises(ValueError, match='no supported resource grant'):
                 server._dispatch(db, db.get(Installation, 1), {'action': action})
+        # Public identity GET has its own adapter, but this command/connector
+        # grant cannot authorize it, even with a complete signed transport frame.
+        request = {'version': 1, 'request_id': 'platform_' + identity(),
+            'timestamp': int(time.time()), 'instance_id': 'a' * 24,
+            'action': 'installation.identity.get'}
+        secret = b'x' * 32
+        request['signature'] = hmac.new(secret, server._canonical(request), hashlib.sha256).hexdigest()
+        with pytest.raises(ValueError, match='resource grant is unavailable'):
+            server._dispatch(db, db.get(Installation, 1), request, transport_secret=secret)
+        # Checkpoints now have an adapter, but a command/connector grant cannot
+        # authorize an undeclared checkpoint or fall back to legacy persistence.
+        with pytest.raises(ValueError, match='resource grant is unavailable'):
+            server._dispatch(db, db.get(Installation, 1), {
+                'action': 'checkpoint.put', 'checkpoint_id': 'catalog',
+                'expected_revision': 0, 'value': {'forbidden': True}})
+        from backend.db.module import ApplicationSyncCheckpoint
+        assert list(db.scalars(select(ApplicationSyncCheckpoint))) == []
 
 
 def test_revoke_committed_between_preflight_and_admission_wins(installed, monkeypatch):
@@ -497,6 +517,7 @@ def test_local_key_cli_checks_actual_login_and_never_grants_permissions(installe
     from backend.services import application_authority_admin as admin
     s = installed
     before = s.keys.identity()
+    monkeypatch.setattr(admin, 'configured_manager', lambda _engine: s.manager)
     monkeypatch.setattr(database, 'engine', s.engine)
     monkeypatch.setattr(admin.getpass, 'getpass', lambda prompt: s.token if administrator else s.user_token)
     monkeypatch.setattr(sys, 'argv', ['application_authority_admin', 'provision-key'])

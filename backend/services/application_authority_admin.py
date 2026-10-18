@@ -35,6 +35,10 @@ def main():
     native.add_argument('--review-document', required=True, type=Path)
     native.add_argument('--code-review-completed', required=True, action='store_true')
     native.add_argument('--accept-native-host-risk', required=True, action='store_true')
+    native.add_argument('--accept-same-origin-ui-risk', action='store_true', help='Compiled UI is trusted same-origin native code, NOT a sandbox')
+    native.add_argument('--built-ui-sha256', help='Exact locally inspected compiled build; required with UI risk acceptance')
+    ui_build = commands.add_parser('inspect-ui-build', help='Read verified build identity; no compilation, execution or permission approval')
+    ui_build.add_argument('--installation-id', required=True, type=int)
     revoke = commands.add_parser('revoke-native-review')
     revoke.add_argument('--installation-id', required=True, type=int)
     revoke.add_argument('--native-review-id', required=True)
@@ -132,6 +136,15 @@ def main():
         elif args.command in set(UPGRADE_COMMANDS) | LOCAL_COMMANDS | {'inspect-relational-upgrade'}:
             from backend.services.application_relational_upgrade_cli import execute
             result = execute(manager, args, token)
+        elif args.command == 'inspect-ui-build':
+            with Session(engine) as db:
+                _actor(db, token)
+            prepared = manager._prepare(args.installation_id)
+            if prepared.built_ui_sha256 is None:
+                raise AuthorityManagementError('ui_build_unavailable')
+            result = {'installation_id': args.installation_id, 'artifact_sha256': prepared[0].sha256,
+                'built_ui_sha256': prepared.built_ui_sha256, 'permission_approval': 'not_evaluated',
+                'browser_isolation': False}
         elif args.command == 'native-review':
             with args.review_document.open('rb') as document:
                 contents = document.read(1_048_577)
@@ -141,7 +154,9 @@ def main():
                 request_id=uuid.uuid4().hex, artifact_sha256=args.artifact_sha256,
                 review_document_sha256=hashlib.sha256(contents).hexdigest(),
                 native_code_review_completed=args.code_review_completed,
-                accepts_native_host_risk=args.accept_native_host_risk)
+                accepts_native_host_risk=args.accept_native_host_risk,
+                accepts_same_origin_ui_risk=args.accept_same_origin_ui_risk,
+                built_ui_sha256=args.built_ui_sha256)
         elif args.command == 'register-relational':
             from backend.services.application_authority_context import _unique_object
             from backend.services.application_relational_registration import register_relational_package

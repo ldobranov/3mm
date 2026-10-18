@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import backend.database  # noqa: F401 - register all model metadata
 import pytest
@@ -364,8 +365,9 @@ def test_resolved_configuration_does_not_mutate_shared_package_defaults(
 
 def gateway_settings(monkeypatch, tmp_path, installation):
     from backend.services import application_extensions
-    monkeypatch.setattr(application_extensions, "load_application_definition",
-        lambda _package: application_definition())
+    monkeypatch.setattr(application_extensions, "load_application_package",
+        lambda _package: SimpleNamespace(
+            application_extension=application_definition(), compiled_ui=None))
     keys = tmp_path / "keys"
     keys.mkdir()
     (keys / f"{installation.instance_id}.key").write_bytes(b"s" * 32)
@@ -402,9 +404,9 @@ def test_real_gateway_denies_change_between_preflight_and_dispatch(
                 writer.execute(update(ApplicationExtensionInstallation)
                     .where(ApplicationExtensionInstallation.id == installation_id).values(**values))
             writer.commit()
-        return application_definition()
+        return SimpleNamespace(application_extension=application_definition(), compiled_ui=None)
 
-    monkeypatch.setattr(application_extensions, "load_application_definition", preflight)
+    monkeypatch.setattr(application_extensions, "load_application_package", preflight)
     monkeypatch.setattr(application_extensions, "ApplicationServiceClient",
         lambda *_args: pytest.fail("revoked event must not be dispatched"))
     enqueue_application_event(db, event, settings)

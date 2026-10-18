@@ -199,11 +199,15 @@ def test_raw_parser_refuses_non_json_numbers(constant):
         parse_application_extension('{"extra": ' + constant + "}")
 
 
-def test_schema_catalog_distinguishes_structural_support_from_blocked_runtime():
+def test_schema_catalog_distinguishes_prepared_runtime_from_generic_activation():
     entry = extension_schema_catalog()["contracts"]["application-extension.v1"]
     request = entry["schema"]["$defs"]["ApplicationRelationalStorageV1"]
     assert request["additionalProperties"] is False
     assert set(request["required"]) == set(relational_request())
     support = entry["declaration_support"]["storage.relational"]
-    assert support["runtime_authority"] == "not_implemented"
-    assert support["activation"] == "blocked" and support["sdk_version"] == "1.3"
+    assert support["runtime_authority"] == "reviewed_native_scoped_prepared"
+    assert support["activation"] == "explicit_local_admin_helper"
+    assert support["preparation_required"] is True
+    assert (
+        support["generic_activation"] == "blocked" and support["sdk_version"] == "1.3"
+    )

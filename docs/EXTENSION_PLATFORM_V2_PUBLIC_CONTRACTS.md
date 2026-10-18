@@ -129,3 +129,148 @@ read/write resources, owner/package pins and limits with separate approve/apply.
 It refuses incomplete or foreign bindings, not silently hiding rights. Inspection
 never infers a grant, even for unchanged declarations. See
 [file execution, evidence and remaining gates](EXTENSION_PLATFORM_V2_PRIVATE_FILES.md).
+
+## Public application frontend host v1 (2026-10-17)
+
+Compiled **application routes** can import `useApplicationHost`,
+`ApplicationHostError` and the public TypeScript types from
+`@3mm/application-ui/v1`. The build emits a versioned import-map entry. The
+install-time compiler allows this exact import, not its private subpaths.
+Existing `@3mm/ui/v1` presentation exports and SDK 1.0–1.3 are unchanged.
+
+```typescript
+import { useApplicationHost } from '@3mm/application-ui/v1'
+const host = useApplicationHost() // during the route component's setup
+const access = await host.getInfo()
+const record = await host.invoke('get_record', { record_id: selectedId })
+// Commands require the caller's stable key for this exact logical request:
+const result = await host.invoke('register', { label }, { idempotencyKey: requestId })
+```
+
+The only host methods are `getInfo()` and `invoke(operationId, payload, options)`.
+No caller-selected module, audience, URL, headers, token, HTTP client, router or
+Core store is exposed. The dynamic route loader binds module, package SHA-256,
+version, entrypoint and audience from the existing server catalog. Non-application
+widgets/editors and components mounted outside that boundary get no host.
+
+`getInfo()` makes a fresh, no-store request to
+`/api/v1/application-extensions/{module_id}/ui-host/{entrypoint_id}` with the
+bound `artifact_sha256`. Its closed public projection includes `host_version: 1`,
+the matching binding, and permitted query/command IDs with their idempotency
+requirements. Internal jobs and other audiences are not offered. The feature
+flags are `operations: true`, `resource_authority: "separate"` and
+`browser_isolation: false`: human operation access is **not** a resource grant.
+Resource authority remains enforced by the existing service/platform adapters.
+The original delivery did not lift the headless-only limitation. The separate
+reviewed UI profile below now binds executable output before admitting it.
+
+Each invocation rechecks this information and sends exactly one POST through the
+existing audience-specific operation route. Its additive `ui_context` has the
+exact host version, entrypoint and artifact hash. Core revalidates the installed
+ZIP, active state, route/audience and current user permissions or kiosk terminal;
+the existing operation and payload checks still apply. Legacy callers without
+`ui_context` keep their existing API behavior. There is no browser-selected actor
+or upgrade from kiosk/operator to administrator. Public calls send no bearer;
+kiosk calls use only the kiosk session, even if a human is logged in too.
+
+Host v1 accepts JSON object payloads up to 512 KiB UTF-8, 10,000 values and depth
+32, and access descriptions up to 256 operation entries. Cycles, non-JSON values,
+path-like operation IDs and invalid command/query keys fail before dispatch.
+Unknown/unavailable host versions do not fall back to a generic HTTP client.
+The Core origin is pinned for the mounted host lifetime. Unmount aborts pending
+transport and invalidates retained handles; cancellation does not prove rollback.
+
+Errors expose only `ApplicationHostError.code`: `invalid_request`,
+`access_denied`, `unavailable`, `unconfirmed` or `disposed`, never raw HTTP errors,
+request headers or backend responses. Failed POSTs have **no automatic retry,
+token-refresh replay, fallback audience or inferred rollback**. On an unconfirmed
+mutation, retain its original key/payload for the application's explicit outcome
+review; do not generate a new key and resubmit. The neutral reference's kiosk
+screen stops further submission and displays that key for review.
+
+This is a public API for reviewed same-origin code, **not a security sandbox**.
+It does not prevent such code from accessing browser globals directly. WP5's
+untrusted browser/OS isolation and the broader WP4 owner/layout acceptance remain
+separate gates. Current evidence and queue: [WP4 closeout](EXTENSION_PLATFORM_V2_WP4_CLOSEOUT.md).
+
+## Execution-profile coverage (2026-10-17)
+
+The application entry now includes additive `execution_profiles` describing
+compatibility, installed reviewed-native scoped authority and the public frontend
+host. These are authoring facts, **not** live negotiation, an approval or a claim
+that arbitrary combinations work. The original scoped profile remains headless;
+the separate reviewed UI profile below additionally requires exact build evidence.
+
+Identity possession proofs, peer mutations/receiver/unfiltered listing, scheduled
+jobs and public HTTP handlers have no scoped grant adapter. They are explicitly
+listed as unsupported, not inferred from the descriptor's structural validity.
+The signed gateway refuses proof/peer actions before private-key or network
+access. Jobs are excluded from scoped discovery, refused at claim and rechecked
+before dispatch; the shared invocation gateway also refuses direct job/public
+HTTP handler calls outside compatibility. Public HTTP keeps route ownership but
+returns unavailable without invoking unsupported code or disabling unrelated
+compatibility applications. Unknown/expired job claims remain quarantined,
+including across a later compatibility restart; a mode refusal proves no rollback.
+
+Existing SDK compatibility behavior remains subject to its existing declaration,
+audience and consent checks. Exact event publications can supply their declared
+event types; arbitrary capability `provides` are not scoped registration authority.
+Relational/peer combinations are still unsupported. Missing features never
+select compatibility as a fallback for an already opted-in installation.
+
+The stale relational catalog entry has been corrected to
+`reviewed_native_scoped_prepared`: exact local review/grants plus protected
+preparation and explicit local-admin/helper activation are required. Generic
+activation remains blocked, and `cooperative_v1` is not an OS resource quota.
+No descriptor, SDK version, contract count or publisher/permission policy changed.
+
+## Reviewed UI with scoped service resources (2026-10-18)
+
+`supervised_reviewed_native_ui_v1` reuses the installed manager, sealed native
+review, exact resource scopes and `AuthorityArtifact.built_ui_sha256`. No new
+subject version, database model, SDK version, publisher trust or sandbox exists.
+Human/kiosk route and operation access is independent of service resource grants.
+
+New install-time builds record a Core-owned `build-provenance.json`: source ZIP
+SHA-256, compiler script SHA-256, Node/Vite/Vue-plugin versions and a complete
+output inventory (including chunks, CSS, descriptors and entrypoint index).
+The bounded reader checks ownership/protection, regular paths, hashes and sizes;
+the canonical record has a domain-separated SHA-256. This is local build
+provenance, not a publisher signature or proof of reproducible/untrusted builds.
+Validation happens outside the authority key/DB guard. Published output remains
+immutable; replacing it requires new explicit trust and resource review.
+
+Local Core administration, using the normal service account/environment:
+
+```text
+python -m backend.services.application_authority_admin inspect-ui-build --installation-id <id>
+python -m backend.services.application_authority_admin native-review --installation-id <id> --artifact-sha256 <source-sha> --built-ui-sha256 <build-sha> --review-document <review.md> --code-review-completed --accept-native-host-risk --accept-same-origin-ui-risk
+```
+
+Tokens are still prompted hidden, not passed on the command line. The reviewer
+must review the exact source AND emitted executable output/toolchain, and
+explicitly accept same-origin browser code risk as well as native host risk.
+Inspection/review never starts a service or approves permissions. Existing
+disabled first-adoption, approve/apply, lifecycle and fresh-review rules remain.
+The native review seals the build pin and UI-risk acknowledgment; headless calls
+and historical request hashes keep their previous behavior.
+
+The catalog carries optional `built_ui_sha256`; new assets use
+`.../<source-sha>/build/<build-sha>/assets/...`. Host info and `ui_context` carry
+that exact optional pin. A missing/changed pin cannot dispatch a reviewed UI
+request. The server checks current native UI trust for catalog/assets and the
+shared service gateway, including raw legacy operation callers. Verified asset
+bytes are read before constructing the response, not opened lazily afterwards.
+Removing service rights blocks resource effects but does not revoke native code
+trust or supply missing human rights; revoking native trust also blocks new UI
+catalog/asset/service admission. Already-loaded browser code cannot be recalled
+or sandboxed by a grant change; operation/effect checks remain current.
+
+Old cached outputs with no build evidence are **compatibility-only**. Loading
+them does not rebuild, promote or fabricate provenance. Use a new package version
+through the normal install/review flow to produce a reviewed build. A valid new
+compiler build alone is still neither native trust nor a resource grant.
+Jobs, public HTTP handlers, proof/peer mutations and other explicitly unsupported
+families remain refused. This delivery proves a neutral UI→signed service→signed
+SDK command path; it does not claim every resource/layout combination has live
+owner acceptance. See the current [closeout checklist](EXTENSION_PLATFORM_V2_WP4_CLOSEOUT.md).

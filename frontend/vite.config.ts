@@ -49,12 +49,17 @@ export default defineConfig({
       buildStart() {
         this.emitFile({ type: 'chunk', name: 'extension-ui-v1', preserveSignature: 'strict',
           id: fileURLToPath(new URL('./src/extension-ui/v1.ts', import.meta.url)) })
+        this.emitFile({ type: 'chunk', name: 'application-ui-v1', preserveSignature: 'strict',
+          id: fileURLToPath(new URL('./src/extension-ui/application-v1.ts', import.meta.url)) })
       },
       generateBundle: { order: 'post', handler(_options, bundle) {
         const entry = Object.values(bundle).find(item => item.type === 'chunk' && item.name === 'extension-ui-v1')
         const html = bundle['index.html']
         if (entry?.type !== 'chunk' || html?.type !== 'asset') throw new Error('Public UI entry/import map is missing')
         html.source = String(html.source).replace('/compiled-ui/ui-v1.mjs', `/${entry.fileName}`)
+        const application = Object.values(bundle).find(item => item.type === 'chunk' && item.name === 'application-ui-v1')
+        if (application?.type !== 'chunk') throw new Error('Public application host entry is missing')
+        html.source = String(html.source).replace('/compiled-ui/application-ui-v1.mjs', `/${application.fileName}`)
       } },
     },
     {

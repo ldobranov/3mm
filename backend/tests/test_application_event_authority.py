@@ -269,12 +269,14 @@ def test_event_grant_denies_after_actual_source_or_authority_drift(events, chang
 def test_revoke_after_gateway_preflight_denies_dispatch_without_consuming_attempt(events, monkeypatch):
     s = events
     activate(s)
-    original = gateway.load_application_definition
-    def preflight(package):
-        definition = original(package)
+    original = gateway.find_operation
+    def preflight(definition, operation_id):
+        # Discovery also loads packages; inject only inside gateway preflight,
+        # after the broker has durably enqueued the event.
+        operation = original(definition, operation_id)
         s.manager.revoke(1, actor_token=s.token, request_id=identity(), expected_revision=s.manager.inspect(1)['grant_record_revision'])
-        return definition
-    monkeypatch.setattr(gateway, 'load_application_definition', preflight)
+        return operation
+    monkeypatch.setattr(gateway, 'find_operation', preflight)
     deliver(s, event(s))
     assert not s.calls
     with Session(s.engine) as db:

@@ -20,10 +20,7 @@ except ImportError:  # pragma: no cover - Windows development host
 
 from sqlalchemy import select
 
-from backend.db.module import (
-    ApplicationExtensionInstallation,
-    ApplicationSyncCheckpoint,
-)
+from backend.db.module import ApplicationExtensionInstallation
 from backend.services.application_connectors import execute_connector_request
 
 
@@ -169,8 +166,17 @@ class ApplicationPlatformServer:
         mode = db.scalar(select(ApplicationExtensionInstallation.authority_mode).where(
             ApplicationExtensionInstallation.id == installation.id))
         if mode != 'compatibility' and action not in {
-                'command.submit', 'command.status', 'command.lookup', 'connector.request', 'event.publish', 'files.execute', 'files.status', 'relational.admit', 'relational.complete', 'relational.status', 'relational.boot.startup'}:
+                'command.submit', 'command.status', 'command.lookup', 'connector.request', 'event.publish', 'files.execute', 'files.status', 'relational.admit', 'relational.complete', 'relational.status', 'relational.boot.startup', 'checkpoint.get', 'checkpoint.put', 'installation.identity.get', 'installation.status.get', 'installation.peers.read'}:
             raise ValueError('Platform action has no supported resource grant')
+        if action == 'installation.peers.read':
+            from backend.services.application_peer_read import read_application_peer
+            return read_application_peer(db, installation, request)
+        if mode != 'compatibility' and action == 'installation.identity.get':
+            from backend.services.application_identity_read import read_application_identity
+            return read_application_identity(db, installation, request)
+        if mode != 'compatibility' and action == 'installation.status.get':
+            from backend.services.application_status_read import read_application_status
+            return read_application_status(db, installation, request)
         if action == "relational.boot.startup":
             from backend.services.application_relational_startup import admit_boot_startup
 
@@ -289,6 +295,8 @@ class ApplicationPlatformServer:
             )
             if permission not in definition.platform_permissions:
                 raise ValueError("Installation identity permission is not declared")
+            if action == "installation.identity.prove" and definition.peer_bindings:
+                raise ValueError("Peer bindings do not authorize generic identity proofs")
             if action == "installation.identity.get":
                 return installation_identity(db).model_dump(mode="json")
             return prove_installation_identity(db, request.get("proof_request")).model_dump(mode="json")
@@ -326,54 +334,7 @@ class ApplicationPlatformServer:
                     else None
                 ),
             )
-        checkpoint_id = request.get("checkpoint_id")
-        if not isinstance(checkpoint_id, str) or not IDENTIFIER_PATTERN.fullmatch(checkpoint_id):
-            raise ValueError("Checkpoint identity is invalid")
-        checkpoint = db.scalar(
-            select(ApplicationSyncCheckpoint).where(
-                ApplicationSyncCheckpoint.application_installation_id == installation.id,
-                ApplicationSyncCheckpoint.checkpoint_id == checkpoint_id,
-            )
-        )
-        if action == "checkpoint.get":
-            return {
-                "checkpoint_id": checkpoint_id,
-                "revision": checkpoint.revision if checkpoint is not None else 0,
-                "value": checkpoint.value if checkpoint is not None else {},
-            }
-        if action != "checkpoint.put":
-            raise ValueError("Platform action is unsupported")
-        expected_revision = request.get("expected_revision")
-        value = request.get("value")
-        if (
-            not isinstance(expected_revision, int)
-            or isinstance(expected_revision, bool)
-            or expected_revision < 0
-            or not isinstance(value, dict)
-            or len(json.dumps(value)) > 256 * 1024
-        ):
-            raise ValueError("Checkpoint update is invalid")
-        current_revision = checkpoint.revision if checkpoint is not None else 0
-        if current_revision != expected_revision:
-            raise ValueError("Checkpoint revision conflict")
-        if checkpoint is None:
-            checkpoint = ApplicationSyncCheckpoint(
-                application_installation_id=installation.id,
-                checkpoint_id=checkpoint_id,
-                revision=0,
-                value={},
-            )
-            db.add(checkpoint)
-        from backend.services.application_authority_management import lock_compatibility_admission
-        # An adoption racing this legacy write must commit before or after it,
-        # not admit an ungranted write after the new mode takes effect.
-        with db.no_autoflush:
-            lock_compatibility_admission(db, installation, required=True)
-        checkpoint.revision = current_revision + 1
-        checkpoint.value = value
-        db.commit()
-        return {
-            "checkpoint_id": checkpoint_id,
-            "revision": checkpoint.revision,
-            "value": checkpoint.value,
-        }
+        if action in {'checkpoint.get', 'checkpoint.put'}:
+            from backend.services.application_checkpoints import execute_checkpoint
+            return execute_checkpoint(db, installation, request)
+        raise ValueError("Platform action is unsupported")

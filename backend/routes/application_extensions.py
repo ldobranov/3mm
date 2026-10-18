@@ -9,10 +9,11 @@ from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -51,9 +52,11 @@ from backend.services.application_configuration import (
     device_configuration_keys,
     resolve_application_configuration,
 )
+from backend.services.module_packages import ModulePackageError, validate_module_package
 from backend.services.application_access import (
     application_permission_ids, ApplicationPrincipal,
     can_access_application_route, can_access_application_operation,
+    resolve_application_principal,
 )
 from backend.services.application_commands import invalidate_commands
 from backend.services.authority_metadata import (
@@ -102,9 +105,26 @@ class ApplicationAccessResponse(BaseModel):
     allowed_operation_ids: list[str]
 
 
+class ApplicationUiBinding(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    host_version: Literal[1]
+    entrypoint_id: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    built_ui_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("host_version", mode="before")
+    @classmethod
+    def exact_version(cls, value):
+        if type(value) is not int or value != 1:
+            raise ValueError("Unsupported application host version")
+        return value
+
+
 class ApplicationOperationRequest(BaseModel):
     payload: dict[str, object] = Field(default_factory=dict)
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=160)
+    ui_context: ApplicationUiBinding | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -348,7 +368,14 @@ def _invoke(
     request: ApplicationOperationRequest,
     context: dict[str, object],
     audience: str,
+    *,
+    principal: ApplicationPrincipal | None = None,
+    permission_ids: frozenset[str] = frozenset(),
 ) -> dict[str, object]:
+    if request.ui_context is not None:
+        from sqlalchemy.orm import object_session
+        _ui_route(package, request.ui_context, principal, permission_ids, audience,
+            db=object_session(installation), installation=installation)
     try:
         return invoke_application(
             installation,
@@ -361,6 +388,75 @@ def _invoke(
         )
     except ApplicationGatewayError as exc:
         raise HTTPException(409, str(exc)) from exc
+
+
+def _ui_route(package, binding, principal, permission_ids, audience=None, *, db=None, installation=None):
+    if binding.artifact_sha256 != package.sha256:
+        raise HTTPException(409, "Application UI package changed; reload the interface")
+    definition = _definition(package)
+    route = next((item for item in definition.routes
+                  if item.entrypoint_id == binding.entrypoint_id), None)
+    if (route is None or principal is None
+            or (audience is not None and route.audience != audience)
+            or not can_access_application_route(
+                route, principal, module_id=package.module_id, permission_ids=permission_ids)):
+        raise HTTPException(403, "Application UI access is unavailable")
+    mode = db.scalar(select(ApplicationExtensionInstallation.authority_mode).where(
+        ApplicationExtensionInstallation.id == installation.id)) if db is not None and installation is not None else None
+    if binding.built_ui_sha256 is not None or (installation is not None and mode != 'compatibility'):
+        from backend.services.compiled_ui import application_ui_artifact, CompiledUiBuildError
+        try:
+            if binding.built_ui_sha256 is None:
+                raise CompiledUiBuildError('Application UI build binding is required')
+            validated = validate_module_package(Path(package.file_path).read_bytes())
+            if validated.sha256 != package.sha256:
+                raise CompiledUiBuildError('Application UI package changed')
+            application_ui_artifact(db, installation, validated, expected_build=binding.built_ui_sha256)
+        except (CompiledUiBuildError, ModulePackageError, OSError):
+            raise HTTPException(409, 'Application UI build is unavailable; reload the interface') from None
+    return definition, route
+
+
+@router.get("/{module_id}/ui-host/{entrypoint_id}")
+def get_application_ui_host(
+    module_id: str,
+    entrypoint_id: str,
+    artifact_sha256: str,
+    response: Response,
+    built_ui_sha256: str | None = None,
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Fresh, credential-free UI description, not a resource authority grant."""
+    try:
+        binding = ApplicationUiBinding(
+            host_version=1, entrypoint_id=entrypoint_id, artifact_sha256=artifact_sha256,
+            built_ui_sha256=built_ui_sha256)
+    except ValueError:
+        raise HTTPException(422, "Application UI binding is invalid") from None
+    principal = resolve_application_principal(authorization, db)
+    installation = _installation(db, module_id)
+    package = _active_package(db, installation)
+    permissions = (application_permission_ids(db, installation.id, principal.user_id)
+                   if principal.kind == "user" else frozenset())
+    definition, route = _ui_route(package, binding, principal, permissions, db=db, installation=installation)
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        **binding.model_dump(exclude_none=True),
+        "module_id": module_id,
+        "active_version": package.version,
+        "audience": route.audience,
+        "features": {"operations": True, "resource_authority": "separate",
+                     "browser_isolation": False},
+        "operations": [
+            {"operation_id": operation.operation_id, "kind": operation.kind,
+             "idempotency": operation.idempotency}
+            for operation in definition.operations
+            if (route.audience == "kiosk" and "kiosk" in operation.audiences)
+            or can_access_application_operation(
+                operation, principal, audience=route.audience, permission_ids=permissions)
+        ],
+    }
 
 
 @router.get("", response_model=list[ApplicationInstallationResponse])
@@ -776,6 +872,7 @@ def invoke_admin_operation(
             "idempotency_key": request.idempotency_key,
         },
         "administrator",
+        principal=ApplicationPrincipal(kind="user", user_id=admin.id, is_admin=True),
     )
 
 
@@ -799,6 +896,7 @@ def invoke_public_operation(
             "idempotency_key": request.idempotency_key,
         },
         "public",
+        principal=ApplicationPrincipal(kind="anonymous"),
     )
 
 
@@ -839,6 +937,8 @@ def invoke_operator_operation(
             "idempotency_key": request.idempotency_key,
         },
         "operator",
+        principal=ApplicationPrincipal(kind="user", user_id=user.id, is_admin=user.role == "admin"),
+        permission_ids=permission_ids,
     )
 
 
@@ -877,6 +977,7 @@ def invoke_kiosk_operation(
             "idempotency_key": request.idempotency_key,
         },
         "kiosk",
+        principal=principal,
     )
     db.commit()
     return result

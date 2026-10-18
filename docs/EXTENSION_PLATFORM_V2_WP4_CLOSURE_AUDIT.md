@@ -1,10 +1,29 @@
 # M20 — проверка на остатъка за приключване на WP4
 
-Първоначален audit: 2026-10-09; последно обновяване: 2026-10-13. Първоначално проверен checkout:
+Първоначален audit: 2026-10-09; последно обновяване: 2026-10-16. Първоначално проверен checkout:
 `main`, HEAD `3ce8607`, с наличните локални непубликувани промени. SDK остава
 **1.3**. Първоначалната проверка е source-only; последващите targeted тестове
 са записани по-долу. Ограниченият private-file VM сценарий вече е приет по-долу;
 това не е общото Standalone/Hub live приемане или приключване на WP4.
+
+Текущо уточнение (2026-10-15): ограниченият SQL candidate upgrade/start recovery
+на beta.51 вече е [приет отделно](EXTENSION_PLATFORM_V2_RELATIONAL_UPGRADE.md#owner-vm-beta51--accepted-bounded-upgraderecovery-2026-10-15).
+По-старите dated relational остатъци по-долу описват съответния исторически срез,
+не отварят отново това прието доказателство. Новият локален checkpoint срез е
+описан в [checkpoint contract/report](EXTENSION_PLATFORM_V2_CHECKPOINTS.md);
+final native Linux проверките минават с **310 distinct cases**, включително
+отделни actual Root helper tests. Windows protocol/SDK/context и frontend
+проверките също минават, както и fixture visual inspection; owner review и live
+acceptance остават отделни. Cross-platform и overlapping subset counts не се
+събират като нов общ unique total.
+
+Текущ ограничен срез (2026-10-16): [existing public identity read](EXTENSION_PLATFORM_V2_IDENTITY_READ.md)
+е реализиран и проверен локално: **403 distinct native Linux cases**, 1119 Windows
+cases (45 POSIX-specific skips), 357 frontend tests/47 files, type-check/build и
+isolated light/dark/EN/BG/mobile browser review. Това е само
+`platform:installation.identity.read` за exact вече съществуваща публична Core
+identity, не lazy setup, private-key proof, peer/status или cloud права.
+Checkpoint и приетото beta.51 SQL evidence не се отварят повторно; WP4 остава отворен.
 
 ## Какво действително е налично
 
@@ -15,7 +34,7 @@
 | Команди и connectors | Installed-only exact-resource review → approve → apply → revoke и проверки при admission. | Не означава разрешение за произволни устройства/мрежови заявки или всички типове приложения. |
 | Събития | Scoped device consumption и application publication с journal/receipts. | Publication не предоставя автоматичен cross-application subscription. |
 | UI представяне | `@3mm/ui/v1`, публични компоненти/CSS tokens, light/dark и host appearance. | Това не е публичен UI operation/host bridge и не предоставя права. |
-| Platform операции | Съществуващият подписан SDK поддържа identity, peers и checkpoints в compatibility mode. | В opted-in режима неподдържаните операции са отказани. Няма scoped review/admission adapter за тях. |
+| Platform операции | Existing signed SDK compatibility е запазен. Scoped checkpoints са локално проверени: exact v6 review/grants, per-ID read/write, bounded values, SQL CAS и redacted audit; виж [checkpoint report](EXTENSION_PLATFORM_V2_CHECKPOINTS.md). [Public identity-read срезът](EXTENSION_PLATFORM_V2_IDENTITY_READ.md) също е локално проверен с exact v7 public binding, signed SDK/current-grant admission и no-init/no-private-key reader. | Owner/live acceptance за identity read остава отделно. Proof/peers/status, jobs/public routes/provides и frontend host bridge остават scoped blocked/отворени. Opted-in неподдържаните операции са отказани без fallback. |
 | Providers | Тестове за еднакъв application command binding към Agent module/native/firmware capability. | Не е общият installed-extension acceptance в Standalone и Hub с реалния host/transport/recovery. |
 | Потребители и възстановяване | Съществуващи route/audience/permission и recovery проверки. | Не са проведени заедно с неутрален WP4 SDK reference в двата layout-а. |
 
@@ -49,17 +68,29 @@ runtime промяна трябва да се фиксират:
 
 ## 2. Platform и frontend: наличните API не означават scoped support
 
-Провереният source resolver отказва приложения с `platform_permissions`, jobs,
+Първоначално провереният source resolver отказва приложения с `platform_permissions`, jobs,
 public HTTP routes и неподдържани provides, а compiled UI се маркира отделно като
 `frontend_authority_unresolved`. Peer declarations имат и
 `peer_authority_unresolved`. Тези откази не трябва да се премахват само защото
 manifest-ът е валиден или има UI компоненти.
+Текущият ограничен identity-read срез отделя само existing SDK-1.3 permission
+`installation.identity.read`; интеграцията и targeted проверките вече минават. Той не
+прави останалите platform permissions или compiled UI поддържани.
 
 Остава да се фиксират и реализират точните adapters за приетите платформи:
 
-- Checkpoints: own installation, revision/CAS, read/write, bounded payload и
-  текущо одобрено право. Сега compatibility проверки има, scoped adapter няма.
-- Identity/peers/status: точна операция и Core-resolved installation/peer binding,
+- Checkpoints: **реализирани локално, 2026-10-15** — own installation, exact per-ID
+  read/write grants, bounded UTF-8 JSON, current-authority admission, SQL CAS и
+  atomic sealed metadata-only machine audit през existing SDK 1.3. Виж
+  [договора и финалните проверки](EXTENSION_PLATFORM_V2_CHECKPOINTS.md): 310 distinct
+  native Linux cases, Windows regression и frontend/fixture visual inspection.
+  Owner/live acceptance не се подразбират от тези локални резултати.
+- Identity read: **реализиран и проверен локално,
+  2026-10-16** — exact existing public identity и `platform:installation.identity.read`,
+  без initialization/private-key I/O/proof. Final coverage: 403 distinct native
+  Linux cases и отделни Windows/frontend regressions; owner/live acceptance не се
+  подразбира. Виж [ограничения договор](EXTENSION_PLATFORM_V2_IDENTITY_READ.md).
+- Proof/peers/status: точна операция и Core-resolved installation/peer binding,
   текуща местна воля и generation. Service право не става human admin или cloud
   ownership. Запазват се работещите отделни peer consent/security договори.
 - Jobs/public routes/provides: описват се точните разрешени операции и actor/
