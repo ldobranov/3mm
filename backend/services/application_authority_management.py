@@ -481,7 +481,17 @@ class ApplicationAuthorityManager:
     def inspect(self, installation_id):
         prepared = self._prepare(installation_id)
         try:
-            return self._inspect_reviewable(installation_id, prepared)
+            status, probe = self._inspect_reviewable(installation_id, prepared)
+            if probe is not None:
+                from backend.services.application_relational import observe_runtime_status
+                # Signed metadata only, outside BOTH Core snapshot and key lease.
+                # Re-read the artifact and current authority after IPC; a status
+                # observation is never an invocation ticket or execution permit.
+                hello = observe_runtime_status(probe)
+                prepared = self._prepare(installation_id)
+                status, _ = self._inspect_reviewable(
+                    installation_id, prepared, observation=(probe, hello))
+            return status
         except AuthorityReviewKeyError:
             blocker = "review_key_unavailable"
         except AuthorityManagementError as exc:
@@ -508,12 +518,10 @@ class ApplicationAuthorityManager:
                 "review_available": False, "review_blockers": [blocker],
                 "execution_class": "reviewed_native_only", "isolation_proven": False}
 
-    def _inspect_reviewable(self, installation_id, prepared):
+    def _inspect_reviewable(self, installation_id, prepared, *, observation=None):
         with self.keys.locked() as key, _read_snapshot(self.engine) as db:
             subject = self._subject(db, key, installation_id, prepared)
             runtime_blockers = []
-            if getattr(subject, 'relational', ()):
-                runtime_blockers.append('relational_runtime_unavailable')
             row = db.get(Grant, installation_id)
             grant = None
             if row is not None:
@@ -540,10 +548,27 @@ class ApplicationAuthorityManager:
                 try:
                     for scope in scopes:
                         self._require_grant(db, key, installation_id, prepared, scope)
-                    effective = bool(scopes) and prepared[0].status == "active" and not runtime_blockers
+                    effective = bool(scopes) and prepared[0].status == "active"
                 except (AuthorityManagementError, AuthorityReviewKeyError, ValueError, TypeError, KeyError, AttributeError):
                     pass
             installation = db.get(ApplicationExtensionInstallation, installation_id)
+            probe = None
+            if getattr(subject, 'relational', ()):
+                if effective and installation.enabled:
+                    from backend.services.application_relational import (
+                        runtime_status_binding, require_runtime_status,
+                    )
+                    try:
+                        if observation is None:
+                            probe = runtime_status_binding(db, installation_id, prepared, grant)
+                            effective = False  # No green status before the live observation.
+                        else:
+                            require_runtime_status(db, installation_id, prepared, grant, observation)
+                    except (AuthorityManagementError, AuthorityReviewKeyError, ValueError,
+                            TypeError, KeyError, AttributeError, OSError):
+                        effective = False
+                if not effective:
+                    runtime_blockers.append('relational_runtime_unavailable')
             return {"installation_id": installation_id, "mode": subject.binding.baseline.enforcement_mode,
                 "installation_status": installation.status, "installation_enabled": installation.enabled,
                 "native_reviews": native_reviews,
@@ -553,7 +578,7 @@ class ApplicationAuthorityManager:
                 "grant_state": grant["state"] if grant else ('unavailable' if row else None),
                 "review_available": True, "review_blockers": [],
                 "execution_class": "reviewed_native_only", "isolation_proven": False,
-                **({'runtime_blockers': runtime_blockers} if runtime_blockers else {})}
+                **({'runtime_blockers': runtime_blockers} if runtime_blockers else {})}, probe
 
 
 def configured_manager(engine):

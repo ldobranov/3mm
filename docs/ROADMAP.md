@@ -790,6 +790,32 @@ host. Milestone 17 is closed by owner acceptance; deferred Milestone 18 hardware
 does not block this generic platform work. Marketplace UI, business logic and
 real ESP firmware are outside Milestone 20.
 
+## Milestone 21 — Core Interactive Sessions & Remote Streaming
+
+Status: **development foundation integrated locally on 2026-10-18**, not closed
+or enabled in production. The parallel Ubuntu work supplies versioned session
+contracts, an additive SDK 1.3 provider interface, bounded local-manager and
+Agent/remote-router prototypes, discovery and an isolated WebSocket test harness.
+See [M21 plan and current gates](M21_CORE_INTERACTIVE_SESSIONS_PLAN.md).
+
+Goal: one generic interactive transport for independent reviewed providers in
+Standalone/local Agent and Hub/Node layouts, without terminal-specific Core logic
+or streaming through the C10/C11 command queue. A second independent provider
+must work through the public SDK without Core changes.
+
+The experimental HTTP/WebSocket router is deliberately not mounted by production
+Core. M21/WP4 must first connect current human/device/resource authorization,
+native review, separate process identity, audit and recovery to the M20 contracts.
+Prototype user bindings, in-memory device generations and local test results do
+not substitute for those gates. No session service, new dependency, live provider
+or permissions are enabled by importing this work.
+
+Remaining: production transport lifecycle/resource hardening, real Agent/Hub
+connectors, M20 integration and physical Zero W/Standalone/Hub security, reconnect
+and immutable update/rollback acceptance. Cloud relay requires separate approval.
+M20/WP4 common acceptance remains the immediate closeout priority; M21 does not
+rename, reopen or declare it complete.
+
 ## Immediate work queue
 
 These are the first concrete tasks after approval of this plan:

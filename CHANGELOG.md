@@ -6,6 +6,63 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.53] - 2026-10-18
+
+### Fixed
+
+- Relational authority status no longer unconditionally reports a healthy
+  prepared runtime unavailable. A bounded signed metadata lookup runs outside
+  Core snapshots/key leases, followed by fresh artifact/grant/lifecycle checks.
+  Refresh issues no SQL permits, grants or journal/business writes; revoked,
+  stopped, changed or unverifiable runtimes remain ineffective.
+- M21 prototype Agent controls preserve the validated action, arguments and
+  correlation ID. Oversized provider output becomes a bounded gateway error
+  without closing the WebSocket or silently truncating output; maximum legal
+  frames still work for providers whose output fits the protocol bounds.
+- Expired device tickets release capacity before new issue. Issue/redeem are
+  serialized, retain single-use/expiry bounds and preserve the string-ticket API.
+  The HTTP response reports the exact stored expiry, not device update metadata.
+- The prototype Agent transport needs no runtime Application SDK import, so the
+  minimal Node remains independent of Core and application-service packages.
+
+### Added
+
+- M21 development foundation from the parallel Ubuntu checkout: independent
+  interactive-session v1 contracts, additive SDK 1.3 provider interface, local
+  manager, Agent/remote-router/discovery prototypes and isolated WebSocket tests.
+  Current M20 checkpoint/peer exports are preserved when merging shared exports.
+- Production route-refusal checks and actual extracted-Node import verification,
+  plus reset, frame-limit, exact ticket expiry/capacity and concurrency regressions.
+- M21 roadmap/plan with explicit remaining M20 authority, isolation, production
+  transport and physical acceptance gates; owner-reported beta.52 bounded SQL
+  preservation/replay/conflict/ATTACH acceptance is recorded separately.
+
+### Verification
+
+- Complete local Python collection: 4,625 passed, 602 platform-gated skips and
+  five subtests passed (53m14s); no failures. Existing warnings remain visible.
+- Deployment/Application SDK: 382 passed. Two separate actual Root/helper cases
+  pass with delivered ZIP, distinct Core/application identities, signed SQL,
+  effective status and revocation; this does not cover every privileged skip.
+- Frontend: 455 tests across 52 files, type check and production build pass.
+  The 127-case focused M21 suite overlaps the complete runs, not extra coverage.
+- Publication additionally requires the exact tagged tree's Python 3.13 CI and
+  reproducible full/Node release builds; local results are not live VM acceptance.
+
+### Compatibility and release boundary
+
+- M21 HTTP/WebSocket routes are deliberately NOT mounted by production Core.
+  No terminal, session-provider process, new runtime dependency, user/device
+  permissions or automatic application adoption/start is enabled by this update.
+- No database migration or Device Protocol/Application SDK version change.
+  Existing identities, pairing, appearance, compatible extensions and immutable
+  release/recovery behavior remain. Concrete theme/business/test ZIPs and local
+  generated data are excluded; the Ubuntu development checkout is unchanged.
+- This test Beta closes neither M20/WP4 nor M21. Common neutral Standalone/Hub
+  and live recovery/security acceptance remain separate. Complete Python/frontend
+  checks and reproducible full/Node artifacts gate publication; publication does
+  not update, reboot or grant rights on any device.
+
 ## [0.3.0-beta.52] - 2026-10-18
 
 ### Added
@@ -1803,7 +1860,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.52...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.53...HEAD
+[0.3.0-beta.53]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.53
 [0.3.0-beta.52]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.52
 [0.3.0-beta.51]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.51
 [0.3.0-beta.50]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.50

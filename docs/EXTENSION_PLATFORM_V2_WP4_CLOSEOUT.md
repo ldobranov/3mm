@@ -221,3 +221,59 @@ on Python 3.13 and verify reproducible full/Node artifacts before publication.
 This consolidated test Beta does not close WP4, broad Standalone/Hub acceptance,
 disposable-VM recovery or owner acceptance. Update does not adopt applications,
 grant permissions or start services on the owner's behalf.
+
+## Relational status correction after beta.52 (2026-10-18)
+
+The owner accepted the beta.52 bounded SQL preservation/replay/conflict/ATTACH
+regression; its exact limits are recorded in the
+[beta acceptance report](EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md#owner-reported-beta52-sql-regression--2026-10-18).
+The published release's authority status nevertheless unconditionally labels SQL
+runtime unavailable. That is a status defect, not failed SQL execution or permission
+to weaken admission. The local correction removes that unconditional claim.
+
+After checking current native trust and all selected grants, status reads one
+bounded signed host-metadata response outside Core snapshots/review-key leases.
+It then revalidates the artifact, guard generation/revision, application epoch,
+configuration, sealed grant and prepared lifecycle in a fresh snapshot. A stopped,
+revoked, changed, stale or unverifiable runtime remains ineffective. Status issues
+no invocation tickets/SQL permits and writes no journal, grant or business data.
+The existing DTO/UI accepts a verified effective result without a schema or screen
+change. This is a point-in-time observation, not authority for the next operation.
+
+Verification: 34 new native Linux status cases pass, including real signed Unix
+IPC, read-only refresh, admin-only/no-store HTTP and revocation/drift during IPC.
+The affected integration run passes its 109 existing host/admission/review/UI
+authority cases. Its one new-test expectation failure (missing sealed grant uses
+the existing stricter status-only refusal) is corrected in the full 34-case rerun;
+these runs cover 143 distinct successful cases, not additive repeated counts.
+Two further actual Root/helper tests pass (146.61 s): the exact delivered ZIP,
+protected preparation, separate non-root Core/application identities and real
+signed SDK SQL path report effective status only while current rights hold,
+then ineffective after revocation. No skipped cases are counted as evidence.
+That is 145 distinct successful backend cases across these targeted runs.
+Frontend: 13 relational DTO cases, type check and production build pass.
+Evidence: `.runtime/wp4-status-{integration,focused,root}.{log,xml}`. The initial
+privileged harness failed before reaching assertions because its temporary source
+root was not traversable by the test UIDs; only that disposable directory's mode
+was corrected for the complete successful rerun. Production permissions unchanged.
+
+This correction is local, not part of published beta.52. No VM code, services,
+grants, version, branch, commit or push were changed. WP4 remains open for the
+common neutral UI + SDK Standalone/Hub and final owner/recovery acceptance gates;
+the accepted SQL probes need not be repeated merely to restate their result.
+
+## Consolidated beta.53 release verification (2026-10-18)
+
+The status correction above is included in the beta.53 candidate together with
+the gated M21 foundation. The complete default Python collection passes 4,625
+cases, skips 602 platform-gated cases and passes five subtests (53m14s), with no
+failures. Deployment/Application SDK passes 382 cases. The separate actual
+Root/helper run passes both delivered-ZIP/Core-UID/signed SQL status/revocation
+cases; it does not cover all privileged skips. Frontend passes 455 tests across
+52 files, type check and production build. Existing warnings remain visible.
+
+Evidence: `.runtime/release-beta53-{full,extra,root}.{log,xml}`. Local tests use
+disposable Linux sources/mount namespaces, not live services. Exact tagged
+Python 3.13 CI and reproducible full/Node builds must also pass before publication.
+M21 routes stay unmounted. This release does not update the owner's VM, adopt or
+start applications, grant rights, or close the outstanding WP4 acceptance gates.

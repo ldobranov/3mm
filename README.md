@@ -8,7 +8,7 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Test Beta. This source prepares **v0.3.0-beta.52**, a bounded
+> **Project status:** Test Beta. This source prepares **v0.3.0-beta.53**, a bounded
 > Milestone 20 Extension Platform v2 delivery, not completion of WP4 or Milestone 20.
 > It extends exact resource review/approval/apply with private-file access and a
 > bounded relational-storage foundation: signed transaction admission/receipts,
@@ -27,6 +27,11 @@ system.
 > profile; human/kiosk access remains separate from service resource grants.
 > Compiled output requires local code review and explicit same-origin UI risk
 > acceptance. Old builds without provenance remain compatibility-only.
+> Beta.53 corrects relational runtime status using signed metadata and fresh
+> authority checks, without changing grants or issuing SQL permits. It also
+> carries the M21 interactive-session protocol/SDK and development prototypes.
+> M21 HTTP/WebSocket endpoints are deliberately not mounted in production;
+> its M20 authorization/isolation and live Agent/Hub acceptance remain open.
 > General database install/restore/key lifecycle and neutral end-to-end WP4
 > Standalone/Hub acceptance remain open. Relational generic
 > activation/native/source gates remain closed; a prepared-runtime fixture is not
@@ -132,6 +137,10 @@ system.
   for admin echo, bounded private-file access and content-bound receipts. Build and
   upload [WP4 Test](modules/wp4-test/README.md) separately through Extensions;
   the ZIP is not bundled or installed by Core updates and ships no trust/grants.
+- **Interactive-session development foundation** — M21 versioned models, provider
+  SDK, Agent/router prototypes and isolated WebSocket tests are included as source.
+  No production endpoint, terminal, provider process, new permission or dependency
+  is enabled. See the [M21 plan and release boundary](docs/M21_CORE_INTERACTIVE_SESSIONS_PLAN.md).
 - **Separate relational WP4 test package** — build/upload
   [WP4 Relational Test](modules/wp4-relational-test/README.md) for bounded own-SQLite
   migrations, explicit grants, replay/conflict and revocation checks. Catalog upload,
@@ -327,20 +336,20 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 ### Updating a paired Hub and Zero
 
 For this test Beta, first export a pre-upgrade backup and update a disposable VM.
-From a working beta.43–beta.51 full installation, select **Beta** in
-`/system/updates` and stage the published beta.52 release. Pending relational
+From a working beta.43–beta.52 full installation, select **Beta** in
+`/system/updates` and stage the published beta.53 release. Pending relational
 checkpoints block encrypted backup/restore and are not repaired by an update.
 Preserve the evidence and an independent verified VM snapshot; do not repeat
 preparation until explicit recovery. Older installations can manually
 bootstrap the current corrected full-profile release (Raspberry/WSL):
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.52
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.53
 ```
 
 An older installed updater cannot acquire the target-installer fix before it
 runs. No bridge release or reset is required. Update the Zero over SSH
-with the Node bootstrap command above and add `--tag v0.3.0-beta.52` to select
+with the Node bootstrap command above and add `--tag v0.3.0-beta.53` to select
 this exact release. Provisioned upgrades preserve identity and pairing, not
 Master reset. Real update/rollback and browser request/CPU checks remain pending;
 see [platform stability acceptance](docs/PLATFORM_STABILITY_ACCEPTANCE.md).
@@ -541,7 +550,8 @@ checks local browser CORS as well as readiness. See the
 | [Compiled extension v1](docs/COMPILED_EXTENSION_V1.md) | Reviewed Vue compilation boundary |
 | [Application extension v1 plan](docs/APPLICATION_EXTENSION_V1_PLAN.md) | Planned trusted business-service and integration boundary |
 | [Extension Platform v2 plan](EXTENSION_PLATFORM_V2_CORE_PLAN.md) | Milestone 20 scope, implemented slices and remaining WP4/WP5 gates |
-| [Extension Platform test Beta](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md) | beta.50 scope, retained recovery evidence and bounded live smoke checks |
+| [Extension Platform test Beta](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md) | beta.53 scope, retained recovery evidence and bounded live smoke checks |
+| [M21 interactive sessions](docs/M21_CORE_INTERACTIVE_SESSIONS_PLAN.md) | Imported protocol/SDK prototypes, disabled production endpoints and remaining security/live gates |
 | [Relational upgrade and recovery](docs/EXTENSION_PLATFORM_V2_RELATIONAL_UPGRADE.md) | Local candidate adoption, explicit migration, confirmation and partial-restore flow |
 | [Private application files](docs/EXTENSION_PLATFORM_V2_PRIVATE_FILES.md) | Exact file grants, signed SDK operations, limits and recovery evidence |
 | [Relational storage contract](docs/EXTENSION_PLATFORM_V2_RELATIONAL_STORAGE_CONTRACT.md) | Prepared-runtime foundation and remaining database lifecycle gates |

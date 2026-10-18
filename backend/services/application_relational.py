@@ -1,14 +1,15 @@
 """Internal current-authority admission journal, not an exposed SQL endpoint.
 
-The internal resolver checks a prepared host over bounded signed Unix metadata
-transport. Production dispatch/SDK wiring and protected lifecycle publication/
-recovery are still missing; no HTTP/platform routes activate this runtime.
+The resolver checks a prepared host over bounded signed Unix metadata transport.
+Authority status uses the same metadata/binding checks without issuing tickets,
+transaction permits, journal writes or application SQL.
 The context argument is a trusted Core dependency, NEVER a service payload.
 No SQL, parameters, business values, paths or application disk I/O enter Core.
 """
 
 import hashlib
 from dataclasses import dataclass
+from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -18,11 +19,14 @@ from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.services import application_authority_management as authority
 from backend.services.application_authority_context import _canonical_bytes
 from backend.services.application_authority_keys import AuthorityReviewKeyError
-from backend.services.application_authority_sources import _configuration
+from backend.services.application_authority_sources import _configuration, _package_pin
 from backend.services.application_files import _clean_session, _principal, _runtime
 from backend.services.authority_metadata import (
     authority_transaction,
     read_application_authority,
+    read_authority_guard,
+    ApplicationAuthoritySnapshot,
+    AuthorityGuardSnapshot,
 )
 from three_mm_application_sdk.relational_wire import (
     RelationalCommitReceipt,
@@ -36,6 +40,7 @@ from three_mm_application_sdk.relational_wire import (
 from three_mm_runtime.application_relational_session import (
     _call_host_metadata,
     _Invocation,
+    _regular,
 )
 
 MAX_RELATIONAL_ACTIONS = 4096
@@ -62,6 +67,65 @@ class _HostTransactionContext:
     recovery_generation: str
     started_at_ms: int
     operation_deadline_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class _RuntimeStatusBinding:
+    """Core-only read observation; neither an invocation nor a SQL permit."""
+
+    guard: AuthorityGuardSnapshot
+    application: ApplicationAuthoritySnapshot
+    runtime: tuple[str, Path]
+    grant_revision: str
+
+
+def runtime_status_binding(db, installation_id, prepared, grant):
+    """Called only after current native trust and every selected grant validate."""
+    if _package_pin(db, installation_id) != prepared[0]:
+        raise RelationalAuthorityError()
+    return _RuntimeStatusBinding(
+        read_authority_guard(db), read_application_authority(db, installation_id),
+        _runtime(db, installation_id), grant["revision"],
+    )
+
+
+def _status_secret(path):
+    if _regular(path, protected=True).st_size != 32:
+        raise RelationalAuthorityError()
+    with path.open("rb") as stream:
+        value = stream.read(33)
+    if len(value) != 32:
+        raise RelationalAuthorityError()
+    return value
+
+
+def observe_runtime_status(binding):
+    """One bounded authenticated metadata lookup, with NO Core DB/key leases.
+
+    Missing/invalid keys or a stopped host remain unconfirmed. The metadata
+    worker does not execute package code, open business SQL or issue authority.
+    """
+    from backend.config import get_settings
+
+    try:
+        path = get_settings().applications.key_root / (binding.runtime[0] + ".key")
+        secret = _status_secret(path)
+        hello = _call_host_metadata(binding.runtime[1].with_name("relational.sock"), secret)
+        if _status_secret(path) != secret:
+            raise RelationalAuthorityError()
+        return hello
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError, AttributeError):
+        return None
+
+
+def require_runtime_status(db, installation_id, prepared, grant, observation):
+    """Fresh read-only snapshot after IPC; never renew/replay execution rights."""
+    previous, hello = observation
+    if (type(previous) is not _RuntimeStatusBinding or hello is None
+            or runtime_status_binding(db, installation_id, prepared, grant) != previous):
+        raise RelationalAuthorityError()
+    _require_prepared_host(
+        db, installation_id, prepared, previous.runtime, hello, previous.guard.generation)
 
 
 def _host_snapshot(db, installation_id, transport_secret):

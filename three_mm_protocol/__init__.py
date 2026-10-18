@@ -112,6 +112,21 @@ from three_mm_protocol.application_event_publication import (
     DeviceEventProducerV1,
     PlatformEventV1,
 )
+from three_mm_protocol.interactive_session import (
+    SESSION_CONTRACT,
+    SESSION_PROTOCOL_VERSION,
+    SessionControlV1,
+    SessionDiscoveryV1,
+    SessionFrameHeaderV1,
+    SessionOpenAcceptanceV1,
+    SessionOpenRequestV1,
+    SessionStatusV1,
+    SessionTargetV1,
+    advance_session_state,
+    decode_session_frame,
+    encode_session_frame,
+    provider_declaration,
+)
 
 __all__ = [
     "PROTOCOL_VERSION",
@@ -202,4 +217,17 @@ __all__ = [
     "ApplicationEventPublicationReceiptV1",
     "DeviceEventProducerV1",
     "PlatformEventV1",
+    "SESSION_CONTRACT",
+    "SESSION_PROTOCOL_VERSION",
+    "SessionControlV1",
+    "SessionFrameHeaderV1",
+    "SessionOpenAcceptanceV1",
+    "SessionOpenRequestV1",
+    "SessionStatusV1",
+    "SessionTargetV1",
+    "SessionDiscoveryV1",
+    "advance_session_state",
+    "decode_session_frame",
+    "encode_session_frame",
+    "provider_declaration",
 ]

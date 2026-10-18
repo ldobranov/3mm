@@ -1,4 +1,4 @@
-# Extension Platform v2 — beta.52 test acceptance
+# Extension Platform v2 — beta.53 test acceptance
 
 Status: test-release checklist, not completed live acceptance or WP4 closure.
 
@@ -19,6 +19,12 @@ resource/native reviews, not an automatic conversion of installed applications.
 The current [closeout checklist](EXTENSION_PLATFORM_V2_WP4_CLOSEOUT.md) records
 local integration evidence and the remaining common Standalone/Hub acceptance.
 
+Beta.53 corrects SQL authority status: verified signed runtime metadata is
+rechecked against fresh current authority without issuing permits or changing
+grants. It also carries M21 protocol/SDK and development prototypes as source;
+their HTTP/WebSocket router is not mounted by production Core. No new interactive
+service, provider process, permissions or dependency is enabled by an update.
+
 Existing applications remain in compatibility mode. Updating Core does not grant
 new resources, adopt applications or record executable code as trusted. First
 adoption requires a disabled application, a verified recoverable backup and a
@@ -35,7 +41,7 @@ separate uploads. Publication does not update the VM, Hub or Zero.
    off-device. Record the installed release and local Agent device ID. Snapshot
    the VM as an independent fallback; do not keep two active clones with one identity.
 2. After all seven release assets are published, select Beta in System Updates,
-   stage `v0.3.0-beta.52`, review preflight and explicitly install that version.
+   stage `v0.3.0-beta.53`, review preflight and explicitly install that version.
    If an earlier failed relational preparation left a recovery checkpoint,
    encrypted backup/restore is blocked. Preserve its evidence and a verified VM
    snapshot; an update is not recovery and does not authorize another preparation.
@@ -199,6 +205,29 @@ all pending recovery evidence; a blocked backup is not permission to delete mark
 
 The broader neutral Standalone/Hub, human/kiosk and recovery acceptance remains
 an explicit WP4 gate; this checklist does not mark it complete.
+
+### Owner-reported beta.52 SQL regression — 2026-10-18
+
+The updated VM independently reports beta.52, four active Core/Agent/Web/helper
+services, both readiness endpoints ready and the unchanged Agent identity
+`dev_ad7e90a045214c4088ed6ed7df50bec2`. The existing relational fixture 1.1.0
+retains its native review and grant revision 15. Its text remains
+`WP4 relational beta50 test`, SHA-256
+`70e62e3db81d22892487c07a199ce1479cfb8c68589dc58f3c0153962ca786ee`,
+with `write_count: 2`.
+
+For persisted request `5e963465c882465da737aa771b9cf7f2`, the application record
+is found and explicitly **not a Core receipt**. Exact replay returns `replayed`;
+the same ID with changed content returns `conflict`. The ATTACH boundary probe
+returns `blocked`; the final read retains the original text/digest/count.
+This accepts this bounded update/preservation/replay/conflict/ATTACH slice only,
+not a fresh write, revoke/regrant, reboot, restore or common neutral acceptance.
+
+Beta.52's status still incorrectly reports `relational_runtime_unavailable`
+despite that working SDK path. The status correction recorded in the
+[closeout checklist](EXTENSION_PLATFORM_V2_WP4_CLOSEOUT.md#relational-status-correction-after-beta52-2026-10-18)
+is included in beta.53 and is **not in the published beta.52 release**. No new live permissions,
+recovery or runtime effects are justified by that reporting defect.
 
 ## Restore and rollback safety
 

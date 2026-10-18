@@ -741,10 +741,35 @@ def test_exact_delivered_zip_real_registration_preparation_and_nonroot_start(pre
     current = review(state)
     assert current["mode"] == "enforced" and current["grant_state"] == "active"
     assert current["installation_status"] == "active"
-    # beta.48's shared status deliberately does not claim relational runtime
-    # effectiveness. The next test proves admission through the actual SDK.
-    assert current["grant_effective"] is False
-    assert current["runtime_blockers"] == ["relational_runtime_unavailable"]
+    # Observe the real protected key and signed host as Core, not as root or
+    # with the parent test process's unrelated runtime configuration.
+    current = core_status(state)
+    assert current["grant_effective"] is True
+    assert not current.get("runtime_blockers")
+
+
+def core_status(state):
+    """Actual Core UID read-only status with the installed transport key root."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import json; from backend.database import engine; "
+            "from backend.services.application_authority_management import configured_manager; "
+            "print(json.dumps(configured_manager(engine).inspect(1)))",
+        ],
+        capture_output=True,
+        timeout=30,
+        user=1202,
+        group=1203,
+        extra_groups=(1201,),
+        env=dict(
+            state.environment, THREE_MM_APPLICATION_KEY_ROOT=str(state.transport_keys)
+        ),
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    assert state.token.encode() not in result.stdout + result.stderr
+    return json.loads(result.stdout)
 
 
 def core_call(state, operation, payload=None, request_id=None):
@@ -851,6 +876,7 @@ finally:
         assert core_call(state, "db_get")["gateway_blocked"] is True
         reviewed = review(state)
         assert reviewed["mode"] == "enforced" and reviewed["grant_state"] == "active"
+        assert core_status(state)["grant_effective"] is True
         initial_read = core_call(state, "db_get")
         assert initial_read.get("status") == "missing", (
             initial_read,
@@ -902,6 +928,7 @@ manager.revoke(1, actor_token=sys.stdin.buffer.readline().decode().strip(),
             revoked.returncode == 0
             and state.token.encode() not in revoked.stdout + revoked.stderr
         )
+        assert core_status(state)["grant_effective"] is False
         assert core_call(state, "db_get") == {"gateway_blocked": True}
         denied = identity()
         assert core_call(

@@ -62,6 +62,13 @@ describe('relational authority response boundaries', () => {
     expect(readAuthorityStatus(older).grant_effective).toBe(false)
   })
 
+  it.each(['read', 'read_write'] as const)('accepts an explicitly confirmed %s runtime without inventing grants', mode => {
+    const current = readAuthorityStatus({ ...status(mode), grant_effective: true, runtime_blockers: [] })
+    expect(current.grant_effective).toBe(true)
+    expect(readAuthorityPlan(plan(mode), current, moduleId).resources.relational)
+      .toHaveLength(mode === 'read' ? 1 : 2)
+  })
+
   it('rejects malformed, unknown or contradictory runtime evidence', () => {
     for (const blockers of [null, 'relational_runtime_unavailable', [null], [true],
       ['unrecognized'], ['relational_runtime_unavailable', 'relational_runtime_unavailable']]) {
