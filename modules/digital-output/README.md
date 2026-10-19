@@ -1,5 +1,28 @@
 # Digital GPIO Output 1.0.0
 
+## Opt-in versioned command profile 1.1.0
+
+```bash
+python3 modules/digital-output/build_package.py --versioned-command \
+  --output .runtime/digital-output-1.1.0.zip
+```
+
+The deterministic 1.1.0 package uses the same output-only handler and defaults,
+with an explicit `gpio.digital.control` contract **1.0**. It declares strict
+`set_output` and `pulse_output` arguments/results and the output state. Read the
+actual registry contract and use its exact version/digest. The pulse action is
+`pulse_output`, channel `gpio.output.1`, duration 50–10000 ms.
+It accepts the one-output managed configuration, including mock mode, without
+requesting any input. Driver selection is unchanged: this package does **not**
+make a real device safe for simulation.
+
+Omit the flag to build the existing unversioned 1.0.0 profile. Existing installed
+packages and legacy automation are not upgraded automatically. Unversioned
+control/automation calls are deliberately refused by 1.1.0; input/event contracts
+are not supplied. Changes to channels/limits need a matching new contract.
+
+## Legacy profile
+
 Output-only package for the existing trusted digital GPIO handler. Unlike the
 development Mock GPIO package, it needs no input mapping. The package uses the
 existing handler; configuring pins through Fleet requires Core/Agent beta.24

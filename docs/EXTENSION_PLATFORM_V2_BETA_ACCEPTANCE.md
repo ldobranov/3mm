@@ -1,4 +1,4 @@
-# Extension Platform v2 — beta.53 test acceptance
+# Extension Platform v2 — beta.54 test acceptance
 
 Status: test-release checklist, not completed live acceptance or WP4 closure.
 
@@ -25,6 +25,12 @@ grants. It also carries M21 protocol/SDK and development prototypes as source;
 their HTTP/WebSocket router is not mounted by production Core. No new interactive
 service, provider process, permissions or dependency is enabled by an update.
 
+Beta.54 fixes the kiosk timestamp/autoflush lock across service IPC and supplies
+the separately built [neutral UI/SDK scoped reference](../modules/application-reference/README.md)
+and opt-in output-only GPIO contract profile. Use the [post-update runbook](../modules/application-reference/ACCEPTANCE.md)
+for exact build/native review, stopped adoption and independent operator, kiosk
+and service rights. The test ZIPs are not installed or granted by a Core update.
+
 Existing applications remain in compatibility mode. Updating Core does not grant
 new resources, adopt applications or record executable code as trusted. First
 adoption requires a disabled application, a verified recoverable backup and a
@@ -37,11 +43,13 @@ separate uploads. Publication does not update the VM, Hub or Zero.
 
 ## First live gate — disposable VM
 
-1. Export a password-protected portable backup **before** upgrading and keep it
-   off-device. Record the installed release and local Agent device ID. Snapshot
-   the VM as an independent fallback; do not keep two active clones with one identity.
+1. On Standalone, export a password-protected portable backup **before** upgrading
+   and keep it off-device. Built-in encrypted backup/restore is not a supported
+   Hub flow; keep a verified independent Hub VM snapshot/export instead. Record
+   the installed release and local Agent device ID. Do not keep two active clones
+   with one identity.
 2. After all seven release assets are published, select Beta in System Updates,
-   stage `v0.3.0-beta.53`, review preflight and explicitly install that version.
+   stage `v0.3.0-beta.54`, review preflight and explicitly install that version.
    If an earlier failed relational preparation left a recovery checkpoint,
    encrypted backup/restore is blocked. Preserve its evidence and a verified VM
    snapshot; an update is not recovery and does not authorize another preparation.
@@ -228,6 +236,22 @@ despite that working SDK path. The status correction recorded in the
 [closeout checklist](EXTENSION_PLATFORM_V2_WP4_CLOSEOUT.md#relational-status-correction-after-beta52-2026-10-18)
 is included in beta.53 and is **not in the published beta.52 release**. No new live permissions,
 recovery or runtime effects are justified by that reporting defect.
+
+### Owner-reported beta.53 SQL status/UI acceptance — 2026-10-18
+
+After the VM update, the owner reports installation 5 / relational fixture 1.1.0
+with the same artifact, native review and grant revision 15. Status now reports
+`grant_effective: true`, no runtime blocker, and the UI shows **Current rights
+are effective** with the correct package/review. The SDK read retains the beta.50
+text, SHA-256 `70e62e3db81d22892487c07a199ce1479cfb8c68589dc58f3c0153962ca786ee`
+and `write_count: 2`.
+
+This accepts the beta.53 status/UI correction and preserved data, alongside the
+earlier accepted SQL probes. It is not a new write, reboot, restore or neutral
+Standalone/Hub acceptance. Do not repeat the older SQL probes solely to restate
+these results. The separately built
+[neutral scoped profile](../modules/application-reference/README.md) is the next
+common UI/SDK mock acceptance vehicle, not completed live acceptance.
 
 ## Restore and rollback safety
 

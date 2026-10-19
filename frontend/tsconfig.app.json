@@ -7,7 +7,9 @@
     "baseUrl": "./",
     "paths": {
       "@/*": ["./src/*"],
-      "@/extensions/*": ["src/extensions/*"]
+      "@/extensions/*": ["src/extensions/*"],
+      "vue": ["./node_modules/vue/dist/vue.d.ts"],
+      "@3mm/application-ui/v1": ["./src/extension-ui/application-v1.ts"]
     },
     "typeRoots": ["./node_modules/@types", "./src/extensions"]
   }

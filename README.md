@@ -8,7 +8,7 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Test Beta. This source prepares **v0.3.0-beta.53**, a bounded
+> **Project status:** Test Beta. This source prepares **v0.3.0-beta.54**, a bounded
 > Milestone 20 Extension Platform v2 delivery, not completion of WP4 or Milestone 20.
 > It extends exact resource review/approval/apply with private-file access and a
 > bounded relational-storage foundation: signed transaction admission/receipts,
@@ -32,6 +32,10 @@ system.
 > carries the M21 interactive-session protocol/SDK and development prototypes.
 > M21 HTTP/WebSocket endpoints are deliberately not mounted in production;
 > its M20 authorization/isolation and live Agent/Hub acceptance remain open.
+> Beta.54 fixes kiosk SDK admission blocked by an autoflushed Core timestamp
+> transaction. A separate neutral UI/SDK reference and opt-in versioned
+> output-only GPIO package support the next mock acceptance gate; their ZIPs,
+> code trust, human/kiosk access and service grants are not installed by Core.
 > General database install/restore/key lifecycle and neutral end-to-end WP4
 > Standalone/Hub acceptance remain open. Relational generic
 > activation/native/source gates remain closed; a prepared-runtime fixture is not
@@ -137,6 +141,12 @@ system.
   for admin echo, bounded private-file access and content-bound receipts. Build and
   upload [WP4 Test](modules/wp4-test/README.md) separately through Extensions;
   the ZIP is not bundled or installed by Core updates and ships no trust/grants.
+- **Separate neutral UI/SDK reference** — build/upload the opt-in scoped
+  [Application Reference](modules/application-reference/README.md) against an
+  explicitly reviewed mock capability contract. Operator/kiosk UI uses only the
+  public host, preserves uncertain request IDs and separates human access from
+  service resource grants. Windows/Linux scoped ZIPs normalize source newlines
+  and ZIP metadata; the default compatibility profile remains unchanged.
 - **Interactive-session development foundation** — M21 versioned models, provider
   SDK, Agent/router prototypes and isolated WebSocket tests are included as source.
   No production endpoint, terminal, provider process, new permission or dependency
@@ -335,21 +345,23 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 ### Updating a paired Hub and Zero
 
-For this test Beta, first export a pre-upgrade backup and update a disposable VM.
-From a working beta.43–beta.52 full installation, select **Beta** in
-`/system/updates` and stage the published beta.53 release. Pending relational
+For this test Beta, first keep a verified pre-upgrade backup and update a disposable VM.
+Built-in encrypted backup/restore is Standalone-only; a Hub requires an independent
+recoverable VM snapshot/export, not an unsupported Hub backup/restore claim.
+From a working beta.43–beta.53 full installation, select **Beta** in
+`/system/updates` and stage the published beta.54 release. Pending relational
 checkpoints block encrypted backup/restore and are not repaired by an update.
 Preserve the evidence and an independent verified VM snapshot; do not repeat
 preparation until explicit recovery. Older installations can manually
 bootstrap the current corrected full-profile release (Raspberry/WSL):
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.53
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.54
 ```
 
 An older installed updater cannot acquire the target-installer fix before it
 runs. No bridge release or reset is required. Update the Zero over SSH
-with the Node bootstrap command above and add `--tag v0.3.0-beta.53` to select
+with the Node bootstrap command above and add `--tag v0.3.0-beta.54` to select
 this exact release. Provisioned upgrades preserve identity and pairing, not
 Master reset. Real update/rollback and browser request/CPU checks remain pending;
 see [platform stability acceptance](docs/PLATFORM_STABILITY_ACCEPTANCE.md).
@@ -550,7 +562,7 @@ checks local browser CORS as well as readiness. See the
 | [Compiled extension v1](docs/COMPILED_EXTENSION_V1.md) | Reviewed Vue compilation boundary |
 | [Application extension v1 plan](docs/APPLICATION_EXTENSION_V1_PLAN.md) | Planned trusted business-service and integration boundary |
 | [Extension Platform v2 plan](EXTENSION_PLATFORM_V2_CORE_PLAN.md) | Milestone 20 scope, implemented slices and remaining WP4/WP5 gates |
-| [Extension Platform test Beta](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md) | beta.53 scope, retained recovery evidence and bounded live smoke checks |
+| [Extension Platform test Beta](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md) | beta.54 scope, retained recovery evidence and bounded live smoke checks |
 | [M21 interactive sessions](docs/M21_CORE_INTERACTIVE_SESSIONS_PLAN.md) | Imported protocol/SDK prototypes, disabled production endpoints and remaining security/live gates |
 | [Relational upgrade and recovery](docs/EXTENSION_PLATFORM_V2_RELATIONAL_UPGRADE.md) | Local candidate adoption, explicit migration, confirmation and partial-restore flow |
 | [Private application files](docs/EXTENSION_PLATFORM_V2_PRIVATE_FILES.md) | Exact file grants, signed SDK operations, limits and recovery evidence |

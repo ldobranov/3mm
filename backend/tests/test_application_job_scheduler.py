@@ -140,6 +140,7 @@ def test_real_main_worker_five_second_schedule_and_slow_app_isolation(environmen
     import backend.main as main
     sessions, records, job = environment
     slow_started, release = threading.Event(), threading.Event()
+    fast_return_allowed = threading.Event()
     starts = []
     def invoke(app, *a, **k):
         if app.id == records[0][0]:
@@ -147,6 +148,8 @@ def test_real_main_worker_five_second_schedule_and_slow_app_isolation(environmen
             if not release.wait(9): raise RuntimeError('test release missing')
         else:
             starts.append(time.monotonic())
+            if len(starts) == 2 and not fast_return_allowed.wait(9):
+                raise RuntimeError('test fast return missing')
         return {}
     monkeypatch.setattr(jobs, 'invoke_application', invoke)
     scheduler = jobs.ApplicationJobScheduler(ApplicationRuntimeSettings(), sessions)
@@ -160,11 +163,29 @@ def test_real_main_worker_five_second_schedule_and_slow_app_isolation(environmen
             assert slow_started.is_set()
             assert len(starts) == 2
             assert 4.5 <= starts[1] - starts[0] <= 6.1
+            # The callback has started, but execute_job has not committed its
+            # outcome yet. Force that boundary rather than racing the worker.
+            with sessions() as db:
+                fast = db.scalar(select(State).where(
+                    State.application_installation_id == records[1][0], State.job_id == job.job_id))
+                assert fast.run_count == 1 and fast.last_outcome == 'running'
+            fast_return_allowed.set()
+            fast_completed = False
+            while time.monotonic() < deadline:
+                with sessions() as db:
+                    fast = db.scalar(select(State).where(
+                        State.application_installation_id == records[1][0], State.job_id == job.job_id))
+                    fast_completed = fast.run_count == 2 and fast.last_outcome == 'succeeded'
+                if fast_completed:
+                    break
+                await asyncio.sleep(0.05)
+            assert fast_completed
             with sessions() as db:
                 assert len(list(db.scalars(select(State).where(State.last_outcome == 'running')))) == 1
             scheduler.renewed -= 21
             await asyncio.to_thread(scheduler.tick)
         finally:
+            fast_return_allowed.set()
             release.set()
             worker.cancel()
             with suppress(asyncio.CancelledError): await worker

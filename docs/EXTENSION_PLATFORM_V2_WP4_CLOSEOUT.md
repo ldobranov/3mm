@@ -1,6 +1,6 @@
 # WP4 closeout — current execution checklist
 
-Updated: 2026-10-18. This short checklist is the current work queue; dated delivery
+Updated: 2026-10-19. This short checklist is the current work queue; dated delivery
 reports remain evidence, not an ever-growing list of new work packages. It does
 not replace or reduce the acceptance criteria in the Core plan.
 
@@ -8,7 +8,8 @@ not replace or reduce the acceptance criteria in the Core plan.
 
 - Existing command/connector/event/private-file authority and compatibility.
 - The owner's accepted beta.47 private-file and beta.51 bounded SQL
-  upgrade/recovery scenarios. Broader live acceptance is not inferred.
+  upgrade/recovery scenarios, plus the beta.53 effective-status/UI correction.
+  Broader live acceptance is not inferred.
 - Local checkpoint, public identity and consent-bound local-status execution.
 - Exact outbound peer-read declarations, sealed optional approvals and EN/BG UI.
 
@@ -20,7 +21,7 @@ not replace or reduce the acceptance criteria in the Core plan.
 | Remaining scoped platform coverage | Reconcile proof/peer mutations, jobs/public routes/provides with the original accepted contract; implement required paths or explicitly record unsupported features, never silently call them supported | Current matrix reconciled; runtime refusal checks implemented; unsupported combinations below remain open |
 | Public frontend host contract | Module-bound operation bridge and feature/access information; server enforces actor/audience/resource grants; no token/private-store/general-HTTP exposure | Implemented/tested locally; common acceptance remains below |
 | Reviewed UI + scoped service resources | Exact source/build/native review; human access independent of service grants; real signed UI-operation/SDK path and negative cases | Implemented/tested locally; common acceptance remains below |
-| Neutral end-to-end acceptance | Same public reference in Standalone/local Agent and Hub with Linux/mock embedded providers; human/kiosk/admin boundaries, revoke/disable/restart/uncertain outcomes | Open |
+| Neutral end-to-end acceptance | Same public reference in Standalone/local Agent and Hub with Linux/mock embedded providers; human/kiosk/admin boundaries, revoke/disable/restart/uncertain outcomes | Scoped reference delivered and tested locally; live transport/layout acceptance open |
 | Final integration and owner acceptance | One consolidated regression/release candidate plus authorized disposable VM recovery/layout tests; exact versions and remaining limitations recorded | Open |
 
 ## Execution rules
@@ -277,3 +278,137 @@ disposable Linux sources/mount namespaces, not live services. Exact tagged
 Python 3.13 CI and reproducible full/Node builds must also pass before publication.
 M21 routes stay unmounted. This release does not update the owner's VM, adopt or
 start applications, grant rights, or close the outstanding WP4 acceptance gates.
+
+## Neutral scoped reference delivery (2026-10-18)
+
+The same public [application reference](../modules/application-reference/README.md)
+now has a deterministic 1.1.0 scoped command profile; its default 1.0.1
+compatibility workflow remains unchanged. The new profile binds one explicit
+versioned mock capability/action/schema and uses only the public frontend host
+and Python SDK. No new Core authority adapter, jobs, connector or scoped SQL
+combination is introduced. Invalid scoped specification files cannot silently
+produce the compatibility profile.
+
+The real delivered wheel runs in a separate host process, with HTTP human/kiosk
+authorization and both signed Unix boundaries. Acceptance exposed an actual
+kiosk deadlock: updating `last_seen_at` before UI checks let autoflush hold a Core
+write lock while the service needed the same DB for resource admission. That
+timestamp is now written only after service IPC; access/grant checks are intact.
+
+Verification: 91 Linux integration cases pass, then the final complete reference
+suite passes 10 cases (three new CLI refusal cases; seven overlap). Together
+these are **94 distinct passing cases**, not 101. The checks cover exact build,
+separate human/kiosk/resource revocation, undeclared resources, replay/conflict,
+lost ACK with original-ID lookup, and actual host restart without new work.
+Evidence: `.runtime/m20-neutral-{final,package-final}.{log,xml}`. Existing warnings
+remain visible. Provider-role fixtures are not live Hub/Node/Agent execution or
+Root isolation evidence; the existing fake compiler is used only for trust
+metadata in these backend fixtures.
+
+The actual install-time UI compiler succeeds, **44 frontend tests** pass,
+type-check passes and production build passes (6.28 s). The emitted component
+was visually checked in desktop/light and 390px mobile/dark mock-host previews,
+including an unconfirmed request that blocks resend while allowing lookup.
+Request IDs use `getRandomValues` so LAN HTTP does not require `randomUUID`.
+This UI preview is not a live Core acceptance claim.
+
+The owner's beta.53 SQL/status/UI result is recorded in the beta acceptance
+report. Live Standalone/Hub/Node and disposable recovery acceptance remain open.
+That local delivery made no live changes. The subsequently authorized Hub/mock
+preparation is recorded below; do not confuse it with complete UI/SDK acceptance.
+
+## Live Hub / isolated ARMv6 mock preparation (2026-10-19)
+
+The owner approved VM Hub plus a separate mock Agent on the physical Node.
+The VM remains immutable beta.53. Its canonical role is Hub; Node enrollment,
+heartbeat and inventory cross the real LAN connection. The isolated Agent has a
+fresh identity, separate state, DynamicUser, private devices and no GPIO device
+nodes or access to the original credentials. The original physical Agent's PID,
+identity, connection and all 25 baseline file hashes remain unchanged.
+
+The owner's managed mock configuration accepts one output and no input rules.
+An initial development Mock GPIO package was explicitly refused for its input
+declaration (`cmd_08924474be854debb689bf533ae58bdb`); no capability call was sent.
+Its failed package/history is retained, not silently retried or rewritten.
+The accepted candidate instead uses the existing **Digital GPIO Output** handler:
+
+- Opt-in deterministic **1.1.0** build publishes the exact output-only command
+  contract **1.0**. Default **1.0.0**, legacy packages and automation stay unchanged;
+  unversioned calls are not accepted by the new profile. No Core/Agent code or
+  GPIO configuration was changed for this contract.
+- Package SHA-256 `e7ab19b266db360fc76b87204080c3ac863d13ad8c2a8c3657525e697da6991a`;
+  target `dev_1d54a2398b9346aeb557523d09192d49` / `WP4 isolated mock Zero`.
+  Install command `cmd_e41e974a1ee942b7a7ac23b449ecd4df` completed `succeeded`,
+  one delivery. Registry reports registered/available true and output false.
+- The neutral 1.1.0 app was built from the actual registry contract, not the
+  synthetic example: `pulse_output`, `gpio.output.1`, 50 ms; contract digest
+  `9a6b195d0dcb5f7183580157f2fd0fd68eabb402469683fb6afaf3220f97ae88`.
+  ZIP SHA-256 `5167b7013478da40ad98afc8fc028016efa1fcf7af997bcdc62155214aa941af`.
+  It is not installed/started/reviewed/granted by this preparation.
+
+**47 targeted tests pass**: the delivered output-only package's managed-mock
+path, deterministic builds, legacy profile, exact-version/digest/schema refusals,
+pulse result/state and inactive shutdown, plus existing GPIO configuration,
+module runtime and capability contracts. They are not a full release suite.
+The live install additionally proves ARMv6 admission and real Hub/Node transport;
+it does not prove a WP4 UI operation, application SDK command or GPIO pulse.
+
+Next: consolidate the pending kiosk IPC fix in the candidate and perform the
+reviewed neutral UI/SDK acceptance, then final integration/owner/recovery gates.
+No commit, push, release, physical GPIO action or destructive recovery ran.
+
+## Common candidate preparation (2026-10-19)
+
+The unpublished local candidate includes the kiosk IPC fix, neutral scoped
+reference and opt-in output-only provider. Its [installation/access runbook](../modules/application-reference/ACCEPTANCE.md)
+keeps native/build trust, service `command:acceptance`, operator `probe_use` and
+kiosk enrollment separate. No live grants are applied by packaging or release.
+
+Preparation caught and fixed scoped ZIP differences from CRLF and OS-specific
+ZIP creator metadata. The actual Hub-targeted ZIP now independently matches
+between Windows and native Linux; compatibility packaging is unchanged. Final
+app SHA-256: `1cafba392068fa843588220890f0535bbc5f9c7465d6b5d3d239013134646b75`.
+The earlier 5167... local artifact is superseded, not a deployment input.
+
+Verification: **142 affected Linux cases pass**, then the full **11-case**
+reference/compatibility rerun passes after the final ZIP-metadata correction;
+those 11 overlap, not 153 distinct cases. Human grant/revoke now uses normal
+HTTP administration in the integration scenario, with independent SDK authority
+and refusal of self-grant by an ordinary operator. **All 464 frontend tests**,
+type-check and production build (6.27s) pass. The real compiler builds both
+final ZIP routes. Existing warnings remain visible; the complete Python release
+collection and exact tagged CI are not claimed for this candidate.
+
+Evidence: `.runtime/m20-neutral-candidate{,-final}.{log,xml}` and
+`.runtime/m20-wp4-candidate-final/VERIFICATION.md`. The local kit's source.tar is
+a working-tree test snapshot, explicitly NOT an update-installer archive.
+No live app upload/start/review/grants, GPIO command, VM update, commit/push/tag
+or release occurred in this step. Post-update target review/access setup and
+live UI/SDK/recovery/owner acceptance remain open; WP4 is not closed.
+
+## Consolidated beta.54 release verification (2026-10-19)
+
+The complete local default Python collection passes 4,636 cases, skips 602
+platform-gated cases and passes five subtests (64m20s), with zero failures/errors.
+Deployment/Application SDK passes all 382 cases. Both separate actual Root/helper
+cases pass without skips; they are not evidence for all privileged skips.
+All 464 frontend tests across 53 files, type check and production build pass.
+Existing warnings remain visible.
+
+The final test-only scheduler synchronization correction passes the complete
+11-case file. These cases overlap the default collection, not 11 extra distinct
+tests; runtime behavior, timing bounds and slow-application isolation are intact.
+Only that test and documentation differ from the full-suite source snapshot.
+
+Evidence: `.runtime/release-beta54-{full,extra,root,scheduler}.xml`. The local
+sources run under Python 3.14.4 in disposable Linux mount namespaces, not live
+services. Editing the task-local collector during its wait broke its post-test
+shell offset and overwrote two logs; the complete native JUnit reports were
+recovered directly and verified against the 5,238-case default collection.
+This collector error is not a test failure or a production change. Exact tagged
+Python 3.13 CI and reproducible full/Node builds must pass before publication.
+
+The new reference ZIP remains a separate upload after the owner's Hub update.
+Publication performs no application adoption/start/grant, VM update or GPIO
+action. Live neutral Standalone/Hub UI/SDK, disposable recovery and final owner
+acceptance remain open; beta.54 does not close M20/WP4.

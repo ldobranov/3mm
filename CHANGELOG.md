@@ -6,6 +6,62 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.54] - 2026-10-19
+
+### Fixed
+
+- Kiosk operations write the terminal's last-seen timestamp only after service
+  IPC. UI/build validation can no longer autoflush that write and hold the Core
+  SQLite mutation lock while the service needs signed SDK resource admission.
+  Existing audience, build/native trust and resource checks are retained.
+- The new scoped reference ZIP normalizes Python/Vue line endings and ZIP creator
+  metadata, producing identical checked Windows/Linux artifacts. Existing default
+  compatibility packaging is unchanged; published package versions are not replaced.
+- The scheduler regression test now explicitly separates callback entry from
+  committed job completion before counting running claims. This removes the
+  observed beta.53 CI race without changing scheduler behavior, relaxing timing
+  bounds or dropping the slow-application isolation assertion.
+
+### Added
+
+- Separately built neutral application-reference 1.1.0 profile: exact versioned
+  command binding, public host operator/kiosk screens and SDK submission/lookup.
+  An uncertain request keeps its original ID and cannot be automatically replayed;
+  queue delivery is not execution proof. No jobs, connectors or scoped SQL.
+- Opt-in Digital GPIO Output 1.1.0 package with strict control contract 1.0,
+  compatible with the managed one-output mock configuration. The existing
+  unversioned 1.0.0 profile, configured GPIO driver and default packages remain.
+- Normal HTTP human grant/revoke integration checks, separate kiosk enrollment
+  and resource-authority refusal coverage, exact contract/digest/schema checks,
+  cross-platform package verification and a post-update acceptance runbook.
+
+### Verification
+
+- Complete local Python collection: 4,636 passed, 602 platform-gated skips and
+  five subtests passed (64m20s); no failures or errors. Deployment/Application SDK:
+  382 passed. Two separate actual Root/helper cases pass without skips; these do
+  not cover all privileged skips. Existing warnings remain visible.
+- The final scheduler regression file passes all 11 cases; this overlaps the
+  complete collection, rather than adding 11 distinct tests. No production
+  scheduler behavior or timing assertion was changed.
+- Frontend: all 464 tests across 53 files, type check and production build pass.
+  The scoped ZIP independently matches on Windows/Linux and both actual UI
+  entrypoints compile. Exact tagged Python 3.13 CI and reproducible full/Node
+  builds must also pass before publication.
+
+### Compatibility and release boundary
+
+- No database migration, dependency, Device Protocol or Application SDK version
+  change. Dynamic routes, roles, appearance, pairing and existing compatibility
+  extensions are preserved. M21 production endpoints remain unmounted.
+- Test ZIPs are separate uploads, not bundled/installed by Core updates. Publication
+  grants no code trust, user/kiosk/service rights, activation or GPIO effect and
+  does not update/reboot the VM or physical devices. Reviewed native and same-origin
+  browser code are not sandboxes. Built-in backup remains Standalone-only; use a
+  verified independent VM snapshot/export for the Hub.
+- This test Beta does not close M20/WP4: live neutral Standalone/Hub UI/SDK,
+  disposable recovery and owner acceptance remain separate gates.
+
 ## [0.3.0-beta.53] - 2026-10-18
 
 ### Fixed
@@ -1860,7 +1916,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.53...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.54...HEAD
+[0.3.0-beta.54]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.54
 [0.3.0-beta.53]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.53
 [0.3.0-beta.52]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.52
 [0.3.0-beta.51]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.51

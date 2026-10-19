@@ -5,6 +5,9 @@ import viteConfig from './vite.config'
 export default mergeConfig(
   viteConfig,
   defineConfig({
+    resolve: { alias: {
+      '@3mm/application-ui/v1': fileURLToPath(new URL('./src/extension-ui/application-v1.ts', import.meta.url)),
+    } },
     test: {
       environment: 'jsdom',
       exclude: [...configDefaults.exclude, 'e2e/**'],

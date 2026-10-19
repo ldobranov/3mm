@@ -964,7 +964,6 @@ def invoke_kiosk_operation(
     )
     if terminal is None:
         raise HTTPException(401, "Kiosk terminal is unavailable")
-    terminal.last_seen_at = datetime.now(UTC)
     result = _invoke(
         installation,
         package,
@@ -979,6 +978,9 @@ def invoke_kiosk_operation(
         "kiosk",
         principal=principal,
     )
+    # UI/build checks can autoflush. Do not hold a Core write transaction
+    # across service IPC: the service may need the same DB for SDK admission.
+    terminal.last_seen_at = datetime.now(UTC)
     db.commit()
     return result
 
