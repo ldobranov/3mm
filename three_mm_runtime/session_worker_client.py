@@ -89,18 +89,19 @@ class SandboxedSessionProvider:
             ready = await asyncio.wait_for(read_packet(self.reader), 8)
             if set(ready) != {"ready", "cgroup"} or ready["ready"] is not True:
                 raise RuntimeError("Session startup was not confirmed")
-            self.cgroup = ready["cgroup"]
+            cgroup = ready["cgroup"]
             if (
-                type(self.cgroup) is not str
-                or not self.cgroup.startswith("/system.slice/")
-                or ".." in self.cgroup.split("/")
+                type(cgroup) is not str
+                or not cgroup.startswith("/system.slice/")
+                or ".." in cgroup.split("/")
                 or re.fullmatch(
                     r"/system.slice/[A-Za-z0-9_@.\\:/-]+/3mm-session-worker[^/]*@[^/]+\.service",
-                    self.cgroup,
+                    cgroup,
                 )
                 is None
             ):
                 raise RuntimeError("Session cgroup identity is unavailable")
+            self.cgroup = cgroup  # Only a validated startup identity can prove cleanup.
             self.receiving = asyncio.create_task(self._receive())
         except BaseException:
             if self.writer is not None:
@@ -184,6 +185,8 @@ class SandboxedSessionProvider:
             raise RuntimeError("Session control was not confirmed")
 
     async def close(self, session_id, reason):
+        if session_id != self.session_id or self.session_id is None:
+            raise RuntimeError("Session cleanup identity is unavailable")
         if self.closing is None:
             self.closing = asyncio.create_task(self._close(session_id))
         await asyncio.shield(self.closing)
@@ -191,14 +194,21 @@ class SandboxedSessionProvider:
     async def _close(self, session_id):
         try:
             if self.receiving is not None and not self.receiving.done():
-                if (await self._call(session_id, "close"))["closed"] is not True:
-                    raise RuntimeError("Session cleanup was not confirmed")
-            elif self.writer is not None:
-                raise RuntimeError("Session cleanup remains unconfirmed")
+                try:
+                    await self._call(session_id, "close")
+                except Exception:
+                    # A lost reply is not a cleanup proof. Close the channel,
+                    # then require actual OS evidence for the pinned cgroup.
+                    # Input/control failures still reach their original caller;
+                    # no operation is resent or reported as completed here.
+                    pass
         finally:
             if self.writer is not None:
                 self.writer.close()
-                await self.writer.wait_closed()
+                try:
+                    await self.writer.wait_closed()
+                except (ConnectionError, OSError):
+                    pass  # Kernel cgroup evidence, not IPC EOF, decides cleanup.
             if self.receiving is not None:
                 self.receiving.cancel()
                 await asyncio.gather(self.receiving, return_exceptions=True)
@@ -207,13 +217,20 @@ class SandboxedSessionProvider:
     async def _wait_empty(self):
         # A plugin close ACK is not OS cleanup. Escaped child process groups
         # remain owned by the same systemd cgroup and must actually disappear.
-        if self.cgroup is None:
+        if (
+            self.cgroup is None
+            or not Path("/sys/fs/cgroup/cgroup.controllers").is_file()
+        ):
             raise RuntimeError("Session cgroup cleanup is unconfirmed")
         events = Path("/sys/fs/cgroup") / self.cgroup.lstrip("/") / "cgroup.events"
         for _ in range(80):
             try:
                 value = await asyncio.to_thread(events.read_text)
             except FileNotFoundError:
+                if not Path("/sys/fs/cgroup/cgroup.controllers").is_file():
+                    raise RuntimeError(
+                        "Session cgroup cleanup is unconfirmed"
+                    ) from None
                 return
             if "populated 0" in value.splitlines():
                 return

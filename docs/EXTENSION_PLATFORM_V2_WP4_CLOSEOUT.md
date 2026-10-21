@@ -1,8 +1,28 @@
 # WP4 closeout — current execution checklist
 
-Updated: 2026-10-19. This short checklist is the current work queue; dated delivery
+Updated: 2026-10-21. This short checklist is the current work queue; dated delivery
 reports remain evidence, not an ever-growing list of new work packages. It does
 not replace or reduce the acceptance criteria in the Core plan.
+
+## Current decision
+
+The functional implementation, bounded live scenarios, consolidated regression
+and publication evidence have been reconciled in the
+[final acceptance record](EXTENSION_PLATFORM_V2_WP4_FINAL_ACCEPTANCE.md).
+The backup/first-install/rollback corrections that were unpublished during the
+beta.54 trials are included in published **beta.55**, commit
+`2e634e22f7498f798867a6de4e23ace6024ac8a4`; exact-tag CI and Release both succeeded.
+
+**M20/WP4 is functionally completed by explicit owner acceptance on 2026-10-21**
+in the documented reviewed-native scope and with the final record's limits.
+No WP4 closeout decision, additional declaration layer, repeat of accepted tests
+or new Core release is required. This does not assert that every optional
+combination, privileged skip or layout-specific negative case was exercised live.
+
+The M21 Terminal disconnect repair remains a separate, unpublished worktree
+change. It does not invalidate the accepted non-session WP4 scenarios. WP5
+malicious-code/OS/browser isolation and the other M20 work packages are separate;
+WP4 acceptance does not close M20 as a whole.
 
 ## Preserve, do not reopen
 
@@ -12,17 +32,20 @@ not replace or reduce the acceptance criteria in the Core plan.
   Broader live acceptance is not inferred.
 - Local checkpoint, public identity and consent-bound local-status execution.
 - Exact outbound peer-read declarations, sealed optional approvals and EN/BG UI.
+- The owner's beta.54 Hub/mock functional stage, Standalone command and disposable
+  portable-restore/backup-resume/corrected-rollback cases, within the exact limits
+  of the final acceptance record. Styling was excluded from functional acceptance.
 
-## Remaining outcomes, in order
+## Reconciled outcomes
 
 | Outcome | Completion evidence | State |
 | --- | --- | --- |
-| Exact outbound peer read | Public SDK → signed gateway → current applied grant → one configured peer; refusal after revoke/drift, no unfiltered-list/signing/network fallback; current UI/catalog truth | Implemented/tested locally; common owner acceptance remains below |
-| Remaining scoped platform coverage | Reconcile proof/peer mutations, jobs/public routes/provides with the original accepted contract; implement required paths or explicitly record unsupported features, never silently call them supported | Current matrix reconciled; runtime refusal checks implemented; unsupported combinations below remain open |
-| Public frontend host contract | Module-bound operation bridge and feature/access information; server enforces actor/audience/resource grants; no token/private-store/general-HTTP exposure | Implemented/tested locally; common acceptance remains below |
-| Reviewed UI + scoped service resources | Exact source/build/native review; human access independent of service grants; real signed UI-operation/SDK path and negative cases | Implemented/tested locally; common acceptance remains below |
-| Neutral end-to-end acceptance | Same public reference in Standalone/local Agent and Hub with Linux/mock embedded providers; human/kiosk/admin boundaries, revoke/disable/restart/uncertain outcomes | Scoped reference delivered and tested locally; live transport/layout acceptance open |
-| Final integration and owner acceptance | One consolidated regression/release candidate plus authorized disposable VM recovery/layout tests; exact versions and remaining limitations recorded | Open |
+| Exact outbound peer read | Public SDK → signed gateway → current applied grant → one configured peer; refusal after revoke/drift, no unfiltered-list/signing/network fallback; current UI/catalog truth | Delivered with local integration/negative coverage; no separate live peer-mutation claim |
+| Remaining scoped platform coverage | Reconcile proof/peer mutations, jobs/public routes/provides with the original accepted contract; implement required paths or explicitly record unsupported features, never silently call them supported | Reconciled; unsupported operations remain explicitly refused, not silently granted |
+| Public frontend host contract | Module-bound operation bridge and feature/access information; server enforces actor/audience/resource grants; no token/private-store/general-HTTP exposure | Delivered; real neutral UI/SDK path exercised on Hub and Standalone |
+| Reviewed UI + scoped service resources | Exact source/build/native review; human access independent of service grants; real signed UI-operation/SDK path and negative cases | Delivered; Hub human/kiosk/service separation and Standalone execution recorded |
+| Neutral end-to-end acceptance | Same public reference in Standalone/local Agent and Hub with Linux/mock embedded providers; human/kiosk/admin boundaries, revoke/disable/restart/uncertain outcomes | Bounded live results recorded; owner accepted Hub stage and excluded styling; not every negative case repeated on each layout |
+| Final integration and owner acceptance | One consolidated regression/release candidate plus authorized disposable VM recovery/layout tests; exact versions and remaining limitations recorded | Complete in the recorded scope; whole-WP4 owner acceptance confirmed 2026-10-21 |
 
 ## Execution rules
 
@@ -36,6 +59,13 @@ not replace or reduce the acceptance criteria in the Core plan.
   repair. Do not expand scope or defer an agreed acceptance criterion silently.
 - Record results here concisely; do not count overlapping test runs as new progress.
 - No branch, commit/push/release or live VM mutation without the user's request.
+
+## Dated delivery history
+
+The sections below describe what was true at each delivery date. Their then-open
+gates and unpublished-candidate statements are not the current queue; use the
+current decision and final acceptance record above. The original failures and
+limitations remain evidence and are not rewritten as successful trials.
 
 ## Current vertical delivery: exact outbound peer read
 

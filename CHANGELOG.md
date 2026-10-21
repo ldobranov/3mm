@@ -6,6 +6,55 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.56] - 2026-10-21
+
+### Fixed
+
+- Local session workers accept the next output read when the previous reply is
+  already visible to Core but its send task is still finishing. The bounded
+  handoff prevents a valid streaming client from being mistaken for a duplicate
+  pending read; concurrent provider reads and input replay remain forbidden.
+- A lost worker IPC/close reply no longer skips cleanup verification. Only the
+  exact validated session cgroup's empty/removed state on a present cgroup-v2
+  filesystem can confirm cleanup. Unknown, occupied or unverifiable cleanup and
+  failed lifecycle audit retain the session's ownership/capacity fence.
+- Session-stop diagnostics record only fixed phase/category metadata, never
+  tickets, credentials, provider exception text or terminal input/output.
+
+### Documentation
+
+- Record explicit owner acceptance of M20/WP4 on 2026-10-21 in its supported
+  reviewed-native scope. Preserve dated failed/incomplete evidence and remaining
+  whole-M20/WP5 limits; the accepted WP4 scenarios are not reopened.
+- Separate the pending installed local Terminal acceptance from WP4 closure,
+  with one beta.56 + unchanged Terminal 1.0.2 return-test procedure.
+
+### Verification and release boundary
+
+- Owner-run complete isolated Linux/Python 3.14.4 suite: **4,784 passed,
+  604 skipped**, no failures/errors (24m47s). Separate complete deployment/SDK:
+  **416 passed, one opt-in systemd skip**. Skips are not passes; warnings remain
+  visible. Only the copied test fixture's fixed database path was isolated;
+  tracked test assertions and the installed Core were unchanged.
+- The earlier **112 focused M21 passes**, including deterministic IPC scheduling
+  and real M20/ASGI/worker-IPC fixtures, overlap the complete run and are not added
+  as unique coverage. The incomplete old-venv attempt stopped at collection and
+  is not counted as a completed run. Exact-tag checks and reproducible artifact
+  builds remain publication gates.
+- Frontend on Windows/Node 24.19.0: **492 tests / 56 files**, type-check and
+  production build pass. The first run timed out in one unchanged bootstrap
+  test; the complete sequential repeat passed without code/timeout changes.
+  Canonical Python 3.13/Node 22 checks remain required before publication.
+- The beta.55 VM reached Connected before its stream stopped. A reproducible
+  worker race is repaired, but the original failure's exception was unavailable;
+  publication and a stable installed-VM return test are still required.
+- No database migration, dependency, Device Protocol 1.0, Application SDK 1.3 or
+  Terminal package change. Existing native/UI trust and separate service/human
+  rights remain required. No automatic grants, input retry, Node/Cloud session
+  transport, whole-M21 completion or WP5-wide isolation claim is introduced.
+- This is a prepared candidate, not a published or installed release. Keep the
+  independent Hub snapshot; built-in backup/restore remains Standalone-only.
+
 ## [0.3.0-beta.55] - 2026-10-20
 
 ### Added
@@ -1993,7 +2042,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.55...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.56...HEAD
+[0.3.0-beta.56]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.56
 [0.3.0-beta.55]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.55
 [0.3.0-beta.54]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.54
 [0.3.0-beta.53]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.53

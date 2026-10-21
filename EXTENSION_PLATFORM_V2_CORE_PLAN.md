@@ -22,9 +22,12 @@ its command/connector visual delivery on **2026-10-09**. Scoped event consumptio
 is now implemented/tested locally; the owner also accepted its additive resource
 view on **2026-10-09**. Scoped application publication now also has local package,
 grant, shared journal/migration and signed SDK/runtime integration, with an additive
-resource view. **WP4 is not yet closed**: remaining scoped contracts and
-neutral Standalone/Hub/SDK acceptance remain open. Staged/new-artifact lifecycle and WP5
-isolation are separate unfinished gates; there has been no live rollout.
+resource view. **WP4 is functionally completed by owner acceptance on 2026-10-21**
+in the supported reviewed-native scope. The
+[final acceptance record](docs/EXTENSION_PLATFORM_V2_WP4_FINAL_ACCEPTANCE.md)
+preserves live Hub/Standalone and bounded recovery evidence, beta.55 publication
+and explicit limits. Staged/new-artifact lifecycle and WP5 isolation are separate
+unfinished gates; this does not close Milestone 20 as a whole.
 See [limited WP0 report](docs/EXTENSION_PLATFORM_V2_WP0_REPORT.md)
 and [inspection contract and evidence](docs/EXTENSION_PLATFORM_V2_PACKAGE_INSPECTION.md).
 The local schema-export slice exports existing public JSON Schemas and documents the
@@ -193,6 +196,11 @@ version or install path. See [public contracts](docs/EXTENSION_PLATFORM_V2_PUBLI
 
 ## WP4 — Public Platform API, SDK and authorization
 
+Status: **functionally completed by owner acceptance on 2026-10-21**. See the
+[accepted evidence and limits](docs/EXTENSION_PLATFORM_V2_WP4_FINAL_ACCEPTANCE.md)
+and [closeout record](docs/EXTENSION_PLATFORM_V2_WP4_CLOSEOUT.md). M21 Terminal
+and WP5 isolation are separate work, not reasons to reopen this accepted scope.
+
 Goal: stabilize public contracts before lifecycle/generator work depends on them.
 Extend SDK 1.3 compatibly. A new SDK major needs explicit approval of an unavoidable
 break with a documented adapter/migration path.
@@ -225,9 +233,9 @@ public/kiosk/operator/admin behavior remain compatible; missing features are
 reported, not bypassed.
 
 The dated slices below are delivery history, not the current feature matrix.
-Their statements of "not implemented" describe that slice's date; the current
-installed-only backend cycle and explicit closure checklist appear at the end
-of this section.
+Their statements of "not implemented" or "WP4 remains open" describe that slice's
+date. The final acceptance record above supersedes their then-open queues; it
+does not rewrite earlier failed trials or unsupported features as successful.
 
 Design slice (2026-10-08): distinct package/publisher/service/human/grant authority,
 resource-scoped review, exact artifact/plan binding, race-safe invalidation and
@@ -402,7 +410,8 @@ and visually accepted by the owner on **2026-10-09**. Event publication and othe
 remain denied. This is common Standalone/Hub/extension work, not Fleet-only support,
 and neither fixture success nor reviewed-native execution proves WP5 isolation.
 
-WP4 closure checklist (remaining work, not additional numbered work packages):
+Historical WP4 closure checklist (2026-10-09; completed within the scope of the
+final owner acceptance linked above, not additional numbered work packages):
 
 Source audit (2026-10-09): the own SQLite SDK and public UI presentation primitives
 already exist; their presence is not scoped relational/platform/frontend authority.

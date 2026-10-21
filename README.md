@@ -8,8 +8,15 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Test Beta. This source prepares **v0.3.0-beta.55**, a bounded
-> Milestone 20 Extension Platform v2 delivery, not completion of WP4 or Milestone 20.
+> **Project status:** Test Beta, based on published **v0.3.0-beta.55**.
+> **Next candidate: 0.3.0-beta.56**, not yet published: local session streaming/
+> cleanup repair and the WP4 acceptance record. See the
+> [candidate notes and outstanding release gates](docs/RELEASE_NOTES_0.3.0-beta.56.md).
+> **M20/WP4 is functionally completed by owner acceptance on 2026-10-21**, within
+> the supported reviewed-native scope and the explicit limits in the
+> [final acceptance record](docs/EXTENSION_PLATFORM_V2_WP4_FINAL_ACCEPTANCE.md).
+> Milestone 20 as a whole, WP5 isolation and M21 remain open. The release history
+> below does not reopen accepted WP4 scenarios or claim unsupported features.
 > Beta.55 adds an explicitly enabled M21 local-session trial through real M20
 > service and human rights. The Core-owned browser host can connect to a reviewed
 > self-provided service-wheel factory in a separate, bounded systemd dynamic-user
@@ -19,7 +26,12 @@ system.
 > enable none of them. Terminal 1.0.2 is a separate package, not a Core asset.
 > See the [local Terminal trial](docs/M21_LOCAL_TERMINAL_TEST.md) and
 > [beta.55 release notes](docs/RELEASE_NOTES_0.3.0-beta.55.md). Node/Fleet/Cloud
-> session transport and installed-VM acceptance remain open.
+> session transport and installed-VM acceptance remain open. The owner reached
+> Connected on the VM, then the stream stopped. The worker scheduling/cleanup
+> repair is tested locally but remains unpublished and unconfirmed on the VM;
+> the [beta.56 return test](docs/M21_LOCAL_TERMINAL_TEST.md#beta56-return-test)
+> must confirm prompt, input/output, resize and cleanup. This is progress, not
+> completed Terminal acceptance.
 > It extends exact resource review/approval/apply with private-file access and a
 > bounded relational-storage foundation: signed transaction admission/receipts,
 > explicit non-root migration/recovery and normal SDK execution for verified
@@ -44,10 +56,11 @@ system.
 > separate scoped local connector is opt-in. Broader Agent/Hub acceptance is open.
 > Beta.54 fixes kiosk SDK admission blocked by an autoflushed Core timestamp
 > transaction. A separate neutral UI/SDK reference and opt-in versioned
-> output-only GPIO package support the next mock acceptance gate; their ZIPs,
+> output-only GPIO package supported the accepted mock scenarios; their ZIPs,
 > code trust, human/kiosk access and service grants are not installed by Core.
-> General database install/restore/key lifecycle and neutral end-to-end WP4
-> Standalone/Hub acceptance remain open. Relational generic
+> The bounded neutral Hub/Standalone and disposable recovery results are recorded
+> in WP4's final acceptance; general database install/restore/key lifecycle beyond
+> those recorded scenarios is not inferred. Relational generic
 > activation/native/source gates remain closed; a prepared-runtime fixture is not
 > public fresh-install acceptance. New-artifact staging and WP5 isolation are separate.
 > Beta.48 adds explicit local-admin inert registration, first namespace/key/
@@ -57,7 +70,7 @@ system.
 > native trust and exact rights before package import; lost acknowledgements do
 > not retry or restore permissions. These commands are opt-in, not update hooks.
 > Account provisioning, general restore/rekey/nonempty recovery and broader
-> Standalone/Hub acceptance remain open. Start on a
+> guarantees outside the accepted scenarios are not implied. Start on a
 > disposable VM with a verified pre-upgrade backup, not an existing business service.
 > Device Protocol 1.0, Application SDK 1.3, themes, peers and Node Update remain.
 > Additive database migrations preserve history and fence restored authority;
@@ -77,12 +90,14 @@ system.
 > run migrations, trust code, grant rights or start applications. Protected witness
 > replacement retains ownership and Type=exec avoids the pre-exec principal race.
 > A controlled fixture passed actual systemd/WSL cold-start checks; public beta.50
-> update, candidate upgrade and recovery acceptance still require the VM test.
+> delivery alone did not establish candidate upgrade/recovery acceptance; the
+> later bounded beta.51 and WP4 acceptance records state what was actually tested.
 > Complete Python/frontend checks and reproducible publication gate the release;
 > subsequent live VM update/recovery acceptance remains separate.
 > Complete local verification is recorded in CHANGELOG; canonical Python 3.13 and
 > Node 22 checks run again on GitHub before publication. Privileged tests, controlled
-> fixture trials and broader live recovery are distinct evidence, not WP4 closure.
+> fixture trials and broader live recovery are distinct evidence; none alone
+> establishes whole-platform production-security acceptance.
 > Beta.51 fixes post-upgrade start admission when an older instance-wide witness
 > has an exactly verified completed stop/recovery. The old evidence stays intact;
 > a separately approved start uses its own witness. The already consumed failed
@@ -581,16 +596,18 @@ checks local browser CORS as well as readiness. See the
 | [Runtime extension v1](docs/RUNTIME_EXTENSION_V1.md) | Declarative extension contract |
 | [Compiled extension v1](docs/COMPILED_EXTENSION_V1.md) | Reviewed Vue compilation boundary |
 | [Application extension v1 plan](docs/APPLICATION_EXTENSION_V1_PLAN.md) | Planned trusted business-service and integration boundary |
-| [Extension Platform v2 plan](EXTENSION_PLATFORM_V2_CORE_PLAN.md) | Milestone 20 scope, implemented slices and remaining WP4/WP5 gates |
+| [Extension Platform v2 plan](EXTENSION_PLATFORM_V2_CORE_PLAN.md) | Milestone 20 scope, accepted WP4 and other remaining work packages |
 | [Extension Platform test Beta](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md) | beta.54 scope, retained recovery evidence and bounded live smoke checks |
 | [M21 interactive sessions](docs/M21_CORE_INTERACTIVE_SESSIONS_PLAN.md) | Common session contract, scoped opt-in local profile and remaining remote/live gates |
 | [Local Terminal trial](docs/M21_LOCAL_TERMINAL_TEST.md) | beta.55 / Terminal 1.0.2 setup, separate M20 grants and installed-VM acceptance |
 | [beta.55 release notes](docs/RELEASE_NOTES_0.3.0-beta.55.md) | Prepared release scope, complete local check results and publication boundary |
+| [beta.56 candidate notes](docs/RELEASE_NOTES_0.3.0-beta.56.md) | Local session streaming/cleanup repair, accepted WP4 and remaining publication/VM gates |
 | [Relational upgrade and recovery](docs/EXTENSION_PLATFORM_V2_RELATIONAL_UPGRADE.md) | Local candidate adoption, explicit migration, confirmation and partial-restore flow |
 | [Private application files](docs/EXTENSION_PLATFORM_V2_PRIVATE_FILES.md) | Exact file grants, signed SDK operations, limits and recovery evidence |
 | [Relational storage contract](docs/EXTENSION_PLATFORM_V2_RELATIONAL_STORAGE_CONTRACT.md) | Prepared-runtime foundation and remaining database lifecycle gates |
-| [WP4 closure audit](docs/EXTENSION_PLATFORM_V2_WP4_CLOSURE_AUDIT.md) | Verified coverage and explicit remaining work; WP4 is not closed |
-| [Current WP4 closeout checklist](docs/EXTENSION_PLATFORM_V2_WP4_CLOSEOUT.md) | Current integration evidence and remaining neutral/live acceptance |
+| [WP4 closure audit](docs/EXTENSION_PLATFORM_V2_WP4_CLOSURE_AUDIT.md) | Historical source audit and dated implementation evidence |
+| [WP4 closeout record](docs/EXTENSION_PLATFORM_V2_WP4_CLOSEOUT.md) | Reconciled outcomes and recorded functional completion |
+| [Final WP4 acceptance](docs/EXTENSION_PLATFORM_V2_WP4_FINAL_ACCEPTANCE.md) | Owner acceptance on 2026-10-21, real test evidence and explicit limits |
 | [Application commands and passage](docs/APPLICATION_COMMANDS.md) | Scoped SDK commands, crash/restore safety and correlated sensor evidence |
 | [Application job scheduler](docs/APPLICATION_JOB_SCHEDULER.md) | Interval scheduling, bounded concurrency and unknown-outcome recovery |
 | [Installation identity v1](docs/INSTALLATION_IDENTITY_V1.md) | Stable identity, bounded proofs, backup and clone boundaries |

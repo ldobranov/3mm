@@ -103,6 +103,7 @@ async def serve(reader, writer, *, cgroup=None):
     """Internal bounded IPC. No retries, queues of input, or reconnect semantics."""
     provider = None
     reading = None
+    read_reply_started = False
     session_id = None
     send_lock = asyncio.Lock()
     remainder = b""
@@ -112,7 +113,7 @@ async def serve(reader, writer, *, cgroup=None):
             await write_packet(writer, value)
 
     async def reply_read(call_id):
-        nonlocal remainder
+        nonlocal remainder, read_reply_started
         data = remainder or await provider.read_output(session_id)
         if data is not None and (
             type(data) is not bytes or not 1 <= len(data) <= 65278
@@ -120,12 +121,17 @@ async def serve(reader, writer, *, cgroup=None):
             raise ValueError("Provider output exceeds bounds")
         if data is not None:
             data, remainder = data[:MAX_DATA], data[MAX_DATA:]
-        await send(
-            {
-                "id": call_id,
-                "data": None if data is None else base64.b64encode(data).decode(),
-            }
-        )
+        async with send_lock:
+            # The peer may receive this packet and send its next read before
+            # drain() resumes here. A still-running task is not a duplicate read.
+            read_reply_started = True
+            await write_packet(
+                writer,
+                {
+                    "id": call_id,
+                    "data": None if data is None else base64.b64encode(data).decode(),
+                },
+            )
 
     try:
         hello = await asyncio.wait_for(read_packet(reader), 5)
@@ -204,7 +210,14 @@ async def serve(reader, writer, *, cgroup=None):
                     if reading is not None and reading.done():
                         await reading
                         reading = None
-                    if op == "read" and set(call) == {"id", "op"} and reading is None:
+                    if op == "read" and set(call) == {"id", "op"}:
+                        if reading is not None:
+                            if not read_reply_started:
+                                raise ValueError("Session read is already pending")
+                            # Finish the prior send within its existing bound;
+                            # never start concurrent provider reads or queue them.
+                            await asyncio.wait_for(asyncio.shield(reading), 5)
+                        read_reply_started = False
                         reading = asyncio.create_task(reply_read(call_id))
                         # Consume failures even while awaiting the next request.
                         reading.add_done_callback(

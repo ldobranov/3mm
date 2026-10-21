@@ -728,11 +728,12 @@ Acceptance criteria:
 
 ## Milestone 20 — Extension Platform v2
 
-Status: **in progress**, approved on 2026-10-07. Bounded implementation slices
-are published through beta.46; beta.47 corrects production private-file traversal.
-WP4 and Milestone 20 are not closed: database lifecycle/recovery, scoped platform/
-frontend adapters and neutral end-to-end acceptance remain gated. See
-[WP4 closure audit](EXTENSION_PLATFORM_V2_WP4_CLOSURE_AUDIT.md) and
+Status: **in progress**, approved on 2026-10-07, with bounded deliveries through
+**beta.55**. **WP4 is functionally completed by explicit owner acceptance on
+2026-10-21** in its documented reviewed-native scope. See the
+[final WP4 acceptance record](EXTENSION_PLATFORM_V2_WP4_FINAL_ACCEPTANCE.md) for
+Hub/Standalone, recovery, publication evidence and retained limits. This does not
+close the other work packages or Milestone 20 as a whole. See
 [EXTENSION_PLATFORM_V2_CORE_PLAN.md](../EXTENSION_PLATFORM_V2_CORE_PLAN.md).
 
 Goal: evolve the existing extension platform into a stable, secure distribution
@@ -792,10 +793,16 @@ real ESP firmware are outside Milestone 20.
 
 ## Milestone 21 — Core Interactive Sessions & Remote Streaming
 
-Status: **development foundation integrated locally on 2026-10-18**, not closed
-or enabled in production. The parallel Ubuntu work supplies versioned session
-contracts, an additive SDK 1.3 provider interface, bounded local-manager and
-Agent/remote-router prototypes, discovery and an isolated WebSocket test harness.
+Status: **in progress**, with the opt-in local/self-provider profile published
+in **beta.55** and Terminal **1.0.2** tested on the owner's VM. Exact M20 service
+review/apply and separate human permission are connected. The owner reached
+**Connected**, but the connection then stopped; a usable installed Terminal is
+**not yet accepted**. A reproducible worker read/send scheduling defect and
+disconnect cleanup were repaired locally with 113 targeted passes, including
+the private actual-provider/PTY test. Those repairs are not published or
+confirmed on the installed VM. Local protocol/PTY proof is not broad OS-isolation
+acceptance. The independent session contract, SDK 1.3 provider interface and
+Agent/remote-router prototypes remain the common foundation.
 See [M21 plan and current gates](M21_CORE_INTERACTIVE_SESSIONS_PLAN.md).
 
 Goal: one generic interactive transport for independent reviewed providers in
@@ -803,18 +810,20 @@ Standalone/local Agent and Hub/Node layouts, without terminal-specific Core logi
 or streaming through the C10/C11 command queue. A second independent provider
 must work through the public SDK without Core changes.
 
-The experimental HTTP/WebSocket router is deliberately not mounted by production
-Core. M21/WP4 must first connect current human/device/resource authorization,
-native review, separate process identity, audit and recovery to the M20 contracts.
-Prototype user bindings, in-memory device generations and local test results do
-not substitute for those gates. No session service, new dependency, live provider
-or permissions are enabled by importing this work.
+The old unrestricted HTTP/WebSocket prototype remains unmounted. The separate
+local connector requires an explicit flag/socket, exact native/UI review and
+separate service/human rights; a Core update enables none of them. Its workers
+use a per-session dynamic identity/cgroup with bounded resources and lifecycle.
+Prototype bindings, local test results and a brief Connected state are not
+substitutes for installed stream/input/resize/revocation/cleanup acceptance.
 
-Remaining: production transport lifecycle/resource hardening, real Agent/Hub
-connectors, M20 integration and physical Zero W/Standalone/Hub security, reconnect
-and immutable update/rollback acceptance. Cloud relay requires separate approval.
-M20/WP4 common acceptance remains the immediate closeout priority; M21 does not
-rename, reopen or declare it complete.
+Immediate next gate: publish the scoped repair through the ordinary separately
+authorized release workflow, then verify stable prompt/input/output/resize and
+owned cleanup on the VM. No automatic reconnect or uncertain-input replay.
+Real Node/Hub transport, broader lifecycle/resource hardening and physical/layout
+acceptance remain separate. Cloud relay requires separate approval. M21's own
+integration/security work does not reopen M20/WP4, which the owner accepted as
+functionally completed on 2026-10-21.
 
 ## Immediate work queue
 
@@ -926,6 +935,9 @@ These are the first concrete tasks after approval of this plan:
 - [x] Add the event broker and generic `identifier.scan.v1` capability with deterministic mock and hardware-adapter boundary.
 - [x] Add protected connector secrets, destination broker, scheduler/checkpoints and reconciliation states.
 - [x] Accept the complete neutral reference application before starting the separate child-center extension.
+- [x] Accept M20/WP4's supported reviewed-native SDK/authority scope, neutral
+  Hub/Standalone and bounded recovery evidence (owner acceptance 2026-10-21;
+  see [final record](EXTENSION_PLATFORM_V2_WP4_FINAL_ACCEPTANCE.md)).
 - [ ] Add fleet rollout rings only after Hub/Node orchestration exists.
 - [ ] Deliver Milestone 20 WP0: existing-to-missing contract map, compatibility
   baseline, threat model and the smallest proposed implementation slice.

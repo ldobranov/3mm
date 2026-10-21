@@ -7,6 +7,7 @@ remote enrollment or OS-isolation claim. Browser tickets never replace M20.
 
 import asyncio
 import json
+import logging
 import secrets
 import threading
 import time
@@ -40,6 +41,8 @@ from three_mm_protocol.interactive_session import (
     encode_session_frame,
 )
 from three_mm_runtime.session_output import pump_session_output
+
+logger = logging.getLogger(__name__)
 
 
 def _serialized_authority(method):
@@ -86,7 +89,15 @@ class _OwnedProvider:
 
 
 class ApplicationBrowserSessions:
-    def __init__(self, authority, *, runtimes=(), runtime_resolver=None, allowed_origins=(), lifetime=900):
+    def __init__(
+        self,
+        authority,
+        *,
+        runtimes=(),
+        runtime_resolver=None,
+        allowed_origins=(),
+        lifetime=900,
+    ):
         if not 1 <= lifetime <= 900:
             raise ValueError("Session lifetime is outside bounds")
         self.authority, self.engine = authority, authority.manager.engine
@@ -336,6 +347,7 @@ class ApplicationBrowserSessions:
         owned = None
         admitted = None
         pump = reader = None
+        phase = "authentication"
         try:
             raw = await asyncio.wait_for(websocket.receive_text(), 5)
             auth = json.loads(raw) if len(raw.encode()) <= 1024 else None
@@ -348,6 +360,7 @@ class ApplicationBrowserSessions:
             _, _, ui, authorization, admitted, request, runtime = self.redeem(
                 auth["ticket"], module_id, entrypoint_id
             )
+            phase = "opening"
             session_id = admitted.session_id
             deadline = self.clock() + self.lifetime
             send_lock = asyncio.Lock()
@@ -439,6 +452,7 @@ class ApplicationBrowserSessions:
             )
             controls = set()
             while True:
+                phase = "stream"
                 reader = asyncio.create_task(websocket.receive())
                 done, _ = await asyncio.wait(
                     (reader, pump), return_when=asyncio.FIRST_COMPLETED
@@ -451,6 +465,7 @@ class ApplicationBrowserSessions:
                 if message["type"] == "websocket.disconnect":
                     break
                 if message.get("bytes") is not None:
+                    phase = "input"
                     data = message["bytes"]
                     if len(data) > MAX_SESSION_FRAME_BYTES:
                         raise SessionAuthorityError("Session input exceeds bounds")
@@ -477,6 +492,7 @@ class ApplicationBrowserSessions:
                         {"op": "input_ack", "session_id": session_id, "seq": input_seq}
                     )
                 else:
+                    phase = "control"
                     text = message.get("text", "")
                     if len(text.encode()) > MAX_SESSION_FRAME_BYTES:
                         raise SessionAuthorityError("Session control exceeds bounds")
@@ -519,6 +535,17 @@ class ApplicationBrowserSessions:
         except Exception as exc:
             # No output, tokens, tickets, provider exception or command data in errors.
             self.failures.append(type(exc).__name__)
+            category = (
+                "authority"
+                if isinstance(
+                    exc,
+                    (SessionAuthorityError, AuthorityManagementError, HTTPException),
+                )
+                else "timeout" if isinstance(exc, TimeoutError) else "runtime"
+            )
+            logger.warning(
+                "Application session stopped: phase=%s category=%s", phase, category
+            )
         finally:
 
             async def finalize():
@@ -534,6 +561,7 @@ class ApplicationBrowserSessions:
                         await owned.close(owned.session_id, "browser_closed")
                     except BaseException:
                         owned.failed = True
+                        logger.warning("Application session cleanup unconfirmed")
                     try:
                         await asyncio.to_thread(
                             self._audit,
@@ -543,6 +571,7 @@ class ApplicationBrowserSessions:
                         )
                     except Exception:
                         owned.failed = True  # Audit outcome must not disappear, either.
+                        logger.warning("Application session cleanup audit unavailable")
                     if not owned.failed:
                         with self.lock:
                             self.owned.pop(owned.session_id, None)
