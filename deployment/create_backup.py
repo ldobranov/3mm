@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import io
 import os
+import re
 import subprocess
 import tarfile
 from datetime import UTC, datetime
@@ -47,6 +48,9 @@ class ServiceController(Protocol):
 
 
 class SystemdServiceController:
+    def __init__(self) -> None:
+        self._resume_services: tuple[str, ...] | None = None
+
     def _run(self, action: str, services: Sequence[str]) -> None:
         subprocess.run(
             ["/usr/bin/systemctl", action, *services],
@@ -57,10 +61,47 @@ class SystemdServiceController:
         )
 
     def stop(self, services: Sequence[str]) -> None:
-        self._run("stop", services)
+        if tuple(services) != RUNTIME_SERVICES or self._resume_services is not None:
+            raise ValueError("Backup service pause has no fresh runtime snapshot")
+        # systemctl start with a glob sees only currently loaded units. Stopped
+        # instances may be unloaded before backup finishes, losing that match.
+        # Capture exact names BEFORE stopping Core (PartOf also stops apps).
+        listing = subprocess.run(
+            ["/usr/bin/systemctl", "list-units", "--all", "--full", "--plain",
+             "--no-legend", "--no-pager", RUNTIME_SERVICES[-1]],
+            check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, timeout=15,
+        )
+        units: set[str] = set()
+        running: set[str] = set()
+        for line in listing.stdout.splitlines():
+            if not line.strip():
+                continue
+            fields = line.split(maxsplit=4)
+            if (len(fields) < 4 or re.fullmatch(
+                r"3mm-application-extension@[0-9a-f]{24}\.service", fields[0]
+            ) is None or fields[2] not in {
+                "active", "activating", "reloading", "inactive", "failed", "deactivating"
+            }):
+                raise ValueError("Backup application service inventory is invalid")
+            unit, load, state, substate = fields[:4]
+            if (load, state, substate) == ("not-found", "inactive", "dead"):
+                continue
+            units.add(unit)
+            if state in {"active", "activating", "reloading"}:
+                running.add(unit)
+        self._run("stop", (*RUNTIME_SERVICES[:2], *sorted(units)))
+        self._resume_services = (*RUNTIME_SERVICES[:2], *sorted(running))
 
     def start(self, services: Sequence[str]) -> None:
-        self._run("start", services)
+        if tuple(services) != RUNTIME_SERVICES or self._resume_services is None:
+            raise ValueError("Backup runtime snapshot is unavailable; resume refused")
+        self._run("start", self._resume_services)
+        # systemctl is-active with several names succeeds if ANY is active.
+        # Verify each one so healthy Core cannot hide a stopped application.
+        for unit in self._resume_services:
+            self._run("is-active", (unit,))
+        self._resume_services = None
 
 
 class EncryptingWriter:

@@ -8,8 +8,18 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Test Beta. This source prepares **v0.3.0-beta.54**, a bounded
+> **Project status:** Test Beta. This source prepares **v0.3.0-beta.55**, a bounded
 > Milestone 20 Extension Platform v2 delivery, not completion of WP4 or Milestone 20.
+> Beta.55 adds an explicitly enabled M21 local-session trial through real M20
+> service and human rights. The Core-owned browser host can connect to a reviewed
+> self-provided service-wheel factory in a separate, bounded systemd dynamic-user
+> process. The first profile is a temporary isolated workspace, not host/root
+> administration. `THREE_MM_LOCAL_SESSIONS=1`, optional socket activation, exact
+> native/UI review and separate resource/human grants are all required. Updates
+> enable none of them. Terminal 1.0.2 is a separate package, not a Core asset.
+> See the [local Terminal trial](docs/M21_LOCAL_TERMINAL_TEST.md) and
+> [beta.55 release notes](docs/RELEASE_NOTES_0.3.0-beta.55.md). Node/Fleet/Cloud
+> session transport and installed-VM acceptance remain open.
 > It extends exact resource review/approval/apply with private-file access and a
 > bounded relational-storage foundation: signed transaction admission/receipts,
 > explicit non-root migration/recovery and normal SDK execution for verified
@@ -30,8 +40,8 @@ system.
 > Beta.53 corrects relational runtime status using signed metadata and fresh
 > authority checks, without changing grants or issuing SQL permits. It also
 > carries the M21 interactive-session protocol/SDK and development prototypes.
-> M21 HTTP/WebSocket endpoints are deliberately not mounted in production;
-> its M20 authorization/isolation and live Agent/Hub acceptance remain open.
+> The old unrestricted M21 HTTP/WebSocket prototype stays unmounted; beta.55's
+> separate scoped local connector is opt-in. Broader Agent/Hub acceptance is open.
 > Beta.54 fixes kiosk SDK admission blocked by an autoflushed Core timestamp
 > transaction. A separate neutral UI/SDK reference and opt-in versioned
 > output-only GPIO package support the next mock acceptance gate; their ZIPs,
@@ -132,7 +142,8 @@ system.
   Application event publication has content-bound durable receipts; declarations
   alone grant nothing. User roles and application resource rights remain separate.
 - **Public application UI host (test Beta)** — `@3mm/application-ui/v1` exposes
-  only fresh `getInfo()` and module-bound `invoke()`. Source/build/entrypoint and
+  fresh `getInfo()`, module-bound `invoke()` and additive optional `sessions`.
+  Source/build/entrypoint and
   audience stay bound; the host exposes no token, private store or general HTTP
   client and never automatically retries an uncertain command. Local native UI
   review pins the entire compiled build; this is not browser isolation. See the
@@ -147,10 +158,15 @@ system.
   public host, preserves uncertain request IDs and separates human access from
   service resource grants. Windows/Linux scoped ZIPs normalize source newlines
   and ZIP metadata; the default compatibility profile remains unchanged.
-- **Interactive-session development foundation** — M21 versioned models, provider
-  SDK, Agent/router prototypes and isolated WebSocket tests are included as source.
-  No production endpoint, terminal, provider process, new permission or dependency
-  is enabled. See the [M21 plan and release boundary](docs/M21_CORE_INTERACTIVE_SESSIONS_PLAN.md).
+- **Opt-in local interactive sessions (test Beta)** — one M21 SDK/browser contract,
+  exact M20 resource review and independent live human permission, bounded
+  WebSockets, and a reviewed self-provider in a separate systemd dynamic-user
+  cgroup. The temporary workspace has no Core secrets, host-home/Windows-mount or
+  network access. Revocation and disconnect stop owned workers; uncertain input
+  is not replayed. The full installer ships but does not enable the optional units.
+  Old unrestricted prototypes remain off; no Node/Cloud session route is enabled.
+  See the [trial procedure](docs/M21_LOCAL_TERMINAL_TEST.md) and
+  [M21 release boundary](docs/M21_CORE_INTERACTIVE_SESSIONS_PLAN.md).
 - **Separate relational WP4 test package** — build/upload
   [WP4 Relational Test](modules/wp4-relational-test/README.md) for bounded own-SQLite
   migrations, explicit grants, replay/conflict and revocation checks. Catalog upload,
@@ -223,7 +239,7 @@ devices directly.
 
 ## Technology
 
-- Python 3.10+ and FastAPI
+- Python and FastAPI (release CI: Python 3.13; local beta.55 checks: Python 3.12)
 - SQLAlchemy, Alembic and SQLite
 - Vue 3, TypeScript, Vite, Pinia and Vue Router
 - Bootstrap plus project CSS tokens and native Vue components
@@ -278,6 +294,7 @@ From the repository root:
 
 ```bash
 backend/.venv/bin/python -m pytest -q
+backend/.venv/bin/python -m pytest -q deployment/tests three_mm_application_sdk/tests
 pnpm --dir frontend run test:unit -- --run
 pnpm --dir frontend run type-check
 pnpm --dir frontend run build-only
@@ -286,6 +303,9 @@ pnpm --dir frontend run build-only
 On Windows, use `backend\.venv\Scripts\python` for the Python command.
 Four Agent tests that assert Unix `0600` mode bits are expected to fail on
 NTFS; the same paths are enforced and tested on Linux.
+Run checks in a separate Linux test checkout/environment, not inside
+`/opt/3mm/current`. Root/systemd/opt-in skips are separate acceptance gates,
+not successful test cases; never run the entire suite with sudo to hide them.
 
 ### Standalone Agent
 
@@ -348,20 +368,20 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 For this test Beta, first keep a verified pre-upgrade backup and update a disposable VM.
 Built-in encrypted backup/restore is Standalone-only; a Hub requires an independent
 recoverable VM snapshot/export, not an unsupported Hub backup/restore claim.
-From a working beta.43–beta.53 full installation, select **Beta** in
-`/system/updates` and stage the published beta.54 release. Pending relational
+After beta.55 publication, from a working beta.43–beta.54 full installation,
+select **Beta** in `/system/updates` and stage beta.55. Pending relational
 checkpoints block encrypted backup/restore and are not repaired by an update.
 Preserve the evidence and an independent verified VM snapshot; do not repeat
 preparation until explicit recovery. Older installations can manually
 bootstrap the current corrected full-profile release (Raspberry/WSL):
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.54
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.55
 ```
 
 An older installed updater cannot acquire the target-installer fix before it
 runs. No bridge release or reset is required. Update the Zero over SSH
-with the Node bootstrap command above and add `--tag v0.3.0-beta.54` to select
+with the Node bootstrap command above and add `--tag v0.3.0-beta.55` to select
 this exact release. Provisioned upgrades preserve identity and pairing, not
 Master reset. Real update/rollback and browser request/CPU checks remain pending;
 see [platform stability acceptance](docs/PLATFORM_STABILITY_ACCEPTANCE.md).
@@ -563,7 +583,9 @@ checks local browser CORS as well as readiness. See the
 | [Application extension v1 plan](docs/APPLICATION_EXTENSION_V1_PLAN.md) | Planned trusted business-service and integration boundary |
 | [Extension Platform v2 plan](EXTENSION_PLATFORM_V2_CORE_PLAN.md) | Milestone 20 scope, implemented slices and remaining WP4/WP5 gates |
 | [Extension Platform test Beta](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md) | beta.54 scope, retained recovery evidence and bounded live smoke checks |
-| [M21 interactive sessions](docs/M21_CORE_INTERACTIVE_SESSIONS_PLAN.md) | Imported protocol/SDK prototypes, disabled production endpoints and remaining security/live gates |
+| [M21 interactive sessions](docs/M21_CORE_INTERACTIVE_SESSIONS_PLAN.md) | Common session contract, scoped opt-in local profile and remaining remote/live gates |
+| [Local Terminal trial](docs/M21_LOCAL_TERMINAL_TEST.md) | beta.55 / Terminal 1.0.2 setup, separate M20 grants and installed-VM acceptance |
+| [beta.55 release notes](docs/RELEASE_NOTES_0.3.0-beta.55.md) | Prepared release scope, complete local check results and publication boundary |
 | [Relational upgrade and recovery](docs/EXTENSION_PLATFORM_V2_RELATIONAL_UPGRADE.md) | Local candidate adoption, explicit migration, confirmation and partial-restore flow |
 | [Private application files](docs/EXTENSION_PLATFORM_V2_PRIVATE_FILES.md) | Exact file grants, signed SDK operations, limits and recovery evidence |
 | [Relational storage contract](docs/EXTENSION_PLATFORM_V2_RELATIONAL_STORAGE_CONTRACT.md) | Prepared-runtime foundation and remaining database lifecycle gates |

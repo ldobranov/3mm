@@ -3,6 +3,7 @@
 These are profile regression tests, not Linux clean-install/rollback acceptance.
 """
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 
@@ -28,6 +29,80 @@ def run(source):
 
 def section(start, end):
     return SCRIPT[SCRIPT.index(start):SCRIPT.index(end)]
+
+
+def quiescence_function():
+    return section('stop_runtime_services() {', 'install_units() {')
+
+
+@pytest.mark.parametrize('profile,listing', [
+    ('full', ''),
+    ('node', ''),
+    ('full', '3mm-core.service not-found inactive dead missing'),
+    ('full', '3mm-core.service loaded active running Core\n'
+             '3mm-application-extension@0123456789abcdef01234567.service loaded active running App'),
+    ('node', '3mm-agent.service loaded active running Agent'),
+    # A removed unit definition does not prove its existing process is stopped.
+    ('full', '3mm-core.service not-found active running Core'),
+])
+def test_installer_stops_only_existing_runtime_without_rejecting_clean_install(profile, listing):
+    expected = [line.split()[0] for line in listing.splitlines()
+                if line.split()[1:4] != ['not-found', 'inactive', 'dead']]
+    result = run(
+        f'install_profile={profile}\ntest_listing={shlex.quote(listing)}\n'
+        f'test_existing={shlex.quote(" " + " ".join(expected) + " ")}\n'
+        + section('runtime_services=(', 'previous_release=""') + '''
+log() { :; }
+fail() { echo "$*" >&2; return 1; }
+systemctl() {
+  case "$1" in
+    is-active|is-enabled) return 3 ;;
+    list-units) printf '%s\\n' "$test_listing" ;;
+    stop)
+      shift
+      for unit in "$@"; do
+        [[ $test_existing == *" $unit "* ]] || return 5
+        printf 'stopped %s\\n' "$unit"
+      done
+      ;;
+    *) return 1 ;;
+  esac
+}
+''' + quiescence_function()
+        + section('log "Stopping services and backing up persistent state"',
+                  'install -d -o root -g root -m 0700 "$backup_root"')
+        + '\nprintf "safe-to-copy\\n"\n'
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [*[f'stopped {unit}' for unit in expected], 'safe-to-copy']
+
+
+@pytest.mark.parametrize('failure', ['query', 'stop'])
+def test_runtime_query_or_stop_failure_blocks_state_copy_even_without_errexit(failure):
+    # Actual rollback uses set +e: the function must propagate errors itself.
+    result = run(f'test_failure={failure}\n' + '''
+install_profile=full
+runtime_services=(3mm-core.service)
+fail() { echo "$*" >&2; return 1; }
+systemctl() {
+  case "$1" in
+    list-units)
+      [[ $test_failure != query ]] || return 1
+      printf '3mm-core.service loaded active running Core\\n'
+      ;;
+    stop) echo attempted-stop; return 1 ;;
+  esac
+}
+''' + quiescence_function() + '''
+set +e
+stop_runtime_services
+result=$?
+[[ $result -ne 0 ]] || echo unsafe-copy
+exit "$result"
+''')
+    assert result.returncode != 0
+    assert 'unsafe-copy' not in result.stdout
+    assert ('attempted-stop' in result.stdout) == (failure == 'stop')
 
 
 def test_shell_syntax():
@@ -202,7 +277,7 @@ restart_always_on_services() { echo restart-recovery; }
 activate_runtime() { echo verify-previous-runtime; }
 restore_runtime_units() { activate_runtime "$previous_release"; }
 rm() { printf 'remove %s\\n' "$*"; }
-''' + section('rollback() {', 'if [[ -L $current_link ]]; then') + '''
+''' + quiescence_function() + section('rollback() {', 'if [[ -L $current_link ]]; then') + '''
 trap rollback ERR
 false
 ''')
@@ -238,7 +313,7 @@ usermod() { printf 'usermod %s\\n' "$*"; }
     assert 'usermod -a -G 3mm-app,3mm-public 3mm' in result.stdout
 
 
-@pytest.mark.parametrize('failure', ['', 'stop', 'database', 'fence', 'environment'])
+@pytest.mark.parametrize('failure', ['', 'query', 'stop', 'database', 'fence', 'environment'])
 def test_full_rollback_fences_before_any_restart_and_fails_closed(failure):
     result = run(f'test_failure="{failure}"\n' + '''
 install_profile=full
@@ -253,7 +328,16 @@ current_link=/test/current
 runtime_services=(3mm-core.service 3mm-agent.service)
 always_on_services=(3mm-update-helper.service)
 installed_units=("${runtime_services[@]}")
-systemctl() { echo stop-runtime; [[ $test_failure != stop ]]; }
+fail() { echo "$*" >&2; return 1; }
+systemctl() {
+  if [[ $1 == list-units ]]; then
+    [[ $test_failure != query ]] || return 1
+    printf '3mm-core.service loaded active running Core\\n'
+  else
+    echo stop-runtime
+    [[ $test_failure != stop ]]
+  fi
+}
 restore_database() { echo restore-database; [[ $test_failure != database ]]; }
 fence_rollback_authority() { echo fence-authority; [[ $test_failure != fence ]]; }
 restore_environment() { echo restore-environment; [[ $test_failure != environment ]]; }
@@ -263,7 +347,7 @@ restart_always_on_services() { echo restart-helper; }
 restore_runtime_units() { echo restart-runtime; }
 start_active_application_services() { echo restart-apps; }
 rm() { echo cleanup; }
-''' + section('rollback() {', 'if [[ -L $current_link ]]; then') + '''
+''' + quiescence_function() + section('rollback() {', 'if [[ -L $current_link ]]; then') + '''
 trap rollback ERR
 false
 ''')
@@ -308,3 +392,103 @@ exit $?
 ''')
     assert result.returncode == 1, result.stderr
     assert 'unsafe-cleanup' not in result.stdout
+
+
+@pytest.mark.parametrize('legacy', [False, True])
+def test_release_python_succeeds_inside_actual_error_trap(tmp_path, legacy):
+    release = tmp_path / 'release'
+    executable = tmp_path / ('venv/bin/python' if legacy else 'release/.venv/bin/python')
+    executable.parent.mkdir(parents=True)
+    executable.write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
+    executable.chmod(0o755)
+    result = run(
+        f'install_root={shlex.quote(tmp_path.as_posix())}\n'
+        f'previous_release={shlex.quote(release.as_posix())}\n'
+        + 'fail() { echo "$*" >&2; return 1; }\n'
+        + section('release_python() {', 'restore_database() {') + '''
+rollback_test() {
+  local failure=$?
+  trap - ERR
+  set +e
+  local selected
+  selected=$(release_python "$previous_release")
+  local selected_status=$?
+  printf 'selected-status=%s\\nselected=%s\\n' "$selected_status" "$selected"
+  exit "$failure"
+}
+trap rollback_test ERR
+false
+''')
+    assert result.returncode == 1, result.stderr  # Keep the original deploy failure.
+    assert 'selected-status=0' in result.stdout, result.stdout + result.stderr
+    assert f'selected={executable.as_posix()}' in result.stdout
+
+
+@pytest.mark.parametrize('query', ['one', 'none', 'failed', 'start-failed', 'inactive-first'])
+def test_active_application_resume_inside_error_trap(tmp_path, query):
+    database = tmp_path / 'fixture.db'
+    database.touch()
+    executable = tmp_path / '.venv/bin/python'
+    executable.parent.mkdir(parents=True)
+    executable.write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
+    executable.chmod(0o755)
+    source = section('start_active_application_services() {', 'rollback() {')
+    source = source.replace('"$python_path" - "$database"', 'test_query - "$database"')
+    result = run(
+        f'database={shlex.quote(database.as_posix())}\n'
+        f'install_root={shlex.quote(tmp_path.as_posix())}\n'
+        f'previous_release={shlex.quote(tmp_path.as_posix())}\n'
+        f'test_query_result={query}\n'
+        + '''
+install_profile=full
+fail() { echo "$*" >&2; return 1; }
+test_query() {
+  cat >/dev/null
+  case "$test_query_result" in
+    one|start-failed) echo 3mm-application-extension@0123456789abcdef01234567.service ;;
+    inactive-first)
+      echo 3mm-application-extension@0123456789abcdef01234567.service
+      echo 3mm-application-extension@abcdef0123456789abcdef01.service
+      ;;
+    none) return 0 ;;
+    failed) echo unreadable-database >&2; return 1 ;;
+  esac
+}
+systemctl() {
+  printf 'systemctl %s\\n' "$*"
+  if [[ $1 == start && $test_query_result == start-failed ]]; then return 1; fi
+  if [[ $1 == is-active && $test_query_result == inactive-first &&
+        $3 == 3mm-application-extension@0123456789abcdef01234567.service ]]; then
+    return 3
+  fi
+  return 0
+}
+'''
+        + section('release_python() {', 'restore_database() {') + source + '''
+rollback_test() {
+  local failure=$?
+  trap - ERR
+  set +e
+  start_active_application_services "$previous_release"
+  local resumed=$?
+  printf 'resumed=%s\\n' "$resumed"
+  exit "$failure"
+}
+trap rollback_test ERR
+false
+''')
+    assert result.returncode == 1, result.stderr
+    if query in ('failed', 'start-failed', 'inactive-first'):
+        assert 'resumed=1' in result.stdout
+        if query == 'failed':
+            assert 'unreadable-database' in result.stderr
+            assert 'systemctl ' not in result.stdout
+        elif query == 'start-failed':
+            assert 'systemctl is-active' not in result.stdout
+        else:
+            assert 'Active application service did not become active:' in result.stderr
+            assert 'is-active --quiet 3mm-application-extension@abcdef0123456789abcdef01.service' not in result.stdout
+    else:
+        assert 'resumed=0' in result.stdout, result.stdout + result.stderr
+        assert ('systemctl start 3mm-application-extension@0123456789abcdef01234567.service'
+                in result.stdout) == (query == 'one')

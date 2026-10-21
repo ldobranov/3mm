@@ -109,6 +109,7 @@ def extension_schema_catalog() -> dict:
                         "installation.identity.read",
                         "installation.status.read",
                         "peer_bindings.outbound.read",
+                        "session_bindings",
                     ],
                     "unsupported_features": [
                         "installation.identity.prove",
@@ -121,7 +122,7 @@ def extension_schema_catalog() -> dict:
                         "arbitrary_capability_provides",
                         "relational_with_peer_bindings",
                     ],
-                    "provides": "exact_event_publications_only",
+                    "provides": "exact_event_publications_and_declared_self_sessions",
                     "missing_feature_behavior": "refused_without_compatibility_fallback",
                     "browser_or_os_isolation": False,
                 },
@@ -152,6 +153,28 @@ def extension_schema_catalog() -> dict:
             # Bounded reviewed-native authority, not general installer or
             # hostile-code support. Structural validity still grants no rights.
             contracts[contract_id]["declaration_support"] = {
+                "session_bindings": {
+                    "contract_version": 1,
+                    "sdk_version": "1.3",
+                    "declaration_validation": "supported",
+                    "authority_administration": "core_admin_review_api",
+                    "native_trust_administration": "local_core_only",
+                    "authority_context_version": 10,
+                    "current_service_and_human_checks": True,
+                    "human_admin_bypass": False,
+                    "compatibility_fallback": "blocked",
+                    "production_transport": "explicit_opt_in_local_self_provider",
+                    "process_isolation_proven": False,
+                    "max_bindings": 32,
+                },
+                "session_providers": {
+                    "sdk_version": "1.3",
+                    "resource_profile": "isolated_session_v1",
+                    "factory_artifact": "same_reviewed_pure_python_service_wheel",
+                    "max_providers": 8,
+                    "remote_or_root_access": False,
+                    "grants_permission": False,
+                },
                 "peer_bindings": {
                     "contract_version": 1,
                     "sdk_version": "1.3",

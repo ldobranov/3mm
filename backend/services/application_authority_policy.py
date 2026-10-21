@@ -24,6 +24,7 @@ from backend.services.application_authority_context import (
     AuthorityPolicyV7,
     AuthorityPolicyV8,
     AuthorityPolicyV9,
+    AuthorityPolicyV10,
     AuthorityPrincipal,
     Blocker,
     ConfigurationIdentity,
@@ -40,6 +41,8 @@ from backend.services.application_authority_context import (
     ResolvedStatusScope,
     ResolvedPeerReadScope,
     PeerScopeKey,
+    SessionScopeKey,
+    ResolvedSessionScope,
     StatusScopeKey,
     IdentityScopeKey,
     CheckpointScopeKey,
@@ -57,6 +60,8 @@ from backend.services.application_authority_context import (
     _validate_identity_scopes,
     _validate_status_scopes,
     _validate_peer_read_scopes,
+    _validate_session_bundle,
+    _validate_session_scopes,
 )
 
 
@@ -70,6 +75,7 @@ CHECKPOINT_POLICY_ADAPTER_REVISION = 6
 IDENTITY_POLICY_ADAPTER_REVISION = 7
 STATUS_POLICY_ADAPTER_REVISION = 8
 PEER_READ_POLICY_ADAPTER_REVISION = 9
+SESSION_POLICY_ADAPTER_REVISION = 10
 POLICY_DOMAIN = b"3mm:m20:core-policy-evaluation:v1\x00"
 Generation = Annotated[str, Field(pattern=r"^[0-9a-f]{32}$")]
 
@@ -101,7 +107,7 @@ class PolicySubjectV1(PolicyModel):
 
     @model_validator(mode="after")
     def unique_subject(self):
-        _scopes(self.commands, self.connectors, getattr(self, "events", ()), getattr(self, "publications", ()), getattr(self, "private_files", ()), getattr(self, "relational", ()), getattr(self, "checkpoints", ()), getattr(self, "identities", ()), getattr(self, "status_projections", ()), getattr(self, "peer_reads", ()))
+        _scopes(self.commands, self.connectors, getattr(self, "events", ()), getattr(self, "publications", ()), getattr(self, "private_files", ()), getattr(self, "relational", ()), getattr(self, "checkpoints", ()), getattr(self, "identities", ()), getattr(self, "status_projections", ()), getattr(self, "peer_reads", ()), getattr(self, "sessions", ()))
         if len(self.blockers) != len(set(self.blockers)):
             raise ValueError("Source blockers must be unique")
         return self
@@ -231,6 +237,17 @@ class PolicySubjectV9(PolicySubjectV8):
         return self
 
 
+class PolicySubjectV10(PolicySubjectV9):
+    subject_version: Literal[10]
+    peer_reads: tuple[ResolvedPeerReadScope, ...] = Field(max_length=32)
+    sessions: tuple[ResolvedSessionScope, ...] = Field(min_length=1, max_length=32)
+
+    @model_validator(mode="after")
+    def exact_owned_requests(self):
+        _validate_session_bundle(self, self.binding.principal, self.binding.candidate.sha256)
+        return self
+
+
 class CorePolicyEvidenceV1(PolicyModel):
     """Input contract for a FUTURE trusted, durable Core policy/evidence source.
 
@@ -255,7 +272,7 @@ class CorePolicyEvidenceV1(PolicyModel):
 
     @model_validator(mode="after")
     def coherent_rules(self):
-        known = _scopes(self.commands, self.connectors, getattr(self, "events", ()), getattr(self, "publications", ()), getattr(self, "private_files", ()), getattr(self, "relational", ()), getattr(self, "checkpoints", ()), getattr(self, "identities", ()), getattr(self, "status_projections", ()), getattr(self, "peer_reads", ()))
+        known = _scopes(self.commands, self.connectors, getattr(self, "events", ()), getattr(self, "publications", ()), getattr(self, "private_files", ()), getattr(self, "relational", ()), getattr(self, "checkpoints", ()), getattr(self, "identities", ()), getattr(self, "status_projections", ()), getattr(self, "peer_reads", ()), getattr(self, "sessions", ()))
         if len(self.required_scopes) != len(set(self.required_scopes)):
             raise ValueError("Required policy scopes must be unique")
         if set(self.required_scopes) - known.keys():
@@ -376,6 +393,18 @@ class CorePolicyEvidenceV9(CorePolicyEvidenceV8):
         return self
 
 
+class CorePolicyEvidenceV10(CorePolicyEvidenceV9):
+    evidence_version: Literal[10]
+    sessions: tuple[ResolvedSessionScope, ...] = Field(max_length=32)
+    required_scopes: tuple[SessionScopeKey, ...] = Field(max_length=293)
+
+    @model_validator(mode="after")
+    def exact_session_rules(self):
+        _validate_session_scopes(self.sessions, self.binding.principal,
+            self.binding.candidate.sha256, complete=False)
+        return self
+
+
 PolicyReason = Literal[
     "invalid_policy_subject",
     "trusted_policy_unavailable",
@@ -400,12 +429,12 @@ PolicyReason = Literal[
 
 class PolicyIssue(ContextModel):
     reason: PolicyReason
-    scope: PeerScopeKey | None = None
+    scope: SessionScopeKey | None = None
 
 
 class PolicyEvaluation(ContextModel):
     policy_resolved: bool
-    policy: AuthorityPolicy | AuthorityPolicyV4 | AuthorityPolicyV5 | AuthorityPolicyV6 | AuthorityPolicyV7 | AuthorityPolicyV8 | AuthorityPolicyV9 | None = None
+    policy: AuthorityPolicy | AuthorityPolicyV4 | AuthorityPolicyV5 | AuthorityPolicyV6 | AuthorityPolicyV7 | AuthorityPolicyV8 | AuthorityPolicyV9 | AuthorityPolicyV10 | None = None
     issues: tuple[PolicyIssue, ...]
     # Even a successful pure policy evaluation is not a complete context review.
     reviewable: Literal[False] = False
@@ -421,7 +450,7 @@ class PolicyEvaluation(ContextModel):
     )
 
 
-def _scopes(commands, connectors, events=(), publications=(), private_files=(), relational=(), checkpoints=(), identities=(), status_projections=(), peer_reads=()):
+def _scopes(commands, connectors, events=(), publications=(), private_files=(), relational=(), checkpoints=(), identities=(), status_projections=(), peer_reads=(), sessions=()):
     result = {}
     for prefix, scopes, name in (
         ("command", commands, "binding_id"),
@@ -464,6 +493,11 @@ def _scopes(commands, connectors, events=(), publications=(), private_files=(), 
         if key in result:
             raise ValueError("Scope identities must be unique")
         result[key] = scope
+    for scope in sessions:
+        key = f"session:{scope.declaration.binding_id}:open"
+        if key in result:
+            raise ValueError("Scope identities must be unique")
+        result[key] = scope
     return result
 
 
@@ -485,6 +519,10 @@ def _scope_data(scope):
     elif isinstance(scope, ResolvedStatusScope):
         for field in ("summary_fields", "node_ids", "node_fields"):
             data["consent"][field].sort()
+    elif isinstance(scope, ResolvedSessionScope):
+        declaration["control_actions"].sort()
+        data["contract"]["access_modes"].sort()
+        data["contract"]["control_actions"].sort()
     return data
 
 
@@ -493,7 +531,7 @@ def _adapter_revision(evidence):
         3: PUBLICATION_POLICY_ADAPTER_REVISION, 4: STORAGE_POLICY_ADAPTER_REVISION,
         5: RELATIONAL_POLICY_ADAPTER_REVISION, 6: CHECKPOINT_POLICY_ADAPTER_REVISION,
         7: IDENTITY_POLICY_ADAPTER_REVISION, 8: STATUS_POLICY_ADAPTER_REVISION,
-        9: PEER_READ_POLICY_ADAPTER_REVISION}[evidence.evidence_version]
+        9: PEER_READ_POLICY_ADAPTER_REVISION, 10: SESSION_POLICY_ADAPTER_REVISION}[evidence.evidence_version]
 
 
 def _policy_identity(evidence):
@@ -533,6 +571,9 @@ def _policy_identity(evidence):
     if hasattr(evidence, "peer_reads"):
         data["peer_reads"] = [_scope_data(scope) for scope in sorted(
             evidence.peer_reads, key=lambda s: s.declaration.binding_id)]
+    if hasattr(evidence, "sessions"):
+        data["sessions"] = [_scope_data(scope) for scope in sorted(
+            evidence.sessions, key=lambda s: s.declaration.binding_id)]
     return "policy_" + hashlib.sha256(
         POLICY_DOMAIN
         + _canonical_bytes(
@@ -557,8 +598,8 @@ def evaluate_authority_policy(subject, evidence=None) -> PolicyEvaluation:
         )
 
     try:
-        subject = _parse_versioned(PolicySubjectV1, PolicySubjectV2, subject, "subject_version", PolicySubjectV3, PolicySubjectV4, PolicySubjectV5, PolicySubjectV6, PolicySubjectV7, PolicySubjectV8, PolicySubjectV9)
-        actual = _scopes(subject.commands, subject.connectors, getattr(subject, "events", ()), getattr(subject, "publications", ()), getattr(subject, "private_files", ()), getattr(subject, "relational", ()), getattr(subject, "checkpoints", ()), getattr(subject, "identities", ()), getattr(subject, "status_projections", ()), getattr(subject, "peer_reads", ()))
+        subject = _parse_versioned(PolicySubjectV1, PolicySubjectV2, subject, "subject_version", PolicySubjectV3, PolicySubjectV4, PolicySubjectV5, PolicySubjectV6, PolicySubjectV7, PolicySubjectV8, PolicySubjectV9, PolicySubjectV10)
+        actual = _scopes(subject.commands, subject.connectors, getattr(subject, "events", ()), getattr(subject, "publications", ()), getattr(subject, "private_files", ()), getattr(subject, "relational", ()), getattr(subject, "checkpoints", ()), getattr(subject, "identities", ()), getattr(subject, "status_projections", ()), getattr(subject, "peer_reads", ()), getattr(subject, "sessions", ()))
         actual_bytes = {
             key: _canonical_bytes(_scope_data(scope))
             for key, scope in actual.items()
@@ -573,10 +614,10 @@ def evaluate_authority_policy(subject, evidence=None) -> PolicyEvaluation:
         issues.add((None, "trusted_policy_unavailable"))
     else:
         try:
-            evidence = _parse_versioned(CorePolicyEvidenceV1, CorePolicyEvidenceV2, evidence, "evidence_version", CorePolicyEvidenceV3, CorePolicyEvidenceV4, CorePolicyEvidenceV5, CorePolicyEvidenceV6, CorePolicyEvidenceV7, CorePolicyEvidenceV8, CorePolicyEvidenceV9)
+            evidence = _parse_versioned(CorePolicyEvidenceV1, CorePolicyEvidenceV2, evidence, "evidence_version", CorePolicyEvidenceV3, CorePolicyEvidenceV4, CorePolicyEvidenceV5, CorePolicyEvidenceV6, CorePolicyEvidenceV7, CorePolicyEvidenceV8, CorePolicyEvidenceV9, CorePolicyEvidenceV10)
             if evidence.evidence_version != subject.subject_version:
                 raise ValueError("Policy versions must match")
-            rules = _scopes(evidence.commands, evidence.connectors, getattr(evidence, "events", ()), getattr(evidence, "publications", ()), getattr(evidence, "private_files", ()), getattr(evidence, "relational", ()), getattr(evidence, "checkpoints", ()), getattr(evidence, "identities", ()), getattr(evidence, "status_projections", ()), getattr(evidence, "peer_reads", ()))
+            rules = _scopes(evidence.commands, evidence.connectors, getattr(evidence, "events", ()), getattr(evidence, "publications", ()), getattr(evidence, "private_files", ()), getattr(evidence, "relational", ()), getattr(evidence, "checkpoints", ()), getattr(evidence, "identities", ()), getattr(evidence, "status_projections", ()), getattr(evidence, "peer_reads", ()), getattr(evidence, "sessions", ()))
             rule_bytes = {
                 key: _canonical_bytes(_scope_data(scope))
                 for key, scope in rules.items()
@@ -610,7 +651,7 @@ def evaluate_authority_policy(subject, evidence=None) -> PolicyEvaluation:
             if not issues:
                 return PolicyEvaluation(
                     policy_resolved=True,
-                    policy=({4: AuthorityPolicyV4, 5: AuthorityPolicyV5, 6: AuthorityPolicyV6, 7: AuthorityPolicyV7, 8: AuthorityPolicyV8, 9: AuthorityPolicyV9}.get(evidence.evidence_version, AuthorityPolicy))(
+                    policy=({4: AuthorityPolicyV4, 5: AuthorityPolicyV5, 6: AuthorityPolicyV6, 7: AuthorityPolicyV7, 8: AuthorityPolicyV8, 9: AuthorityPolicyV9, 10: AuthorityPolicyV10}.get(evidence.evidence_version, AuthorityPolicy))(
                         policy_revision=identity,
                         adapter_revision=_adapter_revision(evidence),
                         trust_revision=evidence.trust_revision,

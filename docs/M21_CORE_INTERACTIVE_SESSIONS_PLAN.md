@@ -10,6 +10,10 @@ acceptance remain open. This is a new,
 independent milestone; it does not rename or reopen Milestone 20 or earlier
 milestones.
 
+Current local opt-in development profile and next-release test instructions are
+in section 15 and `M21_LOCAL_TERMINAL_TEST.md`. Historical prototype/off notes
+below do not authorize enabling the old unrestricted router.
+
 ## 1. Purpose
 
 Add generic, secure, bidirectional interactive-session infrastructure between the
@@ -269,3 +273,252 @@ Linux source/mount namespaces, not the installed VM. Exact tagged Python 3.13 CI
 and reproducible full/Node builds additionally gate publication. The production
 router remains absent; neither M21 production readiness nor M20/WP4 closure is
 claimed by this integration.
+
+## 12. Universal SDK output and disposable PTY slice — 2026-10-20
+
+One Terminal extension consumes one M21 session contract. Local, Hub/Node and
+future Cloud paths differ in platform routing/authorization, not extension
+authentication, pairing or transport clients. Local-first acceptance does not
+create a separate terminal API, a new authority subsystem or a Cloud relay.
+
+Added the optional public `SessionOutputProvider.read_output(session_id)` contract
+to SDK 1.3: await independent bounded bytes, or None at EOF. Request/response
+providers remain compatible. No protocol/manifest/descriptor version changes.
+`three_mm_runtime.session_output` supplies the generic output pump; the Agent
+host exposes it only for an already admitted session with a mandatory explicit
+checker. It awaits each send (one chunk, no unbounded output queue), checks while
+reads/sends wait and again before delivering received bytes, and closes only the
+owned session on failure/EOF/cancel. Duplicate consumers are refused. Unconfirmed
+cleanup retains fenced ownership; it is not called a successful close. The minimal
+Node includes this runtime module without Core or Application SDK dependencies.
+
+The independent terminal checkout supplies its own PTY adapter and optional output
+implementation. Core contains no concrete Terminal identifier. Real disposable
+unprivileged Linux tests prove prompt-before-input, delayed output, resize, EOF,
+cleanup with a blocked read, and process termination after the TEST authority
+checker denies access. The adapter accepts an already owned child/PTY; it does
+not start a shell or establish OS isolation. Temporary shell creation occurs in
+the test harness only, with a scrubbed environment and temporary working directory.
+No installed application/service, key, grant, pairing or hardware was changed.
+
+This slice does NOT connect real current M20 grants/audit, production provider
+registration/isolated process launch, browser host streaming, or the real
+Agent/Hub connector. Unsolicited output must be integrated with transport
+sequencing/response correlation and close notifications before a live connector
+is enabled. Production M21 HTTP/WebSocket routes remain absent; Terminal Connect
+remains disabled. It is neither full M21 acceptance nor permission to publish an
+enabled terminal. The already accepted M20 restore/rollback work is preserved.
+
+Verification for this slice: **216 targeted Core/protocol/SDK/runtime/deployment
+cases pass**, no skips (20.49 s, nine existing warnings); report
+`.runtime/m21-session-output-core.xml`. This includes M21 production-off gates,
+minimal reproducible Node packaging/import without Core/SDK, and the accepted
+backup/installer regression files. It is not the full release suite. The terminal
+checkout passes **37 unprivileged native Linux tests** with five real PTY cases,
+plus **24 frontend tests** and TypeScript checking. Formatter/import/whitespace
+checks pass; no frontend screen, runtime dependency, version, branch, commit,
+push, release, service configuration or installed permissions were changed.
+
+## 13. Current M20 session-resource authority — 2026-10-20
+
+The development backend now supports explicit `session_bindings` in the existing
+application descriptor (SDK 1.3, descriptor v1, manifest v2). Each binding names a
+saved device configuration reference, provider, capability, read/write mode,
+allowed controls, exact open options and a separately declared human permission.
+The package must consume that capability and request `sessions.open`; that coarse
+manifest request alone grants nothing. No concrete extension name enters Core.
+
+New internal authority context/subject/evidence/selection v10 adds
+`session:<binding_id>:open`. The v1-v9 formats and policy adapter revisions remain
+unchanged. The existing native review -> Review -> Approve -> Apply -> Revoke
+coordinator seals and re-resolves session resources, including current device
+control generation, active credentials, runtime feature revision and effective
+provider registration/version/contract. Inventory offers or a transport hello
+cannot substitute for that registration. Unsupported/missing session contracts
+and missing `interactive_sessions.v1` runtime support fail closed. Session scopes
+are explicitly selectable; older resource families retain required-scope rules.
+No database schema change or new permission store is introduced.
+
+`application_session_authority.M20SessionAuthority` is an INTERNAL Core permission
+adapter, not a public authorization-token issuer or process launcher. It verifies
+the current sealed service grant and the exact tracked human login, token expiry,
+account state and live direct/role/group application permission. Administrators
+also need the explicit human permission. Its binding fixes the login/session,
+application incarnation/instance/artifact, request, provider and grant revision.
+Input, controls, status and output have separate checks; read mode cannot admit
+input. The output checker uses this real adapter with the bounded output pump,
+including checks while the provider is idle. Observed revocation closes the owned
+provider; fresh service approval cannot renew an old session binding.
+
+Important remaining gates: production browser/Agent/Hub transport, authorized
+discovery, session audit/lifecycle integration and isolated process launch are
+NOT enabled by this change. The existing authority UI reader intentionally does
+not accept the new session DTO yet; it needs explicit resource cards/validation
+before owner-driven UI acceptance. The tested existing admin review HTTP API can
+review the new resource, but it is not a session-open endpoint. Status reports
+`session_runtime_not_connected`, never a green runnable-session claim. Generic
+effect/compatibility admission refuses session scopes. M21 production HTTP/WS
+routes remain absent, Terminal Connect remains disabled, and no installed keys,
+permissions, services, application package or release version were changed.
+
+Verification: **1,695 passed / 290 platform-gated skips** in the targeted Windows
+regression run (276.44 s); **66 passed** in the native Linux authority/legacy
+integration run (107.65 s), plus **two distinct mixed-resource cases passed**
+(6.73 s), with no Linux skips. These counts overlap pure contract coverage and
+are not additive release coverage. The unchanged frontend production build passes
+(13.75 s). Reports: `.runtime/m21-authority-regression.xml`,
+`.runtime/m21-authority-linux.xml`, `.runtime/m21-authority-mixed-linux.xml`.
+Existing deprecation/test-key warnings remain visible. This is not the full
+release suite, UI acceptance, hardware acceptance or completed M21.
+
+## 14. M20 approval screen and browser host — 2026-10-20
+
+This supersedes the UI/browser-pending notes in sections 12–13, not the
+production execution gate. The admin dialog now validates and displays v10
+session resources: exact owner/artifact, device, provider/version, mode, controls,
+opening options and the separate current-user application permission. Session
+and peer choices start unselected, remain visible when unselected, and changing
+one invalidates the previous review and acknowledgment. Review, Approve and
+Apply remain separate; missing runtime support never displays effective rights.
+Older required resource-family semantics and signed formats are unchanged.
+
+The additive public `ApplicationHost.sessions` API exposes target discovery,
+open, binary input/output, controls, observe and owned close. Only the private
+Core host knows backend URLs, login credentials, tickets and sockets. It pins the
+exact application source/build/entrypoint, uses one dispatch without token
+refresh/retry/reconnect, bounds pending work and initial output, checks ordered
+frames/acknowledgments, and disposes connections with the dynamic route.
+
+`application_sessions.application_session_router(service)` is an EXPLICIT
+composition factory, still absent from `backend.main`. Its service requires an
+exact reviewed runtime connection; no echo, bare hello, arbitrary device or
+extension-name fallback. The existing compiled-UI/native/route checks and actual
+M20 service AND tracked-human authority gates apply at ticket issue/redemption,
+input/control/output and periodically during idle reads. Tickets expire after
+15 seconds, are one-use and sent in the first WebSocket message, not URLs.
+Exact browser Origins are mandatory. Read-only sessions cannot send input.
+Device/provider/build/grant/login drift stops the owned stream; approval cannot
+renew an existing binding. Lifecycle audit contains identifiers/outcomes only,
+not tickets, credentials, input or output. Cleanup failure retains fenced
+ownership rather than reporting success. In-memory request/ticket fences are
+bounded and are NOT durable receipts or an exactly-once guarantee across restart.
+
+The separate terminal checkout consumes this SAME public host and declares its
+session binding and human permission. This host binding was built with a
+plain-text transport preview; concurrent xterm renderer work in that checkout
+is outside this verification slice. Core contains no Terminal identifiers.
+Neither renderer demonstrates a working production target or OS isolation.
+Existing package version/wheel snapshots have not been published or installed
+by this change.
+
+Still required before production activation: isolated unprivileged process
+launch; a trusted provider connection over the real local/Agent/Hub boundary;
+deployment WebSocket limits/dependencies and lifecycle/restart integration;
+authority-key contention acceptance, complete denial/attach/terminate audit and
+physical acceptance. The existing coordinator still refuses a busy key rather
+than weakening its lock; the deterministic idle-revocation test serializes its
+deliberate admin write against the in-process reader. Attach/detach,
+Cloud relay and maintenance/root access are not enabled by this connector.
+The old unrestricted prototype router must remain off. No installed keys,
+grants, services, pairing, release version, Git branch/commit/push were changed.
+
+Final browser/security and production-off verification: **32 Linux cases pass**
+with no skips, recorded in `.runtime/m21-browser-linux-final.xml` (144.50 s).
+The earlier larger Linux run passed 79 cases before its production-router check
+found a missing `deployment` source folder in the disposable staging copy; the
+final gate run includes that actual production routing check. Counts overlap
+and must not be added. Existing dependency/deprecation/test-key warnings remain.
+
+Frontend verification: **492 tests across 56 files pass** in the sequential
+rerun (114.15 s), recorded in `.runtime/m21-browser-frontend.xml`. One earlier
+parallel run hit an unrelated 5-second bootstrap-import timeout under concurrent
+load; no timeout or assertion was relaxed. Type checking and the production
+build pass. Browser visual checks cover EN/BG,
+light/dark and narrow/desktop layouts using synthetic local fixtures, not real
+permissions. Terminal host transport passes 28 frontend tests and its original
+preview build/type check; subsequent concurrent renderer work is not included
+in those results. None of this replaces owner-driven VM acceptance or a
+consolidated release run.
+
+## 15. Local isolated provider and next-release trial — 2026-10-20
+
+This supersedes the local-launch/registration-pending notes above, NOT the full
+M21 acceptance gate. The next Core release can carry an explicitly enabled
+**local, self-provided, ephemeral** session profile. A VM-Hub uses its own local
+Agent identity; no remote Node ID, inventory or SSH fallback selects a process.
+There is still ONE public session contract/Terminal extension. Cross-application
+provider code trust, Agent/Hub transport, Cloud and maintenance/root access are
+not enabled by this local slice.
+
+`session_providers` declares a capability, support contract and zero-argument
+factory in the same reviewed pure-Python service wheel. Package checks require
+matching manifest provides, SDK 1.3, bounded safe wheel contents and the factory
+module. Core has no concrete Terminal ID or shell launcher. The existing device
+registry gains a Core-owned local adapter, never an Agent-forgeable provider type.
+The read-only declaration cache is bounded and populated only after authoritative
+ZIP validation outside key/snapshot leases; it is not a grant. A cold cache is
+unavailable until preparation, and every self-provider authority check revalidates
+the calling installed artifact. Native review can inspect a disabled provider;
+execution additionally requires its active installation, current M20 resource
+grant, exact compiled UI and independent tracked-human permission.
+
+The scoped browser router is mounted ONLY with `THREE_MM_LOCAL_SESSIONS=1`.
+Old unrestricted prototype routes remain absent. The private runtime resolver
+re-reads the exact reviewed wheel and supplies a per-session Unix-socket adapter,
+not browser-selected paths/factories or a bearer token. The real server now pins
+`websockets` and limits inbound frames, queues and compression independently of
+the application's own frame validation. Provider control receives only the public
+SDK action/arguments envelope; the former browser-wire envelope mismatch is fixed.
+
+Socket activation accepts only the Core UID over a root-owned, Core-group socket.
+Each connection gets a distinct systemd DynamicUser/cgroup, no Core environment
+file, no capabilities, no network, inaccessible Core/home/Windows paths, bounded
+memory/tasks/descriptors/file size, and bounded private tmpfs scratch space. The
+worker verifies the existing OS boundary before loading the reviewed wheel.
+Terminal's PTY factory depends only on the public SDK process-profile guard, not
+private Core/runtime imports. That guard verifies OS facts; it never grants
+permissions or creates isolation. Prompt/output/input/resize use the same SDK.
+Closing waits for actual cgroup emptiness, including an escaped child process
+group. Link loss and Core stop/update tear down owned workers; uncertain outcomes
+are fenced, not automatically replayed/reopened. Root/sysadmin access is absent.
+
+Configured authority stores allow at most 250 ms for lock acquisition BEFORE
+admission, so an ordinary idle check does not routinely defeat an administrator's
+write. This does not resend a mutation or weaken the key/guard order. Explicit
+store users retain the existing fail-fast default. Actual service revocation is
+tested without serializing the admin write artificially against the idle reader.
+
+The immutable installer installs the optional units but does NOT enable the
+feature, provision a key or approve rights. Workers are stopped before update
+state copying; rolling back to a pre-profile release removes/disables the optional
+units rather than resurrecting them. The target deployment contract now requires
+the new route, resolver, SDK/runtime files and units. The Node payload stays
+independent. Owner-driven setup and evidence are in `M21_LOCAL_TERMINAL_TEST.md`.
+
+Verification is targeted, not the complete release suite:
+
+- 604 shared-protocol cases pass; 198 Linux session/key/registry/browser/installer
+  cases pass with two platform-gated skips. The actual Root ACL case is run
+  separately and passes; the non-POSIX refusal case cannot run on Linux.
+- Real TCP WebSocket tests cover the deployed server driver and pre-application
+  rejection of oversized frames; they are included in the 198 Linux cases.
+- Explicit Root systemd acceptance uses a disposable code/DB/identity fixture,
+  with two actual M20→UI WebSocket→independent sandbox-provider scenarios: human
+  revoke and service revoke while idle. Separately the real Terminal factory
+  proves prompt-before-input, delayed output, resize, denied private paths/network,
+  scrubbed environment, close of a detached process group, and link-loss cleanup.
+  Installed Core keys/grants/data, owner Hub WSL and physical devices are untouched.
+- 83 builder/target-contract cases and four minimal-Node/deployment cases pass.
+  Current Terminal passes 28 frontend tests/typecheck; its rebuilt disposable
+  wheel/source ZIP passes validation and the actual Core UI compiler with xterm.
+  Core frontend typecheck and production build pass. Browser review covers the
+  synthetic disconnected desktop state in light/dark, not installed acceptance.
+
+Counts overlap and must not be added as release coverage. Evidence:
+`.runtime/m21-local-{protocol,runtime-final,admission-deploy,key-root}.xml`,
+`.runtime/m21-session-sandbox-live.xml`, and `.runtime/m21-browser-tcp.xml`.
+Existing dependency/deprecation/test-key warnings remain visible. No version,
+Git branch/history/commit/push, installed permission or release was changed.
+Only disposable test units/code directories were created and removed. The actual
+installed-VM trial and consolidated release checks remain required before a
+release-readiness claim; this does not close the whole M21/WP4.

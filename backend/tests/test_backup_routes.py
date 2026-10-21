@@ -23,6 +23,20 @@ def use_test_jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(jwt_utils, "SECRET_KEY", "test-only-key-with-at-least-32-bytes")
 
 
+@pytest.fixture(autouse=True)
+def isolated_backup_settings(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Never probe installed sockets or backup paths from these route tests."""
+    settings = SimpleNamespace(
+        updates=SimpleNamespace(helper_socket=tmp_path / "update-helper.sock"),
+        backups=SimpleNamespace(
+            storage_dir=tmp_path / "backups",
+            import_dir=tmp_path / "imports",
+            max_import_bytes=1024 * 1024,
+        ),
+    )
+    monkeypatch.setattr("backend.routes.backups.get_settings", lambda: settings)
+
+
 def _client() -> tuple[TestClient, Session, str, str]:
     engine = create_engine(
         "sqlite://",

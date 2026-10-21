@@ -31,6 +31,45 @@ export interface ApplicationHost {
   /** Exactly one dispatch, no retry, audience promotion or credential exposure. */
   invoke(operationId: string, payload: ApplicationPayload,
     options?: { readonly idempotencyKey?: string }): Promise<ApplicationPayload>
+  /** Optional on older hosts. No URLs, credentials, sockets or retry policy. */
+  readonly sessions?: ApplicationSessions
+}
+export interface ApplicationSessionTarget {
+  readonly bindingId: string
+  readonly deviceId: string
+  readonly providerId: string
+  readonly capabilityIds: readonly string[]
+  readonly available: boolean
+  readonly accessMode: 'read' | 'write'
+  readonly controlActions: readonly string[]
+  readonly options: ApplicationPayload
+}
+export interface ApplicationSessionOpen {
+  readonly session_request_version: 1
+  readonly request_id: string
+  readonly provider_id: string
+  readonly capability_id: string
+  readonly device_id: string
+  readonly access_mode: 'read' | 'write'
+  readonly options: ApplicationPayload
+}
+export interface ApplicationSessionAcceptance {
+  readonly request_id: string; readonly session_id: string; readonly state: 'active'
+  readonly provider_id: string; readonly capability_id: string; readonly device_id: string
+}
+export interface ApplicationSessionControl {
+  readonly session_id: string; readonly control_id: string; readonly action: string
+  readonly arguments: ApplicationPayload
+}
+export interface ApplicationSessions {
+  targets(): Promise<readonly ApplicationSessionTarget[]>
+  resolveTarget(bindingOrDeviceId: string): Promise<ApplicationSessionTarget>
+  /** One attempt only; uncertain completion is never re-opened automatically. */
+  open(request: ApplicationSessionOpen): Promise<ApplicationSessionAcceptance>
+  sendData(sessionId: string, data: Uint8Array): Promise<void>
+  control(message: ApplicationSessionControl): Promise<void>
+  close(sessionId: string): Promise<void>
+  observe(sessionId: string, handlers: { onData(data: Uint8Array): void; onClosed(reason?: string): void }): () => void
 }
 export type ApplicationHostErrorCode = 'access_denied' | 'unavailable' | 'invalid_request' | 'unconfirmed' | 'disposed'
 export class ApplicationHostError extends Error {

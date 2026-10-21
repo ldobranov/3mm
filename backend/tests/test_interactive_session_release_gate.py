@@ -9,6 +9,8 @@ from starlette.websockets import WebSocketDisconnect
     ("post", "/api/v1/interactive-sessions/ticket"),
     ("get", "/api/v1/interactive-sessions/discovery"),
     ("post", "/api/v1/devices/dev_" + "a" * 32 + "/session-ticket"),
+    ("get", "/api/v1/application-extensions/org.example.session-client/session-host/operations"),
+    ("post", "/api/v1/application-extensions/org.example.session-client/session-host/operations/ticket"),
 ])
 def test_production_http_does_not_expose_prototype(method, path):
     from backend.main import app
@@ -21,6 +23,7 @@ def test_production_http_does_not_expose_prototype(method, path):
 @pytest.mark.parametrize("path", [
     "/api/v1/interactive-sessions/ws",
     "/api/v1/devices/dev_" + "a" * 32 + "/session-ws",
+    "/api/v1/application-extensions/org.example.session-client/session-host/operations/ws",
 ])
 def test_production_websocket_does_not_expose_prototype(path):
     from backend.main import app

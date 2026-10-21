@@ -44,10 +44,11 @@ describe('application compiled routes', () => {
       const component = await (route.component as () => Promise<ReturnType<typeof defineComponent>>)()
       const wrapper = mount(component)
       expect(wrapper.text()).toBe('Loaded application')
-      expect(Object.keys(host)).toEqual(['getInfo', 'invoke'])
+      expect(Object.keys(host)).toEqual(['getInfo', 'sessions', 'invoke'])
       expect(loader).toHaveBeenCalledWith(pkg, pkg.entrypoints[0])
       wrapper.unmount()
       await expect(host.getInfo()).rejects.toMatchObject({ code: 'disposed' })
+      await expect(host.sessions!.targets()).rejects.toMatchObject({ code: 'disposed' })
     } finally { loader.mockRestore() }
   })
   it('guards appearance preview and recovery with the existing admin boundary', async () => {

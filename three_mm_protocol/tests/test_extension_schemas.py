@@ -205,7 +205,11 @@ def test_execution_profiles_report_missing_features_without_grant_or_sandbox_cla
     scoped = profiles["reviewed_native_scoped"]
     assert scoped["frontend"] == "headless_only"
     assert scoped["missing_feature_behavior"] == "refused_without_compatibility_fallback"
-    assert scoped["provides"] == "exact_event_publications_only"
+    assert scoped["provides"] == "exact_event_publications_and_declared_self_sessions"
+    support = catalog["contracts"]["application-extension.v1"]["declaration_support"]
+    assert support["session_bindings"]["production_transport"] == "explicit_opt_in_local_self_provider"
+    assert support["session_providers"]["remote_or_root_access"] is False
+    assert support["session_providers"]["grants_permission"] is False
     assert set(scoped["unsupported_features"]) == {
         "installation.identity.prove", "peer_mutations", "unfiltered_peer_listing",
         "peer_receiver", "jobs", "public_http_routes", "compiled_ui_resource_authority",

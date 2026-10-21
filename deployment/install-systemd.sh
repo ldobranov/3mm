@@ -87,6 +87,7 @@ runtime_services=(
   3mm-core.service
   3mm-web.service
   3mm-public-web.socket
+  3mm-session-worker.socket
   3mm-setup.service
   3mm-setup-ap.service
   3mm-network-helper.service
@@ -98,6 +99,7 @@ installed_units=(
   "${runtime_services[@]}"
   "${always_on_services[@]}"
   3mm-application-extension@.service
+  3mm-session-worker@.service
   3mm-public-web.service
 )
 if [[ $install_profile == node ]]; then
@@ -146,12 +148,46 @@ assert_release_path() {
   [[ $target != "$releases_root" ]]
 }
 
+stop_runtime_services() {
+  local listing unit load_state active_state sub_state description
+  local patterns=("${runtime_services[@]}")
+  local units=()
+  if [[ $install_profile == full ]]; then
+    patterns+=('3mm-application-extension@*.service')
+    patterns+=('3mm-session-worker@*.service')
+  fi
+  # A clean host has no installed units. Enumerate actual units instead of
+  # treating systemctl stop's NOTINSTALLED response as a runtime stop failure.
+  # Do not hide a failed query, or skip an orphaned unit that is still active.
+  if ! listing=$(systemctl list-units --all --full --plain --no-legend --no-pager "${patterns[@]}"); then
+    fail "Could not inspect runtime units; runtime quiescence is unconfirmed."
+    return 1
+  fi
+  while read -r unit load_state active_state sub_state description; do
+    [[ -n $unit ]] || continue
+    if [[ $load_state == not-found && $active_state == inactive && $sub_state == dead ]]; then
+      continue
+    fi
+    units+=("$unit")
+  done <<< "$listing"
+  if [[ ${#units[@]} -gt 0 ]]; then
+    systemctl stop "${units[@]}" || return 1
+  fi
+  return 0
+}
+
 install_units() {
   local source_release=$1
   local require_update_helper=${2:-1}
   local unit
   for unit in "${installed_units[@]}"; do
     if [[ ! -f $source_release/deployment/systemd/$unit ]]; then
+      if [[ ( $unit == 3mm-session-worker.socket || $unit == 3mm-session-worker@.service ) && $require_update_helper == 0 ]]; then
+        systemctl disable --now 3mm-session-worker.socket >/dev/null 2>&1 || true
+        systemctl stop '3mm-session-worker@*.service' >/dev/null 2>&1 || true
+        rm -f -- "/etc/systemd/system/$unit"
+        continue
+      fi
       if [[ ( $unit == 3mm-public-web.socket || $unit == 3mm-public-web.service ) && $require_update_helper == 0 ]]; then
         systemctl disable --now "$unit" >/dev/null 2>&1 || true
         rm -f -- "/etc/systemd/system/$unit"
@@ -186,12 +222,14 @@ release_python() {
   local source_release=$1
   if [[ -x $source_release/.venv/bin/python ]]; then
     printf '%s\n' "$source_release/.venv/bin/python"
-    return
+    # A bare return inside the ERR handler inherits the original deploy failure,
+    # even after printf succeeds. Rollback must still select the old interpreter.
+    return 0
   fi
   if [[ -x $install_root/venv/bin/python ]]; then
     # Compatibility only for rolling back the pre-2026-08-24 release layout.
     printf '%s\n' "$install_root/venv/bin/python"
-    return
+    return 0
   fi
   fail "No Python environment is available for $source_release"
 }
@@ -298,6 +336,20 @@ activate_runtime() {
 
 restore_runtime_units() {
   local unit
+  # A rollback release may predate the optional session boundary. Never try to
+  # resurrect its socket against an older Core after removing the new units.
+  if [[ ! -f /etc/systemd/system/3mm-session-worker.socket ]]; then
+    local retained=()
+    for unit in "${previous_enabled_units[@]}"; do
+      [[ $unit == 3mm-session-worker.socket ]] || retained+=("$unit")
+    done
+    previous_enabled_units=("${retained[@]}")
+    retained=()
+    for unit in "${previous_active_units[@]}"; do
+      [[ $unit == 3mm-session-worker.socket ]] || retained+=("$unit")
+    done
+    previous_active_units=("${retained[@]}")
+  fi
   for unit in "${runtime_services[@]}"; do
     systemctl disable "$unit" >/dev/null 2>&1 || true
   done
@@ -329,12 +381,12 @@ restart_always_on_services() {
 start_active_application_services() {
   local source_release=$1
   if [[ $install_profile != full || ! -f $database ]]; then
-    return
+    return 0
   fi
   local python_path
   python_path=$(release_python "$source_release") || return 1
-  local application_units=()
-  mapfile -t application_units < <(
+  local application_listing
+  if ! application_listing=$(
     "$python_path" - "$database" <<'PY'
 import re
 import sqlite3
@@ -368,17 +420,24 @@ try:
 finally:
     connection.close()
 PY
-  )
-  if [[ ${#application_units[@]} -eq 0 ]]; then
-    return
+  ); then
+    fail "Could not inspect active applications; application resumption is unconfirmed."
+    return 1
   fi
-  systemctl start "${application_units[@]}"
+  if [[ -z $application_listing ]]; then
+    return 0
+  fi
+  local application_units=()
+  mapfile -t application_units <<< "$application_listing"
+  systemctl start "${application_units[@]}" || return 1
   local service
   for service in "${application_units[@]}"; do
     if ! systemctl is-active --quiet "$service"; then
       fail "Active application service did not become active: $service"
+      return 1
     fi
   done
+  return 0
 }
 
 rollback() {
@@ -389,12 +448,12 @@ rollback() {
   echo "Deployment failed; restoring ${previous_release:-the previous system state}." >&2
 
   if [[ $mutation_started -eq 1 ]]; then
-    if ! systemctl stop "${runtime_services[@]}" >/dev/null 2>&1; then
+    if ! stop_runtime_services; then
       echo "Rollback could not stop runtime; state preserved for manual recovery." >&2
       exit "$exit_code"
     fi
     if [[ $install_profile == full ]]; then
-      if ! systemctl stop '3mm-application-extension@*.service' || ! restore_database || ! fence_rollback_authority; then
+      if ! restore_database || ! fence_rollback_authority; then
         echo "Rollback authority fencing failed; services remain stopped and recovery state is preserved." >&2
         exit "$exit_code"
       fi
@@ -584,6 +643,10 @@ required_files=(
   deployment/systemd/3mm-captive-portal-dnsmasq.conf
   deployment/systemd/3mm-update-helper.service
   deployment/systemd/3mm-application-extension@.service
+  deployment/systemd/3mm-session-worker.socket
+  deployment/systemd/3mm-session-worker@.service
+  three_mm_runtime/session_worker.py
+  three_mm_runtime/session_worker_client.py
   three_mm_runtime/update_helper.py
   three_mm_runtime/application_activation.py
   three_mm_runtime/application_host.py
@@ -680,13 +743,10 @@ for unit in "${runtime_services[@]}"; do
   if systemctl is-active --quiet "$unit"; then previous_active_units+=("$unit"); fi
   if systemctl is-enabled --quiet "$unit"; then previous_enabled_units+=("$unit"); fi
 done
-systemctl stop "${runtime_services[@]}" >/dev/null 2>&1 || true
 mutation_started=1
-if [[ $install_profile == full ]]; then
-  # Application helpers share our release lock; also quiesce running apps before
-  # copying/restoring the DB. Refuse mutation if systemd cannot stop the runtime.
-  systemctl stop "${runtime_services[@]}" '3mm-application-extension@*.service'
-fi
+# Application helpers share our release lock. Missing first-install units are
+# harmless, but an existing runtime must stop before state is copied or changed.
+stop_runtime_services
 if [[ $install_profile == node ]]; then
   systemctl stop "${always_on_services[@]}" >/dev/null 2>&1 || true
 fi

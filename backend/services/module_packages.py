@@ -32,6 +32,7 @@ ALLOWED_PERMISSIONS = {
     "events.publish",
     "network.outbound",
     "process.spawn",
+    "sessions.open",
     "secrets.use",
     "hardware.inventory",
     "hardware.gpio",
@@ -262,8 +263,23 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
             )
 
         consumed_capabilities = set(manifest.capabilities.consumes)
+        if {item.capability_id for item in application_extension.session_providers} - set(manifest.capabilities.provides):
+            raise ModulePackageError('Application session providers must be declared as provided')
+        if application_extension.session_providers:
+            from three_mm_runtime.session_worker import validate_wheel
+            try:
+                validate_wheel(service_payload, application_extension.service.artifact_sha256)
+                with zipfile.ZipFile(io.BytesIO(service_payload)) as wheel:
+                    for provider in application_extension.session_providers:
+                        module = provider.factory.split(':')[0].replace('.', '/')
+                        if not {module + '.py', module + '/__init__.py'} & set(wheel.namelist()):
+                            raise ValueError('Missing provider factory module')
+            except (ValueError, zipfile.BadZipFile) as exc:
+                raise ModulePackageError('Invalid isolated session provider wheel') from exc
         if {item.capability_id for item in application_extension.command_bindings} - consumed_capabilities:
             raise ModulePackageError('Application command capabilities must be declared as consumed')
+        if {item.capability_id for item in application_extension.session_bindings} - consumed_capabilities:
+            raise ModulePackageError('Application session capabilities must be declared as consumed')
         missing_capabilities = sorted(
             {
                 item.capability_id
@@ -305,6 +321,7 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
             for item in application_extension.event_subscriptions
         }
         referenced_config.update(item.target_device_config_key for item in application_extension.command_bindings)
+        referenced_config.update(item.target_device_config_key for item in application_extension.session_bindings)
         referenced_config.update(item.sensor_device_config_key for item in application_extension.command_bindings if item.sensor_device_config_key)
         referenced_config.update(item.peer_id_config_key for item in application_extension.peer_bindings)
         referenced_config.update(
@@ -363,6 +380,8 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
 
         expected_permissions = {"data.read", "data.write", "process.spawn"}
         expected_permissions.update(application_extension.platform_permissions)
+        if application_extension.session_bindings:
+            expected_permissions.add("sessions.open")
         if application_extension.command_bindings:
             expected_permissions.add('capabilities.invoke')
         if application_extension.event_subscriptions:

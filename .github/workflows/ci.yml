@@ -17,7 +17,8 @@ jobs:
     name: Python tests (Linux)
     runs-on: ubuntu-latest
     # POSIX lifecycle/peer tests include deliberate bounded lost-response waits.
-    timeout-minutes: 60
+    # The full local suite alone took 60m43s, before setup and deployment/SDK.
+    timeout-minutes: 90
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

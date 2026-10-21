@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN, SEMVER_PATTERN
 from three_mm_protocol.runtime_extension import IDENTIFIER_PATTERN, LocalizedTextV1
 from three_mm_protocol.application_commands import ApplicationCommandBindingV1
+from three_mm_protocol.application_sessions import ApplicationSessionBindingV1, ApplicationSessionProviderV1
 
 
 APPLICATION_EVENT_PATTERN = (
@@ -648,11 +649,17 @@ class ApplicationExtensionV1(StrictApplicationModel):
     jobs: tuple[ApplicationJobV1, ...] = Field(default=(), max_length=64)
     checkpoints: tuple[ApplicationCheckpointV1, ...] = Field(default=(), max_length=32)
     command_bindings: tuple[ApplicationCommandBindingV1, ...] = Field(default=(), max_length=64)
+    session_bindings: tuple[ApplicationSessionBindingV1, ...] = Field(default=(), max_length=32)
+    session_providers: tuple[ApplicationSessionProviderV1, ...] = Field(default=(), max_length=8)
     storage: ApplicationStorageV1
     lifecycle: ApplicationLifecycleV1 = Field(default_factory=ApplicationLifecycleV1)
 
     @model_validator(mode="after")
     def validate_references(self):
+        if self.session_bindings and self.service.sdk_version != "1.3":
+            raise ValueError("Session bindings require SDK 1.3")
+        if self.session_providers and self.service.sdk_version != "1.3":
+            raise ValueError("Session providers require SDK 1.3")
         if self.peer_bindings and self.service.sdk_version != "1.3":
             raise ValueError("Peer binding declarations require SDK 1.3")
         for binding in self.peer_bindings:
@@ -699,11 +706,16 @@ class ApplicationExtensionV1(StrictApplicationModel):
             ("checkpoint IDs", [item.checkpoint_id for item in self.checkpoints]),
             ("peer binding IDs", [item.binding_id for item in self.peer_bindings]),
             ("command bindings", [item.binding_id for item in self.command_bindings]),
+            ("session bindings", [item.binding_id for item in self.session_bindings]),
+            ("session provider capabilities", [item.capability_id for item in self.session_providers]),
         ):
             if len(values) != len(set(values)):
                 raise ValueError(f"{label} must be unique")
 
         known_permissions = set(permission_ids)
+        for binding in self.session_bindings:
+            if binding.required_permission not in known_permissions:
+                raise ValueError("Session binding references an unknown human permission")
         operations = {item.operation_id: item for item in self.operations}
         for route in self.public_http_routes:
             operation = operations.get(route.handler_operation_id)

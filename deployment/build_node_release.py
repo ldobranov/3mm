@@ -13,7 +13,7 @@ from deployment.prepare_node_wheels import digest
 
 RUNTIME_FILES = ('__init__.py', 'services.py', 'activate.py', 'install_profile.py', 'install_bootstrap.py',
                  'network_recovery.py', 'node_recovery.py', 'node_update_helper.py', 'node_update_trust.py',
-                 'device_authority_reset.py')
+                 'device_authority_reset.py', 'session_output.py')
 UNITS = ('3mm-agent.service', '3mm-setup.service', '3mm-setup-ap.service',
          '3mm-network-helper.service', '3mm-node-recovery.service', '3mm-node-update-helper.service',
          '3mm-captive-portal-dnsmasq.conf')

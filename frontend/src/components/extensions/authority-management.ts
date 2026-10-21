@@ -13,7 +13,7 @@ export interface AuthorityStatus {
   isolation_proven: false
   review_available?: boolean
   review_blockers?: Array<'review_key_unavailable' | 'unsupported_authority'>
-  runtime_blockers?: Array<'relational_runtime_unavailable' | 'peer_read_runtime_unavailable'>
+  runtime_blockers?: Array<'relational_runtime_unavailable' | 'peer_read_runtime_unavailable' | 'session_runtime_not_connected'>
 }
 export interface AuthorityPlan {
   plan_id: string
@@ -23,7 +23,7 @@ export interface AuthorityPlan {
   scopes: string[]
   artifact_sha256: string
   expires_in_seconds: number
-  resources: { commands: unknown[]; connectors: unknown[]; events?: unknown[]; publications?: unknown[]; private_files?: AuthorityPrivateFileResource[]; relational?: AuthorityRelationalResource[]; checkpoints?: AuthorityCheckpointResource[]; identities?: AuthorityIdentityResource[]; status_projections?: AuthorityStatusResource[]; peer_reads?: AuthorityPeerReadResource[] }
+  resources: { commands: unknown[]; connectors: unknown[]; events?: unknown[]; publications?: unknown[]; private_files?: AuthorityPrivateFileResource[]; relational?: AuthorityRelationalResource[]; checkpoints?: AuthorityCheckpointResource[]; identities?: AuthorityIdentityResource[]; status_projections?: AuthorityStatusResource[]; peer_reads?: AuthorityPeerReadResource[]; sessions?: AuthoritySessionResource[] }
   isolation_proven: false
   historical?: boolean
   replayed?: boolean
@@ -97,13 +97,27 @@ export interface AuthorityPeerReadResource {
   enrollment_metadata: null | { metadata_version: 2; application_intent: string; consent_revision: number; consent: AuthorityStatusResource['consent']; metadata_hash: string }
 }
 export type Decision = 'approve' | 'deny' | 'apply'
+export interface AuthoritySessionResource {
+  declaration: {
+    contract_version: 1; binding_id: string; target_device_config_key: string
+    provider_id: string; capability_id: string; access_mode: 'read' | 'write'
+    control_actions: string[]; required_permission: string; options: Record<string, unknown>
+  }
+  owner: AuthorityPrivateFileResource['owner']
+  package_artifact_sha256: string
+  target_device_id: string
+  control_revision: string
+  provider_version: string
+  contract: { contract_version: 1; access_modes: Array<'read' | 'write'>; control_actions: string[] }
+}
 const id = (value: unknown): value is string => typeof value === 'string' && value.length === 32 && /^[0-9a-f]{32}$/.test(value)
 const digest = (value: unknown): value is string => typeof value === 'string' && value.length === 64 && /^[0-9a-f]{64}$/.test(value)
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const scopes = (value: unknown): value is string[] => Array.isArray(value)
-  && value.length <= (value.some(item => typeof item === 'string' && item.startsWith('peer:')) ? 261
+  && value.length <= (value.some(item => typeof item === 'string' && item.startsWith('session:')) ? 293
+    : value.some(item => typeof item === 'string' && item.startsWith('peer:')) ? 261
     : value.some(item => typeof item === 'string' && item.startsWith('status:')) ? 229 : 197)
-  && value.every(item => typeof item === 'string' && item.trim() === item && /^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read)$/.test(item))
+  && value.every(item => typeof item === 'string' && item.trim() === item && /^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read|session:[a-z][a-z0-9_]{0,95}:open)$/.test(item))
   && new Set(value).size === value.length
 const exact = (value: Record<string, unknown>, fields: string[]) => Object.keys(value).length === fields.length && fields.every(key => key in value)
 const identity = (value: unknown) => typeof value === 'string' && value.trim() === value && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/.test(value)
@@ -424,6 +438,53 @@ function peerReadsMatch(resources: Record<string, unknown>, status: AuthoritySta
   return true
 }
 
+function sessionResourcesMatch(resources: Record<string, unknown>, status: AuthorityStatus, moduleId?: string): boolean {
+  const sessions = (resources.sessions || []) as unknown[]
+  const expected = status.scopes.filter(key => key.startsWith('session:'))
+  if (sessions.length !== expected.length || sessions.length > 32) return false
+  const owners = ['private_files', 'relational', 'checkpoints', 'identities', 'status_projections', 'peer_reads']
+    .flatMap(key => (resources[key] || []) as Array<{ owner: Record<string, unknown> }>).map(item => ownerBinding(item.owner))
+  const keys = new Set<string>()
+  const controls = (value: unknown): value is string[] => Array.isArray(value) && value.length <= 16
+    && value.every(item => typeof item === 'string' && item.length <= 64 && /^[a-z][a-z0-9_.-]{0,63}$/.test(item))
+    && new Set(value).size === value.length
+  for (const item of sessions) {
+    if (!object(item) || !exact(item, ['declaration', 'owner', 'package_artifact_sha256', 'target_device_id', 'control_revision', 'provider_version', 'contract'])
+      || !object(item.owner) || !ownerMatches(item.owner, status, moduleId) || !id(item.owner.incarnation)
+      || item.package_artifact_sha256 !== status.artifact_sha256 || !digest(item.control_revision)
+      || typeof item.target_device_id !== 'string' || item.target_device_id.length !== 36 || !/^dev_[a-f0-9]{32}$/.test(item.target_device_id)
+      || typeof item.provider_version !== 'string' || !item.provider_version.length || item.provider_version.length > 64
+      || !object(item.declaration) || !object(item.contract)) return false
+    const declaration = item.declaration, contract = item.contract
+    if (!exact(declaration, ['contract_version', 'binding_id', 'target_device_config_key', 'provider_id', 'capability_id', 'access_mode', 'control_actions', 'required_permission', 'options'])
+      || declaration.contract_version !== 1 || typeof declaration.binding_id !== 'string' || !/^[a-z][a-z0-9_]{0,95}$/.test(declaration.binding_id)
+      || typeof declaration.target_device_config_key !== 'string' || !/^[A-Z][A-Z0-9_]{1,63}$/.test(declaration.target_device_config_key)
+      || typeof declaration.provider_id !== 'string' || declaration.provider_id.length > 160 || !/^[a-z0-9]+(?:[.-][a-z0-9]+)+$/.test(declaration.provider_id)
+      || !identity(declaration.capability_id) || !['read', 'write'].includes(String(declaration.access_mode))
+      || typeof declaration.required_permission !== 'string' || !/^[a-z][a-z0-9_]{0,95}$/.test(declaration.required_permission)
+      || !controls(declaration.control_actions) || !object(declaration.options)
+      || !exact(contract, ['contract_version', 'access_modes', 'control_actions']) || contract.contract_version !== 1
+      || !Array.isArray(contract.access_modes) || !contract.access_modes.length || contract.access_modes.length > 2
+      || !contract.access_modes.every(mode => mode === 'read' || mode === 'write') || new Set(contract.access_modes).size !== contract.access_modes.length
+      || !contract.access_modes.includes(declaration.access_mode) || !controls(contract.control_actions)
+      || declaration.control_actions.some(action => !(contract.control_actions as string[]).includes(action))) return false
+    let items = 0
+    const json = (value: unknown, depth = 0): boolean => {
+      if (++items > 8192 || depth > 16) return false
+      if (value === null || typeof value === 'boolean' || typeof value === 'string') return true
+      if (typeof value === 'number') return Number.isFinite(value) && (!Number.isInteger(value) || Number.isSafeInteger(value))
+      if (Array.isArray(value)) return value.every(child => json(child, depth + 1))
+      return object(value) && Object.getPrototypeOf(value) === Object.prototype
+        && Object.entries(value).every(([key, child]) => json(key, depth + 1) && json(child, depth + 1))
+    }
+    if (!json(declaration.options) || new TextEncoder().encode(JSON.stringify(declaration.options)).length > 8192) return false
+    const key = `session:${declaration.binding_id}:open`, owner = ownerBinding(item.owner)
+    if (!expected.includes(key) || keys.has(key) || owners.some(previous => previous !== owner)) return false
+    keys.add(key); owners.push(owner)
+  }
+  return true
+}
+
 export function readAuthorityStatus(value: unknown): AuthorityStatus {
   if (!object(value) || !['compatibility', 'review_required', 'enforced'].includes(String(value.mode))
     || !Number.isSafeInteger(value.installation_id) || Number(value.installation_id) <= 0
@@ -450,10 +511,12 @@ export function readAuthorityStatus(value: unknown): AuthorityStatus {
     }
   }
   const declared = value.scopes
-  if (value.runtime_blockers !== undefined && (!Array.isArray(value.runtime_blockers) || value.runtime_blockers.length > 1
+  if (value.runtime_blockers !== undefined && (!Array.isArray(value.runtime_blockers) || value.runtime_blockers.length > 3
+    || new Set(value.runtime_blockers).size !== value.runtime_blockers.length
     || !value.runtime_blockers.every(reason => reason === 'relational_runtime_unavailable'
       ? declared.some(scope => scope.startsWith('storage:relational_'))
-      : reason === 'peer_read_runtime_unavailable' && declared.some(scope => scope.startsWith('peer:')))
+      : reason === 'peer_read_runtime_unavailable' ? declared.some(scope => scope.startsWith('peer:'))
+      : reason === 'session_runtime_not_connected' && declared.some(scope => scope.startsWith('session:')))
     || value.runtime_blockers.length > 0 && value.grant_effective)
     || declared.some(scope => scope.startsWith('peer:')) && declared.some(scope => scope.startsWith('storage:relational_'))) {
     throw new Error('Unsupported authority runtime status')
@@ -467,7 +530,7 @@ export function readAuthorityPlan(value: unknown, status: AuthorityStatus, modul
     || value.state !== 'review_required' || value.artifact_sha256 !== status.artifact_sha256
     || value.isolation_proven !== false || !selected
     || selected.some(scope => !status.scopes.includes(scope))
-    || status.scopes.some(scope => !scope.startsWith('peer:') && !selected.includes(scope))
+    || status.scopes.some(scope => !scope.startsWith('peer:') && !scope.startsWith('session:') && !selected.includes(scope))
     || requested !== undefined && (selected.length !== requested.length || requested.some(scope => !selected.includes(scope)))
     || !Number.isInteger(value.expires_in_seconds) || Number(value.expires_in_seconds) <= 0 || Number(value.expires_in_seconds) > 900
     || !object(value.resources) || !Array.isArray(value.resources.commands) || value.resources.commands.length > 64
@@ -480,12 +543,13 @@ export function readAuthorityPlan(value: unknown, status: AuthorityStatus, modul
     || !(value.resources.identities === undefined || Array.isArray(value.resources.identities) && value.resources.identities.length <= 1)
     || !(value.resources.status_projections === undefined || Array.isArray(value.resources.status_projections) && value.resources.status_projections.length <= 32)
     || !(value.resources.peer_reads === undefined || Array.isArray(value.resources.peer_reads) && value.resources.peer_reads.length <= 32)
-    || Object.keys(value.resources).some(key => !['commands', 'connectors', 'events', 'publications', 'private_files', 'relational', 'checkpoints', 'identities', 'status_projections', 'peer_reads'].includes(key))
+    || !(value.resources.sessions === undefined || Array.isArray(value.resources.sessions) && value.resources.sessions.length <= 32)
+    || Object.keys(value.resources).some(key => !['commands', 'connectors', 'events', 'publications', 'private_files', 'relational', 'checkpoints', 'identities', 'status_projections', 'peer_reads', 'sessions'].includes(key))
     || value.resources.commands.length + value.resources.connectors.length + ((value.resources.events as unknown[] | undefined)?.length || 0)
       + ((value.resources.publications as unknown[] | undefined)?.length || 0) + ((value.resources.private_files as unknown[] | undefined)?.length || 0)
       + ((value.resources.relational as unknown[] | undefined)?.length || 0) + ((value.resources.checkpoints as unknown[] | undefined)?.length || 0)
       + ((value.resources.identities as unknown[] | undefined)?.length || 0)
-      + ((value.resources.status_projections as unknown[] | undefined)?.length || 0) !== selected.filter(scope => !scope.startsWith('peer:')).length
+      + ((value.resources.status_projections as unknown[] | undefined)?.length || 0) !== selected.filter(scope => !scope.startsWith('peer:') && !scope.startsWith('session:')).length
     || !resourceScopesMatch(value.resources, selected)
     || !privateFilesMatch(value.resources, selected, status, moduleId)
     || !relationalMatch(value.resources, selected, status, moduleId)
@@ -493,6 +557,7 @@ export function readAuthorityPlan(value: unknown, status: AuthorityStatus, modul
     || !identitiesMatch(value.resources, selected, status, moduleId)
     || !statusProjectionsMatch(value.resources, selected, status, moduleId)
     || !peerReadsMatch(value.resources, status, moduleId)
+    || !sessionResourcesMatch(value.resources, status, moduleId)
     || value.historical === true || value.replayed === true) {
     throw new Error('Unsupported authority review')
   }

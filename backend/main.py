@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
@@ -316,6 +317,13 @@ app.include_router(device_events_router)
 app.include_router(modules_router)
 app.include_router(application_extensions_router)
 app.include_router(application_authority_router)
+if os.getenv("THREE_MM_LOCAL_SESSIONS") == "1":
+    # Never mount the old user-id-only prototype. Both M20 and human authority
+    # are checked continuously by this exact UI-bound isolated-worker connector.
+    from backend.database import engine
+    from backend.routes.application_sessions import application_session_router
+    from backend.services.application_local_sessions import configured_browser_service
+    app.include_router(application_session_router(configured_browser_service(engine)))
 app.include_router(application_events_router)
 app.include_router(application_operations_router)
 app.include_router(installation_peers_router)

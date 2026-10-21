@@ -19,17 +19,21 @@ from backend.utils.db_utils import get_db
 router = APIRouter(prefix='/api/v1/application-extensions', tags=['application-authority'])
 Identifier = Annotated[str, Field(pattern=r'^[0-9a-f]{32}$')]
 Digest = Annotated[str, Field(pattern=r'^[0-9a-f]{64}$')]
-Scope = Annotated[str, Field(pattern=r'^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read)$')]
+Scope = Annotated[str, Field(pattern=r'^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read|session:[a-z][a-z0-9_]{0,95}:open)$')]
 
 
 class ReviewRequest(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
     request_id: Identifier
     native_review_id: Identifier
-    scopes: list[Scope] = Field(max_length=261)
+    scopes: list[Scope] = Field(max_length=293)
 
     @model_validator(mode='after')
     def legacy_scope_limit(self):
+        if any(scope.startswith('session:') for scope in self.scopes):
+            return self
+        if len(self.scopes) > 261:
+            raise ValueError('Legacy scope count exceeds limits')
         if not any(scope.startswith('peer:') for scope in self.scopes):
             if len(self.scopes) > 229 or len(self.scopes) > 197 and not any(scope.startswith('status:') for scope in self.scopes):
                 raise ValueError('Legacy scope count exceeds limits')

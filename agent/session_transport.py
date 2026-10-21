@@ -21,8 +21,11 @@ contract; it binds no process and performs no OS isolation.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import math
 import secrets
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Mapping
 
@@ -51,6 +54,8 @@ class AgentSessionHost:
     def __init__(self) -> None:
         self._providers: dict[str, SessionProvider] = {}
         self._sessions: dict[str, str] = {}  # session_id -> provider_id
+        self._output_tasks: dict[str, asyncio.Task] = {}
+        self._unconfirmed_cleanup: set[str] = set()
 
     def register_provider(self, provider: SessionProvider) -> None:
         if provider.provider_id in self._providers:
@@ -128,23 +133,41 @@ class AgentSessionHost:
                 control = SessionControlV1.model_validate(message.get("control"))
                 session_id = control.session_id
                 provider = self._session_provider(session_id)
-                await provider.control(session_id, {
-                    "action": control.action, "arguments": control.arguments,
-                })
-                return json.dumps(
-                    {"op": "ok", "key": f"ctl:{control.control_id}"}
+                await provider.control(
+                    session_id,
+                    {
+                        "action": control.action,
+                        "arguments": control.arguments,
+                    },
                 )
+                return json.dumps({"op": "ok", "key": f"ctl:{control.control_id}"})
             if op == "close":
                 session_id = str(message.get("session_id"))
-                provider = self._session_provider(session_id)
-                await provider.close(session_id, str(message.get("reason") or "closed"))
+                provider = self._session_provider(session_id, for_cleanup=True)
+                output_task = self._output_tasks.get(session_id)
+                if output_task is not None:
+                    output_task.cancel()
+                    try:
+                        await asyncio.shield(output_task)  # The pump owns cleanup.
+                    except asyncio.CancelledError:
+                        if asyncio.current_task().cancelling():
+                            raise  # A cancelled close request must not return "ok".
+                else:
+                    await provider.close(
+                        session_id, str(message.get("reason") or "closed")
+                    )
                 self._sessions.pop(session_id, None)
+                self._unconfirmed_cleanup.discard(session_id)
                 return json.dumps({"op": "ok", "key": f"close:{session_id}"})
         except (AgentSessionTransportError, ValueError) as exc:
             return json.dumps({"op": "error", "detail": str(exc)})
         raise AgentSessionTransportError(f"Unsupported agent op: {op!r}")
 
-    def _session_provider(self, session_id: str) -> SessionProvider:
+    def _session_provider(
+        self, session_id: str, *, for_cleanup: bool = False
+    ) -> SessionProvider:
+        if session_id in self._unconfirmed_cleanup and not for_cleanup:
+            raise AgentSessionTransportError("Session cleanup is unconfirmed")
         provider_id = self._sessions.get(session_id)
         if provider_id is None:
             raise AgentSessionTransportError("Session is unknown on this agent")
@@ -152,6 +175,74 @@ class AgentSessionHost:
         if provider is None:
             raise AgentSessionTransportError("Session provider was removed")
         return provider
+
+    async def pump_output(
+        self,
+        session_id: str,
+        send: Callable[[bytes], Awaitable[None]],
+        *,
+        authorize: Callable[[], Awaitable[None]],
+        check_interval: float = 1.0,
+    ) -> None:
+        """Optional output-only pump for an ALREADY admitted session.
+
+        The trusted connector must supply current authorization; this handler
+        does not derive rights from session IDs or provider metadata. This is
+        not registered on production WebSockets by adding this method.
+        """
+        from three_mm_runtime.session_output import (
+            SessionOutputCleanupError,
+            pump_session_output,
+        )
+
+        provider = self._session_provider(session_id)
+        if session_id in self._output_tasks:
+            raise AgentSessionTransportError("Session already has an output consumer")
+        if (
+            not callable(authorize)
+            or not callable(send)
+            or not callable(getattr(provider, "read_output", None))
+        ):
+            raise AgentSessionTransportError(
+                "Session output requires current authorization and a streaming provider"
+            )
+        if (
+            type(check_interval) not in (int, float)
+            or not math.isfinite(check_interval)
+            or not 0.01 <= check_interval <= 1.0
+        ):
+            raise AgentSessionTransportError(
+                "Session output check interval is outside bounds"
+            )
+        task = asyncio.current_task()
+        self._output_tasks[session_id] = task
+
+        async def require_current() -> None:
+            if self._session_provider(session_id) is not provider:
+                raise AgentSessionTransportError("Session provider changed")
+            result = await authorize()
+            if result is not None:
+                raise AgentSessionTransportError(
+                    "Current session authority was not confirmed"
+                )
+
+        cleanup_confirmed = True
+        try:
+            await pump_session_output(
+                provider,
+                session_id,
+                send,
+                authorize=require_current,
+                check_interval=check_interval,
+            )
+        except SessionOutputCleanupError:
+            cleanup_confirmed = False
+            self._unconfirmed_cleanup.add(session_id)
+            raise
+        finally:
+            self._output_tasks.pop(session_id, None)
+            if cleanup_confirmed:
+                self._sessions.pop(session_id, None)
 
     async def handle_binary(self, raw: bytes) -> bytes:
         """Serve one Core binary data frame; return the outbound frame."""

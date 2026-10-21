@@ -26,6 +26,7 @@ def device_configuration_keys(definition: ApplicationExtensionV1) -> tuple[str, 
             }
             | {item.target_device_config_key for item in definition.command_bindings}
             | {item.sensor_device_config_key for item in definition.command_bindings if item.sensor_device_config_key}
+            | {item.target_device_config_key for item in definition.session_bindings}
         )
     )
 

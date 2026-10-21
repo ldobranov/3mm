@@ -196,6 +196,14 @@ def _declarations(
                 key, command.sensor_device_config_key, r"dev_[0-9a-f]{32}"
             )
         scopes[key] = scope
+    for session in app.session_bindings:
+        key = f"session:{session.binding_id}:open"
+        scope = session.model_dump(mode="json")
+        scope["control_actions"].sort()
+        scope["target_device_id"] = binding(key, session.target_device_config_key,
+            r"dev_[0-9a-f]{32}")
+        scopes[key] = scope
+        issue(key, "current_session_authority_not_evaluated")
     for subscription in app.event_subscriptions:
         key = f"event:{subscription.subscription_id}"
         scopes[key] = {

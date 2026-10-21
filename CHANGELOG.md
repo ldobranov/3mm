@@ -6,6 +6,83 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.55] - 2026-10-20
+
+### Added
+
+- Opt-in scoped M21 browser sessions through the existing public application host,
+  exact M20 session-resource review/approve/apply/revoke and independent tracked
+  human permissions. Package, compiled UI, entrypoint, configuration, local device,
+  provider contract and lifecycle are rechecked; administrator status is no bypass.
+- Reviewed `session_providers` declarations in the application's own pure-Python
+  service wheel and a Core-owned local capability adapter. The first supported
+  profile is local/self-provided only; browser input cannot select factories,
+  filesystem paths, SSH credentials or a different device.
+- Socket-activated per-session systemd DynamicUser/cgroup workers with no Core
+  environment, capabilities or network access; protected Core/home/Windows paths,
+  bounded scratch space/resources/lifetime, and cgroup cleanup on close/link loss.
+  The public SDK process-profile guard verifies the boundary, not authority.
+- Full-profile `websockets==17.2`, bounded server frames/queues with compression
+  disabled, short one-use browser tickets and metadata-only session audit.
+  The installer ships optional units without enabling them or granting rights;
+  the minimal Node payload stays independent of the Core session worker/SDK.
+- A separate Terminal 1.0.2 trial and post-update runbook. It uses the same SDK for
+  prompt/output/input/resize and a restricted ephemeral workspace, not a root,
+  `raspberry`, SSH, remote-Node or Cloud administration terminal.
+
+### Fixed
+
+- Backup pauses record exact active application unit names before Core stops,
+  resume that exact set, and verify every unit individually. An unloaded template
+  instance is not lost through a subsequent systemctl glob; failed resumption is
+  not reported as a successful backup.
+- Immutable installation enumerates real application/session units before state
+  copying and fails closed on inspection/stop/resumption failure. Rollback selects
+  the old interpreter successfully from an ERR handler and removes unsupported
+  optional session units when returning to an older Core.
+- Session controls pass the SDK action/arguments envelope. Configured authority
+  stores allow a bounded pre-admission lock wait so idle checks do not routinely
+  defeat explicit revocation; no mutation retry or grant fallback is introduced.
+- Backup route tests use only temporary helper/storage paths. Agent WebSocket
+  tests share one ASGI event loop, wait for provider readiness and have verified
+  deadlines instead of waiting indefinitely. No production permission or timing
+  assertion was relaxed.
+- Python CI has a 90-minute budget for setup and both complete suites; the
+  observed local main suite alone took 60m43s. No test assertion is relaxed.
+
+### Verification
+
+- Complete non-root Linux/Python 3.12.3 suite: **4,770 passed, 604 skipped**,
+  no failures (60m43s). Skips remain explicit: 595 Root-helper cases, separate
+  privileged/systemd/HTTPS cases and two non-POSIX refusals; they are not passes.
+- Complete deployment/Application SDK suite: **416 passed, one opt-in systemd
+  skip**. Frontend: **492 tests / 56 files**, TypeScript and production build pass
+  on Node 22.23.3. Terminal 1.0.2: **38 frontend tests and 38 Python tests**,
+  type-check and M20 package validation pass, including the 16 KiB paste bound
+  and component-level PTY resize/cleanup wiring. Warnings are not suppressed.
+- Separate disposable Root/systemd checks cover actual local PTY startup,
+  independent output, resize, private-path/network denial, detached-child cleanup,
+  link loss and actual idle human/service revocation. This targeted evidence does
+  not cover every privileged skip or replace installed-VM/hardware acceptance.
+- Initial failed/interrupted runs are not counted as completed proof. The
+  corrected Agent group also passes ten repetitions; overlapping regressions
+  are not added as distinct release coverage. Exact-tag Python 3.13/Node 22 CI
+  and reproducible full/Node artifact builds still gate publication.
+
+### Compatibility and release boundary
+
+- No database migration, Device Protocol 1.0 or Application SDK 1.3 version bump.
+  Existing application/theme/identity/pairing behavior remains. Session additions
+  are opt-in; updating Core does not enable the socket/flag, install Terminal,
+  trust code, approve human/service rights or restore fenced authority.
+- The old unrestricted prototype router remains absent. Node/Fleet/Cloud session
+  transport, cross-application provider trust and attach/detach are not enabled.
+  The separate local process profile is not a claim of WP5-wide malicious-code or
+  same-origin browser isolation; this release closes neither M20/WP4 nor M21.
+- Test first on a recoverable disposable VM. Built-in backup is Standalone-only;
+  use an independent Hub snapshot/export. Prepared metadata/local ZIPs are not a
+  published release, live deployment, permission grant or installed acceptance.
+
 ## [0.3.0-beta.54] - 2026-10-19
 
 ### Fixed
@@ -1916,7 +1993,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.54...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.55...HEAD
+[0.3.0-beta.55]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.55
 [0.3.0-beta.54]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.54
 [0.3.0-beta.53]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.53
 [0.3.0-beta.52]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.52

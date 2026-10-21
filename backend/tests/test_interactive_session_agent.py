@@ -3,8 +3,9 @@
 import asyncio
 import json
 
+import anyio
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from starlette.testclient import TestClient
 
 from agent.session_transport import AgentSessionHost
@@ -24,6 +25,28 @@ AGENT_DEVICE = "dev_" + "a" * 32
 AGENT_CAP = "org.3mm.agent.echo"
 WS_USER = "/api/v1/interactive-sessions/ws"
 WS_AGENT = f"/api/v1/devices/{AGENT_DEVICE}/session-ws"
+
+
+def _bounded_app(app, *, timeout=5):
+    """A missing WebSocket response must fail, not stall the entire suite."""
+
+    async def bounded(scope, receive, send):
+        if scope["type"] == "websocket":
+            with anyio.fail_after(timeout):
+                await app(scope, receive, send)
+        else:
+            await app(scope, receive, send)
+
+    return bounded
+
+
+def _wait_for_agent(client, gateway, *, available=True):
+    async def ready():
+        with anyio.fail_after(5):
+            while gateway.router.offers(AGENT_DEVICE, AGENT_CAP) != available:
+                await anyio.sleep(0.001)
+
+    client.portal.call(ready)
 
 
 def _run(coro):
@@ -131,7 +154,47 @@ def app_client(monkeypatch):
     monkeypatch.setattr(agent_module, "_DEVICE_TICKETS", None)
     app = FastAPI()
     app.include_router(interactive_sessions_router)
-    return TestClient(app)
+    # Without this context each WebSocket gets a DIFFERENT AnyIO portal/loop.
+    # The Agent resolves futures created by the browser connection: both must
+    # run on the same application loop, just as on the actual ASGI server.
+    with TestClient(_bounded_app(app)) as client:
+        yield client
+
+
+def test_websocket_deadline_fails_instead_of_waiting_forever():
+    app = FastAPI()
+
+    @app.websocket("/silent")
+    async def silent(websocket: WebSocket):
+        await websocket.accept()
+        await anyio.sleep_forever()
+
+    with pytest.raises(TimeoutError):
+        with TestClient(_bounded_app(app, timeout=0.05)) as client:
+            with client.websocket_connect("/silent") as ws:
+                ws.receive_text()
+
+
+def test_open_before_agent_hello_is_refused_without_waiting(app_client):
+    gateway = gateway_module.get_session_gateway()
+    host = AgentSessionHost()
+    host.register_provider(AgentEchoProvider())
+    device_ticket = agent_module.get_device_tickets().issue(AGENT_DEVICE)
+    user_ticket = gateway.issue_ticket(7).ticket
+
+    with app_client.websocket_connect(f"{WS_AGENT}?ticket={device_ticket}") as agent_ws:
+        # WS acceptance alone is NOT an application/provider readiness signal.
+        with app_client.websocket_connect(f"{WS_USER}?ticket={user_ticket}") as ws:
+            assert app_client.portal is agent_ws.portal is ws.portal
+            ws.send_text(_open_message())
+            assert json.loads(ws.receive_text())["op"] == "error"
+            assert not gateway.router.offers(AGENT_DEVICE, AGENT_CAP)
+
+            agent_ws.send_text(host.hello("rasp-3mm-agent"))
+            _wait_for_agent(app_client, gateway)
+            ws.send_text(_open_message(request_id="req_after_hello"))
+            agent_ws.send_text(_run(host.handle_text(agent_ws.receive_text())))
+            assert json.loads(ws.receive_text())["op"] == "opened"
 
 
 def test_end_to_end_browser_session_via_agent(app_client):
@@ -143,7 +206,9 @@ def test_end_to_end_browser_session_via_agent(app_client):
 
     with app_client.websocket_connect(f"{WS_AGENT}?ticket={device_ticket}") as agent_ws:
         agent_ws.send_text(host.hello("rasp-3mm-agent"))
+        _wait_for_agent(app_client, gateway)
         with app_client.websocket_connect(f"{WS_USER}?ticket={user_ticket}") as ws:
+            assert app_client.portal is agent_ws.portal is ws.portal
             ws.send_text(_open_message())
             raw = agent_ws.receive_text()
             agent_ws.send_text(_run(host.handle_text(raw)))
@@ -173,13 +238,16 @@ def test_end_to_end_agent_disconnect_terminates_session(app_client):
 
     with app_client.websocket_connect(f"{WS_AGENT}?ticket={device_ticket}") as agent_ws:
         agent_ws.send_text(host.hello("rasp-3mm-agent"))
+        _wait_for_agent(app_client, gateway)
         with app_client.websocket_connect(f"{WS_USER}?ticket={user_ticket}") as ws:
+            assert app_client.portal is agent_ws.portal is ws.portal
             ws.send_text(_open_message())
             raw = agent_ws.receive_text()
             agent_ws.send_text(_run(host.handle_text(raw)))
             opened = json.loads(ws.receive_text())
             session_id = opened["acceptance"]["session_id"]
     # The agent link is gone; the routed session must fail closed.
+    _wait_for_agent(app_client, gateway, available=False)
     ticket = gateway.issue_ticket(7).ticket
     with app_client.websocket_connect(f"{WS_USER}?ticket={ticket}") as ws:
         ws.send_bytes(_data_frame(session_id, payload=b"x"))

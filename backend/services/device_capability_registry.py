@@ -86,6 +86,10 @@ def registered_capabilities(db: Session, device: Device) -> list[dict]:
     if device.approved_at is None or device.revoked_at is not None:
         return []
     result = _module_capabilities(db, device)
+    from backend.services.application_local_sessions import provider_offers
+    result.extend({**{key: value for key, value in offer.items()
+        if key not in {"configured", "requires_health", "local_active"}}, "status": "active"}
+        for offer in provider_offers(db, device))
     for provider in _providers(db, device):
         if not provider.enabled:
             continue
@@ -242,6 +246,8 @@ def replace_provider(db: Session, device: Device, report: CapabilityProviderRepo
 
 def _replace_provider(db, device, report, mutation):
     mutation.require_session(db)
+    if report.provider_type == "core_application":
+        raise CapabilityRegistryError("Core session providers are platform-owned")
     if report.device_id != device.device_id:
         raise CapabilityRegistryError("Provider report identity does not match device")
     providers = _providers(db, device)
@@ -360,6 +366,8 @@ def _configure_provider(db, device, provider_type, provider_id, request, *, acto
 
 def _offers(db, device):
     rows = _module_capabilities(db, device, include_inactive=True)
+    from backend.services.application_local_sessions import provider_offers
+    rows.extend(provider_offers(db, device))
     for provider in _providers(db, device):
         for item in provider.capabilities:
             rows.append({**item, "provider_type": provider.provider_type, "provider_id": provider.provider_id,
@@ -376,6 +384,8 @@ def _group_digest(rows, row):
 
 
 def report_availability(db, device, report, *, now=None):
+    if report.provider_type == "core_application":
+        raise CapabilityRegistryError("Core application availability is platform-owned")
     if report.device_id != device.device_id:
         raise CapabilityRegistryError("Availability identity mismatch")
     _lock_device(db, device)
@@ -443,6 +453,12 @@ def capability_catalog(db, device, *, now=None):
             reason = "authority_inactive"
         elif not online:
             reason = "device_offline"
+        elif row["provider_type"] == "core_application":
+            from backend.services.application_local_sessions import supervisor_available
+            if not row.get("local_active"):
+                reason = "provider_inactive"
+            elif not supervisor_available():
+                reason = "session_runtime_unavailable"
         elif report is not None and report.report["declaration_digest"] != digest:
             reason = "provider_changed"
         elif report is not None and as_utc(report.expires_at) <= now:

@@ -17,6 +17,7 @@ from pathlib import Path
 import re
 import secrets
 import stat
+import time
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -183,7 +184,7 @@ def _private_directory(path, *, create=False):
 
 
 @contextmanager
-def _key_lock(directory, *, create=False):
+def _key_lock(directory, *, create=False, wait_seconds=0):
     import fcntl
 
     descriptor = os.open(LOCK_NAME, os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
@@ -192,8 +193,17 @@ def _key_lock(directory, *, create=False):
         info = _file_info(descriptor)
         if info.st_size != 0:
             raise AuthorityReviewKeyError()
-        # Bounded admission: busy is unavailable, not an unbounded server wait.
-        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # Wait only BEFORE admission. This is not a retry of a mutation, network
+        # effect or request ID. Explicit store users retain fail-fast semantics.
+        deadline = time.monotonic() + wait_seconds
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(min(0.01, max(0, deadline - time.monotonic())))
         yield
     finally:
         os.close(descriptor)  # Also releases flock, including on failed admission.
@@ -238,9 +248,12 @@ class CoreReviewKeyStore:
     A key seal alone is not a grant or an OS/browser isolation proof.
     """
 
-    def __init__(self, engine, directory: Path):
+    def __init__(self, engine, directory: Path, *, lock_wait_seconds=0):
+        if type(lock_wait_seconds) not in (int, float) or not 0 <= lock_wait_seconds <= 1:
+            raise ValueError("Key admission wait is outside bounds")
         self._engine = engine
         self._directory = Path(directory)
+        self._lock_wait_seconds = lock_wait_seconds
 
     def _binding(self):
         with _read_snapshot(self._engine) as db:
@@ -251,7 +264,7 @@ class CoreReviewKeyStore:
     def _access(self, *, provision=False):
         try:
             with _private_directory(self._directory, create=provision) as directory:
-                with _key_lock(directory, create=provision):
+                with _key_lock(directory, create=provision, wait_seconds=self._lock_wait_seconds):
                     yield directory
         except (OSError, ValueError, TypeError, SQLAlchemyError, RuntimeError):
             raise AuthorityReviewKeyError() from None

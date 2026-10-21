@@ -3,6 +3,7 @@ import { defineComponent, h, onBeforeUnmount, provide, type Component } from 'vu
 import { getBackendUrl } from './runtime-config'
 import { getToken } from './auth'
 import type { CompiledUiEntrypoint, CompiledUiPackage } from './compiled-ui'
+import { createApplicationSessions } from './application-session-host'
 import {
   applicationHostKey, ApplicationHostError,
   type ApplicationHost, type ApplicationHostInfo, type ApplicationPayload,
@@ -109,8 +110,19 @@ export function createApplicationHost(pkg: CompiledUiPackage, entrypoint: Compil
       operations: Object.freeze(operations),
     }) as ApplicationHostInfo
   }
+  const ui = Object.freeze({ host_version: 1, entrypoint_id: binding.entrypoint, artifact_sha256: binding.hash,
+    ...(binding.build === undefined ? {} : { built_ui_sha256: binding.build }) })
+  const sessionHost = createApplicationSessions({ request, live, ui, socketUrl(path) {
+    live()
+    if (!backend || !['operator', 'administrator'].includes(binding.audience || '')) throw new ApplicationHostError('access_denied')
+    const url = new URL(`${backend}${prefix}${path}`, location.href)
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new ApplicationHostError('unavailable')
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    return url.href
+  } })
   const host: ApplicationHost = Object.freeze({
     getInfo,
+    sessions: sessionHost.sessions,
     async invoke(operationId: string, payload: ApplicationPayload, options?: { readonly idempotencyKey?: string }) {
       live()
       if (typeof operationId !== 'string' || !identifier.test(operationId)
@@ -135,6 +147,7 @@ export function createApplicationHost(pkg: CompiledUiPackage, entrypoint: Compil
   })
   return { host, dispose() {
     disposed = true
+    sessionHost.dispose()
     for (const controller of pending) controller.abort()
     pending.clear()
   } }

@@ -37,6 +37,7 @@ def test_node_archive_is_minimal_and_reproducible(tmp_path):
         assert 'three_mm_runtime/update_helper.py' not in names
         assert b'\r' not in archive.extractfile('deployment/install-systemd.sh').read()
         assert 'agent/session_transport.py' in names
+        assert 'three_mm_runtime/session_output.py' in names
         assert 'three_mm_protocol/interactive_session.py' in names
         assert not any(n.startswith('three_mm_application_sdk/') for n in names)
         extracted = tmp_path / 'extracted-node'
@@ -53,7 +54,9 @@ class NoCoreOrSdk(importlib.abc.MetaPathFinder):
             raise ModuleNotFoundError('Node must not need Core or Application SDK')
 sys.meta_path.insert(0, NoCoreOrSdk())
 from agent.session_transport import AgentSessionHost
+from three_mm_runtime.session_output import pump_session_output
 assert AgentSessionHost().capability_ids() == []
+assert callable(pump_session_output)
 '''],
         cwd=extracted, env={**os.environ, 'PYTHONPATH': str(extracted)},
         capture_output=True, text=True, timeout=20,

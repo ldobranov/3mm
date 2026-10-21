@@ -30,7 +30,7 @@ from backend.db.module import (
 )
 from backend.services.application_authority_context import (
     AuthorityArtifact, AuthorityBaseline, AuthorityPrincipal, Digest, ResolvedConnectorScope,
-    ResolvedCredential, ResolvedEventScope, ResolvedPublicationScope, ResolvedPrivateFileScope, ResolvedRelationalScope, ResolvedCheckpointScope, ResolvedIdentityScope, ResolvedStatusScope, ResolvedPeerReadScope, StoredConnectorScope, _bounded_json, _canonical_bytes,
+    ResolvedCredential, ResolvedEventScope, ResolvedPublicationScope, ResolvedPrivateFileScope, ResolvedRelationalScope, ResolvedCheckpointScope, ResolvedIdentityScope, ResolvedStatusScope, ResolvedPeerReadScope, ResolvedSessionScope, StoredConnectorScope, _bounded_json, _canonical_bytes,
 )
 from backend.services.application_authority_inspection import (
     AuthorityInspectionBaseline, _read_baseline,
@@ -44,6 +44,7 @@ from backend.services.authority_metadata import (
 from backend.services.device_capability_registry import registered_capabilities
 from backend.services.device_runtime_features import read_runtime_features
 from three_mm_protocol.capability_contracts import CONTRACT_FEATURE, registration_contract
+from three_mm_protocol.application_sessions import session_contract
 from three_mm_protocol.device_capabilities import ProviderId, ProviderType
 from three_mm_protocol.installation_identity import InstallationIdentityV1
 from three_mm_protocol.node_features import DeviceRuntimeFeaturesV1
@@ -119,6 +120,7 @@ class InstalledAuthoritySources(SourceModel):
     identities: tuple[ResolvedIdentityScope, ...] = ()
     status_projections: tuple[ResolvedStatusScope, ...] = ()
     peer_reads: tuple[ResolvedPeerReadScope, ...] = ()
+    sessions: tuple[ResolvedSessionScope, ...] = ()
     issues: tuple[SourceIssue, ...]
     not_checked: tuple[str, ...] = (
         "candidate_staging_and_configuration_identity", "policy_trust_and_isolation_evidence",
@@ -292,6 +294,8 @@ def _registration(db, device, capability_id, scope):
         if row is None or row.version != registration["provider_version"] or row.installed_version != row.version:
             raise _Unavailable("capability_unresolved", scope)
         module_digest = row.sha256
+    elif registration["provider_type"] == "core_application":
+        module_digest = registration["metadata"]["package_artifact_sha256"]
     else:
         provider_revision = db.scalar(select(DeviceCapabilityProvider.revision).where(
             DeviceCapabilityProvider.device_id == device.id,
@@ -321,6 +325,30 @@ def _command(db, binding, configuration):
         provider_revision=provider_revision, module_artifact_sha256=module_digest,
         contract_version=contract.contract_version, contract_digest=contract.digest(),
         action_arguments_schema=contract.actions[binding.action].arguments_schema)
+
+
+def _session(db, binding, configuration, principal, artifact_sha256):
+    scope = f"session:{binding.binding_id}:open"
+    device, target = _device(db, configuration.get(binding.target_device_config_key),
+        scope, command_target=False)
+    registration, revision, digest = _registration(db, device, binding.capability_id, scope)
+    if "interactive_sessions.v1" not in target.features and registration["provider_type"] != "core_application":
+        raise _Unavailable("runtime_support_unresolved", scope)
+    if registration["provider_id"] != binding.provider_id:
+        raise _Unavailable("capability_unresolved", scope)
+    # Inventory and a bare transport hello cannot define this reviewed resource.
+    try:
+        contract = session_contract(registration.get("metadata", {}))
+        identity = hashlib.sha256(b"3mm:m21:resolved-session-source:v1\x00" + _canonical_bytes({
+            "target": target.model_dump(mode="json"), "registration": registration,
+            "provider_revision": revision, "module_artifact_sha256": digest,
+        })).hexdigest()
+        return ResolvedSessionScope(declaration=binding, owner=principal,
+            package_artifact_sha256=artifact_sha256, target_device_id=target.device_id,
+            control_revision=identity, provider_version=registration["provider_version"],
+            contract=contract)
+    except (ValueError, TypeError, KeyError):
+        raise _Unavailable("capability_unresolved", scope) from None
 
 
 def _event(db, subscription, definition, configuration):
@@ -413,6 +441,8 @@ def _resolve(db, installation_id, pin, package, *, registration_key=None):
     configuration = _configuration(db, installation_id, package)
     app = package.application_extension
     commands = tuple(_command(db, binding, configuration) for binding in app.command_bindings)
+    sessions = tuple(_session(db, binding, configuration, principal, pin.sha256)
+        for binding in app.session_bindings)
     connectors = tuple(_connector(db, connector, configuration, principal, installation_id)
         for connector in app.connectors)
     events = tuple(_event(db, subscription, app, configuration) for subscription in app.event_subscriptions)
@@ -505,7 +535,7 @@ def _resolve(db, installation_id, pin, package, *, registration_key=None):
     publication_complete = bool(publications) and emitted == {item.declaration.event_type for item in publications}
     if (app.public_http_routes or app.jobs or set(app.platform_permissions) - {identity_read, status_read} - peer_permissions
             or {identity_read, status_read} & set(app.platform_permissions) and app.service.sdk_version != "1.3"
-            or set(package.manifest.capabilities.provides) - (emitted if publication_complete else set())
+            or set(package.manifest.capabilities.provides) - (emitted if publication_complete else set()) - {item.capability_id for item in app.session_providers}
             or (emitted or "events.publish" in package.manifest.permissions) and not publication_complete):
         pending.append(SourceIssue(reason="unsupported_scope_family"))
     if (app.peer_bindings and not peer_read_profile or app.peer_receiver is not None
@@ -528,7 +558,8 @@ def _resolve(db, installation_id, pin, package, *, registration_key=None):
             authority_epoch=authority.epoch, grant_revision=grant_revision, enforcement_mode=authority.mode),
         commands=commands, connectors=connectors, events=events, publications=publications,
         private_files=private_files, relational=relational, checkpoints=checkpoints,
-        identities=identities, status_projections=status_projections, peer_reads=peer_reads, issues=tuple(pending))
+        identities=identities, status_projections=status_projections, peer_reads=peer_reads,
+        sessions=sessions, issues=tuple(pending))
     _bounded_json(result.model_dump(mode="json"))  # Total redacted output budget too.
     return result
 
@@ -545,6 +576,8 @@ def _prepare_installed_package(engine, installation_id, uploads_root, core_versi
         ), uploads_root, core_version)
     except (OSError, ValueError, zipfile.BadZipFile, zlib.error, RuntimeError, NotImplementedError, RecursionError):
         raise _Unavailable("artifact_unavailable") from None
+    from backend.services.application_local_sessions import remember_prepared
+    remember_prepared(package)
     return pin, package
 
 

@@ -40,6 +40,7 @@ Canonical checks:
 
 ```bash
 backend/.venv/bin/python -m pytest -q
+backend/.venv/bin/python -m pytest -q deployment/tests three_mm_application_sdk/tests
 pnpm --dir frontend run test:unit -- --run
 pnpm --dir frontend run type-check
 pnpm --dir frontend run build-only
@@ -49,6 +50,10 @@ git diff --check
 On Windows, use `backend\.venv\Scripts\python`. The four Agent assertions
 for Unix `0600` mode bits cannot be represented by NTFS and must still pass
 in Linux CI.
+Privileged/systemd and opt-in HTTPS skips require their own disposable acceptance
+environment; they must not be counted as passing or bypassed by sudoing the whole
+suite. A successful local check does not publish the dirty tree: the exact tagged
+commit is tested again with Python 3.13 and Node 22 by the release workflow.
 
 ## Tagging
 

@@ -70,7 +70,7 @@ class CapabilityProviderReportV1(ProtocolModel):
 
     @model_validator(mode="after")
     def unique_bounded_declarations(self):
-        if self.provider_type == "agent_module":
+        if self.provider_type in {"agent_module", "core_application"}:
             raise ValueError(
                 "Agent module declarations are managed through module installations"
             )

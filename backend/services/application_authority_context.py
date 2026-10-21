@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from three_mm_protocol.application_commands import ApplicationCommandBindingV1
 from three_mm_protocol.application_event_publication import ApplicationEventPublicationV1
+from three_mm_protocol.application_sessions import ApplicationSessionBindingV1, SessionContractV1
 from three_mm_protocol.application_extension import (
     ApplicationConnectorV1, ApplicationEventSubscriptionV1, ApplicationOperationV1,
     ApplicationPrivateFilesV1, ApplicationRelationalStorageV1, SERVICE_ENTRYPOINT_PATTERN,
@@ -62,6 +63,9 @@ StatusScopeKey = Annotated[str, Field(
 )]
 PeerScopeKey = Annotated[str, Field(
     pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read)$"
+)]
+SessionScopeKey = Annotated[str, Field(
+    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read|session:[a-z][a-z0-9_]{0,95}:open)$"
 )]
 Revision = Annotated[int, Field(ge=1, le=MAX_INTEGER)]
 Timestamp = Annotated[int, Field(ge=0, le=MAX_INTEGER)]
@@ -172,6 +176,53 @@ class AuthorityPolicyV8(AuthorityPolicy):
 class AuthorityPolicyV9(AuthorityPolicy):
     allowed_scopes: tuple[PeerScopeKey, ...] = Field(max_length=261)
     required_scopes: tuple[PeerScopeKey, ...] = Field(max_length=261)
+
+
+class AuthorityPolicyV10(AuthorityPolicy):
+    allowed_scopes: tuple[SessionScopeKey, ...] = Field(max_length=293)
+    required_scopes: tuple[SessionScopeKey, ...] = Field(max_length=293)
+
+
+class ResolvedSessionScope(ContextModel):
+    declaration: ApplicationSessionBindingV1
+    owner: AuthorityPrincipal
+    package_artifact_sha256: Digest
+    target_device_id: DeviceId
+    control_revision: Digest
+    provider_version: str = Field(min_length=1, max_length=64)
+    contract: SessionContractV1
+
+    @model_validator(mode="after")
+    def exact_session_contract(self):
+        if (self.declaration.access_mode not in self.contract.access_modes
+                or not set(self.declaration.control_actions) <= set(self.contract.control_actions)):
+            raise ValueError("Session request exceeds the selected provider contract")
+        return self
+
+
+def _validate_session_scopes(scopes, principal, artifact_sha256, *, complete):
+    if complete and not scopes:
+        raise ValueError("Session context requires its exact resolved requests")
+    identifiers = set()
+    for scope in scopes:
+        if (scope.owner != principal or scope.package_artifact_sha256 != artifact_sha256
+                or scope.declaration.binding_id in identifiers):
+            raise ValueError("Session scopes need exact distinct owned requests")
+        identifiers.add(scope.declaration.binding_id)
+
+
+def _validate_session_bundle(value, principal, artifact_sha256):
+    for field, validator in (("private_files", _validate_private_file_scopes),
+            ("relational", _validate_relational_scopes),
+            ("checkpoints", _validate_checkpoint_scopes),
+            ("identities", _validate_identity_scopes)):
+        resources = getattr(value, field)
+        validator(resources, principal, artifact_sha256, complete=bool(resources))
+    _validate_status_scopes(value.status_projections, principal, artifact_sha256,
+        value.identities, complete=bool(value.status_projections))
+    _validate_peer_read_scopes(value.peer_reads, principal, artifact_sha256,
+        value.identities, value.status_projections, complete=bool(value.peer_reads))
+    _validate_session_scopes(value.sessions, principal, artifact_sha256, complete=True)
 
 
 class ResolvedIdentityScope(ContextModel):
@@ -599,6 +650,7 @@ class AuthorityReviewContextV1(ContextModel):
         keys += [f"platform:{s.operation}" for s in getattr(self, "identities", ())]
         keys += [f"status:{s.link_id}:read" for s in getattr(self, "status_projections", ())]
         keys += [f"peer:{s.declaration.binding_id}:read" for s in getattr(self, "peer_reads", ())]
+        keys += [f"session:{s.declaration.binding_id}:open" for s in getattr(self, "sessions", ())]
         if len(keys) != len(set(keys)):
             raise ValueError("Scope identities must be unique")
         if (set(self.policy.allowed_scopes) | set(self.policy.required_scopes)) - set(
@@ -775,6 +827,23 @@ class AuthorityReviewContextV9(AuthorityReviewContextV8):
         return self
 
 
+class AuthorityReviewContextV10(AuthorityReviewContextV9):
+    context_version: Literal[10]
+    policy: AuthorityPolicyV10
+    peer_reads: tuple[ResolvedPeerReadScope, ...] = Field(max_length=32)
+    sessions: tuple[ResolvedSessionScope, ...] = Field(min_length=1, max_length=32)
+
+    @model_validator(mode="after")
+    def exact_owned_requests(self):
+        _validate_session_bundle(self, self.principal, self.candidate.sha256)
+        expected = {f"storage:relational_{s.operation}" for s in self.relational}
+        for values in (self.policy.allowed_scopes, self.policy.required_scopes):
+            actual = {key for key in values if key.startswith("storage:relational_")}
+            if actual and actual != expected:
+                raise ValueError("Policy must select the whole relational profile")
+        return self
+
+
 class AuthoritySelectionV1(ContextModel):
     selection_version: Literal[1]
     # IDs only: no caller-supplied replacement scope, schema or target.
@@ -827,8 +896,13 @@ class AuthoritySelectionV9(AuthoritySelectionV1):
     scopes: tuple[PeerScopeKey, ...] = Field(max_length=261)
 
 
+class AuthoritySelectionV10(AuthoritySelectionV1):
+    selection_version: Literal[10]
+    scopes: tuple[SessionScopeKey, ...] = Field(max_length=293)
+
+
 class AuthorityContextIssue(ContextModel):
-    scope: PeerScopeKey | None = None
+    scope: SessionScopeKey | None = None
     reason: Literal[
         "invalid_context",
         "invalid_selection",
@@ -992,7 +1066,7 @@ def _canonical_bytes(value) -> bytes:
     return encoded.encode("ascii")
 
 
-def _parse_versioned(v1, v2, value, field, v3=None, v4=None, v5=None, v6=None, v7=None, v8=None, v9=None):
+def _parse_versioned(v1, v2, value, field, v3=None, v4=None, v5=None, v6=None, v7=None, v8=None, v9=None, v10=None):
     # Existing records retain their exact canonical shape/fingerprint. Callers
     # must explicitly opt into each new version; none silently gain authority.
     if isinstance(value, BaseModel):
@@ -1018,6 +1092,8 @@ def _parse_versioned(v1, v2, value, field, v3=None, v4=None, v5=None, v6=None, v
         models[8] = v8
     if v9 is not None:
         models[9] = v9
+    if v10 is not None:
+        models[10] = v10
     if type(version) is not int or version not in models:
         raise ValueError("Unsupported internal authority version")
     return _parse(models[version], value)
@@ -1056,6 +1132,12 @@ def _context_fingerprint(context, selection):
         data["status_projections"].sort(key=lambda s: s["link_id"])
     if "peer_reads" in data:
         data["peer_reads"].sort(key=lambda s: s["declaration"]["binding_id"])
+    if "sessions" in data:
+        data["sessions"].sort(key=lambda s: s["declaration"]["binding_id"])
+        for resource in data["sessions"]:
+            resource["declaration"]["control_actions"].sort()
+            resource["contract"]["access_modes"].sort()
+            resource["contract"]["control_actions"].sort()
     encoded = _canonical_bytes(
         {
             "context": data,
@@ -1079,7 +1161,7 @@ def review_authority_context(
         context = _parse_versioned(
             AuthorityReviewContextV1, AuthorityReviewContextV2, context,
             "context_version", AuthorityReviewContextV3, AuthorityReviewContextV4,
-            AuthorityReviewContextV5, AuthorityReviewContextV6, AuthorityReviewContextV7, AuthorityReviewContextV8, AuthorityReviewContextV9,
+            AuthorityReviewContextV5, AuthorityReviewContextV6, AuthorityReviewContextV7, AuthorityReviewContextV8, AuthorityReviewContextV9, AuthorityReviewContextV10,
         )
     except failures:
         return AuthorityContextReview(
@@ -1089,7 +1171,7 @@ def review_authority_context(
         selection = _parse_versioned(
             AuthoritySelectionV1, AuthoritySelectionV2, selection,
             "selection_version", AuthoritySelectionV3, AuthoritySelectionV4,
-            AuthoritySelectionV5, AuthoritySelectionV6, AuthoritySelectionV7, AuthoritySelectionV8, AuthoritySelectionV9,
+            AuthoritySelectionV5, AuthoritySelectionV6, AuthoritySelectionV7, AuthoritySelectionV8, AuthoritySelectionV9, AuthoritySelectionV10,
         )
         if context.context_version != selection.selection_version:
             raise ValueError("Authority versions must match")
@@ -1124,6 +1206,7 @@ def review_authority_context(
     known |= {f"platform:{s.operation}" for s in getattr(context, "identities", ())}
     known |= {f"status:{s.link_id}:read" for s in getattr(context, "status_projections", ())}
     known |= {f"peer:{s.declaration.binding_id}:read" for s in getattr(context, "peer_reads", ())}
+    known |= {f"session:{s.declaration.binding_id}:open" for s in getattr(context, "sessions", ())}
     selected = set(selection.scopes)
     if selected & relational_keys and selected & relational_keys != relational_keys:
         for scope in relational_keys - selected:

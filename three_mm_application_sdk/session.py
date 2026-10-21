@@ -1,11 +1,12 @@
 """M21 session-provider interface exposed to supervised application extensions.
 
-This is a declaration-only, additive surface for SDK 1.3. It defines the provider
-contract a reviewed application can implement; it does NOT start processes, open
-sockets, grant authority, or establish isolation. Core/runtime wiring and review
-remain separate M21 work (WP4).
+This additive SDK 1.3 surface defines the provider contract a reviewed application
+can implement; it does NOT start processes, grant authority, or establish OS
+isolation. Core/runtime admission and review remain separate responsibilities.
 
 Provider code never binds its own TCP port or reaches Core databases/secrets.
+The explicit process-profile guard below only verifies an already established
+OS boundary. It cannot create isolation, grant authority or launch a child.
 
 The ``SessionProvider`` protocol here is the single public contract. The Core
 runtime adapter (``backend.services.interactive_sessions``) is structurally
@@ -100,6 +101,20 @@ class SessionProvider(Protocol):
     async def close(self, session_id: str, reason: str) -> None: ...
 
 
+@runtime_checkable
+class SessionOutputProvider(SessionProvider, Protocol):
+    """Optional independent output stream over the SAME session contract.
+
+    Await one nonempty, bounded chunk, or return ``None`` at EOF. A pending
+    read must be cancellable and must not block receive/control/close. There
+    is no polling, route selection or transport/authentication in this API.
+    The runtime supplies backpressure, current-authority checks and framing.
+    Existing request/response providers need not implement this extension.
+    """
+
+    async def read_output(self, session_id: str) -> bytes | None: ...
+
+
 def validate_session_provider_metadata(
     *,
     provider_id: str,
@@ -124,11 +139,55 @@ def validate_session_provider_metadata(
             raise SessionProviderError("Session control action is invalid")
 
 
+def require_isolated_session_process() -> None:
+    """Verify the platform's existing isolated_session_v1 Linux process profile.
+
+    Public provider SPI: no private Core/runtime import, caller credential or
+    device routing. These OS checks are NOT an authorization/isolation token;
+    the platform still owns M20 admission, cgroup policy and process cleanup.
+    """
+    import os
+    import socket
+    import sys
+    from pathlib import Path
+
+    if sys.platform != "linux" or os.geteuid() == 0:
+        raise RuntimeError("Unprivileged Linux session sandbox required")
+    if (
+        not 61184 <= os.geteuid() <= 65519
+        or os.getenv("THREE_MM_SESSION_PROFILE") != "isolated_session_v1"
+    ):
+        raise RuntimeError("Installed session sandbox identity required")
+    cgroup = Path("/proc/self/cgroup").read_text()
+    if re.search(
+        r"/3mm-session-worker[^/]*@[^/]+\.service(?:\n|$)", cgroup
+    ) is None or not re.fullmatch(r"[0-9a-f]{32}", os.getenv("INVOCATION_ID", "")):
+        raise RuntimeError("Session cgroup boundary is unavailable")
+    status = Path("/proc/self/status").read_text()
+    fields = dict(line.split(":", 1) for line in status.splitlines() if ":" in line)
+    if fields.get("NoNewPrivs", "").strip() != "1" or int(
+        fields.get("CapEff", "1").strip(), 16
+    ):
+        raise RuntimeError("Session privilege boundary is unavailable")
+    for path in ("/etc/3mm", "/var/lib/3mm", "/run/3mm", "/mnt", "/home", "/root"):
+        if os.access(path, os.R_OK | os.X_OK):
+            raise RuntimeError("Session private paths are accessible")
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    except OSError:
+        pass
+    else:
+        probe.close()
+        raise RuntimeError("Session network boundary is unavailable")
+
+
 __all__ = [
     "SESSION_SDK_ERROR",
     "SessionProviderError",
     "SessionTargetLimits",
     "SessionContext",
     "SessionProvider",
+    "SessionOutputProvider",
     "validate_session_provider_metadata",
+    "require_isolated_session_process",
 ]

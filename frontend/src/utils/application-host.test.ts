@@ -34,7 +34,7 @@ afterEach(() => { vi.restoreAllMocks(); localStorage.clear() })
 describe('public module-bound application host', () => {
   it('exports no HTTP client, stores, router, credentials or host factory', () => {
     expect(Object.keys(publicHost).sort()).toEqual(['APPLICATION_HOST_VERSION', 'ApplicationHostError', 'applicationHostKey', 'useApplicationHost'])
-    expect(Object.keys(createApplicationHost(pkg, entry()).host)).toEqual(['getInfo', 'invoke'])
+    expect(Object.keys(createApplicationHost(pkg, entry()).host)).toEqual(['getInfo', 'sessions', 'invoke'])
   })
   it.each(['public', 'kiosk', 'operator', 'administrator'] as const)('uses only %s credentials and audience path', async audience => {
     send.mockImplementation(async config => ({ data: config.method === 'GET' ? info(audience) : { result: 'ok' } }))

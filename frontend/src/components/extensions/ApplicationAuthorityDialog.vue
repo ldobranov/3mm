@@ -17,6 +17,7 @@ const plan = ref<AuthorityPlan | null>(null)
 // A changed selection keeps the public cards, never an approvable old plan.
 const peerDraft = ref<AuthorityPlan | null>(null)
 const selectedPeers = ref<string[]>([])
+const selectedSessions = ref<string[]>([])
 const peerReview = computed(() => plan.value || peerDraft.value)
 const nativeId = ref('')
 const busy = ref(false)
@@ -39,10 +40,11 @@ const canDecide = computed(() => !!plan.value && !busy.value && !expired.value)
 const canRevoke = computed(() => reviewAvailable.value && status.value?.grant_state === 'active' && !!status.value.grant_record_revision && !busy.value)
 const relationalUnconfirmed = computed(() => status.value?.runtime_blockers?.includes('relational_runtime_unavailable') === true)
 const peerUnconfirmed = computed(() => status.value?.runtime_blockers?.includes('peer_read_runtime_unavailable') === true)
+const sessionUnconfirmed = computed(() => status.value?.runtime_blockers?.includes('session_runtime_not_connected') === true)
 const statusLabel = computed(() => !reviewAvailable.value && status.value?.mode !== 'compatibility' ? 'statusOnly'
   : status.value?.mode === 'compatibility' ? 'compatAccess' : status.value?.grant_effective ? 'effective'
   : status.value?.grant_state !== 'active' ? 'stale' : !status.value.installation_enabled ? 'inactive'
-  : peerUnconfirmed.value ? 'peerUnconfirmed' : relationalUnconfirmed.value ? 'relationalUnconfirmed' : 'stale')
+  : sessionUnconfirmed.value ? 'sessionUnconfirmed' : peerUnconfirmed.value ? 'peerUnconfirmed' : relationalUnconfirmed.value ? 'relationalUnconfirmed' : 'stale')
 
 function clearReview() { plan.value = null; peerDraft.value = null; acknowledged.value = false; deadline = 0; confirmRevoke.value = false }
 function selectPeer(scope: string, event: Event) {
@@ -51,6 +53,14 @@ function selectPeer(scope: string, event: Event) {
     || !status.value?.scopes.includes(scope)) return
   const checked = (event.target as HTMLInputElement).checked
   selectedPeers.value = checked ? [...new Set([...selectedPeers.value, scope])] : selectedPeers.value.filter(item => item !== scope)
+  clearReview(); peerDraft.value = reviewed; notice.value = null; error.value = null
+}
+function selectSession(scope: string, event: Event) {
+  const reviewed = peerReview.value
+  if (!reviewed || busy.value || reviewed.state !== 'review_required' || !!plan.value && expired.value
+    || !status.value?.scopes.includes(scope)) return
+  const checked = (event.target as HTMLInputElement).checked
+  selectedSessions.value = checked ? [...new Set([...selectedSessions.value, scope])] : selectedSessions.value.filter(item => item !== scope)
   clearReview(); peerDraft.value = reviewed; notice.value = null; error.value = null
 }
 function failure(cause: unknown, mutation = false): AuthorityLabel {
@@ -71,6 +81,7 @@ async function loadStatus(currentGeneration = generation) {
   const current = readAuthorityStatus(response.data)
   status.value = current
   selectedPeers.value = [] // Every fresh status begins with explicit opt-in.
+  selectedSessions.value = []
   if (!current.native_reviews.some(item => item.native_review_id === nativeId.value)) {
     nativeId.value = current.native_reviews[0]?.native_review_id || ''
   }
@@ -85,7 +96,8 @@ async function refresh() {
 }
 async function createReview() {
   if (!canReview.value || !status.value) return
-  const requested = status.value.scopes.filter(scope => !scope.startsWith('peer:') || selectedPeers.value.includes(scope))
+  const requested = status.value.scopes.filter(scope => scope.startsWith('peer:') ? selectedPeers.value.includes(scope)
+    : scope.startsWith('session:') ? selectedSessions.value.includes(scope) : true)
   clearReview(); error.value = null; notice.value = null; busy.value = true
   const current = generation, started = Date.now()
   try {
@@ -180,6 +192,7 @@ onMounted(refresh)
         <p v-for="blocker in status.review_blockers || []" :key="blocker" class="authority-note" role="status">{{ label(blocker === 'review_key_unavailable' ? 'reviewKeyUnavailable' : 'unsupportedStatus') }}</p>
         <p v-if="relationalUnconfirmed" class="authority-note authority-runtime" role="status">{{ label('relationalRuntime') }}</p>
         <p v-if="peerUnconfirmed" class="authority-note authority-runtime" role="status">{{ label('peerRuntime') }}</p>
+        <p v-if="sessionUnconfirmed" class="authority-note authority-runtime" role="status">{{ label('sessionRuntime') }}</p>
         <p v-if="reviewAvailable && status.mode === 'compatibility'" class="authority-note">{{ label(adoptionBlocked ? 'adoption' : 'adoptionReady') }}</p>
         <p v-if="reviewAvailable && !status.native_reviews.length" class="ui-help">{{ label('noNative') }}</p>
         <div v-else-if="reviewAvailable" class="authority-chooser ui-field">
@@ -247,9 +260,47 @@ onMounted(refresh)
         </article>
         <UiButton v-if="peerDraft" class="authority-create" :disabled="!canReview" @click="createReview">{{ label('reviewSelection') }}</UiButton>
       </section>
+      <section v-if="peerReview?.resources.sessions?.length" class="authority-resources authority-session-choices" :aria-label="label('sessions')">
+        <h4>{{ label('sessions') }}</h4>
+        <p class="ui-help">{{ label('sessionBoundary') }}</p>
+        <p class="ui-help">{{ label('sessionSelection') }}</p>
+        <p v-if="peerDraft" class="authority-note" role="status">{{ label('selectionChanged') }}</p>
+        <article v-for="session in peerReview.resources.sessions" :key="session.declaration.binding_id" class="authority-resource authority-session">
+          <label class="ui-check authority-peer-choice authority-session-choice">
+            <input type="checkbox" :checked="selectedSessions.includes(`session:${session.declaration.binding_id}:open`)"
+              :disabled="busy || peerReview.state !== 'review_required' || !!plan && expired"
+              @change="selectSession(`session:${session.declaration.binding_id}:open`, $event)" />
+            <span>{{ label('sessionOpen') }} · <code>{{ session.declaration.binding_id }}</code></span>
+          </label>
+          <span class="ui-badge authority-peer-selection">{{ label(selectedSessions.includes(`session:${session.declaration.binding_id}:open`) ? 'peerSelected' : 'sessionUnselected') }}</span>
+          <code>session:{{ session.declaration.binding_id }}:open</code>
+          <dl class="authority-file-limits">
+            <dt>{{ label('fileOwner') }}</dt><dd>{{ session.owner.module_id }} · #{{ session.owner.application_installation_id }}</dd>
+            <dt>{{ label('sessionDevice') }}</dt><dd><code>{{ session.target_device_id }}</code></dd>
+            <dt>{{ label('sessionProvider') }}</dt><dd><code>{{ session.declaration.provider_id }}</code> · {{ session.provider_version }}</dd>
+            <dt>{{ label('sessionCapability') }}</dt><dd><code>{{ session.declaration.capability_id }}</code></dd>
+            <dt>{{ label('fileMode') }}</dt><dd>{{ label(session.declaration.access_mode === 'write' ? 'sessionWrite' : 'fileReadOnly') }}</dd>
+            <dt>{{ label('sessionControls') }}</dt><dd>{{ session.declaration.control_actions.join(', ') || label('statusNone') }}</dd>
+            <dt>{{ label('sessionPermission') }}</dt><dd><code>{{ session.declaration.required_permission }}</code></dd>
+          </dl>
+          <details class="authority-file-binding">
+            <summary tabindex="0">{{ label('fileBinding') }}</summary>
+            <dl class="authority-file-limits">
+              <dt>{{ label('fileCore') }}</dt><dd><code>{{ session.owner.core_installation_id }}</code></dd>
+              <dt>{{ label('fileIncarnation') }}</dt><dd><code>{{ session.owner.incarnation }}</code></dd>
+              <dt>{{ label('peerConfig') }}</dt><dd><code>{{ session.declaration.target_device_config_key }}</code></dd>
+              <dt>{{ label('digest') }}</dt><dd><code>{{ session.package_artifact_sha256 }}</code></dd>
+              <dt>{{ label('sessionRevision') }}</dt><dd><code>{{ session.control_revision }}</code></dd>
+              <dt>{{ label('sessionProfile') }}</dt><dd>{{ session.contract.contract_version }}</dd>
+              <dt>{{ label('sessionOptions') }}</dt><dd><pre>{{ JSON.stringify(session.declaration.options, null, 2) }}</pre></dd>
+            </dl>
+          </details>
+        </article>
+        <UiButton v-if="peerDraft" class="authority-create" :disabled="!canReview" @click="createReview">{{ label('reviewSelection') }}</UiButton>
+      </section>
       <section v-if="plan" class="authority-review-plan ui-stack" :aria-label="label('review')">
         <div class="authority-review-heading"><h3>{{ label('review') }}</h3><small class="ui-help">{{ label('expires') }} {{ remaining }} {{ label('seconds') }}</small></div>
-        <p class="ui-help">{{ label(plan.resources.peer_reads?.length ? 'peerSelection' : 'fullBindings') }}</p>
+        <p class="ui-help">{{ label(plan.resources.sessions?.length ? 'sessionSelection' : plan.resources.peer_reads?.length ? 'peerSelection' : 'fullBindings') }}</p>
         <p v-if="expired" class="authority-error" role="alert">{{ label('expired') }}</p>
         <template v-for="kind in (['commands', 'connectors', 'events', 'publications'] as const)" :key="kind">
           <div v-if="plan.resources[kind]?.length" class="authority-resources">
@@ -405,7 +456,7 @@ onMounted(refresh)
             </details>
           </article>
         </div>
-        <p v-if="!plan.scopes.length" class="ui-help">{{ label(plan.resources.peer_reads?.length ? 'peerEmpty' : 'empty') }}</p>
+        <p v-if="!plan.scopes.length" class="ui-help">{{ label(plan.resources.sessions?.length ? 'sessionEmpty' : plan.resources.peer_reads?.length ? 'peerEmpty' : 'empty') }}</p>
         <label v-if="plan.state === 'review_required'" class="ui-check authority-acknowledge">
           <input type="checkbox" v-model="acknowledged" :disabled="busy || expired" />{{ label('acknowledge') }}
         </label>
@@ -453,7 +504,7 @@ onMounted(refresh)
 .authority-resource { min-width: 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); background: var(--ui-surface-alt); padding: calc(var(--ui-space) * 3); }
 .authority-resource h5 { font-size: .95em; margin: 0 0 calc(var(--ui-space) * 2); overflow-wrap: anywhere; }
 .authority-resource pre { margin: 0; font-size: .8em; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; color: var(--ui-text-secondary); }
-.authority-file code, .authority-relational code, .authority-checkpoint code, .authority-identity code, .authority-status-projection code, .authority-peer-read code { font-size: .8em; color: var(--ui-text-secondary); overflow-wrap: anywhere; }
+.authority-file code, .authority-relational code, .authority-checkpoint code, .authority-identity code, .authority-status-projection code, .authority-peer-read code, .authority-session code { font-size: .8em; color: var(--ui-text-secondary); overflow-wrap: anywhere; }
 .authority-peer-choice { align-items: flex-start; margin: 0 0 calc(var(--ui-space) * 2); overflow-wrap: anywhere; }
 .authority-peer-choice code { font-size: 1em; }
 .authority-peer-selection { margin: 0 calc(var(--ui-space) * 2) var(--ui-space) 0; }
