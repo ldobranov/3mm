@@ -61,6 +61,7 @@ from backend.services.authority_metadata import (
 
 
 MAX_CHECKPOINT_ACTIONS_PER_INSTALLATION = 4096
+_UI_TRUST_SNAPSHOT = "3mm.current_ui_trust_snapshot"
 
 
 class AuthorityManagementError(Exception):
@@ -156,6 +157,26 @@ class _PreparedAuthority:
 
     def __getitem__(self, index):
         return (self.pin, self.package)[index]
+
+
+@dataclass
+class _UiTrustSnapshot:
+    """Internal, live Session-bound code-trust result, never a cached grant."""
+
+    db: Session
+    installation_id: int
+    artifact: object
+    transaction: object
+    active: bool = True
+
+    def artifact_for(self, db, installation_id, source_sha256, expected_build):
+        if (not self.active or db is not self.db or self.transaction is None
+                or db.get_transaction() is not self.transaction
+                or installation_id != self.installation_id
+                or source_sha256 != self.artifact.source_sha256
+                or expected_build is not None and expected_build != self.artifact.built_ui_sha256):
+            raise AuthorityManagementError("artifact_changed")
+        return self.artifact
 
 
 class ApplicationAuthorityManager:
@@ -294,13 +315,46 @@ class ApplicationAuthorityManager:
         expected = _digest(built_ui_sha256)
         prepared = self._prepare(installation_id)  # Filesystem I/O outside key/DB guard.
         with self.keys.locked() as key, _read_snapshot(self.engine) as db:
-            subject = self._subject(db, key, installation_id, prepared)
-            if not subject.has_executable_frontend or subject.binding.candidate.built_ui_sha256 != expected:
-                raise AuthorityManagementError('artifact_changed')
-            grant = _load(db, key, 'grant', db.get(Grant, installation_id), installation_id)
-            native, _ = self._policy(db, key, subject, grant['data']['native_review_id'])
-            if native['revision'] != grant['data']['native_revision']:
-                raise AuthorityManagementError('native_review_unavailable')
+            self._require_ui_trust_in_snapshot(db, key, installation_id, expected, prepared)
+
+    def _require_ui_trust_in_snapshot(self, db, key, installation_id, expected, prepared):
+        subject = self._subject(db, key, installation_id, prepared)
+        if not subject.has_executable_frontend or subject.binding.candidate.built_ui_sha256 != expected:
+            raise AuthorityManagementError('artifact_changed')
+        grant = _load(db, key, 'grant', db.get(Grant, installation_id), installation_id)
+        native, _ = self._policy(db, key, subject, grant['data']['native_review_id'])
+        if native['revision'] != grant['data']['native_revision']:
+            raise AuthorityManagementError('native_review_unavailable')
+
+    @contextmanager
+    def ui_trust_snapshot(self, installation_id, built_ui_sha256):
+        """Share one current key -> read snapshot with the M21 UI checks.
+
+        Prepare immutable files first. Never open another connection while the
+        yielded reader can block a SQLite writer's commit. Code trust is still
+        separate from human permissions and the live M20 session resource grant.
+        """
+        from backend.services.compiled_ui import load_compiled_ui_artifact, CompiledUiBuildError
+
+        expected = _digest(built_ui_sha256)
+        prepared = self._prepare(installation_id)
+        try:
+            artifact = load_compiled_ui_artifact(prepared.package)
+        except (CompiledUiBuildError, OSError, ValueError):
+            raise AuthorityManagementError('artifact_unavailable') from None
+        if (artifact.source_sha256 != prepared.package.sha256
+                or artifact.built_ui_sha256 != expected
+                or prepared.built_ui_sha256 != expected):
+            raise AuthorityManagementError('artifact_changed')
+        with self.keys.locked() as key, _read_snapshot(self.engine) as db:
+            self._require_ui_trust_in_snapshot(db, key, installation_id, expected, prepared)
+            proof = _UiTrustSnapshot(db, installation_id, artifact, db.get_transaction())
+            db.info[_UI_TRUST_SNAPSHOT] = proof
+            try:
+                yield db
+            finally:
+                proof.active = False
+                db.info.pop(_UI_TRUST_SNAPSHOT, None)
 
     def create_review(self, installation_id, *, actor_token, request_id, native_review_id, scopes):
         # Validate bounded identifiers before storage; the Core-resolved subject

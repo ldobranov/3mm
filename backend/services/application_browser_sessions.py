@@ -115,27 +115,39 @@ class ApplicationBrowserSessions:
         )  # Types only; never provider text or user input.
 
     def verify_ui(self, module_id, binding, authorization):
-        # Reuse the real compiled-build/native-review and dynamic route checks.
+        # Discover only the installation ID in a short, closed snapshot. Loading
+        # and authenticating its UI must not nest readers inside this reader.
         with _read_snapshot(self.engine) as db:
             principal = resolve_application_principal(authorization, db)
             if principal.kind != "user":
                 raise SessionAuthorityError("A current user login is required")
             installation = _installation(db, module_id)
-            package = _active_package(db, installation)
-            permissions = application_permission_ids(
-                db, installation.id, principal.user_id
-            )
-            _definition, route = _ui_route(
-                package,
-                binding,
-                principal,
-                permissions,
-                db=db,
-                installation=installation,
-            )
-            if route.audience not in {"operator", "administrator"}:
-                raise SessionAuthorityError("Session route audience is unavailable")
-            return installation.id
+            if installation.authority_mode == "compatibility":
+                # Compatibility UI remains compatible; _resource still requires
+                # a real enforced session grant before offering/opening anything.
+                return self._verify_ui_in_snapshot(db, module_id, binding, authorization)
+            installation_id = installation.id
+        with self.authority.manager.ui_trust_snapshot(
+            installation_id, binding.built_ui_sha256
+        ) as db:
+            return self._verify_ui_in_snapshot(db, module_id, binding, authorization)
+
+    def _verify_ui_in_snapshot(self, db, module_id, binding, authorization):
+        # Re-read the actual login, package, role and application permissions in
+        # the same fresh snapshot as native code trust. No preflight principal,
+        # old permission list or grant is cached across checks.
+        principal = resolve_application_principal(authorization, db)
+        if principal.kind != "user":
+            raise SessionAuthorityError("A current user login is required")
+        installation = _installation(db, module_id)
+        package = _active_package(db, installation)
+        permissions = application_permission_ids(db, installation.id, principal.user_id)
+        _definition, route = _ui_route(
+            package, binding, principal, permissions, db=db, installation=installation,
+        )
+        if route.audience not in {"operator", "administrator"}:
+            raise SessionAuthorityError("Session route audience is unavailable")
+        return installation.id
 
     def _release(self, admitted):
         self.leases.discard(admitted.session_id)

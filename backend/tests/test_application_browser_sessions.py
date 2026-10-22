@@ -5,14 +5,19 @@ No installed services, keys, permissions or hardware are consulted.
 """
 
 import asyncio
+from contextlib import closing
 import json
 import os
 from pathlib import Path
+import sqlite3
+import threading
+import time
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, event, select, update
 from sqlalchemy.orm import Session
 from starlette.websockets import WebSocketDisconnect
 
@@ -30,6 +35,7 @@ from backend.services.application_browser_sessions import (
     ApplicationBrowserSessions,
     ReviewedSessionRuntime,
 )
+from backend.services.application_authority_management import _UI_TRUST_SNAPSHOT
 from backend.services.module_packages import validate_module_package
 from backend.tests.test_application_access import fake_compiler
 from backend.tests.test_application_authority_management import decide, identity
@@ -127,6 +133,7 @@ def browser_app(session_app, monkeypatch):
     monkeypatch.setattr(compiled_ui.subprocess, "run", compiler)
     s.build = compiled_ui.compile_ui_package(blob, s.validated)
     proof = native(s)
+    s.native_review = proof
 
     def grant():
         plan = s.manager.create_review(
@@ -287,6 +294,7 @@ def test_real_ui_ticket_binary_stream_input_control_and_owned_cleanup(browser_ap
     "fault",
     [
         "service",
+        "native",
         "human",
         "login",
         "build",
@@ -305,6 +313,12 @@ def test_denied_or_changed_bound_authority_cannot_start_provider(browser_app, fa
             actor_token=s.token,
             request_id=identity(),
             expected_revision=s.grant_record_revision,
+        )
+    elif fault == "native":
+        s.manager.revoke_native_review(
+            1, actor_token=s.token, request_id=identity(),
+            native_review_id=s.native_review["native_review_id"],
+            expected_revision=s.native_review["native_revision"],
         )
     elif fault in {"human", "login"}:
         with s.engine.begin() as db:
@@ -335,7 +349,7 @@ def test_denied_or_changed_bound_authority_cannot_start_provider(browser_app, fa
     assert not s.provider.opened
 
 
-@pytest.mark.parametrize("fault", ["human", "service", "login", "build"])
+@pytest.mark.parametrize("fault", ["human", "service", "native", "login", "build"])
 def test_idle_stream_observes_revocation_without_another_input(browser_app, fault):
     s = browser_app
     ticket = issue(s).json()
@@ -352,6 +366,13 @@ def test_idle_stream_observes_revocation_without_another_input(browser_app, faul
                     actor_token=s.token,
                     request_id=identity(),
                     expected_revision=s.grant_record_revision,
+                )
+        elif fault == "native":
+            with s.browser.authority_lock:
+                s.manager.revoke_native_review(
+                    1, actor_token=s.token, request_id=identity(),
+                    native_review_id=s.native_review["native_review_id"],
+                    expected_revision=s.native_review["native_revision"],
                 )
         elif fault == "build":
             (s.build.path / "assets/operations.mjs").write_text("changed")
@@ -526,3 +547,155 @@ def test_session_lifetime_is_bounded_without_input(browser_app):
         with pytest.raises(WebSocketDisconnect):
             ws.receive_json()
     assert len(s.provider.closed) == 1 and not s.browser.owned
+
+
+def test_current_ui_check_does_not_nest_database_connections(browser_app):
+    """The legacy UI gate held a reader while opening two more readers."""
+    s = browser_app
+    owner = threading.get_ident()
+    counts = {"active": 0, "maximum": 0}
+
+    def checkout(_connection, _record, _proxy):
+        if threading.get_ident() == owner:
+            counts["active"] += 1
+            counts["maximum"] = max(counts["maximum"], counts["active"])
+
+    def checkin(_connection, _record):
+        if threading.get_ident() == owner:
+            counts["active"] -= 1
+
+    event.listen(s.engine, "checkout", checkout)
+    event.listen(s.engine, "checkin", checkin)
+    try:
+        assert s.browser.verify_ui(
+            s.validated.manifest.module_id, s.ui, s.auth["Authorization"]
+        ) == 1
+    finally:
+        event.remove(s.engine, "checkout", checkout)
+        event.remove(s.engine, "checkin", checkin)
+    assert counts == {"active": 0, "maximum": 1}
+
+
+@pytest.mark.parametrize("journal_mode", ["delete", "wal"])
+def test_sqlite_writer_does_not_deadlock_current_ui_reader(
+    browser_app, monkeypatch, tmp_path, journal_mode
+):
+    """Real concurrent writer in both supported SQLite journal modes.
+
+    DELETE establishes an actual PENDING commit to reproduce the nested-reader
+    cycle. WAL must let the writer finish while the original reader is open.
+    Explicitly configure only this test's database; the shared fixture uses WAL.
+    """
+    s = browser_app
+    database = Path(s.engine.url.database).resolve()
+    assert database.is_relative_to(tmp_path.resolve()), "Only the private fixture DB may be configured"
+    # Dispose idle setup connections before changing the private DB's journal.
+    # No installed engine or process is consulted or reconfigured.
+    s.engine.dispose()
+    with closing(sqlite3.connect(database, isolation_level=None)) as setup:
+        configured = setup.execute(f"PRAGMA journal_mode={journal_mode.upper()}").fetchone()[0]
+        assert configured == journal_mode
+    ready = threading.Event()
+    committed = threading.Event()
+    errors = []
+    pending_seen = False
+    original = compiled_ui.application_ui_artifact
+
+    def writer():
+        try:
+            with s.engine.connect() as connection:
+                connection.exec_driver_sql("PRAGMA busy_timeout=1500")
+                connection.commit()
+                with connection.begin():
+                    connection.execute(
+                        update(Installation).where(Installation.id == 1)
+                        .values(updated_at=Installation.updated_at)
+                    )
+                    ready.set()
+                committed.set()
+        except Exception as exc:
+            errors.append(type(exc).__name__)
+        finally:
+            ready.set()
+
+    worker = threading.Thread(target=writer, daemon=True)
+
+    def artifact_during_concurrent_write(db, installation, validated, **kwargs):
+        nonlocal pending_seen
+        assert db.in_transaction(), "The UI reader must still be open"
+        worker.start()
+        assert ready.wait(3), "Fixture writer did not reach commit"
+        assert not errors, errors
+        if journal_mode == "delete":
+            # Observe PENDING: a third reader must actually get SQLITE_BUSY.
+            # Do not infer the lock state merely from thread scheduling.
+            with closing(sqlite3.connect(database, timeout=0, isolation_level=None)) as probe:
+                deadline = time.monotonic() + 1
+                while time.monotonic() < deadline:
+                    try:
+                        probe.execute(f'SELECT id FROM "{Installation.__tablename__}" LIMIT 1').fetchall()
+                    except sqlite3.OperationalError as exc:
+                        if exc.sqlite_errorcode == sqlite3.SQLITE_BUSY:
+                            pending_seen = True
+                            break
+                        raise
+                    time.sleep(0.005)
+            assert pending_seen, "Fixture did not establish a pending SQLite commit"
+        else:
+            assert committed.wait(3), "WAL writer could not commit alongside the UI reader"
+            assert not errors, errors
+            with closing(sqlite3.connect(database, timeout=0, isolation_level=None)) as probe:
+                probe.execute(f'SELECT id FROM "{Installation.__tablename__}" LIMIT 1').fetchall()
+        return original(db, installation, validated, **kwargs)
+
+    monkeypatch.setattr(compiled_ui, "application_ui_artifact", artifact_during_concurrent_write)
+    try:
+        assert s.browser.verify_ui(
+            s.validated.manifest.module_id, s.ui, s.auth["Authorization"]
+        ) == 1
+    finally:
+        if worker.ident is not None:
+            worker.join(timeout=4)
+    assert not worker.is_alive(), "Fixture writer did not finish"
+    assert not errors, errors
+    assert pending_seen == (journal_mode == "delete")
+    assert committed.is_set()
+    assert not s.provider.opened and not s.browser.leases
+
+
+@pytest.mark.parametrize(
+    "fault", ["session", "transaction", "installation", "package", "build", "expired", "forged"]
+)
+def test_ui_snapshot_proof_is_exact_and_cannot_be_replayed(browser_app, fault):
+    s = browser_app
+    with s.manager.ui_trust_snapshot(1, s.build.built_ui_sha256) as db:
+        proof = db.info[_UI_TRUST_SNAPSHOT]
+        installation = db.get(Installation, 1)
+        assert compiled_ui.application_ui_artifact(
+            db, installation, s.validated, expected_build=s.build.built_ui_sha256
+        ) is proof.artifact
+        if fault != "expired":
+            if fault == "session":
+                with Session(s.engine) as other:
+                    other.info[_UI_TRUST_SNAPSHOT] = proof
+                    with pytest.raises(compiled_ui.CompiledUiBuildError):
+                        compiled_ui.application_ui_artifact(other, installation, s.validated)
+            else:
+                if fault == "forged":
+                    db.info[_UI_TRUST_SNAPSHOT] = True
+                elif fault == "transaction":
+                    db.rollback()
+                    db.begin()
+                with pytest.raises(compiled_ui.CompiledUiBuildError):
+                    compiled_ui.application_ui_artifact(
+                        db,
+                        SimpleNamespace(id=2) if fault == "installation" else installation,
+                        SimpleNamespace(sha256="f" * 64) if fault == "package" else s.validated,
+                        expected_build="f" * 64 if fault == "build" else s.build.built_ui_sha256,
+                    )
+    assert not proof.active and _UI_TRUST_SNAPSHOT not in db.info
+    if fault == "expired":
+        # Even the original Session object cannot revive this lease.
+        db.info[_UI_TRUST_SNAPSHOT] = proof
+        with pytest.raises(compiled_ui.CompiledUiBuildError):
+            compiled_ui.application_ui_artifact(db, installation, s.validated)

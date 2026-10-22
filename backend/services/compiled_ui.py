@@ -239,7 +239,21 @@ def application_ui_artifact(db, installation, validated, *, expected_build=None)
     from sqlalchemy import select
     from backend.db.module import ApplicationExtensionInstallation
     from backend.services.application_authority_keys import AuthorityReviewKeyError
-    from backend.services.application_authority_management import configured_manager, AuthorityManagementError
+    from backend.services.application_authority_management import (
+        configured_manager, AuthorityManagementError, _UI_TRUST_SNAPSHOT, _UiTrustSnapshot,
+    )
+
+    # M21 supplies a freshly checked key -> snapshot lease. Reuse only that
+    # exact Session/build/installation result; never a boolean or stored token.
+    # Other callers retain the independent native-review gate below.
+    proof = db.info.get(_UI_TRUST_SNAPSHOT) if db is not None else None
+    if proof is not None:
+        try:
+            if type(proof) is not _UiTrustSnapshot:
+                raise AuthorityManagementError('native_review_unavailable')
+            return proof.artifact_for(db, installation.id, validated.sha256, expected_build)
+        except AuthorityManagementError:
+            raise CompiledUiBuildError('Application UI code trust is unavailable') from None
 
     artifact = load_compiled_ui_artifact(validated)
     if expected_build is not None and expected_build != artifact.built_ui_sha256:
