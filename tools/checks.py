@@ -99,7 +99,7 @@ def changed_paths(repo: Path, base: str | None, head: str) -> list[str]:
 def commands(plan: Plan, only: str, python: str) -> list[tuple[str, list[str]]]:
     result = []
     if plan.tooling and only in {"all", "tooling"}:
-        result.append((".", [python, "-m", "unittest", "discover", "-s", "tools/tests", "-v"]))
+        result.append((".", [python, "-m", "pytest", "-q", "tools/tests"]))
     if plan.python and only in {"all", "python"}:
         # Keep the existing two-process boundary between default and SDK/deployment.
         extra = {"deployment/tests", "three_mm_application_sdk/tests"}

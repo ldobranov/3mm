@@ -16,6 +16,16 @@ Updated: 2026-10-25. Start here; follow linked details only as needed.
   use the tagged release notes as its body. Prior scoped evidence below is reused
   only for its unchanged inputs, not relabelled as full final-tree CI. No new
   local runtime tests or device deployments in this release preparation.
+  Initial main commit2fe2636 started automatic CI40171234066. Tooling discovery
+  exposed a setup gap: unittest imported pytest-style extension-dev tests without
+  installed dependencies and would not collect their functions. Tooling now uses
+  pytest for both unittest and function cases, with the existing locked backend
+  development dependencies installed in that job. Full release tooling uses the
+  same collector. Frontend first run496/499 passed; three status-dialog cases
+  still expected the retired review wizard. Fixtures/actions now exercise neutral
+  preview -> explicit Allow -> refresh, collapsed public metadata and malformed
+  resource denial/no retry. Targeted status-dialog3/3 passed (Vitest3.2.7);
+  production code is unchanged. No gate or release tag bypassed either failure.
 
 - **Simple administrator application consent accepted on rasp-3mm, 2026-10-25.**
   Owner explicitly approved administrator consent for the exact native Linux
