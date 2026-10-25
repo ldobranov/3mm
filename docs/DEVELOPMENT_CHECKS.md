@@ -41,6 +41,10 @@ Choose the comparison intentionally; do not include unrelated user work.
   Narrower production groups need an actual consumer/dependency audit.
 - Unknown inputs, locks, workflow/selection-tool changes, and unavailable bases
   select every group. Renames select both old and new paths.
+- Push/PR comparisons require a successful CI run for the exact base commit.
+  Failed, cancelled, pending or unknown bases and Actions API errors select full
+  checks. The verified comparison base is carried into Python execution, so the
+  runner cannot silently narrow a full plan against the original failed base.
 - Plan failure fails the existing Python/frontend check jobs; it cannot yield
   successful skipped gates. Manual CI runs select all groups.
 - Tags use Release's full gates rather than duplicating ordinary CI. Release

@@ -51,6 +51,25 @@ Updated: 2026-10-25. Start here; follow linked details only as needed.
   filesystem effects. Valid AP bounded scheduling passes. No fresh before-run
   was completed locally; the original Linux CI failures are the before evidence.
   Canonical final-tree Linux CI remains pending; no device deployment in this fix.
+  Read-only update catalog review confirms equal-version local beta.57 candidates
+  are not offered replacement by the normal strictly-newer catalog. Release notes
+  now give exact-tag full/Node bootstrap commands and require published commit
+  metadata, not VERSION alone. This is owner-run guidance, no device mutation.
+  The documentation clarification waited for full d68468c CI. Its late contract
+  failure means this next commit combines documentation with test/CI corrections
+  and requires another full automatic CI before any release tag.
+  Full d68468c CI40172642784 completed with1 failure/5313 pass/611 expected skips:
+  the old exact systemd helper ReadWritePaths assertion omitted the intentional
+  optional application-host instance mount. The corrected assertion retains the
+  exact writable allowlist; production unit/helper code is not changed for it.
+  SDK/deployment second process was not reached, so this is not full acceptance.
+  CI now checks whether its exact comparison base has successful CI evidence;
+  failed/cancelled/pending bases or API errors select FULL automatically. The
+  verified base is exported to the Python runner as well as the selection job.
+  The exact systemd-template module now26/26 passes on Windows; the existing
+  helper first-bind sandbox contract confirms why that narrow mount is needed.
+  Actions read-only permission suffices. API positive/negative cases were checked
+  against successful a46f67b and failed d68468c. Final full CI remains required.
 
 - **Simple administrator application consent accepted on rasp-3mm, 2026-10-25.**
   Owner explicitly approved administrator consent for the exact native Linux

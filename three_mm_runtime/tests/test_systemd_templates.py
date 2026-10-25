@@ -143,7 +143,9 @@ def test_update_helper_exposes_only_a_local_hardened_scheduler() -> None:
     assert helper["RuntimeDirectoryPreserve"] == "yes"
     assert helper["EnvironmentFile"] == "-/etc/3mm/3mm.env"
     assert helper["ExecStartPre"] == "/opt/3mm/current/.venv/bin/python -m three_mm_provisioning.recovery_access_point recover"
+    # First bind may update instance pointers, while host binaries/default stay read-only.
     assert helper["ReadWritePaths"] == (
+        "-/opt/3mm-application-hosts/instances "
         "/var/lib/3mm/backups /var/lib/3mm/core/backup-imports "
         "/var/lib/3mm/application-extensions /etc/3mm/application-extensions "
         "/run/lock /var/lib/3mm/provisioning"

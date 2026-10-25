@@ -51,7 +51,9 @@ immutable tag-driven Release workflow; the owner runs subsequent device trials.
   Fresh execution envelopes invalidate old commands and sessions; code/config/
   resource changes, revoked rights and unknown lifecycle outcomes require review.
 - Add conservative CI group selection and development tooling. Branch pushes and
-  tags retain automatic checks; unknown or shared inputs select broad coverage.
+  tags retain automatic checks; unknown/shared inputs and comparison bases
+  without successful CI select full coverage. Superseded jobs can be cancelled;
+  failures return promptly without making an incomplete run publishable.
 
 ## Upgrade and scope
 
@@ -91,6 +93,29 @@ checksums. All seven assets must upload before the draft becomes public. See
 After publication, use the immutable release archives/update channels and verify
 installed VERSION, readiness and component health on the VM/Raspberry devices.
 Keep the existing independent Hub backup; built-in restore is Standalone-only.
+
+Local development candidates can already report `0.3.0-beta.57`. The update
+catalog offers only strictly newer versions, so it will not advertise replacement
+of a different build with the same version. Use the exact published tag bootstrap
+to replace such a candidate; verify the installed `.3mm-release.json` commit
+matches the published manifest, not only VERSION. Preserve the existing backup.
+
+Full profile (VM, Linux PC or supported Raspberry Pi):
+
+```bash
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/v0.3.0-beta.57/install.sh | sudo bash -s -- --tag v0.3.0-beta.57
+```
+
+Minimal ARMv6 Node (Raspberry Pi Zero W / Python 3.13):
+
+```bash
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/v0.3.0-beta.57/install.sh | sudo bash -s -- --profile node --tag v0.3.0-beta.57
+```
+
+The bootstrap verifies the selected archive's size/hash and runs the immutable
+installer. Existing local candidates have different release directory names;
+an already installed official `v0.3.0-beta.57` directory is never overwritten.
+Optional session components still use their separate installation/update path.
 
 1. Check role, identity, pairing, host-managed networking and managed Wi-Fi/AP
    recovery as applicable. Recovery must return to the saved usable network.
