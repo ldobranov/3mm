@@ -26,6 +26,11 @@ Updated: 2026-10-25. Start here; follow linked details only as needed.
   preview -> explicit Allow -> refresh, collapsed public metadata and malformed
   resource denial/no retry. Targeted status-dialog3/3 passed (Vitest3.2.7);
   production code is unchanged. No gate or release tag bypassed either failure.
+  Superseding push2fef54b exposed always() jobs resisting cancellation, leaving
+  the next run pending. Python/frontend now use !cancelled(), retaining the
+  explicit failed-plan guard while allowing superseded jobs to stop. Existing
+  runs retain their old configuration and require GitHub force-cancel if stuck;
+  never cancel the current validated candidate to manufacture passing evidence.
 
 - **Simple administrator application consent accepted on rasp-3mm, 2026-10-25.**
   Owner explicitly approved administrator consent for the exact native Linux

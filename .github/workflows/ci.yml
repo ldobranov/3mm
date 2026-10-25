@@ -40,7 +40,7 @@ jobs:
   python:
     name: Python tests (Linux)
     needs: plan
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     # Preserve broad POSIX integration coverage for production Python changes.
     timeout-minutes: 90
@@ -76,7 +76,7 @@ jobs:
   frontend:
     name: Frontend checks
     needs: plan
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
