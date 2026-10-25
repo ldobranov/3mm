@@ -6,6 +6,7 @@ No installed services, keys, permissions or hardware are consulted.
 
 import asyncio
 from contextlib import closing
+from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -33,8 +34,8 @@ from backend.routes.application_sessions import application_session_router
 from backend.services import compiled_ui
 from backend.services.application_browser_sessions import (
     ApplicationBrowserSessions,
-    ReviewedSessionRuntime,
 )
+from backend.services.application_session_runtimes import ReviewedSessionRuntime
 from backend.services.application_authority_management import _UI_TRUST_SNAPSHOT
 from backend.services.module_packages import validate_module_package
 from backend.tests.test_application_access import fake_compiler
@@ -170,6 +171,7 @@ def browser_app(session_app, monkeypatch):
         resource.provider_version,
         resource.control_revision,
         s.provider,
+        lambda: True,  # Explicit fixture transport, not production authority.
     )
     s.browser = ApplicationBrowserSessions(
         s.session_authority, runtimes=[s.runtime], allowed_origins=[ORIGIN]
@@ -699,3 +701,115 @@ def test_ui_snapshot_proof_is_exact_and_cannot_be_replayed(browser_app, fault):
         db.info[_UI_TRUST_SNAPSHOT] = proof
         with pytest.raises(compiled_ui.CompiledUiBuildError):
             compiled_ui.application_ui_artifact(db, installation, s.validated)
+
+
+def test_slow_startup_keeps_checking_current_authority_before_acceptance(browser_app):
+    s = browser_app
+    s.browser.startup_check_interval = 0.01
+    s.browser.startup_timeout = 5.0
+    now = s.browser.clock()
+    s.browser.clock = lambda: now
+    startup_elapsed = 37
+    started = threading.Event()
+    checks = []
+    original_check = s.browser._check_current
+    original_open = s.provider.open
+
+    def current(*args, **kwargs):
+        result = original_check(*args, **kwargs)
+        if started.is_set() and not s.provider.opened:
+            checks.append(True)
+        return result
+
+    async def cold_open(context):
+        started.set()
+        # A cold provider can only become ready after multiple real authority
+        # checks while open remains pending, not one check after it completes.
+        for _ in range(400):
+            if len(checks) >= 3:
+                s.browser.clock = lambda: now + startup_elapsed
+                await original_open(context)
+                return
+            await asyncio.sleep(0.01)
+        raise RuntimeError("Startup authority was not checked while pending")
+
+    s.browser._check_current = current
+    s.provider.open = cold_open
+    ticket = issue(s).json()
+    with connect(s, ticket) as ws:
+        ws.send_json({"op": "authenticate", "ticket": ticket["ticket"]})
+        acceptance = ws.receive_json()["acceptance"]
+        session_id = acceptance["session_id"]
+        assert len(checks) >= 3
+        remaining = (datetime.fromisoformat(acceptance["expires_at"])
+                     - datetime.fromisoformat(acceptance["created_at"])).total_seconds()
+        assert remaining == s.browser.lifetime - startup_elapsed
+        assert decode_session_frame(ws.receive_bytes())[1] == b"ready\r\n"
+        ws.send_json({"op": "close", "session_id": session_id})
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_json()
+    assert len(s.provider.opened) == 1 and len(s.provider.closed) == 1
+    assert not s.browser.owned and not s.browser.leases
+
+
+@pytest.mark.parametrize("fault", ["human", "service"])
+def test_revocation_during_pending_startup_cancels_and_joins_open(browser_app, fault):
+    s = browser_app
+    s.browser.startup_check_interval = 0.01
+    started, cancelled = threading.Event(), threading.Event()
+    alive = {"opening": False}
+
+    async def pending_open(context):
+        alive["opening"] = True
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            alive["opening"] = False
+            cancelled.set()
+
+    original_close = s.provider.close
+    async def close_after_cancel(session_id, reason):
+        assert cancelled.is_set() and not alive["opening"]
+        await original_close(session_id, reason)
+
+    s.provider.open = pending_open
+    s.provider.close = close_after_cancel
+    ticket = issue(s).json()
+    with connect(s, ticket) as ws:
+        ws.send_json({"op": "authenticate", "ticket": ticket["ticket"]})
+        assert started.wait(5)
+        if fault == "human":
+            with s.engine.begin() as db:
+                db.execute(delete(ApplicationPermissionGrant))
+        else:
+            with s.browser.authority_lock:
+                s.manager.revoke(
+                    1, actor_token=s.token, request_id=identity(),
+                    expected_revision=s.grant_record_revision,
+                )
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_json()
+    assert cancelled.is_set() and not alive["opening"]
+    assert not s.provider.opened and not s.provider.inputs
+    assert len(s.provider.closed) == 1 and not s.browser.owned and not s.browser.leases
+
+
+def test_pending_startup_deadline_cancels_and_joins_before_cleanup(browser_app):
+    s = browser_app
+    s.browser.startup_timeout = 0.05
+    s.browser.startup_check_interval = 0.01
+    cancelled = threading.Event()
+    async def pending_open(context):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+    s.provider.open = pending_open
+    ticket = issue(s).json()
+    with connect(s, ticket) as ws:
+        ws.send_json({"op": "authenticate", "ticket": ticket["ticket"]})
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_json()
+    assert cancelled.is_set() and len(s.provider.closed) == 1
+    assert not s.browser.owned and not s.browser.leases

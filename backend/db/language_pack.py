@@ -37,6 +37,7 @@ class LanguagePack(Base):
     
     # Extension association
     extension_id = Column(Integer, ForeignKey("extensions.id"), nullable=True)
+    module_package_id = Column(Integer, ForeignKey("module_packages.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     is_default = Column(Boolean, default=False)
     
@@ -72,31 +73,3 @@ class LanguagePack(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
-
-    @classmethod
-    def from_manifest(cls, manifest_data: dict, extension_id: int = None):
-        """Create LanguagePack instance from manifest data"""
-        language_info = manifest_data.get("language", {})
-        translations = manifest_data.get("translations", {})
-        coverage = manifest_data.get("coverage", {})
-        
-        # Parse number format if available
-        number_format = None
-        if "numberFormat" in language_info:
-            number_format = language_info["numberFormat"]
-        
-        return cls(
-            name=manifest_data.get("name", ""),
-            code=language_info.get("code", ""),
-            native_name=language_info.get("nativeName", ""),
-            locale=language_info.get("locale", ""),
-            direction=language_info.get("direction", "ltr"),
-            frontend_coverage=coverage.get("frontend", 0),
-            backend_coverage=coverage.get("backend", 0),
-            extensions_coverage=coverage.get("extensions", 0),
-            currency=language_info.get("currency"),
-            date_format=language_info.get("dateFormat"),
-            time_format=language_info.get("timeFormat"),
-            number_format=number_format,
-            extension_id=extension_id
-        )

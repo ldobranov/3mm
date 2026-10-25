@@ -79,8 +79,7 @@ def prepare(output: Path):
             '--extra-index-url', 'https://www.piwheels.org/simple',
             '--platform', 'linux_armv6l', '--python-version', '313',
             '--implementation', 'cp', '--abi', 'cp313', '--dest', directory,
-            '-r', str(root / 'agent/requirements.txt'),
-            '-r', str(root / 'setup_service/requirements.txt'), 'gpiod==2.5.0'], check=True)
+            '-r', str(root / 'deployment/node-requirements.txt')], check=True)
         entries = []
         for path in sorted(Path(directory).glob('*.whl')):
             source = data = path.read_bytes()

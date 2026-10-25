@@ -1,9 +1,11 @@
 """Real scoped identity reads, exact public pin and authenticated SDK transport."""
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 import json
 import os
 from pathlib import Path
 import tempfile
+from contextlib import ExitStack
 from datetime import UTC, datetime
 
 import pytest
@@ -27,6 +29,7 @@ from backend.tests.test_application_identity_authority import (
     identity_app, activate_identity_grant,
 )
 from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+from three_mm_protocol.diagnostics import DiagnosticSession
 
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Real POSIX review key/guard")
@@ -135,7 +138,7 @@ def test_read_grant_does_not_admit_signing_status_or_peer_operations(identity_ap
     request = frame(action=action, **({"link_id": "peer_" + "a" * 32} if action == "installation.status.get" else {}))
     reason = "unavailable or stale" if action == "installation.status.get" else "no supported resource grant"
     with Session(identity_app.engine) as db, pytest.raises(ValueError, match=reason):
-        ApplicationPlatformServer(None, None)._dispatch(db, db.get(Installation, 1), request)
+        ApplicationPlatformServer(None, None, allowed_actions=COMPATIBILITY_ACTIONS)._dispatch(db, db.get(Installation, 1), request)
 
 
 def test_scoped_helper_refuses_compatibility_instead_of_initializing_a_key(identity_app, monkeypatch):
@@ -151,7 +154,7 @@ def test_mixed_identity_and_checkpoint_reads_use_v7_without_repairing_sql(identi
     monkeypatch.setattr(identity_service, "_load_or_create", forbid_private_identity)
     assert call(state)["identity"]["installation_id"] == "inst_" + "5" * 32
     with Session(state.engine) as db:
-        result = ApplicationPlatformServer(None, None)._dispatch(
+        result = ApplicationPlatformServer(None, None, allowed_actions=COMPATIBILITY_ACTIONS)._dispatch(
             db, db.get(Installation, 1), frame(action="checkpoint.get", checkpoint_id="catalog"),
         )
     assert result == {"checkpoint_id": "catalog", "revision": 0, "value": {}}
@@ -205,16 +208,15 @@ def test_real_signed_sdk_read_has_no_private_key_dependency_or_implicit_retry(id
     with tempfile.TemporaryDirectory(prefix="ir-", dir="/tmp") as directory:
         root = Path(directory)
         (root / ("a" * 24 + ".key")).write_bytes(secret)
-        server = ApplicationPlatformServer(root / "p.sock", root, group="missing-test-group")
+        server = ApplicationPlatformServer(root / "p.sock", root, group="missing-test-group", allowed_actions=COMPATIBILITY_ACTIONS)
         server.start()
         client = ApplicationPlatformClient(server.socket_path, "a" * 24, secret)
         try:
             expected = client.get_installation_identity()
             assert expected == call(state)
             forged = ApplicationPlatformClient(server.socket_path, "a" * 24, b"y" * 32)
-            # A client with the wrong transport secret cannot authenticate even
-            # Core's signed refusal; it must not trust that response's body.
-            with pytest.raises(ApplicationPlatformError, match="response signature is invalid"):
+            # Unauthenticated peers receive no signed response or dispatch.
+            with pytest.raises(ApplicationPlatformError, match="response is invalid"):
                 forged.get_installation_identity()
             state.manager.revoke(1, actor_token=state.token, request_id=identity(),
                 expected_revision=state.manager.inspect(1)["grant_record_revision"])
@@ -222,3 +224,83 @@ def test_real_signed_sdk_read_has_no_private_key_dependency_or_implicit_retry(id
                 client.get_installation_identity()
         finally:
             server.stop()
+
+
+@pytest.mark.parametrize("collector", ["absent", "slow", "failed", "full", "disabled"])
+def test_signed_identity_trace_preserves_revocation_and_survives_collector_failure(
+        identity_app, monkeypatch, collector):
+    import backend.database
+
+    state = identity_app
+    activate_identity_grant(state)
+    monkeypatch.setattr(backend.database, "SessionLocal", sessionmaker(bind=state.engine))
+    monkeypatch.setattr(identity_service, "_load_or_create", forbid_private_identity)
+    monkeypatch.setattr(identity_service, "_cipher", forbid_private_identity)
+    allocation = 1 if collector == "full" else 1024 * 1024
+    core_records = DiagnosticSession("core", "0.3.0-beta.57", max_bytes=allocation)
+    sdk_records = DiagnosticSession("sdk", "1.3", max_bytes=allocation)
+    if collector != "disabled":
+        core_records.start()
+        sdk_records.start()
+    fields = []
+    secret = b"x" * 32
+    with tempfile.TemporaryDirectory(prefix="dt-", dir="/tmp") as directory, ExitStack() as collectors:
+        root = Path(directory)
+        (root / ("a" * 24 + ".key")).write_bytes(secret)
+        server = ApplicationPlatformServer(root / "p.sock", root, group="missing-test-group",
+                                           diagnostics=core_records, allowed_actions=COMPATIBILITY_ACTIONS)
+        original_read = server._read
+
+        def observe_fields(connection, deadline=None):
+            request = original_read(connection, deadline)
+            fields.append(set(request))
+            return request
+
+        monkeypatch.setattr(server, "_read", observe_fields)
+        if collector == "slow":
+            # Keep a snapshot open without consuming it while Core does work.
+            collectors.enter_context(core_records.export())
+        if collector == "failed":
+            with pytest.raises(OSError):
+                with core_records.export():
+                    raise OSError("collector failed with password=must-not-leak")
+        client = ApplicationPlatformClient(server.socket_path, "a" * 24, secret, diagnostics=sdk_records)
+        server.start()
+        try:
+            assert client.get_installation_identity() == call(state)
+            state.manager.revoke(1, actor_token=state.token, request_id=identity(),
+                expected_revision=state.manager.inspect(1)["grant_record_revision"])
+            with pytest.raises(ApplicationPlatformError):
+                client.get_installation_identity()
+        finally:
+            server.stop()
+        collectors.close()
+        assert fields == [set(frame()), set(frame())]
+    exported = []
+    for session in (core_records, sdk_records):
+        with session.export() as chunks:
+            exported.extend(chunks)
+    content = b"".join(exported)
+    assert all(value not in content for value in (
+        secret, b"PRIVATE_MUST_NOT_APPEAR", b"public_key", b"signature",
+        b"password", b"must-not-leak", state.token.encode(),
+    ))
+    if collector in {"full", "disabled"}:
+        assert core_records.status()["records"] == sdk_records.status()["records"] == 0
+        if collector == "full":
+            assert core_records.status()["dropped"]["full"] >= 4
+        return
+    events = [json.loads(line) for line in exported if "session" not in json.loads(line)]
+    sdk_events = [e for e in events if e["component"] == "sdk"]
+    assert len(sdk_events) == 2  # No implicit retry.
+    success, denied = sdk_events
+    assert success["result"] == "ok"
+    assert denied["result"] == "denied"
+    successful = {e["span_id"]: e for e in events if e["trace_id"] == success["trace_id"]}
+    assert set(successful) == {"sdk.call", "core.request", "authority.admission", "identity.read"}
+    assert all(e["result"] == "ok" for e in successful.values())
+    assert successful["identity.read"]["parent_span_id"] == "authority.admission"
+    refusals = [e for e in events if e["trace_id"] == denied["trace_id"]]
+    assert any(e["span_id"] == "authority.admission" and e["reason"] == "authority_unavailable"
+               and e["result"] == "denied" for e in refusals)
+    assert not any(e["span_id"] == "identity.read" for e in refusals)

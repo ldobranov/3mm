@@ -109,17 +109,11 @@ describe('extension builder model', () => {
     }
 
     expect(createManifestPreview(spec)).toMatchObject({
-      name: 'MyExtension',
-      locales: { directory: 'translations/' },
-      provides: spec.provides
+      manifest_version: 2, name: 'MyExtension', runtimes: ['ui'], entrypoints: { ui: 'compiled-ui.json' },
     })
+    expect(createManifestPreview(spec)).not.toHaveProperty('backend_entry')
     expect(createZipPathsPreview(spec)).toEqual([
-      'manifest.json',
-      'backend/my_extension.py',
-      'frontend/MyExtension.vue',
-      'frontend/ItemPicker.vue',
-      'translations/en.json',
-      'translations/bg.json'
+      'manifest.json', 'compiled-ui.json', 'source/frontend/Widget.vue', 'source/frontend/WidgetEditor.vue',
     ])
   })
 

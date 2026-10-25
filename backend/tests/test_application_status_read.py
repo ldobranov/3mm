@@ -1,4 +1,5 @@
 """Real installed v8 grant/SDK reads, never enrollment or remote reporting."""
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 import copy
 import json
@@ -514,7 +515,7 @@ def test_status_read_grant_does_not_authorize_identity_proof_peer_or_reporting(
         if action == "installation.identity.get":
             request.pop("link_id")
         with Session(state.engine) as db, pytest.raises(ValueError):
-            ApplicationPlatformServer(None, None)._dispatch(
+            ApplicationPlatformServer(None, None, allowed_actions=COMPATIBILITY_ACTIONS)._dispatch(
                 db, db.get(Installation, 1), request
             )
 
@@ -526,7 +527,7 @@ def test_legacy_sdk_status_is_compatible_but_cannot_opt_in_to_v8_implicitly(stat
     store_checkpoint_package(state, definition)
     assert state.manager.inspect(1)["review_available"] is False
     with Session(state.engine) as db:
-        result = ApplicationPlatformServer(None, None)._dispatch(
+        result = ApplicationPlatformServer(None, None, allowed_actions=COMPATIBILITY_ACTIONS)._dispatch(
             db, db.get(Installation, 1), frame()
         )
     assert result["installation_id"] == state.sender["installation_id"]
@@ -641,14 +642,14 @@ def test_real_signed_sdk_uses_current_v8_grant_and_never_implicit_retry(
         (root / ("a" * 24 + ".key")).write_bytes(secret)
         server = ApplicationPlatformServer(
             root / "p.sock", root, group="missing-fixture-group"
-        )
+        , allowed_actions=COMPATIBILITY_ACTIONS)
         server.start()
         client = ApplicationPlatformClient(server.socket_path, "a" * 24, secret)
         try:
             assert client.get_installation_status(LINK)["consent_revision"] == 1
             forged = ApplicationPlatformClient(server.socket_path, "a" * 24, b"y" * 32)
             with pytest.raises(
-                ApplicationPlatformError, match="response signature is invalid"
+                ApplicationPlatformError, match="response is invalid"
             ):
                 forged.get_installation_status(LINK)
             state.manager.revoke(

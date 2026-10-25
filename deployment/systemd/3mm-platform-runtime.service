@@ -1,0 +1,41 @@
+[Unit]
+Description=3mm independent platform Runtime
+After=3mm-core.service
+StartLimitIntervalSec=60s
+StartLimitBurst=3
+
+[Service]
+OOMScoreAdjust=300
+Type=exec
+User=3mm-platform
+Group=3mm-platform
+WorkingDirectory=/opt/3mm-platform-runtime/current
+ExecStartPre=+/usr/bin/install -d -o 3mm-platform -g 3mm-app -m 2750 /run/3mm-platform
+ExecStartPre=+/usr/bin/install -d -o 3mm-platform -g 3mm-public -m 2750 /run/3mm-public-web
+ExecStartPre=+/usr/bin/install -d -o 3mm-platform -g 3mm -m 2750 /run/3mm-application-responses
+ExecStart=/opt/3mm-platform-runtime/current/.venv/bin/python /opt/3mm-platform-runtime/current/runtime.pyz --socket /run/3mm-platform/runtime.sock --authority-socket /run/3mm-core-authority/authority.sock --core-user 3mm --socket-group 3mm-app --public-web-socket /run/3mm-public-web/runtime.sock --public-web-group 3mm-public --events --response-socket /run/3mm-application-responses/runtime.sock --response-group 3mm
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=5s
+ReadWritePaths=-/run/3mm-platform -/run/3mm-public-web -/run/3mm-application-responses
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectSystem=strict
+ProtectHome=true
+InaccessiblePaths=/opt/3mm /etc/3mm /var/lib/3mm/core /var/lib/3mm/application-extensions
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=true
+MemoryMax=128M
+TasksMax=48
+CPUQuota=50%
+LimitNOFILE=192
+
+[Install]
+WantedBy=multi-user.target

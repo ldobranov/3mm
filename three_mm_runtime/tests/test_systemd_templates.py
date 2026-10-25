@@ -8,6 +8,7 @@ UNITS = {
     "web": SYSTEMD_DIR / "3mm-web.service",
     "agent": SYSTEMD_DIR / "3mm-agent.service",
     "setup": SYSTEMD_DIR / "3mm-setup.service",
+    "setup_local": SYSTEMD_DIR / "3mm-setup-local.service",
 }
 PRIVILEGED_UNITS = {
     "helper": SYSTEMD_DIR / "3mm-network-helper.service",
@@ -35,9 +36,10 @@ def test_units_run_unprivileged_with_common_layout_and_hardening() -> None:
         unit = _directives(path)
         assert unit["User"] == "3mm"
         assert unit["Group"] == "3mm"
-        assert unit["WorkingDirectory"] == "/opt/3mm/current"
-        assert unit["ExecStart"].startswith("/opt/3mm/current/.venv/bin/python")
-        assert unit["EnvironmentFile"] == "-/etc/3mm/3mm.env"
+        prefix="/opt/3mm-agent/current" if name=="agent" else "/opt/3mm/current"
+        assert unit["WorkingDirectory"] == prefix
+        assert unit["ExecStart"].startswith(prefix+"/.venv/bin/python")
+        assert unit["EnvironmentFile"] == ("-/etc/3mm-agent/agent.env" if name=="agent" else "-/etc/3mm/3mm.env")
         assert unit["NoNewPrivileges"] == "true"
         assert unit["PrivateTmp"] == "true"
         assert unit["ProtectSystem"] == "strict"
@@ -62,13 +64,11 @@ def test_core_is_lan_accessible_while_device_services_stay_on_loopback() -> None
     assert "--captive-url http://10.42.0.1:8895/setup" in setup_command
 
 
-def test_core_can_write_runtime_and_export_cleanup_paths() -> None:
+def test_core_can_write_exports_and_setup_capabilities_without_owning_public_socket() -> None:
     unit = _directives(UNITS["core"])
 
-    assert unit["ReadWritePaths"] == (
-        "/var/lib/3mm/application-extensions/platform "
-        "/var/lib/3mm/backups/exports"
-    )
+    assert unit["ReadWritePaths"] == "/var/lib/3mm/backups/exports /var/lib/3mm/provisioning"
+    assert "THREE_MM_APPLICATION_PLATFORM_SOCKET" not in UNITS["core"].read_text()
 
 
 def test_setup_unit_has_no_network_mutation_privileges() -> None:
@@ -78,6 +78,15 @@ def test_setup_unit_has_no_network_mutation_privileges() -> None:
     assert unit["AmbientCapabilities"] == "CAP_NET_BIND_SERVICE"
     assert unit["CapabilityBoundingSet"] == "CAP_NET_BIND_SERVICE"
     assert "--network-helper-socket /run/3mm/network-helper.sock" in unit["ExecStart"]
+
+
+def test_protected_recovery_unit_coexists_with_workloads_without_nm_dependency():
+    unit = _directives(UNITS["setup_local"])
+    assert "--host 0.0.0.0" in unit["ExecStart"]
+    assert "--read-only" not in unit["ExecStart"]
+    assert "--network-helper-socket" in unit["ExecStart"]
+    assert "Requires" not in unit and "Conflicts" not in unit
+    assert unit["CapabilityBoundingSet"] == ""
 
 
 def test_web_uses_only_the_low_port_bind_capability() -> None:
@@ -132,10 +141,12 @@ def test_update_helper_exposes_only_a_local_hardened_scheduler() -> None:
     assert helper["AmbientCapabilities"].split() == ["CAP_SETUID"]
     assert helper["RestrictAddressFamilies"] == "AF_UNIX"
     assert helper["RuntimeDirectoryPreserve"] == "yes"
+    assert helper["EnvironmentFile"] == "-/etc/3mm/3mm.env"
+    assert helper["ExecStartPre"] == "/opt/3mm/current/.venv/bin/python -m three_mm_provisioning.recovery_access_point recover"
     assert helper["ReadWritePaths"] == (
         "/var/lib/3mm/backups /var/lib/3mm/core/backup-imports "
         "/var/lib/3mm/application-extensions /etc/3mm/application-extensions "
-        "/run/lock"
+        "/run/lock /var/lib/3mm/provisioning"
     )
     assert (
         "--network-recovery-policy /var/lib/3mm/core/network-recovery-policy.json"
@@ -149,7 +160,9 @@ def test_application_extensions_run_as_a_separate_network_isolated_identity() ->
 
     assert unit["User"] == "3mm-app"
     assert unit["Group"] == "3mm-app"
-    assert "three_mm_runtime.application_host" in unit["ExecStart"]
+    assert unit["ExecStart"].startswith("/opt/3mm-application-hosts/instances/%i/current/.venv/bin/python -I ")
+    assert "/host.pyz --instance %i" in unit["ExecStart"]
+    assert "/opt/3mm/current" not in APPLICATION_TEMPLATE.read_text()
     assert unit["PrivateNetwork"] == "true"
     assert unit["RestrictAddressFamilies"] == "AF_UNIX"
     assert unit["ProtectSystem"] == "strict"
@@ -157,7 +170,10 @@ def test_application_extensions_run_as_a_separate_network_isolated_identity() ->
         "/var/lib/3mm/application-extensions/%i/data "
         "/var/lib/3mm/application-extensions/%i/run"
     )
-    assert unit["PartOf"] == "3mm-core.service"
+    assert "PartOf" not in unit and "Requires" not in unit
+    assert "/var/lib/3mm/core" in unit["InaccessiblePaths"]
+    assert "EnvironmentFile" not in unit
+    assert unit["MemoryMax"]=="256M"
 
 
 def test_runtime_socket_directories_are_narrowly_owned() -> None:
@@ -166,7 +182,7 @@ def test_runtime_socket_directories_are_narrowly_owned() -> None:
     network_helper = _directives(PRIVILEGED_UNITS["helper"])
 
     assert "RuntimeDirectory" not in setup
-    assert core["RuntimeDirectory"] == "3mm-public-web"
+    assert set(core["RuntimeDirectory"].split()) == {"3mm-core-authority"}
     assert core["RuntimeDirectoryMode"] == "0755"
     for name in ("web", "agent"):
         assert "RuntimeDirectory" not in _directives(UNITS[name])
@@ -180,12 +196,12 @@ def test_public_web_is_socket_activated_without_core_state_or_secret_environment
 
     assert listener["ListenStream"] == "127.0.0.1:8081"
     assert listener["Service"] == "3mm-public-web.service"
-    assert listener["PartOf"] == "3mm-core.service"
+    assert "PartOf" not in listener and "Requires" not in listener
     assert service["User"] == "3mm-public"
     assert service["Group"] == "3mm-public"
     assert "EnvironmentFile" not in service
-    assert "-m three_mm_public_web" in service["ExecStart"]
-    assert "--core-socket /run/3mm-public-web/core.sock" in service["ExecStart"]
+    assert "/opt/3mm-public-web/current/service.pyz" in service["ExecStart"]
+    assert "--runtime-socket /run/3mm-public-web/runtime.sock" in service["ExecStart"]
     assert "--systemd-socket" in service["ExecStart"]
     assert "--idle-seconds 60" in service["ExecStart"]
     assert service["PrivateNetwork"] == "true"
@@ -196,10 +212,11 @@ def test_public_web_is_socket_activated_without_core_state_or_secret_environment
     assert service["ProtectSystem"] == "strict"
     core = _directives(UNITS["core"])
     assert "3mm-public" in core["SupplementaryGroups"].split()
-    assert core["Environment"] == "THREE_MM_PUBLIC_WEB_GATEWAY_GROUP=3mm-public"
-    core_text = UNITS["core"].read_text(encoding="utf-8")
-    assert "Environment=THREE_MM_PUBLIC_WEB_GATEWAY_SOCKET=/run/3mm-public-web/core.sock" in core_text
-    assert "Environment=THREE_MM_PUBLIC_WEB_GATEWAY_GROUP=3mm-public" in core_text
+    assert "THREE_MM_PUBLIC_WEB_GATEWAY" not in UNITS["core"].read_text(encoding="utf-8")
+    runtime = (SYSTEMD_DIR / "3mm-platform-runtime.service").read_text(encoding="utf-8")
+    assert "--public-web-socket /run/3mm-public-web/runtime.sock --public-web-group 3mm-public" in runtime
+    assert "-g 3mm-public -m 2750 /run/3mm-public-web" in runtime
+
 
 
 def test_units_use_the_shared_provisioning_directory() -> None:
@@ -231,12 +248,7 @@ def test_installer_preserves_identity_and_delegates_network_mutation() -> None:
     assert "THREE_MM_NETWORK_RECOVERY_POLICY_FILE" in installer
     assert "THREE_MM_NETWORK_RECOVERY_MARKER_FILE" in installer
     assert "THREE_MM_BACKUP_IMPORT_DIR" in installer
-    assert (
-        "upsert_environment THREE_MM_PUBLIC_WEB_GATEWAY_SOCKET "
-        "/run/3mm-public-web/core.sock"
-    ) in installer
-    assert "THREE_MM_PUBLIC_WEB_GATEWAY_GROUP 3mm-public" in installer
-    assert "/run/3mm-public-web.sock" not in installer
+    assert "upsert_environment THREE_MM_PUBLIC_WEB_GATEWAY" not in installer
     assert "deployment/portable_backup.py" in installer
     # Origin normalization and compatibility aliases belong to the shared policy.
     # Its behavior is covered by deployment/tests/test_frontend_access.py.
@@ -256,12 +268,12 @@ def test_installer_preserves_identity_and_delegates_network_mutation() -> None:
     assert "nft" not in installer
 
 
-def test_first_install_creates_but_updates_do_not_reset_the_test_admin() -> None:
+def test_installer_leaves_initial_administrator_to_protected_setup() -> None:
     installer = INSTALLER.read_text(encoding="utf-8")
 
     assert "database_existed_before_deploy=0" in installer
-    assert "--create-development-default-if-empty" in installer
-    assert "if [[ $database_existed_before_deploy -eq 0 ]]" in installer
+    assert "--create-development-default-if-empty" not in installer
+    assert "protected setup portal creates or proves" in installer
     assert 'rm -f -- "$database" "${database}-wal" "${database}-shm"' in installer
 
 
@@ -376,3 +388,36 @@ def test_public_bootstrap_uses_verified_release_and_detached_installation() -> N
     assert "dnsmasq-base" in bootstrap
     assert "3mm Setup XXXX" in bootstrap
     assert "git clone" not in bootstrap
+
+
+def test_independent_platform_runtime_has_no_core_dependency_environment_or_restart_coupling():
+    path=Path(__file__).resolve().parents[2]/"deployment/systemd/3mm-platform-runtime.service"
+    unit=_directives(path)
+    text=path.read_text()
+    assert unit["User"]=="3mm-platform" and unit["Group"]=="3mm-platform"
+    assert unit["ExecStart"].startswith("/opt/3mm-platform-runtime/current/.venv/bin/python ")
+    assert "/opt/3mm/current" not in text and "EnvironmentFile" not in unit
+    assert "PartOf" not in unit and "Requires" not in unit
+    assert "SupplementaryGroups" not in unit
+    assert "RuntimeDirectory" not in unit  # systemd would reset the setgid directory.
+    assert unit["ReadWritePaths"]=="-/run/3mm-platform -/run/3mm-public-web -/run/3mm-application-responses"
+    assert unit["ExecStartPre"]=="+/usr/bin/install -d -o 3mm-platform -g 3mm -m 2750 /run/3mm-application-responses"
+    assert "-g 3mm-app -m 2750 /run/3mm-platform" in (SYSTEMD_DIR / "3mm-platform-runtime.service").read_text()
+    assert unit["MemoryMax"]=="128M" and unit["TasksMax"]=="48"
+    assert unit["PrivateNetwork"]=="true" and unit["RestrictAddressFamilies"]=="AF_UNIX"
+    assert "/etc/3mm" in unit["InaccessiblePaths"] and "/var/lib/3mm/core" in unit["InaccessiblePaths"]
+    core=UNITS["core"].read_text()
+    assert "3mm-platform" in _directives(UNITS["core"])["SupplementaryGroups"].split()
+    assert "THREE_MM_CORE_AUTHORITY_SOCKET=/run/3mm-core-authority/authority.sock" in core
+
+
+def test_connector_worker_has_independent_pins_network_and_no_core_credentials():
+    unit=_directives(SYSTEMD_DIR / "3mm-connector-worker.service")
+    assert unit["User"]==unit["Group"]=="3mm-connectors"
+    assert unit["WorkingDirectory"]=="/opt/3mm-connector-worker/current"
+    assert "--connector-worker" in unit["ExecStart"] and " -I " in unit["ExecStart"]
+    assert not {"EnvironmentFile","SupplementaryGroups","PartOf","Requires","PrivateNetwork"}&unit.keys()
+    assert unit["RestrictAddressFamilies"]=="AF_UNIX AF_INET AF_INET6"
+    assert unit["KillMode"]=="control-group" and unit["TasksMax"]=="16"
+    assert "/etc/3mm" in unit["InaccessiblePaths"] and "/var/lib/3mm/core" in unit["InaccessiblePaths"]
+    assert unit["ReadWritePaths"]=="-/run/3mm-connectors"

@@ -1,3 +1,4 @@
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -128,26 +129,28 @@ def test_signed_lookup_allows_disabled_history_but_not_submit(setup, monkeypatch
     submitted = broker.submit_command(s.db, s.app, payload())
     s.app.enabled = False
     s.db.commit()
-    server = ApplicationPlatformServer(tmp_path / 'unused.sock', tmp_path)
+    server = ApplicationPlatformServer(tmp_path / 'unused.sock', tmp_path, allowed_actions=COMPATIBILITY_ACTIONS)
     secret = b's'*32
     (tmp_path / f'{s.app.instance_id}.key').write_bytes(secret)
     monkeypatch.setattr(backend.database, 'SessionLocal', sessionmaker(bind=s.db.get_bind()))
     request = {'version': 1, 'instance_id': s.app.instance_id, 'timestamp': int(time.time()),
         'request_id': 'transport-1', 'action': 'command.lookup',
         'lookup': {'request_id': 'request-1', 'binding_id': 'gate'}}
-    monkeypatch.setattr(server, '_read', lambda connection: request)
+    monkeypatch.setattr(server, '_read', lambda connection, deadline=None: request)
     class Connection:
         def __enter__(self): return self
         def __exit__(self, *args): pass
+        def settimeout(self, seconds): pass
         def sendall(self, value): self.response = json.loads(value)
     connection = Connection()
     request['signature'] = 'wrong'
     server._handle(connection)
-    assert connection.response['ok'] is False
+    assert not hasattr(connection, 'response')  # Unauthenticated, no reply.
     request['signature'] = hmac.new(secret, server._canonical(request), hashlib.sha256).hexdigest()
     server._handle(connection)
     assert connection.response['result']['command']['command_id'] == submitted['command_id']
     assert connection.response['result']['command']['status'] == 'invalidated'
+    request['request_id'] = 'transport-2'
     request['action'] = 'command.submit'
     request['command'] = payload('another')
     request['signature'] = hmac.new(secret, server._canonical(request), hashlib.sha256).hexdigest()

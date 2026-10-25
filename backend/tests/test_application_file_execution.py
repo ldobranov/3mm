@@ -1,4 +1,5 @@
 """Sealed current grants + actual target-owned POSIX worker; no live devices."""
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 import base64
 import hashlib
@@ -422,7 +423,7 @@ def test_signed_sdk_gateway_and_separate_worker_do_not_deadlock(
     keys = s.runtime.parent / "keys"
     keys.mkdir()
     (keys / (s.metadata["instance_id"] + ".key")).write_bytes(s.secret)
-    gateway = ApplicationPlatformServer(s.runtime.parent / "platform.sock", keys)
+    gateway = ApplicationPlatformServer(s.runtime.parent / "platform.sock", keys, allowed_actions=COMPATIBILITY_ACTIONS)
     gateway.start()
     declaration = s.metadata["storage"]["private_files"]
     files = ApplicationScopedFileStorage(

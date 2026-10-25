@@ -78,7 +78,7 @@
             </div>
             <div class="extension-meta">
               <span v-if="ext.source !== 'theme'" class="ui-badge extension-type">{{ ext.type }}</span>
-              <span v-if="ext.source !== 'legacy'" class="ui-badge runtime-badge">{{ extensionSourceLabel(ext) }}</span>
+              <span class="ui-badge runtime-badge">{{ extensionSourceLabel(ext) }}</span>
               <span v-if="ext.author" class="extension-author">{{ t('extensions.by', 'by') }} {{ ext.author }}</span>
             </div>
             <p v-if="ext.description" class="extension-description">{{ ext.description }}</p>
@@ -95,7 +95,7 @@
                   type="checkbox"
                   :checked="ext.is_enabled"
                   :aria-label="`${ext.name}: ${extensionStatusLabel(ext)}`"
-                  :disabled="ext.source === 'compiled' || !ext.can_manage || (ext.source !== 'theme' && !ext.is_installed) || (ext.source === 'theme' && ext.status === 'unavailable' && !ext.is_enabled) || operationBusy === ext.id"
+                  :disabled="ext.source === 'compiled' || !ext.can_manage || (!['theme', 'language'].includes(ext.source) && !ext.is_installed) || (ext.source === 'theme' && ext.status === 'unavailable' && !ext.is_enabled) || requiresApplicationRecovery(ext) || operationBusy === ext.id"
                   @change="toggleExtension(ext, $event)"
                 />
                 <span class="slider"></span>
@@ -105,6 +105,9 @@
               {{ ext.status === 'unavailable'
                 ? t('themePackages.unavailableHelp', 'Package missing or invalid. Built-in settings are used if it was selected.')
                 : t('themePackages.manageHelp', 'Enable this version, then choose it in Settings → Theme Customization. Enabling does not change the selected theme.') }}
+            </p>
+            <p v-if="requiresApplicationRecovery(ext)" class="ui-help application-recovery-note">
+              {{ t('extensions.applicationRecoveryHelp', 'The application operation is unfinished. Uninstall will first stop and verify its runtime. Its data and uploaded package are preserved.') }}
             </p>
             <div v-if="ext.source !== 'compiled'" class="extension-actions">
                <div v-if="(ext.source === 'runtime' && ext.is_installed) || ext.source === 'application'" class="version-controls">
@@ -150,7 +153,7 @@
                        : t('extensions.reinstall', 'Reinstall') }}
                    </UiButton>
                    <UiButton
-                     v-if="ext.source === 'legacy' || (ext.source === 'runtime' && ext.is_installed && ext.can_manage) || ((ext.source === 'application' || ext.source === 'theme') && ext.can_manage)"
+                     v-if="(ext.source === 'runtime' && ext.is_installed && ext.can_manage) || ((ext.source === 'application' || ext.source === 'theme' || ext.source === 'language') && ext.can_manage)"
                      type="button"
                      @click="deleteExtension(ext)"
                      variant="danger" class="delete-btn"
@@ -178,6 +181,18 @@
              </div>
           </div>
         </div>
+      </div>
+    </section>
+
+    <section v-if="isAdmin && (orphanedApplicationData.length || retainedDataError)" class="ui-section retained-data-section" aria-labelledby="retained-data-title">
+      <h2 id="retained-data-title">{{ t('extensions.preservedApplicationData', 'Preserved application data') }}</h2>
+      <p class="ui-help">{{ t('extensions.preservedApplicationDataHelp', 'These applications and their packages have been removed. You can still permanently erase their preserved data.') }}</p>
+      <p v-if="retainedDataError" class="error-message" role="alert">{{ retainedDataError }}</p>
+      <div v-for="item in orphanedApplicationData" :key="item.module_id" class="retained-data-row">
+        <div><strong>{{ item.name || item.module_id }}</strong><small>{{ item.module_id }}</small></div>
+        <UiButton variant="danger" :disabled="operationBusy !== null" @click="eraseRetainedApplicationData(item)">
+          {{ t('extensions.eraseData', 'Erase data') }}
+        </UiButton>
       </div>
     </section>
 
@@ -249,11 +264,14 @@
           : extensionToDelete?.source === 'runtime'
             ? t('extensions.uninstallConfirm', 'Uninstall this runtime extension? Its routes and menu entries will be removed.')
           : t('extensions.deleteConfirm', 'Are you sure you want to delete this extension?') }}</p>
+        <p v-if="deleteAction === 'remove' && extensionToDelete && requiresApplicationRecovery(extensionToDelete)" class="ui-help">
+          {{ t('extensions.uninstallRecoveryConfirm', 'This application did not finish its last operation. Uninstall will stop and verify its runtime before removing it. Existing data and the uploaded package will be preserved. If runtime cleanup cannot be confirmed, removal will remain blocked.') }}
+        </p>
         <p><strong>{{ extensionToDelete?.name }}<template v-if="deleteAction !== 'erase-data'"> v{{ deleteTargetVersion(extensionToDelete) }}</template></strong></p>
         <div v-if="operationError" class="error-message" role="alert">{{ operationError }}</div>
 
         <!-- Database data deletion checkbox - only show if extension has tables -->
-        <div v-if="extensionToDelete?.type === 'extension' || extensionToDelete?.source === 'runtime'" class="ui-stack">
+        <div v-if="extensionToDelete?.source === 'runtime'" class="ui-stack">
           <label class="ui-check">
             <input type="checkbox" v-model="deleteDatabaseData" />
             {{ extensionToDelete?.source === 'runtime'
@@ -267,14 +285,6 @@
             : t('extensions.deleteDatabaseDataWarning', 'This action cannot be undone. All selected data will be permanently lost.') }}</small>
         </div>
 
-        <!-- Uploaded files deletion checkbox - only show if extension uploads files -->
-        <div v-if="extensionToDelete?.type === 'extension'" class="ui-stack">
-          <label class="ui-check">
-            <input type="checkbox" v-model="deleteUploadedFiles" />
-            {{ t('extensions.deleteUploadedFiles', 'Also delete all uploaded files (images, documents, etc.) for this extension') }}
-          </label>
-          <small class="ui-help">{{ t('extensions.deleteUploadedFilesWarning', 'This will remove all files uploaded by this extension from the server.') }}</small>
-        </div>
       </div>
       <template #actions>
         <UiButton @click="closeDeleteDialog" autofocus :disabled="operationBusy !== null">
@@ -323,7 +333,7 @@ const authorityTarget = ref<{ moduleId: string; name: string } | null>(null);
 
 interface Extension {
   id: string;
-  source: 'legacy' | 'runtime' | 'compiled' | 'application' | 'theme';
+  source: 'runtime' | 'compiled' | 'application' | 'theme' | 'language';
   name: string;
   type: string;
   version: string;
@@ -369,6 +379,12 @@ interface ApplicationInstallation {
   enabled: boolean;
 }
 
+interface RetainedApplicationData {
+  module_id: string;
+  instance_id: string;
+  name: string;
+}
+
 interface ApplicationConfigurationField {
   key: string;
   kind: 'device';
@@ -385,6 +401,11 @@ interface ApplicationConfigurationDevice {
 }
 
 const extensions = ref<Extension[]>([]);
+const retainedApplicationData = ref<RetainedApplicationData[]>([]);
+const retainedDataError = ref('');
+const orphanedApplicationData = computed(() => retainedApplicationData.value.filter(item =>
+  !extensions.value.some(extension => extension.id === `application:${item.module_id}`),
+));
 const loading = ref(false);
 const uploading = ref(false);
 const selectedFile = ref<File | null>(null);
@@ -393,7 +414,6 @@ const uploadSuccess = ref('');
 const showDeleteModal = ref(false);
 const extensionToDelete = ref<Extension | null>(null);
 const deleteDatabaseData = ref(false);
-const deleteUploadedFiles = ref(false);
 const selectedVersions = ref<Record<string, string>>({});
 const activatingVersion = ref<string | null>(null);
 const operationBusy = ref<string | null>(null);
@@ -424,15 +444,41 @@ const authHeaders = () => {
 const extensionSourceLabel = (extension: Extension): string => {
   if (extension.source === 'compiled') return 'Compiled UI';
   if (extension.source === 'application') return 'Application';
+  if (extension.source === 'language') return t('languagePackages.kind', 'Language');
   if (extension.source === 'theme') return t('themePackages.kind', 'Theme');
   return 'Runtime';
 };
 
+const applicationLifecyclePendingStatuses = new Set([
+  'activating', 'disabling', 'uninstalling', 'recovering', 'recovery_required',
+]);
+
+const requiresApplicationRecovery = (extension: Extension): boolean =>
+  extension.source === 'application' && extension.is_installed
+  && applicationLifecyclePendingStatuses.has(extension.status);
+
 const extensionStatusLabel = (extension: Extension): string =>
-  t(`${extension.source === 'theme' ? 'themePackages' : 'extensions'}.${extension.status}`, extension.status);
+  requiresApplicationRecovery(extension)
+    ? t('extensions.recoveryRequired', 'Recovery required')
+    : t(`${extension.source === 'theme' ? 'themePackages' : 'extensions'}.${extension.status}`, extension.status);
 
 const applicationPackageSha = (extension: Extension, version: string): string | null =>
   extension.package_sha256_by_version?.[version] || null;
+
+const openApplicationAccessIfNeeded = async (extension: Extension) => {
+  if (!isAdmin.value) return;
+  const moduleId = extension.id.replace('application:', '');
+  try {
+    const response = await http.get(
+      `/api/v1/application-extensions/${encodeURIComponent(moduleId)}/authority`,
+      { timeout: 12000 },
+    );
+    if (response.data?.access_saved === true || response.data?.grant_effective === true) return;
+  } catch {
+    // The access dialog can explain an unavailable preview and retry safely.
+  }
+  authorityTarget.value = { moduleId, name: extension.name };
+};
 
 const activateApplicationPackage = async (
   extension: Extension,
@@ -446,6 +492,7 @@ const activateApplicationPackage = async (
     : [];
   if (fields.length === 0) {
     await http.post(`/api/v1/application-extensions/packages/${sha256}/activate`);
+    await openApplicationAccessIfNeeded(extension);
     return true;
   }
   configurationFields.value = fields;
@@ -487,11 +534,19 @@ const confirmApplicationConfiguration = async () => {
     await getCompiledUiCatalog(true);
     window.dispatchEvent(new Event('menu-refresh'));
     await loadExtensions();
+    await openApplicationAccessIfNeeded(target.extension);
   } catch (error) {
     configurationError.value = errorMessage(
       error,
       t('extensions.versionError', 'Could not activate the selected version.'),
     );
+    await loadExtensions();
+    const failed = extensions.value.find(extension => extension.id === target.extension.id);
+    if (failed && requiresApplicationRecovery(failed)) {
+      operationError.value = configurationError.value;
+      configurationSaving.value = false;
+      cancelApplicationConfiguration();
+    }
   } finally {
     configurationSaving.value = false;
     operationBusy.value = null;
@@ -513,7 +568,8 @@ const deleteTargetVersion = (extension: Extension | null): string => {
 
 const canActivateVersion = (extension: Extension): boolean => {
   const version = selectedVersions.value[extension.id];
-  if (!extension.can_manage || !version || operationBusy.value === extension.id) return false;
+  if (!extension.can_manage || !version || operationBusy.value === extension.id
+    || requiresApplicationRecovery(extension)) return false;
   if (extension.source === 'application') {
     return Boolean(applicationPackageSha(extension, version)) && (
       !extension.is_enabled || version !== extension.version
@@ -562,7 +618,8 @@ const buildApplicationExtensions = (
       package_sha256_by_version: Object.fromEntries(
         ordered.map(pkg => [pkg.version, pkg.sha256]),
       ),
-      is_installed: Boolean(installation?.active_version),
+      // A failed first activation still owns a lifecycle row and runtime state.
+      is_installed: Boolean(installation),
     };
   });
 };
@@ -570,12 +627,17 @@ const buildApplicationExtensions = (
 const loadExtensions = async () => {
   loading.value = true;
   try {
-    const [catalogResponse, compiledPackages, modulePackagesResponse, applicationInstallationsResponse, themesResponse] = await Promise.all([
+    const [catalogResponse, compiledPackages, modulePackagesResponse, applicationInstallationsResponse, themesResponse, languagesResponse, retainedDataResponse] = await Promise.all([
       http.get('/api/v1/runtime-extensions/catalog', { params: { language: currentLanguage.value } }),
       getCompiledUiCatalog(true),
       isAdmin.value ? http.get('/api/v1/modules/packages') : Promise.resolve({ data: [] }),
       isAdmin.value ? http.get('/api/v1/application-extensions') : Promise.resolve({ data: [] }),
       isAdmin.value ? http.get('/api/v1/modules/themes/catalog') : Promise.resolve({ data: { items: [] } }),
+      isAdmin.value ? http.get('/api/v1/modules/languages/catalog') : Promise.resolve({ data: { items: [] } }),
+      isAdmin.value
+        ? http.get('/api/v1/application-extensions/retained-data').then(response => ({ data: response.data, unavailable: false }))
+          .catch(() => ({ data: [], unavailable: true }))
+        : Promise.resolve({ data: [], unavailable: false }),
     ]);
     const modulePackages = Array.isArray(modulePackagesResponse.data)
       ? modulePackagesResponse.data as ModulePackageCatalogItem[]
@@ -583,6 +645,9 @@ const loadExtensions = async () => {
     const applicationInstallations = Array.isArray(applicationInstallationsResponse.data)
       ? applicationInstallationsResponse.data as ApplicationInstallation[]
       : [];
+    retainedApplicationData.value = Array.isArray(retainedDataResponse.data) ? retainedDataResponse.data : [];
+    retainedDataError.value = retainedDataResponse.unavailable
+      ? t('extensions.preservedApplicationDataUnavailable', 'Preserved application data could not be loaded. Refresh to try again.') : '';
     const applications = buildApplicationExtensions(modulePackages, applicationInstallations);
     const applicationModuleIds = new Set(applications.map(extension =>
       extension.id.replace('application:', ''),
@@ -620,17 +685,16 @@ const loadExtensions = async () => {
       available_versions: [item.version],
       package_sha256: item.sha256,
     }));
-    extensions.value = [...(catalogResponse.data || []), ...applications, ...compiled, ...themes];
+    const languages: Extension[] = (languagesResponse.data?.items || []).map((item: any) => ({
+      id: `language:${item.sha256}`, source: 'language', name: item.name, type: 'language',
+      version: item.version, description: item.code, status: item.status, is_enabled: item.enabled,
+      is_installed: item.is_installed, created_at: '', can_manage: isAdmin.value,
+      available_versions: [item.version], package_sha256: item.sha256,
+    }));
+    extensions.value = [...(catalogResponse.data || []), ...applications, ...compiled, ...themes, ...languages];
     selectedVersions.value = Object.fromEntries(
       extensions.value.map(extension => [extension.id, extension.version])
     );
-
-    // Load translations for enabled extensions
-    for (const ext of extensions.value) {
-      if (ext.source === 'legacy' && ext.is_enabled) {
-        await i18n.loadExtensionTranslationsForExtension(ext.name, currentLanguage.value);
-      }
-    }
   } catch (error) {
     console.error('Failed to load extensions:', error);
   } finally {
@@ -655,26 +719,9 @@ const uploadExtension = async () => {
   try {
     const moduleForm = new FormData();
     moduleForm.append('package', selectedFile.value);
-    let uploadedName = '';
-    try {
-      const moduleResponse = await http.post('/api/v1/modules/packages', moduleForm);
-      uploadedName = moduleResponse.data.module_id;
-      await getCompiledUiCatalog(true);
-    } catch (moduleError: any) {
-      const moduleStatus = moduleError.response?.status;
-      const moduleDetail = String(moduleError.response?.data?.detail || '').toLowerCase();
-      if (
-        moduleStatus !== 422 ||
-        moduleDetail.includes('compiled ui') ||
-        moduleDetail.includes('compiler')
-      ) {
-        throw moduleError;
-      }
-      const legacyForm = new FormData();
-      legacyForm.append('file', selectedFile.value);
-      const legacyResponse = await http.post('/api/extensions/upload', legacyForm);
-      uploadedName = legacyResponse.data.name;
-    }
+    const moduleResponse = await http.post('/api/v1/modules/packages', moduleForm);
+    const uploadedName = moduleResponse.data.module_id;
+    await getCompiledUiCatalog(true);
 
     uploadSuccess.value = t(
       'extensions.uploadSuccess',
@@ -704,6 +751,12 @@ const toggleExtension = async (extension: Extension, event: Event) => {
   try {
     if (extension.source === 'compiled') {
       target.checked = true;
+      return;
+    } else if (extension.source === 'language') {
+      await http.post(`/api/v1/modules/languages/packages/${extension.package_sha256}/${isEnabled ? 'enable' : 'disable'}`);
+      await i18n.refreshLanguages();
+      window.dispatchEvent(new Event('menu-refresh'));
+      await loadExtensions();
       return;
     } else if (extension.source === 'theme') {
       await http.post(`/api/v1/modules/themes/packages/${extension.package_sha256}/${isEnabled ? 'enable' : 'disable'}`);
@@ -737,11 +790,6 @@ const toggleExtension = async (extension: Extension, event: Event) => {
       );
       await reloadRuntimeExtensionRoutes(router);
       window.dispatchEvent(new Event('menu-refresh'));
-    } else {
-      await http.patch(
-        `/api/extensions/${extension.id.replace('legacy:', '')}`,
-        { is_enabled: isEnabled }
-      );
     }
 
     // Update local state
@@ -750,16 +798,13 @@ const toggleExtension = async (extension: Extension, event: Event) => {
       ext.is_enabled = isEnabled;
       ext.status = isEnabled ? 'active' : 'inactive';
 
-      // Reload translations if extension was enabled
-      if (extension.source === 'legacy' && isEnabled) {
-        await i18n.loadExtensionTranslationsForExtension(ext.name, currentLanguage.value);
-      }
     }
   } catch (error) {
     console.error('Failed to toggle extension:', error);
     operationError.value = errorMessage(error, t('extensions.toggleError', 'Could not change the extension status.'));
     // Revert checkbox
     target.checked = !isEnabled;
+    if (extension.source === 'application') await loadExtensions();
   } finally {
     operationBusy.value = null;
   }
@@ -769,7 +814,6 @@ const deleteExtension = (extension: Extension) => {
   extensionToDelete.value = extension;
   deleteAction.value = 'remove';
   deleteDatabaseData.value = false;
-  deleteUploadedFiles.value = false;
   showDeleteModal.value = true;
 };
 
@@ -777,8 +821,15 @@ const eraseApplicationData = (extension: Extension) => {
   extensionToDelete.value = extension;
   deleteAction.value = 'erase-data';
   deleteDatabaseData.value = false;
-  deleteUploadedFiles.value = false;
   showDeleteModal.value = true;
+};
+
+const eraseRetainedApplicationData = (item: RetainedApplicationData) => {
+  eraseApplicationData({
+    id: `application:${item.module_id}`, source: 'application', name: item.name || item.module_id,
+    type: 'application', version: '', status: 'uninstalled', is_enabled: false,
+    created_at: '', can_manage: true, available_versions: [], is_installed: false,
+  });
 };
 
 const activateVersion = async (extension: Extension) => {
@@ -807,6 +858,7 @@ const activateVersion = async (extension: Extension) => {
   } catch (error) {
     console.error('Failed to activate extension version:', error);
     operationError.value = errorMessage(error, t('extensions.versionError', 'Could not activate the selected version.'));
+    if (extension.source === 'application') await loadExtensions();
   } finally {
     activatingVersion.value = null;
     operationBusy.value = null;
@@ -844,6 +896,10 @@ const confirmDeleteExtension = async () => {
       await http.delete(
         `/api/v1/application-extensions/${encodeURIComponent(moduleId)}/data`,
       );
+    } else if (extensionToDelete.value.source === 'language') {
+      await http.delete(`/api/v1/modules/languages/packages/${extensionToDelete.value.package_sha256}`);
+      await i18n.refreshLanguages();
+      window.dispatchEvent(new Event('menu-refresh'));
     } else if (extensionToDelete.value.source === 'theme') {
       await http.delete(`/api/v1/modules/themes/packages/${extensionToDelete.value.package_sha256}`);
       await settingsStore.loadThemeAppearance();
@@ -873,13 +929,6 @@ const confirmDeleteExtension = async () => {
       }
       await getCompiledUiCatalog(true);
       window.dispatchEvent(new Event('menu-refresh'));
-    } else {
-      await http.delete(`/api/extensions/${extensionToDelete.value.id.replace('legacy:', '')}`, {
-        params: {
-          deleteData: deleteDatabaseData.value,
-          deleteFiles: deleteUploadedFiles.value
-        }
-      });
     }
 
     await loadExtensions();
@@ -899,7 +948,6 @@ const cancelDeleteExtension = () => {
   extensionToDelete.value = null;
   deleteAction.value = 'remove';
   deleteDatabaseData.value = false;
-  deleteUploadedFiles.value = false;
 };
 
 // Keep the in-flight target stable while an install/remove request is pending.
@@ -962,6 +1010,10 @@ watch(currentLanguage, async () => {
 }
 .error-message { color: var(--ui-danger); }
 .success-message { color: var(--ui-success); }
+.retained-data-section { margin-top: calc(var(--ui-space) * 5); }
+.retained-data-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: calc(var(--ui-space) * 3); padding-top: calc(var(--ui-space) * 3); }
+.retained-data-row > div { min-width: 0; overflow-wrap: anywhere; }
+.retained-data-row small { display: block; color: var(--ui-text-secondary); }
 .extensions-list-content { min-width: 0; }
 .extensions-list-heading { justify-content: space-between; padding-bottom: calc(var(--ui-space) * 4); border-bottom: 1px solid var(--ui-border); }
 .extensions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: calc(var(--ui-space) * 5); margin-top: calc(var(--ui-space) * 4); }

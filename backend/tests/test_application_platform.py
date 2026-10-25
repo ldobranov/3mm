@@ -1,3 +1,4 @@
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 from datetime import UTC, datetime
 import socket
 
@@ -29,7 +30,7 @@ def test_signed_platform_checkpoint_is_persistent_and_compare_and_swap(monkeypat
     db.add(ApplicationExtensionInstallation(module_id=package.module_id, module_package_id=package.id, instance_id=instance_id, active_version="1.0.0", status="active", enabled=True, socket_path="unused")); db.commit(); db.close()
     monkeypatch.setattr(backend.database, "SessionLocal", sessions)
     key_root = tmp_path / "keys"; key_root.mkdir(); secret = b"s" * 32; (key_root / f"{instance_id}.key").write_bytes(secret)
-    server = ApplicationPlatformServer(tmp_path / "platform" / "platform.sock", key_root, group="missing-test-group")
+    server = ApplicationPlatformServer(tmp_path / "platform" / "platform.sock", key_root, group="missing-test-group", allowed_actions=COMPATIBILITY_ACTIONS)
     server.start()
     try:
         client = ApplicationPlatformClient(server.socket_path, instance_id, secret)

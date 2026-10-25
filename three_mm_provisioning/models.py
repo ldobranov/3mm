@@ -16,6 +16,12 @@ class ProvisioningState(str, Enum):
     PROVISIONED = "provisioned"
 
 
+class NetworkMode(str, Enum):
+    PRESERVE = "preserve"
+    WIFI = "wifi"
+    LOCAL = "local"
+
+
 @dataclass(frozen=True, slots=True)
 class NetworkCredentials:
     network_name: str = field(repr=False)
@@ -28,14 +34,22 @@ class NetworkCredentials:
 
 @dataclass(frozen=True, slots=True)
 class ProvisioningRequest:
-    network: NetworkCredentials = field(repr=False)
+    network: NetworkCredentials | None = field(repr=False)
     locale: str
     device_name: str
     administrator_name: str
     role: AgentRole
     hub_endpoint: str | None = None
+    network_mode: NetworkMode = NetworkMode.WIFI
+    network_interface: str | None = None
 
     def __post_init__(self) -> None:
+        if self.network_mode is NetworkMode.WIFI and self.network is None:
+            raise ValueError("Wi-Fi credentials are required")
+        if self.network_mode is not NetworkMode.WIFI and (self.network or self.network_interface):
+            raise ValueError("Host networking does not accept Wi-Fi settings")
+        if self.network_mode is NetworkMode.LOCAL and self.role is not AgentRole.STANDALONE:
+            raise ValueError("Local operation requires the standalone role")
         for label, value in (
             ("Locale", self.locale),
             ("Device name", self.device_name),

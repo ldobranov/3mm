@@ -6,6 +6,55 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.0-beta.57] - 2026-10-25
+
+### Added
+
+- Protected Standalone/Hub/Node setup, explicit host-managed or managed Wi-Fi
+  networking, journaled AP recovery/rollback and bounded diagnostic workspace.
+- Independent platform-runtime/application-host/connector/session components,
+  common session admission, actual Node execution and encrypted local relay.
+- Manifest-v2 language extensions, including Bulgarian, and retained application
+  data ownership/cleanup after the last package is removed.
+- Conservative automatic CI group selection and reusable local development tools.
+
+### Changed
+
+- Administrator consent for an exact application package/build replaces mandatory
+  manual code audit in the normal UI. One Allow access action exposes optional
+  details, preselects initial resources and preserves saved subsets. A missing
+  first consent key can be initialized without console intervention or grants.
+- Confirmed disable/enable of unchanged approved code/configuration/resources
+  preserves consent; fresh execution envelopes keep old commands/sessions stale.
+- Optional executors have independent update/health contracts and bounded failure
+  handling. Slow ARMv6 session startup has explicit budgets. Old prototype
+  extension paths are retired; capability-foundation plans remain design work.
+
+### Fixed
+
+- Browser-session UI/native checks share the current SQLite authority snapshot,
+  avoiding nested readers. A separate five-second authority deadline prevents
+  valid checks from inheriting the one-second output polling interval.
+- Failed application activation no longer makes ordinary removal inaccessible.
+  Unused obsolete/missing/corrupt packages retain exact reference/path guards.
+- Retained data remains discoverable after package removal; cleanup requires
+  verified ownership, worker quiescence and successful anchored filesystem work.
+
+### Upgrade and verification
+
+- Additive language/event/connector/retained-data migrations end at
+  `3e189f465708`. Preserve database/key backups; older code cannot adopt new
+  administrator approvals and nonempty schema downgrade can be refused.
+- Device Protocol 1.0 and Application SDK 1.3 keep independent version axes.
+  Terminal 1.0.3 remains a separate application, not a Core release asset.
+- Scoped automated and physical-device acceptance is recorded in WORKING_STATE;
+  canonical Python 3.13/Node 22 CI and exact-tag reproducible Release gates run
+  automatically. Owner-run device trials remain separate from publication.
+- Restricted temporary Linux sessions, Node and a local relay are the accepted
+  scope. Host/root administration, public Cloud, complete remote Terminal UI and
+  whole M21/WP5 completion are not claimed. See the
+  [release notes](docs/RELEASE_NOTES_0.3.0-beta.57.md).
+
 ## [0.3.0-beta.56] - 2026-10-21
 
 ### Fixed
@@ -2042,7 +2091,8 @@ pre-1.0.
   outage.
 - Deployment rollback and bounded storage retention on `rasp-3mm`.
 
-[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.56...HEAD
+[Unreleased]: https://github.com/ldobranov/3mm/compare/v0.3.0-beta.57...HEAD
+[0.3.0-beta.57]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.57
 [0.3.0-beta.56]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.56
 [0.3.0-beta.55]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.55
 [0.3.0-beta.54]: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.54

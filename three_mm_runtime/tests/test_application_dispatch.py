@@ -97,40 +97,36 @@ class ApplicationDispatchTests(unittest.TestCase):
                     self.client.invoke('job', {}, {})
             self.assertEqual(error.exception.phase, transport.DispatchPhase.EXECUTION_UNCONFIRMED)
 
-    def invoke_job(self, *, before_dispatch=None):
+    def invoke_operation(self, *, before_dispatch=None):
         (self.root / ('a'*24 + '.key')).write_bytes(self.secret)
         app = ApplicationExtensionInstallation(enabled=True, status='active', authority_mode='compatibility',
             instance_id='a'*24, socket_path=str(self.path))
-        operation = SimpleNamespace(operation_id='job', kind='job', audiences=['internal'], idempotency='required',
+        operation = SimpleNamespace(operation_id='job', kind='command', audiences=['internal'], idempotency='required',
             input_schema={}, output_schema={'properties': {'done': {'type': 'boolean'}}, 'required': ['done']}, timeout_seconds=0.1)
         storage = ApplicationStorageV1(schema_revision='0001', migration_entrypoint='fixture:migrations')
         package = SimpleNamespace(compiled_ui=None, application_extension=SimpleNamespace(
             operations=[operation], storage=storage, public_http_routes=[]))
         with patch.object(gateway, 'load_application_package', return_value=package):
             return gateway.invoke_application(app, object(), SimpleNamespace(key_root=self.root), 'job', {},
-                {'idempotency_key': 'stable'}, required_audience='internal', require_ready=True, before_dispatch=before_dispatch)
+                {'idempotency_key': 'stable'}, required_audience='internal', before_dispatch=before_dispatch)
 
     def test_start_before_host_then_ready(self):
         with self.assertRaises(gateway.ApplicationGatewayError) as error:
-            self.invoke_job()
+            self.invoke_operation()
         self.assertEqual(error.exception.phase, transport.DispatchPhase.NOT_DISPATCHED)
-        with self.host([{'revision': '0001', 'outbox': {}}, {'done': True}]) as requests:
-            self.assertEqual(self.invoke_job(), {'done': True})
-        self.assertEqual([r['operation_id'] for r in requests], ['three_mm.platform.status', 'job'])
+        with self.host([{'done': True}]) as requests:
+            self.assertEqual(self.invoke_operation(), {'done': True})
+        self.assertEqual([r['operation_id'] for r in requests], ['job'])
 
-    def test_host_stops_after_readiness_before_job_connect(self):
-        with self.host([{'revision': '0001', 'outbox': {}}]):
-            def gone():
-                self.path.unlink(missing_ok=True)
-                return True
-            with self.assertRaises(gateway.ApplicationGatewayError) as error:
-                self.invoke_job(before_dispatch=gone)
-            self.assertEqual(error.exception.phase, transport.DispatchPhase.NOT_DISPATCHED)
+    def test_lifecycle_callback_refuses_before_connect(self):
+        with self.assertRaises(gateway.ApplicationGatewayError) as error:
+            self.invoke_operation(before_dispatch=lambda: False)
+        self.assertEqual(error.exception.phase, transport.DispatchPhase.NOT_DISPATCHED)
 
     def test_output_validation_after_dispatch_is_unconfirmed(self):
-        with self.host([{'revision': '0001', 'outbox': {}}, {'done': 'wrong'}]):
+        with self.host([{'done': 'wrong'}]):
             with self.assertRaises(gateway.ApplicationGatewayError) as error:
-                self.invoke_job()
+                self.invoke_operation()
             self.assertEqual(error.exception.phase, transport.DispatchPhase.EXECUTION_UNCONFIRMED)
 
 

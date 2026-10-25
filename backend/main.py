@@ -2,10 +2,10 @@ import asyncio
 import json
 import logging
 import os
-from contextlib import asynccontextmanager, suppress
-from pathlib import Path
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends
+from fastapi.routing import iter_route_contexts
 from backend.utils.auth_dep import guard_user_session
 from backend.utils.device_body_limit import DeviceBodyLimitMiddleware
 from fastapi.exceptions import RequestValidationError
@@ -24,7 +24,6 @@ from backend.services.asset_storage import get_asset_storage
 
 # Import database and models first
 from backend.database import get_db, init_db
-from backend.db.extension import Extension
 from backend.routes.ai_extension_builder_routes import (
     router as ai_extension_builder_router,
 )
@@ -51,11 +50,8 @@ from backend.routes.device_runtime_features import router as device_runtime_feat
 from backend.routes.device_capability_state import router as device_capability_state_router
 from backend.routes.device_events import router as device_events_router
 from backend.routes.node_update_delivery import router as node_update_delivery_router
-from backend.routes.extension_routes import router as extension_router
 from backend.routes.group_routes import router as group_router
 from backend.routes.language_routes import router as language_router
-from backend.routes.marketplace_routes import router as marketplace_router
-from backend.routes.monitoring_routes import router as monitoring_router
 from backend.routes.modules import router as modules_router
 from backend.routes.runtime_extensions import router as runtime_extensions_router
 from backend.routes.permission_routes import router as permission_router
@@ -66,19 +62,12 @@ from backend.routes.system_control import router as system_control_router
 from backend.routes.network_recovery import router as network_recovery_router
 from backend.routes.node_updates import router as node_updates_router
 from backend.services.update_policy import system_update_check_manager
-from backend.services.application_events import retry_application_events_once
-from backend.services.application_jobs import ApplicationJobScheduler
-from backend.services.application_platform import ApplicationPlatformServer
-from backend.services.application_public_web_transport import PublicWebGatewayServer
+from backend.services.core_components import CoreComponents
 
 # Import all route routers
 from backend.routes.settings import router as settings_router
 from backend.routes.user import router as user_router
-from backend.utils.extension_manager import extension_manager
-from backend.utils.extension_monitoring import performance_monitor
 
-# Import extension utilities
-from backend.utils.extension_updates import update_manager
 
 # import backend.db.language_pack  # noqa: F401 - Import to ensure tables are created
 
@@ -107,132 +96,45 @@ class UnicodeJSONResponse(JSONResponse):
         ).encode("utf-8")
 
 
-async def load_enabled_extensions(app: FastAPI):
-    """Load all enabled extensions after application startup."""
-    db = None
+def _language_packages():
+    from backend.services.language_extensions import BundledLanguagePackages
+    return BundledLanguagePackages(get_db, app_settings)
+
+
+def _runtime_authority():
+    import pwd,grp
+    from backend.services.application_platform import CoreRuntimeAuthorityServer
+    runtime=pwd.getpwnam(app_settings.applications.runtime_user)
+    if runtime.pw_uid==os.geteuid():
+        raise ValueError("Core and Runtime require distinct OS principals")
+    # Missing optional connector principal must not take down SDK admission.
     try:
-        db = next(get_db())
-        enabled_extensions = (
-            db.query(Extension).filter(Extension.is_enabled.is_(True)).all()
-        )
-
-        if not enabled_extensions:
-            logger.info("No enabled extensions to load")
-            return
-
-        for extension in enabled_extensions:
-            extension_id = f"{extension.name}_{extension.version}"
-            extension_path = Path(extension.file_path)
-
-            if extension_path.exists():
-                success = extension_manager.initialize_extension(
-                    extension_id=extension_id,
-                    extension_path=extension_path,
-                    app=app,
-                    db=db,
-                )
-                if success:
-                    logger.info("Extension %s loaded successfully", extension_id)
-                else:
-                    logger.warning("Failed to load extension %s", extension_id)
-            elif extension_path != Path("system"):
-                logger.warning("Extension path not found: %s", extension_path)
-    except asyncio.CancelledError:
-        raise
-    except Exception:
-        logger.exception("Error loading enabled extensions")
-    finally:
-        if db:
-            db.close()
-
-
-async def run_application_event_worker():
-    """Retry durable application deliveries without blocking Agent ingestion."""
-    while True:
-        try:
-            await asyncio.to_thread(
-                retry_application_events_once,
-                app_settings.applications,
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Application event broker retry failed")
-        await asyncio.sleep(30)
-
-
-async def run_application_job_worker():
-    scheduler = ApplicationJobScheduler(app_settings.applications)
-    try:
-        while True:
-            try:
-                delay = await asyncio.to_thread(scheduler.tick)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.warning("Application job scheduler unavailable")
-                delay = 1.0
-            await asyncio.sleep(delay)
-    finally:
-        await asyncio.to_thread(scheduler.close)
+        connector_uid = pwd.getpwnam(app_settings.applications.connector_worker_user).pw_uid
+        if connector_uid in {0, os.geteuid(), runtime.pw_uid}: connector_uid = None
+    except KeyError: connector_uid = None
+    return CoreRuntimeAuthorityServer(app_settings.applications.authority_socket,
+        app_settings.applications.key_root,runtime_uid=runtime.pw_uid,
+        group=grp.getgrgid(runtime.pw_gid).gr_name,runtime_root=app_settings.applications.root,
+        connector_worker_path=app_settings.applications.connector_worker_socket, connector_worker_uid=connector_uid)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Own all application startup and shutdown work."""
+    """Database readiness is required; optional functionality may be degraded."""
     init_db()
-    application_platform = ApplicationPlatformServer(
-        app_settings.applications.platform_socket,
-        app_settings.applications.key_root,
-    )
-    application_platform.start()
-    public_web_gateway = PublicWebGatewayServer(
-        app_settings.public_web.gateway_socket,
-        app_settings.applications,
-        socket_group=app_settings.public_web.gateway_group,
-    )
-    public_web_gateway_started = False
+    # The pinned FastAPI builds included-router dependencies lazily. Prepare
+    # their cached schemas before readiness, without executing any request.
+    for _ in iter_route_contexts(app.routes):
+        pass
+    components = CoreComponents()
+    app.state.core_components = components
     try:
-        public_web_gateway.start()
-        public_web_gateway_started = True
-    except Exception:
-        # Public web is optional. Its local gateway must never prevent
-        # administration/recovery from starting.
-        logger.exception("Public web gateway is unavailable")
-    await update_manager.start_update_worker()
-    await performance_monitor.start_monitoring()
-    await system_update_check_manager.start()
-    extension_loader_task = asyncio.create_task(
-        load_enabled_extensions(app), name="enabled-extension-loader"
-    )
-    application_event_task = asyncio.create_task(
-        run_application_event_worker(), name="application-event-worker"
-    )
-    application_job_task = asyncio.create_task(
-        run_application_job_worker(), name="application-job-worker"
-    )
-
-    try:
+        await components.start("language_extensions", _language_packages)
+        await components.start("runtime_authority", _runtime_authority, check=lambda service: service.is_running)
+        await components.start("system_updates", lambda: system_update_check_manager, task_attribute="_worker_task")
         yield
     finally:
-        if not extension_loader_task.done():
-            extension_loader_task.cancel()
-        if not application_event_task.done():
-            application_event_task.cancel()
-        if not application_job_task.done():
-            application_job_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await extension_loader_task
-        with suppress(asyncio.CancelledError):
-            await application_event_task
-        with suppress(asyncio.CancelledError):
-            await application_job_task
-        if public_web_gateway_started:
-            public_web_gateway.stop()
-        application_platform.stop()
-        await performance_monitor.stop_monitoring()
-        await update_manager.stop_update_worker()
-        await system_update_check_manager.stop()
+        await components.close()
 
 
 # Configure FastAPI to use Unicode-preserving JSON encoder
@@ -317,12 +219,12 @@ app.include_router(device_events_router)
 app.include_router(modules_router)
 app.include_router(application_extensions_router)
 app.include_router(application_authority_router)
-if os.getenv("THREE_MM_LOCAL_SESSIONS") == "1":
+if os.getenv("THREE_MM_LOCAL_SESSIONS") == "1" or os.getenv("THREE_MM_SESSION_LINKS") == "1":
     # Never mount the old user-id-only prototype. Both M20 and human authority
     # are checked continuously by this exact UI-bound isolated-worker connector.
     from backend.database import engine
     from backend.routes.application_sessions import application_session_router
-    from backend.services.application_local_sessions import configured_browser_service
+    from backend.services.application_session_runtimes import configured_browser_service
     app.include_router(application_session_router(configured_browser_service(engine)))
 app.include_router(application_events_router)
 app.include_router(application_operations_router)
@@ -342,15 +244,11 @@ app.include_router(permission_router, prefix="/api")
 # Remove duplicated role and group routes - they are handled by /api/ prefixed routes
 app.include_router(role_router, prefix="/api")
 app.include_router(group_router, prefix="/api")
-app.include_router(extension_router)
-app.include_router(marketplace_router)
-app.include_router(monitoring_router)
 app.include_router(language_router, prefix="/api")
 app.include_router(ai_extension_builder_router)
 
 # Removed excessive debug logging for cleaner startup
 
-# Extensions removed for MVP cleanup
 
 if __name__ == "__main__":
     import uvicorn

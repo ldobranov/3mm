@@ -45,52 +45,8 @@ const en = {
   themeColorSettings: 'Theme colors can be customized below. The original package and your built-in colors remain unchanged.',
   brandingHelp: 'Site name and header message are translated per language. Your logo applies to every language. Visual settings are in Theme Customization.',
 } as const
-const bg: Record<keyof typeof en, string> = {
-  navigation: 'Навигация', openMenu: 'Отвори навигацията', closeMenu: 'Затвори навигацията', skip: 'Към съдържанието',
-  language: 'Език', search: 'Търси команди', recovery: 'Връщане към вградения изглед',
-  preview: 'Преглед на оформлението', previewNote: 'Временен преглед в този браузър. Нищо не се записва в инсталацията.',
-  previewTheme: 'Преглед на тема', packagePreviewNote: 'Само този браузър показва прегледа. „Приложи тема“ записва избора; отказът или напускането на секцията връща текущия изглед.',
-  previewThemeFailed: 'Темата не може да се прегледа. Обнови списъка и провери дали пакетът е включен и наличен.',
-  previewAssetsFallback: 'Шрифт или изображение от прегледа не се зареди. Използват се системният шрифт и запазеното лого.',
-  exit: 'Назад към Настройки', restore: 'Възстанови вградения преглед', recoveryNote: 'Прегледът е изчистен. Инсталираната тема и запазените настройки не са променени.',
-  restoreInstalled: 'Използвай вградената тема постоянно', restoreFailed: 'Темата не може да се промени. Опитай отново.', restoreDone: 'Избрана е вградената тема. Запазените настройки са съхранени.',
-  layout: 'Разположение на навигацията', sidebar: 'Странична лента', top: 'Горна навигация', density: 'Плътност',
-  compact: 'Компактна', comfortable: 'Свободна', header: 'Използвай цветовете на темата за хедъра',
-  buttons: 'Стил на бутоните', solid: 'Плътни', outline: 'Контурни', cards: 'Стил на картите', bordered: 'С рамка', raised: 'Със сянка',
-  mode: 'Цветови режим', light: 'Светъл', dark: 'Тъмен', primitives: 'Общи контроли',
-  primary: 'Основно действие', secondary: 'Вторично действие', danger: 'Опасно действие', disabled: 'Неактивно', loading: 'Зареждане',
-  forms: 'Полета на формата', name: 'Име', namePlaceholder: 'Ясно и описателно име',
-  description: 'Описание', descriptionPlaceholder: 'Допълнителни подробности', error: 'Моля, въведи име.',
-  enabled: 'Включи този пример', enabledHelp: 'Само демонстрация — без операции с хардуер или приложения.',
-  dialog: 'Отвори тестов диалог', dialogTitle: 'Преглед на примерните настройки', cancel: 'Отказ', confirm: 'Провери примера',
-  close: 'Затвори', ready: 'Готово', pending: 'Изчаква', status: 'Статус', resource: 'Ресурс', owner: 'Собственик',
-  table: 'Таблица и статус', example: 'Примерен ресурс с по-дълъг етикет', currentUser: 'Текущ потребител',
-  validated: 'Примерът е проверен. Няма записани данни.', preferences: 'Контроли за прегледа',
-  appearanceTitle: 'Оформление и външен вид',
-  themeWorkspace: 'Настройки и преглед на темата', livePreview: 'Преглед на компонентите на живо',
-  applyBeforeEdit: 'Приложи тази тема, за да редактираш и запазиш настройките ѝ по-долу.',
-  appearanceOffline: 'Обновяването на темата е недостъпно. Запазен е последният успешно зареден изглед; опитай отново, когато връзката се възстанови.',
-  appearanceHelp: 'Пробвай промените тук и ги запази за тази инсталация. Всяка версия на тема пази свои настройки; ZIP пакетът не се променя.',
-  customHeader: 'Използвай собствени цветове за хедъра', headerBackground: 'Цвят на фона на хедъра', headerText: 'Цвят на текста в хедъра',
-  headerContrast: 'Избери валидни цветове с четим текст (контраст поне 4.5:1).',
-  modeHelp: 'Светъл/тъмен режим е лична настройка и се записва веднага. Не променя изгледа за другите потребители.',
-  saveAppearance: 'Запази оформлението', discardAppearance: 'Откажи промените', resetAppearance: 'Настройки на темата',
-  unsavedAppearance: 'Незаписан преглед — напускането на тази секция отменя промените.',
-  saveAppearanceFailed: 'Записът не успя. Обнови темата и опитай отново; промените остават незаписани.',
-  appearanceSaved: 'Оформлението е запазено.', appearanceReset: 'Настройките на темата са възстановени. Логото, текстовете и цветовете на вградената тема са запазени.',
-  componentPreview: 'Отвори преглед на компонентите', branding: 'Идентичност',
-  themeColors: 'Цветове на темата', themeColorsHelp: 'Променяй цветовете, които тази тема поддържа. Светлата и тъмната палитра са независими. Промените са само преглед до записване.',
-  editPalette: 'Палитра за редактиране', resetPalette: 'Възстанови тази палитра',
-  colorSurfaces: 'Фонове и повърхности', colorTexts: 'Текст', colorButtons: 'Бутони', colorStates: 'Статуси и фокус',
-  colorContrast: 'Използвай цветове #RRGGBB. Тема v2 изисква четим текст и бутони (4.5:1) и видим фокус (3:1); прегледът и записът са спрени, докато палитрата не е валидна.',
-  color_canvas: 'Фон на страницата', color_content: 'Фон на съдържанието', color_surface: 'Карти и диалози', color_surface_alt: 'Панели и навигация',
-  color_border: 'Рамки', color_text: 'Основен текст', color_text_secondary: 'Вторичен текст', color_text_muted: 'Приглушен текст',
-  color_accent: 'Основен бутон / акцент', color_accent_text: 'Текст на основния бутон', color_secondary: 'Вторичен бутон', color_secondary_text: 'Текст на вторичния бутон',
-  color_danger: 'Опасен бутон / статус', color_danger_text: 'Текст на опасния бутон', color_success: 'Успешен статус', color_warning: 'Предупредителен статус', color_focus: 'Индикатор за фокус',
-  themeColorSettings: 'Цветовете на темата могат да се променят по-долу. Оригиналният пакет и цветовете на вградената тема остават непроменени.',
-  brandingHelp: 'Името и съобщението се превеждат по езици. Логото е общо за всички езици. Визуалните настройки са в Персонализиране на тема.',
-}
+
 export function useUiLabels() {
-  const { t, currentLanguage } = useI18n()
-  return (key: keyof typeof en) => t(`uiPlatform.${key}`, (currentLanguage.value === 'bg' ? bg : en)[key])
+  const { t } = useI18n()
+  return (key: keyof typeof en) => t(`uiPlatform.${key}`, en[key])
 }

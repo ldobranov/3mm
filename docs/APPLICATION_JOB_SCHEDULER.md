@@ -1,4 +1,25 @@
-# Application job scheduler (0.3.0-beta.18)
+# Application job scheduler — retired in P3c
+
+Current status, 2026-10-23: the compatibility-only scheduler and Core startup
+worker are removed. Current package validation refuses declared schedules and
+`kind: job` operations; direct gateway dispatch refuses jobs in every authority
+mode. No scheduler is moved into Runtime and no scoped job permission is inferred.
+The reference package no longer declares jobs. A future scheduler needs a separate
+current resource/admission contract and execution boundary.
+
+Historical `ApplicationJobState` rows, restore fencing and administrator outcome
+resolution remain. The stopped-admin resolution only releases an explicitly
+reviewed old claim and records its audit; it does not schedule, replay or invoke
+anything. Operational status returns `jobs_supported: false` beside historical
+rows. Unknown external outcomes must not be relabeled as failed/unexecuted.
+
+The material below is the **historical beta.18 behavior**, retained to explain
+old records and the conservative resolution procedure. It is not current runtime
+support. Current boundaries and verification are in the
+[stabilization plan](CORE_STABILIZATION_ACTION_PLAN.md) and
+[working state](WORKING_STATE.md).
+
+## Historical beta.18 scheduler
 
 The generic Core scheduler honors declared `interval_seconds` without the previous
 fixed 30-second pause. The event retry worker remains unchanged at 30 seconds.

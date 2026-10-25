@@ -269,12 +269,6 @@ def application_definition(**changes):
                 "audiences": ["internal"],
                 "idempotency": "required",
             },
-            {
-                "operation_id": "sync_job",
-                "kind": "job",
-                "audiences": ["internal"],
-                "idempotency": "required",
-            },
         ],
         "routes": [
             {
@@ -309,13 +303,7 @@ def application_definition(**changes):
                 "supports_mutations": True,
             }
         ],
-        "jobs": [
-            {
-                "job_id": "sync",
-                "handler_operation_id": "sync_job",
-                "interval_seconds": 60,
-            }
-        ],
+        "jobs": [],
         "storage": {
             "schema_revision": "0001",
             "migration_entrypoint": "workflow_reference.migrations:get_migrations",

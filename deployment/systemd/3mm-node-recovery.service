@@ -9,7 +9,15 @@ User=root
 Group=3mm
 WorkingDirectory=/opt/3mm/current
 Environment=PYTHONPATH=/opt/3mm/current
+EnvironmentFile=-/etc/3mm/3mm.env
+ExecStartPre=/opt/3mm/current/.venv/bin/python -m three_mm_provisioning.recovery_access_point recover
 ExecStart=/opt/3mm/current/.venv/bin/python -m three_mm_runtime.node_recovery
+RuntimeDirectory=3mm
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+StateDirectory=3mm-setup-helper
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/3mm/provisioning /run/lock
 Restart=on-failure
 RestartSec=10s
 NoNewPrivileges=true

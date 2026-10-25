@@ -11,7 +11,7 @@ import pytest
 
 from three_mm_protocol import ApplicationPublicHttpResponseV1
 from three_mm_public_web.server import (
-    PublicWebCoreError,
+    PublicWebRuntimeError,
     create_server,
 )
 
@@ -118,7 +118,7 @@ def test_public_http_adapter_returns_closed_errors_for_methods_and_core_failure(
         assert method.value.code == 405
         assert method.value.headers["Allow"] == "GET, HEAD"
 
-        client.error = PublicWebCoreError(503)
+        client.error = PublicWebRuntimeError(503)
         with pytest.raises(HTTPError) as unavailable:
             urlopen(base + "/", timeout=2)
         assert unavailable.value.code == 503

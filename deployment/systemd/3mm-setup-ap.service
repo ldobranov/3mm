@@ -11,8 +11,9 @@ User=root
 Group=root
 WorkingDirectory=/opt/3mm/current
 Environment=PYTHONPATH=/opt/3mm/current
+EnvironmentFile=-/etc/3mm/3mm.env
 ExecStartPre=/usr/bin/install -o root -g root -m 0644 /opt/3mm/current/deployment/systemd/3mm-captive-portal-dnsmasq.conf /etc/NetworkManager/dnsmasq-shared.d/3mm-captive-portal.conf
-ExecStart=/opt/3mm/current/.venv/bin/python -m three_mm_provisioning.setup_access_point start --data-dir /var/lib/3mm/provisioning --interface wlan0
+ExecStart=/opt/3mm/current/.venv/bin/python -m three_mm_provisioning.setup_access_point start --data-dir /var/lib/3mm/provisioning
 ExecStop=/opt/3mm/current/.venv/bin/python -m three_mm_provisioning.setup_access_point stop
 ExecStopPost=/usr/bin/rm -f /etc/NetworkManager/dnsmasq-shared.d/3mm-captive-portal.conf
 RemainAfterExit=true

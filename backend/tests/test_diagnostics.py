@@ -1,4 +1,5 @@
 import json
+import asyncio
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -174,3 +175,65 @@ def test_operational_alerts_are_admin_only_and_read_only(monkeypatch: pytest.Mon
         assert not db.new and not db.dirty and not db.deleted
     finally:
         db.close()
+
+
+def test_operation_sessions_are_admin_only_bounded_and_separate_from_bundle(monkeypatch):
+    from three_mm_protocol.diagnostics import DiagnosticSession
+
+    client, db, admin_token, viewer_token = _client()
+    session = DiagnosticSession("core", "1.0")
+    monkeypatch.setattr("backend.routes.diagnostics.core_diagnostics", session)
+    monkeypatch.setattr("backend.routes.diagnostics.build_diagnostic_bundle", lambda _settings: _bundle())
+    admin = {"Authorization": f"Bearer {admin_token}"}
+    try:
+        for method, path, body in (
+            ("POST", "/session", {}), ("GET", "/session", None),
+            ("DELETE", "/session", None), ("GET", "/session/records", None),
+        ):
+            url = "/api/v1/diagnostics" + path
+            assert client.request(method, url, json=body).status_code == 401
+            assert client.request(method, url, json=body,
+                headers={"Authorization": f"Bearer {viewer_token}"}).status_code == 403
+        assert session.status()["session_id"] is None
+        for invalid in ({"ttl_seconds": 1801}, {"ttl_seconds": True}, {"payload": "secret"}):
+            assert client.post("/api/v1/diagnostics/session", json=invalid, headers=admin).status_code == 422
+        response = client.post("/api/v1/diagnostics/session", json={}, headers=admin)
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store"
+        assert response.json()["remaining_seconds"] <= 600
+        assert client.post("/api/v1/diagnostics/session", json={}, headers=admin).status_code == 409
+        session.record(trace_id="platform_" + "a" * 32, stage="core.request",
+                       result="ok", reason="ok", duration_ms=1)
+        response = client.get("/api/v1/diagnostics/session/records", headers=admin)
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/x-ndjson")
+        assert len(response.content.splitlines()) == 2
+        assert client.get("/api/v1/diagnostics/session/records", headers=admin).status_code == 200
+        bundle = client.get("/api/v1/diagnostics/bundle", headers=admin).json()
+        assert bundle["schema_version"] == 1
+        assert "trace_id" not in json.dumps(bundle)
+        assert client.delete("/api/v1/diagnostics/session", headers=admin).json()["active"] is False
+        assert not db.new and not db.dirty and not db.deleted
+    finally:
+        db.close()
+
+
+def test_disconnected_export_releases_optional_snapshot():
+    from backend.routes.diagnostics import DiagnosticRecordsResponse
+    from three_mm_protocol.diagnostics import DiagnosticSession
+
+    session = DiagnosticSession("core", "1.0")
+    session.start()
+    response = DiagnosticRecordsResponse(session)
+
+    async def disconnect(_message):
+        raise OSError("export client disconnected")
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    with pytest.raises(Exception):
+        asyncio.run(response({"type": "http", "asgi": {"spec_version": "2.4"}}, receive, disconnect))
+    assert not session._export_lock.locked()
+    with session.export() as chunks:
+        assert len(list(chunks)) == 1

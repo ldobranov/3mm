@@ -8,11 +8,11 @@ remote enrollment or OS-isolation claim. Browser tickets never replace M20.
 import asyncio
 import json
 import logging
+import math
 import secrets
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import wraps
 
@@ -32,6 +32,7 @@ from backend.services.application_access import (
 from backend.services.application_authority_management import AuthorityManagementError
 from backend.services.application_authority_sources import _read_snapshot
 from backend.services.application_session_authority import SessionAuthorityError
+from backend.services.application_session_runtimes import ReviewedSessionRuntime
 from three_mm_protocol.interactive_session import (
     MAX_SESSION_FRAME_BYTES,
     MAX_SESSION_PAYLOAD_BYTES,
@@ -40,7 +41,10 @@ from three_mm_protocol.interactive_session import (
     decode_session_frame,
     encode_session_frame,
 )
-from three_mm_runtime.session_output import pump_session_output
+from three_mm_runtime.session_output import (
+    SessionOutputAuthorityError,
+    pump_session_output,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,20 +58,11 @@ def _serialized_authority(method):
     return invoke
 
 
-@dataclass(frozen=True)
-class ReviewedSessionRuntime:
-    """Trusted runtime connection, pinned to the reviewed registry generation."""
-
-    device_id: str
-    provider_id: str
-    provider_version: str
-    control_revision: str
-    provider: object
-
-
 class _OwnedProvider:
-    def __init__(self, provider, session_id):
+    def __init__(self, provider, session_id, module_id, admitted, request):
         self.provider, self.session_id = provider, session_id
+        self.module_id, self.admitted, self.request = module_id, admitted, request
+        self.finalized = False
         self.lock = asyncio.Lock()
         self.closed = False
         self.failed = False
@@ -97,7 +92,18 @@ class ApplicationBrowserSessions:
         runtime_resolver=None,
         allowed_origins=(),
         lifetime=900,
+        startup_timeout=110.0,
+        startup_check_interval=1.0,
+        startup_authorization_timeout=5.0,
     ):
+        for name, value, maximum in (
+            ("timeout", startup_timeout, 110.0),
+            ("check interval", startup_check_interval, 1.0),
+            ("authorization timeout", startup_authorization_timeout, 5.0),
+        ):
+            if (type(value) not in (int, float) or not math.isfinite(value)
+                    or not 0.01 <= value <= maximum):
+                raise ValueError(f"Session startup {name} is outside bounds")
         if not 1 <= lifetime <= 900:
             raise ValueError("Session lifetime is outside bounds")
         self.authority, self.engine = authority, authority.manager.engine
@@ -105,6 +111,9 @@ class ApplicationBrowserSessions:
         self.runtime_resolver = runtime_resolver
         self.origins = frozenset(allowed_origins)
         self.lifetime = lifetime
+        self.startup_timeout = startup_timeout
+        self.startup_check_interval = startup_check_interval
+        self.startup_authorization_timeout = startup_authorization_timeout
         self.lock = threading.Lock()
         self.authority_lock = threading.RLock()
         self.clock = time.monotonic
@@ -212,7 +221,8 @@ class ApplicationBrowserSessions:
                 resource["control_revision"],
             )
         ]
-        if len(matches) != 1 or not all(
+        if (len(matches) != 1 or not callable(matches[0].is_current)
+                or matches[0].is_current() is not True) or not all(
             callable(getattr(matches[0].provider, name, None))
             for name in ("open", "receive", "control", "close", "read_output")
         ):
@@ -314,7 +324,7 @@ class ApplicationBrowserSessions:
             raise SessionAuthorityError("Session ticket is unavailable")
         return item
 
-    def _audit(self, admitted, module_id, outcome):
+    def _audit(self, admitted, module_id, outcome, actor_user_id=None):
         with Session(self.engine) as db, db.begin():
             db.add(
                 AuditLog(
@@ -329,6 +339,7 @@ class ApplicationBrowserSessions:
                         "binding_id": admitted.binding_id,
                         "grant_revision": admitted.grant_revision,
                         "outcome": outcome,
+                        **({"reconciled_by": actor_user_id} if actor_user_id is not None else {}),
                     },
                 )
             )
@@ -346,6 +357,81 @@ class ApplicationBrowserSessions:
             operation=operation,
             control_action=action,
         )
+
+    def _recovery_actor(self, authorization):
+        from backend.utils.auth_dep import require_user, require_admin
+        with _read_snapshot(self.engine) as db:
+            claims = require_user(authorization=authorization, db=db)
+            if type(claims.get("sid")) is not int or claims["sid"] < 1:
+                raise HTTPException(401, "A current tracked administrator login is required")
+            return require_admin(claims=claims, db=db).id
+
+    def recovery_status(self, module_id, authorization):
+        self._recovery_actor(authorization)
+        with self.lock:
+            records = [
+                {"session_id": sid, "state": "cleanup_required" if owned.finalized and owned.failed else "active_or_closing",
+                 "binding_id": owned.admitted.binding_id, "device_id": owned.request.device_id,
+                 "provider_id": owned.request.provider_id, "grant_revision": owned.admitted.grant_revision}
+                for sid, owned in self.owned.items() if owned.module_id == module_id
+            ]
+        return {"session_recovery_version": 1, "sessions": records}
+
+    async def confirm_cleanup(self, module_id, session_id, authorization):
+        actor = await asyncio.to_thread(self._recovery_actor, authorization)
+        with self.lock:
+            owned = self.owned.get(session_id)
+            if owned is None or owned.module_id != module_id:
+                raise HTTPException(404, "Owned session recovery was not found")
+        async with owned.lock:
+            if not owned.finalized or not owned.closed or not owned.failed:
+                raise HTTPException(409, "Session cleanup is not awaiting reconciliation")
+            confirm = getattr(owned.provider, "confirm_cleanup", None)
+            if not callable(confirm):
+                raise HTTPException(409, "Executor cannot confirm its OS cleanup")
+            try:
+                if await asyncio.wait_for(confirm(), 5) is not None:
+                    raise ValueError("Invalid cleanup observation")
+                # Recheck the actor after I/O; revocation cannot release a fence.
+                await asyncio.to_thread(self._recovery_actor, authorization)
+                await asyncio.to_thread(self._audit, owned.admitted, module_id, "cleanup_reconciled", actor)
+            except HTTPException:
+                raise
+            except Exception:
+                raise HTTPException(409, "Exact OS cleanup remains unconfirmed") from None
+            with self.lock:
+                if self.owned.get(session_id) is not owned:
+                    raise HTTPException(409, "Owned session recovery changed")
+                self.owned.pop(session_id)
+                self._release(owned.admitted)
+        return {"session_recovery_version": 1, "session_id": session_id, "state": "cleanup_confirmed"}
+
+    async def _open_with_authority(self, operation, authorize):
+        """Bound cold startup while checking the same live authority throughout.
+
+        The caller authorizes before creating the owned operation. A slow ARM
+        worker may need more time than an input/control operation, but that time
+        never freezes M20/UI/user/runtime authority or permits an escaped task.
+        """
+        opening = asyncio.create_task(operation)
+        async def guarded():
+            while True:
+                done, _ = await asyncio.wait(
+                    (opening,), timeout=self.startup_check_interval
+                )
+                await asyncio.wait_for(
+                    authorize(), self.startup_authorization_timeout
+                )
+                if opening in done:
+                    await opening
+                    return
+        try:
+            await asyncio.wait_for(guarded(), self.startup_timeout)
+        finally:
+            if not opening.done():
+                opening.cancel()
+            # Do not let a revoked/timed-out startup continue behind cleanup.
+            await asyncio.gather(opening, return_exceptions=True)
 
     async def serve(self, websocket, module_id, entrypoint_id):
         # No JWT/ticket in a URL, no absent/wildcard Origin fallback.
@@ -380,7 +466,8 @@ class ApplicationBrowserSessions:
             output_seq, input_seq = 0, 0
 
             async def check(operation="output", action=None):
-                if self.clock() >= deadline or owned is not None and owned.closed:
+                if (self.clock() >= deadline or owned is not None and owned.closed
+                    or await asyncio.to_thread(runtime.is_current) is not True):
                     raise SessionAuthorityError("Session expired")
                 async with check_lock:
                     await asyncio.to_thread(
@@ -422,13 +509,13 @@ class ApplicationBrowserSessions:
                 _header, payload = decode_session_frame(frame)
                 await send_output(payload)
 
-            await check("status")
-            owned = _OwnedProvider(runtime.provider, session_id)
+            await asyncio.wait_for(check("status"), self.startup_authorization_timeout)
+            owned = _OwnedProvider(runtime.provider, session_id, module_id, admitted, request)
             with self.lock:
                 self.owned[session_id] = owned
             await asyncio.to_thread(self._audit, admitted, module_id, "start_requested")
             # Context is Core-owned, not the browser payload or a naked hello.
-            await asyncio.wait_for(
+            await self._open_with_authority(
                 runtime.provider.open(
                     {
                         "session_id": session_id,
@@ -438,9 +525,8 @@ class ApplicationBrowserSessions:
                         "options": request.options,
                     }
                 ),
-                10,
+                lambda: check("status"),
             )
-            await check("status")
             created = datetime.now(UTC)
             await send_json(
                 {
@@ -454,7 +540,7 @@ class ApplicationBrowserSessions:
                         "capability_id": request.capability_id,
                         "created_at": created.isoformat(),
                         "expires_at": (
-                            created + timedelta(seconds=self.lifetime)
+                            created + timedelta(seconds=max(0, deadline - self.clock()))
                         ).isoformat(),
                     },
                 }
@@ -548,10 +634,13 @@ class ApplicationBrowserSessions:
             # No output, tokens, tickets, provider exception or command data in errors.
             self.failures.append(type(exc).__name__)
             category = (
-                "authority"
+                "authority_timeout"
+                if isinstance(exc, SessionOutputAuthorityError)
+                and isinstance(exc.__cause__, TimeoutError)
+                else "authority"
                 if isinstance(
                     exc,
-                    (SessionAuthorityError, AuthorityManagementError, HTTPException),
+                    (SessionAuthorityError, AuthorityManagementError, HTTPException, SessionOutputAuthorityError),
                 )
                 else "timeout" if isinstance(exc, TimeoutError) else "runtime"
             )
@@ -591,6 +680,8 @@ class ApplicationBrowserSessions:
                 elif admitted is not None:
                     with self.lock:
                         self._release(admitted)
+                if owned is not None:
+                    owned.finalized = True
 
             cleanup = asyncio.create_task(finalize())
             try:

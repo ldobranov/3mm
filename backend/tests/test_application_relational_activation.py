@@ -1,4 +1,5 @@
 """Exact Core start consent + actual non-root prepared host, no live services."""
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 import hashlib
 import io
@@ -714,6 +715,7 @@ class ProcessSupervisor:
 @pytest.fixture
 def physical(migratable, monkeypatch):
     state = migratable
+    monkeypatch.setenv("THREE_MM_PLATFORM_RUNTIME_SOCKET", str(state.runtime / "platform/platform.sock"))
     package(state, "read_write")
     state.source = migration_ticket(state)
     run(state, state.source)  # Actual non-root migrations, signed prepared record.
@@ -732,7 +734,7 @@ def physical(migratable, monkeypatch):
     )
     state.server = ApplicationPlatformServer(
         state.platform / "platform.sock", state.transport_keys
-    )
+    , allowed_actions=COMPATIBILITY_ACTIONS)
     state.server.start()
     os.chown(state.server.socket_path, 0, 1201)
     state.settings = ApplicationRuntimeSettings(

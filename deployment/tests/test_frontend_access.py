@@ -167,6 +167,8 @@ def test_target_installer_writes_merged_policy_and_keeps_unrelated_state(tmp_pat
     result = run(
         f"environment_file={shlex.quote(str(environment))}\n"
         f"test_root={shlex.quote(str(tmp_path))}\n"
+        f"agent_environment_file={shlex.quote(str(tmp_path / 'agent.env'))}\n"
+        "backup_root=$test_root\nnetwork_backend=host\n"
         f"frontend_cors_origins={shlex.quote(json.dumps(origins))}\n"
         "install_profile=full\nenvironment_backup_created=1\n"
         "frontend_origin=http://localhost\n"

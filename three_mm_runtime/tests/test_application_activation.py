@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import os
 import zipfile
 import sqlite3
 from pathlib import Path
@@ -57,6 +58,11 @@ class Supervisor:
 
     def stop(self, instance_id):
         self.calls.append(("stop", instance_id))
+
+    def recover_disabled(self, instance_id):
+        self.stop(instance_id)
+        return dict(LoadState="loaded", ActiveState="inactive", SubState="dead",
+                    UnitFileState="disabled", MainPID="0", Job="")
 
 
 class ReadyClient:
@@ -247,6 +253,7 @@ def test_uninstall_removes_runtime_files_but_preserves_application_data(tmp_path
     assert not (key_root / f"{instance_id}.key").exists()
 
 
+@pytest.mark.skipif(os.name != "posix", reason="Native FD-anchored erasure")
 def test_erasing_preserved_data_requires_an_uninstalled_service(tmp_path):
     instance_id = "a" * 24
     root = tmp_path / "apps"
@@ -268,3 +275,103 @@ def test_erasing_preserved_data_requires_an_uninstalled_service(tmp_path):
         supervisor=Supervisor(),
     )
     assert not data_root.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Native FD-anchored erasure")
+def test_retained_erase_verifies_quiescence_even_when_boot_disabled(tmp_path):
+    instance_id = "a" * 24
+    root = tmp_path / "apps"
+    data = root / instance_id / "data"
+    data.mkdir(parents=True)
+    (data / "state.sqlite3").write_bytes(b"private data")
+    supervisor = Supervisor()
+    erase_application_instance_data(instance_id, root=root, supervisor=supervisor)
+    assert supervisor.calls == [("is_enabled", instance_id), ("stop", instance_id)]
+    assert not data.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Native FD-anchored erasure")
+@pytest.mark.parametrize("evidence", [None, {}, dict(LoadState="loaded", ActiveState="active",
+    SubState="running", UnitFileState="disabled", MainPID="42", Job="")])
+def test_retained_erase_refuses_unknown_or_running_unit(tmp_path, evidence):
+    instance_id = "a" * 24
+    root = tmp_path / "apps"
+    data = root / instance_id / "data"
+    data.mkdir(parents=True)
+    sentinel = data / "state.sqlite3"
+    sentinel.write_bytes(b"keep")
+    class Unknown(Supervisor):
+        def recover_disabled(self, _instance):
+            return evidence
+    with pytest.raises(ApplicationActivationError, match="confirmed stopped"):
+        erase_application_instance_data(instance_id, root=root, supervisor=Unknown())
+    assert sentinel.read_bytes() == b"keep"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Native FD-anchored erasure")
+def test_retained_erase_refuses_failed_stop_and_pending_rollback(tmp_path):
+    instance_id = "a" * 24
+    root = tmp_path / "apps"
+    data = root / instance_id / "data"
+    data.mkdir(parents=True)
+    sentinel = data / "state.sqlite3"
+    sentinel.write_bytes(b"keep")
+    class Broken(Supervisor):
+        def recover_disabled(self, _instance):
+            raise ApplicationActivationError("Unknown stop outcome")
+    with pytest.raises(ApplicationActivationError, match="Unknown stop"):
+        erase_application_instance_data(instance_id, root=root, supervisor=Broken())
+    marker = root / instance_id / (".activation-" + "b" * 32 + ".rollback")
+    marker.mkdir()
+    supervisor = Supervisor()
+    with pytest.raises(ApplicationActivationError, match="unfinished rollback"):
+        erase_application_instance_data(instance_id, root=root, supervisor=supervisor)
+    assert not supervisor.calls and sentinel.read_bytes() == b"keep"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Native FD-anchored erasure")
+@pytest.mark.parametrize("position", ["ancestor", "instance", "data"])
+def test_retained_erase_never_follows_symlink_outside_instance(tmp_path, position):
+    instance_id = "a" * 24
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "keep.txt"
+    sentinel.write_bytes(b"outside data")
+    root = tmp_path / "apps"
+    if position == "ancestor":
+        root.symlink_to(outside, target_is_directory=True)
+    elif position == "instance":
+        root.mkdir()
+        (root / instance_id).symlink_to(outside, target_is_directory=True)
+    else:
+        (root / instance_id).mkdir(parents=True)
+        (root / instance_id / "data").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ApplicationActivationError, match="directory is invalid"):
+        erase_application_instance_data(instance_id, root=root, supervisor=Supervisor())
+    assert sentinel.read_bytes() == b"outside data"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Native FD-anchored erasure")
+@pytest.mark.parametrize("fault", ["raise", "silent_noop"])
+def test_retained_erase_does_not_report_failed_deletion_as_success(tmp_path, monkeypatch, fault):
+    instance_id = "a" * 24
+    root = tmp_path / "apps"
+    data = root / instance_id / "data"
+    data.mkdir(parents=True)
+    sentinel = data / "state.sqlite3"
+    sentinel.write_bytes(b"keep")
+    def fail(*_args, **_kwargs):
+        if fault == "raise":
+            raise PermissionError("private filesystem detail")
+    fail.avoids_symlink_attacks = True
+    monkeypatch.setattr(application_activation.shutil, "rmtree", fail)
+    with pytest.raises(ApplicationActivationError):
+        erase_application_instance_data(instance_id, root=root, supervisor=Supervisor())
+    assert sentinel.read_bytes() == b"keep"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Native FD-anchored erasure")
+def test_missing_retained_directory_still_requires_runtime_quiescence(tmp_path):
+    supervisor = Supervisor()
+    erase_application_instance_data("a" * 24, root=tmp_path / "missing", supervisor=supervisor)
+    assert supervisor.calls == [("is_enabled", "a" * 24), ("stop", "a" * 24)]

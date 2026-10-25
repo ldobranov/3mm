@@ -25,7 +25,7 @@ describe('Support diagnostics settings', () => {
   })
 
   it('loads the redacted diagnostics preview', async () => {
-    const wrapper = mount(DiagnosticsSection)
+    const wrapper = mount(DiagnosticsSection, { global: { stubs: { DiagnosticWorkspace: true } } })
     await flushPromises()
 
     expect(http.get).toHaveBeenCalledWith('/api/v1/diagnostics/preview')
@@ -44,7 +44,7 @@ describe('Support diagnostics settings', () => {
         data: new Blob(['{}'], { type: 'application/json' }),
         headers: { 'content-disposition': 'attachment; filename="3mm-diagnostics-test.json"' },
       })
-    const wrapper = mount(DiagnosticsSection)
+    const wrapper = mount(DiagnosticsSection, { global: { stubs: { DiagnosticWorkspace: true } } })
     await flushPromises()
 
     await wrapper.find('button').trigger('click')
@@ -61,7 +61,7 @@ describe('Support diagnostics settings', () => {
       estimated_size_bytes: 1, check_count: 3, warning_count: 2,
       checks: ['ok', 'warning', 'error'].map(status => ({ name: status, status, summary: status })),
     } })
-    const wrapper = mount(DiagnosticsSection)
+    const wrapper = mount(DiagnosticsSection, { global: { stubs: { DiagnosticWorkspace: true } } })
     await flushPromises()
     expect(wrapper.findAll('.check-state').map(badge => badge.text())).toEqual(['Ready', 'Warning', 'Error'])
     expect(wrapper.findAll('.check-state').every(badge => badge.classes().includes('ui-badge'))).toBe(true)

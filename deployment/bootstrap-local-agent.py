@@ -13,6 +13,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from agent.identity import AgentIdentity
 from backend.database import SessionLocal
+from backend.services.installation_identity import InstallationIdentityError, installation_identity
+from three_mm_provisioning import FileProvisioningStore, ProvisioningState
 from deployment.local_agent_pairing import (
     LocalAgentPairingError,
     ensure_automatic_local_agent_pairing,
@@ -48,6 +50,12 @@ def main() -> None:
     try:
         with SessionLocal() as db:
             if args.automatic:
+                snapshot = FileProvisioningStore(args.provisioning_data_dir).load()
+                if (snapshot is not None and snapshot.state is ProvisioningState.PROVISIONED
+                        and snapshot.role in {AgentRole.STANDALONE, AgentRole.HUB}):
+                    # This trusted CLI owns a fresh Session and the local Core
+                    # environment. Establish the pin before the Agent starts.
+                    installation_identity(db)
                 result = ensure_automatic_local_agent_pairing(
                     db,
                     agent_data_dir=args.agent_data_dir,
@@ -80,7 +88,7 @@ def main() -> None:
                     admin_email=args.admin_email,
                     public_key=public_key,
                 )
-    except (LocalAgentPairingError, OSError, ValueError) as exc:
+    except (LocalAgentPairingError, InstallationIdentityError, OSError, ValueError) as exc:
         raise SystemExit(str(exc)) from exc
     print(f"Local Agent pairing status: {result.status} ({result.device_id or 'external Core'})")
 

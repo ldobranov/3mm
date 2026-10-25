@@ -80,7 +80,9 @@ def test_attempt_snapshot_contains_only_recovery_phase():
 
     assert snapshot.state is ProvisioningState.APPLYING_NETWORK
     assert snapshot.to_dict() == {
-        "schema_version": 1,
+        "schema_version": 2,
+        "network_mode": "preserve",
+        "network_interface": None,
         "state": "applying_network",
         "role": None,
         "locale": None,
@@ -88,3 +90,13 @@ def test_attempt_snapshot_contains_only_recovery_phase():
         "administrator_name": None,
         "hub_endpoint": None,
     }
+
+
+def test_v1_snapshot_preserves_identity_without_claiming_wifi_ownership():
+    value = ProvisioningSnapshot.provisioned(_request()).to_dict()
+    value['schema_version'] = 1
+    value.pop('network_mode')
+    value.pop('network_interface')
+    snapshot = ProvisioningSnapshot.from_dict(value)
+    assert snapshot.network_mode.value == 'preserve'
+    assert snapshot.hub_endpoint == value['hub_endpoint'] and snapshot.role.value == 'node'

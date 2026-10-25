@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "components": {
+    "agent": {
+      "device_contract": 1
+    },
+    "public-web": {
+      "public_web_contract": 1
+    },
+    "session-worker": {
+      "session_profile": "isolated_session_v1"
+    },
+    "session-node": {
+      "session_link_contract": 1
+    },
+    "session-relay": {
+      "session_relay_contract": 1
+    }
+  }
+}

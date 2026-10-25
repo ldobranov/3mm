@@ -18,7 +18,6 @@ from backend.schemas.ai_extension_builder import (
 from backend.utils.ai_extension_builder.openrouter_client import OpenRouterClient
 from backend.utils.ai_extension_builder.groq_client import GroqClient
 from backend.utils.ai_extension_builder.free_provider_client import FreeProviderFallbackClient
-from backend.utils.ai_extension_builder.validators import validate_extension_package
 from backend.utils.ai_extension_builder.widget_spec import (
     compiled_module_id,
     normalize_widget_spec,
@@ -30,21 +29,6 @@ logger = logging.getLogger(__name__)
 
 class IncompleteAIGenerationError(RuntimeError):
     """Raised when AI leaves a compiled widget as a non-functional scaffold."""
-
-
-def _extension_namespace(name: str) -> str:
-    # StoreExtension -> store
-    base = re.sub(r"extension$", "", name, flags=re.IGNORECASE)
-    base = base.strip() or name
-    return re.sub(r"[^a-z0-9]", "", base.lower())
-
-
-def _ensure_trailing_slash(path: str) -> str:
-    return path if path.endswith("/") else f"{path}/"
-
-
-def _json_bytes(data: Dict) -> bytes:
-    return json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
 
 
 def _extract_json_object(text: object) -> Optional[Dict]:
@@ -232,14 +216,10 @@ def _ai_refine_files(
     allowed_paths = sorted(base_files_text.keys())
 
     repo_context = (
-        "Repo extension rules (condensed):\n"
-        "- Keep ZIP structure and filenames unchanged; do not add new files.\n"
-        "- Backend entry must implement initialize_extension(context) and register an APIRouter(prefix=spec.api_prefix).\n"
-        "- Protected endpoints must use Depends(require_user) from backend.utils.auth_dep.\n"
-        "- Prefer stable API prefixes across versions (e.g. /api/<nameWithoutExtension>).\n"
-        "- i18n keys must be namespaced and match JSON nesting exactly; use t('key', 'fallback') on the frontend.\n"
-        "- If creating DB tables, use lowercase names and the ext_<extensionbase>_* naming to support cleanup.\n"
-        "- If relationships/provides.content_embedders are present, ensure the frontend component exists and keys for its labels exist.\n"
+        "Compiled Vue UI inside a manifest-v2 package. Never generate Core Python, "
+        "SQL against Core, private Core imports or runtime filesystem discovery. "
+        "Only import Vue, the public extension UI contract or relative sources. "
+        "Use existing declared capability bindings. Keep all user-facing text localizable."
     )
 
     system = (
@@ -469,195 +449,6 @@ def _ai_refine_files(
             )
         )
         return {}, warnings
-
-
-def _python_backend_entry(spec: ExtensionSpec) -> str:
-    prefix = spec.api_prefix
-    ns = _extension_namespace(spec.name)
-    # Keep skeleton aligned with EXTENSION_DEVELOPMENT_GUIDE.md patterns.
-    return f'''from __future__ import annotations
-
-from fastapi import APIRouter, Depends
-from backend.utils.auth_dep import require_user
-
-
-def initialize_extension(context):
-    """Initialize {spec.name} {spec.version}."""
-    router = APIRouter(prefix="{prefix}")
-
-    @router.get("/health")
-    def health():
-        return {{"ok": True, "extension": "{spec.name}", "version": "{spec.version}"}}
-
-    @router.get("/private")
-    def private_endpoint(claims: dict = Depends(require_user)):
-        return {{"user_id": claims.get("user_id") or claims.get("sub"), "ns": "{ns}"}}
-
-    # TODO: Add endpoints required by relationships (content embedders, shared APIs, etc.)
-
-    context.register_router(router)
-    return {{"routes_registered": len(router.routes), "status": "initialized"}}
-
-
-def cleanup_extension(context):
-    return {{"status": "cleaned_up"}}
-'''
-
-
-def _vue_main_component(spec: ExtensionSpec) -> str:
-    ns = _extension_namespace(spec.name)
-    title_key = f"{ns}.title"
-    return f'''<template>
-  <div class="extension-container">
-    <div class="extension-header">
-      <h1>{{{{ t('{title_key}', '{spec.name}') }}}}</h1>
-      <p class="muted">{spec.description}</p>
-    </div>
-
-    <div class="extension-content">
-      <p>{{{{ t('{ns}.status.ready', 'Ready') }}}}</p>
-    </div>
-  </div>
-</template>
-
-<script setup lang="ts">
-import {{ useI18n }} from '@/utils/i18n'
-
-const {{ t }} = useI18n()
-</script>
-
-<style scoped>
-.extension-container {{
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 1.5rem;
-}}
-
-.extension-header {{
-  margin-bottom: 1rem;
-}}
-
-.muted {{
-  opacity: 0.75;
-}}
-</style>
-'''
-
-
-def _vue_embedder_component(component_name: str, spec: ExtensionSpec) -> str:
-    ns = _extension_namespace(spec.name)
-    return f'''<template>
-  <div class="embedder">
-    <strong>{{{{ t('{ns}.embedders.{component_name}.title', '{component_name}') }}}}</strong>
-    <p class="muted">{{{{ t('{ns}.embedders.{component_name}.hint', 'Embedder component placeholder') }}}}</p>
-  </div>
-</template>
-
-<script setup lang="ts">
-import {{ useI18n }} from '@/utils/i18n'
-
-const {{ t }} = useI18n()
-</script>
-
-<style scoped>
-.embedder {{
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  padding: 0.75rem;
-}}
-
-.muted {{
-  opacity: 0.75;
-}}
-</style>
-'''
-
-
-def _vue_route_component(component_name: str, spec: ExtensionSpec, route_path: Optional[str] = None) -> str:
-    """Generic placeholder component for a manifest frontend route."""
-    ns = _extension_namespace(spec.name)
-    safe_component = component_name.replace('.vue', '')
-    title_key = f"{ns}.routes.{safe_component}.title"
-    hint_key = f"{ns}.routes.{safe_component}.hint"
-    route_hint = f"Route: {route_path}" if route_path else "Route component placeholder"
-    return f'''<template>
-  <div class="route">
-    <h2>{{{{ t('{title_key}', '{safe_component}') }}}}</h2>
-    <p class="muted">{{{{ t('{hint_key}', '{route_hint}') }}}}</p>
-  </div>
-</template>
-
-<script setup lang="ts">
-import {{ useI18n }} from '@/utils/i18n'
-
-const {{ t }} = useI18n()
-</script>
-
-<style scoped>
-.route {{
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  padding: 0.75rem;
-}}
-
-.muted {{
-  opacity: 0.75;
-}}
-</style>
-'''
-
-
-def _default_locales(spec: ExtensionSpec) -> Tuple[Dict, Dict]:
-    ns = _extension_namespace(spec.name)
-    en = {
-        ns: {
-            "title": spec.name,
-            "status": {"ready": "Ready"},
-            "actions": {"save": "Save", "cancel": "Cancel"},
-            "embedders": {},
-            "routes": {},
-        }
-    }
-
-    bg = {
-        ns: {
-            "title": spec.name,
-            "status": {"ready": "Готово"},
-            "actions": {"save": "Запази", "cancel": "Отказ"},
-            "embedders": {},
-            "routes": {},
-        }
-    }
-
-    # Add placeholder strings for any provided embedders
-    provides = spec.provides.content_embedders if spec.provides and spec.provides.content_embedders else None
-    if provides:
-        for embedder_type, cfg in provides.items():
-            component = cfg.component
-            en[ns]["embedders"][component] = {
-                "title": f"{component}",
-                "hint": f"Embedder: {embedder_type}",
-            }
-            bg[ns]["embedders"][component] = {
-                "title": f"{component}",
-                "hint": f"Вграждане: {embedder_type}",
-            }
-
-    # Add placeholder strings for any configured frontend routes (beyond the main entry)
-    for r in spec.frontend_routes or []:
-        comp = r.component
-        if not comp:
-            continue
-        comp_name = comp.replace('.vue', '')
-        en[ns]["routes"].setdefault(comp_name, {})
-        bg[ns]["routes"].setdefault(comp_name, {})
-        en[ns]["routes"][comp_name].setdefault("title", comp_name)
-        bg[ns]["routes"][comp_name].setdefault("title", comp_name)
-        if r.path:
-            en[ns]["routes"][comp_name].setdefault("hint", f"Route: {r.path}")
-            bg[ns]["routes"][comp_name].setdefault("hint", f"Път: {r.path}")
-
-    return en, bg
 
 
 def _compiled_widget_component(spec: ExtensionSpec) -> str:
@@ -965,6 +756,15 @@ def _build_compiled_widget_zip(
             {"entrypoint_id": editor_id, "kind": "editor", "source": "source/frontend/WidgetEditor.vue", "label": {"en": f"{spec.name} settings", "translations": {"bg": f"Настройки на {spec.name}"}}, "target_entrypoint_id": widget_id},
         ],
     }
+    if spec.type == "extension":
+        routes = spec.frontend_routes
+        contract["entrypoints"] = [
+            {"entrypoint_id": f"page_{index}", "kind": "route", "source": "source/frontend/Widget.vue",
+             "route": route.path, "requires_role": (route.meta or {}).get("requiresRole"),
+             "label": {"en": route.name or spec.name}}
+            for index, route in enumerate(routes)
+        ] or [{"entrypoint_id":"page", "kind":"route", "source":"source/frontend/Widget.vue",
+               "route":f"/extensions/{module_id}","label":{"en":spec.name}}]
     if spec.capability_plan:
         contract["capability_plan"] = spec.capability_plan.model_dump(mode="json")
     schema_properties = (spec.config_schema or {}).get("properties", {})
@@ -986,6 +786,8 @@ def _build_compiled_widget_zip(
         "health_check": {"type": "json_file", "path": "compiled-ui.json"},
         "registrations": [{"kind": "widget", "registration_id": f"{module_id}.widget", "metadata": {"entrypoint_id": widget_id}}],
     }
+    if spec.type == "extension":
+        manifest["registrations"] = []
     files_text = {
         "manifest.json": json.dumps(manifest, ensure_ascii=False, indent=2),
         "compiled-ui.json": json.dumps(contract, ensure_ascii=False, indent=2),
@@ -1007,7 +809,7 @@ def _build_compiled_widget_zip(
         }
         compiled_instructions = (
             (instructions or spec.goal or "")
-            + "\n\nThis is a compiled Vue widget package. Modify the widget and editor source as needed. "
+            + "\n\nThis is a compiled Vue UI package. Implement the requested page or widget in the provided sources. "
               "Only import from 'vue' or relative source files. The widget receives a reactive config prop; "
               "the editor must emit update:modelValue with the complete new config object."
         )
@@ -1042,202 +844,13 @@ def build_extension_zip(
     groq_api_key: Optional[str] = None,
     openrouter_api_key: Optional[str] = None,
 ) -> Tuple[BuildReport, str, Dict[str, str]]:
-    """Build a ZIP package (base64) matching backend upload expectations.
-
-    Structure:
-      - manifest.json (root)
-      - backend/<backend_entry>
-      - frontend/<frontend_entry>
-      - frontend/<extra components>
-      - locales/<lang>.json
-    """
-
-    if spec.type == "widget":
-        spec = normalize_widget_spec(spec)
-        return _build_compiled_widget_zip(
-            spec, instructions, use_ai, model, ai_provider, groq_api_key, openrouter_api_key
-        )
-
-    extension_id = f"{spec.name}_{spec.version}"
-    warnings: List[BuildWarning] = []
-
-    # Normalize locales directory
-    locales_dir = _ensure_trailing_slash(spec.locales.directory)
-
-    manifest: Dict = {
-        "name": spec.name,
-        "version": spec.version,
-        "type": spec.type,
-        "description": spec.description,
-        "author": spec.author,
-        "backend_entry": spec.backend_entry,
-        "frontend_entry": spec.frontend_entry,
-        "frontend_components": spec.frontend_components,
-        "frontend_routes": [r.model_dump() for r in spec.frontend_routes],
-        "locales": {
-            "supported": spec.locales.supported,
-            "default": spec.locales.default,
-            "directory": locales_dir,
-        },
-        "permissions": spec.permissions,
-        "public_endpoints": spec.public_endpoints,
-        "dependencies": spec.dependencies,
-    }
-
-    if spec.provides is not None:
-        manifest["provides"] = spec.provides.model_dump(exclude_none=True)
-
-    if spec.consumes is not None:
-        manifest["consumes"] = spec.consumes.model_dump(exclude_none=True)
-
-    # Files
-    files: Dict[str, bytes] = {}
-
-    files["manifest.json"] = _json_bytes(manifest)
-
-    # Backend
-    files[f"backend/{spec.backend_entry}"] = _python_backend_entry(spec).encode("utf-8")
-
-    # Frontend
-    files[f"frontend/{spec.frontend_entry}"] = _vue_main_component(spec).encode("utf-8")
-
-    # Ensure all route components exist (so generated extensions aren't "empty" due to missing .vue files).
-    for r in spec.frontend_routes or []:
-        comp = r.component
-        if not comp:
-            continue
-        comp_file = comp if comp.endswith('.vue') else f"{comp}.vue"
-        frontend_path = f"frontend/{comp_file}"
-        if frontend_path in files:
-            continue
-        files[frontend_path] = _vue_route_component(comp_file, spec, route_path=r.path).encode("utf-8")
-
-    # Ensure frontend_components exist
-    for comp in spec.frontend_components or []:
-        comp_file = comp if comp.endswith('.vue') else f"{comp}.vue"
-        frontend_path = f"frontend/{comp_file}"
-        if frontend_path in files:
-            continue
-        files[frontend_path] = _vue_route_component(comp_file, spec).encode("utf-8")
-
-    # Relationship-aware components (provider side)
-    provides = spec.provides.content_embedders if spec.provides and spec.provides.content_embedders else None
-    if provides:
-        for _, cfg in provides.items():
-            comp_name = cfg.component
-            # Ensure .vue suffix
-            comp_file = f"{comp_name}.vue" if not comp_name.endswith(".vue") else comp_name
-            files[f"frontend/{comp_file}"] = _vue_embedder_component(comp_name.replace('.vue', ''), spec).encode("utf-8")
-
-    # Locales (root locales/ as per installer expectations)
-    en_json, bg_json = _default_locales(spec)
-    for lang in spec.locales.supported:
-        if lang == "en":
-            files[f"{locales_dir}{lang}.json"] = _json_bytes(en_json)
-        elif lang == "bg":
-            files[f"{locales_dir}{lang}.json"] = _json_bytes(bg_json)
-        else:
-            warnings.append(
-                BuildWarning(
-                    code="locale.missing",
-                    message=f"Locale '{lang}' requested but generator only scaffolds en/bg in v1; created empty file.",
-                )
-            )
-            files[f"{locales_dir}{lang}.json"] = _json_bytes({})
-
-    # Optional AI refinement step: modify ONLY existing files.
-    if use_ai and (instructions or spec.goal):
-        base_files_text = {}
-        for path, content in files.items():
-            # Only pass text files to the model
-            try:
-                base_files_text[path] = content.decode("utf-8")
-            except Exception:
-                continue
-
-        updates, ai_warnings = _ai_refine_files(
-            spec,
-            instructions,
-            base_files_text,
-            model,
-            ai_provider=ai_provider,
-            groq_api_key=groq_api_key,
-            openrouter_api_key=openrouter_api_key,
-        )
-        warnings.extend(ai_warnings)
-
-        for path, text in updates.items():
-            files[path] = text.encode("utf-8")
-
-        # Validation + optional self-fix pass
-        current_files_text: Dict[str, str] = {}
-        for p, b in files.items():
-            try:
-                current_files_text[p] = b.decode("utf-8")
-            except Exception:
-                continue
-
-        validation_warnings = validate_extension_package(spec, current_files_text)
-        warnings.extend(validation_warnings)
-
-        if validation_warnings:
-            # Try one additional AI pass to address deterministic validator warnings.
-            fix_lines = [
-                f"- {w.code}: {w.message}" for w in validation_warnings[:15]
-            ]
-            fix_instructions = (
-                (instructions or spec.goal or "")
-                + "\n\nFix these build/validation warnings without adding files or changing paths:\n"
-                + "\n".join(fix_lines)
-            )
-
-            fix_updates, fix_ai_warnings = _ai_refine_files(
-                spec,
-                fix_instructions,
-                current_files_text,
-                model,
-                ai_provider=ai_provider,
-                groq_api_key=groq_api_key,
-                openrouter_api_key=openrouter_api_key,
-            )
-            warnings.extend(fix_ai_warnings)
-
-            for path, text in fix_updates.items():
-                files[path] = text.encode("utf-8")
-
-            # Re-run validators to surface any remaining issues
-            current_files_text_after: Dict[str, str] = {}
-            for p, b in files.items():
-                try:
-                    current_files_text_after[p] = b.decode("utf-8")
-                except Exception:
-                    continue
-            warnings.extend(validate_extension_package(spec, current_files_text_after))
-
-    # ZIP
-    buf = BytesIO()
-    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for path, content in files.items():
-            zf.writestr(path, content)
-
-    report = BuildReport(
-        extension_id=extension_id,
-        files=sorted(files.keys()),
-        warnings=warnings,
+    """Build only manifest-v2 compiled UI; Core never imports generated Python."""
+    if spec.provides or spec.consumes or set(spec.permissions) & {"database_read", "database_write"}:
+        raise ValueError("This builder creates compiled UI. Server data and relationships require current runtime/application contracts.")
+    spec = normalize_widget_spec(spec)
+    return _build_compiled_widget_zip(
+        spec, instructions, use_ai, model, ai_provider, groq_api_key, openrouter_api_key
     )
-
-    zip_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-
-    # Expose text contents for in-app editing (best-effort utf-8 decoding).
-    files_text: Dict[str, str] = {}
-    for path, content in files.items():
-        try:
-            files_text[path] = content.decode("utf-8")
-        except Exception:
-            # Skip non-text files.
-            continue
-
-    return report, zip_b64, files_text
 
 
 def package_extension_zip(
@@ -1268,6 +881,8 @@ def package_extension_zip(
         sanitized[path] = text
 
     is_compiled = "compiled-ui.json" in sanitized
+    if not is_compiled:
+        raise ValueError("Only manifest-v2 compiled UI builds can be repackaged; historical builds are download-only")
     if is_compiled:
         normalized = normalize_widget_spec(spec)
         try:
@@ -1307,9 +922,7 @@ def package_extension_zip(
                 code="package.compiled_metadata_invalid",
                 message=f"Compiled package metadata could not be synchronized: {exc}",
             ))
-    required = (["manifest.json", "compiled-ui.json"] if is_compiled else [
-        "manifest.json", f"backend/{spec.backend_entry}", f"frontend/{spec.frontend_entry}",
-    ])
+    required = ["manifest.json", "compiled-ui.json"]
     for req in required:
         if req not in sanitized:
             warnings.append(
@@ -1321,9 +934,6 @@ def package_extension_zip(
 
     files_bytes: Dict[str, bytes] = {p: t.encode("utf-8") for p, t in sanitized.items()}
 
-    # Deterministic validations (surface issues early in UI)
-    if not is_compiled:
-        warnings.extend(validate_extension_package(spec, sanitized))
 
     buf = BytesIO()
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:

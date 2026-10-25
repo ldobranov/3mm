@@ -79,22 +79,25 @@ def test_corrupt_provisioning_state_fails_agent_startup(tmp_path):
 
 
 def test_setup_service_role_is_consumed_by_agent(tmp_path):
+    import sqlite3
+    from setup_service.config import SetupSettings
+    from three_mm_provisioning.setup_access import FileSetupAccessStore
     provisioning_store = FileProvisioningStore(tmp_path / "setup")
+    setup_settings=SetupSettings(data_dir=tmp_path/"setup",core_database_path=tmp_path/"core.db")
+    with sqlite3.connect(setup_settings.core_database_path) as db:
+        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT UNIQUE, email TEXT UNIQUE, "
+            "hashed_password TEXT, role TEXT, is_blocked BOOLEAN DEFAULT 0, token_version INTEGER DEFAULT 0)")
     setup_payload = {
-        "network_name": "private-test-network",
-        "passphrase": "not-a-real-secret",
-        "locale": "bg-BG",
-        "device_name": "standalone-device",
-        "administrator_name": "admin",
-        "role": "standalone",
+        "network_mode":"preserve", "locale":"bg-BG", "device_name":"standalone-device",
+        "administrator_name":"admin", "administrator_email":"admin@example.com",
+        "administrator_password":"admin", "role":"standalone",
     }
-    with TestClient(
-        create_setup_app(MockNetworkAdapter(), provisioning_store)
-    ) as setup_client:
-        response = setup_client.post(
-            "/api/v1/setup/configure",
-            json=setup_payload,
-        )
+    network=MockNetworkAdapter()
+    setup_app=create_setup_app(network,provisioning_store,setup_settings,capability_provider=lambda:[])
+    with TestClient(setup_app) as setup_client:
+        token=FileSetupAccessStore(setup_settings.data_dir).issue(setup_app.state.setup_runtime.access_snapshot)
+        response=setup_client.post("/api/v1/setup/configure",json=setup_payload,headers={"Authorization":"Bearer "+token})
+    assert network.calls==[]  # Host-managed networking is preserved; no Wi-Fi operation.
 
     settings = AgentSettings(
         data_dir=tmp_path / "agent",

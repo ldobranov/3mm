@@ -225,9 +225,13 @@ def _prepared(instance_root, secret):
     return record
 
 
-def _read(connection):
+def _read(connection, *, deadline=None):
+    deadline = time.monotonic() + 2 if deadline is None else deadline
     chunks = bytearray()
     while b"\n" not in chunks and len(chunks) <= MAX_METADATA_BYTES:
+        left = deadline - time.monotonic()
+        if left <= 0: raise TimeoutError("Relational metadata deadline expired")
+        connection.settimeout(left)
         chunk = connection.recv(min(4096, MAX_METADATA_BYTES + 1 - len(chunks)))
         if not chunk:
             break
@@ -245,6 +249,7 @@ def _send(connection, value):
 
 
 def _call_host_metadata(path, secret, *, timeout=2, expected_peer=None):
+    deadline = time.monotonic() + timeout
     identifier = uuid.uuid4().hex
     request = sign_message(
         {
@@ -257,7 +262,7 @@ def _call_host_metadata(path, secret, *, timeout=2, expected_peer=None):
         secret,
     )
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-        connection.settimeout(timeout)
+        connection.settimeout(max(0.001, deadline-time.monotonic()))
         connection.connect(str(path))
         if expected_peer is not None:
             import struct
@@ -275,9 +280,12 @@ def _call_host_metadata(path, secret, *, timeout=2, expected_peer=None):
                 != expected_peer
             ):
                 raise ApplicationTransportError("Relational host process changed")
+        left = deadline-time.monotonic()
+        if left <= 0: raise TimeoutError("Relational metadata deadline expired")
+        connection.settimeout(left)
         _send(connection, request)
         response = verify_message(
-            _read(connection), secret, expected_request_id=identifier
+            _read(connection, deadline=deadline), secret, expected_request_id=identifier
         )
     if (
         response.get("ok") is not True

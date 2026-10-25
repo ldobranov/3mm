@@ -710,6 +710,8 @@ def initial(catalog, tmp_path, monkeypatch):
             "SELECT instance_id FROM application_extension_installations WHERE id=1"
         ).scalar_one()
     state.instance = state.runtime / instance
+    # Preparation and activation bind the same isolated SDK endpoint.
+    monkeypatch.setenv("THREE_MM_PLATFORM_RUNTIME_SOCKET", str(state.runtime / "platform/platform.sock"))
     state.database = state.instance / "data/state.sqlite3"
     state.data = state.database.parent
     state.key_path = state.transport_keys / (instance + ".key")
@@ -732,7 +734,7 @@ def test_exact_delivered_zip_real_registration_preparation_and_nonroot_start(pre
     result = update_helper._handle_request(
         request, relational_peer_uid=1202, **state.arguments
     )
-    assert result["status"] == "active_review_required", (result, state.frames)
+    assert result.get("status") == "active_review_required", (result, state.frames)
     assert state.supervisor.starts == 1
     state.supervisor.verify_identity(state.instance.name, 1200, 1201, running=True)
     assert (state.instance / "run/service.sock").is_socket()
@@ -837,7 +839,8 @@ def test_exact_zip_core_uid_signed_sdk_sql_deduplication_and_revocation(prepared
 import sys
 from pathlib import Path
 from backend.services.application_platform import ApplicationPlatformServer
-server = ApplicationPlatformServer(Path(sys.argv[1]), Path(sys.argv[2]), group='')
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+server = ApplicationPlatformServer(Path(sys.argv[1]), Path(sys.argv[2]), group='', allowed_actions=COMPATIBILITY_ACTIONS)
 server.start()
 try:
     sys.stdin.buffer.read()
@@ -872,7 +875,7 @@ finally:
         result = update_helper._handle_request(
             start_request(state), relational_peer_uid=1202, **state.arguments
         )
-        assert result["status"] == "active_review_required", (result, state.frames)
+        assert result.get("status") == "active_review_required", (result, state.frames)
         assert core_call(state, "db_get")["gateway_blocked"] is True
         reviewed = review(state)
         assert reviewed["mode"] == "enforced" and reviewed["grant_state"] == "active"

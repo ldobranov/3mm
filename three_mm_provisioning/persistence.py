@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from three_mm_protocol import AgentRole
-from three_mm_provisioning.models import ProvisioningRequest, ProvisioningState
+from three_mm_provisioning.models import NetworkMode, ProvisioningRequest, ProvisioningState
 
-SNAPSHOT_SCHEMA_VERSION = 1
+SNAPSHOT_SCHEMA_VERSION = 2
 
 
 def default_provisioning_data_dir() -> Path:
@@ -33,6 +33,8 @@ class ProvisioningSnapshot:
     device_name: str | None = None
     administrator_name: str | None = None
     hub_endpoint: str | None = None
+    network_mode: NetworkMode = NetworkMode.PRESERVE
+    network_interface: str | None = None
     schema_version: int = SNAPSHOT_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
@@ -45,6 +47,12 @@ class ProvisioningSnapshot:
             raise ValueError("Provisioning snapshot state is invalid")
         if self.role is not None and not isinstance(self.role, AgentRole):
             raise ValueError("Provisioning snapshot role is invalid")
+        if not isinstance(self.network_mode, NetworkMode):
+            raise ValueError("Provisioning snapshot network mode is invalid")
+        if self.network_interface is not None:
+            import re
+            if not isinstance(self.network_interface, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,14}", self.network_interface):
+                raise ValueError("Provisioning snapshot interface is invalid")
         if self.state not in {
             ProvisioningState.APPLYING_NETWORK,
             ProvisioningState.PROVISIONED,
@@ -87,6 +95,8 @@ class ProvisioningSnapshot:
             device_name=request.device_name,
             administrator_name=request.administrator_name,
             hub_endpoint=request.hub_endpoint,
+            network_mode=request.network_mode,
+            network_interface=request.network_interface,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -98,6 +108,8 @@ class ProvisioningSnapshot:
             "device_name": self.device_name,
             "administrator_name": self.administrator_name,
             "hub_endpoint": self.hub_endpoint,
+            "network_mode": self.network_mode.value,
+            "network_interface": self.network_interface,
         }
 
     @classmethod
@@ -113,17 +125,22 @@ class ProvisioningSnapshot:
             "administrator_name",
             "hub_endpoint",
         }
-        if set(value) != expected_keys:
+        version = value.get("schema_version")
+        if version == 2:
+            expected_keys |= {"network_mode", "network_interface"}
+        if type(version) is not int or version not in {1, 2} or set(value) != expected_keys:
             raise ValueError("Provisioning snapshot fields are invalid")
         role_value = value["role"]
         return cls(
-            schema_version=value["schema_version"],
+            schema_version=SNAPSHOT_SCHEMA_VERSION,
             state=ProvisioningState(value["state"]),
             role=AgentRole(role_value) if role_value is not None else None,
             locale=_optional_string(value["locale"]),
             device_name=_optional_string(value["device_name"]),
             administrator_name=_optional_string(value["administrator_name"]),
             hub_endpoint=_optional_string(value["hub_endpoint"]),
+            network_mode=NetworkMode(value.get("network_mode", "preserve")),
+            network_interface=_optional_string(value.get("network_interface")),
         )
 
 
@@ -146,6 +163,17 @@ class FileProvisioningStore:
         self._data_dir = data_dir
         self.path = data_dir / "provisioning.json"
 
+    def load_runtime_snapshot(self) -> ProvisioningSnapshot | None:
+        from three_mm_provisioning.setup_journal import SetupJournal
+        attempt = SetupJournal(self._data_dir).load()
+        if attempt is not None:
+            return ProvisioningSnapshot.from_dict(attempt["previous"]) if attempt["previous"] else None
+        return self.load()
+
+    def setup_pending(self) -> bool:
+        from three_mm_provisioning.setup_journal import SetupJournal
+        return SetupJournal(self._data_dir).load() is not None
+
     def load(self) -> ProvisioningSnapshot | None:
         if not self.path.exists():
             return None
@@ -158,16 +186,9 @@ class FileProvisioningStore:
             ) from exc
 
     def save(self, snapshot: ProvisioningSnapshot) -> None:
-        temporary_path = self.path.with_suffix(".tmp")
         try:
-            self._data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-            os.chmod(self._data_dir, 0o700)
-            temporary_path.write_text(
-                json.dumps(snapshot.to_dict(), indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
-            os.chmod(temporary_path, 0o600)
-            os.replace(temporary_path, self.path)
+            from three_mm_provisioning.setup_journal import atomic_json
+            atomic_json(self.path, snapshot.to_dict())
         except OSError as exc:
             raise ProvisioningStoreError(
                 f"Cannot persist provisioning state in {self._data_dir}"

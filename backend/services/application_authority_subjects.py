@@ -15,7 +15,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from backend.services import application_authority_sources as sources
 from backend.services.application_authority_context import (
-    ContextModel, ResolvedCommandScope, _bounded_json, _canonical_bytes, _parse,
+    ContextModel, ResolvedCommandScope, _bounded_json, _canonical_bytes,
+    _command_schema_data, _parse,
 )
 from backend.services.application_authority_keys import AuthorityReviewKeyError, CoreReviewKeyStore
 from backend.services.application_authority_policy import PolicyBinding, PolicySubjectV1, PolicySubjectV2, PolicySubjectV3, PolicySubjectV4, PolicySubjectV5, PolicySubjectV6, PolicySubjectV7, PolicySubjectV8, PolicySubjectV9, PolicySubjectV10
@@ -43,25 +44,14 @@ class InstalledPolicySubject(ContextModel):
     )
 
 
-def _schema_bytes(schema):
-    # Equality of this bounded dialect ONLY, never general schema containment.
-    data = _bounded_json(schema)
-    data["required"] = sorted(data.get("required", []))
-    for prop in data["properties"].values():
-        if "enum" in prop:
-            encoded = [_canonical_bytes(value) for value in prop["enum"]]
-            if len(set(encoded)) != len(encoded):
-                raise ValueError("Duplicate command enum")
-            prop["enum"].sort(key=_canonical_bytes)
-    return _canonical_bytes(data)
-
-
 def _commands(package, resolved):
     by_scope = {command.scope: command for command in resolved.commands}
     commands = []
     for binding in package.application_extension.command_bindings:
         source = by_scope[f"command:{binding.binding_id}"]
-        if (_schema_bytes(binding.arguments_schema) != _schema_bytes(source.action_arguments_schema)):
+        declared = _canonical_bytes(_command_schema_data(binding.arguments_schema))
+        provided = _canonical_bytes(_command_schema_data(source.action_arguments_schema))
+        if declared != provided:
             raise sources._Unavailable("command_schema_containment_not_evaluated", source.scope)
         if source.sensor is not None:
             # Merely resolving the sensor device is not its passage contract.

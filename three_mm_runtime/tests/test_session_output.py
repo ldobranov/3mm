@@ -262,3 +262,60 @@ def test_uncertain_send_is_not_repeated_and_next_output_is_not_read():
         assert len(provider.closed) == 1
 
     asyncio.run(scenario())
+
+
+def test_pending_authority_can_outlast_idle_poll_without_forwarding():
+    async def scenario():
+        provider=OutputProvider((b"prompt> ",None));entered=asyncio.Event();release=asyncio.Event();sent=[]
+        async def authorize():entered.set();await release.wait()
+        async def send(frame):sent.append(frame)
+        task=asyncio.create_task(pump_session_output(provider,SESSION,send,authorize=authorize,check_interval=0.01))
+        try:
+            await asyncio.wait_for(entered.wait(),1)
+            await asyncio.sleep(0.03)
+            assert not task.done(), "Idle poll cadence must not cancel a pending current-authority check"
+            assert not sent and provider.reads==0
+            release.set();await asyncio.wait_for(task,1)
+            assert len(sent)==1 and provider.closed==[(SESSION,"output_eof")]
+        finally:
+            release.set()
+            if not task.done():task.cancel()
+            await asyncio.gather(task,return_exceptions=True)
+    asyncio.run(scenario())
+
+
+def test_slow_authority_denial_never_reads_or_sends_output():
+    async def scenario():
+        provider=OutputProvider((b"must remain private",));sent=[]
+        async def authorize():
+            await asyncio.sleep(0.03)
+            raise PermissionError("private denial reason")
+        async def send(frame):sent.append(frame)
+        with pytest.raises(SessionOutputError) as failure:
+            await pump_session_output(provider,SESSION,send,authorize=authorize,check_interval=0.01)
+        assert isinstance(failure.value.__cause__,PermissionError)
+        assert not sent and provider.reads==0 and len(provider.closed)==1
+    asyncio.run(scenario())
+
+
+def test_authority_deadline_is_bounded_separately_from_idle_poll():
+    async def scenario():
+        provider=OutputProvider((b"must not leak",));sent=[]
+        async def authorize():await asyncio.Event().wait()
+        async def send(frame):sent.append(frame)
+        with pytest.raises(SessionOutputError) as failure:
+            await asyncio.wait_for(pump_session_output(provider,SESSION,send,authorize=authorize,check_interval=0.01,authorization_timeout=0.03),0.5)
+        assert isinstance(failure.value.__cause__,TimeoutError)
+        assert not sent and provider.reads==0 and len(provider.closed)==1
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("timeout",[0,-1,True,float("nan"),float("inf"),5.01])
+def test_invalid_authority_deadlines_are_refused(timeout):
+    async def scenario():
+        provider=OutputProvider();sent=[]
+        async def send(frame):sent.append(frame)
+        with pytest.raises(ValueError,match="authorization timeout"):
+            await pump_session_output(provider,SESSION,send,authorize=allowed,authorization_timeout=timeout)
+        assert not sent and provider.reads==0 and not provider.closed
+    asyncio.run(scenario())

@@ -1,8 +1,8 @@
-"""Installed-artifact, reviewed-native authority coordinator.
+"""Installed-artifact authority over exact administrator-approved native code.
 
-The native review writer is LOCAL CORE ADMINISTRATION ONLY, not an HTTP/SDK
-checkbox. It records an authenticated human code-review attestation, never an
-OS/browser isolation proof. No staged artifact, unsupported scope or UI bypass.
+Manual code-review attestations remain a separate local operation. The normal
+permission flow records authenticated administrator package consent, without
+claiming a manual audit, isolation or publisher provenance.
 """
 
 from contextlib import contextmanager, ExitStack
@@ -212,7 +212,13 @@ class ApplicationAuthorityManager:
 
     def _policy(self, db, key, subject, native_id):
         native = _load(db, key, "native", db.get(Native, _identifier(native_id), populate_existing=True), native_id)
-        if (native["state"] != "reviewed_native" or native["installation_id"] != int(subject.binding.principal.application_installation_id)
+        administrator_approved = (
+            native["state"] == "administrator_approved"
+            and native["data"].get("review_kind") == "authenticated_administrator_package_consent"
+            and native["data"].get("accepts_native_host_risk") is True
+        )
+        if ((native["state"] != "reviewed_native" and not administrator_approved)
+                or native["installation_id"] != int(subject.binding.principal.application_installation_id)
                 or _canonical_bytes(native["data"]["binding"]) != _canonical_bytes(_native_binding(subject))):
             raise AuthorityManagementError("native_review_unavailable")
         ui = subject.has_executable_frontend
@@ -221,14 +227,15 @@ class ApplicationAuthorityManager:
         scopes = tuple(sorted(_subject_scopes(subject)))
         # Exact peer reads and sessions are explicit selectable subsets. Keep
         # every older family's existing required-scope semantics unchanged.
-        required = tuple(scope for scope in scopes
+        required = () if administrator_approved else tuple(scope for scope in scopes
             if not (subject.subject_version >= 9 and scope.startswith('peer:')
                 or subject.subject_version == 10 and scope.startswith('session:')))
         model = {1: CorePolicyEvidenceV1, 2: CorePolicyEvidenceV2, 3: CorePolicyEvidenceV3, 4: CorePolicyEvidenceV4, 5: CorePolicyEvidenceV5, 6: CorePolicyEvidenceV6, 7: CorePolicyEvidenceV7, 8: CorePolicyEvidenceV8, 9: CorePolicyEvidenceV9, 10: CorePolicyEvidenceV10}[subject.subject_version]
         evidence = model(evidence_version=subject.subject_version, binding=subject.binding,
             policy_revision=native["revision"], trust_revision=native["revision"],
-            trust_class="reviewed_local_artifact", execution_class="reviewed_native",
-            execution_profile="supervised_reviewed_native_ui_v1" if ui else "supervised_reviewed_native_v1", profile_revision="1",
+            trust_class="administrator_approved_artifact" if administrator_approved else "reviewed_local_artifact",
+            execution_class="administrator_approved_native" if administrator_approved else "reviewed_native",
+            execution_profile=("supervised_administrator_approved_native" if administrator_approved else "supervised_reviewed_native") + ("_ui_v1" if ui else "_v1"), profile_revision="1",
             native_review_revision=native["revision"], isolation_proof_revision=None,
             required_scopes=required, **_resources(subject))
         result = evaluate_authority_policy(subject, evidence)
@@ -264,9 +271,14 @@ class ApplicationAuthorityManager:
                 data = {"request_hash": request_hash, "actor": actor, "operation": operation, "result": result}
                 _save(db, key, "action", Action(request_id=request_id, installation_id=installation_id),
                     _envelope("action", request_id, installation_id, "recorded", data))
+                audit_result = result
+                if operation == "consent_preview":
+                    audit_result = {name: result[name] for name in
+                        ("preview_id", "revision", "fingerprint", "artifact_sha256", "built_ui_sha256")
+                        if name in result}
                 db.add(AuditLog(user_id=actor[0], action="APPLICATION_AUTHORITY_" + operation.upper(),
                     entity_type="application_extension", entity_name=current.module_id,
-                    changes={"request_id": request_id, **result}))
+                    changes={"request_id": request_id, **audit_result}))
                 db.flush()
                 mutation.advance_guard_revision()
         except AuthorityManagementError:
@@ -477,8 +489,9 @@ class ApplicationAuthorityManager:
     def native_activation(self, installation_id, artifact_sha256, configuration, expected_guard):
         """Same reviewed artifact only; lease spans pre-helper DB admission only.
 
-        Lifecycle invalidates the old grant. Re-enable requires a fresh permission
-        review; a staged/new artifact needs the later staged lifecycle adapter.
+        Lifecycle always replaces execution epochs. Confirmed same-artifact
+        stop/start can rebind unchanged saved consent to the fresh execution.
+        A changed artifact/configuration still requires explicit new consent.
         """
         prepared = self._prepare(installation_id)
         with self.keys.locked() as key:
@@ -494,7 +507,7 @@ class ApplicationAuthorityManager:
                 proposed = key._fingerprint_in_snapshot(db, subject.binding.principal, configuration)
                 if artifact_sha256 != subject.binding.candidate.sha256 or proposed != subject.binding.configuration:
                     raise AuthorityManagementError("staged_authority_not_supported")
-            yield
+            yield key
 
     def revoke(self, installation_id, *, actor_token, request_id, expected_revision):
         request = {"expected_revision": _identifier(expected_revision)}
@@ -513,7 +526,7 @@ class ApplicationAuthorityManager:
             result.update(state="revoked", revision=value["revision"], authority_epoch=current.epoch)
         return result
 
-    def _require_grant(self, db, key, installation_id, prepared, scope):
+    def _require_current_grant(self, db, key, installation_id, prepared):
         subject = self._subject(db, key, installation_id, prepared)
         current = read_application_authority(db, installation_id)
         row = db.get(Grant, installation_id, populate_existing=True)
@@ -531,7 +544,13 @@ class ApplicationAuthorityManager:
                 or current.epoch != data["authority_epoch"] or native["revision"] != data["native_revision"]
                 or approved_policy != _parse({4: AuthorityPolicyV4, 5: AuthorityPolicyV5, 6: AuthorityPolicyV6, 7: AuthorityPolicyV7, 8: AuthorityPolicyV8, 9: AuthorityPolicyV9, 10: AuthorityPolicyV10}.get(approved.subject_version, AuthorityPolicy), data['policy'])
                 or selection.selection_version != approved.subject_version
-                or _resource_identity(subject) != _resource_identity(approved) or scope not in selection.scopes):
+                or _resource_identity(subject) != _resource_identity(approved)):
+            raise AuthorityManagementError("grant_not_current")
+        return grant
+
+    def _require_grant(self, db, key, installation_id, prepared, scope):
+        grant = self._require_current_grant(db, key, installation_id, prepared)
+        if scope not in grant["data"]["selection"]["scopes"]:
             raise AuthorityManagementError("grant_not_current")
         return grant
 
@@ -600,12 +619,12 @@ class ApplicationAuthorityManager:
                 native_reviews.append({'native_review_id': native_row.review_id,
                     'revision': native['revision']})
             effective = False
+            access_saved = False
             if grant and grant["state"] == "active":
-                scopes = grant["data"]["selection"]["scopes"]
                 try:
-                    for scope in scopes:
-                        self._require_grant(db, key, installation_id, prepared, scope)
-                    effective = bool(scopes) and prepared[0].status == "active"
+                    self._require_current_grant(db, key, installation_id, prepared)
+                    access_saved = True
+                    effective = prepared[0].status == "active"
                 except (AuthorityManagementError, AuthorityReviewKeyError, ValueError, TypeError, KeyError, AttributeError):
                     pass
             installation = db.get(ApplicationExtensionInstallation, installation_id)
@@ -627,12 +646,12 @@ class ApplicationAuthorityManager:
                 if not effective:
                     runtime_blockers.append('relational_runtime_unavailable')
             if getattr(subject, "sessions", ()):
-                from backend.services.application_local_sessions import runtime_offer
+                from backend.services.application_session_runtimes import session_runtimes
                 selected = set(grant["data"]["selection"]["scopes"]) if grant else set()
                 sessions = [resource for resource in subject.sessions
                     if f"session:{resource.declaration.binding_id}:open" in selected]
-                if not effective or any(runtime_offer(db,
-                        resource.model_dump(mode="json")) is None for resource in sessions):
+                if not effective or any(not session_runtimes(db.get_bind()).available(db,
+                        resource.model_dump(mode="json")) for resource in sessions):
                     effective = False
                     runtime_blockers.append("session_runtime_not_connected")
             return {"installation_id": installation_id, "mode": subject.binding.baseline.enforcement_mode,
@@ -641,6 +660,7 @@ class ApplicationAuthorityManager:
                 "artifact_sha256": subject.binding.candidate.sha256, "scopes": sorted(_subject_scopes(subject)),
                 "grant_revision": row.revision if row else None, "grant_record_revision": grant["revision"] if grant else None,
                 "grant_effective": effective and installation.enabled,
+                "access_saved": access_saved,
                 "grant_state": grant["state"] if grant else ('unavailable' if row else None),
                 "review_available": True, "review_blockers": [],
                 "execution_class": "reviewed_native_only", "isolation_proven": False,

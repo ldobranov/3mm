@@ -91,12 +91,9 @@ def clarify_extension_spec(
         )
 
     repo_context = (
-        "Repo context (very condensed):\n"
-        "- Extensions have manifest.json + backend entry (FastAPI) + frontend Vue entry + locales.\n"
-        "- Backend entry must provide initialize_extension(context) and register routes under /api/...\n"
-        "- Frontend uses app i18n and must provide en/bg locale JSON with namespaced keys.\n"
-        "- Relationships can be declared in manifest provides/consumes; content_embedders is the main pattern.\n"
-        "- If DB is used: lowercase ext_<extensionbase>_* table naming.\n"
+        "Manifest-v2 compiled Vue UI packages; no in-Core Python hooks or direct Core SQL. "
+        "Use typed config and declared capability bindings. Current data applications use "
+        "runtime-extension.json or the scoped application SDK; never invent backend routes."
     )
 
     system = (

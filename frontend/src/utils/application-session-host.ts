@@ -155,7 +155,8 @@ export function createApplicationSessions(context: {
       return await new Promise<ApplicationSessionAcceptance>((resolve, reject) => {
         const session: LiveSession = { socket, id: issued.session_id as string, request: copy, seq: 0, outSeq: 0, closed: false,
           handlers: new Set(), buffer: [], bytes: 0, inputBytes: 0, inputCount: 0, pending: new Map(), write: Promise.resolve(),
-          opening: { resolve: value => resolve(value as ApplicationSessionAcceptance), reject, timer: setTimeout(() => finish(session), 10_000) } }
+          // ARMv6 cold imports have a separate, bounded opening window.
+          opening: { resolve: value => resolve(value as ApplicationSessionAcceptance), reject, timer: setTimeout(() => finish(session), 120_000) } }
         opening.add(session)
         socket.onopen = () => { try { context.live(); socket.send(JSON.stringify({ op: 'authenticate', ticket: issued.ticket })) } catch { finish(session) } }
         socket.onmessage = event => receive(session, event.data)

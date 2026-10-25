@@ -1,4 +1,5 @@
 """Real installed publication grants and signed SDK transport, not live data."""
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 from datetime import UTC, datetime
 from concurrent.futures import ThreadPoolExecutor
@@ -225,7 +226,7 @@ def test_failed_commit_does_not_mint_receipt(publications, monkeypatch):
 def test_signed_sdk_lost_ack_retries_exact_receipt_and_revoke_denies_new_events(publications, monkeypatch, tmp_path):
     s = publications
     activate(s)
-    server = ApplicationPlatformServer(tmp_path / 'publication.sock', s.transport_keys, group='missing-test-group')
+    server = ApplicationPlatformServer(tmp_path / 'publication.sock', s.transport_keys, group='missing-test-group', allowed_actions=COMPATIBILITY_ACTIONS)
     original_handle = server._handle
     class DroppedAck:
         def __init__(self, connection):
@@ -234,6 +235,9 @@ def test_signed_sdk_lost_ack_retries_exact_receipt_and_revoke_denies_new_events(
             return self
         def __exit__(self, *args):
             self.connection.close()
+        def settimeout(self, seconds):
+            self.connection.settimeout(seconds)
+
         def recv(self, size):
             return self.connection.recv(size)
         def sendall(self, _payload):

@@ -7,14 +7,14 @@ import WidgetPalette from './WidgetPalette.vue'
 
 describe('Dynamic widget palette', () => {
   beforeEach(() => { vi.clearAllMocks() })
-  it('retains legacy and compiled type selection and drag payloads', async () => {
-    fetchWidgets.mockResolvedValue([{ id: 7, name: 'Generic widget' }, { id: 'compiled', name: 'Other provider', widget_type: 'compiled:org.reference:1.0.0:widget' }])
+  it('retains dynamic compiled type selection and drag payloads', async () => {
+    fetchWidgets.mockResolvedValue([{ id: 'first', name: 'Generic widget', widget_type: 'compiled:org.first:1.0.0:widget' }, { id: 'compiled', name: 'Other provider', widget_type: 'compiled:org.reference:1.0.0:widget' }])
     const wrapper = mount(WidgetPalette)
     await flushPromises()
     const buttons = wrapper.findAll('button')
     await buttons[0].trigger('click')
     await buttons[1].trigger('click')
-    expect(wrapper.emitted('add')).toEqual([['extension:7'], ['compiled:org.reference:1.0.0:widget']])
+    expect(wrapper.emitted('add')).toEqual([['compiled:org.first:1.0.0:widget'], ['compiled:org.reference:1.0.0:widget']])
     expect(buttons[0].attributes('type')).toBe('button')
     const dataTransfer = { effectAllowed: '', setData: vi.fn() }
     await wrapper.findAll('[draggable="true"]')[1].trigger('dragstart', { dataTransfer })

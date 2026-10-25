@@ -47,6 +47,22 @@ class DecisionRequest(BaseModel):
     fingerprint: Digest
 
 
+class ConsentPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    request_id: Identifier
+
+
+class ConsentAllowRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    request_id: Identifier
+    preview_id: Identifier
+    expected_revision: Identifier
+    fingerprint: Digest
+    scopes: list[Scope] = Field(max_length=293)
+    user_permissions: list[Annotated[str, Field(pattern=r'^[a-z][a-z0-9_]{0,95}$')]] = Field(max_length=96)
+    accept_native_code: Literal[True]
+
+
 class RevokeRequest(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
     request_id: Identifier
@@ -106,4 +122,22 @@ def revoke_grant(module_id: str, request: RevokeRequest, response: Response,
         authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
     identifier, token = _target(db, module_id), _token(authorization)
     return _call(db, response, lambda manager: manager.revoke(identifier,
+        actor_token=token, **request.model_dump()))
+
+
+@router.post('/{module_id}/authority/consent/preview', dependencies=[Depends(require_admin)])
+def preview_package_consent(module_id: str, request: ConsentPreviewRequest, response: Response,
+        authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
+    from backend.services.application_consent import preview
+    identifier, token = _target(db, module_id), _token(authorization)
+    return _call(db, response, lambda manager: preview(manager, identifier,
+        actor_token=token, **request.model_dump()))
+
+
+@router.post('/{module_id}/authority/consent/allow', dependencies=[Depends(require_admin)])
+def allow_package_consent(module_id: str, request: ConsentAllowRequest, response: Response,
+        authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
+    from backend.services.application_consent import allow
+    identifier, token = _target(db, module_id), _token(authorization)
+    return _call(db, response, lambda manager: allow(manager, identifier,
         actor_token=token, **request.model_dump()))

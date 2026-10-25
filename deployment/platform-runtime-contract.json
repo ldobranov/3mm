@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "authority_contract": 2,
+  "operations": [
+    "checkpoint.get",
+    "checkpoint.put",
+    "command.lookup",
+    "command.status",
+    "command.submit",
+    "connector.request",
+    "event.publish",
+    "files.execute",
+    "files.status",
+    "installation.identity.get",
+    "installation.identity.prove",
+    "installation.peers.approve",
+    "installation.peers.capabilities",
+    "installation.peers.enroll",
+    "installation.peers.list",
+    "installation.peers.read",
+    "installation.peers.report",
+    "installation.peers.revoke",
+    "installation.peers.rotate",
+    "installation.status.get",
+    "platform.discover",
+    "relational.admit",
+    "relational.boot.startup",
+    "relational.complete",
+    "relational.status"
+  ],
+  "connector_execution_contract": 1,
+  "application_response_contract": 1
+}

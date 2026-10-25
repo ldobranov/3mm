@@ -1,0 +1,16 @@
+{
+  "compiled_ui_version": 1,
+  "module_id": "org.3mm.session-probe",
+  "version": "0.1.0",
+  "entrypoints": [
+    {
+      "entrypoint_id": "probe",
+      "kind": "route",
+      "source": "source/frontend/Probe.vue",
+      "route": "/session-platform-probe",
+      "label": {
+        "en": "Session platform probe"
+      }
+    }
+  ]
+}

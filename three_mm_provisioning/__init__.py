@@ -1,6 +1,7 @@
 """Headless provisioning domain contracts and state machine."""
 
 from three_mm_provisioning.models import (
+    NetworkMode,
     NetworkCredentials,
     ProvisioningRequest,
     ProvisioningResult,
@@ -31,9 +32,6 @@ from three_mm_provisioning.network_manager_mutation import (
 )
 from three_mm_provisioning.network_manager_temporary import (
     TemporaryNetworkManagerAdapter,
-)
-from three_mm_provisioning.network_manager_persistent import (
-    PersistentNetworkManagerAdapter,
 )
 from three_mm_provisioning.network_helper_client import (
     NetworkHelperClientAdapter,
@@ -66,7 +64,7 @@ __all__ = [
     "MutationCommandResult",
     "NetworkManagerMutationBoundary",
     "TemporaryNetworkManagerAdapter",
-    "PersistentNetworkManagerAdapter",
+    "NetworkMode",
     "NetworkHelperClientAdapter",
     "NetworkManagerStatus",
     "FileProvisioningStore",

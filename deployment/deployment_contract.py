@@ -106,3 +106,23 @@ def validate_deployment_contract(
             f"Update archive is incomplete: {', '.join(missing)}"
         )
     return contract
+
+
+PLATFORM_RUNTIME_CONTRACT_PATH="deployment/platform-runtime-contract.json"
+
+
+def validate_platform_runtime_contract(data: bytes):
+    """The full artifact and installed updater agree on one tested IPC ABI."""
+    if len(data)>8192:
+        raise DeploymentContractError("Platform Runtime contract is too large")
+    try:
+        value=json.loads(data)
+    except (ValueError,UnicodeError) as error:
+        raise DeploymentContractError("Platform Runtime contract is invalid") from error
+    from three_mm_platform_wire import AUTHORITY_CONTRACT, RUNTIME_ACTIONS
+    if (not isinstance(value,dict) or type(value.get("schema_version")) is not int
+            or type(value.get("authority_contract")) is not int
+            or value!={"schema_version":1,"authority_contract":AUTHORITY_CONTRACT,
+                "operations":sorted(RUNTIME_ACTIONS),"connector_execution_contract":1,"application_response_contract":1}):
+        raise DeploymentContractError("Core and platform Runtime contracts are unsupported")
+    return value

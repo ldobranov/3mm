@@ -1,0 +1,40 @@
+[Unit]
+Description=3mm optional local encrypted session relay
+After=network.target
+
+[Service]
+Type=simple
+User=3mm-relay
+Group=3mm-relay
+WorkingDirectory=/opt/3mm-session-relay/current
+EnvironmentFile=/etc/3mm-session-relay/relay.env
+ExecStart=/opt/3mm-session-relay/current/.venv/bin/python -I /opt/3mm-session-relay/current/service.pyz --port 8899 --target-host ${SESSION_RELAY_TARGET_HOST} --target-port ${SESSION_RELAY_TARGET_PORT}
+RuntimeDirectory=3mm-session-relay
+RuntimeDirectoryMode=0755
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=10s
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+InaccessiblePaths=-/etc/3mm -/var/lib/3mm -/run/3mm -/etc/3mm-session-node
+RestrictAddressFamilies=AF_INET AF_INET6
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryMax=32M
+TasksMax=8
+LimitNOFILE=32
+CPUQuota=25%
+OOMScoreAdjust=300
+UMask=0077
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target

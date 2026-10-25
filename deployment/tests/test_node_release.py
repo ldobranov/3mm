@@ -28,8 +28,10 @@ def test_node_archive_is_minimal_and_reproducible(tmp_path):
     assert first == second
     assert first['profile'] == 'node'
     assert not {'nodejs', 'npm'} & set(first['dependencies']['apt_packages'])
+    assert not {'network-manager', 'dnsmasq-base'} & set(first['dependencies']['apt_packages'])
     with tarfile.open(tmp_path / 'first' / first['artifacts'][0]['filename']) as archive:
         names = archive.getnames()
+        assert 'deployment/systemd/3mm-setup-local.service' in names
         assert '.3mm-install-profile' in names
         assert 'setup_service/static/setup.html' in names
         assert 'three_mm_runtime/node_recovery.py' in names
@@ -65,3 +67,22 @@ assert callable(pump_session_output)
     (wheels / name).write_bytes(b'changed')
     with pytest.raises(ValueError, match='checksum'):
         build(ROOT, wheels, tmp_path / 'third', **args)
+
+
+def test_wheelhouse_uses_the_installer_dependency_lock(tmp_path, monkeypatch):
+    from deployment import prepare_node_wheels as preparation
+
+    def download(command, **kwargs):
+        requirements = [command[i + 1] for i, value in enumerate(command) if value == '-r']
+        assert requirements == [str(ROOT / 'deployment/node-requirements.txt')]
+        # A newer transitive release must not displace the Agent's exact pins.
+        lock = (ROOT / 'deployment/node-requirements.txt').read_text()
+        assert '-r service-agent-requirements.txt' in lock
+        destination = Path(command[command.index('--dest') + 1])
+        (destination / 'fixture-1-py3-none-any.whl').write_bytes(b'fixture')
+
+    monkeypatch.setattr(preparation.subprocess, 'run', download)
+    output = tmp_path / 'locked-wheels'
+    preparation.prepare(output)
+    provenance = json.loads((output / 'provenance.json').read_text())
+    assert provenance['wheels'][0]['sha256'] == digest(b'fixture')

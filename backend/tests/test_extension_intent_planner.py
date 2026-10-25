@@ -23,13 +23,14 @@ def test_named_widget_choices_are_selects_not_booleans():
     assert properties["hourFormat"]["enum"] == ["24", "12"]
 
 
-def test_record_management_becomes_crud_only_when_records_are_requested():
-    plan = _plan_extension_intent(PlanExtensionIntentRequest(
-        description="Separate page with a catalog and editable database records",
-    ))
-    assert plan.project_type == "extension"
-    assert plan.template_key == "crud"
-    assert plan.needs_database is True
+def test_record_management_cannot_silently_generate_an_unsupported_core_backend():
+    import pytest
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as failure:
+        _plan_extension_intent(PlanExtensionIntentRequest(
+            description="Separate page with a catalog and editable database records",
+        ))
+    assert failure.value.status_code == 422
 
 
 def test_ambiguous_placement_asks_one_plain_language_question():

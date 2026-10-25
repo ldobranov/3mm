@@ -1,4 +1,5 @@
 """Real installed/reviewed checkpoint grants and CAS, never live VM state."""
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -323,7 +324,7 @@ def test_dispatcher_opt_in_get_and_put_use_adapter_but_unrelated_platform_stays_
 ):
     adopt(app)
     with Session(app.engine) as db:
-        server = ApplicationPlatformServer(None, None)
+        server = ApplicationPlatformServer(None, None, allowed_actions=COMPATIBILITY_ACTIONS)
         app_row = db.get(Installation, 1)
         assert server._dispatch(db, app_row, frame())["revision"] == 0
         assert (
@@ -370,6 +371,9 @@ def test_actual_signed_sdk_socket_and_lost_response_do_not_repeat_a_write(
 
         def __exit__(self, *args):
             self.connection.close()
+
+        def settimeout(self, seconds):
+            self.connection.settimeout(seconds)
 
         def recv(self, size):
             return self.connection.recv(size)

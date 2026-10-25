@@ -93,6 +93,9 @@ def test_status_and_policy_are_admin_only_and_default_to_enabled(
         assert status.status_code == 200
         assert status.json()["automatic_setup_enabled"] is True
         assert status.json()["offline_after_seconds"] == 300
+        assert status.json()["automatic_setup_available"] is False
+        assert status.json()["setup_network"] is None
+        assert status.json()["setup_url"].endswith(".local:8895/setup")
         assert status.json()["device_hostname"]
         assert status.json()["local_url"].endswith(".local")
         assert changed.json()["automatic_setup_enabled"] is False
@@ -131,8 +134,63 @@ def test_manual_setup_requires_exact_confirmation_and_uses_fixed_helper_action(
         assert rejected.status_code == 409
         assert accepted.status_code == 202
         assert accepted.json()["status"] == "queued"
+        assert accepted.json()["setup_network"] is None
+        assert accepted.json()["setup_url"].endswith(".local:8895/setup")
+        code = accepted.json()["access_code"]
+        from three_mm_provisioning.setup_access import FileSetupAccessStore
+        assert FileSetupAccessStore(tmp_path).valid(code, None)
+        assert code not in (tmp_path / "setup-access.json").read_text()
         assert calls and calls[0] > 0
         audit = db.execute(select(AuditLog)).scalar_one()
         assert audit.action == "NETWORK_SETUP_REQUESTED"
     finally:
         db.close()
+
+
+def test_ap_requires_admin_interface_and_exact_acknowledgement(tmp_path, monkeypatch):
+    client, db, token, viewer = make_client(tmp_path, monkeypatch)
+    calls = []
+    class Helper:
+        def __init__(self, _path): pass
+        def request_access_point(self, *args, **kwargs): calls.append((args, kwargs))
+    monkeypatch.setattr(network_recovery, "UpdateHelperClient", Helper)
+    monkeypatch.setattr(network_recovery, "read_network_recovery_status", lambda _settings:
+        SimpleNamespace(access_point={"state":"inactive", "interfaces":["wifi0"]}))
+    (tmp_path / "missing-machine-id").write_text("1"*32)
+    body={"confirmation":"START ACCESS POINT", "interface":"wifi0", "duration_seconds":300}
+    try:
+        assert client.post("/api/v1/network-recovery/access-point", json=body).status_code==401
+        assert client.post("/api/v1/network-recovery/access-point",json=body,headers={"Authorization":"Bearer "+viewer}).status_code==403
+        headers={"Authorization":"Bearer "+token}
+        for bad in [{**body,"interface":"wifi0;reboot"},{**body,"duration_seconds":True},{**body,"confirmation":"yes"}]:
+            assert client.post("/api/v1/network-recovery/access-point",json=bad,headers=headers).status_code==422
+        assert client.post("/api/v1/network-recovery/access-point",json={**body,"interface":"wifi1"},headers=headers).status_code==409
+        response=client.post("/api/v1/network-recovery/access-point",json=body,headers=headers)
+        assert response.status_code==202 and response.json()["setup_url"]=="http://10.42.0.1:8895/setup"
+        assert response.json()["setup_network"].startswith("3mm Setup ")
+        assert len(calls)==1 and calls[0][0][0]=="start" and calls[0][1]=={"interface":"wifi0","duration":300}
+        identifier=response.json()["id"]
+        stop_body={"confirmation":"STOP ACCESS POINT","id":identifier}
+        assert client.post("/api/v1/network-recovery/access-point/stop",json=stop_body).status_code==401
+        assert client.post("/api/v1/network-recovery/access-point/stop",json=stop_body,headers={"Authorization":"Bearer "+viewer}).status_code==403
+        assert len(calls)==1
+        stopped=client.post("/api/v1/network-recovery/access-point/stop",json={"confirmation":"STOP ACCESS POINT","id":identifier},headers=headers)
+        assert stopped.status_code==202 and calls[-1][0]==("stop",1,identifier)
+    finally:db.close()
+
+
+def test_unwritable_setup_code_store_fails_before_scheduling(tmp_path, monkeypatch):
+    client, db, token, _viewer=make_client(tmp_path, monkeypatch)
+    calls=[]
+    class Store:
+        def __init__(self,_data):pass
+        def issue(self,_snapshot):raise OSError(30,"Read-only filesystem")
+    class Helper:
+        def __init__(self,_path):calls.append("helper constructed")
+    monkeypatch.setattr(network_recovery,"FileSetupAccessStore",Store)
+    monkeypatch.setattr(network_recovery,"UpdateHelperClient",Helper)
+    try:
+        result=client.post("/api/v1/network-recovery/setup",headers={"Authorization":"Bearer "+token},json={"confirmation":"START SETUP"})
+        assert result.status_code==503 and result.json()=={"detail":"setup_access_unavailable"}
+        assert calls==[]
+    finally:db.close()

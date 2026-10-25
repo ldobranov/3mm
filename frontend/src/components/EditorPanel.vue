@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed, onBeforeUnmount, markRaw, nextTick } from 'vue';
 import type { Widget } from '@/stores/widgets';
-import { useWidgetsStore } from '@/stores/widgets';
-import { loadBundledExtensionComponentByPath } from '@/utils/extension-components';
 import { findCompiledEntrypoint, getCompiledUiCatalog, loadCompiledComponent } from '@/utils/compiled-ui';
 import { useI18n } from '@/utils/i18n';
 import UiButton from '@/components/ui/UiButton.vue';
@@ -20,7 +18,6 @@ const emit = defineEmits<{
   (e: 'cancel', id: number): void;
 }>();
 
-const widgetsStore = useWidgetsStore();
 const { t } = useI18n();
 const panel = ref<HTMLElement>();
 const localConfig = ref<any>({});
@@ -61,22 +58,6 @@ watch(() => [props.widget, props.modelValue] as const, async ([widget, open], _p
         entrypoint.target_entrypoint_id === resolved.entrypoint.entrypoint_id
       );
       component = resolved && editor ? await loadCompiledComponent(resolved.pkg, editor) : null;
-    } else if (widget.type.startsWith('extension:')) {
-      const extensionId = widget.type.split(':')[1];
-      const extensions = await widgetsStore.fetchAvailableExtensions();
-      const extension = extensions.find(ext => ext.id === parseInt(extensionId));
-      if (extension && extension.frontend_editor) {
-        const editorUrl = `/src/extensions/${extension.name}_${extension.version}/${extension.frontend_editor}`;
-        component = await loadBundledExtensionComponentByPath(editorUrl);
-      }
-    } else {
-      // Existing legacy built-in resolver; extension registrations stay dynamic.
-      const builtInMap: Record<string, string> = {
-        CLOCK: 'ClockWidget_1.0.0', TEXT: 'TextWidget_1.0.0', RSS: 'RSSWidget_1.0.0'
-      };
-      const extensionName = builtInMap[widget.type] || `${widget.type}Widget_1.0.0`;
-      const editorUrl = `/src/extensions/${extensionName}/${widget.type.charAt(0) + widget.type.slice(1).toLowerCase()}WidgetEditor.vue`;
-      component = await loadBundledExtensionComponentByPath(editorUrl);
     }
     if (!current) return;
     extensionEditor.value = component ? markRaw(component) : null;

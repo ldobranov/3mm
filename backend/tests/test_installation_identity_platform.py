@@ -1,3 +1,4 @@
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 import hashlib
 import json
 import time
@@ -74,7 +75,7 @@ def platform(tmp_path, monkeypatch):
     key_root.mkdir()
     secret = b"s" * 32
     (key_root / f"{installation.instance_id}.key").write_bytes(secret)
-    server = ApplicationPlatformServer(tmp_path / "platform.sock", key_root)
+    server = ApplicationPlatformServer(tmp_path / "platform.sock", key_root, allowed_actions=COMPATIBILITY_ACTIONS)
     yield db, installation, package, server, secret
     db.close()
     engine.dispose()
@@ -131,6 +132,9 @@ class MemoryConnection:
         return self
 
     def __exit__(self, *_args):
+        pass
+
+    def settimeout(self, seconds):
         pass
 
     def recv(self, _size):
@@ -209,7 +213,5 @@ def test_spoofed_platform_signature_cannot_create_identity(platform):
     }
     connection = MemoryConnection(json.dumps(request).encode() + b"\n")
     server._handle(connection)
-    response = json.loads(connection.response)
-    assert response["ok"] is False
-    assert "authentication failed" in response["error"]
+    assert connection.response == b""  # No signed error before authentication.
     assert db.get(CoreInstallationIdentity, 1) is None

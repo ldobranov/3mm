@@ -2,7 +2,6 @@ import axios from 'axios';
 import type { AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 import { getToken, refreshToken, clearAuth } from '@/utils/auth';
 import { getBackendUrl, invalidateRuntimeConfig, setBackendOverride, clearBackendOverride } from './runtime-config';
-import { getExtensionCatalog, invalidateExtensionCatalog, peekPublicEndpoints, isPublicEndpoint } from './extension-catalog';
 
 // Custom JSON stringify that preserves Unicode characters
 function stringifyPreserveUnicode(obj: any): string {
@@ -91,7 +90,6 @@ let transportGeneration = 0;
 function resetTransport() {
   ++transportGeneration;
   httpInstance = httpPromise = null;
-  invalidateExtensionCatalog();
 }
 async function getHttpInstance(): Promise<any> {
   if (httpInstance) return httpInstance;
@@ -111,13 +109,10 @@ async function getHttpInstance(): Promise<any> {
 function setupInterceptors(http: any) {
   // Request interceptor
   http.interceptors.request.use((config: AxiosConfig) => {
-    const publicRequest = isPublicEndpoint(config.url || '');
-    if (!publicRequest) {
-      const token = getToken();
-      if (token) {
-        config.headers = config.headers || {};
-        (config.headers as any).Authorization = `Bearer ${token}`;
-      }
+    const token = getToken();
+    if (token) {
+      config.headers = config.headers || {};
+      (config.headers as any).Authorization = `Bearer ${token}`;
     }
     return config;
   });
@@ -132,7 +127,7 @@ function setupInterceptors(http: any) {
       const status = error?.response?.status;
       const original = error.config as AxiosConfig;
 
-      if (status === 401 && original && !original._retry && getToken() && !isPublicEndpoint(original.url || '')) {
+      if (status === 401 && original && !original._retry && getToken()) {
         if (!isRefreshing) {
           isRefreshing = true;
           try {
@@ -271,16 +266,6 @@ export default {
     return '';
   },
 
-  async getPublicEndpoints(): Promise<string[]> {
-    try { await getExtensionCatalog(); } catch { /* Cached policy/defaults remain usable. */ }
-    return peekPublicEndpoints();
-  },
-
-  async refreshPublicEndpoints(): Promise<string[]> {
-    try { await getExtensionCatalog(true); } catch { /* Bounded retry backoff. */ }
-    return peekPublicEndpoints();
-  },
-  
   // For backward compatibility with existing code
   create(config: AxiosRequestConfig) {
     return axios.create(config);

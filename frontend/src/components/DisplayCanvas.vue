@@ -149,26 +149,9 @@ function renderItems() {
         const Comp = widgetComponentFor(widget.type);
         const componentProps: any = { config: widget.config };
 
-        // All widgets are now extensions
-        if (widget.type.startsWith('extension:')) {
-          const extensionId = parseInt(widget.type.split(':')[1]);
-          componentProps.extensionId = extensionId;
-          componentProps.extensionName = widget.type; // This is the full type like "extension:1"
-          componentProps.width = widget.width;
-          componentProps.height = widget.height;
-        } else if (widget.type.startsWith('compiled:')) {
-          componentProps.extensionId = -1;
-          componentProps.extensionName = widget.type;
-          componentProps.width = widget.width;
-          componentProps.height = widget.height;
-        } else {
-          // Legacy widget types - map to extension IDs (will be set after installation)
-          // For now, treat as extension widgets
-          componentProps.extensionId = 0; // Placeholder
-          componentProps.extensionName = widget.type;
-          componentProps.width = widget.width;
-          componentProps.height = widget.height;
-        }
+        componentProps.extensionName = widget.type;
+        componentProps.width = widget.width;
+        componentProps.height = widget.height;
 
         const app = createApp(Comp, componentProps);
         app.mount(root);

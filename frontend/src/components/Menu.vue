@@ -229,7 +229,9 @@ export default defineComponent({
         .getRoutes()
         .filter((route) => route.meta?.menuLabel && route.path)
         .map((route) => ({
-          label: route.meta.menuLabel as MenuItem['label'],
+          label: typeof route.meta.menuLabelKey === 'string'
+            ? t(route.meta.menuLabelKey, String((route.meta.menuLabel as any)?.en || route.name))
+            : route.meta.menuLabel as MenuItem['label'],
           path: route.path,
           audience: (
             route.meta.applicationAudience === 'administrator'
@@ -304,6 +306,7 @@ export default defineComponent({
       } catch (error) {
         console.warn('Extension routes could not be refreshed:', error);
       }
+      await fetchAvailableLanguages();
       await fetchMenuItems();
       await settingsStore.loadSettings();
     };
@@ -369,6 +372,7 @@ export default defineComponent({
     watch(currentLanguage, async (newLang) => {
       selectedLanguage.value = newLang;
       // Refresh menu items and header settings when language changes externally
+      await fetchAvailableLanguages();
       await fetchMenuItems();
       await settingsStore.loadSettings();
     });

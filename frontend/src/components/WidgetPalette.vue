@@ -49,12 +49,12 @@ function getWidgetIcon(name: string): string {
     <!-- Extension widgets only -->
     <div
       v-for="ext in extensionWidgets"
-      :key="ext.widget_type || ext.id"
+      :key="ext.widget_type"
       class="palette-item"
       draggable="true"
-      @dragstart="setDragData($event, ext.widget_type || `extension:${ext.id}`)"
+      @dragstart="setDragData($event, ext.widget_type)"
     >
-      <UiButton class="palette-button" @click="emit('add', ext.widget_type || `extension:${ext.id}`)">
+      <UiButton class="palette-button" @click="emit('add', ext.widget_type)">
         <i :class="['bi', getWidgetIcon(ext.name)]" aria-hidden="true"></i>
         <span>{{ ext.name }}</span>
       </UiButton>

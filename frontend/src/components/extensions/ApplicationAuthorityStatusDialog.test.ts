@@ -6,7 +6,8 @@ const locale = vi.hoisted(() => ({ language: 'en' }))
 vi.mock('@/utils/dynamic-http', () => ({ default: http }))
 vi.mock('@/utils/i18n', async () => {
   const { ref } = await import('vue')
-  return { useI18n: () => ({ currentLanguage: ref(locale.language), t: (_key: string, fallback: string) => fallback }) }
+  const { movedLanguageLabel } = await import('@/test-utils/language-messages')
+  return { useI18n: () => ({ currentLanguage: ref(locale.language), t: (key: string, fallback: string) => movedLanguageLabel(key, fallback, locale.language) }) }
 })
 import ApplicationAuthorityDialog from './ApplicationAuthorityDialog.vue'
 

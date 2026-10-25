@@ -1,3 +1,4 @@
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 import sqlite3
@@ -56,7 +57,7 @@ def test_signed_platform_command_transport(setup, monkeypatch, tmp_path):
     import backend.database
     from backend.services.application_platform import ApplicationPlatformServer
     s = setup
-    server = ApplicationPlatformServer(tmp_path / 'unused.sock', tmp_path)
+    server = ApplicationPlatformServer(tmp_path / 'unused.sock', tmp_path, allowed_actions=COMPATIBILITY_ACTIONS)
     secret = b's' * 32
     (tmp_path / f'{s.app.instance_id}.key').write_bytes(secret)
     monkeypatch.setattr(backend.database, 'SessionLocal', lambda: s.db)
@@ -66,12 +67,13 @@ def test_signed_platform_command_transport(setup, monkeypatch, tmp_path):
     class Connection:
         def __enter__(self): return self
         def __exit__(self, *args): pass
+        def settimeout(self, seconds): pass
         def recv(self, size): return json.dumps(request).encode() + b'\n'
         def sendall(self, response): self.response = json.loads(response)
 
     request['signature'] = 'invalid'
     connection = Connection(); server._handle(connection)
-    assert connection.response['ok'] is False
+    assert not hasattr(connection, 'response')  # No signed reply before authentication.
     assert not s.db.scalars(select(DeviceCommand)).all()
     request['signature'] = hmac.new(secret, server._canonical(request), hashlib.sha256).hexdigest()
     server._handle(connection)

@@ -15,6 +15,7 @@ Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=20s
 StateDirectory=3mm/provisioning
+ReadWritePaths=-/var/lib/3mm/core
 NoNewPrivileges=true
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE

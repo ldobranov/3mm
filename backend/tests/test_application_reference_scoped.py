@@ -3,6 +3,7 @@
 Local disposable Core/device-role/provider fixtures, NOT live Hub/Node transport,
 Root/systemd isolation or portable recovery acceptance.
 """
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 import io
 import json
@@ -178,7 +179,7 @@ def test_delivered_reference_ui_sdk_authority_and_lifecycle(managed_installed, m
         key_root = root / 'keys'; key_root.mkdir()
         secret = b's' * 32
         (key_root / ('a' * 24 + '.key')).write_bytes(secret)
-        platform = ApplicationPlatformServer(root / 'p.sock', key_root, group='missing-test-group')
+        platform = ApplicationPlatformServer(root / 'p.sock', key_root, group='missing-test-group', allowed_actions=COMPATIBILITY_ACTIONS)
         platform.start()
         app_root = root / 'apps'
         instance = app_root / ('a' * 24)
@@ -216,6 +217,8 @@ def test_delivered_reference_ui_sdk_authority_and_lifecycle(managed_installed, m
         with s.engine.begin() as db:
             db.execute(update(Installation).values(socket_path=str(instance / 'run/service.sock')))
         settings = ApplicationRuntimeSettings(root=app_root, key_root=key_root, helper_socket=root / 'unused')
+        from backend.tests.response_helpers import install_response_transport
+        install_response_transport(monkeypatch)
         monkeypatch.setattr(routes, 'get_settings', lambda: type('Settings', (), {'applications': settings})())
         app = FastAPI(); app.include_router(routes.router)
 

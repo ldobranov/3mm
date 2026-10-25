@@ -416,7 +416,7 @@ class ApplicationConnectorV1(StrictApplicationModel):
     supports_mutations: bool = False
     timeout_seconds: int = Field(default=10, ge=1, le=30)
     max_request_bytes: int = Field(default=256 * 1024, ge=1024, le=4 * 1024 * 1024)
-    max_response_bytes: int = Field(default=1024 * 1024, ge=1024, le=8 * 1024 * 1024)
+    max_response_bytes: int = Field(default=1024 * 1024, ge=1024, le=4 * 1024 * 1024)
 
     @model_validator(mode="after")
     def validate_connector_semantics(self):

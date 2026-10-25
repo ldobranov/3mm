@@ -41,6 +41,7 @@ def test_full_profile_preserves_roles():
 
 
 def test_minimal_setup_does_not_require_absent_core_units(tmp_path, monkeypatch):
+    monkeypatch.setenv("THREE_MM_NETWORK_BACKEND", "network-manager")
     monkeypatch.setattr(activation, '_require_setup_interface', lambda: None)
     (tmp_path / '.3mm-install-profile').write_text('node\n')
     calls = []
@@ -48,4 +49,4 @@ def test_minimal_setup_does_not_require_absent_core_units(tmp_path, monkeypatch)
     monkeypatch.setattr(activation, '_systemctl', lambda *args: calls.append(args))
     activation.activate(tmp_path / 'state')
     assert calls[0] == ('disable', '--now', '3mm-agent.service')
-    assert calls[1] == ('enable', '--now', *activation.SETUP_UNITS)
+    assert calls[-1] == ('enable', '--now', *activation.SETUP_UNITS)

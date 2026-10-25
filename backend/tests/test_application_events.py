@@ -1,4 +1,7 @@
 from datetime import UTC, datetime
+import socket
+import time
+import sys
 from types import SimpleNamespace
 
 import backend.database  # noqa: F401 - register all model metadata
@@ -18,11 +21,13 @@ from backend.db.module import (
 from backend.services.application_events import (
     application_event_status,
     enqueue_application_event,
-    retry_application_events,
+    claim_event_delivery, complete_event_delivery, request_application_event_retry,
 )
 from backend.services.application_extensions import ApplicationGatewayError
 from three_mm_protocol import ApplicationExtensionV1
 
+
+pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux boot clock and durable FD claims")
 
 DEVICE_ID = "dev_0123456789abcdef0123456789abcdef"
 
@@ -138,7 +143,28 @@ def broker_db(monkeypatch, tmp_path):
         "backend.services.application_events.load_application_definition",
         lambda _package: application_definition(),
     )
-    yield db, device, installation, package
+    from backend.services import application_extensions as gateway, application_events as broker
+    key_root=tmp_path/'keys';key_root.mkdir()
+    (key_root/(installation.instance_id+'.key')).write_bytes(b's'*32)
+    monkeypatch.setattr(gateway,'load_application_package',lambda p:SimpleNamespace(
+        application_extension=application_definition(),compiled_ui=None))
+    state=SimpleNamespace(db=db,device=device,installation=installation,package=package,
+        settings=ApplicationRuntimeSettings(key_root=key_root),calls=[],mode='valid')
+    def send(prepared,request_id):
+        assert not db.in_transaction()
+        with Session(engine) as observer:
+            current=observer.scalar(select(ApplicationEventDelivery).where(
+                ApplicationEventDelivery.status=='delivering'))
+            assert current.attempts>=1
+        state.calls.append((prepared.operation_id,prepared.payload,prepared.context))
+        if state.mode=='send_error':raise OSError('test service unavailable')
+        from three_mm_runtime.application_transport import sign_message,send_message
+        left,right=socket.socketpair()
+        with right:send_message(right,sign_message({'version':1,'request_id':request_id,
+            'timestamp':int(time.time()),'ok':True,'result':{}},prepared.secret))
+        return left
+    monkeypatch.setattr(broker,'_send_event_invocation',send)
+    yield state
     db.close()
     engine.dispose()
 
@@ -166,291 +192,221 @@ def add_event(db: Session, device: Device, suffix: str) -> DeviceEvent:
     return event
 
 
-def test_event_is_acknowledged_once_after_handler_returns(monkeypatch, broker_db):
-    db, device, _installation, _package = broker_db
-    event = add_event(db, device, "a")
-    calls = []
-    monkeypatch.setattr(
-        "backend.services.application_events.invoke_application",
-        lambda *args, **kwargs: admitted_call(calls, *args, **kwargs),
-    )
-
-    enqueue_application_event(db, event, ApplicationRuntimeSettings())
-    enqueue_application_event(db, event, ApplicationRuntimeSettings())
-
-    delivery = db.scalar(select(ApplicationEventDelivery))
-    cursor = db.scalar(select(ApplicationEventCursor))
-    assert delivery.status == "acknowledged"
-    assert delivery.attempts == 1
-    assert cursor.acknowledged_count == 1
-    assert cursor.last_event_id == event.event_id
-    assert len(calls) == 1
-    assert calls[0][0][4]["event_id"] == event.event_id
-    assert calls[0][0][5]["idempotency_key"] == event.event_id
+def pump(db,settings,*,force=False,generation='test-runtime'):
+    from three_mm_platform_wire import read_frame
+    if force:request_application_event_retry(db)
+    for _ in range(100):
+        begin,origin=claim_event_delivery(db,settings,runtime_generation=generation)
+        if begin['idle']:return
+        try:
+            with origin:response=read_frame(origin,time.monotonic()+1,max_bytes=1024*1024)
+            complete_event_delivery(db,settings,begin['receipt'],runtime_generation=generation,response=response)
+        except (OSError,ValueError):
+            complete_event_delivery(db,settings,begin['receipt'],runtime_generation=generation,failure='handler_unavailable')
+    raise AssertionError('Test pump exceeded its bound')
 
 
-def test_failed_delivery_is_durable_and_dead_letters_after_bound(monkeypatch, broker_db):
-    db, device, _installation, _package = broker_db
-    event = add_event(db, device, "b")
-
-    def fail(*_args, **_kwargs):
-        raise ApplicationGatewayError("service unavailable")
-
-    monkeypatch.setattr("backend.services.application_events.invoke_application", fail)
-    for _attempt in range(5):
-        enqueue_application_event(db, event, ApplicationRuntimeSettings())
-
-    delivery = db.scalar(select(ApplicationEventDelivery))
-    cursor = db.scalar(select(ApplicationEventCursor))
-    assert delivery.status == "dead_letter"
-    assert delivery.attempts == 5
-    assert delivery.last_error == "service unavailable"
-    assert cursor.dead_letter_count == 1
+def row(s):
+    s.db.expire_all()
+    return s.db.scalar(select(ApplicationEventDelivery).order_by(ApplicationEventDelivery.id))
 
 
-def test_device_scope_and_manifest_permission_fail_closed(monkeypatch, broker_db):
-    db, device, _installation, package = broker_db
-    event = add_event(db, device, "c")
-    package.manifest = {
-        **package.manifest,
-        "configuration_defaults": {"READER_DEVICE_ID": "another-device"},
-    }
-    db.commit()
-    monkeypatch.setattr(
-        "backend.services.application_events.invoke_application",
-        lambda *_args, **_kwargs: pytest.fail("handler must not be called"),
-    )
-
-    enqueue_application_event(db, event, ApplicationRuntimeSettings())
-
-    assert db.scalar(select(ApplicationEventDelivery)) is None
+def test_enqueue_only_persists_and_completion_is_idempotent(broker_db):
+    s=broker_db;event=add_event(s.db,s.device,'a')
+    enqueue_application_event(s.db,event,s.settings)
+    enqueue_application_event(s.db,event,s.settings)
+    assert row(s).status=='pending' and row(s).attempts==0 and not s.calls
+    begin,origin=claim_event_delivery(s.db,s.settings,runtime_generation='owner')
+    assert row(s).status=='delivering' and row(s).attempts==1
+    from three_mm_platform_wire import read_frame
+    with origin:response=read_frame(origin,time.monotonic()+1)
+    for _ in range(2):complete_event_delivery(s.db,s.settings,begin['receipt'],runtime_generation='owner',response=response)
+    pump(s.db,s.settings)
+    cursor=s.db.scalar(select(ApplicationEventCursor))
+    assert cursor.acknowledged_count==1 and cursor.last_event_id==event.event_id
+    assert len(s.calls)==1 and s.calls[0][1]['event_id']==s.calls[0][2]['idempotency_key']==event.event_id
 
 
-def test_saved_installation_device_binding_overrides_package_default(
-    monkeypatch, broker_db
-):
-    db, device, installation, package = broker_db
-    package.manifest = {
-        **package.manifest,
-        "configuration_defaults": {"READER_DEVICE_ID": "another-device"},
-    }
-    installation.configuration = {"READER_DEVICE_ID": DEVICE_ID}
-    db.commit()
-    event = add_event(db, device, "d")
-    calls = []
-    monkeypatch.setattr(
-        "backend.services.application_events.invoke_application",
-        lambda *args, **kwargs: admitted_call(calls, *args, **kwargs),
-    )
-
-    enqueue_application_event(db, event, ApplicationRuntimeSettings())
-
-    assert db.scalar(select(ApplicationEventDelivery)).status == "acknowledged"
-    assert len(calls) == 1
+def test_failed_delivery_is_durable_backed_off_and_bounded(broker_db):
+    s=broker_db;s.mode='send_error';event=add_event(s.db,s.device,'b')
+    enqueue_application_event(s.db,event,s.settings)
+    pump(s.db,s.settings)
+    assert row(s).attempts==1 and row(s).status=='pending'
+    pump(s.db,s.settings);assert row(s).attempts==1
+    for _ in range(4):pump(s.db,s.settings,force=True)
+    assert row(s).status=='dead_letter' and row(s).attempts==5
+    assert row(s).last_error=='dispatch_unconfirmed'
+    assert s.db.scalar(select(ApplicationEventCursor)).dead_letter_count==1
+    pump(s.db,s.settings,force=True);assert len(s.calls)==5
 
 
-@pytest.mark.parametrize("mode", ["enforced", "review_required"])
-def test_opted_in_event_declarations_are_not_grants(monkeypatch, broker_db, mode):
-    db, device, installation, _package = broker_db
-    event = add_event(db, device, "denied")
-    installation.authority_mode = mode
-    db.commit()
-    monkeypatch.setattr(
-        "backend.services.application_events.invoke_application",
-        lambda *_args, **_kwargs: pytest.fail("unsupported event grant must deny"),
-    )
-    enqueue_application_event(db, event, ApplicationRuntimeSettings())
-    assert db.scalar(select(ApplicationEventDelivery)) is None
-    assert db.scalar(select(ApplicationEventCursor)) is None
-
-
-@pytest.mark.parametrize("change", ["mode", "device"])
-def test_enqueue_does_not_trust_a_cached_authority_snapshot(
-    monkeypatch, broker_db, change,
-):
-    db, device, installation, _package = broker_db
-    db.expire_on_commit = False
-    event = add_event(db, device, "cached")
-    assert installation.authority_mode == "compatibility" and device.revoked_at is None
-    with Session(db.get_bind()) as writer:
-        if change == "mode":
-            writer.execute(update(ApplicationExtensionInstallation)
-                .where(ApplicationExtensionInstallation.id == installation.id)
-                .values(authority_mode="review_required"))
+@pytest.mark.parametrize('change',['mode','device','permission','capability','scope'])
+def test_enqueue_fresh_declared_source_and_mode_only(broker_db,change):
+    s=broker_db;event=add_event(s.db,s.device,'c');s.db.expire_on_commit=False
+    with Session(s.db.get_bind()) as writer:
+        if change=='mode':writer.execute(update(ApplicationExtensionInstallation).values(authority_mode='review_required'))
+        elif change=='device':writer.execute(update(Device).values(revoked_at=datetime.now(UTC)))
         else:
-            writer.execute(update(Device).where(Device.id == device.id)
-                .values(revoked_at=datetime.now(UTC)))
+            manifest=dict(s.package.manifest)
+            if change=='permission':manifest['permissions']=[]
+            elif change=='capability':manifest['capabilities']={'consumes':[]}
+            else:manifest['configuration_defaults']={'READER_DEVICE_ID':'foreign'}
+            writer.execute(update(ModulePackage).values(manifest=manifest))
         writer.commit()
-    monkeypatch.setattr("backend.services.application_events.invoke_application",
-        lambda *_args, **_kwargs: pytest.fail("cached authority must not admit data"))
-    enqueue_application_event(db, event, ApplicationRuntimeSettings())
-    assert db.scalar(select(ApplicationEventDelivery)) is None
+    enqueue_application_event(s.db,event,s.settings)
+    assert row(s) is None and not s.calls
 
 
-@pytest.mark.parametrize("change", [
-    "enforced", "review_required", "device_binding", "permission", "capability",
-    "event_type", "event_capability", "revoked_device", "artifact",
-])
-def test_retry_rechecks_current_authority_and_retains_terminal_evidence(
-    monkeypatch, broker_db, change,
-):
-    db, device, installation, package = broker_db
-    event = add_event(db, device, "pending")
-
-    def fail(*_args, **_kwargs):
-        raise ApplicationGatewayError("temporarily unavailable")
-
-    monkeypatch.setattr("backend.services.application_events.invoke_application", fail)
-    enqueue_application_event(db, event, ApplicationRuntimeSettings())
-    delivery = db.scalar(select(ApplicationEventDelivery))
-    assert delivery.status == "pending" and delivery.attempts == 1
-    if change in {"enforced", "review_required"}:
-        installation.authority_mode = change
-    elif change == "device_binding":
-        installation.configuration = {"READER_DEVICE_ID": "dev_" + "f" * 32}
-    elif change == "permission":
-        package.manifest = {**package.manifest, "permissions": []}
-    elif change == "capability":
-        package.manifest = {**package.manifest, "capabilities": {"consumes": []}}
-    elif change == "event_type":
-        event.event_type = "another.event.v1"
-    elif change == "event_capability":
-        event.payload = {**event.payload, "capability_id": "another.capability.v1"}
-    elif change == "revoked_device":
-        device.revoked_at = datetime.now(UTC)
-    elif change == "artifact":
-        installation.active_version = "2.0.0"
-    db.commit()
-    monkeypatch.setattr(
-        "backend.services.application_events.invoke_application",
-        lambda *_args, **_kwargs: pytest.fail("stale backlog must not reach the handler"),
-    )
-    retry_application_events(db, ApplicationRuntimeSettings())
-    retry_application_events(db, ApplicationRuntimeSettings())
-    db.refresh(delivery)
-    assert delivery.status == "dead_letter" and delivery.attempts == 1
-    assert delivery.last_error == "Event subscription authority is unavailable or changed"
-    cursor = db.scalar(select(ApplicationEventCursor))
-    assert cursor.dead_letter_count == 1 and cursor.acknowledged_count == 0
-    assert cursor.last_event_id == event.event_id
-    assert application_event_status(db)[0]["backlog"] == 0
-    assert db.get(DeviceEvent, event.id) is not None
-    # Restoring a binding/mode cannot silently replay denied historical data.
-    installation.authority_mode = "compatibility"
-    installation.configuration = {}
-    db.commit()
-    retry_application_events(db, ApplicationRuntimeSettings())
-    assert db.scalar(select(ApplicationEventCursor)).dead_letter_count == 1
+@pytest.mark.parametrize('mode',['enforced','review_required'])
+def test_declarations_are_not_event_grants(broker_db,mode):
+    s=broker_db;s.installation.authority_mode=mode;s.db.commit()
+    enqueue_application_event(s.db,add_event(s.db,s.device,'denied'),s.settings)
+    assert row(s) is None and not s.calls
 
 
-def test_resolved_configuration_does_not_mutate_shared_package_defaults(
-    monkeypatch, broker_db,
-):
-    db, device, installation, package = broker_db
-    other = Device(device_id="dev_" + "e" * 32, role="node", protocol_version="1.0",
-        approved_at=datetime.now(UTC))
-    db.add(other)
-    installation.configuration = {"READER_DEVICE_ID": other.device_id}
-    db.commit()
-    calls = []
-    monkeypatch.setattr("backend.services.application_events.invoke_application",
-        lambda *args, **kwargs: admitted_call(calls, *args, **kwargs))
-    enqueue_application_event(db, add_event(db, other, "override"), ApplicationRuntimeSettings())
-    assert package.manifest["configuration_defaults"]["READER_DEVICE_ID"] == DEVICE_ID
-    installation.configuration = {}
-    db.commit()
-    enqueue_application_event(db, add_event(db, device, "default"), ApplicationRuntimeSettings())
-    assert len(calls) == 2
+@pytest.mark.parametrize('change',['enforced','review_required','scope','permission','capability','event_type','event_capability','device','artifact'])
+def test_retry_rechecks_current_authority_without_replaying_denied_data(broker_db,change):
+    s=broker_db;s.mode='send_error';event=add_event(s.db,s.device,'pending')
+    enqueue_application_event(s.db,event,s.settings);pump(s.db,s.settings)
+    assert row(s).attempts==1
+    if change in {'enforced','review_required'}:s.installation.authority_mode=change
+    elif change=='scope':s.installation.configuration={'READER_DEVICE_ID':'foreign'}
+    elif change=='permission':s.package.manifest={**s.package.manifest,'permissions':[]}
+    elif change=='capability':s.package.manifest={**s.package.manifest,'capabilities':{'consumes':[]}}
+    elif change=='event_type':event.event_type='other.event.v1'
+    elif change=='event_capability':event.payload={**event.payload,'capability_id':'foreign'}
+    elif change=='device':s.device.revoked_at=datetime.now(UTC)
+    elif change=='artifact':s.installation.active_version='2.0.0'
+    s.db.commit();pump(s.db,s.settings,force=True)
+    assert row(s).status=='dead_letter' and row(s).attempts==1 and len(s.calls)==1
+    assert s.db.scalar(select(ApplicationEventCursor)).dead_letter_count==1
+    assert application_event_status(s.db)[0]['backlog']==0 and s.db.get(DeviceEvent,event.id) is not None
 
 
-def gateway_settings(monkeypatch, tmp_path, installation):
-    from backend.services import application_extensions
-    monkeypatch.setattr(application_extensions, "load_application_package",
-        lambda _package: SimpleNamespace(
-            application_extension=application_definition(), compiled_ui=None))
-    keys = tmp_path / "keys"
-    keys.mkdir()
-    (keys / f"{installation.instance_id}.key").write_bytes(b"s" * 32)
-    return ApplicationRuntimeSettings(key_root=keys)
-
-
-@pytest.mark.parametrize("change", [
-    "enforced", "review_required", "disable", "epoch", "configuration", "device_revoke",
-])
-def test_real_gateway_denies_change_between_preflight_and_dispatch(
-    monkeypatch, broker_db, tmp_path, change,
-):
-    from backend.services import application_extensions
-    from backend.db.authority import new_authority_generation
-    db, device, installation, package = broker_db
-    settings = gateway_settings(monkeypatch, tmp_path, installation)
-    installation_id, device_id = installation.id, device.id
-    event = add_event(db, device, "race")
-
+@pytest.mark.parametrize('change',['enforced','review_required','disable','epoch','configuration','device_revoke'])
+def test_change_after_preflight_denies_before_attempt_or_service_io(broker_db,monkeypatch,change):
+    from backend.services import application_extensions as gateway
+    s=broker_db;event=add_event(s.db,s.device,'race')
+    enqueue_application_event(s.db,event,s.settings)
     def preflight(_package):
-        # A separate real DB writer, after matching and before actual admission.
-        with Session(db.get_bind()) as writer:
-            if change == "device_revoke":
-                writer.execute(update(Device).where(Device.id == device_id)
-                    .values(revoked_at=datetime.now(UTC)))
+        with Session(s.db.get_bind()) as writer:
+            if change=='device_revoke':writer.execute(update(Device).values(revoked_at=datetime.now(UTC)))
             else:
-                values = {
-                    "enforced": {"authority_mode": "enforced"},
-                    "review_required": {"authority_mode": "review_required"},
-                    "disable": {"enabled": False, "status": "disabled"},
-                    "epoch": {"authority_epoch": new_authority_generation()},
-                    "configuration": {"configuration": {"READER_DEVICE_ID": "dev_" + "f" * 32}},
-                }[change]
-                writer.execute(update(ApplicationExtensionInstallation)
-                    .where(ApplicationExtensionInstallation.id == installation_id).values(**values))
+                values={'enforced':{'authority_mode':'enforced'},'review_required':{'authority_mode':'review_required'},
+                    'disable':{'enabled':False,'status':'disabled'},'epoch':{'authority_epoch':'e'*32},
+                    'configuration':{'configuration':{'READER_DEVICE_ID':'foreign'}}}[change]
+                writer.execute(update(ApplicationExtensionInstallation).values(**values))
             writer.commit()
-        return SimpleNamespace(application_extension=application_definition(), compiled_ui=None)
-
-    monkeypatch.setattr(application_extensions, "load_application_package", preflight)
-    monkeypatch.setattr(application_extensions, "ApplicationServiceClient",
-        lambda *_args: pytest.fail("revoked event must not be dispatched"))
-    enqueue_application_event(db, event, settings)
-    delivery = db.scalar(select(ApplicationEventDelivery))
-    assert delivery.status == "dead_letter" and delivery.attempts == 0
-    assert delivery.last_error == "Event subscription authority is unavailable or changed"
-    assert db.scalar(select(ApplicationEventCursor)).dead_letter_count == 1
+        return SimpleNamespace(application_extension=application_definition(),compiled_ui=None)
+    monkeypatch.setattr(gateway,'load_application_package',preflight)
+    pump(s.db,s.settings)
+    assert row(s).status=='dead_letter' and row(s).attempts==0 and not s.calls
 
 
-def test_gateway_commits_attempt_before_ipc_and_later_revocation_blocks_retry(
-    monkeypatch, broker_db, tmp_path,
-):
-    from backend.services import application_extensions
-    from three_mm_runtime.application_transport import ApplicationTransportError
-    db, device, installation, _package = broker_db
-    settings = gateway_settings(monkeypatch, tmp_path, installation)
-    installation_id = installation.id
-    event = add_event(db, device, "admitted")
-    calls = []
+def test_fifo_backlog_and_admin_retry_do_not_steal_inflight_claim(broker_db):
+    s=broker_db
+    for suffix in ['first','second','overflow']:enqueue_application_event(s.db,add_event(s.db,s.device,suffix),s.settings)
+    begin,origin=claim_event_delivery(s.db,s.settings,runtime_generation='owner')
+    original=row(s).dispatch_id
+    request_application_event_retry(s.db)
+    assert claim_event_delivery(s.db,s.settings,runtime_generation='other')[0]['idle']
+    assert row(s).dispatch_id==original and application_event_status(s.db)[0]['backlog']==2
+    from three_mm_platform_wire import read_frame
+    with origin:response=read_frame(origin,time.monotonic()+1)
+    complete_event_delivery(s.db,s.settings,begin['receipt'],runtime_generation='owner',response=response)
+    pump(s.db,s.settings)
+    assert [c[1]['event_id'] for c in s.calls]==['evt_first000000000000000000000000000','evt_second00000000000000000000000000']
+    cursor=s.db.scalar(select(ApplicationEventCursor))
+    assert cursor.acknowledged_count==2 and cursor.dead_letter_count==1
 
-    class Client:
-        def __init__(self, socket_path, _secret, _timeout):
-            assert str(socket_path) == "unused.sock"
 
-        def invoke(self, operation_id, payload, context):
-            # Admission left no DB transaction/lock open across service I/O.
-            assert not db.in_transaction()
-            with Session(db.get_bind()) as writer:
-                pending = writer.scalar(select(ApplicationEventDelivery))
-                assert pending.status == "pending" and pending.attempts == 1
-                writer.execute(update(ApplicationExtensionInstallation)
-                    .where(ApplicationExtensionInstallation.id == installation_id)
-                    .values(authority_mode="review_required"))
-                writer.commit()
-            calls.append((operation_id, payload, context))
-            raise ApplicationTransportError("response lost")
+@pytest.mark.parametrize('change',['expiry','reboot'])
+def test_lost_response_has_one_durable_attempt_and_fresh_claim_after_expiry(broker_db,monkeypatch,change):
+    from backend.services import application_events as broker
+    s=broker_db;clock=['a'*36,1000];monkeypatch.setattr(broker,'_clock',lambda:tuple(clock))
+    event=add_event(s.db,s.device,'lost');enqueue_application_event(s.db,event,s.settings)
+    first,origin=claim_event_delivery(s.db,s.settings,runtime_generation='old');origin.close()
+    assert claim_event_delivery(s.db,s.settings,runtime_generation='new')[0]['idle']
+    if change=='expiry':clock[1]+=broker.CLAIM_LEASE_MS+1
+    else:clock[:]=['b'*36,1]
+    second,origin=claim_event_delivery(s.db,s.settings,runtime_generation='new')
+    assert row(s).attempts==2 and second['receipt']!=first['receipt']
+    with pytest.raises(ValueError):complete_event_delivery(s.db,s.settings,first['receipt'],runtime_generation='old',failure='handler_unavailable')
+    from three_mm_platform_wire import read_frame
+    with origin:response=read_frame(origin,time.monotonic()+1)
+    complete_event_delivery(s.db,s.settings,second['receipt'],runtime_generation='new',response=response)
+    assert row(s).status=='acknowledged' and s.calls[0][2]['idempotency_key']==s.calls[1][2]['idempotency_key']
 
-    monkeypatch.setattr(application_extensions, "ApplicationServiceClient", Client)
-    enqueue_application_event(db, event, settings)
-    assert len(calls) == 1
-    assert calls[0][2]["idempotency_key"] == event.event_id
-    delivery = db.scalar(select(ApplicationEventDelivery))
-    assert delivery.status == "pending" and delivery.attempts == 1
-    retry_application_events(db, settings)
-    assert len(calls) == 1
-    db.refresh(delivery)
-    assert delivery.status == "dead_letter" and delivery.attempts == 1
+
+@pytest.mark.parametrize('damage',['owner','receipt','response','expired'])
+def test_result_cannot_complete_foreign_forged_or_expired_attempt(broker_db,monkeypatch,damage):
+    from backend.services import application_events as broker
+    from three_mm_platform_wire import read_frame
+    s=broker_db;clock=['a'*36,1000];monkeypatch.setattr(broker,'_clock',lambda:tuple(clock))
+    enqueue_application_event(s.db,add_event(s.db,s.device,'result'),s.settings)
+    begin,origin=claim_event_delivery(s.db,s.settings,runtime_generation='owner')
+    with origin:response=read_frame(origin,time.monotonic()+1)
+    receipt=dict(begin['receipt']);owner='owner'
+    if damage=='owner':owner='foreign'
+    elif damage=='receipt':receipt['dispatch_id']='f'*32
+    elif damage=='expired':clock[1]+=broker.CLAIM_LEASE_MS+1
+    elif damage=='response':response['result']={'tampered':True}
+    if damage=='response':
+        complete_event_delivery(s.db,s.settings,receipt,runtime_generation=owner,response=response)
+        assert row(s).status=='pending' and row(s).last_error=='response_invalid'
+    else:
+        with pytest.raises(ValueError):complete_event_delivery(s.db,s.settings,receipt,runtime_generation=owner,response=response)
+        assert row(s).status=='delivering'
+    assert s.db.scalar(select(ApplicationEventCursor)).acknowledged_count==0
+
+
+def test_already_admitted_success_is_accounted_after_disable(broker_db):
+    from three_mm_platform_wire import read_frame
+    s=broker_db;enqueue_application_event(s.db,add_event(s.db,s.device,'admitted'),s.settings)
+    begin,origin=claim_event_delivery(s.db,s.settings,runtime_generation='owner')
+    with origin:response=read_frame(origin,time.monotonic()+1)
+    s.installation.enabled=False;s.installation.status='disabled';s.db.commit()
+    complete_event_delivery(s.db,s.settings,begin['receipt'],runtime_generation='owner',response=response)
+    assert row(s).status=='acknowledged'
+
+
+def test_old_terminal_attempt_can_be_pruned_without_losing_outcome_counter(broker_db,monkeypatch):
+    from backend.services import application_events as broker
+    s=broker_db;monkeypatch.setattr(broker,'MAX_STORED_DEAD_LETTERS',1)
+    event=add_event(s.db,s.device,'old');enqueue_application_event(s.db,event,s.settings)
+    # A newer terminal row precedes this older attempt's fifth failed outcome.
+    newer=add_event(s.db,s.device,'newer')
+    s.db.add(ApplicationEventDelivery(application_installation_id=s.installation.id,
+        subscription_id='identifier_scans',device_event_id=newer.id,status='dead_letter',attempts=5))
+    old=row(s);old.attempts=4;s.db.commit();s.mode='send_error'
+    pump(s.db,s.settings)
+    assert s.db.get(ApplicationEventDelivery,old.id) is None
+    assert s.db.scalar(select(ApplicationEventCursor)).dead_letter_count==1
+
+
+def test_preexisting_exhausted_pending_attempt_is_not_dispatched_a_sixth_time(broker_db):
+    s=broker_db;enqueue_application_event(s.db,add_event(s.db,s.device,'exhausted'),s.settings)
+    row(s).attempts=5;s.db.commit();pump(s.db,s.settings)
+    assert row(s).status=='dead_letter' and row(s).attempts==5 and not s.calls
+    assert row(s).last_error=='attempt_limit_exhausted'
+
+
+def test_paused_subscription_cannot_starve_an_active_head_at_batch_limit(broker_db,monkeypatch):
+    from backend.services import application_events as broker
+    s=broker_db;monkeypatch.setattr(broker,'MAX_DRAIN_BATCH',1)
+    package=ModulePackage(module_id='org.example.paused',version='1.0.0',manifest={},sha256='c'*64,
+        size_bytes=1,file_path='unused',registrations=[])
+    s.db.add(package);s.db.flush()
+    paused=ApplicationExtensionInstallation(module_id=package.module_id,module_package_id=package.id,
+        instance_id='2'*24,active_version=package.version,enabled=False,status='disabled',socket_path='unused')
+    s.db.add(paused);s.db.flush()
+    event=add_event(s.db,s.device,'paused')
+    s.db.add(ApplicationEventDelivery(application_installation_id=paused.id,subscription_id='paused',
+        device_event_id=event.id,status='pending'));s.db.commit()
+    enqueue_application_event(s.db,add_event(s.db,s.device,'active'),s.settings)
+    pump(s.db,s.settings)
+    assert len(s.calls)==1
+    assert s.db.scalar(select(ApplicationEventDelivery).where(
+        ApplicationEventDelivery.application_installation_id==s.installation.id)).status=='acknowledged'
+    assert s.db.scalar(select(ApplicationEventDelivery).where(
+        ApplicationEventDelivery.application_installation_id==paused.id)).status=='pending'

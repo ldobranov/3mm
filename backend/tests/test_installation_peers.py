@@ -1,3 +1,4 @@
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from importlib import import_module
@@ -213,10 +214,12 @@ def pair(tmp_path, monkeypatch):
         )
         sender.link_id = link["link_id"]
     captured = []
+    async def capture_callback(*args,**kwargs):
+        captured.append((args,kwargs));return {}
     monkeypatch.setattr(
         peers,
         "invoke_application",
-        lambda *args, **kwargs: captured.append((args, kwargs)) or {},
+        capture_callback,
     )
     app = FastAPI()
     app.include_router(router)
@@ -668,7 +671,7 @@ def test_permissions_and_package_integrity_gate_before_projection_or_network(
         package = db.get(ModulePackage, app.module_package_id)
         package.sha256 = "0" * 64
         db.commit()
-        server = ApplicationPlatformServer(Path("unused"), Path("unused"))
+        server = ApplicationPlatformServer(Path("unused"), Path("unused"), allowed_actions=COMPATIBILITY_ACTIONS)
         for action in (
             "installation.status.get",
             "installation.peers.enroll",
@@ -797,13 +800,13 @@ def test_expired_approval_and_request_or_credential_never_dispatch(pair):
         with Session(pair.receiver.engine) as db:
             before = len(pair.captured)
             with pytest.raises((peers.InstallationPeerError, ValueError)):
-                peers.receive_report(
+                __import__("asyncio").run(peers.receive_report(
                     db,
                     request,
                     origin=ORIGIN,
                     path=request.path,
                     now=datetime.now(UTC) + delta,
-                )
+                ))
             assert len(pair.captured) == before
 
 
@@ -889,7 +892,7 @@ def test_signed_sdk_projection_list_and_withdrawal_use_platform_boundary(
     instance_id = "a" * 24
     secret = b"s" * 32
     (key_root / f"{instance_id}.key").write_bytes(secret)
-    server = ApplicationPlatformServer(tmp_path / "platform.sock", key_root)
+    server = ApplicationPlatformServer(tmp_path / "platform.sock", key_root, allowed_actions=COMPATIBILITY_ACTIONS)
     monkeypatch.setattr(
         backend.database, "SessionLocal", lambda: Session(pair.sender.engine)
     )

@@ -11,7 +11,7 @@ vi.mock('@/stores/settings', () => ({ useSettingsStore: () => ({ activeTheme: nu
   clearPackagePreview: mocks.clearPackagePreview, loadThemeAppearance: mocks.load }) }))
 vi.mock('@/stores/theme', () => ({ useThemeStore: () => ({ theme: 'light', setTheme: vi.fn() }) }))
 const language = ref('bg')
-vi.mock('@/utils/i18n', () => ({ useI18n: () => ({ t: (_key: string, fallback: string) => fallback, currentLanguage: language }) }))
+vi.mock('@/utils/i18n', async () => { const { movedLanguageLabel } = await import('@/test-utils/language-messages'); return { useI18n: () => ({ t: (key: string, fallback: string) => movedLanguageLabel(key, fallback, language.value), currentLanguage: language }) } })
 import ThemePackagesSection from './ThemePackagesSection.vue'
 vi.mock('./ThemeAppearanceSection.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('./ThemeComponentPreview.vue', () => ({ default: { template: '<div class="component-preview" />' } }))

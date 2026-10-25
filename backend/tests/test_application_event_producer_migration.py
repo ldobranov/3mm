@@ -9,7 +9,7 @@ from sqlalchemy.schema import CreateTable
 
 from backend.db.device import DeviceEvent
 from backend.tests.test_authority_metadata_migration import seed
-from backend.tests.test_migration_history import _alembic
+from backend.tests.test_migration_history import _alembic, _head_revision
 
 
 def test_device_journal_ids_backlog_cursor_and_legacy_writer_preserved(tmp_path):
@@ -117,5 +117,5 @@ def test_complete_precreated_schema_requires_actual_constraint_and_legacy_defaul
     engine = create_engine(url)
     with engine.connect() as db:
         assert db.scalar(text('SELECT version_num FROM alembic_version')) == (
-            'ebc34af102b3' if damage else 'fcd45b0213c4')
+            'ebc34af102b3' if damage else _head_revision())
     engine.dispose()

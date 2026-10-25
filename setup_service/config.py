@@ -16,6 +16,8 @@ class SetupSettings:
     host: str = "127.0.0.1"
     port: int = 8895
     network_helper_socket: Path | None = None
+    read_only: bool = False
+    diagnostics: bool = False
 
     def __post_init__(self) -> None:
         if not self.host.strip():

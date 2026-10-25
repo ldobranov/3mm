@@ -3,10 +3,8 @@
  */
 
 import { ref, computed } from 'vue'
-import { readFrontendTranslations, saveCurrentUserLanguage } from '@/utils/language-api'
+import { readAvailableLanguages, readFrontendTranslations, saveCurrentUserLanguage } from '@/utils/language-api'
 import coreEnglish from '@/locales/en.json'
-import coreBulgarian from '@/locales/bg.json'
-import { getExtensionCatalog } from './extension-catalog'
 
 interface Translations {
   [key: string]: any
@@ -15,96 +13,19 @@ interface Translations {
 class FrontendI18n {
   private translations: Map<string, Translations> = new Map()
   private currentLanguage = ref('en')
+  private available = ref<string[]>(['en'])
   private version = ref(0)
+  private languageGeneration = 0
 
   constructor() {
     this.translations.set('en', coreEnglish)
-    this.translations.set('bg', coreBulgarian)
-  }
-
-  private getBundledLanguageCodes(): string[] {
-    const modules = import.meta.glob('../extensions/**/manifest.json', { eager: true }) as Record<string, any>
-
-    return Object.values(modules)
-      .map(module => module?.default)
-      .filter(manifest => manifest?.type === 'language' && typeof manifest.language?.code === 'string')
-      .map(manifest => manifest.language.code)
-  }
-
-  // Load translations from local extension files using dynamic scanning
-  private async loadLocalTranslations(languageCode: string): Promise<Translations> {
-    let allTranslations: Translations = {}
-
-    try {
-      // Use a comprehensive glob to capture all extension JSON files
-      const allExtensionModules = import.meta.glob('../extensions/**/*.json', { eager: true }) as Record<string, any>
-
-      // Find the language pack directory for this language code
-      let languagePackBaseDir = ''
-
-      for (const path in allExtensionModules) {
-        if (path.includes('manifest.json')) {
-          try {
-            const manifest = allExtensionModules[path].default
-            if (manifest.type === 'language' && manifest.language?.code === languageCode) {
-              // Extract the base directory path (e.g., '../extensions/BulgarianLanguagePack_1.0.0')
-              const pathParts = path.split('/')
-              languagePackBaseDir = pathParts.slice(0, -1).join('/') // Remove manifest.json
-              break
-            }
-          } catch (error) {
-            // Continue
-          }
-        }
-      }
-
-      if (!languagePackBaseDir) {
-        // No language pack found for this language, try loading from backend
-        return await this.loadBackendTranslations(languageCode)
-      }
-
-      // Load all translation files from this language pack directory
-      for (const path in allExtensionModules) {
-        // Check if this file is in our language pack directory and not a manifest
-        if (path.startsWith(languagePackBaseDir) && !path.includes('manifest.json')) {
-          try {
-            const translationData = allExtensionModules[path].default
-            allTranslations = { ...allTranslations, ...translationData }
-          } catch (error) {
-            console.error(`Failed to load ${path}:`, error)
-          }
-        }
-      }
-
-
-      // If no translations loaded from local files, try backend
-      if (Object.keys(allTranslations).length === 0) {
-        allTranslations = await this.loadBackendTranslations(languageCode)
-      }
-    } catch (error) {
-      console.error(`Failed to load local translations for ${languageCode}, trying backend:`, error)
-      // Try loading from backend as fallback
-      allTranslations = await this.loadBackendTranslations(languageCode)
-    }
-
-    return allTranslations
-  }
-
-
-  // Load translations from backend API
-  private async loadBackendTranslations(languageCode: string): Promise<Translations> {
-    try {
-      return await readFrontendTranslations(languageCode)
-    } catch (error) {
-      console.error(`Failed to load backend translations for ${languageCode}:`, error)
-      return {}
-    }
   }
 
   // Deep merge function for nested objects
   private deepMerge(target: any, source: any): any {
     const result = { ...target }
     for (const key in source) {
+      if (['__proto__', 'prototype', 'constructor'].includes(key)) continue;
       if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
         result[key] = this.deepMerge(result[key] || {}, source[key])
       } else {
@@ -114,98 +35,20 @@ class FrontendI18n {
     return result
   }
 
-  // Load translations for a language
+  async refreshLanguages() {
+    this.available.value = await readAvailableLanguages()
+    if (!this.available.value.includes(this.currentLanguage.value)) {
+      await this.setLanguage('en', false)
+    } else if (this.currentLanguage.value !== 'en') {
+      await this.loadTranslations(this.currentLanguage.value)
+    }
+    this.version.value++
+  }
+
   async loadTranslations(languageCode: string) {
-    try {
-      const coreTranslations = languageCode === 'bg' ? coreBulgarian : languageCode === 'en' ? coreEnglish : {}
-      const localTranslations = await this.loadLocalTranslations(languageCode)
-      const extensionTranslations = await this.loadExtensionTranslationsForLanguage(languageCode)
-      const allTranslations = this.deepMerge(
-        this.deepMerge(coreTranslations, localTranslations),
-        extensionTranslations
-      )
-      this.translations.set(languageCode, allTranslations)
-      this.version.value++
-    } catch (error) {
-      console.error(`Failed to load translations for ${languageCode}:`, error)
-    }
-  }
-
-  // Load extension translations for a specific language
-  private async loadExtensionTranslationsForLanguage(languageCode: string): Promise<Translations> {
-    let extensionTranslations: Translations = {}
-
-    try {
-      // Use glob to find all extension modules
-      const allExtensionModules = import.meta.glob('../extensions/**/*.json', { eager: true }) as Record<string, any>
-
-      // Find all extension directories that have locales
-      const extensionDirs = new Set<string>()
-
-      for (const path in allExtensionModules) {
-        if (path.includes('manifest.json')) {
-          try {
-            const manifest = allExtensionModules[path].default
-            if (manifest.locales && manifest.locales.supported?.includes(languageCode)) {
-              // Extract the base directory path
-              const pathParts = path.split('/')
-              const baseDir = pathParts.slice(0, -1).join('/') // Remove manifest.json
-              extensionDirs.add(baseDir)
-            }
-          } catch (error) {
-            // Continue
-          }
-        }
-      }
-
-      // Load translations from each extension's locales directory
-      for (const baseDir of extensionDirs) {
-        const localesPath = `${baseDir}/locales/${languageCode}.json`
-        if (localesPath in allExtensionModules) {
-          try {
-            const translationData = allExtensionModules[localesPath].default
-            // Merge extension translations directly into root namespace for easier access
-            extensionTranslations = this.deepMerge(extensionTranslations, translationData)
-          } catch (error) {
-            console.error(`Failed to load extension translations from ${localesPath}:`, error)
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`Failed to load extension translations for ${languageCode}:`, error)
-    }
-
-    return extensionTranslations
-  }
-
-  // Load extension translations for a specific extension (called when extension is loaded)
-  async loadExtensionTranslationsForExtension(extensionName: string, languageCode: string) {
-    try {
-      // Use glob to find the extension's locale file
-      const extensionGlob = import.meta.glob('../extensions/**/*.json', { eager: true }) as Record<string, any>
-
-      // Find the correct locale file for this extension and language
-      let localeFile = null
-      for (const path in extensionGlob) {
-        if (path.includes(`/${extensionName}_`) &&
-            path.includes(`/locales/${languageCode}.json`)) {
-          localeFile = path
-          break
-        }
-      }
-
-      if (localeFile && localeFile in extensionGlob) {
-        const translationData = extensionGlob[localeFile].default
-
-        // Merge extension translations directly into the root namespace
-        const currentTranslations = this.translations.get(languageCode) || {}
-        const merged = this.deepMerge(currentTranslations, translationData)
-        this.translations.set(languageCode, merged)
-        this.version.value++
-      }
-    } catch (error) {
-      console.warn(`Failed to load translations for extension ${extensionName} in ${languageCode}:`, error)
-    }
+    const content = languageCode === 'en' ? {} : await readFrontendTranslations(languageCode)
+    this.translations.set(languageCode, this.deepMerge(coreEnglish, content))
+    this.version.value++
   }
 
   // Add custom translations to a language (public method for components)
@@ -216,49 +59,23 @@ class FrontendI18n {
     this.version.value++
   }
 
-  // Load extension translations for all enabled extensions
-  async loadExtensionTranslationsForEnabledExtensions() {
-    try {
-      // Get enabled extensions from API
-      const extensions = await getExtensionCatalog()
-
-      const currentLanguage = this.getCurrentLanguage()
-
-      // Load translations for each enabled extension
-      for (const ext of extensions) {
-        if (ext.name) {
-          await this.loadExtensionTranslationsForExtension(ext.name, currentLanguage)
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to load extension translations for enabled extensions:', error)
-    }
-  }
-
-
-  // Set current language
   async setLanguage(languageCode: string, persistPreference = true) {
-    const existingTranslations = this.translations.get(languageCode)
-    const needsLoading = !existingTranslations || Object.keys(existingTranslations).length === 0
-
-    if (languageCode === this.currentLanguage.value && !needsLoading) return
-
-    if (persistPreference) localStorage.setItem('preferredLanguage', languageCode)
-    this.currentLanguage.value = languageCode
-
-    await this.loadTranslations(languageCode)
-
-    // Load extension translations for enabled extensions in the new language
-    await this.loadExtensionTranslationsForEnabledExtensions()
-
-    // Save to backend (async)
+    const generation = ++this.languageGeneration
+    if (languageCode === this.currentLanguage.value && this.translations.has(languageCode)) return
     try {
-      if (persistPreference) await saveCurrentUserLanguage(languageCode)
-    } catch (error) {
-      // Ignore backend errors
+      await this.loadTranslations(languageCode)
+    } catch {
+      languageCode = 'en'
     }
-
-    window.dispatchEvent(new CustomEvent('language-changed', { detail: { language: languageCode } }))
+    if (generation !== this.languageGeneration) return
+    this.currentLanguage.value = languageCode
+    if (persistPreference) {
+      localStorage.setItem('preferredLanguage', languageCode)
+      try { await saveCurrentUserLanguage(languageCode) } catch { /* Local language remains usable. */ }
+    }
+    if (generation === this.languageGeneration) {
+      window.dispatchEvent(new CustomEvent('language-changed', { detail: { language: languageCode } }))
+    }
   }
 
   // Get current language
@@ -273,13 +90,7 @@ class FrontendI18n {
 
   // Get available languages
   getAvailableLanguages() {
-    const available = Array.from(new Set([
-      ...this.translations.keys(),
-      ...this.getBundledLanguageCodes()
-    ]))
-    // Always include English
-    if (!available.includes('en')) available.push('en')
-    return available
+    return [...this.available.value]
   }
 
   // Translate a key
@@ -329,7 +140,7 @@ class FrontendI18n {
 
   // Check if language is available
   isLanguageAvailable(languageCode: string): boolean {
-    return this.translations.has(languageCode) || this.getBundledLanguageCodes().includes(languageCode)
+    return this.available.value.includes(languageCode)
   }
 }
 
@@ -362,15 +173,7 @@ export const useI18n = () => {
 
 // Initialize i18n
 export const initializeI18n = async () => {
+  try { await i18n.refreshLanguages() } catch { /* Core English remains usable offline. */ }
   const savedLanguage = localStorage.getItem('preferredLanguage')
-
-  if (savedLanguage && i18n.isLanguageAvailable(savedLanguage)) {
-    await i18n.setLanguage(savedLanguage)
-  } else {
-    // For new users, don't set localStorage yet, let loadDefaults set the default
-    await i18n.setLanguage('en')
-  }
-
-  // Load extension translations for enabled extensions
-  await i18n.loadExtensionTranslationsForEnabledExtensions()
+  await i18n.setLanguage(savedLanguage && i18n.isLanguageAvailable(savedLanguage) ? savedLanguage : 'en')
 }

@@ -31,34 +31,16 @@ _SAFE_REQUEST_HEADERS = (
 _BAD_PERCENT = re.compile(r"%(?![0-9A-Fa-f]{2})")
 
 
-class PublicWebCoreError(RuntimeError):
+class PublicWebRuntimeError(RuntimeError):
     def __init__(self, status_code: int = 503) -> None:
-        super().__init__("Public web Core gateway is unavailable")
+        super().__init__("Public web Runtime gateway is unavailable")
         self.status_code = status_code if status_code in {400, 404, 405, 503} else 503
 
 
-class PublicWebCoreClient:
+class PublicWebRuntimeClient:
     def __init__(self, socket_path: Path, timeout_seconds: float = 35) -> None:
         self.socket_path = socket_path
         self.timeout_seconds = timeout_seconds
-
-    @staticmethod
-    def _read(connection: socket.socket) -> dict[str, object]:
-        payload = b""
-        while b"\n" not in payload and len(payload) <= PUBLIC_WEB_MESSAGE_BYTES:
-            chunk = connection.recv(65536)
-            if not chunk:
-                break
-            payload += chunk
-        if b"\n" not in payload or len(payload) > PUBLIC_WEB_MESSAGE_BYTES:
-            raise PublicWebCoreError()
-        try:
-            value = json.loads(payload.split(b"\n", 1)[0])
-        except (UnicodeError, json.JSONDecodeError) as exc:
-            raise PublicWebCoreError() from exc
-        if not isinstance(value, dict):
-            raise PublicWebCoreError()
-        return value
 
     def request(
         self,
@@ -79,30 +61,33 @@ class PublicWebCoreClient:
         }
         encoded = json.dumps(request, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n"
         if len(encoded) > PUBLIC_WEB_MESSAGE_BYTES:
-            raise PublicWebCoreError(400)
+            raise PublicWebRuntimeError(400)
+        from three_mm_platform_wire import read_frame, remaining
+        deadline = time.monotonic() + self.timeout_seconds
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-                connection.settimeout(self.timeout_seconds)
+                connection.settimeout(remaining(deadline))
                 connection.connect(str(self.socket_path))
+                connection.settimeout(remaining(deadline))
                 connection.sendall(encoded)
-                response = self._read(connection)
-        except OSError as exc:
-            raise PublicWebCoreError() from exc
+                response = read_frame(connection, deadline, max_bytes=PUBLIC_WEB_MESSAGE_BYTES)
+        except (OSError, ValueError) as exc:
+            raise PublicWebRuntimeError() from exc
         if (
             response.get("version") != PUBLIC_WEB_TRANSPORT_VERSION
             or response.get("request_id") != request_id
             or not isinstance(response.get("ok"), bool)
         ):
-            raise PublicWebCoreError()
+            raise PublicWebRuntimeError()
         if response["ok"] is False:
             status = response.get("status")
-            raise PublicWebCoreError(status if isinstance(status, int) else 503)
+            raise PublicWebRuntimeError(status if isinstance(status, int) else 503)
         if set(response) != {"version", "request_id", "ok", "response"}:
-            raise PublicWebCoreError()
+            raise PublicWebRuntimeError()
         try:
             return ApplicationPublicHttpResponseV1.model_validate(response["response"])
         except ValidationError as exc:
-            raise PublicWebCoreError() from exc
+            raise PublicWebRuntimeError() from exc
 
 
 def _decode_path(raw_path: str) -> str:
@@ -141,7 +126,7 @@ class PublicWebHTTPServer(ThreadingHTTPServer):
         server_address,
         handler_class,
         *,
-        client: PublicWebCoreClient,
+        client: PublicWebRuntimeClient,
         bind_and_activate: bool = True,
     ):
         self.client = client
@@ -236,12 +221,22 @@ class PublicWebRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _handle_public(self) -> None:
+        if self.path=="/__3mm_component__/health":
+            from three_mm_runtime.component_identity import component_health
+            identity=component_health()
+            if identity is not None:
+                body=json.dumps(identity,separators=(",", ":")).encode()
+                self.send_response(200);self.send_header("Content-Type","application/json")
+                self.send_header("Cache-Control","no-store");self.send_header("Content-Length",str(len(body)))
+                self.end_headers()
+                if self.command!="HEAD":self.wfile.write(body)
+                return
         try:
             response = self._request()
         except ValueError:
             self._write_error(400)
             return
-        except PublicWebCoreError as exc:
+        except PublicWebRuntimeError as exc:
             self._write_error(exc.status_code)
             return
         self._write_response(response)
@@ -269,27 +264,27 @@ class PublicWebRequestHandler(BaseHTTPRequestHandler):
 
 
 def create_server(
-    core_socket: Path,
+    runtime_socket: Path,
     host: str = "127.0.0.1",
     port: int = 8081,
     *,
-    client: PublicWebCoreClient | None = None,
+    client: PublicWebRuntimeClient | None = None,
 ) -> PublicWebHTTPServer:
     return PublicWebHTTPServer(
         (host, port),
         PublicWebRequestHandler,
-        client=client or PublicWebCoreClient(core_socket),
+        client=client or PublicWebRuntimeClient(runtime_socket),
     )
 
 
 def create_server_from_socket(
-    core_socket: Path,
+    runtime_socket: Path,
     listener: socket.socket,
 ) -> PublicWebHTTPServer:
     server = PublicWebHTTPServer(
         ("127.0.0.1", 0),
         PublicWebRequestHandler,
-        client=PublicWebCoreClient(core_socket),
+        client=PublicWebRuntimeClient(runtime_socket),
         bind_and_activate=False,
     )
     server.socket.close()
@@ -320,7 +315,7 @@ def serve_until_idle(server: PublicWebHTTPServer, idle_seconds: int) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--core-socket", type=Path, required=True)
+    parser.add_argument("--runtime-socket", type=Path, required=True)
     parser.add_argument("--systemd-socket", action="store_true")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8081)
@@ -332,9 +327,9 @@ def main(argv: list[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     if arguments.systemd_socket:
         listener = inherited_systemd_socket()
-        server = create_server_from_socket(arguments.core_socket, listener)
+        server = create_server_from_socket(arguments.runtime_socket, listener)
     else:
-        server = create_server(arguments.core_socket, arguments.host, arguments.port)
+        server = create_server(arguments.runtime_socket, arguments.host, arguments.port)
     try:
         serve_until_idle(server, arguments.idle_seconds)
     finally:

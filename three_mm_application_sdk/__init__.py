@@ -8,6 +8,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 from pathlib import Path
 import re
 import socket
@@ -17,6 +18,7 @@ from typing import Callable, Iterator, Mapping, Protocol, Sequence
 import uuid
 from datetime import UTC, datetime
 
+from three_mm_protocol.diagnostics import DiagnosticSession, DiagnosticSpan
 from three_mm_application_sdk.files import (
     ApplicationFile,
     ApplicationFileLimits,
@@ -30,86 +32,112 @@ from three_mm_application_sdk.scoped_files import (
 
 
 REVISION_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$")
-PLATFORM_MESSAGE_LIMIT = 6 * 1024 * 1024
+from three_mm_protocol.platform_transport import (
+    MAX_MESSAGE_BYTES as PLATFORM_MESSAGE_LIMIT, REQUEST_TIMEOUT_SECONDS,
+    MAX_CLOCK_SKEW_SECONDS, ERROR_REASONS, ENVELOPE_FIELDS, PlatformDiscoveryV1,
+    canonical, read_frame, remaining,
+)
 SDK_VERSION = "1.3"
 SUPPORTED_SDK_VERSIONS = ("1.0", "1.1", "1.2", "1.3")
 
 
 class ApplicationPlatformError(RuntimeError):
-    pass
+    def __init__(self, message, *, reason="operation_failed", phase="execution_unconfirmed"):
+        super().__init__(message)
+        self.reason = reason
+        self.phase = phase
+        self.retryable = False  # The SDK never replays an operation automatically.
 
 
 class ApplicationPlatformClient:
     """Signed installation-scoped platform access over the existing Unix socket."""
 
-    def __init__(self, socket_path: Path, instance_id: str, secret: bytes) -> None:
+    def __init__(self, socket_path: Path, instance_id: str, secret: bytes, *,
+                 diagnostics: DiagnosticSession | None = None) -> None:
         self.socket_path = socket_path
         self.instance_id = instance_id
         self.secret = secret
+        self.diagnostics = diagnostics
 
     def _canonical(self, value: dict[str, object]) -> bytes:
-        return json.dumps(
-            {key: item for key, item in value.items() if key != "signature"},
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
+        return canonical(value)
+
+    def discover_platform(self) -> dict[str, object]:
+        """Fresh supported contract and generations, never a grant or cached lease."""
+        try:
+            result = PlatformDiscoveryV1.model_validate(self._call("platform.discover", {}))
+            if result.instance_id != self.instance_id:
+                raise ValueError("Discovery installation changed")
+        except ValueError as exc:
+            raise ApplicationPlatformError("Platform discovery is invalid", reason="response_invalid") from exc
+        return result.model_dump(mode="json")
 
     def _call(self, action: str, payload: dict[str, object]) -> dict[str, object]:
+        request_id = f"platform_{uuid.uuid4().hex}"
+        if self.diagnostics is None:
+            return self._exchange(action, payload, request_id)
+        with DiagnosticSpan(self.diagnostics, request_id, "sdk.call", operation=action, instance_id=self.instance_id) as span:
+            try:
+                return self._exchange(action, payload, request_id)
+            except ApplicationPlatformError as exc:
+                span.end("denied" if exc.reason == "operation_denied" else "error", exc.reason)
+                raise
+
+    def _exchange(self, action: str, payload: dict[str, object], request_id: str) -> dict[str, object]:
         from three_mm_application_sdk.transaction_guard import (
             require_outside_relational_transaction,
         )
 
         require_outside_relational_transaction()
-        request_id = f"platform_{uuid.uuid4().hex}"
+        if set(payload) & ENVELOPE_FIELDS:
+            raise ApplicationPlatformError("Reserved platform fields", reason="request_invalid", phase="not_dispatched")
         request: dict[str, object] = {
-            "version": 1,
-            "request_id": request_id,
-            "timestamp": int(time.time()),
-            "instance_id": self.instance_id,
-            "action": action,
-            **payload,
+            "version": 1, "request_id": request_id, "timestamp": int(time.time()),
+            "instance_id": self.instance_id, "action": action, **payload,
         }
-        request["signature"] = hmac.new(
-            self.secret, self._canonical(request), hashlib.sha256
-        ).hexdigest()
-        encoded = json.dumps(request, separators=(",", ":")).encode("utf-8") + b"\n"
+        try:
+            request["signature"] = hmac.new(self.secret, self._canonical(request), hashlib.sha256).hexdigest()
+            encoded = json.dumps(request, separators=(",", ":"), allow_nan=False).encode("utf-8") + b"\n"
+        except (ValueError, TypeError, RecursionError) as exc:
+            raise ApplicationPlatformError("Platform request is invalid", reason="request_invalid", phase="not_dispatched") from exc
         if len(encoded) > PLATFORM_MESSAGE_LIMIT:
-            raise ApplicationPlatformError("Platform request is too large")
-        response_bytes = b""
+            raise ApplicationPlatformError("Platform request is too large", reason="request_invalid", phase="not_dispatched")
+        deadline = time.monotonic() + REQUEST_TIMEOUT_SECONDS
+        phase = "not_dispatched"
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-                connection.settimeout(35)
+                connection.settimeout(remaining(deadline))
                 connection.connect(str(self.socket_path))
+                phase = "execution_unconfirmed"  # Partial send is already ambiguous.
+                connection.settimeout(remaining(deadline))
                 connection.sendall(encoded)
-                while b"\n" not in response_bytes and len(response_bytes) <= PLATFORM_MESSAGE_LIMIT:
-                    chunk = connection.recv(65536)
-                    if not chunk:
-                        break
-                    response_bytes += chunk
+                response = read_frame(connection, deadline)
+        except TimeoutError as exc:
+            raise ApplicationPlatformError("Platform deadline exceeded", reason="deadline_exceeded", phase=phase) from exc
         except OSError as exc:
-            raise ApplicationPlatformError("Application platform service is unavailable") from exc
-        if b"\n" not in response_bytes or len(response_bytes) > PLATFORM_MESSAGE_LIMIT:
-            raise ApplicationPlatformError("Platform response is invalid")
-        try:
-            response = json.loads(response_bytes.split(b"\n", 1)[0])
-        except (UnicodeError, ValueError) as exc:
-            raise ApplicationPlatformError("Platform response is invalid") from exc
-        if not isinstance(response, dict) or response.get("request_id") != request_id:
-            raise ApplicationPlatformError("Platform response does not match")
+            raise ApplicationPlatformError("Application platform service is unavailable", reason="transport_unavailable", phase=phase) from exc
+        except ValueError as exc:
+            raise ApplicationPlatformError("Platform response is invalid", reason="response_invalid") from exc
+        if (response.get("request_id") != request_id or type(response.get("version")) is not int
+                or response["version"] != 1 or type(response.get("timestamp")) is not int):
+            raise ApplicationPlatformError("Platform response does not match", reason="response_invalid")
         signature = response.get("signature")
-        expected = hmac.new(self.secret, self._canonical(response), hashlib.sha256).hexdigest()
+        try:
+            expected = hmac.new(self.secret, self._canonical(response), hashlib.sha256).hexdigest()
+        except (ValueError, TypeError, RecursionError) as exc:
+            raise ApplicationPlatformError("Platform response is invalid", reason="response_invalid") from exc
         if not isinstance(signature, str) or not hmac.compare_digest(signature, expected):
-            raise ApplicationPlatformError("Platform response signature is invalid")
-        if abs(int(time.time()) - int(response.get("timestamp", 0))) > 30:
-            raise ApplicationPlatformError("Platform response has expired")
+            raise ApplicationPlatformError("Platform response signature is invalid", reason="response_invalid")
+        if abs(int(time.time()) - response["timestamp"]) > MAX_CLOCK_SKEW_SECONDS:
+            raise ApplicationPlatformError("Platform response has expired", reason="response_invalid")
         if response.get("ok") is not True:
-            error = response.get("error")
-            raise ApplicationPlatformError(
-                error if isinstance(error, str) else "Platform operation failed"
-            )
+            error, reason = response.get("error"), response.get("reason")
+            if response.get("ok") is not False or not isinstance(reason, str) or reason not in ERROR_REASONS:
+                raise ApplicationPlatformError("Platform error response is invalid", reason="response_invalid")
+            raise ApplicationPlatformError(error if isinstance(error, str) else "Platform operation failed", reason=reason)
         result = response.get("result")
         if not isinstance(result, dict):
-            raise ApplicationPlatformError("Platform response is invalid")
+            raise ApplicationPlatformError("Platform response is invalid", reason="response_invalid")
         return result
 
     def connector_request(

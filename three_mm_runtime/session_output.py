@@ -28,6 +28,10 @@ class SessionOutputError(RuntimeError):
     """Output stopped; no automatic retry or replacement session is allowed."""
 
 
+class SessionOutputAuthorityError(SessionOutputError):
+    """Current authority was denied, failed or did not complete in time."""
+
+
 class SessionOutputCleanupError(SessionOutputError):
     """Keep ownership evidence; provider cleanup has not been confirmed."""
 
@@ -39,6 +43,7 @@ async def pump_session_output(
     *,
     authorize: Callable[[], Awaitable[None]],
     check_interval: float = 1.0,
+    authorization_timeout: float = 5.0,
     send_timeout: float = 10.0,
     close_timeout: float = 5.0,
 ) -> None:
@@ -47,7 +52,9 @@ async def pump_session_output(
     ``authorize`` must raise on denial/drift and return None on success. It is
     rechecked while reads/sends wait, not only when bytes arrive. Cancellation,
     denial, invalid output, EOF and transport failure all close this exact
-    provider session. Close failure is surfaced, not mislabeled safe cleanup.
+    provider session. The idle poll cadence and bounded authority I/O deadline
+    are separate; no provider read or send is admitted before confirmation.
+    Close failure is surfaced, not mislabeled safe cleanup.
     Session limits/expiry and OS isolation remain the owning runtime's duties.
     """
     if (
@@ -65,6 +72,7 @@ async def pump_session_output(
         )
     for name, value, minimum, maximum in (
         ("check interval", check_interval, 0.01, 1.0),
+        ("authorization timeout", authorization_timeout, 0.01, 5.0),
         ("send timeout", send_timeout, 0.01, 60.0),
         ("close timeout", close_timeout, 0.01, 60.0),
     ):
@@ -77,11 +85,11 @@ async def pump_session_output(
 
     async def check() -> None:
         try:
-            result = await asyncio.wait_for(authorize(), timeout=check_interval)
+            result = await asyncio.wait_for(authorize(), timeout=authorization_timeout)
             if result is not None:
-                raise SessionOutputError("Current session authority was not confirmed")
+                raise SessionOutputAuthorityError("Current session authority was not confirmed")
         except Exception as exc:
-            raise SessionOutputError(
+            raise SessionOutputAuthorityError(
                 "Current session authority is unavailable"
             ) from exc
 

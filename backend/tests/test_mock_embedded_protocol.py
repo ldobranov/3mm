@@ -3,6 +3,7 @@
 No Fleet extension is loaded. In-process HTTP and mock hardware are deliberate;
 this is not a live deployment or actual embedded firmware.
 """
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 import base64
 import hashlib
@@ -226,7 +227,7 @@ def signed_application_acceptance(core, monkeypatch, tmp_path, publisher, gpio, 
     secret = b"s" * 32  # Disposable test-only installation transport key.
     assert len(secret) == 32
     (keys / f"{application.instance_id}.key").write_bytes(secret)
-    server = ApplicationPlatformServer(tmp_path / "unused-platform.sock", keys)
+    server = ApplicationPlatformServer(tmp_path / "unused-platform.sock", keys, allowed_actions=COMPATIBILITY_ACTIONS)
     engine = db.get_bind()
     monkeypatch.setattr("backend.database.SessionLocal", lambda: Session(engine))
 
@@ -241,6 +242,9 @@ def signed_application_acceptance(core, monkeypatch, tmp_path, publisher, gpio, 
         def __exit__(self, *args):
             pass
 
+        def settimeout(self, seconds):
+            pass
+
         def recv(self, size):
             return json.dumps(self.message).encode() + b"\n"
 
@@ -252,7 +256,7 @@ def signed_application_acceptance(core, monkeypatch, tmp_path, publisher, gpio, 
             "version": 1,
             "instance_id": application.instance_id,
             "timestamp": int(time.time()),
-            "request_id": request_id,
+            "request_id": "frame-" + __import__('uuid').uuid4().hex,
             "action": "command.submit",
             "command": {
                 "binding_id": "output",
@@ -268,6 +272,9 @@ def signed_application_acceptance(core, monkeypatch, tmp_path, publisher, gpio, 
         )
         connection = Connection(message)
         server._handle(connection)
+        if not signature:
+            assert not hasattr(connection, 'response')  # No signed oracle before authentication.
+            return {'ok': False}
         response = connection.response
         assert hmac.compare_digest(
             response["signature"],

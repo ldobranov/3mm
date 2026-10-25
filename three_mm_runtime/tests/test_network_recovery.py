@@ -1,4 +1,6 @@
 from pathlib import Path
+import os
+import pytest
 
 from three_mm_protocol import AgentRole
 from three_mm_provisioning import (
@@ -13,6 +15,33 @@ from three_mm_provisioning import (
     ProvisioningSnapshot,
 )
 from three_mm_runtime.network_recovery import NetworkRecoveryMonitor
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX recovery lock and ownership")
+@pytest.mark.parametrize("already_requested", [False, True])
+def test_failed_activation_preserves_existing_recovery_request(tmp_path, monkeypatch, already_requested):
+    import pwd
+    import grp
+    from three_mm_runtime.network_recovery import activate_setup_runtime
+
+    marker = FileNetworkRecoveryMarker(tmp_path / "network-recovery.json")
+    if already_requested:
+        marker.activate("manual")
+    before = marker.path.read_bytes() if already_requested else None
+
+    def unavailable(_data_dir, *, bootstrap_agent):
+        assert bootstrap_agent is False
+        raise RuntimeError("local status service unavailable")
+
+    monkeypatch.setattr("three_mm_runtime.activate.activate", unavailable)
+    with pytest.raises(RuntimeError, match="status service unavailable"):
+        activate_setup_runtime(data_dir=tmp_path, trigger="automatic",
+            service_user=pwd.getpwuid(os.getuid()).pw_name,
+            service_group=grp.getgrgid(os.getgid()).gr_name,
+            mutation_lock=tmp_path / "release.lock")
+    assert marker.is_active() is already_requested
+    if already_requested:
+        assert marker.path.read_bytes() == before
 
 
 def provisioned_store(path: Path) -> FileProvisioningStore:

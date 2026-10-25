@@ -25,6 +25,7 @@ import uuid
 import shutil
 
 from pydantic import ValidationError
+from three_mm_runtime.node_update_common import NodeUpdateError, read_small, trusted_path
 from three_mm_protocol.node_updates import (
     NodeUpdateApplyRequest,
     NodeUpdateAuthorization,
@@ -52,48 +53,15 @@ REQUIRED_FILES = {
     "deployment/node_preflight.py", "deployment/node-wheels/provenance.json",
     "deployment/apply_node_update.py", "three_mm_runtime/node_update_helper.py",
     "deployment/trust_node_update_hub.py", "three_mm_runtime/node_update_trust.py",
-    "three_mm_protocol/node_updates.py", "deployment/systemd/3mm-node-update-helper.service",
+    "three_mm_protocol/node_updates.py", "three_mm_runtime/node_update_common.py",
+    "deployment/systemd/3mm-node-update-helper.service",
 }
-
-
-class NodeUpdateError(RuntimeError):
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code = code
 
 
 def unit_name(operation_id: str) -> str:
     if not isinstance(operation_id, str) or not re.fullmatch(r"nodeupd_[0-9a-f]{32}", operation_id):
         raise NodeUpdateError("invalid_request", "Invalid operation identity")
     return "3mm-node-update-" + operation_id.removeprefix("nodeupd_") + ".service"
-
-
-def trusted_path(path: Path, *, directory=False, permissions=True) -> None:
-    """Reject links and writable/untrusted ancestors before privileged use."""
-    path = path.absolute()
-    for ancestor in reversed((path, *path.parents)):
-        info = ancestor.lstat()
-        if stat.S_ISLNK(info.st_mode):
-            raise NodeUpdateError("unsafe_path", "Node update path is a symlink")
-        if permissions and (info.st_uid != 0 or info.st_mode & 0o022):
-            raise NodeUpdateError("unsafe_path", "Node update path is not root-owned and protected")
-        if ancestor != path and not stat.S_ISDIR(info.st_mode):
-            raise NodeUpdateError("unsafe_path", "Node update ancestor is not a directory")
-    kind = stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode)
-    if not kind or (not directory and info.st_nlink != 1):
-        raise NodeUpdateError("unsafe_path", "Node update path is not a private regular file/directory")
-
-
-def read_small(path: Path, limit=64 * 1024) -> bytes:
-    info = path.lstat()
-    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > limit:
-        raise NodeUpdateError("invalid_file", "Node update file is invalid or too large")
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-    with os.fdopen(os.open(path, flags), "rb") as source:
-        value = source.read(limit + 1)
-    if len(value) > limit:
-        raise NodeUpdateError("invalid_file", "Node update file is too large")
-    return value
 
 
 def request_digest(request: NodeUpdateApplyRequest | NodeUpdateAuthorization) -> str:

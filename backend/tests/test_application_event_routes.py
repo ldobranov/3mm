@@ -55,5 +55,9 @@ def test_event_broker_observability_is_admin_only(monkeypatch):
     )
     assert response.status_code == 200
     assert response.json() == {"subscriptions": []}
+    assert client.post("/api/v1/application-events/drain").status_code==401
+    assert client.post("/api/v1/application-events/drain",headers={"Authorization":f"Bearer {viewer_token}"}).status_code==403
+    response=client.post("/api/v1/application-events/drain",headers={"Authorization":f"Bearer {admin_token}"})
+    assert response.status_code==200 and response.json()=={"status":"queued","subscriptions":[]}
     db.close()
     engine.dispose()

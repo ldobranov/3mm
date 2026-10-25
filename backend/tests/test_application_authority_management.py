@@ -1,4 +1,6 @@
+from backend.tests.connector_helpers import execute_connector_request
 """Real sealed authority, real logins and existing brokers; no live device I/O."""
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 from datetime import UTC, datetime, timedelta
 import io
@@ -23,7 +25,7 @@ from backend.db.session import UserSession
 from backend.db.user import User
 from backend.services import application_authority_management as service
 from backend.services.application_commands import submit_command, authorize_execution, command_lookup
-from backend.services.application_connectors import execute_connector_request, ApplicationConnectorError
+from backend.services.application_connectors import ApplicationConnectorError
 from backend.services.device_commands import deliver_next_command
 from backend.services.device_capability_registry import capability_catalog
 from backend.services.module_packages import validate_module_package
@@ -377,7 +379,7 @@ def test_unsupported_signed_platform_actions_never_fall_back_to_legacy(installed
     from backend.services.application_platform import ApplicationPlatformServer
     s = installed
     activate_grant(s)
-    server = ApplicationPlatformServer(tmp_path / 'unused.sock', tmp_path)
+    server = ApplicationPlatformServer(tmp_path / 'unused.sock', tmp_path, allowed_actions=COMPATIBILITY_ACTIONS)
     with Session(s.engine) as db:
         for action in ('installation.identity.prove', 'installation.peers.enroll'):
             with pytest.raises(ValueError, match='no supported resource grant'):
@@ -444,7 +446,7 @@ def test_real_offline_restore_fences_old_grants_but_allows_fresh_local_review(in
         assert submit_command(db, db.get(Installation, 1), command())['status'] == 'queued'
 
 
-def test_actual_lifecycle_gate_reenables_same_artifact_without_resurrecting_grant(installed, monkeypatch):
+def test_actual_lifecycle_gate_reenables_same_artifact_with_saved_consent(installed, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from backend.routes.application_extensions import router
@@ -480,8 +482,6 @@ def test_actual_lifecycle_gate_reenables_same_artifact_without_resurrecting_gran
         response = client.post(base + '/packages/' + s.validated.sha256 + '/activate', json={'configuration': {}}, headers=headers)
         assert response.status_code == 200, response.text
     assert calls == ['disabling', 'activating']
-    assert not s.manager.inspect(1)['grant_effective']
-    decide(s, decide(s, review(s), 'approve'), 'apply')
     assert s.manager.inspect(1)['grant_effective']
 
 

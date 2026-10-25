@@ -15,7 +15,7 @@
               {{ t('networkRecovery.title', 'Device network recovery') }}
             </h4>
             <p>
-              {{ t('networkRecovery.description', 'Move this device to another Wi-Fi network or recover access when its local network is unavailable.') }}
+              {{ t('networkRecovery.description', 'Keep local services running while recovering device access.') }}
             </p>
           </div>
         </div>
@@ -43,43 +43,62 @@
           </button>
         </div>
 
-        <label class="recovery-toggle ui-check">
+        <label v-if="recoveryStatus?.automatic_setup_available" class="recovery-toggle ui-check">
           <input
             :checked="recoveryStatus?.automatic_setup_enabled ?? true"
-            :disabled="loadingRecovery || savingRecovery || startingSetup"
+            :disabled="loadingRecovery || savingRecovery || startingSetup || !recoveryStatus?.automatic_setup_available"
             type="checkbox"
             @change="saveRecoveryPolicy"
           />
           <span>
-            <strong>{{ t('networkRecovery.automaticTitle', 'Automatically start setup Wi-Fi after 5 minutes offline') }}</strong>
+            <strong>{{ t('networkRecovery.automaticTitle', 'Open local recovery after 5 minutes without a network link') }}</strong>
             <small>
-              {{ t('networkRecovery.automaticHelp', 'Enabled by default. The timer runs only while both Wi-Fi and Ethernet are disconnected; Internet access is not tested.') }}
+              {{ t('networkRecovery.automaticHelp', 'Available when 3mm manages networking. The timer checks local links, not Internet access. Host-managed networking remains under OS control.') }}
             </small>
           </span>
         </label>
+        <p v-else-if="recoveryStatus" class="automatic-recovery-unavailable" role="status">
+          {{ t('networkRecovery.automaticUnavailable', 'Automatic recovery is off for this network choice. The operating system manages this connection; protected setup remains available manually.') }}
+        </p>
 
         <div class="recovery-actions">
           <div>
-            <strong>{{ t('networkRecovery.manualTitle', 'Configure another Wi-Fi network') }}</strong>
+            <strong>{{ t('networkRecovery.manualTitle', 'Protected device setup') }}</strong>
             <p>
-              {{ t('networkRecovery.manualHelp', 'Starts the open setup network manually. This setting works even when automatic recovery is turned off.') }}
+              {{ t('networkRecovery.manualHelp', 'Opens setup on the local network using a temporary access code. Existing services keep running.') }}
             </p>
           </div>
           <button
             type="button"
             class="ui-button ui-button--primary recovery-button"
-            :disabled="loadingRecovery || savingRecovery || startingSetup || recoveryStatus?.setup_active"
+            :disabled="loadingRecovery || savingRecovery || startingSetup"
             @click="startSetupMode"
           >
             <span v-if="startingSetup" class="ui-spinner" aria-hidden="true"></span>
             {{ recoveryStatus?.setup_active
-              ? t('networkRecovery.setupActive', 'Setup mode active')
-              : t('networkRecovery.startSetup', 'Start setup Wi-Fi') }}
+              ? t('networkRecovery.setupActive', 'Local recovery active')
+              : t('networkRecovery.startSetup', 'Open local recovery') }}
           </button>
+        </div>
+
+        <div class="temporary-ap" v-if="apInterfaces.length || apBusy || recoveryStatus?.access_point?.state === 'failed'">
+          <h4>{{ t('networkRecovery.ap.title', 'Temporary Wi-Fi access point') }}</h4>
+          <p>{{ t('networkRecovery.ap.help', 'Temporarily switches the selected Wi-Fi adapter to a setup AP. Core keeps running. The AP stops after 5 minutes and returns to the previous connection if it is available.') }}</p>
+          <label v-if="apInterfaces.length > 1">
+            {{ t('networkRecovery.ap.adapter', 'Wi-Fi adapter') }}
+            <select class="ui-control" v-model="apInterface"><option value="">{{ t('networkRecovery.ap.select', 'Select an adapter') }}</option><option v-for="name in apInterfaces" :key="name" :value="name">{{ name }}</option></select>
+          </label>
+          <p v-if="apBusy">{{ t('networkRecovery.ap.active', 'Temporary AP is starting or active. Its independent timer will stop it automatically.') }}</p>
+          <p v-if="recoveryStatus?.access_point?.state === 'failed'" role="alert">{{ t('networkRecovery.ap.unconfirmed', 'AP recovery was not confirmed. Check the current connection before trying again.') }}</p>
+          <div class="recovery-actions">
+            <button class="ui-button ui-button--primary ap-start" :disabled="startingSetup || startingAP || apBusy || !apInterface" @click="startAccessPoint">{{ t('networkRecovery.ap.start', 'Start temporary AP') }}</button>
+            <button v-if="apBusy" class="ui-button ui-button--secondary ap-stop" :disabled="startingAP" @click="stopAccessPoint">{{ t('networkRecovery.ap.stop', 'Stop AP and return') }}</button>
+          </div>
         </div>
 
         <div v-if="recoveryMessage" class="recovery-notice" :class="{ error: recoveryError }" role="status">
           {{ recoveryMessage }}
+          <a v-if="recoveryAccessLink" :href="recoveryAccessLink" target="_blank" rel="noopener noreferrer">{{ t('networkRecovery.openProtected', 'Open protected setup') }}</a>
         </div>
       </section>
 
@@ -249,7 +268,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, reactive, onMounted, computed } from 'vue';
+import { defineComponent, ref, reactive, onMounted, onUnmounted, computed } from 'vue';
 import http from '@/utils/dynamic-http';
 import { useI18n } from '@/utils/i18n';
 import SettingsSection from '@/components/SettingsSection.vue';
@@ -282,15 +301,17 @@ interface ConnectionTestResult {
 
 interface NetworkRecoveryStatus {
   automatic_setup_enabled: boolean;
+  automatic_setup_available: boolean;
   offline_after_seconds: number;
   local_link_state: 'connected' | 'disconnected' | 'unknown';
   wifi_connected: boolean | null;
   ethernet_connected: boolean | null;
   setup_active: boolean;
-  setup_network: string;
+  setup_network: string | null;
   setup_url: string;
   device_hostname: string;
   local_url: string;
+  access_point: { state: string; id: string | null; interface: string | null; interfaces: string[]; expires_at: number | null; network: string | null };
 }
 
 export default defineComponent({
@@ -311,12 +332,19 @@ export default defineComponent({
     const loadingRecovery = ref(true);
     const savingRecovery = ref(false);
     const startingSetup = ref(false);
+    const startingAP = ref(false);
+    const apInterface = ref('');
+    const apInterfaces = computed(() => recoveryStatus.value?.access_point?.interfaces || []);
+    const apBusy = computed(() => ['starting', 'active', 'restoring'].includes(recoveryStatus.value?.access_point?.state || ''));
+    let recoveryPoll: ReturnType<typeof setInterval> | undefined;
+    let disposed = false;
     
     const currentConfig = ref<ConfigResponse | null>(null);
     const detectedConfig = ref<DetectedConfig | null>(null);
     const connectionTest = ref<ConnectionTestResult | null>(null);
     const recoveryStatus = ref<NetworkRecoveryStatus | null>(null);
     const recoveryMessage = ref('');
+    const recoveryAccessLink = ref('');
     const recoveryError = ref(false);
     
     const configForm = reactive<ConfigForm>({
@@ -363,9 +391,12 @@ export default defineComponent({
       loadingRecovery.value = true;
       try {
         const response = await http.get('/api/v1/network-recovery/status');
+        if (disposed) return;
         recoveryStatus.value = response.data;
+        if (!apInterface.value && response.data.access_point?.interfaces?.length === 1) apInterface.value = response.data.access_point.interfaces[0];
         recoveryError.value = false;
       } catch (error) {
+        if (apBusy.value) return; // Keep AP join instructions while its radio link changes.
         console.error('Failed to load network recovery status:', error);
         recoveryError.value = true;
         recoveryMessage.value = t('networkRecovery.loadFailed', 'Network recovery settings could not be loaded.');
@@ -400,7 +431,7 @@ export default defineComponent({
     const startSetupMode = async () => {
       const confirmed = window.confirm(t(
         'networkRecovery.confirmStart',
-        'Start setup Wi-Fi now? This application will disconnect. Connect your phone to the open 3mm Setup network to continue.'
+        'Open protected device setup? Existing services keep running.'
       ));
       if (!confirmed) return;
       startingSetup.value = true;
@@ -410,20 +441,56 @@ export default defineComponent({
           confirmation: 'START SETUP'
         });
         recoveryError.value = false;
+        const setupUrl = new URL(response.data.setup_url);
+        setupUrl.hash = new URLSearchParams({ access: response.data.access_code }).toString();
+        recoveryAccessLink.value = setupUrl.toString();
+        startingSetup.value = false;
         recoveryMessage.value = t(
           'networkRecovery.queued',
-          'Setup is starting. Connect to {network} and open {url}.',
+          'Protected setup is starting at {url}. The link below expires after 15 minutes.',
           {
-            network: response.data.setup_network,
             url: response.data.setup_url
           }
         );
       } catch (error) {
         console.error('Failed to start setup mode:', error);
         recoveryError.value = true;
-        recoveryMessage.value = t('networkRecovery.startFailed', 'Setup Wi-Fi could not be started.');
+        recoveryMessage.value = t('networkRecovery.startFailed', 'Local recovery could not be started.');
         startingSetup.value = false;
       }
+    };
+
+    const startAccessPoint = async () => {
+      if (!apInterface.value || !window.confirm(t('networkRecovery.ap.confirm', 'This switches Wi-Fi to a temporary AP and disconnects clients using that Wi-Fi connection. Join the setup AP from your phone. It stops after 5 minutes. Continue?'))) return;
+      startingAP.value = true;
+      recoveryMessage.value = '';
+      try {
+        const { data } = await http.post('/api/v1/network-recovery/access-point', {
+          confirmation: 'START ACCESS POINT', interface: apInterface.value, duration_seconds: 300,
+        });
+        const url = new URL(data.setup_url);
+        url.hash = new URLSearchParams({ access: data.access_code }).toString();
+        recoveryAccessLink.value = url.toString();
+        recoveryMessage.value = t('networkRecovery.ap.join', 'Join “{network}”, then open the protected setup link below. Automatic return: 5 minutes.', { network: data.setup_network });
+        recoveryError.value = false;
+        if (recoveryStatus.value) recoveryStatus.value.access_point = { ...recoveryStatus.value.access_point, state: 'starting', id: data.id };
+      } catch {
+        recoveryError.value = true;
+        recoveryMessage.value = t('networkRecovery.ap.failed', 'The AP request was not confirmed. Refresh device status before retrying.');
+      } finally { startingAP.value = false; }
+    };
+    const stopAccessPoint = async () => {
+      const id = recoveryStatus.value?.access_point?.id;
+      if (!id) return;
+      startingAP.value = true;
+      try {
+        await http.post('/api/v1/network-recovery/access-point/stop', { confirmation: 'STOP ACCESS POINT', id });
+        recoveryMessage.value = t('networkRecovery.ap.stopping', 'AP return is queued. Reconnect to the original network.');
+        recoveryError.value = false;
+      } catch {
+        recoveryError.value = true;
+        recoveryMessage.value = t('networkRecovery.ap.failed', 'The AP request was not confirmed. Refresh device status before retrying.');
+      } finally { startingAP.value = false; }
     };
 
     // Load current configuration
@@ -651,7 +718,9 @@ export default defineComponent({
     onMounted(() => {
       loadCurrentConfiguration();
       loadRecoveryStatus();
+      recoveryPoll = setInterval(() => { if (apBusy.value && !startingAP.value && !startingSetup.value) loadRecoveryStatus(); }, 10000);
     });
+    onUnmounted(() => { disposed = true; if (recoveryPoll) clearInterval(recoveryPoll); });
 
     return {
       // State
@@ -662,12 +731,14 @@ export default defineComponent({
       loadingRecovery,
       savingRecovery,
       startingSetup,
+      startingAP, apInterface, apInterfaces, apBusy, startAccessPoint, stopAccessPoint,
       currentConfig,
       detectedConfig,
       connectionTest,
       configForm,
       recoveryStatus,
       recoveryMessage,
+      recoveryAccessLink,
       recoveryError,
 
       // Config defaults
@@ -700,6 +771,9 @@ export default defineComponent({
 .section-description, .network-help, .recovery-heading p, .recovery-actions p, .local-access-card small, .recovery-toggle small { color: var(--ui-text-secondary); font-size: .9em; }
 .network-config-container { display: grid; gap: calc(var(--ui-space) * 5); min-width: 0; }
 .network-config-container hr { display: none; }
+.temporary-ap { display: grid; gap: calc(var(--ui-space) * 3); padding-top: calc(var(--ui-space) * 4); border-top: 1px solid var(--ui-border); }
+.temporary-ap h4 { margin: 0; font-size: 1rem; }
+.temporary-ap p, .automatic-recovery-unavailable { margin: 0; color: var(--ui-text-secondary); font-size: .9em; }
 .device-recovery-section, .auto-detect-section, .manual-config-section { display: grid; gap: calc(var(--ui-space) * 4); padding: calc(var(--ui-space) * 4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); min-width: 0; }
 .device-recovery-section { background: var(--ui-surface-alt); }
 .recovery-heading { display: flex; gap: calc(var(--ui-space) * 3); align-items: flex-start; }

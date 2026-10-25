@@ -29,7 +29,6 @@ from backend.services.application_access import (
 )
 from backend.services.application_extensions import (
     load_application_definition,
-    invoke_application,
     find_operation,
     ApplicationGatewayError,
 )
@@ -890,7 +889,7 @@ def list_peers(db, application):
     }
 
 
-def notify_bootstrap(db, binding_id):
+def _prepare_bootstrap_callback(db, binding_id):
     row = db.get(InstallationPeerInbound, binding_id)
     if row is None or row.state != "pending":
         return
@@ -921,21 +920,37 @@ def notify_bootstrap(db, binding_id):
             return False
         return current.state == "pending" and current.generation == generation
 
-    try:
-        invoke_application(
-            application,
-            package,
-            get_settings().applications,
-            definition.peer_receiver.bootstrap_operation_id,
-            payload,
-            context,
-            required_audience="installation_bootstrap",
-            before_dispatch=still_pending,
-        )
+    return (application, package, get_settings().applications,
+        definition.peer_receiver.bootstrap_operation_id, payload, context), {
+        "required_audience":"installation_bootstrap", "before_dispatch":still_pending}
+
+
+async def invoke_application(installation, package, settings, operation_id, payload, context,
+    *, required_audience, before_dispatch):
+    """Current peer callback dispatcher; no direct application response wait in Core."""
+    from sqlalchemy import inspect
+    from sqlalchemy.orm import object_session
+    from backend.services.application_invocation_relay import InvocationSpec, invoke_with_relay
+    db=object_session(installation);identifier=inspect(installation).identity[0]
+    def admit():
+        if not before_dispatch():raise ApplicationGatewayError("Peer callback authority changed")
+        current=db.get(ApplicationExtensionInstallation,identifier,populate_existing=True)
+        active=db.get(ModulePackage,current.module_package_id) if current is not None else None
+        if active is None:raise ApplicationGatewayError("Peer callback package is unavailable")
+        return InvocationSpec(current,active,operation_id,payload,context,required_audience)
+    return await invoke_with_relay(db,settings,admit)
+
+
+async def notify_bootstrap(db,binding_id):
+    from starlette.concurrency import run_in_threadpool
+    call=await run_in_threadpool(_prepare_bootstrap_callback,db,binding_id)
+    if call is None:return
+    args,kwargs=call
+    try:await invoke_application(*args,**kwargs)
     except ApplicationGatewayError:
-        # Durable pending state is discoverable through the receiver SDK/UI.
-        # A callback timeout is not approval and must not issue credentials.
+        # Durable pending/approval receipt is read separately; no blind replay.
         return
+
 
 
 def machine_context(row, audience, idempotency_key):
@@ -1039,7 +1054,7 @@ def rotate_inbound(db, value, *, origin, path, now=None):
     return result
 
 
-def receive_report(db, value, *, origin, path, now=None):
+def _prepare_report_callback(db, value, *, origin, path, now=None):
     row, request, _ = authenticate_request(db, value, origin=origin, path=path, now=now)
     report = PeerReportV1.model_validate(request.payload)
     if report.projection.installation_id != row.sender_id:
@@ -1077,21 +1092,19 @@ def receive_report(db, value, *, origin, path, now=None):
 
     # Only Core creates the machine context; extension ownership policy remains
     # in this receiver handler. Never forward caller-controlled context/results.
-    invoke_application(
-        application,
-        package,
-        get_settings().applications,
+    return (application, package, get_settings().applications,
         definition.peer_receiver.report_operation_id,
-        {"projection": report.projection.model_dump(mode="json")},
-        context,
-        required_audience="installation_peer",
-        before_dispatch=still_authorized,
-    )
-    return {
-        "status": "accepted",
-        "report_id": report.report_id,
-        "installation_id": principal.installation_id,
-    }
+        {"projection":report.projection.model_dump(mode="json")}, context), {
+        "required_audience":"installation_peer", "before_dispatch":still_authorized}, {
+        "status":"accepted", "report_id":report.report_id, "installation_id":principal.installation_id}
+
+
+async def receive_report(db,value,*,origin,path,now=None):
+    from starlette.concurrency import run_in_threadpool
+    args,kwargs,result=await run_in_threadpool(_prepare_report_callback,db,value,origin=origin,path=path,now=now)
+    await invoke_application(*args,**kwargs)
+    return result
+
 
 
 def peer_http(origin, path, payload):

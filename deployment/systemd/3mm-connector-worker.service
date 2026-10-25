@@ -1,0 +1,39 @@
+[Unit]
+Description=3mm independent connector network worker
+After=network.target
+StartLimitIntervalSec=60s
+StartLimitBurst=3
+
+[Service]
+OOMScoreAdjust=300
+Type=exec
+User=3mm-connectors
+Group=3mm-connectors
+WorkingDirectory=/opt/3mm-connector-worker/current
+ExecStartPre=+/usr/bin/install -d -o 3mm-connectors -g 3mm -m 2750 /run/3mm-connectors
+ExecStart=/opt/3mm-connector-worker/current/.venv/bin/python -I /opt/3mm-connector-worker/current/runtime.pyz --connector-worker --socket /run/3mm-connectors/worker.sock --core-user 3mm --socket-group 3mm
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=5s
+KillMode=control-group
+ReadWritePaths=-/run/3mm-connectors
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+InaccessiblePaths=/opt/3mm /etc/3mm /var/lib/3mm/core /var/lib/3mm/application-extensions
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+MemoryMax=192M
+TasksMax=16
+CPUQuota=50%
+LimitNOFILE=96
+
+[Install]
+WantedBy=multi-user.target

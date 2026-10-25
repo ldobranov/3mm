@@ -1,4 +1,5 @@
 """Delivered neutral ZIP, real reviewed file grants and signed SDK transport."""
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 import hashlib
 import importlib
 import importlib.util
@@ -129,7 +130,7 @@ def test_exact_delivered_zip_real_grants_sdk_file_receipts_and_revocation(delive
     keys = s.runtime.parent / 'keys'
     keys.mkdir()
     (keys / (s.metadata['instance_id'] + '.key')).write_bytes(s.secret)
-    gateway = ApplicationPlatformServer(s.runtime.parent / 'platform.sock', keys)
+    gateway = ApplicationPlatformServer(s.runtime.parent / 'platform.sock', keys, allowed_actions=COMPATIBILITY_ACTIONS)
     gateway.start()
     files = ApplicationScopedFileStorage(s.runtime / 'data', limits=ApplicationFileLimits(1024, 4096, 4),
         platform=ApplicationPlatformClient(gateway.socket_path, s.metadata['instance_id'], s.secret))

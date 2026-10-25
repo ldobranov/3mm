@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, JSON, Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.sql import func
 from backend.db.base import Base
 from backend.db.authority import new_authority_generation
@@ -88,6 +88,20 @@ class ApplicationExtensionInstallation(Base):
         CheckConstraint("length(authority_incarnation) = 32", name="ck_application_authority_incarnation"),
         CheckConstraint("length(authority_epoch) = 32", name="ck_application_authority_epoch"),
         CheckConstraint("authority_mode IN ('compatibility', 'review_required', 'enforced')", name="ck_application_authority_mode"),
+    )
+
+
+class ApplicationRetainedData(Base):
+    """Discoverable application data ownership independent of installed code."""
+
+    __tablename__ = "application_retained_data"
+    module_id = Column(String(160), primary_key=True)
+    instance_id = Column(String(24), nullable=False)
+    name = Column(String(255), nullable=True)
+    __table_args__ = (
+        UniqueConstraint("instance_id", name="uq_application_retained_instance"),
+        CheckConstraint("length(module_id) > 0 AND length(module_id) <= 160", name="ck_application_retained_module"),
+        CheckConstraint("length(instance_id) = 24", name="ck_application_retained_instance"),
     )
 
 
@@ -184,6 +198,11 @@ class ApplicationEventDelivery(Base):
     # NULL = legacy delivery, never an inferred enforced grant. A retry belongs
     # to its admitted grant epoch, not a later reapproval of the same subscription.
     authority_epoch = Column(String(32), nullable=True)
+    # One durable latest attempt. Runtime receives only the opaque dispatch ID.
+    dispatch_id = Column(String(32), nullable=True)
+    dispatch_metadata = Column(JSON, nullable=True)
+    retry_boot_id = Column(String(36), nullable=True)
+    retry_not_before_ms = Column(BigInteger, nullable=True)
     last_error = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(
@@ -312,6 +331,7 @@ class ApplicationConnectorAttempt(Base):
     method = Column(String(12), nullable=False)
     path_hash = Column(String(64), nullable=False)
     outcome = Column(String(32), nullable=False, index=True)
+    dispatch_metadata = Column(JSON, nullable=True)
     http_status = Column(Integer, nullable=True)
     error_category = Column(String(64), nullable=True)
     started_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

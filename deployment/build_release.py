@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 import tarfile
 import tempfile
 from dataclasses import dataclass
@@ -16,17 +17,20 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 try:  # Both module imports and the workflow's direct script invocation.
     from .deployment_contract import (
         CONTRACT_PATH,
         DeploymentContractError,
-        validate_deployment_contract,
+        validate_deployment_contract, validate_platform_runtime_contract,
     )
 except ImportError:
     from deployment_contract import (
         CONTRACT_PATH,
         DeploymentContractError,
-        validate_deployment_contract,
+        validate_deployment_contract, validate_platform_runtime_contract,
     )
 
 SUPPORTED_ARCHITECTURES = ("aarch64", "armv7l", "x86_64")
@@ -131,6 +135,7 @@ def read_source_payload(source_archive: Path) -> list[PayloadFile]:
         "deployment/migrate_database.py",
         "deployment/update-dependency-allowlist.json",
         "deployment/systemd/3mm-agent.service",
+        "deployment/systemd/3mm-setup-local.service",
         "deployment/systemd/3mm-application-extension@.service",
         "deployment/systemd/3mm-core.service",
         "deployment/systemd/3mm-update-helper.service",
@@ -141,17 +146,42 @@ def read_source_payload(source_archive: Path) -> list[PayloadFile]:
         "three_mm_runtime/update_helper.py",
         "three_mm_runtime/application_activation.py",
         "three_mm_runtime/application_host.py",
+        "three_mm_runtime/application_host_identity.py",
+        "deployment/application_host_component.py",
+        "deployment/application-host-contract.json",
+        "deployment/application-host-requirements.txt",
         "three_mm_runtime/application_transport.py",
         "three_mm_public_web/__init__.py",
         "three_mm_public_web/__main__.py",
         "three_mm_public_web/server.py",
         "three_mm_application_sdk/__init__.py",
+        'deployment/platform-runtime-contract.json',
+        'deployment/platform_runtime_component.py',
+        'deployment/systemd/3mm-platform-runtime.service',
+        'three_mm_platform_wire/__init__.py',
+        'three_mm_platform_runtime/__init__.py',
+        'three_mm_platform_runtime/__main__.py',
+        'three_mm_platform_runtime/server.py',
+        'three_mm_platform_runtime/public_web.py',
+        'three_mm_platform_runtime/events.py',
+        'three_mm_platform_runtime/responses.py',
+        'three_mm_platform_runtime/connector_worker.py',
+        'deployment/systemd/3mm-connector-worker.service',
     }
     missing = sorted(required - names)
     if missing:
         raise ReleaseBuildError(
             f"Source archive is missing required files: {', '.join(missing)}"
         )
+    try:
+        validate_platform_runtime_contract(next(item.data for item in payload if item.name=="deployment/platform-runtime-contract.json"))
+    except DeploymentContractError as error:
+        raise ReleaseBuildError(str(error)) from error
+    from deployment.application_host_component import validate_host_contract
+    try:
+        validate_host_contract(next(item.data for item in payload if item.name=="deployment/application-host-contract.json"))
+    except (ValueError,TypeError,AttributeError) as error:
+        raise ReleaseBuildError("Core/application-host contracts are unsupported") from error
     return sorted(payload, key=lambda item: item.name)
 
 

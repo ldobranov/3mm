@@ -1,4 +1,4 @@
-"""Root-only NetworkManager helper exposed through a local Unix socket."""
+"""Root helper: bounded local protocol, explicit managed Wi-Fi transactions."""
 
 from __future__ import annotations
 
@@ -8,77 +8,55 @@ import os
 import socket
 from pathlib import Path
 
-from three_mm_provisioning.models import NetworkCredentials
-from three_mm_provisioning.network_manager_persistent import (
-    PersistentNetworkManagerAdapter,
-)
-from three_mm_provisioning.network_manager_mutation import (
-    NetworkManagerMutationBoundary,
-)
+from three_mm_provisioning.network_capabilities import INTERFACE, managed_interfaces
+from three_mm_provisioning.network_transaction import IDENTIFIER, NetworkTransaction
 from three_mm_provisioning.network_manager import NetworkManagerReadOnlyAdapter
+from three_mm_provisioning.network_manager_mutation import NetworkManagerMutationBoundary
 
 MAX_REQUEST_BYTES = 4096
 
 
-def _handle_request(payload: object) -> dict[str, object]:
-    if payload == {"action": "scan_wifi"}:
-        try:
-            networks = NetworkManagerReadOnlyAdapter.from_system(
-                timeout_seconds=5.0
-            ).scan_wifi_networks()
-        except Exception:
-            return {"ok": False, "error": "wifi_scan_failed"}
-        return {
-            "ok": True,
-            "items": [
-                {
-                    "network_name": item.network_name,
-                    "signal": item.signal,
-                    "secured": item.secured,
-                }
-                for item in networks
-            ],
-        }
-    if payload == {"action": "activate_runtime"}:
-        try:
-            NetworkManagerMutationBoundary().schedule_runtime_activation()
-        except Exception:
-            return {"ok": False, "error": "runtime_activation_failed"}
-        return {"ok": True}
-    if not isinstance(payload, dict) or set(payload) != {
-        "network_name",
-        "passphrase",
-    }:
+def _handle_request(payload: object, transaction=None) -> dict[str, object]:
+    if not isinstance(payload, dict):
         return {"ok": False, "error": "invalid_request"}
-    network_name = payload["network_name"]
-    passphrase = payload["passphrase"]
-    if (
-        not isinstance(network_name, str)
-        or not 1 <= len(network_name) <= 32
-        or not isinstance(passphrase, str)
-        or not 8 <= len(passphrase) <= 63
-    ):
-        return {"ok": False, "error": "invalid_request"}
-
-    adapter = PersistentNetworkManagerAdapter()
-    adapter.enter_setup_mode()
-    adapter.stage_configuration(NetworkCredentials(network_name, passphrase))
     try:
-        adapter.activate_staged()
-        if not adapter.verify_connectivity():
-            adapter.rollback()
-            return {"ok": False, "error": "connectivity_failed"}
-        adapter.commit()
-        adapter.leave_setup_mode()
+        if payload == {"action": "capabilities"}:
+            return {"ok": True, "interfaces": managed_interfaces()}
+        if payload == {"action": "scan_wifi"}:
+            if not managed_interfaces():
+                return {"ok": False, "error": "wifi_unavailable"}
+            items = NetworkManagerReadOnlyAdapter.from_system(timeout_seconds=5).scan_wifi_networks()
+            return {"ok": True, "items": [{"network_name": item.network_name,
+                    "signal": item.signal, "secured": item.secured} for item in items]}
+        if (set(payload) == {"action", "recovery"} and payload["action"] == "activate_runtime"
+                and type(payload["recovery"]) is bool):
+            NetworkManagerMutationBoundary().schedule_runtime_activation(recovery=payload["recovery"])
+            return {"ok": True}
+        action = payload.get("action")
+        fields = {"action", "id"}
+        if action == "wifi.apply":
+            fields |= {"interface", "network_name", "passphrase"}
+            if (not isinstance(payload.get("interface"), str) or not INTERFACE.fullmatch(payload["interface"])
+                    or not isinstance(payload.get("network_name"), str) or not 1 <= len(payload["network_name"].encode()) <= 32
+                    or not isinstance(payload.get("passphrase"), str) or not 8 <= len(payload["passphrase"]) <= 63
+                    or any(c in payload["passphrase"] for c in "\r\n\0")):
+                return {"ok": False, "error": "invalid_request"}
+        elif action not in {"wifi.status", "wifi.commit", "wifi.rollback"}:
+            return {"ok": False, "error": "invalid_request"}
+        if (set(payload) != fields or not isinstance(payload.get("id"), str)
+                or not IDENTIFIER.fullmatch(payload["id"])):
+            return {"ok": False, "error": "invalid_request"}
+        return (transaction or NetworkTransaction()).handle(payload)
     except Exception:
-        adapter.rollback()
-        return {"ok": False, "error": "network_configuration_failed"}
-    return {"ok": True}
+        # Never expose exception text, nmcli output, SSIDs or credentials.
+        return {"ok": False, "error": "operation_failed"}
 
 
 def serve(socket_path: Path, group_name: str = "3mm") -> None:
     import grp
 
+    transaction = NetworkTransaction()
+    transaction.recover()
     group_id = grp.getgrnam(group_name).gr_gid
     socket_path.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
     os.chown(socket_path.parent, 0, group_id)
@@ -92,34 +70,27 @@ def serve(socket_path: Path, group_name: str = "3mm") -> None:
         while True:
             connection, _ = server.accept()
             with connection:
-                request = b""
-                while len(request) <= MAX_REQUEST_BYTES:
-                    chunk = connection.recv(1024)
-                    if not chunk:
-                        break
-                    request += chunk
-                    if b"\n" in request:
-                        break
+                connection.settimeout(5)
                 try:
+                    request = b""
+                    while len(request) <= MAX_REQUEST_BYTES and b"\n" not in request:
+                        chunk = connection.recv(1024)
+                        if not chunk:
+                            break
+                        request += chunk
                     if len(request) > MAX_REQUEST_BYTES:
                         raise ValueError("request_too_large")
                     payload = json.loads(request.split(b"\n", 1)[0])
-                    response = _handle_request(payload)
-                except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
-                    response = {"ok": False, "error": "invalid_request"}
-                connection.sendall(
-                    json.dumps(response, separators=(",", ":")).encode("utf-8")
-                    + b"\n"
-                )
+                    response = _handle_request(payload, transaction)
+                    connection.sendall(json.dumps(response, separators=(",", ":")).encode() + b"\n")
+                except (OSError, ValueError):
+                    # A malformed or abandoned client cannot stop the helper.
+                    continue
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the 3mm network helper")
-    parser.add_argument(
-        "--socket",
-        type=Path,
-        default=Path("/run/3mm/network-helper.sock"),
-    )
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--socket", type=Path, default=Path("/run/3mm/network-helper.sock"))
     parser.add_argument("--group", default="3mm")
     arguments = parser.parse_args()
     serve(arguments.socket, arguments.group)

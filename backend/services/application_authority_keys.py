@@ -1,8 +1,9 @@
 """Private M20 configuration identities and authenticated coordinator records.
 
-Explicit local administration only; no startup hook, key route or SDK export. The
-POSIX store is Core-owned and separate from transport/signing/encryption keys.
-Read/fingerprint never creates or repairs state. A recovered DB generation makes
+Core-owned infrastructure, separate from transport/signing/encryption keys.
+Authenticated administrator consent preparation may explicitly provision a
+missing first key. Normal reads never create keys; existing unavailable material
+is never silently replaced. There is no key export or SDK key-management API. A recovered DB generation makes
 an old key unavailable even if its private file was copied back with the DB.
 """
 

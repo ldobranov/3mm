@@ -3,6 +3,7 @@
 Disposable Linux fixtures only. Re-enable is explicit fixture state, NOT proof
 of a production first-install/upgrade coordinator or human route acceptance.
 """
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 import hashlib
 import io
@@ -201,6 +202,8 @@ def get_migrations():
 def running(migratable, monkeypatch, request):
     state = migratable
     package(state, getattr(request, "param", "read_write"))
+    # Own signed-adapter fixture endpoint; never connect a test host to installed Runtime.
+    monkeypatch.setenv("THREE_MM_PLATFORM_RUNTIME_SOCKET", str(state.runtime / "platform/platform.sock"))
     run(
         state, migration_ticket(state)
     )  # Actual reviewed preparation, not hand-written lineage.
@@ -228,7 +231,7 @@ def running(migratable, monkeypatch, request):
     )
     state.server = ApplicationPlatformServer(
         state.runtime / "platform/platform.sock", state.transport_keys
-    )
+    , allowed_actions=COMPATIBILITY_ACTIONS)
     state.server.start()
     os.chown(state.server.socket_path, 0, 1201)
     sdk_root = Path(__file__).resolve().parents[2]
@@ -523,3 +526,66 @@ def test_prepared_runtime_refuses_new_pending_checkpoint(migratable):
     with pytest.raises(ValueError, match="recovery is pending"):
         PreparedRelationalRuntime(state.instance, metadata, SECRET)
     assert not (state.data / "factory.json").exists()
+
+
+
+def test_admin_health_response_relay_after_resource_revoke_never_requests_sql(running):
+    import shutil
+    state=running
+    state.manager.revoke(1,actor_token=state.token,request_id=identity(),
+        expected_revision=state.manager.inspect(1)["grant_record_revision"])
+    # Separate disposable Core DB/key copy, Runtime UID65534 and existing real
+    # prepared host UID1200/GID1201. The production relay refuses root Core peers.
+    core=state.root/"health-core";core.mkdir(mode=0o700)
+    database=core/"core.db"
+    with state.engine.connect() as db,sqlite3.connect(database) as destination:
+        db.connection.driver_connection.backup(destination)
+    with Session(state.engine) as db:package_path=Path(db.get(ModulePackage,1).file_path)
+    shutil.copyfile(package_path,core/"app.zip")
+    shutil.copyfile(state.transport_keys/(state.instance.name+".key"),core/(state.instance.name+".key"))
+    with sqlite3.connect(database) as db:
+        db.execute("UPDATE module_packages SET file_path=? WHERE id=1",(str(core/"app.zip"),))
+    for path in [core,*core.iterdir()]:os.chown(path,1000,1000)
+    channel=state.root/"health-channel";channel.mkdir(mode=0o2750);os.chown(channel,65534,1000);channel.chmod(0o2750)
+    path=channel/"runtime.sock";source=Path(__file__).resolve().parents[2]
+    bootstrap="import sys;sys.path.insert(0,"+repr(str(source))+");"
+    runtime_code=bootstrap+"from pathlib import Path;from three_mm_platform_runtime.responses import ApplicationResponses;r=ApplicationResponses(Path(sys.argv[1]),Path(sys.argv[1]+'.unused'),core_uid=1000);r.start();r.serve_forever()"
+    runtime=subprocess.Popen([sys.executable,"-I","-c",runtime_code,str(path)],user=65534,group=65534,extra_groups=[],
+        env={"PATH":"/usr/bin:/bin","LANG":"C.UTF-8"},stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    try:
+        deadline=time.monotonic()+5
+        while not path.exists():
+            assert runtime.poll() is None,runtime.communicate(timeout=2)[1].decode()
+            assert time.monotonic()<deadline
+            time.sleep(.01)
+        code=bootstrap+"""
+import asyncio,json,pwd
+from pathlib import Path
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+import backend.database
+from backend.config import ApplicationRuntimeSettings
+from backend.db.module import ApplicationExtensionInstallation as Installation,ModulePackage
+from backend.services.application_health_probe import begin_health_probe,finish_health_probe
+import backend.services.application_relational as relational
+def refused(*a,**k):raise AssertionError('Health requested host metadata/SQL authority')
+relational.prepare_host_invocation=refused
+settings=ApplicationRuntimeSettings(key_root=Path(sys.argv[2]),application_response_socket=Path(sys.argv[3]),runtime_user=pwd.getpwuid(65534).pw_name)
+engine=create_engine('sqlite:///'+sys.argv[1])
+with Session(engine) as db:
+ probe,waiter=begin_health_probe(db,db.get(Installation,1),db.get(ModulePackage,1),settings)
+ assert not db.in_transaction()
+ try:raw=asyncio.run(waiter.receive())
+ finally:waiter.close()
+ result=finish_health_probe(db,probe,raw,settings)
+ assert db.get(Installation,1).health_checked_at is not None
+ print(json.dumps(result))
+"""
+        result=subprocess.run([sys.executable,"-I","-c",code,str(database),str(core),str(path)],user=1000,group=1000,
+            extra_groups=[1201],env={**os.environ,"PYTHONPATH":str(source)},capture_output=True,timeout=15)
+        assert result.returncode==0,result.stderr.decode()
+        assert json.loads(result.stdout)=={"status":"ready"}
+    finally:
+        runtime.terminate()
+        try:runtime.communicate(timeout=2)
+        except subprocess.TimeoutExpired:runtime.kill();runtime.communicate(timeout=2)

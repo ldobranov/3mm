@@ -47,6 +47,7 @@ POST_BASELINE_TABLES = {
     "module_installations",
     "theme_extension_installations",
     "application_extension_installations",
+    "application_retained_data",
     "application_permission_grants",
     "application_kiosk_enrollments",
     "application_kiosk_terminals",
@@ -81,6 +82,15 @@ def _baseline_metadata() -> MetaData:
     for table in Base.metadata.sorted_tables:
         if table.name not in POST_BASELINE_TABLES:
             table.to_metadata(metadata)
+    languages = metadata.tables.get("language_packs")
+    if languages is not None and "module_package_id" in languages.c:
+        column = languages.c.module_package_id
+        for constraint in list(languages.constraints):
+            if column in constraint.columns.values():
+                languages.constraints.remove(constraint)
+        for foreign_key in list(column.foreign_keys):
+            languages.foreign_keys.discard(foreign_key)
+        languages._columns.remove(column)
     return metadata
 
 

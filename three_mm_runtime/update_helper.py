@@ -8,7 +8,7 @@ import logging
 import os
 import socket
 import subprocess
-from contextlib import nullcontext
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, Sequence
@@ -57,6 +57,56 @@ def _service_ids(user_name: str, group_name: str) -> tuple[int, int]:
     return pwd.getpwnam(user_name).pw_uid, grp.getgrnam(group_name).gr_gid
 
 
+def _retained_erase_identity(payload):
+    import re
+    if (type(payload) is not dict or set(payload) != {
+            "action", "instance_id", "module_id", "requested_by_user_id", "guard_generation", "guard_revision"}
+            or payload["action"] != "erase_application_extension_data"
+            or type(payload["module_id"]) is not str or not 1 <= len(payload["module_id"]) <= 255
+            or type(payload["instance_id"]) is not str or re.fullmatch(r"[0-9a-f]{24}", payload["instance_id"]) is None
+            or type(payload["requested_by_user_id"]) is not int or payload["requested_by_user_id"] <= 0
+            or type(payload["guard_generation"]) is not str or re.fullmatch(r"[0-9a-f]{32}", payload["guard_generation"]) is None
+            or type(payload["guard_revision"]) is not int or not 1 <= payload["guard_revision"] <= 2**53 - 1):
+        raise ValueError("Invalid retained data erase identity")
+    return payload["module_id"], payload["instance_id"]
+
+
+@contextmanager
+def _retained_data_erase_operation(payload, *, database, state_root, enforce_permissions=True):
+    """Serialize erasure against activation/restore and reject stale queued work.
+
+    Core holds its authority writer through this call, preventing a new install
+    between this fresh committed read and erasure. The revision is the committed
+    pre-write value, not Core's uncommitted guard advancement.
+    """
+    import sqlite3
+    from three_mm_runtime.application_lifecycle import _release_lock, _runtime_lock, ApplicationLifecycleError
+    module_id, instance_id = _retained_erase_identity(payload)
+    with _release_lock(enforce_permissions=enforce_permissions), _runtime_lock(
+            state_root, enforce_permissions=enforce_permissions):
+        try:
+            db = sqlite3.connect(Path(database).absolute().as_uri() + "?mode=ro", uri=True)
+            try:
+                db.execute("BEGIN")
+                guard = db.execute("SELECT generation, revision FROM core_authority_guard WHERE singleton_id=1").fetchone()
+                if (guard is None or guard != (payload["guard_generation"], payload["guard_revision"])
+                        or type(guard[1]) is not int):
+                    raise ApplicationLifecycleError()
+                retained = db.execute(
+                    "SELECT module_id, instance_id FROM application_retained_data WHERE module_id=? OR instance_id=?",
+                    (module_id, instance_id),
+                ).fetchall()
+                if retained != [(module_id, instance_id)] or db.execute(
+                        "SELECT 1 FROM application_extension_installations WHERE module_id=? OR instance_id=? LIMIT 1",
+                        (module_id, instance_id)).fetchone() is not None:
+                    raise ApplicationLifecycleError()
+            finally:
+                db.close()
+        except (sqlite3.Error, ValueError, TypeError) as exc:
+            raise ApplicationLifecycleError() from exc
+        yield
+
+
 class UpdateCommandRunner(Protocol):
     def run(self, arguments: Sequence[str]) -> int: ...  # noqa: E704
 
@@ -86,6 +136,7 @@ class UpdateMutationBoundary:
         self,
         *,
         systemd_run: str = "/usr/bin/systemd-run",
+        systemctl: str = "/usr/bin/systemctl",
         python: str = "/opt/3mm/current/.venv/bin/python",
         worker: str = "/opt/3mm/current/deployment/apply_staged_update.py",
         repository: str = "ldobranov/3mm",
@@ -93,6 +144,7 @@ class UpdateMutationBoundary:
         runner: UpdateCommandRunner | None = None,
     ) -> None:
         self._systemd_run = systemd_run
+        self._systemctl = systemctl
         self._python = python
         self._worker = worker
         self._repository = repository
@@ -141,6 +193,40 @@ class UpdateMutationBoundary:
         if self._runner.run(arguments) != 0:
             raise UpdateStagingError("Update worker could not be scheduled")
 
+    def schedule_access_point(self, action, identifier, *, interface=None, duration=300):
+        from three_mm_provisioning.network_capabilities import INTERFACE
+        from three_mm_provisioning.network_transaction import IDENTIFIER
+        if action not in {"start", "stop"} or not isinstance(identifier, str) or not IDENTIFIER.fullmatch(identifier):
+            raise ValueError("Invalid AP action")
+        arguments = [self._systemd_run, "--unit=3mm-access-point-" + action + "-" + identifier,
+                     "--collect", "--on-active=3s", "--property=Type=exec",
+                     "--property=TimeoutStartSec=2min", "--property=RuntimeMaxSec=2min",
+                     "--property=EnvironmentFile=-/etc/3mm/3mm.env", "/usr/bin/env",
+                     "PYTHONPATH=/opt/3mm/current", self._python, "-m",
+                     "three_mm_provisioning.recovery_access_point", action, "--id", identifier]
+        if action == "start":
+            if (not isinstance(interface, str) or not INTERFACE.fullmatch(interface)
+                    or type(duration) is not int or not 60 <= duration <= 900):
+                raise ValueError("Invalid AP options")
+            arguments += ["--interface", interface, "--duration", str(duration)]
+        from three_mm_provisioning.recovery_access_point import read_status, publish_status, AP_URL
+        if action == "start":
+            from three_mm_provisioning.setup_access_point import setup_ssid
+            publish_status(dict(state="starting", id=identifier, interface=interface,
+                                expires_at=__import__("time").time() + duration,
+                                network=setup_ssid(Path("/etc/machine-id")), setup_url=AP_URL, reason=None))
+        else:
+            # Cancel only this request while it is still queued/starting.
+            current = read_status()
+            if current["id"] == identifier and current["state"] == "starting":
+                self._runner.run((self._systemctl, "stop", "3mm-access-point-start-" + identifier + ".timer",
+                                  "3mm-access-point-start-" + identifier + ".service"))
+        if self._runner.run(tuple(arguments)) != 0:
+            current = read_status()
+            if action == "start" and current["id"] == identifier:
+                publish_status({**current, "state": "failed", "reason": "schedule_failed"})
+            raise RuntimeError("Access point worker could not be scheduled")
+
     def schedule_network_setup(
         self,
         trigger: RecoveryTrigger,
@@ -156,6 +242,7 @@ class UpdateMutationBoundary:
             "--unit=3mm-network-recovery",
             "--collect",
             "--on-active=2s",
+            "--property=EnvironmentFile=-/etc/3mm/3mm.env",
             "--property=Type=exec",
             "--property=TimeoutStartSec=2min",
             "--property=PrivateTmp=true",
@@ -400,6 +487,20 @@ def _handle_request(
             if recovering_preparation:
                 return {"ok": False, "error": "relational_empty_preparation_unconfirmed"}
             return {"ok": False, "error": "relational_boot_enable_unconfirmed" if enabling_boot else "relational_reactivation_unconfirmed" if reactivating else "relational_start_recovery_unconfirmed" if recovering else "relational_activation_unconfirmed" if activating else "relational_preparation_unconfirmed"}
+    if isinstance(payload, dict) and payload.get("action") == "erase_application_extension_data":
+        try:
+            _retained_erase_identity(payload)
+        except ValueError:
+            return {"ok": False, "error": "invalid_request"}
+        try:
+            with _retained_data_erase_operation(payload, database=application_database, state_root=state_root):
+                (boundary or UpdateMutationBoundary()).erase_application_extension_data(
+                    payload["instance_id"], root=application_root)
+        except Exception:
+            LOGGER.warning("Application retained data erasure unconfirmed")
+            return {"ok": False, "error": "application_data_erase_failed"}
+        return {"ok": True, "status": "erased"}
+
     if isinstance(payload, dict) and set(payload) in (
         {"action", "sha256", "requested_by_user_id", "lifecycle"},
         {"action", "sha256", "requested_by_user_id", "configuration", "lifecycle"},
@@ -457,12 +558,10 @@ def _handle_request(
             not isinstance(action, str)
             or action not in {
                 "disable_application_extension",
-                "erase_application_extension_data",
                 "uninstall_application_extension",
                 "recover_application_extension",
             }
-            or (action != "erase_application_extension_data" and "lifecycle" not in payload)
-            or (action == "erase_application_extension_data" and "lifecycle" in payload)
+            or "lifecycle" not in payload
             or not isinstance(instance_id, str)
             or not __import__("re").fullmatch(r"[0-9a-f]{24}", instance_id)
             or not isinstance(user_id, int)
@@ -472,17 +571,14 @@ def _handle_request(
             return {"ok": False, "error": "invalid_request"}
         try:
             selected_boundary = boundary or UpdateMutationBoundary()
-            scope = (nullcontext() if action == "erase_application_extension_data"
-                     else application_lifecycle_operation(
-                         payload, database=application_database, state_root=state_root
-                     ))
+            scope = application_lifecycle_operation(
+                payload, database=application_database, state_root=state_root,
+            )
             with scope:
                 if action == "uninstall_application_extension":
                     selected_boundary.uninstall_application_extension(
                         instance_id, root=application_root, key_root=application_key_root,
                     )
-                elif action == "erase_application_extension_data":
-                    selected_boundary.erase_application_extension_data(instance_id, root=application_root)
                 elif action == "recover_application_extension":
                     selected_boundary.recover_application_extension(instance_id)
                 else:
@@ -491,7 +587,6 @@ def _handle_request(
             LOGGER.exception("Application extension lifecycle failed: %s", action)
             error = {
                 "uninstall_application_extension": "application_uninstall_failed",
-                "erase_application_extension_data": "application_data_erase_failed",
                 "recover_application_extension": "application_recovery_failed",
             }.get(action, "application_disable_failed")
             return {"ok": False, "error": error}
@@ -499,7 +594,6 @@ def _handle_request(
             "ok": True,
             "status": {
                 "uninstall_application_extension": "uninstalled",
-                "erase_application_extension_data": "erased",
             }.get(action, "disabled"),
         }
         if action == "recover_application_extension":
@@ -629,6 +723,26 @@ def _handle_request(
             )
         except Exception:
             return {"ok": False, "error": "restore_schedule_failed"}
+        return {"ok": True, "status": "queued"}
+
+    if isinstance(payload, dict) and payload.get("action") in {"start_access_point", "stop_access_point"}:
+        from three_mm_provisioning.network_capabilities import INTERFACE
+        from three_mm_provisioning.network_transaction import IDENTIFIER
+        starting = payload["action"] == "start_access_point"
+        fields = {"action", "requested_by_user_id", "id"} | ({"interface", "duration"} if starting else set())
+        user_id, identifier = payload.get("requested_by_user_id"), payload.get("id")
+        if (set(payload) != fields or type(user_id) is not int or user_id <= 0
+                or not isinstance(identifier, str) or not IDENTIFIER.fullmatch(identifier)
+                or (starting and (not isinstance(payload["interface"], str)
+                    or not INTERFACE.fullmatch(payload["interface"])
+                    or type(payload["duration"]) is not int or not 60 <= payload["duration"] <= 900))):
+            return {"ok": False, "error": "invalid_request"}
+        try:
+            (boundary or UpdateMutationBoundary()).schedule_access_point(
+                "start" if starting else "stop", identifier,
+                **({"interface": payload["interface"], "duration": payload["duration"]} if starting else {}))
+        except Exception:
+            return {"ok": False, "error": "access_point_schedule_failed"}
         return {"ok": True, "status": "queued"}
 
     if isinstance(payload, dict) and set(payload) == {
@@ -848,15 +962,19 @@ def serve(
         repository=repository,
         manifest_asset_name=manifest_asset_name,
     )
-    recovery_monitor = NetworkRecoveryMonitor(
-        policy_store=FileNetworkRecoveryPolicyStore(network_recovery_policy),
-        marker=FileNetworkRecoveryMarker(
-            provisioning_data_dir / "network-recovery.json"
-        ),
-        provisioning_store=FileProvisioningStore(provisioning_data_dir),
-        inspector=NetworkManagerReadOnlyAdapter.from_system(),
-        scheduler=boundary,
-    )
+    from three_mm_runtime.install_profile import NetworkBackend, read_network_backend
+
+    recovery_monitor = None
+    if read_network_backend() is NetworkBackend.NETWORK_MANAGER:
+        recovery_monitor = NetworkRecoveryMonitor(
+            policy_store=FileNetworkRecoveryPolicyStore(network_recovery_policy),
+            marker=FileNetworkRecoveryMarker(
+                provisioning_data_dir / "network-recovery.json"
+            ),
+            provisioning_store=FileProvisioningStore(provisioning_data_dir),
+            inspector=NetworkManagerReadOnlyAdapter.from_system(),
+            scheduler=boundary,
+        )
     socket_path.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
     os.chown(socket_path.parent, 0, group_id)
     os.chmod(socket_path.parent, 0o750)
@@ -871,7 +989,8 @@ def serve(
             try:
                 connection, _ = server.accept()
             except socket.timeout:
-                recovery_monitor.poll()
+                if recovery_monitor is not None:
+                    recovery_monitor.poll()
                 continue
             with connection:
                 _serve_connection(

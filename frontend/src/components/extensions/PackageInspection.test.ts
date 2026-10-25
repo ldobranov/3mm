@@ -1,14 +1,15 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import english from '@/locales/en.json'
-import bulgarian from '@/locales/bg.json'
+import languagePack from '../../../../modules/language-bg/language-extension.json'
+const bulgarian = languagePack.frontend
 
 const http = vi.hoisted(() => ({ post: vi.fn() }))
 const locale = vi.hoisted(() => ({ language: 'en' }))
 vi.mock('@/utils/dynamic-http', () => ({ default: http }))
 vi.mock('@/utils/i18n', async () => {
   const en = (await import('@/locales/en.json')).default
-  const bg = (await import('@/locales/bg.json')).default
+  const bg = (await import('../../../../modules/language-bg/language-extension.json')).default.frontend
   return { useI18n: () => ({ t: (key: string, fallback: string) => {
     const source = locale.language === 'bg' ? bg : en
     const messages: Record<string, Record<string, string>> = {

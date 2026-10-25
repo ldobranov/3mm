@@ -255,6 +255,21 @@ def _serve_requests(
                         raise ApplicationTransportError(
                             "Application service request is invalid"
                         )
+                    if operation_id == "three_mm.host.info":
+                        if raw_context != {"audience": "internal"} or payload:
+                            raise ApplicationTransportError("Host metadata requires an internal empty request")
+                        import hashlib
+                        from three_mm_runtime.application_host_identity import build_identity, HOST_CONTRACT
+                        response = {"ok": True, "result": {
+                            "host_contract": HOST_CONTRACT, "build_id": build_identity(),
+                            "pid": os.getpid(), "uid": os.geteuid(),
+                            "instance_id": metadata["instance_id"],
+                            "metadata_sha256": hashlib.sha256(json.dumps(metadata,
+                                sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest(),
+                        }}
+                        send_message(connection, sign_message({"version": 1,
+                            "request_id": request_id, "timestamp": int(time.time()), **response}, secret))
+                        continue
                     if operation_id == "three_mm.platform.status":
                         if raw_context.get("audience") != "internal":
                             raise ApplicationTransportError(

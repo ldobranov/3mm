@@ -12,13 +12,13 @@ from deployment.build_release import (PayloadFile, write_release_archive,
 from deployment.prepare_node_wheels import digest
 
 RUNTIME_FILES = ('__init__.py', 'services.py', 'activate.py', 'install_profile.py', 'install_bootstrap.py',
-                 'network_recovery.py', 'node_recovery.py', 'node_update_helper.py', 'node_update_trust.py',
-                 'device_authority_reset.py', 'session_output.py')
-UNITS = ('3mm-agent.service', '3mm-setup.service', '3mm-setup-ap.service',
+                 'network_recovery.py', 'node_recovery.py', 'node_update_helper.py', 'node_update_trust.py', 'node_update_common.py',
+                 'device_authority_reset.py', 'session_output.py', 'component_identity.py')
+UNITS = ('3mm-agent.service', '3mm-setup.service', '3mm-setup-ap.service', '3mm-setup-local.service',
          '3mm-network-helper.service', '3mm-node-recovery.service', '3mm-node-update-helper.service',
          '3mm-captive-portal-dnsmasq.conf')
-APT_PACKAGES = sorted(['avahi-daemon', 'ca-certificates', 'curl', 'dnsmasq-base',
-                      'network-manager', 'openssl', 'python3', 'python3-venv', 'util-linux'])
+APT_PACKAGES = sorted(['avahi-daemon', 'ca-certificates', 'curl',
+                      'openssl', 'python3', 'python3-venv', 'util-linux'])
 
 
 def build(root, wheels, output, *, version, commit, repository, epoch,
@@ -30,10 +30,12 @@ def build(root, wheels, output, *, version, commit, repository, epoch,
         raise ValueError('VERSION does not match')
     names = {'VERSION', 'deployment/install-systemd.sh', 'deployment/node-requirements.txt',
              'deployment/node_preflight.py', 'deployment/apply_node_update.py',
-             'deployment/trust_node_update_hub.py'}
+             'deployment/trust_node_update_hub.py', 'deployment/component_store.py',
+             'deployment/service_component.py', 'deployment/service-components-contract.json',
+             'deployment/service-agent-requirements.txt', 'deployment/application-host-requirements.txt'}
     names.update('three_mm_runtime/' + name for name in RUNTIME_FILES)
     names.update('deployment/systemd/' + name for name in UNITS)
-    for package in ('agent', 'setup_service', 'three_mm_protocol', 'three_mm_provisioning'):
+    for package in ('agent', 'setup_service', 'three_mm_protocol', 'three_mm_provisioning', 'three_mm_platform_wire'):
         for path in (root / package).rglob('*'):
             relative = path.relative_to(root)
             if (path.is_file() and not {'tests', '__pycache__'} & set(relative.parts)

@@ -110,6 +110,8 @@ def environment(monkeypatch, tmp_path, blob=None):
         lambda: type("Settings", (), {"applications": runtime_settings})(),
     )
     monkeypatch.setattr(gateway, "ApplicationServiceClient", ReadyClient)
+    from backend.tests.response_helpers import install_response_transport
+    install_response_transport(monkeypatch)
 
     app = FastAPI()
     app.include_router(application_router)
@@ -357,7 +359,7 @@ def test_uninstall_removes_core_registration_and_preserves_package(monkeypatch, 
     monkeypatch.setattr(
         application_extensions.UpdateHelperClient,
         "erase_application_extension_data",
-        lambda _self, instance_id, user_id: erase_calls.append(
+        lambda _self, instance_id, user_id, **_context: erase_calls.append(
             (instance_id, user_id)
         ),
     )
@@ -389,7 +391,7 @@ def test_uninstall_removes_core_registration_and_preserves_package(monkeypatch, 
             headers=headers(admin_token),
         )
         assert erased.status_code == 200
-        assert erase_calls == [(application_instance_id(package.module_id), 1)]
+        assert erase_calls == [("a" * 24, 1)]
     finally:
         db.close()
         engine.dispose()

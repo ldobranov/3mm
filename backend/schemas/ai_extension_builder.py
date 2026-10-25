@@ -144,7 +144,7 @@ class PlanExtensionIntentRequest(BaseModel):
 class ExtensionIntentPlan(BaseModel):
     project_type: Literal["extension", "widget"]
     template_key: Literal["simple", "crud"]
-    package_kind: Literal["compiled", "legacy"]
+    package_kind: Literal["compiled"]
     needs_database: bool
     config_schema: Dict[str, Any] = Field(default_factory=dict)
     capability_plan: CapabilityPlanV1 | None = None

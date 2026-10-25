@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import re
-import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -16,7 +15,6 @@ from backend.config import ApplicationRuntimeSettings
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
 from backend.services.application_extensions import (
     ApplicationGatewayError,
-    invoke_application,
     load_application_definition,
 )
 from three_mm_protocol import (
@@ -282,7 +280,7 @@ def _forwarded_headers(headers: Mapping[str, str]) -> dict[str, str]:
     return forwarded
 
 
-def dispatch_public_http(
+def prepare_public_http(
     db: Session,
     settings: ApplicationRuntimeSettings,
     *,
@@ -290,8 +288,8 @@ def dispatch_public_http(
     path: str,
     query: Mapping[str, str | Sequence[str]] | None = None,
     headers: Mapping[str, str] | None = None,
-) -> ApplicationPublicHttpResponseV1:
-    """Resolve and invoke one public route without exposing raw HTTP authority."""
+):
+    """Resolve current public authority without waiting for application code."""
 
     binding, path_params = resolve_public_route(db, method, path)
     if binding.installation_id is None:
@@ -330,21 +328,13 @@ def dispatch_public_http(
             "Public HTTP request is invalid", status_code=400
         ) from exc
 
+    return binding, installation, package, request
+
+
+def validate_public_http_response(binding, result):
     try:
-        result = invoke_application(
-            installation,
-            package,
-            settings,
-            binding.route.handler_operation_id,
-            request.model_dump(mode="json"),
-            {
-                "audience": "public",
-                "correlation_id": uuid.uuid4().hex,
-            },
-            required_audience="public",
-        )
         response = ApplicationPublicHttpResponseV1.model_validate(result)
-    except (ApplicationGatewayError, ValidationError) as exc:
+    except ValidationError as exc:
         raise ApplicationPublicWebError(
             "Public HTTP application returned an invalid response"
         ) from exc

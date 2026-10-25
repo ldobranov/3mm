@@ -1,201 +1,140 @@
-"""Bounded local transport between the public HTTP runtime and Core."""
-
+"""Short Core admission/finalization; application response I/O lives in Runtime."""
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
 import re
 import socket
-import threading
-from collections.abc import Callable
+import time
+import uuid
 
-from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from backend.config import ApplicationRuntimeSettings
-from backend.services.application_public_web import (
-    ApplicationPublicWebError,
-    dispatch_public_http,
+from backend.db.module import ApplicationExtensionInstallation, ModulePackage
+from backend.services.application_authority_management import lock_compatibility_admission
+from backend.services.application_extensions import (
+    prepare_application_invocation, load_application_definition, find_operation,
+    validate_operation_payload,
 )
+from backend.services.application_public_web import (
+    ApplicationPublicWebError, prepare_public_http, validate_public_http_response,
+)
+from three_mm_platform_wire import remaining
+from three_mm_runtime.application_transport import sign_message, verify_message, send_message
 
-
-PUBLIC_WEB_TRANSPORT_VERSION = 1
+PUBLIC_WEB_CONTRACT = 1
 PUBLIC_WEB_MESSAGE_BYTES = 1024 * 1024
-_REQUEST_ID = re.compile(r"^[0-9a-f]{32}$")
 
 
-class PublicWebGatewayServer:
-    """Expose only public GET/HEAD dispatch over a local Unix socket."""
+def _public_request(value):
+    if (not isinstance(value, dict)
+            or set(value) != {"version", "request_id", "method", "path", "query", "headers"}
+            or type(value["version"]) is not int or value["version"] != 1
+            or not isinstance(value["request_id"], str)
+            or re.fullmatch(r"[0-9a-f]{32}", value["request_id"]) is None
+            or value["method"] not in {"GET", "HEAD"}
+            or not isinstance(value["path"], str)
+            or not isinstance(value["query"], dict) or not isinstance(value["headers"], dict)
+            or not all(isinstance(k, str) and isinstance(v, list)
+                       and all(isinstance(item, str) for item in v) for k, v in value["query"].items())
+            or not all(isinstance(k, str) and isinstance(v, str) for k, v in value["headers"].items())):
+        raise ValueError("Invalid public request")
+    return {k: value[k] for k in ("method", "path", "query", "headers")}
 
-    def __init__(
-        self,
-        socket_path: Path,
-        application_settings: ApplicationRuntimeSettings,
-        *,
-        socket_group: str | None = None,
-        session_factory: Callable[[], Session] | None = None,
-        dispatcher=dispatch_public_http,
-    ) -> None:
-        self.socket_path = socket_path
-        self.application_settings = application_settings
-        self.socket_group = socket_group
-        self._session_factory = session_factory
-        self._dispatcher = dispatcher
-        self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
-        self._server: socket.socket | None = None
 
-    def start(self) -> None:
-        self.socket_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        self.socket_path.unlink(missing_ok=True)
-        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        server.bind(str(self.socket_path))
-        if self.socket_group is None:
-            os.chmod(self.socket_path, 0o600)
-        else:
-            import grp
+def begin_public_http(db, settings, request, *, core_generation, runtime_generation):
+    """Admit/send exactly once, then transfer this already connected socket.
 
-            group_id = grp.getgrnam(self.socket_group).gr_gid
-            os.chown(self.socket_path, -1, group_id)
-            os.chmod(self.socket_path, 0o660)
-        server.listen(32)
-        server.settimeout(1)
-        self._server = server
-        self._thread = threading.Thread(
-            target=self._run,
-            name="3mm-public-web-gateway",
-            daemon=True,
-        )
-        self._thread.start()
+    No response read, authority transaction or cached dispatch ticket survives
+    this call. A received receipt authorizes validation only, never execution.
+    """
+    binding, installation, package, payload = prepare_public_http(db, settings, **_public_request(request))
+    prepared = prepare_application_invocation(installation, package, settings,
+        binding.route.handler_operation_id, payload.model_dump(mode="json"),
+        {"audience": "public", "correlation_id": request["request_id"]}, required_audience="public")
+    lock_compatibility_admission(db, installation, required=True)
+    message = sign_message({"version": 1, "request_id": uuid.uuid4().hex,
+        "timestamp": int(time.time()), "operation_id": prepared.operation_id,
+        "payload": prepared.payload, "context": prepared.context,
+        **({"relational_invocation": prepared.relational_invocation}
+           if prepared.relational_invocation is not None else {})}, prepared.secret)
+    receipt = sign_message({"version": 1, "request_id": message["request_id"],
+        "timestamp": message["timestamp"], "kind": "public-web-result-only",
+        "instance_id": installation.instance_id, "package_sha256": package.sha256,
+        "authority_epoch": installation.authority_epoch, "route_id": binding.route.route_id,
+        "core_generation": core_generation, "runtime_generation": runtime_generation}, prepared.secret)
+    connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        # Bound connect/send as one short Core operation, including a full buffer.
+        deadline = time.monotonic() + 3
+        connection.settimeout(remaining(deadline)); connection.connect(str(prepared.socket_path))
+        connection.settimeout(remaining(deadline)); send_message(connection, message)
+        db.commit()  # Compatibility admission linearizes before disable/adoption.
+        return {"public_web_contract": PUBLIC_WEB_CONTRACT, "ok": True,
+                "receipt": receipt, "timeout_seconds": prepared.timeout_seconds}, connection
+    except BaseException:
+        connection.close(); db.rollback(); raise
 
-    def stop(self) -> None:
-        self._stop.set()
-        if self._server is not None:
-            self._server.close()
-        if self._thread is not None:
-            self._thread.join(timeout=5)
-        self.socket_path.unlink(missing_ok=True)
 
-    def _run(self) -> None:
-        while not self._stop.is_set():
-            try:
-                connection, _ = self._server.accept()  # type: ignore[union-attr]
-            except (TimeoutError, OSError):
-                continue
-            threading.Thread(
-                target=self._handle,
-                args=(connection,),
-                name="3mm-public-web-gateway-request",
-                daemon=True,
-            ).start()
+def finish_public_http(db, settings, receipt, response, *, core_generation, runtime_generation):
+    if (not isinstance(receipt, dict)
+            or set(receipt) != {"version", "request_id", "timestamp", "signature", "kind",
+                "instance_id", "package_sha256", "authority_epoch", "route_id",
+                "core_generation", "runtime_generation"}
+            or receipt["kind"] != "public-web-result-only"
+            or receipt["core_generation"] != core_generation
+            or receipt["runtime_generation"] != runtime_generation
+            or not isinstance(receipt["instance_id"], str)
+            or re.fullmatch(r"[0-9a-f]{24}", receipt["instance_id"]) is None):
+        raise ValueError("Invalid public result receipt")
+    secret = (settings.key_root / (receipt["instance_id"] + ".key")).read_bytes()
+    if len(secret) != 32: raise ValueError("Invalid transport key")
+    verify_message(receipt, secret)
+    installation = db.scalar(select(ApplicationExtensionInstallation).where(
+        ApplicationExtensionInstallation.instance_id == receipt["instance_id"]))
+    if (installation is None or not installation.enabled or installation.status != "active"
+            or installation.authority_mode != "compatibility"
+            or installation.authority_epoch != receipt["authority_epoch"]):
+        raise ValueError("Public application authority changed")
+    package = db.get(ModulePackage, installation.module_package_id)
+    if (package is None or package.module_id != installation.module_id
+            or package.version != installation.active_version or package.sha256 != receipt["package_sha256"]):
+        raise ValueError("Public application package changed")
+    definition = load_application_definition(package)
+    route = next((r for r in definition.public_http_routes if r.route_id == receipt["route_id"]), None)
+    if route is None: raise ValueError("Public route is unavailable")
+    verified = verify_message(response, secret, expected_request_id=receipt["request_id"])
+    if verified.get("ok") is not True or not isinstance(verified.get("result"), dict):
+        raise ValueError("Invalid application result")
+    result = verified["result"]
+    validate_operation_payload(result, find_operation(definition, route.handler_operation_id).output_schema)
+    from backend.services.application_public_web import PublicRouteBinding
+    validated = validate_public_http_response(
+        PublicRouteBinding(package.module_id, package.id, installation.id, route), result)
+    return {"public_web_contract": PUBLIC_WEB_CONTRACT, "ok": True,
+            "response": validated.model_dump(mode="json", exclude_none=True)}
 
-    @staticmethod
-    def _read(connection: socket.socket) -> dict[str, object]:
-        payload = b""
-        while b"\n" not in payload and len(payload) <= PUBLIC_WEB_MESSAGE_BYTES:
-            chunk = connection.recv(65536)
-            if not chunk:
-                break
-            payload += chunk
-        if b"\n" not in payload or len(payload) > PUBLIC_WEB_MESSAGE_BYTES:
-            raise ValueError("Public web gateway request is invalid")
-        value = json.loads(payload.split(b"\n", 1)[0])
-        if not isinstance(value, dict):
-            raise ValueError("Public web gateway request is invalid")
-        return value
 
-    @staticmethod
-    def _write(connection: socket.socket, value: dict[str, object]) -> None:
-        encoded = json.dumps(
-            value,
-            ensure_ascii=False,
-            separators=(",", ":"),
-        ).encode("utf-8") + b"\n"
-        if len(encoded) > PUBLIC_WEB_MESSAGE_BYTES:
-            raise ValueError("Public web gateway response is too large")
-        connection.sendall(encoded)
-
-    def _new_session(self):
-        if self._session_factory is not None:
-            return self._session_factory()
-        from backend.database import SessionLocal
-
-        return SessionLocal()
-
-    def _handle(self, connection: socket.socket) -> None:
-        request_id = "invalid"
-        with connection:
-            try:
-                request = self._read(connection)
-                request_id = request.get("request_id")  # type: ignore[assignment]
-                if (
-                    request.get("version") != PUBLIC_WEB_TRANSPORT_VERSION
-                    or not isinstance(request_id, str)
-                    or not _REQUEST_ID.fullmatch(request_id)
-                    or request.get("method") not in {"GET", "HEAD"}
-                    or not isinstance(request.get("path"), str)
-                    or not isinstance(request.get("query"), dict)
-                    or not isinstance(request.get("headers"), dict)
-                    or set(request) != {
-                        "version",
-                        "request_id",
-                        "method",
-                        "path",
-                        "query",
-                        "headers",
-                    }
-                ):
-                    raise ValueError("Public web gateway request is invalid")
-                query = request["query"]
-                headers = request["headers"]
-                if (
-                    not all(
-                        isinstance(key, str)
-                        and isinstance(values, list)
-                        and all(isinstance(value, str) for value in values)
-                        for key, values in query.items()
-                    )
-                    or not all(
-                        isinstance(key, str) and isinstance(value, str)
-                        for key, value in headers.items()
-                    )
-                ):
-                    raise ValueError("Public web gateway request is invalid")
-                db = self._new_session()
-                try:
-                    response = self._dispatcher(
-                        db,
-                        self.application_settings,
-                        method=request["method"],
-                        path=request["path"],
-                        query=query,
-                        headers=headers,
-                    )
-                finally:
-                    db.close()
-                result = {
-                    "version": PUBLIC_WEB_TRANSPORT_VERSION,
-                    "request_id": request_id,
-                    "ok": True,
-                    "response": response.model_dump(mode="json", exclude_none=True),
-                }
-            except ApplicationPublicWebError as exc:
-                result = {
-                    "version": PUBLIC_WEB_TRANSPORT_VERSION,
-                    "request_id": request_id,
-                    "ok": False,
-                    "status": exc.status_code,
-                }
-            except Exception:
-                # This socket is a public read-only projection. Never expose
-                # Core exception details through it.
-                result = {
-                    "version": PUBLIC_WEB_TRANSPORT_VERSION,
-                    "request_id": request_id,
-                    "ok": False,
-                    "status": 503,
-                }
-            try:
-                self._write(connection, result)
-            except (OSError, ValueError):
-                return
+def handle_public_http(connection, request, *, key_root, core_generation, runtime_generation):
+    from backend.database import SessionLocal
+    from three_mm_platform_wire import send_authority_frame
+    origin = None
+    try:
+        settings = ApplicationRuntimeSettings(key_root=key_root)
+        with SessionLocal() as db:
+            if set(request) == {"public_web_contract", "begin"}:
+                result, origin = begin_public_http(db, settings, request["begin"],
+                    core_generation=core_generation, runtime_generation=runtime_generation)
+            elif set(request) == {"public_web_contract", "receipt", "response"}:
+                result = finish_public_http(db, settings, request["receipt"], request["response"],
+                    core_generation=core_generation, runtime_generation=runtime_generation)
+            else: raise ValueError("Invalid public authority request")
+    except ApplicationPublicWebError as exc:
+        result = {"public_web_contract": PUBLIC_WEB_CONTRACT, "ok": False,
+                  "status": exc.status_code if exc.status_code in {400,404,405} else 503}
+    except Exception:
+        result = {"public_web_contract": PUBLIC_WEB_CONTRACT, "ok": False, "status": 503}
+    try:
+        connection.settimeout(3)
+        send_authority_frame(connection, result, origin=origin)
+    finally:
+        if origin is not None: origin.close()

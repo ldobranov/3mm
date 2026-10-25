@@ -300,9 +300,11 @@ def test_opt_in_never_flushes_writes_builds_extracts_or_executes(
         monkeypatch.setattr(Path, name, forbidden)
     monkeypatch.setattr(zipfile.ZipFile, "extractall", forbidden)
     monkeypatch.setattr(authority.os, "system", forbidden)
+    # Inspect the same exact archive twice; newly built ZIP timestamps can differ.
+    payload = installed.archive.read_bytes()
     try:
-        first = inspect(api)
-        second = inspect(api)
+        first = inspect(api, payload)
+        second = inspect(api, payload)
         assert first == second
         with api.db.no_autoflush:
             row = api.db.execute(

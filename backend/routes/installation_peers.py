@@ -60,6 +60,13 @@ def _run(function, *args, **kwargs):
         ) from exc
 
 
+async def _run_async(function,db,*args,**kwargs):
+    try:return await function(db,*args,**kwargs)
+    except peers.InstallationPeerError as exc:raise HTTPException(409,str(exc)) from exc
+    except (ValueError,RuntimeError) as exc:raise HTTPException(409,"Installation peer validation or operation failed") from exc
+    finally:await run_in_threadpool(db.rollback)
+
+
 def _application(db, module_id):
     application = db.scalar(
         select(ApplicationExtensionInstallation).where(
@@ -292,7 +299,7 @@ async def complete_enrollment(request: Request, db: Session = Depends(get_db)):
         origin=origin,
         peer_version=2 if "/v2/" in request.url.path else 1,
     )
-    await run_in_threadpool(_run, peers.notify_bootstrap, db, result.binding_id)
+    await _run_async(peers.notify_bootstrap, db, result.binding_id)
     # Owner callback might approve. The same completion now reads its receipt.
     result = await run_in_threadpool(
         _run,
@@ -310,9 +317,7 @@ async def complete_enrollment(request: Request, db: Session = Depends(get_db)):
 async def report_status(request: Request, db: Session = Depends(get_db)):
     origin = _https_origin(request, db)
     value = await _body(request, authenticated=True)
-    return await run_in_threadpool(
-        _run, peers.receive_report, db, value, origin=origin, path=request.url.path
-    )
+    return await _run_async(peers.receive_report, db, value, origin=origin, path=request.url.path)
 
 
 @router.post("/v1/rotate")

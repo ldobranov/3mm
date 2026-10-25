@@ -9,8 +9,7 @@ from datetime import UTC, datetime
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-import requests
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from backend.db.module import (
@@ -192,7 +191,7 @@ def bind_application_connector(
     return binding
 
 
-def execute_connector_request(
+def prepare_connector_request(
     db: Session,
     installation: ApplicationExtensionInstallation,
     *,
@@ -203,7 +202,7 @@ def execute_connector_request(
     headers: dict[str, str],
     body: bytes,
     idempotency_key: str | None,
-    transport=requests.request,
+    dispatch_metadata: dict | None = None,
 ) -> dict[str, object]:
     if not REQUEST_ID_PATTERN.fullmatch(request_id):
         raise ApplicationConnectorError("Connector request identity is invalid")
@@ -215,6 +214,11 @@ def execute_connector_request(
     if existing is not None:
         if existing.application_installation_id != installation.id:
             raise ApplicationConnectorError("Connector request identity is already in use")
+        if existing.outcome == "in_progress" and existing.dispatch_metadata:
+            from backend.services.application_connector_transport import expired, failure
+            if expired(existing.dispatch_metadata):
+                record_connector_outcome(db, existing, failure(existing.method, "execution_unconfirmed"))
+                db.refresh(existing)
         return {
             "outcome": existing.outcome,
             "http_status": existing.http_status,
@@ -226,16 +230,16 @@ def execute_connector_request(
     from backend.services.application_authority_management import effect_admission
     try:
         with effect_admission(db, installation.id, 'connector:' + connector_id) as release:
-            return _execute_connector_request(db, installation, connector_id=connector_id,
+            return _prepare_connector_request(db, installation, connector_id=connector_id,
                 request_id=request_id, method=method, path=path, headers=headers,
-                body=body, idempotency_key=idempotency_key, transport=transport,
+                body=body, idempotency_key=idempotency_key, dispatch_metadata=dispatch_metadata,
                 release_authority=release)
     except ValueError:
         raise ApplicationConnectorError('Application resource grant is unavailable or stale') from None
 
 
-def _execute_connector_request(db, installation, *, connector_id, request_id, method,
-        path, headers, body, idempotency_key, transport, release_authority):
+def _prepare_connector_request(db, installation, *, connector_id, request_id, method,
+        path, headers, body, idempotency_key, dispatch_metadata, release_authority):
     if not installation.enabled or installation.status != "active":
         raise ApplicationConnectorError("Application extension is not active")
     connector = _connector_definition(db, installation, connector_id, release_authority.definition)
@@ -280,7 +284,6 @@ def _execute_connector_request(db, installation, *, connector_id, request_id, me
         if key.lower() not in SAFE_REQUEST_HEADERS or not isinstance(value, str) or len(value) > 1024:
             raise ApplicationConnectorError("Connector request header is not allowed")
         normalized_headers[key] = value
-    auth = None
     if connector.authentication != "none":
         secret = db.get(ApplicationSecretReference, binding.secret_reference_id)
         if secret is None or secret.application_installation_id != installation.id:
@@ -290,7 +293,8 @@ def _execute_connector_request(db, installation, *, connector_id, request_id, me
         except ApplicationSecretError as exc:
             raise ApplicationConnectorError(str(exc)) from exc
         if connector.authentication == "basic":
-            auth = (credential["username"], credential["password"])
+            normalized_headers["Authorization"] = "Basic " + base64.b64encode(
+                (credential["username"] + ":" + credential["password"]).encode()).decode("ascii")
         elif connector.authentication == "bearer":
             normalized_headers["Authorization"] = f"Bearer {credential['token']}"
         else:
@@ -299,6 +303,9 @@ def _execute_connector_request(db, installation, *, connector_id, request_id, me
         normalized_headers["Idempotency-Key"] = idempotency_key
     from backend.services.application_authority_management import lock_compatibility_admission
     lock_compatibility_admission(db, installation, required=release_authority.compatibility)
+    if dispatch_metadata is not None:
+        dispatch_metadata.update(max_response_bytes=min(connector.max_response_bytes, 4 * 1024 * 1024),
+            binding_id=binding.id, binding_revision=binding.authority_revision)
     attempt = ApplicationConnectorAttempt(
         request_id=request_id,
         application_installation_id=installation.id,
@@ -306,58 +313,43 @@ def _execute_connector_request(db, installation, *, connector_id, request_id, me
         method=normalized_method,
         path_hash=hashlib.sha256(path.encode("utf-8")).hexdigest(),
         outcome="in_progress",
+        dispatch_metadata=dispatch_metadata,
     )
     db.add(attempt)
     db.commit()
     release_authority()  # Never hold key/guard locks over external HTTP I/O.
-    response_headers: dict[str, str] = {}
-    response_body = b""
-    try:
-        response = transport(
-            normalized_method,
-            f"{origin}{path}",
-            headers=normalized_headers,
-            data=body or None,
-            auth=auth,
-            timeout=connector.timeout_seconds,
-            allow_redirects=False,
-        )
-        response_body = bytes(response.content)
-        if len(response_body) > connector.max_response_bytes:
-            raise ApplicationConnectorError("Connector response is too large")
-        attempt.http_status = int(response.status_code)
-        if 200 <= response.status_code < 300:
-            attempt.outcome = "succeeded"
-        elif 400 <= response.status_code < 500:
-            attempt.outcome = "rejected"
-        else:
-            attempt.outcome = "retryable"
-        content_type = response.headers.get("Content-Type")
-        if isinstance(content_type, str):
-            response_headers["Content-Type"] = content_type[:256]
-    except requests.ConnectTimeout:
-        attempt.outcome = "retryable"
-        attempt.error_category = "connect_timeout"
-    except requests.ReadTimeout:
-        attempt.outcome = "ambiguous" if is_mutation else "retryable"
-        attempt.error_category = "response_timeout"
-    except requests.ConnectionError:
-        attempt.outcome = "ambiguous" if is_mutation else "retryable"
-        attempt.error_category = "connection_lost"
-    except ApplicationConnectorError:
-        attempt.outcome = "failed"
-        attempt.error_category = "response_limit"
-    attempt.completed_at = datetime.now(UTC)
-    binding.last_outcome = attempt.outcome
-    binding.last_http_status = attempt.http_status
-    binding.last_checked_at = attempt.completed_at
-    binding.last_error_category = attempt.error_category
+    return {"attempt_id": attempt.id, "method": normalized_method,
+        "url": f"{origin}{path}", "headers": normalized_headers,
+        "body_base64": base64.b64encode(body).decode("ascii"),
+        "timeout_seconds": connector.timeout_seconds,
+        "max_response_bytes": min(connector.max_response_bytes, 4 * 1024 * 1024)}
+
+
+def connector_outcome(attempt, *, duplicate):
+    return {"outcome": attempt.outcome, "http_status": attempt.http_status,
+        "error_category": attempt.error_category, "duplicate": duplicate,
+        "body_base64": "", "headers": {}}
+
+
+def record_connector_outcome(db, attempt, result):
+    """Result bookkeeping only; never reacquires permission to send HTTP."""
+    changed = db.execute(update(ApplicationConnectorAttempt).where(
+        ApplicationConnectorAttempt.id == attempt.id,
+        ApplicationConnectorAttempt.outcome == "in_progress",
+    ).values(outcome=result["outcome"], http_status=result["http_status"],
+        error_category=result["error_category"], completed_at=datetime.now(UTC)))
+    if changed.rowcount != 1:
+        db.rollback(); db.refresh(attempt)
+        return connector_outcome(attempt, duplicate=True)
+    binding = db.scalar(select(ApplicationConnectorBinding).where(
+        ApplicationConnectorBinding.application_installation_id == attempt.application_installation_id,
+        ApplicationConnectorBinding.connector_id == attempt.connector_id))
+    metadata = attempt.dispatch_metadata or {}
+    if binding is not None and (not metadata or (metadata.get("binding_id") == binding.id
+            and metadata.get("binding_revision") == binding.authority_revision)):
+        binding.last_outcome = result["outcome"]
+        binding.last_http_status = result["http_status"]
+        binding.last_error_category = result["error_category"]
+        binding.last_checked_at = datetime.now(UTC)
     db.commit()
-    return {
-        "outcome": attempt.outcome,
-        "http_status": attempt.http_status,
-        "error_category": attempt.error_category,
-        "duplicate": False,
-        "body_base64": base64.b64encode(response_body).decode("ascii"),
-        "headers": response_headers,
-    }
+    return {**result, "duplicate": False}

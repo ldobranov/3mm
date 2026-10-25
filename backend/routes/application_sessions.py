@@ -18,6 +18,18 @@ class BrowserSessionRequest(BaseModel):
 def application_session_router(service):
     router = APIRouter(prefix="/api/v1/application-extensions")
 
+    @router.get("/{module_id}/session-recovery")
+    def recovery_status(module_id: str, response: Response,
+                        authorization: str | None = Header(default=None)):
+        response.headers["Cache-Control"] = "no-store"
+        return service.recovery_status(module_id, authorization)
+
+    @router.post("/{module_id}/session-recovery/{session_id}/confirm-cleanup")
+    async def reconcile(module_id: str, session_id: str, response: Response,
+                        authorization: str | None = Header(default=None)):
+        response.headers["Cache-Control"] = "no-store"
+        return await service.confirm_cleanup(module_id, session_id, authorization)
+
     @router.get("/{module_id}/session-host/{entrypoint_id}")
     def targets(
         module_id: str,

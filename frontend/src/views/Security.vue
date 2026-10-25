@@ -401,7 +401,6 @@
               >
                 <option value="">{{ t('security.permissions.selectType') }}</option>
                 <option value="dashboard">{{ t('security.permissions.dashboard') }}</option>
-                <option value="extension">{{ t('security.permissions.extension') }}</option>
               </select>
             </div>
             <div class="form-group">
@@ -843,7 +842,6 @@ export default defineComponent({
     const users = ref<any[]>([]);
     const pages = ref<any[]>([]);
     const dashboards = ref<any[]>([]);
-    const extensions = ref<any[]>([]);
     const roles = ref<any[]>([]);
     const groups = ref<any[]>([]);
     const roleUserCounts = ref<{[key: number]: number}>({});
@@ -925,8 +923,7 @@ export default defineComponent({
     const availableEntities = computed(() => {
       if (newPermission.value.entity_type === 'dashboard') {
         return dashboards.value;
-      } else if (newPermission.value.entity_type === 'extension') {
-        return extensions.value;
+
       }
       return [];
     });
@@ -1074,16 +1071,6 @@ export default defineComponent({
       }
     };
     
-    const loadExtensions = async () => {
-      try {
-        const response = await http.get('/api/extensions');
-        extensions.value = response.data.items || [];
-      } catch (error) {
-        console.error('Failed to load extensions:', error);
-        extensions.value = [];
-      }
-    };
-    
     const loadRoles = async () => {
       if (!isAdmin.value) return;
 
@@ -1130,13 +1117,6 @@ export default defineComponent({
           newPermission.value.entity_id = dashboard.id;
           newPermission.value.entity_name = dashboard.name;
           selectedEntity.value = dashboard;
-        }
-      } else if (newPermission.value.entity_type === 'extension') {
-        const extension = extensions.value.find(e => e.id === entityId);
-        if (extension) {
-          newPermission.value.entity_id = extension.id;
-          newPermission.value.entity_name = extension.name;
-          selectedEntity.value = extension;
         }
       }
     };
@@ -1531,7 +1511,6 @@ export default defineComponent({
       loadUsers();
       loadPages();
       loadDashboards();
-      loadExtensions();
       loadRoles();
       loadGroups();
       loadPermissions();
@@ -1558,7 +1537,6 @@ export default defineComponent({
       users,
       pages,
       dashboards,
-      extensions,
       roles,
       groups,
       roleUserCounts,
@@ -1608,7 +1586,6 @@ export default defineComponent({
       grantPermission,
       revokePermission,
       loadPermissions,
-      loadExtensions,
       loadRoles,
       loadGroups,
       onEntityTypeChange,

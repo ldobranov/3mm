@@ -30,6 +30,7 @@ from backend.db.authority import CoreAuthorityGuard
 from backend.db.application_policy_review import ApplicationPolicyReview, ApplicationPolicyReviewDecision
 from backend.db.application_authority_grant import ApplicationNativeReview, ApplicationAuthorityPlan, ApplicationAuthorityGrant, ApplicationAuthorityAction
 from backend.db.notification import Notification
+from backend.db.language_pack import LanguagePack
 from backend.db.extension import Extension
 from backend.db.device import (
     Device,
@@ -54,6 +55,7 @@ from backend.db.module import (
     ApplicationKioskEnrollment,
     ApplicationKioskTerminal,
     ApplicationPermissionGrant,
+    ApplicationRetainedData,
     ApplicationSecretReference,
     ApplicationSyncCheckpoint,
     ModuleInstallation,

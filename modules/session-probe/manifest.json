@@ -1,0 +1,58 @@
+{
+  "manifest_version": 2,
+  "module_id": "org.3mm.session-probe",
+  "name": "Session platform probe",
+  "version": "0.1.0",
+  "description": "Disposable independent public-SDK provider for platform acceptance.",
+  "runtimes": [
+    "core",
+    "ui"
+  ],
+  "entrypoints": {
+    "core": "application-extension.json",
+    "ui": "compiled-ui.json"
+  },
+  "compatibility": {
+    "protocol": "1.0",
+    "core": ">=0.3.0",
+    "agent": ">=0.1.0",
+    "architectures": [
+      "any"
+    ]
+  },
+  "capabilities": {
+    "provides": [
+      "org.3mm.session-probe.echo"
+    ],
+    "consumes": [
+      "org.3mm.session-probe.echo"
+    ]
+  },
+  "permissions": [
+    "data.read",
+    "data.write",
+    "process.spawn",
+    "sessions.open"
+  ],
+  "dependencies": {},
+  "conflicts": [],
+  "configuration_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "SESSION_DEVICE_ID": {
+        "type": "string",
+        "pattern": "^dev_[0-9a-f]{32}$"
+      }
+    },
+    "required": [
+      "SESSION_DEVICE_ID"
+    ]
+  },
+  "configuration_defaults": {},
+  "registrations": [],
+  "health_check": {
+    "type": "json_file",
+    "path": "application-extension.json"
+  }
+}

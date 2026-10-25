@@ -7,7 +7,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.db.audit_log import AuditLog
-from backend.db.extension import Extension
 from backend.db.runtime_extension import RuntimeEntityRecord, RuntimeExtensionDefinition
 from backend.db.module import ModulePackage
 from backend.db.user import User
@@ -138,18 +137,11 @@ def list_extension_catalog(
     claims: dict = Depends(require_user),
     db: Session = Depends(get_db),
 ):
-    """Return legacy and declarative runtime extensions through one read model."""
+    """Return current declarative runtime extensions."""
     user_id = claims.get("sub") or claims.get("user_id")
     if not user_id:
         raise HTTPException(401, "invalid token payload")
 
-    legacy = list(
-        db.scalars(
-            select(Extension)
-            .where(Extension.user_id == int(user_id))
-            .order_by(Extension.name, Extension.version)
-        )
-    )
     runtime_versions = list(
         db.scalars(
             select(RuntimeExtensionDefinition)
@@ -184,23 +176,7 @@ def list_extension_catalog(
             runtime.append(item)
             seen_module_ids.add(item.module_id)
 
-    items = [
-        CatalogExtensionResponse(
-            id=f"legacy:{item.id}",
-            source="legacy",
-            name=item.name,
-            type=item.type,
-            version=item.version,
-            description=item.description,
-            author=item.author,
-            status=item.status,
-            is_enabled=item.is_enabled,
-            created_at=item.created_at,
-            can_manage=True,
-        )
-        for item in legacy
-    ]
-    items.extend(
+    items = list(
         CatalogExtensionResponse(
             id=f"runtime:{item.module_id}",
             source="runtime",

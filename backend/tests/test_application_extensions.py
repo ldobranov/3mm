@@ -117,3 +117,22 @@ def test_gateway_enforces_idempotency_and_strict_input_schema(tmp_path):
             },
             required_audience="administrator",
         )
+
+
+def test_public_relational_descriptor_is_denied_before_host_metadata_io(monkeypatch,tmp_path):
+    from backend.tests.test_application_public_web import definition
+    from three_mm_protocol.tests.test_application_relational_storage import relational_request
+    from three_mm_runtime.application_transport import DispatchPhase
+    import backend.services.application_relational as relational
+    installation,package,settings=records(tmp_path)
+    value=definition(package.module_id,'/public').model_dump(mode='json')
+    value['service']['sdk_version']='1.3'
+    value['storage']['relational']=relational_request()
+    blob=application_package(definition=value)
+    package.sha256=validate_module_package(blob).sha256
+    Path(package.file_path).write_bytes(blob)
+    monkeypatch.setattr(relational,'prepare_host_invocation',lambda *a,**k:pytest.fail('Unsupported public path performed host IPC'))
+    with pytest.raises(ApplicationGatewayError,match='relational grant') as error:
+        invoke_application(installation,package,settings,'render_public',{},
+            {'audience':'public'},required_audience='public')
+    assert error.value.phase==DispatchPhase.NOT_DISPATCHED

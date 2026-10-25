@@ -8,117 +8,29 @@ combines a central Core, a persistent device Agent, dashboards, provisioning,
 runtime extensions and a reviewed AI-assisted extension workflow in one
 system.
 
-> **Project status:** Test Beta, based on published **v0.3.0-beta.55**.
-> **Next candidate: 0.3.0-beta.56**, not yet published: local session streaming/
-> cleanup repair and the WP4 acceptance record. See the
-> [candidate notes and outstanding release gates](docs/RELEASE_NOTES_0.3.0-beta.56.md).
-> **M20/WP4 is functionally completed by owner acceptance on 2026-10-21**, within
-> the supported reviewed-native scope and the explicit limits in the
-> [final acceptance record](docs/EXTENSION_PLATFORM_V2_WP4_FINAL_ACCEPTANCE.md).
-> Milestone 20 as a whole, WP5 isolation and M21 remain open. The release history
-> below does not reopen accepted WP4 scenarios or claim unsupported features.
-> Beta.55 adds an explicitly enabled M21 local-session trial through real M20
-> service and human rights. The Core-owned browser host can connect to a reviewed
-> self-provided service-wheel factory in a separate, bounded systemd dynamic-user
-> process. The first profile is a temporary isolated workspace, not host/root
-> administration. `THREE_MM_LOCAL_SESSIONS=1`, optional socket activation, exact
-> native/UI review and separate resource/human grants are all required. Updates
-> enable none of them. Terminal 1.0.2 is a separate package, not a Core asset.
-> See the [local Terminal trial](docs/M21_LOCAL_TERMINAL_TEST.md) and
-> [beta.55 release notes](docs/RELEASE_NOTES_0.3.0-beta.55.md). Node/Fleet/Cloud
-> session transport and installed-VM acceptance remain open. The owner reached
-> Connected on the VM, then the stream stopped. The worker scheduling/cleanup
-> repair is tested locally but remains unpublished and unconfirmed on the VM;
-> the [beta.56 return test](docs/M21_LOCAL_TERMINAL_TEST.md#beta56-return-test)
-> must confirm prompt, input/output, resize and cleanup. This is progress, not
-> completed Terminal acceptance.
-> It extends exact resource review/approval/apply with private-file access and a
-> bounded relational-storage foundation: signed transaction admission/receipts,
-> explicit non-root migration/recovery and normal SDK execution for verified
-> prepared databases. Existing command/connector/device-event access and signed
-> application event publication remain. Existing installations
-> retain compatibility mode; no automatic grants or adoption of business extensions.
-> Installed Application access now shows the verified mode/package and explicit
-> review-unavailable reason when the local key or scoped adapter is unavailable.
-> This read-only status never repairs keys, trusts code or enables permissions.
-> First adoption requires a disabled application, a recoverable backup and a local
-> code-trust record for the exact package. Reviewed-native execution is **not a sandbox**.
-> Exact checkpoint, existing public identity, consent-bound local status and
-> outbound peer-read adapters now have local execution/revocation coverage.
-> Beta.52 adds a public module-bound frontend host and an exact-build reviewed UI
-> profile; human/kiosk access remains separate from service resource grants.
-> Compiled output requires local code review and explicit same-origin UI risk
-> acceptance. Old builds without provenance remain compatibility-only.
-> Beta.53 corrects relational runtime status using signed metadata and fresh
-> authority checks, without changing grants or issuing SQL permits. It also
-> carries the M21 interactive-session protocol/SDK and development prototypes.
-> The old unrestricted M21 HTTP/WebSocket prototype stays unmounted; beta.55's
-> separate scoped local connector is opt-in. Broader Agent/Hub acceptance is open.
-> Beta.54 fixes kiosk SDK admission blocked by an autoflushed Core timestamp
-> transaction. A separate neutral UI/SDK reference and opt-in versioned
-> output-only GPIO package supported the accepted mock scenarios; their ZIPs,
-> code trust, human/kiosk access and service grants are not installed by Core.
-> The bounded neutral Hub/Standalone and disposable recovery results are recorded
-> in WP4's final acceptance; general database install/restore/key lifecycle beyond
-> those recorded scenarios is not inferred. Relational generic
-> activation/native/source gates remain closed; a prepared-runtime fixture is not
-> public fresh-install acceptance. New-artifact staging and WP5 isolation are separate.
-> Beta.48 adds explicit local-admin inert registration, first namespace/key/
-> migration preparation, one-shot activation, stop-only interrupted-start recovery,
-> confirmed reactivation and enable-only boot control through the existing helper
-> and fixed non-root Core metadata worker. Root-managed boot requires current
-> native trust and exact rights before package import; lost acknowledgements do
-> not retry or restore permissions. These commands are opt-in, not update hooks.
-> Account provisioning, general restore/rekey/nonempty recovery and broader
-> guarantees outside the accepted scenarios are not implied. Start on a
-> disposable VM with a verified pre-upgrade backup, not an existing business service.
-> Device Protocol 1.0, Application SDK 1.3, themes, peers and Node Update remain.
-> Additive database migrations preserve history and fence restored authority;
-> destructive downgrade after using the new authority is refused. Keep a verified
-> pre-upgrade backup. See the [test Beta checklist](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md).
-> Release assets become available only after the tag-driven workflow succeeds;
-> publication is not live deployment, hardware/fiscal acceptance or remote-code trust.
-> Beta.49 fixes the hardened helper's non-root migration launcher and checks
-> effective UID/GID-switch privileges before preparation creates namespaces, keys or
-> checkpoints. Child workers retain no effective/ambient capabilities; existing
-> filesystem protections and NoNewPrivileges remain. A separate relational test
-> package exercises bounded own-SQLite access through the existing SDK. It is not
-> installed by an update. Beta.50 adds explicit restored-empty recovery/resumption,
-> inert adoption of a newer catalog version, prepared-database forward upgrade,
-> published-upgrade/rollback confirmation and completion of an interrupted restore.
-> Each action needs fresh local administration; update does not clear checkpoints,
-> run migrations, trust code, grant rights or start applications. Protected witness
-> replacement retains ownership and Type=exec avoids the pre-exec principal race.
-> A controlled fixture passed actual systemd/WSL cold-start checks; public beta.50
-> delivery alone did not establish candidate upgrade/recovery acceptance; the
-> later bounded beta.51 and WP4 acceptance records state what was actually tested.
-> Complete Python/frontend checks and reproducible publication gate the release;
-> subsequent live VM update/recovery acceptance remains separate.
-> Complete local verification is recorded in CHANGELOG; canonical Python 3.13 and
-> Node 22 checks run again on GitHub before publication. Privileged tests, controlled
-> fixture trials and broader live recovery are distinct evidence; none alone
-> establishes whole-platform production-security acceptance.
-> Beta.51 fixes post-upgrade start admission when an older instance-wide witness
-> has an exactly verified completed stop/recovery. The old evidence stays intact;
-> a separately approved start uses its own witness. The already consumed failed
-> start still requires explicit inspection/stop/recovery before fresh reactivation.
-> Updating Core neither retries it nor grants permissions or starts the application.
-> Beta.47 fixes scoped private-file traversal on production search-only ancestors
-> without widening permissions. It also integrates a bounded Milestone 15 slice:
-> manual audit retention, administrator-only operational alerts, guarded backup-key
-> rotation and corrected TLS/API bootstrap guidance. Release-signing helpers are
-> opt-in only; publisher/catalog/installer signing and full M15 acceptance remain open.
->
-> Beta.36 published the compatible v1 theme platform. Theme lifecycle, v2 asset
-> loading and portable recovery are locally checked; desktop/mobile light/dark
-> review used an isolated fixture, not a live device. Installed-package preview,
-> licensed font/Cyrillic proof and the integrated theme editor passed local V5
-> review. V6 screens and V7 shared extension UI were published in beta.43; the owner
-> accepted Milestone 17 as complete. Extended live upgrade/rollback/portable recovery
-> checks remain separate operational work. Existing extensions
-> adopt the public controls separately; their business behavior is not rewritten.
-> Updates keep the existing appearance until an administrator selects a v2 theme.
-> No concrete theme (including Graphite Mint) or business extension is bundled.
+> **Project status:** Test Beta. **0.3.0-beta.57** brings together accepted
+> Core stabilization, Standalone/Hub/Node setup and Wi-Fi/AP recovery, bounded
+> diagnostics, independent optional runtimes and manifest-v2 language extensions.
+> Application access uses one administrator approval with expandable resource
+> details; confirmed stop/start preserves unchanged consent. Failed installation
+> and retained-data cleanup remain accessible through the normal lifecycle.
+> The common session platform includes actual Node execution and a local encrypted
+> relay. The accepted Linux profile is a restricted temporary workspace.
+> Host/root administration, public Cloud, full remote Terminal UI and whole
+> M21/WP5 isolation remain separate work. Terminal 1.0.3 is an independent package.
+> Native application approval permits Linux code execution and is **not a sandbox**.
+> The [beta.57 release notes](docs/RELEASE_NOTES_0.3.0-beta.57.md) describe upgrades,
+> scope and owner device trials. Additive database migrations require a verified
+> database/key backup; older code cannot adopt new administrator approvals.
+> [M20/WP4 acceptance](docs/EXTENSION_PLATFORM_V2_WP4_FINAL_ACCEPTANCE.md) and
+> [current evidence](docs/WORKING_STATE.md) state the tested boundaries.
+> Device Protocol 1.0 and Application SDK 1.3 retain independent version numbers.
+> CI runs automatically on branch pushes. An immutable version tag runs all
+> Release checks and reproducible builds; assets appear only after successful
+> publication. Device trials are separate from publication. The release badge
+> above links to the currently published version.
+> The [capability foundation plan](docs/CORE_SIMPLIFICATION_PLAN.md) describes
+> future contracts and cleanup; its full capability catalog is not implemented.
 
 ## What works
 
@@ -601,7 +513,8 @@ checks local browser CORS as well as readiness. See the
 | [M21 interactive sessions](docs/M21_CORE_INTERACTIVE_SESSIONS_PLAN.md) | Common session contract, scoped opt-in local profile and remaining remote/live gates |
 | [Local Terminal trial](docs/M21_LOCAL_TERMINAL_TEST.md) | beta.55 / Terminal 1.0.2 setup, separate M20 grants and installed-VM acceptance |
 | [beta.55 release notes](docs/RELEASE_NOTES_0.3.0-beta.55.md) | Prepared release scope, complete local check results and publication boundary |
-| [beta.56 candidate notes](docs/RELEASE_NOTES_0.3.0-beta.56.md) | Local session streaming/cleanup repair, accepted WP4 and remaining publication/VM gates |
+| [beta.56 preparation record](docs/RELEASE_NOTES_0.3.0-beta.56.md) | Historical streaming/cleanup repair and accepted WP4 scope; installed Terminal remained unaccepted |
+| [beta.57 release notes](docs/RELEASE_NOTES_0.3.0-beta.57.md) | Stabilization, setup/recovery, Node/local relay, application consent and cleanup; upgrade and device trials |
 | [Relational upgrade and recovery](docs/EXTENSION_PLATFORM_V2_RELATIONAL_UPGRADE.md) | Local candidate adoption, explicit migration, confirmation and partial-restore flow |
 | [Private application files](docs/EXTENSION_PLATFORM_V2_PRIVATE_FILES.md) | Exact file grants, signed SDK operations, limits and recovery evidence |
 | [Relational storage contract](docs/EXTENSION_PLATFORM_V2_RELATIONAL_STORAGE_CONTRACT.md) | Prepared-runtime foundation and remaining database lifecycle gates |

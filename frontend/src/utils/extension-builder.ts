@@ -94,7 +94,7 @@ export type ClarifyQuestion = {
 export type ExtensionIntentPlan = {
   project_type: 'extension' | 'widget'
   template_key: 'simple' | 'crud'
-  package_kind: 'compiled' | 'legacy'
+  package_kind: 'compiled'
   needs_database: boolean
   config_schema: Record<string, unknown>
   capability_plan?: CapabilityPlan | null
@@ -264,63 +264,19 @@ export const setRouteRequiresAuth = (route: FrontendRoute, value: boolean): void
 }
 
 export const createManifestPreview = (spec: ExtensionSpec): Record<string, unknown> => {
-  const localesDirectory = spec.locales?.directory || 'locales/'
-  const normalizedLocalesDirectory = localesDirectory.endsWith('/')
-    ? localesDirectory
-    : `${localesDirectory}/`
-  const manifest: Record<string, unknown> = {
-    name: spec.name,
-    version: spec.version,
-    type: spec.type,
-    description: spec.description,
-    author: spec.author,
-    backend_entry: spec.backend_entry,
-    frontend_entry: spec.frontend_entry,
-    frontend_components: spec.frontend_components,
-    frontend_routes: spec.frontend_routes,
-    locales: {
-      supported: spec.locales?.supported || ['en', 'bg'],
-      default: spec.locales?.default || 'en',
-      directory: normalizedLocalesDirectory
-    },
-    permissions: spec.permissions,
-    public_endpoints: spec.public_endpoints,
-    dependencies: spec.dependencies
+  const slug = spec.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'widget'
+  return {
+    manifest_version: 2, module_id: `org.3mm.generated.${slug}`, name: spec.name, version: spec.version,
+    description: spec.description, runtimes: ['ui'], entrypoints: { ui: 'compiled-ui.json' },
+    compatibility: { protocol: '1.0', agent: '>=0.1.0', core: '>=0.1.0', architectures: ['any'] },
+    configuration_schema: spec.config_schema, health_check: { type: 'json_file', path: 'compiled-ui.json' },
   }
-
-  if (spec.provides) manifest.provides = spec.provides
-  if (spec.consumes) manifest.consumes = spec.consumes
-  return manifest
 }
 
-export const createZipPathsPreview = (spec: ExtensionSpec): string[] => {
-  const localesDirectory = spec.locales?.directory || 'locales/'
-  const normalizedLocalesDirectory = localesDirectory.endsWith('/')
-    ? localesDirectory
-    : `${localesDirectory}/`
-  const languages = spec.locales?.supported || ['en', 'bg']
-  const localeFiles = languages.map(language => `${normalizedLocalesDirectory}${language}.json`)
-  const providedComponents: string[] = []
-
-  const contentEmbedders = spec.provides?.content_embedders
-  if (contentEmbedders) {
-    for (const config of Object.values(contentEmbedders)) {
-      const component = config.component
-      if (typeof component === 'string' && component.trim()) {
-        const file = component.endsWith('.vue') ? component : `${component}.vue`
-        providedComponents.push(`frontend/${file}`)
-      }
-    }
-  }
-
-  return [
-    'manifest.json',
-    `backend/${spec.backend_entry}`,
-    `frontend/${spec.frontend_entry}`,
-    ...providedComponents,
-    ...localeFiles
-  ]
-}
+export const createZipPathsPreview = (spec: ExtensionSpec): string[] => [
+  'manifest.json', 'compiled-ui.json', 'source/frontend/Widget.vue', 'source/frontend/WidgetEditor.vue',
+  ...(spec.capability_plan ? ['source/frontend/capability-runtime.ts'] : []),
+]
 
 export const createCrudDefaultTable = (extensionName: string): string => {
   const namespace = deriveExtensionNamespace(extensionName)

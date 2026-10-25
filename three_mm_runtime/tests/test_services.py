@@ -7,6 +7,9 @@ from three_mm_provisioning import (
     FileNetworkRecoveryMarker,
 )
 from three_mm_runtime import DeviceRuntimePlanner, RuntimeService
+from three_mm_runtime.services import SetupAccess
+from three_mm_runtime.install_profile import NetworkBackend
+import pytest
 
 
 def _provisioned(role: AgentRole) -> ProvisioningSnapshot:
@@ -69,13 +72,28 @@ def test_standalone_is_a_hub_preset_with_the_same_services() -> None:
     assert standalone.includes(RuntimeService.AGENT)
 
 
-def test_recovery_marker_temporarily_overrides_a_provisioned_runtime(tmp_path) -> None:
+@pytest.mark.parametrize("role", list(AgentRole))
+@pytest.mark.parametrize("backend", list(NetworkBackend))
+def test_recovery_preserves_role_and_workloads_and_uses_local_access(tmp_path, role, backend) -> None:
     marker = FileNetworkRecoveryMarker(tmp_path / "network-recovery.json")
     marker.activate("manual")
 
     plan = DeviceRuntimePlanner(
-        MemoryProvisioningStore(_provisioned(AgentRole.STANDALONE)),
+        MemoryProvisioningStore(_provisioned(role)),
         marker,
+        network_backend=backend,
     ).resolve()
 
-    assert plan.services == (RuntimeService.SETUP,)
+    assert plan.role is role
+    assert RuntimeService.AGENT in plan.services
+    assert (RuntimeService.CORE in plan.services) == (role is not AgentRole.NODE)
+    assert plan.includes(RuntimeService.SETUP)
+    assert plan.setup_access is SetupAccess.LOCAL
+
+
+def test_network_management_is_an_explicit_choice_independent_of_roles():
+    for backend, access in ((NetworkBackend.HOST, SetupAccess.LOCAL),
+                            (NetworkBackend.NETWORK_MANAGER, SetupAccess.ACCESS_POINT)):
+        plan = DeviceRuntimePlanner(MemoryProvisioningStore(), network_backend=backend).resolve()
+        assert plan.role is None
+        assert plan.setup_access is access

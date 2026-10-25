@@ -36,7 +36,7 @@ vi.mock('@/utils/i18n', async () => {
         return result
       }
     }),
-    i18n: { loadExtensionTranslationsForExtension: vi.fn() }
+    i18n: { refreshLanguages: vi.fn() }
   }
 })
 
@@ -140,12 +140,12 @@ describe('Extensions management workflow', () => {
       expect(wrapper.findAll('.extension-card').filter(card => !card.text().includes('Reference application'))
         .every(card => !card.find('.authority-manage-btn').exists())).toBe(true)
       if (visible) {
-        http.get.mockRejectedValueOnce({ response: { status: 409, data: { detail: { code: 'native_review_unavailable' } } } })
+        http.post.mockRejectedValueOnce({ response: { status: 409, data: { detail: { code: 'authority_unavailable' } } } })
         await wrapper.get('.authority-manage-btn').trigger('click'); await flushPromises()
-        expect(http.get).toHaveBeenLastCalledWith('/api/v1/application-extensions/org.example.reference/authority', { timeout: 12000 })
-        expect(wrapper.get('dialog h2').text()).toBe('Application resource access')
+        expect(http.post).toHaveBeenCalledWith('/api/v1/application-extensions/org.example.reference/authority/consent/preview', expect.objectContaining({ request_id: expect.any(String) }), { timeout: 12000 })
+        expect(wrapper.get('dialog h2').text()).toBe('Application access')
       }
-      expect(http.post).not.toHaveBeenCalled()
+      expect(http.post.mock.calls.some(([url]) => url.endsWith('/consent/allow'))).toBe(false)
     },
   )
 
@@ -196,6 +196,31 @@ describe('Extensions management workflow', () => {
       `/api/v1/application-extensions/packages/${packageSha}/activate`
     )
     expect(compiledUi.getCatalog).toHaveBeenCalled()
+  })
+
+  it.each([false, true])('opens access after first activation, preserves saved consent on re-enable (%s)', async (saved) => {
+    const original = http.get.getMockImplementation()!
+    http.get.mockImplementation((url: string, ...args: unknown[]) => {
+      if (url === '/api/v1/modules/packages') return Promise.resolve({ data: [{
+        module_id: 'org.example.fresh', version: '1.0.0', sha256: 'd'.repeat(64),
+        manifest: { name: 'Fresh application', entrypoints: { core: 'application-extension.json' } },
+      }] })
+      if (url === '/api/v1/application-extensions') return Promise.resolve({ data: saved ? [{
+        module_id: 'org.example.fresh', active_version: '1.0.0', status: 'disabled', enabled: false,
+      }] : [] })
+      if (url.endsWith('/configuration')) return Promise.resolve({ data: { fields: [], devices: [] } })
+      if (url.endsWith('/authority')) return Promise.resolve({ data: { access_saved: saved, grant_effective: false } })
+      return original(url, ...args)
+    })
+    http.post.mockResolvedValue({ data: {} })
+    const wrapper = await mountView()
+    const activate = wrapper.findAll('.extension-card').find(card => card.text().includes('Fresh application'))!
+      .findAll('button').find(button => button.text() === 'Install and activate')!
+    await activate.trigger('click'); await flushPromises()
+    expect(http.post).toHaveBeenCalledWith('/api/v1/application-extensions/packages/' + 'd'.repeat(64) + '/activate')
+    expect(wrapper.find('.authority-dialog').exists()).toBe(!saved)
+    expect(http.post.mock.calls.some(([url]) => url.endsWith('/consent/preview'))).toBe(!saved)
+    expect(http.post.mock.calls.some(([url]) => url.endsWith('/consent/allow'))).toBe(false)
   })
 
   it('asks for a declared device binding before application activation', async () => {
@@ -258,6 +283,87 @@ describe('Extensions management workflow', () => {
       { configuration: { READER_DEVICE_ID: deviceId } }
     )
   })
+
+  it.each(['activating', 'disabling', 'uninstalling', 'recovering', 'recovery_required'])(
+    'keeps an unfinished %s installation removable before any version became active', async status => {
+      const moduleId = 'org.example.failed-install'
+      const sha = '2'.repeat(64)
+      let installed = true
+      http.get.mockImplementation((url: string) => Promise.resolve({ data:
+        url === '/api/v1/modules/packages' ? [{ module_id: moduleId, version: '0.1.0', sha256: sha,
+          manifest: { name: 'Failed Application', entrypoints: { core: 'application-extension.json' } } }]
+        : url === '/api/v1/application-extensions' && installed ? [{ module_id: moduleId,
+          active_version: null, status, enabled: false }]
+        : [],
+      }))
+      http.delete.mockImplementation(async (url: string) => {
+        expect(url).toBe(`/api/v1/application-extensions/${moduleId}`)
+        installed = false
+        return { data: { status: 'uninstalled' } }
+      })
+      const wrapper = await mountView()
+      const card = () => wrapper.findAll('.extension-card').find(item => item.text().includes('Failed Application'))!
+      expect(card().text()).toContain('Recovery required')
+      expect(card().text()).toContain('Uninstall will first stop and verify its runtime')
+      expect(card().text()).not.toContain('Delete package')
+      expect(card().text()).not.toContain('Erase data')
+      expect(card().get('input[type="checkbox"]').attributes('disabled')).toBeDefined()
+      expect(card().get('.version-btn').attributes('disabled')).toBeDefined()
+      await card().findAll('button').find(button => button.text() === 'Uninstall')!.trigger('click')
+      expect(wrapper.get('dialog').text()).toContain('If runtime cleanup cannot be confirmed, removal will remain blocked')
+      expect(wrapper.get('dialog').text()).toContain('data and the uploaded package will be preserved')
+      await wrapper.get('.ui-dialog-actions .ui-button--danger').trigger('click')
+      await flushPromises()
+      expect(http.delete).toHaveBeenCalledExactlyOnceWith(`/api/v1/application-extensions/${moduleId}`)
+      expect(http.post).not.toHaveBeenCalled()
+      expect(card().text()).toContain('Delete package')
+    },
+  )
+
+  it.each(['version', 'configuration', 'toggle'])(
+    'refreshes a failed %s activation into the removable installation without retrying it', async action => {
+      const moduleId = 'org.example.failed-activation'
+      const sha = '3'.repeat(64)
+      const deviceId = `dev_${'2'.repeat(32)}`
+      let failed = false
+      http.get.mockImplementation((url: string) => Promise.resolve({ data:
+        url === '/api/v1/modules/packages' ? [{ module_id: moduleId, version: '0.1.0', sha256: sha,
+          manifest: { name: 'Activation Failure', entrypoints: { core: 'application-extension.json' } } }]
+        : url === '/api/v1/application-extensions' ? (failed || action === 'toggle' ? [{ module_id: moduleId,
+          active_version: null, status: failed ? 'recovery_required' : 'disabled', enabled: false }] : [])
+        : url.endsWith('/configuration') ? { fields: action === 'configuration' ? [{ key: 'DEVICE_ID', kind: 'device',
+          label: 'Device', required: true, value: deviceId }] : [], devices: [{ device_id: deviceId, display_name: 'Node' }] }
+        : [],
+      }))
+      http.post.mockImplementation(async (url: string) => {
+        expect(url).toBe(`/api/v1/application-extensions/packages/${sha}/activate`)
+        failed = true
+        throw { response: { status: 409, data: { detail: 'Application activation requires recovery' } } }
+      })
+      const wrapper = await mountView()
+      const card = () => wrapper.findAll('.extension-card').find(item => item.text().includes('Activation Failure'))!
+      if (action === 'toggle') {
+        await card().get('input[type="checkbox"]').setValue(true)
+      } else {
+        await card().findAll('button').find(button => button.text() === 'Install and activate')!.trigger('click')
+        await flushPromises()
+        if (action === 'configuration') {
+          await wrapper.get('.ui-dialog-actions .version-btn').trigger('click')
+        }
+      }
+      await flushPromises()
+      expect(http.post).toHaveBeenCalledOnce()
+      expect(http.get.mock.calls.filter(([url]) => url === '/api/v1/application-extensions').length).toBeGreaterThanOrEqual(2)
+      expect(wrapper.find('dialog').exists()).toBe(false)
+      expect(wrapper.text()).toContain('Application activation requires recovery')
+      expect(card().text()).toContain('Recovery required')
+      expect(card().findAll('button').some(button => button.text() === 'Uninstall')).toBe(true)
+      expect(card().text()).not.toContain('Delete package')
+      expect(card().text()).not.toContain('Erase data')
+      expect(card().get('.version-btn').attributes('disabled')).toBeDefined()
+      expect(http.delete).not.toHaveBeenCalled()
+    },
+  )
 
   it('uninstalls an application while keeping its uploaded package visible', async () => {
     const packageSha = 'd'.repeat(64)
@@ -379,6 +485,69 @@ describe('Extensions management workflow', () => {
     expect(http.delete).toHaveBeenCalledWith(
       '/api/v1/application-extensions/org.example.application/data'
     )
+  })
+
+  it('keeps preserved data visible after the last application package is deleted', async () => {
+    let packagePresent = true
+    let dataPresent = true
+    const moduleId = 'org.example.retired'
+    http.get.mockImplementation((url: string) => Promise.resolve({ data:
+      url === '/api/v1/modules/packages' && packagePresent
+        ? [{ module_id: moduleId, version: '1.0.0', sha256: 'e'.repeat(64),
+          manifest: { name: 'Retired application', entrypoints: { core: 'application-extension.json' } } }]
+        : url === '/api/v1/application-extensions/retained-data' && dataPresent
+          ? [{ module_id: moduleId, instance_id: '1'.repeat(24), name: 'Retired application' }]
+          : [],
+    }))
+    http.delete.mockImplementation(async (url: string) => {
+      if (url.endsWith('/data')) dataPresent = false
+      else packagePresent = false
+      return { data: {} }
+    })
+    const wrapper = await mountView()
+    expect(wrapper.find('.retained-data-section').exists()).toBe(false)
+    const remove = wrapper.findAll('.extension-card button').find(button => button.text() === 'Delete package')
+    await remove!.trigger('click')
+    await wrapper.get('.ui-dialog-actions .ui-button--danger').trigger('click'); await flushPromises()
+    expect(wrapper.findAll('.extension-card').some(card => card.text().includes('Retired application'))).toBe(false)
+    expect(wrapper.get('.retained-data-row').text()).toContain('Retired application')
+    expect(http.delete).not.toHaveBeenCalledWith(`/api/v1/application-extensions/${moduleId}/data`)
+    await wrapper.get('.retained-data-row button').trigger('click')
+    expect(wrapper.get('dialog').text()).toContain('This cannot be undone')
+    expect(wrapper.get('dialog').text()).not.toContain(' v1.0.0')
+    await wrapper.get('.ui-dialog-actions .ui-button--danger').trigger('click'); await flushPromises()
+    expect(http.delete).toHaveBeenLastCalledWith(`/api/v1/application-extensions/${moduleId}/data`)
+    expect(wrapper.find('.retained-data-section').exists()).toBe(false)
+  })
+
+  it('keeps retained data available after erasure fails', async () => {
+    http.get.mockImplementation((url: string) => Promise.resolve({ data:
+      url === '/api/v1/application-extensions/retained-data'
+        ? [{ module_id: 'org.example.retired', instance_id: '1'.repeat(24), name: 'Retired application' }] : [],
+    }))
+    http.delete.mockRejectedValue({ response: { status: 409, data: { detail: 'Runtime stop is unconfirmed' } } })
+    const wrapper = await mountView()
+    await wrapper.get('.retained-data-row button').trigger('click')
+    await wrapper.get('.ui-dialog-actions .ui-button--danger').trigger('click'); await flushPromises()
+    expect(wrapper.get('dialog').text()).toContain('Runtime stop is unconfirmed')
+    expect(wrapper.find('.retained-data-row').exists()).toBe(true)
+  })
+
+  it('reports a retained-data catalog failure without hiding extension management', async () => {
+    const original = http.get.getMockImplementation()!
+    http.get.mockImplementation((url: string, ...args: unknown[]) => url === '/api/v1/application-extensions/retained-data'
+      ? Promise.reject(new Error('catalog unavailable')) : original(url, ...args))
+    const wrapper = await mountView()
+    expect(wrapper.text()).toContain('Clock')
+    expect(wrapper.text()).toContain('Preserved application data could not be loaded')
+    expect(http.delete).not.toHaveBeenCalled()
+  })
+
+  it('does not request or expose retained application data to a non-administrator', async () => {
+    localStorage.setItem('role', 'user')
+    const wrapper = await mountView()
+    expect(http.get.mock.calls.some(([url]) => url === '/api/v1/application-extensions/retained-data')).toBe(false)
+    expect(wrapper.find('.retained-data-section').exists()).toBe(false)
   })
 
   it('renders the uploaded extension name in the success message', async () => {
@@ -556,5 +725,22 @@ describe('Extensions management workflow', () => {
     await wrapper.get('dialog').trigger('cancel')
     expect(wrapper.find('dialog').exists()).toBe(false)
     expect(http.delete).toHaveBeenCalledOnce()
+  })
+})
+
+
+describe('Current package installation boundary', () => {
+  it('never falls back to retired upload when manifest-v2 validation fails', async () => {
+    localStorage.setItem('role','admin')
+    http.get.mockResolvedValue({ data: [] }); compiledUi.getCatalog.mockResolvedValue([])
+    http.post.mockClear(); http.post.mockRejectedValueOnce({ response: { status:422, data:{ detail:'manifest v2 required' } } })
+    const wrapper=await mountView()
+    const input=wrapper.get('#extension-file')
+    Object.defineProperty(input.element,'files',{configurable:true,value:[new File(['old package'],'old.zip')]})
+    await input.trigger('change'); await wrapper.get('.upload-form').trigger('submit'); await flushPromises()
+    expect(http.post).toHaveBeenCalledTimes(1)
+    expect(http.post.mock.calls[0][0]).toBe('/api/v1/modules/packages')
+    expect(wrapper.text()).toContain('manifest v2 required')
+    wrapper.unmount()
   })
 })

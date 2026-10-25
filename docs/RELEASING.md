@@ -90,6 +90,10 @@ For a tag such as `v0.3.0-beta.9`,
 9. uploads every asset to a draft GitHub Release;
 10. makes the Release visible only after the complete upload succeeds.
 
+The release body uses `docs/RELEASE_NOTES_<version>.md` from the tagged source
+when present; otherwise GitHub generates the notes. CI runs automatically on
+branch pushes; publishing an annotated version tag starts Release automatically.
+
 ## Required release assets
 
 A complete release contains exactly the expected architecture archives plus

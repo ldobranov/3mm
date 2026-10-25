@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({ post: vi.fn(), getCurrentBackendUrl: async () 
 vi.mock('@/utils/dynamic-http', () => ({ default: mocks }))
 vi.mock('@/utils/settings-api', () => ({ readSettings: async () => [], upsertSettings: vi.fn() }))
 const language = ref('en')
-vi.mock('@/utils/i18n', () => ({ useI18n: () => ({ t: (_key: string, fallback: string) => fallback, currentLanguage: language }) }))
+vi.mock('@/utils/i18n', async () => { const { movedLanguageLabel } = await import('@/test-utils/language-messages'); return { useI18n: () => ({ t: (key: string, fallback: string) => movedLanguageLabel(key, fallback, language.value), currentLanguage: language }) } })
 import { useSettingsStore } from '@/stores/settings'
 import ThemeAppearanceSection from './ThemeAppearanceSection.vue'
 

@@ -9,7 +9,6 @@ from sqlalchemy import or_
 from backend.db.user import User
 from backend.db.display import Display
 from backend.db.widget import Widget
-from backend.db.extension import Extension
 from backend.db.module import ModulePackage
 from backend.services.module_packages import ModulePackageError, validate_module_package
 from backend.schemas.display import (
@@ -252,21 +251,6 @@ def create_widget(display_id: int, payload: WidgetCreate, claims: dict = Depends
     valid_builtin_types = {"CLOCK", "TEXT", "RSS"}
     if payload.type in valid_builtin_types:
         pass  # Built-in type, allow
-    elif payload.type.startswith("extension:"):
-        # Extension widget type
-        try:
-            extension_id = int(payload.type.split(":", 1)[1])
-            # Check if extension exists and is enabled for this user
-            extension = db.query(Extension).filter(
-                Extension.id == extension_id,
-                Extension.user_id == user_id,
-                Extension.type == "widget",
-                Extension.is_enabled == True
-            ).first()
-            if not extension:
-                raise HTTPException(status_code=422, detail="Extension widget not found or not enabled")
-        except (ValueError, IndexError):
-            raise HTTPException(status_code=422, detail="Invalid extension widget type format")
     elif payload.type.startswith("compiled:"):
         try:
             _, module_id, version, entrypoint_id = payload.type.split(":", 3)

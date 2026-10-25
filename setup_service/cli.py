@@ -31,16 +31,27 @@ def build_parser() -> argparse.ArgumentParser:
         default="http://10.42.0.1:8895/setup",
     )
     parser.add_argument("--log-level", default="info")
+    parser.add_argument("--read-only", action="store_true")
+    parser.add_argument("--issue-access", action="store_true", help="print one temporary setup access code and exit")
+    parser.add_argument("--diagnostics", action="store_true", help="record bounded metadata for 10 minutes")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> None:
     arguments = build_parser().parse_args(argv)
+    if arguments.issue_access:
+        from three_mm_provisioning.persistence import FileProvisioningStore
+        from three_mm_provisioning.setup_access import FileSetupAccessStore
+        print(FileSetupAccessStore(arguments.data_dir).issue(FileProvisioningStore(arguments.data_dir).load_runtime_snapshot()))
+        return
     settings = SetupSettings(
         data_dir=arguments.data_dir,
         host=arguments.host,
         port=arguments.port,
         network_helper_socket=arguments.network_helper_socket,
+        core_database_path=SetupSettings.from_env().core_database_path,
+        read_only=arguments.read_only,
+        diagnostics=arguments.diagnostics,
     )
     captive_entrypoint = (
         captive_portal_redirect(

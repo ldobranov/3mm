@@ -38,3 +38,11 @@ def test_supervisor_has_no_core_dependency_or_public_listener():
     assert 'RestrictAddressFamilies=AF_UNIX' in unit
     assert 'ProtectSystem=strict' in unit
     assert 'update_helper' not in unit
+
+
+def test_host_managed_node_never_requires_network_manager(tmp_path, monkeypatch):
+    (tmp_path / '.3mm-install-profile').write_text('node')
+    monkeypatch.setenv('THREE_MM_NETWORK_BACKEND', 'host')
+    monkeypatch.setattr('three_mm_runtime.node_recovery.NetworkManagerReadOnlyAdapter.from_system',
+        lambda **kw: pytest.fail('Host-managed recovery must not load NetworkManager'))
+    assert create_monitor(tmp_path) is None

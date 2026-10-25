@@ -406,3 +406,21 @@ def test_socket_has_no_context_setter_or_sql_endpoint(prepared, wire_request):
 def test_metadata_decode_is_closed_and_bounded(payload):
     with pytest.raises(ValueError):
         runtime._decode(payload)
+
+
+def test_host_metadata_trickle_cannot_renew_the_absolute_admission_deadline(tmp_path):
+    import threading
+    path=tmp_path/'metadata.sock'
+    listener=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);listener.bind(str(path));listener.listen(1)
+    def trickle():
+        connection,_=listener.accept()
+        with connection:
+            runtime._read(connection)
+            for _ in range(20):
+                try:connection.sendall(b'{');time.sleep(.04)
+                except OSError:return
+    worker=threading.Thread(target=trickle,daemon=True);worker.start();started=time.monotonic()
+    try:
+        with pytest.raises(TimeoutError):runtime._call_host_metadata(path,SECRET,timeout=.15)
+        assert time.monotonic()-started<.4
+    finally:listener.close();worker.join(timeout=1)

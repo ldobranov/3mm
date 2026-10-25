@@ -2,8 +2,9 @@ import { mount } from '@vue/test-utils'
 import { describe, it, expect } from 'vitest'
 import DeviceInventorySummary from './DeviceInventorySummary.vue'
 import { inventoryText, inventoryValue } from '@/utils/device-inventory'
-import english from '@/extensions/MainServerExtension_1.0.0/locales/en.json'
-import bulgarian from '@/extensions/MainServerExtension_1.0.0/locales/bg.json'
+import english from '@/locales/en.json'
+import languagePack from '../../../modules/language-bg/language-extension.json'
+const bulgarian = languagePack.frontend
 
 describe('platform-neutral inventory presentation', () => {
   it('shows embedded measurements without invented Linux fields', () => {

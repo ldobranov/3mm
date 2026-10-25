@@ -3,6 +3,7 @@
 The fixture supplies the future protected host context directly. No public
 transport route or production relational activation is enabled by these tests.
 """
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 import dataclasses
 import hashlib
@@ -364,7 +365,7 @@ def test_unfinished_host_dependency_is_not_exposed_to_application_gateway(
 
     server = ApplicationPlatformServer(
         admitted.root / "platform.sock", admitted.root / "keys"
-    )
+    , allowed_actions=COMPATIBILITY_ACTIONS)
     for mode in ("enforced", "compatibility"):
         with admitted.engine.begin() as db:
             db.execute(update(Installation).values(authority_mode=mode))

@@ -6,6 +6,7 @@ The private test CA is trusted only inside the fixture worker processes.
 """
 
 from __future__ import annotations
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 import base64
 from contextlib import contextmanager
@@ -331,7 +332,7 @@ def core_worker(root, port):
     prepare_database(root, f"https://localhost:{port}")
     platform = ApplicationPlatformServer(
         root / "platform.sock", root / "keys", group="fixture-only"
-    )
+    , allowed_actions=COMPATIBILITY_ACTIONS)
 
     @asynccontextmanager
     async def lifespan(_app):
@@ -358,6 +359,8 @@ def core_worker(root, port):
 
 class CoreFixture:
     def __init__(self, root, ca, master_key, jwt_key):
+        import pwd
+
         self.root = root
         root.mkdir()
         with socket.socket() as listener:
@@ -376,6 +379,9 @@ class CoreFixture:
             THREE_MM_APPLICATION_ROOT=str(root / "apps"),
             THREE_MM_APPLICATION_KEY_ROOT=str(root / "keys"),
             THREE_MM_APPLICATION_PLATFORM_SOCKET=str(root / "platform.sock"),
+            THREE_MM_PLATFORM_RUNTIME_SOCKET=str(root / "platform.sock"),
+            THREE_MM_APPLICATION_RESPONSE_SOCKET=str(root / "responses.sock"),
+            THREE_MM_PLATFORM_RUNTIME_USER=pwd.getpwuid(os.getuid()).pw_name,
         )
         import jwt
 
@@ -399,6 +405,11 @@ class CoreFixture:
         return child
 
     def start(self):
+        self.runtime = self.spawn(
+            ["backend.tests.test_installation_peer_https", "--runtime-worker", str(self.root)],
+            "runtime",
+        )
+        self.wait(lambda: (self.root / "responses.sock").is_socket())
         self.core = self.spawn(
             [
                 "backend.tests.test_installation_peer_https",
@@ -434,8 +445,7 @@ class CoreFixture:
         self.sdk = ApplicationPlatformClient(
             self.root / "platform.sock",
             INSTANCE,
-            (self.root / "keys" / f"{INSTANCE}.key").read_bytes(),
-        )
+            (self.root / "keys" / f"{INSTANCE}.key").read_bytes())
         return self
 
     def wait(self, predicate):
@@ -651,18 +661,20 @@ def test_two_cores_verified_https_and_real_application_sockets(tmp_path):
             assert changed.status_code == 200, changed.text
             assert changed.json()["consent_revision"] == 2
             (receiver.root / "drop-complete").touch()
-            with pytest.raises(ApplicationPlatformError, match="transport failed"):
+            with pytest.raises(ApplicationPlatformError) as rejected:
                 sender.sdk.enroll_installation_peer(link)
+            assert rejected.value.reason == "operation_failed"
             pending = sender.sdk.enroll_installation_peer(link)
             assert pending["state"] == "pending"
             binding = pending["remote_binding_id"]
             assert (
                 len(receiver.receipts()) == 1
             )  # Bootstrap retry deduplicated by actual service.
-            with pytest.raises(ApplicationPlatformError, match="not active"):
+            with pytest.raises(ApplicationPlatformError) as rejected:
                 sender.sdk.report_installation_status(
                     link, report_id="report_" + uuid.uuid4().hex
                 )
+            assert rejected.value.reason == "operation_failed"
             receiver.sdk.approve_installation_peer(binding, expected_generation=1)
             assert sender.sdk.enroll_installation_peer(link)["state"] == "active"
             projection = sender.sdk.get_installation_status(link)
@@ -676,8 +688,9 @@ def test_two_cores_verified_https_and_real_application_sockets(tmp_path):
             assert "must-not-be-projected" not in json.dumps(projection)
             report_id = "report_" + uuid.uuid4().hex
             (receiver.root / "drop-report").touch()
-            with pytest.raises(ApplicationPlatformError, match="transport failed"):
+            with pytest.raises(ApplicationPlatformError) as rejected:
                 sender.sdk.report_installation_status(link, report_id=report_id)
+            assert rejected.value.reason == "operation_failed"
             receiver.restart()
             accepted = sender.sdk.report_installation_status(link, report_id=report_id)
             assert accepted["status"] == "accepted"
@@ -745,8 +758,9 @@ def test_two_cores_verified_https_and_real_application_sockets(tmp_path):
                 sender, row, PEER_PREFIX + "/report", payload
             )
             (receiver.root / "drop-rotate").touch()
-            with pytest.raises(ApplicationPlatformError, match="transport failed"):
+            with pytest.raises(ApplicationPlatformError) as rejected:
                 sender.sdk.rotate_installation_peer(link)
+            assert rejected.value.reason == "operation_failed"
             receiver.restart()
             assert sender.sdk.rotate_installation_peer(link)["state"] == "active"
             assert (
@@ -778,17 +792,21 @@ def test_two_cores_verified_https_and_real_application_sockets(tmp_path):
             )
             (receiver.root / "clock-offset").unlink()
             receiver.sdk.revoke_installation_peer(binding, direction="inbound")
-            with pytest.raises(ApplicationPlatformError, match="HTTP 409"):
+            with pytest.raises(ApplicationPlatformError) as rejected:
                 sender.sdk.report_installation_status(
                     link, report_id="report_" + uuid.uuid4().hex
                 )
-            with pytest.raises(ApplicationPlatformError):
+            assert rejected.value.reason == "operation_failed"
+            with pytest.raises(ApplicationPlatformError) as rejected:
                 receiver.sdk.approve_installation_peer(binding, expected_generation=3)
-            with pytest.raises(ApplicationPlatformError, match="HTTP 409"):
+            assert rejected.value.reason == "operation_failed"
+            with pytest.raises(ApplicationPlatformError) as rejected:
                 sender.sdk.rotate_installation_peer(link)
+            assert rejected.value.reason == "operation_failed"
             sender.sdk.revoke_installation_peer(link, direction="outbound")
-            with pytest.raises(ApplicationPlatformError):
+            with pytest.raises(ApplicationPlatformError) as rejected:
                 sender.sdk.get_installation_status(link)
+            assert rejected.value.reason == "operation_denied"
             print(
                 "PASS: verified TLS/hostname, dual approval, scoped projection, real SDK/host sockets,"
             )
@@ -811,5 +829,12 @@ def test_two_cores_verified_https_and_real_application_sockets(tmp_path):
 if __name__ == "__main__":
     if len(sys.argv) == 4 and sys.argv[1] == "--worker":
         core_worker(Path(sys.argv[2]), int(sys.argv[3]))
+    elif len(sys.argv) == 3 and sys.argv[1] == "--runtime-worker":
+        from three_mm_platform_runtime.responses import ApplicationResponses
+
+        root = Path(sys.argv[2])
+        runtime = ApplicationResponses(root / "responses.sock", root / "unused-admission.sock", core_uid=os.getuid())
+        runtime.start()
+        runtime.serve_forever()
     else:
         raise SystemExit("Use pytest with THREE_MM_RUN_PEER_HTTPS_TEST=1 on Linux")

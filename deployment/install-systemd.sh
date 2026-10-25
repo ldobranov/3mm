@@ -81,14 +81,28 @@ deploy_cache_root=/var/cache/3mm/deploy
 deploy_home=$deploy_cache_root/home
 npm_cache=$deploy_cache_root/npm
 environment_file=/etc/3mm/3mm.env
+agent_environment_file=/etc/3mm-agent/agent.env
+network_backend=${THREE_MM_NETWORK_BACKEND:-}
+if [[ -z $network_backend && -f $environment_file ]]; then
+  network_backend=$(awk -F= '$1 == "THREE_MM_NETWORK_BACKEND" {value=$2} END {print value}' "$environment_file")
+fi
+network_backend=${network_backend:-host}
+if [[ $network_backend != host && $network_backend != network-manager ]]; then
+  echo "Network backend must be host or network-manager." >&2
+  exit 1
+fi
+export THREE_MM_NETWORK_BACKEND=$network_backend
 ai_master_key_file=/etc/3mm/ai-settings.key
 runtime_services=(
   3mm-agent.service
   3mm-core.service
+  3mm-platform-runtime.service
+  3mm-connector-worker.service
   3mm-web.service
   3mm-public-web.socket
   3mm-session-worker.socket
   3mm-setup.service
+  3mm-setup-local.service
   3mm-setup-ap.service
   3mm-network-helper.service
 )
@@ -103,7 +117,7 @@ installed_units=(
   3mm-public-web.service
 )
 if [[ $install_profile == node ]]; then
-  runtime_services=(3mm-agent.service 3mm-setup.service 3mm-setup-ap.service 3mm-network-helper.service)
+  runtime_services=(3mm-agent.service 3mm-setup.service 3mm-setup-local.service 3mm-setup-ap.service 3mm-network-helper.service)
   always_on_services=(3mm-node-recovery.service 3mm-node-update-helper.service)
   installed_units=("${runtime_services[@]}" "${always_on_services[@]}")
 fi
@@ -115,6 +129,7 @@ release_created=0
 mutation_started=0
 database_backup_created=0
 environment_backup_created=0
+agent_environment_backup_created=0
 environment_tmp=""
 previous_active_units=()
 previous_enabled_units=()
@@ -193,6 +208,16 @@ install_units() {
         rm -f -- "/etc/systemd/system/$unit"
         continue
       fi
+      if [[ ( $unit == 3mm-platform-runtime.service || $unit == 3mm-connector-worker.service ) && $require_update_helper == 0 ]]; then
+        systemctl disable --now "$unit" >/dev/null 2>&1 || true
+        rm -f -- "/etc/systemd/system/$unit"
+        continue
+      fi
+      if [[ $unit == 3mm-setup-local.service && $require_update_helper == 0 ]]; then
+        systemctl disable --now "$unit" >/dev/null 2>&1 || true
+        rm -f -- "/etc/systemd/system/$unit"
+        continue
+      fi
       if [[ $unit == 3mm-application-extension@.service && $require_update_helper == 0 ]]; then
         systemctl stop '3mm-application-extension@*.service' >/dev/null 2>&1 || true
         rm -f -- "/etc/systemd/system/$unit"
@@ -259,6 +284,12 @@ restore_environment() {
   elif [[ -f $backup_root/environment-was-absent ]]; then
     rm -f -- "$environment_file" || return 1
   fi
+  if [[ $agent_environment_backup_created -eq 1 ]]; then
+    install -d -o root -g 3mm -m 0750 /etc/3mm-agent || return 1
+    install -o root -g 3mm -m 0640 "$backup_root/agent.env" "$agent_environment_file" || return 1
+  elif [[ -f $backup_root/agent-environment-was-absent ]]; then
+    rm -f -- "$agent_environment_file" || return 1
+  fi
 }
 
 verify_endpoint() {
@@ -287,11 +318,13 @@ verify_runtime() {
     '3mm-web.service|http://127.0.0.1:8080/user/login'
     '3mm-web.service|http://127.0.0.1/user/login'
     '3mm-setup.service|http://127.0.0.1:8895/ready'
+    '3mm-setup-local.service|http://127.0.0.1:8895/ready'
   )
   if [[ $install_profile == node ]]; then
     checks=(
       '3mm-agent.service|http://127.0.0.1:8890/ready'
       '3mm-setup.service|http://127.0.0.1:8895/ready'
+      '3mm-setup-local.service|http://127.0.0.1:8895/ready'
     )
   fi
   for pair in "${checks[@]}"; do
@@ -302,6 +335,14 @@ verify_runtime() {
       verify_endpoint "$endpoint" || return 1
     fi
   done
+  if [[ $install_profile == full ]] && systemctl is-active --quiet 3mm-core.service; then
+    if ! systemctl is-active --quiet 3mm-platform-runtime.service; then
+      fail "Core role has no active independent platform Runtime."
+      return 1
+    fi
+    PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" \
+      -m deployment.platform_runtime_component probe || return 1
+  fi
   if [[ $active_count -eq 0 ]]; then
     echo "Runtime planner did not activate an application or setup service." >&2
     return 1
@@ -327,7 +368,7 @@ activate_runtime() {
   local source_release=$1
   local python_path
   python_path=$(release_python "$source_release") || return 1
-  PYTHONPATH="$source_release" \
+  AI_SETTINGS_MASTER_KEY="${ai_master_key:-}" PYTHONPATH="$source_release" \
     "$python_path" -m three_mm_runtime.activate || return 1
   # Do not accept a healthy Web/Core while the required Agent is restarting.
   PYTHONPATH="$source_release" "$python_path" -m three_mm_runtime.activate --check-active || return 1
@@ -579,7 +620,19 @@ if ! id -u 3mm-public >/dev/null 2>&1; then
   useradd --system --gid 3mm-public --home-dir /nonexistent \
     --shell /usr/sbin/nologin 3mm-public
 fi
-usermod -a -G 3mm-app,3mm-public 3mm
+if ! getent group 3mm-platform >/dev/null 2>&1; then
+  groupadd --system 3mm-platform
+fi
+if ! id -u 3mm-platform >/dev/null 2>&1; then
+  useradd --system --gid 3mm-platform --home-dir /nonexistent --shell /usr/sbin/nologin 3mm-platform
+fi
+if ! getent group 3mm-connectors >/dev/null 2>&1; then
+  groupadd --system 3mm-connectors
+fi
+if ! id -u 3mm-connectors >/dev/null 2>&1; then
+  useradd --system --gid 3mm-connectors --home-dir /nonexistent --shell /usr/sbin/nologin 3mm-connectors
+fi
+usermod -a -G 3mm-app,3mm-public,3mm-platform 3mm
 fi
 
 install -d -o root -g root -m 0755 "$install_root" "$releases_root" /etc/3mm
@@ -640,6 +693,7 @@ required_files=(
   deployment/systemd/3mm-public-web.socket
   deployment/systemd/3mm-public-web.service
   deployment/systemd/3mm-agent.service
+  deployment/systemd/3mm-setup-local.service
   deployment/systemd/3mm-captive-portal-dnsmasq.conf
   deployment/systemd/3mm-update-helper.service
   deployment/systemd/3mm-application-extension@.service
@@ -777,6 +831,13 @@ else
 fi
 
 log "Updating the persistent service environment"
+if [[ -f $agent_environment_file ]]; then
+  install -o root -g root -m 0600 "$agent_environment_file" "$backup_root/agent.env"
+  agent_environment_backup_created=1
+else
+  : > "$backup_root/agent-environment-was-absent"
+  chmod 0600 "$backup_root/agent-environment-was-absent"
+fi
 environment_tmp=$(mktemp /etc/3mm/3mm.env.XXXXXX)
 if [[ -f $environment_file ]]; then
   cat "$environment_file" > "$environment_tmp"
@@ -789,6 +850,7 @@ upsert_environment() {
   printf '%s=%s\n' "$key" "$value" >> "$next_file"
   mv "$next_file" "$environment_tmp"
 }
+upsert_environment THREE_MM_NETWORK_BACKEND "$network_backend"
 if [[ $install_profile == full ]]; then
 upsert_environment DATABASE_URL sqlite:////var/lib/3mm/core/3mm.db
   # Preserve the selected native/mock GPIO driver on upgrades; wired-only
@@ -835,9 +897,12 @@ upsert_environment THREE_MM_BACKUP_MAX_IMPORT_BYTES 537919488
 upsert_environment THREE_MM_APPLICATION_ROOT /var/lib/3mm/application-extensions
 upsert_environment THREE_MM_APPLICATION_KEY_ROOT /etc/3mm/application-extensions
 upsert_environment THREE_MM_APPLICATION_HELPER_SOCKET /run/3mm/update-helper.sock
-upsert_environment THREE_MM_APPLICATION_PLATFORM_SOCKET /var/lib/3mm/application-extensions/platform/platform.sock
-upsert_environment THREE_MM_PUBLIC_WEB_GATEWAY_SOCKET /run/3mm-public-web/core.sock
-upsert_environment THREE_MM_PUBLIC_WEB_GATEWAY_GROUP 3mm-public
+upsert_environment THREE_MM_APPLICATION_RESPONSE_SOCKET /run/3mm-application-responses/runtime.sock
+upsert_environment THREE_MM_CORE_AUTHORITY_SOCKET /run/3mm-core-authority/authority.sock
+upsert_environment THREE_MM_CONNECTOR_WORKER_USER 3mm-connectors
+upsert_environment THREE_MM_CONNECTOR_WORKER_SOCKET /run/3mm-connectors/worker.sock
+upsert_environment THREE_MM_PLATFORM_RUNTIME_USER 3mm-platform
+upsert_environment THREE_MM_PLATFORM_RUNTIME_SOCKET /run/3mm-platform/runtime.sock
 
 if [[ -s $ai_master_key_file ]]; then
   ai_master_key=$(cat "$ai_master_key_file")
@@ -892,10 +957,32 @@ else
   install -d -o root -g root -m 0755 /etc/NetworkManager/dnsmasq-shared.d
 fi
 
+log "Preparing the independent Agent environment"
+# Only Agent configuration enters its own environment; never Core DB/signing keys.
+install -d -o root -g 3mm -m 0750 /etc/3mm-agent
+agent_environment_tmp=$(mktemp "${agent_environment_file}.XXXXXX")
+awk -F= '$1 ~ /^THREE_MM_(AGENT_|GPIO_|IDENTIFIER_)/ || $1 ~ /^THREE_MM_(CORE_URL|HEARTBEAT_INTERVAL_SECONDS|PROVISIONING_DATA_DIR|INVENTORY_SCHEMA_VERSION)$/ {print}' "$environment_file" > "$agent_environment_tmp"
+install -o root -g 3mm -m 0640 "$agent_environment_tmp" "$agent_environment_file"
+rm -f -- "$agent_environment_tmp"
+PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" \
+  -m deployment.service_component agent bootstrap --source "$release_dir"
+
 log "Installing service definitions"
 if [[ $install_profile == full ]]; then
 PYTHONPATH="$release_dir" \
   "$release_dir/.venv/bin/python" -m deployment.prepare_backup_storage
+# Bootstrap only if absent. Compatible independent Runtime artifacts are retained.
+PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" \
+  -m deployment.platform_runtime_component bootstrap --source "$release_dir"
+PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" \
+  -m deployment.platform_runtime_component --component connector-worker bootstrap --source "$release_dir"
+# Native worker bundle: separate code/dependencies, with per-instance pinned hosts.
+PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" \
+  -m deployment.application_host_component bootstrap --source "$release_dir"
+PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" \
+  -m deployment.service_component public-web bootstrap --source "$release_dir"
+PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" \
+  -m deployment.service_component session-worker bootstrap --source "$release_dir"
 fi
 install_units "$release_dir"
 if [[ $install_profile == full ]]; then
@@ -907,14 +994,8 @@ runuser -u 3mm -- env \
   COMPILED_UI_ARTIFACTS_DIR=/var/lib/3mm/core/extensions/compiled \
   PYTHONPATH="$release_dir" \
   "$release_dir/.venv/bin/python" "$release_dir/deployment/migrate_database.py"
-if [[ $database_existed_before_deploy -eq 0 ]]; then
-  log "Creating the beta/test default administrator"
-  runuser -u 3mm -- env \
-    DATABASE_URL=sqlite:////var/lib/3mm/core/3mm.db \
-    PYTHONPATH="$release_dir" \
-    "$release_dir/.venv/bin/python" -m backend.scripts.bootstrap_admin \
-      --create-development-default-if-empty
-fi
+# The protected setup portal creates or proves the first administrator.
+
 fi
 
 log "Preparing the persistent runtime journal"

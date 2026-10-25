@@ -4,14 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Widget } from '@/stores/widgets'
 
 const loaders = vi.hoisted(() => ({ bundled: vi.fn(), find: vi.fn(), catalog: vi.fn(), compiled: vi.fn(), extensions: vi.fn() }))
-vi.mock('@/utils/extension-components', () => ({ loadBundledExtensionComponentByPath: loaders.bundled }))
 vi.mock('@/utils/compiled-ui', () => ({ findCompiledEntrypoint: loaders.find, getCompiledUiCatalog: loaders.catalog, loadCompiledComponent: loaders.compiled }))
 vi.mock('@/stores/widgets', () => ({ useWidgetsStore: () => ({ fetchAvailableExtensions: loaders.extensions }) }))
 vi.mock('@/utils/i18n', () => ({ useI18n: () => ({ t: (_key: string, fallback: string) => fallback }) }))
 import EditorPanel from './EditorPanel.vue'
 
 const editor = defineComponent({ props: ['config'], emits: ['update:modelValue'], template: '<label>Title<input :value="config.title" @input="$emit(\'update:modelValue\', { title: $event.target.value })" /></label>' })
-const widget = (id = 1, type = 'extension:7'): Widget => ({ id, type, display_id: 2, config: { title: `Widget ${id}` }, x: 0, y: 0, width: 3, height: 2, z_index: 1 })
+const widget = (id = 1, type = 'compiled:org.reference:1.0.0:widget'): Widget => ({ id, type, display_id: 2, config: { title: `Widget ${id}` }, x: 0, y: 0, width: 3, height: 2, z_index: 1 })
 const mounted: Array<ReturnType<typeof mount>> = []
 async function setup() {
   const wrapper = mount(EditorPanel, { props: { modelValue: true, widget: widget() } })
@@ -25,14 +24,13 @@ describe('Docked dynamic widget properties', () => {
     vi.useFakeTimers()
     vi.clearAllMocks()
     loaders.extensions.mockResolvedValue([{ id: 7, name: 'GenericWidget', version: '1.0.0', frontend_editor: 'Editor.vue' }])
-    loaders.bundled.mockResolvedValue(editor)
     loaders.compiled.mockResolvedValue(editor)
-    loaders.find.mockResolvedValue(null)
+    loaders.find.mockResolvedValue({ pkg: { entrypoints: [{ kind: 'editor', entrypoint_id: 'editor', target_entrypoint_id: 'widget' }] }, entrypoint: { entrypoint_id: 'widget' } })
   })
   afterEach(() => { mounted.splice(0).forEach(wrapper => wrapper.unmount()); vi.useRealTimers() })
   it('loads the registered editor and debounces local preview without a modal', async () => {
     const wrapper = await setup()
-    expect(loaders.bundled).toHaveBeenCalledWith('/src/extensions/GenericWidget_1.0.0/Editor.vue')
+    expect(loaders.compiled).toHaveBeenCalled()
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
     await wrapper.find('input').setValue('Preview')
     await vi.advanceTimersByTimeAsync(150)
@@ -66,7 +64,7 @@ describe('Docked dynamic widget properties', () => {
   })
   it('ignores a stale editor response after switching widgets', async () => {
     let resolveFirst!: (value: unknown) => void
-    loaders.bundled.mockReturnValueOnce(new Promise(resolve => { resolveFirst = resolve }))
+    loaders.compiled.mockReturnValueOnce(new Promise(resolve => { resolveFirst = resolve }))
     const wrapper = await setup()
     await wrapper.setProps({ widget: widget(2) })
     await flushPromises()
@@ -111,11 +109,11 @@ describe('Docked dynamic widget properties', () => {
     expect(wrapper.find('input').exists()).toBe(true)
   })
   it('shows missing/error states without exposing an unusable Save', async () => {
-    loaders.bundled.mockResolvedValueOnce(null)
+    loaders.find.mockResolvedValueOnce(null).mockResolvedValueOnce(null)
     const wrapper = await setup()
     expect(wrapper.text()).toContain('does not provide editable settings')
     expect(wrapper.find('.ui-button--primary').attributes('disabled')).toBeDefined()
-    loaders.bundled.mockRejectedValueOnce(new Error('Unavailable editor'))
+    loaders.compiled.mockRejectedValueOnce(new Error('Unavailable editor'))
     await wrapper.setProps({ widget: widget(2) })
     await flushPromises()
     expect(wrapper.find('[role="alert"]').text()).toContain('Unavailable editor')

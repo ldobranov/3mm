@@ -446,7 +446,9 @@ def test_actual_core_admin_cli_unix_peer_and_metadata_worker_prepare_without_ena
             ],
             input=state.token.encode() + b"\n",
             capture_output=True,
-            timeout=90,
+            # The CLI has a 180 s helper budget, plus interpreter startup/cleanup.
+            # This harness does not change the production IPC/worker deadlines.
+            timeout=210,
             start_new_session=True,  # No controlling TTY: consume the private test input pipe.
             user=1202,
             group=1203,
@@ -454,7 +456,7 @@ def test_actual_core_admin_cli_unix_peer_and_metadata_worker_prepare_without_ena
             env=environment,
         )
     finally:
-        worker.join(timeout=95)
+        worker.join(timeout=215)
         server.close()
     assert not worker.is_alive() and not errors
     assert process.returncode == 0, (process.stderr.decode(), state.frames)

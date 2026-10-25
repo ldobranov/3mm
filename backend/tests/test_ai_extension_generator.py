@@ -312,3 +312,15 @@ def test_compiled_capability_rebuild_preserves_source_and_syncs_contract_version
     assert json.loads(rebuilt["manifest.json"])["version"] == "1.0.1"
     assert json.loads(rebuilt["compiled-ui.json"])["version"] == "1.0.1"
     assert json.loads(rebuilt["manifest.json"])["capabilities"]["consumes"] == ["sensor.temperature"]
+
+
+def test_page_generation_uses_valid_manifest_v2_without_any_core_python():
+    import base64
+    from backend.services.module_packages import validate_module_package
+    spec=ExtensionSpec(name="Generic Page",version="1.0.0",type="extension",api_prefix="unused",
+        backend_entry="unused.py",frontend_entry="unused.vue",frontend_routes=[{"path":"/reference-page","component":"unused.vue","name":"Reference"}])
+    _,artifact,files=generator.build_extension_zip(spec,use_ai=False)
+    package=validate_module_package(base64.b64decode(artifact))
+    assert package.compiled_ui.entrypoints[0].route=="/reference-page"
+    assert not any(path.endswith('.py') for path in files)
+    assert json.loads(files['manifest.json'])['manifest_version']==2

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy import select
@@ -91,7 +92,37 @@ def validate_operation_payload(value: dict[str, object], schema: dict) -> None:
             )
 
 
-def invoke_application(
+@dataclass(frozen=True)
+class PreparedApplicationInvocation:
+    socket_path: Path
+    secret: bytes
+    timeout_seconds: float
+    operation_id: str
+    payload: dict
+    context: dict
+    relational_invocation: dict | None
+    output_schema: dict
+
+
+def invoke_application(installation, package, settings, operation_id, payload, context,
+                       *, required_audience, before_dispatch=None):
+    prepared = prepare_application_invocation(
+        installation, package, settings, operation_id, payload, context,
+        required_audience=required_audience, before_dispatch=before_dispatch)
+    try:
+        result = ApplicationServiceClient(prepared.socket_path, prepared.secret, prepared.timeout_seconds).invoke(
+            prepared.operation_id, prepared.payload, prepared.context,
+            **({'relational_invocation': prepared.relational_invocation}
+               if prepared.relational_invocation is not None else {}))
+    except ApplicationTransportError as exc:
+        raise ApplicationGatewayError(str(exc), phase=exc.phase, retryable=exc.retryable) from exc
+    validate_operation_payload(result, prepared.output_schema)
+    if len(json.dumps(result, ensure_ascii=False)) > 1024 * 1024:
+        raise ApplicationGatewayError('Application operation result is too large')
+    return result
+
+
+def prepare_application_invocation(
     installation: ApplicationExtensionInstallation,
     package: ModulePackage,
     settings: ApplicationRuntimeSettings,
@@ -100,21 +131,23 @@ def invoke_application(
     context: dict[str, object],
     *,
     required_audience: str,
-    require_ready: bool = False,
     before_dispatch=None,
-) -> dict[str, object]:
+    defer_relational=False,
+) -> PreparedApplicationInvocation:
     if not installation.enabled or installation.status != "active":
         raise ApplicationGatewayError("Application extension is not active")
     validated = load_application_package(package)
     definition = validated.application_extension
     operation = find_operation(definition, operation_id)
-    if operation.kind == "job" or any(
+    if operation.kind == "job":
+        raise ApplicationGatewayError("Scheduled application jobs are retired",
+                                      phase=DispatchPhase.NOT_DISPATCHED)
+    if any(
         route.handler_operation_id == operation_id
         for route in definition.public_http_routes
     ):
-        # These entry paths do not yet have scoped authority adapters. Check at
-        # the shared gateway too: direct callers cannot bypass scheduler/HTTP
-        # gates. An attached Session must not substitute a cached old mode.
+        # Public HTTP has no scoped adapter. Direct gateway callers must obey
+        # its gate too; a cached ORM mode cannot authorize a dispatch.
         db = object_session(installation)
         mode = (
             db.scalar(
@@ -132,6 +165,11 @@ def invoke_application(
             )
     if required_audience not in operation.audiences:
         raise ApplicationGatewayError("Application operation is not available here")
+    if required_audience == "public" and definition.storage.relational is not None:
+        # Public routes have no scoped relational adapter. Refuse before any
+        # host-metadata IPC; compatibility cannot obtain a relational grant.
+        raise ApplicationGatewayError("Public HTTP has no supported relational grant",
+                                      phase=DispatchPhase.NOT_DISPATCHED)
     if validated.compiled_ui is not None:
         from backend.services.compiled_ui import application_ui_artifact, CompiledUiBuildError
         db = object_session(installation)
@@ -162,20 +200,8 @@ def invoke_application(
     # target paired with this key; do not lazily reload a changed installation
     # or hold a newly opened DB transaction across the service invocation.
     socket_path = Path(installation.socket_path)
-    if require_ready:
-        # This reserved host operation reads platform storage only; it does not
-        # invoke the extension job. Failure says nothing about any historical job.
-        try:
-            readiness = ApplicationServiceClient(socket_path, secret, 2).invoke(
-                'three_mm.platform.status', {},
-                {'audience': 'internal', 'correlation_id': 'job-readiness'})
-            if not isinstance(readiness.get('revision'), str) or not readiness['revision'] or not isinstance(readiness.get('outbox'), dict):
-                raise ApplicationTransportError('Host is not ready')
-        except (ApplicationTransportError, OSError) as exc:
-            raise ApplicationGatewayError('Application host is not ready',
-                phase=DispatchPhase.NOT_DISPATCHED, retryable=True) from exc
     if before_dispatch is not None and not before_dispatch():
-        raise ApplicationGatewayError('Application job lifecycle changed', phase=DispatchPhase.NOT_DISPATCHED)
+        raise ApplicationGatewayError('Application lifecycle changed', phase=DispatchPhase.NOT_DISPATCHED)
     ticket = None
     if definition.storage.relational is not None:
         if (
@@ -186,7 +212,7 @@ def invoke_application(
                 "Relational operation context is invalid",
                 phase=DispatchPhase.NOT_DISPATCHED,
             )
-        if operation_id != definition.service.health_operation_id:
+        if operation_id != definition.service.health_operation_id and not defer_relational:
             from backend.services.application_relational import (
                 RelationalAuthorityError,
                 prepare_host_invocation,
@@ -207,18 +233,5 @@ def invoke_application(
                 raise ApplicationGatewayError(
                     str(exc), phase=DispatchPhase.NOT_DISPATCHED
                 ) from exc
-    try:
-        result = ApplicationServiceClient(
-            socket_path,
-            secret,
-            operation.timeout_seconds,
-        ).invoke(
-            operation_id, payload, context,
-            **({"relational_invocation": ticket} if ticket is not None else {}),
-        )
-    except ApplicationTransportError as exc:
-        raise ApplicationGatewayError(str(exc), phase=exc.phase, retryable=exc.retryable) from exc
-    validate_operation_payload(result, operation.output_schema)
-    if len(json.dumps(result, ensure_ascii=False)) > 1024 * 1024:
-        raise ApplicationGatewayError("Application operation result is too large")
-    return result
+    return PreparedApplicationInvocation(socket_path, secret, operation.timeout_seconds,
+        operation_id, payload, context, ticket, operation.output_schema)

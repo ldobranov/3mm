@@ -32,6 +32,14 @@ class UpdateHelperClient:
         }
         self._request(payload)
 
+    def request_access_point(self, action: str, user_id: int, identifier: str, *, interface=None, duration=300):
+        if action not in {"start", "stop"}:
+            raise ValueError("Invalid access point action")
+        payload = {"action": action + "_access_point", "requested_by_user_id": user_id, "id": identifier}
+        if action == "start":
+            payload.update(interface=interface, duration=duration)
+        self._request(payload)
+
     def request_network_setup(self, requested_by_user_id: int) -> None:
         self._request(
             {
@@ -274,11 +282,14 @@ class UpdateHelperClient:
         self,
         instance_id: str,
         requested_by_user_id: int,
+        *, module_id: str, guard_generation: str, guard_revision: int,
     ) -> None:
         self._request(
             {
                 "action": "erase_application_extension_data",
                 "instance_id": instance_id,
+                "module_id": module_id, "guard_generation": guard_generation,
+                "guard_revision": guard_revision,
                 "requested_by_user_id": requested_by_user_id,
             },
             expected_status="erased",

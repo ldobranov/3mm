@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from three_mm_protocol.node_updates import (
     DEVICE_PATTERN, NodeUpdateApprovalKey, NodeUpdateAuthorization, canonical_node_update_authorization,
 )
-from three_mm_runtime.node_update_helper import NodeUpdateError, read_small, trusted_path
+from three_mm_runtime.node_update_common import NodeUpdateError, read_small, trusted_path
 
 TRUST_FILE = Path("/etc/3mm/node-update-trust.json")
 OPENSSL = Path("/usr/bin/openssl")

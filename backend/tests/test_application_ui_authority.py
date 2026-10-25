@@ -3,6 +3,7 @@
 Real Linux files/keys/DB guards and two signed Unix boundaries. The in-test
 service uses only the public SDK; no live VM, helper, Agent or hardware changes.
 """
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 import json
 import os
@@ -195,7 +196,7 @@ def test_human_ui_and_service_resource_grants_are_independent_over_actual_ipc(ui
         root = Path(temporary)
         secret = b's' * 32
         (root / ('a' * 24 + '.key')).write_bytes(secret)
-        platform = ApplicationPlatformServer(root / 'p.sock', root, group='missing-test-group')
+        platform = ApplicationPlatformServer(root / 'p.sock', root, group='missing-test-group', allowed_actions=COMPATIBILITY_ACTIONS)
         platform.start()
         sdk = ApplicationPlatformClient(platform.socket_path, 'a' * 24, secret)
 
@@ -219,6 +220,8 @@ def test_human_ui_and_service_resource_grants_are_independent_over_actual_ipc(ui
         with s.engine.begin() as db:
             db.execute(update(Installation).values(socket_path=str(root / 's.sock')))
         settings = ApplicationRuntimeSettings(root=root, key_root=root, helper_socket=root / 'unused.sock')
+        from backend.tests.response_helpers import install_response_transport
+        install_response_transport(monkeypatch)
         monkeypatch.setattr(routes, 'get_settings', lambda: type('Settings', (), {'applications': settings})())
         app = FastAPI()
         app.include_router(routes.router)

@@ -401,14 +401,16 @@ def test_required_marker_precedes_partial_publication_and_any_enable(
 ):
     state = marked
     ticket = issue_boot(state)
-    original = policy_helper._exclusive_file
+    from three_mm_runtime import application_relational_namespace as namespace_helper
+
+    original = namespace_helper._exclusive_file
 
     def partial(path, *a, **kw):
         if path.name == policy_helper.POLICY_NAME:
             raise OSError("Policy publication interrupted")
         return original(path, *a, **kw)
 
-    monkeypatch.setattr(policy_helper, "_exclusive_file", partial)
+    monkeypatch.setattr(namespace_helper, "_exclusive_file", partial)
     with pytest.raises(boot_helper.RelationalBootEnableError):
         enable_boot(state, ticket)
     assert (state.instance / policy_helper.REQUIRED_NAME).is_file()
@@ -663,10 +665,9 @@ def test_actual_nonroot_core_server_admits_actual_nonroot_host_without_root_fall
         launch = (
             "import os,sys,time;sys.path.insert(0," + repr(str(source)) + ");"
             "assert os.geteuid()==1202 and os.getegid()==1203;"
-            'import threading;exec("def startup_trace(frame,event,arg):\\n'
-            " if event=='exception' and frame.f_code.co_filename.endswith('application_relational_startup.py'):\\n"
-            "  sys.stderr.write('startup:'+str(frame.f_lineno)+':'+arg[0].__name__+'\\\\n')\\n"
-            ' return startup_trace\\n");threading.settrace(startup_trace);'
+            # Publish readiness after the Core admission imports finish.
+            "from backend.services import application_relational_startup;"
+            "from backend.services.application_connector_transport import ConnectorDispatch;"
             "from pathlib import Path;from backend.services.application_platform import ApplicationPlatformServer;"
             "server=ApplicationPlatformServer(Path("
             + repr(str(state.server.socket_path))

@@ -5,6 +5,8 @@ import io
 import json
 import os
 import zipfile
+import socket
+import time
 
 import pytest
 from sqlalchemy import delete, select, update
@@ -76,11 +78,24 @@ def events(core_installed, tmp_path, monkeypatch):
             with s.keys.locked(), Session(s.engine) as observer:
                 delivery = observer.scalar(select(ApplicationEventDelivery).where(
                     ApplicationEventDelivery.subscription_id == 'changes'))
-                assert delivery.attempts >= 1 and delivery.status == 'pending'
+                assert delivery.attempts >= 1 and delivery.status == 'delivering'
             s.calls.append((operation_id, payload, context))
             return {}
 
     monkeypatch.setattr(gateway, 'ApplicationServiceClient', Client)
+    def send(prepared,request_id):
+        from three_mm_runtime.application_transport import sign_message,send_message
+        left,right=socket.socketpair()
+        try:
+            result=gateway.ApplicationServiceClient(prepared.socket_path,prepared.secret,prepared.timeout_seconds).invoke(
+                prepared.operation_id,prepared.payload,prepared.context)
+            send_message(right,sign_message({'version':1,'request_id':request_id,'timestamp':int(time.time()),
+                'ok':True,'result':result},prepared.secret))
+        except ApplicationTransportError:pass  # EOF represents a lost response.
+        finally:right.close()
+        return left
+    s.event_sender=broker._send_event_invocation
+    monkeypatch.setattr(broker,'_send_event_invocation',send)
     return s
 
 
@@ -111,11 +126,14 @@ def event(s, *, event_type='device.changed.v1', capability='gpio.digital.control
 def deliver(s, identifier):
     with Session(s.engine) as db:
         broker.enqueue_application_event(db, db.get(DeviceEvent, identifier), s.settings)
+        from backend.tests.test_application_events import pump
+        pump(db,s.settings)
 
 
 def retry(s):
     with Session(s.engine) as db:
-        broker.retry_application_events(db, s.settings)
+        from backend.tests.test_application_events import pump
+        pump(db,s.settings,force=True)
 
 
 def test_event_review_is_exact_redacted_and_approval_is_not_apply(events):

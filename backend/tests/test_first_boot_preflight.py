@@ -53,6 +53,24 @@ def test_version_parser_accepts_prefixed_versions() -> None:
     assert _version_numbers("unknown") == ()
 
 
+def test_host_managed_preflight_never_requires_or_probes_network_manager():
+    def runner(command):
+        assert "nmcli" not in command and "NetworkManager.service" not in command
+        return _runner(command)
+
+    checks = run_preflight(command_lookup=_lookup, runner=runner, system_name="Linux",
+        machine="x86_64", python_version=(3, 13), python_executable="/usr/bin/python3")
+    assert all(check.passed for check in checks)
+    assert not any("network-manager" in check.name or "nmcli" in check.name for check in checks)
+
+
+def test_selected_network_manager_requires_its_adapter_before_activation():
+    checks = run_preflight(command_lookup=_lookup, runner=_runner, system_name="Linux",
+        machine="x86_64", python_version=(3, 13), python_executable="/usr/bin/python3",
+        network_backend="network-manager")
+    assert not next(check for check in checks if check.name == "command.nmcli").passed
+
+
 def test_baseline_host_and_complete_release_are_ready(tmp_path: Path) -> None:
     _complete_release(tmp_path)
 

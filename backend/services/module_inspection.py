@@ -39,7 +39,7 @@ class PackageInspectionResponse(BaseModel):
     sha256: str
     size_bytes: int
     package_kind: Literal[
-        "module", "agent_module", "application", "runtime_ui", "compiled_ui", "theme"
+        "module", "agent_module", "application", "runtime_ui", "compiled_ui", "theme", "language"
     ]
     manifest: ModuleManifestV2
     descriptors: dict[str, dict]
@@ -65,12 +65,15 @@ def describe_module_package(
             ("compiled_ui", package.compiled_ui),
             ("application_extension", package.application_extension),
             ("theme_extension", package.theme_extension),
+            ("language_extension", package.language_extension),
         )
         if descriptor is not None
     }
     kind = "module"
     if package.application_extension is not None:
         kind = "application"
+    elif package.language_extension is not None:
+        kind = "language"
     elif package.theme_extension is not None:
         kind = "theme"
     elif package.runtime_extension is not None:

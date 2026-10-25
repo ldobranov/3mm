@@ -189,3 +189,39 @@ def test_support_requires_safe_pin_but_allows_explicit_unconfigured_state(signed
     def invalid(): raise NodeUpdateError("invalid_trust", "bad pin")
     monkeypatch.setattr(module, "read_node_update_trust", invalid)
     assert helper.handle_request({"action": "support"}, peer_uid=1000) == {"ok": False, "error": "invalid_trust"}
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX operation store lock")
+@pytest.mark.parametrize("pin_state,expected", [("missing", "hub_trust_missing"), ("invalid", "invalid_trust")])
+def test_launched_module_copy_bounds_trust_failures_and_handles_next_request(signed, monkeypatch, pin_state, expected):
+    import runpy
+    import warnings
+    valid_pin = signed[2].read_bytes()
+    if pin_state == "missing":
+        signed[2].unlink()
+    else:
+        signed[2].write_text("{}")
+    read_trust = module.read_node_update_trust
+    monkeypatch.setattr(module, "read_node_update_trust", lambda *a, **kw:
+                        read_trust(signed[2], enforce_permissions=False))
+    # -m runs the helper in another module namespace. Its exceptions must still
+    # match the trust verifier's imported definitions, including on the next RPC.
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*found in sys.modules.*", category=RuntimeWarning)
+        launched = runpy.run_module("three_mm_runtime.node_update_helper", run_name="_node_update_launch_copy")
+    store = NodeUpdateStore(signed[3] / "launch-state", enforce_permissions=False)
+    class Scheduler:
+        def schedule(self, operation_id): pytest.fail("Untrusted update reached scheduler")
+    helper = launched["NodeUpdateHelper"](store, service_uid=1000, scheduler=Scheduler(),
+        validator=lambda _: pytest.fail("Untrusted update reached archive validation"))
+    support = helper.handle_request({"action": "support"}, peer_uid=1000)
+    if pin_state == "missing":
+        assert support["ok"] is True and support["support"]["approval_key_id"] is None
+    else:
+        assert support == {"ok": False, "error": expected}
+    assert helper.handle_request({"action": "apply", "request": signed[1].model_dump(mode="json")},
+                                 peer_uid=1000) == {"ok": False, "error": expected}
+    assert helper.handle_request({"action": "status"}, peer_uid=1000) == {"ok": True, "operation": None}
+    assert store.records() == []
+    signed[2].write_bytes(valid_pin)
+    assert helper.handle_request({"action": "support"}, peer_uid=1000)["support"]["approval_key_id"] == signed[0].key_id

@@ -1,0 +1,10 @@
+pydantic==2.13.4
+pydantic_core==2.46.4
+annotated_types==0.8.0
+typing_extensions==4.16.0
+typing_inspection==0.4.4
+requests==2.34.2
+charset_normalizer==3.5.2
+idna==3.20
+urllib3==2.8.0
+certifi==2026.10.19

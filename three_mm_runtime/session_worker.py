@@ -99,17 +99,23 @@ def verify_sandbox():
     require_isolated_session_process()
 
 
-async def serve(reader, writer, *, cgroup=None):
-    """Internal bounded IPC. No retries, queues of input, or reconnect semantics."""
-    provider = None
+async def serve_provider_calls(reader, writer, provider, context, *, ready,
+                               idle_timeout=None, check_current=None):
+    """One admitted SDK provider, no selection, authentication or process launch.
+
+    Remote callers must establish the authenticated channel first. A successful
+    close response follows the supplied platform provider's cleanup proof.
+    """
     reading = None
     read_reply_started = False
-    session_id = None
+    session_id = context["session_id"]
     send_lock = asyncio.Lock()
     remainder = b""
 
     async def send(value):
         async with send_lock:
+            if check_current is not None and check_current() is not True:
+                raise ValueError("Session execution identity changed")
             await write_packet(writer, value)
 
     async def reply_read(call_id):
@@ -122,6 +128,8 @@ async def serve(reader, writer, *, cgroup=None):
         if data is not None:
             data, remainder = data[:MAX_DATA], data[MAX_DATA:]
         async with send_lock:
+            if check_current is not None and check_current() is not True:
+                raise ValueError("Session execution identity changed")
             # The peer may receive this packet and send its next read before
             # drain() resumes here. A still-running task is not a duplicate read.
             read_reply_started = True
@@ -133,6 +141,99 @@ async def serve(reader, writer, *, cgroup=None):
                 },
             )
 
+    try:
+        await send(ready)
+        last_id = 0
+        while True:
+            call = await read_packet(reader) if idle_timeout is None else await asyncio.wait_for(read_packet(reader), idle_timeout)
+            if check_current is not None and check_current() is not True:
+                raise ValueError("Session execution identity changed")
+            call_id, op = call.get("id"), call.get("op")
+            if (
+                type(call_id) is not int
+                or call_id != last_id + 1
+                or call_id > 65536
+            ):
+                raise ValueError("Invalid session IPC sequence")
+            last_id = call_id
+            if reading is not None and reading.done():
+                await reading
+                reading = None
+            if op == "read" and set(call) == {"id", "op"}:
+                if reading is not None:
+                    if not read_reply_started:
+                        raise ValueError("Session read is already pending")
+                    # Finish the prior send within its existing bound;
+                    # never start concurrent provider reads or queue them.
+                    await asyncio.wait_for(asyncio.shield(reading), 5)
+                read_reply_started = False
+                reading = asyncio.create_task(reply_read(call_id))
+                # Consume failures even while awaiting the next request.
+                reading.add_done_callback(
+                    lambda task: (
+                        writer.close()
+                        if not task.cancelled() and task.exception()
+                        else None
+                    )
+                )
+                continue
+            if op == "lease" and idle_timeout is not None and set(call) == {"id", "op"}:
+                await send({"id": call_id, "ok": True})
+                continue
+            if op == "input" and set(call) == {"id", "op", "data"}:
+                data = base64.b64decode(call["data"], validate=True)
+                if (
+                    not 1 <= len(data) <= MAX_DATA
+                    or context["access_mode"] != "write"
+                ):
+                    raise ValueError("Invalid session input")
+                result = await asyncio.wait_for(
+                    provider.receive(session_id, data), 5
+                )
+                if type(result) is not bytes or len(result) > MAX_DATA:
+                    raise ValueError("Invalid session response")
+                await send(
+                    {"id": call_id, "data": base64.b64encode(result).decode()}
+                )
+            elif op == "control" and set(call) == {"id", "op", "message"}:
+                message = call["message"]
+                if (
+                    type(message) is not dict
+                    or set(message) != {"action", "arguments"}
+                    or message["action"] not in provider.control_actions
+                ):
+                    raise ValueError("Invalid session control")
+                await asyncio.wait_for(provider.control(session_id, message), 5)
+                await send({"id": call_id, "ok": True})
+            elif op == "close" and set(call) == {"id", "op"}:
+                if reading is not None:
+                    reading.cancel()
+                    await asyncio.gather(reading, return_exceptions=True)
+                await asyncio.wait_for(
+                    provider.close(session_id, "core_closed"), 4
+                )
+                provider = None
+                await send({"id": call_id, "closed": True})
+                return
+            else:
+                raise ValueError("Unsupported session IPC operation")
+    finally:
+        if reading is not None:
+            reading.cancel()
+            await asyncio.gather(reading, return_exceptions=True)
+        if provider is not None:
+            await asyncio.wait_for(provider.close(session_id, "link_closed"), 4)
+        writer.close()
+        try:
+            await asyncio.wait_for(writer.wait_closed(), 2)
+        except (OSError, ConnectionError, TimeoutError):
+            pass  # The platform provider already decided cleanup, not TLS EOF.
+
+
+async def serve(reader, writer, *, cgroup=None):
+    """Internal bounded IPC. No retries, queues of input, or reconnect semantics."""
+    provider = None
+    session_id = None
     try:
         hello = await asyncio.wait_for(read_packet(reader), 5)
         if (
@@ -195,84 +296,16 @@ async def serve(reader, writer, *, cgroup=None):
                 ):
                     raise ValueError("Session provider differs from declaration")
                 await asyncio.wait_for(provider.open(context), 5)
-                await send({"ready": True, "cgroup": cgroup})
-                last_id = 0
-                while True:
-                    call = await read_packet(reader)
-                    call_id, op = call.get("id"), call.get("op")
-                    if (
-                        type(call_id) is not int
-                        or call_id != last_id + 1
-                        or call_id > 65536
-                    ):
-                        raise ValueError("Invalid session IPC sequence")
-                    last_id = call_id
-                    if reading is not None and reading.done():
-                        await reading
-                        reading = None
-                    if op == "read" and set(call) == {"id", "op"}:
-                        if reading is not None:
-                            if not read_reply_started:
-                                raise ValueError("Session read is already pending")
-                            # Finish the prior send within its existing bound;
-                            # never start concurrent provider reads or queue them.
-                            await asyncio.wait_for(asyncio.shield(reading), 5)
-                        read_reply_started = False
-                        reading = asyncio.create_task(reply_read(call_id))
-                        # Consume failures even while awaiting the next request.
-                        reading.add_done_callback(
-                            lambda task: (
-                                writer.close()
-                                if not task.cancelled() and task.exception()
-                                else None
-                            )
-                        )
-                        continue
-                    if op == "input" and set(call) == {"id", "op", "data"}:
-                        data = base64.b64decode(call["data"], validate=True)
-                        if (
-                            not 1 <= len(data) <= MAX_DATA
-                            or context["access_mode"] != "write"
-                        ):
-                            raise ValueError("Invalid session input")
-                        result = await asyncio.wait_for(
-                            provider.receive(session_id, data), 5
-                        )
-                        if type(result) is not bytes or len(result) > MAX_DATA:
-                            raise ValueError("Invalid session response")
-                        await send(
-                            {"id": call_id, "data": base64.b64encode(result).decode()}
-                        )
-                    elif op == "control" and set(call) == {"id", "op", "message"}:
-                        message = call["message"]
-                        if (
-                            type(message) is not dict
-                            or set(message) != {"action", "arguments"}
-                            or message["action"] not in provider.control_actions
-                        ):
-                            raise ValueError("Invalid session control")
-                        await asyncio.wait_for(provider.control(session_id, message), 5)
-                        await send({"id": call_id, "ok": True})
-                    elif op == "close" and set(call) == {"id", "op"}:
-                        if reading is not None:
-                            reading.cancel()
-                            await asyncio.gather(reading, return_exceptions=True)
-                        await asyncio.wait_for(
-                            provider.close(session_id, "core_closed"), 4
-                        )
-                        provider = None
-                        await send({"id": call_id, "closed": True})
-                        return
-                    else:
-                        raise ValueError("Unsupported session IPC operation")
+                owned, provider = provider, None
+                await serve_provider_calls(
+                    reader, writer, owned, context,
+                    ready={"ready": True, "cgroup": cgroup},
+                )
             finally:
                 sys.path.remove(str(wheel))
     finally:
-        if reading is not None:
-            reading.cancel()
-            await asyncio.gather(reading, return_exceptions=True)
         if provider is not None:
-            await asyncio.wait_for(provider.close(session_id, "link_closed"), 4)
+            await asyncio.wait_for(provider.close(session_id, "bootstrap_failed"), 4)
         writer.close()
         await writer.wait_closed()
 

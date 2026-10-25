@@ -19,11 +19,6 @@ from three_mm_application_sdk.relational_wire import (
     canonical,
     verify_metadata,
 )
-from three_mm_runtime.application_activation import _write_atomic
-from three_mm_runtime.application_relational_namespace import (
-    _exclusive_file,
-    _sync_directory,
-)
 from three_mm_runtime.application_relational_session import (
     _decode,
     _protected_directory,
@@ -119,6 +114,7 @@ def read_boot_policy(instance, secret, *, confirmed=True):
 def publish_pending_boot(instance, ticket, secret):
     if os.name != "posix" or os.geteuid() != 0:
         raise ValueError("Protected boot publisher required")
+    from three_mm_runtime.application_relational_namespace import _exclusive_file
     instance = Path(instance)
     _protected_directory(instance)
     ticket = _RelationalBootEnableTicket.model_validate(ticket).model_dump(mode="json")
@@ -142,6 +138,8 @@ def confirm_boot_policy(instance, ticket, receipt, secret):
     if os.name != "posix" or os.geteuid() != 0:
         raise ValueError("Protected boot publisher required")
     instance = Path(instance)
+    from three_mm_runtime.application_activation import _write_atomic
+    from three_mm_runtime.application_relational_namespace import _sync_directory
     pending = read_boot_policy(instance, secret, confirmed=False)
     if pending["phase"] != "boot_pending" or pending["ticket"] != ticket:
         raise ValueError("Boot pending publication changed")
@@ -167,6 +165,7 @@ def archive_stopped_boot(instance, state_root, stop_ticket, secret):
         return
     if os.geteuid() != 0:
         raise ValueError("Protected boot recovery required")
+    from three_mm_runtime.application_relational_namespace import _exclusive_file, _sync_directory
     ticket = _required(instance, secret)
     if (
         ticket["source_activation_id"] != stop_ticket["source_activation_id"]

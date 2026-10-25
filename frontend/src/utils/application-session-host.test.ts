@@ -127,3 +127,69 @@ it('does not call unconfirmed server cleanup a successful disconnect', async () 
   host.socket.onclose?.({ code: 1008 })
   await close; host.dispose()
 })
+
+
+it('bounds a cold opening at two minutes, fences the page and never retries it', async () => {
+  vi.useFakeTimers()
+  const host = make(), task = host.sessions.open(request)
+  let settled = false
+  const result = task.then(() => ({ code: 'opened' }), error => ({ code: error.code }))
+  void result.then(() => { settled = true })
+  await vi.advanceTimersByTimeAsync(0)
+  expect(Socket.instances).toHaveLength(1)
+  const socket = Socket.instances[0]!
+  socket.onopen?.()
+  await vi.advanceTimersByTimeAsync(10_000)
+  expect(settled).toBe(false)
+  expect(socket.close).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(109_999)
+  expect(settled).toBe(false)
+  await vi.advanceTimersByTimeAsync(1)
+  expect(await result).toEqual({ code: 'unconfirmed' })
+  expect(socket.close).toHaveBeenCalledOnce()
+  expect(socket.sent).toEqual([JSON.stringify({ op: 'authenticate', ticket: 't'.repeat(43) })])
+  socket.receive(JSON.stringify({ op: 'opened', acceptance: { ...request, session_id: SESSION, state: 'active' } }))
+  await expect(host.sessions.open({ ...request, request_id: 'fresh_after_timeout' })).rejects.toMatchObject({ code: 'unconfirmed' })
+  expect(Socket.instances).toHaveLength(1)
+  expect(send).toHaveBeenCalledTimes(2)
+  host.dispose()
+})
+
+it('accepts a slow cold opening before the deadline and clears only its opening timer', async () => {
+  vi.useFakeTimers()
+  const host = make(), task = host.sessions.open(request)
+  await vi.advanceTimersByTimeAsync(0)
+  const socket = Socket.instances[0]!
+  socket.onopen?.()
+  await vi.advanceTimersByTimeAsync(119_000)
+  socket.receive(JSON.stringify({ op: 'opened', acceptance: { ...request, session_id: SESSION, state: 'active' } }))
+  expect((await task).session_id).toBe(SESSION)
+  await vi.advanceTimersByTimeAsync(2_000)
+  expect(socket.close).not.toHaveBeenCalled()
+  expect(Socket.instances).toHaveLength(1)
+  host.dispose()
+})
+
+it.each(['input', 'control', 'close'])('keeps the %s acknowledgment deadline at ten seconds', async action => {
+  vi.useFakeTimers()
+  const host = await opened()
+  const operation = action === 'input'
+    ? host.sessions.sendData(SESSION, new Uint8Array([1]))
+    : action === 'control'
+      ? host.sessions.control({ session_id: SESSION, control_id: 'resize_1', action: 'resize', arguments: { cols: 99, rows: 31 } })
+      : host.sessions.close(SESSION)
+  let settled = false
+  const result = operation.then(() => ({ code: 'acknowledged' }), error => ({ code: error.code }))
+  void result.then(() => { settled = true })
+  await vi.advanceTimersByTimeAsync(0)
+  const sentOnce = host.socket.sent.length
+  await vi.advanceTimersByTimeAsync(9_999)
+  expect(settled).toBe(false)
+  expect(host.socket.close).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(1)
+  expect(await result).toEqual({ code: 'unconfirmed' })
+  expect(host.socket.close).toHaveBeenCalledOnce()
+  expect(host.socket.sent).toHaveLength(sentOnce)
+  expect(Socket.instances).toHaveLength(1)
+  host.dispose()
+})

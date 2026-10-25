@@ -20,7 +20,6 @@ SUPPORTED_RASPBERRY_ARCHITECTURES = frozenset({"aarch64", "armv7l", "x86_64"})
 REQUIRED_COMMANDS = (
     "bash",
     "flock",
-    "nmcli",
     "node",
     "npm",
     "python3",
@@ -42,6 +41,7 @@ REQUIRED_RELEASE_FILES = (
     "deployment/systemd/3mm-network-helper.service",
     "deployment/systemd/3mm-setup-ap.service",
     "deployment/systemd/3mm-setup.service",
+    "deployment/systemd/3mm-setup-local.service",
     "deployment/systemd/3mm-update-helper.service",
     "deployment/systemd/3mm-web.service",
     "deployment/update-dependency-allowlist.json",
@@ -97,9 +97,12 @@ def inspect_host(
     machine: str | None = None,
     python_version: tuple[int, ...] | None = None,
     python_executable: str | None = None,
+    network_backend: str = "host",
 ) -> list[PreflightCheck]:
     """Inspect the host without changing packages, services or networking."""
     checks: list[PreflightCheck] = []
+    if network_backend not in {"host", "network-manager"}:
+        raise ValueError("Unsupported network backend")
     resolved_system = system_name or platform.system()
     resolved_machine = (machine or platform.machine()).lower()
     resolved_python = python_version or tuple(sys.version_info[:3])
@@ -128,7 +131,7 @@ def inspect_host(
     )
 
     commands: dict[str, str | None] = {}
-    for command in REQUIRED_COMMANDS:
+    for command in (*REQUIRED_COMMANDS, *(("nmcli",) if network_backend == "network-manager" else ())):
         commands[command] = command_lookup(command)
         checks.append(
             PreflightCheck(
@@ -173,7 +176,7 @@ def inspect_host(
             )
         )
 
-    if commands["systemctl"] is not None:
+    if network_backend == "network-manager" and commands["systemctl"] is not None:
         manager_ok, manager_output = _command_output(
             ["systemctl", "is-active", "NetworkManager.service"], runner
         )
@@ -185,26 +188,16 @@ def inspect_host(
             )
         )
 
-    if commands["nmcli"] is not None:
+    if network_backend == "network-manager" and commands["nmcli"] is not None:
         wifi_ok, wifi_output = _command_output(
             ["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"],
             runner,
         )
-        wlan0_state = next(
-            (
-                line.split(":", 2)[2]
-                for line in wifi_output.splitlines()
-                if line.startswith("wlan0:wifi:")
-            ),
-            None,
-        )
         checks.append(
             PreflightCheck(
-                "network.wlan0",
-                wifi_ok and (wlan0_state is not None or not any(
-                    ":wifi:" in line for line in wifi_output.splitlines()
-                )),
-                wlan0_state or "wired-only host; Standalone initialization without Setup AP",
+                "network.devices",
+                wifi_ok,
+                "Managed adapters are discovered at setup; without a usable adapter the LAN portal remains available",
             )
         )
 
@@ -249,6 +242,7 @@ def run_preflight(
     machine: str | None = None,
     python_version: tuple[int, ...] | None = None,
     python_executable: str | None = None,
+    network_backend: str = "host",
 ) -> list[PreflightCheck]:
     checks = inspect_host(
         command_lookup=command_lookup,
@@ -257,6 +251,7 @@ def run_preflight(
         machine=machine,
         python_version=python_version,
         python_executable=python_executable,
+        network_backend=network_backend,
     )
     if release_root is not None:
         checks.extend(inspect_release(release_root))
@@ -265,6 +260,7 @@ def run_preflight(
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--network-backend", choices=("host", "network-manager"), default="host")
     parser.add_argument(
         "--release-root",
         type=Path,
@@ -275,7 +271,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     arguments = _parser().parse_args()
-    checks = run_preflight(release_root=arguments.release_root)
+    checks = run_preflight(release_root=arguments.release_root, network_backend=arguments.network_backend)
     for check in checks:
         status = "PASS" if check.passed else "FAIL"
         print(f"{status} {check.name}: {check.detail}")

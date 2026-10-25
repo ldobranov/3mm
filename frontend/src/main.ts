@@ -7,8 +7,7 @@ import 'bootstrap/js/dist/collapse';
 // import '@/assets/tailwind.css';
 
 import { initAuthLifecycle } from '@/utils/auth';
-import { initializeI18n, i18n } from '@/utils/i18n';
-import { extensionRelationships } from '@/utils/extension-relationships';
+import { initializeI18n } from '@/utils/i18n';
 import { createRouterWithDynamicRoutes } from '@/router';
 import { reloadRuntimeExtensionRoutes } from '@/utils/runtime-extensions';
 
@@ -22,9 +21,6 @@ async function bootstrap() {
   // Initialize i18n system FIRST (before router) to ensure language is set early
   await initializeI18n();
 
-  // Initialize extension relationships system
-  await extensionRelationships.initialize();
-
   const router = await createRouterWithDynamicRoutes();
   app.use(router);
 
@@ -32,9 +28,6 @@ async function bootstrap() {
 
   // Start auth lifecycle (activity-aware refresh + auto-logout on expiry)
   initAuthLifecycle();
-
-  // All discovery consumers share the public catalog loaded during bootstrap.
-  await i18n.loadExtensionTranslationsForEnabledExtensions();
 
   app.mount('#app');
 }

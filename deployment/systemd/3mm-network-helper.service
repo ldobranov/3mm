@@ -1,7 +1,6 @@
 [Unit]
 Description=3mm privileged NetworkManager helper
 After=NetworkManager.service
-Requires=NetworkManager.service
 
 [Service]
 Type=simple
@@ -9,12 +8,15 @@ User=root
 Group=3mm
 WorkingDirectory=/opt/3mm/current
 Environment=PYTHONPATH=/opt/3mm/current
+EnvironmentFile=-/etc/3mm/3mm.env
 ExecStart=/opt/3mm/current/.venv/bin/python -m three_mm_provisioning.network_helper --socket /run/3mm/network-helper.sock --group 3mm
 Restart=on-failure
 RestartSec=5s
 RuntimeDirectory=3mm
 RuntimeDirectoryMode=0750
 RuntimeDirectoryPreserve=yes
+StateDirectory=3mm-setup-helper
+StateDirectoryMode=0700
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

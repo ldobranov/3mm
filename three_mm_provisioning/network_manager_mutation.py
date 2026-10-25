@@ -108,6 +108,7 @@ class NetworkManagerMutationBoundary:
         self,
         delay_seconds: int = 3,
         unit_name: str = "3mm-runtime-activation",
+        recovery: bool = False,
     ) -> None:
         if delay_seconds < 1:
             raise ValueError("Runtime activation delay must be positive")
@@ -122,11 +123,14 @@ class NetworkManagerMutationBoundary:
             f"--unit={unit_name}",
             f"--on-active={delay_seconds}s",
             "--collect",
+            "--property=EnvironmentFile=-/etc/3mm/3mm.env",
+            "--property=OnFailure=3mm-network-helper.service 3mm-setup-local.service",
             "/usr/bin/env",
             "PYTHONPATH=/opt/3mm/current",
             self._python,
             "-m",
             "three_mm_runtime.activate",
+            *( ("--no-bootstrap-agent",) if recovery else () ),
         )
 
     def connect_temporary_wifi(
@@ -186,6 +190,7 @@ class NetworkManagerMutationBoundary:
         connection_name: str,
         network_name: str,
         passphrase: str,
+        autoconnect: bool = True,
     ) -> None:
         """Create and activate a system profile whose secret NetworkManager owns."""
         self._run(
@@ -199,7 +204,7 @@ class NetworkManagerMutationBoundary:
             "con-name",
             connection_name,
             "autoconnect",
-            "yes",
+            "yes" if autoconnect else "no",
             "ssid",
             network_name,
         )
@@ -243,6 +248,38 @@ class NetworkManagerMutationBoundary:
         if result.return_code != 0:
             return None
         return result.standard_output.strip() or None
+
+    def has_local_address(self, interface: str) -> bool:
+        import ipaddress
+        result = self._run(self._nmcli, "-g", "IP4.ADDRESS,IP6.ADDRESS", "device", "show", interface)
+        for line in result.standard_output.splitlines():
+            try:
+                address = ipaddress.ip_interface(line.strip()).ip
+                if not address.is_loopback and not address.is_link_local and not address.is_unspecified:
+                    return True
+            except ValueError:
+                continue
+        return False
+
+    def set_autoconnect(self, connection_uuid: str, enabled: bool) -> None:
+        self._run(self._nmcli, "connection", "modify", "uuid", connection_uuid,
+                  "connection.autoconnect", "yes" if enabled else "no")
+
+    def schedule_setup_rollback(self, identifier: str, delay_seconds: int = 120) -> None:
+        self._run(self._systemd_run, f"--unit=3mm-setup-rollback-{identifier}",
+                  f"--on-active={delay_seconds}s", "--collect", "/usr/bin/env",
+                  "PYTHONPATH=/opt/3mm/current", self._python, "-m",
+                  "three_mm_provisioning.network_transaction", "--rollback", identifier)
+
+    def schedule_access_point_stop(self, identifier: str, delay_seconds: int) -> None:
+        from three_mm_provisioning.network_transaction import IDENTIFIER
+        if not IDENTIFIER.fullmatch(identifier) or not 60 <= delay_seconds <= 900:
+            raise ValueError("Invalid AP rollback request")
+        self._run(self._systemd_run, f"--unit=3mm-access-point-expire-{identifier}",
+                  f"--on-active={delay_seconds}s", "--collect",
+                  "--property=EnvironmentFile=-/etc/3mm/3mm.env", "/usr/bin/env",
+                  "PYTHONPATH=/opt/3mm/current", self._python, "-m",
+                  "three_mm_provisioning.recovery_access_point", "stop", "--id", identifier)
 
     def delete_connection(self, connection_uuid: str) -> None:
         self._run(
@@ -322,6 +359,8 @@ class NetworkManagerMutationBoundary:
         interface: str,
         connection_name: str,
         network_name: str,
+        connection_uuid: str | None = None,
+        ipv4_address: str | None = None,
     ) -> None:
         self._run(
             self._nmcli,
@@ -337,6 +376,7 @@ class NetworkManagerMutationBoundary:
             "no",
             "ssid",
             network_name,
+            *(("connection.uuid", connection_uuid) if connection_uuid else ()),
         )
         self._run(
             self._nmcli,
@@ -350,6 +390,9 @@ class NetworkManagerMutationBoundary:
             "ipv6.method",
             "disabled",
         )
+        if ipv4_address:
+            self._run(self._nmcli, "connection", "modify", connection_name,
+                      "ipv4.addresses", ipv4_address)
         self._run(
             self._nmcli,
             "connection",

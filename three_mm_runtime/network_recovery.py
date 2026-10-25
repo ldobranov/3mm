@@ -1,4 +1,4 @@
-"""Automatic link-loss monitoring and fixed setup-runtime activation worker."""
+"""Link-loss monitoring and local recovery alongside the configured workloads."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from three_mm_provisioning import (
     ProvisioningState,
 )
 from three_mm_provisioning.network_recovery import RecoveryTrigger
+from three_mm_provisioning.models import NetworkMode
 
 
 class NetworkSetupScheduler(Protocol):
@@ -69,6 +70,7 @@ class NetworkRecoveryMonitor:
             or marker_active
             or snapshot is None
             or snapshot.state is not ProvisioningState.PROVISIONED
+            or snapshot.network_mode is not NetworkMode.WIFI
         ):
             self._reset()
             return False
@@ -114,7 +116,7 @@ def activate_setup_runtime(
     service_group: str,
     mutation_lock: Path = Path("/run/lock/3mm-release-mutation.lock"),
 ) -> None:
-    """Set the recovery marker and atomically ask the runtime planner for setup."""
+    """Request local recovery while preserving the configured application plan."""
 
     import fcntl
     import grp
@@ -133,13 +135,17 @@ def activate_setup_runtime(
             pwd.getpwnam(service_user).pw_uid,
             grp.getgrnam(service_group).gr_gid,
         )
-        marker.activate(trigger, owner=owner)
+        newly_activated = not marker.is_active()
+        if newly_activated:
+            marker.activate(trigger, owner=owner)
         try:
-            activate(data_dir)
+            activate(data_dir, bootstrap_agent=False)
         except Exception:
+            if not newly_activated:
+                raise  # Preserve a previous recovery request on a failed retry.
             marker.clear()
             try:
-                activate(data_dir)
+                activate(data_dir, bootstrap_agent=False)
             except Exception:
                 pass
             raise

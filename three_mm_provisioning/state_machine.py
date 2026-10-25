@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from three_mm_protocol import AgentRole
 from three_mm_provisioning.models import (
+    NetworkMode,
     ProvisioningRequest,
     ProvisioningResult,
     ProvisioningState,
@@ -54,6 +55,10 @@ class ProvisioningStateMachine:
     def provision(self, request: ProvisioningRequest) -> ProvisioningResult:
         if self._state is not ProvisioningState.SETUP:
             raise RuntimeError("Provisioning requires setup mode")
+        if request.network_mode is not NetworkMode.WIFI:
+            self._role = request.role
+            self._transition(ProvisioningState.PROVISIONED)
+            return self._result()
 
         try:
             self._transition(ProvisioningState.APPLYING_NETWORK)

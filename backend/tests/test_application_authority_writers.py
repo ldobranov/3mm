@@ -1,3 +1,4 @@
+from backend.tests.connector_helpers import execute_connector_request
 """Bounded M20 management writers; no grant issuer or effect-admission claim."""
 
 from dataclasses import replace
@@ -27,7 +28,6 @@ from backend.db.user import User
 from backend.routes.application_operations import router, _authority_write
 from backend.services.application_connectors import (
     bind_application_connector,
-    execute_connector_request,
     prepare_application_connector_binding,
 )
 from backend.services.application_secrets import (

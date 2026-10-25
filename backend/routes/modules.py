@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import json
+import re
 import shutil
 import zipfile
 import zlib
@@ -10,7 +11,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -50,6 +51,7 @@ from backend.services.application_access import (
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from three_mm_protocol.device_inventory import inventory_value
+from three_mm_protocol.module_manifest import MODULE_ID_PATTERN, SEMVER_PATTERN
 from backend.routes.theme_extensions import router as theme_extensions_router
 
 router=APIRouter(prefix="/api/v1/modules",tags=["modules"])
@@ -298,6 +300,36 @@ def compiled_ui_catalog(
     }
 
 
+def _retired_package_paths(package: ModulePackage) -> tuple[Path, Path]:
+    """Retire only catalog-owned paths; obsolete payloads need not execute/parse."""
+    if any(type(value) is not str or re.fullmatch(pattern, value) is None
+           for value, pattern in ((package.module_id, MODULE_ID_PATTERN),
+                                  (package.version, SEMVER_PATTERN),
+                                  (package.sha256, r"[0-9a-f]{64}"))):
+        raise HTTPException(409, "Package catalog identity is invalid")
+    try:
+        uploads = get_settings().backend.uploads_dir.resolve()
+        archive = uploads / "modules" / f"{package.sha256}.zip"
+        artifacts = compiled_artifacts_dir().resolve()
+        artifact = artifacts / package.module_id / package.version / package.sha256
+        if Path(package.file_path) != archive:
+            raise ValueError("Unmanaged package archive")
+        # Configured roots may resolve through deployment links; descendants
+        # must remain their exact managed identities, including missing files.
+        for path in (archive.parent, archive, artifacts / package.module_id,
+                     artifact.parent, artifact):
+            if path.is_symlink() or path.resolve() != path:
+                raise ValueError("Linked package retirement path")
+        for path in (archive.parent, artifacts / package.module_id, artifact.parent, artifact):
+            if path.exists() and not path.is_dir():
+                raise ValueError("Invalid package artifact directory")
+        if archive.exists() and not archive.is_file():
+            raise ValueError("Invalid package archive file")
+        return archive, artifact
+    except (OSError, ValueError, RuntimeError, TypeError):
+        raise HTTPException(409, "Package cleanup paths are outside the managed catalog or invalid") from None
+
+
 @router.delete("/compiled-ui/packages/{module_id}/{version}")
 def delete_compiled_ui_package(
     module_id: str,
@@ -309,8 +341,12 @@ def delete_compiled_ui_package(
         ModulePackage.module_id == module_id,
         ModulePackage.version == version,
     ))
-    if package is None or (package.manifest.get("entrypoints") or {}).get("ui") != "compiled-ui.json":
-        raise HTTPException(404, "compiled UI package was not found")
+    entrypoints = package.manifest.get("entrypoints") if package is not None and isinstance(package.manifest, dict) else None
+    if not isinstance(entrypoints, dict) or not (
+        entrypoints.get("ui") == "compiled-ui.json"
+        or entrypoints.get("core") == "application-extension.json"
+    ):
+        raise HTTPException(404, "Application or compiled UI package was not found")
     widget_prefix = f"compiled:{module_id}:{version}:"
     referenced = db.scalar(select(Widget.id).where(Widget.type.startswith(widget_prefix)).limit(1))
     if referenced is not None:
@@ -318,23 +354,23 @@ def delete_compiled_ui_package(
     if db.scalar(select(ModuleInstallation.id).where(ModuleInstallation.module_package_id == package.id).limit(1)) is not None:
         raise HTTPException(409, "Uninstall this package from devices before deleting it")
     if db.scalar(
-        select(ApplicationExtensionInstallation.id).where(
-            ApplicationExtensionInstallation.module_package_id == package.id
-        ).limit(1)
+        select(ApplicationExtensionInstallation.id).where(or_(
+            ApplicationExtensionInstallation.module_package_id == package.id,
+            ApplicationExtensionInstallation.previous_package_id == package.id,
+        )).limit(1)
     ) is not None:
         raise HTTPException(409, "Disable and remove this application extension before deleting it")
 
-    validated = _validated_compiled_package(package)
-    artifact_dir = (
-        compiled_artifacts_dir().resolve()
-        / package.module_id / package.version / package.sha256
-    )
-    package_path = Path(package.file_path)
+    package_path, artifact_dir = _retired_package_paths(package)
     db.delete(package)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Package is still referenced; refresh before deleting it") from None
     shutil.rmtree(artifact_dir, ignore_errors=True)
     package_path.unlink(missing_ok=True)
-    return {"status": "deleted", "module_id": validated.manifest.module_id, "version": version}
+    return {"status": "deleted", "module_id": module_id, "version": version}
 
 
 @router.get("/compiled-ui/assets/{module_id}/{version}/{sha256}/{asset_path:path}")

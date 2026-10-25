@@ -133,7 +133,7 @@ class AuthorityPolicy(ContextModel):
     adapter_revision: Revision
     trust_revision: Identity
     execution_profile: Identity
-    execution_class: Literal["reviewed_native", "proven_isolated"]
+    execution_class: Literal["reviewed_native", "administrator_approved_native", "proven_isolated"]
     isolation_proof_revision: Identity | None = None
     allowed_scopes: tuple[PublicationScopeKey, ...] = Field(max_length=128)
     required_scopes: tuple[PublicationScopeKey, ...] = Field(max_length=128)
@@ -1066,6 +1066,23 @@ def _canonical_bytes(value) -> bytes:
     return encoded.encode("ascii")
 
 
+def _command_schema_data(schema):
+    """Copy the bounded command dialect with canonical set order.
+
+    Keep scalar types and exact bounds; this is never a containment proof.
+    Contexts, policy rules and provider comparisons share these semantics.
+    """
+    data = _bounded_json(schema)
+    data["required"] = sorted(data.get("required", []))
+    for prop in data["properties"].values():
+        if "enum" in prop:
+            encoded = [_canonical_bytes(value) for value in prop["enum"]]
+            if len(encoded) != len(set(encoded)):
+                raise ValueError("Duplicate command enum value")
+            prop["enum"].sort(key=_canonical_bytes)
+    return data
+
+
 def _parse_versioned(v1, v2, value, field, v3=None, v4=None, v5=None, v6=None, v7=None, v8=None, v9=None, v10=None):
     # Existing records retain their exact canonical shape/fingerprint. Callers
     # must explicitly opt into each new version; none silently gain authority.
@@ -1106,14 +1123,8 @@ def _context_fingerprint(context, selection):
     data["commands"].sort(key=lambda s: s["declaration"]["binding_id"])
     data["connectors"].sort(key=lambda s: s["declaration"]["connector_id"])
     for command in data["commands"]:
-        schema = command["declaration"]["arguments_schema"]
-        schema["required"] = sorted(schema.get("required", []))
-        for prop in schema["properties"].values():
-            if "enum" in prop:
-                values = sorted(_canonical_bytes(v) for v in prop["enum"])
-                if len(values) != len(set(values)):
-                    raise ValueError("Duplicate command enum value")
-                prop["enum"].sort(key=_canonical_bytes)
+        declaration = command["declaration"]
+        declaration["arguments_schema"] = _command_schema_data(declaration["arguments_schema"])
     for connector in data["connectors"]:
         connector["declaration"]["allowed_schemes"].sort()
     if "events" in data:

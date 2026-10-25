@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import io
 import json
 import os
 import secrets
 import shutil
+import stat
 import subprocess
 import time
 import zipfile
@@ -48,6 +50,9 @@ class ApplicationSupervisor(Protocol):
 
 
 class SystemdApplicationSupervisor:
+    def __init__(self, host_root=Path("/opt/3mm-application-hosts")):
+        self.host_root = host_root
+
     def is_enabled(self, instance_id: str) -> bool:
         unit = f"3mm-application-extension@{instance_id}.service"
         try:
@@ -65,6 +70,10 @@ class SystemdApplicationSupervisor:
         return result.returncode == 0
 
     def _run(self, arguments: list[str], instance_id: str) -> None:
+        _validate_instance_id(instance_id)
+        if arguments and arguments[0] in {"enable", "start", "restart"}:
+            from deployment.application_host_component import bind_instance
+            bind_instance(instance_id, root=self.host_root)
         unit = f"3mm-application-extension@{instance_id}.service"
         try:
             subprocess.run(
@@ -99,14 +108,19 @@ class SystemdApplicationSupervisor:
         except (OSError, subprocess.SubprocessError) as exc:
             raise ApplicationActivationError("Application runtime could not be verified stopped") from exc
         evidence = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
-        if (set(evidence) != {"LoadState", "ActiveState", "SubState", "UnitFileState", "MainPID", "Job"}
-                or evidence["LoadState"] != "loaded"
-                or evidence["ActiveState"] not in {"inactive", "failed"}
-                or evidence["SubState"] not in {"dead", "failed"}
-                or evidence["UnitFileState"] not in {"disabled", "masked"}
-                or evidence["MainPID"] != "0" or evidence["Job"] not in {"", "0"}):
-            raise ApplicationActivationError("Application runtime is not confirmed stopped and disabled")
+        _require_quiescent_evidence(evidence)
         return evidence
+
+
+def _require_quiescent_evidence(evidence):
+    if (type(evidence) is not dict
+            or set(evidence) != {"LoadState", "ActiveState", "SubState", "UnitFileState", "MainPID", "Job"}
+            or evidence["LoadState"] != "loaded"
+            or evidence["ActiveState"] not in {"inactive", "failed"}
+            or evidence["SubState"] not in {"dead", "failed"}
+            or evidence["UnitFileState"] not in {"disabled", "masked"}
+            or evidence["MainPID"] != "0" or evidence["Job"] not in {"", "0"}):
+        raise ApplicationActivationError("Application runtime is not confirmed stopped and disabled")
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,20 +188,70 @@ def erase_application_instance_data(
     root: Path = Path("/var/lib/3mm/application-extensions"),
     supervisor: ApplicationSupervisor | None = None,
 ) -> None:
-    """Permanently erase preserved data for an already uninstalled application."""
+    """Erase only quiescent retained data, with anchored non-following removal."""
     _validate_instance_id(instance_id)
-    selected_supervisor = supervisor or SystemdApplicationSupervisor()
+    if (os.name != "posix" or not getattr(shutil.rmtree, "avoids_symlink_attacks", False)
+            or not hasattr(os, "O_NOFOLLOW") or not root.is_absolute()
+            or ".." in root.parts):
+        raise ApplicationActivationError("Safe application data erasure is unavailable")
+    root = root.absolute()
     instance_root = root / instance_id
+    # Do not resolve a symlink and accidentally turn it into an authorized path.
+    # These fixed host roots and instance containers are not application writable.
+    for path in (*reversed(root.parents), root, instance_root):
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
+            raise ApplicationActivationError("Application data directory is invalid")
     _require_no_pending_rollback(instance_root)
-    if selected_supervisor.is_enabled(instance_id) or (instance_root / "active.json").exists():
-        raise ApplicationActivationError(
-            "Application data cannot be erased while the service is installed"
-        )
-    shutil.rmtree(instance_root / "data", ignore_errors=True)
+    selected_supervisor = supervisor or SystemdApplicationSupervisor()
+    if selected_supervisor.is_enabled(instance_id) or os.path.lexists(instance_root / "active.json"):
+        raise ApplicationActivationError("Application data cannot be erased while the service is installed")
+    verify = getattr(selected_supervisor, "recover_disabled", None)
+    if not callable(verify):
+        raise ApplicationActivationError("Application quiescence verifier is unavailable")
+    # Disabled is only a boot policy: a disabled unit may still be running.
+    _require_quiescent_evidence(verify(instance_id))
+    _require_no_pending_rollback(instance_root)
     try:
-        instance_root.rmdir()
-    except OSError:
-        pass
+        root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return  # No instance/data exists; the runtime was still verified stopped.
+    try:
+        try:
+            instance_fd = os.open(instance_id, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
+        except FileNotFoundError:
+            return
+        try:
+            try:
+                data_info = os.stat("data", dir_fd=instance_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                data_info = None
+            if data_info is not None:
+                if not stat.S_ISDIR(data_info.st_mode) or stat.S_ISLNK(data_info.st_mode):
+                    raise ApplicationActivationError("Application data directory is invalid")
+                shutil.rmtree("data", dir_fd=instance_fd)
+                try:
+                    os.stat("data", dir_fd=instance_fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    pass
+                else:
+                    raise ApplicationActivationError("Application data deletion was not confirmed")
+        finally:
+            os.close(instance_fd)
+        try:
+            os.rmdir(instance_id, dir_fd=root_fd)
+        except OSError as exc:
+            # Non-data metadata/evidence can remain. Never silently hide a
+            # permissions/I/O failure as successful directory removal.
+            if exc.errno not in {errno.ENOTEMPTY, errno.EEXIST, errno.ENOENT}:
+                raise
+    except OSError as exc:
+        raise ApplicationActivationError("Application data could not be erased") from exc
+    finally:
+        os.close(root_fd)
 
 
 def _write_atomic(
@@ -295,7 +359,7 @@ def _application_metadata(validated, configuration, instance_id, root):
         "startup_timeout_seconds": definition.service.startup_timeout_seconds,
         "shutdown_timeout_seconds": definition.service.shutdown_timeout_seconds,
         "configuration": configuration,
-        "platform_socket": str(root / "platform" / "platform.sock"),
+        "platform_socket": os.getenv("THREE_MM_PLATFORM_RUNTIME_SOCKET", "/run/3mm-platform/runtime.sock"),
         "storage": {
             "schema_revision": definition.storage.schema_revision,
             "migration_entrypoint": definition.storage.migration_entrypoint,

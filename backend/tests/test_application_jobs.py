@@ -1,37 +1,57 @@
-from datetime import UTC, datetime, timedelta
+"""Retired execution stays unavailable; historical outcomes remain reviewable."""
+from datetime import UTC, datetime
+from types import SimpleNamespace
 
-import backend.database  # noqa: F401
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import Session
-
-from backend.config import ApplicationRuntimeSettings
-from backend.db.base import Base
-from backend.db.module import ApplicationExtensionInstallation, ApplicationJobState, ModulePackage
-from backend.services.application_jobs import run_application_jobs
-from three_mm_protocol import ApplicationExtensionV1
-
-
-def job_definition():
-    return ApplicationExtensionV1.model_validate({"application_extension_version": 1, "module_id": "org.3mm.job-test", "version": "1.0.0", "service": {"artifact": "service/test.whl", "artifact_sha256": "a" * 64, "entrypoint": "test:create", "health_operation_id": "health"}, "operations": [{"operation_id": "health", "kind": "query", "audiences": ["internal"], "idempotency": "forbidden", "output_schema": {"type": "object", "properties": {"status": {"type": "string", "enum": ["ready"]}}, "required": ["status"], "additionalProperties": False}}, {"operation_id": "sync", "kind": "job", "audiences": ["internal"], "idempotency": "required"}], "jobs": [{"job_id": "sync", "handler_operation_id": "sync", "interval_seconds": 60}], "storage": {"schema_revision": "0001", "migration_entrypoint": "test:migrations"}})
+import pytest
+from sqlalchemy import select
+from backend.db.module import ApplicationJobState as State
+from backend.services.module_packages import ModulePackageError, validate_module_package
+from backend.services import application_extensions as gateway
+from backend.tests.test_module_packages import application_definition, application_package
+from three_mm_runtime.application_transport import DispatchPhase
 
 
-def test_scheduler_persists_single_run_lease_and_next_run(monkeypatch):
-    engine = create_engine("sqlite://"); Base.metadata.create_all(engine); db = Session(engine)
-    package = ModulePackage(module_id="org.3mm.job-test", version="1.0.0", manifest={}, sha256="c" * 64, size_bytes=1, file_path="unused", registrations=[]); db.add(package); db.flush()
-    installation = ApplicationExtensionInstallation(module_id=package.module_id, module_package_id=package.id, instance_id="2" * 24, active_version="1.0.0", status="active", enabled=True, socket_path="unused"); db.add(installation); db.commit()
-    calls = []
-    monkeypatch.setattr("backend.services.application_jobs.load_application_definition", lambda _package: job_definition())
-    monkeypatch.setattr("backend.services.application_jobs.invoke_application", lambda *args, **kwargs: calls.append((args, kwargs)) or {})
-    now = datetime(2026, 8, 29, 12, 0, tzinfo=UTC)
+@pytest.mark.parametrize("scheduled", [False, True])
+def test_current_package_refuses_job_operations_even_without_schedule(scheduled):
+    definition = application_definition()
+    definition["operations"].append({"operation_id": "sync", "kind": "job",
+        "audiences": ["internal"], "idempotency": "required"})
+    if scheduled:
+        definition["jobs"] = [{"job_id": "sync", "handler_operation_id": "sync", "interval_seconds": 60}]
+    with pytest.raises(ModulePackageError, match="jobs are retired"):
+        validate_module_package(application_package(definition=definition))
 
-    run_application_jobs(db, ApplicationRuntimeSettings(), now=now)
-    run_application_jobs(db, ApplicationRuntimeSettings(), now=now + timedelta(seconds=30))
-    run_application_jobs(db, ApplicationRuntimeSettings(), now=now + timedelta(seconds=61))
 
-    state = db.scalar(select(ApplicationJobState))
-    assert len(calls) == 2
-    assert state.run_count == 2
-    assert state.last_outcome == "succeeded"
-    assert state.lease_until is None
-    assert calls[0][0][5]["idempotency_key"].startswith("job:")
-    db.close(); engine.dispose()
+@pytest.mark.parametrize("mode", ["compatibility", "review_required", "enforced"])
+def test_direct_gateway_cannot_dispatch_historical_job(monkeypatch, mode):
+    definition = SimpleNamespace(operations=[SimpleNamespace(operation_id="sync",kind="job")])
+    monkeypatch.setattr(gateway,"load_application_package",lambda package:SimpleNamespace(application_extension=definition))
+    monkeypatch.setattr(gateway,"ApplicationServiceClient",lambda *a:pytest.fail("retired job reached service transport"))
+    app=SimpleNamespace(enabled=True,status="active",authority_mode=mode)
+    with pytest.raises(gateway.ApplicationGatewayError,match="jobs are retired") as error:
+        gateway.invoke_application(app,object(),object(),"sync",{}, {},required_audience="internal")
+    assert error.value.phase == DispatchPhase.NOT_DISPATCHED and not error.value.retryable
+
+
+def test_resolution_requires_admin_confirmation_and_stopped_application(monkeypatch, tmp_path):
+    from backend.tests.test_application_access import environment as access_environment, headers
+    from backend.routes.application_operations import router
+    from backend.db.audit_log import AuditLog
+    client, db, engine, admin, operator, app, package, admin_token, user_token = access_environment(monkeypatch, tmp_path)
+    client.app.include_router(router)
+    state = State(application_installation_id=app.id, job_id='sync', next_run_at=datetime.now(UTC),
+        lease_token='a'*32, last_outcome='unknown')
+    db.add(state); db.commit()
+    path = f'/api/v1/application-extensions/{app.module_id}/jobs/sync/resolve'
+    body = {'confirmed_external_outcome_reviewed': True}
+    try:
+        assert client.post(path, json=body, headers=headers(user_token)).status_code == 403
+        assert client.post(path, json=body, headers=headers(admin_token)).status_code == 409
+        app.enabled = False; app.status = 'disabled'; db.commit()
+        assert client.post(path, json={}, headers=headers(admin_token)).status_code == 422
+        assert client.post(path, json=body, headers=headers(admin_token)).status_code == 200
+        db.refresh(state)
+        assert state.lease_token is None and state.last_outcome == 'resolved'
+        assert db.scalar(select(AuditLog).where(AuditLog.action == 'APPLICATION_JOB_RESOLVED')) is not None
+    finally:
+        client.close(); db.close(); engine.dispose()

@@ -94,6 +94,7 @@ def local_app(session_app, monkeypatch):
     monkeypatch.setenv("THREE_MM_LOCAL_SESSIONS", "1")
     monkeypatch.setattr(local, "local_device_id", lambda: s.request.device_id)
     monkeypatch.setattr(local, "supervisor_available", lambda: True)
+    monkeypatch.setattr(local, "supervisor_generation", lambda: (1, 2, 3))
     monkeypatch.setattr(
         local,
         "get_settings",

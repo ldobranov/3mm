@@ -34,6 +34,7 @@ REQUIRED_SOURCE_FILES = {
     "deployment/migrate_database.py": b"print('migrate')\n",
     "deployment/update-dependency-allowlist.json": b'{"schema_version":1,"apt_packages":[]}\n',
     "deployment/systemd/3mm-agent.service": b"[Unit]\n",
+    "deployment/systemd/3mm-setup-local.service": b"[Unit]\n",
     "deployment/systemd/3mm-application-extension@.service": b"[Unit]\n",
     "deployment/systemd/3mm-core.service": b"[Unit]\n",
     "deployment/systemd/3mm-update-helper.service": b"[Unit]\n",
@@ -44,11 +45,27 @@ REQUIRED_SOURCE_FILES = {
     "three_mm_runtime/update_helper.py": b"print('helper')\n",
     "three_mm_runtime/application_activation.py": b"print('activate app')\n",
     "three_mm_runtime/application_host.py": b"print('host app')\n",
+    "three_mm_runtime/application_host_identity.py": b"# host metadata\n",
+    "deployment/application_host_component.py": b"# host component\n",
+    "deployment/application-host-contract.json": Path("deployment/application-host-contract.json").read_bytes(),
+    "deployment/application-host-requirements.txt": Path("deployment/application-host-requirements.txt").read_bytes(),
     "three_mm_runtime/application_transport.py": b"print('transport app')\n",
     "three_mm_public_web/__init__.py": b"# public web\n",
     "three_mm_public_web/__main__.py": b"print('public main')\n",
     "three_mm_public_web/server.py": b"print('public server')\n",
     "three_mm_application_sdk/__init__.py": b"# sdk\n",
+    'deployment/platform-runtime-contract.json': Path("deployment/platform-runtime-contract.json").read_bytes(),
+    'deployment/platform_runtime_component.py': b"# component fixture\n",
+    'deployment/systemd/3mm-platform-runtime.service': b"# component fixture\n",
+    'three_mm_platform_wire/__init__.py': b"# component fixture\n",
+    'three_mm_platform_runtime/__init__.py': b"# component fixture\n",
+    'three_mm_platform_runtime/__main__.py': b"# component fixture\n",
+    'three_mm_platform_runtime/server.py': b"# component fixture\n",
+    'three_mm_platform_runtime/public_web.py': b"# component fixture\n",
+    'three_mm_platform_runtime/events.py': b"# component fixture\n",
+    'three_mm_platform_runtime/responses.py': b"# component fixture\n",
+    'three_mm_platform_runtime/connector_worker.py': b"# component fixture\n",
+    'deployment/systemd/3mm-connector-worker.service': b"# component fixture\n",
     "frontend/dist/stale.js": b"must not survive\n",
 }
 TARGET_CONTRACT = json.loads(Path(CONTRACT_PATH).read_text(encoding="utf-8"))
@@ -361,3 +378,19 @@ def test_release_workflow_publishes_only_complete_tagged_builds() -> None:
         'gh release edit "$TAG" --draft=false'
     )
     assert "workflow_dispatch" not in workflow
+
+
+@pytest.mark.parametrize('required',[
+    'backend/alembic/versions/1bf67d2435e6_event_runtime_claims.py',
+    'backend/alembic/versions/2c078e3546f7_connector_dispatch.py',
+    'backend/services/application_connectors.py',
+    'backend/services/application_connector_transport.py',
+    'backend/services/application_response_relay.py',
+    'backend/services/application_status_probe.py',
+    'backend/services/application_health_probe.py',
+    'three_mm_platform_runtime/events.py',
+])
+def test_builder_refuses_event_worker_without_matching_claim_migration(tmp_path,required):
+    files=dict(REQUIRED_SOURCE_FILES);files.pop(required)
+    write_source_archive(tmp_path/'source.tar',files)
+    with pytest.raises(ReleaseBuildError,match=required):build(tmp_path)

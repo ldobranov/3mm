@@ -335,7 +335,7 @@ try {
 
     Write-Step 'Checking the active runtime from the deployment machine'
     $originUri = [Uri]$FrontendOrigin
-    $runtimeModeCommand = 'if systemctl is-active --quiet 3mm-setup.service; then printf setup; elif systemctl is-active --quiet 3mm-core.service && systemctl is-active --quiet 3mm-web.service && systemctl is-active --quiet 3mm-agent.service; then printf application; else printf unknown; fi'
+    $runtimeModeCommand = 'if systemctl is-active --quiet 3mm-setup.service; then printf setup; elif systemctl is-active --quiet 3mm-core.service && systemctl is-active --quiet 3mm-web.service && systemctl is-active --quiet 3mm-agent.service; then printf application; elif systemctl is-active --quiet 3mm-setup-local.service; then printf local_setup; else printf unknown; fi'
     $runtimeMode = (Invoke-Native -Command 'ssh' -Arguments @(
         '-o', 'BatchMode=yes', $SshHost, $runtimeModeCommand
     ) -Capture | Select-Object -Last 1).ToString().Trim()
@@ -344,6 +344,13 @@ try {
         Write-Host 'First-boot setup runtime is healthy.' -ForegroundColor Green
         Write-Host 'Open Wi-Fi network: 3mm Setup XXXX'
         Write-Host 'Setup page after joining it: http://10.42.0.1:8895/setup'
+    }
+    elseif ($runtimeMode -eq 'local_setup') {
+        Invoke-Native -Command 'ssh' -Arguments @(
+            '-o', 'BatchMode=yes', $SshHost,
+            'curl -fsS --max-time 5 http://127.0.0.1:8895/ready >/dev/null'
+        )
+        Write-Host 'Local setup status is healthy. Choose the initial role using the device console; host networking is preserved.' -ForegroundColor Green
     }
     elseif ($runtimeMode -eq 'application') {
         Wait-Http -Url "http://$($originUri.Host):8887/ready" -TimeoutSeconds $HealthTimeoutSeconds

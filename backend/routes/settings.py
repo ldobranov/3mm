@@ -662,9 +662,9 @@ def get_current_language():
     return {"language": get_current_language()}
 
 @router.get("/language/available")
-def get_available_languages():
-    """Get available languages"""
-    return {"languages": i18n_manager.get_available_languages()}
+def get_available_languages(db: Session = Depends(get_db)):
+    from backend.services.language_extensions import available_languages
+    return {"languages": available_languages(db)}
 
 @router.post("/language/set")
 def set_current_language(language: str, user = Depends(require_user)):
@@ -1281,63 +1281,6 @@ def mobile_setup(setup_request: dict, request: Request):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error setting up mobile access: {e}")
-
-# Translation endpoints for dynamic loading
-@router.get("/api/translations/{language_code}")
-def get_translations(language_code: str):
-    """Serve translations for a specific language from installed extensions"""
-    try:
-        import os
-        import json
-
-        translations = {}
-
-        # Language name mapping
-        language_name_map = {
-            'bg': 'Bulgarian',
-            'en': 'English',
-            'fr': 'French',
-            'de': 'German',
-            'es': 'Spanish'
-        }
-
-        language_name = language_name_map.get(language_code, language_code.capitalize())
-
-        # Get the absolute path to the project root
-        import os
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        extension_path = os.path.join(project_root, "frontend", "src", "extensions", f"{language_name}LanguagePack_1.0.0")
-
-        # Check if extension exists
-        if not os.path.exists(extension_path):
-            return {"frontend": {}, "backend": {}, "extensions": {}}
-
-        # Load translation files
-        translation_files = [
-            'Settings.json', 'Login.json', 'Register.json', 'User.json',
-            'PagesExtension.json', 'ClockWidget.json', 'Extensions.json'
-        ]
-
-        for file_name in translation_files:
-            file_path = os.path.join(extension_path, file_name)
-            if os.path.exists(file_path):
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        file_translations = json.load(f)
-                        translations.update(file_translations)
-                except Exception as e:
-                    print(f"Error loading {file_name}: {e}")
-                    continue
-
-        return {
-            "frontend": translations,
-            "backend": {},
-            "extensions": {}
-        }
-
-    except Exception as e:
-        print(f"Error serving translations for {language_code}: {e}")
-        return {"frontend": {}, "backend": {}, "extensions": {}}
 
 # Public settings assets use the same persistent root as /uploads and backup.
 from fastapi import UploadFile, File, Form

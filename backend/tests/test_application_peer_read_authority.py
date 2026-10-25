@@ -1,4 +1,5 @@
 """Sealed installed v9 peer review; dedicated reader is tested separately."""
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 import base64
 import copy
@@ -746,7 +747,7 @@ def test_signed_sdk_keeps_identity_status_separate_and_old_peer_access_closed(
         (root / ("a" * 24 + ".key")).write_bytes(secret)
         server = ApplicationPlatformServer(
             root / "p.sock", root, group="missing-fixture-group"
-        )
+        , allowed_actions=COMPATIBILITY_ACTIONS)
         server.start()
         client = ApplicationPlatformClient(server.socket_path, "a" * 24, secret)
         try:

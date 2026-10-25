@@ -1,4 +1,5 @@
 """Real signatures, durable SQLite, API and SDK envelopes; no live peers."""
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 import copy
 import json
@@ -448,7 +449,7 @@ def test_restore_quarantines_metadata_and_uninstall_does_not_revive_it(pair_v2):
 
 
 @pytest.mark.parametrize(
-    "intent", ["", "x" * 257, "https://intent.test/token", "with space", "кирилица"]
+    "intent", ["", "x" * 257, "https://intent.test/token", "with space", "РєРёСЂРёР»РёС†Р°"]
 )
 def test_intent_is_bounded_opaque_reference_not_an_unbounded_payload(intent):
     with pytest.raises(ValidationError):
@@ -547,7 +548,7 @@ def test_receiving_application_checks_opaque_intent_policy_before_approval(
         ledger[INTENT]["used"] = True
     refused = []
 
-    def receiver_handler(*args, **kwargs):
+    async def receiver_handler(*args, **kwargs):
         assert kwargs["before_dispatch"]()
         context = OperationContext.from_platform(args[5])
         metadata = args[4]["enrollment_metadata"]
@@ -572,7 +573,7 @@ def test_signed_sdk_reads_review_and_approval_via_owned_platform_boundary(
     secret = b"s" * 32
     instance = "a" * 24
     (key_root / f"{instance}.key").write_bytes(secret)
-    server = ApplicationPlatformServer(tmp_path / "platform.sock", key_root)
+    server = ApplicationPlatformServer(tmp_path / "platform.sock", key_root, allowed_actions=COMPATIBILITY_ACTIONS)
     monkeypatch.setattr(
         backend.database, "SessionLocal", lambda: Session(pair_v2.receiver.engine)
     )
@@ -606,10 +607,11 @@ def test_signed_sdk_reads_review_and_approval_via_owned_platform_boundary(
     client = ApplicationPlatformClient(server.socket_path, instance, secret)
     assert client.get_installation_peer_capabilities()["approval_binding_version"] == 2
     review = client.list_installation_peers()["inbound"][0]
-    with pytest.raises(ApplicationPlatformError, match="metadata"):
+    with pytest.raises(ApplicationPlatformError, match="^Platform operation failed$") as denied:
         client.approve_installation_peer(
             review["binding_id"], expected_generation=review["generation"]
         )
+    assert denied.value.reason == "operation_failed"
     result = client.approve_installation_peer(
         review["binding_id"],
         expected_generation=review["generation"],
@@ -627,7 +629,8 @@ def test_signed_sdk_reads_review_and_approval_via_owned_platform_boundary(
     }
     connection = MemoryConnection(json.dumps(fake).encode() + b"\n")
     server._handle(connection)
-    assert json.loads(connection.response)["ok"] is False
+    # Unauthenticated requests receive no signed response or internal details.
+    assert connection.response == b""
 
 
 def test_admin_api_persists_normalized_v2_metadata_and_cannot_accept_verified_claims(

@@ -96,17 +96,20 @@ are never accepted by the socket API.
 
 ### One-time trust bootstrap for existing Nodes
 
-First install a **published release containing this signed path** on Hub and Node
-using the existing immutable bootstrap. Beta.25 only contains the earlier
-foundation: it is not sufficient for signed remote apply. This guide does not
-identify the live release used in the user's successful update.
+First install the current signed helper on Hub and Node using the immutable
+bootstrap (a published release or a verified local development bundle). A fresh
+card needs this explicit root trust step even after normal Agent pairing.
+Remote apply still accepts only official Node release metadata; a local working
+candidate does not become an OTA release through trust bootstrap.
 
 On the Hub, read `/api/v1/devices/node-updates/approval-key` and verify its
-`key_id` fingerprint through a trusted connection/administrator session. On Zero:
+`key_id` fingerprint through a trusted connection/administrator session. Use the
+Core API origin (port 8887 in the standard install); port 80 serves the frontend.
+On Zero:
 
 ```bash
-sudo /opt/3mm/current/.venv/bin/python /opt/3mm/current/deployment/trust_node_update_hub.py --hub http://rasp-3mm.local
-sudo /opt/3mm/current/.venv/bin/python /opt/3mm/current/deployment/trust_node_update_hub.py --hub http://rasp-3mm.local --key-id <verified-key-id>
+sudo /opt/3mm/current/.venv/bin/python /opt/3mm/current/deployment/trust_node_update_hub.py --hub http://rasp-3mm.local:8887
+sudo /opt/3mm/current/.venv/bin/python /opt/3mm/current/deployment/trust_node_update_hub.py --hub http://rasp-3mm.local:8887 --key-id <verified-key-id>
 ```
 
 The first command only displays the fetched fingerprint; the second explicitly
@@ -119,6 +122,15 @@ Key loss, reassignment, factory reset or Hub restore with a different key requir
 explicit trust reconciliation, not automatic re-enrollment. Preserve the Hub key
 alongside its persistent state. A backup must not be assumed to contain this new
 key until that path is explicitly tested.
+
+The executable helper and trust verifier share the root-file/error definitions
+from `node_update_common`; neither imports another executable helper instance to
+classify a denial. This keeps `python -m` service startup consistent with imports.
+
+Without a pin, the helper reports null key/device identity and keeps serving
+requests; apply is refused with `hub_trust_missing`. A malformed/unsafe pin is
+also refused without stopping the helper. Missing trust never enables unsigned
+updates or automatic key replacement.
 
 The Agent reports signed-helper support and the pinned key/device identity in
 `reported-state.node_update`. Core refuses apply until fresh state matches its

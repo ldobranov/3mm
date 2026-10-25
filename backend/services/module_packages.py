@@ -3,6 +3,7 @@ import hashlib, io, json, stat, zipfile, zlib
 from dataclasses import dataclass
 from pathlib import Path
 from pydantic import ValidationError
+from three_mm_protocol.language_extension import LanguageExtensionV1
 from backend.version import core_version as actual_core_version
 from backend.services.theme_assets import validate_theme_assets
 from three_mm_protocol.theme_extension_v2 import ThemeExtensionV2
@@ -55,7 +56,31 @@ class ValidatedModulePackage:
     compiled_ui: CompiledUiExtensionV1 | None = None
     application_extension: ApplicationExtensionV1 | None = None
     theme_extension: ThemeExtensionV1 | ThemeExtensionV2 | None = None
+    language_extension: LanguageExtensionV1 | None = None
     application_publications: ApplicationEventPublicationsV1 | None = None
+
+
+def _read_language_extension(archive, manifest, package_files):
+    if (manifest.runtimes != ("ui",) or manifest.entrypoints != {"ui": "language-extension.json"}
+            or manifest.permissions or manifest.registrations or manifest.capabilities.provides
+            or manifest.capabilities.consumes or manifest.dependencies or manifest.conflicts
+            or manifest.configuration_schema or manifest.configuration_defaults
+            or manifest.compatibility.architectures != ("any",)
+            or manifest.health_check.type != "json_file" or manifest.health_check.path != "language-extension.json"):
+        raise ModulePackageError("language extensions require only the declarative UI entrypoint")
+    if package_files != {"manifest.json", "language-extension.json"}:
+        raise ModulePackageError("language extension contains forbidden files")
+    try:
+        if archive.getinfo("language-extension.json").file_size > 512 * 1024:
+            raise ValueError("language definition exceeds its size limit")
+        language = LanguageExtensionV1.model_validate_json(archive.read("language-extension.json"))
+    except (KeyError, ValueError, zipfile.BadZipFile, zlib.error, RuntimeError, NotImplementedError) as exc:
+        raise ModulePackageError("invalid language-extension.json") from exc
+    if language.module_id != manifest.module_id or language.version != manifest.version:
+        raise ModulePackageError("language extension identity must match manifest v2")
+    if language.code == "en":
+        raise ModulePackageError("English is the Core recovery language")
+    return language
 
 
 def _read_theme_extension(
@@ -189,7 +214,10 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
     application_extension = None
     theme_extension = None
     application_publications = None
-    if (
+    language_extension = None
+    if manifest.entrypoints.get("ui") == "language-extension.json" or "language-extension.json" in package_files:
+        language_extension = _read_language_extension(archive, manifest, package_files)
+    elif (
         manifest.entrypoints.get("ui") == "theme-extension.json"
         or "theme-extension.json" in package_files
     ):
@@ -247,6 +275,9 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
             raise ModulePackageError(
                 "application extension identity must match manifest v2"
             )
+
+        if application_extension.jobs or any(item.kind == "job" for item in application_extension.operations):
+            raise ModulePackageError("scheduled application jobs are retired; no supported scoped scheduler")
 
         service_artifact = application_extension.service.artifact
         try:
@@ -494,5 +525,6 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
         compiled_ui=compiled_ui,
         application_extension=application_extension,
         theme_extension=theme_extension,
+        language_extension=language_extension,
         application_publications=application_publications,
     )

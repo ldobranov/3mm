@@ -5,16 +5,18 @@ const locale = vi.hoisted(() => ({ language: 'en' }))
 vi.mock('@/utils/dynamic-http', () => ({ default: http }))
 vi.mock('@/utils/i18n', async () => {
   const { ref } = await import('vue')
-  return { useI18n: () => ({ currentLanguage: ref(locale.language), t: (_key: string, fallback: string) => fallback }) }
+  const { movedLanguageLabel } = await import('@/test-utils/language-messages')
+  return { useI18n: () => ({ currentLanguage: ref(locale.language), t: (key: string, fallback: string) => movedLanguageLabel(key, fallback, locale.language) }) }
 })
 import Dialog from './ApplicationAuthorityDialog.vue'
+import { consentPreview, consentResult } from './application-consent.fixtures'
 import { sessionModuleId, sessionPlan, sessionScope, sessionStatus } from './authority-sessions.fixtures'
 let wrapper: VueWrapper
 const methods = ['showModal', 'close'].map(name => ({ name, descriptor: Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, name) }))
 beforeEach(() => {
   vi.resetAllMocks(); locale.language = 'en'
   http.get.mockResolvedValue({ data: sessionStatus() })
-  http.post.mockImplementation(async (_path, body) => ({ data: sessionPlan(body.scopes) }))
+  http.post.mockResolvedValue({ data: consentPreview(sessionStatus(), sessionPlan().resources, sessionModuleId) })
   for (const { name } of methods) Object.defineProperty(HTMLDialogElement.prototype, name, { configurable: true, value: function(this: HTMLDialogElement) { this.open = name === 'showModal' } })
 })
 afterEach(() => {
@@ -26,38 +28,33 @@ afterEach(() => {
 })
 async function open() { wrapper = mount(Dialog, { attachTo: document.body, props: { moduleId: sessionModuleId, name: 'Session reference' } }); await flushPromises() }
 async function click(text: string) { const button = wrapper.findAll('button').find(item => item.text() === text); if (!button) throw new Error(text); await button.trigger('click'); await flushPromises() }
-const choice = () => wrapper.find('.authority-session-choice input')
-it('requires explicit session opt-in, a fresh review, acknowledgment, approve and separate apply', async () => {
-  await open(); await click('Review requested access')
-  expect(http.post.mock.calls[0]![1].scopes).toEqual([])
-  expect((choice().element as HTMLInputElement).checked).toBe(false)
-  for (const text of ['org.example.session-provider', 'console_use', 'Read output and send input', 'resize', 'does not launch a process', 'Session transport is not connected']) expect(wrapper.text()).toContain(text)
-  await wrapper.find('.authority-acknowledge input').setValue(true)
-  await choice().setValue(true)
-  expect(wrapper.find('.authority-acknowledge').exists()).toBe(false)
-  await click('Review changed selection')
-  expect(http.post.mock.calls[1]![1].scopes).toEqual([sessionScope])
-  await wrapper.find('.authority-acknowledge input').setValue(true)
-  http.post.mockResolvedValueOnce({ data: { ...sessionPlan([sessionScope]), state: 'approved_pending_apply', revision: '8'.repeat(32) } })
-  await click('Approve review')
-  expect(wrapper.emitted('changed')).toBeUndefined()
-  expect(choice().attributes('disabled')).toBeDefined()
-  http.post.mockResolvedValueOnce({ data: { ...sessionPlan([sessionScope]), state: 'applied', revision: '9'.repeat(32) } })
-  await click('Apply rights')
+const choice = () => wrapper.find('.authority-scope-choice input')
+it('selects fresh session and own-account permissions before one explicit Allow', async () => {
+  await open()
+  expect((choice().element as HTMLInputElement).checked).toBe(true)
+  expect((wrapper.find('.authority-user-choice input').element as HTMLInputElement).checked).toBe(true)
+  for (const text of ['org.example.session-provider', 'console_use', 'resize', '80']) expect(wrapper.text()).toContain(text)
+  expect(http.post).toHaveBeenCalledTimes(1)
+  const value = consentPreview(sessionStatus(), sessionPlan().resources, sessionModuleId)
+  http.post.mockResolvedValueOnce({ data: consentResult(value) })
+  await click('Allow access')
+  expect(http.post.mock.calls[1]![1]).toMatchObject({ scopes: [sessionScope], user_permissions: ['app_use'], accept_native_code: true })
   expect(wrapper.emitted('changed')).toHaveLength(1)
-  expect(wrapper.find('.authority-effective').exists()).toBe(false)
 })
-it('resets choices on refresh and never retries an uncertain review', async () => {
-  await open(); await click('Review requested access'); await choice().setValue(true)
-  await click('Refresh status'); await click('Review requested access')
+it('can uncheck the session without inventing any fallback or additional rights', async () => {
+  await open(); await choice().setValue(false)
+  http.post.mockRejectedValueOnce(new Error('lost response'))
+  await click('Allow access')
   expect(http.post.mock.calls[1]![1].scopes).toEqual([])
-  await choice().setValue(true); http.post.mockRejectedValueOnce(new Error('lost'))
-  await click('Review changed selection')
-  expect(http.post).toHaveBeenCalledTimes(3)
-  expect(wrapper.find('.authority-session').exists()).toBe(false)
-  expect(wrapper.text()).toContain('No automatic retry')
+  expect(http.post).toHaveBeenCalledTimes(2)
+  expect(wrapper.find('[role=alert]').exists()).toBe(true)
 })
-it('renders the precise Bulgarian approval boundary', async () => {
-  locale.language = 'bg'; await open(); await click('Прегледай заявения достъп')
-  for (const text of ['Интерактивни сесии', 'Точно устройство', 'console_use', 'не дава root достъп', 'Сесийният транспорт не е свързан', 'започват неизбрани']) expect(wrapper.text()).toContain(text)
+it('keeps a saved stopped session selection without another Allow request', async () => {
+  const current = { ...sessionStatus(), installation_enabled: false, installation_status: 'disabled' }
+  http.get.mockResolvedValue({ data: current })
+  http.post.mockResolvedValue({ data: { ...consentPreview(current, sessionPlan().resources, sessionModuleId), access_saved: true } })
+  await open(); await click('Refresh status')
+  expect((choice().element as HTMLInputElement).checked).toBe(true)
+  expect(wrapper.text()).toContain('Rights saved, application stopped')
+  expect(http.post.mock.calls.every(call => String(call[0]).endsWith('/consent/preview'))).toBe(true)
 })

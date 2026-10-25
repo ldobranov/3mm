@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from backend.config import get_settings
 from backend.db.audit_log import AuditLog
@@ -49,7 +49,6 @@ from backend.services.authority_metadata import (
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from three_mm_runtime.application_transport import (
-    ApplicationServiceClient,
     ApplicationTransportError,
 )
 
@@ -101,10 +100,9 @@ def resolve_application_job(module_id: str, job_id: str, request: JobResolutionR
     if state is None or state.lease_token is None:
         db.rollback()
         raise HTTPException(409, 'Job has no unresolved claim')
-    # Invalidate the old executor's completion token as well as its schedule.
+    # Historical claim resolution only; no scheduler, retry or new dispatch.
     state.lease_token = state.lease_until = None
     state.last_outcome, state.last_error = 'resolved', None
-    state.next_run_at = datetime.now(UTC)
     db.add(AuditLog(user_id=admin.id, action='APPLICATION_JOB_RESOLVED',
         entity_type='application_extension', entity_name=module_id, changes={'job_id': job_id}))
     db.commit()
@@ -265,11 +263,46 @@ def configure_application_connector(
 
 
 @router.get("/{module_id}/operational-status")
-def application_operational_status(
+async def application_operational_status(
     module_id: str,
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    probe = waiter = response = None
+    try:
+        probe, waiter = await run_in_threadpool(_begin_operational_status, db, module_id)
+        if waiter is not None:
+            try: response = await waiter.receive()
+            except (OSError, ValueError, TypeError, RecursionError): pass
+    finally:
+        if waiter is not None: waiter.close()
+    return await run_in_threadpool(_finish_operational_status, db, module_id, probe, response)
+
+
+def _begin_operational_status(db, module_id):
+    from backend.services.application_status_probe import begin_status_probe
+    installation = _installation(db, module_id)
+    package = db.get(ModulePackage, installation.module_package_id)
+    if package is None:
+        raise HTTPException(409, "Active application package is unavailable")
+    try:
+        load_application_definition(package)
+        return begin_status_probe(db, installation, package, get_settings().applications)
+    except ApplicationGatewayError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except (OSError, ValueError, KeyError, ImportError, ApplicationTransportError):
+        db.rollback()
+        return None, None
+
+
+def _finish_operational_status(db, module_id, probe, response):
+    try: return _operational_status_snapshot(db, module_id, probe, response)
+    finally: db.rollback()  # End every metadata read; no DB transaction spans response wait.
+
+
+def _operational_status_snapshot(db, module_id, probe, response):
+    from backend.services.application_status_probe import finish_status_probe
+    db.expire_all()
     installation = _installation(db, module_id)
     package = db.get(ModulePackage, installation.module_package_id)
     if package is None:
@@ -278,30 +311,25 @@ def application_operational_status(
         definition = load_application_definition(package)
     except ApplicationGatewayError as exc:
         raise HTTPException(409, str(exc)) from exc
-    runtime_status: dict[str, object] = {"revision": None, "outbox": {}}
-    settings = get_settings().applications
-    try:
-        secret = (settings.key_root / f"{installation.instance_id}.key").read_bytes()
-        runtime_status = ApplicationServiceClient(
-            Path(installation.socket_path), secret, 5
-        ).invoke(
-            "three_mm.platform.status",
-            {},
-            {"audience": "internal", "correlation_id": f"status:{installation.instance_id}"},
-        )
-    except (OSError, ApplicationTransportError):
-        pass
+    observed = finish_status_probe(probe, response, installation, package, get_settings().applications)
+    runtime_status = observed or {"revision": None, "outbox": {}}
     jobs = list(db.scalars(select(ApplicationJobState).where(ApplicationJobState.application_installation_id == installation.id).order_by(ApplicationJobState.job_id)))
     connectors = list(db.scalars(select(ApplicationConnectorBinding).where(ApplicationConnectorBinding.application_installation_id == installation.id).order_by(ApplicationConnectorBinding.connector_id)))
     event_counts = {status: count for status, count in db.execute(select(ApplicationEventDelivery.status, func.count(ApplicationEventDelivery.id)).where(ApplicationEventDelivery.application_installation_id == installation.id).group_by(ApplicationEventDelivery.status))}
+    from backend.services.application_connector_transport import expire_connector_attempts
+    expire_connector_attempts(db, installation.id)
     connector_counts = {outcome: count for outcome, count in db.execute(select(ApplicationConnectorAttempt.outcome, func.count(ApplicationConnectorAttempt.id)).where(ApplicationConnectorAttempt.application_installation_id == installation.id).group_by(ApplicationConnectorAttempt.outcome))}
     cursors = list(db.scalars(select(ApplicationEventCursor).where(ApplicationEventCursor.application_installation_id == installation.id).order_by(ApplicationEventCursor.subscription_id)))
     return {
         "module_id": module_id,
         "version": installation.active_version,
         "service": {"status": installation.status, "enabled": installation.enabled, "last_health_check": installation.health_checked_at},
+        "runtime_observation": {"status": "available" if observed is not None else
+            "inactive" if not installation.enabled or installation.status != "active" else "unavailable",
+            "outbox_inspected": observed["outbox_inspected"] if observed is not None else False},
         "storage": {"declared_revision": definition.storage.schema_revision, "runtime_revision": runtime_status.get("revision"), "backup_required": definition.storage.backup_required},
         "events": {"counts": event_counts, "cursors": [{"subscription_id": item.subscription_id, "last_event_id": item.last_event_id, "acknowledged_total": item.acknowledged_count, "dead_letter_total": item.dead_letter_count} for item in cursors]},
+        "jobs_supported": False,
         "jobs": [{"job_id": item.job_id, "next_run_at": item.next_run_at, "lease_until": item.lease_until, "last_outcome": item.last_outcome, "last_completed_at": item.last_completed_at, "run_count": item.run_count,
                   "scheduled_at": item.last_scheduled_at, "started_at": item.last_started_at,
                   "duration_ms": item.last_duration_ms, "lateness_ms": item.last_lateness_ms,

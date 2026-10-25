@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-TEST_DATABASE_PATH = Path("/tmp/3mm-pytest.db")
+TEST_DATABASE_PATH = Path(os.environ.get("THREE_MM_TEST_DATABASE_PATH", "/tmp/3mm-pytest.db"))
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DATABASE_PATH.as_posix()}"
 
 

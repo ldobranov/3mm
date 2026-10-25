@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import threading
+from types import SimpleNamespace
 import zipfile
 
 import pytest
@@ -63,20 +64,36 @@ def test_no_client_snapshot_or_implicit_key_creation(installed):
     assert not installed.key_directory.exists() and not result.reviewable
 
 
-def test_exact_schema_comparison_is_typed_bounded_and_set_order_independent():
+def test_exact_schema_comparison_is_typed_bounded_and_set_order_independent(installed):
     schema = {"type": "object", "additionalProperties": False,
         "properties": {"v": {"type": "number", "minimum": 0, "maximum": 10, "enum": [1, 2]}}, "required": ["v"]}
+    binding = installed.validated.application_extension.command_bindings[0]
+    with Session(installed.engine) as db:
+        source = sources._command(db, binding, installed.configuration)
+    binding = binding.model_copy(update={"arguments_schema": schema})
+    package = SimpleNamespace(application_extension=SimpleNamespace(command_bindings=(binding,)))
+
+    def compose(provider_schema):
+        resolved = SimpleNamespace(commands=(source.model_copy(
+            update={"action_arguments_schema": provider_schema}),))
+        return subjects._commands(package, resolved)
+
+    before = copy.deepcopy(schema)
     reordered = copy.deepcopy(schema)
     reordered["properties"]["v"]["enum"].reverse()
-    assert subjects._schema_bytes(schema) == subjects._schema_bytes(reordered)
+    assert compose(reordered)[0].declaration == binding
+    assert schema == before and reordered["properties"]["v"]["enum"] == [2, 1]
     for alternative in (1.0, True, "1"):
         changed = copy.deepcopy(schema)
         changed["properties"]["v"]["enum"][0] = alternative
-        assert subjects._schema_bytes(changed) != subjects._schema_bytes(schema)
+        with pytest.raises(sources._Unavailable) as failure:
+            compose(changed)
+        assert failure.value.issue.reason == "command_schema_containment_not_evaluated"
+        assert failure.value.issue.scope == f"command:{binding.binding_id}"
     changed = copy.deepcopy(schema)
     changed["properties"]["v"]["enum"] = [1, 1]
     with pytest.raises(ValueError):
-        subjects._schema_bytes(changed)
+        compose(changed)
 
 
 @posix_only

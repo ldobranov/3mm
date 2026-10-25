@@ -1,4 +1,5 @@
 """Complete exact read path using installed ZIPs, sealed grants and signed IPC."""
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 import copy
 import json
@@ -93,7 +94,7 @@ def test_signed_sdk_review_apply_read_revoke_reapprove_without_private_or_remote
         (root / ("a" * 24 + ".key")).write_bytes(secret)
         server = ApplicationPlatformServer(
             root / "p.sock", root, group="missing-fixture-group"
-        )
+        , allowed_actions=COMPATIBILITY_ACTIONS)
         server.start()
         client = ApplicationPlatformClient(server.socket_path, "a" * 24, secret)
         try:

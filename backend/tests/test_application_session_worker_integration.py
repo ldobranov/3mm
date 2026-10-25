@@ -14,7 +14,7 @@ from sqlalchemy import delete
 from starlette.websockets import WebSocketDisconnect
 
 from backend.db.module import ApplicationPermissionGrant
-from backend.services.application_browser_sessions import ReviewedSessionRuntime
+from backend.services.application_session_runtimes import ReviewedSessionRuntime
 from backend.tests.test_application_browser_sessions import (
     browser_app,
     checkpoint_app,
@@ -87,6 +87,7 @@ def create_provider(): return Provider()
             s.runtime.provider_version,
             s.runtime.control_revision,
             provider,
+            lambda: True,  # Explicit fixture generation.
         ),
     )
     ticket = issue(s).json()

@@ -5,13 +5,14 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import os
 import platform
 import shutil
 import sys
 from pathlib import Path
 
 
-NODE_COMMANDS = ("bash", "python3", "systemctl", "nmcli", "tar", "flock", "curl", "dnsmasq", "openssl")
+NODE_COMMANDS = ("bash", "python3", "systemctl", "tar", "flock", "curl", "openssl")
 NODE_IMPORTS = (
     "requests", "pydantic", "fastapi", "uvicorn", "gpiod",
     "agent.main", "setup_service.main", "three_mm_provisioning.network_helper",
@@ -21,7 +22,9 @@ NODE_IMPORTS = (
 
 
 def inspect_node(*, machine=None, system=None, python_version=None,
-                 lookup=shutil.which, importer=importlib.import_module):
+                 lookup=shutil.which, importer=importlib.import_module, network_backend="host"):
+    if network_backend not in {"host", "network-manager"}:
+        raise ValueError("Unsupported network backend")
     architecture = machine or platform.machine()
     operating_system = system or platform.system()
     version = python_version or sys.version_info[:3]
@@ -31,7 +34,8 @@ def inspect_node(*, machine=None, system=None, python_version=None,
         # Agent uses datetime.UTC, introduced in Python 3.11.
         {"name": "python", "passed": tuple(version) >= (3, 11)},
     ]
-    for command in NODE_COMMANDS:
+    commands = (*NODE_COMMANDS, *(("nmcli", "dnsmasq") if network_backend == "network-manager" else ()))
+    for command in commands:
         checks.append({"name": "command." + command, "passed": lookup(command) is not None})
     for module in NODE_IMPORTS:
         try:
@@ -52,7 +56,7 @@ def main():
     argparse.ArgumentParser(description=__doc__).parse_args()
     # Permit direct execution from an extracted checkout without installation.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    report = inspect_node()
+    report = inspect_node(network_backend=os.getenv("THREE_MM_NETWORK_BACKEND", "host"))
     print(json.dumps(report, indent=2))
     return 0 if report["runtime_dependencies_ready"] else 1
 

@@ -10,12 +10,12 @@ from backend.db.application_authority_grant import (
     ApplicationAuthorityPlan as Plan, ApplicationAuthorityAction as Action,
 )
 from backend.tests.test_authority_metadata_migration import seed
-from backend.tests.test_migration_history import _alembic
+from backend.tests.test_migration_history import _alembic, _head_revision
 from backend.tests.test_policy_review_migration import snapshot
 
 
 PREVIOUS = 'c9d128d9e0f1'
-REVISION = 'fcd45b0213c4'  # Current head also preserves application event producers.
+REVISION = _head_revision()
 TABLES = ('application_native_reviews', 'application_authority_plans',
     'application_authority_grants', 'application_authority_actions')
 
@@ -68,7 +68,8 @@ def test_used_state_cannot_be_destructively_downgraded(tmp_path, retained):
     engine = create_engine(url)
     assert snapshot(engine) == before
     with engine.connect() as db:
-        assert db.scalar(text('SELECT version_num FROM alembic_version')) == REVISION
+        # Later reversible revisions complete; authority history stops at its guard.
+        assert db.scalar(text('SELECT version_num FROM alembic_version')) == 'fcd45b0213c4'
     engine.dispose()
 
 

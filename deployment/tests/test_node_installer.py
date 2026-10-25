@@ -116,6 +116,21 @@ def test_shell_syntax():
 
 
 @pytest.mark.parametrize('profile', ['full', 'node'])
+@pytest.mark.parametrize('backend', ['host', 'network-manager'])
+def test_bootstrap_installs_network_packages_only_for_explicit_management(profile, backend):
+    bootstrap = (Path(__file__).parents[2] / 'install.sh').read_text()
+    package_selection = bootstrap[bootstrap.index('THREE_MM_BOOTSTRAP_PACKAGES=('):bootstrap.index('[[ $channel == stable')]
+    result = run(f'THREE_MM_DEFAULT_CHANNEL=beta\nTHREE_MM_NETWORK_BACKEND={backend}\n'
+        f'set -- --profile {profile} --network-backend {backend}\n' + package_selection
+        + '\nprintf "%s\\n" "${THREE_MM_BOOTSTRAP_PACKAGES[@]}"\n')
+    assert result.returncode == 0, result.stderr
+    packages = result.stdout.splitlines()
+    assert ('network-manager' in packages) == (backend == 'network-manager')
+    assert ('dnsmasq-base' in packages) == (backend == 'network-manager')
+    assert ('nodejs' in packages) == (profile == 'full')
+
+
+@pytest.mark.parametrize('profile', ['full', 'node'])
 def test_profile_selects_only_its_units(profile):
     result = run(f'install_profile={profile}\n' +
                  section('runtime_services=(', 'previous_release=""') +
@@ -123,6 +138,7 @@ def test_profile_selects_only_its_units(profile):
     assert result.returncode == 0, result.stderr
     units = result.stdout.splitlines()
     assert '3mm-agent.service' in units and '3mm-setup.service' in units
+    assert '3mm-setup-local.service' in units
     assert ('3mm-core.service' in units) == (profile == 'full')
     assert ('3mm-update-helper.service' in units) == (profile == 'full')
     assert ('3mm-application-extension@.service' in units) == (profile == 'full')
@@ -186,7 +202,7 @@ test_python() {
 def test_node_health_checks_do_not_consider_core():
     result = run('install_profile=node\n' +
                  section('verify_runtime() {', 'activate_runtime() {') + '''
-systemctl() { return 0; }
+systemctl() { [[ "$*" != 'is-active --quiet 3mm-setup-local.service' ]]; }
 verify_endpoint() { printf '%s\\n' "$1"; }
 verify_runtime
 ''')
@@ -210,6 +226,29 @@ exit $?
 
 def test_backup_preparation_still_precedes_full_unit_installation():
     assert SCRIPT.index('-m deployment.prepare_backup_storage') < SCRIPT.index('install_units "$release_dir"')
+
+
+@pytest.mark.parametrize('profile', ['full', 'node'])
+def test_first_boot_local_status_is_a_complete_health_checked_runtime(profile):
+    result = run(f'install_profile={profile}\n' + '''
+systemctl() { [[ "$*" == 'is-active --quiet 3mm-setup-local.service' ]]; }
+verify_endpoint() { printf '%s\\n' "$1"; }
+''' + section('verify_runtime() {', 'activate_runtime() {') + '\nverify_runtime\n')
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == 'http://127.0.0.1:8895/ready'
+
+
+def test_rollback_to_release_without_local_setup_removes_only_its_obsolete_unit():
+    result = run('''
+installed_units=(3mm-setup-local.service)
+systemctl() { printf '%s\\n' "$*"; }
+rm() { printf 'removed %s\\n' "$*"; }
+install() { echo forbidden-install; return 1; }
+fail() { echo "$*" >&2; return 1; }
+''' + section('install_units() {', 'restore_database() {') + '\ninstall_units /missing-rollback-release 0\n')
+    assert result.returncode == 0, result.stderr
+    assert 'forbidden-install' not in result.stdout
+    assert '3mm-setup-local.service' in result.stdout
 
 
 def test_wired_preflight_and_gpio_group_precede_runtime_mutation():
@@ -236,7 +275,7 @@ verify_runtime() { echo health-verified; }
 
 def test_node_environment_does_not_overwrite_hub_or_hardware_on_upgrade():
     source = section('if [[ $install_profile == full ]]; then\nupsert_environment DATABASE_URL',
-                     'log "Installing service definitions"')
+                     'log "Preparing the independent Agent environment"')
     result = run('''
 install_profile=node
 environment_backup_created=1
@@ -310,7 +349,7 @@ usermod() { printf 'usermod %s\\n' "$*"; }
     assert result.returncode == 0, result.stderr
     assert 'groupadd --system 3mm-public' in result.stdout
     assert 'useradd --system --gid 3mm-public --home-dir /nonexistent --shell /usr/sbin/nologin 3mm-public' in result.stdout
-    assert 'usermod -a -G 3mm-app,3mm-public 3mm' in result.stdout
+    assert 'usermod -a -G 3mm-app,3mm-public,3mm-platform 3mm' in result.stdout
 
 
 @pytest.mark.parametrize('failure', ['', 'query', 'stop', 'database', 'fence', 'environment'])
@@ -492,3 +531,42 @@ false
         assert 'resumed=0' in result.stdout, result.stdout + result.stderr
         assert ('systemctl start 3mm-application-extension@0123456789abcdef01234567.service'
                 in result.stdout) == (query == 'one')
+
+
+def test_agent_environment_filters_core_secrets_and_keeps_host_settings(tmp_path):
+    original=tmp_path/'core.env';original.write_text('DATABASE_URL=private\nAI_SETTINGS_MASTER_KEY=private\nJWT_SECRET=private\nTHREE_MM_AGENT_ROLE=node\nTHREE_MM_CORE_URL=https://hub.example\nTHREE_MM_GPIO_DRIVER=gpiod\nTHREE_MM_GPIO_INPUTS=1,2\nTHREE_MM_PROVISIONING_DATA_DIR=/state\n')
+    destination=tmp_path/'agent.env'
+    start=SCRIPT.index('# Only Agent configuration enters its own environment;')
+    source=SCRIPT[start:SCRIPT.index('PYTHONPATH=',start)]
+    result=run(f'environment_file={original}\nagent_environment_file={destination}\n'+"""
+install() {
+  if [[ $1 == -d ]]; then return; fi
+  cp "${@: -2:1}" "${@: -1}"
+}
+"""+source)
+    assert result.returncode==0,result.stderr
+    saved=destination.read_text()
+    assert 'THREE_MM_AGENT_ROLE=node' in saved and 'THREE_MM_GPIO_INPUTS=1,2' in saved
+    assert 'THREE_MM_CORE_URL=https://hub.example' in saved and 'THREE_MM_PROVISIONING_DATA_DIR=/state' in saved
+    assert all(key not in saved for key in ('DATABASE_URL','AI_SETTINGS_MASTER_KEY','JWT_SECRET'))
+
+
+@pytest.mark.parametrize('master_key', ['', 'environment-only-test-key'])
+def test_runtime_activation_gets_local_identity_key_without_argument_disclosure(master_key):
+    result = run(
+        'release_python() { printf checked_python; }\n'
+        'verify_runtime() { :; }\n'
+        f'expected_key={shlex.quote(master_key)}\n'
+        + (f'ai_master_key={shlex.quote(master_key)}\n' if master_key else '')
+        + """
+checked_python() {
+  if [[ $* != *--check-active* ]]; then
+    [[ ${AI_SETTINGS_MASTER_KEY-} == "$expected_key" ]] || return 1
+    if [[ -n $expected_key ]]; then [[ $* != *"$expected_key"* ]] || return 1; fi
+  fi
+}
+"""
+        + section('activate_runtime() {', 'restore_runtime_units() {')
+        + '\nactivate_runtime /fixture-release\n'
+    )
+    assert result.returncode == 0, result.stderr

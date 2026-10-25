@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 from three_mm_provisioning import (
@@ -25,16 +26,17 @@ def setup_ssid(machine_id_path: Path) -> str:
 
 
 def start(data_dir: Path, interface: str, machine_id_path: Path) -> None:
-    snapshot = FileProvisioningStore(data_dir).load()
-    recovery_requested = FileNetworkRecoveryMarker(
-        data_dir / "network-recovery.json"
-    ).is_active()
+    store = FileProvisioningStore(data_dir)
+    if store.setup_pending():
+        return  # The root helper reconciles the saved connection before any AP.
+    snapshot = store.load()
     if (
         snapshot is not None
         and snapshot.state is ProvisioningState.PROVISIONED
-        and not recovery_requested
     ):
         return
+    from three_mm_provisioning.network_capabilities import setup_interface
+    interface = setup_interface(interface)
     try:
         nearby_networks = NetworkManagerReadOnlyAdapter.from_system(
             timeout_seconds=15.0
@@ -67,7 +69,7 @@ def main() -> None:
     parser.add_argument(
         "--data-dir", type=Path, default=Path("/var/lib/3mm/provisioning")
     )
-    parser.add_argument("--interface", default="wlan0")
+    parser.add_argument("--interface", default=os.getenv("THREE_MM_SETUP_INTERFACE"))
     parser.add_argument("--machine-id", type=Path, default=Path("/etc/machine-id"))
     arguments = parser.parse_args()
     if arguments.action == "start":

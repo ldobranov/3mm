@@ -7,54 +7,32 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from backend.database import get_db
-from backend.db.language_pack import LanguagePack
 
 class I18nManager:
     """Manages translations for different languages"""
 
     def __init__(self):
         self.translations: Dict[str, Dict[str, Any]] = {}
-        self.current_language = "bg"  # Default to Bulgarian
+        self.current_language = "en"
         self._default_loaded = False
 
     def load_language_pack_from_db(self, language_code: str):
         """Load translations for a language from database"""
+        from backend.services.language_extensions import translations
+        databases = get_db()
         try:
-            db = next(get_db())
-            language_pack = db.query(LanguagePack).filter(
-                LanguagePack.code == language_code,
-                LanguagePack.is_active == True
-            ).first()
-            
-            if not language_pack:
-                print(f"Language pack {language_code} not found in database")
+            db = next(databases)
+            data = translations(db, language_code)
+            if not data["frontend"] and not data["backend"]:
                 return False
-            
             self.translations[language_code] = {}
-            
-            # Start with English as base if not exists
-            if "en" not in self.translations:
-                self.translations["en"] = self._get_default_english_translations()
-            
-            # Load frontend translations
-            if language_pack.frontend_translations:
-                self._merge_dict(self.translations[language_code], language_pack.frontend_translations)
-            
-            # Load backend translations
-            if language_pack.backend_translations:
-                self._merge_dict(self.translations[language_code], language_pack.backend_translations)
-            
-            # Load extensions translations
-            if language_pack.extensions_translations:
-                self._merge_dict(self.translations[language_code], language_pack.extensions_translations)
-            
-            print(f"Loaded {language_code} translations from database: {len(self.translations[language_code])} keys")
-            db.close()
+            self._merge_dict(self.translations[language_code], data["frontend"])
+            self._merge_dict(self.translations[language_code], data["backend"])
             return True
-            
-        except Exception as e:
-            print(f"Error loading language pack {language_code} from database: {e}")
+        except Exception:
             return False
+        finally:
+            databases.close()
 
     def load_language_pack(self, language_code: str, translations_dir: Path):
         """Load translations for a language from a directory"""
@@ -187,22 +165,14 @@ class I18nManager:
 
     def get_available_languages(self) -> list:
         """Get list of available language codes"""
+        from backend.services.language_extensions import available_languages
+        databases = get_db()
         try:
-            db = next(get_db())
-            language_packs = db.query(LanguagePack.code).filter(
-                LanguagePack.is_active == True
-            ).all()
-            db.close()
-
-            codes = [pack.code for pack in language_packs]
-            # Always include English
-            if "en" not in codes:
-                codes.append("en")
-            return codes
-        except Exception as e:
-            print(f"Error getting available languages: {e}")
-            # Fallback to loaded translations
-            return list(self.translations.keys()) + ["en"]
+            return available_languages(next(databases))
+        except Exception:
+            return ["en"]
+        finally:
+            databases.close()
 
 # Global instance
 i18n_manager = I18nManager()

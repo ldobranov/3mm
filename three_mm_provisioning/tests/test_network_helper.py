@@ -29,12 +29,13 @@ def test_helper_schedules_runtime_activation(monkeypatch):
     calls = []
 
     class FakeBoundary:
-        def schedule_runtime_activation(self):
+        def schedule_runtime_activation(self, *, recovery):
+            assert recovery is True
             calls.append("scheduled")
 
     monkeypatch.setattr(network_helper, "NetworkManagerMutationBoundary", FakeBoundary)
 
-    assert _handle_request({"action": "activate_runtime"}) == {"ok": True}
+    assert _handle_request({"action": "activate_runtime", "recovery": True}) == {"ok": True}
     assert calls == ["scheduled"]
 
 
@@ -49,6 +50,7 @@ def test_helper_returns_only_validated_cached_wifi_scan(monkeypatch):
 
     monkeypatch.setattr(network_helper, "NetworkManagerReadOnlyAdapter", FakeInspector)
 
+    monkeypatch.setattr(network_helper, "managed_interfaces", lambda: [{"name":"wlp2s0", "access_point":False}])
     assert _handle_request({"action": "scan_wifi"}) == {
         "ok": True,
         "items": [

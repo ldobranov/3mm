@@ -522,3 +522,115 @@ Git branch/history/commit/push, installed permission or release was changed.
 Only disposable test units/code directories were created and removed. The actual
 installed-VM trial and consolidated release checks remain required before a
 release-readiness claim; this does not close the whole M21/WP4.
+
+
+## 16. Common runtime boundary, paired Node and local relay — 2026-10-25
+
+The owner selected **the common platform boundary + real Node + a local relay**.
+This continuation supersedes the remote-transport-pending notes in the earlier
+local-only slices. The independent public-SDK probe now passes normal physical
+Zero W sessions both directly and through the local relay. Relay loss/recovery,
+human/service revocation, Node restart and revocation during cold startup pass.
+This is not complete M21 acceptance, a public Cloud service or installed remote
+Terminal UI acceptance. The unchanged local Terminal package/UI and rights remain
+the separate baseline in [the local trial guide](M21_LOCAL_TERMINAL_TEST.md).
+
+Core now composes local and remote executors through a trusted per-engine session
+runtime directory. Selection must match the exact reviewed device, provider,
+version, capability and control revision. Missing, broken or ambiguous sources
+refuse execution; ordering never selects a local/SSH fallback. Each admitted
+session pins its source generation and checks currentness throughout opening,
+input, control, output and idle periods, alongside the existing native/UI review,
+M20 service resource and tracked human permission. Discovery, runtime support and
+network connectivity create no grants. The scoped browser router can be enabled
+by the existing local flag or the separate `THREE_MM_SESSION_LINKS=1` opt-in;
+the unrestricted prototype router remains absent.
+
+Remote routes are fixed root-owned configuration, not browser-selected addresses,
+certificates, factories or wheels. The optional independent `session-node`
+component uses TLS 1.3 and the Node's existing paired Hub public identity. The
+Hub proves possession of its existing installation key; no new enrollment or
+parallel authority is introduced. The current registry declaration and reviewed
+resource must also match the exact provider version, wheel digest, Node certificate
+fingerprint and `isolated_session_v1` profile. Fresh Node support lets the Agent
+advertise the feature; expired health/support or revoked authority remains
+unavailable. The daemon does not import provider code: a separate socket-activated
+DynamicUser worker verifies the OS boundary before loading the reviewed wheel.
+Node, worker and relay have independently packaged component/update boundaries.
+
+The local `session-relay` binds loopback and forwards bounded encrypted bytes to
+one fixed Node endpoint. TLS remains end to end between Hub and Node. The relay
+has no Hub/Node private keys, device credentials, Core data or command interpreter.
+It does not authenticate users, delegate rights, reconnect sessions or replay
+input. Root route changes are re-read for new requests and invalidate pinned old
+routes without restarting Core; they do not renew an existing session or grant.
+
+Real ARMv6 cold imports measured about 37 seconds under the existing CPU limit.
+Startup now has separate nested bounds: worker ready 90 seconds, Node open 95,
+remote ready 100, Core startup 110 and browser opening 120. The opaque relay read
+budget is 120 seconds so an encrypted cold start is not mistaken for an idle
+connection. Core checks current runtime/native/UI/M20/human authority throughout
+startup at a 1-second cadence with a separate 5-second authorization deadline,
+and cancels/joins the owned open before cleanup on denial or timeout. The Node
+also watches pre-ready TLS EOF, unexpected input and currentness; it cancels/joins
+startup and fully removes that reader before the normal call loop takes over.
+Only the frontend opening window changed; input/control/close acknowledgments
+retain their existing 10-second browser deadline. No operation is replayed.
+
+Cleanup requires actual OS evidence. A successful provider close is acknowledged
+only after its worker cgroup is empty; uncertain startup, input or close remains
+fenced. A current tracked administrator can inspect owned recovery metadata and
+request **read-only cleanup confirmation** for an exact finalized failed session.
+The platform rechecks the administrator after I/O, records a metadata-only audit
+and releases only that session's lease. The operation never repeats open, input,
+control or close and never restores authority. It installs a terminal barrier for
+the exact session ID before observing cleanup, so a buffered late hello cannot
+start a worker after a successful proof.
+
+A pending/active startup cannot be declared empty. If the Node knows the exact
+execution cgroup, it can reconcile that worker after a lost acknowledgment. If
+local socket startup was uncertain and no execution identity was obtained, absent
+cgroups alone cannot exclude a queued systemd start: that Node generation stays
+fenced. Restart the **optional Node component**, confirm its old handlers/workers
+are gone, then request read-only cleanup confirmation against the new generation.
+Core does not need a restart. After confirmed cleanup and current rights, open a
+new explicit session; never reuse the old request/session or replay uncertain
+input. Existing browser forced-close fencing still requires a fresh page.
+
+The independent public-SDK probe is the second-provider fixture. Both direct and
+relay normal sessions produced ready and delayed output before input, echoed
+1,024 bytes exactly, applied resize 99x31 and completed acknowledged close with
+the exact worker cgroup absent. The measured DynamicUser UID was 63972; private
+paths and IPv4/IPv6 access were denied, and secret-bearing environment was
+absent. Relay drop/restore
+required read-only cleanup confirmation and a fresh explicit session. Human
+revocation closed access, subsequent access returned 403, and explicit restoration
+allowed a fresh session ID. Independent Node and relay updates preserved Core
+PID 142048 and process start tick 5936021 throughout these physical gates.
+
+Targeted evidence: 214 Linux integration cases passed before the final advertised
+remaining-lifetime correction; the final 39 browser cases cover that correction.
+The final TLS/worker/support slice passes 39 cases, packaging 51, delivery 90 and
+shared credentials 32. Frontend verification passes 17 targeted cases, TypeScript
+checking and the Vite production build. These groups overlap and must not be
+added as unique coverage or a complete release run.
+
+Physical service revocation and Node restart each close the old session, prove
+its exact worker/cgroup cleanup and permit a fresh explicit session after current
+rights are reviewed. Pending-startup human revocation produces no opened/data
+message and sends zero input. Its unknown execution fence refuses confirmation
+with HTTP 409 despite cgroup absence; ending only the optional Node generation
+then permits read-only confirmation and a new session. Core remains PID 142048,
+start tick 5936021 through every fault, recovery and independent component update.
+The actual Node TLS listener also refuses a client without the Hub identity.
+Final identity/credential/provisioning and Hub pin checks pass. Terminal 1.0.3
+keeps its exact active local grant revision 3 and human permission. No session
+workers remain; only the disposable probe is left disabled and its test human
+grant removed. The private test machine/WSL are stopped. Consolidated evidence:
+`.runtime/dev-lab/evidence/session-platform-final-20261025.json` plus the named
+`session-probe-*` receipts. This closes the selected common/Node/local-relay gate.
+
+Root/host administration requires a separately reviewed OS profile; public Cloud enrollment, authentication/delegation and deployment remain
+outside this agreed scope. The probe is not installed remote Terminal UI
+acceptance. Neither these checks nor the local relay close all M21/release gates
+or authorize publication.

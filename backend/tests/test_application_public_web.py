@@ -20,6 +20,19 @@ from three_mm_protocol import (
 )
 
 
+# Test composition of the separated route admission and response-validation
+# boundaries. Real signed IPC/FD handoff is covered by test_application_public_web_transport.
+def dispatch_public_http(db, settings, **request):
+    binding, installation, package, payload = public_web.prepare_public_http(db, settings, **request)
+    result = invoke_application(installation, package, settings, binding.route.handler_operation_id,
+        payload.model_dump(mode="json"), {"audience": "public"}, required_audience="public")
+    return public_web.validate_public_http_response(binding, result)
+
+
+def invoke_application(*args, **kwargs):
+    raise AssertionError("Test dispatcher must supply a result")
+
+
 def definition(module_id: str, path: str, *, max_response_bytes: int = 256 * 1024):
     value = application_definition(module_id=module_id)
     value["operations"].append(
@@ -189,13 +202,13 @@ def test_dispatch_filters_credentials_and_validates_response(registry, monkeypat
             "body": "<h1>Example</h1>",
         }
 
-    monkeypatch.setattr(public_web, "invoke_application", invoke)
+    monkeypatch.setattr(__import__(__name__, fromlist=["x"]), "invoke_application", invoke)
     settings = ApplicationRuntimeSettings(
         root=tmp_path / "apps",
         key_root=tmp_path / "keys",
         helper_socket=tmp_path / "helper.sock",
     )
-    response = public_web.dispatch_public_http(
+    response = dispatch_public_http(
         db,
         settings,
         method="GET",
@@ -236,13 +249,13 @@ def test_dispatch_fails_closed_for_method_content_type_size_and_bad_headers(
     )
 
     with pytest.raises(ApplicationPublicWebError) as method:
-        public_web.dispatch_public_http(
+        dispatch_public_http(
             db, settings, method="POST", path="/items/example"
         )
     assert method.value.status_code == 405
 
     monkeypatch.setattr(
-        public_web,
+        __import__(__name__, fromlist=["x"]),
         "invoke_application",
         lambda *_args, **_kwargs: {
             "status": 200,
@@ -252,12 +265,12 @@ def test_dispatch_fails_closed_for_method_content_type_size_and_bad_headers(
         },
     )
     with pytest.raises(ApplicationPublicWebError, match="undeclared content type"):
-        public_web.dispatch_public_http(
+        dispatch_public_http(
             db, settings, method="GET", path="/items/example"
         )
 
     monkeypatch.setattr(
-        public_web,
+        __import__(__name__, fromlist=["x"]),
         "invoke_application",
         lambda *_args, **_kwargs: {
             "status": 200,
@@ -267,12 +280,12 @@ def test_dispatch_fails_closed_for_method_content_type_size_and_bad_headers(
         },
     )
     with pytest.raises(ApplicationPublicWebError, match="too large"):
-        public_web.dispatch_public_http(
+        dispatch_public_http(
             db, settings, method="GET", path="/items/example"
         )
 
     monkeypatch.setattr(
-        public_web,
+        __import__(__name__, fromlist=["x"]),
         "invoke_application",
         lambda *_args, **_kwargs: {
             "status": 200,
@@ -280,7 +293,7 @@ def test_dispatch_fails_closed_for_method_content_type_size_and_bad_headers(
         },
     )
     with pytest.raises(ApplicationPublicWebError, match="invalid response"):
-        public_web.dispatch_public_http(
+        dispatch_public_http(
             db, settings, method="GET", path="/items/example"
         )
 
@@ -301,7 +314,7 @@ def test_dispatch_accepts_declared_bounded_binary_asset(registry, monkeypatch, t
     )
     payload = b"\x89PNG\r\n\x1a\n" + b"x" * 64
     monkeypatch.setattr(
-        public_web,
+        __import__(__name__, fromlist=["x"]),
         "invoke_application",
         lambda *_args, **_kwargs: {
             "status": 200,
@@ -315,7 +328,7 @@ def test_dispatch_accepts_declared_bounded_binary_asset(registry, monkeypatch, t
         key_root=tmp_path / "keys",
         helper_socket=tmp_path / "helper.sock",
     )
-    response = public_web.dispatch_public_http(
+    response = dispatch_public_http(
         db, settings, method="GET", path="/assets/logo.png"
     )
     assert base64.b64decode(response.body_base64) == payload

@@ -1,16 +1,16 @@
 [Unit]
 Description=3mm supervised application extension %i
 After=3mm-core.service
-PartOf=3mm-core.service
 
 [Service]
+OOMScoreAdjust=300
 # Start succeeds only after exec under the configured non-root principal.
 # Type=simple acknowledges the fork before credential/namespace setup completes.
 Type=exec
 User=3mm-app
 Group=3mm-app
-WorkingDirectory=/opt/3mm/current
-ExecStart=/opt/3mm/current/.venv/bin/python -m three_mm_runtime.application_host --instance %i --root /var/lib/3mm/application-extensions --key-root /etc/3mm/application-extensions --group 3mm-app
+WorkingDirectory=/opt/3mm-application-hosts/instances/%i/current
+ExecStart=/opt/3mm-application-hosts/instances/%i/current/.venv/bin/python -I /opt/3mm-application-hosts/instances/%i/current/host.pyz --instance %i --root /var/lib/3mm/application-extensions --key-root /etc/3mm/application-extensions --group 3mm-app
 Restart=on-failure
 RestartSec=3s
 TimeoutStopSec=30s
@@ -28,6 +28,11 @@ ProtectControlGroups=true
 RestrictSUIDSGID=true
 RestrictAddressFamilies=AF_UNIX
 LockPersonality=true
+InaccessiblePaths=/opt/3mm /etc/3mm/3mm.env /var/lib/3mm/core
+MemoryMax=256M
+TasksMax=64
+CPUQuota=100%
+LimitNOFILE=256
 
 [Install]
 WantedBy=multi-user.target

@@ -1,4 +1,5 @@
 """Existing broker authority baseline; not an OS isolation/sandbox proof."""
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 import hashlib
 import hmac
@@ -69,7 +70,7 @@ def authority(monkeypatch, tmp_path):
     db.commit()
     server = ApplicationPlatformServer(
         tmp_path / "p.sock", keys, group="missing-test-group"
-    )
+    , allowed_actions=COMPATIBILITY_ACTIONS)
     server.start()
     clients = [
         ApplicationPlatformClient(server.socket_path, instance, secret)
@@ -130,7 +131,7 @@ def test_disable_rejects_new_checkpoint_work_but_retains_existing_data(authority
     assert checkpoint.value == {"keep": True}
 
 
-def test_identical_checkpoint_mutation_is_fenced_by_revision_not_generic_replay_protection(
+def test_transport_replay_and_new_request_cas_both_prevent_duplicate_mutation(
     authority,
 ):
     request = {
@@ -149,7 +150,11 @@ def test_identical_checkpoint_mutation_is_fenced_by_revision_not_generic_replay_
     ).hexdigest()
     encoded = json.dumps(request).encode() + b"\n"
     results = []
-    for _ in range(2):
+    for attempt in range(3):
+        if attempt == 2:
+            request["request_id"] = "new-transport-same-checkpoint-revision"
+            request["signature"] = hmac.new(secret, authority.server._canonical(request), hashlib.sha256).hexdigest()
+            encoded = json.dumps(request).encode() + b"\n"
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
             connection.settimeout(5)
             connection.connect(str(authority.server.socket_path))
@@ -167,5 +172,6 @@ def test_identical_checkpoint_mutation_is_fenced_by_revision_not_generic_replay_
             results.append(response)
     assert results[0]["ok"] is True
     assert results[1]["ok"] is False
-    assert "conflict" in results[1]["error"]
+    assert results[1]["reason"] == "request_replayed"
+    assert results[2]["ok"] is False and "conflict" in results[2]["error"]
     assert authority.clients[0].get_checkpoint("once")["revision"] == 1

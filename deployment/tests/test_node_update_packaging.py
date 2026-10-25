@@ -32,7 +32,8 @@ def test_node_update_files_are_in_minimal_reproducible_archive(tmp_path):
             "agent/node_update_client.py", "three_mm_protocol/node_updates.py",
             "agent/node_update_execution.py",
             "three_mm_runtime/node_update_helper.py", "deployment/apply_node_update.py",
-            "three_mm_runtime/node_update_trust.py", "deployment/trust_node_update_hub.py",
+            "three_mm_runtime/node_update_trust.py", "three_mm_runtime/node_update_common.py",
+            "deployment/trust_node_update_hub.py",
             "deployment/systemd/3mm-node-update-helper.service",
         } <= names
         assert not any(name.startswith(("backend/", "frontend/")) for name in names)

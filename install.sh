@@ -8,8 +8,6 @@ THREE_MM_BOOTSTRAP_PACKAGES=(
   avahi-daemon
   ca-certificates
   curl
-  dnsmasq-base
-  network-manager
   nodejs
   npm
   python3
@@ -21,6 +19,7 @@ channel=${THREE_MM_CHANNEL:-$THREE_MM_DEFAULT_CHANNEL}
 requested_tag=${THREE_MM_TAG:-}
 frontend_origin=${THREE_MM_FRONTEND_ORIGIN:-}
 install_profile=full
+network_backend=${THREE_MM_NETWORK_BACKEND:-}
 
 usage() {
   cat <<'EOF'
@@ -31,6 +30,7 @@ Usage:
 
 Options:
   --profile full|node        Full app (default) or minimal Node (ARMv6/Python 3.13)
+  --network-backend host|network-manager  Preserve host networking (default) or enable Wi-Fi setup
   --channel stable|beta|test  Release channel (default: beta)
   --tag vX.Y.Z[-suffix]      Install one exact published release
   --frontend-origin URL      Public HTTP(S) origin; preserves existing URL on update
@@ -48,6 +48,11 @@ fail() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --network-backend)
+      [[ $# -ge 2 ]] || fail "--network-backend requires a value"
+      network_backend=$2
+      shift 2
+      ;;
     --profile)
       [[ $# -ge 2 ]] || fail "--profile requires a value"
       install_profile=$2
@@ -79,7 +84,15 @@ while [[ $# -gt 0 ]]; do
 done
 [[ $install_profile == full || $install_profile == node ]] || fail "profile must be full or node"
 if [[ $install_profile == node ]]; then
-  THREE_MM_BOOTSTRAP_PACKAGES=(avahi-daemon ca-certificates curl dnsmasq-base network-manager python3 python3-venv util-linux)
+  THREE_MM_BOOTSTRAP_PACKAGES=(avahi-daemon ca-certificates curl python3 python3-venv util-linux)
+fi
+if [[ -z $network_backend && -f /etc/3mm/3mm.env ]]; then
+  network_backend=$(awk -F= '$1 == "THREE_MM_NETWORK_BACKEND" {value=$2} END {print value}' /etc/3mm/3mm.env)
+fi
+network_backend=${network_backend:-host}
+[[ $network_backend == host || $network_backend == network-manager ]] || fail "network backend must be host or network-manager"
+if [[ $network_backend == network-manager ]]; then
+  THREE_MM_BOOTSTRAP_PACKAGES+=(dnsmasq-base network-manager)
 fi
 
 [[ $channel == stable || $channel == beta || $channel == test ]] || \
@@ -346,11 +359,13 @@ tar -xOf "$archive" deployment/first_boot_preflight.py > "$preflight"
 chmod 0700 "$installer" "$preflight"
 
 printf 'Running the read-only first-boot preflight...\n'
-python3 "$preflight"
+python3 "$preflight" --network-backend "$network_backend"
 else
   chmod 0700 "$installer"
   # Dependency/import preflight runs inside the staged Node venv before activation.
-  systemctl is-active --quiet NetworkManager || fail "NetworkManager must be active"
+  if [[ $network_backend == network-manager ]]; then
+    systemctl is-active --quiet NetworkManager || fail "NetworkManager must be active"
+  fi
 fi
 
 worker="$stage/run-install.sh"
@@ -388,6 +403,7 @@ systemd-run \
   --property=Type=exec \
   --property=RuntimeMaxSec=45min \
   --property=UMask=0022 \
+  --setenv=THREE_MM_NETWORK_BACKEND="$network_backend" \
   /usr/bin/bash "$worker" "$stage" "$installer" "$archive" \
   "$release_id" "$frontend_origin" "$artifact_sha256" "$install_profile"
 job_started=1
@@ -399,12 +415,12 @@ Release: $release_id
 Log while LAN access remains: journalctl -fu $unit.service
 
 EOF
-if [[ -d /sys/class/net/wlan0/wireless ]]; then
+if [[ $network_backend == network-manager ]]; then
   cat <<'EOF'
 This Wi-Fi SSH connection is expected to close when setup mode starts.
 Then join the open network "3mm Setup XXXX" from a phone. The setup page should
 open automatically; fallback: http://10.42.0.1:8895/setup
 EOF
 else
-  printf 'Without a Wi-Fi adapter, the full profile starts Standalone at %s (no Setup AP).\n' "$frontend_origin"
+  printf 'Host networking is preserved. Select the initial device role through the local administration tools; no role is inferred from Wi-Fi hardware.\n'
 fi

@@ -1,4 +1,5 @@
 """New exact declarations cannot inherit legacy peers/signing at either Core."""
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 import copy
 import os
@@ -98,7 +99,7 @@ def test_all_platform_peer_actions_and_generic_proof_stay_denied_without_fallbac
     forbid_effects(monkeypatch)
     with pair.sender.engine.begin() as db:
         db.execute(update(Installation).values(authority_mode=mode))
-    server = ApplicationPlatformServer(tmp_path / "unused.sock", tmp_path)
+    server = ApplicationPlatformServer(tmp_path / "unused.sock", tmp_path, allowed_actions=COMPATIBILITY_ACTIONS)
     with Session(pair.sender.engine) as db:
         application = db.scalar(select(Installation))
         with pytest.raises(
@@ -195,13 +196,15 @@ def test_signed_sdk_transport_refuses_new_peer_contract_before_legacy_effects(
         root = Path(temporary)
         secret = b"s" * 32
         (root / ("a" * 24 + ".key")).write_bytes(secret)
-        server = ApplicationPlatformServer(root / "platform.sock", root)
+        server = ApplicationPlatformServer(root / "platform.sock", root, allowed_actions=COMPATIBILITY_ACTIONS)
         server.start()
         try:
             client = ApplicationPlatformClient(server.socket_path, "a" * 24, secret)
-            with pytest.raises(ApplicationPlatformError, match="not implemented"):
+            with pytest.raises(ApplicationPlatformError, match="^Platform operation failed$") as denied:
                 client.list_installation_peers()
-            with pytest.raises(ApplicationPlatformError, match="not implemented"):
+            assert denied.value.reason == "operation_failed"
+            with pytest.raises(ApplicationPlatformError, match="^Platform operation failed$") as denied:
                 client.enroll_installation_peer(pair.sender.link_id)
+            assert denied.value.reason == "operation_failed"
         finally:
             server.stop()

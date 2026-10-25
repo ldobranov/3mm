@@ -205,7 +205,7 @@ def runtime_offer(db, resource):
 
 
 def runtime_for_resource(engine, resource):
-    from backend.services.application_browser_sessions import ReviewedSessionRuntime
+    from backend.services.application_session_runtimes import ReviewedSessionRuntime
 
     with Session(engine) as db:
         offer = runtime_offer(db, resource)
@@ -227,6 +227,9 @@ def runtime_for_resource(engine, resource):
                 return None
             with zipfile.ZipFile(io.BytesIO(raw)) as archive:
                 wheel = archive.read(package.application_extension.service.artifact)
+            generation = supervisor_generation()
+            if generation is None:
+                return None
             return ReviewedSessionRuntime(
                 resource["target_device_id"],
                 installation.module_id,
@@ -237,21 +240,27 @@ def runtime_for_resource(engine, resource):
                     factory=offer["metadata"]["factory"],
                     provider_id=installation.module_id,
                 ),
+                lambda: supervisor_generation() == generation,
             )
     return None
 
 
-def configured_browser_service(engine):
-    from backend.services.application_authority_management import configured_manager
-    from backend.services.application_browser_sessions import ApplicationBrowserSessions
-    from backend.services.application_session_authority import M20SessionAuthority
 
-    settings = get_settings()
-    origins = set(settings.backend.cors_origins) | {settings.frontend.frontend_url}
-    if not origins or "*" in origins:
-        raise ValueError("Exact session browser origins required")
-    return ApplicationBrowserSessions(
-        M20SessionAuthority(configured_manager(engine)),
-        runtime_resolver=lambda resource: runtime_for_resource(engine, resource),
-        allowed_origins=origins,
-    )
+def supervisor_generation():
+    if not supervisor_available():
+        return None
+    try:
+        info = SOCKET_PATH.lstat()
+        return info.st_dev, info.st_ino, info.st_ctime_ns
+    except OSError:
+        return None
+
+
+class LocalSessionRuntime:
+    """Local execution source behind the common, exact resource boundary."""
+
+    def available(self, db, resource):
+        return runtime_offer(db, resource) is not None
+
+    def resolve(self, engine, resource):
+        return runtime_for_resource(engine, resource)

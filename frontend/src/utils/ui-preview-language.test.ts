@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const writes = vi.hoisted(() => ({ save: vi.fn() }))
-vi.mock('@/utils/language-api', () => ({ readFrontendTranslations: async () => ({}), saveCurrentUserLanguage: writes.save }))
+vi.mock('@/utils/language-api', async () => { const pack = (await import('../../../modules/language-bg/language-extension.json')).default; return { readAvailableLanguages: async () => ['en','bg'], readFrontendTranslations: async (code: string) => code === pack.code ? pack.frontend : {}, saveCurrentUserLanguage: writes.save } })
 vi.mock('@/utils/dynamic-http', () => ({ default: { get: async () => ({ data: { items: [] } }) } }))
 import { i18n, useI18n } from './i18n'
 

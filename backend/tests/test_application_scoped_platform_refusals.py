@@ -1,4 +1,5 @@
 """Actual signed IPC cannot revive legacy peer/proof operations in scoped mode."""
+from three_mm_platform_wire import COMPATIBILITY_ACTIONS
 
 import os
 from pathlib import Path
@@ -53,7 +54,7 @@ def test_all_legacy_peer_and_proof_actions_refuse_before_private_or_network_acce
         (root / ("a" * 24 + ".key")).write_bytes(secret)
         server = ApplicationPlatformServer(
             root / "p.sock", root, group="missing-test-group"
-        )
+        , allowed_actions=COMPATIBILITY_ACTIONS)
         server.start()
         client = ApplicationPlatformClient(server.socket_path, "a" * 24, secret)
         try:

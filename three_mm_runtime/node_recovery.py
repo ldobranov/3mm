@@ -13,7 +13,7 @@ from three_mm_provisioning import (
     FileNetworkRecoveryMarker, FileNetworkRecoveryPolicyStore,
     FileProvisioningStore, NetworkManagerReadOnlyAdapter,
 )
-from three_mm_runtime.install_profile import InstallProfile, read_install_profile
+from three_mm_runtime.install_profile import InstallProfile, NetworkBackend, read_install_profile, read_network_backend
 from three_mm_runtime.network_recovery import NetworkRecoveryMonitor
 
 
@@ -39,6 +39,8 @@ class NodeRecoveryScheduler:
 def create_monitor(release_root=Path('/opt/3mm/current')):
     if read_install_profile(release_root) is not InstallProfile.NODE:
         raise RuntimeError('Node recovery supervisor requires a minimal Node release')
+    if read_network_backend() is NetworkBackend.HOST:
+        return None  # No NetworkManager probing on a host-managed installation.
     data_dir = Path('/var/lib/3mm/provisioning')
     return NetworkRecoveryMonitor(
         policy_store=FileNetworkRecoveryPolicyStore(data_dir / 'network-recovery-policy.json'),
@@ -55,7 +57,8 @@ def main():
     for signum in (signal.SIGTERM, signal.SIGINT):
         signal.signal(signum, lambda *_: stop.set())
     while not stop.is_set():
-        monitor.poll()
+        if monitor is not None:
+            monitor.poll()
         stop.wait(5)
 
 

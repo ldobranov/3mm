@@ -213,8 +213,9 @@ def test_helper_failure_is_quarantined_without_restoring_authority(lifecycle, mo
         installation = db.get(ApplicationExtensionInstallation, 1)
         assert installation.status == "recovery_required" and not installation.enabled
         assert "private" not in installation.error
-    # No automatic retries or bypass through a different lifecycle action.
-    for action in ("activating", "disabling", "uninstalling"):
+    # No automatic retry or re-enable through another normal lifecycle action.
+    # Explicit removal has a separately tested verified-quiescence path.
+    for action in ("activating", "disabling"):
         assert request(s, action).status_code == 409
     assert s.calls == [operation]
     assert snapshot(s) == after
@@ -335,7 +336,9 @@ def test_management_writer_and_other_lifecycle_are_blocked_during_helper(lifecyc
                     create_secret_reference(db, application=expected, label="Unused",
                         credential_kind="bearer", value={"token": "secret"}, authority=authority)
         assert s.client.post(s.base + "/disable", headers=s.auth).status_code == 409
-        assert s.client.delete(s.base, headers=s.auth).status_code == 409
+        # Ordinary activation cannot replay the in-flight operation. Explicit
+        # removal has a verified-quiescence supersession path tested separately.
+        assert request(s, "activating").status_code == 409
         return dict(s.result)
 
     monkeypatch.setattr(routes.UpdateHelperClient, "activate_application_extension", helper)
@@ -345,6 +348,13 @@ def test_management_writer_and_other_lifecycle_are_blocked_during_helper(lifecyc
 
 def test_reinstall_gets_fresh_incarnation_even_with_same_runtime_locator(lifecycle, monkeypatch):
     s = lifecycle
+    # Use the real locator that fresh installation will derive for this module.
+    # Noncanonical retained mappings are covered by the explicit refusal test.
+    runtime_id = routes.application_instance_id(s.module_id)
+    with Session(s.engine) as db, db.begin():
+        db.get(ApplicationExtensionInstallation, 1).instance_id = runtime_id
+        db.get(InstallationPeerOutbound, "peer-keep").application_instance_id = runtime_id
+    s.result["instance_id"] = runtime_id
     before = snapshot(s)[1]
     assert request(s, "uninstalling").status_code == 200
     monkeypatch.setattr(routes.UpdateHelperClient, "activate_application_extension", lambda *_args: dict(s.result))
@@ -353,7 +363,7 @@ def test_reinstall_gets_fresh_incarnation_even_with_same_runtime_locator(lifecyc
         installation = db.scalar(select(ApplicationExtensionInstallation))
         after = read_application_authority(db, installation.id)
         assert after.incarnation != before.incarnation and after.epoch != before.epoch
-        assert installation.instance_id == "a" * 24
+        assert installation.instance_id == runtime_id
         assert db.get(InstallationPeerOutbound, "peer-keep").state == "revoked"
 
 
@@ -362,7 +372,9 @@ def test_interrupted_transition_is_not_implicitly_retried(lifecycle):
     with Session(s.engine) as db, db.begin():
         db.execute(update(ApplicationExtensionInstallation).values(status="activating", enabled=False))
     before = snapshot(s)
-    for operation in ("activating", "disabling", "uninstalling"):
+    # Activation/disable are not implicit recovery. Explicit removal instead
+    # requests quiescence and never retries the interrupted activation.
+    for operation in ("activating", "disabling"):
         assert request(s, operation).status_code == 409
     assert snapshot(s) == before and not s.calls
 

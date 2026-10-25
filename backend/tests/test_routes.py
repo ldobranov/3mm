@@ -18,8 +18,7 @@ def isolated_application_runtime(tmp_path, monkeypatch):
     settings = main.app_settings.model_copy(deep=True)
     settings.applications.root = tmp_path / "applications"
     settings.applications.key_root = tmp_path / "keys"
-    settings.applications.platform_socket = tmp_path / "platform.sock"
-    settings.public_web.gateway_socket = tmp_path / "public-web.sock"
+    settings.applications.runtime_socket = tmp_path / "platform.sock"
     monkeypatch.setattr(main, "app_settings", settings)
 
 

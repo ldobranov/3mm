@@ -1,3 +1,4 @@
+from backend.tests.connector_helpers import execute_connector_request
 from datetime import UTC, datetime
 
 import backend.database  # noqa: F401
@@ -18,7 +19,6 @@ from backend.services.application_connectors import (
     ApplicationConnectorError,
     bind_application_connector,
     prepare_application_connector_binding,
-    execute_connector_request,
 )
 from backend.services.application_secrets import (
     create_secret_reference,
@@ -103,7 +103,7 @@ def test_secret_rotation_and_connector_success_do_not_disclose_credentials(conne
 
     assert result["outcome"] == "succeeded"
     assert result["headers"] == {"Content-Type": "application/json"}
-    assert captured["auth"] == ("new-user", "new-pass")
+    assert captured["headers"]["Authorization"] == "Basic bmV3LXVzZXI6bmV3LXBhc3M="
     assert captured["headers"]["Idempotency-Key"] == "record-1"
     assert binding.last_outcome == "succeeded"
     attempt = db.scalar(select(ApplicationConnectorAttempt))

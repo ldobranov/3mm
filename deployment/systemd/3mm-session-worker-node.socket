@@ -1,0 +1,18 @@
+[Unit]
+Description=3mm local isolated session admission socket
+PartOf=3mm-session-node.service
+Before=3mm-session-node.service
+
+[Socket]
+ListenStream=/run/3mm-sessions/provider.sock
+SocketUser=root
+SocketGroup=3mm
+SocketMode=0660
+DirectoryMode=0755
+Accept=yes
+Service=3mm-session-worker-node@.service
+MaxConnections=1
+RemoveOnStop=yes
+
+[Install]
+WantedBy=3mm-session-node.service

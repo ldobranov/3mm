@@ -24,11 +24,10 @@ from three_mm_runtime.session_worker import (
 SOCKET_PATH = Path("/run/3mm-sessions/provider.sock")
 
 
-class SandboxedSessionProvider:
-    def __init__(self, *, wheel, factory, provider_id):
-        self.wheel, self.factory, self.provider_id = wheel, factory, provider_id
-        self.sha256 = hashlib.sha256(wheel).hexdigest()
-        validate_wheel(wheel, self.sha256)
+class SessionChannelProvider:
+    """Private bounded request channel; concrete executors prove their own cleanup."""
+
+    def __init__(self):
         self.session_id = None
         self.reader = self.writer = self.receiving = None
         self.pending = {}
@@ -86,7 +85,7 @@ class SandboxedSessionProvider:
             for start in range(0, len(self.wheel), 65536):
                 self.writer.write(self.wheel[start : start + 65536])
                 await asyncio.wait_for(self.writer.drain(), 5)
-            ready = await asyncio.wait_for(read_packet(self.reader), 8)
+            ready = await asyncio.wait_for(read_packet(self.reader), 90)
             if set(ready) != {"ready", "cgroup"} or ready["ready"] is not True:
                 raise RuntimeError("Session startup was not confirmed")
             cgroup = ready["cgroup"]
@@ -214,6 +213,12 @@ class SandboxedSessionProvider:
                 await asyncio.gather(self.receiving, return_exceptions=True)
         await self._wait_empty()
 
+    async def confirm_cleanup(self):
+        """Read-only confirmation for an already closed/fenced exact local worker."""
+        if self.session_id is None:
+            raise RuntimeError("Session cleanup identity is unavailable")
+        await self._wait_empty()
+
     async def _wait_empty(self):
         # A plugin close ACK is not OS cleanup. Escaped child process groups
         # remain owned by the same systemd cgroup and must actually disappear.
@@ -236,3 +241,11 @@ class SandboxedSessionProvider:
                 return
             await asyncio.sleep(0.05)
         raise RuntimeError("Session cgroup cleanup is unconfirmed")
+
+
+class SandboxedSessionProvider(SessionChannelProvider):
+    def __init__(self, *, wheel, factory, provider_id):
+        super().__init__()
+        self.wheel, self.factory, self.provider_id = wheel, factory, provider_id
+        self.sha256 = hashlib.sha256(wheel).hexdigest()
+        validate_wheel(wheel, self.sha256)

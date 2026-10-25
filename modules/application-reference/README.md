@@ -7,9 +7,11 @@ are **not sandboxed**.
 
 ## Profiles
 
-- The default **1.0.1 compatibility workflow** is unchanged. It includes its
-  existing application database, connector and background-work examples; it is
-  not evidence of scoped WP4 acceptance.
+- The default **1.0.1 compatibility workflow** retains its application database,
+  connector and event examples. P3c removes its job schedules and job operations:
+  the old compatibility-only Core scheduler is retired. Internal outbox/catalog
+  routines remain business-logic examples, without an automatic Core execution
+  path. This profile is not evidence of scoped WP4 acceptance.
 - **1.1.0 scoped capability acceptance** uses one exact command binding, one
   kiosk/operator submission operation and an operator lookup. It declares no
   connector, job, event subscription or scoped relational database. Its no-op

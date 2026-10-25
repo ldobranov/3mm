@@ -87,9 +87,11 @@ def _plan_extension_intent(payload: PlanExtensionIntentRequest) -> ExtensionInte
     else:
         data_mode = "none"
 
-    needs_database = data_mode == "records"
+    if data_mode == "records":
+        raise HTTPException(422, "This builder creates UI pages and widgets. Record management requires a current runtime or application package.")
+    needs_database = False
     template_key = "crud" if needs_database else "simple"
-    package_kind = "compiled" if project_type == "widget" else "legacy"
+    package_kind = "compiled"
     location = "a dashboard widget" if project_type == "widget" else "a separate application page"
     storage = (
         "with editable database records"
@@ -278,7 +280,7 @@ def generate_extension(
             groq_api_key=groq_key,
             openrouter_api_key=openrouter_key,
         )
-    except IncompleteAIGenerationError as exc:
+    except (IncompleteAIGenerationError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return GenerateExtensionResponse(report=report, zip_base64=zip_b64, files_text=files_text)
 
@@ -294,5 +296,8 @@ def package_extension(
     """
 
     _require_admin(claims)
-    report, zip_b64, files_text = package_extension_zip(payload.spec, payload.files_text)
+    try:
+        report, zip_b64, files_text = package_extension_zip(payload.spec, payload.files_text)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     return GenerateExtensionResponse(report=report, zip_base64=zip_b64, files_text=files_text)

@@ -1,12 +1,23 @@
 """Immutable release-local installation profile, independent of device role."""
 
 from enum import Enum
+import os
 from pathlib import Path
 
 
 class InstallProfile(str, Enum):
     FULL = "full"
     NODE = "node"
+
+
+class NetworkBackend(str, Enum):
+    HOST = "host"
+    NETWORK_MANAGER = "network-manager"
+
+
+def read_network_backend() -> NetworkBackend:
+    """Host networking is preserved unless its management is explicitly selected."""
+    return NetworkBackend(os.getenv("THREE_MM_NETWORK_BACKEND", "host"))
 
 
 def read_install_profile(release_root: Path) -> InstallProfile:

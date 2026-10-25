@@ -59,7 +59,6 @@
             <select v-model="guidedDataMode">
               <option value="auto">{{ t('extensions.aiBuilder.guided.auto', 'Decide for me') }}</option>
               <option value="settings">{{ t('extensions.aiBuilder.guided.settings', 'Only user settings') }}</option>
-              <option value="records">{{ t('extensions.aiBuilder.guided.records', 'A list of editable records') }}</option>
               <option value="none">{{ t('extensions.aiBuilder.guided.none', 'Nothing') }}</option>
             </select>
           </label>
@@ -342,11 +341,6 @@
               <label>{{ t('extensions.aiBuilder.template', 'Template') }}</label>
               <select v-model="templateKey" :disabled="busy">
                 <option value="simple">{{ t('extensions.aiBuilder.templates.simple', 'Simple route extension') }}</option>
-                <option value="crud">{{ t('extensions.aiBuilder.templates.crud', 'CRUD (DB) extension') }}</option>
-                <option value="crud_multilingual">{{ t('extensions.aiBuilder.templates.crudMultilingual', 'CRUD + multilingual content') }}</option>
-                <option value="provider_embedder">{{ t('extensions.aiBuilder.templates.provider', 'Provider embedder extension') }}</option>
-                <option value="consumer_embedder">{{ t('extensions.aiBuilder.templates.consumer', 'Consumer embedder extension') }}</option>
-                <option value="image_manager">{{ t('extensions.aiBuilder.templates.imageManager', 'Image manager (AdvancedImageUpload)') }}</option>
               </select>
               <div class="hint muted">
                 {{
@@ -399,344 +393,11 @@
           </div>
         </details>
 
-        <details v-show="currentStep === 0" class="section">
-          <summary class="section-title">
-            {{ t('extensions.aiBuilder.sections.advanced', 'Advanced') }}
-          </summary>
-
-          <div class="grid">
-            <div class="form-group">
-              <label>{{ t('extensions.aiBuilder.apiPrefix', 'API prefix') }}</label>
-              <input v-model="spec.api_prefix" placeholder="/api/my" @input="touched.api_prefix = true" />
-              <div class="hint muted">
-                {{
-                  t(
-                    'extensions.aiBuilder.hints.apiPrefix',
-                    'Keep stable across versions. Recommended: /api/<nameWithoutExtension> (lowercase).'
-                  )
-                }}
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>{{ t('extensions.aiBuilder.backendEntry', 'Backend entry') }}</label>
-              <input v-model="spec.backend_entry" placeholder="my_extension.py" @input="touched.backend_entry = true" />
-            </div>
-
-            <div class="form-group">
-              <label>{{ t('extensions.aiBuilder.frontendEntry', 'Frontend entry') }}</label>
-              <input v-model="spec.frontend_entry" placeholder="MyExtension.vue" @input="touched.frontend_entry = true" />
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label>{{ t('extensions.aiBuilder.frontendRoutes', 'Frontend routes') }}</label>
-            <div class="hint muted">
-              {{ t('extensions.aiBuilder.hints.routesForm', 'Add routes for the extension UI. Component should match a .vue file inside the extension package.') }}
-            </div>
-
-            <div class="route-grid">
-              <div class="route-row header">
-                <div>{{ t('extensions.aiBuilder.routes.path', 'Path') }}</div>
-                <div>{{ t('extensions.aiBuilder.routes.component', 'Component') }}</div>
-                <div>{{ t('extensions.aiBuilder.routes.name', 'Name') }}</div>
-                <div>{{ t('extensions.aiBuilder.routes.requiresAuth', 'Auth') }}</div>
-                <div></div>
-              </div>
-
-              <div v-for="(r, idx) in spec.frontend_routes" :key="idx" class="route-row">
-                <input v-model="r.path" @input="touched.frontend_routes = true" placeholder="/my" />
-                <input v-model="r.component" @input="touched.frontend_routes = true" placeholder="MyExtension.vue" />
-                <input v-model="r.name" @input="touched.frontend_routes = true" placeholder="MyExtension" />
-                <input
-                  type="checkbox"
-                  :checked="routeRequiresAuth(r)"
-                  @change="setRouteRequiresAuth(r, ($event.target as HTMLInputElement).checked); touched.frontend_routes = true"
-                />
-                <button class="button small" type="button" @click="removeRoute(idx)">
-                  {{ t('extensions.aiBuilder.routes.remove', 'Remove') }}
-                </button>
-              </div>
-            </div>
-
-            <div class="row" style="margin-top: 0.75rem">
-              <button class="button" type="button" @click="addRoute">
-                {{ t('extensions.aiBuilder.routes.add', 'Add route') }}
-              </button>
-            </div>
-
-            <details class="section" style="margin-top: 0.75rem">
-              <summary class="section-title">
-                {{ t('extensions.aiBuilder.routes.raw', 'Raw routes JSON (advanced)') }}
-              </summary>
-              <textarea v-model="frontendRoutesJson" rows="6" class="code" @input="touched.frontend_routes = true"></textarea>
-              <div v-if="routesJsonError" class="error">{{ routesJsonError }}</div>
-            </details>
-          </div>
-
-          <div class="form-group" style="margin-top: 1rem">
-            <label>{{ t('extensions.aiBuilder.security.permissions', 'Permissions') }}</label>
-            <div class="hint muted">
-              {{ t('extensions.aiBuilder.security.permissionsHint', 'Select minimal permissions required by the extension.') }}
-            </div>
-
-            <div class="pill-grid">
-              <label v-for="p in availablePermissions" :key="p" class="pill">
-                <input type="checkbox" :checked="spec.permissions.includes(p)" @change="togglePermission(p)" />
-                <span>{{ p }}</span>
-              </label>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label>{{ t('extensions.aiBuilder.security.publicEndpoints', 'Public endpoints') }}</label>
-            <div class="hint muted">
-              {{ t('extensions.aiBuilder.security.publicEndpointsHint', 'Endpoints that should be accessible without auth (relative to api_prefix).') }}
-            </div>
-
-            <div class="row" style="margin-top: 0.25rem">
-              <input v-model="newPublicEndpoint" placeholder="/health" style="max-width: 240px" />
-              <button class="button" type="button" @click="addPublicEndpoint">
-                {{ t('extensions.aiBuilder.security.addPublic', 'Add') }}
-              </button>
-            </div>
-
-            <ul class="list">
-              <li v-for="(ep, idx) in spec.public_endpoints" :key="`${ep}-${idx}`" class="list-item">
-                <code>{{ ep }}</code>
-                <button class="button small" type="button" @click="removePublicEndpoint(idx)">
-                  {{ t('extensions.aiBuilder.security.removePublic', 'Remove') }}
-                </button>
-              </li>
-            </ul>
-          </div>
-        </details>
-
-        <details v-show="currentStep === 1" v-if="templateKey === 'crud'" open class="section">
-          <summary class="section-title">
-            {{ t('extensions.aiBuilder.sections.dataModel', 'CRUD Data Model') }}
-          </summary>
-
-          <div class="grid">
-            <div class="form-group">
-              <label>{{ t('extensions.aiBuilder.dataModel.table', 'Table name') }}</label>
-              <input v-model="crudModel.table" />
-              <div class="hint muted">
-                {{ t('extensions.aiBuilder.dataModel.tableHint', 'Use lowercase ext_<extensionbase>_* naming for cleanup.') }}
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>{{ t('extensions.aiBuilder.dataModel.primaryEntity', 'Entity name (UI/API)') }}</label>
-              <input v-model="crudModel.entityName" placeholder="items" />
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label>{{ t('extensions.aiBuilder.dataModel.fields', 'Fields') }}</label>
-
-            <div class="field-grid">
-              <div class="field-row header">
-                <div>{{ t('extensions.aiBuilder.dataModel.fieldName', 'Name') }}</div>
-                <div>{{ t('extensions.aiBuilder.dataModel.fieldType', 'Type') }}</div>
-                <div>{{ t('extensions.aiBuilder.dataModel.required', 'Required') }}</div>
-                <div>{{ t('extensions.aiBuilder.dataModel.translatable', 'Translatable') }}</div>
-                <div></div>
-              </div>
-
-              <div v-for="(f, idx) in crudModel.fields" :key="idx" class="field-row">
-                <input v-model="f.name" placeholder="title" />
-                <select v-model="f.type">
-                  <option value="text">text</option>
-                  <option value="int">int</option>
-                  <option value="bool">bool</option>
-                  <option value="json">json</option>
-                  <option value="timestamp">timestamp</option>
-                </select>
-                <input type="checkbox" v-model="f.required" />
-                <input type="checkbox" v-model="f.translatable" />
-                <button class="button small" type="button" @click="removeCrudField(idx)">
-                  {{ t('extensions.aiBuilder.dataModel.remove', 'Remove') }}
-                </button>
-              </div>
-            </div>
-
-            <div class="row" style="margin-top: 0.75rem">
-              <button class="button" type="button" @click="addCrudField">
-                {{ t('extensions.aiBuilder.dataModel.addField', 'Add field') }}
-              </button>
-
-              <button class="button" type="button" @click="applyCrudModelToGoal(false)">
-                {{ t('extensions.aiBuilder.dataModel.appendToGoal', 'Append to Goal') }}
-              </button>
-
-              <button class="button button-primary" type="button" @click="applyCrudModelToGoal(true)">
-                {{ t('extensions.aiBuilder.dataModel.replaceGoal', 'Replace Goal') }}
-              </button>
-            </div>
-          </div>
-
-          <div class="form-group" style="margin-top: 1.25rem">
-            <label>{{ t('extensions.aiBuilder.dataModel.extraEntities', 'Additional entities (v2)') }}</label>
-            <div class="hint muted">
-              {{
-                t(
-                  'extensions.aiBuilder.dataModel.extraEntitiesHint',
-                  'Use this when your extension needs multiple tables/entities (e.g. records + settings). This generates multiple CRUD blocks in the Goal.'
-                )
-              }}
-            </div>
-
-            <div v-if="extraCrudModels.length" class="field-grid" style="margin-top: 0.5rem">
-              <div
-                v-for="(m, midx) in extraCrudModels"
-                :key="midx"
-                class="section"
-                style="margin-top: 0"
-              >
-                <div class="grid">
-                  <div class="form-group">
-                    <label>{{ t('extensions.aiBuilder.dataModel.table', 'Table name') }}</label>
-                    <input v-model="m.table" />
-                  </div>
-                  <div class="form-group">
-                    <label>{{ t('extensions.aiBuilder.dataModel.primaryEntity', 'Entity name (UI/API)') }}</label>
-                    <input v-model="m.entityName" placeholder="records" />
-                  </div>
-                </div>
-
-                <div class="form-group">
-                  <label>{{ t('extensions.aiBuilder.dataModel.fields', 'Fields') }}</label>
-
-                  <div class="field-grid">
-                    <div class="field-row header">
-                      <div>{{ t('extensions.aiBuilder.dataModel.fieldName', 'Name') }}</div>
-                      <div>{{ t('extensions.aiBuilder.dataModel.fieldType', 'Type') }}</div>
-                      <div>{{ t('extensions.aiBuilder.dataModel.required', 'Required') }}</div>
-                      <div>{{ t('extensions.aiBuilder.dataModel.translatable', 'Translatable') }}</div>
-                      <div></div>
-                    </div>
-
-                    <div v-for="(f, fidx) in m.fields" :key="fidx" class="field-row">
-                      <input v-model="f.name" placeholder="title" />
-                      <select v-model="f.type">
-                        <option value="text">text</option>
-                        <option value="int">int</option>
-                        <option value="bool">bool</option>
-                        <option value="json">json</option>
-                        <option value="timestamp">timestamp</option>
-                      </select>
-                      <input type="checkbox" v-model="f.required" />
-                      <input type="checkbox" v-model="f.translatable" />
-                      <button class="button small" type="button" @click="removeCrudFieldForModel(midx, fidx)">
-                        {{ t('extensions.aiBuilder.dataModel.remove', 'Remove') }}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="row" style="margin-top: 0.75rem">
-                    <button class="button" type="button" @click="addCrudFieldForModel(midx)">
-                      {{ t('extensions.aiBuilder.dataModel.addField', 'Add field') }}
-                    </button>
-                    <button class="button" type="button" @click="removeCrudModel(midx)">
-                      {{ t('extensions.aiBuilder.dataModel.removeEntity', 'Remove entity') }}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="row" style="margin-top: 0.75rem">
-              <button class="button" type="button" @click="addCrudModel">
-                {{ t('extensions.aiBuilder.dataModel.addEntity', 'Add entity') }}
-              </button>
-            </div>
-          </div>
-        </details>
-
-        <details v-show="currentStep === 2" open class="section">
-          <summary class="section-title">
-            {{ t('extensions.aiBuilder.sections.relationships', 'Relationships') }}
-          </summary>
-
-          <div class="form-group">
-            <label>{{ t('extensions.aiBuilder.relationships.provides', 'Provides: content embedders') }}</label>
-            <div class="hint muted">
-              {{ t('extensions.aiBuilder.relationships.providesHint', 'Define embedders that other extensions can use (manifest.provides.content_embedders).') }}
-            </div>
-
-            <div class="embedder-grid">
-              <div class="embedder-row header">
-                <div>{{ t('extensions.aiBuilder.relationships.type', 'Type') }}</div>
-                <div>{{ t('extensions.aiBuilder.relationships.component', 'Component') }}</div>
-                <div>{{ t('extensions.aiBuilder.relationships.label', 'Label i18n key') }}</div>
-                <div></div>
-              </div>
-
-              <div v-for="(e, idx) in providerEmbedders" :key="idx" class="embedder-row">
-                <input v-model="e.typeKey" placeholder="product" @input="syncProviderEmbeddersToSpec" />
-                <input v-model="e.component" placeholder="ProductSelector" @input="autoFillEmbedderLabel(e); syncProviderEmbeddersToSpec()" />
-                <input v-model="e.label" placeholder="my.embedders.ProductSelector.title" @input="syncProviderEmbeddersToSpec" />
-                <button class="button small" type="button" @click="removeProviderEmbedder(idx)">
-                  {{ t('extensions.aiBuilder.relationships.remove', 'Remove') }}
-                </button>
-              </div>
-            </div>
-
-            <div class="row" style="margin-top: 0.75rem">
-              <button class="button" type="button" @click="addProviderEmbedder">
-                {{ t('extensions.aiBuilder.relationships.addProvider', 'Add provider embedder') }}
-              </button>
-            </div>
-
-            <details class="section" style="margin-top: 0.75rem">
-              <summary class="section-title">
-                {{ t('extensions.aiBuilder.relationships.advancedFields', 'Advanced embedder fields') }}
-              </summary>
-              <div v-for="(e, idx) in providerEmbedders" :key="`adv-${idx}`" class="grid">
-                <div class="form-group">
-                  <label>{{ t('extensions.aiBuilder.relationships.formatApi', 'format_api') }}</label>
-                  <input v-model="e.format_api" placeholder="format_item_html" @input="syncProviderEmbeddersToSpec" />
-                </div>
-                <div class="form-group">
-                  <label>{{ t('extensions.aiBuilder.relationships.uiTranslationsApi', 'ui_translations_api') }}</label>
-                  <input v-model="e.ui_translations_api" placeholder="get_ui_translations" @input="syncProviderEmbeddersToSpec" />
-                </div>
-                <div class="form-group" style="grid-column: 1 / -1">
-                  <label>{{ t('extensions.aiBuilder.relationships.description', 'Description') }}</label>
-                  <input v-model="e.description" placeholder="Embed items from this extension" @input="syncProviderEmbeddersToSpec" />
-                </div>
-              </div>
-            </details>
-          </div>
-
-          <div class="form-group" style="margin-top: 1rem">
-            <label>{{ t('extensions.aiBuilder.relationships.consumes', 'Consumes: desired embedders') }}</label>
-            <div class="hint muted">
-              {{ t('extensions.aiBuilder.relationships.consumesHint', 'Declare which embedder types you want to consume (manifest.consumes.content_embedders).') }}
-            </div>
-
-            <div class="embedder-grid">
-              <div class="embedder-row header">
-                <div>{{ t('extensions.aiBuilder.relationships.type', 'Type') }}</div>
-                <div>{{ t('extensions.aiBuilder.relationships.providers', 'Provider extensions (comma-separated)') }}</div>
-                <div></div>
-              </div>
-
-              <div v-for="(c, idx) in consumerEmbedders" :key="idx" class="embedder-row consumes">
-                <input v-model="c.typeKey" placeholder="product" @input="syncConsumerEmbeddersToSpec" />
-                <input v-model="c.providersCsv" placeholder="StoreExtension, BlogExtension" @input="syncConsumerEmbeddersToSpec" />
-                <button class="button small" type="button" @click="removeConsumerEmbedder(idx)">
-                  {{ t('extensions.aiBuilder.relationships.remove', 'Remove') }}
-                </button>
-              </div>
-            </div>
-
-            <div class="row" style="margin-top: 0.75rem">
-              <button class="button" type="button" @click="addConsumerEmbedder">
-                {{ t('extensions.aiBuilder.relationships.addConsumer', 'Add consumer request') }}
-              </button>
-            </div>
+        <details v-if="spec.type === 'extension'" v-show="currentStep === 0" class="section">
+          <summary class="section-title">{{ t('extensions.aiBuilder.frontendRoutes', 'Page routes') }}</summary>
+          <div v-for="(route, idx) in spec.frontend_routes" :key="idx" class="grid">
+            <label class="form-group">{{ t('extensions.aiBuilder.routes.path', 'Path') }}<input v-model="route.path" /></label>
+            <label class="form-group">{{ t('extensions.aiBuilder.routes.name', 'Name') }}<input v-model="route.name" /></label>
           </div>
         </details>
 
@@ -1096,7 +757,7 @@ const currentStep = ref(0)
 
 const stepEnabled = (idx: number): boolean => {
   // Hide the Model step when not using CRUD template.
-  if (idx === 1) return templateKey.value === 'crud' || templateKey.value === 'crud_multilingual'
+  if (idx === 1 || idx === 2) return false
   return true
 }
 
@@ -1708,7 +1369,7 @@ const applyTemplate = (key: typeof templateKey.value) => {
     spec.value.consumes = undefined
     // do not overwrite user's goal, but provide a helpful placeholder if empty
     if (!spec.value.goal) {
-      spec.value.goal = 'A simple extension page that calls its /health endpoint and renders a list.'
+      spec.value.goal = 'A compiled extension page that renders the requested interface using its declared configuration.'
     }
     return
   }
@@ -1812,7 +1473,7 @@ const applyTemplate = (key: typeof templateKey.value) => {
       spec.value.goal =
         'Consume a content embedder from another extension (e.g. StoreExtension). ' +
         'Frontend: discover embedders via the relationship system, dynamically load the provider component, and also load provider locales for current UI language. ' +
-        'Use i18n.loadExtensionTranslationsForExtension(providerName, currentLanguage) before rendering the embedder component.'
+        'Use only the current compiled UI and public extension contracts.'
     }
 
     if (!consumerEmbedders.length) {
@@ -1973,6 +1634,10 @@ const openFromWarning = async (code: string, message: string) => {
 }
 
 const generate = async () => {
+  if (templateKey.value !== 'simple') {
+    error.value = t('extensions.aiBuilder.currentUiOnly', 'This builder creates UI pages and widgets. Use a current runtime or application package for server data.')
+    return
+  }
   if (!capabilityPlanReady.value) {
     error.value = t('extensions.aiBuilder.capabilities.buildBlocked', 'Connect and enable a compatible device capability before building.')
     return
@@ -2152,27 +1817,9 @@ const install = async () => {
     const file = new File([blob], fileName, { type: 'application/zip' })
 
     const formData = new FormData()
-    const isCompiled = Boolean(filesText.value['compiled-ui.json'])
-    formData.append(isCompiled ? 'package' : 'file', file)
-
-    const uploaded = await http.post(
-      isCompiled ? '/api/v1/modules/packages' : '/api/extensions/upload',
-      formData
-    )
-    if (isCompiled) {
-      await markProjectInstalled(uploaded.data.sha256)
-      success.value = t('extensions.aiBuilder.installed', 'Extension uploaded and enabled')
-      installedOk.value = true
-      return
-    }
-    const extId = uploaded.data?.id
-    if (!extId) {
-      success.value = t('extensions.aiBuilder.uploaded', 'Uploaded, but no extension id returned')
-      return
-    }
-
-    await http.patch(`/api/extensions/${extId}`, { is_enabled: true })
-    await markProjectInstalled(await blobSha256(blob))
+    formData.append('package', file)
+    const uploaded = await http.post('/api/v1/modules/packages', formData)
+    await markProjectInstalled(uploaded.data.sha256)
     success.value = t('extensions.aiBuilder.installed', 'Extension uploaded and enabled')
     installedOk.value = true
   } catch (e: unknown) {

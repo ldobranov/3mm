@@ -52,6 +52,7 @@ from backend.services.application_authority_context import (
     ScopeKey,
     StorageScopeKey,
     _canonical_bytes,
+    _command_schema_data,
     _parse,
     _parse_versioned,
     _validate_private_file_scopes,
@@ -260,8 +261,8 @@ class CorePolicyEvidenceV1(PolicyModel):
     binding: PolicyBinding
     policy_revision: Identity
     trust_revision: Identity
-    trust_class: Literal["reviewed_local_artifact", "unknown", "revoked"]
-    execution_class: Literal["reviewed_native", "proven_isolated"]
+    trust_class: Literal["reviewed_local_artifact", "administrator_approved_artifact", "unknown", "revoked"]
+    execution_class: Literal["reviewed_native", "administrator_approved_native", "proven_isolated"]
     execution_profile: Identity
     profile_revision: Identity
     native_review_revision: Identity | None
@@ -506,14 +507,7 @@ def _scope_data(scope):
     data = scope.model_dump(mode="json")
     declaration = data.get("declaration")
     if isinstance(scope, ResolvedCommandScope):
-        schema = declaration["arguments_schema"]
-        schema["required"] = sorted(schema.get("required", []))
-        for prop in schema["properties"].values():
-            if "enum" in prop:
-                encoded = [_canonical_bytes(item) for item in prop["enum"]]
-                if len(encoded) != len(set(encoded)):
-                    raise ValueError("Duplicate command enum value")
-                prop["enum"].sort(key=_canonical_bytes)
+        declaration["arguments_schema"] = _command_schema_data(declaration["arguments_schema"])
     elif isinstance(scope, ResolvedConnectorScope):
         declaration["allowed_schemes"].sort()
     elif isinstance(scope, ResolvedStatusScope):
@@ -638,7 +632,11 @@ def evaluate_authority_policy(subject, evidence=None) -> PolicyEvaluation:
             else:
                 if evidence.native_review_revision is None:
                     issues.add((None, "native_review_missing"))
-                expected_profile = "supervised_reviewed_native_ui_v1" if has_ui else "supervised_reviewed_native_v1"
+                administrator_approved = evidence.execution_class == "administrator_approved_native"
+                if (evidence.trust_class == "administrator_approved_artifact") != administrator_approved:
+                    issues.add((None, "artifact_trust_unavailable"))
+                prefix = "supervised_administrator_approved_native" if administrator_approved else "supervised_reviewed_native"
+                expected_profile = prefix + ("_ui_v1" if has_ui else "_v1")
                 if evidence.execution_profile != expected_profile:
                     issues.add((None, "execution_profile_unsupported"))
                 if evidence.isolation_proof_revision is not None:
@@ -656,7 +654,7 @@ def evaluate_authority_policy(subject, evidence=None) -> PolicyEvaluation:
                         adapter_revision=_adapter_revision(evidence),
                         trust_revision=evidence.trust_revision,
                         execution_profile=evidence.execution_profile,
-                        execution_class="reviewed_native",
+                        execution_class=evidence.execution_class,
                         allowed_scopes=tuple(sorted(rules)),
                         required_scopes=tuple(sorted(evidence.required_scopes)),
                         blockers=(),

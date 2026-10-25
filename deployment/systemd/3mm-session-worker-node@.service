@@ -1,0 +1,48 @@
+[Unit]
+Description=3mm isolated SDK session worker
+PartOf=3mm-session-node.service
+BindsTo=3mm-session-node.service
+After=3mm-session-node.service
+
+[Service]
+OOMScoreAdjust=300
+Type=exec
+DynamicUser=yes
+WorkingDirectory=/opt/3mm-session-worker/current
+ExecStart=/opt/3mm-session-worker/current/.venv/bin/python -I /opt/3mm-session-worker/current/service.pyz
+Environment=THREE_MM_SESSION_PROFILE=isolated_session_v1
+Environment=PYTHONDONTWRITEBYTECODE=1
+StandardInput=socket
+StandardOutput=null
+StandardError=null
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ProtectSystem=strict
+ProtectHome=yes
+InaccessiblePaths=-/etc/3mm -/var/lib/3mm -/run/3mm -/run/3mm-public-web -/run/dbus -/run/systemd/private -/media
+TemporaryFileSystem=/mnt:ro,mode=000 /tmp:rw,nosuid,nodev,size=64M,mode=1777 /var/tmp:rw,nosuid,nodev,size=16M,mode=1777
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+UMask=0077
+LimitNOFILE=64
+LimitFSIZE=16M
+MemoryMax=128M
+TasksMax=16
+CPUQuota=50%
+RuntimeMaxSec=900
+TimeoutStopSec=5
+KillMode=control-group
+SendSIGKILL=yes
+Restart=no

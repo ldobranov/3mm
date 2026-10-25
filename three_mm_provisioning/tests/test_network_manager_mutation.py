@@ -52,7 +52,8 @@ def test_rollback_is_scheduled_before_the_caller_can_start_ap():
     assert command[-3:] == ("up", "uuid", "safe-connection-uuid")
 
 
-def test_runtime_activation_cancels_external_setup_safety_first():
+def test_runtime_activation_cancels_external_setup_safety_first(monkeypatch):
+    monkeypatch.setenv("AI_SETTINGS_MASTER_KEY", "must-not-enter-command-arguments")
     runner = FakeRunner()
     boundary = NetworkManagerMutationBoundary(runner=runner)
 
@@ -62,6 +63,9 @@ def test_runtime_activation_cancels_external_setup_safety_first():
     assert runner.calls[1][0][0] == "/usr/bin/systemd-run"
     assert "PYTHONPATH=/opt/3mm/current" in runner.calls[1][0]
     assert "/opt/3mm/current/.venv/bin/python" in runner.calls[1][0]
+    assert "--property=EnvironmentFile=-/etc/3mm/3mm.env" in runner.calls[1][0]
+    assert "--property=OnFailure=3mm-network-helper.service 3mm-setup-local.service" in runner.calls[1][0]
+    assert "must-not-enter-command-arguments" not in repr(runner.calls)
 
 
 def test_temporary_client_secret_uses_stdin_and_is_not_saved():

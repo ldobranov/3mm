@@ -225,6 +225,14 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
 
+    @app.get("/component-health", tags=["system"])
+    def component_health(request: Request):
+        _runtime(request)
+        from three_mm_runtime.component_identity import component_health as identity
+        result=identity()
+        if result is None:raise HTTPException(404,"Independent component identity is unavailable")
+        return result
+
     @app.get("/health", tags=["system"])
     def health(request: Request) -> AgentHealth:
         runtime = _runtime(request)

@@ -473,80 +473,12 @@ def create_default_settings(db: Session, system_extension: Extension):
     print("✓ Settings ready for universal multilingual configuration")
 
 
-def install_bulgarian_language_pack(db: Session, system_extension: Extension):
-    """Install Bulgarian language pack during initialization"""
-    
-    from backend.utils.universal_extension_installer import UniversalExtensionInstaller
-    
-    # Check if Bulgarian language pack is already installed
-    from sqlalchemy import select
-    result = db.execute(
-        select(Extension).where(Extension.name == "BulgarianLanguagePack")
-    )
-    existing_pack = result.scalar_one_or_none()
-    
-    if existing_pack:
-        print("✓ Bulgarian language pack already installed")
-        return
-    
-    installer = UniversalExtensionInstaller(db)
-    
-    bulgarian_pack = {
-        "name": "BulgarianLanguagePack",
-        "version": "1.0.0",
-        "type": "language_pack",
-        "language": {
-            "code": "bg",
-            "name": "Bulgarian",
-            "nativeName": "Български"
-        },
-        "translations": {
-            "system_menus": {
-                "menu_translations": {
-                    "1": {
-                        "name": "Главно меню",
-                        "items": [
-                            {"id": "home", "label": "Начало", "tooltip": "Начална страница"},
-                            {"id": "dashboard", "label": "Табло", "tooltip": "Табло за управление"},
-                            {"id": "settings", "label": "Настройки", "tooltip": "Настройки на системата"},
-                            {"id": "extensions", "label": "Разширения", "tooltip": "Управление на разширенията"},
-                            {"id": "security", "label": "Сигурност", "tooltip": "Настройки за сигурност"},
-                            {"id": "profile", "label": "Профил", "tooltip": "Моят профил"}
-                        ]
-                    }
-                }
-            },
-            "settings": {
-                "multilingual_settings": {
-                    "site_name": "Мега Монитор",
-                    "header_message": "Добре дошли в Мега Монитор"
-                }
-            },
-            "frontend": {
-                "common": {
-                    "save": "Запази",
-                    "cancel": "Отказ",
-                    "delete": "Изтрий",
-                    "edit": "Редактирай",
-                    "search": "Търсене"
-                },
-                "navigation": {
-                    "home": "Начало",
-                    "dashboard": "Табло",
-                    "settings": "Настройки"
-                }
-            }
-        }
-    }
-    
-    try:
-        result = installer.install_extension(bulgarian_pack, extension_id=2)
-        print(f"✅ Bulgarian Language Pack installed successfully")
-        print(f"   Language: {result['language_code']}")
-        print(f"   Status: {result['status']}")
-    except Exception as e:
-        print(f"⚠️  Bulgarian language pack installation failed: {str(e)}")
-        print("✓ Continuing with English-only installation")
+def install_bundled_language_packages(db: Session):
+    from backend.config import get_settings
+    from backend.services.language_extensions import BundledLanguagePackages
+    def databases():
+        yield db
+    BundledLanguagePackages(databases, get_settings()).seed()
 
 
 def run_migration_if_needed(db: Session):
@@ -635,7 +567,7 @@ def init_database():
             create_translation_api_user(db)
             
             # Install Bulgarian language pack
-            install_bulgarian_language_pack(db, system_extension)
+            install_bundled_language_packages(db)
             
             print("\n=== Database Initialization Complete ===\n")
             print("🌍 Universal Multilingual System Ready!")
@@ -654,11 +586,11 @@ def init_database():
             print("  ✅ No data duplication")
             print("  ✅ Translation coverage tracking")
             print("  ✅ Visual translation management")
-            print("  ✅ Bulgarian language pack pre-installed")
+            print("  ✅ Bundled declarative language packages initialized")
             print("\nAPI Endpoints:")
             print("  GET/POST /api/translations/* - Translation management")
-            print("  GET/POST /api/extensions/* - Extension management")
-            print("  POST /api/extensions/install - Install extensions")
+            print("  GET/POST /api/v1/modules/* - Manifest-v2 packages")
+            print("  POST /api/v1/modules/packages - Stage extension packages")
             print("\nNext Steps:")
             print("  1. Install additional language packs via Extensions")
             print("  2. Create custom extensions with multilingual support")
