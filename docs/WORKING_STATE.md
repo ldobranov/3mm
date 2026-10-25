@@ -4,72 +4,40 @@ Updated: 2026-10-25. Start here; follow linked details only as needed.
 
 ## Active task and next result
 
-- **Release beta.57 requested, 2026-10-25.** Owner accepted the current work
-  and requested one release covering it. Latest correction: both main CI and the
-  tag-driven Release pipeline run automatically; manual device trials remain
-  with the owner. Release metadata now covers accepted P0-P6/setup/AP, common
-  sessions/Node/local relay, lifecycle/retained data and simple consent. Preserve
-  independent capability/M21 design scope without claiming full implementation.
-  VERSION is0.3.0-beta.57; no existing beta.57 tag. Review the exact staged tree,
-  push main for canonical CI, then create a new annotated version tag only after
-  CI passes. Release keeps full checks and reproducible seven-asset publication;
-  use the tagged release notes as its body. Prior scoped evidence below is reused
-  only for its unchanged inputs, not relabelled as full final-tree CI. No new
-  local runtime tests or device deployments in this release preparation.
-  Initial main commit2fe2636 started automatic CI40171234066. Tooling discovery
-  exposed a setup gap: unittest imported pytest-style extension-dev tests without
-  installed dependencies and would not collect their functions. Tooling now uses
-  pytest for both unittest and function cases, with the existing locked backend
-  development dependencies installed in that job. Full release tooling uses the
-  same collector. Frontend first run496/499 passed; three status-dialog cases
-  still expected the retired review wizard. Fixtures/actions now exercise neutral
-  preview -> explicit Allow -> refresh, collapsed public metadata and malformed
-  resource denial/no retry. Targeted status-dialog3/3 passed (Vitest3.2.7);
-  production code is unchanged. No gate or release tag bypassed either failure.
-  Superseding push2fef54b exposed always() jobs resisting cancellation, leaving
-  the next run pending. Python/frontend now use !cancelled(), retaining the
-  explicit failed-plan guard while allowing superseded jobs to stop. Existing
-  runs retain their old configuration and require GitHub force-cancel if stuck;
-  never cancel the current validated candidate to manufacture passing evidence.
-  Force-cancel of superseded run40171234066 returned202 and unblocked the latest
-  run40171854480 on e6554a6; the intermediate run was cancelled automatically.
-  Latest tooling32 tests and frontend499 tests/TypeScript/Vite pass. Old partial
-  Python log shows failing indices137/138/140 and1640/1641; it is not pass evidence.
-  The first three expose an empty retained-data catalog missing from historical
-  snapshot expectations, not loss of authority rows. Targeted diagnosis continues.
-  CI/Release now stop pytest on first failure to return actionable diagnostics
-  promptly; successful runs still require every selected test and build gate.
-  Grant-migration module now5/5 passes on Windows with real disposable SQLite/
-  Alembic subprocesses: exact prior rows/authority guards retained, only explicit
-  empty retained catalog creation/removal accounted for. Static audit found no
-  analogous stale head snapshots elsewhere. Corrected collection maps1640/1641
-  to relational activation control malformed-action[]/{} cases. New AP dispatch
-  hashed these unvalidated values; the shared helper now rejects non-dict or
-  non-string-action JSON before any dispatch. Existing four malformed cases and
-  helper/AP regressions: Windows41 passed/8 expected POSIX/native skips, plus
-  four portable direct[]/{}/None/True calls return invalid_request without any
-  filesystem effects. Valid AP bounded scheduling passes. No fresh before-run
-  was completed locally; the original Linux CI failures are the before evidence.
-  Canonical final-tree Linux CI remains pending; no device deployment in this fix.
-  Read-only update catalog review confirms equal-version local beta.57 candidates
-  are not offered replacement by the normal strictly-newer catalog. Release notes
-  now give exact-tag full/Node bootstrap commands and require published commit
-  metadata, not VERSION alone. This is owner-run guidance, no device mutation.
-  The documentation clarification waited for full d68468c CI. Its late contract
-  failure means this next commit combines documentation with test/CI corrections
-  and requires another full automatic CI before any release tag.
-  Full d68468c CI40172642784 completed with1 failure/5313 pass/611 expected skips:
-  the old exact systemd helper ReadWritePaths assertion omitted the intentional
-  optional application-host instance mount. The corrected assertion retains the
-  exact writable allowlist; production unit/helper code is not changed for it.
-  SDK/deployment second process was not reached, so this is not full acceptance.
-  CI now checks whether its exact comparison base has successful CI evidence;
-  failed/cancelled/pending bases or API errors select FULL automatically. The
-  verified base is exported to the Python runner as well as the selection job.
-  The exact systemd-template module now26/26 passes on Windows; the existing
-  helper first-bind sandbox contract confirms why that narrow mount is needed.
-  Actions read-only permission suffices. API positive/negative cases were checked
-  against successful a46f67b and failed d68468c. Final full CI remains required.
+- **Beta.57 published and verified, 2026-10-25.** Owner requested one release
+  for the accepted current work and corrected the testing preference: branch CI
+  and tag Release are AUTOMATIC; manual device trials remain owner-run.
+  Public prerelease: https://github.com/ldobranov/3mm/releases/tag/v0.3.0-beta.57
+  Immutable annotated tag v0.3.0-beta.57 resolves to
+  ebb98fb3fffef387976afbc80ce20a7aaf39ea82. Never move/recreate this tag.
+  Exact main CI40174475950 SUCCESS: Python5448 pass/611 expected skips;
+  deployment+SDK503 pass/4 expected skips; frontend499/TS/Vite and tooling32 pass.
+  Release40176016358 SUCCESS repeated the full Python3.13/Node22 gates, both
+  byte-identical full3arch+ARMv6 Node builds, clean checkout and complete draft
+  upload -> public prerelease. Published2026-10-25T08:42:36Z, release ID423261156.
+  All SEVEN published assets were downloaded and verified: GitHub asset digests,
+  SHA256SUMS, full/Node manifest sets/URLs/sizes/profiles, four archive metadata/
+  VERSION/commit identities, selected exact full/Node source bytes, Node offline
+  wheelhouse inventory/provenance and every wheel hash. No artifact was executed.
+  Evidence/verifier in the project mirror .runtime/beta57-published/verification.json
+  and .runtime/verify_beta_release.py; generated downloads are outside tracked source.
+  CI fixes retain automatic triggers and required gates: collect all tooling tests,
+  allow cancellation of superseded runs, report first failure promptly, require a
+  successful exact comparison base or select FULL in plan AND Python execution.
+  Release prep also fixed malformed helper actions and stale migration/systemd
+  test expectations without widening the production unit mount allowlist.
+  Current release covers accepted P0-P6/setup/AP, common sessions/Node/local relay,
+  lifecycle/retained data and simple admin consent. Host/root administration,
+  public Cloud, full remote Terminal UI/whole M21/WP5 and capability-foundation
+  plans are not claimed complete. Independent Terminal1.0.3 is not a Core asset.
+  Devices were not updated during release work. Local beta.57 candidates are a
+  different build: strictly-newer catalog won't replace an equal-version candidate;
+  release notes give exact-tag full/Node bootstrap and require published commit,
+  not VERSION alone. Preserve the existing database/key/Hub backups.
+  NEXT: owner-run manual device trials when requested. No further implementation
+  is required for this release; do not deploy/reset devices or reopen accepted
+  scenarios automatically. This handoff update changes documentation only after
+  the immutable release tag; its unchanged runtime checks are reused.
 
 - **Simple administrator application consent accepted on rasp-3mm, 2026-10-25.**
   Owner explicitly approved administrator consent for the exact native Linux
