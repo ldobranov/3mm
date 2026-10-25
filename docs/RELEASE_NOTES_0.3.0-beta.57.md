@@ -30,6 +30,8 @@ immutable tag-driven Release workflow; the owner runs subsequent device trials.
 - Fix local browser UI/native checks to share one current SQLite authority
   snapshot, avoiding a nested reader. Separate the five-second authority deadline
   from the one-second output poll interval, retaining checks during blocked I/O.
+- Reject malformed helper action types before dispatch, so invalid array/object
+  actions return a bounded refusal instead of crashing AP/system-action handling.
 - Make failed application installation/startup visible and removable through the
   ordinary lifecycle. Retire unused obsolete/missing/corrupt packages only after
   exact managed-path, reference and quiescence checks.

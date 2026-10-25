@@ -66,7 +66,12 @@ def test_used_state_cannot_be_destructively_downgraded(tmp_path, retained):
     with pytest.raises(subprocess.CalledProcessError):
         _alembic(url, 'downgrade', PREVIOUS)
     engine = create_engine(url)
-    assert snapshot(engine) == before
+    # The later retained-data revision may remove its EMPTY catalog before the
+    # authority downgrade reaches this historical guard. No owned data is lost.
+    assert before["application_retained_data"] == []
+    assert snapshot(engine) == {name: rows for name, rows in before.items()
+        if name != "application_retained_data"}
+    assert "application_retained_data" not in inspect(engine).get_table_names()
     with engine.connect() as db:
         # Later reversible revisions complete; authority history stops at its guard.
         assert db.scalar(text('SELECT version_num FROM alembic_version')) == 'fcd45b0213c4'
@@ -101,7 +106,10 @@ def test_complete_precreated_orm_schema_is_validated_without_losing_history(tmp_
     _alembic(url, 'upgrade', 'head')
     _alembic(url, 'check')
     engine = create_engine(url)
-    assert snapshot(engine) == before
+    after = snapshot(engine)
+    # Current head adds only an empty retained-data catalog to these precreated
+    # authority tables; every pre-existing table and history row stays identical.
+    assert after == {**before, "application_retained_data": []}
     with engine.connect() as db:
         assert db.scalar(text('SELECT version_num FROM alembic_version')) == REVISION
     engine.dispose()

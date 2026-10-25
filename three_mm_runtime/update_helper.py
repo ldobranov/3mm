@@ -417,6 +417,10 @@ def _handle_request(
     application_database: Path = Path("/var/lib/3mm/core/3mm.db"),
     relational_peer_uid: int | None = None,
 ) -> dict[str, object]:
+    # The socket accepts JSON objects with a string action. Reject malformed
+    # values before any dispatch branch can hash an array/object as an action.
+    if type(payload) is not dict or type(payload.get("action")) is not str:
+        return {"ok": False, "error": "invalid_request"}
     if (type(payload) is dict and type(payload.get("action")) is str
         and payload["action"] in UPGRADE_ACTIONS):
         from three_mm_runtime.application_relational_control import CoreMetadataClient

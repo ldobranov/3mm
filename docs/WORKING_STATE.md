@@ -31,6 +31,26 @@ Updated: 2026-10-25. Start here; follow linked details only as needed.
   explicit failed-plan guard while allowing superseded jobs to stop. Existing
   runs retain their old configuration and require GitHub force-cancel if stuck;
   never cancel the current validated candidate to manufacture passing evidence.
+  Force-cancel of superseded run40171234066 returned202 and unblocked the latest
+  run40171854480 on e6554a6; the intermediate run was cancelled automatically.
+  Latest tooling32 tests and frontend499 tests/TypeScript/Vite pass. Old partial
+  Python log shows failing indices137/138/140 and1640/1641; it is not pass evidence.
+  The first three expose an empty retained-data catalog missing from historical
+  snapshot expectations, not loss of authority rows. Targeted diagnosis continues.
+  CI/Release now stop pytest on first failure to return actionable diagnostics
+  promptly; successful runs still require every selected test and build gate.
+  Grant-migration module now5/5 passes on Windows with real disposable SQLite/
+  Alembic subprocesses: exact prior rows/authority guards retained, only explicit
+  empty retained catalog creation/removal accounted for. Static audit found no
+  analogous stale head snapshots elsewhere. Corrected collection maps1640/1641
+  to relational activation control malformed-action[]/{} cases. New AP dispatch
+  hashed these unvalidated values; the shared helper now rejects non-dict or
+  non-string-action JSON before any dispatch. Existing four malformed cases and
+  helper/AP regressions: Windows41 passed/8 expected POSIX/native skips, plus
+  four portable direct[]/{}/None/True calls return invalid_request without any
+  filesystem effects. Valid AP bounded scheduling passes. No fresh before-run
+  was completed locally; the original Linux CI failures are the before evidence.
+  Canonical final-tree Linux CI remains pending; no device deployment in this fix.
 
 - **Simple administrator application consent accepted on rasp-3mm, 2026-10-25.**
   Owner explicitly approved administrator consent for the exact native Linux

@@ -16,6 +16,9 @@ concurrency:
 env:
   CHECK_BASE: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
   CHECK_HEAD: ${{ github.sha }}
+  # A failed run is never publishable; report its first failure promptly.
+  # Successful runs still execute every selected test.
+  PYTEST_ADDOPTS: --maxfail=1
 
 jobs:
   plan:

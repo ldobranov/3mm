@@ -35,6 +35,8 @@ pre-1.0.
 - Browser-session UI/native checks share the current SQLite authority snapshot,
   avoiding nested readers. A separate five-second authority deadline prevents
   valid checks from inheriting the one-second output polling interval.
+- Malformed helper action arrays/objects return invalid_request before AP/system
+  dispatch instead of raising an exception.
 - Failed application activation no longer makes ordinary removal inaccessible.
   Unused obsolete/missing/corrupt packages retain exact reference/path guards.
 - Retained data remains discoverable after package removal; cleanup requires
