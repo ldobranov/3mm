@@ -28,8 +28,8 @@ def test_actual_backend_previews_pass_the_frontend_boundary(state, tmp_path):
     root = Path(__file__).resolve().parents[2]
     frontend = root / 'frontend'
     node = shutil.which('node')
-    if node is None or not (frontend / 'node_modules/esbuild').is_dir():
-        pytest.skip('Requires the existing frontend Node/esbuild toolchain')
+    if node is None or not (frontend / 'compiler/node_modules/esbuild').is_dir():
+        pytest.skip('Requires the locked compiled UI Node/esbuild toolchain')
     s = state
     app = FastAPI()
     app.include_router(router)
@@ -62,7 +62,7 @@ import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
 const [frontend, output] = process.argv.slice(1);
-const {build} = createRequire(frontend + '/package.json')('esbuild');
+const {build} = createRequire(frontend + '/compiler/package.json')('esbuild');
 await build({entryPoints:[frontend + '/src/components/extensions/application-consent.ts'],
   outfile:output, bundle:true, format:'esm', platform:'node', logLevel:'silent'});
 const {readConsentPreview} = await import(pathToFileURL(output).href);

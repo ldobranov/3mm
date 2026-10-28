@@ -14,7 +14,7 @@ without changed inputs is not additional progress. A commit is not a release.
 | Schema or installer | Relevant migration/upgrade/rollback checks |
 | Broad integration/release | Full applicable suites; retain release gates |
 
-Frontend dependency edits must keep both `package-lock.json` and
+Main frontend dependency edits must keep both `package-lock.json` and
 `pnpm-lock.yaml` consistent with `package.json`. The deployment preparation's npm
 cache does not prove the pnpm installation used by CI. Validate in a clean
 frontend directory with Node 22 and pnpm 10.13.1 using the CI commands:
@@ -25,6 +25,22 @@ pnpm run test:unit -- --run
 pnpm run type-check
 pnpm run build-only
 ```
+
+Python integration tests that compile real application UI use the compiler in
+the current checkout. With Node 22 available, install its separate locked
+toolchain before running those tests:
+
+```bash
+npm ci --prefix frontend/compiler --no-audit --no-fund
+```
+
+Keep fixture paths checkout-relative; a developer's `/var/tmp` compiler/cache is
+not a CI prerequisite. CI's Python job and Release install this toolchain
+explicitly, without replacing real compilation with a fake compiler or a skip.
+The Python-to-TypeScript consent/provider checks use esbuild from this same
+locked toolchain. CI runs them and the real Command Probe integration module
+before the broad Python group so setup fails early; the full selected suite
+still runs.
 
 From the root, using the project's Python environment:
 

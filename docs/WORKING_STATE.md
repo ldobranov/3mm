@@ -4,6 +4,35 @@ Updated: 2026-10-28. Start here; follow linked details only as needed.
 
 ## Active task and next result
 
+- **CI Python compiled-UI prerequisites corrected, 2026-10-28.** Run
+  `40666334219` passed frontend/tooling, then Python stopped at Command Probe's
+  fixture: it loaded `/var/tmp/3mm-command-ui/source/frontend/compiler/...`,
+  an undeclared developer cache absent on the runner. The fixture now resolves
+  the current checkout. The compiler's separate npm graph is locked in its new
+  package-lock (existing Vite 6.4.3 / Vue plugin 5.2.4 declarations unchanged),
+  and CI Python plus Release explicitly install it with npm ci under Node 22.
+  No production/Core/application behavior or VERSION changes here.
+
+  The same audit found two HTTP-to-TypeScript consent/provider tests had skipped
+  in that hosted run because they expected frontend/node_modules/esbuild. They
+  now use esbuild from the locked compiler toolchain. CI runs the real three
+  Command Probe scenarios and those two DTO checks early, then retains the full
+  selected Python suite. No fake compiler, removed assertion or added skip.
+
+  Clean relocated Linux checkout with ONLY compiler dependencies installed:
+  **159 passed / no skips** in Command Probe, consent/provider onboarding,
+  compiler/provenance, release-builder/contracts and check-selection tests.
+  frontend/node_modules was absent; a Python audit hook refused the old developer
+  cache path for the entire run. This verifies actual Vue compilation and signed
+  SDK/provider behavior without that old path or a warmed main frontend install.
+  Node 22.22.1 / CPython 3.14.4; canonical hosted Python 3.13 remains a separate
+  result. Earlier 150-test/120-test runs overlap this final group and are not
+  additive coverage. No other developer-only paths found in active Python tests.
+  Checked source `d2ddb8d4ef504baf84a4963437476e7aa0f42053f75ec914ebe6ed044cbb8423`;
+  exact source/inputs, install/test logs and JUnit are in ignored
+  `.runtime/ci-compiler/`. Only documentation follows these checks. Follow-up
+  commit/push stays on `codex/core-sdk-0.3.1`; no main/tag/release/device action.
+
 - **CI frontend lock synchronization, 2026-10-28.** After owner-requested push of
   `b0deb84` on `codex/core-sdk-0.3.1`, GitHub run `40664971721` failed at
   `pnpm install --frozen-lockfile`: C3 removed Gridstack from package.json and

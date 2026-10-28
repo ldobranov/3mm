@@ -51,8 +51,8 @@ def test_actual_admin_discovery_and_configuration_pass_browser_decoder(events, t
     """The owner-facing editor consumes the real APIs used for Agent onboarding."""
     root = Path(__file__).resolve().parents[2]; frontend = root / 'frontend'
     node = shutil.which('node')
-    if node is None or not (frontend / 'node_modules/esbuild').is_dir():
-        pytest.skip('Requires the existing frontend Node/esbuild toolchain')
+    if node is None or not (frontend / 'compiler/node_modules/esbuild').is_dir():
+        pytest.skip('Requires the locked compiled UI Node/esbuild toolchain')
     Base.metadata.create_all(events.engine)
     responses = []
     with http_agent(events, monkeypatch) as (client, transport, _credential):
@@ -76,7 +76,7 @@ import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
 const [frontend, output, device] = process.argv.slice(1);
-const {build} = createRequire(frontend + '/package.json')('esbuild');
+const {build} = createRequire(frontend + '/compiler/package.json')('esbuild');
 await build({entryPoints:[frontend + '/src/utils/device-capabilities.ts'],
   outfile:output, bundle:true, format:'esm', platform:'node', logLevel:'silent', plugins:[{
     name:'decoder-only', setup(api) {

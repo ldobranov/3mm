@@ -72,7 +72,7 @@ def button(vertical, monkeypatch, tmp_path):
             observed_at=datetime.now(UTC), expires_at=datetime.now(UTC) + timedelta(minutes=5), report={
                 "declaration_digest": offer.declaration_digest,
                 "capabilities": [{"capability_id": offer.capability_id, "healthy": True}]}))
-    frontend = Path("/var/tmp/3mm-command-ui/source/frontend")
+    frontend = Path(__file__).resolve().parents[2] / "frontend"
     monkeypatch.setenv("COMPILED_UI_COMPILER_SCRIPT", str(frontend / "compiler/compile-ui-extension.mjs"))
     monkeypatch.setenv("COMPILED_UI_ARTIFACTS_DIR", str(s.root / "compiled"))
     s.build = compiled_ui.compile_ui_package(blob, s.validated)

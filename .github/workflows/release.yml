@@ -88,6 +88,9 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
+      - name: Install locked compiled UI toolchain
+        run: npm ci --prefix frontend/compiler --no-audit --no-fund
+
       - name: Verify frontend
         working-directory: frontend
         run: |
