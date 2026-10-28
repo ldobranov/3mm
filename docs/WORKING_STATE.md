@@ -4,6 +4,43 @@ Updated: 2026-10-28. Start here; follow linked details only as needed.
 
 ## Active task and next result
 
+- **0.3.2 CI regression repair, 2026-10-28.** Owner reported failed main CI and
+  explicitly authorized fixing, committing and pushing the correction. Run
+  `40764987993` on `c5a2fa2` passed frontend/tooling/selection and compiled-UI
+  integration, then stopped after **753 passed / 3 skipped** at
+  `test_application_connector_settings.py::test_own_sqlite_bootstrap_and_existing_registration_keep_sealed_provenance`.
+  This is a CAP13 integration regression, not evidence of a transient runner.
+
+  `_subject` now resolves query metadata from `_PreparedAuthority`; two inert SQL
+  writers still supplied `(pin, package)`, producing an AttributeError hidden by
+  the normal `registration_unavailable` refusal. Updated BOTH current callers:
+  first registration and candidate adoption use the prepared object from their
+  already verified package/pin. No tuple fallback, extra package I/O under guard,
+  permission/trust creation, registration provenance bypass or weakened test.
+  Other `_subject` consumers use `_prepare` or `dataclasses.replace` and were
+  inspected. No frontend/SDK/runtime/schema/version/workflow changes.
+
+  Exact failing case reproduced before the fix on source
+  `b77bd5d3cd20575219cbfe9d2d74b1e4928e796688e564805f921c9302378c0a`, unchanged
+  cached Ubuntu/Python 3.14.4 dependencies; JUnit
+  `/tmp/3mm-public-capacity-ehyptp8d/results.xml`. Candidate executable snapshot:
+  `a4cc03908542c5a290b7065795fd99f1603c9d12e6eee62fe8e25d5a76048a39`.
+  Final targeted connector settings, inert SQL registration and candidate modules:
+  **114 passed / 4 real Root-helper skips**, 146.79 s, unchanged Ubuntu/Python
+  3.14.4 dependency SHA-256
+  `157780b7b0276402845e07a72c374b5a646690a1683b64ebb6423e6dc57a2f3f`.
+  Existing tests cover no execution/grant, sealed provenance, foreign/revoked
+  actors, changed keys/configuration, historical receipt replay and rollback.
+  JUnit: `/tmp/3mm-public-capacity-1w6wa6wc/results.xml`. A preceding broader
+  bounded run had no final JUnit and is NOT counted as a pass. Unchanged hosted
+  frontend/tooling and earlier CAP13 results are reused, not rerun or called a
+  new full CI pass. Only handoff/changelog edits follow the checked source.
+  Staged scope is two production callers plus these two documents; whitespace
+  passes. Push is owner-authorized; canonical CI must verify the new commit.
+  Preserve all old tags.
+  Remote v0.3.2 was absent at inspection; VERSION stays 0.3.2. After push, wait
+  for green canonical CI on the NEW commit before tagging it, never c5a2fa2.
+
 - **Core 0.3.2 commit/release preparation, 2026-10-28.** Owner explicitly
   requested the commit and a release command, not push/tag/publication by the
   agent. Scope is the CAP13 local read-only vertical below, its direct consumers

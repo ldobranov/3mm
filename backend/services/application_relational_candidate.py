@@ -295,7 +295,7 @@ def adopt_relational_version(
                 db,
                 key,
                 installation_id,
-                (sources._package_pin(db, installation_id), package),
+                authority._PreparedAuthority(sources._package_pin(db, installation_id), package),
             )
             result.update(
                 installation_id=installation_id,

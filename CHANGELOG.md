@@ -32,6 +32,10 @@ Prepared source; publication still requires the immutable tag's full release gat
 
 ### Fixed
 
+- Inert SQL package registration and candidate adoption use the current prepared
+  authority object. Adding query resolution no longer breaks these existing
+  metadata-only paths; exact provenance, separate consent and no-start behavior
+  remain enforced.
 - The release saturation test keeps all eight declared response waits live while
   checking prompt overflow refusal and Core responsiveness. Expired test slots no
   longer cause a false ninth-admission failure. Production deadlines/capacity are

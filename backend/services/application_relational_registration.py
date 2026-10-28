@@ -251,7 +251,9 @@ def register_relational_package(
                 ),
             )
             prepared_pin = sources._package_pin(db, installation.id)
-            manager._subject(db, key, installation.id, (prepared_pin, package))
+            manager._subject(
+                db, key, installation.id, authority._PreparedAuthority(prepared_pin, package)
+            )
             result = {
                 "installation_id": installation.id,
                 "registration_id": identifier,
