@@ -37,7 +37,7 @@ def status_core(identity_app,monkeypatch,request):
     state.response_relay=True
     reserve=ResponseWaiter.reserve
     def short_reserve(cls,*args,**kwargs):
-        waiter=reserve(*args,**kwargs);waiter.timeout_seconds=5 if "full_response_pool" in request.node.name else 1;return waiter
+        waiter=reserve(*args,**kwargs);waiter.timeout_seconds=getattr(request,'param',1);return waiter
     monkeypatch.setattr(ResponseWaiter,'reserve',classmethod(short_reserve))
     with core_stack(state,monkeypatch) as s:yield s
 
@@ -95,6 +95,24 @@ def test_failed_status_is_bounded_and_never_resubmitted(status_stack,mode):
     assert s.http('/api/v1/diagnostics/components',headers=s.admin)[0]==200
 
 
+@pytest.mark.parametrize('status_core',[5],indirect=True)
+def test_status_can_complete_after_two_seconds_within_production_budget(status_stack):
+    s=status_stack;(s.status_root/'mode').write_text('pause')
+    start=time.monotonic()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending=pool.submit(s.status);wait_for(lambda:len(s.seen())==1)
+        try:
+            time.sleep(2.2)
+        finally:
+            (s.status_root/'mode').write_text('valid')
+        result=pending.result(timeout=2)
+    assert 2<time.monotonic()-start<5
+    assert result['runtime_observation']=={'status':'available','outbox_inspected':True}
+    assert result['storage']['runtime_revision']=='0001' and result['outbox']=={'pending':2,'delivered':3}
+    assert len(s.seen())==1 and s.command('threadpool_tokens')==0
+
+
+@pytest.mark.parametrize('status_core',[5],indirect=True)
 def test_full_response_pool_rejects_before_dispatch_and_leaves_core_threads_free(status_stack):
     s=status_stack;(s.status_root/'mode').write_text('pause')
     # This case uses the production 5 s budget; other faults use a short 1 s probe.

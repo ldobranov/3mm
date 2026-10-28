@@ -4,6 +4,36 @@ Updated: 2026-10-28. Start here; follow linked details only as needed.
 
 ## Active task and next result
 
+- **CI process-test HTTP watchdog corrected, 2026-10-28.** Run `40673704290`
+  passed frontend/tooling and the early compiled-UI integration checks, then
+  stopped at operational-status's first HTTP read (`TimeoutError`, outer 2 s
+  watchdog). Five isolated CPython 3.13.17 probes completed in 30–36 ms; this
+  does not establish the cause of that individual runner delay. A controlled
+  response after 2.2 s demonstrated the harness defect independently: a valid
+  response inside the configured production 5 s Runtime budget was cut off by
+  the test client at 2 s.
+
+  Shared process HTTP and its sibling health client now use a 10 s outer
+  watchdog, allowing admission, the 5 s response budget and relay/completion.
+  Status tests select the response budget through fixture parameters rather
+  than a test-name substring. A real HTTP/Runtime/service regression requires
+  the delayed response to remain authenticated, available and delivered once.
+  Existing explicit <2 s failure bounds, <1 s administration responsiveness,
+  <0.5 s independent DB writer, pool limits, revocation and no-replay assertions
+  are unchanged. No production timeout/Core/SDK code, workflow, dependency or
+  VERSION change; no device action.
+
+  CPython **3.13.17**, unprivileged Linux: **137 passed / 5 distinct-UID root-driver
+  skips** across all seven users of the shared Core process fixture plus response
+  relay and health-probe tests (235.06 s). The delayed valid response completed
+  in 2.41 s. Checked executable source
+  `74e503f9388cb94bd7c309e9075dd138e303bfdc60017fc5b9842bae6ace9d8f`;
+  logs, JUnit and old-watchdog negative reproduction are in ignored
+  `.runtime/ci-response/`. Earlier frontend/tooling success is reused for their
+  unchanged inputs. A diagnostic replay of the original suite prefix and the
+  complete hosted Python gate remain separate results; do not call targeted
+  checks a green full CI. Follow-up stays on `codex/core-sdk-0.3.1`.
+
 - **CI Python compiled-UI prerequisites corrected, 2026-10-28.** Run
   `40666334219` passed frontend/tooling, then Python stopped at Command Probe's
   fixture: it loaded `/var/tmp/3mm-command-ui/source/frontend/compiler/...`,

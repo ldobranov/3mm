@@ -247,7 +247,9 @@ def core_stack(state,monkeypatch):
             return value
         def http(path='/ready',headers=None):
             request=urllib.request.Request(f'http://127.0.0.1:{ready["port"]}'+path,headers=headers or {})
-            with urllib.request.urlopen(request,timeout=2) as response:return response.status,json.load(response)
+            # Transport watchdog must outlive the Runtime's 5 s response budget
+            # plus relay/admission. Tests assert their own tighter latency bounds.
+            with urllib.request.urlopen(request,timeout=10) as response:return response.status,json.load(response)
         client=ApplicationPlatformClient(base/'runtime/runtime.sock','a'*24,b's'*32)
         def artifact(name,broken=False):
             source=base/('source-'+name)
