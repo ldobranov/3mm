@@ -4,6 +4,24 @@ Updated: 2026-10-28. Start here; follow linked details only as needed.
 
 ## Active task and next result
 
+- **CI frontend lock synchronization, 2026-10-28.** After owner-requested push of
+  `b0deb84` on `codex/core-sdk-0.3.1`, GitHub run `40664971721` failed at
+  `pnpm install --frozen-lockfile`: C3 removed Gridstack from package.json and
+  the npm lock, but its pnpm importer remained stale. Removed the unused importer,
+  package and snapshot entries for Gridstack only; no other resolved dependency
+  version/range changed. The strict CI install requirement is retained.
+
+  Fresh isolated Linux frontend directory, Node **22.22.1**, pnpm **10.13.1**:
+  the exact CI frozen installation, **732 unit tests**, standalone type-check and
+  production build all passed. No preexisting npm node_modules/cache evidence
+  was substituted for this pnpm run. Checked inputs, clean directory and logs:
+  ignored `.runtime/pnpm-ci/`. Development checks now explicitly require keeping
+  both locks synchronized and running the canonical pnpm commands for dependency
+  changes; the local npm deployment cache alone does not establish CI parity.
+  Unchanged Core/Python source retains the checkpoint evidence below. Follow-up
+  commit/push stays on the same branch; main, VERSION and workflow checks are
+  unchanged. The new hosted CI result remains separate from local verification.
+
 - **Owner-requested 0.3.1 checkpoint, 2026-10-28.** Owner explicitly authorized
   a commit outside main with Core version 0.3.1. Working branch:
   `codex/core-sdk-0.3.1`, based on `ebb98fb`. Scope is the accumulated supported

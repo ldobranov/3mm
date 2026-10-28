@@ -14,6 +14,18 @@ without changed inputs is not additional progress. A commit is not a release.
 | Schema or installer | Relevant migration/upgrade/rollback checks |
 | Broad integration/release | Full applicable suites; retain release gates |
 
+Frontend dependency edits must keep both `package-lock.json` and
+`pnpm-lock.yaml` consistent with `package.json`. The deployment preparation's npm
+cache does not prove the pnpm installation used by CI. Validate in a clean
+frontend directory with Node 22 and pnpm 10.13.1 using the CI commands:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm run test:unit -- --run
+pnpm run type-check
+pnpm run build-only
+```
+
 From the root, using the project's Python environment:
 
 ```powershell
