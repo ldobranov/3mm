@@ -4,7 +4,7 @@ Updated: 2026-10-28. Start here; follow linked details only as needed.
 
 ## Active task and next result
 
-- **CI process-test HTTP watchdog corrected, 2026-10-28.** Run `40673704290`
+- **CI process-test deadlines and ordering corrected, 2026-10-28.** Run `40673704290`
   passed frontend/tooling and the early compiled-UI integration checks, then
   stopped at operational-status's first HTTP read (`TimeoutError`, outer 2 s
   watchdog). Five isolated CPython 3.13.17 probes completed in 30–36 ms; this
@@ -30,9 +30,40 @@ Updated: 2026-10-28. Start here; follow linked details only as needed.
   `74e503f9388cb94bd7c309e9075dd138e303bfdc60017fc5b9842bae6ace9d8f`;
   logs, JUnit and old-watchdog negative reproduction are in ignored
   `.runtime/ci-response/`. Earlier frontend/tooling success is reused for their
-  unchanged inputs. A diagnostic replay of the original suite prefix and the
-  complete hosted Python gate remain separate results; do not call targeted
-  checks a green full CI. Follow-up stays on `codex/core-sdk-0.3.1`.
+  unchanged inputs. Separate SDK/deployment group under the same CPython 3.13.17:
+  **653 passed / 7 explicit opt-in/image-profile skips** (59.09 s).
+
+  Diagnostic replay of the original suite prefix: 2444 passed / 595 skipped.
+  Candidate remainder ran in resumed batches: 338 passed / 2 skipped, 916 passed
+  / 3 skipped, then 2242 passed / 11 skipped. These are separate evidence, not a
+  successful monolithic gate. The mixed run stalled at the M21 worker stream
+  fixture (`TestClient.receive`, line 194). A bounded diagnostic reproduction
+  failed on its fifth repeated four-case run: the fixture held the worker send
+  lock until a second read, while control could arrive first and block that read.
+  The injected 5 s wait then expired, and raw WebSocket receive consumed the
+  close before waiting forever for a second message. This is test-created IPC
+  ordering, not a changed production session contract.
+
+  The fixture now explicitly observes its second read before admitting control;
+  the intended read-before-drain race remains asserted. WebSocket replies have
+  a 5 s test deadline and a close fails before waiting for another message.
+  Streaming/ACK, crash, audit-redaction, retained ownership, cleanup proof and
+  spent-request assertions remain intact. Current executable source
+  `2e32ebf399eaf1ce8e2f6a598d1dc680191f621273e6b23138a96e0e07f37f13`:
+  **65 passed / no skips** in worker/browser/recovery/private-IPC consumers;
+  **20 successive four-case runs passed** (repetition evidence, not 80 new cases).
+  The same candidate's preceding mixed prefix also passed: **338 passed / 2
+  opt-in systemd skips**, 119.82 s, without the diagnostic scheduling observer.
+  Earlier HTTP/SDK/deployment checks retain unchanged executable inputs.
+
+  CPython 3.13 also exposed the local WSL host's protected AP status path in
+  network-recovery route tests. The final batch used a private mount namespace
+  with empty `/run/3mm`, matching a clean runner; host mounts/services were not
+  modified. No skipped assertion or substituted AP parser. Detailed logs and
+  reproduction drivers remain ignored in `.runtime/ci-response/`.
+  Commit `4924767` is pushed on `codex/core-sdk-0.3.1`; owner saw hosted run
+  `40679488529` at 50%, past the former HTTP failure. The fixture follow-up will
+  replace that pending run through normal CI concurrency; no full green claim.
 
 - **CI Python compiled-UI prerequisites corrected, 2026-10-28.** Run
   `40666334219` passed frontend/tooling, then Python stopped at Command Probe's
