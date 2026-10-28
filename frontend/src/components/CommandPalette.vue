@@ -66,7 +66,9 @@
 import { defineComponent, ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { useThemeStore } from '@/stores/theme';
-import http from '@/utils/dynamic-http';
+import { useI18n } from '@/utils/i18n';
+import { isMenuRouteEligible, isNavigationItemVisible, localizedNavigationLabel } from '@/utils/menu-navigation';
+import { kioskRouteAvailable } from '@/utils/kiosk-session';
 
 interface Command {
   id: string;
@@ -84,158 +86,48 @@ export default defineComponent({
   setup() {
     const router = useRouter();
     const themeStore = useThemeStore();
+    const { t, currentLanguage } = useI18n();
+    const registryGeneration = ref(0);
     const isOpen = ref(false);
     const searchQuery = ref('');
     const searchInput = ref<HTMLInputElement>();
     const selectedCategory = ref('');
     const selectedIndex = ref(0);
     
-    // Recent items
-    const recentPages = ref<any[]>([]);
-    const recentDashboards = ref<any[]>([]);
-    
-    // Load recent items
-    const loadRecentItems = async () => {
-      try {
-        // Load recent pages
-        const pagesRes = await http.get('/pages/read?limit=5');
-        recentPages.value = pagesRes.data.items || [];
-        
-        // Load recent dashboards
-        const dashboardsRes = await http.get('/display/read?limit=5');
-        recentDashboards.value = dashboardsRes.data.items || [];
-      } catch (error) {
-        console.error('Failed to load recent items:', error);
-      }
-    };
-    
-    // Define all available commands
+    // Read the current registry/actor each time the palette opens. Installing or
+    // removing an application needs no product command branch in Core.
     const commands = computed<Command[]>(() => {
-      const cmds: Command[] = [
-        // Navigation commands
-        {
-          id: 'nav-home',
-          title: 'Go to Home',
-          category: 'Navigation',
-          icon: 'bi bi-house',
-          action: () => router.push('/'),
-          shortcut: 'Alt+H'
-        },
-        {
-          id: 'nav-dashboard',
-          title: 'Go to Dashboards',
-          category: 'Navigation',
-          icon: 'bi bi-grid',
-          action: () => router.push('/dashboard'),
-          shortcut: 'Alt+D'
-        },
-        {
-          id: 'nav-pages',
-          title: 'Go to Pages',
-          category: 'Navigation',
-          icon: 'bi bi-file-text',
-          action: () => router.push('/pages'),
-          shortcut: 'Alt+P'
-        },
-        {
-          id: 'nav-settings',
-          title: 'Go to Settings',
-          category: 'Navigation',
-          icon: 'bi bi-gear',
-          action: () => router.push('/settings'),
-          shortcut: 'Alt+S'
-        },
-        {
-          id: 'nav-security',
-          title: 'Go to Security',
-          category: 'Navigation',
-          icon: 'bi bi-shield',
-          action: () => router.push('/security'),
-        },
-        {
-          id: 'nav-profile',
-          title: 'Go to Profile',
-          category: 'Navigation',
-          icon: 'bi bi-person',
-          action: () => router.push('/user/profile'),
-        },
-        
-        // Actions
-        {
-          id: 'action-new-dashboard',
-          title: 'Create New Dashboard',
-          description: 'Create a new dashboard',
-          category: 'Actions',
-          icon: 'bi bi-plus-square',
-          action: () => router.push('/dashboard'),
-          shortcut: 'Ctrl+N'
-        },
-        {
-          id: 'action-new-page',
-          title: 'Create New Page',
-          description: 'Create a new content page',
-          category: 'Actions',
-          icon: 'bi bi-file-plus',
-          action: () => router.push('/pages'),
-        },
-        {
-          id: 'action-logout',
-          title: 'Logout',
-          description: 'Sign out of your account',
-          category: 'Actions',
-          icon: 'bi bi-box-arrow-right',
-          action: () => router.push('/user/logout'),
-          shortcut: 'Ctrl+Shift+L'
-        },
-        
-        // Theme
-        {
-          id: 'theme-toggle',
-          title: 'Toggle Dark Mode',
-          description: 'Switch between light and dark theme',
-          category: 'Theme',
-          icon: 'bi bi-moon',
-          action: () => toggleDarkMode(),
-        },
-        
-        // Help
-        {
-          id: 'help-shortcuts',
-          title: 'Keyboard Shortcuts',
-          description: 'View all keyboard shortcuts',
-          category: 'Help',
-          icon: 'bi bi-keyboard',
-          action: () => showShortcuts(),
-        },
-      ];
-      
-      // Add recent pages
-      recentPages.value.forEach(page => {
-        cmds.push({
-          id: `page-${page.id}`,
-          title: page.title,
-          description: 'Open page',
-          category: 'Recent Pages',
-          icon: 'bi bi-file-text',
-          action: () => router.push(`/pages/${page.slug}`),
-        });
-      });
-      
-      // Add recent dashboards
-      recentDashboards.value.forEach(dashboard => {
-        cmds.push({
-          id: `dashboard-${dashboard.id}`,
-          title: dashboard.name,
-          description: 'Open dashboard',
-          category: 'Recent Dashboards',
-          icon: 'bi bi-grid',
-          action: () => router.push(`/dashboard/${dashboard.id}/edit`),
-        });
-      });
-      
+      void registryGeneration.value;
+      const role = localStorage.getItem('role') || '';
+      const signedIn = Boolean(localStorage.getItem('authToken'));
+      const cmds: Command[] = [{ id: 'nav-home', title: t('palette.home', 'Go to Home'),
+        category: 'Navigation', icon: 'bi bi-house', action: () => router.push('/'), shortcut: 'Alt+H' }];
+      for (const route of router.getRoutes()) {
+        if (!isMenuRouteEligible(route.path, route.meta.requiresRole as string | undefined, role)) continue;
+        const audience = route.meta.applicationAudience;
+        const kiosk = kioskRouteAvailable(route.meta.compiledModuleId);
+        if ((route.meta.requiresKiosk || audience === 'kiosk') && !kiosk) continue;
+        const item = { path: route.path, label: (route.meta.menuLabel || String(route.name || route.path)) as string | Record<string, string>,
+          audience: (audience === 'administrator' ? 'admin' : audience === 'operator' ? 'authenticated' : audience) as 'public' | 'authenticated' | 'admin' | 'kiosk' | undefined };
+        if (!isNavigationItemVisible(item, { isLoggedIn: signedIn, isKiosk: kiosk, currentRole: role,
+          routeRequiresAuth: route.meta.requiresAuth === true, routeRequiredRole: route.meta.requiresRole as string | undefined })) continue;
+        const translations = (item.label as { translations?: Record<string, string> }).translations;
+        const label = typeof route.meta.menuLabelKey === 'string'
+          ? t(route.meta.menuLabelKey, localizedNavigationLabel(item.label, currentLanguage.value))
+          : translations?.[currentLanguage.value] || localizedNavigationLabel(item.label, currentLanguage.value);
+        cmds.push({ id: `route-${route.path}`, title: `${t('palette.goTo', 'Go to')} ${label}`,
+          category: 'Navigation', icon: 'bi bi-arrow-right', keywords: [route.path],
+          action: () => router.push(route.path), shortcut: route.name === 'Settings' ? 'Alt+S' : undefined });
+      }
+      if (signedIn) cmds.push({ id: 'action-logout', title: t('menu.logout', 'Logout'),
+        category: 'Actions', icon: 'bi bi-box-arrow-right', action: () => router.push('/user/logout'), shortcut: 'Ctrl+Shift+L' });
+      cmds.push({ id: 'theme-toggle', title: t('palette.theme', 'Toggle Dark Mode'),
+        category: 'Theme', icon: 'bi bi-moon', action: () => toggleDarkMode() },
+        { id: 'help-shortcuts', title: t('palette.shortcuts', 'Keyboard Shortcuts'),
+          category: 'Help', icon: 'bi bi-keyboard', action: () => showShortcuts() });
       return cmds;
     });
-    
+
     // Filter commands based on search query
     const filteredCommands = computed(() => {
       if (!searchQuery.value) {
@@ -263,7 +155,7 @@ export default defineComponent({
       });
       
       // Convert to array and sort categories
-      const categoryOrder = ['Actions', 'Navigation', 'Recent Pages', 'Recent Dashboards', 'Theme', 'Help'];
+      const categoryOrder = ['Actions', 'Navigation', 'Theme', 'Help'];
       return categoryOrder
         .filter(cat => groups[cat])
         .map(cat => ({
@@ -357,17 +249,10 @@ export default defineComponent({
     
     // Show shortcuts modal
     const showShortcuts = () => {
-      alert('Keyboard Shortcuts:\n\n' +
-        'Ctrl+K: Open command palette\n' +
-        'Alt+H: Go to Home\n' +
-        'Alt+D: Go to Dashboards\n' +
-        'Alt+P: Go to Pages\n' +
-        'Alt+S: Go to Settings\n' +
-        'Ctrl+N: New Dashboard\n' +
-        'Ctrl+Shift+L: Logout'
-      );
+      alert(['Ctrl+K: ' + t('palette.open', 'Command Palette'),
+        ...commands.value.filter(command => command.shortcut).map(command => `${command.shortcut}: ${command.title}`)].join('\n'));
     };
-    
+
     // Open command palette
     const open = async () => {
       isOpen.value = true;
@@ -375,7 +260,7 @@ export default defineComponent({
       selectedCategory.value = '';
       selectedIndex.value = 0;
       
-      await loadRecentItems();
+      ++registryGeneration.value;
       await nextTick();
       searchInput.value?.focus();
     };
@@ -397,47 +282,23 @@ export default defineComponent({
         }
       }
       
-      // Other global shortcuts (when palette is closed)
       if (!isOpen.value) {
-        // Alt+H: Home
-        if (e.altKey && e.key === 'h') {
-          e.preventDefault();
-          router.push('/');
-        }
-        // Alt+D: Dashboards
-        if (e.altKey && e.key === 'd') {
-          e.preventDefault();
-          router.push('/dashboard');
-        }
-        // Alt+P: Pages
-        if (e.altKey && e.key === 'p') {
-          e.preventDefault();
-          router.push('/pages');
-        }
-        // Alt+S: Settings
-        if (e.altKey && e.key === 's') {
-          e.preventDefault();
-          router.push('/settings');
-        }
-        // Ctrl+N: New Dashboard
-        if (e.ctrlKey && e.key === 'n') {
-          e.preventDefault();
-          router.push('/dashboard');
-        }
-        // Ctrl+Shift+L: Logout
-        if (e.ctrlKey && e.shiftKey && e.key === 'L') {
-          e.preventDefault();
-          router.push('/user/logout');
-        }
+        ++registryGeneration.value;
+        const shortcut = e.altKey && e.key.toLowerCase() === 'h' ? 'Alt+H'
+          : e.altKey && e.key.toLowerCase() === 's' ? 'Alt+S'
+            : e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'l' ? 'Ctrl+Shift+L' : '';
+        const command = commands.value.find(item => item.shortcut === shortcut && shortcut);
+        if (command) { e.preventDefault(); command.action(); }
       }
     };
-    
+
     onMounted(() => {
       document.addEventListener('keydown', handleKeydown);
     });
     
     onUnmounted(() => {
       document.removeEventListener('keydown', handleKeydown);
+      if ((window as any).openCommandPalette === open) delete (window as any).openCommandPalette;
     });
     
     // Expose for external use

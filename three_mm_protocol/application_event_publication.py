@@ -37,7 +37,7 @@ from three_mm_protocol.node_security import (
     NODE_MESSAGE_BYTES,
     validate_node_json,
 )
-from three_mm_protocol.runtime_extension import IDENTIFIER_PATTERN
+from three_mm_protocol.ui_metadata import IDENTIFIER_PATTERN
 
 MAX_PUBLICATION_PAYLOAD_BYTES = NODE_MESSAGE_BYTES - 4096
 

@@ -221,6 +221,14 @@ def test_applied_event_grant_delivers_once_via_real_gateway_for_generic_provider
                 installed_version='1.0.0', desired_version='1.0.0', enabled=True, status='succeeded'))
         else:
             db.execute(update(DeviceCapabilityProvider).values(provider_type=provider))
+            # Changing provider identity invalidates its previous health digest.
+            from backend.services.device_capability_registry import capability_catalog, report_availability
+            from three_mm_protocol.capability_availability import CapabilityAvailabilityReportV1, CapabilityHealthV1
+            offer = capability_catalog(db, db.get(Device, 1))[0]
+            report_availability(db, db.get(Device, 1), CapabilityAvailabilityReportV1(
+                device_id=DEVICE, provider_type=offer.provider_type, provider_id=offer.provider_id,
+                provider_version=offer.provider_version, declaration_digest=offer.declaration_digest,
+                observed_at=datetime.now(UTC), capabilities=(CapabilityHealthV1(capability_id=offer.capability_id, healthy=True),)))
     activate(s)
     identifier = event(s)
     deliver(s, identifier)

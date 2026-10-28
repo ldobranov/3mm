@@ -84,6 +84,32 @@ def _inventory(root):
     return files
 
 
+def build_file_identity(root):
+    """Cheap protected inventory for request-local reuse of a verified build."""
+    from backend.services.application_code_scope import stat_identity
+    if root.absolute() != root.resolve():
+        raise UiBuildEvidenceError('Build root contains a link')
+    entries, directories_seen, total, files_seen = [], 0, 0, 0
+    for directory, directories, names in os.walk(root, followlinks=False):
+        directories_seen += 1
+        if directories_seen > MAX_FILES:
+            raise UiBuildEvidenceError('Build directories exceed their bounds')
+        path = Path(directory)
+        entries.append((path.relative_to(root).as_posix(), stat_identity(_protected(path, directory=True))))
+        for name in directories:
+            _protected(path / name, directory=True)
+        for name in names:
+            file = path / name
+            relative = file.relative_to(root).as_posix()
+            value = _protected(file)
+            files_seen += 1
+            total += value.st_size
+            if files_seen > MAX_FILES + 1 or total > MAX_BYTES + 128 * 1024 or len(relative) > 240:
+                raise UiBuildEvidenceError('Build inventory exceeds its bounds')
+            entries.append((relative, stat_identity(value)))
+    return tuple(sorted(entries))
+
+
 def _toolchain(value):
     expected = {"node", "vite", "vue_plugin"}
     if not isinstance(value, dict) or set(value) != expected or any(

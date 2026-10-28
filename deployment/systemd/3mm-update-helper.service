@@ -27,7 +27,7 @@ PrivateTmp=true
 ProtectSystem=strict
 # Application-host binaries/default stay immutable; only per-instance pointers
 # and the root-owned StateDirectory journal may change during lifecycle work.
-ReadWritePaths=-/opt/3mm-application-hosts/instances /var/lib/3mm/backups /var/lib/3mm/core/backup-imports /var/lib/3mm/application-extensions /etc/3mm/application-extensions /run/lock /var/lib/3mm/provisioning
+ReadWritePaths=-/opt/3mm-application-hosts/instances /var/lib/3mm/backups /var/lib/3mm/core/backup-imports /var/lib/3mm/application-extensions /etc/3mm/application-extensions /run/lock /var/lib/3mm/provisioning /etc/NetworkManager/dnsmasq-shared.d
 ProtectHome=true
 ProtectKernelTunables=true
 ProtectKernelModules=true

@@ -15,7 +15,7 @@ afterEach(() => vi.restoreAllMocks())
 
 describe('public extension UI v1', () => {
   it('exports only versioned presentation primitives, not Core services', () => {
-    expect(Object.keys(publicUi).sort()).toEqual(['UI_CONTRACT_VERSION', 'UiButton', 'UiDialog', 'UiSurface'])
+    expect(Object.keys(publicUi).sort()).toEqual(['UI_CONTRACT_VERSION', 'UiButton', 'UiDialog', 'UiField', 'UiForm', 'UiState', 'UiSurface', 'UiTable'])
     expect(publicUi.UI_CONTRACT_VERSION).toBe(1)
   })
 

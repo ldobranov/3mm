@@ -20,7 +20,9 @@ from three_mm_application_sdk.file_wire import (
     execute_file_request,
     parse_file_request,
 )
-from three_mm_protocol.application_extension import ApplicationPrivateFilesV1
+from three_mm_protocol.application_extension import ApplicationPrivateFilesV1, ApplicationPrivateFilesV2
+from three_mm_application_sdk import media_wire
+from three_mm_application_sdk.media_store import ApplicationMediaStore
 from three_mm_runtime.application_transport import (
     sign_message,
     verify_message,
@@ -96,12 +98,14 @@ class ApplicationFileExecutor:
             secret,
             group_id,
         )
-        self.declaration = ApplicationPrivateFilesV1.model_validate(
+        declaration_type = ApplicationPrivateFilesV2 if metadata['storage']['private_files'].get('file_contract_version') == 2 else ApplicationPrivateFilesV1
+        self.declaration = declaration_type.model_validate(
             metadata["storage"]["private_files"]
         )
-        if self.declaration.max_file_bytes > MAX_SCOPED_FILE_BYTES:
+        self.streaming = self.declaration.file_contract_version == 2
+        if not self.streaming and self.declaration.max_file_bytes > MAX_SCOPED_FILE_BYTES:
             raise ValueError("Private file request exceeds the scoped runtime limit")
-        self.storage = ApplicationFileStorage(
+        self.storage = ApplicationMediaStore(instance_root / 'data', self.declaration) if self.streaming else ApplicationFileStorage(
             instance_root / "data",
             mode=self.declaration.mode,
             limits=ApplicationFileLimits(
@@ -137,6 +141,10 @@ class ApplicationFileExecutor:
         self.path.unlink(missing_ok=True)
 
     def _execute(self, action, payload):
+        if action == 'probe' and payload == {}:
+            from three_mm_application_sdk.media_provider import probe_provider
+            return {**self._execute('hello', {}), 'media_provider':
+                probe_provider() if self.streaming and self.declaration.media_transforms else 'unavailable'}
         if action == "hello" and payload == {}:
             return {
                 "instance_id": self.metadata["instance_id"],
@@ -152,7 +160,7 @@ class ApplicationFileExecutor:
         ):
             raise ValueError("Private file execution request is invalid")
         admission = payload["admission"]
-        request, _ = parse_file_request(payload["request"])
+        request = media_wire.parse_media_request(payload['request']) if self.streaming else parse_file_request(payload['request'])[0]
         if type(admission) is not dict or set(admission) != {
             "runtime_nonce",
             "instance_id",
@@ -160,10 +168,10 @@ class ApplicationFileExecutor:
             "declaration",
             "deadline_ms",
             "authority_epoch",
-        }:
+        } | ({'owner', 'link_epoch'} if self.streaming else set()):
             raise ValueError("Private file admission is invalid")
         now = _clock_ms()
-        declaration = ApplicationPrivateFilesV1.model_validate(admission["declaration"])
+        declaration = type(self.declaration).model_validate(admission["declaration"])
         if (
             admission["runtime_nonce"] != self.nonce
             or admission["instance_id"] != self.metadata["instance_id"]
@@ -186,6 +194,11 @@ class ApplicationFileExecutor:
             )
         self.seen[request["request_id"]] = admission["deadline_ms"]
         # Consume before opening the namespace. An error/sync timeout is not replay.
+        if self.streaming:
+            if (type(admission['owner']) is not str or not 1 <= len(admission['owner']) <= 320
+                    or type(admission['link_epoch']) is not str or not re.fullmatch(r'[0-9a-f]{64}', admission['link_epoch'])):
+                raise ValueError('Streaming file actor is invalid')
+            return self.storage.execute(request, admission['owner'], admission['link_epoch'])
         return execute_file_request(self.storage, request)
 
     def _run(self):

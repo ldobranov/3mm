@@ -83,6 +83,7 @@ def test_root_proof_and_core_result_have_separate_closed_shapes_and_purposes():
                 "database_sha256": "c" * 64,
                 "preimage_sha256": "d" * 64,
                 "files_manifest_sha256": "e" * 64,
+                'media_manifest_sha256': 'f' * 64,
             },
         )
     ).model_dump(mode="json")

@@ -16,6 +16,7 @@ PYTHON_SUITES = (
     "three_mm_provisioning/tests", "three_mm_runtime/tests", "three_mm_web/tests",
     "three_mm_public_web/tests", "setup_service/tests", "deployment/tests",
     "three_mm_application_sdk/tests",
+    "libraries/three_mm_ai/tests", "libraries/three_mm_crud/tests",
 )
 # Production Python remains one integration group until its consumers are audited.
 # Narrowing it by filenames would guess at authority/runtime/installer dependencies.

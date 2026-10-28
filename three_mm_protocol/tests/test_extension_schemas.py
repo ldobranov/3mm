@@ -17,7 +17,6 @@ from three_mm_protocol.extension_schemas import (
     extension_schema_catalog,
 )
 from three_mm_protocol.module_manifest import ModuleManifestV2
-from three_mm_protocol.runtime_extension import RuntimeExtensionV1
 from three_mm_protocol.theme_extension import ThemeExtensionV1
 from three_mm_protocol.theme_extension_v2 import ThemeExtensionV2
 
@@ -37,13 +36,6 @@ MODELS = (
         "publication_contract_version",
         1,
         "application-event-publications.json",
-    ),
-    (
-        "runtime-extension.v1",
-        RuntimeExtensionV1,
-        "runtime_extension_version",
-        1,
-        "runtime-extension.json",
     ),
     (
         "compiled-ui.v1",
@@ -183,7 +175,7 @@ class BlockHostImports:
             raise AssertionError('Host import: ' + fullname)
 sys.meta_path.insert(0, BlockHostImports())
 from three_mm_protocol.extension_schemas import extension_schema_catalog
-assert len(extension_schema_catalog()['contracts']) == 7
+assert len(extension_schema_catalog()['contracts']) == 6
 """,
     )
     assert result.stdout == result.stderr == ""

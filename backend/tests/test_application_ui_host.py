@@ -1,3 +1,4 @@
+from backend.tests.test_application_access import kiosk_enrollment,kiosk_claim
 """Public UI contract uses the real actor/audience gateway, not client claims."""
 
 import pytest
@@ -39,10 +40,10 @@ def setup(request, monkeypatch, tmp_path):
         code = client.post(
             base + "/kiosk/enrollments",
             headers=headers(admin_token),
-            json={"label": "Host fixture"},
+            json=kiosk_enrollment('Host fixture'),
         ).json()["code"]
         token = client.post(
-            base + "/kiosk/enrollments/claim", json={"code": code}
+            base + "/kiosk/enrollments/claim", json=kiosk_claim(code)
         ).json()["access_token"]
     elif audience == "administrator":
         token = admin_token
@@ -90,6 +91,9 @@ def test_info_and_dispatch_bind_actual_package_entrypoint_and_audience(setup):
         "operations": True,
         "resource_authority": "separate",
         "browser_isolation": False,
+        "presentation_version": 1,
+        "administration_reads": [],
+        "administration_actions": [],
     }
     assert {op["operation_id"] for op in data["operations"]} == (
         {"register", "approve"} if audience == "kiosk" else {"approve"}
@@ -111,6 +115,28 @@ def test_info_and_dispatch_bind_actual_package_entrypoint_and_audience(setup):
     assert len(calls) == 1
     assert calls[0][2]["audience"] == audience
     assert "ui_context" not in calls[0][2]
+
+
+def test_current_actor_api_uses_the_route_audience_and_never_exposes_credentials(setup):
+    values, base, audience, auth, binding, calls = setup
+    url = base + '/ui-host/operations/access?artifact_sha256=' + binding['artifact_sha256']
+    response = values[0].get(url, headers=auth)
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert response.headers['cache-control'] == 'no-store'
+    assert data['audience'] == audience and data['service_authority'] == 'separate'
+    assert data['admission_required'] is True and data['delegated_operation_ids'] == []
+    actor = data['actor']
+    if audience in {'operator', 'administrator'}:
+        user = values[3] if audience == 'administrator' else values[4]
+        assert actor['user_id'] == user.id and actor['subject_id'] == user.subject_id
+        assert actor['platform_administrator'] == (audience == 'administrator')
+    else:
+        assert actor['kind'] == ('anonymous' if audience == 'public' else 'kiosk')
+        assert actor['user_id'] is None and actor['subject_id'] is None
+        assert data['permission_ids'] == []
+    assert not {'token','jti','sid','configuration','socket_path'} & actor.keys()
+    assert not calls
 
 
 @pytest.mark.parametrize("change", ["artifact", "entrypoint", "version", "extra"])

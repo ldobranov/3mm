@@ -1,0 +1,566 @@
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from backend.utils.db_utils import get_db
+from backend.utils.auth import hash_password, verify_password
+from backend.utils.jwt_utils import decode_token, create_access_token
+from backend.db.user import User, UserSchema
+from backend.db.session import Session as UserSession
+from backend.db.audit_log import AuditLog
+from backend.services.session_policy import get_session_duration_hours
+from backend.utils.auth_dep import validate_user_claims
+from pydantic import BaseModel
+from typing import Literal
+import logging
+import traceback
+import jwt
+import secrets
+
+logger = logging.getLogger(__name__)
+from datetime import datetime, timedelta
+import user_agents
+
+# Initialize logger
+logger = logging.getLogger(__name__)
+
+class LanguagePreference(BaseModel):
+    language: str
+
+router = APIRouter()
+
+class UserCreate(BaseModel):
+    username: str
+    email: str
+    password: str
+
+class AdminUserCreate(UserCreate):
+    role: Literal["user", "admin"] = "user"
+
+class AdminUserUpdate(BaseModel):
+    id: int
+    username: str
+    email: str
+    role: Literal["user", "admin"]
+    password: str | None = None
+
+class LoginPayload(BaseModel):
+    email: str
+    password: str
+
+class AccountStatus(BaseModel):
+    is_blocked: bool
+
+token_blacklist = set()
+
+def require_admin(authorization: str, db: Session) -> User:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authorization required")
+
+    claims = decode_token(authorization.removeprefix("Bearer "))
+    validate_user_claims(claims, db)
+    user_id = claims.get("sub") or claims.get("user_id")
+    current_user = db.query(User).filter(User.id == user_id).first()
+    if not current_user or current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
+
+@router.post("/register")
+def register_user(user: UserCreate, db: Session = Depends(get_db)):
+    try:
+        logger.debug("User registration requested")
+        if not user.username or not user.email or not user.password:
+            raise HTTPException(status_code=422, detail="Missing required fields")
+
+        hashed_password = hash_password(user.password)
+        new_user = User(username=user.username, email=user.email, hashed_password=hashed_password)
+        db.add(new_user)
+        db.commit()
+        logger.debug("User registration succeeded")
+        return {"message": "User registered successfully"}
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Username or email already exists")
+    except Exception as e:
+        # SQL/validation exception text can include passwords or bound tokens.
+        logger.error("User registration failed (%s)", type(e).__name__)
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@router.post("/create")
+def create_user(
+    user: AdminUserCreate,
+    authorization: str = Header(...),
+    db: Session = Depends(get_db),
+):
+    """Create a user with an explicitly selected role - admin only."""
+    require_admin(authorization, db)
+    if not user.username.strip() or not user.email.strip() or not user.password:
+        raise HTTPException(status_code=422, detail="Missing required fields")
+    try:
+        new_user = User(
+            username=user.username,
+            email=user.email,
+            hashed_password=hash_password(user.password),
+            role=user.role,
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return {"message": "User created successfully", "id": new_user.id}
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Username or email already exists")
+
+@router.post("/login")
+def login_user(
+    payload: LoginPayload, 
+    request: Request,
+    db: Session = Depends(get_db),
+    user_agent: str = Header(None, alias="User-Agent")
+):
+    try:
+        logger.debug("User login requested")
+        if not payload.email or not payload.password:
+            raise HTTPException(status_code=422, detail="Missing required fields")
+
+        db_user = db.query(User).filter(User.email == payload.email).first()
+        if not db_user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if not verify_password(payload.password, db_user.hashed_password):
+            raise HTTPException(status_code=400, detail="Invalid credentials")
+        if db_user.is_blocked:
+            raise HTTPException(status_code=403, detail="Account is blocked")
+
+        # Parse user agent for device info
+        device_info = {}
+        if user_agent:
+            ua = user_agents.parse(user_agent)
+            device_info = {
+                "device_name": f"{ua.browser.family} on {ua.os.family}",
+                "user_agent": user_agent
+            }
+        
+        # Create session record
+        session = UserSession(
+            user_id=db_user.id,
+            token=f"pending-{secrets.token_urlsafe(32)}",
+            ip_address=request.client.host if request.client else None,
+            expires_at=datetime.utcnow() + timedelta(hours=get_session_duration_hours(db)),
+            **device_info
+        )
+        db.add(session)
+        db.flush()
+
+        # Bind the signed token to the persistent session so refresh and revocation
+        # remain stable across Core restarts and immutable deployments.
+        token = create_access_token(subject=str(db_user.id), extra_claims={
+            "username": db_user.username,
+            "role": db_user.role or "",
+            "sid": session.id,
+            "token_version": db_user.token_version,
+        })
+        session.token = token
+        db.commit()
+        
+        # Create audit log for login
+        audit_log = AuditLog(
+            user_id=db_user.id,
+            action="LOGIN",
+            ip_address=request.client.host if request.client else None,
+            user_agent=user_agent,
+            session_id=session.id
+        )
+        db.add(audit_log)
+        db.commit()
+        
+        return {"message": "Login successful", "token": token}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("User login failed (%s)", type(e).__name__)
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@router.get("/profile")
+def fetch_user_profile(authorization: str = Header(...), db: Session = Depends(get_db)):
+    try:
+        logger.debug("User profile requested")
+
+        # Validate Authorization header format
+        if not authorization or not authorization.startswith("Bearer "):
+            logger.error("Authorization header missing or invalid format")
+            raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
+
+        # Extract for validation only; never log tokens or decoded claims.
+        token = authorization.split("Bearer ")[1]
+
+        # Check if token is blacklisted
+        if token in token_blacklist:
+            logger.error("Token has been revoked (blacklisted)")
+            raise HTTPException(status_code=401, detail="Token has been revoked")
+
+        # Decode the token and handle potential errors
+        try:
+            payload = decode_token(token)
+            logger.debug("Profile token decoded")
+        except HTTPException as e:
+            # Propagate specific auth errors
+            raise e
+        except Exception as e:
+            logger.error("Profile token validation failed (%s)", type(e).__name__)
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        user_id = payload.get("sub") or payload.get("user_id")
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            logger.error("User not found")
+            raise HTTPException(status_code=404, detail="User not found")
+
+        logger.debug("User profile fetched")
+        return {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "role": user.role
+        }
+    except ValueError as e:
+        logger.error("Profile JWT validation failed (%s)", type(e).__name__)
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        logger.error("User profile failed (%s)", type(e).__name__)
+        raise HTTPException(status_code=422, detail="Unprocessable Entity")
+
+@router.put("/profile/update")
+def update_user_profile(payload: dict, authorization: str = Header(...), db: Session = Depends(get_db)):
+    try:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
+
+        token = authorization.split("Bearer ")[1]
+        payload_decoded = decode_token(token)
+        user_id = payload_decoded.get("sub") or payload_decoded.get("user_id")
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if "username" in payload:
+            user.username = payload["username"]
+        if "email" in payload:
+            user.email = payload["email"]
+        if "password" in payload:
+            user.hashed_password = hash_password(payload["password"])
+
+        db.commit()
+        db.refresh(user)
+
+        return {"message": "Profile updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating profile: {e}")
+
+@router.get("/read")
+def read_users(
+    authorization: str = Header(...),
+    db: Session = Depends(get_db),
+    skip: int = 0,
+    limit: int = 100
+):
+    """Get list of users - admin only"""
+    try:
+        require_admin(authorization, db)
+        
+        # Return users list
+        users = db.query(User).offset(skip).limit(limit).all()
+        return {
+            "items": [
+                {
+                    "id": u.id,
+                    "username": u.username,
+                    "email": u.email,
+                    "role": u.role,
+                    "is_blocked": u.is_blocked,
+                    "created_at": u.created_at.isoformat() if hasattr(u, 'created_at') and u.created_at else None
+                }
+                for u in users
+            ],
+            "total": db.query(User).count()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Reading users failed (%s)", type(e).__name__)
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@router.put("/update")
+def update_user(
+    user_data: AdminUserUpdate,
+    authorization: str = Header(...),
+    db: Session = Depends(get_db)
+):
+    """Update user - admin only"""
+    try:
+        require_admin(authorization, db)
+        user = db.query(User).filter(User.id == user_data.id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if (
+            user.role == "admin"
+            and user_data.role != "admin"
+            and not user.is_blocked
+            and db.query(User).filter(User.role == "admin", User.is_blocked.is_(False)).count() <= 1
+        ):
+            raise HTTPException(status_code=400, detail="Cannot demote the last administrator")
+
+        user.username = user_data.username
+        user.email = user_data.email
+        user.role = user_data.role
+        if user_data.password:
+            user.hashed_password = hash_password(user_data.password)
+        
+        db.commit()
+        db.refresh(user)
+        
+        return {"message": "User updated successfully"}
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Username or email already exists")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Updating user failed (%s)", type(e).__name__)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@router.delete("/delete/{user_id}")
+def delete_user(
+    user_id: int,
+    authorization: str = Header(...),
+    db: Session = Depends(get_db)
+):
+    """Delete user - admin only"""
+    try:
+        admin_user = require_admin(authorization, db)
+        
+        # Prevent self-deletion
+        if user_id == admin_user.id:
+            raise HTTPException(status_code=400, detail="Cannot delete your own account")
+        
+        # Get user to delete
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if user.role == "admin" and not user.is_blocked and db.query(User).filter(User.role == "admin", User.is_blocked.is_(False)).count() <= 1:
+            raise HTTPException(status_code=400, detail="Cannot delete the last administrator")
+        
+        # Delete related records first to avoid foreign key constraints
+        # Import necessary models
+        from backend.db.permission import Permission
+        from backend.db.page import Page
+        from backend.db.audit_log import AuditLog
+        from backend.db.session import Session as UserSession
+        from backend.db.module import ApplicationKioskEnrollment, ApplicationPermissionGrant
+        
+        # Delete user's permissions (both as grantor and grantee)
+        db.query(Permission).filter(
+            (Permission.user_id == user_id) | (Permission.granted_by == user_id)
+        ).delete(synchronize_session=False)
+        db.query(ApplicationPermissionGrant).filter(
+            (ApplicationPermissionGrant.user_id == user_id)
+            | (ApplicationPermissionGrant.granted_by == user_id)
+        ).delete(synchronize_session=False)
+        db.query(ApplicationKioskEnrollment).filter(
+            ApplicationKioskEnrollment.created_by == user_id
+        ).update(
+            {ApplicationKioskEnrollment.created_by: None},
+            synchronize_session=False,
+        )
+        
+        # Delete user's sessions
+        db.query(UserSession).filter(UserSession.user_id == user_id).delete(synchronize_session=False)
+        
+        # Delete user's audit logs
+        db.query(AuditLog).filter(AuditLog.user_id == user_id).delete(synchronize_session=False)
+        
+        # Delete user's pages
+        db.query(Page).filter(Page.owner_id == user_id).delete(synchronize_session=False)
+        
+        # Now delete the user
+        db.delete(user)
+        db.commit()
+        
+        return {"message": "User deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Deleting user failed (%s)", type(e).__name__)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+def revoke_user_sessions(db: Session, user: User) -> int:
+    # SQL increment prevents concurrent revocations from losing a generation.
+    db.query(User).filter(User.id == user.id).update({User.token_version: User.token_version + 1})
+    return db.query(UserSession).filter(UserSession.user_id == user.id, UserSession.is_active.is_(True)).update({UserSession.is_active: False})
+
+
+@router.put("/{user_id}/status")
+def set_user_status(user_id: int, payload: AccountStatus, authorization: str = Header(...), db: Session = Depends(get_db)):
+    admin = require_admin(authorization, db)
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(404, "User not found")
+    if payload.is_blocked and user.id == admin.id:
+        raise HTTPException(400, "Cannot block your own account")
+    if payload.is_blocked and not user.is_blocked and user.role == "admin" and db.query(User).filter(User.role == "admin", User.is_blocked.is_(False)).count() <= 1:
+        raise HTTPException(400, "Cannot block the last administrator")
+    if user.is_blocked != payload.is_blocked:
+        if payload.is_blocked:
+            revoke_user_sessions(db, user)
+        user.is_blocked = payload.is_blocked
+        db.add(AuditLog(user_id=admin.id, action="USER_BLOCK" if payload.is_blocked else "USER_UNBLOCK", entity_type="user", entity_id=user.id))
+        db.commit()
+    return {"is_blocked": user.is_blocked}
+
+
+@router.post("/{user_id}/revoke-sessions")
+def terminate_user_sessions(user_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
+    admin = require_admin(authorization, db)
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(404, "User not found")
+    count = revoke_user_sessions(db, user)
+    db.add(AuditLog(user_id=admin.id, action="USER_REVOKE_SESSIONS", entity_type="user", entity_id=user.id))
+    db.commit()
+    return {"revoked_sessions": count}
+
+
+@router.post("/logout")
+def logout_user(
+    authorization: str = Header(...),
+    request: Request = None,
+    db: Session = Depends(get_db),
+    user_agent: str = Header(None, alias="User-Agent")
+):
+    try:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
+
+        token = authorization.split("Bearer ")[1]
+        
+        # Deactivate session in database
+        session = db.query(UserSession).filter(
+            UserSession.token == token,
+            UserSession.is_active == True
+        ).first()
+        
+        if session:
+            session.is_active = False
+            
+            # Create audit log for logout
+            audit_log = AuditLog(
+                user_id=session.user_id,
+                action="LOGOUT",
+                ip_address=request.client.host if request and request.client else None,
+                user_agent=user_agent,
+                session_id=session.id
+            )
+            db.add(audit_log)
+            db.commit()
+        
+        token_blacklist.add(token)
+        return {"message": "Logout successful"}
+    except Exception as e:
+        logger.error("User logout failed (%s)", type(e).__name__)
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@router.post("/language")
+def save_user_language(
+    preference: LanguagePreference,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db)
+):
+    """Save user's language preference (supports guest users)"""
+    try:
+        # Handle both authenticated and guest users
+        if authorization and authorization.startswith("Bearer "):
+            # Authenticated user - save to backend
+            token = authorization.split("Bearer ")[1]
+            payload = decode_token(token)
+            user_id = payload.get("sub") or payload.get("user_id")
+
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found")
+            
+            return {
+                "message": "Language preference saved successfully", 
+                "language": preference.language,
+                "storage": "backend"
+            }
+        else:
+            # Guest user - allow but don't save to backend
+            return {
+                "message": "Language preference saved locally", 
+                "language": preference.language,
+                "storage": "localStorage",
+                "guest": True
+            }
+
+    except HTTPException:
+        return {
+            "message": "Language preference saved locally", 
+            "language": preference.language,
+            "storage": "localStorage",
+            "guest": True
+        }
+    except Exception as e:
+        logger.error("Saving language preference failed (%s)", type(e).__name__)
+        # For guest users, still return success with localStorage
+        return {
+            "message": "Language preference saved locally", 
+            "language": preference.language,
+            "storage": "localStorage",
+            "guest": True
+        }
+
+@router.get("/language")
+def get_user_language(
+    authorization: str = Header(...),
+    db: Session = Depends(get_db)
+):
+    """Get user's language preference"""
+    try:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
+
+        token = authorization.split("Bearer ")[1]
+        payload = decode_token(token)
+        user_id = payload.get("sub") or payload.get("user_id")
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Get language preference from settings - try with fallback to "en"
+        try:
+            from backend.db.settings import Settings
+
+            setting = db.query(Settings).filter(
+                Settings.key == "language",
+                Settings.user_id == user_id
+            ).first()
+
+            language = setting.value if setting else "en"
+        except Exception as settings_error:
+            # If Settings table doesn't exist, fallback to "en"
+            logger.warning("Language settings unavailable, defaulting to 'en' (%s)", type(settings_error).__name__)
+            language = "en"
+
+        return {"language": language}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Retrieving language preference failed (%s)", type(e).__name__)
+        return {"language": "en"}  # Fallback to English

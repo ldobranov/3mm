@@ -1,4 +1,6 @@
 import { markRaw } from 'vue'
+import axios from 'axios'
+import { getKioskCatalogToken } from './kiosk-session'
 
 import http from '@/utils/dynamic-http'
 
@@ -39,13 +41,9 @@ export function compiledWidgetType(pkg: CompiledUiPackage, entrypoint: CompiledU
 
 export async function getCompiledUiCatalog(refresh = false): Promise<CompiledUiPackage[]> {
   if (refresh || !catalogPromise) {
-    const kioskToken = !localStorage.getItem('authToken')
-      ? localStorage.getItem('applicationKioskToken')
-      : null
+    const kioskToken = await getKioskCatalogToken()
     catalogPromise = Promise.all([
-      http.get('/api/v1/modules/compiled-ui/catalog', kioskToken
-        ? { headers: { Authorization: `Bearer ${kioskToken}` } }
-        : undefined),
+      kioskToken ? http.getCurrentBackendUrl().then(base => axios.get(base+'/api/v1/modules/compiled-ui/catalog', {headers:{Authorization:`Bearer ${kioskToken}`},timeout:8000,withCredentials:false})) : http.get('/api/v1/modules/compiled-ui/catalog', { timeout: 8000 }),
       http.getCurrentBackendUrl(),
     ]).then(([response, backendUrl]) => {
       const base = backendUrl || window.location.origin

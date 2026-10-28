@@ -25,10 +25,9 @@ def response_map(device_id: str = "device-123") -> dict[str, dict | str]:
     return {
         "http://core/ready": {"status": "ready"},
         "http://core/openapi.json": {"paths": {
-            "/api/displays": {},
-            "/api/ai/extensions/plan": {},
-            "/api/v1/extension-projects": {},
-            "/api/v1/runtime-extensions/catalog": {},
+            "/api/v1/modules/packages": {},
+            "/api/v1/application-extensions": {},
+            "/access": {},
         }},
         "http://agent/ready": {"status": "ready", "device_id": device_id},
         "http://agent/api/v1/agent/hello": {"device_id": device_id},
@@ -39,7 +38,7 @@ def response_map(device_id: str = "device-123") -> dict[str, dict | str]:
             "architecture": "aarch64",
         },
         "http://web/user/login": '<html><div id="app"></div></html>',
-        "http://web/extensions/ai-builder": '<html><div id="app"></div></html>',
+        "http://web/extensions": '<html><div id="app"></div></html>',
     }
 
 

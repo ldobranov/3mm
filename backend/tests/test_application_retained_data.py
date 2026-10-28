@@ -155,11 +155,14 @@ def test_fresh_activation_cannot_replace_preserved_runtime_identity(retained):
     keep(s)
     package(s)
     helper_calls = []
-    definition = SimpleNamespace(service=SimpleNamespace(startup_timeout_seconds=1))
+    from backend.tests.test_module_packages import application_definition
+    from three_mm_protocol import ApplicationExtensionV1
+    definition = ApplicationExtensionV1.model_validate(application_definition(
+        module_id=MODULE, event_subscriptions=[], connectors=[]))
     s.monkeypatch.setattr(routes, '_definition', lambda _package: definition)
     s.monkeypatch.setattr(routes, 'validate_public_http_candidate', lambda *_args: None)
-    s.monkeypatch.setattr(routes, 'device_configuration_keys', lambda _definition: ())
-    s.monkeypatch.setattr(routes, 'resolve_application_configuration', lambda *_args, **_kwargs: {})
+    s.monkeypatch.setattr(routes, 'device_configuration_keys', lambda _definition, **_kwargs: ())
+    s.monkeypatch.setattr(routes, 'resolve_device_selection', lambda *_args, **_kwargs: {})
     s.monkeypatch.setattr(routes.UpdateHelperClient, 'activate_application_extension',
         lambda *_args, **_kwargs: helper_calls.append(True))
     response = s.client.post(BASE + '/packages/' + 'b' * 64 + '/activate', headers=s.admin)

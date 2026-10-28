@@ -138,6 +138,17 @@ def validate_invocation(db, device, payload, *, prepare=False):
                          if item["capability_id"] == payload.get("capability_id")), None)
     if registration is None:
         raise CapabilityRegistryError("Capability is not configured on this device")
+    # Explicit human UI work pins the provider/control episode as well as the
+    # schema. Recheck at first dispatch so a queued command cannot move to a
+    # replacement provider exposing an otherwise identical capability contract.
+    binding = payload.get('provider_binding')
+    if binding is not None:
+        from backend.services.authority_metadata import read_device_control
+        expected = {name: registration[name] for name in ('provider_type', 'provider_id', 'provider_version')}
+        expected.update(declaration_digest=_group_digest(_offers(db, device), registration),
+                        control_generation=read_device_control(db, device.id).generation)
+        if binding != expected:
+            raise CapabilityRegistryError('Capability provider/control episode changed')
     contract = registration_contract(payload.get("capability_id"), registration.get("contract") if registration else None)
     if contract is None:
         if payload.get("contract_version") is not None or payload.get("contract_digest") is not None:

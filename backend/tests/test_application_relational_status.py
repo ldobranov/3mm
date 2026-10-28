@@ -67,6 +67,20 @@ def test_real_prepared_host_and_current_grants_report_effective(ready):
     assert status["grant_state"] == "active" and status["mode"] == "enforced"
 
 
+@pytest.mark.parametrize('running', [True, False])
+def test_resource_view_uses_real_prepared_host_without_business_writes(ready, running):
+    from backend.services.application_resource_discovery import discover_resources
+    if not running: ready.host.path.unlink()
+    database = ready.host_root / 'data/state.sqlite3'
+    before = database.read_bytes()
+    value = discover_resources(ready.engine, 1, ready.host_root.name, ['storage:relational_read'])
+    row = value['resources'][0]
+    assert row['access'] == 'granted' and row['configured'] is True
+    assert row['readiness'] == ('ready' if running else 'unknown')
+    assert database.read_bytes() == before
+    assert str(ready.host_root) not in str(value) and SECRET.decode() not in str(value)
+
+
 def test_refresh_is_metadata_only_without_journal_grant_or_business_writes(ready):
     def snapshot():
         with Session(ready.engine) as db:

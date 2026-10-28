@@ -30,7 +30,7 @@ Usage:
 
 Options:
   --profile full|node        Full app (default) or minimal Node (ARMv6/Python 3.13)
-  --network-backend host|network-manager  Preserve host networking (default) or enable Wi-Fi setup
+  --network-backend host|network-manager  Preserve host networking or enable Wi-Fi/AP setup (fresh default)
   --channel stable|beta|test  Release channel (default: beta)
   --tag vX.Y.Z[-suffix]      Install one exact published release
   --frontend-origin URL      Public HTTP(S) origin; preserves existing URL on update
@@ -89,7 +89,15 @@ fi
 if [[ -z $network_backend && -f /etc/3mm/3mm.env ]]; then
   network_backend=$(awk -F= '$1 == "THREE_MM_NETWORK_BACKEND" {value=$2} END {print value}' /etc/3mm/3mm.env)
 fi
-network_backend=${network_backend:-host}
+if [[ -z $network_backend ]]; then
+  # Fresh bootstrap retains the one-command Wi-Fi/AP setup. Never infer a
+  # networking change when updating an installation without a saved backend.
+  if [[ -f /etc/3mm/3mm.env || -L /opt/3mm/current || -d /var/lib/3mm/provisioning ]]; then
+    network_backend=host
+  else
+    network_backend=network-manager
+  fi
+fi
 [[ $network_backend == host || $network_backend == network-manager ]] || fail "network backend must be host or network-manager"
 if [[ $network_backend == network-manager ]]; then
   THREE_MM_BOOTSTRAP_PACKAGES+=(dnsmasq-base network-manager)

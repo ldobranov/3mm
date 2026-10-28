@@ -142,6 +142,7 @@ class ApplicationKioskEnrollment(Base):
         index=True,
     )
     code_hash = Column(String(64), nullable=False, unique=True)
+    installation_incarnation = Column(String(32), nullable=True)
     label = Column(String(120), nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     consumed_at = Column(DateTime(timezone=True), nullable=True)
@@ -155,6 +156,7 @@ class ApplicationKioskTerminal(Base):
     __tablename__ = "application_kiosk_terminals"
     id = Column(Integer, primary_key=True)
     terminal_id = Column(String(64), nullable=False, unique=True, index=True)
+    installation_incarnation = Column(String(32), nullable=True)
     enrollment_id = Column(
         Integer,
         ForeignKey("application_kiosk_enrollments.id", ondelete="SET NULL"),

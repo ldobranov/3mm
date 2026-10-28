@@ -3,7 +3,6 @@ import {
   isMenuRouteEligible,
   isNavigationItemVisible,
   localizedNavigationLabel,
-  mergeNavigationItems,
   navigationLabelForEditing,
   normalizeAvailableLanguages,
   updateLocalizedNavigationLabel,
@@ -32,17 +31,6 @@ describe('menu navigation', () => {
     expect(navigationLabelForEditing('Devices', 'bg')).toBe('')
     expect(updateLocalizedNavigationLabel({ path: '/devices', label: 'Devices' }, 'bg', 'Устройства').label)
       .toEqual({ en: 'Devices', bg: 'Устройства' })
-  })
-
-  it('keeps custom entries and appends dynamic entries without duplicate paths', () => {
-    expect(mergeNavigationItems(
-      [{ path: '/settings', label: 'Settings' }, { path: '/main-server', label: 'My devices' }],
-      [{ path: '/main-server', label: 'Devices' }, { path: '/automations/proposals', label: 'Automations' }],
-    )).toEqual([
-      { path: '/settings', label: 'Settings' },
-      { path: '/main-server', label: 'My devices' },
-      { path: '/automations/proposals', label: 'Automations' },
-    ])
   })
 
   it('does not invent languages that are not installed', () => {

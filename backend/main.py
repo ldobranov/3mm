@@ -24,9 +24,6 @@ from backend.services.asset_storage import get_asset_storage
 
 # Import database and models first
 from backend.database import get_db, init_db
-from backend.routes.ai_extension_builder_routes import (
-    router as ai_extension_builder_router,
-)
 from backend.routes.application_extensions import router as application_extensions_router
 from backend.routes.application_authority import router as application_authority_router
 from backend.routes.application_events import router as application_events_router
@@ -34,11 +31,8 @@ from backend.routes.application_operations import router as application_operatio
 from backend.routes.installation_peers import router as installation_peers_router
 from backend.routes.backups import router as backups_router
 from backend.routes.diagnostics import router as diagnostics_router
-from backend.routes.ai_automations import router as ai_automations_router
-from backend.routes.extension_projects import router as extension_projects_router
 from backend.routes.audit_routes import router as audit_router
 from backend.routes.auth_refresh import router as refresh_router
-from backend.routes.display_routes import router as display_router
 from backend.routes.device_pairing import router as device_pairing_router
 from backend.routes.device_platform import router as device_platform_router
 from backend.routes.device_ingest import router as device_ingest_router
@@ -53,7 +47,6 @@ from backend.routes.node_update_delivery import router as node_update_delivery_r
 from backend.routes.group_routes import router as group_router
 from backend.routes.language_routes import router as language_router
 from backend.routes.modules import router as modules_router
-from backend.routes.runtime_extensions import router as runtime_extensions_router
 from backend.routes.permission_routes import router as permission_router
 from backend.routes.role_routes import router as role_router
 from backend.routes.session_routes import router as session_router
@@ -69,7 +62,6 @@ from backend.routes.settings import router as settings_router
 from backend.routes.user import router as user_router
 
 
-# import backend.db.language_pack  # noqa: F401 - Import to ensure tables are created
 
 app_settings = get_settings()
 
@@ -169,7 +161,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
-    expose_headers=["Authorization-Token"],  # Expose Authorization-Token header
+    # Browser file downloads verify these digests across the frontend/API ports.
+    expose_headers=["Authorization-Token", "X-Content-SHA256", "X-Chunk-SHA256"],
 )
 
 # Mount static files for uploads
@@ -201,9 +194,6 @@ async def log_static_requests(request, call_next):
 
 app.include_router(settings_router)
 app.include_router(user_router, prefix="/api/user")
-# Page routes removed - will be provided by PagesExtension
-# app.include_router(page_router, prefix="/pages")
-app.include_router(display_router)
 app.include_router(device_pairing_router)
 app.include_router(device_platform_router)
 app.include_router(device_ingest_router)
@@ -229,9 +219,6 @@ if os.getenv("THREE_MM_LOCAL_SESSIONS") == "1" or os.getenv("THREE_MM_SESSION_LI
 app.include_router(application_events_router)
 app.include_router(application_operations_router)
 app.include_router(installation_peers_router)
-app.include_router(runtime_extensions_router)
-app.include_router(ai_automations_router)
-app.include_router(extension_projects_router)
 app.include_router(system_updates_router)
 app.include_router(system_control_router)
 app.include_router(network_recovery_router)
@@ -245,7 +232,6 @@ app.include_router(permission_router, prefix="/api")
 app.include_router(role_router, prefix="/api")
 app.include_router(group_router, prefix="/api")
 app.include_router(language_router, prefix="/api")
-app.include_router(ai_extension_builder_router)
 
 # Removed excessive debug logging for cleaner startup
 

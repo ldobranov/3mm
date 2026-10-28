@@ -299,7 +299,7 @@ def test_opt_in_never_flushes_writes_builds_extracts_or_executes(
     for name in ("write_bytes", "write_text", "mkdir"):
         monkeypatch.setattr(Path, name, forbidden)
     monkeypatch.setattr(zipfile.ZipFile, "extractall", forbidden)
-    monkeypatch.setattr(authority.os, "system", forbidden)
+    monkeypatch.setattr(os, "system", forbidden)
     # Inspect the same exact archive twice; newly built ZIP timestamps can differ.
     payload = installed.archive.read_bytes()
     try:

@@ -1,0 +1,396 @@
+{
+  "format": 1,
+  "scope": "C3 products, declarative CRUD and legacy content extraction",
+  "files": [
+    {
+      "from": "backend/routes/ai_extension_builder_routes.py",
+      "to": "modules/builder/source/legacy/backend/routes/ai_extension_builder_routes.py",
+      "original_sha256": "5f36a8b9ade14f8ea8de05a7905d3af26faaad13847dc20233e55e404780f4c0"
+    },
+    {
+      "from": "backend/routes/extension_projects.py",
+      "to": "modules/builder/source/legacy/backend/routes/extension_projects.py",
+      "original_sha256": "f14de4f112dd4fc77c3518065a70daa8a5f5ea01c85d2d9a9d413770f0cda711"
+    },
+    {
+      "from": "backend/db/extension_project.py",
+      "to": "modules/builder/source/legacy/backend/db/extension_project.py",
+      "original_sha256": "3e55c86cdec3ef8906114c040eafb2eb234e7f0224bb7a7cfcd9a9ec1f2469c6"
+    },
+    {
+      "from": "backend/schemas/ai_extension_builder.py",
+      "to": "modules/builder/source/legacy/backend/schemas/ai_extension_builder.py",
+      "original_sha256": "73be695b4776d7c279950247db0b974d7ff562ab7e6d05643de3f3589f937319"
+    },
+    {
+      "from": "backend/schemas/extension_project.py",
+      "to": "modules/builder/source/legacy/backend/schemas/extension_project.py",
+      "original_sha256": "a90a116dc42a5868e7ab25dc2d133ba61f1d303973f528d7c2ee8f579d203e6c"
+    },
+    {
+      "from": "backend/utils/ai_extension_builder/__init__.py",
+      "to": "modules/builder/source/legacy/backend/utils/ai_extension_builder/__init__.py",
+      "original_sha256": "f79f1cb76a72c6b59d7e269e03bc30b6589a997459a1c4e158dad896a2dda91b"
+    },
+    {
+      "from": "backend/utils/ai_extension_builder/generator.py",
+      "to": "modules/builder/source/legacy/backend/utils/ai_extension_builder/generator.py",
+      "original_sha256": "475d843cbe6b8eca1f1acacdc37be1551df92bf58e22f949cb48a2c4340d5e89"
+    },
+    {
+      "from": "backend/utils/ai_extension_builder/clarifier.py",
+      "to": "modules/builder/source/legacy/backend/utils/ai_extension_builder/clarifier.py",
+      "original_sha256": "a39149a3a6dcf9c2c5da97408bb2b46a4758587f4e7177a48f9d695c2d2928ee"
+    },
+    {
+      "from": "backend/utils/ai_extension_builder/widget_spec.py",
+      "to": "modules/builder/source/legacy/backend/utils/ai_extension_builder/widget_spec.py",
+      "original_sha256": "90bae6a375b12da0f45e26a50fe763360f24d143b209f7e52c665fc15476c6ba"
+    },
+    {
+      "from": "frontend/src/views/AiExtensionBuilder.vue",
+      "to": "modules/builder/source/legacy/frontend/src/views/AiExtensionBuilder.vue",
+      "original_sha256": "cc419bb79491060b2b3f192ae02461b69e9c59dda0e6cec51c0bb85c5818aae4"
+    },
+    {
+      "from": "frontend/src/views/AiExtensionBuilder.component.test.ts",
+      "to": "modules/builder/source/legacy/frontend/src/views/AiExtensionBuilder.component.test.ts",
+      "original_sha256": "a9d73f95e417c138627c8f4101d5670b6e265af3fc4b0e0f09f2b00bad1b6e49"
+    },
+    {
+      "from": "backend/tests/test_ai_capability_context.py",
+      "to": "modules/builder/source/legacy/backend/tests/test_ai_capability_context.py",
+      "original_sha256": "ffbf147feb55b355bc8b7480968392b5706da1a728e4fbcdb3c3a6c30b2eb9e3"
+    },
+    {
+      "from": "backend/tests/test_ai_extension_widget_spec.py",
+      "to": "modules/builder/source/legacy/backend/tests/test_ai_extension_widget_spec.py",
+      "original_sha256": "3669919a8b2900668a90f25e6fd67ffd27ac6d1524d593623f2d3d4e002d1fb6"
+    },
+    {
+      "from": "backend/tests/test_ai_extension_generator.py",
+      "to": "modules/builder/source/legacy/backend/tests/test_ai_extension_generator.py",
+      "original_sha256": "a92d2f38d6b2a8efd80d4a4f02a9b95e60c448116d337aa8c3276f90bc21246c"
+    },
+    {
+      "from": "backend/tests/test_extension_intent_planner.py",
+      "to": "modules/builder/source/legacy/backend/tests/test_extension_intent_planner.py",
+      "original_sha256": "db90a87bf8caf1e6772a2f2e84f4d9386e257e8c1a2b34da064825347420047c"
+    },
+    {
+      "from": "backend/tests/test_extension_projects.py",
+      "to": "modules/builder/source/legacy/backend/tests/test_extension_projects.py",
+      "original_sha256": "ee6f8a3c790a7abe770e1c41138deaf56406bf2eae4f4b414a84867583ebfe28"
+    },
+    {
+      "from": "backend/routes/ai_automations.py",
+      "to": "modules/automations/source/legacy/backend/routes/ai_automations.py",
+      "original_sha256": "4350a63173200cb64c8ebf14469d2ef818794525b5faf2d83af0b402e77171f6"
+    },
+    {
+      "from": "backend/db/automation.py",
+      "to": "modules/automations/source/legacy/backend/db/automation.py",
+      "original_sha256": "050beb2ca872de50ab77df7ba2c9159b9cd0bf4894edf605d6dd15d1a3b8fbdc"
+    },
+    {
+      "from": "backend/services/ai_jobs.py",
+      "to": "modules/automations/source/legacy/backend/services/ai_jobs.py",
+      "original_sha256": "6beef007d9a9a89316478c45731c0bb9edb3cb6e444889c6760ffcf59efb9370"
+    },
+    {
+      "from": "backend/services/ai_capability_context.py",
+      "to": "modules/automations/source/legacy/backend/services/ai_capability_context.py",
+      "original_sha256": "9ff43d5dedc9368d683a3bfc6f261ae1fba37cdd06982081c14907576257c8f8"
+    },
+    {
+      "from": "backend/services/automation_proposals.py",
+      "to": "modules/automations/source/legacy/backend/services/automation_proposals.py",
+      "original_sha256": "70fbf86e6bbc7cb8be2b242496ff9efd05b0b7671d900d226bf96488ac4350ec"
+    },
+    {
+      "from": "backend/services/automation_execution.py",
+      "to": "modules/automations/source/legacy/backend/services/automation_execution.py",
+      "original_sha256": "74eaec8e031fe10c239b36ee6f5b1352f41768fc8d563472c2e2adb4d21a6e3c"
+    },
+    {
+      "from": "backend/tests/test_ai_automation_routes.py",
+      "to": "modules/automations/source/legacy/backend/tests/test_ai_automation_routes.py",
+      "original_sha256": "487ed0345ec414ee9000ccefa2bd35f0fc49309b31c2c6df4a8f584ecfbaef41"
+    },
+    {
+      "from": "backend/tests/test_ai_jobs.py",
+      "to": "modules/automations/source/legacy/backend/tests/test_ai_jobs.py",
+      "original_sha256": "b72c913c73b16e8373f815a24570e0594ac09f1f1f7857bc3e334be340fdd231"
+    },
+    {
+      "from": "backend/tests/test_automation_proposals.py",
+      "to": "modules/automations/source/legacy/backend/tests/test_automation_proposals.py",
+      "original_sha256": "ba94d89aedb81c4656b28df388df74f208f8f7173869d0c1604f04ea18547a70"
+    },
+    {
+      "from": "backend/tests/test_automation_execution.py",
+      "to": "modules/automations/source/legacy/backend/tests/test_automation_execution.py",
+      "original_sha256": "1c815e03f1f274bab69e08161579feef6849124bd76028980654052ebbdf8ea5"
+    },
+    {
+      "from": "frontend/src/views/AutomationProposals.vue",
+      "to": "modules/automations/source/legacy/frontend/src/views/AutomationProposals.vue",
+      "original_sha256": "8e633f27bd6b298c5326d090dd36dfc6cc6a7b86a187165fe831536ced15fe3c"
+    },
+    {
+      "from": "backend/utils/ai_extension_builder/groq_client.py",
+      "to": "libraries/three_mm_ai/three_mm_ai/groq_client.py",
+      "original_sha256": "4f479b2f84a98a5f6103664a939467f6948007a14614ebfac1523e2aab11b8c5"
+    },
+    {
+      "from": "backend/utils/ai_extension_builder/openrouter_client.py",
+      "to": "libraries/three_mm_ai/three_mm_ai/openrouter_client.py",
+      "original_sha256": "07553f173110a6901251d6cc5413483ec4db81b31288aad091eed0aec24d626e"
+    },
+    {
+      "from": "backend/utils/ai_extension_builder/free_provider_client.py",
+      "to": "libraries/three_mm_ai/three_mm_ai/free_provider_client.py",
+      "original_sha256": "eb23554c4abd5f66530c82d30af1fe0c7abd0abdd82b68581f3d8fe9e96aa32b"
+    },
+    {
+      "from": "backend/services/ai_gateway.py",
+      "to": "libraries/three_mm_ai/three_mm_ai/gateway.py",
+      "original_sha256": "3cd4579d6b209d6ae3543c2fdd8419b70a8f6a2307f795675b7156cf5b816835"
+    },
+    {
+      "from": "backend/tests/test_free_provider_client.py",
+      "to": "libraries/three_mm_ai/tests/test_free_provider_client.py",
+      "original_sha256": "9b14cd8b52a10a12a09f30890f359a16a38e76db96f77cdaed588ae47b7a7d01"
+    },
+    {
+      "from": "backend/utils/secure_settings.py",
+      "to": "modules/builder/source/legacy/backend/utils/secure_settings.py",
+      "original_sha256": "7237031bb8c220364ee1a003366025b7810f3b538c38734712dd3dea44b70f4e"
+    },
+    {
+      "from": "backend/db/display.py",
+      "to": "modules/dashboards/source/legacy/backend/db/display.py",
+      "original_sha256": "cc083752925af5fc5b80a633ffb5b45c0b22455f18cfa24fd3a552ab454e4dbe"
+    },
+    {
+      "from": "backend/db/widget.py",
+      "to": "modules/dashboards/source/legacy/backend/db/widget.py",
+      "original_sha256": "4f58752664d91c23c1831bb0aad83b87de361e43dbf63a13ef44dfc590e6885a"
+    },
+    {
+      "from": "backend/routes/display_routes.py",
+      "to": "modules/dashboards/source/legacy/backend/routes/display_routes.py",
+      "original_sha256": "17067a957964a287bfe2fb1ebb395ffb8b002dd32c598a7dedf8b72ac7d8c9ac"
+    },
+    {
+      "from": "backend/schemas/display.py",
+      "to": "modules/dashboards/source/legacy/backend/schemas/display.py",
+      "original_sha256": "8abf5921dc6fce8071ac30e90c56b9ffcb79f0f9e74532b5b0c93542ddcb4b2c"
+    },
+    {
+      "from": "backend/tests/test_dashboard_grant_access.py",
+      "to": "modules/dashboards/source/legacy/backend/tests/test_dashboard_grant_access.py",
+      "original_sha256": "c1b037e93353c86645a31354278e44c212fc435523101591739f848334a111c1"
+    },
+    {
+      "from": "backend/tests/test_public_capability_widget.py",
+      "to": "modules/dashboards/source/legacy/backend/tests/test_public_capability_widget.py",
+      "original_sha256": "cce3a9a32f49581e7977c74ee98f93c213f3c3c8f4b8b6fa0b3e5da76f15f698"
+    },
+    {
+      "from": "frontend/src/views/DashboardList.vue",
+      "to": "modules/dashboards/source/legacy/frontend/src/views/DashboardList.vue",
+      "original_sha256": "76f721a021a7e2fb11951e398eb7bce5cff5a06c04a8b0e301b296819b3ac150"
+    },
+    {
+      "from": "frontend/src/views/DisplayEditor.vue",
+      "to": "modules/dashboards/source/legacy/frontend/src/views/DisplayEditor.vue",
+      "original_sha256": "1332ec64f5e2070f87bdb46ae0be25148bb602320fd45376c8e532c9af91d8d4"
+    },
+    {
+      "from": "frontend/src/views/PublicDisplay.vue",
+      "to": "modules/dashboards/source/legacy/frontend/src/views/PublicDisplay.vue",
+      "original_sha256": "b6ff36577ff5b4fba987d8e446a3cc25b7dfe5dc1d003ea6e9608dc9d0762ed4"
+    },
+    {
+      "from": "frontend/src/views/DashboardList.component.test.ts",
+      "to": "modules/dashboards/source/legacy/frontend/src/views/DashboardList.component.test.ts",
+      "original_sha256": "6cc87536b19305724a4108ecdd061bc5a638ed2a80882561bf039d3d38fc760b"
+    },
+    {
+      "from": "frontend/src/views/DisplayEditor.component.test.ts",
+      "to": "modules/dashboards/source/legacy/frontend/src/views/DisplayEditor.component.test.ts",
+      "original_sha256": "c955e92c6aff83412b7523f86115b53d705631e31cf0ebd90678122dbd692992"
+    },
+    {
+      "from": "frontend/src/stores/displays.ts",
+      "to": "modules/dashboards/source/legacy/frontend/src/stores/displays.ts",
+      "original_sha256": "0dacfb8cf5c9fa4fb77e0fb968ee8259150c23c93d0af9d378804ca89aaa71ae"
+    },
+    {
+      "from": "frontend/src/stores/widgets.ts",
+      "to": "modules/dashboards/source/legacy/frontend/src/stores/widgets.ts",
+      "original_sha256": "6e86592e5f5b931f53e375a723bcb5e1159ecac167b7af58139bbddcfd84530a"
+    },
+    {
+      "from": "frontend/src/components/DisplayCanvas.vue",
+      "to": "modules/dashboards/source/legacy/frontend/src/components/DisplayCanvas.vue",
+      "original_sha256": "ab37a98e9b98e427fd327b791ae76f9c934795997e515cc96a06acbc2f8d3cf2"
+    },
+    {
+      "from": "frontend/src/components/widgets/ExtensionWidget.vue",
+      "to": "modules/dashboards/source/legacy/frontend/src/components/widgets/ExtensionWidget.vue",
+      "original_sha256": "797bc9efc317dda256b8f195a9c816d3613a498f13d8bf0d7cbe511d8d1ef583"
+    },
+    {
+      "from": "frontend/src/components/WidgetPalette.vue",
+      "to": "modules/dashboards/source/legacy/frontend/src/components/WidgetPalette.vue",
+      "original_sha256": "3e636d0e5c7d01130561e14f2a29de790c507be3c3f134a9c67dea5e8159f59d"
+    },
+    {
+      "from": "frontend/src/components/WidgetPalette.test.ts",
+      "to": "modules/dashboards/source/legacy/frontend/src/components/WidgetPalette.test.ts",
+      "original_sha256": "f4b4440c7512f9d3eb31c2d44fd75101114cf3206600aa92fc772f02edaab8e3"
+    },
+    {
+      "from": "frontend/src/components/EditorPanel.vue",
+      "to": "modules/dashboards/source/legacy/frontend/src/components/EditorPanel.vue",
+      "original_sha256": "233a7f49946c79ff3eaa2ef995a83c7191b3e0d9e2cb25bcf68298784c8d43ab"
+    },
+    {
+      "from": "frontend/src/components/EditorPanel.test.ts",
+      "to": "modules/dashboards/source/legacy/frontend/src/components/EditorPanel.test.ts",
+      "original_sha256": "3fe207efbc266a3716dff8889b6fc2e65a2abd573ece99b06021daa1f3da6c87"
+    },
+    {
+      "from": "backend/db/runtime_extension.py",
+      "to": "libraries/three_mm_crud/source/legacy/backend/db/runtime_extension.py",
+      "original_sha256": "131453a7e4682a4562a14c5bab2c9976448fbc2e2aa16877a0cb82de95bcaf46"
+    },
+    {
+      "from": "backend/routes/runtime_extensions.py",
+      "to": "libraries/three_mm_crud/source/legacy/backend/routes/runtime_extensions.py",
+      "original_sha256": "e1370d6671ac1953f2972b3d6da44141ae9ae03dd51b914bb29b14f1e94fc190"
+    },
+    {
+      "from": "backend/services/runtime_extensions.py",
+      "to": "libraries/three_mm_crud/source/legacy/backend/services/runtime_extensions.py",
+      "original_sha256": "74b5879efaaae0a177301bdddbb91fb21f821ad892d4e104921a7119e88304fb"
+    },
+    {
+      "from": "backend/tests/test_runtime_extension_routes.py",
+      "to": "libraries/three_mm_crud/source/legacy/backend/tests/test_runtime_extension_routes.py",
+      "original_sha256": "e64650ef23eb37052b1d8da4cfd0bc737059bb7415b2c93869967f79e38cf746"
+    },
+    {
+      "from": "backend/tests/test_runtime_extension_models.py",
+      "to": "libraries/three_mm_crud/source/legacy/backend/tests/test_runtime_extension_models.py",
+      "original_sha256": "72fb74b8bbcb99669fcea75152155f0f19fed21798bb625ed4be23b551690293"
+    },
+    {
+      "from": "frontend/src/views/RuntimeExtensionPage.vue",
+      "to": "libraries/three_mm_crud/source/legacy/frontend/src/views/RuntimeExtensionPage.vue",
+      "original_sha256": "dc18c6401be6a7ab3db906da29a6540c83ad6ab505c314ab11055c2ef9f4df59"
+    },
+    {
+      "from": "frontend/src/utils/runtime-extensions.ts",
+      "to": "libraries/three_mm_crud/source/legacy/frontend/src/utils/runtime-extensions.ts",
+      "original_sha256": "8fb842583e54b71b452d96a105a8aa832c94a997e04f346c938e26e77db561d0"
+    },
+    {
+      "from": "frontend/src/utils/runtime-extensions.test.ts",
+      "to": "libraries/three_mm_crud/source/legacy/frontend/src/utils/runtime-extensions.test.ts",
+      "original_sha256": "fe79cd0215e8cd5926c1636c67430b0629501e22cc4c25b9938366e723a31afd"
+    },
+    {
+      "from": "three_mm_protocol/runtime_extension.py",
+      "to": "libraries/three_mm_crud/source/legacy/three_mm_protocol/runtime_extension.py",
+      "original_sha256": "809a6281fe3f0186a9e004bbf14e4a95e91694c4d7ffac992d591d44481ffe84"
+    },
+    {
+      "from": "three_mm_protocol/tests/test_runtime_extension.py",
+      "to": "libraries/three_mm_crud/source/legacy/three_mm_protocol/tests/test_runtime_extension.py",
+      "original_sha256": "1eb66dabe8d76dd8b573288372556acc488d83f149a79818b5ea0453a1bc7bdf"
+    },
+    {
+      "from": "modules/runtime-contacts/manifest.json",
+      "to": "libraries/three_mm_crud/source/legacy/modules/runtime-contacts/manifest.json",
+      "original_sha256": "fa447fcb293a6873eda9cbc03b2eed863b0aa580314afee86ff097d9713e5762"
+    },
+    {
+      "from": "modules/runtime-contacts/runtime-extension.json",
+      "to": "libraries/three_mm_crud/source/legacy/modules/runtime-contacts/runtime-extension.json",
+      "original_sha256": "b1299a828367f88afc344380872040865fcfea81753d9f3b2e65fd9fbfd20279"
+    },
+    {
+      "to": "modules/legacy-content/source/legacy/backend/db/page.py",
+      "original_sha256": "45bf6de74b885caf1c30b1cc057c0cf4aa9a499eb5ca714747cf70e81d8b89b2",
+      "from": "backend/db/page.py"
+    },
+    {
+      "to": "modules/legacy-content/source/legacy/backend/db/extension.py",
+      "original_sha256": "2fd24402504d4849ca931baece61b37d9850666697e628f06d4aac19decfeaab",
+      "from": "backend/db/extension.py"
+    },
+    {
+      "to": "modules/legacy-content/source/legacy/backend/db/universal_translation.py",
+      "original_sha256": "b83dc422f614ea632e3faf3eec3cdfc59896cb357ff95cdfdae2de27d5739f79",
+      "from": "backend/db/universal_translation.py"
+    },
+    {
+      "to": "modules/legacy-content/source/legacy/backend/db/language_pack.py",
+      "original_sha256": "c91e086b84c443bfab571eff7b3a37f6c5c866e5ef660448754b1e012210093b",
+      "from": "backend/db/language_pack.py"
+    },
+    {
+      "to": "modules/legacy-content/source/legacy/backend/db/extension_multilingual.py",
+      "original_sha256": "109a2e309e0b48a17bcad22a259c297c2ec3c93784198dbcec5b0817abe5b221",
+      "from": "backend/db/extension_multilingual.py"
+    },
+    {
+      "to": "modules/legacy-content/source/legacy/backend/routes/page_routes.py",
+      "original_sha256": "b72caa1bff61cb6042c4cb88608ae2ac01c986f92baff4089afe969bb9ab6074",
+      "from": "backend/routes/page_routes.py"
+    },
+    {
+      "to": "modules/legacy-content/source/legacy/backend/routes/universal_translations.py",
+      "original_sha256": "0beaf547232c2788d3b5f2f81a87ecbc44a0178ff6ad4dac88cda75dd55ff786",
+      "from": "backend/routes/universal_translations.py"
+    },
+    {
+      "to": "modules/legacy-content/source/legacy/backend/utils/universal_translation_engine.py",
+      "original_sha256": "580aa7d150c7314dc7f20adccf6c005e357093e022c5a7d6c54f7843e8abb7f4",
+      "from": "backend/utils/universal_translation_engine.py"
+    },
+    {
+      "to": "modules/legacy-content/source/legacy/backend/utils/extension_table_creator.py",
+      "original_sha256": "a8ade45819ead0ac6147a908ed83fa4c349ec126b627060fdf4b0ba326a41d32",
+      "from": "backend/utils/extension_table_creator.py"
+    },
+    {
+      "to": "modules/legacy-content/source/legacy/backend/scripts/init_database.py",
+      "original_sha256": "4675b3b7b2c93e10648ce4cdf3a30031d31ce84e9d4d0f1ed53b522400c3b284",
+      "from": "backend/scripts/init_database.py"
+    },
+    {
+      "to": "modules/legacy-content/source/legacy/backend/scripts/create_admin_user.py",
+      "original_sha256": "98a6bfefa6eee85a5593b689d0adee59bec5ac1e270ef8d4f1bb08494111340b",
+      "from": "backend/scripts/create_admin_user.py"
+    },
+    {
+      "to": "modules/legacy-content/source/legacy/backend/scripts/migrate_multilingual_data.py",
+      "original_sha256": "6d242e982d0f2b2a0c6aa2e52f91a53e4438ded144909d5defe8887bf2df332e",
+      "from": "backend/scripts/migrate_multilingual_data.py"
+    },
+    {
+      "to": "modules/legacy-content/source/legacy/backend/scripts/reset_database.py",
+      "original_sha256": "cc0df225fe72106e7bd538aa57dc62c5fc49f0696e73abd6f6d180c5ba98c258",
+      "from": "backend/scripts/reset_database.py"
+    },
+    {
+      "to": "modules/legacy-content/source/legacy/backend/scripts/reset_database.sh",
+      "original_sha256": "27b409fd39765d741a092e75fdb486cf68690aa6a642c8e7805b9617da4b8071",
+      "from": "backend/scripts/reset_database.sh"
+    }
+  ]
+}

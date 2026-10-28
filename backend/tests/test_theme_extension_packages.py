@@ -39,8 +39,10 @@ def manifest():
 def package(*, theme=None, metadata=None, extra=None):
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:
-        archive.writestr("manifest.json", json.dumps(metadata or manifest()))
-        archive.writestr("theme-extension.json", json.dumps(theme or definition()))
+        # Identical fixture content must produce identical immutable ZIP bytes,
+        # including when requests straddle ZIP's two-second timestamp boundary.
+        archive.writestr(zipfile.ZipInfo("manifest.json", (1980,1,1,0,0,0)), json.dumps(metadata or manifest()))
+        archive.writestr(zipfile.ZipInfo("theme-extension.json", (1980,1,1,0,0,0)), json.dumps(theme or definition()))
         if extra is not None:
             archive.writestr(extra, "not allowed")
     return output.getvalue()
@@ -55,7 +57,6 @@ def test_theme_uses_the_existing_immutable_package_contract():
     assert validated.theme_extension.dark.card_bg is None  # built-in fallback
     assert len(validated.sha256) == 64
     assert validated.size_bytes == len(blob)
-    assert validated.runtime_extension is None
     assert validated.compiled_ui is None
     assert validated.application_extension is None
 

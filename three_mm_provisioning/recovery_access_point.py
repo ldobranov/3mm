@@ -5,6 +5,7 @@ state records only connection UUIDs, never SSIDs supplied by users or passwords.
 """
 from __future__ import annotations
 import argparse
+from contextlib import contextmanager
 import ipaddress
 import json
 import os
@@ -25,6 +26,34 @@ from three_mm_provisioning.setup_journal import atomic_json
 STATUS_PATH = Path('/run/3mm/access-point.json')
 AP_ADDRESS = '10.42.0.1/24'
 AP_URL = 'http://10.42.0.1:8895/setup'
+CAPTIVE_DNS_CONFIG = Path('/etc/NetworkManager/dnsmasq-shared.d/3mm-recovery-captive.conf')
+CAPTIVE_DNS_CONTENT = 'address=/#/10.42.0.1\nlocal=/#/\n'
+
+
+def clear_captive_dns_configuration(path):
+    path = Path(path)
+    if path.is_symlink():
+        raise ValueError('Unexpected captive DNS configuration')
+    if path.exists():
+        if path.read_text(encoding='utf-8') != CAPTIVE_DNS_CONTENT:
+            raise ValueError('Unexpected captive DNS configuration')
+        path.unlink()
+
+
+@contextmanager
+def captive_dns_configuration(path):
+    """Load the owned AP DNS mapping only into the new shared dnsmasq process."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Refuse an existing file rather than replace configuration we do not own.
+    with path.open('x', encoding='utf-8') as stream:
+        stream.write(CAPTIVE_DNS_CONTENT)
+    try:
+        yield
+    finally:
+        # nmcli up waits until the new dnsmasq has loaded this configuration.
+        # Other, later shared connections must not inherit the captive mapping.
+        clear_captive_dns_configuration(path)
 
 
 def read_status(path=STATUS_PATH):
@@ -66,7 +95,7 @@ class RecoveryAccessPoint:
     def __init__(self, directory=Path('/var/lib/3mm-setup-helper'), *, boundary=None,
                  status_path=STATUS_PATH, provisioning=Path('/var/lib/3mm/provisioning'),
                  interfaces=managed_interfaces, activate=None, clock=time.time,
-                 network_name=None):
+                 network_name=None, dns_config=CAPTIVE_DNS_CONFIG):
         self.transaction = NetworkTransaction(directory, boundary=boundary)
         self.boundary = self.transaction.boundary
         self.path = Path(directory) / 'access-point.json'
@@ -74,6 +103,7 @@ class RecoveryAccessPoint:
         self.provisioning = Path(provisioning)
         self.interfaces, self.activate, self.clock = interfaces, activate, clock
         self.network_name = network_name
+        self.dns_config = Path(dns_config)
 
     def _load(self):
         if not self.path.exists():
@@ -138,10 +168,11 @@ class RecoveryAccessPoint:
             try:
                 # No radio mutation is allowed before an independent timer exists.
                 self.boundary.schedule_access_point_stop(identifier, duration)
-                self.boundary.create_temporary_open_setup_access_point(
-                    interface=interface, connection_name='3mm-recovery-' + identifier,
-                    network_name=record['network'], connection_uuid=record['profile'],
-                    ipv4_address=AP_ADDRESS)
+                with captive_dns_configuration(self.dns_config):
+                    self.boundary.create_temporary_open_setup_access_point(
+                        interface=interface, connection_name='3mm-recovery-' + identifier,
+                        network_name=record['network'], connection_uuid=record['profile'],
+                        ipv4_address=AP_ADDRESS)
                 if self._current(interface) != record['profile'] or not self.boundary.has_local_address(interface):
                     raise NetworkAdapterError('AP activation unconfirmed')
                 self._save(record, 'active')
@@ -153,6 +184,7 @@ class RecoveryAccessPoint:
     def _restore(self, record):
         self._save(record, 'restoring')
         try:
+            clear_captive_dns_configuration(self.dns_config)
             pending = self.transaction._load()
             if (pending and pending['interface'] == record['interface']
                     and pending['previous'] == record['profile']):
@@ -186,11 +218,13 @@ class RecoveryAccessPoint:
         with self.transaction.locked():
             record = self._load()
             if record is None:
+                clear_captive_dns_configuration(self.dns_config)
                 status = read_status(self.status_path)
                 if identifier is not None and status['id'] == identifier and status['state'] == 'starting':
                     publish_status({**status, 'state': 'inactive'}, self.status_path)
                 return read_status(self.status_path)
             if record['phase'] == 'inactive':
+                clear_captive_dns_configuration(self.dns_config)
                 return read_status(self.status_path)
             if identifier is not None and record['id'] != identifier:
                 return read_status(self.status_path)  # Stale timers cannot close a new AP.

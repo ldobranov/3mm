@@ -1,0 +1,83 @@
+{
+  "crud_version": 1,
+  "name": {
+    "en": "Contacts",
+    "translations": {
+      "bg": "Контакти"
+    }
+  },
+  "entities": [
+    {
+      "entity_id": "contact",
+      "label": {
+        "en": "Contact",
+        "translations": {
+          "bg": "Контакт"
+        }
+      },
+      "fields": [
+        {
+          "field_id": "name",
+          "label": {
+            "en": "Name",
+            "translations": {
+              "bg": "Име"
+            }
+          },
+          "kind": "text",
+          "required": true
+        },
+        {
+          "field_id": "email",
+          "label": {
+            "en": "Email",
+            "translations": {
+              "bg": "Имейл"
+            }
+          },
+          "kind": "text"
+        },
+        {
+          "field_id": "phone",
+          "label": {
+            "en": "Phone",
+            "translations": {
+              "bg": "Телефон"
+            }
+          },
+          "kind": "text"
+        },
+        {
+          "field_id": "birthday",
+          "label": {
+            "en": "Birthday",
+            "translations": {
+              "bg": "Рожден ден"
+            }
+          },
+          "kind": "date"
+        },
+        {
+          "field_id": "notes",
+          "label": {
+            "en": "Notes",
+            "translations": {
+              "bg": "Бележки"
+            }
+          },
+          "kind": "multiline"
+        },
+        {
+          "field_id": "active",
+          "label": {
+            "en": "Active",
+            "translations": {
+              "bg": "Активен"
+            }
+          },
+          "kind": "boolean"
+        }
+      ]
+    }
+  ]
+}

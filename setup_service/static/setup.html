@@ -46,11 +46,6 @@
       <select id="language" aria-label="Language"><option value="en">English</option><option value="bg">Български</option></select>
       <h1 data-text="title">Set up this 3mm device</h1>
       <p class="intro" data-text="intro">Choose a role and how this device connects.</p>
-      <form id="access-form">
-        <label><span data-text="code">Temporary access code</span><input id="access-code" type="password" required autocomplete="off" maxlength="128"></label>
-        <p class="network-note" data-text="codeHelp">Get a code from the device console or the administrator's Network settings. It expires after 15 minutes.</p>
-        <button data-text="unlock">Open setup</button>
-      </form>
       <form id="setup-form" hidden>
         <p id="notice" class="network-note"></p>
         <label><span data-text="role">Device role</span><select name="role"><option value="standalone">Standalone</option><option value="hub">Hub</option><option value="node">Node</option></select></label>
@@ -80,13 +75,13 @@
     <script>
       const readOnly = __READ_ONLY__;
       const $ = (value) => document.querySelector(value);
-      const form = $('#setup-form'), accessForm = $('#access-form'), status = $('#status');
+      const form = $('#setup-form'), status = $('#status');
       const field = (name) => form.elements.namedItem(name);
-      let token = '', caps = null, saved = {}, busy = false;
+      let caps = null, saved = {}, busy = false;
       let language = navigator.language.startsWith('bg') ? 'bg' : 'en';
       const messages = {
-        en: {title:'Set up this 3mm device',intro:'Choose a role and how this device connects.',code:'Temporary access code',codeHelp:'Get a code from the device console or the administrator’s Network settings. It expires after 15 minutes.',unlock:'Open setup',role:'Device role',device:'Device name',locale:'Device locale',hub:'Hub address',network:'Network choice',preserve:'Keep the operating system’s connection',wifi:'Let 3mm manage a Wi-Fi connection',local:'Local operation without a network',networkHelp:'Keeping the connection does not give 3mm control of it. Local operation is available for Standalone.',adapter:'Wi-Fi adapter',scan:'Find networks',ssid:'Network name',passphrase:'Wi-Fi password (WPA/WPA2 Personal)',adminHelp:'Create the first administrator. If one already exists, enter that administrator’s current credentials. Existing passwords are preserved.',admin:'Administrator username',email:'Administrator email',password:'Administrator password',apply:'Save setup',finish:'Close recovery without changing settings',host:'Managed Wi-Fi is unavailable. Existing host networking can be preserved.',managed:'A managed Wi-Fi adapter is available. Wi-Fi changes may briefly interrupt this page.',recovery:'Network recovery: the saved role, device identity and administrator are fixed. Local services remain running.',pending:'A previous attempt needs reconciliation. Reconnect and use Close recovery to check its outcome.',node:'Node connects to a Hub. Saving its address does not pair or approve this device.',standalone:'Standalone runs Core and local workloads. It can also work without a network.',hubRole:'Hub runs Core and accepts approved Nodes.',applying:'Applying and checking setup…',success:'Setup saved. Reopen Mega Monitor at the device’s current address.',awaiting:'Node settings saved. Hub enrollment is awaiting pairing and approval.',closed:'Recovery closed. Saved settings are preserved.',interrupted:'Connection interrupted. The result is unconfirmed. Reconnect and check setup before retrying.',denied:'The access code is missing, expired or revoked. Obtain a new code.',invalid:'Setup was rejected. Check the fields, administrator credentials and selected adapter.',completeAction:'Finish setup',complete:'Setup is saved. Finish setup to activate the selected services.',failed:'Setup could not finish. The previous configuration is retained until the attempt is resolved.',readonly:'Local status only. Changes are disabled.',noNetworks:'No networks found. Enter the name manually.'},
-        bg: {title:'Настройка на това 3mm устройство',intro:'Избери роля и начин на свързване.',code:'Временен код за достъп',codeHelp:'Вземи код от конзолата на устройството или от мрежовите настройки на администратора. Валиден е 15 минути.',unlock:'Отвори настройката',role:'Роля на устройството',device:'Име на устройството',locale:'Език на устройството',hub:'Адрес на Hub',network:'Мрежова връзка',preserve:'Запази връзката на операционната система',wifi:'3mm да управлява Wi-Fi връзката',local:'Локална работа без мрежа',networkHelp:'Запазването на връзката не дава контрол на 3mm върху нея. Локална работа е възможна за Standalone.',adapter:'Wi-Fi адаптер',scan:'Намери мрежи',ssid:'Име на мрежата',passphrase:'Wi-Fi парола (WPA/WPA2 Personal)',adminHelp:'Създай първия администратор. Ако вече има такъв, въведи неговите текущи данни. Съществуващите пароли се запазват.',admin:'Потребителско име на администратора',email:'Имейл на администратора',password:'Парола на администратора',apply:'Запази настройката',finish:'Затвори възстановяването без промени',host:'Управляван Wi-Fi не е наличен. Може да се запази мрежовата връзка на системата.',managed:'Има наличен Wi-Fi адаптер. Промяната на връзката може временно да прекъсне тази страница.',recovery:'Възстановяване на мрежата: ролята, идентичността и администраторът са запазени. Локалните услуги продължават да работят.',pending:'Предишен опит изисква проверка. Свържи се отново и използвай затварянето на възстановяването, за да се провери резултатът.',node:'Node се свързва с Hub. Запазването на адреса не сдвоява и не одобрява устройството.',standalone:'Standalone изпълнява Core и локалните задачи. Може да работи и без мрежа.',hubRole:'Hub изпълнява Core и приема одобрени Nodes.',applying:'Настройката се прилага и проверява…',success:'Настройката е запазена. Отвори Mega Monitor на текущия адрес на устройството.',awaiting:'Настройката на Node е запазена. Очаква се сдвояване и одобрение от Hub.',closed:'Възстановяването е затворено. Записаните настройки са запазени.',interrupted:'Връзката прекъсна. Резултатът не е потвърден. Свържи се отново и провери настройката преди нов опит.',denied:'Кодът липсва, изтекъл е или е отменен. Вземи нов код.',invalid:'Настройката е отхвърлена. Провери полетата, данните на администратора и адаптера.',completeAction:'Завърши настройката',complete:'Настройката е запазена. Завърши, за да се активират избраните услуги.',failed:'Настройката не завърши. Предишната конфигурация се запазва до изясняване на резултата.',readonly:'Само локален статус. Промените са изключени.',noNetworks:'Няма намерени мрежи. Въведи името ръчно.'}
+        en: {title:'Set up this 3mm device',intro:'Choose a role and how this device connects.',role:'Device role',device:'Device name',locale:'Device locale',hub:'Hub address',network:'Network choice',preserve:'Keep the operating system’s connection',wifi:'Let 3mm manage a Wi-Fi connection',local:'Local operation without a network',networkHelp:'Keeping the connection does not give 3mm control of it. Local operation is available for Standalone.',adapter:'Wi-Fi adapter',scan:'Find networks',ssid:'Network name',passphrase:'Wi-Fi password (WPA/WPA2 Personal)',adminHelp:'Create the first administrator. If one already exists, enter that administrator’s current credentials. Existing passwords are preserved.',admin:'Administrator username',email:'Administrator email',password:'Administrator password',apply:'Save setup',finish:'Close recovery without changing settings',host:'Managed Wi-Fi is unavailable. Existing host networking can be preserved.',managed:'A managed Wi-Fi adapter is available. Wi-Fi changes may briefly interrupt this page.',recovery:'Network recovery: the saved role, device identity and administrator are fixed. Local services remain running.',pending:'A previous attempt needs reconciliation. Reconnect and use Close recovery to check its outcome.',node:'Node connects to a Hub. Saving its address does not pair or approve this device.',standalone:'Standalone runs Core and local workloads. It can also work without a network.',hubRole:'Hub runs Core and accepts approved Nodes.',applying:'Applying and checking setup…',success:'Setup saved. Reopen Mega Monitor at the device’s current address.',awaiting:'Node settings saved. Hub enrollment is awaiting pairing and approval.',closed:'Recovery closed. Saved settings are preserved.',interrupted:'Connection interrupted. The result is unconfirmed. Reconnect and check setup before retrying.',unavailable:'Setup is not active on this device.',invalid:'Setup was rejected. Check the fields, administrator credentials and selected adapter.',completeAction:'Finish setup',complete:'Setup is saved. Finish setup to activate the selected services.',failed:'Setup could not finish. The previous configuration is retained until the attempt is resolved.',readonly:'Local status only. Changes are disabled.',noNetworks:'No networks found. Enter the name manually.'},
+        bg: {title:'Настройка на това 3mm устройство',intro:'Избери роля и начин на свързване.',role:'Роля на устройството',device:'Име на устройството',locale:'Език на устройството',hub:'Адрес на Hub',network:'Мрежова връзка',preserve:'Запази връзката на операционната система',wifi:'3mm да управлява Wi-Fi връзката',local:'Локална работа без мрежа',networkHelp:'Запазването на връзката не дава контрол на 3mm върху нея. Локална работа е възможна за Standalone.',adapter:'Wi-Fi адаптер',scan:'Намери мрежи',ssid:'Име на мрежата',passphrase:'Wi-Fi парола (WPA/WPA2 Personal)',adminHelp:'Създай първия администратор. Ако вече има такъв, въведи неговите текущи данни. Съществуващите пароли се запазват.',admin:'Потребителско име на администратора',email:'Имейл на администратора',password:'Парола на администратора',apply:'Запази настройката',finish:'Затвори възстановяването без промени',host:'Управляван Wi-Fi не е наличен. Може да се запази мрежовата връзка на системата.',managed:'Има наличен Wi-Fi адаптер. Промяната на връзката може временно да прекъсне тази страница.',recovery:'Възстановяване на мрежата: ролята, идентичността и администраторът са запазени. Локалните услуги продължават да работят.',pending:'Предишен опит изисква проверка. Свържи се отново и използвай затварянето на възстановяването, за да се провери резултатът.',node:'Node се свързва с Hub. Запазването на адреса не сдвоява и не одобрява устройството.',standalone:'Standalone изпълнява Core и локалните задачи. Може да работи и без мрежа.',hubRole:'Hub изпълнява Core и приема одобрени Nodes.',applying:'Настройката се прилага и проверява…',success:'Настройката е запазена. Отвори Mega Monitor на текущия адрес на устройството.',awaiting:'Настройката на Node е запазена. Очаква се сдвояване и одобрение от Hub.',closed:'Възстановяването е затворено. Записаните настройки са запазени.',interrupted:'Връзката прекъсна. Резултатът не е потвърден. Свържи се отново и провери настройката преди нов опит.',unavailable:'Режимът за настройка не е активен на това устройство.',invalid:'Настройката е отхвърлена. Провери полетата, данните на администратора и адаптера.',completeAction:'Завърши настройката',complete:'Настройката е запазена. Завърши, за да се активират избраните услуги.',failed:'Настройката не завърши. Предишната конфигурация се запазва до изясняване на резултата.',readonly:'Само локален статус. Промените са изключени.',noNetworks:'Няма намерени мрежи. Въведи името ръчно.'}
       };
       const text = (key) => messages[language][key];
       function show(key, error=false) { status.textContent=text(key); status.dataset.error=String(error); }
@@ -98,7 +93,7 @@
       $('#language').addEventListener('change', event => {language=event.target.value; translate();});
       async function api(path, body) {
         const response=await fetch('/api/v1/setup/'+path, {method:body===undefined?'GET':'POST',
-          headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'}, body:body===undefined?undefined:JSON.stringify(body)});
+          headers:{'Content-Type':'application/json'}, body:body===undefined?undefined:JSON.stringify(body)});
         if(!response.ok) { const error=new Error('request_failed'); error.status=response.status; throw error; }
         return response.json();
       }
@@ -116,8 +111,7 @@
         $('#finish').textContent=text(recovery?'finish':'completeAction');
         form.querySelector('[type="submit"]').disabled=caps.pending||caps.complete||readOnly;
       }
-      async function unlock(event) {
-        event.preventDefault(); token=$('#access-code').value.trim();
+      async function loadSetup() {
         try {
           caps=await api('capabilities'); saved=await api('prefill');
           for(const name of ['role','locale','device_name','administrator_name','hub_endpoint']) {
@@ -128,10 +122,9 @@
           if(!caps.roles.includes(field('role').value)) field('role').value=caps.roles[0];
           field('network_mode').querySelector('[value="wifi"]').disabled=!caps.network_modes.includes('wifi');
           field('network_interface').replaceChildren(...caps.interfaces.map(item=>new Option(item.name,item.name)));
-          accessForm.hidden=true; $('#access-code').value=''; form.hidden=false; status.textContent=''; updateChoices();
-        } catch(error) { show(error.status===401?'denied':'failed',true); }
+          form.hidden=false; status.textContent=''; updateChoices();
+        } catch(error) { show(error.status===403?'unavailable':'failed',true); }
       }
-      accessForm.addEventListener('submit',unlock);
       field('role').addEventListener('change',updateChoices); field('network_mode').addEventListener('change',updateChoices);
       $('#scan-networks').addEventListener('click',async()=>{
         try {
@@ -142,12 +135,12 @@
             $('#network-list').append(button);
           }
           if(!result.items.length) show('noNetworks');
-        } catch(error) {show(error.status===401?'denied':'failed',true);}
+        } catch(error) {show(error.status===403?'unavailable':'failed',true);}
       });
       async function submit(path, values) {
         if(busy) return; busy=true; form.querySelectorAll('button').forEach(button=>button.disabled=true); show('applying');
-        try { const result=await api(path,values); form.hidden=true; token=''; show(path==='finish'?'closed':result.enrollment==='awaiting_pairing'?'awaiting':'success'); }
-        catch(error) {show(error.status===401?'denied':error.status===409||error.status===422?'invalid':error.status?'failed':'interrupted',true);}
+        try { const result=await api(path,values); form.hidden=true; show(path==='finish'?'closed':result.enrollment==='awaiting_pairing'?'awaiting':'success'); }
+        catch(error) {if(error.status===403) form.hidden=true; show(error.status===403?'unavailable':error.status===409||error.status===422?'invalid':error.status?'failed':'interrupted',true);}
         finally {busy=false; form.querySelectorAll('button').forEach(button=>button.disabled=false); updateChoices();}
       }
       form.addEventListener('submit',event=>{
@@ -168,10 +161,8 @@
         } catch(_) {}
       }
       translate(); loadTheme();
-      const fragment=new URLSearchParams(location.hash.slice(1)).get('access');
-      history.replaceState(null,'',location.pathname);
-      if(readOnly) {accessForm.hidden=true; show('readonly');}
-      else if(fragment) {$('#access-code').value=fragment; accessForm.requestSubmit();}
+      if(readOnly) show('readonly');
+      else loadSetup();
     </script>
   </body>
 </html>

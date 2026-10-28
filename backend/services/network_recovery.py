@@ -71,7 +71,6 @@ class NetworkSetupQueued(BaseModel):
     status: Literal["queued"] = "queued"
     setup_network: str | None
     setup_url: str
-    access_code: str
 
 
 def read_network_recovery_status(

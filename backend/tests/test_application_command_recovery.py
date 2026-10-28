@@ -79,12 +79,29 @@ def test_lookup_lost_reply_changed_binding_invalidation_and_isolation(setup):
     assert lookup(s)['command']['command_id'] == submitted['command_id']
 
 
-def test_lookup_ambiguous_original_targets_fails_explicitly(setup):
+def test_submission_never_retargets_an_existing_logical_request(setup):
     s = setup
     broker.submit_command(s.db, s.app, payload())
     s.app.configuration = {**s.app.configuration, 'OUTPUT_DEVICE_ID': s.devices[1].device_id}
     s.db.commit()
+    with pytest.raises(ValueError, match='original target'):
+        broker.submit_command(s.db, s.app, payload())
+    assert lookup(s)['command']['target_device_id'] == s.devices[0].device_id
+    assert len(s.db.scalars(select(DeviceCommand)).all()) == 1
+
+
+def test_lookup_historical_ambiguous_original_targets_fails_explicitly(setup):
+    # Restored historical records may predate the no-retarget admission check.
+    import hashlib
+    s = setup
     broker.submit_command(s.db, s.app, payload())
+    s.app.configuration = {**s.app.configuration, 'OUTPUT_DEVICE_ID': s.devices[1].device_id}
+    s.db.commit()
+    second = broker.submit_command(s.db, s.app, payload('different-request'))
+    command = s.db.scalar(select(DeviceCommand).where(DeviceCommand.command_id == second['command_id']))
+    command.idempotency_key = 'app:' + hashlib.sha256(
+        f'{s.app.id}:{s.devices[1].device_id}:request-1'.encode()).hexdigest()
+    s.db.commit()
     with pytest.raises(ValueError, match='ambiguous'):
         lookup(s)
 

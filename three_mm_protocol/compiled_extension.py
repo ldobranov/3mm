@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from three_mm_protocol.capability_builder import CapabilityPlanV1
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN, SEMVER_PATTERN
-from three_mm_protocol.runtime_extension import IDENTIFIER_PATTERN, LocalizedTextV1, ROUTE_PATTERN
+from three_mm_protocol.ui_metadata import IDENTIFIER_PATTERN, LocalizedTextV1, ROUTE_PATTERN
 
 
 class StrictCompiledUiModel(BaseModel):

@@ -1,10 +1,8 @@
 """Advisory inspection against a Core-selected, pinned installation snapshot."""
 
 from dataclasses import dataclass
-import os
 from pathlib import Path
 import re
-import stat
 from typing import Literal
 import zipfile
 import zlib
@@ -15,11 +13,7 @@ from backend.services.application_authority_review import (
     ApplicationAuthorityReview,
     review_application_authority,
 )
-from backend.services.module_packages import (
-    MAX_PACKAGE_BYTES,
-    ValidatedModulePackage,
-    validate_module_package,
-)
+from backend.services.module_packages import ValidatedModulePackage
 
 
 @dataclass(frozen=True)
@@ -63,18 +57,8 @@ def _read_baseline(
     path = root / f"{baseline.sha256}.zip"
     if path.is_symlink() or path.resolve().parent != root:
         raise ValueError("Invalid baseline path")
-    flags = (
-        os.O_RDONLY
-        | getattr(os, "O_BINARY", 0)
-        | getattr(os, "O_NOFOLLOW", 0)
-        | getattr(os, "O_NONBLOCK", 0)
-    )
-    with os.fdopen(os.open(path, flags), "rb") as stream:
-        info = os.fstat(stream.fileno())
-        if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= MAX_PACKAGE_BYTES:
-            raise ValueError("Invalid baseline file")
-        blob = stream.read(MAX_PACKAGE_BYTES + 1)
-    package = validate_module_package(blob, core_version=core_version)
+    from backend.services.application_code_scope import load_verified_package
+    package = load_verified_package(path, core_version=core_version)
     if (
         package.sha256 != baseline.sha256
         or package.manifest.module_id != baseline.module_id

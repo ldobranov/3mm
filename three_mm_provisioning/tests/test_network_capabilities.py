@@ -44,8 +44,14 @@ def test_multiple_adapters_require_explicit_ap_selection(inspector):
     with pytest.raises(RuntimeError): capabilities.setup_interface('missing')
 
 
-def test_setup_ap_does_not_steal_an_active_host_connection(inspector):
+def test_first_setup_ap_can_replace_the_ssh_wifi_after_managed_opt_in(inspector):
     inspector.active='Operating system Wi-Fi'
-    with pytest.raises(RuntimeError): capabilities.setup_interface()
+    assert capabilities.setup_interface()=='wlp2s0'
     inspector.active='3mm-setup'
     assert capabilities.setup_interface()=='wlp2s0'
+
+
+def test_host_backend_never_selects_an_ap_even_with_connected_wifi(inspector, monkeypatch):
+    inspector.active='Operating system Wi-Fi'
+    monkeypatch.setenv('THREE_MM_NETWORK_BACKEND','host')
+    with pytest.raises(RuntimeError): capabilities.setup_interface()

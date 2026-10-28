@@ -125,11 +125,7 @@
             </select>
             <select v-model="auditFilters.entity_type" class="select">
               <option value="">{{ t('security.audit.filters.allTypes') }}</option>
-              <option value="page">{{ t('security.audit.types.page') }}</option>
-              <option value="dashboard">{{ t('security.audit.types.dashboard') }}</option>
-              <option value="widget">{{ t('security.audit.types.widget') }}</option>
-              <option value="settings">{{ t('security.audit.types.settings') }}</option>
-              <option value="user">{{ t('security.audit.types.user') }}</option>
+              <option v-for="entity in Object.keys(auditStats?.actions_by_entity || {})" :key="entity" :value="entity">{{ entity }}</option>
             </select>
             <input
               type="date"
@@ -387,100 +383,8 @@
         </div>
         <div class="card-content">
           <p class="permissions-description">
-            {{ t('security.permissions.description') }}
+            {{ t('security.permissions.legacyHelp', 'View and revoke existing resource permissions. Application permissions are managed through Roles and groups on Users.') }}
           </p>
-
-          <!-- Add Permission Form -->
-          <div class="permission-form-grid">
-            <div class="form-group">
-              <label class="form-label">{{ t('security.permissions.type') }}</label>
-              <select
-                v-model="newPermission.entity_type"
-                class="select"
-                @change="onEntityTypeChange"
-              >
-                <option value="">{{ t('security.permissions.selectType') }}</option>
-                <option value="dashboard">{{ t('security.permissions.dashboard') }}</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">
-                {{ newPermission.entity_type === 'dashboard' ? t('security.permissions.dashboard') :
-                   newPermission.entity_type === 'extension' ? t('security.permissions.extension') :
-                   t('security.permissions.entity') }}
-              </label>
-              <select
-                v-model="newPermission.entity_id"
-                class="select"
-                @change="onEntitySelect"
-                :disabled="!newPermission.entity_type"
-              >
-                <option value="">
-                  {{ !newPermission.entity_type ? t('security.permissions.selectType').toLowerCase() :
-                     `${t('security.permissions.selectEntity')} ${newPermission.entity_type}` }}
-                </option>
-                <option
-                  v-for="entity in availableEntities"
-                  :key="entity.id"
-                  :value="entity.id"
-                >
-                  {{ 
-                     newPermission.entity_type === 'dashboard' ? entity.title :
-                     newPermission.entity_type === 'extension' ? entity.name :
-                     entity.name }}
-                  {{ entity.slug ? `(${entity.slug})` : '' }}
-                </option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">{{ t('security.permissions.user') }}</label>
-              <select v-model="newPermission.user_id" class="select">
-                <option value="">{{ t('security.permissions.selectUser') }}</option>
-                <option v-for="user in users" :key="user.id" :value="user.id">
-                  {{ user.username }} ({{ user.email }})
-                </option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">{{ t('security.permissions.level') }}</label>
-              <select v-model="newPermission.permission_level" class="select">
-                <option value="view">{{ t('security.permissions.view') }}</option>
-                <option value="edit">{{ t('security.permissions.edit') }}</option>
-                <option value="delete">{{ t('security.permissions.delete') }}</option>
-                <option value="admin">{{ t('security.permissions.admin') }}</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">&nbsp;</label>
-              <button
-                class="button button-primary"
-                @click="grantPermission"
-                :disabled="!canGrantPermission"
-                :title="t('security.permissions.grant')"
-              >
-                <i class="bi bi-plus-lg"></i>
-                {{ t('security.permissions.grant') }}
-              </button>
-            </div>
-          </div>
-          
-          <!-- Selected Entity Info -->
-          <div v-if="selectedEntity" class="selected-entity-info">
-            <strong>{{ t('settings.current') }}:</strong>
-            {{
-               newPermission.entity_type === 'dashboard' ? selectedEntity.title :
-               newPermission.entity_type === 'extension' ? selectedEntity.name :
-               selectedEntity.name }}
-            <span v-if="selectedEntity.slug" class="entity-slug">
-              ({{ t('settings.path') }}: {{ selectedEntity.slug }})
-            </span>
-            <span v-if="selectedEntity.description" class="entity-description">
-              - {{ selectedEntity.description }}
-            </span>
-            <span v-if="selectedEntity.extension_type" class="entity-extension-type">
-              - {{ t('security.permissions.type') }}: {{ selectedEntity.extension_type }}
-            </span>
-          </div>
 
           <!-- Permissions List -->
           <div v-if="permissions.length > 0">
@@ -840,8 +744,6 @@ export default defineComponent({
     const auditLogs = ref<any[]>([]);
     const permissions = ref<any[]>([]);
     const users = ref<any[]>([]);
-    const pages = ref<any[]>([]);
-    const dashboards = ref<any[]>([]);
     const roles = ref<any[]>([]);
     const groups = ref<any[]>([]);
     const roleUserCounts = ref<{[key: number]: number}>({});
@@ -866,16 +768,6 @@ export default defineComponent({
       start_date: '',
       user_id: null
     });
-    
-    const newPermission = ref({
-      entity_type: '',
-      entity_id: null,
-      entity_name: '',
-      user_id: null,
-      permission_level: 'view'
-    });
-    
-    const selectedEntity = ref<any>(null);
     
     // Modal states
     const showCreateRoleForm = ref(false);
@@ -912,21 +804,6 @@ export default defineComponent({
     const manageGroupUsersModal = ref<HTMLElement>();
     const roleNameInput = ref<HTMLElement>();
     const groupNameInput = ref<HTMLElement>();
-    
-    const canGrantPermission = computed(() => {
-      return newPermission.value.entity_type &&
-             newPermission.value.entity_id &&
-             newPermission.value.user_id;
-    });
-    
-    // Get available entities based on type
-    const availableEntities = computed(() => {
-      if (newPermission.value.entity_type === 'dashboard') {
-        return dashboards.value;
-
-      }
-      return [];
-    });
     
     // Get available users (not in current role/group)
     const availableUsers = computed(() => {
@@ -1055,22 +932,6 @@ export default defineComponent({
       }
     };
     
-    const loadPages = async () => {
-      // Pages are no longer used in the Security component
-      // The permissions system now works with dashboards and extensions
-      pages.value = [];
-    };
-    
-    const loadDashboards = async () => {
-      try {
-        const response = await http.get('/display/read?limit=100');
-        dashboards.value = response.data.items || [];
-      } catch (error) {
-        console.error('Failed to load dashboards:', error);
-        dashboards.value = [];
-      }
-    };
-    
     const loadRoles = async () => {
       if (!isAdmin.value) return;
 
@@ -1098,26 +959,6 @@ export default defineComponent({
         console.error('Failed to load groups:', error);
         errorMessage.value = 'Failed to load groups - please ensure backend is running with proper database setup';
         groups.value = [];
-      }
-    };
-    
-    const onEntityTypeChange = () => {
-      // Reset entity selection when type changes
-      newPermission.value.entity_id = null;
-      newPermission.value.entity_name = '';
-      selectedEntity.value = null;
-    };
-    
-    const onEntitySelect = (event: any) => {
-      const entityId = parseInt(event.target.value);
-      
-      if (newPermission.value.entity_type === 'dashboard') {
-        const dashboard = dashboards.value.find(d => d.id === entityId);
-        if (dashboard) {
-          newPermission.value.entity_id = dashboard.id;
-          newPermission.value.entity_name = dashboard.name;
-          selectedEntity.value = dashboard;
-        }
       }
     };
     
@@ -1417,26 +1258,6 @@ export default defineComponent({
       }
     };
     
-    const grantPermission = async () => {
-      try {
-        await http.post('/api/permissions', newPermission.value);
-        successMessage.value = 'Permission granted successfully';
-        newPermission.value = {
-          entity_type: '',
-          entity_id: null,
-          entity_name: '',
-          user_id: null,
-          permission_level: 'view'
-        };
-        selectedEntity.value = null;
-        // Reload permissions if needed
-        await loadPermissions();
-      } catch (error) {
-        console.error('Failed to grant permission:', error);
-        errorMessage.value = 'Failed to grant permission';
-      }
-    };
-    
     const revokePermission = async (permissionId: number) => {
       if (!confirm('Are you sure you want to revoke this permission?')) return;
       
@@ -1509,8 +1330,6 @@ export default defineComponent({
       loadAuditLogs();
       loadAuditStats();
       loadUsers();
-      loadPages();
-      loadDashboards();
       loadRoles();
       loadGroups();
       loadPermissions();
@@ -1535,15 +1354,11 @@ export default defineComponent({
       auditLogs,
       permissions,
       users,
-      pages,
-      dashboards,
       roles,
       groups,
       roleUserCounts,
       groupUserCounts,
       auditStats,
-      selectedEntity,
-      availableEntities,
       availableUsers,
       loadingSessions,
       loadingAudit,
@@ -1554,7 +1369,6 @@ export default defineComponent({
       errorMessage,
       isAdmin,
       auditFilters,
-      newPermission,
       showCreateRoleForm,
       showEditRoleForm,
       showCreateGroupForm,
@@ -1574,7 +1388,6 @@ export default defineComponent({
       manageGroupUsersModal,
       roleNameInput,
       groupNameInput,
-      canGrantPermission,
       styleSettings,
       getRoleUserCount,
       getGroupUserCount,
@@ -1583,13 +1396,10 @@ export default defineComponent({
       loadMoreAuditLogs,
       logoutAllSessions,
       revokeSession,
-      grantPermission,
       revokePermission,
       loadPermissions,
       loadRoles,
       loadGroups,
-      onEntityTypeChange,
-      onEntitySelect,
       formatDate,
       getActionBadgeBg,
       getActionBadgeColor,

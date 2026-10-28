@@ -49,6 +49,16 @@ export function contrastRatio(first: string, second: string): number {
   return (Math.max(a, b) + .05) / (Math.min(a, b) + .05)
 }
 
+// Move the background away from its foreground, including custom dark text on
+// light buttons. A fixed brighten/darken operation can destroy a valid pair.
+export function buttonHoverBackground(background: string, foreground: string): string {
+  const candidates = [0, 255].map(target => '#' + [1, 3, 5].map(offset =>
+    Math.round(parseInt(background.slice(offset, offset + 2), 16) * .92 + target * .08)
+      .toString(16).padStart(2, '0')).join(''))
+  return [background, ...candidates].reduce((best, color) =>
+    contrastRatio(color, foreground) > contrastRatio(best, foreground) ? color : best)
+}
+
 export function parseUiDesign(value: unknown): UiDesign | null {
   if (!record(value) || value.design_api_version !== 2) return null
   const result = builtinUiDesign()
@@ -115,6 +125,7 @@ export function uiDesignVariables(design: UiDesign, mode: ThemeMode, header: Res
   const colors = design[mode]
   const variables: Record<string, string> = Object.fromEntries(UI_COLOR_KEYS.map(key => [`--ui-${key.replace(/_/g, '-')}`, colors[key]]))
   Object.assign(variables, {
+    '--ui-color-scheme': mode,
     '--ui-font': fonts[design.typography.font], '--ui-font-size': `${design.typography.base_size}px`,
     '--ui-line-height': `${design.typography.line_height}`, '--ui-space': `${design.scale.unit}px`,
     '--ui-radius-sm': `${design.scale.radius_sm}px`, '--ui-radius-md': `${design.scale.radius_md}px`,
@@ -123,6 +134,17 @@ export function uiDesignVariables(design: UiDesign, mode: ThemeMode, header: Res
     '--ui-header-bg': design.header_style === 'saved' ? header.backgroundColor : colors.surface,
     '--ui-header-text': design.header_style === 'saved' ? header.textColor : colors.text,
   })
+  for (const [name, background, foreground] of [
+    ['accent', colors.accent, colors.accent_text],
+    ['secondary', colors.secondary, colors.secondary_text],
+    ['danger', colors.danger, colors.danger_text],
+  ] as const) variables[`--ui-${name}-hover`] = buttonHoverBackground(background, foreground)
+  for (const [name, foreground] of [['primary', colors.accent], ['danger', colors.danger]] as const) {
+    for (const [state, background] of [['', colors.surface], ['-hover', colors.surface_alt]] as const) {
+      variables[`--ui-${name}-outline${state}-text`] = contrastRatio(background, foreground) >= 4.5
+        ? foreground : buttonTextColor(background)
+    }
+  }
   return variables
 }
 

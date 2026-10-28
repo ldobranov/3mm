@@ -1,0 +1,41 @@
+[Unit]
+Description=3mm optional bounded task and calendar worker
+After=3mm-core.service
+StartLimitIntervalSec=60s
+StartLimitBurst=3
+
+[Service]
+Type=exec
+User=3mm-platform
+Group=3mm-platform
+SupplementaryGroups=3mm-app
+WorkingDirectory=/opt/3mm-platform-runtime/current
+ExecStart=/opt/3mm-platform-runtime/current/.venv/bin/python -I /opt/3mm-platform-runtime/current/runtime.pyz --task-worker --authority-socket /run/3mm-core-authority/authority.sock --core-user 3mm
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=12s
+KillMode=control-group
+UMask=0077
+RuntimeDirectory=3mm-tasks
+RuntimeDirectoryMode=0750
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectSystem=strict
+ProtectHome=true
+InaccessiblePaths=/opt/3mm /etc/3mm /var/lib/3mm/core
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=true
+OOMScoreAdjust=300
+MemoryMax=128M
+TasksMax=16
+CPUQuota=50%
+LimitNOFILE=96
+
+[Install]
+WantedBy=multi-user.target

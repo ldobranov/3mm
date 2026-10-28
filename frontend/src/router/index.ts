@@ -4,6 +4,8 @@ import Login from '../views/Login.vue';
 import { getCompiledUiCatalog, loadCompiledComponent } from '@/utils/compiled-ui';
 import type { CompiledUiPackage } from '@/utils/compiled-ui';
 import { withApplicationHost } from '@/utils/application-host';
+import { withKioskSurface } from '@/utils/kiosk-surface';
+import { getKioskTokenFor } from '@/utils/kiosk-session';
 
 const HomeRedirect = {
   name: 'HomeRedirect',
@@ -21,7 +23,8 @@ export function compiledRouteRecords(packages: CompiledUiPackage[]): RouteRecord
         name: `compiled-${pkg.module_id}-${pkg.version}-${entrypoint.entrypoint_id}`,
         component: async () => {
           const component = await loadCompiledComponent(pkg, entrypoint);
-          return isApplicationRoute ? withApplicationHost(pkg, entrypoint, component) : component;
+          const wrapped = isApplicationRoute ? withApplicationHost(pkg, entrypoint, component) : component;
+          return audience === 'kiosk' ? withKioskSurface(pkg, wrapped) : wrapped;
         },
         meta: {
           requiresAuth: isApplicationRoute
@@ -45,13 +48,13 @@ export function compiledRouteRecords(packages: CompiledUiPackage[]): RouteRecord
   return routes;
 }
 
-export async function reloadCompiledUiRoutes(router: any): Promise<void> {
+export async function reloadCompiledUiRoutes(router: any, catalog?: CompiledUiPackage[]): Promise<void> {
   for (const route of router.getRoutes()) {
     if (route.meta?.isCompiledExtensionRoute && route.name) {
       router.removeRoute(route.name);
     }
   }
-  for (const route of compiledRouteRecords(await getCompiledUiCatalog(true))) {
+  for (const route of compiledRouteRecords(catalog ?? await getCompiledUiCatalog(true))) {
     router.addRoute(route);
   }
 }
@@ -61,28 +64,17 @@ export async function createRouterWithDynamicRoutes() {
   // Load base application routes
   const routes: RouteRecordRaw[] = [
     { path: '/', name: 'Home', component: HomeRedirect },
+    { path: '/kiosk/connect', name: 'KioskConnect', component: () => import('../views/KioskConnect.vue'), meta: { uiShell: 'auth' } },
     { path: '/user/login', name: 'Login', component: Login, meta: { uiShell: 'auth' } },
     { path: '/user/register', name: 'Register', component: () => import('../views/Register.vue'), meta: { uiShell: 'auth' } },
     { path: '/user/profile', name: 'Profile', component: () => import('../views/Profile.vue'), meta: { requiresAuth: true } },
     { path: '/user/logout', name: 'Logout', component: () => import('../views/Logout.vue') },
     { path: '/devices', name: 'Devices', component: () => import('../views/Devices.vue'), meta: { requiresAuth: true, requiresRole: 'admin', defaultLanding: true, menuLabel: { en: 'Devices' }, menuLabelKey: 'mainServer.title' } },
-    { path: '/settings', name: 'Settings', component: () => import('../views/Settings.vue'), meta: { requiresAuth: true, requiresRole: 'admin' } },
+    { path: '/settings', name: 'Settings', component: () => import('../views/Settings.vue'), meta: { requiresAuth: true, requiresRole: 'admin', menuLabel: { en: 'Settings' }, menuLabelKey: 'menu.settings' } },
     { path: '/settings/ui-preview', name: 'UiPreview', component: () => import('../views/UiPreview.vue'), meta: { requiresAuth: true, requiresRole: 'admin', uiShell: 'application' } },
     { path: '/security', name: 'Security', component: () => import('../views/Security.vue'), meta: { requiresAuth: true } },
     { path: '/users', name: 'Users', component: () => import('../views/Users.vue'), meta: { requiresAuth: true, requiresRole: 'admin' } },
-    { path: '/dashboard', name: 'DashboardList', component: () => import('@/views/DashboardList.vue'), meta: { requiresAuth: true } },
-    { path: '/dashboard/:id/edit', name: 'DisplayEditor', component: () => import('@/views/DisplayEditor.vue'), meta: { requiresAuth: true } },
-    { path: '/extensions', name: 'Extensions', component: () => import('../views/Extensions.vue'), meta: { requiresAuth: true, requiresRole: 'admin' } },
-    { path: '/extensions/ai-builder', name: 'AiExtensionBuilder', component: () => import('../views/AiExtensionBuilder.vue'), meta: { requiresAuth: true, requiresRole: 'admin' } },
-    {
-      path: '/automations/proposals',
-      name: 'AutomationProposals',
-      component: () => import('@/views/AutomationProposals.vue'),
-      meta: {
-        requiresAuth: true,
-        requiresRole: 'admin',
-      },
-    },
+    { path: '/extensions', name: 'Extensions', component: () => import('../views/Extensions.vue'), meta: { requiresAuth: true, requiresRole: 'admin', menuLabel: { en: 'Extensions' }, menuLabelKey: 'extensions.title' } },
     {
       path: '/system/updates',
       name: 'SystemUpdates',
@@ -90,9 +82,9 @@ export async function createRouterWithDynamicRoutes() {
       meta: {
         requiresAuth: true,
         requiresRole: 'admin',
+        menuLabelKey: 'systemUpdates.title',
       },
     },
-    { path: '/@:username/:slug', name: 'PublicDisplay', component: () => import('@/views/PublicDisplay.vue'), meta: { uiShell: 'display' } },
     { path: '/:pathMatch(.*)*', name: 'NotFound', component: () => import('../views/NotFound.vue') },
   ];
 
@@ -108,11 +100,10 @@ export async function createRouterWithDynamicRoutes() {
     routes,
   });
 
-  router.beforeEach((to, from, next) => {
+  router.beforeEach(async (to, from, next) => {
     const token = localStorage.getItem('authToken');
     const isAuthenticated = Boolean(token && token !== 'null' && token !== 'undefined');
-    const kioskToken = localStorage.getItem('applicationKioskToken');
-    const isKiosk = Boolean(kioskToken && kioskToken !== 'null' && kioskToken !== 'undefined');
+
 
     if (to.path === '/') {
       if (!isAuthenticated) {
@@ -132,8 +123,9 @@ export async function createRouterWithDynamicRoutes() {
     const requiresAuth = to.matched.some((record) => record.meta && record.meta.requiresAuth === true);
     const requiresKiosk = to.matched.some((record) => record.meta && record.meta.requiresKiosk === true);
 
-    if (requiresKiosk && !isKiosk) {
-      return next('/user/login');
+    if (requiresKiosk) {
+      try { await getKioskTokenFor(String(to.meta.compiledModuleId)); }
+      catch { return next('/kiosk/connect'); }
     }
      
     if (!requiresAuth) {

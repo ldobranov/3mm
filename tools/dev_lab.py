@@ -199,8 +199,7 @@ PROFILES = {
     "p3": (
         "backend/tests/test_language_extensions.py",
         "backend/tests/test_module_packages.py",
-        "backend/tests/test_runtime_extension_routes.py",
-        "backend/tests/test_runtime_extension_models.py",
+        "backend/tests/test_crud_extraction.py",
         "backend/tests/test_compiled_ui.py",
         "backend/tests/test_ai_extension_generator.py",
         "backend/tests/test_extension_intent_planner.py",

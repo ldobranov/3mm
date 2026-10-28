@@ -116,12 +116,38 @@ def read_source_payload(source_archive: Path) -> list[PayloadFile]:
     except (OSError, tarfile.TarError) as exc:
         raise ReleaseBuildError("Source archive is invalid") from exc
 
+    # Product sources and optional libraries can stay in the repository without
+    # becoming executable Core release contents. Markers are allowed only in an
+    # individual module/library, never at a required runtime directory or root.
+    source_only = set()
+    for item in payload:
+        if PurePosixPath(item.name).name != ".3mm-source-only":
+            continue
+        parts = PurePosixPath(item.name).parts
+        if len(parts) != 3 or parts[0] not in {"modules", "libraries"} or item.data:
+            raise ReleaseBuildError("Source-only marker must be empty and belong to a module/library")
+        source_only.add("/".join(parts[:2]) + "/")
+    payload = [item for item in payload if not any(item.name.startswith(prefix) for prefix in source_only)]
+    names = {item.name for item in payload}
+
     required = {
         CONTRACT_PATH,
         "deployment/deployment_contract.py",
         "VERSION",
         "install.sh",
         "backend/requirements.txt",
+        "backend/alembic/versions/4f29a071b819_application_result_tasks.py",
+        "backend/alembic/versions/5a30b182c920_application_task_schedules.py",
+        "backend/alembic/versions/6b41c293da31_retire_builder_automations.py",
+        "backend/alembic/versions/7c52d3a4eb42_retire_dashboards.py",
+        "backend/alembic/versions/8d63e4b5fc53_retire_declarative_crud.py",
+        "three_mm_protocol/ui_metadata.py",
+        "backend/alembic/versions/9e74f5c60d64_retire_legacy_content.py",
+        "backend/alembic/versions/af85a6d71e75_user_subject_ids.py",
+        "backend/alembic/versions/b096b7e82f86_kiosk_incarnations.py",
+        "backend/db/language_extension.py",
+        "backend/db/menu.py",
+        "backend/db/module_reference.py",
         "backend/services/update_staging.py",
         "backend/services/application_public_web.py",
         "backend/services/application_public_web_transport.py",
@@ -155,6 +181,11 @@ def read_source_payload(source_archive: Path) -> list[PayloadFile]:
         "three_mm_public_web/__main__.py",
         "three_mm_public_web/server.py",
         "three_mm_application_sdk/__init__.py",
+        "three_mm_application_sdk/discovery.py",
+        "three_mm_protocol/application_requirements.py",
+        "backend/services/application_requirements.py",
+        "backend/services/application_resource_discovery.py",
+        "three_mm_protocol/application_resources.py",
         'deployment/platform-runtime-contract.json',
         'deployment/platform_runtime_component.py',
         'deployment/systemd/3mm-platform-runtime.service',

@@ -11,7 +11,7 @@ class AuditLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     action = Column(String(50), nullable=False)  # CREATE, UPDATE, DELETE, LOGIN, LOGOUT
-    entity_type = Column(String(50))  # page, widget, dashboard, user, settings
+    entity_type = Column(String(50))  # Producer-defined historical entity kind
     entity_id = Column(Integer)  # ID of the affected entity
     entity_name = Column(String(255))  # Human-readable name
     changes = Column(JSON)  # Store before/after values for updates

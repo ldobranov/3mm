@@ -68,6 +68,11 @@ def _record(path, secret):
 
 
 def _files_preimage(marker):
+    from three_mm_runtime.application_media_snapshot import stage_media
+    _regular(marker / 'media.json', protected=True)
+    if (marker / 'sdk-media').exists():
+        _protected_directory(marker / 'sdk-media')
+    stage_media(marker, None, None, verify_only=True)
     _regular(marker / "files.json", protected=True)
     manifest = _manifest(marker)
     storage = ApplicationFileStorage(marker, mode="read", limits=LIMITS)

@@ -4,7 +4,8 @@ import { readAuthorityPlan, readAuthorityStatus, type AuthorityPlan } from './au
 export interface ApplicationConsentPreview {
   consent_version: 1; preview_id: string; revision: string; fingerprint: string; expires_in_seconds: number
   module_id: string; installation_id: number; artifact_sha256: string; built_ui_sha256: string | null
-  scopes: string[]; selected_scopes: string[]; resources: AuthorityPlan['resources']
+  scopes: string[]; selected_scopes: string[]; optional_resources: string[]; resources: AuthorityPlan['resources']
+  unavailable_resources: Array<{ scope: string; reason: string }>
   user_permissions: Array<{ permission_id: string; name: string }>; selected_user_permissions: string[]
   access_saved: boolean; installation_enabled: boolean; installation_status: string
 }
@@ -20,10 +21,13 @@ const permission = (value: unknown): value is string => typeof value === 'string
 const subset = (value: unknown, allowed: string[]): value is string[] => Array.isArray(value) && value.length <= allowed.length
   && value.every(item => typeof item === 'string' && allowed.includes(item)) && new Set(value).size === value.length
 const lifecycle = (value: unknown): value is string => typeof value === 'string' && /^[a-z][a-z0-9_]{0,31}$/.test(value)
+const optionalResources = (value: unknown): value is string[] => Array.isArray(value) && value.length <= 16
+  && value.every(scope => typeof scope === 'string' && /^[a-z][a-z0-9_.:-]{0,191}$/.test(scope))
+  && new Set(value).size === value.length
 
 export function readConsentPreview(value: unknown, moduleId: string): ApplicationConsentPreview {
   const fields = ['consent_version', 'preview_id', 'revision', 'fingerprint', 'expires_in_seconds', 'module_id', 'installation_id',
-    'artifact_sha256', 'built_ui_sha256', 'scopes', 'selected_scopes', 'resources', 'user_permissions', 'selected_user_permissions',
+    'artifact_sha256', 'built_ui_sha256', 'scopes', 'selected_scopes', 'optional_resources', 'unavailable_resources', 'resources', 'user_permissions', 'selected_user_permissions',
     'access_saved', 'installation_enabled', 'installation_status']
   if (!object(value) || Object.keys(value).length !== fields.length || fields.some(field => !(field in value))
     || value.consent_version !== 1 || value.module_id !== moduleId || !id(value.preview_id) || !id(value.revision)
@@ -31,10 +35,17 @@ export function readConsentPreview(value: unknown, moduleId: string): Applicatio
     || !Number.isSafeInteger(value.installation_id) || Number(value.installation_id) < 1
     || !Number.isInteger(value.expires_in_seconds) || Number(value.expires_in_seconds) < 1 || Number(value.expires_in_seconds) > 900
     || typeof value.access_saved !== 'boolean' || typeof value.installation_enabled !== 'boolean' || !lifecycle(value.installation_status)
+    || !optionalResources(value.optional_resources)
+    || !Array.isArray(value.unavailable_resources) || value.unavailable_resources.length > 16
+    || !value.unavailable_resources.every(item => object(item) && Object.keys(item).length === 2
+      && typeof item.scope === 'string' && (value.optional_resources as string[]).includes(item.scope)
+      && Array.isArray(value.scopes) && !value.scopes.includes(item.scope)
+      && typeof item.reason === 'string' && /^[a-z][a-z0-9_]{0,95}$/.test(item.reason))
     || !Array.isArray(value.user_permissions) || value.user_permissions.length > 96
     || !value.user_permissions.every(item => object(item) && Object.keys(item).length === 2 && permission(item.permission_id)
       && typeof item.name === 'string' && item.name.length > 0 && item.name.length <= 1000)) throw new Error('Unsupported application consent preview')
   const permissions = value.user_permissions.map(item => (item as { permission_id: string }).permission_id)
+  if (new Set(value.unavailable_resources.map(item => item.scope)).size !== value.unavailable_resources.length) throw new Error('Duplicate unavailable resource')
   if (new Set(permissions).size !== permissions.length) throw new Error('Duplicate application permissions')
   // Adapt only validation inputs, never a server authority record. This reuses
   // every existing exact resource/owner/digest/limit validator on ALL declared

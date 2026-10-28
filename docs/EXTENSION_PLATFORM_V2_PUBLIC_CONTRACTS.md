@@ -4,7 +4,100 @@ Date: 2026-10-08. Local implementation; no deployment or release. This follows
 the accepted read-only Package Inspection slice. It does not complete WP1/WP4
 or enable remote/untrusted execution.
 
+C3 declarative CRUD extraction (local, 2026-10-26): the old Core CRUD API, ORM,
+renderer and `runtime-extension.v1` export are retired. The optional shared CRUD
+library is bundled by ordinary applications with own scoped relational storage
+and compiled UI. `storage.retention_policy: until_explicit_erasure` is an inert
+personal-data retention choice, mutually exclusive with a retention handler;
+administrator export/erasure operations remain required. It issues no grant,
+timer or task, and does not broaden the CAP08 task+storage execution profile.
+Historical data remains in explicit recovery archives; no old authority is
+automatically transferred. See [shared CRUD](../libraries/three_mm_crud/README.md).
+
+## Adapter providers and unavailable optional resources (CAP01/CAP07, 2026-10-28)
+
+The Core administrator UI at **Devices -> Capabilities** completes the explicit
+owner step: inspect each reported provider, select current offers, save selection,
+or enable/disable the provider using its current revision. Selected capabilities,
+enabled state and current readiness are shown separately. Installation-managed
+and inventory-only sources remain descriptive. A retained choice that is no
+longer offered must be explicitly cleared before saving another selection.
+Conflicts or an unconfirmed write require a fresh read; writes are not replayed.
+This screen grants no application access: refresh the application's consent and
+explicitly approve the newly resolvable scopes afterward. It is generic device
+administration and has no application/provider-name branch.
+
+Implemented locally; device rollout is separate. Agent adapters share
+`agent.capability_providers.ProviderAdapter`: `provider_declaration()` returns a
+bounded `AdapterProvider`, and `provider_health()` returns current
+`CapabilityHealthV1` observations for exactly its declared capabilities.
+`AgentProviderRegistry` is injected into `CorePublisher`; the normal Agent factory
+includes the enabled identifier mock. Inventory names remain observations, never
+effective registration or permission evidence.
+
+The registry uses the existing authenticated provider GET/PUT v2 and ephemeral
+availability reports. The optional logical port is `DeviceProviderTransport`;
+`HttpDeviceTransport.provider()` and `report_provider()` validate response device
+and provider identities. No device-management URL or credential is exposed to an
+application. Another adapter supplies declarations/health through the same port;
+Core needs no condition for its vendor, module, reader ID or consuming application.
+This does not add new execution privileges, schema dialects or hardware drivers.
+
+Onboarding is **offer -> explicit capability selection -> fresh application
+consent -> fresh event -> admitted native handler**. New v2 offers start with no
+selected capabilities. Synchronization preserves Core-owned enabled/selection
+state, uses current revisions, and reconciles a lost acknowledgement by reading
+the current provider. A bounded device-bound `adapter-providers.json` remembers
+only adapter ownership/declarations before reporting; after a restart, removed
+adapters withdraw their capabilities without adopting or withdrawing unrelated
+providers. Health is never replayed through an outbox. One adapter health/report
+failure does not starve the remaining providers or terminate the Agent heartbeat
+loop; invalid declarations/journals fail closed without automatic repair.
+
+For events, source resolution now uses the existing capability availability
+policy in addition to selected provider/control identity. C14/v2 sources require
+current health and online evidence. Disabled/unselected, stale, unhealthy,
+revoked, withdrawn or conflicting sources cannot acquire or reuse event access.
+Existing stricter event validation, operation schemas, grants and delivery
+receipts remain authoritative. No historical scan is backfilled by onboarding
+or consent; retry/dedup retains the original event identity.
+
+The current administrator consent preview adds required redacted metadata:
+
+```typescript
+unavailable_resources: Array<{ scope: string; reason: string }>
+```
+
+Only declared optional scopes omitted from `scopes` may appear, once each, up to
+16. This is diagnostic information, never selectable authority. Source reasons
+include configuration/device/runtime failure, `capability_unresolved` (missing,
+disabled, unselected or conflicting provider), `capability_unavailable` (current
+availability refusal), connector failure and command-contract/schema mismatch.
+The Core frontend validates the coordinated DTO and shows the explanation
+outside the collapsed permission details, with EN fallback/BG source labels.
+Required failures still block the existing profile. Unresolved optional bindings
+do not invalidate unrelated required work or silently grant newly appearing
+resources. Existing selections and current human permission choices retain their
+normal consent rules.
+
+Conformance uses actual Agent factory wiring, authenticated provider/configuration
+and event HTTP routes, sealed explicit consent, a signed native process and the
+public own-SQLite SDK. Two unrelated adapter/consumer pairs use the same Core
+paths; duplicate subscriptions produce one SDK receipt for the original event.
+The second adapter is a test implementation, not a shipped sensor driver.
+Core and the independently delivered Agent must both be updated for this path;
+unchanged compatible application ZIPs do not need rebuilding. No manifest,
+device protocol or application SDK version change is introduced by this slice.
+
 ## Current Core–Runtime transport boundary, 2026-10-23 (P3c/P4b)
+
+The CAP08 addition is documented in [Scoped tasks, intervals and calendars](APPLICATION_TASKS.md):
+dedicated `tasks`/`kind: task`, exact sealed `task:<id>` consent and an optional
+separate worker. The first one-shot profile is owner-tested on VM; the completed
+bounded interval/IANA calendar and task-bound command profile is deployed with
+SDK/VM acceptance, retained-data upgrade and restart/revocation checks.
+It does not enable the retired job/schedule contract. Host support uses the separate
+`three_mm.task.info` contract; existing `three_mm.host.info` metadata is unchanged.
 
 The local SDK/Core share the discovery model in `three_mm_protocol.platform_transport`.
 Framing and limits live in stdlib-only `three_mm_platform_wire`, also used by the
@@ -212,6 +305,98 @@ must include the migration and Runtime worker. Old Runtime archives are rebuilt;
 subsequent compatible component updates remain independent. Local evidence does
 not close installed-device/ARM/cgroup/power acceptance or remaining domain adapters.
 
+## Core-owned connector settings, 2026-10-27
+
+The current administrator opens the gear on an application card in `/extensions`.
+Core derives its availability from the validated artifact's `connectors`, exposed
+as `has_connector_settings` in its protected package catalog. Packages without
+connector declarations have no connector settings entry. An uploaded new package
+can be configured before installation/consent; another version of an existing
+installation must first follow its existing stopped candidate/preparation flow.
+The gear never changes the selected immutable artifact by itself.
+
+Applications declare ordinary manifest v2 configuration fields and connectors:
+
+```json
+{
+  "connector_id": "service_api",
+  "destination_config_key": "API_URL",
+  "allowed_schemes": ["https"],
+  "path_prefix": "/api/",
+  "authentication": "basic",
+  "credential_ref_config_key": "API_CREDENTIAL"
+}
+```
+
+The manifest's configuration schema declares `API_URL` as a string and
+`API_CREDENTIAL` as a string with `"x-3mm-secret-reference": true`. Credentials
+belong in neither ZIP defaults nor application SQLite. The Core form supports
+Basic username/password, Bearer token, API key with its safe X-* header, and
+unauthenticated connectors, based only on the declaration. It offers only
+compatible, non-revoked credentials of this installation. Rotation/revocation
+requires explicit confirmation and shows all affected same-installation bindings.
+No plaintext/ciphertext/username/token is returned in inspect or outcome metadata.
+
+Save persists only the declaration-owned origin/reference configuration keys,
+the binding, an optional new encrypted credential and a sealed request receipt in
+one guarded transaction. Other configuration is preserved. Cancel performs no
+write. Invalid origin, credential/schema/key or stale snapshot rolls back the
+whole operation, including first registration and any new credential. Encryption
+uses the existing installer-provisioned Core key; absence refuses credential
+writes and is shown in the dialog. Error bodies are fixed codes and never echo
+the credential-bearing validation input. The Core-private request body is bounded
+at 48 KiB; existing configuration keeps its 32 KiB budget.
+
+The CAS snapshot binds the exact artifact, Core recovery generation, installation
+incarnation/mode/epoch/configuration and binding/credential identities/revisions.
+Reads and writes verify a real current administrator session; writes recheck it
+again before commit. Configuration, rotation and revocation withdraw application
+authority. A running application must be switched off, its access reviewed and
+then activated again with the new settings. A stopped unreviewed installation can
+complete setup before native consent; a running compatibility installation must
+first be stopped. No old grant is restored or namespace reset. Already admitted
+external operations are not undone by a configuration change.
+
+A first successful setup creates an inert `disabled` / `review_required`
+installation, without loading its wheel, starting a host, creating its SQLite
+namespace or approving any permission. Multiple connectors can be configured in
+separate explicit saves; missing required configuration still blocks consent.
+Original inert registration/adoption records remain immutable. Configuration-only
+transitions are separately sealed against their exact original record/revision;
+all nonconfiguration provenance still must match. Own-SQLite preparation,
+migrations, recovery and activation retain their existing protected lifecycle.
+
+Request IDs are 32 lowercase hex characters. The existing sealed Action journal
+records redacted applied receipts, scoped to artifact, installation incarnation,
+administrator and login session. A valid token refresh within the same login can
+recover a receipt; another account/login/incarnation cannot. Repeating an admitted
+ID returns its original historical outcome, without another secret or rotation;
+changing its target/snapshot/nonsecret input conflicts. Neither credential values
+nor their digests form the request identity or stored receipt. Applied means
+configured at that point, not currently granted, reachable or commercially enabled.
+
+The Core adapter uses no automatic HTTP refresh/retry/replay. It saves only the
+pending request ID and any definite Core rejection code in session storage, before
+dispatch/lookup, never the form or credentials. After lost/malformed responses,
+reopening the dialog looks up that original request. A bare HTTP conflict is not
+proof of rollback. Only a definite pre-dispatch refusal or recognised Core rejection,
+followed by successful outcome lookup, can release an attempt for a new explicit edit; a genuinely unknown result
+stays pending. Receipt lookup survives a Core process restart.
+
+The form inherits Core tokens/variants and initial/live language with English
+fallback. It is rendered by Core, outside application components and `invoke`;
+this does not claim isolation from already trusted same-origin executable code.
+Saving and granting perform no external HTTP check. The application may explicitly
+check its connection/catalog through the existing native SDK connector broker
+after approval and activation; there is no automatic commercial call on Save.
+
+This delivery is the Core entry from Extensions. The proposed public application
+`administration.connectors` facade, its route connector allowlist and feature
+advertisement are **not implemented or advertised**. Applications need no private
+Core imports to use this settings workflow. Manifest v2, native SDK 1.3 and
+application frontend host v1 retain their independent version axes. No database
+migration, device deployment or application-package version change is implicit.
+
 ## Connector network execution, 2026-10-23 (P4d3)
 
 Connector execution feature **1** runs over private ABI **2**. Core and Runtime
@@ -344,9 +529,13 @@ prepare/finish gateway surrounds an asynchronous response-only Runtime wait;
 these HTTP paths have no direct synchronous handler-response fallback or retry.
 
 Core refreshes human token/session/role/permissions, kiosk terminal, UI trust and
-peer pending/live state before dispatch and before disclosure. It reserves before
-send, rechecks after reservation/relational metadata, commits before app I/O,
-signs/sends once and transfers a write-half-closed connected FD. Runtime only reads
+peer pending/live state before dispatch and before disclosure. Expensive admission
+and relational metadata precede the short response reservation. The final current
+policy/lifecycle fence commits admission before reserving response capacity;
+reservation then immediately precedes bounded app connect/send/FD handoff, with
+no DB or artifact preparation inside that budget. Revocation after the admission
+commit fences result disclosure; it cannot promise cancellation of an admitted
+command. Core signs/sends once and transfers a write-half-closed connected FD. Runtime only reads
 the original signed frame; it gets no key, DB, dispatch request or authority.
 Existing eight shared slots, <=1 MiB frame and absolute declared 1–30 s response
 budget remain. Core verifies HMAC/request/time/schema and current state behind a
@@ -355,6 +544,14 @@ it cannot prove that effects did not happen and must not cause automatic replay.
 No Core thread/DB transaction spans handler-response waiting. Relational metadata
 remains Core admission with one absolute **2 s** connect/send/read deadline and
 no DB/key lease. Health still gets no relational ticket. No SDK/schema/ABI changes.
+
+CAP04 correction, 2026-10-27: preparation on a slow/concurrent ARM machine must
+not consume the 2-second response handoff window. The 1-second reservation,
+2-second Core / 3-second Runtime handoff and eight-slot limit are unchanged.
+Reservation/connect/deadline failure before sending is `not_dispatched`; partial
+send, failed FD handoff or missing/unverifiable response remains unconfirmed.
+Neither classification triggers an automatic operation retry. Admin health and
+host-status probes retain their separate reservation/current-state checks.
 
 Agent/public HTTP/session-worker artifacts have their own code/vendor/venv and
 current/previous under `/opt/3mm-{agent,public-web,session-worker}`, with journals
@@ -384,6 +581,251 @@ its private metadata deadline. Core authority/domain/control-plane, outbound pee
 HTTPS and existing M21 broker remain Core. Local P4 completion does not imply full
 CI, installed rollout, ARM/ARMv6 resource, clean-image/reboot/power, P2 Wi-Fi/AP or
 P5 debug acceptance. [Exact builds/admin commands](CORE_STABILIZATION_ACTION_PLAN.md).
+
+## CAP02 operation actor and human application permissions, 2026-10-27
+
+For the current Core HTTP application gateway, identity comes from the validated
+current user/session or kiosk terminal, never from application payload fields.
+Public operation ingress remains anonymous even when a user supplies a login.
+Core rechecks the actor, installation, route and effective permissions before
+dispatch and at completion. Revocation after dispatch withholds the result as
+unconfirmed; it does not claim that an external effect was cancelled or replay it.
+
+An `operator` route needs its declared `required_permissions`; an `operator`
+operation needs its declared `required_permission`. This applies to platform
+administrators too. Current direct grants and role/group grants are additive
+and scoped to one application installation. Custom business role names never
+make a user a platform administrator. An author's explicitly declared
+`administrator` audience still requires the actual platform role; it is a
+separate endpoint, not a fallback when an operator check fails. Authors must put
+business operations behind operator/application permissions and their own record
+ACL instead of inferring business ownership from platform administration.
+
+The existing authenticated `GET /api/v1/application-extensions/{module_id}/access`
+returns the caller's `user_id`, stable `subject_id`, `platform_administrator` and sorted `permission_ids`
+along with the existing route/operation IDs. Permissions include only declarations
+of the current artifact. No user ID parameter can select another principal, and
+the response is `no-store`. The operation ID list spans the explicitly supported
+audiences: an administrator operation ID is not permission to call its operator
+endpoint. Service resource grants are separate and are not inferred from these
+human permissions or from an allowed operation ID.
+
+Native SDK `OperationContext.from_platform` is used by the trusted host only after
+authenticating the Core envelope. It preserves an immutable tuple `permission_ids`
+and exposes frozen `context.actor` with `kind`, `user_id`, `subject_id`, `terminal_id`,
+`installation_id` and `platform_administrator`. User, kiosk, anonymous, internal
+service, existing task-worker and installation-peer contexts remain distinct.
+Wrong-type/missing human IDs, invalid terminal IDs, duplicate/invalid application
+permissions and human claims on nonhuman ingress are rejected, not silently
+converted to an anonymous actor. A service/platform account does not become a
+human administrator. `context.machine` and `context.task_execution` keep their
+existing exact contracts; this actor view adds no machine scope or delegated user.
+
+```python
+def handle(self, operation_id, payload, context):
+    actor = context.actor  # Do not construct this from payload or a browser form.
+    if actor.kind != "user" or not context.has_application_permission("visits_manage"):
+        raise ValueError("Application permission required")
+    # Stable subject for the application's own customer/record ACL.
+    return self.list_visible_visits(actor.subject_id)
+```
+
+`has_application_permission` tests only this invocation's human application
+permission; platform administration never makes it return true implicitly. These
+values are snapshots, not future execution permits, capability/connector grants
+or bearer delegation tokens. They contain no JWT, session token, Core credentials
+or customer memberships. Business organisations, roles and ownership remain
+application-owned. The supported CAP02 browser/resource/delegation profile is
+defined below. Host rollout and device acceptance remain explicit later steps.
+
+### Stable actor, browser access and finite operation delegation
+
+`subject_id` is an opaque `usr_<32hex>` account identity. Use it for lasting
+business references; numeric `user_id` remains the Core grant-management key.
+The additive `af85a6d71e75` migration backfills distinct subjects without changing
+account IDs, passwords, roles, sessions or grants. Downgrade refuses before any
+DDL when accounts exist, preserving subjects already used by business records;
+an empty database remains reversible. A newly created account gets
+a new subject even if its numeric ID was reused. An absent/invalid subject fails
+closed; identity is never created while admitting a request.
+
+Application logins require a current tracked session and a signed random login
+nonce (`jti`). Refresh preserves that nonce; a replacement login cannot revive
+an earlier intent by reusing a session row. Pre-nonce prototype logins require a
+fresh login. Public ingress stays anonymous; a kiosk retains its enrolled
+terminal identity, with no borrowed user permissions. Named guests/customers and
+organisations are application identities, not additional Core account types.
+
+`await host.access.getInfo()` returns a frozen, current-route snapshot:
+`actor`, `executor`, `permission_ids`, `allowed_operation_ids`,
+`delegated_operation_ids`, route/audience/build binding, `service_authority:
+"separate"` and `admission_required: true`. The underlying no-store read is
+`GET /api/v1/application-extensions/{module}/ui-host/{entrypoint}/access` with
+the exact artifact/build query. It accepts no selected actor. Browser private
+files and interactive sessions require their declared human permissions in
+addition to separate service consent; platform administration does not supply
+those business permissions implicitly. Connector administration remains an
+explicit administrator path; its receipt owner is the exact current login.
+
+Finite delegation is an **opt-in operator operation in the same application**:
+
+```json
+{"route_id":"visits","entrypoint_id":"visits","audience":"operator","layout":"application",
+ "required_permissions":["visits_manage"],
+ "delegated_operations":["confirm_visit"]}
+```
+
+The existing operation declaration must name an operator query/command, its
+required application permission and a timeout of at most 10 seconds. SDK 1.3 and
+ordinary own SQLite storage are required; scoped relational operations, tasks,
+public/kiosk/admin delegation and cross-installation execution are refused.
+Cross-installation composition belongs to CAP14. This profile introduces no
+generic bearer, administrator impersonation or redelegation.
+
+```typescript
+const requestId = Array.from(crypto.getRandomValues(new Uint8Array(16)),
+  n => n.toString(16).padStart(2, '0')).join('')
+const intent = await host.delegations.create(
+  'confirm_visit', { visit_id: 'visit_123' }, requestId, 60)
+// Hand intent.delegation_id to your application's explicit queue operation.
+// Return from that handler before the worker executes the delegation.
+```
+
+```python
+# Owning application's worker, outside the synchronous native host handler:
+receipt = platform.execute_delegation(delegation_id)
+# On a lost reply, read the outcome; do not resubmit an effect automatically.
+receipt = platform.lookup_delegation(delegation_id)
+```
+
+Browser lookup/cancel are `host.delegations.lookup(id)` and `.cancel(id)`. HTTP
+create is `POST .../ui-host/{entrypoint}/delegations`; lookup is
+`GET .../delegations/{id}`; cancel is `POST .../delegations/{id}/cancel`.
+Create accepts only the route binding, `request_id` (32 lower-case hex), declared
+`operation_id`, bounded JSON object `payload` and `ttl_seconds` (5–300, default
+60; admission also requires operation timeout + 5 seconds remaining). The browser
+cannot select initiator, executor or audience. Service SDK actions send only the
+ID over the existing signed `delegation.execute` / `delegation.lookup` transport.
+The ID alone grants no authority. No login nonce, JWT or resource grant is exposed
+in the receipt or operation context.
+
+Core seals the exact input, original human/login, permissions at issuance,
+executor, artifact, route/build, configuration, grant revisions, recovery/boot
+generation and expiry in the existing action journal. Lifetime is capped by the
+original session and access-token expiry; refresh cannot extend an issued intent.
+Input is at most 16 KiB, result 32 KiB, counted as compact ASCII-escaped JSON for
+the sealed journal. Both use depth ≤12, ≤2048 value nodes, strings/keys ≤4096
+Unicode scalars without lone surrogates and finite numbers in the safe 53-bit
+range. These limits apply before execution and to returned results.
+Each app has at most 8 pending/running intents and 4096 retained records. Only
+never-dispatched expired records leave the active budget automatically; uncertain
+running outcomes retain evidence and are never evicted to permit replay.
+
+Before dispatch, Core verifies current human AND service rights, pins the
+capability-advertising native host's real OS process, and durably consumes the
+intent. Completion checks current policy again. `context.initiator` is the human;
+`context.executor` is the application; `context.delegation` fixes the operation,
+payload digest, required permission and expiry. The host verifies those bindings
+before the handler. Delegated `platform_administrator` is always false and human
+permissions are intersected with the issuance snapshot, so later grants cannot
+increase the delegated authority.
+
+Receipts distinguish pending/running/succeeded/cancelled/expired/unknown and contain
+a result only on confirmed success (`automatic_retry: false`). Rights lost after
+dispatch or lost execution replies produce unknown, never an inferred rollback.
+Restarted Core cannot execute a consumed intent again. Reusing an ID for a changed
+request/login is refused; concurrent contention can fail busy and cannot dispatch
+twice. Lookup is observational; cancel only applies before consumption. An
+unsupported old host is refused before app execution. Rollout must explicitly
+update independent pinned hosts together with Core; matching an SDK version is
+not proof of that host capability. Current local acceptance does not claim an
+ARM/device rollout or all future execution profiles.
+
+## Core-owned kiosk pairing and optional device selection, 2026-10-27
+
+CAP02/CAP09 now include a generic Core administrator dialog in Extensions for
+installed artifacts declaring both kiosk routes and kiosk operations. Metadata
+comes from the exact validated ZIP (`has_kiosk_interface`), not a product name or
+the newest uploaded version. The dialog lists terminals, issues a one-use code
+and revokes access. Listing/revocation need only a current administrator and the
+installation record; a broken optional UI/key cannot prevent those operations.
+There is no automatic header menu entry.
+
+The static `/kiosk/connect` route belongs to Core. A connection link contains only
+`#module=<module-id>&code=<one-use-code>`; Core captures/removes the fragment before
+bootstrap. It accepts no return URL. After claim Core renews authentication,
+refreshes the compiled catalog **with the kiosk token**, and selects only the
+current matching artifact/build's kiosk route. No administrator login is needed
+on the terminal. EN/BG labels follow Core locale and the shared appearance;
+changing locale does not remount an entered application form.
+
+Only Core frontend code calls these transport endpoints, relative to
+`/api/v1/application-extensions/{module_id}`:
+
+| Method/path | Body | Authority/result |
+| --- | --- | --- |
+| POST `kiosk/enrollments` | `{request_id,label,expires_in_minutes}` | Current administrator; original code/expiry on an exact live-login retry. |
+| POST `kiosk/enrollments/claim` | `{request_id,recovery_proof,code}` | Code possession; one terminal, recoverable only with the original proof/request. |
+| POST `kiosk/sessions` | `{terminal_id,credential}` | Enabled owned terminal; a new 900-second access token. |
+| GET `kiosk/terminals` | None | Current administrator; safe metadata including `needs_pairing`, never credentials/codes. |
+| DELETE `kiosk/terminals/{terminal_id}` | None | Current administrator; idempotent revocation of an owned terminal. |
+
+Request IDs are 32 lowercase hex characters; the claim proof is independent
+32-byte random canonical base64url without padding. Codes use 24 random bytes.
+Labels are trimmed 1–120 characters without controls; lifetime is 1–1440 minutes,
+default 15. Extra fields fail. Claim/session responses include module,
+installation incarnation, terminal, artifact/build and token lifetime; only claim
+includes the long credential. Core checks those bindings before storing them.
+
+Core persists the original browser proof/request **before** claim, and a finite,
+purpose-encrypted response receipt inside the existing sealed authority journal.
+Enrollment retries are bound to the exact human subject/login, request, artifact
+and incarnation. Claim retries compare original code/proof hashes, return the
+same terminal/credential and recheck current authority. Recovery lasts at most
+five minutes and never beyond the original code expiry; both issuance and claim
+recovery also require the original boot/monotonic deadline and private key.
+Concurrent different claims cannot create a second terminal. Codes/proofs,
+credentials and tokens never appear as plaintext in the audit/journal metadata.
+After unrecoverable pairing, an administrator reviews/revokes and issues a new
+code; Core never guesses success or silently creates another terminal.
+
+The private Core browser controller owns one kiosk identity separately from the
+human login (`unpaired/claiming/ready/renewing/offline/revoked`). Renewal is
+single-flight and refreshes authentication only. It never retries an application
+invoke. Transient loss retains the identity; confirmed revocation removes the
+mounted application and denies subsequent dispatch. Mounted surfaces recheck on
+focus/visibility and every 30 seconds, while every server operation retains fresh
+admission/completion checks. A changed build requires current catalog navigation.
+Menu/Command Palette use the checked module identity rather than the obsolete
+`applicationKioskToken` flag. Forgetting the browser connection does not log out
+a human or revoke a server terminal.
+
+Additive migration `b096b7e82f86` binds new enrollments/terminals to the installation
+incarnation. Historical null-bound rows remain preserved, unavailable for use,
+and visible for administrative revocation/re-pairing. There is no automatic
+credential adoption or requested reset. Populated identity downgrade requires
+explicitly reviewed recovery. Ordinary approved application updates may retain
+terminals; uninstall/reinstall, disable/revoke and native/UI trust still fence
+their access. This remains reviewed same-origin code, not a browser sandbox.
+
+Applications continue to use `useApplicationHost()` and declared kiosk operations;
+the public SDK exposes neither a token store nor pairing/renewal methods. Named
+business guests and terminal-scoped business outcome receipts stay app-owned.
+
+For CAP01/CAP03 device setup, a schema-valid optional event/command/session
+binding may be omitted even when there are zero available devices. Each supplied
+device must still be approved and not revoked, including under the final
+activation/staging writer. Missing required/schema-required bindings still fail.
+Omitted `configuration` preserves the saved choice; explicit `configuration: {}`
+clears optional device keys. Required bindings and non-device configuration keep
+their normal schema/default rules. Cleared optional bindings cannot reappear
+from package defaults on review/restart. The selector permits an empty optional
+choice; no implicit device selection, provider grant or weakened consent follows.
+
+Local automated/visual acceptance is recorded in WORKING_STATE. ARM rollout,
+actual reader hardware and Child Center end-to-end acceptance remain a later
+owner-run deployment step. General web lifecycle recovery remains separate CAP03
+work; kiosk claim recovery does not implement it.
 
 ## Independent application-host component, 2026-10-23 (P4c)
 
@@ -502,7 +944,7 @@ The descriptor does not replace that envelope or the whole-package validator.
 | Agent module / `module-manifest.v2` | Manifest v2; no new Agent descriptor | Agent runtime; architecture, Agent version, permissions and lifecycle remain enforced by the existing Agent |
 | Application / `application-extension.v1` | `application-extension.json`, version 1 | Supervised service; SDK 1.0–1.3 remains supported; optional UI also requires compiled-ui v1 and matching access policies |
 | Application publication / `application-event-publications.v1` | Optional `application-event-publications.json`, version 1 | Installed reviewed-native publication through SDK 1.3's additive signed call and exact applied grants; no inferred device identity or cross-application consumer access |
-| Declarative runtime UI / `runtime-extension.v1` | `runtime-extension.json`, version 1 | UI runtime only; existing entity/reference/action/permission rules still apply |
+| Declarative CRUD | Optional `libraries/three_mm_crud` inside an ordinary application package | Old `runtime-extension.v1` Core endpoints/schema export are retired; records belong to the application's scoped relational storage and UI uses the public host |
 | Compiled UI / `compiled-ui.v1` | `compiled-ui.json`, version 1 | Existing source/build/host contract; reviewed native integration, not an untrusted frontend sandbox |
 | Theme / `theme-extension.v1` | `theme-extension.json`, version 1; design API 1 | Declarative, UI-only; existing token/manifest restrictions |
 | Theme / `theme-extension.v2` | `theme-extension.json`, version 2; design API 2 | Declarative, UI-only; existing design, contrast, customization and asset validators |
@@ -577,6 +1019,15 @@ It refuses incomplete or foreign bindings, not silently hiding rights. Inspectio
 never infers a grant, even for unchanged declarations. See
 [file execution, evidence and remaining gates](EXTENSION_PLATFORM_V2_PRIVATE_FILES.md).
 
+2026-10-26 CAP11 follow-up adds streaming file profile 2, raw bounded browser
+transfers, resumable uploads, exact checksummed finalization, metadata/quotas,
+separate publication/transform authority, expiring revision-bound capability
+downloads and an optional bounded image worker. Small native file profile 1
+keeps its own limit; browser access explicitly requires profile 2. Source/build,
+live human session and service grants remain separate. There is no Core DB
+reset or device deployment implicit in this result. See the complete
+[files/media contract and lifecycle](APPLICATION_FILES.md).
+
 ## Public application frontend host v1 (2026-10-17)
 
 Compiled **application routes** can import `useApplicationHost`,
@@ -594,13 +1045,22 @@ const record = await host.invoke('get_record', { record_id: selectedId })
 const result = await host.invoke('register', { label }, { idempotencyKey: requestId })
 ```
 
-The only host methods are `getInfo()` and `invoke(operationId, payload, options)`.
+The operation methods are `getInfo()` and `invoke(operationId, payload, options)`.
+The host also exposes typed `sessions` and the administrator reads below.
+Its read-only `presentation.version === 1` provides a synchronous frozen
+`getInfo(): { locale: string }` and `subscribe(listener): unsubscribe` for future
+effective Core locale changes. Application roots also receive the same reactive
+`locale` prop. Locale updates patch the mounted component without remounting;
+Core disposes remaining subscriptions and invalidates retained handles on unmount.
+The public feature advertisement includes `presentation_version: 1`. Theme tokens
+remain owned by `@3mm/ui/v1`; no theme/language setter or credentials are exposed.
+See [presentation and application catalogue rules](EXTENSION_UI_V1.md).
 No caller-selected module, audience, URL, headers, token, HTTP client, router or
 Core store is exposed. The dynamic route loader binds module, package SHA-256,
 version, entrypoint and audience from the existing server catalog. Non-application
 widgets/editors and components mounted outside that boundary get no host.
 
-`getInfo()` makes a fresh, no-store request to
+`getInfo()` makes a no-store request to
 `/api/v1/application-extensions/{module_id}/ui-host/{entrypoint_id}` with the
 bound `artifact_sha256`. Its closed public projection includes `host_version: 1`,
 the matching binding, and permitted query/command IDs with their idempotency
@@ -611,6 +1071,12 @@ Resource authority remains enforced by the existing service/platform adapters.
 The original delivery did not lift the headless-only limitation. The separate
 reviewed UI profile below now binds executable output before admitting it.
 
+Concurrent `getInfo()` calls on the same mounted host, Core origin and current
+credential share only their in-flight discovery request. Completion or failure
+discards it; the next call reads again. An actor/origin change cannot reuse the
+previous snapshot. Each operation still sends its own single POST and receives
+fresh server authorization. No completed discovery or authorization is cached.
+
 Each invocation rechecks this information and sends exactly one POST through the
 existing audience-specific operation route. Its additive `ui_context` has the
 exact host version, entrypoint and artifact hash. Core revalidates the installed
@@ -620,6 +1086,16 @@ the existing operation and payload checks still apply. Legacy callers without
 or upgrade from kiosk/operator to administrator. Public calls send no bearer;
 kiosk calls use only the kiosk session, even if a human is logged in too.
 
+Core may reuse bounded verified package/descriptor/build objects within that
+single invocation, across its worker phases. Every reuse rechecks file identity,
+size, timestamps (including ctime), ownership/mode and the complete protected
+build inventory. A changed entry is refused for the rest of the invocation;
+request completion discards all entries. This never caches actors, code approval
+or resource grants. Admission and completion still re-read the current package,
+lifecycle, incarnation/recovery identity, human access and authenticated native
+review. UI code trust validates that exact native binding without reconstructing
+unrelated service-resource policy; resource use retains its own current checks.
+
 Host v1 accepts JSON object payloads up to 512 KiB UTF-8, 10,000 values and depth
 32, and access descriptions up to 256 operation entries. Cycles, non-JSON values,
 path-like operation IDs and invalid command/query keys fail before dispatch.
@@ -628,7 +1104,7 @@ The Core origin is pinned for the mounted host lifetime. Unmount aborts pending
 transport and invalidates retained handles; cancellation does not prove rollback.
 
 Errors expose only `ApplicationHostError.code`: `invalid_request`,
-`access_denied`, `unavailable`, `unconfirmed` or `disposed`, never raw HTTP errors,
+`access_denied`, `not_found` (missing read target), `unavailable`, `unconfirmed` or `disposed`, never raw HTTP errors,
 request headers or backend responses. Failed POSTs have **no automatic retry,
 token-refresh replay, fallback audience or inferred rollback**. On an unconfirmed
 mutation, retain its original key/payload for the application's explicit outcome
@@ -639,6 +1115,95 @@ This is a public API for reviewed same-origin code, **not a security sandbox**.
 It does not prevent such code from accessing browser globals directly. WP5's
 untrusted browser/OS isolation and the broader WP4 owner/layout acceptance remain
 separate gates. Current evidence and queue: [WP4 closeout](EXTENSION_PLATFORM_V2_WP4_CLOSEOUT.md).
+
+## Current-administrator device reads (2026-10-25)
+
+Application routes may declare `administration_reads: ["devices.list"]` and/or
+`["devices.detail"]`. Only `administrator` routes can declare these unique,
+closed identifiers. These are human UI reads, independent of service SDK resource
+scopes and application operations. They do not grant background/service access.
+
+```typescript
+const host = useApplicationHost()
+const page = await host.administration.devices.list({ offset: 0, limit: 50 })
+const device = await host.administration.devices.detail(selectedDeviceId)
+```
+
+`getInfo().features.administration_reads` describes this entrypoint's declarations.
+List returns `{ items, total }`, defaults to 50 rows and accepts limits 1–100 and
+nonnegative safe-integer offsets. Detail adds installed modules. Both return the
+Core-owned registry projection with normalized inventory schema 2, not enrollment
+credentials or a duplicate registry. Missing inventory remains null; unknown device
+IDs return `not_found`. No URL, request method, header, actor or generic proxy is
+accepted from the application.
+
+The Core-owned host binds both GETs under
+`.../{module_id}/ui-host/{entrypoint_id}/devices[/{device_id}]` to the exact source
+and executable UI hashes. Preflight is feature discovery only. Every GET rechecks
+the live administrator login/session, enabled active installation, exact package,
+current native UI approval and that route's declared read. Native trust, current
+actor/route checks and the registry projection share one DB-enforced read-only
+snapshot; immutable artifact preparation happens before that snapshot. Ordinary
+users, public/kiosk/operator routes, undeclared reads, revoked/expired sessions,
+blocked/demoted users, disabled applications and changed/unapproved UI are denied.
+Compatibility authority mode cannot use these reads. Responses are `no-store`.
+Read handles keep the mounted host's origin, cancellation and disposal rules.
+There is no refresh/replay, token transfer or mutation interface.
+
+This remains reviewed same-origin UI, not browser isolation. First consumer:
+Fleet's device list/detail. Enrollment decisions, GPIO wiring configuration and Node updates remain later
+contracts. Module/capability actions are described below.
+
+## Current-administrator Agent module actions (2026-10-25)
+
+Administrator routes can declare `administration_actions` from the closed set
+`modules.install`, `modules.disable`, `capabilities.invoke`. Additional reads are
+`modules.list`, `capabilities.list`, `capabilities.state`, `commands.get`.
+`getInfo().features.administration_actions` advertises the exact current route.
+These are human administrator operations, separate from service SDK grants.
+
+```typescript
+const id = crypto.randomUUID().replaceAll('-', '') // persist before dispatch
+const receipt = await host.administration.modules.install(deviceId, packageSha256, id)
+const status = await host.administration.commands.get(id) // read only; never resubmit
+```
+
+`modules.list()` exposes validated Agent packages already uploaded to Core;
+installation selects their exact SHA256. `modules.disable()` uses the same shared
+lifecycle as Core's device API, preserving module transition/audit behavior.
+`capabilities.list/state()` reads the provider catalog and reported state.
+`capabilities.invoke(deviceId, invocation, requestId)` requires provider identity,
+declaration digest, contract version, declared action/arguments and a 5–30 second
+TTL (default15). The Core queue pins the provider/control generation and contract;
+changed providers/episodes are refused before first dispatch without rewriting
+already delivered uncertainty as `not_dispatched`. New administration calls never
+silently fall back to an unversioned capability.
+
+Every mutation binds the current application/entrypoint, source and built UI
+hashes, request UUID and exact body. Immutable input preparation precedes the
+short key → Core authority guard → tracked current administrator/session →
+application → device write transaction. Exact native UI approval, active package
+and declared action are rechecked in that same transaction. Queueing, module
+state, sealed action receipt and audit commit together. The existing authority
+Action table owns request idempotency; no new schema or browser-selected actor.
+A changed payload, route, application or actor cannot reuse a recorded request.
+`commands.get()` verifies its sealed receipt and current native/route/user access;
+it exposes that user's matching request outcome, not arbitrary command history.
+
+A successful POST means accepted/queued, never physical completion. Confirm only
+an Agent `succeeded` receipt and inspect the reported state. Accepted human work
+is durable until completion/expiry; closing UI does not cancel it. Failed/expired
+or lost replies are not proof of rollback and never trigger automatic resend.
+Origin pinning, credential-free public transport and disposal remain host rules.
+Fleet persists one pending identity per device before dispatch, blocks conflicting
+controls while uncertain, reconciles after reload using GET, and requires a
+separate explicit outcome review before clearing an unresolved request.
+
+The first consumer installs Digital GPIO Output's versioned 1.1.0 package and
+renders its boolean action from the declared schema. Core has no GPIO- or
+Fleet-specific handler in this administrator interface. The acceptance is mock
+simulation; the module uses the Agent's configured driver, not an implicit mock
+fallback. Hardware wiring and Node updates are outside this bounded path.
 
 ## Administrator application access (2026-10-25)
 

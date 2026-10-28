@@ -4,6 +4,8 @@ from backend.services.application_configuration import (
     ApplicationConfigurationError,
     device_configuration_keys,
     resolve_application_configuration,
+    resolve_device_selection,
+    require_available_device_bindings,
 )
 from backend.tests.test_module_packages import application_definition
 from three_mm_protocol import ApplicationExtensionV1
@@ -65,3 +67,44 @@ def test_missing_or_invalid_device_binding_is_rejected():
             definition(),
             overrides={"READER_DEVICE_ID": "not-a-device"},
         )
+
+
+def optional_readers():
+    value=application_definition()
+    value['service']['sdk_version']='1.3'
+    primary=value['event_subscriptions'][0]
+    value['event_subscriptions'].append({**primary,'subscription_id':'secondary_scan','device_scope_config_key':'SECONDARY_DEVICE_ID'})
+    value['optional_resources']=['event:identifier_scans','event:secondary_scan']
+    return ApplicationExtensionV1.model_validate(value)
+
+
+def reader_schema():
+    from backend.tests.test_module_packages import application_manifest
+    value=application_manifest()['configuration_schema']
+    value['properties']['SECONDARY_DEVICE_ID']=value['properties']['READER_DEVICE_ID']
+    return value
+
+
+@pytest.mark.parametrize('selection',[{}, {'READER_DEVICE_ID':DEVICE_ID}, {'READER_DEVICE_ID':DEVICE_ID,'SECONDARY_DEVICE_ID':DEVICE_ID}])
+def test_optional_selection_allows_none_or_either_number_of_available_devices(selection):
+    resolved=resolve_device_selection(reader_schema(),{},optional_readers(),selection=selection)
+    assert resolved==selection
+    require_available_device_bindings(optional_readers(),resolved,{DEVICE_ID})
+
+
+def test_explicit_optional_omission_clears_defaults_and_previous_selection_only():
+    saved={'READER_DEVICE_ID':DEVICE_ID,'BUSINESS_API_URL':'https://example.test'}
+    assert resolve_device_selection(reader_schema(),saved,optional_readers(),existing=saved,selection={})=={'BUSINESS_API_URL':'https://example.test'}
+    assert resolve_device_selection(reader_schema(),{},optional_readers(),existing=saved)==saved
+    assert resolve_device_selection(schema(),{},definition(),existing=saved,selection={})==saved
+    cleared=resolve_device_selection(reader_schema(),saved,optional_readers(),existing=saved,selection={})
+    assert resolve_application_configuration(reader_schema(),saved,optional_readers(),existing=cleared)==cleared
+
+
+def test_optional_supplied_unknown_or_revoked_devices_and_required_omission_are_denied():
+    with pytest.raises(ApplicationConfigurationError,match='SECONDARY_DEVICE_ID'):
+        require_available_device_bindings(optional_readers(),{'SECONDARY_DEVICE_ID':DEVICE_ID},set())
+    with pytest.raises(ApplicationConfigurationError,match='READER_DEVICE_ID'):
+        require_available_device_bindings(definition(),{},set())
+    with pytest.raises(ApplicationConfigurationError,match='declared'):
+        resolve_device_selection(reader_schema(),{},optional_readers(),selection={'undeclared':DEVICE_ID})

@@ -1,6 +1,10 @@
 # Runtime Extension v1
 
-Status: draft contract; Milestone 7 stage 1
+Status: historical contract, retired locally by C3 on 2026-10-26. The old Core
+CRUD API/renderer and schema export are removed. Current authoring uses the
+optional [CRUD library](../libraries/three_mm_crud/README.md) inside ordinary
+application/compiled-UI packages, with application-owned SDK storage. The text
+below preserves the former design; it is not a supported upload contract.
 
 ## Purpose
 

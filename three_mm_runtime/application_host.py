@@ -13,6 +13,7 @@ from collections import deque
 from contextlib import ExitStack, nullcontext
 from pathlib import Path
 
+from three_mm_protocol.application_requirements import ApplicationPlatformRequirementV1, ApplicationRequirementsRequestV1
 from three_mm_application_sdk import (
     ApplicationContext,
     ApplicationFileLimits,
@@ -24,7 +25,8 @@ from three_mm_application_sdk import (
     ApplicationStorage,
     OperationContext,
 )
-from three_mm_protocol.application_extension import ApplicationPrivateFilesV1
+from three_mm_protocol.application_extension import ApplicationPrivateFilesV1, ApplicationPrivateFilesV2
+from three_mm_application_sdk.scoped_media import ApplicationScopedMediaStorage
 from three_mm_application_sdk.file_wire import MAX_SCOPED_FILE_BYTES
 from three_mm_runtime.application_file_executor import ApplicationFileExecutor
 from three_mm_runtime.application_relational_runtime import PreparedRelationalRuntime
@@ -61,9 +63,11 @@ def _private_file_adapter(storage_metadata, data_dir, platform=None):
             return _AwaitingFileAuthority(data_dir)
         return None  # Existing undeclared SDK 1.0–1.3 behavior is unchanged.
     try:
-        declaration = ApplicationPrivateFilesV1.model_validate(request)
+        declaration = (ApplicationPrivateFilesV2 if request.get('file_contract_version') == 2 else ApplicationPrivateFilesV1).model_validate(request)
     except ValueError:
         raise RuntimeError("Application private file metadata is invalid") from None
+    if declaration.file_contract_version == 2:
+        return ApplicationScopedMediaStorage(data_dir, platform, declaration)
     adapter = ApplicationScopedFileStorage if declaration.max_file_bytes <= MAX_SCOPED_FILE_BYTES else _AwaitingFileAuthority
     return adapter(
         data_dir,
@@ -116,6 +120,12 @@ def _load_service(
     target_revision = storage_metadata.get("schema_revision")
     if not isinstance(migration_entrypoint, str) or not isinstance(target_revision, str):
         raise RuntimeError("Application storage metadata is invalid")
+    requirements = metadata.get('platform_requirements', [])
+    if not isinstance(requirements, list) or len(requirements) > 16:
+        raise RuntimeError('Application platform requirements metadata is invalid')
+    requirements = tuple(ApplicationPlatformRequirementV1.model_validate_json(json.dumps(item)) for item in requirements)
+    if requirements:
+        ApplicationRequirementsRequestV1(requirements=requirements)
     # Validate before importing migrations, opening SQLite or calling package code.
     # A declaration is not a grant and must not select the legacy file adapter.
     platform = (
@@ -157,6 +167,7 @@ def _load_service(
         storage=storage,
         file_storage=file_storage,
         platform=platform,
+        platform_requirements=requirements,
     )
     service = factory(context)
     if not callable(getattr(service, "handle", None)):
@@ -192,8 +203,8 @@ def serve(instance: str, root: Path, key_root: Path, group_id: int | None = None
         _require_supported_storage(metadata, runtime, instance_root)
         request = metadata.get("storage", {}).get("private_files")
         if request is not None:
-            declaration = ApplicationPrivateFilesV1.model_validate(request)
-            if declaration.max_file_bytes <= MAX_SCOPED_FILE_BYTES:
+            declaration = (ApplicationPrivateFilesV2 if request.get('file_contract_version') == 2 else ApplicationPrivateFilesV1).model_validate(request)
+            if declaration.file_contract_version == 2 or declaration.max_file_bytes <= MAX_SCOPED_FILE_BYTES:
                 # Factory/handler SDK calls wait on Core; never call back into
                 # their occupied serial service.sock. Own one bounded worker.
                 executors.enter_context(ApplicationFileExecutor(instance_root, metadata, secret, group_id))
@@ -255,13 +266,19 @@ def _serve_requests(
                         raise ApplicationTransportError(
                             "Application service request is invalid"
                         )
-                    if operation_id == "three_mm.host.info":
+                    if operation_id in {"three_mm.host.info", "three_mm.task.info", "three_mm.delegation.info"}:
                         if raw_context != {"audience": "internal"} or payload:
                             raise ApplicationTransportError("Host metadata requires an internal empty request")
                         import hashlib
                         from three_mm_runtime.application_host_identity import build_identity, HOST_CONTRACT
                         response = {"ok": True, "result": {
                             "host_contract": HOST_CONTRACT, "build_id": build_identity(),
+                            **({**({"task_execution_contract": 1} if operation_id == "three_mm.task.info"
+                                    else {"operation_delegation_contract": 1}),
+                                "artifact_sha256": metadata["sha256"], "module_id": metadata["module_id"],
+                                "configuration_sha256": hashlib.sha256(json.dumps(metadata.get("configuration", {}),
+                                    sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()}
+                                if operation_id != "three_mm.host.info" else {}),
                             "pid": os.getpid(), "uid": os.geteuid(),
                             "instance_id": metadata["instance_id"],
                             "metadata_sha256": hashlib.sha256(json.dumps(metadata,
@@ -329,7 +346,39 @@ def _serve_requests(
                         raise ApplicationTransportError(
                             "Application operation forbids an idempotency key"
                         )
-                    context = OperationContext.from_platform(raw_context)
+                    from three_mm_protocol.application_delegation import OperationExecutorV1
+                    executor = OperationExecutorV1(module_id=metadata["module_id"],
+                        instance_id=metadata["instance_id"], artifact_sha256=metadata["sha256"])
+                    if raw_context.get("executor", executor.model_dump()) != executor.model_dump():
+                        raise ApplicationTransportError("Operation executor does not match this host")
+                    context = OperationContext.from_platform({**raw_context, "executor": executor.model_dump()})
+                    if context.delegation is not None:
+                        from datetime import UTC, datetime
+                        from three_mm_protocol.application_delegation import bounded_object
+                        import hashlib
+                        digest = hashlib.sha256(json.dumps(bounded_object(payload), sort_keys=True,
+                            separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()).hexdigest()
+                        if (context.delegation.operation_id != operation_id
+                                or context.delegation.payload_sha256 != digest
+                                or datetime.now(UTC) >= context.delegation.expires_at):
+                            raise ApplicationTransportError("Delegation is expired or belongs to different input")
+                    if declared.get("kind") == "task":
+                        execution = context.task_execution
+                        task = next((item for item in metadata.get("tasks", [])
+                            if isinstance(item, dict) and execution is not None
+                            and item.get("task_id") == execution.task_id), None)
+                        if (task is None or task.get("handler_operation_id") != operation_id
+                                or context.idempotency_key != execution.task_run_id):
+                            raise ApplicationTransportError("Task context does not match the declared handler")
+                        from datetime import UTC, datetime
+                        started = time.clock_gettime(time.CLOCK_BOOTTIME)
+                        permit = ApplicationPlatformClient(Path(metadata["platform_socket"]), metadata["instance_id"],
+                            secret, timeout_seconds=2).start_task(execution)
+                        expires = datetime.fromisoformat(permit["lease_until"].replace("Z", "+00:00"))
+                        if time.clock_gettime(time.CLOCK_BOOTTIME) - started > min(2, permit["lease_remaining_seconds"]) or datetime.now(UTC) >= expires:
+                            raise ApplicationTransportError("Task execution permit is no longer current")
+                    elif context.task_execution is not None:
+                        raise ApplicationTransportError("Task context is reserved for task handlers")
                     ticket = request.get("relational_invocation")
                     if relational_runtime is None:
                         if ticket is not None:
@@ -345,7 +394,8 @@ def _serve_requests(
                         boundary = relational_runtime.session.invocation(
                             ticket, operation_id=operation_id
                         )
-                    with boundary:
+                    from three_mm_application_sdk.transaction_guard import host_operation
+                    with boundary, host_operation():
                         result = service.handle(operation_id, payload, context)
                     if not isinstance(result, dict):
                         raise ApplicationTransportError(

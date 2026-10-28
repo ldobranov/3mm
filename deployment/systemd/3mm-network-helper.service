@@ -17,6 +17,7 @@ RuntimeDirectoryMode=0750
 RuntimeDirectoryPreserve=yes
 StateDirectory=3mm-setup-helper
 StateDirectoryMode=0700
+ReadWritePaths=/etc/NetworkManager/dnsmasq-shared.d
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

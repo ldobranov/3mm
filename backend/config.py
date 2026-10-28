@@ -99,6 +99,7 @@ class ApplicationRuntimeSettings(BaseModel):
     application_response_socket: Path = Path("/run/3mm-application-responses/runtime.sock")
     connector_worker_socket: Path = Path("/run/3mm-connectors/worker.sock")
     connector_worker_user: str = "3mm-connectors"
+    task_worker_socket: Path = Path('/run/3mm-tasks/worker.sock')
     root: Path = PROJECT_ROOT / ".runtime" / "application-extensions"
     key_root: Path = PROJECT_ROOT / ".runtime" / "application-extension-keys"
     helper_socket: Path = Path("/run/3mm/update-helper.sock")

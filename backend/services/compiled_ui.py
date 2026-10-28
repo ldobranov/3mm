@@ -231,7 +231,13 @@ def load_compiled_ui_artifact(validated: ValidatedModulePackage) -> CompiledUiAr
     )
     if not destination.is_dir():
         raise CompiledUiBuildError("compiled UI artifact is not available")
-    return _load_artifact(destination, validated)
+    from backend.services.application_code_scope import reuse_verified
+    from backend.services.compiled_ui_provenance import build_file_identity
+    try:
+        return reuse_verified(('build', str(destination), validated.sha256),
+            lambda: build_file_identity(destination), lambda: _load_artifact(destination, validated))
+    except (OSError, ValueError) as exc:
+        raise CompiledUiBuildError('Compiled UI changed during invocation') from exc
 
 
 def application_ui_artifact(db, installation, validated, *, expected_build=None):

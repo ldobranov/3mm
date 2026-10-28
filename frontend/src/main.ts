@@ -6,10 +6,12 @@ import 'bootstrap/js/dist/collapse';
 // If using Tailwind, ensure the file exists and Tailwind is configured
 // import '@/assets/tailwind.css';
 
+import { captureKioskLink } from '@/utils/kiosk-session';
+captureKioskLink();
+
 import { initAuthLifecycle } from '@/utils/auth';
 import { initializeI18n } from '@/utils/i18n';
 import { createRouterWithDynamicRoutes } from '@/router';
-import { reloadRuntimeExtensionRoutes } from '@/utils/runtime-extensions';
 
 async function bootstrap() {
   const app = createApp(App);
@@ -24,7 +26,6 @@ async function bootstrap() {
   const router = await createRouterWithDynamicRoutes();
   app.use(router);
 
-  await reloadRuntimeExtensionRoutes(router);
 
   // Start auth lifecycle (activity-aware refresh + auto-logout on expiry)
   initAuthLifecycle();

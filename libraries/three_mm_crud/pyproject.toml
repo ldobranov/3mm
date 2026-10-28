@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "three-mm-crud"
+version = "0.1.0"
+description = "Optional declarative CRUD for SDK-owned application data"
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2,<3"]
+
+[tool.setuptools.packages.find]
+include = ["three_mm_crud*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

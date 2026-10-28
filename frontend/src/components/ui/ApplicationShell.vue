@@ -41,9 +41,6 @@ onBeforeUnmount(() => { drawer.value = false })
             <span class="ui-nav-mark" aria-hidden="true"></span>{{ navigation.label(item) }}
           </RouterLink>
         </nav>
-        <RouterLink v-if="navigation.isAdmin" :to="{ name: 'UiPreview', query: { recovery: '1' } }" class="ui-recovery-link">
-          {{ label('recovery') }}
-        </RouterLink>
       </aside>
       <header v-if="mode !== 'display'" class="ui-toolbar">
         <UiButton v-if="application" class="ui-menu-toggle" :aria-label="label('openMenu')"
@@ -69,9 +66,6 @@ onBeforeUnmount(() => { drawer.value = false })
             <option v-for="language in navigation.languages" :key="language" :value="language">{{ language.toUpperCase() }}</option>
           </select>
           <ThemeToggle :persist-preference="!settings.previewDesign" />
-          <RouterLink v-if="navigation.isAdmin && application && design.layout.navigation === 'top'"
-            :to="{ name: 'UiPreview', query: { recovery: '1' } }" class="ui-button ui-button--quiet"
-            :aria-label="label('recovery')" :title="label('recovery')">↺</RouterLink>
           <UiButton variant="quiet" :aria-label="label('search')" @click="navigation.openCommandPalette">
             <span aria-hidden="true">⌘</span><span class="ui-shortcut">Ctrl+K</span>
           </UiButton>
@@ -87,8 +81,6 @@ onBeforeUnmount(() => { drawer.value = false })
           <RouterLink v-for="item in navigation.items" :key="item.path" :to="item.path" class="ui-nav-item" @click="drawer = false">
             {{ navigation.label(item) }}
           </RouterLink>
-          <RouterLink v-if="navigation.isAdmin" :to="{ name: 'UiPreview', query: { recovery: '1' } }"
-            class="ui-recovery-link" @click="drawer = false">{{ label('recovery') }}</RouterLink>
         </nav>
       </UiDialog>
     </Menu>
@@ -112,7 +104,6 @@ onBeforeUnmount(() => { drawer.value = false })
 .ui-nav-item:hover { background: var(--ui-surface-alt); text-decoration: none; }
 .ui-nav-item.router-link-active { color: var(--ui-accent); background: var(--ui-surface-alt); font-weight: 600; }
 .ui-nav-mark { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: 0 0 6px; }
-.ui-recovery-link { display: block; padding: 12px; margin: auto 0 0; color: var(--ui-text-muted); text-decoration: none; font-size: .85em; }
 .ui-toolbar { grid-column: -2 / -1; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 24px; min-width: 0; min-height: 64px; border-bottom: 1px solid var(--ui-border); background: var(--ui-surface); text-align: left; }
 .ui-toolbar-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; }
 .ui-shell .ui-language { width: auto; min-width: 64px; }

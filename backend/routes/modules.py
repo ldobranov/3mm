@@ -1,5 +1,4 @@
 """Validated module catalog and per-device lifecycle API."""
-import base64
 import hashlib
 import json
 import re
@@ -16,19 +15,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 from backend.config import get_settings
-from backend.db.device import Device, DeviceCommand, DeviceInventorySnapshot
+from backend.db.device import Device
 from backend.db.module import (
     ApplicationExtensionInstallation,
     ModuleInstallation,
     ModulePackage,
 )
-from backend.db.widget import Widget
+from backend.db.module_reference import ModulePackageRetainedReference
 from backend.db.user import User
-from backend.services.device_commands import DeviceCommandError, queue_command
-from backend.services.device_command_notifier import device_command_notifier
-from backend.services.device_authority import device_authority_write, require_device_authority_session
-from backend.services.authority_metadata import AuthorityMetadataError
-from backend.services.device_module_authority import module_control_snapshot, record_module_transition
+from backend.services import device_module_management as module_management
+from backend.services.device_module_management import InstallationResponse
 from backend.services.module_packages import MAX_PACKAGE_BYTES, ModulePackageError, validate_module_package
 from backend.services.module_inspection import PackageInspectionResponse, describe_module_package
 from backend.services.application_authority_inspection import (
@@ -50,7 +46,6 @@ from backend.services.application_access import (
 )
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
-from three_mm_protocol.device_inventory import inventory_value
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN, SEMVER_PATTERN
 from backend.routes.theme_extensions import router as theme_extensions_router
 
@@ -59,10 +54,10 @@ router.include_router(theme_extensions_router)
 
 class PackageResponse(BaseModel):
     module_id:str; version:str; sha256:str; size_bytes:int; manifest:dict; registrations:list[dict]
+    has_connector_settings: bool = False
+    has_kiosk_interface: bool = False
     model_config=ConfigDict(from_attributes=True)
-class InstallationResponse(BaseModel):
-    module_id:str; desired_version:str; installed_version:str|None; status:str; enabled:bool; command_id:str|None; data_retained:bool; error:str|None
-    model_config=ConfigDict(from_attributes=True)
+
 
 
 def _validated_compiled_package(package: ModulePackage):
@@ -273,11 +268,25 @@ async def upload_package(package:UploadFile=File(...),_admin:User=Depends(requir
             if package_created:
                 path.unlink(missing_ok=True)
             raise HTTPException(409,"published module versions are immutable")
+    record.has_connector_settings = bool(validated.application_extension and validated.application_extension.connectors)
+    record.has_kiosk_interface = bool(validated.application_extension and any(r.audience=='kiosk' for r in validated.application_extension.routes) and any('kiosk' in op.audiences for op in validated.application_extension.operations))
     return record
 
 @router.get("/packages",response_model=list[PackageResponse])
 def list_packages(_admin:User=Depends(require_admin),db:Session=Depends(get_db)):
-    return list(db.scalars(select(ModulePackage).order_by(ModulePackage.module_id,ModulePackage.version)))
+    from backend.services.application_extensions import load_application_package, ApplicationGatewayError
+    result = []
+    for package in db.scalars(select(ModulePackage).order_by(ModulePackage.module_id,ModulePackage.version)):
+        item = PackageResponse.model_validate(package)
+        if (package.manifest.get('entrypoints') or {}).get('core') == 'application-extension.json':
+            try:
+                definition = load_application_package(package).application_extension
+                item.has_connector_settings = bool(definition.connectors)
+                item.has_kiosk_interface = any(r.audience=='kiosk' for r in definition.routes) and any('kiosk' in op.audiences for op in definition.operations)
+            except (ApplicationGatewayError, ValueError, RuntimeError):
+                pass  # Invalid/unavailable optional packages cannot hide Core administration.
+        result.append(item)
+    return result
 
 
 @router.get("/compiled-ui/catalog")
@@ -347,10 +356,10 @@ def delete_compiled_ui_package(
         or entrypoints.get("core") == "application-extension.json"
     ):
         raise HTTPException(404, "Application or compiled UI package was not found")
-    widget_prefix = f"compiled:{module_id}:{version}:"
-    referenced = db.scalar(select(Widget.id).where(Widget.type.startswith(widget_prefix)).limit(1))
+    referenced = db.scalar(select(ModulePackageRetainedReference.reference_id).where(
+        ModulePackageRetainedReference.package_id == package.id).limit(1))
     if referenced is not None:
-        raise HTTPException(409, "Remove this extension's widgets from all dashboards before deleting it")
+        raise HTTPException(409, "Package has retained resource references; preserve or recover dependent data before retirement")
     if db.scalar(select(ModuleInstallation.id).where(ModuleInstallation.module_package_id == package.id).limit(1)) is not None:
         raise HTTPException(409, "Uninstall this package from devices before deleting it")
     if db.scalar(
@@ -371,6 +380,18 @@ def delete_compiled_ui_package(
     shutil.rmtree(artifact_dir, ignore_errors=True)
     package_path.unlink(missing_ok=True)
     return {"status": "deleted", "module_id": module_id, "version": version}
+
+
+@router.get("/compiled-ui/packages/{module_id}/{version}/retained-references")
+def retained_package_references(module_id: str, version: str,
+        _admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    package = db.scalar(select(ModulePackage).where(ModulePackage.module_id == module_id, ModulePackage.version == version))
+    if package is None: raise HTTPException(404, "Package was not found")
+    rows = list(db.scalars(select(ModulePackageRetainedReference).where(
+        ModulePackageRetainedReference.package_id == package.id)
+        .order_by(ModulePackageRetainedReference.reference_id).limit(257)))
+    return {"references": [{"reference_id": row.reference_id, "source": row.source,
+        "resource_ref": row.resource_ref} for row in rows[:256]], "truncated": len(rows) > 256}
 
 
 @router.get("/compiled-ui/assets/{module_id}/{version}/{sha256}/{asset_path:path}")
@@ -429,142 +450,17 @@ def compiled_ui_asset(module_id:str,version:str,sha256:str,asset_path:str,db:Ses
         },
     )
 
-def _device_architecture(db,device):
-    snapshot=db.scalar(select(DeviceInventorySnapshot).where(DeviceInventorySnapshot.device_id==device.id).order_by(DeviceInventorySnapshot.received_at.desc()).limit(1))
-    return inventory_value(snapshot.inventory, "architecture") if snapshot else None
+@router.post("/packages/{sha256}/devices/{device_id}/install", response_model=InstallationResponse)
+def install_module(sha256: str, device_id: str, _admin: User = Depends(require_admin), db: Session = Depends(get_db),
+                   idempotency_key: str | None = Header(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")):
+    return module_management.install_module(sha256, device_id, _admin, db, idempotency_key)
 
 
-def _lifecycle_idempotency_key(
-    db: Session, *, device: Device, command_type: str, module_id: str,
-    legacy_key: str, client_key: str | None, admin_id: int,
-) -> str:
-    if client_key is not None:
-        identity = json.dumps([admin_id, command_type, module_id, client_key])
-        digest = hashlib.sha256(identity.encode()).hexdigest()
-        suffix = ":" + client_key if len(client_key) <= 48 else ""
-        return "module.client:" + digest + suffix
-    opposite = "module.disable" if command_type == "module.install" else "module.install"
-    completed = db.scalar(
-        select(DeviceCommand).where(
-            DeviceCommand.device_id == device.id,
-            DeviceCommand.command_type == opposite,
-            DeviceCommand.payload["module_id"].as_string() == module_id,
-            DeviceCommand.status == "succeeded",
-            DeviceCommand.completed_at.is_not(None),
-        ).order_by(DeviceCommand.completed_at.desc(), DeviceCommand.id.desc()).limit(1)
-    )
-    # Retain existing initial-episode keys, including requests queued by older Core versions.
-    if completed is None and len(legacy_key) <= 128:
-        return legacy_key
-    identity = json.dumps([legacy_key, completed.command_id if completed else None])
-    return "module.lifecycle.legacy:" + hashlib.sha256(identity.encode()).hexdigest()
+@router.post("/{module_id}/devices/{device_id}/disable", response_model=InstallationResponse)
+def disable_module(module_id: str, device_id: str, _admin: User = Depends(require_admin), db: Session = Depends(get_db),
+                   idempotency_key: str | None = Header(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")):
+    return module_management.disable_module(module_id, device_id, _admin, db, idempotency_key)
 
-
-def _queue_lifecycle_command(db: Session, *, device: Device, **values):
-    existing = db.scalar(select(DeviceCommand).where(
-        DeviceCommand.device_id == device.id,
-        DeviceCommand.idempotency_key == values["idempotency_key"],
-    ))
-    try:
-        command = queue_command(db, device=device, **values)
-    except DeviceCommandError as exc:
-        raise HTTPException(409, str(exc)) from exc
-    return command, existing is not None
-
-
-@router.post("/packages/{sha256}/devices/{device_id}/install",response_model=InstallationResponse)
-def install_module(sha256:str,device_id:str,_admin:User=Depends(require_admin),db:Session=Depends(get_db),
-                   idempotency_key:str|None=Header(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")):
-    try:
-        require_device_authority_session(db)
-    except AuthorityMetadataError as exc:
-        raise HTTPException(409, str(exc)) from exc
-    package=db.scalar(select(ModulePackage).where(ModulePackage.sha256==sha256)); device=db.scalar(select(Device).where(Device.device_id==device_id))
-    if not package or not device: raise HTTPException(404,"package or device was not found")
-    # Read and validate immutable bytes before the short DB-only write scope.
-    package_identity = (package.id, package.module_id, package.version, package.sha256)
-    runtime_identity = (_device_architecture(db, device), device.protocol_version)
-    admin_id = _admin.id
-    try:
-        blob = Path(package.file_path).read_bytes()
-        validated = validate_module_package(blob, architecture=runtime_identity[0], protocol_version=runtime_identity[1])
-    except ModulePackageError as exc:
-        raise HTTPException(409, str(exc)) from exc
-    except OSError as exc:
-        raise HTTPException(409, "Module package could not be read") from exc
-    if (validated.manifest.module_id, validated.manifest.version, validated.sha256) != package_identity[1:]:
-        raise HTTPException(409, "Module package identity changed")
-    if validated.application_extension is not None:
-        raise HTTPException(409, "Application extensions run on Core, not on an Agent")
-    if validated.theme_extension is not None:
-        raise HTTPException(409, "Theme extensions run in the UI, not on an Agent")
-    encoded = base64.b64encode(blob).decode()
-    try:
-        with device_authority_write(db, device) as (mutation, current):
-            package = db.get(ModulePackage, package_identity[0], populate_existing=True)
-            if (package is None or (package.id, package.module_id, package.version, package.sha256) != package_identity
-                    or (_device_architecture(db, current), current.protocol_version) != runtime_identity):
-                raise HTTPException(409, "Module package or device runtime changed; retry")
-            installation = db.scalar(select(ModuleInstallation).where(
-                ModuleInstallation.device_id == current.id, ModuleInstallation.module_id == package.module_id,
-            ).execution_options(populate_existing=True))
-            before = module_control_snapshot(installation)
-            key = _lifecycle_idempotency_key(db, device=current, command_type="module.install", module_id=package.module_id,
-                legacy_key=f"module.install:{package.module_id}:{package.sha256}", client_key=idempotency_key, admin_id=admin_id)
-            command, replay = _queue_lifecycle_command(db, device=current, command_type="module.install",
-                payload={"package_base64": encoded, "sha256": package.sha256, "module_id": package.module_id, "version": package.version},
-                idempotency_key=key, ttl_seconds=900)
-            if replay and installation is None:
-                raise HTTPException(409, "Module installation requires recovery")
-            if not replay:
-                if installation is None:
-                    installation = ModuleInstallation(device_id=current.id, module_id=package.module_id, data_retained=True)
-                    db.add(installation)
-                installation.module_package_id = package.id
-                installation.desired_version = package.version
-                installation.status, installation.command_id = command.status, command.command_id
-                installation.enabled, installation.error = True, None
-                record_module_transition(db, mutation, current, installation, before, source="install_requested", admin_id=admin_id)
-            response = InstallationResponse.model_validate(installation)
-            device_pk = current.id
-    except AuthorityMetadataError as exc:
-        raise HTTPException(409, str(exc)) from exc
-    if not replay:
-        device_command_notifier.notify(device_pk)
-    return response
-
-@router.post("/{module_id}/devices/{device_id}/disable",response_model=InstallationResponse)
-def disable_module(module_id:str,device_id:str,_admin:User=Depends(require_admin),db:Session=Depends(get_db),
-                   idempotency_key:str|None=Header(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")):
-    try:
-        require_device_authority_session(db)
-    except AuthorityMetadataError as exc:
-        raise HTTPException(409, str(exc)) from exc
-    device=db.scalar(select(Device).where(Device.device_id==device_id)); installation=db.scalar(select(ModuleInstallation).where(ModuleInstallation.device_id==device.id,ModuleInstallation.module_id==module_id)) if device else None
-    if not installation: raise HTTPException(404,"module installation was not found")
-    admin_id = _admin.id
-    try:
-        with device_authority_write(db, device) as (mutation, current):
-            installation = db.scalar(select(ModuleInstallation).where(
-                ModuleInstallation.device_id == current.id, ModuleInstallation.module_id == module_id,
-            ).execution_options(populate_existing=True))
-            if installation is None:
-                raise HTTPException(404, "module installation was not found")
-            before = module_control_snapshot(installation)
-            key = _lifecycle_idempotency_key(db, device=current, command_type="module.disable", module_id=module_id,
-                legacy_key=f"module.disable:{module_id}:{installation.installed_version}", client_key=idempotency_key, admin_id=admin_id)
-            command, replay = _queue_lifecycle_command(db, device=current, command_type="module.disable",
-                payload={"module_id": module_id}, idempotency_key=key, ttl_seconds=300)
-            if not replay:
-                installation.command_id, installation.status = command.command_id, command.status
-                record_module_transition(db, mutation, current, installation, before, source="disable_requested", admin_id=admin_id)
-            response = InstallationResponse.model_validate(installation)
-            device_pk = current.id
-    except AuthorityMetadataError as exc:
-        raise HTTPException(409, str(exc)) from exc
-    if not replay:
-        device_command_notifier.notify(device_pk)
-    return response
 
 @router.get("/registrations",response_model=list[dict])
 def registrations(_admin:User=Depends(require_admin),db:Session=Depends(get_db)):

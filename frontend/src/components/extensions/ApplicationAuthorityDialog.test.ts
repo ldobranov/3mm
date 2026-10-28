@@ -13,6 +13,7 @@ import ApplicationAuthorityDialog from './ApplicationAuthorityDialog.vue'
 import { readAuthorityStatus, readAuthorityPlan, readAuthorityDecision } from './authority-management'
 import { consentPreview, consentResult } from './application-consent.fixtures'
 import { readConsentPreview } from './application-consent'
+import taskResponses from './authority-task-responses.fixture.json'
 
 const base = '/api/v1/application-extensions/org.example.reference/authority'
 const identity = (n: string) => n.repeat(32)
@@ -115,6 +116,50 @@ function button(wrapper: VueWrapper, text: string) {
   return found
 }
 describe('single explicit application consent', () => {
+  it('offers local-only consent when the only declared connector is optional and unavailable', async () => {
+    const stopped = { ...status(), scopes: [], installation_enabled: false, installation_status: 'disabled',
+      mode: 'review_required', grant_state: null, grant_record_revision: null, grant_effective: false }
+    const current = { ...consentPreview(stopped, { commands: [], connectors: [] }),
+      optional_resources: ['connector:external_api'],
+      unavailable_resources: [{ scope: 'connector:external_api', reason: 'connector_binding_unavailable' }] }
+    let saved = false
+    http.get.mockResolvedValue({ data: stopped })
+    http.post.mockImplementation(async (url: string) => {
+      if (url.endsWith('/consent/allow')) { saved = true; return { data: consentResult(current) } }
+      return { data: { ...current, access_saved: saved } }
+    })
+    const wrapper = await open()
+    expect(wrapper.text()).not.toContain('could not be loaded')
+    expect(wrapper.findAll('.authority-scope-choice')).toHaveLength(0)
+    expect(wrapper.find('.authority-unavailable').text()).toContain('connector:external_api')
+    expect(wrapper.find('.authority-unavailable').text()).toContain('connector_binding_unavailable')
+    expect(button(wrapper, 'Allow access').attributes('disabled')).toBeUndefined()
+    expect(http.post).toHaveBeenCalledTimes(1)
+    await button(wrapper, 'Allow access').trigger('click'); await flushPromises()
+    const allowed = http.post.mock.calls.filter(([url]) => url.endsWith('/consent/allow'))
+    expect(allowed).toHaveLength(1)
+    expect(allowed[0][1]).toMatchObject({ scopes: [], user_permissions: ['app_use'], accept_native_code: true })
+    expect(wrapper.emitted('changed')).toHaveLength(1)
+  })
+  it('loads actual Core task permissions and saves only the reviewed task selection', async () => {
+    const current = structuredClone(taskResponses.task)
+    http.post.mockImplementation(async (url: string) => ({ data: url.endsWith('/consent/allow')
+      ? consentResult(current) : current }))
+    http.get.mockResolvedValue({ data: { ...status(), installation_id: current.installation_id,
+      artifact_sha256: current.artifact_sha256, scopes: current.scopes, grant_state: null,
+      grant_record_revision: null, grant_effective: false } })
+    const wrapper = mount(ApplicationAuthorityDialog, { attachTo: document.body,
+      props: { moduleId: current.module_id, name: 'Result task probe' } })
+    mounted.push(wrapper); await flushPromises()
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    expect(wrapper.find('.authority-tasks').text()).toContain('calculate')
+    expect(wrapper.find('.authority-scope-choice').text()).toContain('Application tasks · task:calculate')
+    await button(wrapper, 'Allow access').trigger('click'); await flushPromises()
+    expect(http.post).toHaveBeenCalledWith(`/api/v1/application-extensions/${current.module_id}/authority/consent/allow`,
+      expect.objectContaining({ scopes: ['task:calculate'], user_permissions: [], accept_native_code: true,
+        preview_id: current.preview_id, fingerprint: current.fingerprint }), expect.anything())
+    expect(wrapper.emitted('changed')).toHaveLength(1)
+  })
   it('opens only a preview, selects all fresh rights and keeps details optional', async () => {
     const wrapper = await open()
     expect(http.post).toHaveBeenCalledTimes(1)
@@ -286,6 +331,18 @@ describe('single explicit application consent', () => {
 })
 
 describe('authority response boundaries', () => {
+  it('accepts exact streaming bounds and distinct publish/transform consent, rejects forged capabilities', () => {
+    const operations = ['read','write','publish','transform'] as const
+    const current = readAuthorityStatus({...status(),scopes:[...status().scopes,...operations.map(op=>'storage:private_files_'+op)]})
+    const declaration = {file_contract_version:2,namespace:'private_files',mode:'read_write',max_file_bytes:1073741824,max_total_bytes:4294967296,max_files:4096,
+      max_uploads:2,max_staging_bytes:2147483648,upload_ttl_seconds:3600,public_links:true,media_transforms:true}
+    const files = operations.map(operation=>({...fileResource('read'),operation,declaration:{...declaration}}))
+    const value = {...plan(),scopes:current.scopes,resources:{...plan().resources,private_files:files}}
+    expect(readAuthorityPlan(value,current,'org.example.reference').resources.private_files).toHaveLength(4)
+    for(const wrong of [{...declaration,public_links:false},{...declaration,max_uploads:17},{...declaration,max_staging_bytes:1},{...declaration,media_transforms:1},{...declaration,path:'/tmp/files'}]) {
+      expect(()=>readAuthorityPlan({...value,resources:{...value.resources,private_files:files.map(item=>({...item,declaration:wrong}))}},current,'org.example.reference')).toThrow()
+    }
+  })
   it('refuses missing, duplicate, foreign, unbounded or injected private-file bindings', () => {
     const current = readAuthorityStatus({ ...status(), scopes: [...status().scopes, 'storage:private_files_read', 'storage:private_files_write'] })
     const value = { ...plan(), scopes: current.scopes, resources: { ...plan().resources, private_files: [fileResource('read'), fileResource('write')] } }

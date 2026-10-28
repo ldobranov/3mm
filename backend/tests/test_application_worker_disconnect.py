@@ -55,6 +55,7 @@ def test_worker_stream_and_disconnect_require_confirmed_cleanup(
 
         original_write, original_read = worker.write_packet, worker.read_packet
         release_reply = None
+        next_read_received = None
         reads = 0
         delayed = False
 
@@ -71,6 +72,7 @@ def test_worker_stream_and_disconnect_require_confirmed_cleanup(
             if value.get("op") == "read":
                 reads += 1
                 if reads == 2:
+                    next_read_received.set()
                     release_reply.set()
             return value
 
@@ -107,10 +109,11 @@ def create_provider(): return Provider()
     finished = None
 
     async def start():
-        nonlocal finished, release_reply
+        nonlocal finished, release_reply, next_read_received
         finished = asyncio.Event()
         if not crash:
             release_reply = asyncio.Event()
+            next_read_received = asyncio.Event()
 
         async def connected(reader, writer):
             workers.append(asyncio.current_task())
@@ -165,9 +168,23 @@ def create_provider(): return Provider()
     try:
         ticket = issue(s).json()
         with connect(s, ticket) as ws:
+            def receive_with_deadline():
+                async def receive():
+                    return await asyncio.wait_for(ws._send_rx.receive(), 5)
+
+                return ws.portal.call(receive)
+
+            # TestClient's raw receive otherwise waits forever after consuming
+            # a close message, hiding the actual stream/worker failure.
+            monkeypatch.setattr(ws, "receive", receive_with_deadline)
             ws.send_json({"op": "authenticate", "ticket": ticket["ticket"]})
             sid = ws.receive_json()["acceptance"]["session_id"]
             assert decode_session_frame(ws.receive_bytes())[1] == b"fixture ready"
+            if not crash:
+                # Complete the injected read/drain interleaving before sending
+                # control. A control reply needs the same worker send lock;
+                # sending it first can block the next read that releases it.
+                s.client.portal.call(asyncio.wait_for, next_read_received.wait(), 2)
             ws.send_json(
                 {
                     "op": "control",
@@ -191,7 +208,11 @@ def create_provider(): return Provider()
             )
             if not crash:
                 # Streaming output and the input ACK may arrive in either order.
-                responses = [ws.receive(), ws.receive()]
+                responses = []
+                for _ in range(2):
+                    message = ws.receive()
+                    assert message["type"] == "websocket.send", list(s.browser.failures)
+                    responses.append(message)
                 frames = [
                     decode_session_frame(value["bytes"])[1]
                     for value in responses

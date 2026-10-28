@@ -102,10 +102,9 @@ def get_audit_stats(
         action_counts[action.lower()] = count
     
     # Count by entity type
-    entity_counts = {}
-    for entity in ["page", "widget", "dashboard", "user", "settings"]:
-        count = query.filter(AuditLog.entity_type == entity).count()
-        entity_counts[entity] = count
+    from sqlalchemy import func
+    entity_counts = dict(query.filter(AuditLog.entity_type.is_not(None)).with_entities(AuditLog.entity_type, func.count(AuditLog.id))
+        .group_by(AuditLog.entity_type).order_by(AuditLog.entity_type).limit(128).all())
     
     # Most active users
     from sqlalchemy import func

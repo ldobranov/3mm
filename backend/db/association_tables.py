@@ -52,9 +52,3 @@ role_application_grants = Table(
     Column('installation_id', Integer, ForeignKey('application_extension_installations.id', ondelete='CASCADE'), primary_key=True),
     Column('permission_id', String(100), primary_key=True),
 )
-role_dashboard_grants = Table(
-    'role_dashboard_grants', Base.metadata,
-    Column('role_id', Integer, ForeignKey('roles.id', ondelete='CASCADE'), primary_key=True),
-    Column('display_id', Integer, ForeignKey('displays.id', ondelete='CASCADE'), primary_key=True),
-    Column('permission_level', String(20), nullable=False),
-)

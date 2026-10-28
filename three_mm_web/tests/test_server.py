@@ -48,6 +48,27 @@ def test_history_route_falls_back_to_index(artifact: Path) -> None:
         assert "3mm" in response.read().decode()
 
 
+@pytest.mark.parametrize('path', ['/generate_204', '/hotspot-detect.html', '/connecttest.txt', '/ncsi.txt', '/'])
+def test_recovery_ap_redirects_through_existing_web_listener(artifact, monkeypatch, path):
+    import http.client
+    from urllib.parse import urlsplit
+    import three_mm_web.server as web
+    active = [True]
+    monkeypatch.setattr(web, 'recovery_setup_url', lambda address:
+                        'http://10.42.0.1:8895/setup' if active[0] else None)
+    with _server(artifact) as base_url:
+        url = urlsplit(base_url)
+        connection = http.client.HTTPConnection(url.hostname, url.port, timeout=2)
+        connection.request('GET', path, headers={'Host': 'captive.apple.com'})
+        response = connection.getresponse()
+        response.read()
+        assert response.status == 302
+        assert response.getheader('Location') == 'http://10.42.0.1:8895/setup'
+        connection.close()
+        active[0] = False
+        assert '3mm' in urlopen(base_url + '/', timeout=2).read().decode()
+
+
 def test_missing_asset_remains_not_found(artifact: Path) -> None:
     with _server(artifact) as base_url:
         with pytest.raises(HTTPError) as error:

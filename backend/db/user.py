@@ -6,6 +6,7 @@ from backend.db.association_tables import user_roles, user_groups
 from pydantic import BaseModel  # Import BaseModel from pydantic
 from passlib.context import CryptContext
 from typing import List, Optional
+import uuid
 
 # Import association tables properly
 from backend.db.association_tables import user_roles, user_groups
@@ -13,6 +14,10 @@ from backend.db.association_tables import user_roles, user_groups
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
+    # Nullable only for an explicitly unmigrated/corrupt row: current application
+    # identity rejects that state. Core-created accounts always get a fresh ID.
+    subject_id = Column(String(36), nullable=True, unique=True, index=True,
+        default=lambda: "usr_" + uuid.uuid4().hex)
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
@@ -25,7 +30,6 @@ class User(Base):
     sessions = relationship("UserSession", back_populates="user", lazy="dynamic")
     audit_logs = relationship("AuditLog", back_populates="user", lazy="dynamic")
     permissions = relationship("Permission", foreign_keys="Permission.user_id", back_populates="user", lazy="dynamic")
-    extensions = relationship("Extension", back_populates="user", lazy="dynamic")
     
     # New relationships for enhanced role/group management
     roles = relationship("Role", secondary=user_roles, back_populates="users")

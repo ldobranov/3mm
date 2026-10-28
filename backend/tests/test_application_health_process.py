@@ -65,7 +65,9 @@ def health_stack(health_core):
         def health(headers=None):
             request=urllib.request.Request(s.url()+path,headers=s.admin if headers is None else headers,method='POST')
             try:
-                with urllib.request.urlopen(request,timeout=3) as response:return response.status,json.load(response)
+                # The full-pool case admits the production 5 s Runtime budget;
+                # this outer watchdog must not truncate a valid response.
+                with urllib.request.urlopen(request,timeout=10) as response:return response.status,json.load(response)
             except urllib.error.HTTPError as error:return error.code,json.load(error)
         def stamp():
             with Session(s.state.engine) as db:return db.get(Installation,1).health_checked_at

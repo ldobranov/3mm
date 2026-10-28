@@ -96,11 +96,17 @@
                   <button class="btn-small" @click="selectedDiagnosticsDeviceId = device.device_id">
                     {{ t('mainServer.devices.details', 'Details') }}
                   </button>
+                  <button class="btn-small capability-settings" @click="selectedCapabilitiesDeviceId = device.device_id">
+                    {{ capabilityLabel('open') }}
+                  </button>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
+        <DeviceCapabilitiesPanel v-if="selectedCapabilitiesDevice" :key="selectedCapabilitiesDevice.device_id"
+          :device-id="selectedCapabilitiesDevice.device_id" :name="deviceName(selectedCapabilitiesDevice.device_id)"
+          @close="selectedCapabilitiesDeviceId = ''" @changed="loadGpioCapabilities" />
         <div v-if="selectedDiagnosticsDevice" class="diagnostics-panel">
           <div class="section-title-row">
             <h3>{{ selectedDiagnosticsDevice.display_name || selectedDiagnosticsDevice.device_id }}</h3>
@@ -208,9 +214,14 @@ import { useI18n } from '@/utils/i18n';
 import http from '@/utils/dynamic-http';
 import FleetPairing from '@/components/FleetPairing.vue';
 import DeviceInventorySummary from '@/components/DeviceInventorySummary.vue';
+import DeviceCapabilitiesPanel from '@/components/DeviceCapabilitiesPanel.vue';
+import { useDeviceCapabilityLabels } from '@/components/device-capability-labels';
 import { inventoryText, type DeviceInventory } from '@/utils/device-inventory';
 
 const { t } = useI18n();
+const capabilityLabel = useDeviceCapabilityLabels();
+const selectedCapabilitiesDeviceId = ref('');
+const selectedCapabilitiesDevice = computed(() => devices.value.find(device => device.device_id === selectedCapabilitiesDeviceId.value));
 
 // State
 const inventoryLabel = (key: string, fallback: string) => t(`mainServer.inventory.${key}`, fallback);

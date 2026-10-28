@@ -77,32 +77,23 @@ def runtime_package(*, definition=None, manifest_value=None, extra=None):
         if extra: archive.writestr(extra, "forbidden")
     return output.getvalue()
 
-def test_runtime_package_embeds_a_strict_declarative_definition():
-    validated = validate_module_package(runtime_package())
-    assert validated.runtime_extension is not None
-    assert validated.runtime_extension.pages[0].path == "/contacts"
+@pytest.mark.parametrize('extra',[None,'frontend/Contacts.vue'])
+def test_retired_core_crud_package_cannot_be_uploaded_or_executed(extra):
+    with pytest.raises(ModulePackageError,match='unsupported UI entrypoint'):
+        validate_module_package(runtime_package(extra=extra))
 
-def test_runtime_package_rejects_executable_files_and_identity_mismatch():
-    with pytest.raises(ModulePackageError, match="forbidden files"):
-        validate_module_package(runtime_package(extra="frontend/Contacts.vue"))
-    with pytest.raises(ModulePackageError, match="identity"):
-        validate_module_package(runtime_package(definition=runtime_definition(version="2.0.0")))
 
-def test_runtime_package_rejects_legacy_manifest_registrations():
-    with pytest.raises(ModulePackageError, match="navigation"):
-        validate_module_package(runtime_package(manifest_value=runtime_manifest(
-            registrations=[{"kind": "navigation", "registration_id": "org.3mm.contacts.navigation", "metadata": {"path": "/contacts", "label": "Contacts"}}]
-        )))
+def test_reference_contacts_builds_as_an_application_with_own_relational_data():
+    import importlib.util
+    path=Path(__file__).parents[2]/'modules/runtime-contacts/build_package.py'
+    spec=importlib.util.spec_from_file_location('contacts_builder',path);builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
+    blob=builder.build_package();assert blob==builder.build_package()
+    validated=validate_module_package(blob)
+    assert validated.application_extension.storage.relational.mode=='read_write'
+    assert validated.application_extension.storage.contains_personal_data is True
+    assert validated.compiled_ui.entrypoints[0].route=='/contacts'
+    assert not validated.application_extension.jobs
 
-def test_reference_contacts_source_builds_as_a_valid_runtime_package():
-    root = Path(__file__).parents[2] / "modules" / "runtime-contacts"
-    output = io.BytesIO()
-    with zipfile.ZipFile(output, "w") as archive:
-        archive.write(root / "manifest.json", "manifest.json")
-        archive.write(root / "runtime-extension.json", "runtime-extension.json")
-    validated = validate_module_package(output.getvalue())
-    assert validated.runtime_extension is not None
-    assert validated.runtime_extension.module_id == "org.3mm.contacts"
 
 def compiled_ui_manifest(**changes):
     value = manifest(

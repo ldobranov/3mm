@@ -5,6 +5,7 @@ import os
 import zipfile
 import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -82,6 +83,43 @@ class EnabledSupervisor(Supervisor):
     def is_enabled(self, instance_id):
         self.calls.append(("is_enabled", instance_id))
         return True
+
+
+def test_health_timeout_bounds_elapsed_time_and_each_probe(monkeypatch):
+    elapsed, timeouts = [0.0], []
+    monkeypatch.setattr(application_activation, "time", SimpleNamespace(monotonic=lambda: elapsed[0]))
+
+    class SlowClient:
+        def __init__(self, _socket, _key, timeout):
+            self.timeout = timeout
+            timeouts.append(timeout)
+        def invoke(self, *_args):
+            elapsed[0] += self.timeout
+            raise OSError("health response timed out")
+
+    def sleep(seconds): elapsed[0] += seconds
+
+    with pytest.raises(ApplicationActivationError, match="did not become healthy"):
+        application_activation._wait_for_health(
+            dict(startup_timeout_seconds=3, health_operation_id="health", sha256="a" * 64),
+            b"k" * 32, Path("unused.sock"), client_factory=SlowClient, sleep=sleep)
+    assert elapsed[0] == pytest.approx(3)
+    assert timeouts == pytest.approx([2, 0.8])
+
+
+def test_health_result_after_the_startup_deadline_cannot_confirm_activation(monkeypatch):
+    elapsed = [0.0]
+    monkeypatch.setattr(application_activation, "time", SimpleNamespace(monotonic=lambda: elapsed[0]))
+
+    class LateClient(ReadyClient):
+        def invoke(self, *_args):
+            elapsed[0] += 4
+            return {"status": "ready"}
+
+    with pytest.raises(ApplicationActivationError, match="did not become healthy"):
+        application_activation._wait_for_health(
+            dict(startup_timeout_seconds=3, health_operation_id="health", sha256="a" * 64),
+            b"k" * 32, Path("unused.sock"), client_factory=LateClient, sleep=lambda _seconds: None)
 
 
 def test_activation_stages_only_the_reviewed_wheel_and_becomes_active(tmp_path):

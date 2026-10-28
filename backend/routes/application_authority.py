@@ -19,14 +19,14 @@ from backend.utils.db_utils import get_db
 router = APIRouter(prefix='/api/v1/application-extensions', tags=['application-authority'])
 Identifier = Annotated[str, Field(pattern=r'^[0-9a-f]{32}$')]
 Digest = Annotated[str, Field(pattern=r'^[0-9a-f]{64}$')]
-Scope = Annotated[str, Field(pattern=r'^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read|session:[a-z][a-z0-9_]{0,95}:open)$')]
+Scope = Annotated[str, Field(pattern=r'^(?:(?:command|connector|event|publication|task):[a-z][a-z0-9_]{0,95}|storage:(?:private_files_(?:read|write|publish|transform)|relational_(?:read|write))|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read|session:[a-z][a-z0-9_]{0,95}:open)$')]
 
 
 class ReviewRequest(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
     request_id: Identifier
     native_review_id: Identifier
-    scopes: list[Scope] = Field(max_length=293)
+    scopes: list[Scope] = Field(max_length=295)
 
     @model_validator(mode='after')
     def legacy_scope_limit(self):
@@ -58,7 +58,7 @@ class ConsentAllowRequest(BaseModel):
     preview_id: Identifier
     expected_revision: Identifier
     fingerprint: Digest
-    scopes: list[Scope] = Field(max_length=293)
+    scopes: list[Scope] = Field(max_length=295)
     user_permissions: list[Annotated[str, Field(pattern=r'^[a-z][a-z0-9_]{0,95}$')]] = Field(max_length=96)
     accept_native_code: Literal[True]
 
@@ -67,6 +67,21 @@ class RevokeRequest(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
     request_id: Identifier
     expected_revision: Identifier
+
+
+class CommandRebindPreviewRequest(ConsentPreviewRequest):
+    binding_id: Annotated[str, Field(pattern=r'^[a-z][a-z0-9_]{0,95}$')]
+    device_id: Annotated[str, Field(pattern=r'^dev_[0-9a-f]{32}$')]
+
+
+class CommandRebindApplyRequest(DecisionRequest):
+    approve_change: Literal[True]
+
+
+class CommandRebindRecoveryRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    expected_revision: Identifier
+    confirmed_external_outcome_reviewed: Literal[True]
 
 
 def _target(db, module_id):
@@ -141,3 +156,45 @@ def allow_package_consent(module_id: str, request: ConsentAllowRequest, response
     identifier, token = _target(db, module_id), _token(authorization)
     return _call(db, response, lambda manager: allow(manager, identifier,
         actor_token=token, **request.model_dump()))
+
+
+@router.get('/{module_id}/authority/command-rebindings', dependencies=[Depends(require_admin)])
+def pending_command_rebinding(module_id: str, response: Response, db: Session = Depends(get_db)):
+    from backend.services.application_command_rebinding import pending
+    identifier = _target(db, module_id)
+    return _call(db, response, lambda manager: pending(manager, identifier))
+
+
+@router.post('/{module_id}/authority/command-rebindings', dependencies=[Depends(require_admin)])
+def preview_command_rebinding(module_id: str, request: CommandRebindPreviewRequest, response: Response,
+        authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
+    from backend.services.application_command_rebinding import preview
+    identifier, token = _target(db, module_id), _token(authorization)
+    return _call(db, response, lambda manager: preview(manager, identifier,
+        actor_token=token, **request.model_dump()))
+
+
+@router.get('/{module_id}/authority/command-rebindings/{preview_id}', dependencies=[Depends(require_admin)])
+def command_rebinding_status(module_id: str, preview_id: Identifier, response: Response,
+        db: Session = Depends(get_db)):
+    from backend.services.application_command_rebinding import status
+    identifier = _target(db, module_id)
+    return _call(db, response, lambda manager: status(manager, identifier, plan_id=preview_id))
+
+
+@router.post('/{module_id}/authority/command-rebindings/{preview_id}/apply', dependencies=[Depends(require_admin)])
+def apply_command_rebinding(module_id: str, preview_id: Identifier, request: CommandRebindApplyRequest,
+        response: Response, authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
+    from backend.services.application_command_rebinding import apply
+    identifier, token = _target(db, module_id), _token(authorization)
+    return _call(db, response, lambda manager: apply(manager, identifier,
+        actor_token=token, preview_id=preview_id, **request.model_dump()))
+
+
+@router.post('/{module_id}/authority/command-rebindings/{preview_id}/recover', dependencies=[Depends(require_admin)])
+def recover_command_rebinding(module_id: str, preview_id: Identifier, request: CommandRebindRecoveryRequest,
+        response: Response, authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
+    from backend.services.application_command_rebinding import recover
+    identifier, token = _target(db, module_id), _token(authorization)
+    return _call(db, response, lambda manager: recover(manager, identifier,
+        actor_token=token, preview_id=preview_id, **request.model_dump()))

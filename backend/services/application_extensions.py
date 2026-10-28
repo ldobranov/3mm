@@ -11,7 +11,8 @@ from sqlalchemy.orm import object_session
 
 from backend.config import ApplicationRuntimeSettings
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
-from backend.services.module_packages import ModulePackageError, validate_module_package
+from backend.services.module_packages import ModulePackageError
+from backend.services.application_code_scope import load_verified_package
 from three_mm_protocol import ApplicationExtensionV1, ApplicationOperationV1
 from three_mm_runtime.application_transport import ApplicationServiceClient
 from three_mm_runtime.application_transport import ApplicationTransportError, DispatchPhase
@@ -26,7 +27,7 @@ class ApplicationGatewayError(RuntimeError):
 
 def load_application_package(package: ModulePackage):
     try:
-        validated = validate_module_package(Path(package.file_path).read_bytes())
+        validated = load_verified_package(package.file_path)
     except ModulePackageError as exc:
         raise ApplicationGatewayError(f"Application package is no longer valid: {exc}") from exc
     except OSError as exc:
@@ -102,6 +103,7 @@ class PreparedApplicationInvocation:
     context: dict
     relational_invocation: dict | None
     output_schema: dict
+    expected_peer: tuple[int, int, str] | None = None
 
 
 def invoke_application(installation, package, settings, operation_id, payload, context,
@@ -142,6 +144,19 @@ def prepare_application_invocation(
     if operation.kind == "job":
         raise ApplicationGatewayError("Scheduled application jobs are retired",
                                       phase=DispatchPhase.NOT_DISPATCHED)
+    if operation.kind == "task":
+        from three_mm_protocol.application_tasks import TaskExecutionV1
+        try:
+            execution = TaskExecutionV1.model_validate(context.get("task_execution"))
+            declaration = next(item for item in definition.tasks if item.task_id == execution.task_id)
+            if (declaration.handler_operation_id != operation_id or context.get("audience") != "internal"
+                    or context.get("idempotency_key") != execution.task_run_id):
+                raise ValueError("Task handler changed")
+        except (ValueError, StopIteration):
+            raise ApplicationGatewayError("Task operations require a current execution context",
+                phase=DispatchPhase.NOT_DISPATCHED) from None
+    elif context.get("task_execution") is not None:
+        raise ApplicationGatewayError("Task context is reserved for dedicated handlers", phase=DispatchPhase.NOT_DISPATCHED)
     if any(
         route.handler_operation_id == operation_id
         for route in definition.public_http_routes

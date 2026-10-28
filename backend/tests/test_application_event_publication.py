@@ -87,6 +87,16 @@ def activate(s):
     return decide(s, decide(s, review(s, n), 'approve'), 'apply')
 
 
+def test_resource_view_observes_core_journal_without_publishing(publications):
+    from backend.services.application_resource_discovery import discover_resources
+    s = publications
+    activate(s)
+    before = count(s)
+    row = discover_resources(s.engine,1,'a'*24,['publication:record_changed'])['resources'][0]
+    assert row['readiness'] == 'ready' and row['provider']['provider_id'] == 'core_event_journal'
+    assert count(s) == before
+
+
 def request(**changes):
     return {'publication_request_version': 1, 'event_id': 'evt_' + identity(),
         'publication_id': 'record_changed', 'payload': {'value': 1},

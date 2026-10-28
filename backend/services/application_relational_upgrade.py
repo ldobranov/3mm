@@ -15,6 +15,7 @@ from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.services import application_authority_management as authority
 from backend.services import application_relational_lifecycle as preparation
 from backend.services.application_commands import invalidate_commands
+from backend.services.application_requirements import require_platform_requirements
 from backend.services.application_policy_reviews import _actor
 from backend.services.application_relational_activation import _start_consent
 from backend.services.authority_metadata import (
@@ -126,6 +127,7 @@ def issue_prepared_database_upgrade(
     expected_source = authority._identifier(expected_source_revision)
     expected_grant = authority._identifier(expected_grant_record_revision)
     prepared = manager._prepare(installation_id)
+    require_platform_requirements(prepared[1].application_extension)
     with manager._write(
         installation_id,
         actor_token,

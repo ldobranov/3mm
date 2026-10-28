@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { computed, ref, useId } from 'vue'
-import UiButton from '@/components/ui/UiButton.vue'
-import UiDialog from '@/components/ui/UiDialog.vue'
+import { computed, provide, ref, useId } from 'vue'
+import { UiButton, UiDialog, UiField, UiForm, UiState, UiSurface, UiTable } from '@/extension-ui/v1'
+import { extensionUiKey } from '@/extension-ui/context'
 import { useUiLabels } from '@/utils/ui-labels'
 import { useSettingsStore } from '@/stores/settings'
 import { useThemeStore } from '@/stores/theme'
 import { uiDesignVariables } from '@/utils/ui-design'
 import type { ThemeMode } from '@/utils/theme-extension'
 
-const props = defineProps<{ mode?: ThemeMode }>()
+const props = defineProps<{ mode?: ThemeMode; controlsOnly?: boolean }>()
 const settings = useSettingsStore()
+provide(extensionUiKey, computed(() => settings.uiDesign.components))
 const modes = useThemeStore()
 const paletteMode = computed(() => props.mode ?? modes.theme)
 const variables = computed(() => {
@@ -20,14 +21,16 @@ const variables = computed(() => {
 })
 const label = useUiLabels()
 const formId = useId()
-const errorId = useId()
 const open = ref(false)
 const name = ref('')
 const description = ref('')
 const enabled = ref(true)
+const state = ref<'loading' | 'error' | 'empty'>('loading')
 const attempted = ref(false)
 const validated = ref(false)
 const invalid = computed(() => attempted.value && !name.value.trim())
+const rows = computed(() => [{ id: 'ready', name: label('example'), ready: true }, { id: 'pending', name: label('secondary'), ready: false }])
+const columns = computed(() => [{ key: 'name', label: label('resource') }, { key: 'ready', label: label('status') }])
 const validate = () => {
   attempted.value = true
   if (!invalid.value) { validated.value = true; open.value = false }
@@ -35,9 +38,8 @@ const validate = () => {
 </script>
 
 <template>
-  <div class="component-preview ui-v2 ui-stack" :style="variables" :data-mode="paletteMode"
-    :data-button="settings.uiDesign.components.button" :data-card="settings.uiDesign.components.card" :aria-label="label('livePreview')">
-    <header><h3>{{ label('livePreview') }}</h3><p class="ui-help">{{ label('enabledHelp') }}</p></header>
+  <UiSurface class="component-preview ui-stack" :style="variables" :data-mode="paletteMode" :aria-label="label('livePreview')">
+    <div class="preview-heading"><h3>{{ label('livePreview') }}</h3><p class="ui-help">{{ label('enabledHelp') }}</p></div>
     <section class="ui-section ui-stack">
       <h4>{{ label('primitives') }}</h4>
       <div class="ui-row"><UiButton variant="primary">{{ label('primary') }}</UiButton><UiButton>{{ label('secondary') }}</UiButton><UiButton variant="danger">{{ label('danger') }}</UiButton></div>
@@ -45,36 +47,41 @@ const validate = () => {
       <UiButton @click="open = true">{{ label('dialog') }}</UiButton>
       <p v-if="validated" class="ui-help" role="status">{{ label('validated') }}</p>
     </section>
-    <section class="ui-section ui-stack">
+    <section v-if="!controlsOnly" class="ui-section ui-stack">
       <h4>{{ label('forms') }}</h4>
-      <label class="ui-field"><span>{{ label('name') }}</span><input v-model="name" class="ui-control" :placeholder="label('namePlaceholder')" :aria-invalid="invalid" :aria-describedby="invalid ? errorId : undefined" /></label>
-      <p v-if="invalid" :id="errorId" class="ui-error" role="alert">{{ label('error') }}</p>
-      <label class="ui-field"><span>{{ label('description') }}</span><textarea v-model="description" class="ui-control" :placeholder="label('descriptionPlaceholder')"></textarea></label>
-      <label class="ui-check"><input v-model="enabled" type="checkbox" /><span>{{ label('enabled') }}</span></label>
+      <UiForm @submit="validate" @invalid.capture="attempted = true">
+        <UiField :id="`${formId}-name`" :label="label('name')" v-model="name" required
+          :placeholder="label('namePlaceholder')" :error="invalid ? label('error') : undefined" />
+        <UiField :id="`${formId}-description`" :label="label('description')" v-model="description" type="textarea" :placeholder="label('descriptionPlaceholder')" />
+        <UiField :id="`${formId}-enabled`" :label="label('enabled')" v-model="enabled" type="checkbox" />
+        <UiField :id="`${formId}-disabled`" :label="label('disabled')" :model-value="label('example')" disabled />
+      </UiForm>
     </section>
-    <section class="ui-section ui-stack">
+    <section v-if="!controlsOnly" class="ui-section ui-stack">
       <h4>{{ label('table') }}</h4>
-      <div class="ui-table-wrap"><table class="ui-table"><caption class="visually-hidden">{{ label('table') }}</caption>
-        <thead><tr><th scope="col">{{ label('resource') }}</th><th scope="col">{{ label('status') }}</th></tr></thead>
-        <tbody><tr><td>{{ label('example') }}</td><td><span class="ui-badge ui-badge--success">✓ {{ label('ready') }}</span></td></tr>
-          <tr><td>{{ label('secondary') }}</td><td><span class="ui-badge ui-badge--warning">◷ {{ label('pending') }}</span></td></tr></tbody>
-      </table></div>
+      <UiTable :rows="rows" :columns="columns" :row-key="row => row.id" :caption="label('table')" :empty-label="label('emptyMessage')">
+        <template #cell="{ row, column, value }">
+          <span v-if="column.key === 'ready'" class="ui-badge" :class="row.ready ? 'ui-badge--success' : 'ui-badge--warning'">{{ row.ready ? label('ready') : label('pending') }}</span>
+          <template v-else>{{ value }}</template>
+        </template>
+      </UiTable>
+    </section>
+    <section v-if="!controlsOnly" class="ui-section ui-stack">
+      <div class="ui-row"><UiButton v-for="kind in ['loading', 'error', 'empty'] as const" :key="kind" :aria-pressed="state === kind" @click="state = kind">{{ label(kind === 'error' ? 'errorState' : kind) }}</UiButton></div>
+      <UiState :kind="state" :message="label(state === 'empty' ? 'emptyMessage' : state)" />
     </section>
     <UiDialog v-model:open="open" :title="label('dialogTitle')" :close-label="label('close')">
-      <form :id="formId" class="ui-stack" @submit.prevent="validate">
+      <UiForm :id="formId" @submit="validate" @invalid.capture="attempted = true">
         <p class="ui-help">{{ label('enabledHelp') }}</p>
-        <label class="ui-field"><span>{{ label('name') }}</span><input v-model="name" autofocus class="ui-control" :aria-invalid="invalid" /></label>
-        <p v-if="invalid" class="ui-error" role="alert">{{ label('error') }}</p>
-      </form>
+        <UiField :id="`${formId}-dialog-name`" :label="label('name')" v-model="name" required autofocus :error="invalid ? label('error') : undefined" />
+      </UiForm>
       <template #actions><UiButton @click="open = false">{{ label('cancel') }}</UiButton><UiButton variant="primary" type="submit" :form="formId">{{ label('confirm') }}</UiButton></template>
     </UiDialog>
-  </div>
+  </UiSurface>
 </template>
 
 <style scoped>
 .component-preview { min-width: 0; background: var(--ui-canvas); padding: calc(var(--ui-space) * 3); border-radius: var(--ui-radius-md); }
-.component-preview[data-mode="light"] { color-scheme: light; }
-.component-preview[data-mode="dark"] { color-scheme: dark; }
-.component-preview h3, .component-preview h4 { margin: 0; font-size: 1rem; font-weight: 650; }
-.component-preview header { display: grid; gap: .4rem; }
+.component-preview h3, .component-preview h4 { margin: 0; font-size: 1em; font-weight: 650; }
+.preview-heading { display: grid; gap: calc(var(--ui-space) * 2); }
 </style>

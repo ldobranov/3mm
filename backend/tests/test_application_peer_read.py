@@ -44,6 +44,16 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def test_resource_view_observes_exact_local_peer_metadata(peer_app):
+    from backend.services.application_resource_discovery import discover_resources
+    s = peer_app
+    adopt(s)
+    row = discover_resources(s.engine,1,'a'*24,[READ])['resources'][0]
+    assert row['readiness'] == 'ready' and row['selected_resource_id'] == LINK
+    assert row['provider']['provider_id'] == 'core_local_projection'
+    assert PRIVATE not in str(row) and 'credential' not in str(row)
+
+
 def frame(**changes):
     return {
         "version": 1,

@@ -62,3 +62,25 @@ def test_wrong_enrollment_principal_is_rejected_before_delivery(monkeypatch):
     request = request.model_copy(update={"device_id": "dev_" + "d" * 32})
     with pytest.raises(ValueError, match="identity mismatch"):
         transport.enroll(request)
+
+
+@pytest.mark.parametrize('field', ['device_id','provider_type','provider_id'])
+def test_provider_reads_and_acknowledgements_reject_foreign_identity(monkeypatch, field):
+    from datetime import UTC, datetime
+    from agent.hardware.identifier import MockIdentifierAdapter
+    from three_mm_protocol.device_capabilities import CapabilityProviderSnapshotV2
+    from pathlib import Path
+    transport,_=enrollment()
+    declaration=MockIdentifierAdapter(Path('/unused')).provider_declaration()
+    value=CapabilityProviderSnapshotV2(device_id=transport.device_id,provider_type=declaration.provider_type,
+        provider_id=declaration.provider_id,provider_version=declaration.provider_version,revision=1,enabled=True,
+        capabilities=declaration.capabilities,configured_capability_ids=(),reported_at=datetime.now(UTC)).model_dump(mode='json')
+    value[field] = 'dev_'+'f'*32 if field=='device_id' else 'foreign'
+    class Response:
+        status_code=200
+        def raise_for_status(self):pass
+        def json(self):return value
+    monkeypatch.setattr('agent.device_transport.requests.get',lambda *a,**k:Response())
+    monkeypatch.setattr('agent.device_transport.requests.put',lambda *a,**k:Response())
+    with pytest.raises(HttpRejected):transport.provider(*declaration.identity)
+    with pytest.raises(HttpRejected):transport.report_provider(declaration.report(transport.device_id,0))

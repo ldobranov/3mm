@@ -15,6 +15,8 @@ import time
 from itertools import islice
 from pathlib import Path
 
+from backend.services.application_requirements import require_platform_requirements
+
 from three_mm_application_sdk.relational_wire import (
     _activation_ticket,
     _RelationalActivationResult,
@@ -211,6 +213,7 @@ def activate_prepared_relational_service(
         expected_metadata = _application_metadata(
             validated, configuration, instance.name, root
         )
+        require_platform_requirements(validated.application_extension)
         expected_metadata["storage"]["relational"] = (
             validated.application_extension.storage.relational.model_dump(mode="json")
         )

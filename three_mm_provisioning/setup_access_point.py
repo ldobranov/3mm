@@ -53,6 +53,7 @@ def start(data_dir: Path, interface: str, machine_id_path: Path) -> None:
         interface=interface,
         connection_name=CONNECTION_NAME,
         network_name=setup_ssid(machine_id_path),
+        ipv4_address="10.42.0.1/24",
     )
 
 

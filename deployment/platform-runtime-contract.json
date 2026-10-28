@@ -4,10 +4,13 @@
   "operations": [
     "checkpoint.get",
     "checkpoint.put",
+    "command.discover",
     "command.lookup",
     "command.status",
     "command.submit",
     "connector.request",
+    "delegation.execute",
+    "delegation.lookup",
     "event.publish",
     "files.execute",
     "files.status",
@@ -26,7 +29,15 @@
     "relational.admit",
     "relational.boot.startup",
     "relational.complete",
-    "relational.status"
+    "relational.status",
+    "task.cancel",
+    "task.lookup",
+    "task.progress",
+    "task.schedule.cancel",
+    "task.schedule.create",
+    "task.schedule.lookup",
+    "task.start",
+    "task.submit"
   ],
   "connector_execution_contract": 1,
   "application_response_contract": 1

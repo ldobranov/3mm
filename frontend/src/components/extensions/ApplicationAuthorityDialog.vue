@@ -32,10 +32,10 @@ const canRevoke = computed(() => status.value?.grant_state === 'active' && !!sta
 const savedLabel = computed(() => !preview.value?.access_saved ? 'consentNeeded'
   : !preview.value.installation_enabled ? 'inactive' : 'consentSaved')
 const runtimeUnavailable = computed(() => preview.value?.access_saved && !!status.value?.runtime_blockers?.length)
-const kinds = ['commands', 'connectors', 'events', 'publications', 'private_files', 'relational', 'checkpoints', 'identities', 'status_projections', 'peer_reads', 'sessions'] as const
+const kinds = ['commands', 'connectors', 'events', 'publications', 'private_files', 'relational', 'checkpoints', 'identities', 'status_projections', 'peer_reads', 'sessions', 'tasks'] as const
 const kindLabels = { commands: 'commands', connectors: 'connectors', events: 'events', publications: 'publications',
   private_files: 'privateFiles', relational: 'relational', checkpoints: 'checkpoints', identities: 'identities',
-  status_projections: 'statusProjections', peer_reads: 'peerReads', sessions: 'sessions' } as const
+  status_projections: 'statusProjections', peer_reads: 'peerReads', sessions: 'sessions', tasks: 'tasks' } as const
 function failure(cause: unknown, mutation = false): AuthorityLabel {
   const response = (cause as { response?: { status?: number; data?: { detail?: { code?: string } } } })?.response
   if (response?.status === 401 || response?.status === 403) return 'actor'
@@ -118,10 +118,25 @@ function choose(scope: string, event: Event, user = false) {
 }
 function close() { if (!busy.value) emit('close') }
 function scopeName(scope: string) {
+    const fileLabels: Record<string, AuthorityLabel> = { storage_private_files_read: 'fileRead', storage_private_files_write: 'fileWrite',
+      storage_private_files_publish: 'filePublish', storage_private_files_transform: 'fileTransform' }
+    const fileLabel = fileLabels[scope.replace(':', '_')]
+    if (fileLabel) return label(fileLabel)
   const family = scope.split(':')[0]
   const names: Record<string, AuthorityLabel> = { command: 'commands', connector: 'connectors', event: 'events', publication: 'publications',
-    storage: scope.includes('relational') ? 'relational' : 'privateFiles', checkpoint: 'checkpoints', platform: 'identities', status: 'statusProjections', peer: 'peerReads', session: 'sessions' }
+    storage: scope.includes('relational') ? 'relational' : 'privateFiles', checkpoint: 'checkpoints', platform: 'identities', status: 'statusProjections', peer: 'peerReads', session: 'sessions', task: 'tasks' }
   return `${label(names[family || ''] || 'resources')} · ${scope}`
+}
+function sourceReason(reason: string) {
+  const reasons: Record<string, AuthorityLabel> = {
+    configuration_unresolved: 'sourceConfiguration', device_unavailable: 'sourceDevice',
+    device_credentials_unavailable: 'sourceDevice', capability_unresolved: 'sourceProvider',
+    capability_unavailable: 'sourceHealth', runtime_support_unresolved: 'sourceRuntime',
+    command_contract_unresolved: 'sourceContract', command_schema_containment_not_evaluated: 'sourceContract',
+    connector_binding_unavailable: 'sourceConnector', connector_origin_mismatch: 'sourceConnector',
+    connector_credential_unavailable: 'sourceConnector',
+  }
+  return label(reasons[reason] || 'sourceUnavailable')
 }
 onMounted(refresh)
 </script>
@@ -137,6 +152,15 @@ onMounted(refresh)
       <template v-if="preview">
         <p class="authority-status" role="status">{{ label(savedLabel) }}</p>
         <p v-if="runtimeUnavailable" class="ui-help authority-runtime">{{ label('consentRuntime') }}</p>
+        <section v-if="preview.unavailable_resources.length" class="ui-section ui-stack authority-unavailable" role="status">
+          <h4>{{ label('optionalUnavailable') }}</h4>
+          <p class="ui-help">{{ label('optionalUnavailableHelp') }}</p>
+          <div v-for="resource in preview.unavailable_resources" :key="resource.scope">
+            <strong>{{ scopeName(resource.scope) }}</strong>
+            <p>{{ sourceReason(resource.reason) }}</p>
+            <code>{{ resource.reason }}</code>
+          </div>
+        </section>
         <p class="ui-help">{{ selected.length }} / {{ preview.scopes.length }} {{ label('consentPermissions') }} · {{ selectedUser.length }} {{ label('consentYourPermissions') }}</p>
         <p v-if="expired" class="authority-error" role="alert">{{ label('consentExpired') }}</p>
         <details class="authority-details">
@@ -195,6 +219,7 @@ h4 { font-size: .95em; }
 .authority-details summary { cursor: pointer; padding: calc(var(--ui-space) * 2) 0; }
 .authority-choices, .authority-resources { margin-top: calc(var(--ui-space) * 4); }
 .authority-scope-choice, .authority-user-choice { align-items: flex-start; overflow-wrap: anywhere; }
+.authority-unavailable { overflow-wrap: anywhere; }
 .authority-resources pre { background: var(--ui-surface-alt); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); padding: calc(var(--ui-space) * 3); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; font-size: .8em; }
 .authority-artifact { margin-top: calc(var(--ui-space) * 4); overflow-wrap: anywhere; }
 .authority-revoke { border-top: 1px solid var(--ui-danger); padding-top: calc(var(--ui-space) * 4); }

@@ -32,9 +32,9 @@ ROOT=Path("/opt/3mm-platform-runtime")
 STATE=Path("/var/lib/3mm-platform-updates")
 SOCKET=Path("/run/3mm-platform/runtime.sock")
 MAX_ARTIFACT=2*1024*1024
-INPUTS=("three_mm_platform_wire/__init__.py","three_mm_platform_runtime/__init__.py",
+INPUTS=("three_mm_platform_wire/__init__.py","three_mm_platform_wire/task_time.py","three_mm_platform_runtime/__init__.py",
         "three_mm_platform_runtime/__main__.py","three_mm_platform_runtime/server.py",
-        "three_mm_platform_runtime/public_web.py","three_mm_platform_runtime/events.py","three_mm_platform_runtime/connector_worker.py","three_mm_platform_runtime/responses.py")
+        "three_mm_platform_runtime/public_web.py","three_mm_platform_runtime/events.py","three_mm_platform_runtime/connector_worker.py","three_mm_platform_runtime/responses.py","three_mm_platform_runtime/tasks.py")
 
 
 def _json(value):return json.dumps(value,sort_keys=True,separators=(",", ":"),allow_nan=False).encode()
@@ -81,8 +81,17 @@ def validate_metadata(value,code):
             or value["runtime_sha256"]!=_digest(code) or value["runtime_bytes"]!=len(code)):
         raise ValueError("Runtime artifact contract or digest is unsupported")
     with zipfile.ZipFile(io.BytesIO(code)) as archive:
-        expected=set(INPUTS)|{"__main__.py","runtime-build.json"}
-        if set(archive.namelist())!=expected or len(archive.namelist())!=len(expected):
+        # Validate the immutable release's own file set, not this updater's build
+        # inputs. Independent component update/rollback must survive added workers.
+        expected=set(archive.namelist())
+        required={"__main__.py", "runtime-build.json", "three_mm_platform_wire/__init__.py",
+            "three_mm_platform_runtime/__init__.py", "three_mm_platform_runtime/__main__.py", "three_mm_platform_runtime/server.py"}
+        def source(name):
+            parts=name.split('/')
+            return (len(parts)==2 and parts[0] in {"three_mm_platform_wire","three_mm_platform_runtime"}
+                and re.fullmatch(r"[a-z_][a-z0-9_]*\.py",parts[1]) is not None)
+        if (not required<=expected or len(expected)>64 or len(archive.namelist())!=len(expected)
+                or any(name not in {"__main__.py","runtime-build.json"} and not source(name) for name in expected)):
             raise ValueError("Runtime executable payload is invalid")
         if (any(info.file_size>MAX_ARTIFACT or info.is_dir() or not stat.S_ISREG(info.external_attr>>16)
                 for info in archive.infolist()) or sum(info.file_size for info in archive.infolist())>MAX_ARTIFACT):

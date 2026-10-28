@@ -27,15 +27,12 @@ from backend.db.user import User
 from backend.routes.device_capabilities import router
 from backend.routes.device_capability_state import router as state_router
 from backend.routes.device_commands import router as commands_router
-from backend.routes.ai_extension_builder_routes import router as builder_router
-from backend.services.ai_capability_context import build_automation_capability_context
 from backend.services.device_capability_registry import registered_capabilities
 from backend.services.device_pairing import credential_secret_hash
 from backend.utils import jwt_utils
 from backend.utils.auth import hash_password
 from backend.utils.db_utils import get_db
 from backend.utils.jwt_utils import create_access_token
-from three_mm_protocol import AutomationDefinitionV1, validate_automation_capabilities
 
 
 @pytest.fixture
@@ -80,7 +77,7 @@ def core(monkeypatch):
     db.add_all([*credentials, *(DevicePlatformState(device_id=device.id) for device in devices)])
     db.commit()
     app = FastAPI()
-    for item in (router, state_router, commands_router, builder_router):
+    for item in (router, state_router, commands_router):
         app.include_router(item)
     app.dependency_overrides[get_db] = lambda: db
     with TestClient(app) as client:
@@ -263,7 +260,7 @@ def test_provider_uses_existing_command_and_state_contracts_without_packages_or_
         replacement.close()
 
 
-def test_legacy_view_and_builder_share_one_registry(core):
+def test_versioned_views_share_one_registry(core):
     module = install_module(core)
     assert register(core).status_code == 200
     assert capabilities(core, version=1).json() == [
@@ -278,32 +275,9 @@ def test_legacy_view_and_builder_share_one_registry(core):
         "native",
         "agent_module",
     }
-    context = build_automation_capability_context(core.db)
-    assert context.context_version == 2
-    assert len(context.capabilities) == 2
-    assert "module_id" not in context.capabilities[0].model_dump()
-    response = core.client.get("/api/ai/extensions/capabilities", headers=core.admin)
-    assert response.status_code == 200 and response.json()["context_version"] == 2
-    definition = AutomationDefinitionV1.model_validate(
-        {
-            "name": "example",
-            "execution": "local",
-            "trigger": {
-                "device_id": core.devices[0].device_id,
-                "capability_id": "gpio.digital.input",
-                "event": "changed",
-            },
-            "actions": [
-                {
-                    "device_id": core.devices[0].device_id,
-                    "capability_id": "gpio.digital.control",
-                    "action": "pulse",
-                    "arguments": {"channel": "gpio.output.1"},
-                }
-            ],
-        }
-    )
-    assert validate_automation_capabilities(definition, context) == ()
+    entries = registered_capabilities(core.db, core.devices[0])
+    assert len(entries) == 2
+    assert "module_id" not in entries[0]
     module.enabled = False
     core.db.commit()
     assert len(capabilities(core).json()) == 1
@@ -538,11 +512,12 @@ def test_admin_can_inspect_disabled_provider_revision_without_device_credentials
     assert core.client.get(url, headers=core.device_headers[0]).status_code == 401
 
 
-def test_local_module_and_another_nodes_firmware_share_core_context(core):
+def test_local_module_and_another_nodes_firmware_share_registry(core):
     install_module(core, "gpio.digital.control")
     assert register(core, index=1).status_code == 200
-    context = build_automation_capability_context(core.db)
-    assert {(row.device_id, row.provider_type) for row in context.capabilities} == {
+    entries = [(device.device_id, row["provider_type"]) for device in core.devices
+        for row in registered_capabilities(core.db, device)]
+    assert set(entries) == {
         (core.devices[0].device_id, "agent_module"),
         (core.devices[1].device_id, "native"),
     }

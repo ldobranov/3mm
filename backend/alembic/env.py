@@ -11,16 +11,10 @@ import backend.database  # noqa: F401 - populate all models during migrations, n
 # Explicitly import all model modules to populate Base.metadata and avoid lazy import cycles
 import backend.db.user  # noqa: F401
 import backend.db.role  # noqa: F401
-import backend.db.page  # noqa: F401
 import backend.db.settings  # noqa: F401
 import backend.db.audit_log  # noqa: F401
-import backend.db.display  # noqa: F401
-import backend.db.widget  # noqa: F401
 import backend.db.device  # noqa: F401
 import backend.db.module  # noqa: F401
-import backend.db.automation  # noqa: F401
-import backend.db.runtime_extension  # noqa: F401
-import backend.db.extension_project  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -37,6 +31,12 @@ if config.config_file_name is not None:
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 target_metadata = Base.metadata
+
+
+def include_object(object, name, type_, reflected, compare_to):
+    # Explicit retirement migrations preserve historical data outside live ORM
+    # ownership. Autogenerate must never propose erasing those recovery tables.
+    return not (type_ == "table" and reflected and name.startswith("retired_"))
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -62,6 +62,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -83,7 +84,8 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, target_metadata=target_metadata,
+            include_object=include_object,
         )
 
         with context.begin_transaction():

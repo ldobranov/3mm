@@ -13,6 +13,7 @@ from deployment.build_release import (
     ReleaseBuildError,
     build_release_assets,
     read_dependencies,
+    read_source_payload,
 )
 from deployment.deployment_contract import CONTRACT_PATH
 
@@ -123,6 +124,13 @@ RELATIONAL_RELEASE_FILES = (
     "three_mm_runtime/update_helper_client.py",
 )
 REQUIRED_SOURCE_FILES[CONTRACT_PATH] = json.dumps(TARGET_CONTRACT).encode()
+for migration in ("4f29a071b819_application_result_tasks", "5a30b182c920_application_task_schedules",
+        "6b41c293da31_retire_builder_automations", "7c52d3a4eb42_retire_dashboards", "8d63e4b5fc53_retire_declarative_crud", "9e74f5c60d64_retire_legacy_content", "af85a6d71e75_user_subject_ids", "b096b7e82f86_kiosk_incarnations"):
+    REQUIRED_SOURCE_FILES[f"backend/alembic/versions/{migration}.py"] = b"# migration fixture\n"
+REQUIRED_SOURCE_FILES["three_mm_protocol/ui_metadata.py"] = b"# shared UI metadata fixture\n"
+REQUIRED_SOURCE_FILES["backend/db/language_extension.py"] = b"# language projection fixture\n"
+REQUIRED_SOURCE_FILES["backend/db/menu.py"] = b"# navigation fixture\n"
+REQUIRED_SOURCE_FILES["backend/db/module_reference.py"] = b"# retained references fixture\n"
 for required in TARGET_CONTRACT["required_files"]:
     if required not in {".3mm-release.json", "frontend/dist/index.html"}:
         REQUIRED_SOURCE_FILES.setdefault(required, b"placeholder\n")
@@ -307,6 +315,41 @@ def test_builder_requires_relational_lifecycle_and_boot_files(tmp_path, required
         build(tmp_path)
 
 
+def test_source_only_products_and_optional_libraries_are_excluded_from_release(tmp_path):
+    files = dict(REQUIRED_SOURCE_FILES)
+    files.update({
+        "modules/example/.3mm-source-only": b"",
+        "modules/example/source/service.py": b"raise AssertionError('product')",
+        "libraries/optional/.3mm-source-only": b"",
+        "libraries/optional/client.py": b"raise AssertionError('optional')",
+        "modules/current/manifest.json": b"{}",
+    })
+    write_source_archive(tmp_path / "source.tar", files)
+    names = {item.name for item in read_source_payload(tmp_path / "source.tar")}
+    assert not any(name.startswith(("modules/example/", "libraries/optional/")) for name in names)
+    assert "modules/current/manifest.json" in names
+    assert {name for name in REQUIRED_SOURCE_FILES if not name.startswith("frontend/dist/")} <= names
+    assert "frontend/dist/stale.js" not in names
+
+
+@pytest.mark.parametrize("migration", ["4f29a071b819_application_result_tasks",
+    "5a30b182c920_application_task_schedules", "6b41c293da31_retire_builder_automations", "7c52d3a4eb42_retire_dashboards", "8d63e4b5fc53_retire_declarative_crud", "9e74f5c60d64_retire_legacy_content", "af85a6d71e75_user_subject_ids", "b096b7e82f86_kiosk_incarnations"])
+def test_release_requires_current_schema_chain(tmp_path, migration):
+    files = dict(REQUIRED_SOURCE_FILES)
+    files.pop(f"backend/alembic/versions/{migration}.py")
+    write_source_archive(tmp_path / "source.tar", files)
+    with pytest.raises(ReleaseBuildError, match="missing required files"):
+        read_source_payload(tmp_path / "source.tar")
+
+
+@pytest.mark.parametrize("marker,content", [("backend/.3mm-source-only", b""),
+    ("modules/x/.3mm-source-only", b"unexpected")])
+def test_source_only_marker_cannot_remove_core_or_carry_code(tmp_path, marker, content):
+    write_source_archive(tmp_path / "source.tar", {**REQUIRED_SOURCE_FILES, marker: content})
+    with pytest.raises(ReleaseBuildError, match="Source-only marker"):
+        read_source_payload(tmp_path / "source.tar")
+
+
 def test_builder_rejects_version_mismatch(tmp_path: Path) -> None:
     files = dict(REQUIRED_SOURCE_FILES)
     files["VERSION"] = b"9.9.9\n"
@@ -394,3 +437,17 @@ def test_builder_refuses_event_worker_without_matching_claim_migration(tmp_path,
     files=dict(REQUIRED_SOURCE_FILES);files.pop(required)
     write_source_archive(tmp_path/'source.tar',files)
     with pytest.raises(ReleaseBuildError,match=required):build(tmp_path)
+
+
+@pytest.mark.parametrize('required', [
+    'three_mm_application_sdk/discovery.py',
+    'three_mm_protocol/application_requirements.py',
+    'backend/services/application_requirements.py',
+    'backend/services/application_resource_discovery.py',
+    'backend/services/application_resource_providers.py',
+    'three_mm_protocol/application_resources.py',
+])
+def test_builder_refuses_an_incomplete_requirement_discovery_sdk(tmp_path, required):
+    files = dict(REQUIRED_SOURCE_FILES); files.pop(required)
+    write_source_archive(tmp_path / 'source.tar', files)
+    with pytest.raises(ReleaseBuildError, match=required): build(tmp_path)

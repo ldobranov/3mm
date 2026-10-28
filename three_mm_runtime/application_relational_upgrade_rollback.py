@@ -128,6 +128,7 @@ def record_completed_rollback(instance, evidence, source, secret, *, database_li
                 "files_manifest_sha256": _hash(
                     evidence / "files.json", protected=True, limit=256 * 1024
                 ),
+                'media_manifest_sha256': _hash(evidence / 'media.json', protected=True, limit=4 * 1024 * 1024),
             },
         )
     ).model_dump(mode="json")
@@ -394,6 +395,7 @@ def confirm_restored_relational_upgrade(
                 != _hash(evidence / "state.sqlite3", protected=True, limit=limit)
                 or proof["files_manifest_sha256"]
                 != _hash(evidence / "files.json", protected=True, limit=256 * 1024)
+                or proof['media_manifest_sha256'] != _hash(evidence / 'media.json', protected=True, limit=4 * 1024 * 1024)
                 or _regular(database).st_uid != service_uid
                 or proof["database_sha256"]
                 != _hash(verified / "state.sqlite3", protected=True, limit=limit)

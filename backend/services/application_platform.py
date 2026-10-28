@@ -22,6 +22,8 @@ except ImportError:  # pragma: no cover - Windows development host
     grp = None
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
+from three_mm_runtime.application_transport import ApplicationTransportError
 
 from backend.db.module import ApplicationExtensionInstallation
 from backend.services.operation_diagnostics import core_diagnostics
@@ -231,7 +233,8 @@ class ApplicationPlatformServer:
                     installation = db.scalar(select(ApplicationExtensionInstallation).where(
                         ApplicationExtensionInstallation.instance_id == instance_id))
                     if installation is None or (request['action'] not in {
-                            'command.lookup', 'event.publish', 'files.execute', 'files.status', 'relational.complete', 'relational.status'}
+                            'command.lookup', 'task.lookup', 'task.cancel', 'task.schedule.lookup', 'task.schedule.cancel',
+                            'event.publish', 'files.execute', 'files.status', 'relational.complete', 'relational.status'}
                             and (not installation.enabled or installation.status != 'active')):
                         raise ValueError("Application installation is not active")
                     if request["action"] not in self.allowed_actions:
@@ -304,6 +307,14 @@ class ApplicationPlatformServer:
         mode = db.scalar(select(ApplicationExtensionInstallation.authority_mode).where(
             ApplicationExtensionInstallation.id == installation.id))
         if action == DISCOVERY_ACTION:
+            if set(request) == ENVELOPE_FIELDS | {'resource_scopes'}:
+                from backend.services.application_resource_discovery import discover_resources
+                from three_mm_protocol.application_resources import ResourceDiscoveryRequestV1
+                query = ResourceDiscoveryRequestV1(scopes=request['resource_scopes'])
+                engine = db.get_bind().engine; identifier = installation.id; instance = installation.instance_id
+                if db.new or db.dirty or db.deleted: raise ValueError('Resource observation requires a clean transaction')
+                db.rollback()
+                return discover_resources(engine, identifier, instance, query.scopes, transport_secret=transport_secret)
             if set(request) != ENVELOPE_FIELDS:
                 raise ValueError("Platform discovery fields are invalid")
             from backend.services.authority_metadata import read_authority_guard, read_application_authority
@@ -314,10 +325,41 @@ class ApplicationPlatformServer:
                 recovery_generation=guard.generation, authority_revision=guard.revision,
                 application_incarnation=current.incarnation, authority_epoch=current.epoch,
                 authority_mode=current.mode,
-                operations=sorted(COMPATIBILITY_ACTIONS if current.mode == "compatibility" else SCOPED_ACTIONS),
+                operations=sorted(self.allowed_actions & (COMPATIBILITY_ACTIONS if current.mode == "compatibility" else SCOPED_ACTIONS)),
             ).model_dump(mode="json")
         if mode != 'compatibility' and action not in SCOPED_ACTIONS:
             raise ValueError('Platform action has no supported resource grant')
+        if action in {"delegation.execute", "delegation.lookup"}:
+            from backend.services.application_delegations import execute_delegation, inspect_delegation
+            from backend.config import get_settings
+            if mode != "enforced" or set(request) != ENVELOPE_FIELDS | {"delegation_id"}:
+                raise ValueError("Delegation requires current scoped service authority")
+            identifier = installation.id
+            engine = db.get_bind().engine
+            db.rollback()
+            from fastapi import HTTPException
+            try:
+                if action == "delegation.lookup":
+                    return inspect_delegation(engine, identifier, request["delegation_id"])
+                return execute_delegation(engine, identifier, request["delegation_id"],
+                    transport_secret=transport_secret, settings=get_settings().applications)
+            except HTTPException:
+                raise ValueError("Delegation is unavailable for the current actor") from None
+        if action in {"task.submit", "task.lookup", "task.cancel", "task.start", "task.progress"}:
+            from backend.services.application_tasks import submit_task, lookup_task, cancel_task, start_task, progress_task
+            field = {"task.submit": "task", "task.lookup": "lookup", "task.cancel": "lookup", "task.start": "execution", "task.progress": "progress"}[action]
+            if set(request) != ENVELOPE_FIELDS | {field}:
+                raise ValueError("Task transport fields are invalid")
+            handler = {"task.submit": submit_task, "task.lookup": lookup_task, "task.cancel": cancel_task, "task.start": start_task, "task.progress": progress_task}[action]
+            return handler(db, installation, request[field])
+        if action in {"task.schedule.create", "task.schedule.lookup", "task.schedule.cancel"}:
+            from backend.services.application_task_schedules import create_schedule, lookup_schedule, cancel_schedule
+            field = "schedule" if action == "task.schedule.create" else "lookup"
+            if set(request) != ENVELOPE_FIELDS | {field}:
+                raise ValueError("Schedule transport fields are invalid")
+            handler = {"task.schedule.create": create_schedule, "task.schedule.lookup": lookup_schedule,
+                "task.schedule.cancel": cancel_schedule}[action]
+            return handler(db, installation, request[field])
         if action == 'installation.peers.read':
             from backend.services.application_peer_read import read_application_peer
             return read_application_peer(db, installation, request)
@@ -450,13 +492,23 @@ class ApplicationPlatformServer:
             if action == "installation.identity.get":
                 return installation_identity(db).model_dump(mode="json")
             return prove_installation_identity(db, request.get("proof_request")).model_dump(mode="json")
+        if action == 'command.discover':
+            from backend.services.application_command_discovery import discover_selected_command
+            from three_mm_protocol.application_command_discovery import CommandDiscoveryRequestV1
+            if set(request) != ENVELOPE_FIELDS | {'binding_id'}:
+                raise ValueError('Command discovery fields are invalid')
+            query = CommandDiscoveryRequestV1(binding_id=request['binding_id'])
+            return discover_selected_command(db.get_bind().engine, installation.id,
+                request['instance_id'], query.binding_id)
         if action == 'command.lookup':
             from backend.services.application_commands import command_lookup
             return command_lookup(db, installation, request.get('lookup'))
         if action in {'command.submit', 'command.status'}:
             from backend.services.application_commands import submit_command, command_status
             if action == 'command.submit':
-                return submit_command(db, installation, request.get('command'))
+                if set(request) not in (ENVELOPE_FIELDS | {'command'}, ENVELOPE_FIELDS | {'command', 'task_execution'}):
+                    raise ValueError('Command transport fields are invalid')
+                return submit_command(db, installation, request.get('command'), task_execution=request.get('task_execution'))
             return command_status(db, installation, str(request.get('command_id', '')))
         if action == "connector.request":
             from backend.services.application_connector_transport import begin_connector
@@ -521,6 +573,51 @@ class CoreRuntimeAuthorityServer(ApplicationPlatformServer):
                 connection.settimeout(AUTHORITY_READ_SECONDS)
                 connection.sendall(json.dumps(result,separators=(",", ":")).encode()+b"\n")
                 return
+            if "task_execution_contract" in request:
+                if type(request["task_execution_contract"]) is not int or request["task_execution_contract"] != 1:
+                    return
+                from backend.database import SessionLocal
+                from backend.config import get_settings
+                from backend.services.application_tasks import claim_task, dispatch_task, finish_task
+                with SessionLocal() as task_db:
+                    task_engine = task_db.get_bind().engine
+                if set(request) == {"task_execution_contract", "action"} and request["action"] == "claim":
+                    result = claim_task(task_engine,
+                        settings=get_settings().applications.model_copy(update={"key_root": self.key_root}),
+                        worker_generation=self._origin.generation)
+                elif set(request) == {"task_execution_contract", "action"} and request["action"] == "schedule.poll":
+                    from backend.services.application_task_schedules import poll_schedules
+                    result = poll_schedules(task_engine)
+                elif (set(request) == {"task_execution_contract", "action", "schedule_id", "request_hash", "due_at"}
+                        and request["action"] == "schedule.tick"
+                        and isinstance(request["schedule_id"], str) and re.fullmatch(r"schedule_[0-9a-f]{32}", request["schedule_id"])
+                        and isinstance(request["request_hash"], str) and re.fullmatch(r"[0-9a-f]{64}", request["request_hash"])
+                        and isinstance(request["due_at"], str) and len(request["due_at"]) <= 64):
+                    from backend.services.application_task_schedules import tick_schedule
+                    result = tick_schedule(task_engine, schedule_id=request["schedule_id"],
+                        request_hash=request["request_hash"], due_at=request["due_at"])
+                elif (set(request) == {"task_execution_contract", "action", "task_run_id", "lease_token", "response"}
+                        and request["action"] == "dispatch"
+                        and isinstance(request["task_run_id"], str) and re.fullmatch(r"task_[0-9a-f]{32}", request["task_run_id"])
+                        and isinstance(request["lease_token"], str) and re.fullmatch(r"[0-9a-f]{64}", request["lease_token"])):
+                    result = dispatch_task(task_engine,
+                        settings=get_settings().applications.model_copy(update={"key_root": self.key_root}),
+                        worker_generation=self._origin.generation, task_run_id=request["task_run_id"],
+                        lease_token=request["lease_token"], response=request["response"])
+                elif (set(request) in ({"task_execution_contract", "action", "task_run_id", "lease_token", "response"},
+                        {"task_execution_contract", "action", "task_run_id", "lease_token", "failure"})
+                        and request["action"] == "complete"
+                        and isinstance(request["task_run_id"], str) and re.fullmatch(r"task_[0-9a-f]{32}", request["task_run_id"])
+                        and isinstance(request["lease_token"], str) and re.fullmatch(r"[0-9a-f]{64}", request["lease_token"])
+                        and request.get("failure", "execution_unconfirmed") == "execution_unconfirmed"):
+                    result = finish_task(task_engine, key_root=self.key_root,
+                        worker_generation=self._origin.generation, task_run_id=request["task_run_id"],
+                        lease_token=request["lease_token"], response=request.get("response"))
+                else:
+                    return
+                connection.settimeout(1)
+                connection.sendall(json.dumps({"task_execution_contract": 1, "task": result}, separators=(",", ":")).encode() + b"\n")
+                return
             if "connector_execution_contract" in request:
                 if (type(request["connector_execution_contract"]) is not int or request["connector_execution_contract"] != 1
                         or set(request) not in ({"connector_execution_contract", "receipt", "response"},
@@ -551,7 +648,7 @@ class CoreRuntimeAuthorityServer(ApplicationPlatformServer):
             if not isinstance(request.get("action"), str) or request["action"] not in RUNTIME_ACTIONS:
                 return
             super()._handle(connection, decoded_request=request, origin=origin)
-        except (OSError,ValueError,TypeError,KeyError,IndexError):
+        except (OSError,ValueError,TypeError,KeyError,IndexError,SQLAlchemyError,ApplicationTransportError):
             return
         finally:
             if origin is not None:

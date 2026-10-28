@@ -79,7 +79,7 @@ class LifecycleConsent:
             from backend.db.module import ApplicationExtensionInstallation
             installation = db.get(ApplicationExtensionInstallation, current.installation_id)
             return SavedConsent(self.manager, self.prepared, current, installation.instance_id,
-                read_authority_guard(db).generation, deepcopy(grant), _resource_identity(subject))
+                read_authority_guard(db).generation, deepcopy(grant), _resource_identity(subject, required_only=True))
         except _UNAVAILABLE:
             return None
 
@@ -106,11 +106,12 @@ class LifecycleConsent:
                 return False
             prepared = replace(self.prepared, pin=pin)
             subject = self.manager._subject(db, key, installation.id, prepared)
-            if _resource_identity(subject) != saved.identity:
+            if _resource_identity(subject, required_only=True) != saved.identity:
                 return False
             native, _ = self.manager._policy(db, key, subject,
                 grant["data"]["native_review_id"])
-            approved = _parse(type(subject), grant["data"]["subject"])
+            from backend.services import application_authority_management as authority
+            approved = _parse(getattr(authority, 'PolicySubjectV' + str(grant['data']['subject']['subject_version'])), grant['data']['subject'])
             _, approved_policy = self.manager._policy(db, key, approved,
                 grant["data"]["native_review_id"])
             if (native["revision"] != grant["data"]["native_revision"]

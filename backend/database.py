@@ -17,21 +17,18 @@ from backend.db.user import User
 from backend.db.session import UserSession
 from backend.db.audit_log import AuditLog
 from backend.db.permission import Permission
-from backend.db.page import Page
-from backend.db.display import Display
-from backend.db.widget import Widget
-from backend.db.universal_translation import Menu
+from backend.db.menu import Menu
 from backend.db.settings import Settings
 from backend.db.role import Role
 from backend.db.installation_identity import CoreInstallationIdentity
 from backend.db.installation_peer import InstallationPeerOrigin, InstallationPeerInbound, InstallationPeerOutbound, InstallationPeerNonce, InstallationPeerAudit
 from backend.db.application_command import ApplicationCommandEpoch, ApplicationCommandRequest
+from backend.db.application_task import ApplicationTaskRun, ApplicationTaskSchedule
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.application_policy_review import ApplicationPolicyReview, ApplicationPolicyReviewDecision
 from backend.db.application_authority_grant import ApplicationNativeReview, ApplicationAuthorityPlan, ApplicationAuthorityGrant, ApplicationAuthorityAction
 from backend.db.notification import Notification
-from backend.db.language_pack import LanguagePack
-from backend.db.extension import Extension
+from backend.db.language_extension import LanguageExtensionInstallation
 from backend.db.device import (
     Device,
     DeviceCredential,
@@ -45,6 +42,7 @@ from backend.db.device import (
     DeviceCapabilityProvider,
     DeviceRuntimeFeatures,
 )
+from backend.db.module_reference import ModulePackageRetainedReference
 from backend.db.module import (
     ApplicationEventCursor,
     ApplicationEventDelivery,
@@ -60,12 +58,6 @@ from backend.db.module import (
     ApplicationSyncCheckpoint,
     ModuleInstallation,
     ModulePackage,
-)
-from backend.db.runtime_extension import RuntimeEntityRecord, RuntimeExtensionDefinition
-from backend.db.extension_project import ExtensionProject, ExtensionProjectBuild, ExtensionProjectFile
-from backend.db.automation import (
-    AiCreditAccount, AiJob, AiUsageLedger, AutomationAuditEvent,
-    AutomationProposal, AutomationRevision,
 )
 import logging
 

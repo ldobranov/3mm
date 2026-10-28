@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from agent import __version__
+from agent.capability_providers import AgentProviderRegistry
 from agent.config import AgentSettings
 from agent.core_client import (
     CommandJournal, CorePublisher, DeviceCredentialStore, OutboxStore,
@@ -85,14 +86,19 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
             credential_endpoint=credential.hub_endpoint if credential is not None else None,
         )
         app.state.hub_connection = connection
+        app.state.mock_identifier = (MockIdentifierAdapter(
+            resolved_settings.data_dir / 'identifier-sequence.json', reader_id=resolved_settings.identifier_reader_id)
+            if resolved_settings.identifier_driver == 'mock' else None)
+        adapters = (app.state.mock_identifier,) if app.state.mock_identifier is not None else ()
         def current_inventory() -> AgentInventory:
             inventory = collect_inventory(identity.device_id, hardware)
-            if resolved_settings.identifier_driver == "mock":
+            if adapters:
                 inventory = inventory.model_copy(
                     update={
                         "capabilities": tuple(
                             dict.fromkeys(
-                                (*inventory.capabilities, "identifier.scan.v1")
+                                (*inventory.capabilities, *(cap.capability_id for adapter in adapters
+                                    for cap in adapter.provider_declaration().capabilities))
                             )
                         )
                     }
@@ -113,14 +119,6 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
         app.state.gpio_configuration = gpio_configuration
         gpio = gpio_configuration.driver
         app.state.mock_gpio = gpio if isinstance(gpio, MockDigitalGpioDriver) else None
-        app.state.mock_identifier = (
-            MockIdentifierAdapter(
-                resolved_settings.data_dir / "identifier-sequence.json",
-                reader_id=resolved_settings.identifier_reader_id,
-            )
-            if resolved_settings.identifier_driver == "mock"
-            else None
-        )
         module_runtime = AgentModuleRuntime(
             resolved_settings.data_dir,
             architecture=app.state.agent_runtime.inventory.architecture,
@@ -190,6 +188,7 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
                     inventory_schema_version=resolved_settings.inventory_schema_version,
                     feature_negotiation=True,
                     capability_availability=True,
+                    adapter_providers=AgentProviderRegistry(resolved_settings.data_dir, identity.device_id, adapters),
                     authority_verification=True,
                 )
 

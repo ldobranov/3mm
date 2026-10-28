@@ -3,6 +3,7 @@ from fastapi import HTTPException, status
 import jwt
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 import os
+import secrets
 
 # Environment-driven configuration
 SECRET_KEY = os.getenv('JWT_SECRET', 'dev-insecure-secret')
@@ -24,6 +25,7 @@ def create_access_token(subject: str, extra_claims: dict | None = None, expires_
         "sub": subject,
         "iat": int(now.timestamp()),
         "exp": int(exp.timestamp()),
+        "jti": secrets.token_hex(16),
     }
     if extra_claims:
         payload.update(extra_claims)

@@ -188,6 +188,21 @@ def test_reconciled_app_can_be_explicitly_activated(lifecycle, monkeypatch):
     assert request(s, "activating").status_code == 200
 
 
+def test_recovery_does_not_need_healthy_package_ui_or_application_transport(lifecycle, monkeypatch):
+    s = lifecycle
+    pending(s)
+    with Session(s.engine) as db:
+        archive = Path(db.get(ModulePackage, 1).file_path)
+    archive.write_bytes(b'corrupt optional package')
+    monkeypatch.setattr(routes, '_definition', lambda *_args: pytest.fail('Recovery loaded application code metadata'))
+    recovery_helper(s, monkeypatch)
+    response = recover(s)
+    assert response.status_code == 200, response.text
+    assert response.json()['status'] == 'disabled'
+    assert archive.read_bytes() == b'corrupt optional package'
+    assert s.calls == ['recovering']
+
+
 @pytest.mark.parametrize("status", ["activating", "disabling", "uninstalling", "recovering", "recovery_required"])
 def test_remove_interrupted_first_install_quiesces_before_uninstall(lifecycle, monkeypatch, status):
     s = lifecycle

@@ -1,14 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import axios from 'axios'
 import * as publicHost from '../extension-ui/application-v1'
 import { createApplicationHost, withApplicationHost } from './application-host'
 import { getBackendUrl } from './runtime-config'
+import { getToken } from './auth'
 import type { CompiledUiPackage, CompiledUiEntrypoint } from './compiled-ui'
+import { i18n } from './i18n'
 
 vi.mock('./runtime-config', () => ({ getBackendUrl: vi.fn(async () => 'https://api.test') }))
-vi.mock('./auth', () => ({ getToken: () => 'core-secret' }))
+vi.mock('./kiosk-session', () => ({ getKioskTokenFor: vi.fn(async () => 'kiosk-secret') }))
+vi.mock('./auth', () => ({ getToken: vi.fn(() => 'core-secret') }))
+vi.mock('./language-api', () => ({ readFrontendTranslations: vi.fn(async () => ({})), saveCurrentUserLanguage: vi.fn() }))
 const pkg: CompiledUiPackage = { module_id: 'org.example.neutral', version: '1.0.0', name: 'Neutral',
   source_sha256: 'a'.repeat(64), styles: [], entrypoints: [] }
 const entry = (audience: publicHost.ApplicationAudience = 'operator'): CompiledUiEntrypoint => ({
@@ -24,9 +28,10 @@ function info(audience: publicHost.ApplicationAudience = 'operator') {
   }
 }
 let send: MockInstance<typeof axios.request>
-beforeEach(() => {
-  localStorage.setItem('applicationKioskToken', 'kiosk-secret')
+beforeEach(async () => {
+  await i18n.setLanguage('en', false)
   vi.mocked(getBackendUrl).mockResolvedValue('https://api.test')
+  vi.mocked(getToken).mockReturnValue('core-secret')
   send = vi.spyOn(axios, 'request').mockImplementation(async config => ({ data: config.method === 'GET' ? info() : { result: 'ok' } }))
 })
 afterEach(() => { vi.restoreAllMocks(); localStorage.clear() })
@@ -34,7 +39,7 @@ afterEach(() => { vi.restoreAllMocks(); localStorage.clear() })
 describe('public module-bound application host', () => {
   it('exports no HTTP client, stores, router, credentials or host factory', () => {
     expect(Object.keys(publicHost).sort()).toEqual(['APPLICATION_HOST_VERSION', 'ApplicationHostError', 'applicationHostKey', 'useApplicationHost'])
-    expect(Object.keys(createApplicationHost(pkg, entry()).host)).toEqual(['getInfo', 'sessions', 'invoke'])
+    expect(Object.keys(createApplicationHost(pkg, entry()).host)).toEqual(['access', 'delegations', 'presentation', 'getInfo', 'sessions', 'administration', 'files', 'invoke'])
   })
   it.each(['public', 'kiosk', 'operator', 'administrator'] as const)('uses only %s credentials and audience path', async audience => {
     send.mockImplementation(async config => ({ data: config.method === 'GET' ? info(audience) : { result: 'ok' } }))
@@ -103,6 +108,57 @@ describe('public module-bound application host', () => {
     await expect(host.invoke('read', {})).rejects.toMatchObject({ code: 'access_denied' })
     expect(send.mock.calls.every(([c]) => c.method === 'GET')).toBe(true)
   })
+  it('shares only concurrent discovery while dispatching each operation once', async () => {
+    let resolve!: (value: { data: ReturnType<typeof info> }) => void
+    send.mockImplementation(config => config.method === 'GET'
+      ? new Promise(done => { resolve = done }) : Promise.resolve({ data: { result: 'ok' } }))
+    const { host } = createApplicationHost(pkg, entry())
+    const first = host.invoke('read', {}), second = host.invoke('read', {})
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1))
+    resolve({ data: info() })
+    expect(await Promise.all([first, second])).toEqual([{ result: 'ok' }, { result: 'ok' }])
+    expect(send.mock.calls.filter(([c]) => c.method === 'POST')).toHaveLength(2)
+    send.mockResolvedValue({ data: { ...info(), operations: [] } })
+    await expect(host.invoke('read', {})).rejects.toMatchObject({ code: 'access_denied' })
+    expect(send).toHaveBeenCalledTimes(4)
+  })
+  it('shares a failed discovery but permits a fresh explicit read afterward', async () => {
+    let reject!: (error: Error) => void
+    send.mockImplementation(() => new Promise((_done, fail) => { reject = fail }))
+    const { host } = createApplicationHost(pkg, entry())
+    const results = Promise.allSettled([host.invoke('read', {}), host.invoke('read', {})])
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1))
+    reject(Object.assign(new Error('denied'), { isAxiosError: true, response: { status: 403 } }))
+    expect((await results).map(result => result.status)).toEqual(['rejected', 'rejected'])
+    expect(send.mock.calls.every(([c]) => c.method === 'GET')).toBe(true)
+    send.mockResolvedValue({ data: info() })
+    await host.getInfo()
+    expect(send).toHaveBeenCalledTimes(2)
+  })
+  it('does not share discovery across an actor change or return the old actor snapshot', async () => {
+    const replies: ((value: { data: ReturnType<typeof info> }) => void)[] = []
+    send.mockImplementation(() => new Promise(done => { replies.push(done) }))
+    const { host } = createApplicationHost(pkg, entry())
+    const oldActor = host.getInfo()
+    const denied = expect(oldActor).rejects.toMatchObject({ code: 'access_denied' })
+    await vi.waitFor(() => expect(replies).toHaveLength(1))
+    vi.mocked(getToken).mockReturnValue('new-actor')
+    const newActor = host.getInfo()
+    await vi.waitFor(() => expect(replies).toHaveLength(2))
+    replies[0]({ data: info() }); replies[1]({ data: info() })
+    await denied
+    expect((await newActor).module_id).toBe(pkg.module_id)
+    expect(send.mock.calls.map(([c]) => c.headers)).toEqual([
+      { Authorization: 'Bearer core-secret' }, { Authorization: 'Bearer new-actor' },
+    ])
+  })
+  it('sends the exact discovery identity even if credentials change during preflight', async () => {
+    vi.mocked(getToken).mockReturnValueOnce('core-secret').mockReturnValue('new-actor')
+    const { host } = createApplicationHost(pkg, entry())
+    await expect(host.getInfo()).rejects.toMatchObject({ code: 'access_denied' })
+    expect(send).toHaveBeenCalledOnce()
+    expect(send.mock.calls[0][0].headers).toEqual({ Authorization: 'Bearer core-secret' })
+  })
   it('never switches Core origins between preflight and dispatch', async () => {
     const { host } = createApplicationHost(pkg, entry())
     send.mockImplementation(async () => { vi.mocked(getBackendUrl).mockResolvedValue('https://foreign.test'); return { data: info() } })
@@ -158,5 +214,46 @@ describe('public module-bound application host', () => {
     await expect(task).rejects.toMatchObject({ code: 'disposed' })
     await expect(captured.invoke('read', {})).rejects.toMatchObject({ code: 'disposed' })
     expect(send).toHaveBeenCalledOnce()
+  })
+  it('provides the initial Core locale before mount and patches it without losing a form or error', async () => {
+    await i18n.setLanguage('bg-BG', false)
+    let mounted = 0
+    let captured!: publicHost.ApplicationHost
+    const updates = vi.fn()
+    const child = defineComponent({ props: { locale: String }, setup(props) {
+      mounted++
+      captured = publicHost.useApplicationHost()
+      expect(captured.presentation.getInfo()).toEqual({ locale: 'bg-BG' })
+      captured.presentation.subscribe(updates)
+      const draft = ref(''), error = ref('invalid')
+      return () => h('form', [h('input', { value: draft.value, onInput: (e: Event) => { draft.value = (e.target as HTMLInputElement).value } }),
+        h('p', error.value), h('span', props.locale)])
+    } })
+    const wrapper = mount(withApplicationHost(pkg, entry(), child), { attrs: { locale: 'foreign' } })
+    await wrapper.find('input').setValue('unsaved draft')
+    await i18n.setLanguage('de', false)
+    await nextTick()
+    expect(wrapper.find('span').text()).toBe('de')
+    expect(wrapper.find('input').element.value).toBe('unsaved draft')
+    expect(wrapper.find('p').text()).toBe('invalid')
+    expect(mounted).toBe(1)
+    expect(updates).toHaveBeenCalledExactlyOnceWith({ locale: 'de' })
+    expect(Object.isFrozen(updates.mock.calls[0][0])).toBe(true)
+    wrapper.unmount()
+    await i18n.setLanguage('bg', false)
+    expect(updates).toHaveBeenCalledOnce()
+    expect(() => captured.presentation.getInfo()).toThrowError(expect.objectContaining({ code: 'disposed' }))
+    expect(() => captured.presentation.subscribe(updates)).toThrowError(expect.objectContaining({ code: 'disposed' }))
+  })
+  it('stops an individual locale subscription and advertises presentation without exposing a setter', async () => {
+    const { host, dispose } = createApplicationHost(pkg, entry())
+    const listener = vi.fn(), stop = host.presentation.subscribe(listener)
+    stop(); stop()
+    await i18n.setLanguage('bg', false)
+    expect(listener).not.toHaveBeenCalled()
+    expect(host.presentation.getInfo().locale).toBe('bg')
+    expect((await host.getInfo()).features.presentation_version).toBe(1)
+    expect(Object.keys(host.presentation)).toEqual(['version', 'getInfo', 'subscribe'])
+    dispose()
   })
 })

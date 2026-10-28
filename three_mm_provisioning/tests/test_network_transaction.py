@@ -184,7 +184,6 @@ def test_portal_and_root_helper_reconcile_a_commit_reply_loss(tmp_path, lost_rep
     from setup_service.config import SetupSettings
     from three_mm_provisioning.persistence import FileProvisioningStore
     from three_mm_provisioning.network_helper_client import NetworkHelperClientAdapter
-    from three_mm_provisioning.setup_access import FileSetupAccessStore
 
     boundary = Boundary()
     root = transaction(tmp_path / 'root-owned', boundary)
@@ -204,8 +203,6 @@ def test_portal_and_root_helper_reconcile_a_commit_reply_loss(tmp_path, lost_rep
     app = create_app(Bridge(tmp_path/'unused.sock'), store, settings,
                      capability_provider=lambda:[dict(name='wlp2s0', access_point=False)])
     with TestClient(app) as client:
-        code = FileSetupAccessStore(settings.data_dir).issue(None)
-        client.headers['Authorization']='Bearer '+code
         response=client.post('/api/v1/setup/configure',json=dict(role='node',hub_endpoint='https://hub.test',
             locale='en-US',device_name='node',administrator_name='operator',network_mode='wifi',
             network_interface='wlp2s0',network_name='private-network',passphrase='private-passphrase'))
@@ -217,7 +214,7 @@ def test_portal_and_root_helper_reconcile_a_commit_reply_loss(tmp_path, lost_rep
             assert response.status_code==200, response.text
         assert store.load_runtime_snapshot().role.value=='node'
         assert boundary.active=='new-profile'
-        assert client.post('/api/v1/setup/finish',json={}).status_code==401
+        assert client.post('/api/v1/setup/finish',json={}).status_code==403
     # The HTTP acknowledgement cannot acknowledge a separate OS activation.
     # Restart the portal with the committed handoff still pending, then resume
     # activation without repeating Wi-Fi or changing the selected identity.
@@ -229,8 +226,6 @@ def test_portal_and_root_helper_reconcile_a_commit_reply_loss(tmp_path, lost_rep
     restarted = create_app(Bridge(tmp_path/'unused.sock'), store, settings,
         capability_provider=lambda:[dict(name='wlp2s0', access_point=False)])
     with TestClient(restarted) as client:
-        token = FileSetupAccessStore(settings.data_dir).issue(store.load_runtime_snapshot())
-        client.headers['Authorization'] = 'Bearer '+token
         assert client.get('/api/v1/setup/capabilities').json()['complete'] is True
         assert client.post('/api/v1/setup/finish',json={}).status_code == 200
     assert activation.load() == pending

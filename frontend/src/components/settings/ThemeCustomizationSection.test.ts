@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { reactive } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import ThemeCustomizationSection from './ThemeCustomizationSection.vue'
+vi.mock('./ThemeComponentPreview.vue', () => ({ default: { props: ['mode'], template: '<div class="component-preview" :data-mode="mode" />' } }))
 
 function editor(saving = false) {
   const settings = reactive({
@@ -33,9 +34,10 @@ describe('Built-in theme controls', () => {
     expect(wrapper.find('input[type="color"]').attributes('aria-label')).toBe('Body Background Color')
   })
 
-  it('keeps save disabled while saving and demo buttons non-submitting', () => {
+  it('keeps save disabled and the shared preview outside the settings form', () => {
     const { wrapper } = editor(true)
     expect(wrapper.find('button[type="submit"]').attributes()).toHaveProperty('disabled')
-    expect(wrapper.findAll('.preview-buttons button').every(button => button.attributes('type') === 'button')).toBe(true)
+    expect(wrapper.get('.component-preview').attributes('data-mode')).toBe('light')
+    expect(wrapper.find('form .component-preview').exists()).toBe(false)
   })
 })

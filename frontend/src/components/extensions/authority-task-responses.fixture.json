@@ -1,0 +1,207 @@
+{
+  "general": {
+    "consent_version": 1,
+    "optional_resources": [],
+    "unavailable_resources": [],
+    "preview_id": "ad6d43bc3221497aadbacab92195feff",
+    "revision": "9b0532774099e834426e699c0110fd00",
+    "fingerprint": "8c8a77c0a69986b923a2d2cb2da5c087e66b7383c9f17e977819853896167572",
+    "expires_in_seconds": 900,
+    "module_id": "org.3mm.workflow-reference",
+    "installation_id": 1,
+    "artifact_sha256": "2d7fb0b0999b6199cc75811cda7c2e7b883f039e8378260bbcc4f80d595848b8",
+    "built_ui_sha256": null,
+    "scopes": [
+      "command:pulse",
+      "connector:business_api"
+    ],
+    "selected_scopes": [
+      "command:pulse",
+      "connector:business_api"
+    ],
+    "resources": {
+      "commands": [
+        {
+          "declaration": {
+            "binding_id": "pulse",
+            "target_device_config_key": "TARGET_DEVICE_ID",
+            "capability_id": "gpio.digital.control",
+            "contract_version": "1.0",
+            "action": "pulse",
+            "arguments_schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "channel": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "enum": [
+                    "output.1"
+                  ]
+                },
+                "duration_ms": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 250
+                }
+              },
+              "required": [
+                "channel",
+                "duration_ms"
+              ]
+            },
+            "max_ttl_seconds": 5,
+            "sensor_device_config_key": null,
+            "sensor_id": null
+          },
+          "target_device_id": "dev_33333333333333333333333333333333",
+          "control_revision": "control_260bc0e79758ea6a3986657afc80fa7d9e0b1db59f6a3048a5b7559c27d823b1",
+          "sensor_device_id": null,
+          "sensor_control_revision": null
+        }
+      ],
+      "connectors": [
+        {
+          "declaration": {
+            "connector_id": "business_api",
+            "destination_config_key": "BUSINESS_API_URL",
+            "allowed_schemes": [
+              "http",
+              "https"
+            ],
+            "path_prefix": "/",
+            "authentication": "basic",
+            "credential_ref_config_key": "BUSINESS_API_CREDENTIAL",
+            "supports_mutations": true,
+            "timeout_seconds": 10,
+            "max_request_bytes": 262144,
+            "max_response_bytes": 1048576
+          },
+          "configured_origin": "https://api.example.test",
+          "configured_secret_ref": "secret_22222222222222222222222222222222",
+          "stored": {
+            "owner": {
+              "core_installation_id": "inst_55555555555555555555555555555555",
+              "application_installation_id": "1",
+              "incarnation": "874533364a52198c4d9669d2f96027df",
+              "module_id": "org.3mm.workflow-reference"
+            },
+            "binding_revision": "0550c51559fc85464b49d740d5add5f2",
+            "destination_origin": "https://api.example.test",
+            "enabled": true,
+            "credential": {
+              "owner": {
+                "core_installation_id": "inst_55555555555555555555555555555555",
+                "application_installation_id": "1",
+                "incarnation": "874533364a52198c4d9669d2f96027df",
+                "module_id": "org.3mm.workflow-reference"
+              },
+              "secret_ref": "secret_22222222222222222222222222222222",
+              "version": 9,
+              "credential_kind": "basic",
+              "revoked": false
+            }
+          }
+        }
+      ]
+    },
+    "user_permissions": [],
+    "selected_user_permissions": [],
+    "access_saved": false,
+    "installation_enabled": true,
+    "installation_status": "active"
+  },
+  "task": {
+    "consent_version": 1,
+    "optional_resources": [],
+    "unavailable_resources": [],
+    "preview_id": "4725d56e26cab742b97ff4a4be717cf8",
+    "revision": "772f27e156da63cac3c799de13e4e3a8",
+    "fingerprint": "e9da5926f94184e2efb1de6cde3da8da1fa7d9a80559629ad82f09d24589b464",
+    "expires_in_seconds": 900,
+    "module_id": "org.3mm.task-probe",
+    "installation_id": 1,
+    "artifact_sha256": "c12ae446eb714176618d6c56e01fa68be609454cd176e90d6257060994a02347",
+    "built_ui_sha256": null,
+    "scopes": [
+      "task:calculate"
+    ],
+    "selected_scopes": [
+      "task:calculate"
+    ],
+    "resources": {
+      "commands": [],
+      "connectors": [],
+      "tasks": [
+        {
+          "declaration": {
+            "task_id": "calculate",
+            "handler_operation_id": "calculate",
+            "profile": "bounded_task_v1",
+            "max_runtime_seconds": 2,
+            "max_delay_seconds": 3600,
+            "max_pending": 8
+          },
+          "operation": {
+            "operation_id": "calculate",
+            "kind": "task",
+            "audiences": [
+              "internal"
+            ],
+            "required_permission": null,
+            "idempotency": "required",
+            "input_schema": {
+              "additionalProperties": false,
+              "properties": {
+                "pause_ms": {
+                  "maximum": 3000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "upper": {
+                  "maximum": 1000000,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "upper",
+                "pause_ms"
+              ],
+              "type": "object"
+            },
+            "output_schema": {
+              "additionalProperties": false,
+              "properties": {
+                "total": {
+                  "maximum": 1000000000000,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total"
+              ],
+              "type": "object"
+            },
+            "timeout_seconds": 2,
+            "audit": "metadata",
+            "emitted_events": []
+          },
+          "owner": {
+            "core_installation_id": "inst_55555555555555555555555555555555",
+            "application_installation_id": "1",
+            "incarnation": "874533364a52198c4d9669d2f96027df",
+            "module_id": "org.3mm.task-probe"
+          },
+          "package_artifact_sha256": "c12ae446eb714176618d6c56e01fa68be609454cd176e90d6257060994a02347"
+        }
+      ]
+    },
+    "user_permissions": [],
+    "selected_user_permissions": [],
+    "access_saved": false,
+    "installation_enabled": true,
+    "installation_status": "active"
+  }
+}

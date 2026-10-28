@@ -23,19 +23,21 @@ export interface AuthorityPlan {
   scopes: string[]
   artifact_sha256: string
   expires_in_seconds: number
-  resources: { commands: unknown[]; connectors: unknown[]; events?: unknown[]; publications?: unknown[]; private_files?: AuthorityPrivateFileResource[]; relational?: AuthorityRelationalResource[]; checkpoints?: AuthorityCheckpointResource[]; identities?: AuthorityIdentityResource[]; status_projections?: AuthorityStatusResource[]; peer_reads?: AuthorityPeerReadResource[]; sessions?: AuthoritySessionResource[] }
+  resources: { commands: unknown[]; connectors: unknown[]; events?: unknown[]; publications?: unknown[]; private_files?: AuthorityPrivateFileResource[]; relational?: AuthorityRelationalResource[]; checkpoints?: AuthorityCheckpointResource[]; identities?: AuthorityIdentityResource[]; status_projections?: AuthorityStatusResource[]; peer_reads?: AuthorityPeerReadResource[]; sessions?: AuthoritySessionResource[]; tasks?: AuthorityTaskResource[] }
   isolation_proven: false
   historical?: boolean
   replayed?: boolean
 }
 export interface AuthorityPrivateFileResource {
   declaration: {
-    file_contract_version: 1; namespace: 'private_files'; mode: 'read' | 'read_write'
+    file_contract_version: 1 | 2; namespace: 'private_files'; mode: 'read' | 'read_write'
     max_file_bytes: number; max_total_bytes: number; max_files: number
+    max_uploads?: number; max_staging_bytes?: number; upload_ttl_seconds?: number
+    public_links?: boolean; media_transforms?: boolean
   }
   owner: { core_installation_id: string; application_installation_id: string; incarnation: string; module_id: string }
   package_artifact_sha256: string
-  operation: 'read' | 'write'
+  operation: 'read' | 'write' | 'publish' | 'transform'
 }
 export interface AuthorityRelationalResource {
   declaration: {
@@ -97,6 +99,15 @@ export interface AuthorityPeerReadResource {
   enrollment_metadata: null | { metadata_version: 2; application_intent: string; consent_revision: number; consent: AuthorityStatusResource['consent']; metadata_hash: string }
 }
 export type Decision = 'approve' | 'deny' | 'apply'
+export interface AuthorityTaskResource {
+  declaration: { task_id: string; handler_operation_id: string; profile: 'bounded_result_once_v1' | 'bounded_task_v1';
+    max_runtime_seconds: number; max_delay_seconds: number; max_pending: number }
+  operation: { operation_id: string; kind: 'task'; audiences: ['internal']; required_permission: null;
+    idempotency: 'required'; input_schema: Record<string, unknown>; output_schema: Record<string, unknown>;
+    timeout_seconds: number; audit: 'metadata' | 'redacted'; emitted_events: [] }
+  owner: AuthorityPrivateFileResource['owner']
+  package_artifact_sha256: string
+}
 export interface AuthoritySessionResource {
   declaration: {
     contract_version: 1; binding_id: string; target_device_config_key: string
@@ -114,10 +125,13 @@ const id = (value: unknown): value is string => typeof value === 'string' && val
 const digest = (value: unknown): value is string => typeof value === 'string' && value.length === 64 && /^[0-9a-f]{64}$/.test(value)
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const scopes = (value: unknown): value is string[] => Array.isArray(value)
-  && value.length <= (value.some(item => typeof item === 'string' && item.startsWith('session:')) ? 293
+  && value.length <= (value.some(item => item === 'storage:private_files_publish' || item === 'storage:private_files_transform') ? 2 : 0)
+    + (value.some(item => typeof item === 'string' && item.startsWith('task:')) ? 72
+    : value.some(item => typeof item === 'string' && item.startsWith('session:')) ? 293
     : value.some(item => typeof item === 'string' && item.startsWith('peer:')) ? 261
     : value.some(item => typeof item === 'string' && item.startsWith('status:')) ? 229 : 197)
-  && value.every(item => typeof item === 'string' && item.trim() === item && /^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read|session:[a-z][a-z0-9_]{0,95}:open)$/.test(item))
+  && value.every(item => typeof item === 'string' && item.trim() === item && /^(?:(?:command|connector|event|publication|task):[a-z][a-z0-9_]{0,95}|storage:(?:private_files_(?:read|write|publish|transform)|relational_(?:read|write))|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read|session:[a-z][a-z0-9_]{0,95}:open)$/.test(item))
+  && (!value.some(item => item.startsWith('task:')) || value.every(item => /^(?:task|command):/.test(item)))
   && new Set(value).size === value.length
 const exact = (value: Record<string, unknown>, fields: string[]) => Object.keys(value).length === fields.length && fields.every(key => key in value)
 const identity = (value: unknown) => typeof value === 'string' && value.trim() === value && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/.test(value)
@@ -141,16 +155,25 @@ function privateFilesMatch(resources: Record<string, unknown>, selected: string[
     if (!object(item) || !exact(item, ['declaration', 'owner', 'package_artifact_sha256', 'operation'])
       || !object(item.declaration) || !object(item.owner)) return false
     const declaration = item.declaration, owner = item.owner
-    if (!exact(declaration, ['file_contract_version', 'namespace', 'mode', 'max_file_bytes', 'max_total_bytes', 'max_files'])
-      || declaration.file_contract_version !== 1 || declaration.namespace !== 'private_files'
+    const streaming = declaration.file_contract_version === 2
+    const fields = ['file_contract_version', 'namespace', 'mode', 'max_file_bytes', 'max_total_bytes', 'max_files',
+      ...(streaming ? ['max_uploads', 'max_staging_bytes', 'upload_ttl_seconds', 'public_links', 'media_transforms'] : [])]
+    const operations = ['read', ...(declaration.mode === 'read_write' ? ['write'] : []),
+      ...(streaming && declaration.public_links ? ['publish'] : []), ...(streaming && declaration.media_transforms ? ['transform'] : [])]
+    if (!exact(declaration, fields)
+      || (declaration.file_contract_version !== 1 && declaration.file_contract_version !== 2) || declaration.namespace !== 'private_files'
       || !['read', 'read_write'].includes(String(declaration.mode))
-      || !bounded(declaration.max_file_bytes, 1048576) || !bounded(declaration.max_total_bytes, 67108864)
-      || !bounded(declaration.max_files, 1024) || Number(declaration.max_file_bytes) > Number(declaration.max_total_bytes)
+      || !bounded(declaration.max_file_bytes, streaming ? 1073741824 : 1048576) || !bounded(declaration.max_total_bytes, streaming ? 4294967296 : 67108864)
+      || !bounded(declaration.max_files, streaming ? 4096 : 1024) || Number(declaration.max_file_bytes) > Number(declaration.max_total_bytes)
+      || streaming && (!bounded(declaration.max_uploads, 16) || !bounded(declaration.max_staging_bytes, 2147483648)
+        || !bounded(declaration.upload_ttl_seconds, 86400, 60) || Number(declaration.max_file_bytes) > Number(declaration.max_staging_bytes)
+        || typeof declaration.public_links !== 'boolean' || typeof declaration.media_transforms !== 'boolean'
+        || declaration.mode === 'read' && (declaration.public_links || declaration.media_transforms))
       || !ownerMatches(owner, status, moduleId)
       || item.package_artifact_sha256 !== status.artifact_sha256
-      || !['read', 'write'].includes(String(item.operation)) || item.operation === 'write' && declaration.mode !== 'read_write') return false
+      || !operations.includes(String(item.operation))) return false
     const currentBinding = JSON.stringify([owner.core_installation_id, owner.application_installation_id, owner.incarnation, owner.module_id,
-      declaration.file_contract_version, declaration.namespace, declaration.mode, declaration.max_file_bytes, declaration.max_total_bytes, declaration.max_files])
+      ...fields.map(field => declaration[field])])
     if (binding !== undefined && binding !== currentBinding) return false
     binding = currentBinding
     keys.push(`storage:private_files_${item.operation}`)
@@ -158,7 +181,8 @@ function privateFilesMatch(resources: Record<string, unknown>, selected: string[
   const expected = selected.filter(key => key.startsWith('storage:private_files_'))
   return new Set(keys).size === keys.length && keys.length === expected.length && keys.every(key => expected.includes(key))
     && (!files.length || keys.includes('storage:private_files_read')
-      && ((files[0] as AuthorityPrivateFileResource).declaration.mode === 'read' ? keys.length === 1 : keys.length === 2))
+      && (() => { const d = (files[0] as AuthorityPrivateFileResource).declaration
+        return keys.length === 1 + (d.mode === 'read_write' ? 1 : 0) + (d.public_links ? 1 : 0) + (d.media_transforms ? 1 : 0) })())
 }
 
 function relationalMatch(resources: Record<string, unknown>, selected: string[], status: AuthorityStatus, moduleId?: string): boolean {
@@ -485,6 +509,65 @@ function sessionResourcesMatch(resources: Record<string, unknown>, status: Autho
   return true
 }
 
+function taskScalarSchema(value: unknown): boolean {
+  if (!object(value) || Object.keys(value).some(key => !['type', 'properties', 'required', 'additionalProperties'].includes(key))
+    || value.type !== 'object' || value.additionalProperties !== false || !object(value.properties)
+    || Object.keys(value.properties).length > 8) return false
+  const required = value.required === undefined ? [] : value.required
+  if (!Array.isArray(required) || new Set(required).size !== required.length
+    || required.some(key => typeof key !== 'string' || !Object.prototype.hasOwnProperty.call(value.properties, key))) return false
+  for (const [name, field] of Object.entries(value.properties)) {
+    if (!name || Array.from(name).length > 128 || !object(field)) return false
+    const kind = field.type
+    if (!['string', 'boolean', 'integer', 'number'].includes(String(kind))) return false
+    const allowed = ['type', 'enum', ...(kind === 'string' ? ['minLength', 'maxLength']
+      : kind === 'boolean' ? [] : ['minimum', 'maximum'])]
+    if (Object.keys(field).some(key => !allowed.includes(key))) return false
+    const minimumLength = field.minLength === undefined ? 0 : field.minLength
+    if (kind === 'string' && (!bounded(field.maxLength, 512) || !bounded(minimumLength, Number(field.maxLength), 0))) return false
+    if ((kind === 'integer' || kind === 'number') && (typeof field.minimum !== 'number' || !Number.isFinite(field.minimum)
+      || typeof field.maximum !== 'number' || !Number.isFinite(field.maximum) || field.minimum > field.maximum)) return false
+    if (field.enum !== undefined) {
+      if (!Array.isArray(field.enum) || !field.enum.length || field.enum.some(item => kind === 'boolean' ? typeof item !== 'boolean'
+        : kind === 'string' ? typeof item !== 'string' || Array.from(item).length < Number(minimumLength) || Array.from(item).length > Number(field.maxLength)
+        : typeof item !== 'number' || !Number.isFinite(item) || kind === 'integer' && !Number.isInteger(item)
+          || item < Number(field.minimum) || item > Number(field.maximum))) return false
+    }
+  }
+  return true
+}
+
+function taskResourcesMatch(resources: Record<string, unknown>, selected: string[], status: AuthorityStatus, moduleId?: string): boolean {
+  const tasks = (resources.tasks || []) as unknown[]
+  const expected = selected.filter(scope => scope.startsWith('task:'))
+  if (tasks.length !== expected.length) return false
+  if (tasks.length && Object.entries(resources).some(([key, items]) => !['tasks', 'commands'].includes(key) && (items as unknown[]).length)) return false
+  const keys = new Set<string>(), handlers = new Set<string>(), owners = new Set<string>()
+  const identifier = (value: unknown): value is string => typeof value === 'string' && /^[a-z][a-z0-9_]{0,95}$/.test(value)
+  for (const item of tasks) {
+    if (!object(item) || !exact(item, ['declaration', 'operation', 'owner', 'package_artifact_sha256'])
+      || !object(item.owner) || !ownerMatches(item.owner, status, moduleId)
+      || item.package_artifact_sha256 !== status.artifact_sha256 || !object(item.declaration) || !object(item.operation)) return false
+    const declaration = item.declaration, operation = item.operation
+    if (!exact(declaration, ['task_id', 'handler_operation_id', 'profile', 'max_runtime_seconds', 'max_delay_seconds', 'max_pending'])
+      || !identifier(declaration.task_id) || !identifier(declaration.handler_operation_id)
+      || !['bounded_result_once_v1', 'bounded_task_v1'].includes(String(declaration.profile))
+      || (resources.commands as unknown[]).length > 0 && declaration.profile !== 'bounded_task_v1'
+      || !bounded(declaration.max_runtime_seconds, 10) || !bounded(declaration.max_delay_seconds, 3600, 0)
+      || !bounded(declaration.max_pending, 8)
+      || !exact(operation, ['operation_id', 'kind', 'audiences', 'required_permission', 'idempotency', 'input_schema', 'output_schema', 'timeout_seconds', 'audit', 'emitted_events'])
+      || operation.operation_id !== declaration.handler_operation_id || operation.kind !== 'task' || operation.idempotency !== 'required'
+      || !Array.isArray(operation.audiences) || operation.audiences.length !== 1 || operation.audiences[0] !== 'internal'
+      || operation.required_permission !== null || operation.timeout_seconds !== declaration.max_runtime_seconds
+      || !['metadata', 'redacted'].includes(String(operation.audit)) || !Array.isArray(operation.emitted_events) || operation.emitted_events.length
+      || !taskScalarSchema(operation.input_schema) || !taskScalarSchema(operation.output_schema)) return false
+    const key = `task:${declaration.task_id}`, owner = ownerBinding(item.owner)
+    if (!expected.includes(key) || keys.has(key) || handlers.has(declaration.handler_operation_id) || owners.size && !owners.has(owner)) return false
+    keys.add(key); handlers.add(declaration.handler_operation_id); owners.add(owner)
+  }
+  return true
+}
+
 export function readAuthorityStatus(value: unknown): AuthorityStatus {
   if (!object(value) || !['compatibility', 'review_required', 'enforced'].includes(String(value.mode))
     || !Number.isSafeInteger(value.installation_id) || Number(value.installation_id) <= 0
@@ -537,19 +620,21 @@ export function readAuthorityPlan(value: unknown, status: AuthorityStatus, modul
     || !Array.isArray(value.resources.connectors) || value.resources.connectors.length > 32
     || !(value.resources.events === undefined || Array.isArray(value.resources.events) && value.resources.events.length <= 32)
     || !(value.resources.publications === undefined || Array.isArray(value.resources.publications) && value.resources.publications.length <= 32)
-    || !(value.resources.private_files === undefined || Array.isArray(value.resources.private_files) && value.resources.private_files.length <= 2)
+    || !(value.resources.private_files === undefined || Array.isArray(value.resources.private_files) && value.resources.private_files.length <= 4)
     || !(value.resources.relational === undefined || Array.isArray(value.resources.relational) && value.resources.relational.length <= 2)
     || !(value.resources.checkpoints === undefined || Array.isArray(value.resources.checkpoints) && value.resources.checkpoints.length <= 64)
     || !(value.resources.identities === undefined || Array.isArray(value.resources.identities) && value.resources.identities.length <= 1)
     || !(value.resources.status_projections === undefined || Array.isArray(value.resources.status_projections) && value.resources.status_projections.length <= 32)
     || !(value.resources.peer_reads === undefined || Array.isArray(value.resources.peer_reads) && value.resources.peer_reads.length <= 32)
     || !(value.resources.sessions === undefined || Array.isArray(value.resources.sessions) && value.resources.sessions.length <= 32)
-    || Object.keys(value.resources).some(key => !['commands', 'connectors', 'events', 'publications', 'private_files', 'relational', 'checkpoints', 'identities', 'status_projections', 'peer_reads', 'sessions'].includes(key))
+    || !(value.resources.tasks === undefined || Array.isArray(value.resources.tasks) && value.resources.tasks.length <= 8)
+    || Object.keys(value.resources).some(key => !['commands', 'connectors', 'events', 'publications', 'private_files', 'relational', 'checkpoints', 'identities', 'status_projections', 'peer_reads', 'sessions', 'tasks'].includes(key))
     || value.resources.commands.length + value.resources.connectors.length + ((value.resources.events as unknown[] | undefined)?.length || 0)
       + ((value.resources.publications as unknown[] | undefined)?.length || 0) + ((value.resources.private_files as unknown[] | undefined)?.length || 0)
       + ((value.resources.relational as unknown[] | undefined)?.length || 0) + ((value.resources.checkpoints as unknown[] | undefined)?.length || 0)
       + ((value.resources.identities as unknown[] | undefined)?.length || 0)
-      + ((value.resources.status_projections as unknown[] | undefined)?.length || 0) !== selected.filter(scope => !scope.startsWith('peer:') && !scope.startsWith('session:')).length
+      + ((value.resources.status_projections as unknown[] | undefined)?.length || 0)
+      + ((value.resources.tasks as unknown[] | undefined)?.length || 0) !== selected.filter(scope => !scope.startsWith('peer:') && !scope.startsWith('session:')).length
     || !resourceScopesMatch(value.resources, selected)
     || !privateFilesMatch(value.resources, selected, status, moduleId)
     || !relationalMatch(value.resources, selected, status, moduleId)
@@ -558,6 +643,7 @@ export function readAuthorityPlan(value: unknown, status: AuthorityStatus, modul
     || !statusProjectionsMatch(value.resources, selected, status, moduleId)
     || !peerReadsMatch(value.resources, status, moduleId)
     || !sessionResourcesMatch(value.resources, status, moduleId)
+    || !taskResourcesMatch(value.resources, selected, status, moduleId)
     || value.historical === true || value.replayed === true) {
     throw new Error('Unsupported authority review')
   }

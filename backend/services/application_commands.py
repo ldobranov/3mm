@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import hashlib
 import json
 import uuid
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 from backend.db.application_command import ApplicationCommandEpoch, ApplicationCommandRequest
 from backend.db.device import Device, DeviceCommand
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
@@ -35,7 +35,11 @@ def invalidate_commands(db, installation_id):
     epoch = db.get(ApplicationCommandEpoch, installation_id)
     if epoch is not None:
         epoch.generation = uuid.uuid4().hex
-    ids = select(ApplicationCommandRequest.command_id).where(ApplicationCommandRequest.installation_id == installation_id)
+    # An issued physical permit cannot be recalled. Fence further permits,
+    # but let the original device record its eventual execution receipt.
+    ids = select(ApplicationCommandRequest.command_id).where(
+        ApplicationCommandRequest.installation_id == installation_id,
+        ApplicationCommandRequest.claimed.is_(False))
     db.execute(update(DeviceCommand).where(DeviceCommand.command_id.in_(ids), DeviceCommand.status.in_(['queued', 'delivered']))
         .values(status='failed', error='Application lifecycle invalidated this physical authorization', result={'execution_state': 'unknown'}))
 
@@ -63,22 +67,42 @@ def _binding(db, installation, binding_id, arguments, ttl, prepared_definition=N
     return binding, device
 
 
-def submit_command(db, installation, payload):
+def submit_command(db, installation, payload, *, task_execution=None):
     request = ApplicationCommandSubmitV1.model_validate(payload)
     from backend.services.application_authority_management import effect_admission
     with effect_admission(db, installation.id, 'command:' + request.binding_id) as admission:
-        return _submit_command(db, installation, request, admission)
+        run_id = None
+        if task_execution is not None or admission.definition is not None and admission.definition.tasks:
+            if admission.compatibility or task_execution is None or not admission.definition.tasks:
+                raise ValueError('Task commands require an exact live task execution')
+            from backend.services.application_tasks import require_task_effect, utc
+            from three_mm_protocol.application_tasks import task_command_request_id
+            task = require_task_effect(db, installation.id, task_execution, admission)
+            deadline = min(request.not_after, utc(task.lease_until)) if request.not_after is not None else utc(task.lease_until)
+            request = request.model_copy(update={'not_after': deadline,
+                'request_id': task_command_request_id(task.task_run_id, request.binding_id, request.request_id)})
+            run_id = task.task_run_id
+        return _submit_command(db, installation, request, admission, task_run_id=run_id)
 
 
-def _submit_command(db, installation, request, admission):
+def _submit_command(db, installation, request, admission, *, task_run_id=None):
     binding, device = _binding(db, installation, request.binding_id, request.arguments, request.ttl_seconds, admission.definition)
     from backend.services.application_authority_management import lock_compatibility_admission
     lock_compatibility_admission(db, installation, required=admission.compatibility)
+    previous = command_lookup(db, installation, {
+        'binding_id': request.binding_id, 'request_id': request.request_id})
+    if (previous['status'] == 'found'
+            and previous['command']['target_device_id'] != device.device_id):
+        raise ValueError('Request belongs to another original target; inspect its result instead of replaying it')
     epoch = db.get(ApplicationCommandEpoch, installation.id)
     if epoch is None:
         epoch = ApplicationCommandEpoch(installation_id=installation.id, generation=uuid.uuid4().hex)
         db.add(epoch); db.flush()
     identity = hashlib.sha256(f'{installation.id}:{device.device_id}:{request.request_id}'.encode()).hexdigest()
+    if (task_run_id is not None and previous['status'] != 'found'
+            and db.scalar(select(func.count()).select_from(ApplicationCommandRequest)
+                .where(ApplicationCommandRequest.task_run_id == task_run_id)) >= 8):
+        raise ValueError('Task command budget is full')
     command_payload = {'capability_id': binding.capability_id, 'action': binding.action, 'arguments': request.arguments,
         'binding_id': binding.binding_id, 'direction': request.direction, 'ttl_seconds': request.ttl_seconds}
     if binding.contract_version is not None:
@@ -90,8 +114,10 @@ def _submit_command(db, installation, request, admission):
     record = db.get(ApplicationCommandRequest, command.command_id)
     if record is None:
         record = ApplicationCommandRequest(command_id=command.command_id, installation_id=installation.id,
-            generation=epoch.generation, package_id=installation.module_package_id, claimed=False)
+            generation=epoch.generation, package_id=installation.module_package_id, claimed=False, task_run_id=task_run_id)
         db.add(record)
+    if record.task_run_id != task_run_id:
+        raise ValueError('Command request belongs to another task execution')
     if record.generation != epoch.generation or record.package_id != installation.module_package_id:
         raise ValueError('Request belongs to an invalidated generation; it cannot be replayed')
     commit_queued_command(db, device=device, command=command)
@@ -117,6 +143,8 @@ def _command_snapshot(db, installation, record):
     elif state in {'queued', 'delivered', 'expired'} and _utc(command.expires_at) <= datetime.now(UTC):
         state = 'unknown' if record.claimed else 'expired'
     return {'command_id': command_id, 'status': state, 'claimed': record.claimed,
+        'target_device_id': db.scalar(select(Device.device_id).where(Device.id == command.device_id)),
+        'execution_status': command.status,
         'generation': record.generation, 'expires_at': _utc(command.expires_at).isoformat(),
         'result': command.result, 'error': command.error, 'passage_event_id': record.passage_event_id}
 
@@ -160,10 +188,10 @@ def authorize_execution(db, device, command_id):
         if admission.compatibility:
             from backend.services.application_authority_management import lock_compatibility_admission
             lock_compatibility_admission(db, db.get(ApplicationExtensionInstallation, record.installation_id), required=True)
-        return _authorize_execution(db, device, command_id, admission.definition)
+        return _authorize_execution(db, device, command_id, admission.definition, admission=admission)
 
 
-def _authorize_execution(db, device, command_id, prepared_definition):
+def _authorize_execution(db, device, command_id, prepared_definition, *, admission=None):
     lock_device(db, device)
     db.refresh(device)
     try:
@@ -176,6 +204,11 @@ def _authorize_execution(db, device, command_id, prepared_definition):
     command = db.scalar(select(DeviceCommand).where(DeviceCommand.command_id == command_id, DeviceCommand.device_id == device.id))
     if record is None or command is None or command.command_type != COMMAND_TYPE or command.status != 'delivered':
         raise ValueError('Physical command is not available for this device')
+    if record.task_run_id is not None:
+        if admission is None or admission.compatibility:
+            raise ValueError('Task command requires current task authority')
+        from backend.services.application_tasks import require_task_command_permit
+        require_task_command_permit(db, record.installation_id, record.task_run_id, admission)
     installation = db.get(ApplicationExtensionInstallation, record.installation_id)
     epoch = db.get(ApplicationCommandEpoch, record.installation_id)
     binding, target = _binding(db, installation, command.payload['binding_id'], command.payload['arguments'], command.payload['ttl_seconds'], prepared_definition)

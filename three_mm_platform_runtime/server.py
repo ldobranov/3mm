@@ -236,6 +236,9 @@ def main(argv=None):
     if argv and argv[0] == "--connector-worker":
         from three_mm_platform_runtime.connector_worker import main as worker_main
         return worker_main(argv[1:])
+    if argv and argv[0] == "--task-worker":
+        from three_mm_platform_runtime.tasks import main as task_main
+        return task_main(argv[1:])
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--socket",type=Path,default=Path("/run/3mm-platform/runtime.sock"))
     parser.add_argument("--authority-socket",type=Path,default=Path("/run/3mm-core-authority/authority.sock"))

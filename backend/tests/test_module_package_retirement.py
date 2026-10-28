@@ -18,10 +18,9 @@ from sqlalchemy.pool import StaticPool
 
 from backend.db.base import Base
 from backend.db.device import Device
-from backend.db.display import Display
+from backend.db.module_reference import ModulePackageRetainedReference
 from backend.db.module import ApplicationExtensionInstallation, ModuleInstallation, ModulePackage
 from backend.db.user import User
-from backend.db.widget import Widget
 from backend.routes import modules
 from backend.services.module_packages import validate_module_package
 from backend.tests.test_module_packages import (
@@ -107,7 +106,7 @@ def test_obsolete_or_damaged_archive_does_not_trap_unused_catalog_entry(catalog,
     assert s.db.get(ModulePackage, s.row.id) is None and not s.archive.exists() and not s.artifact.exists()
 
 
-@pytest.mark.parametrize('reference', ['application', 'application_previous', 'device', 'widget'])
+@pytest.mark.parametrize('reference', ['application', 'application_previous', 'device', 'retained_resource'])
 def test_referenced_package_is_not_retired_even_when_archive_is_invalid(catalog, reference):
     s = catalog.add(compiled_ui_package())
     if reference == 'application':
@@ -126,8 +125,8 @@ def test_referenced_package_is_not_retired_even_when_archive_is_invalid(catalog,
         s.db.add(device);s.db.flush()
         s.db.add(ModuleInstallation(device_id=device.id, module_package_id=s.row.id, module_id=s.row.module_id, desired_version=s.row.version))
     else:
-        display = Display(title='Display', slug='display');s.db.add(display);s.db.flush()
-        s.db.add(Widget(display_id=display.id, type=f'compiled:{s.row.module_id}:{s.row.version}:clock'))
+        s.db.add(ModulePackageRetainedReference(reference_id='1'*64, package_id=s.row.id,
+            source='retained-resource', resource_ref='resource:example'))
     s.db.commit();s.archive.write_bytes(b'invalid')
     response = s.client.delete(s.url, headers=s.admin)
     assert response.status_code == 409
@@ -139,6 +138,17 @@ def test_retirement_requires_admin(catalog):
     assert s.client.delete(s.url).status_code == 401
     assert s.client.delete(s.url, headers=s.user).status_code == 403
     assert s.archive.exists() and s.db.get(ModulePackage, s.row.id) is not None
+
+
+def test_generic_retained_reference_projection_is_bounded(catalog):
+    s=catalog.add(compiled_ui_package())
+    s.db.add_all(ModulePackageRetainedReference(reference_id=hashlib.sha256(str(index).encode()).hexdigest(),
+        package_id=s.row.id,source='retained-data',resource_ref='resource:'+str(index)) for index in range(257))
+    s.db.commit()
+    response=s.client.get(s.url+'/retained-references',headers=s.admin)
+    assert response.status_code==200
+    assert len(response.json()['references'])==256 and response.json()['truncated'] is True
+    assert s.client.delete(s.url,headers=s.admin).status_code==409
 
 
 @pytest.mark.parametrize('field,value', [('module_id', 'org.example\\escape'), ('version', '..\\escape'), ('sha256', '../escape')])

@@ -27,7 +27,7 @@ from pydantic import (
 
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN
 from three_mm_protocol.node_security import NODE_MESSAGE_BYTES, validate_node_json
-from three_mm_protocol.runtime_extension import IDENTIFIER_PATTERN
+from three_mm_protocol.ui_metadata import IDENTIFIER_PATTERN
 
 SESSION_CONTRACT = "interactive-session.v1"
 SESSION_PROTOCOL_VERSION = 1

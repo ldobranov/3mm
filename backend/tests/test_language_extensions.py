@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 from backend.db.base import Base
 from backend.db.user import User
-from backend.db.language_pack import LanguagePack
+from backend.db.language_extension import LanguageExtensionInstallation
 from backend.db.module import ModulePackage
 from backend.routes import modules, language_routes
 from backend.services.language_extensions import available_languages, BundledLanguagePackages
@@ -85,7 +85,7 @@ def test_stage_enable_replace_disable_and_rollback_are_data_only(runtime):
     assert c.get('/api/translations/de').json()['frontend']['test']['greeting']=='2.0.0'
     assert c.post(f'{BASE}/packages/{first}/enable',headers=headers).status_code==200
     assert c.get('/api/translations/de').json()['frontend']['test']['greeting']=='1.0.0'
-    assert len(list(r.db.scalars(select(LanguagePack))))==1
+    assert len(list(r.db.scalars(select(LanguageExtensionInstallation))))==1
     assert c.post(f'{BASE}/packages/{first}/disable',headers=headers).status_code==200
     assert available_languages(r.db)==['en']
     assert c.get('/api/translations/de').json()['frontend']=={}
@@ -141,7 +141,8 @@ def test_bulgarian_delivery_contains_the_moved_ui_and_device_dictionaries():
     assert definition.frontend['packageInspection']['help']
 
 
-def test_language_module_migration_preserves_existing_translation_rows(tmp_path):
+@pytest.mark.parametrize('target',['0ae56c1324d5','head'])
+def test_language_module_migration_preserves_existing_translation_rows(tmp_path,target):
     from backend.tests.test_migration_history import _alembic
     from sqlalchemy import inspect,text
     url=f"sqlite:///{(tmp_path/'upgrade.db').as_posix()}"
@@ -150,12 +151,18 @@ def test_language_module_migration_preserves_existing_translation_rows(tmp_path)
     with engine.begin() as connection:
         connection.execute(text("INSERT INTO language_packs (name,code,native_name,locale,frontend_translations,is_active) VALUES ('Existing','de','Existing','de','{\"kept\":\"yes\"}',1)"))
     engine.dispose()
-    _alembic(url,'upgrade','head');_alembic(url,'check')
+    _alembic(url,'upgrade',target)
+    if target=='head':_alembic(url,'check')
     engine=create_engine(url)
     with engine.connect() as connection:
-        row=connection.execute(text('SELECT frontend_translations,module_package_id,is_active FROM language_packs')).one()
+        source='retired_language_packs' if target=='head' else 'language_packs'
+        row=connection.execute(text('SELECT frontend_translations,module_package_id,is_active FROM '+source)).one()
         assert json.loads(row[0])=={'kept':'yes'} and row[1] is None and row[2]==1
     engine.dispose()
+    if target=='head':
+        import subprocess
+        with pytest.raises(subprocess.CalledProcessError):_alembic(url,'downgrade','fcd45b0213c4')
+        return
     _alembic(url,'downgrade','fcd45b0213c4')
     engine=create_engine(url)
     assert 'module_package_id' not in {item['name'] for item in inspect(engine).get_columns('language_packs')}

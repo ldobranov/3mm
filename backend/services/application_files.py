@@ -1,6 +1,6 @@
 """Current sealed file admission; target-owned execution, never Core file writes.
 
-Only reviewed native headless applications are supported. The existing sealed
+Reviewed native headless and explicitly opted-in UI applications are supported. The existing sealed
 action journal records machine admissions/receipts, not a fabricated human audit
 actor. No content, host path or transport secret is retained there. Uncertainty
 is permanent until operator review: even an exact retry never redispatches a
@@ -30,6 +30,8 @@ from three_mm_application_sdk.file_wire import (
 )
 from three_mm_application_sdk import ApplicationFileLimits
 from three_mm_runtime.application_file_executor import call_file_executor
+from three_mm_application_sdk import media_wire
+import hashlib
 
 
 MAX_FILE_ACTIONS_PER_INSTALLATION = 4096
@@ -79,7 +81,7 @@ def _runtime(db, installation_id):
     return instance, path.with_name("files.sock")
 
 
-def _journal(db, key, installation_id, request_id, request_hash=None):
+def _journal(db, key, installation_id, request_id, request_hash=None, *, actor=None):
     row = db.get(Action, request_id, populate_existing=True)
     if row is None:
         return None
@@ -88,7 +90,7 @@ def _journal(db, key, installation_id, request_id, request_hash=None):
     if (
         row.installation_id != installation_id
         or data.get("operation") != "files_execute"
-        or data.get("actor") != ["application", str(installation_id)]
+        or data.get("actor") != (actor if actor is not None else ["application", str(installation_id)])
         or data.get("principal") != _principal(db, installation_id)
         or request_hash is not None
         and data.get("request_hash") != request_hash
@@ -103,14 +105,17 @@ def _historical(value):
     return {"receipt": dict(value["data"]["result"]), "historical": True}
 
 
-def file_operation_status(db, installation, request_id):
+def file_operation_status(db, installation, request_id, *, caller=None):
     installation_id = installation.id
     try:
         request_id = authority._identifier(request_id)
         _clean_session(db)
         manager = authority.configured_manager(db.get_bind().engine)
         with manager.keys.locked() as key, authority_transaction(db):
-            value = _journal(db, key, installation_id, request_id)
+            if caller is not None:
+                caller.check(db)
+            value = _journal(db, key, installation_id, request_id,
+                actor=caller.actor if caller is not None else None)
             return (
                 {"status": "found", **_historical(value)}
                 if value
@@ -131,7 +136,7 @@ def file_operation_status(db, installation, request_id):
         raise ApplicationFileAuthorityError() from None
 
 
-def execute_private_file(db, installation, request, *, transport_secret):
+def execute_private_file(db, installation, request, *, transport_secret, caller=None):
     """SDK gateway entry; identity/key come only from authenticated Core transport.
 
     The linearization point is the committed admission. An already admitted
@@ -140,19 +145,27 @@ def execute_private_file(db, installation, request, *, transport_secret):
     """
     installation_id = installation.id
     try:
-        request, content = parse_file_request(request)
+        streaming = type(request) is dict and request.get('file_request_version') == 2
+        if streaming:
+            request, content = media_wire.parse_media_request(request), None
+        else:
+            request, content = parse_file_request(request)
         if type(transport_secret) is not bytes or len(transport_secret) != 32:
             raise ApplicationFileAuthorityError()
-        writing = request["operation"] in {"put", "delete"}
-        scope = "storage:private_files_" + ("write" if writing else "read")
-        request_hash = file_request_identity(request)
+        writing = request['operation'] in media_wire.MUTATIONS if streaming else request['operation'] in {'put', 'delete'}
+        scope = 'storage:private_files_' + (media_wire.SCOPES[request['operation']] if streaming else 'write' if writing else 'read')
+        request_hash = media_wire.request_identity(request) if streaming else file_request_identity(request)
+        make_receipt = media_wire.receipt if streaming else file_receipt
         _clean_session(db)
         manager = authority.configured_manager(db.get_bind().engine)
+        actor = caller.actor if caller is not None else ["application", str(installation_id)]
         # Exact historical mutations can be inspected after revoke/disable. A
         # changed request, foreign owner, rotated key or recovery fence denies.
         with manager.keys.locked() as key, authority_transaction(db):
+            if caller is not None:
+                caller.check(db)
             existing = _journal(
-                db, key, installation_id, request["request_id"], request_hash
+                db, key, installation_id, request["request_id"], request_hash, actor=actor
             )
             if existing is not None:
                 return _historical(existing)
@@ -162,7 +175,7 @@ def execute_private_file(db, installation, request, *, transport_secret):
         prepared = manager._prepare(installation_id)  # Archive I/O outside leases.
         declaration = prepared[1].application_extension.storage.private_files
         if (
-            declaration is None
+            declaration is None or (declaration.file_contract_version == 2) != streaming
             or content is not None
             and len(content) > declaration.max_file_bytes
         ):
@@ -190,8 +203,10 @@ def execute_private_file(db, installation, request, *, transport_secret):
         ):
             raise ApplicationFileAuthorityError()
         with manager.keys.locked() as key, authority_transaction(db) as mutation:
+            if caller is not None:
+                caller.check(db, prepared)
             existing = _journal(
-                db, key, installation_id, request["request_id"], request_hash
+                db, key, installation_id, request["request_id"], request_hash, actor=actor
             )
             if existing is not None:
                 return _historical(existing)
@@ -211,7 +226,15 @@ def execute_private_file(db, installation, request, *, transport_secret):
                 "authority_epoch": current.epoch,
                 "deadline_ms": now + 5000,
             }
-            pending = file_receipt(request)
+            if streaming:
+                admission['owner'] = hashlib.sha256(authority._canonical_bytes([actor, _principal(db, installation_id)])).hexdigest()
+                # Any revoke/regrant, package/UI change, incarnation or recovery
+                # fence invalidates issued capabilities, including retained data.
+                admission['link_epoch'] = hashlib.sha256(authority._canonical_bytes([
+                    _principal(db, installation_id), current.epoch, prepared[0].sha256,
+                    grant['data']['grant_revision'], grant['data']['plan_id'],
+                ])).hexdigest()
+            pending = make_receipt(request)
             if writing:
                 count = db.scalar(
                     select(func.count())
@@ -222,7 +245,7 @@ def execute_private_file(db, installation, request, *, transport_secret):
                     raise ApplicationFileAuthorityError()  # No eviction/replay of unknown receipts.
                 data = {
                     "operation": "files_execute",
-                    "actor": ["application", str(installation_id)],
+                    "actor": actor,
                     "principal": _principal(db, installation_id),
                     "request_hash": request_hash,
                     "authority_epoch": current.epoch,
@@ -270,21 +293,25 @@ def execute_private_file(db, installation, request, *, transport_secret):
             transport_secret,
             "execute",
             {"admission": admission, "request": request},
+            **({'timeout': 20} if streaming and request['operation'] == 'transform' else {}),
         )
-        validate_file_result(
-            result,
-            request,
-            ApplicationFileLimits(
-                declaration.max_file_bytes,
-                declaration.max_total_bytes,
-                declaration.max_files,
-            ),
-        )
-        completed = file_receipt(request, result, outcome="completed")
+        if streaming:
+            media_wire.validate_result(result, request)
+        else:
+            validate_file_result(
+                result,
+                request,
+                ApplicationFileLimits(
+                    declaration.max_file_bytes,
+                    declaration.max_total_bytes,
+                    declaration.max_files,
+                ),
+            )
+        completed = make_receipt(request, result, outcome="completed")
         if writing:
             with manager.keys.locked() as key, authority_transaction(db) as mutation:
                 value = _journal(
-                    db, key, installation_id, request["request_id"], request_hash
+                    db, key, installation_id, request["request_id"], request_hash, actor=actor
                 )
                 if value is None or value["state"] != "execution_unconfirmed":
                     raise ApplicationFileAuthorityError()
@@ -295,7 +322,11 @@ def execute_private_file(db, installation, request, *, transport_secret):
                     db, key, "action", db.get(Action, request["request_id"]), value
                 )
                 mutation.advance_guard_revision()
-            return {"receipt": completed, "historical": False}
+            return {"receipt": completed, **({'file_result': result} if streaming else {}), "historical": False}
+        if caller is not None:
+            with manager.keys.locked() as key, authority_transaction(db):
+                caller.check(db, prepared)
+                manager._require_grant(db, key, installation_id, prepared, scope)
         return {"receipt": completed, "file_result": result, "historical": False}
     except (
         authority.AuthorityManagementError,

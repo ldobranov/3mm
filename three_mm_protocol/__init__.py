@@ -31,14 +31,7 @@ from three_mm_protocol.automation import (
     CapabilityEventTrigger,
     validate_automation_capabilities,
 )
-from three_mm_protocol.runtime_extension import (
-    LocalizedTextV1,
-    RuntimeEntityV1,
-    RuntimeExtensionV1,
-    RuntimeFieldV1,
-    RuntimeNavigationItemV1,
-    RuntimePageV1,
-)
+from three_mm_protocol.ui_metadata import LocalizedTextV1
 from three_mm_protocol.compiled_extension import (
     CompiledUiEntrypointV1,
     CompiledUiExtensionV1,
@@ -99,6 +92,7 @@ from three_mm_protocol.application_extension import (
     ApplicationServiceV1,
     ApplicationStorageV1,
     ApplicationPrivateFilesV1,
+    ApplicationPrivateFilesV2,
     ApplicationRelationalStorageV1,
     public_http_request_schema_v1,
     public_http_response_schema_v1,
@@ -168,11 +162,6 @@ __all__ = [
     "CapabilityEventTrigger",
     "validate_automation_capabilities",
     "LocalizedTextV1",
-    "RuntimeEntityV1",
-    "RuntimeExtensionV1",
-    "RuntimeFieldV1",
-    "RuntimeNavigationItemV1",
-    "RuntimePageV1",
     "CompiledUiEntrypointV1",
     "CompiledUiExtensionV1",
     "ThemeExtensionV1",
@@ -207,6 +196,7 @@ __all__ = [
     "ApplicationServiceV1",
     "ApplicationStorageV1",
     "ApplicationPrivateFilesV1",
+    "ApplicationPrivateFilesV2",
     "ApplicationRelationalStorageV1",
     "public_http_request_schema_v1",
     "public_http_response_schema_v1",

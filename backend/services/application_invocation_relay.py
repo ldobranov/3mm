@@ -29,6 +29,7 @@ class InvocationSpec:
     payload: dict
     context: dict
     audience: str
+    expected_peer: tuple[int, int, str] | None = None
 
 
 def _prepare(spec, settings, *, defer_relational):
@@ -38,13 +39,27 @@ def _prepare(spec, settings, *, defer_relational):
 
 
 def _send(waiter, prepared, request_id):
-    request=sign_message({"version":1,"request_id":request_id,"timestamp":int(time.time()),
-        "operation_id":prepared.operation_id,"payload":prepared.payload,"context":prepared.context,
-        **({"relational_invocation":prepared.relational_invocation} if prepared.relational_invocation is not None else {})},prepared.secret)
-    with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as origin:
-        origin.settimeout(remaining(waiter.handoff_deadline));origin.connect(str(prepared.socket_path))
-        origin.settimeout(remaining(waiter.handoff_deadline));send_message(origin,request)
-        waiter.handoff(origin)
+    dispatch_started = False
+    try:
+        request=sign_message({"version":1,"request_id":request_id,"timestamp":int(time.time()),
+            "operation_id":prepared.operation_id,"payload":prepared.payload,"context":prepared.context,
+            **({"relational_invocation":prepared.relational_invocation} if prepared.relational_invocation is not None else {})},prepared.secret)
+        with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as origin:
+            origin.settimeout(remaining(waiter.handoff_deadline));origin.connect(str(prepared.socket_path))
+            if prepared.expected_peer is not None:
+                from three_mm_platform_wire import peer_identity, process_generation
+                pid, uid, _gid = peer_identity(origin)
+                if (pid, uid, process_generation(pid, uid)) != prepared.expected_peer:
+                    raise ApplicationGatewayError("Application host changed before dispatch", phase=DispatchPhase.NOT_DISPATCHED)
+            origin.settimeout(remaining(waiter.handoff_deadline))
+            # A partial send or failed FD handoff cannot prove non-execution.
+            dispatch_started = True
+            send_message(origin,request)
+            waiter.handoff(origin)
+    except (OSError,ValueError,TypeError,KeyError,RecursionError,ApplicationTransportError) as exc:
+        phase = DispatchPhase.EXECUTION_UNCONFIRMED if dispatch_started else DispatchPhase.NOT_DISPATCHED
+        message = "Application result is unconfirmed; do not replay" if dispatch_started else "Application request was not dispatched"
+        raise ApplicationGatewayError(message, phase=phase) from exc
 
 
 def _reserve(settings):
@@ -63,7 +78,6 @@ def begin_invocation(db, settings, admit):
         binding=ApplicationResponseBinding(first.installation.id,application_snapshot(first.installation,first.package),
             prepared.secret,identifier,first.operation_id)
         db.rollback()
-        waiter=_reserve(settings)
         db.expire_all();current=admit()
         if application_snapshot(current.installation,current.package)!=binding.snapshot:
             raise ApplicationGatewayError("Application changed before dispatch",phase=DispatchPhase.NOT_DISPATCHED)
@@ -79,16 +93,24 @@ def begin_invocation(db, settings, admit):
         if application_snapshot(current.installation,current.package)!=binding.snapshot:
             raise ApplicationGatewayError("Application changed before dispatch",phase=DispatchPhase.NOT_DISPATCHED)
         prepared=replace(prepared,payload=current.payload,context=current.context)
-        db.commit()  # No write/read transaction spans app execution.
+        prepared=replace(prepared,expected_peer=first.expected_peer)
+        # This commit is the admission linearization point. Reservation grants
+        # response capacity only; it must not time expensive trust/metadata work.
+        # Revocation after admission still fences disclosure at completion.
+        db.commit()  # No write/read transaction spans reservation or execution.
+        waiter=_reserve(settings)
         waiter.timeout_seconds=int(prepared.timeout_seconds)
         trace.end()
         with DiagnosticSpan(core_diagnostics,"invoke_"+binding.request_id,"application.dispatch",
-                operation="application.invoke",instance_id=first.installation.instance_id):
+                operation="application.invoke",instance_id=binding.snapshot[0]):
             _send(waiter,prepared,binding.request_id)
         return binding,waiter
-    except BaseException:
+    except BaseException as exc:
         if trace is not None:trace.end("error","operation_failed")
         if waiter is not None:waiter.close()
+        if waiter is None and isinstance(exc,(OSError,ValueError,TypeError,KeyError,ImportError,RecursionError,ApplicationTransportError)):
+            raise ApplicationGatewayError("Application request was not dispatched; admission unavailable",
+                phase=DispatchPhase.NOT_DISPATCHED) from exc
         raise
     finally:db.rollback()
 
@@ -122,6 +144,12 @@ def finish_invocation(db,settings,admit,binding,response,on_success=None):
 
 
 async def invoke_with_relay(db,settings,admit,*,on_success=None):
+    from backend.services.application_code_scope import code_verification_scope
+    with code_verification_scope():
+        return await _invoke_with_relay(db,settings,admit,on_success=on_success)
+
+
+async def _invoke_with_relay(db,settings,admit,*,on_success=None):
     waiter=None
     try:
         binding,waiter=await run_in_threadpool(begin_invocation,db,settings,admit)

@@ -27,6 +27,7 @@ it('creates a named role and assigns membership through protected APIs', async (
   await flushPromises()
   expect(http.put).toHaveBeenCalledWith('/api/access/bindings', {kind: 'user-role', subject_id: 3, target_id: 1, enabled: true})
   expect(wrapper.emitted('changed')).toHaveLength(2)
+  expect(wrapper.text()).not.toContain('Dashboards')
   wrapper.unmount()
 })
 it('failed writes keep server state and require refresh', async () => {

@@ -1,4 +1,5 @@
 import json
+import math
 import threading
 
 import pytest
@@ -46,6 +47,21 @@ def test_opt_in_ttl_stop_restart_and_no_persistent_state(monkeypatch):
     assert session.status()["remaining_seconds"] == 600
     assert session.status()["spool_bytes"] == 0
     assert DiagnosticSession("core", "unknown").status()["active"] is False
+
+
+@pytest.mark.parametrize('ttl', [1, 600, 1800])
+def test_countdown_never_exceeds_requested_ttl_at_float_boundary(monkeypatch, ttl):
+    clock = [math.nextafter(2.0 ** 19, 0.0)]
+    monkeypatch.setattr(diagnostic_module.time, 'monotonic', lambda: clock[0])
+    session = DiagnosticSession('core', '0.3.1')
+    assert session.start(ttl)['remaining_seconds'] == ttl
+    emit(session)
+    clock[0] += ttl - 0.5
+    assert session.status()['remaining_seconds'] == 1
+    clock[0] += 0.5
+    status = session.status()
+    assert status['active'] is False and status['remaining_seconds'] == 0
+    assert status['buffer_bytes'] == 0
 
 
 @pytest.mark.parametrize("ttl", [0, -1, 1801, True, 3.5, "10"])

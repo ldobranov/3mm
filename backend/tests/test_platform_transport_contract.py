@@ -64,6 +64,19 @@ def test_discovery_is_current_metadata_not_an_authority_lease(boundary):
     assert error.value.reason=="operation_denied" and not error.value.retryable
 
 
+def test_discovery_reports_only_actions_this_listener_actually_supports(boundary):
+    _, server, client = boundary
+    server.allowed_actions = frozenset({'platform.discover', 'installation.identity.get'})
+    result = client.discover_requirements([
+        {'requirement_id': 'identity', 'operations': ['installation.identity.get']},
+        {'requirement_id': 'optional_events', 'operations': ['event.publish'], 'required': False},
+    ])
+    assert set(result['platform']['operations']) == server.allowed_actions
+    assert result['status'] == 'degraded'
+    assert result['requirements'][0]['met'] is True
+    assert result['requirements'][1]['missing_operations'] == ['event.publish']
+
+
 def test_recovery_and_listener_restart_change_distinct_generations(boundary):
     state,server,client=boundary
     before=client.discover_platform()
