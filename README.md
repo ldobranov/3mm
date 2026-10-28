@@ -8,10 +8,10 @@ combines a central Core, a persistent device Agent, provisioning and reviewed
 applications through common capability contracts and SDKs. Builder, dashboards
 and other product features live in optional source packages/libraries.
 
-> **Project status:** Unreleased prototype. **0.3.1** is a local Core/SDK checkpoint
-> covering common resource discovery, actor/delegation access, lifecycle recovery,
+> **Project status:** Development prototype (pre-1.0). **Core 0.3.1** covers
+> common resource discovery, actor/delegation access, lifecycle recovery,
 > tasks/schedules, shared themed UI, files/media and invocation optimization.
-> The [0.3.1 changelog](CHANGELOG.md#031---2026-10-28) describes this branch's scope.
+> The [0.3.1 changelog](CHANGELOG.md#031---2026-10-28) describes the supported scope.
 > It builds on the accepted
 > Core stabilization, Standalone/Hub/Node setup and Wi-Fi/AP recovery, bounded
 > diagnostics, independent optional runtimes and manifest-v2 language extensions.
@@ -23,23 +23,25 @@ and other product features live in optional source packages/libraries.
 > Host/root administration, public Cloud, full remote Terminal UI and whole
 > M21/WP5 isolation remain separate work. Terminal 1.0.3 is an independent package.
 > Native application approval permits Linux code execution and is **not a sandbox**.
-> The [beta.57 release notes](docs/RELEASE_NOTES_0.3.0-beta.57.md) describe upgrades,
-> scope and owner device trials. Additive database migrations require a verified
-> database/key backup; older code cannot adopt new administrator approvals.
+> The [0.3.1 release notes](docs/RELEASE_NOTES_0.3.1.md) describe upgrades,
+> independent components and owner device trials. Preserve database/key backups;
+> populated history can refuse downgrade, and an older Core pointer alone does
+> not restore the previous database or independent component versions.
 > [M20/WP4 acceptance](docs/EXTENSION_PLATFORM_V2_WP4_FINAL_ACCEPTANCE.md) and
 > [current evidence](docs/WORKING_STATE.md) state the tested boundaries.
 > Device Protocol 1.0 and Application SDK 1.3 retain independent version numbers.
 > CI runs automatically on branch pushes. An immutable version tag runs all
 > Release checks and reproducible builds; assets appear only after successful
 > publication. Device trials are separate from publication. The release badge
-> above links to the currently published version.
+> above links to the currently published version. A version without a prerelease
+> suffix selects the Stable update channel; it does not imply production maturity.
 > The [capability foundation plan](docs/CORE_SIMPLIFICATION_PLAN.md) describes
 > future contracts and cleanup; its full capability catalog is not implemented.
 
 ## What works
 
 - **Core and web application** — authentication, roles, settings, dynamic
-  navigation, dashboards and device management.
+  navigation and device management.
 - **Persistent Agent** — stable device identity, health and inventory,
   pairing, heartbeat, command processing, reconciliation and offline outbox.
 - **Shared Device/Node Platform** — versioned neutral inventory and one capability
@@ -62,9 +64,10 @@ and other product features live in optional source packages/libraries.
   explicit bounded audit retention are available; no notifications or automatic
   purge are scheduled. Backup-key rotation is root-local, dry-run-first and shares
   the backup/restore/update mutation lock; existing archives are never re-encrypted.
-- **Extensions** — declarative runtime extensions and reviewed compiled Vue
-  widgets, editors, routes and reusable components, plus the locally completed
-  supervised application-service foundation for transactional extensions.
+- **Extensions** — Manifest v2 application services, reviewed compiled Vue
+  routes and reusable components, with scoped SDK operations and application-owned
+  transactional data. The former declarative CRUD product is preserved separately,
+  not loaded as an in-Core application runtime.
 - **Extension resource access (test Beta)** — inspect declared package requests
   without installation, then review and explicitly approve/apply exact installed
   resources for supported reviewed-native headless applications or the separate
@@ -76,8 +79,8 @@ and other product features live in optional source packages/libraries.
   fresh `getInfo()`, module-bound `invoke()` and additive optional `sessions`.
   Source/build/entrypoint and
   audience stay bound; the host exposes no token, private store or general HTTP
-  client and never automatically retries an uncertain command. Local native UI
-  review pins the entire compiled build; this is not browser isolation. See the
+  client and never automatically retries an uncertain command. Exact native/UI
+  approval pins the entire compiled build; this is not browser isolation. See the
   [public contract and local review flow](docs/EXTENSION_PLATFORM_V2_PUBLIC_CONTRACTS.md).
 - **Separate WP4 test package** — a neutral, headless Manifest v2 / SDK 1.3 fixture
   for admin echo, bounded private-file access and content-bound receipts. Build and
@@ -95,7 +98,9 @@ and other product features live in optional source packages/libraries.
   cgroup. The temporary workspace has no Core secrets, host-home/Windows-mount or
   network access. Revocation and disconnect stop owned workers; uncertain input
   is not replayed. The full installer ships but does not enable the optional units.
-  Old unrestricted prototypes remain off; no Node/Cloud session route is enabled.
+  Old unrestricted prototypes remain off. Node execution and a local relay use
+  separately configured components; complete remote Terminal UI and public Cloud
+  are not claimed.
   See the [trial procedure](docs/M21_LOCAL_TERMINAL_TEST.md) and
   [M21 release boundary](docs/M21_CORE_INTERACTIVE_SESSIONS_PLAN.md).
 - **Separate relational WP4 test package** — build/upload
@@ -126,9 +131,9 @@ and other product features live in optional source packages/libraries.
   Button and Dialog primitives used by Core. Reviewed compiled UI can inherit
   the current theme without private Core imports, copied styles or a second Vue
   runtime. Application SDK 1.3 and existing Vue-only packages remain compatible.
-- **AI Extension Builder** — guided intent planning, editable projects,
-  automatic versions, reviewable source changes, deterministic capability
-  foundations, compilation and installation.
+- **Optional product sources** — Builder, Automations, Dashboards and legacy
+  content/CRUD sources and historical data are preserved outside live Core.
+  Adapting or completing them as independently installed products is separate work.
 - **Immutable deployment** — versioned releases, persistent state outside the
   application tree, health checks, rollback and bounded release/backup
   retention.
@@ -586,6 +591,7 @@ checks local browser CORS as well as readiness. See the
 | [beta.55 release notes](docs/RELEASE_NOTES_0.3.0-beta.55.md) | Prepared release scope, complete local check results and publication boundary |
 | [beta.56 preparation record](docs/RELEASE_NOTES_0.3.0-beta.56.md) | Historical streaming/cleanup repair and accepted WP4 scope; installed Terminal remained unaccepted |
 | [beta.57 release notes](docs/RELEASE_NOTES_0.3.0-beta.57.md) | Stabilization, setup/recovery, Node/local relay, application consent and cleanup; upgrade and device trials |
+| [0.3.1 release notes](docs/RELEASE_NOTES_0.3.1.md) | Core/SDK resource contracts, tasks, product extraction, invocation performance and independent-component upgrade boundaries |
 | [Relational upgrade and recovery](docs/EXTENSION_PLATFORM_V2_RELATIONAL_UPGRADE.md) | Local candidate adoption, explicit migration, confirmation and partial-restore flow |
 | [Private application files](docs/EXTENSION_PLATFORM_V2_PRIVATE_FILES.md) | Exact file grants, signed SDK operations, limits and recovery evidence |
 | [Relational storage contract](docs/EXTENSION_PLATFORM_V2_RELATIONAL_STORAGE_CONTRACT.md) | Prepared-runtime foundation and remaining database lifecycle gates |

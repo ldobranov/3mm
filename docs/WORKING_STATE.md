@@ -4,6 +4,26 @@ Updated: 2026-10-28. Start here; follow linked details only as needed.
 
 ## Active task and next result
 
+- **Core 0.3.1 release preparation, 2026-10-28.** Owner requested preparation
+  and main publication, retaining the annotated release-tag command themselves.
+  The owner confirms Raspberry already has the relevant fixes and Ubuntu holds
+  no important state; historical prototype compatibility is not an extra gate.
+  Preserve source and current device state: no wipe, reset or deployment requested.
+  Owner completed merge `0c536c9ad07a1dfd9d48c817e80bed2fe46d8c2f`; the worktree was
+  clean and its executable tree matches successful branch CI `40684871440` on
+  `5aa7246`. Main remote was still `778c5f0` at the pre-publication check.
+  README/changelog now describe the supported 0.3.1 scope rather than a local
+  checkpoint and stop advertising extracted products as built-in Core features.
+  Added `docs/RELEASE_NOTES_0.3.1.md` for the existing tag-driven workflow, with
+  independent component/data recovery boundaries and honest M21/WP5 limits.
+  VERSION and all executable/dependency/workflow inputs remain unchanged.
+  Verification: documentation diff, whitespace and affected local links; reuse
+  the exact unchanged branch runtime evidence, no new local suite/build.
+  Publication scope is a documentation-only commit/push on main. NEXT: require
+  its automatic CI success, then owner creates/pushes annotated `v0.3.1`.
+  The tag does not yet exist and was not created here. Release retains full checks and
+  reproducible publication; no device rollout or final-tag hardware pass claimed.
+
 - **Core/SDK 0.3.1 integration prepared on main, 2026-10-28.** Owner approved
   the bounded integration review/preparation, not a release or device rollout.
   Exact parents: main `778c5f0c42c3793c05064a078e931e965fe571b3` and incoming
@@ -37,8 +57,8 @@ Updated: 2026-10-28. Start here; follow linked details only as needed.
   still reports inherited whitespace in ten preserved legacy/reference files;
   the complete output matches incoming exactly, with no active-code findings.
   Those archived bytes are deliberately not reformatted by this integration.
-  NEXT: inspect the prepared index, then explicitly authorize/create the ordinary
-  two-parent merge commit. Push/main CI and any publication remain separate steps.
+  Owner subsequently created the ordinary two-parent merge commit `0c536c9`.
+  Its executable tree still matches incoming; release preparation is tracked above.
   M20/WP4 stays accepted; full M21/WP5/host administration are not newly claimed.
 
 - **Beta.57 published and verified, 2026-10-25.** Owner requested one release

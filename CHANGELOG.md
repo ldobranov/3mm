@@ -54,9 +54,12 @@ pre-1.0.
   Some populated downgrades intentionally refuse; preserve database/key backups.
 - Core version 0.3.1 is independent of Device Protocol 1.0, Application SDK 1.3
   and separately packaged applications/services.
-- This is a local branch checkpoint. No tag, push, publication or deployment is
-  implied. Supported profiles, measured performance, owner acceptance and exact
-  verification evidence/limits are recorded in [WORKING_STATE](docs/WORKING_STATE.md).
+- Independent Runtime, application-host and Agent components retain their own
+  update boundaries; publishing Core does not silently replace existing pins.
+- Supported profiles, upgrade guidance and verification limits are described in
+  the [0.3.1 release notes](docs/RELEASE_NOTES_0.3.1.md). Publication uses the
+  immutable annotated `v0.3.1` tag after main CI, with full configured Release
+  checks and reproducible artifacts. Device acceptance remains separate.
 
 ## [0.3.0-beta.57] - 2026-10-25
 
