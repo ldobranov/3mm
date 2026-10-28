@@ -1,4 +1,5 @@
 // Admin control DTOs, not a public application SDK or native-trust issuer.
+import { queriesMatch, type AuthorityQueryResource } from './authority-queries'
 export interface AuthorityStatus {
   installation_id: number
   mode: 'compatibility' | 'review_required' | 'enforced'
@@ -13,7 +14,7 @@ export interface AuthorityStatus {
   isolation_proven: false
   review_available?: boolean
   review_blockers?: Array<'review_key_unavailable' | 'unsupported_authority'>
-  runtime_blockers?: Array<'relational_runtime_unavailable' | 'peer_read_runtime_unavailable' | 'session_runtime_not_connected'>
+  runtime_blockers?: Array<'relational_runtime_unavailable' | 'peer_read_runtime_unavailable' | 'session_runtime_not_connected' | 'query_runtime_not_connected'>
 }
 export interface AuthorityPlan {
   plan_id: string
@@ -23,7 +24,7 @@ export interface AuthorityPlan {
   scopes: string[]
   artifact_sha256: string
   expires_in_seconds: number
-  resources: { commands: unknown[]; connectors: unknown[]; events?: unknown[]; publications?: unknown[]; private_files?: AuthorityPrivateFileResource[]; relational?: AuthorityRelationalResource[]; checkpoints?: AuthorityCheckpointResource[]; identities?: AuthorityIdentityResource[]; status_projections?: AuthorityStatusResource[]; peer_reads?: AuthorityPeerReadResource[]; sessions?: AuthoritySessionResource[]; tasks?: AuthorityTaskResource[] }
+  resources: { commands: unknown[]; connectors: unknown[]; events?: unknown[]; publications?: unknown[]; private_files?: AuthorityPrivateFileResource[]; relational?: AuthorityRelationalResource[]; checkpoints?: AuthorityCheckpointResource[]; identities?: AuthorityIdentityResource[]; status_projections?: AuthorityStatusResource[]; peer_reads?: AuthorityPeerReadResource[]; sessions?: AuthoritySessionResource[]; tasks?: AuthorityTaskResource[]; queries?: AuthorityQueryResource[] }
   isolation_proven: false
   historical?: boolean
   replayed?: boolean
@@ -130,7 +131,8 @@ const scopes = (value: unknown): value is string[] => Array.isArray(value)
     : value.some(item => typeof item === 'string' && item.startsWith('session:')) ? 293
     : value.some(item => typeof item === 'string' && item.startsWith('peer:')) ? 261
     : value.some(item => typeof item === 'string' && item.startsWith('status:')) ? 229 : 197)
-  && value.every(item => typeof item === 'string' && item.trim() === item && /^(?:(?:command|connector|event|publication|task):[a-z][a-z0-9_]{0,95}|storage:(?:private_files_(?:read|write|publish|transform)|relational_(?:read|write))|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read|session:[a-z][a-z0-9_]{0,95}:open)$/.test(item))
+  && value.every(item => typeof item === 'string' && item.trim() === item && /^(?:(?:command|connector|event|publication|task):[a-z][a-z0-9_]{0,95}|storage:(?:private_files_(?:read|write|publish|transform)|relational_(?:read|write))|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|(?:peer|query):[a-z][a-z0-9_]{0,95}:read|session:[a-z][a-z0-9_]{0,95}:open)$/.test(item))
+  && (!value.some(item => item.startsWith('query:')) || value.length <= 16 && value.every(item => /^query:/.test(item)))
   && (!value.some(item => item.startsWith('task:')) || value.every(item => /^(?:task|command):/.test(item)))
   && new Set(value).size === value.length
 const exact = (value: Record<string, unknown>, fields: string[]) => Object.keys(value).length === fields.length && fields.every(key => key in value)
@@ -599,6 +601,7 @@ export function readAuthorityStatus(value: unknown): AuthorityStatus {
     || !value.runtime_blockers.every(reason => reason === 'relational_runtime_unavailable'
       ? declared.some(scope => scope.startsWith('storage:relational_'))
       : reason === 'peer_read_runtime_unavailable' ? declared.some(scope => scope.startsWith('peer:'))
+      : reason === 'query_runtime_not_connected' ? declared.some(scope => scope.startsWith('query:'))
       : reason === 'session_runtime_not_connected' && declared.some(scope => scope.startsWith('session:')))
     || value.runtime_blockers.length > 0 && value.grant_effective)
     || declared.some(scope => scope.startsWith('peer:')) && declared.some(scope => scope.startsWith('storage:relational_'))) {
@@ -613,7 +616,7 @@ export function readAuthorityPlan(value: unknown, status: AuthorityStatus, modul
     || value.state !== 'review_required' || value.artifact_sha256 !== status.artifact_sha256
     || value.isolation_proven !== false || !selected
     || selected.some(scope => !status.scopes.includes(scope))
-    || status.scopes.some(scope => !scope.startsWith('peer:') && !scope.startsWith('session:') && !selected.includes(scope))
+    || status.scopes.some(scope => !scope.startsWith('peer:') && !scope.startsWith('session:') && !scope.startsWith('query:') && !selected.includes(scope))
     || requested !== undefined && (selected.length !== requested.length || requested.some(scope => !selected.includes(scope)))
     || !Number.isInteger(value.expires_in_seconds) || Number(value.expires_in_seconds) <= 0 || Number(value.expires_in_seconds) > 900
     || !object(value.resources) || !Array.isArray(value.resources.commands) || value.resources.commands.length > 64
@@ -628,13 +631,14 @@ export function readAuthorityPlan(value: unknown, status: AuthorityStatus, modul
     || !(value.resources.peer_reads === undefined || Array.isArray(value.resources.peer_reads) && value.resources.peer_reads.length <= 32)
     || !(value.resources.sessions === undefined || Array.isArray(value.resources.sessions) && value.resources.sessions.length <= 32)
     || !(value.resources.tasks === undefined || Array.isArray(value.resources.tasks) && value.resources.tasks.length <= 8)
-    || Object.keys(value.resources).some(key => !['commands', 'connectors', 'events', 'publications', 'private_files', 'relational', 'checkpoints', 'identities', 'status_projections', 'peer_reads', 'sessions', 'tasks'].includes(key))
+    || !(value.resources.queries === undefined || Array.isArray(value.resources.queries) && value.resources.queries.length <= 16)
+    || Object.keys(value.resources).some(key => !['commands', 'connectors', 'events', 'publications', 'private_files', 'relational', 'checkpoints', 'identities', 'status_projections', 'peer_reads', 'sessions', 'tasks', 'queries'].includes(key))
     || value.resources.commands.length + value.resources.connectors.length + ((value.resources.events as unknown[] | undefined)?.length || 0)
       + ((value.resources.publications as unknown[] | undefined)?.length || 0) + ((value.resources.private_files as unknown[] | undefined)?.length || 0)
       + ((value.resources.relational as unknown[] | undefined)?.length || 0) + ((value.resources.checkpoints as unknown[] | undefined)?.length || 0)
       + ((value.resources.identities as unknown[] | undefined)?.length || 0)
       + ((value.resources.status_projections as unknown[] | undefined)?.length || 0)
-      + ((value.resources.tasks as unknown[] | undefined)?.length || 0) !== selected.filter(scope => !scope.startsWith('peer:') && !scope.startsWith('session:')).length
+      + ((value.resources.tasks as unknown[] | undefined)?.length || 0) !== selected.filter(scope => !scope.startsWith('peer:') && !scope.startsWith('session:') && !scope.startsWith('query:')).length
     || !resourceScopesMatch(value.resources, selected)
     || !privateFilesMatch(value.resources, selected, status, moduleId)
     || !relationalMatch(value.resources, selected, status, moduleId)
@@ -644,6 +648,7 @@ export function readAuthorityPlan(value: unknown, status: AuthorityStatus, modul
     || !peerReadsMatch(value.resources, status, moduleId)
     || !sessionResourcesMatch(value.resources, status, moduleId)
     || !taskResourcesMatch(value.resources, selected, status, moduleId)
+    || !queriesMatch(value.resources, status, moduleId)
     || value.historical === true || value.replayed === true) {
     throw new Error('Unsupported authority review')
   }

@@ -16,6 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from backend.services import application_authority_sources as sources
 from backend.services.application_task_authority import TaskPolicySubjectV11
+from backend.services.application_composition_authority import QueryPolicySubjectV12
 from backend.services.application_authority_context import (
     ContextModel, ResolvedCommandScope, _bounded_json, _canonical_bytes,
     _command_schema_data, _parse,
@@ -34,7 +35,7 @@ SOURCE_BLOCKERS = frozenset({
 
 class InstalledPolicySubject(ContextModel):
     subject_scope: Literal["installed_artifact_only"] = "installed_artifact_only"
-    subject: PolicySubjectV1 | PolicySubjectV2 | PolicySubjectV3 | PolicySubjectV4 | PolicySubjectV5 | PolicySubjectV6 | PolicySubjectV7 | PolicySubjectV8 | PolicySubjectV9 | PolicySubjectV10 | TaskPolicySubjectV11 | None = None
+    subject: PolicySubjectV1 | PolicySubjectV2 | PolicySubjectV3 | PolicySubjectV4 | PolicySubjectV5 | PolicySubjectV6 | PolicySubjectV7 | PolicySubjectV8 | PolicySubjectV9 | PolicySubjectV10 | TaskPolicySubjectV11 | QueryPolicySubjectV12 | None = None
     guard: AuthorityGuardSnapshot | None = None
     issues: tuple[sources.SourceIssue, ...]
     optional_unavailable: tuple[sources.SourceIssue, ...] = ()
@@ -78,9 +79,9 @@ def _commands(package, resolved, diagnostics):
     return tuple(commands)
 
 
-def _compose(db, installation_id, pin, package, keys, *, proposed_configuration=None):
+def _compose(db, installation_id, pin, package, keys, *, proposed_configuration=None, queries=None):
     resolved = sources._resolve(db, installation_id, pin, package, registration_key=keys,
-        proposed_configuration=proposed_configuration)
+        proposed_configuration=proposed_configuration, queries=queries)
     configuration = sources._configuration(db, installation_id, package, proposed=proposed_configuration)
     optional_unavailable = list(resolved.optional_unavailable)
     commands = _commands(package, resolved, optional_unavailable)
@@ -95,6 +96,14 @@ def _compose(db, installation_id, pin, package, keys, *, proposed_configuration=
     }
     if unexpected:
         raise sources._Unavailable("source_unavailable")
+    if resolved.queries:
+        subject = QueryPolicySubjectV12(subject_version=12,
+            binding=PolicyBinding(principal=resolved.principal, candidate=resolved.baseline.artifact,
+                baseline=resolved.baseline, configuration=identity, recovery_generation=resolved.guard.generation),
+            commands=commands, connectors=resolved.connectors, queries=resolved.queries,
+            has_executable_frontend=package.compiled_ui is not None, blockers=blockers)
+        return InstalledPolicySubject(subject=subject, guard=resolved.guard,
+            issues=(sources.SourceIssue(reason='policy_evidence_unavailable'),))
     if resolved.tasks:
         if any(getattr(resolved, name) for name in ("connectors", "events", "publications", "private_files", "relational", "checkpoints", "identities", "status_projections", "peer_reads", "sessions")):
             raise sources._Unavailable("unsupported_scope_family")

@@ -19,7 +19,7 @@ from backend.utils.db_utils import get_db
 router = APIRouter(prefix='/api/v1/application-extensions', tags=['application-authority'])
 Identifier = Annotated[str, Field(pattern=r'^[0-9a-f]{32}$')]
 Digest = Annotated[str, Field(pattern=r'^[0-9a-f]{64}$')]
-Scope = Annotated[str, Field(pattern=r'^(?:(?:command|connector|event|publication|task):[a-z][a-z0-9_]{0,95}|storage:(?:private_files_(?:read|write|publish|transform)|relational_(?:read|write))|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read|session:[a-z][a-z0-9_]{0,95}:open)$')]
+Scope = Annotated[str, Field(pattern=r'^(?:(?:command|connector|event|publication|task):[a-z][a-z0-9_]{0,95}|storage:(?:private_files_(?:read|write|publish|transform)|relational_(?:read|write))|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|(?:peer|query):[a-z][a-z0-9_]{0,95}:read|session:[a-z][a-z0-9_]{0,95}:open)$')]
 
 
 class ReviewRequest(BaseModel):

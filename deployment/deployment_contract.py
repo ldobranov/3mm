@@ -123,6 +123,6 @@ def validate_platform_runtime_contract(data: bytes):
     if (not isinstance(value,dict) or type(value.get("schema_version")) is not int
             or type(value.get("authority_contract")) is not int
             or value!={"schema_version":1,"authority_contract":AUTHORITY_CONTRACT,
-                "operations":sorted(RUNTIME_ACTIONS),"connector_execution_contract":1,"application_response_contract":1}):
+                "operations":sorted(RUNTIME_ACTIONS),"connector_execution_contract":1,"application_response_contract":1,"query_execution_contract":1}):
         raise DeploymentContractError("Core and platform Runtime contracts are unsupported")
     return value

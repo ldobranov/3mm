@@ -15,6 +15,7 @@ from three_mm_protocol.application_tasks import ApplicationTaskV1
 from three_mm_protocol.application_requirements import ApplicationPlatformRequirementV1
 from three_mm_protocol.application_resources import ResourceScope
 from three_mm_protocol.application_sessions import ApplicationSessionBindingV1, ApplicationSessionProviderV1
+from three_mm_protocol.application_composition import ApplicationQueryDependencyV1, ApplicationQueryExportV1
 
 
 APPLICATION_EVENT_PATTERN = (
@@ -724,6 +725,12 @@ class ApplicationExtensionV1(StrictApplicationModel):
     command_bindings: tuple[ApplicationCommandBindingV1, ...] = Field(default=(), max_length=64)
     session_bindings: tuple[ApplicationSessionBindingV1, ...] = Field(default=(), max_length=32)
     session_providers: tuple[ApplicationSessionProviderV1, ...] = Field(default=(), max_length=8)
+    # Omit absent declarations: an unused optional interface must not change the
+    # canonical definition used by existing reviews and package tooling.
+    query_exports: tuple[ApplicationQueryExportV1, ...] = Field(
+        default=(), max_length=16, exclude_if=lambda value: not value)
+    query_dependencies: tuple[ApplicationQueryDependencyV1, ...] = Field(
+        default=(), max_length=16, exclude_if=lambda value: not value)
     storage: ApplicationStorageV1
     lifecycle: ApplicationLifecycleV1 = Field(default_factory=ApplicationLifecycleV1)
 
@@ -747,6 +754,14 @@ class ApplicationExtensionV1(StrictApplicationModel):
             raise ValueError("Session bindings require SDK 1.3")
         if self.session_providers and self.service.sdk_version != "1.3":
             raise ValueError("Session providers require SDK 1.3")
+        if (self.query_exports or self.query_dependencies) and self.service.sdk_version != '1.3':
+            raise ValueError('Application query declarations require SDK 1.3')
+        if self.query_dependencies and (self.query_exports or self.command_bindings or self.connectors
+                or self.event_subscriptions or self.session_bindings or self.session_providers or self.jobs
+                or self.tasks or self.checkpoints or self.platform_permissions or self.peer_bindings
+                or self.peer_receiver or self.storage.private_files or self.storage.relational
+                or self.public_http_routes or any(op.emitted_events for op in self.operations)):
+            raise ValueError('Query consumers require the one-hop query-only resource profile')
         if self.peer_bindings and self.service.sdk_version != "1.3":
             raise ValueError("Peer binding declarations require SDK 1.3")
         for binding in self.peer_bindings:
@@ -795,6 +810,9 @@ class ApplicationExtensionV1(StrictApplicationModel):
             ("command bindings", [item.binding_id for item in self.command_bindings]),
             ("session bindings", [item.binding_id for item in self.session_bindings]),
             ("session provider capabilities", [item.capability_id for item in self.session_providers]),
+            ("query exports", [item.export_id for item in self.query_exports]),
+            ("query handlers", [item.handler_operation_id for item in self.query_exports]),
+            ("query dependencies", [item.binding_id for item in self.query_dependencies]),
         ):
             if len(values) != len(set(values)):
                 raise ValueError(f"{label} must be unique")
@@ -804,6 +822,22 @@ class ApplicationExtensionV1(StrictApplicationModel):
             if binding.required_permission not in known_permissions:
                 raise ValueError("Session binding references an unknown human permission")
         operations = {item.operation_id: item for item in self.operations}
+        for export in self.query_exports:
+            handler = operations.get(export.handler_operation_id)
+            contract = export.contract
+            if (handler is None or handler.kind != 'query'
+                    or handler.audiences != ('internal',) or handler.required_permission is not None
+                    or handler.idempotency != 'forbidden' or handler.emitted_events
+                    or handler.operation_id == self.service.health_operation_id
+                    or handler.timeout_seconds != contract.timeout_seconds):
+                raise ValueError('Query exports require a dedicated internal query handler')
+            # No projection, coercion or inferred compatibility with private APIs.
+            from three_mm_protocol.application_composition import ApplicationQueryContractV1
+            actual = ApplicationQueryContractV1(**{
+                **contract.model_dump(mode='python'), 'input_schema': handler.input_schema,
+                'output_schema': handler.output_schema})
+            if actual.digest() != contract.digest():
+                raise ValueError('Query export schemas must match the handler exactly')
         for route in self.public_http_routes:
             operation = operations.get(route.handler_operation_id)
             if operation is None:
@@ -915,6 +949,7 @@ class ApplicationExtensionV1(StrictApplicationModel):
                     or self.session_bindings or self.session_providers or self.jobs
                     or self.checkpoints or self.platform_permissions or self.peer_bindings
                     or self.peer_receiver or self.storage.private_files or self.storage.relational
+                    or self.query_exports or self.query_dependencies
                     or self.public_http_routes or any(item.emitted_events for item in self.operations)):
                 raise ValueError("Bounded tasks support only their exact command effect adapter")
             from three_mm_protocol.application_commands import validate_argument_schema

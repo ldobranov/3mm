@@ -124,7 +124,7 @@ function scopeName(scope: string) {
     if (fileLabel) return label(fileLabel)
   const family = scope.split(':')[0]
   const names: Record<string, AuthorityLabel> = { command: 'commands', connector: 'connectors', event: 'events', publication: 'publications',
-    storage: scope.includes('relational') ? 'relational' : 'privateFiles', checkpoint: 'checkpoints', platform: 'identities', status: 'statusProjections', peer: 'peerReads', session: 'sessions', task: 'tasks' }
+    storage: scope.includes('relational') ? 'relational' : 'privateFiles', checkpoint: 'checkpoints', platform: 'identities', status: 'statusProjections', peer: 'peerReads', session: 'sessions', task: 'tasks', query: 'queries' }
   return `${label(names[family || ''] || 'resources')} · ${scope}`
 }
 function sourceReason(reason: string) {
@@ -163,12 +163,32 @@ onMounted(refresh)
         </section>
         <p class="ui-help">{{ selected.length }} / {{ preview.scopes.length }} {{ label('consentPermissions') }} · {{ selectedUser.length }} {{ label('consentYourPermissions') }}</p>
         <p v-if="expired" class="authority-error" role="alert">{{ label('consentExpired') }}</p>
+        <section v-if="preview.resources.queries?.length" class="authority-queries ui-stack">
+          <h4>{{ label('queries') }}</h4>
+          <p class="ui-help">{{ label('queryBoundary') }}</p>
+          <article v-for="query in preview.resources.queries" :key="query.declaration.binding_id" class="authority-query ui-stack">
+            <label class="ui-check authority-query-choice">
+              <input type="checkbox" :value="`query:${query.declaration.binding_id}:read`"
+                :checked="selected.includes(`query:${query.declaration.binding_id}:read`)" :disabled="busy || expired"
+                @change="choose(`query:${query.declaration.binding_id}:read`, $event)" />
+              <span>{{ label('queryRead') }} · <code>{{ query.declaration.binding_id }}</code></span>
+            </label>
+            <dl>
+              <dt>{{ label('queryProvider') }}</dt><dd>{{ query.provider.module_id }} · {{ query.provider_artifact.version }}<br /><code>{{ query.provider_instance_id }}</code></dd>
+              <dt>{{ label('queryContract') }}</dt><dd>{{ query.declaration.contract.contract_id }} · {{ query.declaration.contract.contract_version }}<br /><code>{{ query.export.export_id }}</code></dd>
+              <dt>{{ label('queryBudget') }}</dt><dd>{{ query.declaration.contract.timeout_seconds }} s · {{ query.declaration.contract.max_response_bytes }} {{ label('fileBytes') }}</dd>
+            </dl>
+            <details><summary>{{ label('fileBinding') }}</summary>
+              <pre>{{ JSON.stringify(query, null, 2) }}</pre>
+            </details>
+          </article>
+        </section>
         <details class="authority-details">
           <summary>{{ label('consentDetails') }}</summary>
           <div class="authority-choices ui-stack">
             <h4>{{ label('consentServicePermissions') }}</h4>
             <p v-if="relationalPair" class="ui-help authority-relational-profile">{{ label('consentRelationalProfile') }}</p>
-            <label v-for="scope in preview.scopes" :key="scope" class="ui-check authority-scope-choice">
+            <label v-for="scope in preview.scopes.filter(item => !item.startsWith('query:'))" :key="scope" class="ui-check authority-scope-choice">
               <input type="checkbox" :value="scope" :checked="selected.includes(scope)" :disabled="busy || expired" @change="choose(scope, $event)" />
               <span>{{ scopeName(scope) }}</span>
             </label>
@@ -220,7 +240,12 @@ h4 { font-size: .95em; }
 .authority-choices, .authority-resources { margin-top: calc(var(--ui-space) * 4); }
 .authority-scope-choice, .authority-user-choice { align-items: flex-start; overflow-wrap: anywhere; }
 .authority-unavailable { overflow-wrap: anywhere; }
-.authority-resources pre { background: var(--ui-surface-alt); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); padding: calc(var(--ui-space) * 3); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; font-size: .8em; }
+.authority-query { min-width: 0; padding: calc(var(--ui-space) * 3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); overflow-wrap: anywhere; }
+.authority-query dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: .5rem 1rem; margin: 0; font-size: .9em; }
+.authority-query dd { margin: 0; min-width: 0; }
+.authority-query summary { cursor: pointer; font-size: .9em; }
+.authority-resources pre, .authority-query pre { background: var(--ui-surface-alt); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); padding: calc(var(--ui-space) * 3); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; font-size: .8em; }
+@media (max-width: 480px) { .authority-query dl { grid-template-columns: minmax(0, 1fr); } }
 .authority-artifact { margin-top: calc(var(--ui-space) * 4); overflow-wrap: anywhere; }
 .authority-revoke { border-top: 1px solid var(--ui-danger); padding-top: calc(var(--ui-space) * 4); }
 </style>

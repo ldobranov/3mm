@@ -399,6 +399,26 @@ describe('Extensions management workflow', () => {
     )
   })
 
+  it('requires an explicit matching query choice and submits both saved keys without granting access', async () => {
+    const sha = '8'.repeat(64), instance = '9'.repeat(24)
+    http.get.mockImplementation((url: string) => Promise.resolve({ data: url === '/api/v1/modules/packages'
+      ? [{ module_id: 'org.example.consumer', version: '1.0.0', sha256: sha, manifest: { name: 'Query consumer', entrypoints: { core: 'application-extension.json' } } }]
+      : url.endsWith('/configuration') ? { fields: [{ key: 'DIRECTORY_INSTANCE', export_key: 'DIRECTORY_EXPORT',
+        kind: 'application_query', label: 'example.directory.lookup · 1.0', required: true, value: null, export_value: null,
+        choices: [{ instance_id: instance, export_id: 'lookup', module_id: 'org.example.directory', version: '1.0.0', artifact_sha256: '7'.repeat(64) }] }], devices: [] } : [] }))
+    const wrapper = await mountView()
+    await wrapper.findAll('.extension-card').find(c => c.text().includes('Query consumer'))!.findAll('button').find(b => b.text() === 'Install and activate')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('No active managed devices')
+    expect(wrapper.get('.ui-dialog-actions .version-btn').attributes('disabled')).toBeDefined()
+    await wrapper.get('#application-config-DIRECTORY_INSTANCE').setValue(instance+'/lookup')
+    expect(http.post).not.toHaveBeenCalled()
+    await wrapper.get('.ui-dialog-actions .version-btn').trigger('click'); await flushPromises()
+    expect(http.post).toHaveBeenCalledWith(`/api/v1/application-extensions/packages/${sha}/activate`,
+      { configuration: { DIRECTORY_INSTANCE: instance, DIRECTORY_EXPORT: 'lookup' } })
+    expect(http.post.mock.calls.some(([url]) => url.endsWith('/consent/allow'))).toBe(false)
+  })
+
   it.each([false,true])('allows every optional reader to remain empty or be cleared (available: %s)',async available=>{
     const sha='8'.repeat(64),device='dev_'+'1'.repeat(32)
     http.get.mockImplementation((url:string)=>Promise.resolve({data:url==='/api/v1/modules/packages'?

@@ -8,10 +8,10 @@ combines a central Core, a persistent device Agent, provisioning and reviewed
 applications through common capability contracts and SDKs. Builder, dashboards
 and other product features live in optional source packages/libraries.
 
-> **Project status:** Development prototype (pre-1.0). **Core 0.3.1** covers
+> **Project status:** Development prototype (pre-1.0). This source prepares **Core 0.3.2**, covering
 > common resource discovery, actor/delegation access, lifecycle recovery,
 > tasks/schedules, shared themed UI, files/media and invocation optimization.
-> The [0.3.1 changelog](CHANGELOG.md#031---2026-10-28) describes the supported scope.
+> The [0.3.2 changelog](CHANGELOG.md#032---2026-10-28) describes the supported scope.
 > It builds on the accepted
 > Core stabilization, Standalone/Hub/Node setup and Wi-Fi/AP recovery, bounded
 > diagnostics, independent optional runtimes and manifest-v2 language extensions.
@@ -23,13 +23,22 @@ and other product features live in optional source packages/libraries.
 > Host/root administration, public Cloud, full remote Terminal UI and whole
 > M21/WP5 isolation remain separate work. Terminal 1.0.3 is an independent package.
 > Native application approval permits Linux code execution and is **not a sandbox**.
-> The [0.3.1 release notes](docs/RELEASE_NOTES_0.3.1.md) describe upgrades,
+> The [0.3.2 release notes](docs/RELEASE_NOTES_0.3.2.md) describe upgrades,
 > independent components and owner device trials. Preserve database/key backups;
 > populated history can refuse downgrade, and an older Core pointer alone does
 > not restore the previous database or independent component versions.
 > [M20/WP4 acceptance](docs/EXTENSION_PLATFORM_V2_WP4_FINAL_ACCEPTANCE.md) and
 > [current evidence](docs/WORKING_STATE.md) state the tested boundaries.
 > Device Protocol 1.0 and Application SDK 1.3 retain independent version numbers.
+>
+> **CAP13 in 0.3.2:** the local read-only, one-hop application-query vertical is
+> implemented and locally checked, including exact provider selection, M20 browser
+> consent and SDK/Runtime execution with fresh result fencing. This is not part of
+> 0.3.1 and is not completion of all CAP13. It needs coordinated current Core,
+> Platform Runtime and application-host/SDK components plus normal release gates.
+> Commands, user delegation, recursive/remote composition and scoped-relational
+> query providers remain outside this profile. See [CAP13 contract and limits](docs/CORE_SIMPLIFICATION_PLAN.md#cap13-композиция-между-приложения)
+> and the [prepared changelog](CHANGELOG.md#032---2026-10-28).
 > CI runs automatically on branch pushes. An immutable version tag runs all
 > Release checks and reproducible builds; assets appear only after successful
 > publication. Device trials are separate from publication. The release badge
@@ -592,6 +601,7 @@ checks local browser CORS as well as readiness. See the
 | [beta.56 preparation record](docs/RELEASE_NOTES_0.3.0-beta.56.md) | Historical streaming/cleanup repair and accepted WP4 scope; installed Terminal remained unaccepted |
 | [beta.57 release notes](docs/RELEASE_NOTES_0.3.0-beta.57.md) | Stabilization, setup/recovery, Node/local relay, application consent and cleanup; upgrade and device trials |
 | [0.3.1 release notes](docs/RELEASE_NOTES_0.3.1.md) | Core/SDK resource contracts, tasks, product extraction, invocation performance and independent-component upgrade boundaries |
+| [0.3.2 release notes](docs/RELEASE_NOTES_0.3.2.md) | Local read-only application composition, explicit M20 query consent, independent Runtime/host requirements and release boundaries |
 | [Relational upgrade and recovery](docs/EXTENSION_PLATFORM_V2_RELATIONAL_UPGRADE.md) | Local candidate adoption, explicit migration, confirmation and partial-restore flow |
 | [Private application files](docs/EXTENSION_PLATFORM_V2_PRIVATE_FILES.md) | Exact file grants, signed SDK operations, limits and recovery evidence |
 | [Relational storage contract](docs/EXTENSION_PLATFORM_V2_RELATIONAL_STORAGE_CONTRACT.md) | Prepared-runtime foundation and remaining database lifecycle gates |

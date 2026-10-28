@@ -4,25 +4,241 @@ Updated: 2026-10-28. Start here; follow linked details only as needed.
 
 ## Active task and next result
 
-- **Core 0.3.1 release preparation, 2026-10-28.** Owner requested preparation
-  and main publication, retaining the annotated release-tag command themselves.
-  The owner confirms Raspberry already has the relevant fixes and Ubuntu holds
-  no important state; historical prototype compatibility is not an extra gate.
-  Preserve source and current device state: no wipe, reset or deployment requested.
-  Owner completed merge `0c536c9ad07a1dfd9d48c817e80bed2fe46d8c2f`; the worktree was
-  clean and its executable tree matches successful branch CI `40684871440` on
-  `5aa7246`. Main remote was still `778c5f0` at the pre-publication check.
-  README/changelog now describe the supported 0.3.1 scope rather than a local
-  checkpoint and stop advertising extracted products as built-in Core features.
-  Added `docs/RELEASE_NOTES_0.3.1.md` for the existing tag-driven workflow, with
-  independent component/data recovery boundaries and honest M21/WP5 limits.
-  VERSION and all executable/dependency/workflow inputs remain unchanged.
-  Verification: documentation diff, whitespace and affected local links; reuse
-  the exact unchanged branch runtime evidence, no new local suite/build.
-  Publication scope is a documentation-only commit/push on main. NEXT: require
-  its automatic CI success, then owner creates/pushes annotated `v0.3.1`.
-  The tag does not yet exist and was not created here. Release retains full checks and
-  reproducible publication; no device rollout or final-tag hardware pass claimed.
+- **Core 0.3.2 commit/release preparation, 2026-10-28.** Owner explicitly
+  requested the commit and a release command, not push/tag/publication by the
+  agent. Scope is the CAP13 local read-only vertical below, its direct consumers
+  and checks, plus the previously verified release saturation-test correction.
+  Independent Terminal/device work and generated/private `.runtime` artifacts
+  are excluded. VERSION is 0.3.2; README/changelog and
+  `RELEASE_NOTES_0.3.2.md` describe the exact limits and component requirements.
+  No old tag is moved; no dependency/workflow gate, DB or device state changes.
+
+  Before preparation, repacking reproduced checked executable snapshot
+  `80bcfbe86dfe25d8b07234bf9142018460524c30d95e3b52565cb3713823d12e` exactly.
+  Reuse the attributable checks below; only VERSION/release documentation changes
+  afterward. The previously recorded frontend/SDK/Runtime results are targeted,
+  not a new full CI pass. Version/build/tag validation is checked separately.
+  Preparation checks: Windows/Python 3.13.15, release builder and target WP4
+  contract group **105 passed**, `.runtime/cap13-release-prep.xml` (56.55 s).
+  Exact reviewed index: 53 source/test/release-documentation paths; no private,
+  generated or unrelated files. Staged whitespace check passes. These checks do
+  not replace canonical Linux/full release checks or final-tag device acceptance.
+  NEXT: owner pushes main, waits for green CI on this exact commit, then creates
+  and pushes annotated v0.3.2 on that commit. Tag Release must pass full Python
+  3.13/Node 22 gates and reproducible full/Node builds before publication.
+  No push, tag, release execution, rollout or hardware acceptance is implied.
+
+- **CAP13 runnable local read-only release candidate, 2026-10-28.** Owner asked
+  for a more complete release-ready stage. This supersedes the declaration-only
+  and backend-only next actions below. The bounded vertical is now implemented:
+  matching local provider/export selection in the common configuration form,
+  visible initially-unselected M20 query consent, SDK `platform.query()`, real
+  application-host invocation, independent Runtime response wait, and fresh Core
+  result authorization. Exact contract/API/rollout limits and usage are in
+  `CORE_SIMPLIFICATION_PLAN.md` CAP13; README/changelog label this UNRELEASED.
+
+  No long Core transaction/guard/handler waits for the provider. Runtime receives
+  a response-only FD and one-use process-local completion token, no DB/keys.
+  Core validates the provider signature/request ID, deadline/schema/size and both
+  current package/principal/config/grant bindings before disclosing output.
+  Pending limits: 8 global / 4 consumer, response wait <=5 s, no automatic retry
+  or durable replay. SDK passes an application caller, not delegated user rights.
+  Revoke/renew/disable/drift fence output; they cannot recall already-run native
+  code. Query rights never fall back to compatibility/generic effect admission.
+
+  Scope stays one-hop/query-only (<=16 dependencies). No scoped-relational query
+  providers, commands, human delegation, entity/deep links, recursive or remote
+  composition; full CAP13/M21/WP5 are NOT declared complete. Current independent
+  Runtime advertises query feature 1; current application-host/SDK is needed for
+  caller context. Core-only deployment does not implicitly update these pins.
+  No new tables/migration, credentials, package-specific Core branches or devices.
+
+  Verification, cached unprivileged Ubuntu / Python 3.14.4; dependencies unchanged
+  at SHA-256 `157780b7b0276402845e07a72c374b5a646690a1683b64ebb6423e6dc57a2f3f`:
+
+  - Source `cf3dc7510a49b145fc13e2be5f944a3c0798ccbe043b98006f2769cd824562f0`:
+    **272 passed / 1 distinct-OS-principals root-proof skip** plus ONE failed test
+    assertion: SQL-profile refusal is intentionally exposed by the manager as
+    generic `unsupported_authority`, not its private reason. Corrected that
+    assertion and separately proved resolver's `query_profile_unsupported`; no
+    production denial weakened. Group covers real host + exec'd Runtime, query
+    denial/revocation/drift/Unicode/timeout/crash, contracts, resource discovery,
+    M20 composition, Runtime artifact/update/rollback and SDK callers.
+  - Source `11b19f9bb735782442eac944559b1ec0f8dad1188509f50522942f8cfe5f57f0`:
+    **294 passed / 2 skips**, corrected SQL/configuration + shared M20 context,
+    sources, subjects, policy, management and consent. Skips: non-POSIX refusal
+    on Linux and missing copied Node/compiler for the new cross-language test.
+    Its actual HTTP preview was retained and separately decoded with CURRENT
+    Windows Node 24.19.0 / installed Vite esbuild + real TypeScript parser:
+    **1 accepted / 1 contract-drift refusal**, no projection/selection change.
+    This is mixed-platform evidence, not a Linux parser pass. Ignored decoder:
+    `.runtime/cap13-preview/decode.mjs`; CI uses the existing locked compiler.
+  - Final behavior changes (base listener does not advertise query execution;
+    observation preserves the full 96-character authority package version):
+    source `02b109e0b087273352c3b5dc41f7f0d7390e97e1b9a7d51ad9edcd0c53786621`,
+    **63 passed**, affected transport/resource/SDK/protocol consumers and real
+    query. Source `ed7d4258381791d5c316da80f12062ffa674191a0caf4c142940610be37744b0`,
+    **8 passed**, explicit reply-FD write denial / invalid envelopes and the
+    reproducible self-contained application-host artifact. Only tests and a
+    configuration docstring differ from the preceding executable snapshot.
+  - JUnit: `/tmp/3mm-public-capacity-{z9nfh6np,x4bh2cmh,caoicxu0,e_2z6p7p}/results.xml`.
+    Earlier 78-pass transport/SDK/configuration run overlaps these checks and is
+    not added. First test-harness attempts (slow spawn import, graceful stop
+    mistaken for crash) were repaired in the fixture; crash uses SIGKILL.
+  - Final recovery check: query feature is required by query resource readiness,
+    NOT by general deployment health of a previous independently pinned Runtime.
+    This keeps rollback available while an absent feature fences new queries.
+    Source `80bcfbe86dfe25d8b07234bf9142018460524c30d95e3b52565cb3713823d12e`:
+    **3 passed**, actual absent-feature probe, immutable Runtime rollback and
+    deterministic/Core-free Runtime artifact. JUnit:
+    `/tmp/3mm-public-capacity-z0h0bgk1/results.xml`. Other checked executable inputs
+    above are unchanged; only documentation follows this snapshot.
+  - Windows Python **3.13.15** / Pydantic **2.13.4**: **122 passed** pure query/
+    SDK actor/transport/contract checks, `.runtime/cap13-win-final.xml`.
+  - Frontend Node **24.19.0** / installed locked dependencies: **304 passed**
+    across all extension authority/settings parsers/dialogs and Extensions view;
+    TS + Vite production build passed. A missing BG button label found by the
+    first new component run was added before this final pass/build. Real narrow
+    browser preview (~401 px), EN/light and BG/dark: optional checkbox, provider
+    pins/bounds, long IDs, vertical scroll and wrapped actions visually checked.
+    Preview uses fake data/current components, no live approval. No wide desktop
+    or physical mobile-device layout claim. All counts overlap, NOT summed.
+
+  Previous unchanged saturation-test fix/evidence below is preserved. No whole
+  CI/Release rerun, version/tag change, commit/push, deployment or reset. **NEXT:**
+  exact commit-scope review, then owner-authorized commit/version preparation,
+  canonical Python 3.13 / Node 22 integration CI and full Release gates, followed
+  by owner-run smoke using the exact Core/Runtime/host artifacts. Do not reuse
+  or move failed immutable `v0.3.1`; eventual 0.3.2 needs its own new tag.
+
+- **CAP13 M20 backend binding completed locally, 2026-10-28.** Owner requested
+  continuation toward CAP13 before 0.3.2. Query dependencies now explicitly name
+  two separate manifest string configuration keys for saved provider instance
+  (24-hex) and export IDs. Updated current declaration/package consumers together;
+  the earlier unreleased dependency shape is superseded, no compatibility shim.
+  First consumer profile is query-only, max 16 dependencies and one hop: no other
+  resource families/exports; selected providers cannot themselves depend on queries.
+
+  Existing M20 preview/allow and manual review/approve/apply seal authority v12
+  `query:<binding_id>:read` resources in the SAME plan/grant/action records.
+  Provider must be enabled/active and have a current independently approved M20
+  grant. Both principals/incarnations/instances, package/UI digests, exact export/
+  contract, provider keyed configuration, epoch and grant revisions are pinned.
+  ZIP validation precedes key/guard acquisition; final metadata/grants/configuration
+  are reread in the same snapshot. Query scopes start unselected. Drift, revoke,
+  disable, stale/corrupt trust, changed bytes/pointers or renewed provider approval
+  cannot silently reuse/replace consumer authority. No new tables/migration,
+  service start, shared credential or application-specific Core branch.
+
+  This completes only the **M20 backend** slice. Runtime/SDK invocation and
+  browser consent DTO/UI remain NEXT; existing strict browser validation rejects
+  unknown query resources rather than hiding/approving them. New rights can be
+  tested through the admin HTTP endpoint, not yet through the browser dialog.
+  Selected saved query rights report `query_runtime_not_connected` / ineffective;
+  the generic effect lease refuses them even in compatibility mode. No shell,
+  remote composition, user delegation or completed/runnable CAP13 claim.
+
+  Checks: unprivileged Linux/Python 3.14.4, unchanged dependency digest
+  `157780b7b0276402845e07a72c374b5a646690a1683b64ebb6423e6dc57a2f3f`.
+  M20 consent/management/policy/context/sources/subjects + CAP13 protocol/ZIP group:
+  **371 passed / 1 non-POSIX-only skip**, 42.69 s, source `f4528aff01f3d89d805dd617454ccfe8b40ee65fd4ccdc454031ef7e3323866e`.
+  After adding the HTTP query-scope parser and final negative cases, **120 passed**,
+  25.19 s, source `a6e2e2baa4c5a92762c68812f407877504fcc9cefda70b306efc870de1b2890b`;
+  the unchanged pure policy/source/context/management checks above are reused.
+  Final additional manual-review/apply case **1 passed**, 3.24 s, source
+  `79af32dbc305a5ed150936d1ecf42413040597b424c3d008688b5b1682c7f4a1`.
+  Only that test/then documentation differs from the final HTTP-checked source.
+  Counts overlap; they are NOT summed or called a full CI/release gate.
+  JUnit: `/tmp/3mm-public-capacity-{k2leqx75,53_5c_gd,1uog66is}/results.xml`.
+  Initial fixture failures (old SDK declaration and active first manual adoption)
+  were corrected in tests, preserving the SDK 1.3/disabled-adoption requirements.
+  Whitespace check passes. No frontend build, commit/push/version/tag/deployment.
+
+- **CAP13 first declaration slice, 2026-10-28.** Owner wants CAP13 developed
+  before preparing 0.3.2. Bounded result here: typed query exports/dependencies in
+  the manifest-v2 application's descriptor and a pure compatibility assessment.
+  Protocol implementation: `three_mm_protocol/application_composition.py`;
+  contract/limits and next stages: CAP13 in `CORE_SIMPLIFICATION_PLAN.md`.
+  Only dedicated internal queries with exact bounded input/output schemas,
+  matching deadlines and no human permission/events may be exported. Consumer
+  contract identity/version/schemas/budgets must match exactly; no subtyping,
+  wildcard/provider fallback or self-composition. Schema rules reuse the existing
+  bounded capability dialect. The contract digest is domain-separated and typed.
+  Absent composition declarations do not alter unrelated canonical descriptors.
+
+  This is **declarations only**, not a runnable or completed CAP13. Even a
+  compatible result explicitly has no evaluated instance binding, permission or
+  runtime readiness; invocation is unsupported. No new SDK action, grant, browser
+  UI, DB migration, service call or host transport change is included. Reviewed
+  native code declaring a query is not a purity/isolation proof. NEXT: current
+  M20 approval for exact consumer/provider instances, both package identities,
+  export/dependency and contract digest, then bounded Runtime admission/result
+  fencing with revoke/disable/upgrade checks. Commands, actor delegation,
+  entity/deep-link and remote composition are later stages.
+
+  Verification: new protocol/real ZIP package cases **61 passed**, Windows
+  Python 3.13.15 / Pydantic 2.13.4 (`.runtime/cap13-initial.xml`). Linux snapshot
+  `9265f5ba734225825cabd02b6e15d8b1aee0a14d10093c1376c3aa065923f2f4`,
+  Python 3.14.4 / unchanged dependency digest `157780b7b0276402845e07a72c374b5a646690a1683b64ebb6423e6dc57a2f3f`:
+  **293 passed / 1 non-POSIX-only skip**, across new cases, existing application/
+  capability schemas, package/gateway and authority context/sources/subjects.
+  That run also had one environment failure: dev-lab's source-root allowlist
+  omits the optional CRUD library needed by the existing Contacts package test.
+  That exact case separately **passed** on Windows/Python 3.13.15 with UTF-8 and
+  a private temporary directory (`.runtime/cap13-example.xml`). This is mixed
+  platform evidence, not an all-green Linux/full release run. Earlier Windows
+  regression attempt also hit protected pytest temp/locale and is not a green
+  gate. Linux JUnit: `/tmp/3mm-public-capacity-b_wtv9fi/results.xml`; initial/new
+  cases overlap these results and are not additional unique coverage.
+  Only plan/handoff documentation changed after the checked executable source.
+  No frontend build, commit, push, version bump, tag or device operation.
+  Keep the unrelated saturation-test fix below for later 0.3.2 integration.
+
+- **Release saturation-test race corrected locally, 2026-10-28.** Owner requested
+  a fix after Release `40703983090` attempts 2 and 3 both failed at
+  `test_saturated_public_waits_and_runtime_kill_leave_core_handlers_available`
+  (`9 == 8`). Nothing was published. Immutable annotated `v0.3.1` remains on
+  `8bcdb91f47ee274c1b23a8f68e62d9ab9b1d6f8a`; never move/recreate it.
+
+  The test counted eight historical sends, but its declared 2 s response waits
+  could expire during the intervening Core/SDK probes. A ninth request could then
+  legitimately occupy a released slot. Delaying only the test caller by 2.2 s
+  reproduces the original `9 == 8` failure; this is not a proven production
+  capacity defect. The saturation case alone now uses the supported 30 s response
+  window, asserts all eight waits are still live before/after overflow, requires
+  the ninth request's refusal within 2 s, and kills/reaps its owned Runtime even
+  on assertion failure. Serial admission, Core responsiveness, kill/restart,
+  authority and no-replay checks remain. Other cases retain the 2 s fault profile;
+  production code, deadlines, pool sizes, dependencies and release gates are
+  unchanged. A discarded simultaneous-admission candidate hit a different short
+  admission pool; it is not counted as successful evidence.
+
+  Checked executable snapshot
+  `b530454a98b35402789438d30a077d53dc8b65cc70d6b2601458b9c821fdc666`,
+  unprivileged Linux / Python 3.14.4, dependency freeze SHA-256
+  `157780b7b0276402845e07a72c374b5a646690a1683b64ebb6423e6dc57a2f3f`:
+  delayed corrected case **1 passed** (9.06 s); deliberately allowing nine slots
+  in a disposable copy correctly **fails** the prompt-overflow assertion. Related
+  group (`backend/tests/test_application_public_web_transport.py`,
+  `backend/tests/test_application_public_web.py`, `three_mm_public_web/tests`):
+  **43 passed / 1 distinct-OS-principals root-driver skip** (126.73 s).
+  JUnit: `/tmp/3mm-public-capacity-{7cj1e5jc,x3aov01k,0lhcsrd5}/results.xml`;
+  ignored reproduction helper: `.runtime/release-public-capacity/check.py`.
+  No live service/device changes, frontend build or broad suite repeated.
+  Working-state update is documentation-only after that checked snapshot.
+  Whitespace check passes. NEXT: owner-authorized commit/version preparation;
+  corrected code requires a new version/tag, not a retry of immutable `v0.3.1`.
+  Canonical Python 3.13 CI/full Release gates have not tested this correction yet.
+  No commit, push, version change or tag mutation performed for this fix.
+
+- **Core 0.3.1 preparation completed, 2026-10-28.** Owner completed merge
+  `0c536c9ad07a1dfd9d48c817e80bed2fe46d8c2f` and publication preparation was
+  committed/pushed as `8bcdb91`. README/changelog/release notes describe the
+  supported scope, independent component/data recovery and M21/WP5 limits.
+  Exact main CI `40702947339` succeeded; owner created/pushed annotated `v0.3.1`.
+  Release was cancelled once, then failed twice as recorded above. No published
+  artifact or final-tag hardware pass is claimed. Preserve source/device state;
+  no wipe, reset or deployment is part of this task.
 
 - **Core/SDK 0.3.1 integration prepared on main, 2026-10-28.** Owner approved
   the bounded integration review/preparation, not a release or device rollout.

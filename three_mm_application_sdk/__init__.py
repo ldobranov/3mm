@@ -100,6 +100,19 @@ class ApplicationPlatformClient:
             raise ApplicationPlatformError('Resource observation is invalid', reason='response_invalid') from exc
         return result.model_dump(mode='json')
 
+    def query(self, binding_id: str, *, arguments: Mapping[str, object]) -> dict[str, object]:
+        """Invoke one exact approved local query once; never retry a lost result."""
+        from three_mm_protocol.application_composition import ApplicationQueryRequestV1, ApplicationQueryResultV1
+        request = ApplicationQueryRequestV1(binding_id=binding_id, arguments=dict(arguments))
+        value = self._call('query.request', request.model_dump(mode='json'))
+        try:
+            result = ApplicationQueryResultV1.model_validate(value)
+            if result.binding_id != binding_id:
+                raise ValueError('Query binding changed')
+        except ValueError as exc:
+            raise ApplicationPlatformError('Query result is invalid', reason='response_invalid') from exc
+        return result.model_dump(mode='json')
+
     def _delegation_call(self, action: str, delegation_id: str) -> dict[str, object]:
         from three_mm_protocol.application_delegation import DelegationReceiptV1
         if not isinstance(delegation_id, str) or re.fullmatch(r"[0-9a-f]{32}", delegation_id) is None:
@@ -812,6 +825,7 @@ class OperationActor:
     terminal_id: str | None = None
     installation_id: str | None = None
     platform_administrator: bool = False
+    application_instance_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -830,6 +844,7 @@ class OperationContext:
     subject_id: str | None = field(default=None, kw_only=True)
     executor: object | None = field(default=None, kw_only=True)
     delegation: object | None = field(default=None, kw_only=True)
+    application_caller: object | None = field(default=None, kw_only=True)
 
     @property
     def initiator(self) -> OperationActor:
@@ -837,6 +852,8 @@ class OperationContext:
 
     @property
     def actor(self) -> OperationActor:
+        if self.application_caller is not None:
+            return OperationActor('application', application_instance_id=self.application_caller.instance_id)
         if self.machine is not None:
             return OperationActor("installation", installation_id=self.machine.installation_id)
         if self.task_execution is not None:
@@ -914,12 +931,19 @@ class OperationContext:
             if audience != "internal" or machine is not None or value.get("user_id") is not None:
                 raise ValueError("Task execution requires an internal machine context")
             task = TaskExecutionV1.model_validate(task)
+        caller = value.get('application_caller')
+        if caller is not None:
+            from three_mm_protocol.application_composition import ApplicationQueryCallerV1
+            if (audience != 'internal' or machine is not None or task is not None
+                    or delegation is not None or value.get('idempotency_key') is not None):
+                raise ValueError('Application caller requires a non-delegated internal query')
+            caller = ApplicationQueryCallerV1.model_validate(caller)
         return cls(audience=str(audience), correlation_id=str(value.get("correlation_id", "")),
                    user_id=user_id, subject_id=subject_id, terminal_id=terminal_id, permission_ids=tuple(permissions),
                    platform_administrator=administrator,
                    executor=executor, delegation=delegation,
                    idempotency_key=value.get("idempotency_key") if isinstance(value.get("idempotency_key"), str) else None,
-                   machine=machine, task_execution=task)
+                   machine=machine, task_execution=task, application_caller=caller)
 
 
 class ApplicationService(Protocol):

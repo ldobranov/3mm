@@ -96,7 +96,7 @@ def preview(manager, installation_id, *, actor_token, request_id):
         selected = [scope for scope in saved['selection']['scopes'] if scope in scopes
             and authority.optional_scope_current(subject, {'data':saved}, scope)] if saved else [scope for scope in scopes
             if scope not in {'storage:private_files_publish', 'storage:private_files_transform'}
-            and scope not in subject.optional_resources]
+            and scope not in subject.optional_resources and not scope.startswith('query:')]
         known_permissions = [item["permission_id"] for item in permissions]
         user_saved = bool(current_human) or bool(saved and saved.get("actor_user_id") == actor[0])
         selected_human = [item for item in current_human if item in known_permissions] if user_saved else known_permissions

@@ -24,6 +24,12 @@ def observe(kind, settings):
             from three_mm_platform_runtime.connector_worker import probe_worker
             value = probe_worker(settings.connector_worker_socket, expected_uid=_uid(settings.connector_worker_user))
             if type(value.get('connector_contract')) is not int: raise ValueError('Invalid connector contract')
+        elif kind == 'query':
+            from three_mm_platform_runtime.server import probe_runtime
+            value = probe_runtime(settings.runtime_socket, expected_uid=_uid(settings.runtime_user),
+                require_queries=True, require_connectors=False)
+            if type(value.get('query_execution_contract')) is not int:
+                raise ValueError('Invalid query contract')
         elif kind == 'event':
             from three_mm_platform_runtime.server import probe_runtime
             value = probe_runtime(settings.runtime_socket, expected_uid=_uid(settings.runtime_user),

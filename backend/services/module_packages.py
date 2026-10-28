@@ -323,6 +323,10 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
         referenced_config.update(item.target_device_config_key for item in application_extension.session_bindings)
         referenced_config.update(item.sensor_device_config_key for item in application_extension.command_bindings if item.sensor_device_config_key)
         referenced_config.update(item.peer_id_config_key for item in application_extension.peer_bindings)
+        for item in application_extension.query_dependencies:
+            referenced_config.update((item.provider_instance_config_key, item.provider_export_config_key))
+            if {item.provider_instance_config_key, item.provider_export_config_key} & set(manifest.configuration_defaults):
+                raise ModulePackageError('Query providers require explicit instance/export selection, not defaults')
         referenced_config.update(
             item.destination_config_key
             for item in application_extension.connectors

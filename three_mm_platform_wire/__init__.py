@@ -25,9 +25,9 @@ SCOPED_ACTIONS = frozenset({
     "relational.admit", "relational.complete", "relational.status",
     "relational.boot.startup", "checkpoint.get", "checkpoint.put",
     "installation.identity.get", "installation.status.get", "installation.peers.read",
-    "delegation.execute", "delegation.lookup",
+    "delegation.execute", "delegation.lookup", "query.request",
 })
-COMPATIBILITY_ACTIONS = SCOPED_ACTIONS | frozenset({
+COMPATIBILITY_ACTIONS = (SCOPED_ACTIONS - {'query.request'}) | frozenset({
     "installation.identity.prove", "installation.peers.enroll",
     "installation.peers.list", "installation.peers.capabilities",
     "installation.peers.approve", "installation.peers.revoke",
@@ -94,7 +94,7 @@ def read_frame(connection, deadline, *, max_bytes=None):
     raise ValueError("Platform frame is incomplete or too large")
 
 
-RUNTIME_ACTIONS = COMPATIBILITY_ACTIONS
+RUNTIME_ACTIONS = COMPATIBILITY_ACTIONS | SCOPED_ACTIONS
 AUTHORITY_CONTRACT = 2
 AUTHORITY_MAX_BYTES = MAX_MESSAGE_BYTES
 AUTHORITY_CONNECTIONS = 4

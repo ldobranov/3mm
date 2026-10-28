@@ -106,6 +106,13 @@ from three_mm_protocol.application_event_publication import (
     DeviceEventProducerV1,
     PlatformEventV1,
 )
+from three_mm_protocol.application_composition import (
+    ApplicationQueryContractV1,
+    ApplicationQueryExportV1,
+    ApplicationQueryDependencyV1,
+    ApplicationQueryCompatibilityV1,
+    assess_application_query,
+)
 from three_mm_protocol.interactive_session import (
     SESSION_CONTRACT,
     SESSION_PROTOCOL_VERSION,
@@ -181,6 +188,11 @@ __all__ = [
     "BackupManifestV1",
     "BackupProtectionV1",
     "ApplicationCheckpointV1",
+    "ApplicationQueryContractV1",
+    "ApplicationQueryExportV1",
+    "ApplicationQueryDependencyV1",
+    "ApplicationQueryCompatibilityV1",
+    "assess_application_query",
     "ApplicationConnectorV1",
     "ApplicationEventSubscriptionV1",
     "ApplicationExtensionV1",

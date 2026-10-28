@@ -25,6 +25,7 @@ from sqlalchemy.pool import SingletonThreadPool, StaticPool
 from backend.db.device import Device, DeviceCapabilityProvider, DeviceCredential, DevicePlatformState
 from backend.db.installation_identity import CoreInstallationIdentity
 from backend.services.application_task_authority import ResolvedTaskScope
+from backend.services.application_composition_authority import ResolvedQueryScope
 from backend.db.module import (
     ApplicationConnectorBinding, ApplicationExtensionInstallation,
     ApplicationSecretReference, ModuleInstallation, ModulePackage,
@@ -113,6 +114,7 @@ class InstalledAuthoritySources(SourceModel):
     baseline: AuthorityBaseline | None = None
     commands: tuple[CommandSource, ...] = ()
     connectors: tuple[ResolvedConnectorScope, ...] = ()
+    queries: tuple[ResolvedQueryScope, ...] = ()
     events: tuple[ResolvedEventScope, ...] = ()
     publications: tuple[ResolvedPublicationScope, ...] = ()
     private_files: tuple[ResolvedPrivateFileScope, ...] = ()
@@ -461,11 +463,13 @@ def _resolve_code_identity(db, installation_id, pin, package, *, registration_ke
     return guard, authority, principal
 
 
-def _resolve(db, installation_id, pin, package, *, registration_key=None, proposed_configuration=None):
+def _resolve(db, installation_id, pin, package, *, registration_key=None, proposed_configuration=None, queries=None):
     guard, authority, principal = _resolve_code_identity(
         db, installation_id, pin, package, registration_key=registration_key)
     configuration = _configuration(db, installation_id, package, proposed=proposed_configuration)
     app = package.application_extension
+    if app.query_dependencies and queries is None:
+        raise _Unavailable('unsupported_scope_family')
     tasks = tuple(ResolvedTaskScope(declaration=item, operation=next(op for op in app.operations if op.operation_id == item.handler_operation_id),
         owner=principal, package_artifact_sha256=pin.sha256) for item in app.tasks)
     optional_unavailable = []
@@ -598,7 +602,7 @@ def _resolve(db, installation_id, pin, package, *, registration_key=None, propos
     result = InstalledAuthoritySources(sources_resolved=True, guard=guard, principal=principal,
         baseline=AuthorityBaseline(artifact=AuthorityArtifact(version=pin.version, sha256=pin.sha256),
             authority_epoch=authority.epoch, grant_revision=grant_revision, enforcement_mode=authority.mode),
-        commands=commands, connectors=connectors, events=events, publications=publications,
+        commands=commands, connectors=connectors, queries=queries or (), events=events, publications=publications,
         private_files=private_files, relational=relational, checkpoints=checkpoints,
         identities=identities, status_projections=status_projections, peer_reads=peer_reads,
         sessions=sessions, tasks=tasks, optional_unavailable=tuple(optional_unavailable), issues=tuple(pending))

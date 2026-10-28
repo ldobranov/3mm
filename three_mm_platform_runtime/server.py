@@ -49,7 +49,7 @@ def _core_connection(path,uid,deadline):
         connection.close();raise
 
 
-def probe_core(path,uid,*,public_web=False,events=False,connectors=True,responses=False):
+def probe_core(path,uid,*,public_web=False,events=False,connectors=True,responses=False,queries=True):
     nonce=uuid.uuid4().hex;deadline=time.monotonic()+AUTHORITY_CALL_SECONDS
     connection,pid,generation=_core_connection(path,uid,deadline)
     with connection:
@@ -59,6 +59,7 @@ def probe_core(path,uid,*,public_web=False,events=False,connectors=True,response
         if events: expected["event_delivery_contract"]=1
         if connectors: expected["connector_execution_contract"]=1
         if responses: expected["application_response_contract"]=1
+        if queries: expected['query_execution_contract']=1
         send_authority_frame(connection,expected)
         result=read_frame(connection,deadline,max_bytes=AUTHORITY_MAX_BYTES)
     if result!=expected:
@@ -159,6 +160,7 @@ class PlatformRuntime:
                     response={"runtime_probe":nonce,"build_id":self.build_id,
                         "authority_contract":AUTHORITY_CONTRACT,"pid":os.getpid(),"ready":False,
                         "connector_execution_contract":1,
+                        'query_execution_contract':1,
                         "application_response_contract":1,"application_responses_ready":bool(self.responses and self.responses.server is not None),
                         "public_web_contract":1,"public_web_ready":bool(self.public_web and self.public_web.server is not None),
                         "event_delivery_contract":1,"event_worker_ready":bool(self.events and self.events.ready)}
@@ -175,12 +177,34 @@ class PlatformRuntime:
                     with upstream:
                         upstream.settimeout(remaining(deadline))
                         send_authority_frame(upstream,request,origin=connection if request["action"]=="relational.boot.startup" else None)
-                        if request["action"] == "connector.request":
+                        if request["action"] in {'connector.request', 'query.request'}:
                             response, origin = receive_authority_frame(upstream, deadline)
                         else:
                             origin = None
                             response=read_frame(upstream,deadline,max_bytes=AUTHORITY_MAX_BYTES)
-                    if request["action"] == "connector.request" and origin is not None:
+                    if request['action'] == 'query.request' and origin is not None:
+                        try:
+                            if (response.get('query_execution_contract') != 1
+                                    or type(response.get('deadline_ms')) is not int
+                                    or type(response.get('max_response_bytes')) is not int
+                                    or not 1 <= response['max_response_bytes'] <= 16384):
+                                raise ValueError('Invalid query handoff')
+                            with self.lock: self.connections.add(origin)
+                            try:
+                                answer = read_frame(origin, min(deadline-1, response['deadline_ms']/1000),
+                                    max_bytes=response['max_response_bytes']+4096)
+                                completion = {'response': answer}
+                            except (OSError, ValueError): completion = {'failure': 'execution_unconfirmed'}
+                        finally:
+                            with self.lock: self.connections.discard(origin)
+                            origin.close()
+                        upstream,_,_ = _core_connection(self.authority_path,self.core_uid,deadline)
+                        with upstream:
+                            upstream.settimeout(remaining(deadline))
+                            send_authority_frame(upstream, {'query_execution_contract':1,
+                                'receipt':response['receipt'], **completion})
+                            response = read_frame(upstream, deadline, max_bytes=AUTHORITY_MAX_BYTES)
+                    elif request["action"] == "connector.request" and origin is not None:
                         try:
                             timeout = response.get("timeout_seconds")
                             if (response.get("connector_execution_contract") != 1
@@ -209,7 +233,7 @@ class PlatformRuntime:
             self.slots.release()
 
 
-def probe_runtime(path,*,expected_uid,expected_build=None,require_public_web=False,require_events=False,require_connectors=True,require_responses=False):
+def probe_runtime(path,*,expected_uid,expected_build=None,require_public_web=False,require_events=False,require_connectors=True,require_responses=False,require_queries=False):
     nonce=uuid.uuid4().hex;deadline=time.monotonic()+AUTHORITY_CALL_SECONDS+1
     with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as connection:
         connection.settimeout(remaining(deadline));connection.connect(str(path))
@@ -221,6 +245,7 @@ def probe_runtime(path,*,expected_uid,expected_build=None,require_public_web=Fal
             or result.get("authority_contract")!=AUTHORITY_CONTRACT
             or (expected_build is not None and result.get("build_id")!=expected_build)
             or (require_connectors and result.get("connector_execution_contract")!=1)
+            or (require_queries and (type(result.get('query_execution_contract')) is not int or result['query_execution_contract'] != 1))
             or (require_public_web and (result.get("public_web_contract")!=1 or result.get("public_web_ready") is not True))
             or (require_responses and (result.get("application_response_contract")!=1 or result.get("application_responses_ready") is not True))
             or (require_events and (result.get("event_delivery_contract")!=1 or result.get("event_worker_ready") is not True))):

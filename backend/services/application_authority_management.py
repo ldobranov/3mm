@@ -10,7 +10,11 @@ from backend.services.application_task_authority import (
     TaskPolicySubjectV11 as PolicySubjectV11, TaskPolicyEvidenceV11 as CorePolicyEvidenceV11,
     TaskReviewContextV11 as AuthorityReviewContextV11, TaskSelectionV11 as AuthoritySelectionV11,
 )
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from backend.services.application_composition_authority import (
+    QueryPolicySubjectV12 as PolicySubjectV12, QueryPolicyEvidenceV12 as CorePolicyEvidenceV12,
+    QueryReviewContextV12 as AuthorityReviewContextV12, QuerySelectionV12 as AuthoritySelectionV12,
+)
 import hashlib
 import json
 import os
@@ -150,7 +154,7 @@ def _resource_identity(subject, *, required_only=False):
 
 
 def _resources(subject):
-    return {name: getattr(subject, name) for name in ("commands", "connectors", "events", "publications", "private_files", "relational", "checkpoints", "identities", "status_projections", "peer_reads", "sessions", "tasks")
+    return {name: getattr(subject, name) for name in ("commands", "connectors", "events", "publications", "private_files", "relational", "checkpoints", "identities", "status_projections", "peer_reads", "sessions", "tasks", "queries")
         if hasattr(subject, name)}
 
 
@@ -171,6 +175,7 @@ class _PreparedAuthority:
     pin: object
     package: object
     built_ui_sha256: str | None = None
+    query_providers: dict = field(default_factory=dict)
 
     def __iter__(self):
         return iter((self.pin, self.package))
@@ -214,7 +219,7 @@ class ApplicationAuthorityManager:
         self.engine, self.uploads_root, self.core_version = engine, Path(uploads_root), core_version
         self.keys = CoreReviewKeyStore(engine, Path(review_key_directory), lock_wait_seconds=key_lock_wait_seconds)
 
-    def _prepare(self, installation_id):
+    def _prepare(self, installation_id, *, include_queries=True):
         try:
             pin, package = _prepare_installed_package(self.engine, installation_id, self.uploads_root, self.core_version)
             build = None
@@ -224,12 +229,23 @@ class ApplicationAuthorityManager:
                     build = load_compiled_ui_artifact(package).built_ui_sha256
                 except CompiledUiBuildError:
                     pass  # Old/missing/changed outputs cannot acquire scoped UI trust.
-            return _PreparedAuthority(pin, package, build)
+            prepared = _PreparedAuthority(pin, package, build)
+            if include_queries and package.application_extension.query_dependencies:
+                from backend.services.application_composition_authority import prepare_providers
+                return _PreparedAuthority(pin, package, build, prepare_providers(self, prepared))
+            return prepared
         except (SQLAlchemyError, ValueError, OSError):
             raise AuthorityManagementError('artifact_unavailable') from None
 
     def _subject(self, db, key, installation_id, prepared, *, proposed_configuration=None, diagnostics=None):
-        result = _compose(db, installation_id, *prepared, key, proposed_configuration=proposed_configuration)
+        from backend.services.application_composition_authority import resolve_queries
+        try:
+            queries = resolve_queries(self, db, key, installation_id, prepared,
+                proposed_configuration=proposed_configuration)
+        except AuthorityManagementError:
+            raise AuthorityManagementError('unsupported_authority') from None
+        result = _compose(db, installation_id, *prepared, key,
+            proposed_configuration=proposed_configuration, queries=queries)
         subject = result.subject
         if subject is not None and subject.has_executable_frontend and prepared.built_ui_sha256:
             value = subject.model_dump(mode='json')
@@ -266,8 +282,9 @@ class ApplicationAuthorityManager:
         # every older family's existing required-scope semantics unchanged.
         required = () if administrator_approved else tuple(scope for scope in scopes
             if scope not in subject.optional_resources and not (subject.subject_version >= 9 and scope.startswith('peer:')
-                or subject.subject_version == 10 and scope.startswith('session:')))
-        model = {1: CorePolicyEvidenceV1, 2: CorePolicyEvidenceV2, 3: CorePolicyEvidenceV3, 4: CorePolicyEvidenceV4, 5: CorePolicyEvidenceV5, 6: CorePolicyEvidenceV6, 7: CorePolicyEvidenceV7, 8: CorePolicyEvidenceV8, 9: CorePolicyEvidenceV9, 10: CorePolicyEvidenceV10, 11: CorePolicyEvidenceV11}[subject.subject_version]
+                or subject.subject_version == 10 and scope.startswith('session:')
+                or scope.startswith('query:')))
+        model = {1: CorePolicyEvidenceV1, 2: CorePolicyEvidenceV2, 3: CorePolicyEvidenceV3, 4: CorePolicyEvidenceV4, 5: CorePolicyEvidenceV5, 6: CorePolicyEvidenceV6, 7: CorePolicyEvidenceV7, 8: CorePolicyEvidenceV8, 9: CorePolicyEvidenceV9, 10: CorePolicyEvidenceV10, 11: CorePolicyEvidenceV11, 12: CorePolicyEvidenceV12}[subject.subject_version]
         evidence = model(evidence_version=subject.subject_version, binding=subject.binding,
             optional_resources=subject.optional_resources,
             policy_revision=native["revision"], trust_revision=native["revision"],
@@ -441,10 +458,11 @@ class ApplicationAuthorityManager:
     def create_review(self, installation_id, *, actor_token, request_id, native_review_id, scopes):
         # Validate bounded identifiers before storage; the Core-resolved subject
         # selects the internal version, never an HTTP caller's version hint.
-        requested = _parse(AuthoritySelectionV11 if any(str(scope).startswith("task:") for scope in scopes) else AuthoritySelectionV10, {"selection_version": 11 if any(str(scope).startswith("task:") for scope in scopes) else 10, "scopes": scopes})
-        request_version = 11 if requested.selection_version == 11 else 10 if any(scope.startswith('session:') for scope in requested.scopes) else 9 if any(scope.startswith('peer:') for scope in requested.scopes) else 8 if any(scope.startswith('status:') for scope in requested.scopes) else 7 if 'platform:installation.identity.read' in requested.scopes else 6 if any(scope.startswith('checkpoint:') for scope in requested.scopes) else 5 if any(scope.startswith('storage:relational_') for scope in requested.scopes) else 4 if any(scope.startswith('storage:') for scope in requested.scopes) else 3 if any(scope.startswith('publication:') for scope in requested.scopes) else (
+        requested_version = 12 if any(str(scope).startswith('query:') for scope in scopes) else 11 if any(str(scope).startswith('task:') for scope in scopes) else 10
+        requested = _parse({10: AuthoritySelectionV10, 11: AuthoritySelectionV11, 12: AuthoritySelectionV12}[requested_version], {'selection_version': requested_version, 'scopes': scopes})
+        request_version = 12 if requested.selection_version == 12 else 11 if requested.selection_version == 11 else 10 if any(scope.startswith('session:') for scope in requested.scopes) else 9 if any(scope.startswith('peer:') for scope in requested.scopes) else 8 if any(scope.startswith('status:') for scope in requested.scopes) else 7 if 'platform:installation.identity.read' in requested.scopes else 6 if any(scope.startswith('checkpoint:') for scope in requested.scopes) else 5 if any(scope.startswith('storage:relational_') for scope in requested.scopes) else 4 if any(scope.startswith('storage:') for scope in requested.scopes) else 3 if any(scope.startswith('publication:') for scope in requested.scopes) else (
             2 if any(scope.startswith('event:') for scope in requested.scopes) else 1)
-        request_selection = _parse({1: AuthoritySelectionV1, 2: AuthoritySelectionV2, 3: AuthoritySelectionV3, 4: AuthoritySelectionV4, 5: AuthoritySelectionV5, 6: AuthoritySelectionV6, 7: AuthoritySelectionV7, 8: AuthoritySelectionV8, 9: AuthoritySelectionV9, 10: AuthoritySelectionV10, 11: AuthoritySelectionV11}[request_version],
+        request_selection = _parse({1: AuthoritySelectionV1, 2: AuthoritySelectionV2, 3: AuthoritySelectionV3, 4: AuthoritySelectionV4, 5: AuthoritySelectionV5, 6: AuthoritySelectionV6, 7: AuthoritySelectionV7, 8: AuthoritySelectionV8, 9: AuthoritySelectionV9, 10: AuthoritySelectionV10, 11: AuthoritySelectionV11, 12: AuthoritySelectionV12}[request_version],
             {'selection_version': request_version, 'scopes': scopes})
         request = {"native_review_id": _identifier(native_review_id), "selection": request_selection.model_dump(mode="json")}
         prepared = self._prepare(installation_id)
@@ -452,11 +470,11 @@ class ApplicationAuthorityManager:
             if result:
                 return result
             subject = self._subject(db, key, installation_id, prepared)
-            selection_model = {1: AuthoritySelectionV1, 2: AuthoritySelectionV2, 3: AuthoritySelectionV3, 4: AuthoritySelectionV4, 5: AuthoritySelectionV5, 6: AuthoritySelectionV6, 7: AuthoritySelectionV7, 8: AuthoritySelectionV8, 9: AuthoritySelectionV9, 10: AuthoritySelectionV10, 11: AuthoritySelectionV11}[subject.subject_version]
+            selection_model = {1: AuthoritySelectionV1, 2: AuthoritySelectionV2, 3: AuthoritySelectionV3, 4: AuthoritySelectionV4, 5: AuthoritySelectionV5, 6: AuthoritySelectionV6, 7: AuthoritySelectionV7, 8: AuthoritySelectionV8, 9: AuthoritySelectionV9, 10: AuthoritySelectionV10, 11: AuthoritySelectionV11, 12: AuthoritySelectionV12}[subject.subject_version]
             selection = _parse(selection_model, {'selection_version': subject.subject_version, 'scopes': scopes})
             native, policy = self._policy(db, key, subject, native_review_id)
             boot, now = _clock()
-            context_model = {1: AuthorityReviewContextV1, 2: AuthorityReviewContextV2, 3: AuthorityReviewContextV3, 4: AuthorityReviewContextV4, 5: AuthorityReviewContextV5, 6: AuthorityReviewContextV6, 7: AuthorityReviewContextV7, 8: AuthorityReviewContextV8, 9: AuthorityReviewContextV9, 10: AuthorityReviewContextV10, 11: AuthorityReviewContextV11}[subject.subject_version]
+            context_model = {1: AuthorityReviewContextV1, 2: AuthorityReviewContextV2, 3: AuthorityReviewContextV3, 4: AuthorityReviewContextV4, 5: AuthorityReviewContextV5, 6: AuthorityReviewContextV6, 7: AuthorityReviewContextV7, 8: AuthorityReviewContextV8, 9: AuthorityReviewContextV9, 10: AuthorityReviewContextV10, 11: AuthorityReviewContextV11, 12: AuthorityReviewContextV12}[subject.subject_version]
             context = context_model(context_version=subject.subject_version, **subject.binding.model_dump(exclude={"recovery_generation"}),
                 policy=policy, issued_at_ms=now, expires_at_ms=now + 900_000, **_resources(subject))
             context = _parse(context_model, context)
@@ -485,8 +503,8 @@ class ApplicationAuthorityManager:
         if _canonical_bytes(plan["data"]["subject"]) != _canonical_bytes(subject.model_dump(mode="json")):
             raise AuthorityManagementError("stale_review")
         native, policy = self._policy(db, key, subject, plan["data"]["native_review_id"])
-        context = _parse_versioned(AuthorityReviewContextV1, AuthorityReviewContextV2, plan["data"]["context"], 'context_version', AuthorityReviewContextV3, AuthorityReviewContextV4, AuthorityReviewContextV5, AuthorityReviewContextV6, AuthorityReviewContextV7, AuthorityReviewContextV8, AuthorityReviewContextV9, AuthorityReviewContextV10, AuthorityReviewContextV11)
-        selection = _parse_versioned(AuthoritySelectionV1, AuthoritySelectionV2, plan["data"]["selection"], 'selection_version', AuthoritySelectionV3, AuthoritySelectionV4, AuthoritySelectionV5, AuthoritySelectionV6, AuthoritySelectionV7, AuthoritySelectionV8, AuthoritySelectionV9, AuthoritySelectionV10, AuthoritySelectionV11)
+        context = _parse_versioned(AuthorityReviewContextV1, AuthorityReviewContextV2, plan["data"]["context"], 'context_version', AuthorityReviewContextV3, AuthorityReviewContextV4, AuthorityReviewContextV5, AuthorityReviewContextV6, AuthorityReviewContextV7, AuthorityReviewContextV8, AuthorityReviewContextV9, AuthorityReviewContextV10, AuthorityReviewContextV11, AuthorityReviewContextV12)
+        selection = _parse_versioned(AuthoritySelectionV1, AuthoritySelectionV2, plan["data"]["selection"], 'selection_version', AuthoritySelectionV3, AuthoritySelectionV4, AuthoritySelectionV5, AuthoritySelectionV6, AuthoritySelectionV7, AuthoritySelectionV8, AuthoritySelectionV9, AuthoritySelectionV10, AuthoritySelectionV11, AuthoritySelectionV12)
         boot, now = _clock()
         review = review_authority_context(context, selection, now_ms=now)
         if (boot != plan["data"]["boot_id"] or not review.reviewable
@@ -608,17 +626,17 @@ class ApplicationAuthorityManager:
         row = db.get(Grant, installation_id, populate_existing=True)
         grant = _load(db, key, "grant", row, installation_id)
         data = grant["data"]
-        from backend.services.application_authority_context import AuthorityPolicy, AuthorityPolicyV4, AuthorityPolicyV5, AuthorityPolicyV6, AuthorityPolicyV7, AuthorityPolicyV8, AuthorityPolicyV9, AuthorityPolicyV10, AuthorityTaskPolicyV11
-        approved = _parse_versioned(PolicySubjectV1, PolicySubjectV2, data["subject"], 'subject_version', PolicySubjectV3, PolicySubjectV4, PolicySubjectV5, PolicySubjectV6, PolicySubjectV7, PolicySubjectV8, PolicySubjectV9, PolicySubjectV10, PolicySubjectV11)
+        from backend.services.application_authority_context import AuthorityPolicy, AuthorityPolicyV4, AuthorityPolicyV5, AuthorityPolicyV6, AuthorityPolicyV7, AuthorityPolicyV8, AuthorityPolicyV9, AuthorityPolicyV10, AuthorityTaskPolicyV11, AuthorityQueryPolicyV12
+        approved = _parse_versioned(PolicySubjectV1, PolicySubjectV2, data["subject"], 'subject_version', PolicySubjectV3, PolicySubjectV4, PolicySubjectV5, PolicySubjectV6, PolicySubjectV7, PolicySubjectV8, PolicySubjectV9, PolicySubjectV10, PolicySubjectV11, PolicySubjectV12)
         native, _policy = self._policy(db, key, subject, data["native_review_id"])
         # Re-evaluate the exact approved binding with the CURRENT Core adapter.
         # Its old baseline is not rewritten to pretend this was a fresh approval.
         # Resource equality below separately pins today's effective resources.
         _, approved_policy = self._policy(db, key, approved, data['native_review_id'])
-        selection = _parse_versioned(AuthoritySelectionV1, AuthoritySelectionV2, data["selection"], 'selection_version', AuthoritySelectionV3, AuthoritySelectionV4, AuthoritySelectionV5, AuthoritySelectionV6, AuthoritySelectionV7, AuthoritySelectionV8, AuthoritySelectionV9, AuthoritySelectionV10, AuthoritySelectionV11)
+        selection = _parse_versioned(AuthoritySelectionV1, AuthoritySelectionV2, data["selection"], 'selection_version', AuthoritySelectionV3, AuthoritySelectionV4, AuthoritySelectionV5, AuthoritySelectionV6, AuthoritySelectionV7, AuthoritySelectionV8, AuthoritySelectionV9, AuthoritySelectionV10, AuthoritySelectionV11, AuthoritySelectionV12)
         if (current.mode != "enforced" or grant["state"] != "active" or row.revision != data["grant_revision"]
                 or current.epoch != data["authority_epoch"] or native["revision"] != data["native_revision"]
-                or approved_policy != _parse({4: AuthorityPolicyV4, 5: AuthorityPolicyV5, 6: AuthorityPolicyV6, 7: AuthorityPolicyV7, 8: AuthorityPolicyV8, 9: AuthorityPolicyV9, 10: AuthorityPolicyV10, 11: AuthorityTaskPolicyV11}.get(approved.subject_version, AuthorityPolicy), data['policy'])
+                or approved_policy != _parse({4: AuthorityPolicyV4, 5: AuthorityPolicyV5, 6: AuthorityPolicyV6, 7: AuthorityPolicyV7, 8: AuthorityPolicyV8, 9: AuthorityPolicyV9, 10: AuthorityPolicyV10, 11: AuthorityTaskPolicyV11, 12: AuthorityQueryPolicyV12}.get(approved.subject_version, AuthorityPolicy), data['policy'])
                 or selection.selection_version != approved.subject_version
                 or _resource_identity(subject, required_only=True) != _resource_identity(approved, required_only=True)):
             raise AuthorityManagementError("grant_not_current")
@@ -637,6 +655,14 @@ class ApplicationAuthorityManager:
         try:
             status, probe = self._inspect_reviewable(installation_id, prepared)
             if probe is not None:
+                from backend.services.application_query_transport import QueryRuntimeProbe
+                if isinstance(probe, QueryRuntimeProbe):
+                    from backend.config import get_settings
+                    from backend.services.application_resource_providers import observe
+                    state = observe('query', get_settings().applications)
+                    prepared = self._prepare(installation_id)
+                    status, _ = self._inspect_reviewable(installation_id, prepared, query_observation=state)
+                    return status
                 from backend.services.application_relational import observe_runtime_status
                 # Signed metadata only, outside BOTH Core snapshot and key lease.
                 # Re-read the artifact and current authority after IPC; a status
@@ -672,7 +698,7 @@ class ApplicationAuthorityManager:
                 "review_available": False, "review_blockers": [blocker],
                 "execution_class": "reviewed_native_only", "isolation_proven": False}
 
-    def _inspect_reviewable(self, installation_id, prepared, *, observation=None):
+    def _inspect_reviewable(self, installation_id, prepared, *, observation=None, query_observation=None):
         with self.keys.locked() as key, _read_snapshot(self.engine) as db:
             subject = self._subject(db, key, installation_id, prepared)
             runtime_blockers = []
@@ -733,6 +759,14 @@ class ApplicationAuthorityManager:
                         resource.model_dump(mode="json")) for resource in sessions):
                     effective = False
                     runtime_blockers.append("session_runtime_not_connected")
+            if getattr(subject, 'queries', ()) and grant and any(
+                    scope.startswith('query:') for scope in grant['data']['selection']['scopes']):
+                if effective and installation.enabled and query_observation is None:
+                    from backend.services.application_query_transport import QueryRuntimeProbe
+                    probe = QueryRuntimeProbe()
+                if query_observation != 'ready':
+                    effective = False
+                    runtime_blockers.append('query_runtime_not_connected')
             return {"installation_id": installation_id, "mode": subject.binding.baseline.enforcement_mode,
                 "installation_status": installation.status, "installation_enabled": installation.enabled,
                 "native_reviews": native_reviews,
@@ -763,6 +797,8 @@ def effect_admission(db, installation_id, scope):
     Compatibility is unchanged. Opt-in grants never fall back to legacy access.
     Caller MUST commit its queue/attempt/one-use permit before close/release.
     """
+    if isinstance(scope, str) and scope.startswith('query:'):
+        raise ValueError('Application queries require the dedicated Runtime adapter')
     if isinstance(scope, str) and scope.startswith('session:'):
         raise ValueError('Sessions require the dedicated current-user authority adapter')
     if isinstance(scope, str) and scope.startswith('peer:'):

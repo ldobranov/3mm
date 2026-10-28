@@ -13,7 +13,7 @@ from backend.db.audit_log import AuditLog
 from backend.services.application_authority_management import _load,_save,_envelope
 from backend.services.application_extensions import load_application_package
 from backend.services.application_requirements import require_platform_requirements
-from backend.services.application_configuration import resolve_device_selection,device_configuration_keys,require_available_device_bindings
+from backend.services.application_configuration import resolve_device_selection,binding_configuration_keys,require_available_device_bindings
 from backend.services.authority_metadata import read_application_authority
 from backend.services.application_commands import invalidate_commands
 from backend.services.application_tasks import require_quiescent_task_journal
@@ -79,8 +79,8 @@ def stage_application_package(engine,sha256,request,actor_token):
         require_platform_requirements(definition)
         if not _supported(old.package.application_extension) or not _supported(definition):
             raise ValueError("This profile requires its dedicated prepared lifecycle")
-        if set(request.configuration or {})-set(device_configuration_keys(definition)):
-            raise ValueError("Only declared device bindings may be selected")
+        if set(request.configuration or {})-set(binding_configuration_keys(definition)):
+            raise ValueError("Only declared resource bindings may be selected")
         configuration=resolve_device_selection(package.manifest.get('configuration_schema') or {},
             package.manifest.get('configuration_defaults') or {},definition,
             existing=app.configuration,selection=request.configuration)

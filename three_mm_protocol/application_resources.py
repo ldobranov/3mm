@@ -27,7 +27,7 @@ class ResourceDiscoveryRequestV1(ResourceModel):
 class ResourceProviderV1(ResourceModel):
     provider_type: str = Field(min_length=1, max_length=64)
     provider_id: str = Field(min_length=1, max_length=160)
-    provider_version: str | None = Field(default=None, max_length=64)
+    provider_version: str | None = Field(default=None, max_length=96)
     contract_version: str | None = Field(default=None, max_length=32)
 
 

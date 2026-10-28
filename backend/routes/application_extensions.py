@@ -617,9 +617,16 @@ def application_package_configuration(
             .order_by(Device.display_name, Device.device_id)
         )
     )
+    device_values = [{'device_id': device.device_id, 'display_name': device.display_name, 'role': device.role} for device in devices]
+    module_id, version = package.module_id, package.version
+    if definition.query_dependencies:
+        from backend.services.application_query_configuration import configuration_fields
+        engine = db.get_bind().engine
+        db.rollback()  # No routing transaction spans candidate ZIP validation.
+        fields.extend(configuration_fields(engine, definition, current))
     return {
-        "module_id": package.module_id,
-        "version": package.version,
+        "module_id": module_id,
+        "version": version,
         "fields": fields,
         "command_bindings": [{
             "binding_id": item.binding_id,
@@ -628,14 +635,7 @@ def application_package_configuration(
             "contract_version": item.contract_version,
             "action": item.action,
         } for item in definition.command_bindings],
-        "devices": [
-            {
-                "device_id": device.device_id,
-                "display_name": device.display_name,
-                "role": device.role,
-            }
-            for device in devices
-        ],
+        "devices": device_values,
     }
 
 
@@ -709,11 +709,12 @@ def activate_application_extension(
     except ApplicationPublicWebError as exc:
         raise HTTPException(exc.status_code, str(exc)) from exc
     requested_configuration = (request.configuration or {}) if request is not None else {}
-    configurable_device_keys = set(device_configuration_keys(definition))
+    from backend.services.application_configuration import binding_configuration_keys
+    configurable_device_keys = set(binding_configuration_keys(definition))
     if set(requested_configuration) - configurable_device_keys:
         raise HTTPException(
             422,
-            "Only declared device bindings can be configured during activation",
+            "Only declared resource bindings can be configured during activation",
         )
     try:
         resolved_configuration = resolve_device_selection(

@@ -6,6 +6,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.2] - 2026-10-28
+
+Prepared source; publication still requires the immutable tag's full release gates.
+
+### Added
+
+- CAP13 local, read-only, one-hop application queries: exact versioned contracts,
+  explicit provider/export selection, M20 browser consent and `platform.query()`.
+  Query rights start unselected; provider and consumer require separate current
+  approvals. Runtime waits outside Core transactions; Core fences the signed,
+  bounded result against current identities, packages, configuration and rights.
+- Independent Runtime feature `query_execution_contract: 1`, response-only FD
+  handoff, bounded pending calls and no automatic retry after a lost result.
+  Discovery distinguishes saved access, connected Runtime and unobserved provider.
+
+### Limits
+
+- This is a locally checked release candidate, not published CAP13 completion.
+  No commands, human delegation, recursive/remote composition, entity/deep-link
+  contract or scoped-relational provider execution. Reviewed native queries are
+  not an OS isolation, purity or rollback proof. Coordinated current Core,
+  Platform Runtime and application-host/SDK components are required; independent
+  components are not implicitly updated by a Core-only rollout.
+
+### Fixed
+
+- The release saturation test keeps all eight declared response waits live while
+  checking prompt overflow refusal and Core responsiveness. Expired test slots no
+  longer cause a false ninth-admission failure. Production deadlines/capacity are
+  unchanged, and the test always reaps its owned Runtime on failure.
+
 ## [0.3.1] - 2026-10-28
 
 ### Added

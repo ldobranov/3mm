@@ -26,6 +26,7 @@
     "installation.peers.rotate",
     "installation.status.get",
     "platform.discover",
+    "query.request",
     "relational.admit",
     "relational.boot.startup",
     "relational.complete",
@@ -40,5 +41,6 @@
     "task.submit"
   ],
   "connector_execution_contract": 1,
-  "application_response_contract": 1
+  "application_response_contract": 1,
+  "query_execution_contract": 1
 }

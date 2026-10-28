@@ -41,12 +41,21 @@ def require_available_device_bindings(definition, configuration, available):
     if invalid: raise ApplicationConfigurationError('Select an available device for: '+', '.join(invalid))
 
 
+def query_configuration_keys(definition):
+    return tuple(sorted({key for binding in definition.query_dependencies
+        for key in (binding.provider_instance_config_key, binding.provider_export_config_key)}))
+
+
+def binding_configuration_keys(definition):
+    return tuple(sorted(set(device_configuration_keys(definition)) | set(query_configuration_keys(definition))))
+
+
 def resolve_device_selection(schema, defaults, definition, *, existing=None, selection=None):
-    """An explicit form is the full device selection; omission preserves it."""
+    """Resolve declared resource selections; omitted optional devices are cleared."""
     if selection is not None:
-        keys=set(device_configuration_keys(definition))
-        if set(selection)-keys: raise ApplicationConfigurationError('Only declared device bindings may be selected')
-        optional=keys-set(device_configuration_keys(definition,required_only=True))
+        keys=set(binding_configuration_keys(definition))
+        if set(selection)-keys: raise ApplicationConfigurationError('Only declared resource bindings may be selected')
+        optional=set(device_configuration_keys(definition))-set(device_configuration_keys(definition,required_only=True))
         defaults={k:v for k,v in defaults.items() if k not in optional}
         existing={k:v for k,v in (existing or {}).items() if k not in optional}
     return resolve_application_configuration(schema,defaults,definition,existing=existing,overrides=selection)
@@ -146,7 +155,7 @@ def resolve_application_configuration(
     result.update(existing or {})
     result.update(overrides or {})
     required = set(schema.get("required", [])) | set(
-        device_configuration_keys(definition, required_only=True)
+        (*device_configuration_keys(definition, required_only=True), *query_configuration_keys(definition))
     )
     missing = sorted(key for key in required if key not in result)
     if missing:

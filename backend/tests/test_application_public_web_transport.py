@@ -79,8 +79,9 @@ def wait_for(predicate, seconds=5):
 
 
 @pytest.fixture
-def public(stack):
+def public(stack,request):
     s=stack
+    response_seconds=getattr(request,'param',2)
     root=s.base/'host';root.mkdir(mode=0o755)
     (root/'mode').write_text('valid')
     if os.geteuid()==0:
@@ -95,7 +96,7 @@ def public(stack):
     try:
         wait_for(lambda:(root/'service.sock').exists())
         current=definition('org.3mm.workflow-reference','/public/{slug}',max_response_bytes=4096).model_dump(mode='json')
-        current['operations'][-1]['timeout_seconds']=2
+        current['operations'][-1]['timeout_seconds']=response_seconds
         blob=application_package(definition=current)
         output=io.BytesIO()
         with zipfile.ZipFile(io.BytesIO(blob)) as source, zipfile.ZipFile(output,'w') as target:
@@ -124,7 +125,7 @@ def public(stack):
         s.control.public_web_path=s.base/'runtime/public.sock'
         activate(s,s.artifact('public-a'))
         s.public_root=root;s.public_peer=peer;s.public_engine=engine;s.public_id=installation_id
-        s.public_client=PublicWebRuntimeClient(s.control.public_web_path,timeout_seconds=5)
+        s.public_client=PublicWebRuntimeClient(s.control.public_web_path,timeout_seconds=response_seconds+3)
         def call(**changes):
             return s.public_client.request(method='GET',path='/public/hello',query={'q':['one']},
                 headers={'authorization':'Bearer must-not-forward','accept-language':'bg'},**changes)
@@ -198,23 +199,37 @@ def test_authority_change_while_runtime_waits_cannot_release_a_stale_result(publ
 
 
 
+@pytest.mark.parametrize('public',[30],indirect=True)
 def test_saturated_public_waits_and_runtime_kill_leave_core_handlers_available(public):
     s=public;before=s.command('fingerprint');(s.public_root/'mode').write_text('hang')
     with ThreadPoolExecutor(max_workers=9) as pool:
+        # Saturation needs overlapping live requests, not eight historical sends.
+        # Keep the ordinary 2 s response-fault profile for the other tests; this
+        # case uses the supported 30 s window and kills Runtime to end the waits.
         futures=[]
-        for index in range(8):
-            futures.append(pool.submit(s.public_call))
-            wait_for(lambda:len(s.seen())==index+1)
-        start=time.monotonic()
-        for _ in range(4):assert s.http('/settings/read')[0]==200
-        assert time.monotonic()-start<2
-        assert s.client.get_installation_identity()['sdk_version']=='1.3'
-        # Probe private authority while all eight public response slots are held.
-        from three_mm_platform_runtime.server import probe_runtime
-        assert probe_runtime(s.base/'runtime/runtime.sock',expected_uid=s.runtime_uid,require_public_web=True)['ready']
-        with pytest.raises(PublicWebRuntimeError):s.public_call()
-        assert len(s.seen())==8
-        s.control.process.kill();s.control.process.wait(timeout=3)
+        try:
+            # Admit serially so the separate short Core admission pool is not
+            # the fault under test; all response waits must still overlap.
+            for index in range(8):
+                futures.append(pool.submit(s.public_call))
+                wait_for(lambda:len(s.seen())==index+1)
+            assert all(not future.done() for future in futures)
+            start=time.monotonic()
+            for _ in range(4):assert s.http('/settings/read')[0]==200
+            assert time.monotonic()-start<2
+            assert s.client.get_installation_identity()['sdk_version']=='1.3'
+            from three_mm_platform_runtime.server import probe_runtime
+            assert probe_runtime(s.base/'runtime/runtime.sock',expected_uid=s.runtime_uid,require_public_web=True)['ready']
+            assert all(not future.done() for future in futures)
+            # Overflow must be refused promptly, not dispatched and timed out.
+            overflow=pool.submit(s.public_call)
+            with pytest.raises(PublicWebRuntimeError):overflow.result(timeout=2)
+            assert len(s.seen())==8
+            assert all(not future.done() for future in futures)
+        finally:
+            # Assertion failure must also release the owned client threads.
+            if s.control.process.poll() is None:s.control.process.kill()
+            s.control.process.wait(timeout=3)
         for future in futures:
             with pytest.raises(PublicWebRuntimeError):future.result(timeout=5)
     assert s.command('fingerprint')==before and s.http()[0]==200

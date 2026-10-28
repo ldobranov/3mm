@@ -14,6 +14,7 @@ import { readAuthorityStatus, readAuthorityPlan, readAuthorityDecision } from '.
 import { consentPreview, consentResult } from './application-consent.fixtures'
 import { readConsentPreview } from './application-consent'
 import taskResponses from './authority-task-responses.fixture.json'
+import { queryPreview } from './authority-queries.fixtures'
 
 const base = '/api/v1/application-extensions/org.example.reference/authority'
 const identity = (n: string) => n.repeat(32)
@@ -116,6 +117,26 @@ function button(wrapper: VueWrapper, text: string) {
   return found
 }
 describe('single explicit application consent', () => {
+  it.each(['en', 'bg'])('shows query provider and bounds visibly, sends only explicit read selection (%s)', async language => {
+    locale.language = language
+    const current = queryPreview()
+    http.post.mockImplementation(async (url: string) => ({ data: url.endsWith('/consent/allow') ? consentResult(current) : current }))
+    const wrapper = await open()
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    expect(wrapper.find('.authority-queries').text()).toContain('org.example.directory')
+    expect(wrapper.find('.authority-queries').text()).toContain('4096')
+    const checkbox = wrapper.get('.authority-query-choice input')
+    expect((checkbox.element as HTMLInputElement).checked).toBe(false)
+    expect(wrapper.findAll('.authority-scope-choice')).toHaveLength(0)
+    expect(http.post).toHaveBeenCalledTimes(1)
+    await checkbox.setValue(true)
+    const allow = language === 'bg' ? 'Разреши достъпа' : 'Allow access'
+    // Native trust/resource approval is still a separate explicit click.
+    expect(http.post).toHaveBeenCalledTimes(1)
+    await button(wrapper, allow).trigger('click'); await flushPromises()
+    expect(http.post).toHaveBeenCalledWith(base+'/consent/allow', expect.objectContaining({
+      scopes: ['query:directory:read'], user_permissions: [], accept_native_code: true }), expect.anything())
+  })
   it('offers local-only consent when the only declared connector is optional and unavailable', async () => {
     const stopped = { ...status(), scopes: [], installation_enabled: false, installation_status: 'disabled',
       mode: 'review_required', grant_state: null, grant_record_revision: null, grant_effective: false }

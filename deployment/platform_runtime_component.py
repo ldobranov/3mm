@@ -210,6 +210,8 @@ def runtime_health(identifier):
     uid=pwd.getpwnam("3mm-platform").pw_uid
     deadline=time.monotonic()+15
     while True:
+        # Query readiness is an opt-in resource check, not a reason to reject
+        # an otherwise healthy previous Runtime during independent rollback.
         try:return probe_runtime(SOCKET,expected_uid=uid,expected_build=identifier,require_public_web=True,require_events=True,require_responses=True)
         except (OSError,ValueError):
             if time.monotonic()>=deadline:raise

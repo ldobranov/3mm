@@ -39,6 +39,6 @@ class PlatformDiscoveryV1(BaseModel):
     @field_validator("operations")
     @classmethod
     def supported_actions(cls, values):
-        if len(values) != len(set(values)) or set(values) - COMPATIBILITY_ACTIONS:
+        if len(values) != len(set(values)) or set(values) - (COMPATIBILITY_ACTIONS | SCOPED_ACTIONS):
             raise ValueError("Discovery operations are invalid")
         return values

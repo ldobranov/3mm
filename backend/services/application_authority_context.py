@@ -68,6 +68,7 @@ SessionScopeKey = Annotated[str, Field(
     pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files_(?:read|write|publish|transform)|relational_(?:read|write))|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read|session:[a-z][a-z0-9_]{0,95}:open)$"
 )]
 TaskScopeKey = Annotated[str, Field(pattern=r"^(?:task|command):[a-z][a-z0-9_]{0,95}$")]
+QueryScopeKey = Annotated[str, Field(pattern=r'^query:[a-z][a-z0-9_]{0,95}:read$')]
 Revision = Annotated[int, Field(ge=1, le=MAX_INTEGER)]
 Timestamp = Annotated[int, Field(ge=0, le=MAX_INTEGER)]
 Blocker = Literal[
@@ -150,6 +151,11 @@ class AuthorityPolicy(ContextModel):
 class AuthorityTaskPolicyV11(AuthorityPolicy):
     allowed_scopes: tuple[TaskScopeKey, ...] = Field(max_length=72)
     required_scopes: tuple[TaskScopeKey, ...] = Field(max_length=72)
+
+
+class AuthorityQueryPolicyV12(AuthorityPolicy):
+    allowed_scopes: tuple[QueryScopeKey, ...] = Field(max_length=16)
+    required_scopes: tuple[QueryScopeKey, ...] = Field(max_length=16)
 
 
 class AuthorityPolicyV4(AuthorityPolicy):
@@ -657,6 +663,7 @@ class AuthorityReviewContextV1(ContextModel):
         keys += [f"peer:{s.declaration.binding_id}:read" for s in getattr(self, "peer_reads", ())]
         keys += [f"session:{s.declaration.binding_id}:open" for s in getattr(self, "sessions", ())]
         keys += [f"task:{s.declaration.task_id}" for s in getattr(self, "tasks", ())]
+        keys += [f'query:{s.declaration.binding_id}:read' for s in getattr(self, 'queries', ())]
         if len(keys) != len(set(keys)):
             raise ValueError("Scope identities must be unique")
         if (set(self.policy.allowed_scopes) | set(self.policy.required_scopes)) - set(
@@ -908,7 +915,7 @@ class AuthoritySelectionV10(AuthoritySelectionV1):
 
 
 class AuthorityContextIssue(ContextModel):
-    scope: SessionScopeKey | TaskScopeKey | None = None
+    scope: SessionScopeKey | TaskScopeKey | QueryScopeKey | None = None
     reason: Literal[
         "invalid_context",
         "invalid_selection",
@@ -1089,7 +1096,7 @@ def _command_schema_data(schema):
     return data
 
 
-def _parse_versioned(v1, v2, value, field, v3=None, v4=None, v5=None, v6=None, v7=None, v8=None, v9=None, v10=None, v11=None):
+def _parse_versioned(v1, v2, value, field, v3=None, v4=None, v5=None, v6=None, v7=None, v8=None, v9=None, v10=None, v11=None, v12=None):
     # Existing records retain their exact canonical shape/fingerprint. Callers
     # must explicitly opt into each new version; none silently gain authority.
     if isinstance(value, BaseModel):
@@ -1119,6 +1126,8 @@ def _parse_versioned(v1, v2, value, field, v3=None, v4=None, v5=None, v6=None, v
         models[10] = v10
     if v11 is not None:
         models[11] = v11
+    if v12 is not None:
+        models[12] = v12
     if type(version) is not int or version not in models:
         raise ValueError("Unsupported internal authority version")
     return _parse(models[version], value)
@@ -1157,6 +1166,8 @@ def _context_fingerprint(context, selection):
             resource["declaration"]["control_actions"].sort()
             resource["contract"]["access_modes"].sort()
             resource["contract"]["control_actions"].sort()
+    if 'queries' in data:
+        data['queries'].sort(key=lambda s: s['declaration']['binding_id'])
     encoded = _canonical_bytes(
         {
             "context": data,
@@ -1176,12 +1187,13 @@ def review_authority_context(
     All supplied resource scopes must resolve, even if omitted from selection.
     """
     from backend.services.application_task_authority import TaskReviewContextV11, TaskSelectionV11
+    from backend.services.application_composition_authority import QueryReviewContextV12, QuerySelectionV12
     failures = (ValueError, TypeError, RecursionError, OverflowError)
     try:
         context = _parse_versioned(
             AuthorityReviewContextV1, AuthorityReviewContextV2, context,
             "context_version", AuthorityReviewContextV3, AuthorityReviewContextV4,
-            AuthorityReviewContextV5, AuthorityReviewContextV6, AuthorityReviewContextV7, AuthorityReviewContextV8, AuthorityReviewContextV9, AuthorityReviewContextV10, TaskReviewContextV11,
+            AuthorityReviewContextV5, AuthorityReviewContextV6, AuthorityReviewContextV7, AuthorityReviewContextV8, AuthorityReviewContextV9, AuthorityReviewContextV10, TaskReviewContextV11, QueryReviewContextV12,
         )
     except failures:
         return AuthorityContextReview(
@@ -1191,7 +1203,7 @@ def review_authority_context(
         selection = _parse_versioned(
             AuthoritySelectionV1, AuthoritySelectionV2, selection,
             "selection_version", AuthoritySelectionV3, AuthoritySelectionV4,
-            AuthoritySelectionV5, AuthoritySelectionV6, AuthoritySelectionV7, AuthoritySelectionV8, AuthoritySelectionV9, AuthoritySelectionV10, TaskSelectionV11,
+            AuthoritySelectionV5, AuthoritySelectionV6, AuthoritySelectionV7, AuthoritySelectionV8, AuthoritySelectionV9, AuthoritySelectionV10, TaskSelectionV11, QuerySelectionV12,
         )
         if context.context_version != selection.selection_version:
             raise ValueError("Authority versions must match")
@@ -1228,6 +1240,7 @@ def review_authority_context(
     known |= {f"peer:{s.declaration.binding_id}:read" for s in getattr(context, "peer_reads", ())}
     known |= {f"session:{s.declaration.binding_id}:open" for s in getattr(context, "sessions", ())}
     known |= {f"task:{s.declaration.task_id}" for s in getattr(context, "tasks", ())}
+    known |= {f'query:{s.declaration.binding_id}:read' for s in getattr(context, 'queries', ())}
     selected = set(selection.scopes)
     if selected & relational_keys and selected & relational_keys != relational_keys:
         for scope in relational_keys - selected:

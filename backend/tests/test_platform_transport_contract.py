@@ -52,7 +52,7 @@ def boundary(identity_app,monkeypatch):
 def test_discovery_is_current_metadata_not_an_authority_lease(boundary):
     state,server,client=boundary
     first=client.discover_platform()
-    assert set(first["operations"])==SCOPED_ACTIONS
+    assert set(first["operations"]) == SCOPED_ACTIONS & server.allowed_actions
     assert first["admission_cache_ms"]==0 and first["automatic_retry"] is False
     assert first["jobs_supported"] is False and first["max_connections"]==MAX_CONNECTIONS
     assert client.get_installation_identity()["sdk_version"]=="1.3"

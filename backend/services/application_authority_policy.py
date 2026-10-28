@@ -25,7 +25,7 @@ from backend.services.application_authority_context import (
     AuthorityPolicyV7,
     AuthorityPolicyV8,
     AuthorityPolicyV9,
-    AuthorityPolicyV10, AuthorityTaskPolicyV11, TaskScopeKey,
+    AuthorityPolicyV10, AuthorityTaskPolicyV11, TaskScopeKey, AuthorityQueryPolicyV12, QueryScopeKey,
     AuthorityPrincipal,
     Blocker,
     ConfigurationIdentity,
@@ -110,7 +110,7 @@ class PolicySubjectV1(PolicyModel):
 
     @model_validator(mode="after")
     def unique_subject(self):
-        _scopes(self.commands, self.connectors, getattr(self, "events", ()), getattr(self, "publications", ()), getattr(self, "private_files", ()), getattr(self, "relational", ()), getattr(self, "checkpoints", ()), getattr(self, "identities", ()), getattr(self, "status_projections", ()), getattr(self, "peer_reads", ()), getattr(self, "sessions", ()), getattr(self, "tasks", ()))
+        _scopes(self.commands, self.connectors, getattr(self, "events", ()), getattr(self, "publications", ()), getattr(self, "private_files", ()), getattr(self, "relational", ()), getattr(self, "checkpoints", ()), getattr(self, "identities", ()), getattr(self, "status_projections", ()), getattr(self, "peer_reads", ()), getattr(self, "sessions", ()), getattr(self, "tasks", ()), getattr(self, 'queries', ()))
         if len(self.optional_resources) != len(set(self.optional_resources)):
             raise ValueError('Optional resource scopes must be unique')
         if len(self.blockers) != len(set(self.blockers)):
@@ -278,7 +278,7 @@ class CorePolicyEvidenceV1(PolicyModel):
 
     @model_validator(mode="after")
     def coherent_rules(self):
-        known = _scopes(self.commands, self.connectors, getattr(self, "events", ()), getattr(self, "publications", ()), getattr(self, "private_files", ()), getattr(self, "relational", ()), getattr(self, "checkpoints", ()), getattr(self, "identities", ()), getattr(self, "status_projections", ()), getattr(self, "peer_reads", ()), getattr(self, "sessions", ()), getattr(self, "tasks", ()))
+        known = _scopes(self.commands, self.connectors, getattr(self, "events", ()), getattr(self, "publications", ()), getattr(self, "private_files", ()), getattr(self, "relational", ()), getattr(self, "checkpoints", ()), getattr(self, "identities", ()), getattr(self, "status_projections", ()), getattr(self, "peer_reads", ()), getattr(self, "sessions", ()), getattr(self, "tasks", ()), getattr(self, 'queries', ()))
         if len(self.required_scopes) != len(set(self.required_scopes)):
             raise ValueError("Required policy scopes must be unique")
         if set(self.required_scopes) - known.keys():
@@ -435,12 +435,12 @@ PolicyReason = Literal[
 
 class PolicyIssue(ContextModel):
     reason: PolicyReason
-    scope: SessionScopeKey | TaskScopeKey | None = None
+    scope: SessionScopeKey | TaskScopeKey | QueryScopeKey | None = None
 
 
 class PolicyEvaluation(ContextModel):
     policy_resolved: bool
-    policy: AuthorityPolicy | AuthorityPolicyV4 | AuthorityPolicyV5 | AuthorityPolicyV6 | AuthorityPolicyV7 | AuthorityPolicyV8 | AuthorityPolicyV9 | AuthorityPolicyV10 | AuthorityTaskPolicyV11 | None = None
+    policy: AuthorityPolicy | AuthorityPolicyV4 | AuthorityPolicyV5 | AuthorityPolicyV6 | AuthorityPolicyV7 | AuthorityPolicyV8 | AuthorityPolicyV9 | AuthorityPolicyV10 | AuthorityTaskPolicyV11 | AuthorityQueryPolicyV12 | None = None
     issues: tuple[PolicyIssue, ...]
     # Even a successful pure policy evaluation is not a complete context review.
     reviewable: Literal[False] = False
@@ -456,7 +456,7 @@ class PolicyEvaluation(ContextModel):
     )
 
 
-def _scopes(commands, connectors, events=(), publications=(), private_files=(), relational=(), checkpoints=(), identities=(), status_projections=(), peer_reads=(), sessions=(), tasks=()):
+def _scopes(commands, connectors, events=(), publications=(), private_files=(), relational=(), checkpoints=(), identities=(), status_projections=(), peer_reads=(), sessions=(), tasks=(), queries=()):
     result = {}
     for prefix, scopes, name in (
         ("command", commands, "binding_id"),
@@ -505,6 +505,11 @@ def _scopes(commands, connectors, events=(), publications=(), private_files=(), 
         if key in result:
             raise ValueError("Scope identities must be unique")
         result[key] = scope
+    for scope in queries:
+        key = f'query:{scope.declaration.binding_id}:read'
+        if key in result:
+            raise ValueError('Scope identities must be unique')
+        result[key] = scope
     return result
 
 
@@ -531,7 +536,7 @@ def _adapter_revision(evidence):
         3: PUBLICATION_POLICY_ADAPTER_REVISION, 4: STORAGE_POLICY_ADAPTER_REVISION,
         5: RELATIONAL_POLICY_ADAPTER_REVISION, 6: CHECKPOINT_POLICY_ADAPTER_REVISION,
         7: IDENTITY_POLICY_ADAPTER_REVISION, 8: STATUS_POLICY_ADAPTER_REVISION,
-        9: PEER_READ_POLICY_ADAPTER_REVISION, 10: SESSION_POLICY_ADAPTER_REVISION, 11: 11}[evidence.evidence_version]
+        9: PEER_READ_POLICY_ADAPTER_REVISION, 10: SESSION_POLICY_ADAPTER_REVISION, 11: 11, 12: 12}[evidence.evidence_version]
 
 
 def _policy_identity(evidence):
@@ -575,6 +580,9 @@ def _policy_identity(evidence):
     if hasattr(evidence, "sessions"):
         data["sessions"] = [_scope_data(scope) for scope in sorted(
             evidence.sessions, key=lambda s: s.declaration.binding_id)]
+    if hasattr(evidence, 'queries'):
+        data['queries'] = [_scope_data(scope) for scope in sorted(
+            evidence.queries, key=lambda s: s.declaration.binding_id)]
     return "policy_" + hashlib.sha256(
         POLICY_DOMAIN
         + _canonical_bytes(
@@ -592,6 +600,7 @@ def evaluate_authority_policy(subject, evidence=None) -> PolicyEvaluation:
     No caller is permitted to use this pure helper as an approval endpoint.
     """
     from backend.services.application_task_authority import TaskPolicySubjectV11, TaskPolicyEvidenceV11
+    from backend.services.application_composition_authority import QueryPolicySubjectV12, QueryPolicyEvidenceV12
     failures = (ValueError, TypeError, RecursionError, OverflowError)
 
     def failed(reason):
@@ -600,8 +609,8 @@ def evaluate_authority_policy(subject, evidence=None) -> PolicyEvaluation:
         )
 
     try:
-        subject = _parse_versioned(PolicySubjectV1, PolicySubjectV2, subject, "subject_version", PolicySubjectV3, PolicySubjectV4, PolicySubjectV5, PolicySubjectV6, PolicySubjectV7, PolicySubjectV8, PolicySubjectV9, PolicySubjectV10, TaskPolicySubjectV11)
-        actual = _scopes(subject.commands, subject.connectors, getattr(subject, "events", ()), getattr(subject, "publications", ()), getattr(subject, "private_files", ()), getattr(subject, "relational", ()), getattr(subject, "checkpoints", ()), getattr(subject, "identities", ()), getattr(subject, "status_projections", ()), getattr(subject, "peer_reads", ()), getattr(subject, "sessions", ()), getattr(subject, "tasks", ()))
+        subject = _parse_versioned(PolicySubjectV1, PolicySubjectV2, subject, "subject_version", PolicySubjectV3, PolicySubjectV4, PolicySubjectV5, PolicySubjectV6, PolicySubjectV7, PolicySubjectV8, PolicySubjectV9, PolicySubjectV10, TaskPolicySubjectV11, QueryPolicySubjectV12)
+        actual = _scopes(subject.commands, subject.connectors, getattr(subject, "events", ()), getattr(subject, "publications", ()), getattr(subject, "private_files", ()), getattr(subject, "relational", ()), getattr(subject, "checkpoints", ()), getattr(subject, "identities", ()), getattr(subject, "status_projections", ()), getattr(subject, "peer_reads", ()), getattr(subject, "sessions", ()), getattr(subject, "tasks", ()), getattr(subject, 'queries', ()))
         actual_bytes = {
             key: _canonical_bytes(_scope_data(scope))
             for key, scope in actual.items()
@@ -616,10 +625,10 @@ def evaluate_authority_policy(subject, evidence=None) -> PolicyEvaluation:
         issues.add((None, "trusted_policy_unavailable"))
     else:
         try:
-            evidence = _parse_versioned(CorePolicyEvidenceV1, CorePolicyEvidenceV2, evidence, "evidence_version", CorePolicyEvidenceV3, CorePolicyEvidenceV4, CorePolicyEvidenceV5, CorePolicyEvidenceV6, CorePolicyEvidenceV7, CorePolicyEvidenceV8, CorePolicyEvidenceV9, CorePolicyEvidenceV10, TaskPolicyEvidenceV11)
+            evidence = _parse_versioned(CorePolicyEvidenceV1, CorePolicyEvidenceV2, evidence, "evidence_version", CorePolicyEvidenceV3, CorePolicyEvidenceV4, CorePolicyEvidenceV5, CorePolicyEvidenceV6, CorePolicyEvidenceV7, CorePolicyEvidenceV8, CorePolicyEvidenceV9, CorePolicyEvidenceV10, TaskPolicyEvidenceV11, QueryPolicyEvidenceV12)
             if evidence.evidence_version != subject.subject_version:
                 raise ValueError("Policy versions must match")
-            rules = _scopes(evidence.commands, evidence.connectors, getattr(evidence, "events", ()), getattr(evidence, "publications", ()), getattr(evidence, "private_files", ()), getattr(evidence, "relational", ()), getattr(evidence, "checkpoints", ()), getattr(evidence, "identities", ()), getattr(evidence, "status_projections", ()), getattr(evidence, "peer_reads", ()), getattr(evidence, "sessions", ()), getattr(evidence, "tasks", ()))
+            rules = _scopes(evidence.commands, evidence.connectors, getattr(evidence, "events", ()), getattr(evidence, "publications", ()), getattr(evidence, "private_files", ()), getattr(evidence, "relational", ()), getattr(evidence, "checkpoints", ()), getattr(evidence, "identities", ()), getattr(evidence, "status_projections", ()), getattr(evidence, "peer_reads", ()), getattr(evidence, "sessions", ()), getattr(evidence, "tasks", ()), getattr(evidence, 'queries', ()))
             rule_bytes = {
                 key: _canonical_bytes(_scope_data(scope))
                 for key, scope in rules.items()
@@ -657,7 +666,7 @@ def evaluate_authority_policy(subject, evidence=None) -> PolicyEvaluation:
             if not issues:
                 return PolicyEvaluation(
                     policy_resolved=True,
-                    policy=({4: AuthorityPolicyV4, 5: AuthorityPolicyV5, 6: AuthorityPolicyV6, 7: AuthorityPolicyV7, 8: AuthorityPolicyV8, 9: AuthorityPolicyV9, 10: AuthorityPolicyV10, 11: AuthorityTaskPolicyV11}.get(evidence.evidence_version, AuthorityPolicy))(
+                    policy=({4: AuthorityPolicyV4, 5: AuthorityPolicyV5, 6: AuthorityPolicyV6, 7: AuthorityPolicyV7, 8: AuthorityPolicyV8, 9: AuthorityPolicyV9, 10: AuthorityPolicyV10, 11: AuthorityTaskPolicyV11, 12: AuthorityQueryPolicyV12}.get(evidence.evidence_version, AuthorityPolicy))(
                         policy_revision=identity,
                         adapter_revision=_adapter_revision(evidence),
                         trust_revision=evidence.trust_revision,

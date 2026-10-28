@@ -225,7 +225,7 @@
       @update:open="!$event && cancelApplicationConfiguration()"
       @click="closeOnBackdrop($event, cancelApplicationConfiguration)">
       <div class="modal-body ui-stack">
-        <p>{{ t('extensions.configureApplicationHelp', 'Choose which managed device this application should use. The selection is preserved across updates.') }}</p>
+        <p>{{ t('extensions.configureApplicationHelp', 'Choose the resources this application should use. The selection is preserved across updates; access still needs approval.') }}</p>
         <p v-if="configurationTarget && needsPackagePreparation(configurationTarget.extension, configurationTarget.sha256)" class="ui-help">
           {{ versionLabel('reviewFirst') }}
         </p>
@@ -237,14 +237,20 @@
             v-model="configurationValues[field.key]"
             :required="field.required"
           >
-            <option value="" :disabled="field.required">{{ field.required ? t('extensions.selectDevice', 'Select a device') : t('extensions.noDeviceSelected', 'None (optional)') }}</option>
-            <option v-for="device in configurationDevices" :key="device.device_id" :value="device.device_id">
+            <option value="" :disabled="field.required">{{ field.kind === 'application_query' ? t('extensions.selectQueryProvider', 'Select an application and export') : field.required ? t('extensions.selectDevice', 'Select a device') : t('extensions.noDeviceSelected', 'None (optional)') }}</option>
+            <option v-for="device in field.kind === 'device' ? configurationDevices : []" :key="device.device_id" :value="device.device_id">
               {{ device.display_name || device.device_id }} · {{ device.role }}
+            </option>
+            <option v-for="choice in field.choices || []" :key="`${choice.instance_id}/${choice.export_id}`" :value="`${choice.instance_id}/${choice.export_id}`">
+              {{ choice.module_id }} · {{ choice.version }} · {{ choice.export_id }} · {{ choice.instance_id }}
             </option>
           </select>
           <small v-if="field.description" class="ui-help">{{ field.description }}</small>
+          <small v-if="field.kind === 'application_query'" class="ui-help">{{ t('extensions.queryProviderHelp', 'Only matching local exports are listed. Selection grants no access; the provider and consumer each need approval. No automatic replacement.') }}</small>
+          <small v-if="field.kind === 'application_query' && !field.choices?.length" class="error-message" role="status">{{ t('extensions.noQueryProviders', 'No matching application exports are available.') }}</small>
+          <small v-if="field.choices_truncated" class="ui-help">{{ t('extensions.queryProvidersTruncated', 'The provider list reached its limit. No unlisted provider is selected automatically.') }}</small>
         </div>
-        <div v-if="configurationDevices.length === 0" :class="configurationFields.some(field => field.required) ? 'error-message' : 'ui-help'" role="status">
+        <div v-if="configurationDevices.length === 0 && configurationFields.some(field => field.kind === 'device')" :class="configurationFields.some(field => field.kind === 'device' && field.required) ? 'error-message' : 'ui-help'" role="status">
           {{ t('extensions.noDevicesAvailable', 'No active managed devices are available.') }}
         </div>
         <div v-if="configurationError" class="error-message" role="alert">{{ configurationError }}</div>
@@ -421,11 +427,15 @@ interface RetainedApplicationData {
 
 interface ApplicationConfigurationField {
   key: string;
-  kind: 'device';
+  kind: 'device' | 'application_query';
   label: string;
   description?: string | null;
   required: boolean;
   value?: string | null;
+  export_key?: string;
+  export_value?: string | null;
+  choices?: { instance_id: string; export_id: string; module_id: string; version: string; artifact_sha256: string }[];
+  choices_truncated?: boolean;
 }
 
 interface ApplicationConfigurationDevice {
@@ -464,7 +474,9 @@ const isAdmin = computed(() => (localStorage.getItem('role') || '') === 'admin')
 
 const canSaveApplicationConfiguration = computed(() =>
   configurationFields.value.every(field =>
-    !field.required || Boolean(configurationValues.value[field.key]),
+    field.kind === 'application_query'
+      ? !!field.export_key && field.choices?.some(choice => `${choice.instance_id}/${choice.export_id}` === configurationValues.value[field.key]) === true
+      : !field.required || Boolean(configurationValues.value[field.key]),
   ),
 );
 
@@ -587,7 +599,8 @@ const activateApplicationPackage = async (
     ? response.data.devices as ApplicationConfigurationDevice[]
     : [];
   configurationValues.value = Object.fromEntries(
-    fields.map(field => [field.key, field.value || '']),
+    fields.map(field => [field.key, field.kind === 'application_query'
+      ? field.value && field.export_value ? `${field.value}/${field.export_value}` : '' : field.value || '']),
   );
   configurationTarget.value = { extension, sha256 };
   configurationError.value = '';
@@ -615,7 +628,11 @@ const confirmApplicationConfiguration = async () => {
   try {
     const configuration = Object.fromEntries(configurationFields.value
       .filter(field => field.required || configurationValues.value[field.key])
-      .map(field => [field.key, configurationValues.value[field.key]!]))
+      .flatMap(field => {
+        if (field.kind !== 'application_query') return [[field.key, configurationValues.value[field.key]!]];
+        const choice = field.choices!.find(item => `${item.instance_id}/${item.export_id}` === configurationValues.value[field.key])!;
+        return [[field.key, choice.instance_id], [field.export_key!, choice.export_id]];
+      }))
     const activated = await applyApplicationPackage(target.extension, target.sha256, configuration);
     configurationSaving.value = false;
     cancelApplicationConfiguration();

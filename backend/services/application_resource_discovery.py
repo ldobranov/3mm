@@ -112,6 +112,12 @@ def discover_resources(engine, installation_id, instance_id, scopes, *, transpor
                 elif scope.startswith('connector:'):
                     provider_kinds.add('connector')
                     row['provider'] = ResourceProviderV1(provider_type='platform_runtime', provider_id='http_connector', contract_version='1')
+                elif scope.startswith('query:'):
+                    provider_kinds.add('query')
+                    row.update(selected_resource_id=resource.provider_instance_id,
+                        provider=ResourceProviderV1(provider_type='application_query',
+                            provider_id=resource.provider.module_id, provider_version=resource.provider_artifact.version,
+                            contract_version=resource.declaration.contract.contract_version))
                 elif scope.startswith(('event:', 'task:')):
                     from backend.services.application_files import _runtime
                     host_probe = (_runtime(db, installation_id), dict(app.configuration or {}))
@@ -214,6 +220,14 @@ def discover_resources(engine, installation_id, instance_id, scopes, *, transpor
             elif scope.startswith('storage:relational_') and sql_ready:
                 rows[scope] = ResourceObservationV1(**{**row.model_dump(), 'readiness':'ready', 'reasons':(),
                     'provider':ResourceProviderV1(provider_type='application_host', provider_id='prepared_relational', contract_version='1')})
+            elif scope.startswith('query:'):
+                # Executor support is observed, but no business handler/host
+                # health call is made merely by discovering a read permission.
+                state = provider_states['query']
+                rows[scope] = ResourceObservationV1(**{**row.model_dump(),
+                    'readiness':'unavailable' if state == 'unavailable' else 'unknown',
+                    'reasons':('query_runtime_unavailable' if state == 'unavailable'
+                        else 'provider_not_observed' if state == 'ready' else 'runtime_not_observed',)})
             elif scope.startswith(('connector:', 'event:', 'task:')):
                 kind = scope.split(':',1)[0]
                 states = [provider_states[kind]] + ([host_state] if kind in {'event','task'} else [])

@@ -741,6 +741,101 @@ Vendor API, платежен статус, куриер, POS mapping и отго
 Налична основа: общ gateway и descriptors за собствените application операции.
 Общ service-to-service operation binding не е доказан като налична пълна възможност.
 
+**Локален release-candidate срез, 2026-10-28: read-only, local, one hop.**
+Manifest v2 пакетът може да съдържа `query_exports` и `query_dependencies` в
+`application-extension.json` за SDK 1.3. Provider export посочва `export_id`,
+`handler_operation_id` и `contract`; consumer dependency — `binding_id`,
+собствения очакван `contract`, `provider_instance_config_key` и
+`provider_export_config_key`. Последните две имена сочат отделни string полета
+в manifest configuration schema. Запазената конфигурация съдържа точния
+24-hex instance ID и export ID; не module name, URL, token или автоматичен избор.
+Договорът има `contract_id`, точен
+`contract_version` (например `1.0`), `kind: query`, `input_schema`,
+`output_schema`, `timeout_seconds` (1–5) и `max_response_bytes` (1–16384).
+Версията на този interface е независима от Core, SDK и provider пакета.
+
+Handler е отделна internal query, не health/admin/public endpoint, command,
+task или job; няма human permission, idempotency key или декларирани events.
+Неговите input/output схеми и timeout съвпадат точно с export договора.
+Схемите използват общия bounded capability-contract dialect: strict objects,
+ограничени scalars/depth/bytes, без `$ref`, arrays или изпълним validator.
+Няма URL, token, DB path, wildcard, автоматичен избор на provider или retry.
+Декларирането като query не е доказателство за чистота/изолация на native кода.
+
+`three_mm_protocol.assess_application_query(consumer, provider,
+binding_id=..., export_id=...)` сравнява само подадените descriptors.
+Не преглежда мрежата, filesystem или инсталациите. Изисква точни ID/version,
+input/output schemas и лимити; не извежда съвместимост от subset или major
+версия. SHA-256 digest включва целия договор и отделен domain. Подредбата на
+JSON object keys не влияе; редът на schema arrays и числовото представяне
+остават точни, без автоматична нормализация. Липса, mismatch и self-reference
+имат отделни причини. Резултатът е `basis: declarations_only`, с
+`permission_approval`, `instance_binding`, `runtime_readiness: not_evaluated`
+и `invocation_supported: false`, дори когато `compatible: true`.
+
+**M20 backend:** съществуващите consent preview/allow и manual review/approve/apply
+вече обработват `query:<binding_id>:read` чрез вътрешния authority profile v12.
+Използват същите sealed plan/grant/action таблици, администраторски сесии и
+key → guard координация; няма нова база, migration или паралелна grant система.
+Provider-ът трябва да е active/enabled с текущо собствено M20 одобрение.
+Прегледът реконструира и двете инсталации, incarnations, package/UI digests,
+provider configuration identity, epoch/grant revisions и точния export/contract.
+ZIP/code validation е преди authority lock; окончателните pointers, конфигурация
+и одобрения се проверяват в общия guard snapshot. Query правата започват
+неизбрани и се одобряват изрично. Revoke/disable, сменена identity/конфигурация/
+пакет или нов provider grant отнемат текущата валидност на consumer връзката,
+без да я пренасочват или автоматично преодобряват.
+
+Първият consumer профил е query-only, максимум 16 зависимости, без други
+resource families и без exports; provider с query dependencies не се допуска.
+Това е изрично one-hop ограничение, не общ graph/cycle engine.
+Съществуващите provider resource profiles запазват своите проверки.
+Пакетната валидация сама по себе си не е разрешение за композиция.
+
+**Браузър:** общата application configuration предлага до 64 съвместими локални
+exports от до 64 active/enabled кандидати. Показва точни module/version/export/
+instance, без автоматичен избор; запазва двете изрични configuration стойности.
+Каталогът не е проверка за grant/readiness. Provider се одобрява самостоятелно,
+после consumer consent показва точния договор/срок/лимит и package/authority pins.
+Query checkbox е видим и първоначално неизбран. Само explicit Allow запазва
+избора. Смяна на provider или неговото одобрение не подменя старата връзка.
+
+**SDK/Runtime:** `context.platform.query('directory', arguments={'reference': 'x'})`
+изпраща `query.request` веднъж. Резултатът съдържа `query_version: 1`,
+`binding_id`, `provider_instance_id`, `contract_digest`, `output`. Provider handler
+получава `OperationContext.application_caller` с consumer instance/module/package,
+binding и digest, а `context.actor.kind == 'application'`; executor е самият host.
+Няма user identity, human permissions, делегиране или idempotency/retry ключ.
+
+Core валидира input/свежите M20 права и прави един кратък authenticated send.
+Runtime получава само response-only Unix FD и еднократен opaque completion ID,
+не transport/review ключ или DB. Core не държи transaction/guard или зает handler
+докато Runtime чака provider. При връщане Core проверява подписа, request ID,
+deadline, строгия output schema/размер и отново и двете текущи инсталации/права.
+Отнети/подновени права, disable, конфигурация/пакет/ключ drift или невалиден отговор
+не освобождават резултата. Pending резултатите са само process-local, max 8 общо /
+4 за consumer, max 5 s response wait; загуба/срив не създава durable retry/replay.
+Native handler може вече да е изпълнен: отказът на output не е доказан rollback.
+
+Запазено право може да стане ефективно само с текущ Runtime query feature probe;
+иначе `query_runtime_not_connected`. Discovery не извиква business handler и
+честно отчита `provider_not_observed`, дори когато Runtime е готов.
+Generic effect lease и compatibility listener отказват query изпълнение.
+
+Scoped-relational providers са изрично извън този първи изпълним профил:
+не се заобикаля техният prepared invocation/SQL lifecycle. Query-only consumer
+не може да има scoped SQL transaction; SDK отказва чакане вътре в такава.
+За бъдещия release са нужни съгласувани текущи Core, независим Platform Runtime
+(`query_execution_contract: 1`) и application-host/SDK код. Core-only update не
+обновява автоматично отделните компоненти; стар Runtime без feature отказва
+readiness. Няма DB migration, wipe, device rollout или преместване на стар tag.
+
+Този vertical е локално проверен и е кандидат за интеграционните release gates,
+не публикуван release и не приемане на целия CAP13. Общият Python 3.13 CI/Release
+и пробата върху точните публикувани компоненти остават задължителни.
+Commands, user delegation, opaque entity references/deep links, цикли между
+повече providers, remote composition и целият CAP13 остават отделни стъпки.
+
 - Provider публикува версиран contract, consumer декларира зависимост;
   администраторът свързва точните instances/operations/resources.
 - Invocation използва проверен caller и при нужда ограничено делегиране

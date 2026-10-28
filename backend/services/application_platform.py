@@ -50,7 +50,7 @@ from three_mm_platform_wire import (
 class ApplicationPlatformServer:
     def __init__(self, socket_path: Path, key_root: Path, group: str = "3mm-app", *,
                  diagnostics: DiagnosticSession | None = None,
-                 allowed_actions=RUNTIME_ACTIONS, max_connections=MAX_CONNECTIONS, runtime_root=None) -> None:
+                 allowed_actions=COMPATIBILITY_ACTIONS, max_connections=MAX_CONNECTIONS, runtime_root=None) -> None:
         self.socket_path = socket_path
         self.key_root = key_root
         self.runtime_root = runtime_root
@@ -252,12 +252,16 @@ class ApplicationPlatformServer:
                 finally:
                     db.close()
                 from backend.services.application_connector_transport import ConnectorDispatch
-                if isinstance(result, ConnectorDispatch):
+                from backend.services.application_query_transport import QueryDispatch
+                if isinstance(result, (ConnectorDispatch, QueryDispatch)):
                     from three_mm_platform_wire import send_authority_frame
                     try:
                         connection.settimeout(1)
-                        send_authority_frame(connection, {"connector_execution_contract": 1,
-                            "receipt": result.receipt, "timeout_seconds": result.timeout}, origin=result.connection)
+                        metadata = ({'query_execution_contract': 1, 'receipt': result.receipt,
+                            'deadline_ms': result.deadline_ms, 'max_response_bytes': result.max_response_bytes}
+                            if isinstance(result, QueryDispatch) else {'connector_execution_contract': 1,
+                                'receipt': result.receipt, 'timeout_seconds': result.timeout})
+                        send_authority_frame(connection, metadata, origin=result.connection)
                     finally: result.connection.close()
                     return
                 remaining(deadline)
@@ -329,6 +333,12 @@ class ApplicationPlatformServer:
             ).model_dump(mode="json")
         if mode != 'compatibility' and action not in SCOPED_ACTIONS:
             raise ValueError('Platform action has no supported resource grant')
+        if action == 'query.request':
+            if mode != 'enforced' or not hasattr(self, 'query_broker'):
+                raise ValueError('Query requires scoped Runtime authority')
+            return self.query_broker.begin(db, installation, request, secret=transport_secret,
+                runtime_generation=getattr(self._origin, 'generation', None),
+                core_generation=self._generation, key_root=self.key_root)
         if action in {"delegation.execute", "delegation.lookup"}:
             from backend.services.application_delegations import execute_delegation, inspect_delegation
             from backend.config import get_settings
@@ -533,6 +543,8 @@ class CoreRuntimeAuthorityServer(ApplicationPlatformServer):
         self.runtime_uid = runtime_uid
         self.connector_worker_path = connector_worker_path
         self.connector_worker_uid = connector_worker_uid
+        from backend.services.application_query_transport import QueryBroker
+        self.query_broker = QueryBroker()
 
     def _send_encoded(self, connection, encoded):
         if getattr(self._origin, "connector", False): connection.sendall(b"\0")
@@ -557,16 +569,16 @@ class CoreRuntimeAuthorityServer(ApplicationPlatformServer):
             request, origin = receive_authority_frame(connection, time.monotonic() + AUTHORITY_READ_SECONDS)
             if (origin is not None) != (request.get("action") == "relational.boot.startup"):
                 return
-            self._origin.connector = request.get("action") == "connector.request"
+            self._origin.connector = request.get("action") in {'connector.request', 'query.request'}
             if ({"authority_probe", "authority_contract"} <= set(request)
-                    and set(request) <= {"authority_probe", "authority_contract", "public_web_contract", "event_delivery_contract", "connector_execution_contract", "application_response_contract"}):
+                    and set(request) <= {"authority_probe", "authority_contract", "public_web_contract", "event_delivery_contract", "connector_execution_contract", "application_response_contract", "query_execution_contract"}):
                 nonce = request["authority_probe"]
                 if (request["authority_contract"] != AUTHORITY_CONTRACT
                         or type(request["authority_contract"]) is not int
                         or not isinstance(nonce,str) or re.fullmatch(r"[0-9a-f]{32}",nonce) is None):
                     return
                 result = {"authority_contract":AUTHORITY_CONTRACT,"authority_probe":nonce}
-                for feature in ("public_web_contract", "event_delivery_contract", "connector_execution_contract", "application_response_contract"):
+                for feature in ("public_web_contract", "event_delivery_contract", "connector_execution_contract", "application_response_contract", 'query_execution_contract'):
                     if feature in request:
                         if type(request[feature]) is not int or request[feature]!=1:return
                         result[feature]=1
@@ -617,6 +629,19 @@ class CoreRuntimeAuthorityServer(ApplicationPlatformServer):
                     return
                 connection.settimeout(1)
                 connection.sendall(json.dumps({"task_execution_contract": 1, "task": result}, separators=(",", ":")).encode() + b"\n")
+                return
+            if 'query_execution_contract' in request:
+                if (type(request['query_execution_contract']) is not int or request['query_execution_contract'] != 1
+                        or set(request) not in ({'query_execution_contract', 'receipt', 'response'},
+                            {'query_execution_contract', 'receipt', 'failure'})):
+                    return
+                from backend.database import SessionLocal
+                with SessionLocal() as db:
+                    engine = db.get_bind().engine
+                result = self.query_broker.finish(engine, request['receipt'], request.get('response'),
+                    key_root=self.key_root, runtime_generation=self._origin.generation, core_generation=self._generation)
+                connection.settimeout(1)
+                connection.sendall(json.dumps(result, separators=(',', ':')).encode()+b'\n')
                 return
             if "connector_execution_contract" in request:
                 if (type(request["connector_execution_contract"]) is not int or request["connector_execution_contract"] != 1
