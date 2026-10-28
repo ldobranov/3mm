@@ -128,6 +128,16 @@ def status_app(checkpoint_app, request):
     return state
 
 
+def test_resource_view_observes_local_status_without_remote_reporting(status_app):
+    from backend.services.application_resource_discovery import discover_resources
+    s = status_app
+    activate_status_grant(s)
+    row = discover_resources(s.engine,1,'a'*24,[f'status:{LINK}:read'])['resources'][0]
+    assert row['readiness'] == 'ready' and row['provider']['provider_id'] == 'core_local_projection'
+    assert row['selected_resource_id'] == LINK
+    assert 'PRIVATE_' not in str(row) and 'credential' not in str(row)
+
+
 def frame(**changes):
     return {
         "version": 1,

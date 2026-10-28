@@ -70,10 +70,10 @@ wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | \
   sudo bash -s -- --tag v0.3.0-beta.9
 ```
 
-## 3. Manual development deployment
+## 3. Local development updates
 
-The laptop-driven path remains available when testing an exact development
-commit that has not yet been published as a release.
+After the one-command installation and setup, the laptop-driven path can update
+an existing full installation from the current checkout without publication.
 
 ### Run the read-only preflight
 
@@ -88,35 +88,34 @@ ssh raspberry@<device-ip> "python3 /tmp/3mm-first-boot-preflight.py"
 Continue only when the last line is `result=ready failed=0`. The checker does
 not install packages, start or stop services, or change NetworkManager.
 
-### Build and install an immutable release
+### Prepare and install an immutable local update
 
-Use a clean commit that is already pushed to the selected remote. From Windows
-PowerShell in the repository root:
+From Windows PowerShell in the repository root, with WSL `Ubuntu-26.04` and the
+development Python/Node/npm/Git toolchain available:
 
 ```powershell
-.\deploy.ps1 `
-  -SshHost raspberry@<device-ip> `
-  -FrontendOrigin http://<final-lan-address> `
-  -InteractiveSudo `
-  -SkipPush
+.\deploy.ps1 -Action Prepare
+.\deploy.ps1 -SshHost raspberry@rasp-3mm.local
+.\deploy.ps1 -Action Status
+.\deploy.ps1 -Action Logs
 ```
 
-Omit `-SkipPush` when the wrapper should push and verify the clean commit. Do not
-use `-IncludeWorkingTree` for clean-install acceptance.
+Preparation is local only. The wrapper snapshots current source, records checks,
+and reuses exact checked builds/dependencies on repeats; it never pushes Git or
+changes versions. The default target is already `raspberry@rasp-3mm.local`.
+Use `-Bundle <ready-directory>` to deploy an exact prepared kit. See the root
+README for bounded developer check selections and target options.
 
-The sudo password, if one exists, is entered only at the interactive prompt.
-The laptop builds and verifies `frontend/dist`; the Raspberry creates the
-release-specific virtual environment and compiler dependencies. A failed
-activation restores the prior release automatically.
+SSH and sudo passwords are entered at the interactive prompts. The installed
+frontend URL and network backend are preserved. The Raspberry creates the
+release-specific environment; unchanged native hosts are reused. The existing
+installer restores the prior Core release on activation failure.
 
-On an empty provisioning state the expected successful result is the setup
-runtime, not the normal login page. The deployment wrapper recognizes both
-valid outcomes:
-
-- first boot: setup portal healthy on port 8895 with a captive HTTP entry point
-  on port 80;
-- provisioned device: Core, Web and Agent healthy on ports 8887, 80/8080 and
-  8890.
+The install runs independently of SSH. Wait for `3mm update succeeded`; closing
+the observer does not stop it. Status/Logs never upload or repeat an install.
+An uncertain/failed job requires inspection before further action. This local
+update path expects a provisioned device with Core ready. The clean-OS installer
+above still enters setup on port 8895 with the captive HTTP entry on port 80.
 
 After installation, the release itself can be checked without mutation:
 

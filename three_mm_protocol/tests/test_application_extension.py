@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from three_mm_protocol import (
     ApplicationExtensionV1,
+    ApplicationRouteV1,
     ApplicationPublicHttpRequestV1,
     ApplicationPublicHttpResponseV1,
     public_http_request_schema_v1,
@@ -145,6 +146,21 @@ def definition(**changes):
     }
     value.update(changes)
     return value
+
+
+@pytest.mark.parametrize('fault', ['unknown','duplicate','old_sdk','local_storage','wildcard','wrong_type'])
+def test_optional_resources_are_exact_declared_supported_profile_requests(fault):
+    value = definition()
+    value['service']['sdk_version'] = '1.3'
+    connector = 'connector:' + value['connectors'][0]['connector_id']
+    value['optional_resources'] = [connector]
+    if fault == 'unknown': value['optional_resources'] = ['connector:not_declared']
+    if fault == 'duplicate': value['optional_resources'] *= 2
+    if fault == 'old_sdk': value['service']['sdk_version'] = '1.0'
+    if fault == 'local_storage': value['optional_resources'] = ['storage:relational_read']
+    if fault == 'wildcard': value['optional_resources'] = ['connector:*']
+    if fault == 'wrong_type': value['optional_resources'] = [True]
+    with pytest.raises(ValidationError): ApplicationExtensionV1.model_validate(value)
 
 
 def test_valid_application_extension_contract_covers_business_service_boundaries():
@@ -432,3 +448,19 @@ def test_public_http_response_supports_bounded_cacheable_binary_assets():
                 "body_base64": "not-base64!",
             }
         )
+
+
+@pytest.mark.parametrize('reads,audience', [(['devices.list'], 'operator'), (['devices.list'], 'public'),
+    (['devices.detail', 'devices.detail'], 'administrator'), (['devices.delete'], 'administrator')])
+def test_administration_reads_require_explicit_unique_administrator_declarations(reads, audience):
+    with pytest.raises(ValueError):
+        ApplicationRouteV1(route_id='devices', entrypoint_id='devices', audience=audience,
+            required_permissions=('view',), administration_reads=reads)
+
+
+@pytest.mark.parametrize('actions,audience', [(['modules.install'], 'public'), (['capabilities.invoke'], 'operator'),
+    (['modules.install','modules.install'], 'administrator'), (['devices.reset'], 'administrator')])
+def test_administration_actions_are_closed_unique_and_administrator_only(actions,audience):
+    with pytest.raises(ValueError):
+        ApplicationRouteV1(route_id='manage',entrypoint_id='manage',audience=audience,
+            administration_actions=actions,required_permissions=('manage',))

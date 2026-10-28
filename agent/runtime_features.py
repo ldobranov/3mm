@@ -23,6 +23,7 @@ class RuntimeFeaturePublisher:
         self._declaration = None
         self._inventory_versions = (1,)
         self.availability_enabled = False
+        self.providers_enabled = False
 
     def inventory_version(self, preferred, declaration_provider):
         with self._lock:
@@ -45,6 +46,7 @@ class RuntimeFeaturePublisher:
         if protocol is None:
             self._inventory_versions = (1,)
             self.availability_enabled = False
+            self.providers_enabled = False
             return
         if (
             protocol.device_id != self.credential.device_id
@@ -77,3 +79,4 @@ class RuntimeFeaturePublisher:
             raise ValueError("Runtime feature acknowledgement mismatch")
         self._inventory_versions = protocol.inventory_schema_versions
         self.availability_enabled = AVAILABILITY_FEATURE in declaration["features"]
+        self.providers_enabled = 2 in protocol.capability_provider_report_versions

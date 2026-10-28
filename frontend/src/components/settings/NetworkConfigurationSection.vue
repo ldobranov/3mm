@@ -58,14 +58,14 @@
           </span>
         </label>
         <p v-else-if="recoveryStatus" class="automatic-recovery-unavailable" role="status">
-          {{ t('networkRecovery.automaticUnavailable', 'Automatic recovery is off for this network choice. The operating system manages this connection; protected setup remains available manually.') }}
+          {{ t('networkRecovery.automaticUnavailable', 'Automatic recovery is off for this network choice. The operating system manages this connection; setup remains available manually.') }}
         </p>
 
         <div class="recovery-actions">
           <div>
-            <strong>{{ t('networkRecovery.manualTitle', 'Protected device setup') }}</strong>
+            <strong>{{ t('networkRecovery.manualTitle', 'Device setup') }}</strong>
             <p>
-              {{ t('networkRecovery.manualHelp', 'Opens setup on the local network using a temporary access code. Existing services keep running.') }}
+              {{ t('networkRecovery.manualHelp', 'Opens setup on the local network while recovery is active. Existing services keep running.') }}
             </p>
           </div>
           <button
@@ -98,7 +98,7 @@
 
         <div v-if="recoveryMessage" class="recovery-notice" :class="{ error: recoveryError }" role="status">
           {{ recoveryMessage }}
-          <a v-if="recoveryAccessLink" :href="recoveryAccessLink" target="_blank" rel="noopener noreferrer">{{ t('networkRecovery.openProtected', 'Open protected setup') }}</a>
+          <a v-if="recoveryAccessLink" :href="recoveryAccessLink" target="_blank" rel="noopener noreferrer">{{ t('networkRecovery.openSetup', 'Open setup') }}</a>
         </div>
       </section>
 
@@ -431,7 +431,7 @@ export default defineComponent({
     const startSetupMode = async () => {
       const confirmed = window.confirm(t(
         'networkRecovery.confirmStart',
-        'Open protected device setup? Existing services keep running.'
+        'Open device setup? Existing services keep running.'
       ));
       if (!confirmed) return;
       startingSetup.value = true;
@@ -442,12 +442,11 @@ export default defineComponent({
         });
         recoveryError.value = false;
         const setupUrl = new URL(response.data.setup_url);
-        setupUrl.hash = new URLSearchParams({ access: response.data.access_code }).toString();
         recoveryAccessLink.value = setupUrl.toString();
         startingSetup.value = false;
         recoveryMessage.value = t(
           'networkRecovery.queued',
-          'Protected setup is starting at {url}. The link below expires after 15 minutes.',
+          'Setup is starting at {url}. Open the link below while recovery is active.',
           {
             url: response.data.setup_url
           }
@@ -469,9 +468,8 @@ export default defineComponent({
           confirmation: 'START ACCESS POINT', interface: apInterface.value, duration_seconds: 300,
         });
         const url = new URL(data.setup_url);
-        url.hash = new URLSearchParams({ access: data.access_code }).toString();
         recoveryAccessLink.value = url.toString();
-        recoveryMessage.value = t('networkRecovery.ap.join', 'Join “{network}”, then open the protected setup link below. Automatic return: 5 minutes.', { network: data.setup_network });
+        recoveryMessage.value = t('networkRecovery.ap.join', 'Join “{network}”, then open the setup link below. Automatic return: 5 minutes.', { network: data.setup_network });
         recoveryError.value = false;
         if (recoveryStatus.value) recoveryStatus.value.access_point = { ...recoveryStatus.value.access_point, state: 'starting', id: data.id };
       } catch {

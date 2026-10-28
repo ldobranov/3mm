@@ -5,6 +5,8 @@ from three_mm_provisioning import (
     FileNetworkRecoveryMarker,
     FileProvisioningStore,
     NetworkCredentials,
+    NetworkDeviceStatus,
+    NetworkManagerStatus,
     ProvisioningRequest,
     ProvisioningSnapshot,
     setup_access_point,
@@ -39,8 +41,15 @@ class FakeScanner:
             WifiNetwork("3mm Setup CDEF", 100, False),
         )
 
+    def inspect(self):
+        return NetworkManagerStatus(True, 'connected', 'full', True, True,
+            (NetworkDeviceStatus('wlan0', 'wifi', 'connected'),))
 
-def test_unprovisioned_device_creates_open_machine_specific_ap(tmp_path, monkeypatch):
+    def _execute(self, *arguments):
+        return 'yes' if 'WIFI-PROPERTIES.AP' in arguments else 'Existing SSH Wi-Fi'
+
+
+def test_unprovisioned_device_creates_open_machine_specific_ap_from_connected_wifi(tmp_path, monkeypatch):
     machine_id = tmp_path / "machine-id"
     machine_id.write_text("0123456789abcdef\n", encoding="utf-8")
     FakeBoundary.calls = []
@@ -56,12 +65,14 @@ def test_unprovisioned_device_creates_open_machine_specific_ap(tmp_path, monkeyp
         FakeScanner,
     )
 
-    monkeypatch.setattr("three_mm_provisioning.network_capabilities.setup_interface", lambda interface: interface)
+    monkeypatch.setenv('THREE_MM_NETWORK_BACKEND', 'network-manager')
+    monkeypatch.setattr('three_mm_provisioning.network_capabilities.NetworkManagerReadOnlyAdapter', FakeScanner)
     state_dir = tmp_path / "state"
     setup_access_point.start(state_dir, "wlan0", machine_id)
 
     create = next(call[1] for call in FakeBoundary.calls if call[0] == "create")
     assert create["network_name"] == "3mm Setup CDEF"
+    assert create["ipv4_address"] == "10.42.0.1/24"
     assert "passphrase" not in create
     assert ("scan", {"rescan": True, "interface": "wlan0"}) in FakeScanner.calls
     assert read_wifi_scan_cache(state_dir) == (WifiNetwork("Nearby Wi-Fi", 77, True),)

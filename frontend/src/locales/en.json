@@ -100,6 +100,7 @@
     "legacyHelp": "Package colors are read-only. Choose built-in to edit your saved custom colors; they have not been erased."
   },
   "settings": {
+    "emptyHeaderMenuHelp": "The header has no navigation links. Create a menu to choose links, or leave it empty. Settings remain available at /settings and through Ctrl+K.",
     "menuAudience": "Visible to",
     "menuAudiencePublic": "Everyone",
     "menuAudienceAuthenticated": "Signed-in users",
@@ -312,13 +313,13 @@
     "missingFields": "Complete all required fields."
   },
   "networkRecovery": {
-    "openProtected": "Open protected setup",
+    "openSetup": "Open setup",
     "title": "Device network recovery",
     "description": "Keep local services running while recovering device access.",
     "automaticTitle": "Open local recovery after 5 minutes without a network link",
     "automaticHelp": "Available when 3mm manages networking. The timer checks local links, not Internet access. Host-managed networking remains under OS control.",
-    "manualTitle": "Protected device setup",
-    "manualHelp": "Opens setup on the local network using a temporary access code. Existing services keep running.",
+    "manualTitle": "Device setup",
+    "manualHelp": "Opens setup on the local network while recovery is active. Existing services keep running.",
     "linkUnknown": "Local link status unavailable",
     "linkDisconnected": "Wi-Fi and Ethernet disconnected",
     "linkBoth": "Wi-Fi and Ethernet connected",
@@ -333,8 +334,8 @@
     "disabled": "Automatic network recovery is disabled. Manual setup remains available.",
     "loadFailed": "Network recovery settings could not be loaded.",
     "saveFailed": "The recovery setting could not be saved.",
-    "confirmStart": "Open protected device setup? Existing services keep running.",
-    "queued": "Protected setup is starting at {url}. The link below expires after 15 minutes.",
+    "confirmStart": "Open device setup? Existing services keep running.",
+    "queued": "Setup is starting at {url}. Open the link below while recovery is active.",
     "startFailed": "Local recovery could not be started."
   },
   "systemUpdates": {

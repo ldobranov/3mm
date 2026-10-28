@@ -6,7 +6,7 @@ from three_mm_protocol import AgentRole
 from three_mm_provisioning.models import ProvisioningState
 from three_mm_provisioning.persistence import FileProvisioningStore, ProvisioningSnapshot
 from three_mm_provisioning.network import NetworkAdapterError
-from three_mm_provisioning.recovery_access_point import RecoveryAccessPoint, read_status
+from three_mm_provisioning.recovery_access_point import RecoveryAccessPoint, read_status, CAPTIVE_DNS_CONTENT
 from three_mm_provisioning.setup_journal import atomic_json
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='POSIX shared transaction lock')
@@ -53,7 +53,7 @@ def prepared(tmp_path):
     boundary = Boundary()
     ap = RecoveryAccessPoint(tmp_path/'root', boundary=boundary, provisioning=data,
         status_path=tmp_path/'run/status.json', interfaces=lambda:[{'name':'wifi0','access_point':True}],
-        network_name='3mm Setup TEST', clock=lambda:1000)
+        network_name='3mm Setup TEST', clock=lambda:1000, dns_config=tmp_path/'dnsmasq-shared.d/captive.conf')
     return ap, boundary, data, before
 
 def test_timer_precedes_radio_and_role_identity_remain_unchanged(prepared):
@@ -67,6 +67,46 @@ def test_timer_precedes_radio_and_role_identity_remain_unchanged(prepared):
     assert {p.name:p.read_bytes() for p in data.iterdir() if p.is_file()}==before
     assert read_status(ap.status_path)['state']=='inactive'
     assert ap.path.stat().st_mode & 0o077 == 0
+
+
+@pytest.mark.parametrize('fails', [False, True])
+def test_captive_dns_is_loaded_for_ap_and_removed_even_on_failure(prepared, fails):
+    ap, boundary, _, _ = prepared
+    original = boundary.create_temporary_open_setup_access_point
+    def create(**values):
+        assert ap.dns_config.read_text() == CAPTIVE_DNS_CONTENT
+        original(**values)
+    boundary.create_temporary_open_setup_access_point = create
+    boundary.activation_fails = fails
+    if fails:
+        with pytest.raises(NetworkAdapterError): ap.start('wifi0', SESSION)
+    else:
+        ap.start('wifi0', SESSION)
+    assert not ap.dns_config.exists()
+
+
+def test_crash_recovery_clears_owned_dns_before_restoring_host_connection(prepared):
+    ap, boundary, _, _ = prepared
+    ap.start('wifi0', SESSION)
+    ap.dns_config.write_text(CAPTIVE_DNS_CONTENT)
+    original = boundary.restore_connection
+    def restore(value):
+        assert not ap.dns_config.exists()
+        original(value)
+    boundary.restore_connection = restore
+    ap.recover()
+    assert boundary.current == PREVIOUS
+
+
+def test_existing_dns_configuration_is_not_overwritten(prepared):
+    ap, boundary, _, _ = prepared
+    ap.dns_config.parent.mkdir()
+    ap.dns_config.write_text('host-owned')
+    with pytest.raises(ValueError, match='Unexpected captive DNS'):
+        ap.start('wifi0', SESSION)
+    assert ap.dns_config.read_text() == 'host-owned'
+    assert boundary.current == PREVIOUS
+    assert all(event[0] != 'ap' for event in boundary.events)
 
 @pytest.mark.parametrize('failure',['timer','activation'])
 def test_failed_start_compensates_and_never_mutates_before_timer(prepared,failure):

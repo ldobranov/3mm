@@ -21,7 +21,7 @@ from three_mm_protocol.application_event_publication import ApplicationEventPubl
 from three_mm_protocol.application_sessions import ApplicationSessionBindingV1, SessionContractV1
 from three_mm_protocol.application_extension import (
     ApplicationConnectorV1, ApplicationEventSubscriptionV1, ApplicationOperationV1,
-    ApplicationPrivateFilesV1, ApplicationRelationalStorageV1, SERVICE_ENTRYPOINT_PATTERN,
+    ApplicationPrivateFilesV1, ApplicationPrivateFilesV2, ApplicationRelationalStorageV1, SERVICE_ENTRYPOINT_PATTERN,
     ApplicationCheckpointV1, ApplicationPeerBindingV1,
 )
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN, SEMVER_PATTERN
@@ -47,26 +47,27 @@ ScopeKey = Annotated[str, Field(pattern=r"^(command|connector):[a-z][a-z0-9_]{0,
 ResourceScopeKey = Annotated[str, Field(pattern=r"^(command|connector|event):[a-z][a-z0-9_]{0,95}$")]
 PublicationScopeKey = Annotated[str, Field(pattern=r"^(command|connector|event|publication):[a-z][a-z0-9_]{0,95}$")]
 StorageScopeKey = Annotated[str, Field(
-    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:private_files_(?:read|write))$"
+    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:private_files_(?:read|write|publish|transform))$"
 )]
 RelationalScopeKey = Annotated[str, Field(
-    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write))$"
+    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files_(?:read|write|publish|transform)|relational_(?:read|write)))$"
 )]
 CheckpointScopeKey = Annotated[str, Field(
-    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write))$"
+    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files_(?:read|write|publish|transform)|relational_(?:read|write))|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write))$"
 )]
 IdentityScopeKey = Annotated[str, Field(
-    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read)$"
+    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files_(?:read|write|publish|transform)|relational_(?:read|write))|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read)$"
 )]
 StatusScopeKey = Annotated[str, Field(
-    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read)$"
+    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files_(?:read|write|publish|transform)|relational_(?:read|write))|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read)$"
 )]
 PeerScopeKey = Annotated[str, Field(
-    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read)$"
+    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files_(?:read|write|publish|transform)|relational_(?:read|write))|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read)$"
 )]
 SessionScopeKey = Annotated[str, Field(
-    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files|relational)_(?:read|write)|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read|session:[a-z][a-z0-9_]{0,95}:open)$"
+    pattern=r"^(?:(?:command|connector|event|publication):[a-z][a-z0-9_]{0,95}|storage:(?:private_files_(?:read|write|publish|transform)|relational_(?:read|write))|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|peer:[a-z][a-z0-9_]{0,95}:read|session:[a-z][a-z0-9_]{0,95}:open)$"
 )]
+TaskScopeKey = Annotated[str, Field(pattern=r"^(?:task|command):[a-z][a-z0-9_]{0,95}$")]
 Revision = Annotated[int, Field(ge=1, le=MAX_INTEGER)]
 Timestamp = Annotated[int, Field(ge=0, le=MAX_INTEGER)]
 Blocker = Literal[
@@ -138,7 +139,6 @@ class AuthorityPolicy(ContextModel):
     allowed_scopes: tuple[PublicationScopeKey, ...] = Field(max_length=128)
     required_scopes: tuple[PublicationScopeKey, ...] = Field(max_length=128)
     blockers: tuple[Blocker, ...] = Field(max_length=6)
-
     @model_validator(mode="after")
     def unique_sets(self):
         for values in (self.allowed_scopes, self.required_scopes, self.blockers):
@@ -147,40 +147,45 @@ class AuthorityPolicy(ContextModel):
         return self
 
 
+class AuthorityTaskPolicyV11(AuthorityPolicy):
+    allowed_scopes: tuple[TaskScopeKey, ...] = Field(max_length=72)
+    required_scopes: tuple[TaskScopeKey, ...] = Field(max_length=72)
+
+
 class AuthorityPolicyV4(AuthorityPolicy):
     # Internal policy/context v4 only. Old models retain their exact vocabulary.
-    allowed_scopes: tuple[StorageScopeKey, ...] = Field(max_length=130)
-    required_scopes: tuple[StorageScopeKey, ...] = Field(max_length=130)
+    allowed_scopes: tuple[StorageScopeKey, ...] = Field(max_length=132)
+    required_scopes: tuple[StorageScopeKey, ...] = Field(max_length=132)
 
 
 class AuthorityPolicyV5(AuthorityPolicy):
-    allowed_scopes: tuple[RelationalScopeKey, ...] = Field(max_length=132)
-    required_scopes: tuple[RelationalScopeKey, ...] = Field(max_length=132)
+    allowed_scopes: tuple[RelationalScopeKey, ...] = Field(max_length=134)
+    required_scopes: tuple[RelationalScopeKey, ...] = Field(max_length=134)
 
 
 class AuthorityPolicyV6(AuthorityPolicy):
-    allowed_scopes: tuple[CheckpointScopeKey, ...] = Field(max_length=196)
-    required_scopes: tuple[CheckpointScopeKey, ...] = Field(max_length=196)
+    allowed_scopes: tuple[CheckpointScopeKey, ...] = Field(max_length=198)
+    required_scopes: tuple[CheckpointScopeKey, ...] = Field(max_length=198)
 
 
 class AuthorityPolicyV7(AuthorityPolicy):
-    allowed_scopes: tuple[IdentityScopeKey, ...] = Field(max_length=197)
-    required_scopes: tuple[IdentityScopeKey, ...] = Field(max_length=197)
+    allowed_scopes: tuple[IdentityScopeKey, ...] = Field(max_length=199)
+    required_scopes: tuple[IdentityScopeKey, ...] = Field(max_length=199)
 
 
 class AuthorityPolicyV8(AuthorityPolicy):
-    allowed_scopes: tuple[StatusScopeKey, ...] = Field(max_length=229)
-    required_scopes: tuple[StatusScopeKey, ...] = Field(max_length=229)
+    allowed_scopes: tuple[StatusScopeKey, ...] = Field(max_length=231)
+    required_scopes: tuple[StatusScopeKey, ...] = Field(max_length=231)
 
 
 class AuthorityPolicyV9(AuthorityPolicy):
-    allowed_scopes: tuple[PeerScopeKey, ...] = Field(max_length=261)
-    required_scopes: tuple[PeerScopeKey, ...] = Field(max_length=261)
+    allowed_scopes: tuple[PeerScopeKey, ...] = Field(max_length=263)
+    required_scopes: tuple[PeerScopeKey, ...] = Field(max_length=263)
 
 
 class AuthorityPolicyV10(AuthorityPolicy):
-    allowed_scopes: tuple[SessionScopeKey, ...] = Field(max_length=293)
-    required_scopes: tuple[SessionScopeKey, ...] = Field(max_length=293)
+    allowed_scopes: tuple[SessionScopeKey, ...] = Field(max_length=295)
+    required_scopes: tuple[SessionScopeKey, ...] = Field(max_length=295)
 
 
 class ResolvedSessionScope(ContextModel):
@@ -535,15 +540,15 @@ def _validate_relational_scopes(scopes, principal, artifact_sha256, *, complete)
 class ResolvedPrivateFileScope(ContextModel):
     """Exact Core-resolved request, not a path, signed permit or executable grant."""
 
-    declaration: ApplicationPrivateFilesV1
+    declaration: ApplicationPrivateFilesV1 | ApplicationPrivateFilesV2
     owner: AuthorityPrincipal
     package_artifact_sha256: Digest
-    operation: Literal["read", "write"]
+    operation: Literal["read", "write", "publish", "transform"]
 
     @model_validator(mode="after")
     def declared_operation(self):
-        if self.operation == "write" and self.declaration.mode != "read_write":
-            raise ValueError("Read-only files cannot request write authority")
+        if self.operation not in self.declaration.operations():
+            raise ValueError("File operation is not declared")
         return self
 
 
@@ -564,7 +569,7 @@ def _validate_private_file_scopes(scopes, principal, artifact_sha256, *, complet
         ):
             raise ValueError("Private file scopes need one exact owned artifact request")
         operations.add(scope.operation)
-    expected = {"read", "write"} if declaration.mode == "read_write" else {"read"}
+    expected = set(declaration.operations())
     if complete and operations != expected:
         raise ValueError("Storage context requires every declared file operation")
 
@@ -651,6 +656,7 @@ class AuthorityReviewContextV1(ContextModel):
         keys += [f"status:{s.link_id}:read" for s in getattr(self, "status_projections", ())]
         keys += [f"peer:{s.declaration.binding_id}:read" for s in getattr(self, "peer_reads", ())]
         keys += [f"session:{s.declaration.binding_id}:open" for s in getattr(self, "sessions", ())]
+        keys += [f"task:{s.declaration.task_id}" for s in getattr(self, "tasks", ())]
         if len(keys) != len(set(keys)):
             raise ValueError("Scope identities must be unique")
         if (set(self.policy.allowed_scopes) | set(self.policy.required_scopes)) - set(
@@ -688,7 +694,7 @@ class AuthorityReviewContextV3(AuthorityReviewContextV2):
 class AuthorityReviewContextV4(AuthorityReviewContextV3):
     context_version: Literal[4]
     policy: AuthorityPolicyV4
-    private_files: tuple[ResolvedPrivateFileScope, ...] = Field(min_length=1, max_length=2)
+    private_files: tuple[ResolvedPrivateFileScope, ...] = Field(min_length=1, max_length=4)
 
     @model_validator(mode="after")
     def exact_storage_request(self):
@@ -701,7 +707,7 @@ class AuthorityReviewContextV4(AuthorityReviewContextV3):
 class AuthorityReviewContextV5(AuthorityReviewContextV3):
     context_version: Literal[5]
     policy: AuthorityPolicyV5
-    private_files: tuple[ResolvedPrivateFileScope, ...] = Field(max_length=2)
+    private_files: tuple[ResolvedPrivateFileScope, ...] = Field(max_length=4)
     relational: tuple[ResolvedRelationalScope, ...] = Field(min_length=1, max_length=2)
 
     @model_validator(mode="after")
@@ -724,7 +730,7 @@ class AuthorityReviewContextV5(AuthorityReviewContextV3):
 class AuthorityReviewContextV6(AuthorityReviewContextV3):
     context_version: Literal[6]
     policy: AuthorityPolicyV6
-    private_files: tuple[ResolvedPrivateFileScope, ...] = Field(max_length=2)
+    private_files: tuple[ResolvedPrivateFileScope, ...] = Field(max_length=4)
     relational: tuple[ResolvedRelationalScope, ...] = Field(max_length=2)
     checkpoints: tuple[ResolvedCheckpointScope, ...] = Field(min_length=1, max_length=64)
 
@@ -868,41 +874,41 @@ class AuthoritySelectionV3(AuthoritySelectionV1):
 
 class AuthoritySelectionV4(AuthoritySelectionV1):
     selection_version: Literal[4]
-    scopes: tuple[StorageScopeKey, ...] = Field(max_length=130)
+    scopes: tuple[StorageScopeKey, ...] = Field(max_length=132)
 
 
 class AuthoritySelectionV5(AuthoritySelectionV1):
     selection_version: Literal[5]
-    scopes: tuple[RelationalScopeKey, ...] = Field(max_length=132)
+    scopes: tuple[RelationalScopeKey, ...] = Field(max_length=134)
 
 
 class AuthoritySelectionV6(AuthoritySelectionV1):
     selection_version: Literal[6]
-    scopes: tuple[CheckpointScopeKey, ...] = Field(max_length=196)
+    scopes: tuple[CheckpointScopeKey, ...] = Field(max_length=198)
 
 
 class AuthoritySelectionV7(AuthoritySelectionV1):
     selection_version: Literal[7]
-    scopes: tuple[IdentityScopeKey, ...] = Field(max_length=197)
+    scopes: tuple[IdentityScopeKey, ...] = Field(max_length=199)
 
 
 class AuthoritySelectionV8(AuthoritySelectionV1):
     selection_version: Literal[8]
-    scopes: tuple[StatusScopeKey, ...] = Field(max_length=229)
+    scopes: tuple[StatusScopeKey, ...] = Field(max_length=231)
 
 
 class AuthoritySelectionV9(AuthoritySelectionV1):
     selection_version: Literal[9]
-    scopes: tuple[PeerScopeKey, ...] = Field(max_length=261)
+    scopes: tuple[PeerScopeKey, ...] = Field(max_length=263)
 
 
 class AuthoritySelectionV10(AuthoritySelectionV1):
     selection_version: Literal[10]
-    scopes: tuple[SessionScopeKey, ...] = Field(max_length=293)
+    scopes: tuple[SessionScopeKey, ...] = Field(max_length=295)
 
 
 class AuthorityContextIssue(ContextModel):
-    scope: SessionScopeKey | None = None
+    scope: SessionScopeKey | TaskScopeKey | None = None
     reason: Literal[
         "invalid_context",
         "invalid_selection",
@@ -1083,7 +1089,7 @@ def _command_schema_data(schema):
     return data
 
 
-def _parse_versioned(v1, v2, value, field, v3=None, v4=None, v5=None, v6=None, v7=None, v8=None, v9=None, v10=None):
+def _parse_versioned(v1, v2, value, field, v3=None, v4=None, v5=None, v6=None, v7=None, v8=None, v9=None, v10=None, v11=None):
     # Existing records retain their exact canonical shape/fingerprint. Callers
     # must explicitly opt into each new version; none silently gain authority.
     if isinstance(value, BaseModel):
@@ -1111,6 +1117,8 @@ def _parse_versioned(v1, v2, value, field, v3=None, v4=None, v5=None, v6=None, v
         models[9] = v9
     if v10 is not None:
         models[10] = v10
+    if v11 is not None:
+        models[11] = v11
     if type(version) is not int or version not in models:
         raise ValueError("Unsupported internal authority version")
     return _parse(models[version], value)
@@ -1167,12 +1175,13 @@ def review_authority_context(
     resolver. Fabricating them can fabricate reviewability, NOT actual authority.
     All supplied resource scopes must resolve, even if omitted from selection.
     """
+    from backend.services.application_task_authority import TaskReviewContextV11, TaskSelectionV11
     failures = (ValueError, TypeError, RecursionError, OverflowError)
     try:
         context = _parse_versioned(
             AuthorityReviewContextV1, AuthorityReviewContextV2, context,
             "context_version", AuthorityReviewContextV3, AuthorityReviewContextV4,
-            AuthorityReviewContextV5, AuthorityReviewContextV6, AuthorityReviewContextV7, AuthorityReviewContextV8, AuthorityReviewContextV9, AuthorityReviewContextV10,
+            AuthorityReviewContextV5, AuthorityReviewContextV6, AuthorityReviewContextV7, AuthorityReviewContextV8, AuthorityReviewContextV9, AuthorityReviewContextV10, TaskReviewContextV11,
         )
     except failures:
         return AuthorityContextReview(
@@ -1182,7 +1191,7 @@ def review_authority_context(
         selection = _parse_versioned(
             AuthoritySelectionV1, AuthoritySelectionV2, selection,
             "selection_version", AuthoritySelectionV3, AuthoritySelectionV4,
-            AuthoritySelectionV5, AuthoritySelectionV6, AuthoritySelectionV7, AuthoritySelectionV8, AuthoritySelectionV9, AuthoritySelectionV10,
+            AuthoritySelectionV5, AuthoritySelectionV6, AuthoritySelectionV7, AuthoritySelectionV8, AuthoritySelectionV9, AuthoritySelectionV10, TaskSelectionV11,
         )
         if context.context_version != selection.selection_version:
             raise ValueError("Authority versions must match")
@@ -1218,6 +1227,7 @@ def review_authority_context(
     known |= {f"status:{s.link_id}:read" for s in getattr(context, "status_projections", ())}
     known |= {f"peer:{s.declaration.binding_id}:read" for s in getattr(context, "peer_reads", ())}
     known |= {f"session:{s.declaration.binding_id}:open" for s in getattr(context, "sessions", ())}
+    known |= {f"task:{s.declaration.task_id}" for s in getattr(context, "tasks", ())}
     selected = set(selection.scopes)
     if selected & relational_keys and selected & relational_keys != relational_keys:
         for scope in relational_keys - selected:

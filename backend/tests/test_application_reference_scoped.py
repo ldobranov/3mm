@@ -32,7 +32,7 @@ from backend.services import application_authority_management as authority, comp
 from backend.services.application_platform import ApplicationPlatformServer
 from backend.services.device_capability_registry import capability_catalog
 from backend.services.module_packages import validate_module_package
-from backend.tests.test_application_access import fake_compiler
+from backend.tests.test_application_access import fake_compiler,kiosk_enrollment,kiosk_claim
 from backend.tests.test_application_authority_management import (
     installed as managed_installed, source_subject, source_installed, identity, decide,
 )
@@ -250,8 +250,8 @@ def test_delivered_reference_ui_sdk_authority_and_lifecycle(managed_installed, m
                     json={'user_id': 2, 'permission_id': 'probe_use'}).status_code == 403
                 assert client.post(base + '/permissions/grants', headers=admin,
                     json={'user_id': 2, 'permission_id': 'probe_use'}).status_code == 201
-                code = client.post(base + '/kiosk/enrollments', headers=admin, json={'label': 'Mock reference'}).json()['code']
-                claimed = client.post(base + '/kiosk/enrollments/claim', json={'code': code}).json()
+                code = client.post(base + '/kiosk/enrollments', headers=admin, json=kiosk_enrollment('Mock reference')).json()['code']
+                claimed = client.post(base + '/kiosk/enrollments/claim', json=kiosk_claim(code)).json()
                 kiosk = {'Authorization': 'Bearer ' + claimed['access_token']}
                 first = probe(client, 'kiosk-001', headers=kiosk, context=bindings['registration'], audience='kiosk')
                 assert first.status_code == 200, first.text

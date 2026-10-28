@@ -2,6 +2,8 @@
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+import json
+import socket
 import threading
 
 import backend.database  # noqa: F401
@@ -34,6 +36,10 @@ from backend.tests.test_module_packages import application_package
 from backend.utils.db_utils import get_db
 from backend.utils.jwt_utils import create_access_token
 from three_mm_runtime.update_helper_client import UpdateHelperError
+from three_mm_runtime import update_helper_client
+
+
+_REAL_HELPER_ACTIVATION = routes.UpdateHelperClient.activate_application_extension
 
 
 @pytest.fixture
@@ -164,6 +170,45 @@ def snapshot(s):
         )
 
 
+@pytest.mark.parametrize("completes", [True, False])
+def test_activation_waits_for_preparation_and_health_but_keeps_uncertain_work_fenced(lifecycle, monkeypatch, completes):
+    s = lifecycle
+    # Virtual elapsed time: package/snapshot/systemd preparation is separate from
+    # the manifest's 30-second health window. No real sleep or device is involved.
+    elapsed = 65 if completes else 10_000
+    dispatched = []
+
+    class Connection:
+        def __enter__(self): return self
+        def __exit__(self, *_args): pass
+        def settimeout(self, value): self.timeout = value
+        def connect(self, path): assert path.endswith("helper.sock")
+        def sendall(self, request):
+            payload = json.loads(request)
+            assert payload["action"] == "activate_application_extension"
+            assert payload["lifecycle"]["module_id"] == s.module_id
+            dispatched.append(payload)
+            s.helper("activating")(None)
+        def recv(self, _limit):
+            if elapsed > self.timeout:
+                raise TimeoutError("helper response still pending")
+            return json.dumps(dict(ok=True, status="active", **s.result)).encode() + b"\n"
+
+    monkeypatch.setattr(update_helper_client, "socket", SimpleNamespace(
+        socket=lambda *_args: Connection(), AF_UNIX=socket.AF_UNIX, SOCK_STREAM=socket.SOCK_STREAM))
+    monkeypatch.setattr(routes.UpdateHelperClient, "activate_application_extension", _REAL_HELPER_ACTIVATION)
+    response = request(s, "activating")
+    assert response.status_code == (200 if completes else 409), response.text
+    assert len(dispatched) == 1 and s.calls == ["activating"]
+    with Session(s.engine) as db:
+        installation = db.get(ApplicationExtensionInstallation, 1)
+        assert installation.enabled is completes
+        assert installation.status == ("active" if completes else "recovery_required")
+    if not completes:
+        assert request(s, "activating").status_code == 409
+        assert len(dispatched) == 1  # A lost response cannot authorize a replay.
+
+
 @pytest.mark.parametrize("operation", ["activating", "disabling", "uninstalling"])
 def test_success_fences_before_io_and_commits_terminal_audit(lifecycle, operation):
     s = lifecycle
@@ -174,7 +219,9 @@ def test_success_fences_before_io_and_commits_terminal_audit(lifecycle, operatio
     assert "authority" not in response.text and "do-not-audit" not in response.text
     with Session(s.engine) as db:
         assert read_authority_guard(db).revision == before[0].revision + 2
-        assert [r.status for r in db.scalars(select(DeviceCommand).order_by(DeviceCommand.id))] == ["failed", "failed", "succeeded"]
+        # Queued work is cancelled; an issued permit stays tied to its original
+        # device and can still report a receipt. Rotated epochs deny new permits.
+        assert [r.status for r in db.scalars(select(DeviceCommand).order_by(DeviceCommand.id))] == ["failed", "delivered", "succeeded"]
         if operation == "uninstalling":
             assert db.get(ApplicationExtensionInstallation, 1) is None
             assert db.get(ModulePackage, 1) is not None

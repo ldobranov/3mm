@@ -39,7 +39,7 @@ class PackageInspectionResponse(BaseModel):
     sha256: str
     size_bytes: int
     package_kind: Literal[
-        "module", "agent_module", "application", "runtime_ui", "compiled_ui", "theme", "language"
+        "module", "agent_module", "application", "compiled_ui", "theme", "language"
     ]
     manifest: ModuleManifestV2
     descriptors: dict[str, dict]
@@ -61,7 +61,6 @@ def describe_module_package(
     descriptors = {
         name: descriptor.model_dump(mode="json")
         for name, descriptor in (
-            ("runtime_extension", package.runtime_extension),
             ("compiled_ui", package.compiled_ui),
             ("application_extension", package.application_extension),
             ("theme_extension", package.theme_extension),
@@ -76,8 +75,6 @@ def describe_module_package(
         kind = "language"
     elif package.theme_extension is not None:
         kind = "theme"
-    elif package.runtime_extension is not None:
-        kind = "runtime_ui"
     elif package.compiled_ui is not None:
         kind = "compiled_ui"
     elif package.manifest.runtimes == ("agent",):

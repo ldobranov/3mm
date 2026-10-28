@@ -28,6 +28,7 @@ from backend.services.application_authority_inspection import (
 )
 from backend.services.application_commands import invalidate_commands
 from backend.services.application_configuration import resolve_application_configuration
+from backend.services.application_requirements import require_platform_requirements
 from backend.services.application_policy_reviews import _actor
 from backend.services.application_relational_lifecycle import MAX_PREPARATION_ACTIONS
 from backend.services.authority_metadata import (
@@ -108,6 +109,7 @@ def _stop_source(db, key, installation_id, prepared, generation, identifier, rev
 
 def verify_candidate(db, key, installation_id, pin, package, row):
     """Keyed installed-subject composition only; no unsigned candidate authority."""
+    from backend.services.application_configuration_provenance import binding_matches
     identifier = registration.candidate_registration_id(db, installation_id, pin)
     value = authority._load(db, key, "action", row, identifier)
     installed = db.get(Installation, installation_id, populate_existing=True)
@@ -116,10 +118,8 @@ def verify_candidate(db, key, installation_id, pin, package, row):
         or value["state"] != "candidate_not_started"
         or value["data"].get("operation") != OPERATION
         or installed.previous_package_id != value["data"]["previous_package_id"]
-        or _canonical_bytes(value["data"]["binding"])
-        != _canonical_bytes(
-            registration._binding(db, key, installation_id, pin, package)
-        )
+        or not binding_matches(db, key, installation_id, identifier, value['revision'],
+            value['data']['binding'], registration._binding(db, key, installation_id, pin, package))
     ):
         raise authority.AuthorityManagementError("candidate_provenance_changed")
 
@@ -178,6 +178,7 @@ def adopt_relational_version(
             manager.core_version,
         )
         definition = package.application_extension
+        require_platform_requirements(definition)
         if definition.storage.relational is None:
             raise authority.AuthorityManagementError("relational_declaration_required")
         request = {

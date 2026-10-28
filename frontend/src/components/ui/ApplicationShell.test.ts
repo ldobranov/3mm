@@ -16,7 +16,6 @@ vi.mock('@/utils/i18n', async () => {
   const currentLanguage = ref('en')
   return { useI18n: () => ({ t: (_: string, fallback: string) => fallback, currentLanguage, setLanguage: vi.fn() }) }
 })
-vi.mock('@/utils/runtime-extensions', () => ({ reloadRuntimeExtensionRoutes: vi.fn() }))
 vi.mock('@/router', () => ({ reloadCompiledUiRoutes: vi.fn() }))
 
 beforeEach(() => {
@@ -25,6 +24,7 @@ beforeEach(() => {
     { path: '/dashboard', label: 'Dashboard', audience: 'authenticated' },
     { path: '/settings', label: 'Settings', audience: 'admin' },
     { path: '/public', label: 'Public resource', audience: 'public' },
+    { path: '/dynamic', label: 'Registered module route', audience: 'authenticated' },
   ] }] } : [{ kind: 'navigation', metadata: { path: '/dynamic', label: 'Registered module route' } }] }))
 })
 afterEach(() => { vi.clearAllMocks(); document.documentElement.style.cssText = '' })
@@ -51,7 +51,16 @@ describe('shell uses the existing dynamic navigation and action boundary', () =>
     expect(links.includes('Dashboard')).toBe(Boolean(role))
     expect(links).toContain('Public resource')
     expect(links.includes('Registered module route')).toBe(Boolean(role))
-    expect(wrapper.find('.ui-recovery-link').exists()).toBe(role === 'admin')
+    expect(wrapper.find('.ui-recovery-link').exists()).toBe(false)
+    wrapper.unmount()
+  })
+  it.each(['sidebar', 'top'] as const)('leaves %s navigation empty without adding compulsory recovery links', async layout => {
+    api.get.mockResolvedValue({ data: { items: [] } })
+    const wrapper = await shell('admin')
+    const design = builtinUiDesign(); design.layout.navigation = layout
+    await wrapper.setProps({ design })
+    expect(wrapper.findAll('.ui-nav-item')).toHaveLength(0)
+    expect(wrapper.findAll('a[href*="ui-preview"]')).toHaveLength(0)
     wrapper.unmount()
   })
   it.each(['auth','public','kiosk','display'] as const)('does not impose a sidebar on %s', async mode => {

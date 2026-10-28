@@ -9,8 +9,11 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN, SEMVER_PATTERN
-from three_mm_protocol.runtime_extension import IDENTIFIER_PATTERN, LocalizedTextV1
+from three_mm_protocol.ui_metadata import IDENTIFIER_PATTERN, LocalizedTextV1
 from three_mm_protocol.application_commands import ApplicationCommandBindingV1
+from three_mm_protocol.application_tasks import ApplicationTaskV1
+from three_mm_protocol.application_requirements import ApplicationPlatformRequirementV1
+from three_mm_protocol.application_resources import ResourceScope
 from three_mm_protocol.application_sessions import ApplicationSessionBindingV1, ApplicationSessionProviderV1
 
 
@@ -95,7 +98,7 @@ class ApplicationPermissionV1(StrictApplicationModel):
 
 class ApplicationOperationV1(StrictApplicationModel):
     operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
-    kind: Literal["query", "command", "job"]
+    kind: Literal["query", "command", "job", "task"]
     audiences: tuple[ApplicationAudience, ...] = Field(min_length=1, max_length=7)
     required_permission: str | None = Field(
         default=None,
@@ -119,10 +122,12 @@ class ApplicationOperationV1(StrictApplicationModel):
             raise ValueError("internal operations cannot have another audience")
         if self.kind == "query" and self.idempotency != "forbidden":
             raise ValueError("query operations forbid idempotency keys")
-        if self.kind in {"command", "job"} and self.idempotency != "required":
+        if self.kind in {"command", "job", "task"} and self.idempotency != "required":
             raise ValueError("command and job operations require idempotency keys")
         if self.kind == "job" and self.audiences != ("internal",):
             raise ValueError("job operations must be internal")
+        if self.kind == "task" and self.audiences != ("internal",):
+            raise ValueError("task operations must be internal")
         if "operator" in self.audiences and self.required_permission is None:
             raise ValueError("operator operations require an extension permission")
         if len(self.emitted_events) != len(set(self.emitted_events)):
@@ -135,17 +140,49 @@ class ApplicationOperationV1(StrictApplicationModel):
         return self
 
 
+class ApplicationUiFilesV1(StrictApplicationModel):
+    contract_version: Literal[1]
+    read_permission: str = Field(pattern=IDENTIFIER_PATTERN)
+    write_permission: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
+    publish_permission: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
+    transform_permission: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
+
+    @field_validator('contract_version', mode='before')
+    @classmethod
+    def exact_version(cls, value):
+        if type(value) is not int or value != 1:
+            raise ValueError('Unsupported browser file contract')
+        return value
+
+
 class ApplicationRouteV1(StrictApplicationModel):
     route_id: str = Field(pattern=IDENTIFIER_PATTERN)
     entrypoint_id: str = Field(pattern=IDENTIFIER_PATTERN)
     audience: Literal["public", "kiosk", "operator", "administrator"]
     required_permissions: tuple[str, ...] = ()
+    delegated_operations: tuple[str, ...] = Field(default=(), max_length=16)
+    private_files: ApplicationUiFilesV1 | None = None
+    # Human administrator reads, separate from the service's resource authority.
+    administration_reads: tuple[Literal["devices.list", "devices.detail", "modules.list", "capabilities.list", "capabilities.state", "commands.get", "resources.inspect"], ...] = Field(default=(), max_length=7)
+    administration_actions: tuple[Literal["modules.install", "modules.disable", "capabilities.invoke"], ...] = Field(default=(), max_length=3)
     layout: Literal["application", "kiosk"] = "application"
     navigation: bool = True
     order: int = Field(default=100, ge=0, le=10_000)
 
     @model_validator(mode="after")
     def validate_route_semantics(self):
+        if (len(set(self.delegated_operations)) != len(self.delegated_operations)
+                or any(re.fullmatch(IDENTIFIER_PATTERN, item) is None for item in self.delegated_operations)
+                or self.delegated_operations and self.audience != "operator"):
+            raise ValueError("Delegated operations require unique IDs on an operator route")
+        if self.private_files is not None and self.audience not in {"operator", "administrator"}:
+            raise ValueError("Private browser files require a normal user route")
+        if (self.administration_reads or self.administration_actions) and self.audience != "administrator":
+            raise ValueError("administration reads require an administrator route")
+        if len(self.administration_reads) != len(set(self.administration_reads)):
+            raise ValueError("administration reads must be unique")
+        if len(self.administration_actions) != len(set(self.administration_actions)):
+            raise ValueError("administration actions must be unique")
         if len(self.required_permissions) != len(set(self.required_permissions)):
             raise ValueError("route permissions must be unique")
         if (self.layout == "kiosk") != (self.audience == "kiosk"):
@@ -486,6 +523,33 @@ class ApplicationPrivateFilesV1(StrictApplicationModel):
             raise ValueError("Private file limits are inconsistent")
         return self
 
+    def operations(self):
+        return ('read', 'write') if self.mode == 'read_write' else ('read',)
+
+
+class ApplicationPrivateFilesV2(ApplicationPrivateFilesV1):
+    """Streaming file/media profile; independent committed and staging budgets."""
+    file_contract_version: Literal[2]
+    max_file_bytes: int = Field(strict=True, ge=1, le=1024 * 1024 * 1024)
+    max_total_bytes: int = Field(strict=True, ge=1, le=4 * 1024 * 1024 * 1024)
+    max_files: int = Field(strict=True, ge=1, le=4096)
+    max_uploads: int = Field(strict=True, ge=1, le=16)
+    max_staging_bytes: int = Field(strict=True, ge=1, le=2 * 1024 * 1024 * 1024)
+    upload_ttl_seconds: int = Field(strict=True, ge=60, le=86400)
+    public_links: bool = Field(strict=True)
+    media_transforms: bool = Field(strict=True)
+
+    @model_validator(mode='after')
+    def streaming_limits(self):
+        if self.max_file_bytes > self.max_staging_bytes:
+            raise ValueError('Staging budget must hold one maximum file')
+        if self.mode == 'read' and (self.public_links or self.media_transforms):
+            raise ValueError('Publishing and transforms require a writable profile')
+        return self
+
+    def operations(self):
+        return super().operations() + (('publish',) if self.public_links else ()) + (('transform',) if self.media_transforms else ())
+
 
 class ApplicationRelationalStorageV1(StrictApplicationModel):
     """Requested own-SQLite access and cooperative bounds, never a grant.
@@ -531,10 +595,11 @@ class ApplicationStorageV1(StrictApplicationModel):
     classifications: tuple[Literal["private", "secret"], ...] = ("private",)
     contains_personal_data: bool = False
     retention_operation_id: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
+    retention_policy: Literal["until_explicit_erasure"] | None = None
     export_operation_id: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
     erasure_operation_id: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
     backup_required: Literal[True] = True
-    private_files: ApplicationPrivateFilesV1 | None = None
+    private_files: ApplicationPrivateFilesV1 | ApplicationPrivateFilesV2 | None = None
     relational: ApplicationRelationalStorageV1 | None = None
 
     @model_validator(mode="after")
@@ -546,7 +611,12 @@ class ApplicationStorageV1(StrictApplicationModel):
             self.export_operation_id,
             self.erasure_operation_id,
         )
-        if self.contains_personal_data and any(item is None for item in lifecycle):
+        if self.retention_policy is not None and self.retention_operation_id is not None:
+            raise ValueError("Choose explicit erasure retention or a retention handler")
+        if self.contains_personal_data and (
+            self.export_operation_id is None or self.erasure_operation_id is None
+            or (self.retention_policy is None and self.retention_operation_id is None)
+        ):
             raise ValueError(
                 "personal data requires retention, export and erasure operations"
             )
@@ -621,6 +691,8 @@ class ApplicationExtensionV1(StrictApplicationModel):
     module_id: str = Field(pattern=MODULE_ID_PATTERN)
     version: str = Field(pattern=SEMVER_PATTERN)
     service: ApplicationServiceV1
+    platform_requirements: tuple[ApplicationPlatformRequirementV1, ...] = Field(default=(), max_length=16)
+    optional_resources: tuple[ResourceScope, ...] = Field(default=(), max_length=16)
     platform_permissions: tuple[Literal[
         "installation.identity.read", "installation.identity.prove",
         "installation.peers.enroll", "installation.peers.receive",
@@ -647,6 +719,7 @@ class ApplicationExtensionV1(StrictApplicationModel):
         max_length=32,
     )
     jobs: tuple[ApplicationJobV1, ...] = Field(default=(), max_length=64)
+    tasks: tuple[ApplicationTaskV1, ...] = Field(default=(), max_length=8)
     checkpoints: tuple[ApplicationCheckpointV1, ...] = Field(default=(), max_length=32)
     command_bindings: tuple[ApplicationCommandBindingV1, ...] = Field(default=(), max_length=64)
     session_bindings: tuple[ApplicationSessionBindingV1, ...] = Field(default=(), max_length=32)
@@ -656,6 +729,20 @@ class ApplicationExtensionV1(StrictApplicationModel):
 
     @model_validator(mode="after")
     def validate_references(self):
+        optional = set(self.optional_resources)
+        supported = ({f'command:{item.binding_id}' for item in self.command_bindings}
+            | {f'connector:{item.connector_id}' for item in self.connectors}
+            | {f'event:{item.subscription_id}' for item in self.event_subscriptions}
+            | {f'session:{item.binding_id}:open' for item in self.session_bindings})
+        if (optional and self.service.sdk_version != '1.3'
+                or len(optional) != len(self.optional_resources) or optional - supported):
+            raise ValueError('Optional resources require unique exact SDK 1.3 command/connector/event/session declarations')
+        if any(f'command:{item.binding_id}' in optional and item.sensor_device_config_key is not None for item in self.command_bindings):
+            raise ValueError('Optional commands do not support unresolved sensor contracts')
+        if self.platform_requirements and self.service.sdk_version != '1.3':
+            raise ValueError('Platform requirements require SDK 1.3')
+        if len({item.requirement_id for item in self.platform_requirements}) != len(self.platform_requirements):
+            raise ValueError('Platform requirement identifiers must be unique')
         if self.session_bindings and self.service.sdk_version != "1.3":
             raise ValueError("Session bindings require SDK 1.3")
         if self.session_providers and self.service.sdk_version != "1.3":
@@ -762,6 +849,25 @@ class ApplicationExtensionV1(StrictApplicationModel):
         for route in self.routes:
             if set(route.required_permissions) - known_permissions:
                 raise ValueError("route references an unknown permission")
+            for operation_id in route.delegated_operations:
+                operation = operations.get(operation_id)
+                if (self.service.sdk_version != "1.3" or operation is None
+                        or operation.kind not in {"query", "command"} or "operator" not in operation.audiences
+                        or operation.timeout_seconds > 10 or self.storage.relational is not None):
+                    raise ValueError("Delegation requires SDK 1.3 ordinary operator operations with a bounded timeout")
+            if route.private_files is not None:
+                access = route.private_files
+                declaration = self.storage.private_files
+                if (declaration is None or declaration.file_contract_version != 2 or self.service.sdk_version != "1.3"
+                        or access.read_permission not in known_permissions
+                        or access.write_permission is not None and (
+                            access.write_permission not in known_permissions or declaration.mode != "read_write")):
+                    raise ValueError("Browser files require declared storage and exact human permissions")
+                for permission, feature in ((access.publish_permission, 'public_links'),
+                        (access.transform_permission, 'media_transforms')):
+                    if permission is not None and (permission not in known_permissions
+                            or not getattr(declaration, feature, False)):
+                        raise ValueError('Browser media permissions require their explicit storage feature')
 
         health = operations.get(self.service.health_operation_id)
         if health is None or health.kind != "query" or health.audiences != ("internal",):
@@ -796,6 +902,31 @@ class ApplicationExtensionV1(StrictApplicationModel):
             handler = operations.get(job.handler_operation_id)
             if handler is None or handler.kind != "job":
                 raise ValueError("scheduled job handler must reference a job operation")
+
+        task_handlers = {item.handler_operation_id for item in self.tasks}
+        if (len({item.task_id for item in self.tasks}) != len(self.tasks)
+                or len(task_handlers) != len(self.tasks)
+                or {item.operation_id for item in self.operations if item.kind == "task"} != task_handlers):
+            raise ValueError("Task declarations and dedicated handlers must match exactly")
+        if self.tasks:
+            if self.command_bindings and any(task.profile != "bounded_task_v1" for task in self.tasks):
+                raise ValueError("Result-only task declarations cannot request command effects")
+            if (self.connectors or self.event_subscriptions
+                    or self.session_bindings or self.session_providers or self.jobs
+                    or self.checkpoints or self.platform_permissions or self.peer_bindings
+                    or self.peer_receiver or self.storage.private_files or self.storage.relational
+                    or self.public_http_routes or any(item.emitted_events for item in self.operations)):
+                raise ValueError("Bounded tasks support only their exact command effect adapter")
+            from three_mm_protocol.application_commands import validate_argument_schema
+            for task in self.tasks:
+                handler = operations.get(task.handler_operation_id)
+                if (handler is None or handler.kind != "task" or handler.audiences != ("internal",)
+                        or handler.required_permission is not None or handler.timeout_seconds != task.max_runtime_seconds):
+                    raise ValueError("Task requires its exact internal bounded handler")
+                for schema in (handler.input_schema, handler.output_schema):
+                    validate_argument_schema(schema)
+                    if len(schema["properties"]) > 8 or any(len(name) > 128 for name in schema["properties"]):
+                        raise ValueError("Task data is limited to eight bounded scalar fields")
 
         for operation_id in (
             self.storage.retention_operation_id,

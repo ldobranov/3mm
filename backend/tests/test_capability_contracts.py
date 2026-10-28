@@ -37,7 +37,7 @@ from backend.db.module import (
 )
 from backend.db.application_command import ApplicationCommandRequest
 from backend.services.device_pairing import credential_secret_hash
-from backend.services.ai_capability_context import build_automation_capability_context
+from backend.services.device_capability_registry import registered_capabilities
 from backend.services.module_packages import validate_module_package
 from backend.services.device_commands import (
     command_envelope,
@@ -279,15 +279,14 @@ def test_same_application_contract_runs_on_both_providers_and_survives_restart(
             and command.result["execution_state"] == "executed"
         )
     assert versions == ["1.0.6", "0.2.0"]
-    context = build_automation_capability_context(db)
-    assert context.context_version == 2
     entries = [
-        entry for entry in context.capabilities if entry.capability_id == CAPABILITY
+        entry for owner in db.scalars(select(Device))
+        for entry in registered_capabilities(db, owner) if entry["capability_id"] == CAPABILITY
     ]
     assert len(entries) == 2 and all(
-        entry.contract_version == "1.0" for entry in entries
+        entry["contract_version"] == "1.0" for entry in entries
     )
-    assert len({entry.contract.digest() for entry in entries}) == 1
+    assert len({json.dumps(entry["contract"], sort_keys=True) for entry in entries}) == 1
     assert gpio.output(CHANNEL).read() is True and node.output is True
     # Reload the active module's immutable manifest, not an in-memory catalog.
     runtime.close()

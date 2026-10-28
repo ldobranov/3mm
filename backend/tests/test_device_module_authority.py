@@ -286,7 +286,7 @@ def test_catalog_digest_must_match_the_validated_bytes_before_queueing(lifecycle
 def test_package_validation_and_agent_notification_are_outside_the_guard(lifecycle, monkeypatch):
     ctx = lifecycle
     original_read, original_notify = Path.read_bytes, device_command_notifier.notify
-    original_boundary = modules.device_authority_write
+    original_boundary = modules.module_management.device_authority_write
     in_guard = False
 
     @contextmanager
@@ -310,7 +310,7 @@ def test_package_validation_and_agent_notification_are_outside_the_guard(lifecyc
             assert read_authority_guard(other).revision == 2
         return original_notify(device_pk)
 
-    monkeypatch.setattr(modules, "device_authority_write", boundary)
+    monkeypatch.setattr(modules.module_management, "device_authority_write", boundary)
     monkeypatch.setattr(Path, "read_bytes", read)
     monkeypatch.setattr(device_command_notifier, "notify", notify)
     _request(ctx, ctx.install)
@@ -350,7 +350,7 @@ def test_module_writers_reject_pending_explicit_and_nested_caller_transactions(l
 @pytest.mark.parametrize("change", ["package", "runtime"])
 def test_preflight_is_rechecked_under_the_guard(lifecycle, monkeypatch, change):
     ctx = lifecycle
-    original = modules.device_authority_write
+    original = modules.module_management.device_authority_write
 
     @contextmanager
     def changed(*args, **kwargs):
@@ -362,7 +362,7 @@ def test_preflight_is_rechecked_under_the_guard(lifecycle, monkeypatch, change):
         with original(*args, **kwargs) as value:
             yield value
 
-    monkeypatch.setattr(modules, "device_authority_write", changed)
+    monkeypatch.setattr(modules.module_management, "device_authority_write", changed)
     before = authority(ctx)
     response = ctx.client.post(ctx.install)
     assert response.status_code == 409, response.text

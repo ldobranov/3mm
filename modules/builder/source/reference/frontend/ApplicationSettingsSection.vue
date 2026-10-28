@@ -1,0 +1,334 @@
+<template>
+  <SettingsSection :title="t('applicationSettings', 'Application Settings')">
+    <template v-if="isAdmin">
+      <ThemeSelector
+        :model-value="defaultTheme"
+        @update:model-value="updateDefaultTheme"
+        :label="t('settings.defaultTheme', 'Default Theme')"
+      />
+
+      <LanguageSelector
+        :model-value="defaultLanguage"
+        :available-languages="availableLanguages"
+        @update:model-value="updateDefaultLanguage"
+        :label="t('settings.defaultLanguage', 'Default Language')"
+      />
+      <div class="admin-info">
+        <p>{{ t('settings.adminInfo', 'These settings apply to new and unregistered users.') }}</p>
+        <p>{{ t('settings.adminInfo2', 'Logged-in users can set their own preferences using the header selectors.') }}</p>
+      </div>
+
+      <div class="admin-info session-settings-card">
+        <div>
+          <h3>{{ t('settings.sessionDuration.title', 'Signed-in session') }}</h3>
+          <p>{{ t('settings.sessionDuration.help', 'Choose how long this device remembers a signed-in browser. Active sessions renew automatically.') }}</p>
+        </div>
+        <div class="form-group session-duration-control">
+          <label class="form-label" for="session-duration-hours">
+            {{ t('settings.sessionDuration.label', 'Session duration (hours)') }}
+          </label>
+          <input
+            id="session-duration-hours"
+            v-model.number="sessionDurationHours"
+            class="input ui-control"
+            type="number"
+            :min="sessionDurationMinimum"
+            :max="sessionDurationMaximum"
+            step="1"
+          />
+          <small class="help-text">
+            {{ t('settings.sessionDuration.range', 'Allowed range: 1 hour to 30 days.') }}
+          </small>
+        </div>
+        <div class="settings-actions">
+          <button class="ui-button ui-button--primary" :disabled="sessionDurationSaving" @click="saveSessionDuration">
+            {{ sessionDurationSaving ? t('common.saving', 'Saving…') : t('settings.sessionDuration.save', 'Save session duration') }}
+          </button>
+          <span v-if="sessionDurationMessage" class="help-text" role="status">{{ sessionDurationMessage }}</span>
+        </div>
+      </div>
+
+      <div class="admin-info ai-settings-card">
+        <h3>{{ t('settings.aiProvider.title', 'AI Provider (Extension Builder)') }}</h3>
+
+        <div class="form-group">
+          <label class="form-label" for="ai-provider">{{ t('settings.aiProvider.provider', 'Provider') }}</label>
+          <select id="ai-provider" class="input ui-control" v-model="aiProvider">
+            <option value="">{{ t('settings.aiProvider.auto', 'Auto') }}</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="groq">Groq</option>
+          </select>
+          <small class="help-text">
+            {{ t('settings.aiProvider.providerHelp', 'Auto uses OpenRouter Free first and falls back to Groq Free.') }}
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="groq-api-key">{{ t('settings.aiProvider.groqKey', 'Groq API Key') }}</label>
+          <input
+            id="groq-api-key" class="input ui-control"
+            type="password"
+            v-model="groqKeyInput"
+            :placeholder="t('settings.aiProvider.keyPlaceholder', 'Leave blank to keep current')"
+          />
+          <small class="help-text">
+            {{ t('settings.aiProvider.groqStatus', 'Configured:') }}
+            <strong>{{ aiStatus.has_groq_key ? t('common.yes', 'Yes') : t('common.no', 'No') }}</strong>
+          </small>
+          <button class="ui-button ui-button--secondary clear-key-button" @click="clearGroqKey">
+            {{ t('settings.aiProvider.clearGroq', 'Clear Groq key') }}
+          </button>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="openrouter-api-key">{{ t('settings.aiProvider.openrouterKey', 'OpenRouter API Key') }}</label>
+          <input
+            id="openrouter-api-key" class="input ui-control"
+            type="password"
+            v-model="openrouterKeyInput"
+            :placeholder="t('settings.aiProvider.keyPlaceholder', 'Leave blank to keep current')"
+          />
+          <small class="help-text">
+            {{ t('settings.aiProvider.openrouterStatus', 'Configured:') }}
+            <strong>{{ aiStatus.has_openrouter_key ? t('common.yes', 'Yes') : t('common.no', 'No') }}</strong>
+          </small>
+          <button class="ui-button ui-button--secondary clear-key-button" @click="clearOpenRouterKey">
+            {{ t('settings.aiProvider.clearOpenrouter', 'Clear OpenRouter key') }}
+          </button>
+        </div>
+
+        <div class="settings-actions">
+          <button class="ui-button ui-button--primary" @click="saveAiSettings">
+            {{ t('settings.aiProvider.save', 'Save AI settings') }}
+          </button>
+          <span v-if="aiSaveMessage" class="help-text" role="status">{{ aiSaveMessage }}</span>
+        </div>
+      </div>
+    </template>
+    <template v-else-if="isAuthenticated">
+      <div class="user-preferences-info">
+        <p>{{ t('settings.userPreferencesInfo', 'Your language and theme preferences are managed through the header selectors.') }}</p>
+        <p>{{ t('settings.headerSelectorsInfo', 'Use the language dropdown and theme toggle in the header to customize your personal preferences.') }}</p>
+      </div>
+    </template>
+    <template v-else>
+      <div class="guest-info">
+        <p>{{ t('settings.guestInfo', 'Please log in to access application settings.') }}</p>
+      </div>
+    </template>
+  </SettingsSection>
+</template>
+
+<script lang="ts">
+import { defineComponent, ref, onMounted } from 'vue'
+import type { PropType } from 'vue'
+import { useI18n } from '@/utils/i18n'
+import http from '@/utils/dynamic-http'
+import SettingsSection from '@/components/SettingsSection.vue'
+import ThemeSelector from '@/components/ThemeSelector.vue'
+import LanguageSelector from '@/components/LanguageSelector.vue'
+
+interface Setting {
+  id?: number
+  key: string
+  value: string
+  description?: string
+  language_code?: string
+}
+
+export default defineComponent({
+  name: 'ApplicationSettingsSection',
+  components: {
+    SettingsSection,
+    ThemeSelector,
+    LanguageSelector
+  },
+  props: {
+    availableLanguages: {
+      type: Array as PropType<string[]>,
+      required: true
+    }
+  },
+  // No emits needed since we handle saving internally
+  setup(props, { emit }) {
+    const { t } = useI18n()
+    const defaultTheme = ref<'light' | 'dark'>('light')
+    const defaultLanguage = ref('en')
+    const isAuthenticated = ref(!!localStorage.getItem('authToken'))
+    const isAdmin = ref(localStorage.getItem('role') === 'admin')
+
+    const aiProvider = ref<string>('')
+    const groqKeyInput = ref<string>('')
+    const openrouterKeyInput = ref<string>('')
+    const aiSaveMessage = ref<string>('')
+    const sessionDurationHours = ref<number>(168)
+    const sessionDurationMinimum = ref<number>(1)
+    const sessionDurationMaximum = ref<number>(720)
+    const sessionDurationSaving = ref(false)
+    const sessionDurationMessage = ref('')
+
+    const aiStatus = ref<{ provider: string | null; has_groq_key: boolean; has_openrouter_key: boolean }>({
+      provider: null,
+      has_groq_key: false,
+      has_openrouter_key: false
+    })
+
+    // Load current defaults on mount
+    onMounted(async () => {
+      try {
+        const response = await http.get('/settings/read')
+        const items = response.data.items || []
+        const themeSetting = items.find((s: any) => s.key === 'default_theme')
+        const langSetting = items.find((s: any) => s.key === 'default_language')
+        if (themeSetting && (themeSetting.value === 'light' || themeSetting.value === 'dark')) {
+          defaultTheme.value = themeSetting.value
+        }
+        if (langSetting) {
+          defaultLanguage.value = langSetting.value
+        }
+
+        // Load AI settings status (admin only)
+        if (isAdmin.value) {
+          try {
+            const sessionRes = await http.get('/api/admin/session-settings')
+            sessionDurationHours.value = sessionRes.data?.duration_hours || 168
+            sessionDurationMinimum.value = sessionRes.data?.minimum_hours || 1
+            sessionDurationMaximum.value = sessionRes.data?.maximum_hours || 720
+          } catch (e) {
+            console.error('Failed to load session settings:', e)
+          }
+
+          try {
+            const aiRes = await http.get('/api/admin/ai-settings')
+            aiStatus.value = aiRes.data
+            aiProvider.value = aiRes.data?.provider || ''
+          } catch (e) {
+            console.error('Failed to load AI settings:', e)
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load defaults:', e)
+      }
+    })
+
+    const updateDefaultTheme = async (newTheme: 'light' | 'dark') => {
+      defaultTheme.value = newTheme
+      await saveDefault('default_theme', newTheme)
+    }
+
+    const updateDefaultLanguage = async (newLanguage: string) => {
+      defaultLanguage.value = newLanguage
+      await saveDefault('default_language', newLanguage)
+    }
+
+    const saveDefault = async (key: string, value: string) => {
+      try {
+        await http.post('/settings/create', {
+          key,
+          value,
+          description: `Default ${key.replace('default_', '')} for new users`,
+          language_code: ''
+        })
+      } catch (e) {
+        console.error(`Failed to save ${key}:`, e)
+      }
+    }
+
+    const saveAiSettings = async () => {
+      aiSaveMessage.value = ''
+      try {
+        const payload: any = { provider: aiProvider.value }
+
+        // Only send keys if user typed something; blank means keep current.
+        if (groqKeyInput.value.trim().length > 0) payload.groq_api_key = groqKeyInput.value.trim()
+        if (openrouterKeyInput.value.trim().length > 0) payload.openrouter_api_key = openrouterKeyInput.value.trim()
+
+        const res = await http.post('/api/admin/ai-settings', payload)
+        aiStatus.value = res.data
+        groqKeyInput.value = ''
+        openrouterKeyInput.value = ''
+        aiSaveMessage.value = t('settings.saved', 'Saved')
+      } catch (e) {
+        console.error('Failed to save AI settings:', e)
+        const err: any = e
+        aiSaveMessage.value = err?.response?.data?.detail || t('settings.saveFailed', 'Save failed')
+      }
+    }
+
+    const saveSessionDuration = async () => {
+      sessionDurationMessage.value = ''
+      sessionDurationSaving.value = true
+      try {
+        const res = await http.put('/api/admin/session-settings', {
+          duration_hours: sessionDurationHours.value
+        })
+        sessionDurationHours.value = res.data.duration_hours
+        sessionDurationMessage.value = t('settings.sessionDuration.saved', 'Session duration saved')
+      } catch (e: any) {
+        sessionDurationMessage.value = e?.response?.data?.detail || t('settings.saveFailed', 'Save failed')
+      } finally {
+        sessionDurationSaving.value = false
+      }
+    }
+
+    const clearGroqKey = async () => {
+      try {
+        const res = await http.post('/api/admin/ai-settings', { provider: aiProvider.value, groq_api_key: '' })
+        aiStatus.value = res.data
+        aiSaveMessage.value = t('settings.saved', 'Saved')
+      } catch (e) {
+        console.error('Failed to clear Groq key:', e)
+        const err: any = e
+        aiSaveMessage.value = err?.response?.data?.detail || t('settings.saveFailed', 'Save failed')
+      }
+    }
+
+    const clearOpenRouterKey = async () => {
+      try {
+        const res = await http.post('/api/admin/ai-settings', { provider: aiProvider.value, openrouter_api_key: '' })
+        aiStatus.value = res.data
+        aiSaveMessage.value = t('settings.saved', 'Saved')
+      } catch (e) {
+        console.error('Failed to clear OpenRouter key:', e)
+        const err: any = e
+        aiSaveMessage.value = err?.response?.data?.detail || t('settings.saveFailed', 'Save failed')
+      }
+    }
+
+    return {
+      t,
+      defaultTheme,
+      defaultLanguage,
+      updateDefaultTheme,
+      updateDefaultLanguage,
+      isAuthenticated,
+      isAdmin,
+
+      aiProvider,
+      groqKeyInput,
+      openrouterKeyInput,
+      aiStatus,
+      aiSaveMessage,
+      sessionDurationHours,
+      sessionDurationMinimum,
+      sessionDurationMaximum,
+      sessionDurationSaving,
+      sessionDurationMessage,
+      saveSessionDuration,
+      saveAiSettings,
+      clearGroqKey,
+      clearOpenRouterKey
+    }
+  }
+})
+</script>
+
+<style scoped>
+.admin-info, .user-preferences-info, .guest-info { display: grid; gap: calc(var(--ui-space) * 4); padding: calc(var(--ui-space) * 4); background: var(--ui-surface-alt); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); margin-bottom: calc(var(--ui-space) * 4); min-width: 0; }
+.user-preferences-info p, .admin-info p, .guest-info p { margin: 0; color: var(--ui-text-secondary); }
+.admin-info h3 { margin: 0; font-size: 1rem; font-weight: 650; color: var(--ui-text); }
+.session-duration-control { max-width: 22rem; }
+.settings-actions { display: flex; flex-wrap: wrap; gap: calc(var(--ui-space) * 3); align-items: center; }
+.admin-info .form-group { display: grid; gap: calc(var(--ui-space) * 2); margin-bottom: 0; min-width: 0; }
+.clear-key-button { justify-self: start; }
+</style>

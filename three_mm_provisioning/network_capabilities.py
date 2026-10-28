@@ -40,14 +40,12 @@ def require_interface(interface: str) -> None:
 
 
 def setup_interface(preferred: str | None = None) -> str:
-    adapter = NetworkManagerReadOnlyAdapter.from_system()
-    candidates = []
-    for item in managed_interfaces():
-        if not item["access_point"]:
-            continue
-        connection = adapter._execute("-g", "GENERAL.CONNECTION", "device", "show", item["name"]).strip()
-        if connection in {"", "--", "3mm-setup"}:
-            candidates.append(item["name"])
+    """Select the first-setup AP adapter after opting into managed networking.
+
+    Its existing Wi-Fi connection may carry the installation's SSH session.
+    Provisioned devices never enter this path; recovery uses its own transaction.
+    """
+    candidates = [item["name"] for item in managed_interfaces() if item["access_point"]]
     if preferred in candidates:
         return preferred
     if preferred is None and len(candidates) == 1:

@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN, SEMVER_PATTERN
-from three_mm_protocol.runtime_extension import LocalizedTextV1
+from three_mm_protocol.ui_metadata import LocalizedTextV1
 
 
 ThemeColor = Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$", strict=True)]

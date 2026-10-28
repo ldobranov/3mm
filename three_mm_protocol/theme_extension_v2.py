@@ -11,7 +11,7 @@ from pydantic import Field, field_validator, model_validator
 
 from three_mm_protocol.theme_extension import StrictThemeModel, ThemeExtensionV1
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN, SEMVER_PATTERN
-from three_mm_protocol.runtime_extension import LocalizedTextV1
+from three_mm_protocol.ui_metadata import LocalizedTextV1
 
 DESIGN_DEFAULTS = json.loads(Path(__file__).with_name("theme_design_defaults.json").read_text())
 MAX_THEME_ASSETS = 16

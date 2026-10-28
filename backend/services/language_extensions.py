@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import HTTPException
 from sqlalchemy import select
 from backend.db.audit_log import AuditLog
-from backend.db.language_pack import LanguagePack
+from backend.db.language_extension import LanguageExtensionInstallation
 from backend.db.module import ModulePackage
 from backend.services.module_packages import MAX_PACKAGE_BYTES, ModulePackageError, validate_module_package
 
@@ -31,28 +31,21 @@ def validated_language(package):
 
 
 def projection(db, package):
-    return db.scalar(select(LanguagePack).where(LanguagePack.module_package_id == package.id))
+    return db.scalar(select(LanguageExtensionInstallation).where(LanguageExtensionInstallation.module_package_id == package.id))
 
 
 def set_enabled(db, package, enabled, admin=None):
     definition = validated_language(package) if enabled else None
-    row = (db.scalar(select(LanguagePack).where(LanguagePack.code == definition.code))
+    row = (db.scalar(select(LanguageExtensionInstallation).where(LanguageExtensionInstallation.code == definition.code))
            if definition is not None else projection(db, package))
     if enabled:
         if row is None:
-            row = LanguagePack(code=definition.code)
+            row = LanguageExtensionInstallation(code=definition.code, module_package_id=package.id)
             db.add(row)
-        row.name, row.native_name = definition.name, definition.native_name
-        row.locale, row.direction = definition.locale, definition.direction
-        row.frontend_translations = definition.frontend
-        row.backend_translations = definition.backend
-        row.extensions_translations = {}
-        row.frontend_coverage = row.backend_coverage = row.extensions_coverage = 0
-        row.extension_id = None
         row.module_package_id = package.id
-        row.is_active = True
+        row.enabled = True
     elif row is not None and row.module_package_id == package.id:
-        row.is_active = False
+        row.enabled = False
     if admin is not None:
         db.add(AuditLog(user_id=admin.id, action="UPDATE", entity_type="language_extension",
                         entity_name=package.module_id, changes={"sha256":package.sha256,"enabled":enabled}))
@@ -62,8 +55,8 @@ def set_enabled(db, package, enabled, admin=None):
 
 def available_languages(db):
     result = ["en"]
-    for package, row in db.execute(select(ModulePackage, LanguagePack).join(
-            LanguagePack, LanguagePack.module_package_id == ModulePackage.id).where(LanguagePack.is_active.is_(True))):
+    for package, row in db.execute(select(ModulePackage, LanguageExtensionInstallation).join(
+            LanguageExtensionInstallation, LanguageExtensionInstallation.module_package_id == ModulePackage.id).where(LanguageExtensionInstallation.enabled.is_(True))):
         try:
             definition = validated_language(package)
             if definition.code == row.code:
@@ -74,7 +67,7 @@ def available_languages(db):
 
 
 def translations(db, code):
-    row = db.scalar(select(LanguagePack).where(LanguagePack.code == code, LanguagePack.is_active.is_(True)))
+    row = db.scalar(select(LanguageExtensionInstallation).where(LanguageExtensionInstallation.code == code, LanguageExtensionInstallation.enabled.is_(True)))
     package = db.get(ModulePackage, row.module_package_id) if row and row.module_package_id else None
     if package is not None:
         try:
@@ -100,8 +93,8 @@ def catalog(db):
         result.append({"module_id":package.module_id,"version":package.version,"sha256":package.sha256,
                        "name":definition.native_name if definition else package.manifest.get("name",package.module_id),
                        "code":definition.code if definition else None,
-                       "enabled":bool(row and row.is_active),"is_installed":row is not None,
-                       "status":"unavailable" if definition is None else "active" if row and row.is_active else "inactive"})
+                       "enabled":bool(row and row.enabled),"is_installed":row is not None,
+                       "status":"unavailable" if definition is None else "active" if row and row.enabled else "inactive"})
     return {"items":result}
 
 
@@ -177,12 +170,12 @@ class BundledLanguagePackages:
                     size_bytes=validated.size_bytes,file_path=str(path),registrations=[])
                 db.add(package)
                 db.flush()
-                row = db.scalar(select(LanguagePack).where(LanguagePack.code == definition.code))
+                row = db.scalar(select(LanguageExtensionInstallation).where(LanguageExtensionInstallation.code == definition.code))
                 previous_seed = db.scalar(select(Settings.id).where(
                     Settings.key.startswith("bundled_language_package:" + definition.module_id + ":"),
                     Settings.user_id.is_(None)).limit(1))
                 db.add(Settings(key=marker_key,value=validated.sha256))
-                if previous_seed is None and (row is None or row.module_package_id is None):
+                if previous_seed is None and row is None:
                     set_enabled(db,package,True)
                 else:
                     db.commit()

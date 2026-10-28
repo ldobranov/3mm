@@ -10,7 +10,7 @@ import urllib.error
 import pytest
 from sqlalchemy import delete,update
 from backend.db.base import Base
-from backend.db.module import ApplicationPermissionGrant,ApplicationKioskTerminal
+from backend.db.module import ApplicationPermissionGrant,ApplicationKioskTerminal,ApplicationExtensionInstallation
 from backend.db.user import User
 from backend.tests.test_application_health_process import (
     health_stack,identity_app,managed_installed,source_subject,source_installed,checkpoint_app,
@@ -36,7 +36,11 @@ def health_core(identity_app,monkeypatch,request):
     store_identity_package(state,definition)
     activate_identity_grant(state);Base.metadata.create_all(state.engine);state.response_relay=True
     prepare=relay._prepare
-    def short(*args,**kwargs):return replace(prepare(*args,**kwargs),timeout_seconds=5 if 'saturated' in request.node.name else 1)
+    def short(*args,**kwargs):
+        result=replace(prepare(*args,**kwargs),timeout_seconds=5 if 'saturated' in request.node.name else 1)
+        if 'slow_admission' in request.node.name and not kwargs['defer_relational']:
+            time.sleep(2.15)  # Longer than the real response-handoff budget.
+        return result
     monkeypatch.setattr(relay,'_prepare',short)
     with core_stack(state,monkeypatch) as s:yield s
 
@@ -65,14 +69,26 @@ def test_admin_operator_and_kiosk_contexts_use_original_signed_replies(invoked):
     s=invoked
     first=s.invoke();assert first[0]==200,first
     second=s.invoke('operator');assert second[0]==200,second
-    terminal='t'*32
-    with s.state.engine.begin() as db:db.execute(ApplicationKioskTerminal.__table__.insert().values(terminal_id=terminal,application_installation_id=1,label='Fixture',credential_hash='x',enabled=True))
-    token=create_access_token('kiosk:'+terminal,{'token_type':'application_kiosk','module_id':s.state.validated.manifest.module_id,'terminal_id':terminal})
+    terminal='b'*32
+    from sqlalchemy import select
+    with s.state.engine.begin() as db:
+        incarnation=db.scalar(select(ApplicationExtensionInstallation.authority_incarnation).where(ApplicationExtensionInstallation.id==1))
+        db.execute(ApplicationKioskTerminal.__table__.insert().values(terminal_id=terminal,application_installation_id=1,installation_incarnation=incarnation,label='Fixture',credential_hash='x',enabled=True))
+    token=create_access_token('kiosk:'+terminal,{'token_type':'application_kiosk','module_id':s.state.validated.manifest.module_id,'terminal_id':terminal,'incarnation':incarnation})
     assert s.invoke('kiosk','register',{'Authorization':'Bearer '+token})[0]==200
     sent=s.seen();assert len(sent)==3
     assert [x['context']['audience'] for x in sent]==['administrator','operator','kiosk']
     assert sent[1]['context']['user_id']==2 and sent[2]['context']['terminal_id']==terminal
     assert all(x['context']['idempotency_key']=='explicit-0001' for x in sent)
+
+
+def test_concurrent_slow_admission_reserves_only_when_ready_to_dispatch(invoked):
+    s=invoked
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        pending=[pool.submit(s.invoke,'operator',key='explicit-'+str(n)) for n in range(2)]
+        assert [p.result(timeout=4)[0] for p in pending]==[200,200]
+    assert len(s.seen())==2
+    assert {x['context']['idempotency_key'] for x in s.seen()}=={'explicit-0','explicit-1'}
 
 
 @pytest.mark.parametrize('mode',['hang','trickle','signature','request_id','size','failure'])

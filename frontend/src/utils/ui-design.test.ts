@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
-import { adaptLegacyUi, builtinUiDesign, parseUiDesign, resolveUiShellMode, uiDesignVariables } from './ui-design'
+import { adaptLegacyUi, builtinUiDesign, buttonHoverBackground, contrastRatio, parseUiDesign, resolveUiShellMode, uiDesignVariables } from './ui-design'
 import { BUILTIN_STYLES, parseThemeDefinition, resolveThemeStyle } from './theme-extension'
 import { DEFAULT_HEADER_SETTINGS } from './header-settings'
 
@@ -58,6 +58,49 @@ describe('Design API 2 contract and v1 compatibility', () => {
     design.header_style = 'theme'
     expect(uiDesignVariables(design, 'light', header)['--ui-header-bg']).toBe(design.light.surface)
     expect(header).toMatchObject({ siteName: 'My name', backgroundColor: '#123456' })
+  })
+  it('never reduces button contrast, including near-threshold and colored foregrounds', () => {
+    const colors = ['#000000', '#ffffff', '#767676', '#777777', '#007bff', '#6c757d', '#dc3545', '#7198f2', '#123456', '#c8b1ff']
+    for (const background of colors) for (const foreground of colors) {
+      const hover = buttonHoverBackground(background, foreground)
+      expect(hover).toMatch(/^#[a-f0-9]{6}$/i)
+      expect(contrastRatio(hover, foreground)).toBeGreaterThanOrEqual(contrastRatio(background, foreground))
+    }
+    expect(buttonHoverBackground('#767676', '#ffffff')).not.toBe('#ffffff')
+    expect(buttonHoverBackground('#eeeeee', '#20252d')).not.toBe('#eeeeee')
+  })
+  it.each(['light', 'dark'] as const)('keeps built-in/saved and package button states readable in %s', mode => {
+    const saved = { ...BUILTIN_STYLES[mode], buttonPrimaryBg: '#eeeeee', buttonSecondaryBg: '#123456' }
+    for (const design of [builtinUiDesign(), adaptLegacyUi(BUILTIN_STYLES[mode], mode), adaptLegacyUi(saved, mode)]) {
+      const colors = design[mode], variables = uiDesignVariables(design, mode, DEFAULT_HEADER_SETTINGS)
+      for (const name of ['accent', 'secondary', 'danger'] as const) {
+        const foreground = colors[`${name}_text`]
+        expect(contrastRatio(variables[`--ui-${name}-hover`]!, foreground)).toBeGreaterThanOrEqual(contrastRatio(colors[name], foreground))
+        expect(contrastRatio(variables[`--ui-${name}-hover`]!, foreground)).toBeGreaterThanOrEqual(4.5)
+      }
+      for (const name of ['primary', 'danger']) {
+        expect(contrastRatio(variables[`--ui-${name}-outline-text`]!, colors.surface)).toBeGreaterThanOrEqual(4.5)
+        expect(contrastRatio(variables[`--ui-${name}-outline-hover-text`]!, colors.surface_alt)).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+  it('updates legacy Core and SDK button pairs together through mode and preview changes', async () => {
+    const settings = useSettingsStore(), modes = useThemeStore(), root = document.documentElement.style
+    settings.lightStyleSettings.buttonSecondaryBg = '#eeeeee'
+    for (const preview of [builtinUiDesign(), null]) {
+      settings.setDesignPreview(preview)
+      for (const mode of ['dark', 'light'] as const) {
+        modes.setTheme(mode); await nextTick()
+        const colors = settings.uiDesign[mode]
+        for (const [legacy, token] of [['primary', 'accent'], ['secondary', 'secondary'], ['danger', 'danger']] as const) {
+          const foreground = root.getPropertyValue(`--button-${legacy}-text`)
+          expect(foreground).toBe(colors[`${token}_text`])
+          expect(root.getPropertyValue(`--button-${legacy}-bg`)).toBe(root.getPropertyValue(`--ui-${token}`))
+          expect(root.getPropertyValue(`--button-${legacy}-hover`)).toBe(root.getPropertyValue(`--ui-${token}-hover`))
+          expect(contrastRatio(root.getPropertyValue(`--button-${legacy}-hover`), foreground)).toBeGreaterThanOrEqual(4.5)
+        }
+      }
+    }
   })
   it('clears preview, refreshes mode/aliases, preserves installed theme and auth', async () => {
     const settings = useSettingsStore(), modes = useThemeStore()

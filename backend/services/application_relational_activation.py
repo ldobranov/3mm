@@ -33,6 +33,7 @@ from backend.services.application_authority_policy import (
     PolicySubjectV8,
 )
 from backend.services.application_commands import invalidate_commands
+from backend.services.application_requirements import require_platform_requirements
 from backend.services.application_policy_reviews import _actor
 from backend.services.authority_metadata import (
     authority_transaction,
@@ -144,6 +145,7 @@ def issue_prepared_activation(
     if type(transport_secret) is not bytes or len(transport_secret) != 32:
         raise ValueError("Invalid activation signing dependency")
     prepared = manager._prepare(installation_id)
+    require_platform_requirements(prepared[1].application_extension)
     with manager._write(
         installation_id,
         actor_token,
@@ -241,8 +243,8 @@ def _start_consent(manager, db, key, installation_id, prepared, ticket):
         or row.revision != data["grant_revision"]
         or native["revision"] != data["native_revision"]
         or policy != _parse(policy_model, data["policy"])
-        or authority._resource_identity(subject)
-        != authority._resource_identity(approved)
+        or authority._resource_identity(subject, required_only=True)
+        != authority._resource_identity(approved, required_only=True)
     ):
         raise authority.AuthorityManagementError("activation_consent_changed")
     return grant, prepared[1].application_extension

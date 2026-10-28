@@ -60,10 +60,9 @@ def verify_release(endpoints: ReleaseEndpoints) -> dict[str, str]:
     paths = openapi.get("paths", {})
     _require(isinstance(paths, dict), "Core OpenAPI paths are unavailable")
     required_paths = {
-        "/api/displays",
-        "/api/ai/extensions/plan",
-        "/api/v1/extension-projects",
-        "/api/v1/runtime-extensions/catalog",
+        "/api/v1/modules/packages",
+        "/api/v1/application-extensions",
+        "/access",
     }
     missing_paths = sorted(required_paths - set(paths))
     _require(not missing_paths, f"Core is missing required API paths: {', '.join(missing_paths)}")
@@ -79,7 +78,7 @@ def verify_release(endpoints: ReleaseEndpoints) -> dict[str, str]:
     _require(bool(inventory.get("python_version")), "Agent inventory is incomplete")
     _require(int(inventory.get("memory_total_bytes") or 0) > 0, "Agent memory inventory is invalid")
 
-    for path in ("/user/login", "/extensions/ai-builder"):
+    for path in ("/user/login", "/extensions"):
         html = _read(_url(endpoints.web, path), endpoints.timeout).decode("utf-8", errors="replace")
         _require('id="app"' in html, f"Web application shell is unavailable at {path}")
 

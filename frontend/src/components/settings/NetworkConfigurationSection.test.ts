@@ -55,7 +55,6 @@ describe('Network recovery settings', () => {
         status: 'queued',
         setup_network: recovery.setup_network,
         setup_url: recovery.setup_url,
-        access_code: "temporary-test-code",
       },
     })
     vi.stubGlobal('confirm', vi.fn(() => true))
@@ -90,7 +89,7 @@ describe('Network recovery settings', () => {
       confirmation: 'START SETUP',
     })
     expect(wrapper.text()).toContain('127.0.0.1:8895/setup')
-    expect(wrapper.find('.recovery-notice a').attributes('href')).toBe('http://127.0.0.1:8895/setup#access=temporary-test-code')
+    expect(wrapper.find('.recovery-notice a').attributes('href')).toBe('http://127.0.0.1:8895/setup')
     expect(wrapper.text()).not.toContain('open setup network')
   })
 
@@ -103,14 +102,14 @@ describe('Network recovery settings', () => {
   })
 
   it('separates temporary AP from local recovery and keeps its capability in the fragment', async () => {
-    http.post.mockResolvedValueOnce({data:{status:'queued',id:'a'.repeat(32),setup_network:'3mm Setup TEST',setup_url:'http://10.42.0.1:8895/setup',access_code:'temporary-test-code'}})
+    http.post.mockResolvedValueOnce({data:{status:'queued',id:'a'.repeat(32),setup_network:'3mm Setup TEST',setup_url:'http://10.42.0.1:8895/setup'}})
     const wrapper=mount(NetworkConfigurationSection)
     await flushPromises()
     await wrapper.find('.ap-start').trigger('click')
     await flushPromises()
     expect(http.post).toHaveBeenCalledWith('/api/v1/network-recovery/access-point', {confirmation:'START ACCESS POINT',interface:'wifi0',duration_seconds:300})
     expect(wrapper.text()).toContain('3mm Setup TEST')
-    expect(wrapper.find('.recovery-notice a').attributes('href')).toBe('http://10.42.0.1:8895/setup#access=temporary-test-code')
+    expect(wrapper.find('.recovery-notice a').attributes('href')).toBe('http://10.42.0.1:8895/setup')
     expect(wrapper.find('.ap-stop').exists()).toBe(true)
     await wrapper.find('.ap-stop').trigger('click')
     await flushPromises()

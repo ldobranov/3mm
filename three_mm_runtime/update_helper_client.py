@@ -7,6 +7,11 @@ import socket
 from pathlib import Path
 
 MAX_RESPONSE_BYTES = 1024 * 1024
+# Ordinary activation also validates/stages a package, snapshots data and waits
+# for systemd enable/restart. Its transport budget must include that setup in
+# addition to the manifest's separate health deadline. A lost/late reply still
+# leaves execution unconfirmed; this budget never authorizes a retry or recovery.
+APPLICATION_ACTIVATION_SETUP_BUDGET_SECONDS = 120
 
 
 class UpdateHelperError(RuntimeError):

@@ -53,6 +53,16 @@ Choose the comparison intentionally; do not include unrelated user work.
 This schedules components; it is not a complete dependency graph. Use full checks
 when a change crosses these groups or its dependencies are uncertain.
 
+The Python integration group includes optional `libraries/three_mm_ai/tests` and
+`libraries/three_mm_crud/tests`; their source-path setup is test-only and does not
+install either library into Core. CRUD renderer tests use the existing frontend
+toolchain with `vitest run --config libraries/three_mm_crud/tests/vitest.config.mjs`.
+Empty `.3mm-source-only` markers in individual `modules/<name>` or
+`libraries/<name>` directories exclude preserved product/optional source from
+release payloads. Runtime dependencies cannot use a marker to evade required-file
+validation. `retired_` table names are reserved for explicit recovery migrations,
+outside live Core ORM ownership; never use autogenerate to erase that evidence.
+
 ## Requested commits and reuse
 
 1. Review the exact intended/staged diff; preserve unrelated/generated files.
@@ -65,7 +75,31 @@ Never bypass hooks/required checks or call a targeted run full coverage.
 After failures, repair within scope and rerun affected checks. Record unrelated
 defects for later unless they demonstrably block the result.
 
+The local `deploy.ps1` preparation caches exact source/dependency/environment
+evidence and frontend builds. An explicit reviewed `-TestPaths` selection is
+recorded as targeted; another explicit selection gets separate evidence. The
+last successful selection can be reused for unchanged inputs during local
+deployment. Without previous evidence, all Python groups run in their existing
+separate processes, plus tooling and frontend checks. This does not replace
+published release gates. Controller checks: `python -m pytest -q
+tools/tests/test_deploy.py`; Windows wrapper command doubles:
+`pwsh -NoProfile -File tools/tests/test_deploy_powershell.ps1` (no network).
+Explicit Agent rollout (`-WithAgent` at preparation) additionally uses the normal
+service-component artifact/update/probe path; include affected Agent checks and
+`deployment/tests/test_service_component.py` when validating its delivery.
+
 ## Small handoff
+
+For CAP11's optional image profile, install
+`deployment/application-media-requirements.txt` in a disposable Linux test
+environment and run the media SDK/HTTP/worker/snapshot checks. A missing-provider
+skip is not image-provider conformance. Test its native host artifact with
+`--image-provider` in a clean interpreter; Pillow is not a Core dependency.
+The SQL recovery/upgrade tests that validate file preimages also cover media
+manifests. Their isolated root driver needs a public-code source directory
+traversable by its disposable non-root migration UID; a 0700 frozen source
+directory causes environment-only worker-import failures. Do not weaken
+production namespace/key permissions to repair that test environment.
 
 Update the existing WORKING_STATE.md at meaningful handoffs, not every command:
 `checked content/base | command/scope | environment | result | limits`.

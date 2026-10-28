@@ -11,6 +11,8 @@ from threading import Thread
 from typing import Sequence
 from urllib.parse import quote, unquote, urlsplit
 
+from setup_service.captive_portal import recovery_setup_url
+
 
 class SPARequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, uploads_directory: Path | None = None, **kwargs):  # type: ignore[no-untyped-def]
@@ -18,6 +20,14 @@ class SPARequestHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, **kwargs)
 
     def send_head(self):  # type: ignore[no-untyped-def]
+        setup_url = recovery_setup_url(self.connection.getsockname()[0])
+        if setup_url is not None:
+            self.send_response(302)
+            self.send_header("Location", setup_url)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return None
         decoded_route = unquote(urlsplit(self.path).path)
         if decoded_route == "/uploads" or decoded_route.startswith("/uploads/"):
             # Public mutable assets live outside the immutable frontend artifact.

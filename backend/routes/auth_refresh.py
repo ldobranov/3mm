@@ -12,7 +12,7 @@ from backend.services.session_policy import (
     get_session_duration_hours,
     save_session_duration_hours,
 )
-from backend.utils.auth_dep import require_admin, validate_user_claims
+from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from backend.utils.jwt_utils import create_access_token, decode_token_for_refresh
 
@@ -32,35 +32,6 @@ class SessionSettingsUpdate(BaseModel):
     )
 
 
-def _find_refresh_session(
-    db: Session,
-    request: Request,
-    claims: dict,
-    raw_token: str,
-) -> UserSession | None:
-    user_id = str(claims.get("sub") or claims.get("user_id") or "")
-    session_id = claims.get("sid")
-    query = db.query(UserSession).filter(
-        UserSession.user_id == user_id,
-        UserSession.is_active.is_(True),
-    )
-
-    if session_id is not None:
-        return query.filter(UserSession.id == session_id).first()
-
-    exact = query.filter(UserSession.token == raw_token).first()
-    if exact is not None:
-        return exact
-
-    # Compatibility for tokens refreshed by older releases, which changed the
-    # browser token without rotating the persistent session record.
-    if request.client is not None:
-        query = query.filter(UserSession.ip_address == request.client.host)
-    user_agent = request.headers.get("user-agent")
-    if user_agent:
-        query = query.filter(UserSession.user_agent == user_agent)
-    return query.order_by(UserSession.last_activity.desc()).first()
-
 @router.post("/user/refresh")
 async def refresh_access_token(request: Request, db: Session = Depends(get_db)):
     auth = request.headers.get("authorization") or request.headers.get("Authorization")
@@ -73,19 +44,14 @@ async def refresh_access_token(request: Request, db: Session = Depends(get_db)):
     claims = decode_token_for_refresh(raw_token)
     if claims.get("token_type", "user") != "user":
         raise HTTPException(status_code=401, detail="A normal user token is required")
-    validate_user_claims(claims, db)
-
-    # Optional: only refresh near expiry (disabled for now)
-    # now = int(datetime.now(timezone.utc).timestamp())
-    # exp = int(claims.get("exp", 0))
-    # if exp - now > 10 * 60:
-    #     raise HTTPException(status_code=400, detail="Too early to refresh")
+    from backend.services.application_access import validate_application_login
+    validate_application_login(claims, db)
 
     subject = str(claims.get("sub") or claims.get("user_id") or "")
     if not subject:
         raise HTTPException(status_code=401, detail="Invalid subject")
 
-    session = _find_refresh_session(db, request, claims, raw_token)
+    session = db.get(UserSession, claims["sid"])
     now = datetime.utcnow()
     if session is None or session.expires_at is None or session.expires_at <= now:
         if session is not None:

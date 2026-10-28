@@ -60,6 +60,22 @@ export default defineConfig({
         const application = Object.values(bundle).find(item => item.type === 'chunk' && item.name === 'application-ui-v1')
         if (application?.type !== 'chunk') throw new Error('Public application host entry is missing')
         html.source = String(html.source).replace('/compiled-ui/application-ui-v1.mjs', `/${application.fileName}`)
+        // Import maps load ESM directly, outside Vite's dynamic-import CSS loader.
+        // Include the public entries' stylesheet closure in the host document.
+        const visited = new Set<string>(), styles = new Set<string>()
+        const collectStyles = (fileName: string) => {
+          if (visited.has(fileName)) return
+          visited.add(fileName)
+          const chunk = bundle[fileName]
+          if (chunk?.type !== 'chunk') return
+          const metadata = (chunk as typeof chunk & { viteMetadata?: { importedCss?: Set<string> } }).viteMetadata
+          for (const css of metadata?.importedCss || []) styles.add(css)
+          for (const dependency of chunk.imports) collectStyles(dependency)
+        }
+        collectStyles(entry.fileName); collectStyles(application.fileName)
+        const links = [...styles].sort().filter(css => !String(html.source).includes(`href="/${css}"`))
+          .map(css => `<link rel="stylesheet" href="/${css}">`).join('\n')
+        html.source = String(html.source).replace('</head>', `${links}\n</head>`)
       } },
     },
     {

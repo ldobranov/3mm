@@ -22,6 +22,9 @@ from backend.services.application_configuration import (
     ApplicationConfigurationError,
     resolve_application_configuration,
 )
+from backend.services.application_requirements import (
+    ApplicationRequirementsError, require_platform_requirements,
+)
 from three_mm_runtime.application_transport import (
     ApplicationServiceClient,
     ApplicationTransportError,
@@ -321,10 +324,14 @@ def _wait_for_health(
     sleep: Callable[[float], None],
 ) -> None:
     last_error: Exception | None = None
+    deadline = time.monotonic() + int(metadata["startup_timeout_seconds"])
     attempts = max(1, int(metadata["startup_timeout_seconds"]) * 5)
     for _attempt in range(attempts):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
         try:
-            result = client_factory(socket_path, secret, 2).invoke(
+            result = client_factory(socket_path, secret, min(2, remaining)).invoke(
                 str(metadata["health_operation_id"]),
                 {},
                 {
@@ -336,10 +343,14 @@ def _wait_for_health(
                 raise ApplicationTransportError(
                     "Application health operation did not report readiness"
                 )
+            if time.monotonic() >= deadline:
+                break
             return
         except (ApplicationTransportError, OSError) as exc:
             last_error = exc
-            sleep(0.2)
+            delay = min(0.2, deadline - time.monotonic())
+            if delay > 0:
+                sleep(delay)
     raise ApplicationActivationError(
         "Application extension did not become healthy"
     ) from last_error
@@ -359,7 +370,10 @@ def _application_metadata(validated, configuration, instance_id, root):
         "startup_timeout_seconds": definition.service.startup_timeout_seconds,
         "shutdown_timeout_seconds": definition.service.shutdown_timeout_seconds,
         "configuration": configuration,
+        **({'platform_requirements': [item.model_dump(mode='json') for item in definition.platform_requirements]}
+           if definition.platform_requirements else {}),
         "platform_socket": os.getenv("THREE_MM_PLATFORM_RUNTIME_SOCKET", "/run/3mm-platform/runtime.sock"),
+        "tasks": [item.model_dump(mode="json") for item in definition.tasks],
         "storage": {
             "schema_revision": definition.storage.schema_revision,
             "migration_entrypoint": definition.storage.migration_entrypoint,
@@ -367,7 +381,7 @@ def _application_metadata(validated, configuration, instance_id, root):
                if definition.storage.private_files is not None else {}),
         },
         "operations": [
-            {"operation_id": operation.operation_id,
+            {"operation_id": operation.operation_id, "kind": operation.kind,
              "audiences": list(operation.audiences), "idempotency": operation.idempotency}
             for operation in definition.operations
         ],
@@ -400,6 +414,10 @@ def activate_application_package(
     definition = validated.application_extension
     if definition is None:
         raise ApplicationActivationError("Package is not an application extension")
+    try:
+        require_platform_requirements(definition)
+    except ApplicationRequirementsError as exc:
+        raise ApplicationActivationError(str(exc)) from exc
     if definition.storage.relational is not None:
         # Do not discard the new request and activate legacy writable SQLite.
         # Refuse before creating paths/keys or stopping the existing service.
@@ -492,7 +510,7 @@ def activate_application_package(
     record_phase("preparing")
     if previous is not None:
         _write_atomic(rollback_root / "previous-active.json", previous, 0o600)
-    if previous is not None or database.exists() or (data_root / "sdk-files").exists():
+    if previous is not None or database.exists() or (data_root / "sdk-files").exists() or (data_root / 'sdk-media').exists():
         try:
             _stop_for_data(selected_supervisor, instance_id)
         except Exception as exc:

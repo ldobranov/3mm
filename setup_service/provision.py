@@ -8,7 +8,6 @@ from three_mm_protocol import AgentRole
 from three_mm_protocol.diagnostics import DiagnosticSession, DiagnosticSpan
 from three_mm_provisioning.models import NetworkMode, NetworkCredentials, ProvisioningRequest, ProvisioningState
 from three_mm_provisioning.persistence import ProvisioningSnapshot
-from three_mm_provisioning.setup_access import FileSetupAccessStore
 from three_mm_provisioning.setup_journal import SetupJournal, SetupActivationJournal
 from three_mm_provisioning.network_helper_client import NetworkHelperClientAdapter
 
@@ -29,7 +28,7 @@ class SetupCoordinator:
     def __post_init__(self):
         self.journal = SetupJournal(self.settings.data_dir)
         self.activation = SetupActivationJournal(self.settings.data_dir)
-        self.access = FileSetupAccessStore(self.settings.data_dir)
+        self.closed = False
         self.diagnostics = DiagnosticSession("setup", self.version)
         if self.settings.diagnostics:
             self.diagnostics.start()
@@ -51,6 +50,7 @@ class SetupCoordinator:
         self.recovery = self.reconciled_recovery or bool(self.previous and self.previous.role and self.marker.is_active())
         self.state = (ProvisioningState.SETUP if not self.completed_attempt and (self.recovery or not self.previous or not self.previous.role)
                       else ProvisioningState.PROVISIONED)
+        self.committed_snapshot = self.store.load() if self.completed_attempt else None
 
     @property
     def role(self):
@@ -60,11 +60,18 @@ class SetupCoordinator:
         return self.previous.role if self.previous else None
 
     @property
-    def access_snapshot(self):
-        attempt = self.journal.load()
-        if attempt is not None:
-            return ProvisioningSnapshot.from_dict(attempt["previous"]) if attempt["previous"] else None
-        return self.store.load() if self.completed_attempt else self.previous
+    def available(self):
+        """Access follows this device's live setup/recovery state, not a code."""
+        if self.closed:
+            return False
+        attempt = self.journal.load() or self.activation.load()
+        if self.completed_attempt:
+            return bool(attempt and attempt["committed"]
+                        and self.store.load() == self.committed_snapshot)
+        if self.recovery and not self.marker.is_active():
+            return False
+        snapshot = (ProvisioningSnapshot.from_dict(attempt["previous"]) if attempt["previous"] else None) if attempt else self.store.load()
+        return (self.pending or self.state is ProvisioningState.SETUP) and snapshot == self.previous
 
     def _restore(self, previous):
         if previous is None:
@@ -92,12 +99,15 @@ class SetupCoordinator:
             self.journal.commit()  # A recovered Wi-Fi commit is durable before handoff.
             self.marker.clear()
             self.completed_attempt = True
+            self.committed_snapshot = self.store.load()
             self.reconciled_recovery = bool(attempt["previous"] and attempt["previous"].get("role"))
         else:
             self._restore(attempt["previous"])
             self.journal.clear()
 
     def apply(self, configuration, *, interfaces):
+        if not self.available:
+            raise SetupFailure("setup_not_available")
         if self.pending:
             raise SetupFailure("setup_pending")
         if self.state is not ProvisioningState.SETUP:
@@ -174,9 +184,12 @@ class SetupCoordinator:
                 raise
             self.state = ProvisioningState.PROVISIONED
             self.completed_attempt = True
+            self.committed_snapshot = candidate
             self.marker.clear()
 
     def finish(self):
+        if not self.available:
+            raise SetupFailure("setup_not_available")
         if self.pending:
             self.pending = False
             self.reconcile()
@@ -199,5 +212,5 @@ class SetupCoordinator:
             # Existing Agents see the committed role through the normal store.
         else:
             self.journal.clear()
-        self.access.revoke()
+        self.closed = True
         self.state = ProvisioningState.PROVISIONED

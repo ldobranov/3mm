@@ -64,6 +64,26 @@ def test_native_artifact_is_reproducible_minimal_and_core_free(artifacts,tmp_pat
     assert 'backend' not in (store.root/'current/.venv/pyvenv.cfg').read_text()
 
 
+@pytest.mark.parametrize('image_provider', [False, True])
+def test_resource_probe_from_packaged_host_keeps_codecs_out_of_parent(tmp_path, image_provider):
+    if image_provider: pytest.importorskip('PIL.Image', reason='Optional image-provider build profile')
+    blob, metadata = component.build_component(SOURCE, image_provider=image_provider)
+    store = component.HostStore(tmp_path/'host',tmp_path/'updates',tmp_path/'releases')
+    store.bootstrap(blob,digest(blob))
+    root = store.root/'current'
+    code = (
+        'import sys,importlib.util; '
+        f'sys.path[:0]=[{str(root/"host.pyz")!r},{str(root/"vendor")!r}]; '
+        'from three_mm_application_sdk.media_provider import probe_provider; '
+        f'assert probe_provider()=={"ready" if image_provider else "unavailable"!r}; '
+        'assert "PIL" not in sys.modules; '
+        'assert importlib.util.find_spec("backend") is None'
+    )
+    result = subprocess.run([str(root/'.venv/bin/python'),'-I','-c',code],cwd=tmp_path,
+        env={'PATH':'/usr/bin:/bin'},capture_output=True,text=True,timeout=10)
+    assert result.returncode == 0, result.stderr
+
+
 @pytest.mark.parametrize('damage',['digest','host_contract','authority_contract','target','traversal','symlink','duplicate','native_file'])
 def test_invalid_host_payload_is_refused_before_pointer_or_service_mutation(artifacts,tmp_path,damage):
     blob,metadata=artifacts[0];meta,files=component.validate_artifact(blob,digest(blob));meta=copy.deepcopy(meta)
@@ -259,6 +279,38 @@ def test_existing_instance_keeps_its_host_when_default_for_new_instances_moves(a
     assert component.bind_instance(INSTANCE,root=root)==a
     assert component.bind_instance(OTHER,root=root)==b
     assert default.bootstrap(first,digest(first))==b
+
+
+def test_explicit_default_publication_is_journaled_and_keeps_existing_instances(artifacts,tmp_path):
+    root=tmp_path/'hosts';state=root/'updates'
+    default=component.HostStore(root/'default',state/'default',root/'releases')
+    first,second=artifacts[0][0],artifacts[1][0]
+    old=default.bootstrap(first,digest(first))
+    assert component.bind_instance(INSTANCE,root=root)==old
+    result=component.publish_default(second,digest(second),root=root,state=state)
+    assert result['status']=='published_for_new_instances'
+    assert default.target('current')==result['build_id'] and default.target('previous')==old
+    assert default.pending() is None
+    assert component.bind_instance(INSTANCE,root=root)==old
+    assert component.bind_instance(OTHER,root=root)==result['build_id']
+    assert component.publish_default(second,digest(second),root=root,state=state)['status']=='unchanged'
+    assert default.target('previous')==old
+
+
+def test_interrupted_default_publication_restores_old_pointer_without_service_changes(artifacts,tmp_path,monkeypatch):
+    root=tmp_path/'hosts';state=root/'updates'
+    default=component.HostStore(root/'default',state/'default',root/'releases')
+    first,second=artifacts[0][0],artifacts[1][0]
+    old=default.bootstrap(first,digest(first))
+    original=component._write
+    def fail_commit(path,data,*args,**kwargs):
+        if path.name=='transaction.json' and json.loads(data)['phase']=='committed':
+            raise OSError('Interrupted publication')
+        return original(path,data,*args,**kwargs)
+    monkeypatch.setattr(component,'_write',fail_commit)
+    with pytest.raises(OSError):component.publish_default(second,digest(second),root=root,state=state)
+    assert default.target('current')==old and default.target('previous') is None
+    assert default.pending() is None
 
 
 def test_host_metadata_deadline_is_absolute_under_trickled_response(tmp_path,monkeypatch):

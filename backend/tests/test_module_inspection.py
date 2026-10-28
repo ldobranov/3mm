@@ -66,7 +66,6 @@ def api():
 
 @pytest.mark.parametrize("builder,kind,descriptor", [
     (package, "agent_module", None),
-    (runtime_package, "runtime_ui", "runtime_extension"),
     (compiled_ui_package, "compiled_ui", "compiled_ui"),
     (application_package, "application", "application_extension"),
     (theme_package, "theme", "theme_extension"),

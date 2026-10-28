@@ -29,6 +29,7 @@ from three_mm_protocol.capability_availability import AVAILABILITY_FEATURE
 from agent.inventory import platform_neutral_inventory
 from agent import __version__
 from agent.runtime_features import RuntimeFeaturePublisher
+from agent.capability_providers import AgentProviderRegistry
 from three_mm_protocol.node_features import (
     DeviceRuntimeFeaturesV1, FEATURE_COMMANDS, MANDATORY_NODE_FEATURES,
 )
@@ -224,6 +225,7 @@ class CorePublisher:
     # Legacy embedding/test adapter. The production Agent opts in explicitly.
     feature_negotiation: bool = False
     capability_availability: bool = False
+    adapter_providers: AgentProviderRegistry | None = None
     authority_verification: bool = False
     transport: DeviceTransport | None = None
     _runtime_features: RuntimeFeaturePublisher | None = field(init=False, default=None, repr=False)
@@ -300,6 +302,8 @@ class CorePublisher:
             features.update({"module_lifecycle", "application_execution_permits", CONTRACT_FEATURE})
             if self.capability_availability:
                 features.add(AVAILABILITY_FEATURE)
+        if self.adapter_providers is not None and self.capability_availability:
+            features.add(AVAILABILITY_FEATURE)
         if self.automation_store is not None:
             features.add("local_automations")
         if self.gpio_configuration is not None:
@@ -715,6 +719,13 @@ class CorePublisher:
                 logger.warning("Core protocol negotiation failed: %s", type(exc).__name__)
                 self._stop.wait(self.interval_seconds)
                 continue
+            try:
+                if (self.adapter_providers is not None and self._runtime_features is not None
+                        and self._runtime_features.providers_enabled):
+                    self.adapter_providers.synchronize(self.transport,
+                        availability=self._runtime_features.availability_enabled)
+            except Exception as exc:
+                logger.warning("Agent provider synchronization failed: %s", type(exc).__name__)
             try:
                 self._flush_outbox()
             except RuntimeError as exc:

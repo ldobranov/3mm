@@ -24,6 +24,7 @@ from sqlalchemy.pool import SingletonThreadPool, StaticPool
 
 from backend.db.device import Device, DeviceCapabilityProvider, DeviceCredential, DevicePlatformState
 from backend.db.installation_identity import CoreInstallationIdentity
+from backend.services.application_task_authority import ResolvedTaskScope
 from backend.db.module import (
     ApplicationConnectorBinding, ApplicationExtensionInstallation,
     ApplicationSecretReference, ModuleInstallation, ModulePackage,
@@ -41,7 +42,7 @@ from backend.services.authority_metadata import (
     AuthorityGuardSnapshot, read_application_authority, read_authority_guard,
     read_connector_authority, read_device_control,
 )
-from backend.services.device_capability_registry import registered_capabilities
+from backend.services.device_capability_registry import registered_capabilities, can_dispatch_capability
 from backend.services.device_runtime_features import read_runtime_features
 from three_mm_protocol.capability_contracts import CONTRACT_FEATURE, registration_contract
 from three_mm_protocol.application_sessions import session_contract
@@ -61,7 +62,7 @@ class SourceIssue(SourceModel):
         "source_unavailable", "snapshot_backend_unsupported", "installation_unavailable",
         "artifact_unavailable", "artifact_changed", "identity_unavailable",
         "configuration_unresolved", "device_unavailable", "device_credentials_unavailable",
-        "runtime_support_unresolved", "capability_unresolved", "command_contract_unresolved",
+        "runtime_support_unresolved", "capability_unresolved", "capability_unavailable", "command_contract_unresolved",
         "connector_binding_unavailable", "connector_origin_mismatch",
         "connector_credential_unavailable", "connector_path_unsupported",
         "configuration_key_unavailable", "policy_evidence_unavailable",
@@ -121,6 +122,8 @@ class InstalledAuthoritySources(SourceModel):
     status_projections: tuple[ResolvedStatusScope, ...] = ()
     peer_reads: tuple[ResolvedPeerReadScope, ...] = ()
     sessions: tuple[ResolvedSessionScope, ...] = ()
+    tasks: tuple[ResolvedTaskScope, ...] = ()
+    optional_unavailable: tuple[SourceIssue, ...] = ()
     issues: tuple[SourceIssue, ...]
     not_checked: tuple[str, ...] = (
         "candidate_staging_and_configuration_identity", "policy_trust_and_isolation_evidence",
@@ -210,10 +213,14 @@ def _package_pin(db, installation_id):
         from backend.services.application_relational_registration import (
             candidate_registration_id, registration_id,
         )
+        from backend.services.application_package_staging import registration_id as package_registration_id
+        from backend.services.application_configuration_provenance import registration_id as connector_registration_id
         if (row.active_version is not None or (row.status, row.enabled) != ("disabled", False)
                 or read_application_authority(db, installation_id).mode == "compatibility"
                 or (db.get(ApplicationAuthorityAction, registration_id(db, installation_id)) is None
-                    and db.get(ApplicationAuthorityAction, candidate_registration_id(db, installation_id, row)) is None)):
+                    and db.get(ApplicationAuthorityAction, candidate_registration_id(db, installation_id, row)) is None
+                    and db.get(ApplicationAuthorityAction, package_registration_id(db, installation_id,row.module_package_id,row.sha256)) is None
+                    and db.get(ApplicationAuthorityAction, connector_registration_id(db, installation_id)) is None)):
             raise _Unavailable("installation_unavailable")
     return row
 
@@ -355,6 +362,8 @@ def _event(db, subscription, definition, configuration):
     scope = f"event:{subscription.subscription_id}"
     device, source = _device(db, configuration.get(subscription.device_scope_config_key), scope, command_target=False)
     registration, revision, digest = _registration(db, device, subscription.capability_id, scope)
+    if not can_dispatch_capability(db, device, subscription.capability_id):
+        raise _Unavailable('capability_unavailable', scope)
     handler = next((operation for operation in definition.operations
         if operation.operation_id == subscription.handler_operation_id), None)
     if handler is None or handler.emitted_events:
@@ -413,8 +422,9 @@ def _connector(db, connector, configuration, principal, installation_id):
             enabled=True, credential=credential))
 
 
-def _configuration(db, installation_id, package):
-    configuration = db.scalar(select(ApplicationExtensionInstallation.configuration)
+def _configuration(db, installation_id, package, *, proposed=None):
+    configuration = proposed if proposed is not None else db.scalar(
+        select(ApplicationExtensionInstallation.configuration)
         .where(ApplicationExtensionInstallation.id == installation_id))
     try:
         if not isinstance(configuration, dict):
@@ -426,26 +436,58 @@ def _configuration(db, installation_id, package):
     return configuration
 
 
-def _resolve(db, installation_id, pin, package, *, registration_key=None):
+def _resolve_code_identity(db, installation_id, pin, package, *, registration_key=None):
+    """Current native-code identity, independent of live service resources."""
     guard = read_authority_guard(db)  # Establish the final snapshot before resources.
     current = _package_pin(db, installation_id)
     if current != pin:
         raise _Unavailable("artifact_changed")
     if pin.active_version is None:
-        from backend.services.application_relational_registration import verify_registration
+        from backend.db.application_authority_grant import ApplicationAuthorityAction
+        from backend.services.application_package_staging import registration_id
+        marker = registration_id(db, installation_id, pin.module_package_id, pin.sha256)
+        from backend.services.application_configuration_provenance import registration_id as connector_registration_id
+        if db.get(ApplicationAuthorityAction, connector_registration_id(db, installation_id)) is not None:
+            from backend.services.application_configuration_provenance import verify_registration
+        elif db.get(ApplicationAuthorityAction, marker) is not None:
+            from backend.services.application_package_staging import verify_registration
+        else:
+            from backend.services.application_relational_registration import verify_registration
         verify_registration(db, registration_key, installation_id, pin, package)
     authority = read_application_authority(db, installation_id)
     principal = AuthorityPrincipal(core_installation_id=_core_identity(db),
         application_installation_id=str(installation_id), incarnation=authority.incarnation,
         module_id=authority.module_id)
-    configuration = _configuration(db, installation_id, package)
+    return guard, authority, principal
+
+
+def _resolve(db, installation_id, pin, package, *, registration_key=None, proposed_configuration=None):
+    guard, authority, principal = _resolve_code_identity(
+        db, installation_id, pin, package, registration_key=registration_key)
+    configuration = _configuration(db, installation_id, package, proposed=proposed_configuration)
     app = package.application_extension
-    commands = tuple(_command(db, binding, configuration) for binding in app.command_bindings)
-    sessions = tuple(_session(db, binding, configuration, principal, pin.sha256)
-        for binding in app.session_bindings)
-    connectors = tuple(_connector(db, connector, configuration, principal, installation_id)
-        for connector in app.connectors)
-    events = tuple(_event(db, subscription, app, configuration) for subscription in app.event_subscriptions)
+    tasks = tuple(ResolvedTaskScope(declaration=item, operation=next(op for op in app.operations if op.operation_id == item.handler_operation_id),
+        owner=principal, package_artifact_sha256=pin.sha256) for item in app.tasks)
+    optional_unavailable = []
+    def resolve(scope, function, *args):
+        try:
+            return function(*args)
+        except _Unavailable as exc:
+            if scope not in app.optional_resources or exc.issue.reason not in {
+                    'configuration_unresolved', 'device_unavailable', 'device_credentials_unavailable', 'runtime_support_unresolved',
+                    'capability_unresolved', 'capability_unavailable', 'command_contract_unresolved', 'connector_binding_unavailable',
+                    'connector_origin_mismatch', 'connector_credential_unavailable'}:
+                raise
+            optional_unavailable.append(SourceIssue(scope=scope, reason=exc.issue.reason))
+            return None
+    commands = tuple(value for binding in app.command_bindings
+        if (value := resolve(f'command:{binding.binding_id}', _command, db, binding, configuration)) is not None)
+    sessions = tuple(value for binding in app.session_bindings
+        if (value := resolve(f'session:{binding.binding_id}:open', _session, db, binding, configuration, principal, pin.sha256)) is not None)
+    connectors = tuple(value for connector in app.connectors
+        if (value := resolve(f'connector:{connector.connector_id}', _connector, db, connector, configuration, principal, installation_id)) is not None)
+    events = tuple(value for subscription in app.event_subscriptions
+        if (value := resolve(f'event:{subscription.subscription_id}', _event, db, subscription, app, configuration)) is not None)
     publications = tuple(ResolvedPublicationScope(declaration=item,
         operation=next(operation for operation in app.operations if operation.operation_id == item.operation_id),
         service_artifact_sha256=app.service.artifact_sha256)
@@ -523,14 +565,14 @@ def _resolve(db, installation_id, pin, package, *, registration_key=None):
             for operation in (('read', 'write') if declaration.mode == 'read_write' else ('read',)))
     if app.storage.private_files is not None:
         declaration = app.storage.private_files
-        if declaration.max_file_bytes > MAX_SCOPED_FILE_BYTES:
+        if declaration.file_contract_version == 1 and declaration.max_file_bytes > MAX_SCOPED_FILE_BYTES:
             # The declaration/helper ceiling is wider than this first bounded
             # transport. Never silently clamp an author's requested bounds.
             pending.append(SourceIssue(scope="storage:private_files", reason="unsupported_scope_family"))
         else:
             private_files = tuple(ResolvedPrivateFileScope(declaration=declaration,
                 owner=principal, package_artifact_sha256=pin.sha256, operation=operation)
-                for operation in (('read', 'write') if declaration.mode == 'read_write' else ('read',)))
+                for operation in declaration.operations())
     emitted = {event for operation in app.operations for event in operation.emitted_events}
     publication_complete = bool(publications) and emitted == {item.declaration.event_type for item in publications}
     if (app.public_http_routes or app.jobs or set(app.platform_permissions) - {identity_read, status_read} - peer_permissions
@@ -559,7 +601,7 @@ def _resolve(db, installation_id, pin, package, *, registration_key=None):
         commands=commands, connectors=connectors, events=events, publications=publications,
         private_files=private_files, relational=relational, checkpoints=checkpoints,
         identities=identities, status_projections=status_projections, peer_reads=peer_reads,
-        sessions=sessions, issues=tuple(pending))
+        sessions=sessions, tasks=tasks, optional_unavailable=tuple(optional_unavailable), issues=tuple(pending))
     _bounded_json(result.model_dump(mode="json"))  # Total redacted output budget too.
     return result
 

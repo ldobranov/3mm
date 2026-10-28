@@ -274,7 +274,7 @@ def core_stack(state,monkeypatch):
             return ready
         s.restart_core=restart_core
         s.state=state
-        s.admin={'Authorization':'Bearer '+create_access_token('1',{'role':'admin'})}
+        s.admin={'Authorization':'Bearer '+state.token}
         try:yield s
         finally:
             control.stop();control.log.close()

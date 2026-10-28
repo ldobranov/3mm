@@ -18,6 +18,37 @@ ROOT=Path(__file__).resolve().parents[2]
 
 def digest(blob):return hashlib.sha256(blob).hexdigest()
 
+def test_shipped_core_runtime_contract_admits_task_sdk_actions():
+    from deployment.deployment_contract import validate_platform_runtime_contract
+    value = validate_platform_runtime_contract((ROOT / 'deployment/platform-runtime-contract.json').read_bytes())
+    assert {'task.submit', 'task.lookup', 'task.cancel', 'task.start', 'task.progress',
+        'task.schedule.create','task.schedule.lookup','task.schedule.cancel'} <= set(value['operations'])
+
+
+def test_immutable_runtime_file_sets_can_evolve_without_breaking_independent_rollback(tmp_path,monkeypatch):
+    import deployment.platform_runtime_component as component
+    original=component.INPUTS
+    monkeypatch.setattr(component,'INPUTS',tuple(name for name in original if not name.endswith('/task_time.py')))
+    old=build_component(ROOT)
+    monkeypatch.setattr(component,'INPUTS',original)
+    new=build_component(ROOT)
+    assert old[1]['build_id']!=new[1]['build_id']
+    store=RuntimeStore(tmp_path/'component',tmp_path/'journal');control=Control()
+    store.activate(old[0],digest(old[0]),control=control,health=health,fingerprint=fingerprint)
+    store.activate(new[0],digest(new[0]),control=control,health=health,fingerprint=fingerprint)
+    store.rollback(control=control,health=health,fingerprint=fingerprint)
+    assert store.target('current')==old[1]['build_id'] and store.target('previous')==new[1]['build_id']
+
+
+def test_self_describing_runtime_still_rejects_core_payload_and_missing_entrypoint(monkeypatch):
+    import deployment.platform_runtime_component as component
+    original=component.INPUTS
+    monkeypatch.setattr(component,'INPUTS',(*original,'backend/main.py'))
+    with pytest.raises(ValueError,match='payload'):build_component(ROOT)
+    monkeypatch.setattr(component,'INPUTS',tuple(name for name in original if not name.endswith('/server.py')))
+    with pytest.raises(ValueError,match='payload'):build_component(ROOT)
+
+
 def variant(tmp_path,name):
     source=tmp_path/name
     for file in INPUTS:

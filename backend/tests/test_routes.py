@@ -136,11 +136,19 @@ def test_menu_writes_require_admin_and_support_full_lifecycle():
         assert rename_second.status_code == 200
         assert rename_second.json()["name"] == "Renamed menu"
 
-        active_delete = client.delete(f"/menu/{first['id']}", headers=admin_headers)
-        assert active_delete.status_code == 400
-        assert "Activate another menu" in active_delete.json()["detail"]
-
-        assert client.post(f"/menu/{second['id']}/activate", headers=admin_headers).status_code == 200
+        # Deleting the active menu must leave no active header, without silently
+        # selecting another stored menu. Empty navigation is a supported choice.
+        assert client.delete(f"/menu/{first['id']}").status_code == 401
+        assert client.delete(f"/menu/{first['id']}", headers=user_headers).status_code == 403
         deleted = client.delete(f"/menu/{first['id']}", headers=admin_headers)
         assert deleted.status_code == 200
         assert deleted.json() == {"deleted": True, "menu_id": first["id"]}
+        remaining = client.get('/menu/read').json()['items']
+        assert not any(menu['is_active'] for menu in remaining)
+
+        for menu in remaining:
+            assert client.delete(f"/menu/{menu['id']}", headers=admin_headers).status_code == 200
+        assert client.get('/menu/read').json()['items'] == []
+        assert client.delete(f"/menu/{first['id']}", headers=admin_headers).status_code == 404
+        recreated = client.post('/menu/create', json=payload, headers=admin_headers).json()
+        assert recreated['is_active'] is True

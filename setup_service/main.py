@@ -176,9 +176,19 @@ def create_app(network=None, store=None, settings=None, recovery_marker=None, *,
             response = JSONResponse(status_code=403, content={"detail": "local_setup_read_only"})
         elif protected:
             runtime = request.app.state.setup_runtime
-            token = request.headers.get("authorization", "").removeprefix("Bearer ")
-            if not runtime.access.valid(token, runtime.access_snapshot):
-                response = JSONResponse(status_code=401, content={"detail": "setup_access_required"})
+            try:
+                available = runtime.available
+            except (OSError, ValueError, ProvisioningStoreError, NetworkRecoveryStoreError):
+                available = False
+            if not available:
+                response = JSONResponse(status_code=403, content={"detail": "setup_not_available"})
+            elif request.method == "POST" and (
+                request.headers.get("sec-fetch-site") == "cross-site"
+                or request.headers.get("origin", str(request.base_url).rstrip("/")) != str(request.base_url).rstrip("/")
+            ):
+                response = JSONResponse(status_code=403, content={"detail": "setup_origin_denied"})
+            elif request.method == "POST" and request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+                response = JSONResponse(status_code=415, content={"detail": "setup_json_required"})
             else:
                 if request.method == "POST":
                     chunks = []
@@ -228,7 +238,7 @@ def create_app(network=None, store=None, settings=None, recovery_marker=None, *,
     @app.get("/api/v1/setup/status", response_model=SetupStatus, include_in_schema=False)
     def status(request: Request):
         runtime = request.app.state.setup_runtime
-        return SetupStatus(state=runtime.state, setup_active=runtime.state is ProvisioningState.SETUP,
+        return SetupStatus(state=runtime.state, setup_active=runtime.available and not resolved_settings.read_only,
                            role=runtime.role)
 
     @app.get("/api/v1/setup/prefill", response_model=SetupPrefill, include_in_schema=False)

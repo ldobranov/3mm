@@ -4,11 +4,15 @@
 [![CI](https://github.com/ldobranov/3mm/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ldobranov/3mm/actions/workflows/ci.yml)
 
 3mm is a modular edge-control platform for Raspberry Pi and Linux devices. It
-combines a central Core, a persistent device Agent, dashboards, provisioning,
-runtime extensions and a reviewed AI-assisted extension workflow in one
-system.
+combines a central Core, a persistent device Agent, provisioning and reviewed
+applications through common capability contracts and SDKs. Builder, dashboards
+and other product features live in optional source packages/libraries.
 
-> **Project status:** Test Beta. **0.3.0-beta.57** brings together accepted
+> **Project status:** Unreleased prototype. **0.3.1** is a local Core/SDK checkpoint
+> covering common resource discovery, actor/delegation access, lifecycle recovery,
+> tasks/schedules, shared themed UI, files/media and invocation optimization.
+> The [0.3.1 changelog](CHANGELOG.md#031---2026-10-28) describes this branch's scope.
+> It builds on the accepted
 > Core stabilization, Standalone/Hub/Node setup and Wi-Fi/AP recovery, bounded
 > diagnostics, independent optional runtimes and manifest-v2 language extensions.
 > Application access uses one administrator approval with expandable resource
@@ -270,6 +274,28 @@ preflight and starts the immutable installer as a detached systemd job. This
 allows installation over Wi-Fi: the SSH session is expected to close only when
 the device switches to its open `3mm Setup XXXX` access point.
 
+On a fresh installation the standard command selects NetworkManager Wi-Fi/AP
+setup. Join `3mm Setup XXXX` and open `http://10.42.0.1:8895/setup` if the portal
+does not open automatically. Without a usable AP adapter, setup remains reachable
+over the existing LAN on port 8895. To keep networking entirely under the operating
+system, append `--network-backend host`:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --network-backend host
+```
+
+Updates preserve the stored network backend, role and device data. Enabling
+managed Wi-Fi on an existing host-managed installation requires an explicit
+`--network-backend network-manager`; it does not reset setup or automatically
+replace the configured role with an AP. Temporary AP access is available from
+Settings when a managed AP-capable adapter is present.
+
+Header navigation starts empty. Administrators choose links in Settings → Menu
+Configuration and can remove every link or delete the last menu. Core and installed
+application routes remain available through Ctrl+K; Settings is also at `/settings`.
+The bootstrap downloads published artifacts; unpublished local changes require
+a separately prepared local package.
+
 ### Minimal Node / Raspberry Pi Zero W
 
 Fleet beta.21 adds a minimal Node profile for **Zero W ARMv6 with
@@ -350,6 +376,51 @@ Start with the
 preflight, installation, setup Wi-Fi, administrator bootstrap, Agent pairing
 and smoke checks. The normal installer performs backup, migration, atomic
 activation, health verification and rollback.
+
+For local updates to an already provisioned Raspberry, use Windows PowerShell
+from this checkout (WSL `Ubuntu-26.04`, Python, Node/npm and Git are required):
+
+```powershell
+.\deploy.ps1 -Action Prepare  # local checks/build; no device connection
+.\deploy.ps1 -Action Prepare -WithAgent # include the independently pinned Agent
+.\deploy.ps1                  # prepare/reuse, transfer, detached install + logs
+.\deploy.ps1 -Action Status
+.\deploy.ps1 -Action Logs
+```
+
+The default target is `raspberry@rasp-3mm.local`, ARM64 / Python 3.13; override
+`-SshHost`, `-Architecture`, `-PythonVersion` or `-WslDistribution` as needed.
+SSH/sudo passwords are entered at their normal prompts. No Git publication,
+version change, application grants or network reconfiguration is implied.
+The installed frontend origin is preserved. This wrapper updates an existing
+full installation; use the one-command first-boot installer for a clean OS.
+Agent changes require `-WithAgent` during preparation. This selection is sealed
+in the ready kit, so `-Action Deploy -Bundle <folder>` applies both updates.
+After Core installation, its constrained release environment builds Agent from
+the checked sources; the standard service-component update verifies the running
+identity and retains independent rollback. Agent configuration is preserved.
+An Agent failure marks the rollout failed even if Core succeeded; inspect
+Status/Logs before another action. Other independently pinned components and
+application instances are not repinned by this option.
+
+Ready kits and check evidence live in `.runtime/deploy/artifacts/<content-key>`.
+Frontend output/dependencies, checks and native build wheels are cached against
+their inputs and environment; changed inputs invalidate the relevant evidence.
+An installed native host with the exact sources, dependencies and target is
+reused. The device still creates independent release environments and runs the
+normal backup/health/rollback installer. A first preparation costs more than a
+repeat; timings are recorded instead of promising a fixed deployment time.
+
+Without cached evidence, preparation runs all Python check groups and frontend
+checks. A developer may supply reviewed `-TestPaths @('path/to/test.py', ...)`
+for a bounded local change. That scope is recorded as targeted and can be reused
+only for the same code/dependencies/environment; a different explicit selection
+runs separately. Published release gates remain unchanged. `-Bundle <directory>`
+validates and deploys an exact previously prepared kit without rebuilding it.
+Ctrl+C/disconnecting closes the observer; systemd continues the install. Repeating
+the same kit observes its existing job. Failed or uncertain jobs require status/log
+inspection and are never automatically replayed. Completion is
+`3mm update succeeded`; the installer's earlier message alone is insufficient.
 
 Wired-only Linux/VM installer corrections are included since beta.35: absent first-boot
 state initializes Standalone without a Wi-Fi AP, required service groups are

@@ -1,6 +1,6 @@
 # План за общата основа на Core и приложенията
 
-Обновен: 2026-10-25. Приоритетът остава платформената основа преди
+Обновен: 2026-10-27. Приоритетът остава платформената основа преди
 стабилизирането на приложенията. Собственикът уточни, че това е фундаментално
 определяне на общите възможности, върху които ще се строят много приложения.
 Почистването и наименованията следват тази архитектура.
@@ -28,6 +28,69 @@ SDK. Terminal е актуалният работещ потребител, ко�
 приоритети. Той не разрешава реализация на всички възможности наведнъж.
 Запазваме monorepo и текущите потребителски промени; всяка реализация има
 ограничен резултат, точни потребители и подходящи проверки.
+
+## Приета първа стъпка: един работещ път
+
+Уточнение от 2026-10-25: CAP01–CAP21 остават карта на нуждите. Първо доказваме
+малък общ път с реално изпълнение и втори доставчик, преди подробно проектиране
+на всички области, масово преименуване или премахване на функции. SDK е клиент;
+Core запазва решенията за права. Отделен процес се добавя при конкретна нужда
+от изолация, зависимости или възстановяване.
+
+Първият обхват е декларирана команда към ресурс на устройство:
+
+1. Manifest v2 и `command_bindings` описват логическата нужда, точната версия,
+   операцията и ограничените аргументи.
+2. Администраторът получава кандидати от съществуващия capability registry с
+   отделни съвместимост, възможност за избор и текуща готовност.
+3. При първоначална инсталация съществуващият activation API запазва избора;
+   отделното администраторско съгласие разрешава точния ресурс.
+4. Тестовото приложение открива само разрешения си ресурс през SDK и изпраща
+   командата през отделния Runtime към Core. Изпълнителят получава еднократно
+   разрешение, а резултатът остава проследим след рестарт.
+5. Втори доставчик на същия договор се регистрира и може да бъде избран за нова
+   инсталация без промяна в Core или клиента. Появата му и временният отказ на
+   първия не променят съществуващия избор.
+
+Използваме текущото консервативно равенство на argument schemas и наличните
+профили на доверие. Това не е универсален matcher за всички бъдещи гаранции.
+Нов графичен chooser и хардуерно приемане са извън първия обхват.
+Договорът и изпълнимата проверка са в [Application commands](APPLICATION_COMMANDS.md#requirement-discovery-first-coresdk-vertical-2026-10-25).
+Тази стъпка заменя по-ранното предложение да започнем с CAP08.
+
+Следваща одобрена стъпка, 2026-10-25: изрична смяна на ресурс за същото
+приложение. Администраторът вижда стария и новия ресурс и потвърждава запечатан
+преглед. Core оттегля старото право за изпълнение, активира същия пакет с новата
+конфигурация и допуска новия ресурс след потвърден старт и повторни проверки.
+При прекъсване остава блокирано състояние; възстановяването доказва спрян процес,
+след което се изискват свежо съгласие и активиране. Старите команди запазват
+първоначалното устройство и резултат, без повторение върху новия ресурс.
+Използваме съществуващите registry, grants и helper tickets. Обикновеното
+активиране продължава да отказва непрегледана промяна на конфигурацията.
+Точният ограничен профил и API са в
+[Replacing an approved command resource](APPLICATION_COMMANDS.md#replacing-an-approved-command-resource).
+
+Продължението добавя администраторския екран **Extensions → Command resources**
+в съществуващия каталог. Той използва същите discovery/consent/lifecycle механизми,
+показва двата ресурса преди смяна и намира текущата незавършена операция след
+презареждане. Екранът е внедрен на VM с проверки за изгубен отговор, изтекъл
+преглед и възстановяване; визуалното приемане използва изолирани тестови ресурси.
+Началната инсталация запазва съществуващата конфигурация на устройства.
+Първият практически път вече е приет на VM: Fleet администрира Agent модула,
+а отделното Output button приложение използва само одобрения изход през SDK.
+Потвърдени са ON/OFF, резултат след рестарт и отнемане/възстановяване на достъпа.
+Същият пакет работи след изрична смяна към втори доставчик в изолирания тест;
+това не е приемане с второ реално устройство или физически GPIO.
+
+Това затваря C1/C2 и част от C4/C5 за избрания команден път. C0 е начална карта,
+а останалите способности от общия application профил имат различна готовност.
+При C3 Builder, Automations, Dashboards, declarative CRUD и старите content/
+translation механизми вече са отделени локално от boot/API/DB/UI на Core.
+Локалното C5 приемане е завършено за избрания bounded Linux x86_64 профил.
+Внедряването, останалото C3 почистване и другите профили/устройства са отделни.
+Не приемаме работещите Fleet
+и Output button за завършено опростяване на цялото ядро. Точните проверки и
+ограничения са в [WORKING_STATE.md](WORKING_STATE.md).
 
 ## Основа и установени зависимости
 
@@ -152,11 +215,38 @@ application repositories запазват своята уговорена инт
 | Бизнес приложения и хардуерни реализации | Съответните приложения и providers | Общи capability/permission договори |
 | Старият table/translation engine, старите page/extension paths и останали неподдържани инструменти | Премахване след доказано отделяне на текущите потребители | Не добавяме адаптери само за исторически прототипни версии |
 
-Builder и Automations споделят AI клиенти в текущия код. Отделяме общия
-използван код в явна незадължителна зависимост, без копиране. Почистването на
-Core приключва след премахването на неговите преки AI зависимости; не чакаме
-готов Builder, за да отделим и Automations. Не създаваме отделен AI daemon или
-платформа за плащания само заради това споделяне.
+Първият C3 резултат е завършен локално: отделяне на Builder и Automations заедно
+със споделените AI клиенти. Продуктовите източници/тестове са запазени в
+`modules/{builder,automations}/source/legacy`, а единственото копие на общите
+клиенти е незадължителната `libraries/three_mm_ai`. Core не включва старите
+routers, ORM регистрации, екрани или provider настройки. Изричната миграция
+`6b41c293da31` запазва историческите данни като `retired_` recovery evidence,
+с guarded downgrade и без автоматично активиране на нови приложения.
+Source-only директорите са изключени от Core artifact. Core boot/admin са
+проверени и с физически отсъстващи продуктови/AI източници. Миграцията и
+връщането назад са проверени върху попълнени fixtures и частно копие на реалната
+база. Точните проверки и локалният статус са в [WORKING_STATE.md](WORKING_STATE.md).
+
+Тези източници предстои да се адаптират към публичния SDK и собствени данни,
+преди да станат работещи отделни приложения. Споделеният encryption key и
+общите HTTP/crypto зависимости остават за текущите Core/Agent/bootstrap потребители.
+Вторият C3 резултат отделя Dashboards локално: 19 оригинални продуктови източника
+са в `modules/dashboards/source/legacy`, а смесените права/UI имат запазени
+reference източници. Core вече не регистрира display/widget модели, routes,
+рендериране или специални Dashboard grants. Общите application права, UI
+договори, теми, i18n и текущият declarative CRUD остават. Command Palette извежда
+навигацията от текущите маршрути и техния audience/role metadata.
+
+Миграцията `7c52d3a4eb42` запазва таблиците и относимите исторически права в
+архиви без каскадни връзки към живите потребители/роли. Точните зависимости на
+widgets към compiled packages стават общи неактивни retained-resource references,
+които блокират изтриване на пакета и могат да се преглеждат от администратор.
+Попълнените архиви изискват проверено възстановяване от backup; автоматичен
+downgrade не възстановява стари права към евентуално променени principals.
+Източниците на Builder/Automations/Dashboards още изискват SDK/data port до
+работещи приложения. Няма внедряване на тези C3 промени върху VM.
+Не създаваме AI daemon или
+платформа за плащания заради споделените клиенти.
 
 `passage.py` съдържа конкретна `access.passage.v1` семантика, но проверява и
 собственост, текуща authority, корелация и еднократно приемане на физически
@@ -164,9 +254,36 @@ Core приключва след премахването на неговите 
 а специфичното тълкуване отива при provider/приложението. Не го изтриваме като
 „бизнес код“ и не отваряме повторно приетото M20 поведение в първата стъпка.
 
-При declarative CRUD изнасяме общия engine като незадължителна application
-зависимост, ако текущите потребители го оправдават. Не генерираме негово копие
-за всеки пакет и не оставяме записите на всички приложения в Core базата.
+Третият C3 резултат отделя declarative CRUD локално. Общият engine, schema,
+migration и Vue renderer имат един собственик — незадължителната
+`libraries/three_mm_crud`. Contacts вече се изгражда като обикновен application /
+compiled UI кандидат върху публичните SDK и host договори, със собствена база.
+Библиотеката се пакетира като dependency в service wheel, без копиране на engine
+източника за всяко приложение и без зареждане в Core. Старите Core API/ORM/UI и
+runtime schema export са оттеглени; общите преведени UI етикети имат отделен
+protocol собственик за текущите application/theme/session потребители.
+
+Миграцията `8d63e4b5fc53` запазва определенията и записите в архиви без FK към
+живите потребители и защитава точните стари пакети с общите resource references.
+Преносът към собствена база е изричен, проверява текущата schema и конфликтите,
+пази ID/данни/време/provenance и не превръща стари права в разрешения. За лични
+данни има изричен `until_explicit_erasure` retention избор с administrator-only
+export/erasure; не добавяме task+SQLite изпълнение извън приетия CAP08 профил.
+Точните локални проверки и ограничения са в [WORKING_STATE.md](WORKING_STATE.md).
+Четвъртият C3 резултат отделя Page/Extension/universal-translation paths.
+Четиринадесет оригинални източника и десет смесени reference копия са запазени
+в source-only `modules/legacy-content`. Core притежава Menu самостоятелно, със
+същите записи, преведени labels и audience. Езиковите преводи остават във
+валидирани immutable manifest-v2 пакети; текущата таблица пази само код,
+избран пакет и enabled флаг. Английският fallback и общите роли остават.
+
+Миграцията `9e74f5c60d64` архивира осем стари таблици и page/extension subsets
+на permissions без FK към живите principals. Старите регистрации не прехвърлят
+собственост върху Core таблици. Реални произволни таблици или входящи FK към
+старите модели спират миграцията преди schema промени и изискват изричен план.
+Празният случай поддържа пълен downgrade; попълнената история изисква проверен
+предварителен backup, без автоматично възстановяване на стари права. Това е
+локално извличане; внедряване, нови продуктови SDK ports и общото C5 са отделни.
 
 ## Договорът между приложение и Core
 
@@ -218,8 +335,76 @@ worker резултат с ограничения и failure checks, а не с�
 
 ### CAP01 Откриване на договори и свързване с provider
 
+Допълнение от 2026-10-28: локално е проверен общият Agent adapter onboarding
+път през съществуващия provider v2 registry, изричен избор и отделно app consent.
+Mock identifier и втори независим тестов adapter се използват от две различни
+приложения без специален Core клон. Липсващите optional ресурси вече имат видима
+диагностика в Application access. Event admission използва актуалната availability
+политика (CAP07); оттегляне/рестарт и непотвърден provider report не дават нови
+права или replay. Това е локално приемане; rollout изисква Core + Agent.
+Последващо затваряне на пропуска в администрацията: **Devices -> Capabilities**
+вече предоставя общия избор/включване на provider и отделен readiness статус,
+с текуща ревизия и обновяване след конфликт или непотвърден запис. Проверен е
+потребителският път от бутона в Devices до записа; реалното приемане изисква
+новия Core UI пакет, изричен избор, свежо app consent и едно ново сканиране.
+[Договор](EXTENSION_PLATFORM_V2_PUBLIC_CONTRACTS.md#adapter-providers-and-unavailable-optional-resources-cap01cap07-2026-10-28).
+
 Налична основа: schema catalog, signed platform discovery и device capability
-registry. Липсва единна приложна картина за всички услуги и техните зависимости.
+registry. Общият приложен преглед и точните поддържани профили са описани долу.
+
+**Първо последователно затваряне, 2026-10-27 — ограничена SDK част:**
+`discover_requirements` събира текущата Core transport поддръжка и разрешени
+command bindings в общ read-only резултат. Задължителна липса дава `blocked`,
+незадължителна — `degraded`; договор, права и readiness остават различни данни.
+Промяна на authority/transport/recovery по време на четене отхвърля резултата;
+няма автоматично избиране, grant, изпълнение или повторение. Използваме същия
+registry и подписан transport. [Точен обхват](APPLICATION_COMMANDS.md#required-and-optional-sdk-observations-cap01-first-slice).
+**Втора локална част, 2026-10-27:** `platform_requirements` в application
+descriptor-а на SDK 1.3 използват същата оценка за точен Core transport договор
+и операции. Задължителна липса спира подготовката и активирането преди промяна
+на текущото приложение; незадължителна дава `degraded` и оставя нормалното
+съгласие/health/rollback задължителни. Има read-only admin преглед за точния
+артефакт и повторна проверка в native installer-а. Host предава проверените
+декларации като `context.platform_requirements`, без startup RPC или auto grant.
+Подготвените relational пътища запазват отделните си проверки и recovery.
+[Договор](APPLICATION_COMMANDS.md#declared-transport-dependencies-before-activation-cap01-second-slice).
+
+**Трета локална част, 2026-10-27:** `discover_resources(scopes)` дава общ
+read-only резултат за собствените service resources: declaration/configuration,
+access, readiness, provider и точен избран resource. Използва текущите sealed
+grants и registry, без нова селекция. Има реални подписани file/SQL наблюдения,
+отделен bounded image probe, command health и session connectivity; за другите
+семейства readiness остава `unknown`, докато няма реална проверка. IPC е извън
+leases, а authority/artifact/resource се проверяват отново преди отговора.
+Browser SDK има изричен `resources.inspect` opt-in за reviewed administrator
+route с повторна проверка на текущия човек. Не е общ operator/kiosk достъп.
+[Договор](APPLICATION_COMMANDS.md#installation-resource-observations-cap01-third-slice).
+
+**Завършваща локална част, 2026-10-27:** `optional_resources` поддържа точни
+SDK 1.3 command/connector/event/session зависимости при инсталация. Липса или
+несъвместим optional resource оставя основните функции разрешени; нов/сменен
+ресурс не получава права без ново изрично съгласие. Няма автоматична селекция,
+fallback или отслабване на required resources. Авторската configuration schema
+и подготвените data lifecycles остават задължителни. Общият report различава
+`required: false` от service access и readiness.
+
+Има реални локални probes за connector/event/task workers и точния host;
+publications, status/peer metadata, checkpoints и identity използват текущия
+Core-local provider. Няма business HTTP или remote peer операция за health.
+`platform_requirements` продължават да означават само Core transport support.
+[Точен optional профил](APPLICATION_COMMANDS.md#optional-external-resources-at-installation-cap01-supported-profile).
+
+**CAP01 е реализиран локално за описания поддържан профил.** Browser достъпът е
+reviewed administrator opt-in; operator/kiosk и неподдържани комбинации остават
+изрично неподдържани профили, без compatibility обход. Това не е ARM/hardware
+или deployment приемане. По-късният rollout трябва да включи изрично нужните
+независими Runtime/host компоненти и техните health/rollback gates; matching
+SDK version label сам по себе си не добавя нови API в стар host. Deploy е отложен.
+
+Допълнение от Child Center handoff, 2026-10-27: optional device полетата могат
+да останат празни при нула устройства. Всеки подаден ID се проверява отново при
+activation/staging; празен изричен избор премахва optional binding, без да отменя
+required/schema проверки или да връща стар избор от defaults.
 
 - Приложението декларира нужни и незадължителни договори, версии и профили.
 - Registry различава „поддържа се“, „има инсталиран provider“, „работи“ и
@@ -231,8 +416,33 @@ registry. Липсва единна приложна картина за вси�
 
 ### CAP02 Идентичности и делегирани права
 
-Налична основа: user/session/role/group, application grants, kiosk и machine
-principals, M20 service resource authority. Нужно е последователно приложно API.
+Използвана основа: user/session/role/group, application grants, kiosk и machine
+principals, M20 service resource authority.
+
+**Затворен локално за текущия профил, 2026-10-27:** Core HTTP и browser SDK дават
+проверена самоличност и отделни application permissions. User има постоянен
+`subject_id`, kiosk — enrolled terminal, public вход — anonymous; service, task
+worker и installation peer запазват собствените си identities. Адитивната
+миграция запазва акаунти, пароли, роли, сесии и grants; нов акаунт не наследява
+стар business subject при повторен числов ID. Login nonce преживява refresh,
+но не позволява друга сесия да наследи стара заявка.
+
+`host.access.getInfo()`, frozen `context.actor` / `context.initiator`, отделният
+`context.executor` и `context.has_application_permission(...)` са общият вход за
+авторите. Platform admin не заобикаля operator, browser files или session business
+permissions; изрично декларираният administrator вход остава platform функция.
+Human и service права се проверяват независимо преди изпълнение и при completion.
+
+Route opt-in `delegated_operations` позволява точно една query/command операция
+на worker на същото приложение: фиксирани payload, инициатор/login, executor,
+artifact/build/config/grant и краен срок. Използва съществуващите sealed action
+journal и invoke relay, подписания SDK транспорт и проверен OS peer на host-а.
+Няма redelegation, admin promotion, скрит retry или повторно изпълнение на поета
+заявка след crash; непотвърденият резултат остава unknown. Browser/native SDK
+имат create/lookup/cancel и execute/lookup, с изрични budgets и отрицателни проверки.
+Стар host без поддръжка се отказва преди ефект; общият host health/rollback ABI
+остава стабилен. Release договорите включват новите schema/API/Runtime файлове.
+[Точен договор и примери](EXTENSION_PLATFORM_V2_PUBLIC_CONTRACTS.md#stable-actor-browser-access-and-finite-operation-delegation).
 
 - Проверен actor за всяка операция: човек, kiosk, guest, приложение, worker
   или друга инсталация; payload не може да избира доверената идентичност.
@@ -243,14 +453,71 @@ principals, M20 service resource authority. Нужно е последовате
 - Platform admin и business admin са отделни понятия. Организации,
   членства, клиентски роли и ACL на бизнес записи остават при приложението.
 
-Сегашният coarse admin bypass е ограничение за преглед, а не готов договор
-за автоматичен достъп до всички клиентски данни. Същият login не означава
-еднакви customer права във всички приложения или всички инсталации.
+Граници на завършения профил: SDK 1.3, own SQLite, operator query/command ≤10 s,
+кратък срок ≤300 s и bounded JSON. Cross-installation composition е CAP14;
+business guest/customer identities, организации и ACL са собственост на
+приложението. Това не обещава еднакви customer права във всички приложения,
+свободно делегиране на resources или поддръжка на всеки бъдещ execution profile.
+Внедряване на Core/Runtime/pinned hosts и ARM/device acceptance са отделна стъпка;
+старите prototype logins без nonce изискват нов login след обновяването.
+
+**Допълнен локален kiosk път, 2026-10-27 (CAP02/CAP09):** общ Core terminal
+dialog в Extensions и `/kiosk/connect`, code/claim recovery за оригиналната
+заявка, отделен terminal controller, single-flight auth renewal и revoke.
+Няма app-owned token wrapper или нов SDK auth export. Core избира текущия
+одобрен kiosk route; native/UI trust, incarnation, enable/disable и права се
+проверяват отново. Непотвърдена business операция никога не се повтаря от auth
+контролера. Null-bound стари терминали се запазват за revoke/re-pairing.
+[Точен договор](EXTENSION_PLATFORM_V2_PUBLIC_CONTRACTS.md#core-owned-kiosk-pairing-and-optional-device-selection-2026-10-27).
+Това затваря двата конкретни Core пропуска от Child Center handoff локално;
+реалният ARM/app/reader тест остава след deployment. Общият web lifecycle
+recovery остава отделно записан CAP03 резултат.
 
 ### CAP03 Пакети и жизнен цикъл
 
 Налична основа: manifest v2, проверка, review, activation, update, rollback,
 recovery, uninstall и retained-data cleanup. Общото dependency планиране се доуточнява.
+
+Уточнение от 2026-10-26: собственикът потвърди Fleet 0.1.12 и следващите проби
+след пълно премахване на 0.1.11. Това затваря поправката на HTTP LAN бутона,
+но не доказва обновяване със запазена инсталация. Грешката при избор на нова
+версия е обща липса в CAP03: inert подготовката беше достъпна само за task
+профила. Предишната VM намеса не се приема като доказателство за този UI път.
+
+Текущият ограничен резултат обобщава същата запечатана подготовка за обикновени
+native приложения и я свързва с Extensions: спиране → подготовка → ново
+съгласие → активиране. Връщането към предишен пакет минава по същия път,
+без възстановяване на старо право или автоматично връщане на бизнес schema.
+Relational migrations и session providers запазват отделните си prepared
+lifecycles. Точните API и ограничения са в
+[Extension lifecycle](EXTENSION_LIFECYCLE.md#preparing-another-native-application-version).
+Резултатът е включен с първата CAP09 част и Task Probe consent UI поправката в
+`local-cap03-cap09-20261026-arm64-r1`. След owner-run Core обновяването на
+`rasp-3mm.local` собственикът потвърди реалния път: премахване на 0.1.12 за
+начално състояние, инсталиране на Fleet 0.1.11 и успешно обновяване до 0.1.12,
+последвано от успешни повторни тестове за `org.3mm.digital-output`.
+Това затваря конкретния проблем с нормалното обновяване на Fleet върху
+Raspberry. То не разширява автоматично приемането към всички lifecycle профили,
+проверка на запазени бизнес данни, аварийно връщане или CAP09 visual сценарии.
+
+**Записана следваща стъпка по искане на собственика, 2026-10-27 — recovery през
+уеб:** при блокирала инсталация, активация или обновяване Extensions трябва да
+предоставя видим, общ за приложенията път за възстановяване. Собственикът трябва
+да може да види текущия етап/непотвърден резултат, да потвърди възстановяването
+и да стигне до проверено спряно приложение със запазени данни и пакет, след което
+да прегледа правата и да продължи. Наличният Core lifecycle recovery API е основа;
+не бива да се налагат SSH, ръчна промяна на базата или преинсталация. Няма
+автоматично повтаряне на ефекти, възстановяване на старо право или твърдение за
+rollback само защото процесът е спрян. Неуспехът оставя ясна диагноза и достъпен
+път за следващо действие. **Реализирано локално на 2026-10-27:** отделен recovery
+диалог показва текущия етап, изисква потвърждение и използва съществуващия
+admin API. След проверено спиране се отваря нов преглед на достъпа; активиране
+не се извършва автоматично. Регистрираният кандидат запазва избора на права,
+но съгласие от стар execution epoch изисква ново изрично одобрение.
+Непотвърден отговор изисква read-only обновяване,
+без повторение. Инсталациите остават достъпни и при отказ на UI/package каталога.
+Реалното приемане на `rasp-3mm.local` остава след отделно поискан deploy.
+Това е ограничен CAP03 резултат, не затваряне на всички dependency/lifecycle профили.
 
 - Preview на нужните договори, ресурси, зависимости и ефекти преди install.
 - Изрично prepare/activate/disable/update/rollback с readiness и recovery
@@ -264,6 +531,12 @@ recovery, uninstall и retained-data cleanup. Общото dependency плани
 
 Налична основа: schema-bound query/command, trusted OperationContext,
 idempotency контекст и семейства с durable receipts. Нужен е общ последователен модел.
+
+Локална поправка от 2026-10-27: приключването на пълните текущи admission/UI/
+metadata проверки и commit предшества кратката резервация на response канала.
+Бавната подготовка не изчерпва handoff времето. Лимитите и signature/current
+completion проверките се запазват; доказан отказ преди send е `not_dispatched`,
+а частично изпращане/изгубен отговор остава непотвърден, без автоматичен retry.
 
 - Типизирани input/output/error schemas, ограничен payload и точен audience.
 - Устойчив operation ID, status/result и ясни „не е изпратено“, „прието“,
@@ -319,9 +592,26 @@ checkpoints и application outbox. Общ cross-application обмен изис�
 
 ### CAP08 Фонови задачи и време
 
-Текуща липса: поддържан scoped scheduler няма; schedules и `kind: job` са
-изрично отказвани. Новият механизъм е необходима обща способност, с изпълнение
-извън Core и нов ресурсен/admission договор, без връщане на стария compatibility loop.
+CAP08 е завършен и внедрен на VM в одобрения `bounded_task_v1` профил със
+свързаното почистване на Core, без цялото C3 отделяне на
+Builder/Automations/Dashboards. Първият one-shot път е лично приет от собственика;
+довършването има изпълнимо SDK/VM приемане. [Application tasks](APPLICATION_TASKS.md)
+описва interval/IANA weekday calendar,
+фиксирани skip-misfire/gap и earliest-fold правила, устойчив occurrence cursor и
+изрична bounded retention. Отделният worker изчислява разписанието; Core проверява
+допускането и записва същия task journal. Съгласието е точно `task:<име>`.
+
+Външен command ефект използва съществуващата опашка и еднократен физически
+permit, отделен `command:<име>` grant и жива task lease. Непотвърденият ефект
+блокира следващи изпълнения; SDK не повтаря mutation след загубен отговор.
+Деинсталацията пази unresolved claims, а администрацията показва общи task/
+schedule метаданни. Старите jobs са само историческо recovery evidence;
+изпълнението им остава отказано. Други resource семейства използват собствените
+си explicit composition профили. Обновяването на спряно task приложение използва
+запечатана inert регистрация, ново съгласие за точния артефакт и нормален старт,
+със запазени данни и резултати. Проверките и точните доставени артефакти са в
+[WORKING_STATE.md](WORKING_STATE.md). Приемането е Linux x86_64/WSL с mock Agent;
+не обявява ARM, физически GPIO или операторски scheduler UI за готови.
 
 - Еднократна отложена задача, interval и календарно разписание с timezone;
   ясни DST, пропуснат срок и catch-up правила без внезапен burst.
@@ -338,8 +628,17 @@ Retention, отчет, reminder и външна доставка използв�
 
 ### CAP09 Общ интерфейс и browser SDK
 
+**Изравняване с темите, 2026-10-27:** Settings preview и SDK вече използват
+едни и същи компоненти и общи визуални правила. Текущата палитра управлява
+native color-scheme, шрифта, радиусите, плътността и component variants.
+Формите не разтягат полетата при различен help/error текст, а таблицата се
+превърта локално. Проверяваме запис/презареждане на настройките, сменена тема
+със запазена чернова, desktop/mobile и реалното import-map delivery.
+Това поправя приетия общ UI профил; не добавя останалия бъдещ CAP09 каталог.
+
 Налична основа: compiled UI, credential-free operation/session host, navigation,
-i18n/themes и три public presentation компонента. Нужен е по-богат стабилен UI toolkit.
+i18n/themes и седем public presentation компонента. Първата обща UI част е
+доставена и приета; останалият toolkit продължава на отделни ограничени стъпки.
 
 - Меню, routes, вложена навигация, Command Palette и проверени deep links
   се регистрират декларативно и изчезват при disable.
@@ -352,6 +651,34 @@ i18n/themes и три public presentation компонента. Нужен е п
 
 Reviewed code в общ browser origin не е hostile-code sandbox. Ако е нужен
 недоверен frontend, той получава отделен isolation профил, а не обещание от UI helper.
+
+**Завършен ограничен резултат, 2026-10-26:** разширение на текущия
+`@3mm/ui/v1` с общи полета/форми, таблица и loading/error/empty състояния.
+Използваме Vue/TypeScript, темите и сегашните presentation primitives, без нов
+framework или бизнес CRUD engine в Core. Формата управлява локален draft и
+съобщения за validation; server validation и текущите права остават решаващи.
+Таблицата получава редове със стабилен ключ и управлявана отвън pagination;
+не извиква скрити Core endpoints. UI грешка или повторно визуализиране не
+повтаря mutation, не чисти непотвърден request ID и не обещава rollback.
+
+При избор на този резултат проверяваме public import/compiled UI договора,
+неутрален form/table потребител и текущия optional CRUD renderer, EN/BG,
+клавиатура, мобилен изглед и двете теми. Експортите не предоставят stores,
+tokens, router или частни HTTP клиенти. Това е първа изпълнима част от CAP09;
+uploads, task monitor, dashboard editor и целият бъдещ toolkit остават отделни.
+В общия доставен Core кандидат с CAP03 са добавени
+`UiField`, `UiForm`, `UiTable`, `UiState` и текущият CRUD renderer е адаптиран.
+Запазени са неговите pending/result/no-replay правила; липсващият на HTTP LAN
+`randomUUID` е заменен със secure random ID вътре в защитения отказен път.
+Реалният prebuilt host включва CSS closure за public ESM import-map entries.
+Точният интерфейс е в [Public Extension UI](EXTENSION_UI_V1.md).
+Първата част на CAP09 е доставена в общото Raspberry Core обновяване.
+Собственикът лично провери UI-only пакета `org.3mm.cap09-ui-check` 1.0.0 на
+`rasp-3mm.local:8080/cap09-ui-check` и потвърди двете посочени проби на формата
+и останалите проби за успешни. Това затваря ръчното приемане на този ограничен
+form/table/state резултат. Не е предоставена отделна матрица по точни размери,
+браузъри или теми; не я представяме като измерена от агента. Целият бъдещ CAP09
+каталог остава отделен. Успешният Fleet/Digital Output сценарий е записан при CAP03.
 
 ### CAP10 Публични страници и публични сесии
 
@@ -372,8 +699,13 @@ transport и credential lifecycle са общи, ако продуктът им�
 
 ### CAP11 Файлове и медия
 
-Налична основа: собствени файлове и bounded scoped file операции. Липсва
-общ upload/download/media договор извън малкия JSON/RPC payload.
+**Локална реализация завършена, 2026-10-26; без deployment на Raspberry.**
+Общият file-contract-v2 път включва browser/Python SDK, отделен файлов worker,
+stream/resume/checksum/atomic finalize, ownership/quotas/metadata, частен достъп,
+временни public links/revoke и optional image provider. Snapshot/rollback и
+retained-data правилата обхващат и медията. [Договор](APPLICATION_FILES.md),
+[актуални проверки и граници](WORKING_STATE.md). Приемането през реалния телефон
+и Raspberry остава на собственика след отделно разрешено обновяване на Core/host.
 
 - Bounded upload stream, временна upload identity, chunk/resume при нужда,
   checksum, atomic finalize и почистване на недовършените uploads.
@@ -607,7 +939,9 @@ driver, канал за известяване или renderer обикнове�
 „има conformance доказателства“ и „приет е на целевата среда“. Required
 функция от отсъстващ профил не се имитира с compatibility fallback.
 
-Ранните доказани липси за дизайн са CAP08 tasks, CAP11 upload/media, CAP10
+CAP08 вече има приет bounded task/time профил. CAP11 има завършен локален
+files/media профил; целевото приемане е отделно от локалните доказателства.
+Други доказани липси са CAP10
 public mutation/session ingress, CAP13 composition и делегираният достъп в
 CAP02/CAP14. Те не са една обща implementation задача. Първо затваряме
 договорите на общия профил и избираме един ограничен липсващ механизъм.
@@ -692,8 +1026,8 @@ backend/
 - `routes/device_commands.py` и свързаната логика → областта `devices`;
 - `ApplicationExtensionInstallation` → `ApplicationInstallation` при scoped
   преглед на текущите потребители; Python име и SQL таблица не се преименуват неявно;
-- `backend/db/menu.py` става реалният собственик на меню модела, когато отделим
-  текущия `Menu` от старите translation таблици.
+- `backend/db/menu.py` вече е реалният собственик на `Menu` след четвъртия C3
+  резултат; историческите translation таблици не са runtime dependency.
 
 `three_mm_platform_runtime` е достатъчно точно име за отделния SDK/relay Runtime.
 `three_mm_runtime` обаче смесва application host, управление на relational
@@ -763,12 +1097,32 @@ C0–C5 изграждат и приемат общата платформена
 | C5 Приемане на платформената основа | Минимална администрация без optional услуги плюс реални общи сценарии на избрания профил, Terminal regression, migration/rollback и приложимите Linux/ARM проверки | Устойчиво Core и достатъчна изпълнима основа за следващите приложения; останалите профили и ограничения са явно отбелязани |
 | A1 Актуални приложения | Изграждаме/обновяваме по едно приложение върху приетите договори с неговите domain модели, UI, migration и потребителски сценарии | Ново нормално business поведение се реализира в приложението/provider; няма запазване на стар SDK само заради остарял пакет |
 
-Следващият предложен ограничен резултат е C1 за CAP08: точен scoped task/schedule
-договор върху текущите CAP02/04/05/07 механизми. Той адресира доказана липса за
-различни приложения и retention/delivery сценарии. Първо се фиксират admission,
-claim/lease, operation identity, deadlines, retry/unknown и lifecycle; после
-се реализира един neutral scheduled consumer в отделния executor. Не се
-възстановява старият scheduler и не се започва масово преименуване.
+CAP08 е затворен в одобрения bounded профил: еднократни и периодични/календарни
+задачи, command composition и task lifecycle/diagnostics по един общ път.
+Довършването е внедрено с matching Runtime/host и реално SDK/VM приемане,
+запазени резултати, restart/revocation и независим Runtime rollback.
+Общото C3/C5 е извън обхвата на CAP08. След него локално са завършени ограничени
+C3 отделяния: Builder/Automations със споделения AI код, Dashboards и declarative
+CRUD със собствена библиотека и Contacts SDK потребител, както и старите
+Page/Extension/universal-translation механизми със запазени Menu/езикови потребители.
+Останалото C3, адаптирането на продуктовите източници към SDK и C5 приемането
+за другите профили/устройства остават отделни резултати.
+
+C5 вече има локално приемане за избрания command/task/data и local Terminal
+профил върху Linux x86_64. Реалният филтриран пакет работи в изолирана systemd
+машина без owner state или optional Runtime. Доказани са административен достъп,
+откази и отнемане на права, два независими референтни пакета, запазени Core/peer
+процеси при lifecycle, реалният Terminal sandbox и snapshot/authority-fenced
+rollback между стария и новия Core. EN/BG, теми и мобилен изглед са проверени
+за тогавашния кандидат. Последвалото изрично предпочитание на собственика
+заменя автоматичната навигация: header показва само активното записано меню
+и може да остане напълно празен. Settings/Extensions запазват общи route
+етикети за директен достъп/Command Palette, без задължителни header връзки.
+
+Локалният кандидат е `core-c5-local-20261026-r2`, без version bump, публикация или
+внедряване. Използвана е същата проверена dependency среда; това не е нов fresh
+full-installer или ARM/ARMv6/hardware резултат. Точните проверки, измервания,
+непокрити профили и digest са в [WORKING_STATE.md](WORKING_STATE.md).
 
 C1–C4 се изпълняват на малки завършени промени. Не изграждаме всички optional
 профили преди първия резултат и не разширяваме автоматично приетите M20/P0–P6
@@ -897,10 +1251,11 @@ frontend/artifact. След завършена съществена Core про�
 - [Terminal като актуален Session потребител](../../3mm-terminal/README.md)
 - [Правила за проверки](DEVELOPMENT_CHECKS.md)
 - `backend/main.py`, `backend/database.py`, `backend/routes/settings.py`,
-  текущите routes/services/models за Builder, Automations и Displays,
+  запазените продуктови източници и `modules/product-source-map.json`,
   `backend/services/access_control.py`, `backend/services/passage.py`.
 - `frontend/src/router/index.ts`, `frontend/src/utils/compiled-ui.ts`,
-  `frontend/src/utils/runtime-extensions.ts`, `frontend/src/components/Menu.vue`.
+  `frontend/src/components/Menu.vue`, `libraries/three_mm_crud`,
+  `modules/runtime-contacts`.
 - `deployment/platform-runtime-contract.json`,
   `deployment/application-host-contract.json`,
   `deployment/application_host_component.py`, `deployment/service-components-contract.json`.

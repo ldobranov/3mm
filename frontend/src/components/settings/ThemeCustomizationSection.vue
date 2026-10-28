@@ -49,28 +49,6 @@
         </div>
       </div>
 
-      <!-- Preview -->
-      <div class="form-field">
-        <label class="form-label">{{ t('settings.preview', 'Preview') }}</label>
-        <div class="preview-card">
-          <h5>{{ t('settings.sampleCard', 'Sample Card') }}</h5>
-          <p class="preview-text">
-            {{ t('settings.previewText', 'This is how your styled components will look.') }}
-          </p>
-          <div class="preview-buttons">
-            <button type="button" class="ui-button ui-button--primary">
-              {{ t('settings.primaryButton', 'Primary Button') }}
-            </button>
-            <button type="button" class="ui-button ui-button--secondary">
-              {{ t('settings.secondaryButton', 'Secondary Button') }}
-            </button>
-            <button type="button" class="ui-button ui-button--danger">
-              {{ t('settings.dangerButton', 'Danger Button') }}
-            </button>
-          </div>
-        </div>
-      </div>
-
       <button
         type="submit"
         class="ui-button ui-button--primary"
@@ -80,6 +58,7 @@
         {{ saving ? t('settings.saving', 'Saving...') : `${t('settings.saveThemeSettings', 'Save Theme Settings')} ${themeType.charAt(0).toUpperCase() + themeType.slice(1)}` }}
       </button>
     </form>
+    <ThemeComponentPreview :mode="themeType === 'dark' ? 'dark' : 'light'" controls-only />
   </SettingsSection>
 </template>
 
@@ -88,12 +67,14 @@ import { defineComponent, computed, watch } from 'vue'
 import type { PropType } from 'vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import ColorPicker from '@/components/ColorPicker.vue'
+import ThemeComponentPreview from './ThemeComponentPreview.vue'
 
 export default defineComponent({
   name: 'ThemeCustomizationSection',
   components: {
     SettingsSection,
-    ColorPicker
+    ColorPicker,
+    ThemeComponentPreview
   },
   props: {
     themeType: {
@@ -240,9 +221,5 @@ export default defineComponent({
 .range-input-group { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: calc(var(--ui-space) * 3); align-items: center; }
 .radius-input { width: 100%; min-width: 0; accent-color: var(--ui-accent); }
 .range-value { min-width: 3rem; font-variant-numeric: tabular-nums; text-align: right; color: var(--ui-text-secondary); }
-.preview-card { padding: calc(var(--ui-space) * 4); border-radius: var(--ui-radius-md); border: 1px solid var(--ui-border); background: var(--ui-surface); }
-.preview-card h5 { margin: 0 0 calc(var(--ui-space) * 2); font-size: 1rem; }
-.preview-text { margin-bottom: calc(var(--ui-space) * 4); color: var(--ui-text-secondary); }
-.preview-buttons { display: flex; flex-wrap: wrap; gap: calc(var(--ui-space) * 2); }
 form > .ui-button { justify-self: start; }
 </style>

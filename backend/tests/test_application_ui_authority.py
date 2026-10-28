@@ -12,6 +12,7 @@ import socketserver
 import sys
 import tempfile
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import time
 
 import pytest
@@ -59,15 +60,41 @@ posix = pytest.mark.skipif(os.name != 'posix', reason='Real Linux protected keys
 
 
 @pytest.fixture
-def ui_app(managed_installed, monkeypatch):
+def ui_app(managed_installed, monkeypatch, request):
     s = managed_installed
     manifest = s.validated.manifest.model_dump(mode='json')
     manifest.update(runtimes=['core', 'ui'], entrypoints={'core': 'application-extension.json', 'ui': 'compiled-ui.json'})
     definition = s.validated.application_extension.model_dump(mode='json')
     original = application_definition()
     definition.update(routes=original['routes'], permissions=original['permissions'])
+    if getattr(request, 'param', None) == 'files':
+        from three_mm_application_sdk.tests.test_media import declaration
+        definition['service']['sdk_version'] = '1.3'
+        definition['operations'].append({'operation_id':'kiosk_probe','kind':'query','audiences':['kiosk'],'idempotency':'forbidden'})
+        definition['storage']['private_files'] = declaration().model_dump(mode='json')
+        for name in ('read', 'write', 'publish', 'transform'):
+            definition['permissions'].append({'permission_id': 'files_' + name, 'label': {'en': name}, 'description': {'en': name + ' files'}})
+        definition['routes'][1]['private_files'] = {'contract_version': 1, **{name + '_permission': 'files_' + name for name in ('read', 'write', 'publish', 'transform')}}
+    if getattr(request, 'param', None) in ('administration', 'administration_actions', 'administration_resources'):
+        definition['routes'][1].update(audience='administrator', required_permissions=[],
+            administration_reads=['devices.list', 'devices.detail'])
+    if getattr(request, 'param', None) == 'administration_resources':
+        definition['routes'][1]['administration_reads'] = ['resources.inspect']
+    if getattr(request, 'param', None) == 'administration_actions':
+        manifest['permissions'] = ['data.read', 'data.write', 'process.spawn']
+        definition['command_bindings'] = []
+        definition['connectors'] = []
+        definition['routes'][1].update(administration_reads=['devices.list', 'devices.detail', 'modules.list', 'capabilities.list', 'capabilities.state', 'commands.get'],
+            administration_actions=['modules.install', 'modules.disable', 'capabilities.invoke'])
     definition['operations'].append({'operation_id': 'pulse_ui', 'kind': 'command',
         'audiences': ['operator'], 'required_permission': 'records_manage', 'idempotency': 'required'})
+    if getattr(request, 'param', None) == 'kiosk':
+        definition['operations'].append({**original['operations'][1], 'emitted_events': []})
+    if getattr(request, 'param', None) == 'delegations':
+        definition['service']['sdk_version'] = '1.3'
+        definition['routes'][1]['delegated_operations'] = ['pulse_ui']
+        definition['operations'][-1]['timeout_seconds'] = 1
+        definition['operations'][-1]['input_schema'] = {'type':'object','properties':{'value':{'type':'integer'}},'additionalProperties':False}
     blob = application_package(definition=definition, manifest_value=manifest)
     s.validated = validate_module_package(blob)
     s.archive = s.root / 'modules' / (s.validated.sha256 + '.zip')
@@ -97,20 +124,79 @@ def native(s, **overrides):
         **{'accepts_same_origin_ui_risk': True, 'built_ui_sha256': s.build.built_ui_sha256, **overrides})
 
 
-def grant(s, n):
+def grant(s, n, scopes=None):
     plan = s.manager.create_review(1, actor_token=s.token, request_id=identity(),
-        native_review_id=n['native_review_id'], scopes=['command:pulse', 'connector:business_api'])
+        native_review_id=n['native_review_id'], scopes=['command:pulse', 'connector:business_api'] if scopes is None else scopes)
     return decide(s, decide(s, plan, 'approve'), 'apply')
 
 
-def adopt(s):
+def adopt(s, scopes=None):
     n = native(s)
-    grant(s, n)
+    grant(s, n, scopes)
     with s.engine.begin() as db:
         db.execute(update(Installation).values(enabled=True, status='active', authority_epoch=identity()))
-    grant(s, n)
+    grant(s, n, scopes)
     assert s.manager.inspect(1)['grant_effective']
     return n
+
+
+@posix
+@pytest.mark.parametrize('mode', ['verification', 'snapshot'])
+def test_concurrent_ui_code_reads_share_the_key_lease_and_keep_revocation(ui_app, monkeypatch, mode):
+    s = ui_app; reviewed = adopt(s)
+    original = s.manager._require_ui_trust_in_snapshot
+    overlap = threading.Barrier(2)
+    def verify_together(*args, **kwargs):
+        original(*args, **kwargs)
+        # Both readers must enter while the first still holds its real flock.
+        # An exclusive read lock fails here even on a fast test machine.
+        overlap.wait(timeout=2)
+    monkeypatch.setattr(s.manager, '_require_ui_trust_in_snapshot', verify_together)
+    def read():
+        if mode == 'verification':
+            s.manager.require_ui_trust(1, s.build.built_ui_sha256)
+        else:
+            with s.manager.ui_trust_snapshot(1, s.build.built_ui_sha256) as db:
+                assert compiled_ui.application_ui_artifact(db, db.get(Installation, 1), s.validated,
+                    expected_build=s.build.built_ui_sha256).built_ui_sha256 == s.build.built_ui_sha256
+        return True
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        futures = [workers.submit(read) for _ in range(2)]
+        assert [future.result(timeout=5) for future in futures] == [True, True]
+    monkeypatch.setattr(s.manager, '_require_ui_trust_in_snapshot', original)
+    s.manager.revoke_native_review(1, actor_token=s.token, request_id=identity(),
+        native_review_id=reviewed['native_review_id'], expected_revision=reviewed['native_revision'])
+    with pytest.raises(authority.AuthorityManagementError): read()
+
+
+@posix
+@pytest.mark.parametrize('change', ['native_revoked', 'incarnation', 'recovery', 'package', 'tampered_grant', 'tampered_native'])
+def test_reused_code_never_reuses_native_authorization(ui_app, change):
+    from backend.services.application_code_scope import code_verification_scope
+    from backend.db.authority import CoreAuthorityGuard
+    s = ui_app; reviewed = adopt(s)
+    with code_verification_scope():
+        s.manager.require_ui_trust(1, s.build.built_ui_sha256)
+        if change == 'native_revoked':
+            s.manager.revoke_native_review(1, actor_token=s.token, request_id=identity(),
+                native_review_id=reviewed['native_review_id'], expected_revision=reviewed['native_revision'])
+        else:
+            with s.engine.begin() as db:
+                if change == 'incarnation': db.execute(update(Installation).values(authority_incarnation=identity()))
+                elif change == 'recovery': db.execute(update(CoreAuthorityGuard).values(generation=identity()))
+                elif change == 'tampered_grant': db.execute(update(ApplicationAuthorityGrant).values(seal='f' * 64))
+                elif change == 'tampered_native': db.execute(update(authority.Native).values(seal='f' * 64))
+                else: db.execute(update(ModulePackage).values(sha256='f' * 64))
+        with pytest.raises((authority.AuthorityManagementError, authority.AuthorityReviewKeyError)):
+            s.manager.require_ui_trust(1, s.build.built_ui_sha256)
+
+
+@posix
+def test_ui_code_trust_does_not_resolve_service_resource_policy(ui_app, monkeypatch):
+    s = ui_app; adopt(s)
+    monkeypatch.setattr(s.manager, '_subject', lambda *args, **kwargs: pytest.fail('UI resolved service resources'))
+    s.manager.require_ui_trust(1, s.build.built_ui_sha256)
+    with s.manager.ui_trust_snapshot(1, s.build.built_ui_sha256): pass
 
 
 @posix
@@ -258,7 +344,20 @@ def test_human_ui_and_service_resource_grants_are_independent_over_actual_ipc(ui
                 assert '/build/' + s.build.built_ui_sha256 + '/' in asset_url
                 assert client.get(asset_url).status_code == 200
                 assert client.get(info, headers=auth).status_code == 200
-                result = invoke(client, 'ui-test-0001')
+                # One complete request crosses repeated admission/completion
+                # threads, but reuses its exact verified build, never its grants.
+                loads = []
+                original_load = compiled_ui._load_artifact
+                def counted_load(*args, **kwargs):
+                    from backend.services.application_code_scope import _current
+                    loads.append(_current.get() is not None)
+                    return original_load(*args, **kwargs)
+                with monkeypatch.context() as local:
+                    local.setattr(compiled_ui, '_load_artifact', counted_load)
+                    result = invoke(client, 'ui-test-0001')
+                # The service's independent SDK effect must perform its own
+                # verification; it cannot borrow the browser request's scope.
+                assert sorted(loads) == [False, True]
                 assert result.status_code == 200, (result.text, errors)
                 assert invoke(client, 'ui-stale-001', {**binding, 'built_ui_sha256': 'f' * 64}).status_code == 409
                 assert len(calls) == 1

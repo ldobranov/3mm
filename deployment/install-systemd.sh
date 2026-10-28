@@ -86,7 +86,13 @@ network_backend=${THREE_MM_NETWORK_BACKEND:-}
 if [[ -z $network_backend && -f $environment_file ]]; then
   network_backend=$(awk -F= '$1 == "THREE_MM_NETWORK_BACKEND" {value=$2} END {print value}' "$environment_file")
 fi
-network_backend=${network_backend:-host}
+if [[ -z $network_backend ]]; then
+  if [[ -f $environment_file || -L $current_link || -d $state_root/provisioning ]]; then
+    network_backend=host
+  else
+    network_backend=network-manager
+  fi
+fi
 if [[ $network_backend != host && $network_backend != network-manager ]]; then
   echo "Network backend must be host or network-manager." >&2
   exit 1
@@ -954,8 +960,8 @@ else
   install -o root -g 3mm -m 0640 "$environment_tmp" "$environment_file"
   rm -f -- "$environment_tmp"
   install -d -o 3mm -g 3mm -m 0750 "$state_root/provisioning"
-  install -d -o root -g root -m 0755 /etc/NetworkManager/dnsmasq-shared.d
 fi
+install -d -o root -g root -m 0755 /etc/NetworkManager/dnsmasq-shared.d
 
 log "Preparing the independent Agent environment"
 # Only Agent configuration enters its own environment; never Core DB/signing keys.

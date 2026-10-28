@@ -117,7 +117,7 @@ def _archive(metadata, files):
     return output.getvalue()
 
 
-def build_component(source):
+def build_component(source, *, image_provider=False):
     source = Path(source).resolve(); target = target_identity()
     validate_host_contract((source / "deployment/application-host-contract.json").read_bytes())
     code = {}
@@ -128,7 +128,10 @@ def build_component(source):
         code[name] = path.read_bytes().replace(b"\r\n", b"\n")
     code['__main__.py'] = ENTRY
     vendor = {}; versions = {}
-    for line in (source / "deployment/application-host-requirements.txt").read_text().splitlines():
+    locks = (source / 'deployment/application-host-requirements.txt').read_text().splitlines()
+    if image_provider:
+        locks += (source / 'deployment/application-media-requirements.txt').read_text().splitlines()
+    for line in locks:
         name, version = line.split('=='); distribution = importlib.metadata.distribution(name)
         if distribution.version != version:
             raise ValueError("Host builder environment differs from its dependency lock: " + name)
@@ -290,6 +293,39 @@ def bind_instance(instance, *, root=ROOT):
         store.link('current',default);return default
 
 
+class _DefaultPointers:
+    """A default artifact has no running service; existing instances stay pinned."""
+    def stop(self): pass
+    def start(self): raise ValueError('A default host pointer cannot start a service')
+
+
+def publish_default(blob, sha256, *, root=ROOT, state=STATE):
+    """Explicit, journaled publication for future instances only.
+
+    Caller holds the shared release-mutation lock. Staging verifies the native
+    dependency closure as the application principal before any pointer changes.
+    """
+    store=HostStore(Path(root)/'default',Path(state)/'default',Path(root)/'releases')
+    with store.locked():
+        if store.pending() is not None:
+            raise ValueError('Resolve the pending default-host publication before retrying')
+        candidate=store.stage(blob,sha256)
+        previous,older=store.target('current'),store.target('previous')
+        if candidate==previous:
+            return {'build_id':candidate,'previous':older,'status':'unchanged'}
+        transaction={'schema_version':1,'phase':'switching','previous':previous,
+            'previous_previous':older,'candidate':candidate,'was_active':False}
+        _write(store.journal,_json(transaction))
+        try:
+            store.link('current',candidate)
+            transaction['phase']='committed';_write(store.journal,_json(transaction))
+            store.link('previous',previous);store.clear()
+        except Exception:
+            store.recover(_DefaultPointers(),lambda _build: {})
+            raise
+        return {'build_id':candidate,'previous':previous,'status':'published_for_new_instances'}
+
+
 class ApplicationControl:
     def __init__(self,instance): self.unit='3mm-application-extension@'+instance_id(instance)+'.service'
     def active(self):
@@ -361,15 +397,29 @@ def health(instance, build):
 def main():
     parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='operation',required=True)
     build=sub.add_parser('build');build.add_argument('--source',type=Path,required=True);build.add_argument('--output',type=Path,required=True)
+    build.add_argument('--image-provider', action='store_true', help='Bundle the separately locked optional image worker dependency')
     bootstrap=sub.add_parser('bootstrap');bootstrap.add_argument('--source',type=Path,required=True)
+    publish=sub.add_parser('publish-default');publish.add_argument('--artifact',type=Path,required=True);publish.add_argument('--sha256',required=True)
+    sub.add_parser('recover-default')
     for name in ('update','rollback','recover','probe'):
         command=sub.add_parser(name);command.add_argument('--instance',required=True)
         if name=='update':command.add_argument('--artifact',type=Path,required=True);command.add_argument('--sha256',required=True)
     args=parser.parse_args()
     if args.operation=='build':
-        blob,metadata=build_component(args.source);args.output.write_bytes(blob)
+        blob,metadata=build_component(args.source, image_provider=args.image_provider);args.output.write_bytes(blob)
         print(json.dumps({'build_id':metadata['build_id'],'sha256':_digest(blob),'bytes':len(blob),'target':metadata['binding']['target']}));return
     if os.geteuid()!=0: raise ValueError("Host component administration requires the local administrator")
+    if args.operation in {'publish-default','recover-default'}:
+        from deployment.component_store import release_mutation_lock
+        with release_mutation_lock():
+            if args.operation=='publish-default':
+                result=publish_default(args.artifact.read_bytes(),args.sha256)
+            else:
+                store=HostStore(ROOT/'default',STATE/'default',ROOT/'releases')
+                with store.locked():
+                    store.recover(_DefaultPointers(),lambda _build: {})
+                result={'status':'default_publication_recovered'}
+        print(json.dumps(result));return
     if args.operation=='bootstrap':
         prepare_instances(ROOT)
         validate_host_contract((args.source/'deployment/application-host-contract.json').read_bytes())

@@ -120,6 +120,61 @@ def test_empty_selection_is_saved_code_consent_and_does_not_default_back_to_all(
     assert fresh["access_saved"] is True and fresh["selected_scopes"]==[]
 
 
+def test_web_lifecycle_recovery_requires_fresh_consent_without_losing_choices(state, monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from backend.routes import application_extensions as lifecycle_routes
+    from backend.services.application_package_staging import stage_application_package
+    s = state
+    # Current packages have sealed inert provenance before their first start.
+    # The older adoption fixture must pass through that real preparation path.
+    with Session(s.engine) as db, db.begin():
+        db.execute(update(Installation).where(Installation.id == 1).values(status='disabled', enabled=False))
+    stage_application_package(s.engine, s.validated.sha256, lifecycle_routes.StageApplicationPackageRequest(
+        request_id=identity(), expected_artifact_sha256=s.validated.sha256,
+        expected_revision=None, configuration={}), s.token)
+    allow(s, preview(s), scopes=[])
+    previous = read(s, 'grant', Grant, 1)
+    with Session(s.engine) as db, db.begin():
+        db.execute(update(Installation).where(Installation.id == 1).values(status='recovery_required', enabled=False))
+    app = FastAPI(); app.include_router(lifecycle_routes.router)
+    def database():
+        with Session(s.engine) as db: yield db
+    app.dependency_overrides[get_db] = database
+    monkeypatch.setattr(lifecycle_routes, 'get_settings', lambda: SimpleNamespace(
+        applications=SimpleNamespace(helper_socket=tmp_path/'unused.sock')))
+    calls = []
+    def recover(_self, instance_id, actor_id, context):
+        calls.append(instance_id)
+        return dict(status='disabled', instance_id=instance_id, lifecycle=context, quiescent=True)
+    monkeypatch.setattr(lifecycle_routes.UpdateHelperClient, 'recover_application_extension', recover)
+    with TestClient(app) as client:
+        response = client.post('/api/v1/application-extensions/'+s.validated.manifest.module_id+'/lifecycle/recover',
+            headers={'Authorization': 'Bearer '+s.token}, json={'confirmed_external_outcome_reviewed': True})
+    assert response.status_code == 200, response.text
+    assert response.json()['active_version'] is None
+    reviewed = preview(s)
+    assert reviewed['access_saved'] is False
+    assert reviewed['selected_scopes'] == []  # No default restoration of old/all rights.
+    assert reviewed['installation_status'] == 'disabled' and not reviewed['installation_enabled']
+    assert read(s, 'grant', Grant, 1) == previous  # Preview did not renew anything.
+    assert not s.manager.inspect(1)['grant_effective']
+    confirmed = allow(s, reviewed, scopes=[])
+    assert confirmed['saved'] and not confirmed['effective']
+    assert preview(s)['access_saved'] is True
+    assert len(calls) == 1  # No activation, code execution or operation retry.
+
+
+def test_ordinary_disabled_version_keeps_saved_empty_selection(state):
+    s = state
+    allow(s, preview(s), scopes=[])
+    with Session(s.engine) as db, db.begin():
+        db.execute(update(Installation).where(Installation.id == 1).values(
+            status='disabled', enabled=False, active_version=s.validated.manifest.version, authority_epoch=identity()))
+    reviewed = preview(s)
+    assert reviewed['access_saved'] and reviewed['selected_scopes'] == []
+    assert not reviewed['installation_enabled']
+
+
 @pytest.mark.parametrize("changed",["fingerprint","revision","expiry","reboot","guard","configuration","actor","human_grants"])
 def test_changed_preview_or_current_authority_denies_without_partial_grants(state,monkeypatch,changed):
     s=state

@@ -9,7 +9,6 @@ from pydantic import BaseModel
 import logging
 from pydantic import ValidationError
 from typing_extensions import Annotated
-from backend.db.page import Page
 
 def create_crud_routes(model: Any, model_name: str, input_model: Type[BaseModel], update_model: Type[BaseModel] = None, output_model: Type[BaseModel] = None):
     router = APIRouter()
@@ -88,9 +87,3 @@ def create_crud_routes(model: Any, model_name: str, input_model: Type[BaseModel]
         return {"message": f"{model_name} deleted successfully"}
 
     return router
-
-class PageOutputModel(BaseModel):
-    title: str
-    slug: str
-
-page_router = create_crud_routes(Page, "pages", PageOutputModel)

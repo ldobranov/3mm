@@ -15,8 +15,6 @@ class Settings(Base):
     content_type = Column(String(50), default='setting')
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True)  # User-specific settings
 
-    # Translation relationships
-    translations = relationship("SettingTranslation", back_populates="setting", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("idx_settings_key_lang", "key", "language_code"),

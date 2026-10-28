@@ -29,6 +29,8 @@ def test_host_authenticates_before_delivering_machine_context(
         json.dumps(
             {
                 "instance_id": instance,
+                "module_id": "org.example.peer",
+                "sha256": "d" * 64,
                 "storage": {
                     "engine": "sqlite",
                     "schema_revision": "0001",
@@ -152,4 +154,5 @@ def test_host_authenticates_before_delivering_machine_context(
     assert len(delivered) == 1 and delivered[0][1].user_id is None
     assert delivered[0][1].machine.installation_id == machine["installation_id"]
     assert delivered[0][1].machine.scopes == tuple(machine["scopes"])
+    assert delivered[0][1].executor.instance_id == instance
     assert delivered[0][0] == request["payload"]

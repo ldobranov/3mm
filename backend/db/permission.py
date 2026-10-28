@@ -18,7 +18,7 @@ class Permission(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    entity_type = Column(String(50), nullable=False)  # dashboard, page, widget
+    entity_type = Column(String(50), nullable=False)  # Legacy resource discriminator
     entity_id = Column(Integer, nullable=False)
     permission_level = Column(Enum(PermissionLevel), default=PermissionLevel.VIEW)
     granted_by = Column(Integer, ForeignKey("users.id"))

@@ -18,11 +18,14 @@ MAX_CLOCK_SKEW_SECONDS = 30
 MAX_RECENT_REQUESTS = 4096
 DISCOVERY_ACTION = "platform.discover"
 SCOPED_ACTIONS = frozenset({
-    DISCOVERY_ACTION, "command.submit", "command.status", "command.lookup",
+    DISCOVERY_ACTION, "command.discover", "command.submit", "command.status", "command.lookup",
+    "task.submit", "task.lookup", "task.cancel", "task.start", "task.progress",
+    "task.schedule.create", "task.schedule.lookup", "task.schedule.cancel",
     "connector.request", "event.publish", "files.execute", "files.status",
     "relational.admit", "relational.complete", "relational.status",
     "relational.boot.startup", "checkpoint.get", "checkpoint.put",
     "installation.identity.get", "installation.status.get", "installation.peers.read",
+    "delegation.execute", "delegation.lookup",
 })
 COMPATIBILITY_ACTIONS = SCOPED_ACTIONS | frozenset({
     "installation.identity.prove", "installation.peers.enroll",

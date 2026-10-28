@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from three_mm_protocol import IdentifierScanPayloadV1
+from three_mm_protocol.device_capabilities import CapabilityAdvertisementV1
+from three_mm_protocol.capability_availability import CapabilityHealthV1
+from agent.capability_providers import AdapterProvider
 
 
 @dataclass(slots=True)
@@ -16,6 +19,14 @@ class MockIdentifierAdapter:
 
     state_path: Path
     reader_id: str = "reader.mock.1"
+
+    def provider_declaration(self):
+        return AdapterProvider(provider_id='identifier.mock', provider_version='1.0.0',
+            capabilities=(CapabilityAdvertisementV1(capability_id='identifier.scan.v1',
+                metadata={'reader_id': self.reader_id, 'adapter_kind': 'mock'}),))
+
+    def provider_health(self):
+        return (CapabilityHealthV1(capability_id='identifier.scan.v1', healthy=True),)
 
     def _sequence(self) -> int:
         if not self.state_path.exists():

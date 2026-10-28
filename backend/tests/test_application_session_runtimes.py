@@ -84,6 +84,54 @@ def test_exact_source_selection_has_no_order_or_local_fallback():
         engine.dispose()
 
 
+@pytest.mark.parametrize('available', [True, False])
+def test_resource_view_observes_session_directory_without_constructing_executor(session_app, available):
+    from backend.tests.test_application_session_authority import activate, SCOPE
+    from backend.services.application_resource_discovery import discover_resources
+    from backend.db.module import ApplicationExtensionInstallation
+    from sqlalchemy.orm import Session
+    s = session_app
+    activate(s)
+    source = Source(available=available)
+    configure_session_runtimes(s.engine, (source,))
+    with Session(s.engine) as db: instance = db.get(ApplicationExtensionInstallation, 1).instance_id
+    row = discover_resources(s.engine, 1, instance, [SCOPE])['resources'][0]
+    assert row['access'] == 'granted' and row['readiness'] == ('ready' if available else 'unavailable')
+    assert row['provider']['provider_id'] == 'org.example.provider'
+    assert source.created == 0
+
+
+def test_optional_session_absence_and_later_appearance_do_not_auto_grant(session_app):
+    from backend.tests.test_application_checkpoint_authority import store_checkpoint_package
+    from backend.tests.test_application_consent import preview, allow
+    from backend.tests.test_application_session_authority import SCOPE
+    from backend.db.device import DeviceCapabilityProvider
+    from backend.db.module import ApplicationExtensionInstallation
+    from backend.services.application_authority_management import AuthorityManagementError
+    from sqlalchemy import update
+    from sqlalchemy.orm import Session
+    s = session_app
+    definition = s.validated.application_extension.model_dump(mode='json')
+    definition['optional_resources'] = [SCOPE]
+    store_checkpoint_package(s, definition)
+    with s.engine.begin() as db: db.execute(update(DeviceCapabilityProvider).values(enabled=False))
+    viewed = preview(s)
+    assert SCOPE not in viewed['scopes']
+    allow(s, viewed)
+    with s.engine.begin() as db: db.execute(update(DeviceCapabilityProvider).values(enabled=True))
+    fresh = preview(s)
+    assert SCOPE in fresh['scopes'] and SCOPE not in fresh['selected_scopes']
+    prepared = s.manager._prepare(1)
+    with s.manager.keys.locked() as key, Session(s.engine) as db:
+        assert s.manager._require_current_grant(db,key,1,prepared)
+        with pytest.raises(AuthorityManagementError): s.manager._require_grant(db,key,1,prepared,SCOPE)
+    allow(s, fresh, scopes=[SCOPE])
+    with s.manager.keys.locked() as key, Session(s.engine) as db:
+        assert s.manager._require_grant(db,key,1,prepared,SCOPE)
+    configure_session_runtimes(s.engine,(Source(available=False),))
+    assert s.manager.inspect(1)['grant_effective'] is True
+
+
 @pytest.mark.parametrize("field,value", [
     ("device_id", "dev_" + "f" * 32), ("provider_id", "org.example.other"),
     ("provider_version", "2.0.0"), ("control_revision", "f" * 64),

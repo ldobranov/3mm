@@ -357,8 +357,6 @@ def delete_user(
         # Delete related records first to avoid foreign key constraints
         # Import necessary models
         from backend.db.permission import Permission
-        from backend.db.page import Page
-        from backend.db.display import Display
         from backend.db.audit_log import AuditLog
         from backend.db.session import Session as UserSession
         from backend.db.module import ApplicationKioskEnrollment, ApplicationPermissionGrant
@@ -383,17 +381,6 @@ def delete_user(
         
         # Delete user's audit logs
         db.query(AuditLog).filter(AuditLog.user_id == user_id).delete(synchronize_session=False)
-        
-        # Delete user's pages
-        db.query(Page).filter(Page.owner_id == user_id).delete(synchronize_session=False)
-        
-        # Delete user's displays/dashboards
-        from sqlalchemy import select
-        from backend.db.association_tables import role_dashboard_grants
-        db.execute(role_dashboard_grants.delete().where(
-            role_dashboard_grants.c.display_id.in_(select(Display.id).where(Display.user_id == user_id))
-        ))
-        db.query(Display).filter(Display.user_id == user_id).delete(synchronize_session=False)
         
         # Now delete the user
         db.delete(user)

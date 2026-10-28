@@ -5,10 +5,10 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine,inspect,text
 from backend.db.module import ApplicationRetainedData
-from backend.tests.test_migration_history import _alembic,_head_revision
+from backend.tests.test_migration_history import _alembic
 
 PREVIOUS='2c078e3546f7'
-REVISION='3e189f465708'
+RETAINED='3e189f465708'
 
 
 def previous(tmp_path):
@@ -38,10 +38,13 @@ def test_history_backfill_is_generic_latest_outcome_and_preserves_other_rows(tmp
         db.execute(text("INSERT INTO module_packages(id,module_id,version,manifest,sha256,size_bytes,file_path,registrations) VALUES(1,'org.example.installed','1.0.0','{}',:sha,0,'old.zip','[]')"),{'sha':'b'*64})
         db.execute(text("INSERT INTO application_extension_installations(module_id,module_package_id,instance_id,configuration,authority_incarnation,authority_epoch,authority_mode,status,enabled,socket_path) VALUES('org.example.installed',1,:instance,'{}',:inc,:epoch,'compatibility','active',1,'pending')"),{'instance':'c'*24,'inc':'d'*32,'epoch':'e'*32})
         history=db.execute(text('SELECT id,action,entity_name,changes FROM audit_logs ORDER BY id')).all()
-    engine.dispose();_alembic(url,'upgrade','head');_alembic(url,'check')
-    assert _head_revision()==REVISION
+    # Exercise this migration's backfill/downgrade guard directly. Later stable
+    # user subjects deliberately forbid populated downgrades of their own.
+    # The clean/precreated tests below still check the complete head schema.
+    engine.dispose();_alembic(url,'upgrade',RETAINED)
     engine=create_engine(url)
     with engine.connect() as db:
+        assert db.scalar(text('SELECT version_num FROM alembic_version'))==RETAINED
         rows=db.execute(text('SELECT module_id,instance_id,name FROM application_retained_data ORDER BY module_id')).all()
         assert rows==[(module,hashlib.sha256(module.encode()).hexdigest()[:24],module) for module in ['org.example.again','org.example.keep']]
         assert db.execute(text('SELECT id,action,entity_name,changes FROM audit_logs ORDER BY id')).all()==history

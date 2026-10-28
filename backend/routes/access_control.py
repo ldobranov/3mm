@@ -8,10 +8,9 @@ from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from backend.db.user import User
 from backend.db.role import Role, Group
-from backend.db.display import Display
 from backend.db.audit_log import AuditLog
 from backend.db.association_tables import (
-    user_roles, user_groups, group_roles, role_application_grants, role_dashboard_grants,
+    user_roles, user_groups, group_roles, role_application_grants,
 )
 from backend.routes.application_extensions import _installation, _active_package, _definition
 from backend.services.access_control import application_sources
@@ -28,11 +27,6 @@ class Binding(Enabled):
     kind: Literal['user-role', 'user-group', 'group-role']
     subject_id: int = Field(gt=0)
     target_id: int = Field(gt=0)
-
-
-class DashboardGrant(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    level: Literal['none', 'view', 'edit', 'delete', 'admin']
 
 
 def require_row(db, model, identifier):
@@ -53,10 +47,9 @@ def catalog(response: Response, admin: User = Depends(require_admin), db: Sessio
     return {
         'roles': [{'id': r.id, 'name': r.name, 'is_system_role': bool(r.is_system_role)} for r in db.scalars(select(Role).order_by(Role.name))],
         'groups': [{'id': g.id, 'name': g.name} for g in db.scalars(select(Group).order_by(Group.name))],
-        'dashboards': [{'id': d.id, 'name': d.title} for d in db.scalars(select(Display).order_by(Display.id))],
         **{name: [dict(row) for row in db.execute(select(table)).mappings()] for name, table in (
             ('user_roles', user_roles), ('user_groups', user_groups), ('group_roles', group_roles),
-            ('application_grants', role_application_grants), ('dashboard_grants', role_dashboard_grants))},
+            ('application_grants', role_application_grants))},
     }
 
 
@@ -117,16 +110,3 @@ def effective_application(user_id: int, module_id: str, response: Response,
     response.headers['Cache-Control'] = 'no-store'
     return {'sources': application_sources(db, installation.id, user_id),
             'system_admin': user.role == 'admin' and not user.is_blocked, 'blocked': user.is_blocked}
-
-
-@router.put('/roles/{role_id}/dashboards/{display_id}')
-def set_dashboard_grant(role_id: int, display_id: int, payload: DashboardGrant,
-                        admin: User = Depends(require_admin), db: Session = Depends(get_db)):
-    require_row(db, Role, role_id)
-    require_row(db, Display, display_id)
-    table = role_dashboard_grants
-    db.execute(delete(table).where(table.c.role_id == role_id, table.c.display_id == display_id))
-    if payload.level != 'none':
-        db.execute(table.insert().values(role_id=role_id, display_id=display_id, permission_level=payload.level))
-    audit(db, admin, 'ACCESS_DASHBOARD_GRANT', {'role_id': role_id, 'display_id': display_id, 'level': payload.level})
-    return {'saved': True}

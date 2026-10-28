@@ -25,6 +25,7 @@ from backend.db.module import (
     ModulePackage,
 )
 from backend.db.user import User
+from backend.db.application_task import ApplicationTaskRun, ApplicationTaskSchedule
 from backend.services.application_connectors import (
     ApplicationConnectorError,
     bind_application_connector,
@@ -314,6 +315,12 @@ def _operational_status_snapshot(db, module_id, probe, response):
     observed = finish_status_probe(probe, response, installation, package, get_settings().applications)
     runtime_status = observed or {"revision": None, "outbox": {}}
     jobs = list(db.scalars(select(ApplicationJobState).where(ApplicationJobState.application_installation_id == installation.id).order_by(ApplicationJobState.job_id)))
+    task_counts = dict(db.execute(select(ApplicationTaskRun.state, func.count(ApplicationTaskRun.task_run_id))
+        .where(ApplicationTaskRun.installation_id == installation.id).group_by(ApplicationTaskRun.state)).all())
+    from backend.services.application_task_schedules import _snapshot as schedule_snapshot
+    schedules = [schedule_snapshot(db, item) for item in db.scalars(select(ApplicationTaskSchedule)
+        .where(ApplicationTaskSchedule.installation_id == installation.id)
+        .order_by(ApplicationTaskSchedule.schedule_id).limit(128))]
     connectors = list(db.scalars(select(ApplicationConnectorBinding).where(ApplicationConnectorBinding.application_installation_id == installation.id).order_by(ApplicationConnectorBinding.connector_id)))
     event_counts = {status: count for status, count in db.execute(select(ApplicationEventDelivery.status, func.count(ApplicationEventDelivery.id)).where(ApplicationEventDelivery.application_installation_id == installation.id).group_by(ApplicationEventDelivery.status))}
     from backend.services.application_connector_transport import expire_connector_attempts
@@ -330,6 +337,7 @@ def _operational_status_snapshot(db, module_id, probe, response):
         "storage": {"declared_revision": definition.storage.schema_revision, "runtime_revision": runtime_status.get("revision"), "backup_required": definition.storage.backup_required},
         "events": {"counts": event_counts, "cursors": [{"subscription_id": item.subscription_id, "last_event_id": item.last_event_id, "acknowledged_total": item.acknowledged_count, "dead_letter_total": item.dead_letter_count} for item in cursors]},
         "jobs_supported": False,
+        "tasks": {"supported": bool(definition.tasks), "journal_counts": task_counts, "schedules": schedules},
         "jobs": [{"job_id": item.job_id, "next_run_at": item.next_run_at, "lease_until": item.lease_until, "last_outcome": item.last_outcome, "last_completed_at": item.last_completed_at, "run_count": item.run_count,
                   "scheduled_at": item.last_scheduled_at, "started_at": item.last_started_at,
                   "duration_ms": item.last_duration_ms, "lateness_ms": item.last_lateness_ms,

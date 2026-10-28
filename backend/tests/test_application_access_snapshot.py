@@ -24,7 +24,8 @@ def test_snapshot_matches_grant_and_revoke_gateway_decisions(setup):
     assert result.status_code == 200
     assert result.headers["cache-control"] == "no-store"
     assert result.json() == {"module_id": package.module_id, "active_version": package.version,
-                             "user_id": user.id, "allowed_route_ids": [], "allowed_operation_ids": []}
+                             "user_id": user.id, "subject_id": user.subject_id, "platform_administrator": False, "permission_ids": [],
+                             "allowed_route_ids": [], "allowed_operation_ids": []}
     assert client.post(base + "/operator/operations/approve", headers=headers(token), json=request).status_code == 403
     assert client.post(base + "/permissions/grants", headers=headers(admin_token),
                        json={"user_id": user.id, "permission_id": "records_manage"}).status_code == 201
@@ -43,7 +44,8 @@ def test_admin_snapshot_excludes_kiosk_and_internal_operations(setup):
     client, _, _, admin, _, installation, package, token, _ = setup
     result = client.get(f"/api/v1/application-extensions/{package.module_id}/access", headers=headers(token))
     assert result.json()["allowed_operation_ids"] == ["approve"]
-    assert result.json()["allowed_route_ids"] == ["operations"]
+    assert result.json()["allowed_route_ids"] == []
+    assert result.json()["platform_administrator"] is True and result.json()["permission_ids"] == []
 
 
 @pytest.mark.parametrize("kind", ["application_kiosk", "device"])
@@ -71,6 +73,7 @@ def test_session_revocation_blocks_snapshot_and_gateway(setup, state):
     db.add(session)
     db.commit()
     token = create_access_token(str(user.id), {"sid": session.id})
+    session.token = token; db.commit()
     base = f"/api/v1/application-extensions/{package.module_id}"
     assert client.get(base + "/access", headers=headers(token)).status_code == 200
     if state == "revoked":

@@ -2,7 +2,8 @@
 
 from typing import Optional
 from fastapi import Header, HTTPException, Request, Depends
-from backend.utils.jwt_utils import decode_token
+from backend.utils.jwt_utils import decode_token, decode_token_for_refresh
+import re
 from backend.db.user import User
 from backend.db.session import UserSession
 from datetime import datetime, timezone
@@ -60,6 +61,14 @@ def validate_user_claims(claims: dict, db: Session) -> User:
                 expires = expires.replace(tzinfo=timezone.utc)
             if expires <= datetime.now(timezone.utc):
                 raise HTTPException(401, "Session expired")
+        nonce = claims.get("jti")
+        if not isinstance(nonce, str) or re.fullmatch(r"[0-9a-f]{32}", nonce) is None:
+            raise HTTPException(401, "A current tracked login is required")
+        current = decode_token_for_refresh(session.token)
+        if (current.get("jti") != nonce or current.get("sid") != sid
+                or str(current.get("sub") or current.get("user_id")) != str(user.id)
+                or current.get("token_type", "user") != "user"):
+            raise HTTPException(401, "User login changed")
     return user
 
 

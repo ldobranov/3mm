@@ -14,8 +14,7 @@ from three_mm_provisioning import (FileNetworkRecoveryMarker, FileProvisioningSt
     MemoryProvisioningStore, NetworkMode, ProvisioningSnapshot, ProvisioningState, ProvisioningStoreError)
 from three_mm_provisioning.mock_network import MockNetworkAdapter
 from three_mm_provisioning.network_helper_client import NetworkHelperClientAdapter
-from three_mm_provisioning.setup_access import FileSetupAccessStore
-from three_mm_provisioning.setup_journal import SetupJournal, atomic_json
+from three_mm_provisioning.setup_journal import SetupJournal
 from three_mm_provisioning.network_manager import WifiNetwork
 from three_mm_provisioning.wifi_scan_cache import write_wifi_scan_cache
 
@@ -45,8 +44,6 @@ def session(settings, *, network=None, store=None, snapshot=None, recovery=False
         marker.activate("manual")
     app = create_app(network, store, settings, marker, capability_provider=lambda: list(interfaces))
     with TestClient(app) as client:
-        token = FileSetupAccessStore(settings.data_dir).issue(app.state.setup_runtime.access_snapshot)
-        client.headers["Authorization"] = "Bearer " + token
         yield client, store, app.state.setup_runtime
 
 
@@ -63,19 +60,18 @@ def wifi_configuration(configuration):
             "network_name": "private-test-network", "passphrase": "not-a-real-secret"}
 
 
-def test_surface_and_denied_requests_have_no_side_effects(settings, configuration):
+def test_active_setup_reads_are_available_without_code_or_side_effects(settings):
     network = MockNetworkAdapter()
     with session(settings, network=network) as (client, store, runtime):
         assert {(method, route.path) for route in client.app.routes if isinstance(route, APIRoute)
                 for method in route.methods} == PUBLIC_SETUP_ENDPOINTS
         client.headers.clear()
         for path in ("prefill", "capabilities", "networks", "diagnostics"):
-            assert client.get("/api/v1/setup/" + path).status_code == 401
-        assert client.post("/api/v1/setup/configure", json=configuration).status_code == 401
-        assert client.post("/api/v1/setup/finish", json={}).status_code == 401
+            assert client.get("/api/v1/setup/" + path).status_code == 200
         page = client.get("/setup")
         assert page.status_code == 200
         assert 'result is unconfirmed' in page.text
+        assert 'access-code' not in page.text
         assert page.headers['cache-control'] == 'no-store'
         assert page.headers['referrer-policy'] == 'no-referrer'
         assert client.get('/ready').status_code == 200
@@ -90,22 +86,48 @@ def test_captive_portal_probes_redirect(settings, probe):
         assert response.status_code == 307 and response.headers['location'] == '/setup'
 
 
-@pytest.mark.parametrize('kind', ['wrong', 'expired', 'revoked', 'other_device'])
-def test_access_denial_and_isolation(settings, configuration, tmp_path, kind):
+@pytest.mark.parametrize('headers', [
+    {'Origin': 'http://other-device.test'},
+    {'Origin': 'null'},
+    {'Sec-Fetch-Site': 'cross-site'},
+])
+def test_cross_origin_mutations_are_denied(settings, configuration, headers):
     with session(settings) as (client, store, runtime):
-        if kind == 'wrong':
-            client.headers['Authorization'] = 'Bearer ' + 'x' * 43
-        elif kind == 'expired':
-            value = json.loads(runtime.access.path.read_text())
-            value['expires'] = 0
-            atomic_json(runtime.access.path, value)
-        elif kind == 'revoked':
-            runtime.access.revoke()
-        else:
-            client.headers['Authorization'] = 'Bearer ' + FileSetupAccessStore(tmp_path / 'other').issue(None)
-        assert client.post('/api/v1/setup/configure', json=configuration).status_code == 401
+        for path in ('configure', 'finish'):
+            assert client.post('/api/v1/setup/' + path, json=configuration, headers=headers).status_code == 403
         assert store.load() is None
         assert not runtime.journal.path.exists()
+
+
+def test_same_origin_setup_succeeds_without_code(settings, configuration):
+    with session(settings) as (client, _, __):
+        assert client.post('/api/v1/setup/configure', json=configuration,
+                           headers={'Origin': 'http://testserver'}).status_code == 200
+
+
+@pytest.mark.parametrize('content_type', ['text/plain', 'application/x-www-form-urlencoded'])
+def test_browser_simple_posts_cannot_change_setup(settings, configuration, content_type):
+    with session(settings) as (client, store, runtime):
+        response = client.post('/api/v1/setup/configure', content=json.dumps(configuration),
+                               headers={'Content-Type': content_type})
+        assert response.status_code == 415
+        assert store.load() is None and runtime.journal.load() is None
+
+
+@pytest.mark.parametrize('change', ['recovery_cancelled', 'snapshot_replaced'])
+def test_live_state_revokes_access_before_any_read_or_write(settings, configuration, change):
+    with session(settings, snapshot=snapshot(), recovery=True) as (client, store, runtime):
+        if change == 'recovery_cancelled':
+            runtime.marker.clear()
+        else:
+            store.save(replace(snapshot(), device_name='another-device'))
+        before = store.path.read_bytes()
+        for path in ('prefill', 'capabilities', 'networks', 'diagnostics'):
+            assert client.get('/api/v1/setup/' + path).status_code == 403
+        for path in ('configure', 'finish'):
+            assert client.post('/api/v1/setup/' + path, json=configuration).status_code == 403
+        assert store.path.read_bytes() == before
+        assert runtime.journal.load() is None
 
 
 @pytest.mark.parametrize('role', ['standalone', 'hub'])
@@ -122,7 +144,7 @@ def test_core_first_admin_and_no_wifi_dependency(settings, configuration, role, 
         assert store.load().network_mode.value == mode
         assert store.load().role.value == role
         assert not runtime.journal.path.exists()
-        assert client.get('/api/v1/setup/prefill').status_code == 401
+        assert client.get('/api/v1/setup/prefill').status_code == 403
         with sqlite3.connect(settings.core_database_path) as db:
             user = db.execute('SELECT username,email,hashed_password,role FROM users').fetchone()
         from backend.utils.auth import verify_password
@@ -172,20 +194,22 @@ def test_recovery_cannot_change_identity_or_administrator(settings, configuratio
         assert store.load() == previous and runtime.marker.is_active()
 
 
-def test_finish_recovery_preserves_journal_and_revokes_code(settings):
+def test_finish_recovery_preserves_journal_and_closes_access(settings):
     previous = snapshot()
     with session(settings, snapshot=previous, recovery=True) as (client, store, runtime):
         before = store.path.read_bytes()
         assert client.post('/api/v1/setup/finish', json={}).status_code == 200
         assert store.path.read_bytes() == before
         assert not runtime.marker.is_active()
-        assert client.post('/api/v1/setup/finish', json={}).status_code == 401
+        assert client.post('/api/v1/setup/finish', json={}).status_code == 403
+    with session(settings) as (client, _, __):
+        assert client.get('/api/v1/setup/capabilities').status_code == 403
 
 
 def test_existing_provisioned_device_requires_recovery_marker(settings, configuration):
     with session(settings, snapshot=snapshot()) as (client, store, runtime):
-        assert client.post('/api/v1/setup/configure', json=configuration).status_code == 409
-        assert client.post('/api/v1/setup/finish', json={}).status_code == 409
+        assert client.post('/api/v1/setup/configure', json=configuration).status_code == 403
+        assert client.post('/api/v1/setup/finish', json={}).status_code == 403
 
 
 def test_network_recovery_preserves_legacy_node_without_reassigning_a_hub(settings, configuration):
@@ -309,12 +333,11 @@ def test_restart_after_recovery_commit_never_repeats_pairing(settings):
         def activate_runtime(self,*,recovery): calls.append(recovery)
     app=create_app(Receipt(settings.data_dir/'unused.sock'),store,settings)
     with TestClient(app) as client:
-        client.headers['Authorization']='Bearer '+FileSetupAccessStore(settings.data_dir).issue(store.load_runtime_snapshot())
         assert client.post('/api/v1/setup/finish',json={}).status_code==200
     assert calls==[True]
 
 
-def test_oversized_authenticated_body_is_rejected_without_writes(settings):
+def test_oversized_body_is_rejected_without_writes(settings):
     with session(settings) as (client,store,runtime):
         response=client.post('/api/v1/setup/configure',content='x'*17000,
                              headers={'Content-Type':'application/json'})

@@ -71,12 +71,12 @@ def test_exact_schema_comparison_is_typed_bounded_and_set_order_independent(inst
     with Session(installed.engine) as db:
         source = sources._command(db, binding, installed.configuration)
     binding = binding.model_copy(update={"arguments_schema": schema})
-    package = SimpleNamespace(application_extension=SimpleNamespace(command_bindings=(binding,)))
+    package = SimpleNamespace(application_extension=SimpleNamespace(command_bindings=(binding,), optional_resources=()))
 
     def compose(provider_schema):
         resolved = SimpleNamespace(commands=(source.model_copy(
             update={"action_arguments_schema": provider_schema}),))
-        return subjects._commands(package, resolved)
+        return subjects._commands(package, resolved, [])
 
     before = copy.deepcopy(schema)
     reordered = copy.deepcopy(schema)

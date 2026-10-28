@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -24,6 +25,7 @@ from backend.services.access_control import application_sources
 class ApplicationPrincipal:
     kind: str
     user_id: int | None = None
+    subject_id: str | None = None
     is_admin: bool = False
     kiosk_module_id: str | None = None
     terminal_id: str | None = None
@@ -35,6 +37,17 @@ class ApplicationPrincipal:
 
 
 ANONYMOUS_PRINCIPAL = ApplicationPrincipal(kind="anonymous")
+
+
+def validate_application_login(claims, db):
+    """A login incarnation survives refresh but cannot be recreated by SID reuse."""
+    sid = claims.get("sid")
+    if type(sid) is not int or sid < 1:
+        raise HTTPException(401, "A current tracked user login is required")
+    user = validate_user_claims(claims, db)
+    if not isinstance(user.subject_id, str) or re.fullmatch(r"usr_[0-9a-f]{32}", user.subject_id) is None:
+        raise HTTPException(401, "User subject migration is required")
+    return user
 
 
 def resolve_application_principal(
@@ -50,7 +63,11 @@ def resolve_application_principal(
     if token_type == "application_kiosk":
         terminal_id = claims.get("terminal_id")
         module_id = claims.get("module_id")
-        if not isinstance(terminal_id, str) or not isinstance(module_id, str):
+        if (not isinstance(terminal_id, str) or re.fullmatch(r"[0-9a-f]{32}", terminal_id) is None
+                or not isinstance(module_id, str)
+                or claims.get('sub') != 'kiosk:'+terminal_id
+                or any(name in claims for name in ('sid','user_id','subject_id','token_version','role'))
+                or not isinstance(claims.get("incarnation"),str) or re.fullmatch(r"[0-9a-f]{32}",claims["incarnation"]) is None):
             raise HTTPException(401, "Kiosk token is invalid")
         terminal = db.scalar(
             select(ApplicationKioskTerminal)
@@ -62,6 +79,9 @@ def resolve_application_principal(
             .where(
                 ApplicationKioskTerminal.terminal_id == terminal_id,
                 ApplicationKioskTerminal.enabled.is_(True),
+                ApplicationKioskTerminal.revoked_at.is_(None),
+                ApplicationKioskTerminal.installation_incarnation == claims["incarnation"],
+                ApplicationExtensionInstallation.authority_incarnation == claims["incarnation"],
                 ApplicationExtensionInstallation.module_id == module_id,
                 ApplicationExtensionInstallation.enabled.is_(True),
                 ApplicationExtensionInstallation.status == "active",
@@ -76,15 +96,18 @@ def resolve_application_principal(
         )
     if token_type != "user":
         raise HTTPException(401, "Token type is not supported")
+    if type(claims.get("sid")) is not int or claims["sid"] < 1:
+        raise HTTPException(401, "A current tracked user login is required")
     subject = claims.get("sub") or claims.get("user_id")
     try:
         user_id = int(subject)
     except (TypeError, ValueError) as exc:
         raise HTTPException(401, "User token subject is invalid") from exc
-    user = validate_user_claims(claims, db)
+    user = validate_application_login(claims, db)
     return ApplicationPrincipal(
         kind="user",
         user_id=user.id,
+        subject_id=user.subject_id,
         is_admin=user.role == "admin",
     )
 
@@ -116,7 +139,7 @@ def can_access_application_route(
     if route.audience == "administrator":
         return principal.is_admin
     if route.audience == "operator":
-        return principal.is_admin or set(route.required_permissions) <= permission_ids
+        return set(route.required_permissions) <= permission_ids
     return False
 
 
@@ -142,5 +165,5 @@ def can_access_application_operation(
     if audience == "administrator":
         return principal.is_admin
     if audience == "operator":
-        return principal.is_admin or operation.required_permission in permission_ids
+        return operation.required_permission in permission_ids
     return False

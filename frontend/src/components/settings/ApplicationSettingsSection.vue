@@ -48,62 +48,6 @@
         </div>
       </div>
 
-      <div class="admin-info ai-settings-card">
-        <h3>{{ t('settings.aiProvider.title', 'AI Provider (Extension Builder)') }}</h3>
-
-        <div class="form-group">
-          <label class="form-label" for="ai-provider">{{ t('settings.aiProvider.provider', 'Provider') }}</label>
-          <select id="ai-provider" class="input ui-control" v-model="aiProvider">
-            <option value="">{{ t('settings.aiProvider.auto', 'Auto') }}</option>
-            <option value="openrouter">OpenRouter</option>
-            <option value="groq">Groq</option>
-          </select>
-          <small class="help-text">
-            {{ t('settings.aiProvider.providerHelp', 'Auto uses OpenRouter Free first and falls back to Groq Free.') }}
-          </small>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="groq-api-key">{{ t('settings.aiProvider.groqKey', 'Groq API Key') }}</label>
-          <input
-            id="groq-api-key" class="input ui-control"
-            type="password"
-            v-model="groqKeyInput"
-            :placeholder="t('settings.aiProvider.keyPlaceholder', 'Leave blank to keep current')"
-          />
-          <small class="help-text">
-            {{ t('settings.aiProvider.groqStatus', 'Configured:') }}
-            <strong>{{ aiStatus.has_groq_key ? t('common.yes', 'Yes') : t('common.no', 'No') }}</strong>
-          </small>
-          <button class="ui-button ui-button--secondary clear-key-button" @click="clearGroqKey">
-            {{ t('settings.aiProvider.clearGroq', 'Clear Groq key') }}
-          </button>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="openrouter-api-key">{{ t('settings.aiProvider.openrouterKey', 'OpenRouter API Key') }}</label>
-          <input
-            id="openrouter-api-key" class="input ui-control"
-            type="password"
-            v-model="openrouterKeyInput"
-            :placeholder="t('settings.aiProvider.keyPlaceholder', 'Leave blank to keep current')"
-          />
-          <small class="help-text">
-            {{ t('settings.aiProvider.openrouterStatus', 'Configured:') }}
-            <strong>{{ aiStatus.has_openrouter_key ? t('common.yes', 'Yes') : t('common.no', 'No') }}</strong>
-          </small>
-          <button class="ui-button ui-button--secondary clear-key-button" @click="clearOpenRouterKey">
-            {{ t('settings.aiProvider.clearOpenrouter', 'Clear OpenRouter key') }}
-          </button>
-        </div>
-
-        <div class="settings-actions">
-          <button class="ui-button ui-button--primary" @click="saveAiSettings">
-            {{ t('settings.aiProvider.save', 'Save AI settings') }}
-          </button>
-          <span v-if="aiSaveMessage" class="help-text" role="status">{{ aiSaveMessage }}</span>
-        </div>
-      </div>
     </template>
     <template v-else-if="isAuthenticated">
       <div class="user-preferences-info">
@@ -157,21 +101,11 @@ export default defineComponent({
     const isAuthenticated = ref(!!localStorage.getItem('authToken'))
     const isAdmin = ref(localStorage.getItem('role') === 'admin')
 
-    const aiProvider = ref<string>('')
-    const groqKeyInput = ref<string>('')
-    const openrouterKeyInput = ref<string>('')
-    const aiSaveMessage = ref<string>('')
     const sessionDurationHours = ref<number>(168)
     const sessionDurationMinimum = ref<number>(1)
     const sessionDurationMaximum = ref<number>(720)
     const sessionDurationSaving = ref(false)
     const sessionDurationMessage = ref('')
-
-    const aiStatus = ref<{ provider: string | null; has_groq_key: boolean; has_openrouter_key: boolean }>({
-      provider: null,
-      has_groq_key: false,
-      has_openrouter_key: false
-    })
 
     // Load current defaults on mount
     onMounted(async () => {
@@ -187,7 +121,7 @@ export default defineComponent({
           defaultLanguage.value = langSetting.value
         }
 
-        // Load AI settings status (admin only)
+        // Load Core session settings for administrators
         if (isAdmin.value) {
           try {
             const sessionRes = await http.get('/api/admin/session-settings')
@@ -198,13 +132,7 @@ export default defineComponent({
             console.error('Failed to load session settings:', e)
           }
 
-          try {
-            const aiRes = await http.get('/api/admin/ai-settings')
-            aiStatus.value = aiRes.data
-            aiProvider.value = aiRes.data?.provider || ''
-          } catch (e) {
-            console.error('Failed to load AI settings:', e)
-          }
+
         }
       } catch (e) {
         console.error('Failed to load defaults:', e)
@@ -234,27 +162,6 @@ export default defineComponent({
       }
     }
 
-    const saveAiSettings = async () => {
-      aiSaveMessage.value = ''
-      try {
-        const payload: any = { provider: aiProvider.value }
-
-        // Only send keys if user typed something; blank means keep current.
-        if (groqKeyInput.value.trim().length > 0) payload.groq_api_key = groqKeyInput.value.trim()
-        if (openrouterKeyInput.value.trim().length > 0) payload.openrouter_api_key = openrouterKeyInput.value.trim()
-
-        const res = await http.post('/api/admin/ai-settings', payload)
-        aiStatus.value = res.data
-        groqKeyInput.value = ''
-        openrouterKeyInput.value = ''
-        aiSaveMessage.value = t('settings.saved', 'Saved')
-      } catch (e) {
-        console.error('Failed to save AI settings:', e)
-        const err: any = e
-        aiSaveMessage.value = err?.response?.data?.detail || t('settings.saveFailed', 'Save failed')
-      }
-    }
-
     const saveSessionDuration = async () => {
       sessionDurationMessage.value = ''
       sessionDurationSaving.value = true
@@ -271,30 +178,6 @@ export default defineComponent({
       }
     }
 
-    const clearGroqKey = async () => {
-      try {
-        const res = await http.post('/api/admin/ai-settings', { provider: aiProvider.value, groq_api_key: '' })
-        aiStatus.value = res.data
-        aiSaveMessage.value = t('settings.saved', 'Saved')
-      } catch (e) {
-        console.error('Failed to clear Groq key:', e)
-        const err: any = e
-        aiSaveMessage.value = err?.response?.data?.detail || t('settings.saveFailed', 'Save failed')
-      }
-    }
-
-    const clearOpenRouterKey = async () => {
-      try {
-        const res = await http.post('/api/admin/ai-settings', { provider: aiProvider.value, openrouter_api_key: '' })
-        aiStatus.value = res.data
-        aiSaveMessage.value = t('settings.saved', 'Saved')
-      } catch (e) {
-        console.error('Failed to clear OpenRouter key:', e)
-        const err: any = e
-        aiSaveMessage.value = err?.response?.data?.detail || t('settings.saveFailed', 'Save failed')
-      }
-    }
-
     return {
       t,
       defaultTheme,
@@ -304,20 +187,12 @@ export default defineComponent({
       isAuthenticated,
       isAdmin,
 
-      aiProvider,
-      groqKeyInput,
-      openrouterKeyInput,
-      aiStatus,
-      aiSaveMessage,
       sessionDurationHours,
       sessionDurationMinimum,
       sessionDurationMaximum,
       sessionDurationSaving,
       sessionDurationMessage,
       saveSessionDuration,
-      saveAiSettings,
-      clearGroqKey,
-      clearOpenRouterKey
     }
   }
 })
@@ -330,5 +205,4 @@ export default defineComponent({
 .session-duration-control { max-width: 22rem; }
 .settings-actions { display: flex; flex-wrap: wrap; gap: calc(var(--ui-space) * 3); align-items: center; }
 .admin-info .form-group { display: grid; gap: calc(var(--ui-space) * 2); margin-bottom: 0; min-width: 0; }
-.clear-key-button { justify-self: start; }
 </style>

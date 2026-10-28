@@ -87,6 +87,7 @@ class _RelationalUpgradeRollbackProof(_RelationalPreparationResult):
     database_sha256: Digest
     preimage_sha256: Digest
     files_manifest_sha256: Digest
+    media_manifest_sha256: Digest
 
 
 class _RelationalUpgradeRestoreTicket(_RelationalUpgradeRollbackTicket):

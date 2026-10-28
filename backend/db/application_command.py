@@ -17,3 +17,4 @@ class ApplicationCommandRequest(Base):
     package_id = Column(Integer, ForeignKey('module_packages.id'), nullable=False)
     claimed = Column(Boolean, nullable=False, default=False)
     passage_event_id = Column(String(64), nullable=True)
+    task_run_id = Column(String(37), nullable=True)

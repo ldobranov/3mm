@@ -68,10 +68,11 @@ def _json(path):
 
 def _empty_checkpoint(path, source):
     _protected_directory(path)
-    if stat.S_IMODE(path.lstat().st_mode) != 0o700 or set(_children(path, 3)) != {
+    if stat.S_IMODE(path.lstat().st_mode) != 0o700 or set(_children(path, 4)) != {
         "activation.json",
         "database.json",
         "files.json",
+        "media.json",
     }:
         raise ValueError("Unknown restored-empty checkpoint content")
     expected = {
@@ -91,6 +92,7 @@ def _empty_checkpoint(path, source):
             {"version": 1, "present": False, "size_bytes": None, "sha256": None},
         ),
         ("files.json", {"schema_version": 1, "present": False, "files": []}),
+        ('media.json', {'version': 1, 'present': False, 'entries': {}}),
     ):
         if canonical(_json(path / name)) != canonical(value):
             raise ValueError("Restored-empty absence evidence changed")

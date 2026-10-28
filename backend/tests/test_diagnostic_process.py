@@ -104,11 +104,12 @@ def test_two_packages_install_trace_update_rollback_and_permission_denial_preser
         assert s.client.get_installation_identity()['sdk_version']=='1.3'
         from backend.db.module import ApplicationKioskTerminal
         from backend.utils.jwt_utils import create_access_token
-        terminal='t'*32
+        terminal='b'*32
         with Session(s.state.engine) as db:
             row=db.query(Installation).filter_by(module_id=av.manifest.module_id).one()
-            db.add(ApplicationKioskTerminal(terminal_id=terminal,application_installation_id=row.id,label='Owned P5 fixture',credential_hash='fixture',enabled=True));db.commit()
-        kiosk={'Authorization':'Bearer '+create_access_token('kiosk:'+terminal,{'token_type':'application_kiosk','module_id':av.manifest.module_id,'terminal_id':terminal})}
+            incarnation=row.authority_incarnation
+            db.add(ApplicationKioskTerminal(terminal_id=terminal,installation_incarnation=incarnation,application_installation_id=row.id,label='Owned P5 fixture',credential_hash='fixture',enabled=True));db.commit()
+        kiosk={'Authorization':'Bearer '+create_access_token('kiosk:'+terminal,{'token_type':'application_kiosk','module_id':av.manifest.module_id,'terminal_id':terminal,'incarnation':incarnation})}
         operation='/api/v1/application-extensions/'+av.manifest.module_id+'/kiosk/operations/register'
         status,value=post(operation,{'payload':{'label':'private-label-not-in-traces'},'idempotency_key':'p5-preserved-0001'},headers=kiosk)
         assert status==200,value

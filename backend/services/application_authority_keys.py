@@ -1,6 +1,7 @@
 """Private M20 configuration identities and authenticated coordinator records.
 
-Core-owned infrastructure, separate from transport/signing/encryption keys.
+Core-owned infrastructure, separate from transport/signing keys. Finite kiosk
+response recovery uses a purpose-separated encryption key derived privately here.
 Authenticated administrator consent preparation may explicitly provision a
 missing first key. Normal reads never create keys; existing unavailable material
 is never silently replaced. There is no key export or SDK key-management API. A recovered DB generation makes
@@ -23,7 +24,7 @@ import time
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.services.application_authority_context import (
-    AuthorityPrincipal, ConfigurationIdentity, _canonical_bytes, _parse,
+    AuthorityPrincipal, ConfigurationIdentity, _canonical_bytes, _parse, _bounded_json,
 )
 from backend.services.application_authority_sources import _core_identity, _read_snapshot
 from backend.services.authority_metadata import read_authority_guard
@@ -185,7 +186,7 @@ def _private_directory(path, *, create=False):
 
 
 @contextmanager
-def _key_lock(directory, *, create=False, wait_seconds=0):
+def _key_lock(directory, *, create=False, wait_seconds=0, shared=False):
     import fcntl
 
     descriptor = os.open(LOCK_NAME, os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
@@ -199,7 +200,7 @@ def _key_lock(directory, *, create=False, wait_seconds=0):
         deadline = time.monotonic() + wait_seconds
         while True:
             try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(descriptor, (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | fcntl.LOCK_NB)
                 break
             except BlockingIOError:
                 if time.monotonic() >= deadline:
@@ -262,10 +263,12 @@ class CoreReviewKeyStore:
             return ReviewKeyBinding(_core_identity(db), guard.generation)
 
     @contextmanager
-    def _access(self, *, provision=False):
+    def _access(self, *, provision=False, shared=False):
         try:
+            if provision and shared:
+                raise AuthorityReviewKeyError()
             with _private_directory(self._directory, create=provision) as directory:
-                with _key_lock(directory, create=provision, wait_seconds=self._lock_wait_seconds):
+                with _key_lock(directory, create=provision, wait_seconds=self._lock_wait_seconds, shared=shared):
                     yield directory
         except (OSError, ValueError, TypeError, SQLAlchemyError, RuntimeError):
             raise AuthorityReviewKeyError() from None
@@ -361,15 +364,27 @@ class CoreReviewKeyStore:
                 raise AuthorityReviewKeyError()
             return _configuration_identity(record, principal, configuration)
 
-    @contextmanager
     def locked(self):
         """Core coordinator: hold key before DB guard through durable admission.
 
         No key creation/rotation. The yielded adapter is invalid after exit and
         never exposes raw key material. No lock may span a helper/network call.
         """
-        with self._access() as directory:
-            adapter = _LockedKey(self._engine, _read_record(directory))
+        return self._locked(read_only=False)
+
+    def read_locked(self):
+        """Parallel verification lease for a dedicated read-only DB snapshot.
+
+        Writers/rotation still require the exclusive lock. Readers may verify
+        existing seals and fingerprints, never seal new records or encrypt new
+        recovery responses. The lease is invalid after its context exits.
+        """
+        return self._locked(read_only=True)
+
+    @contextmanager
+    def _locked(self, *, read_only):
+        with self._access(shared=read_only) as directory:
+            adapter = _LockedKey(self._engine, _read_record(directory), read_only=read_only)
             try:
                 yield adapter
             finally:
@@ -377,8 +392,9 @@ class CoreReviewKeyStore:
 
 
 class _LockedKey:
-    def __init__(self, engine, record):
+    def __init__(self, engine, record, *, read_only=False):
         self.engine, self._record, self.active = engine, record, True
+        self.read_only = read_only
 
     def _check(self, db):
         if (not self.active or db.get_bind().engine is not self.engine or not db.in_transaction()
@@ -390,9 +406,36 @@ class _LockedKey:
         self._check(db)
         return _configuration_identity(self._record, principal, configuration)
 
-    def seal(self, db, kind, payload):
+    def encrypted_receipt(self, db, purpose, value=None, *, ciphertext=None):
+        """Core-only, purpose-separated bounded secret response recovery."""
+        from cryptography.fernet import Fernet, InvalidToken
         self._check(db)
-        if kind not in {"native", "plan", "grant", "action"}:
+        if self.read_only and ciphertext is None:
+            raise AuthorityReviewKeyError()
+        if purpose not in {'kiosk.enrollment','kiosk.claim'}:
+            raise AuthorityReviewKeyError()
+        derived = hmac.new(self._record.secret, b'3mm:encrypted-response:v1\0'+purpose.encode(), hashlib.sha256).digest()
+        cipher = Fernet(base64.urlsafe_b64encode(derived))
+        try:
+            if ciphertext is None:
+                data = json.dumps(_bounded_json(value),ensure_ascii=True,allow_nan=False,separators=(',',':')).encode('ascii')
+                if len(data)>1024: raise AuthorityReviewKeyError()
+                return cipher.encrypt(data).decode('ascii')
+            if type(ciphertext) is not str or len(ciphertext)>2048: raise AuthorityReviewKeyError()
+            data = cipher.decrypt(ciphertext.encode('ascii'))
+            if len(data)>1024: raise AuthorityReviewKeyError()
+            return json.loads(data, object_pairs_hook=_unique_object)
+        except (InvalidToken, ValueError, TypeError, UnicodeError):
+            raise AuthorityReviewKeyError() from None
+
+    def seal(self, db, kind, payload):
+        if self.read_only:
+            raise AuthorityReviewKeyError()
+        return self._signature(db, kind, payload)
+
+    def _signature(self, db, kind, payload):
+        self._check(db)
+        if kind not in {"native", "plan", "grant", "action", "operation_delegation"}:
             raise AuthorityReviewKeyError()
         key_id = self._record.identity.key_id
         digest = hmac.new(self._record.secret, b"3mm:m20:sealed-authority:v1\x00" +
@@ -400,6 +443,6 @@ class _LockedKey:
         return key_id, digest
 
     def verify(self, db, kind, payload, key_id, digest):
-        expected_id, expected = self.seal(db, kind, payload)
+        expected_id, expected = self._signature(db, kind, payload)
         if (type(digest) is not str or expected_id != key_id or not hmac.compare_digest(digest, expected)):
             raise AuthorityReviewKeyError()

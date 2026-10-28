@@ -224,24 +224,26 @@ def test_managed_background_task_failure_is_observed_after_successful_start():
 
 
 def test_old_enabled_python_and_every_retired_http_entry_stay_inert(core,tmp_path,monkeypatch):
-    from backend.db.extension import Extension
+    import sqlalchemy as sa
     marker=tmp_path/'executed'
     directory=tmp_path/'old-extension'
     directory.mkdir()
     (directory/'manifest.json').write_text('{"backend_entry":"danger.py"}')
     (directory/'danger.py').write_text(f"from pathlib import Path\nPath({str(marker)!r}).touch()\nraise SystemExit('must never run')")
     with core.sessions() as db:
-        db.add(Extension(user_id=core.admin_id,name='OldPrototype',type='extension',version='1.0.0',
-            manifest={"backend_entry":"danger.py"},file_path=str(directory),is_enabled=True))
-        db.commit()
+        evidence=sa.Table('retired_extensions',sa.MetaData(),sa.Column('id',sa.Integer(),primary_key=True),
+            sa.Column('manifest',sa.JSON()),sa.Column('file_path',sa.String()),sa.Column('is_enabled',sa.Boolean()))
+        evidence.create(db.get_bind())
+        db.execute(evidence.insert().values(id=1,manifest={'backend_entry':'danger.py'},file_path=str(directory),is_enabled=True));db.commit()
     with TestClient(core.main.app) as client:
         assert client.get('/ready').status_code==200
         for method,path in [('get','/api/extensions'),('get','/api/extensions/public'),
                 ('get','/api/extensions/widgets'),('post','/api/extensions/upload'),
                 ('patch','/api/extensions/1'),('delete','/api/extensions/1'),
                 ('get','/api/marketplace/updates'),('post','/api/marketplace/update/1'),('post','/api/marketplace/rollback/1'),('get','/api/extensions/monitoring/overview'),
-                ('post','/api/main-server/schedule-update')]:
-            assert client.request(method,path,headers=core.admin).status_code==404
+                ('post','/api/main-server/schedule-update'),('get','/pages/read'),('get','/api/translations/extensions/1/tables/example'),('get','/api/permissions/entities'),('get','/api/permissions/extension-types'),('get','/api/permissions/my/extensions')]:
+            # Removed GETs may match the path of the generic DELETE-by-ID API.
+            assert client.request(method,path,headers=core.admin).status_code in (404,405)
         state=client.get('/api/v1/diagnostics/components',headers=core.admin).json()
         assert not {'extension_loader','extension_updates','extension_monitoring','application_jobs'} & state['components'].keys()
     assert not marker.exists()

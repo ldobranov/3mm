@@ -28,6 +28,7 @@ from backend.services.application_authority_inspection import (
 )
 from backend.services.application_authority_keys import AuthorityReviewKeyError
 from backend.services.application_configuration import resolve_application_configuration
+from backend.services.application_requirements import require_platform_requirements
 from backend.services.application_policy_reviews import PolicyReviewStoreError, _actor
 from backend.services.authority_metadata import (
     authority_transaction,
@@ -91,6 +92,7 @@ def verify_registration(db, key, installation_id, pin, package):
     """Authenticate inert binding provenance before subject/review/preparation."""
     if key is None:
         raise sources._Unavailable("installation_unavailable")
+    from backend.services.application_configuration_provenance import binding_matches
     candidate_id = candidate_registration_id(db, installation_id, pin)
     candidate = db.get(Action, candidate_id)
     if candidate is not None:
@@ -104,8 +106,8 @@ def verify_registration(db, key, installation_id, pin, package):
         proof["state"] != "registered_not_started"
         or set(proof["data"]) != {"operation", "actor", "binding"}
         or proof["data"]["operation"] != OPERATION
-        or _canonical_bytes(proof["data"]["binding"])
-        != _canonical_bytes(_binding(db, key, installation_id, pin, package))
+        or not binding_matches(db, key, installation_id, identifier, proof['revision'],
+            proof['data']['binding'], _binding(db, key, installation_id, pin, package))
     ):
         raise authority.AuthorityManagementError("registration_unavailable")
 
@@ -161,6 +163,7 @@ def register_relational_package(
         )
         if package.application_extension.storage.relational is None:
             raise authority.AuthorityManagementError("relational_declaration_required")
+        require_platform_requirements(package.application_extension)
         resolved = resolve_application_configuration(
             package.manifest.configuration_schema,
             package.manifest.configuration_defaults,

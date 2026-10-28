@@ -18,6 +18,7 @@ from pathlib import Path
 
 from backend.services.application_configuration import resolve_application_configuration
 from backend.services.module_packages import MAX_PACKAGE_BYTES, validate_module_package
+from backend.services.application_requirements import require_platform_requirements
 from three_mm_application_sdk.relational_receipts import (
     _prepare_receipt_metadata,
     _RelationalReceiptStore,
@@ -249,6 +250,7 @@ def _prepare_relational_database(
         raise RelationalPreparationError(
             "Relational preparation declaration unavailable"
         )
+    require_platform_requirements(definition)
     configuration = resolve_application_configuration(
         validated.manifest.configuration_schema,
         validated.manifest.configuration_defaults,

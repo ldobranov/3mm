@@ -11,7 +11,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-def test_real_host_setup_process_is_protected_and_does_not_need_core(tmp_path):
+def test_real_host_setup_process_closes_access_after_setup_without_core(tmp_path):
     with socket.socket() as reservation:
         reservation.bind(('127.0.0.1',0))
         port=reservation.getsockname()[1]
@@ -22,9 +22,8 @@ def test_real_host_setup_process_is_protected_and_does_not_need_core(tmp_path):
     command=[sys.executable,'-m','setup_service','--data-dir',str(data)]
     process=subprocess.Popen([*command,'--port',str(port),'--log-level','warning'],cwd=root,env=env,
                              stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
-    def call(path,body=None,token=None):
+    def call(path,body=None):
         headers={'Content-Type':'application/json'}
-        if token: headers['Authorization']='Bearer '+token
         request=Request('http://127.0.0.1:'+str(port)+path,
                         data=json.dumps(body).encode() if body is not None else None,headers=headers)
         try:
@@ -42,13 +41,11 @@ def test_real_host_setup_process_is_protected_and_does_not_need_core(tmp_path):
                 if process.poll() is not None or time.monotonic()>deadline:
                     raise AssertionError('Isolated setup process did not start')
                 time.sleep(.05)
-        assert call('/api/v1/setup/capabilities')[0]==401
-        token=subprocess.check_output([*command,'--issue-access'],cwd=root,env=env,text=True).strip()
-        assert call('/api/v1/setup/capabilities',token=token)[1]['network_modes']==['preserve','local']
+        assert call('/api/v1/setup/capabilities')[1]['network_modes']==['preserve','local']
         status,outcome=call('/api/v1/setup/configure',body=dict(network_mode='preserve',role='node',
-            hub_endpoint='https://hub.test',locale='en-US',device_name='node',administrator_name='operator'),token=token)
+            hub_endpoint='https://hub.test',locale='en-US',device_name='node',administrator_name='operator'))
         assert status==200 and outcome['enrollment']=='awaiting_pairing'
-        assert call('/api/v1/setup/capabilities',token=token)[0]==401
+        assert call('/api/v1/setup/capabilities')[0]==403
         assert not (tmp_path/'missing-core.db').exists()
         assert json.loads((data/'provisioning.json').read_text())['role']=='node'
     finally:

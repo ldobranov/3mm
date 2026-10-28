@@ -7,12 +7,14 @@ const html = readFileSync(resolve(process.cwd(), '../setup_service/static/setup.
 const script = html.split('<script>')[1].split('</script>')[0].replace('__READ_ONLY__', 'false')
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setTimeout(resolve, 0)) }
 
-async function portal(options: { recovery?: boolean; wifi?: boolean; fail?: boolean; saved?: Record<string, string> } = {}) {
-  const dom = new JSDOM(html, { url: 'http://device.local:8895/setup#access=console-test-code', runScripts: 'outside-only' })
+async function portal(options: { recovery?: boolean; wifi?: boolean; fail?: boolean; inactive?: boolean; language?: string; saved?: Record<string, string> } = {}) {
+  const dom = new JSDOM(html, { url: 'http://device.local:8895/setup', runScripts: 'outside-only' })
+  if (options.language) Object.defineProperty(dom.window.navigator, 'language', { value: options.language })
   const requests: Array<{ path: string; init: RequestInit }> = []
   dom.window.fetch = async (url, init = {}) => {
     const path = String(url).split('/').pop()!
     requests.push({ path, init })
+    if (options.inactive) return { ok: false, status: 403 } as Response
     if (path === 'configure' && options.fail) throw new Error('connection lost')
     const responses: Record<string, unknown> = {
       capabilities: { roles: ['standalone', 'hub', 'node'], network_modes: ['preserve', 'local', ...(options.wifi ? ['wifi'] : [])],
@@ -29,9 +31,10 @@ async function portal(options: { recovery?: boolean; wifi?: boolean; fail?: bool
 }
 
 describe('Setup portal', () => {
-  it('consumes a fragment code, preserves the host network and sends no stale Wi-Fi secrets', async () => {
+  it('opens directly without a code, preserves the host network and sends no stale Wi-Fi secrets', async () => {
     const page = await portal()
     expect(page.dom.window.location.hash).toBe('')
+    expect(page.dom.window.document.querySelector('#access-form')).toBeNull()
     expect(page.form.hidden).toBe(false)
     expect(page.field('network_mode').value).toBe('preserve')
     expect((page.form.querySelector('[value="wifi"]') as HTMLOptionElement).disabled).toBe(true)
@@ -42,10 +45,25 @@ describe('Setup portal', () => {
     await settle()
     const submitted = page.requests.find(item => item.path === 'configure')!
     const body = JSON.parse(submitted.init.body as string)
+    expect(submitted.init.headers).toEqual({ 'Content-Type': 'application/json' })
     expect(body.network_mode).toBe('preserve')
     expect(body.passphrase).toBeUndefined()
     expect(body.network_interface).toBeUndefined()
     expect(page.status()).toContain('Setup saved')
+    page.dom.window.close()
+  })
+
+  it('shows inactive setup without a usable form', async () => {
+    const page = await portal({ inactive: true })
+    expect(page.status()).toContain('not active')
+    expect(page.form.hidden).toBe(true)
+    page.dom.window.close()
+  })
+
+  it('opens the form directly in Bulgarian', async () => {
+    const page = await portal({ language: 'bg-BG' })
+    expect(page.form.hidden).toBe(false)
+    expect(page.dom.window.document.querySelector('h1')!.textContent).toBe('Настройка на това 3mm устройство')
     page.dom.window.close()
   })
 

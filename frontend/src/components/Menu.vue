@@ -113,11 +113,11 @@ import { useRouter } from 'vue-router';
 import { useI18n } from '@/utils/i18n';
 import { useSettingsStore } from '@/stores/settings';
 import ThemeToggle from './ThemeToggle.vue';
-import { isNavigationItemVisible, localizedNavigationLabel, mergeNavigationItems } from '@/utils/menu-navigation';
+import { isNavigationItemVisible, localizedNavigationLabel } from '@/utils/menu-navigation';
 import type { MenuAudience } from '@/utils/menu-navigation';
 import { readAvailableLanguages } from '@/utils/language-api';
-import { reloadRuntimeExtensionRoutes } from '@/utils/runtime-extensions';
 import { reloadCompiledUiRoutes } from '@/router';
+import { kioskRouteAvailable } from '@/utils/kiosk-session';
 
 export default defineComponent({
   name: 'Menu',
@@ -135,7 +135,6 @@ export default defineComponent({
     const menuItems = ref<MenuItem[]>([]);
     const errorMessage = ref('');
     const authToken = ref(localStorage.getItem('authToken'));
-    const kioskToken = ref(localStorage.getItem('applicationKioskToken'));
     const role = ref(localStorage.getItem('role') || '');
     const settingsStore = useSettingsStore();
 
@@ -147,7 +146,6 @@ export default defineComponent({
     // Update auth token ref
     const updateAuthToken = () => {
       authToken.value = localStorage.getItem('authToken');
-      kioskToken.value = localStorage.getItem('applicationKioskToken');
       role.value = localStorage.getItem('role') || '';
     };
 
@@ -157,7 +155,6 @@ export default defineComponent({
     });
 
     const currentRole = computed(() => role.value);
-    const isKiosk = computed(() => Boolean(kioskToken.value));
 
 
     const getMenuItemLabel = (item: MenuItem): string => {
@@ -173,10 +170,15 @@ export default defineComponent({
         }
 
         // Check route requirements
-        const route = router.getRoutes().find((r) => r.path === item.path);
+        const matched = router.resolve(item.path).matched;
+        const route = matched[matched.length - 1];
+        // Stored custom menus must follow the live route registry too.
+        if (!route || route.name === 'NotFound') return false;
+        const kiosk = kioskRouteAvailable(route.meta.compiledModuleId);
+        if ((route.meta.requiresKiosk || route.meta.applicationAudience === 'kiosk') && !kiosk) return false;
         return isNavigationItemVisible(item, {
           isLoggedIn: isLoggedIn.value,
-          isKiosk: isKiosk.value,
+          isKiosk: kiosk,
           currentRole: currentRole.value,
           routeRequiresAuth: route?.meta?.requiresAuth === true,
           routeRequiredRole: route?.meta?.requiresRole as string | undefined,
@@ -193,7 +195,6 @@ export default defineComponent({
       items: visibleMenuItems.value,
       label: getMenuItemLabel,
       loggedIn: isLoggedIn.value,
-      isAdmin: isLoggedIn.value && currentRole.value === 'admin',
       selectedLanguage: selectedLanguage.value,
       languages: availableLanguages.value,
       showLanguageSwitcher: showLanguageSwitcher.value,
@@ -224,66 +225,23 @@ export default defineComponent({
       menuItems.value = baseItems;
     };
 
-    const getManifestMenuItems = (): MenuItem[] => {
-      return router
-        .getRoutes()
-        .filter((route) => route.meta?.menuLabel && route.path)
-        .map((route) => ({
-          label: typeof route.meta.menuLabelKey === 'string'
-            ? t(route.meta.menuLabelKey, String((route.meta.menuLabel as any)?.en || route.name))
-            : route.meta.menuLabel as MenuItem['label'],
-          path: route.path,
-          audience: (
-            route.meta.applicationAudience === 'administrator'
-              ? 'admin'
-              : route.meta.applicationAudience === 'operator'
-                ? 'authenticated'
-                : route.meta.applicationAudience || undefined
-          ) as MenuAudience | undefined,
-        }));
-    };
-
-
     const fetchMenuItems = async () => {
       try {
         // Load menu for current language - uses items field with translation support
         const response = await http.get(`/menu/read/${currentLanguage.value}`);
         const menus = response.data.items || [];
 
-        // The selected active menu augments dynamic navigation. Legacy data may
-        // not have an active flag yet, so keep a deterministic fallback.
-        const activeMenu = menus.find((m: any) => m.is_active) || menus.find((m: any) => m.id === 1) || menus[0];
-
-        const customItems = activeMenu && Array.isArray(activeMenu.items)
+        // Only the administrator's selected menu contributes header links.
+        // Routes remain discoverable in Settings and the Command Palette.
+        const activeMenu = menus.find((m: any) => m.is_active);
+        menuItems.value = activeMenu && Array.isArray(activeMenu.items)
           ? activeMenu.items
           : [];
-
-        // Custom navigation augments the data-driven route registry. It must not
-        // hide routes contributed by Core, extensions, or modules.
-        menuItems.value = mergeNavigationItems(customItems, getManifestMenuItems());
-
-        // Module v2 navigation is data-driven. A module name is never mapped here.
-        if (isLoggedIn.value) {
-          try {
-            const registrations = await http.get('/api/v1/modules/registrations');
-            for (const registration of registrations.data || []) {
-              if (registration.kind !== 'navigation') continue;
-              const path = registration.metadata?.path;
-              const label = registration.metadata?.label;
-              if (typeof path === 'string' && typeof label === 'string' &&
-                  !menuItems.value.some(item => item.path === path)) {
-                menuItems.value.push({ path, label });
-              }
-            }
-          } catch (registrationError) {
-            console.warn('Module navigation registry is unavailable:', registrationError);
-          }
-        }
 
         errorMessage.value = '';
       } catch (error) {
         console.error('Failed to fetch menu:', error);
-        menuItems.value = getManifestMenuItems();
+        menuItems.value = [];
       }
 
       buildMenuItems();
@@ -301,7 +259,6 @@ export default defineComponent({
     const refreshMenu = async () => {
       updateAuthToken();
       try {
-        await reloadRuntimeExtensionRoutes(router);
         await reloadCompiledUiRoutes(router);
       } catch (error) {
         console.warn('Extension routes could not be refreshed:', error);

@@ -6,8 +6,8 @@ import { useI18n } from '@/utils/i18n'
 import { readSettings, upsertSettings } from '@/utils/settings-api'
 import { resolveHeaderSettings } from '@/utils/header-settings'
 import { getToken } from '@/utils/auth'
-import { BUILTIN_STYLES, buttonTextColor, resolveThemeStyle, readThemeProjection } from '@/utils/theme-extension'
-import { adaptLegacyUi, parseUiDesign, uiDesignVariables, type UiDesign } from '@/utils/ui-design'
+import { BUILTIN_STYLES, resolveThemeStyle, readThemeProjection } from '@/utils/theme-extension'
+import { adaptLegacyUi, buttonHoverBackground, parseUiDesign, uiDesignVariables, type UiDesign } from '@/utils/ui-design'
 import { parseInstalledTheme, loadThemeAssets, designLegacyStyle, type InstalledTheme, type LoadedThemeAssets } from '@/utils/theme-package-v2'
 import { applyThemePreferences, parseThemePreferences, themePreferencesValid, themeCustomizationOptions, type ThemePreferences } from '@/utils/theme-customization'
 
@@ -390,18 +390,23 @@ export const useSettingsStore = defineStore('settings', () => {
     root.style.setProperty('--primary-color', currentSettings.buttonPrimaryBg)
     root.style.setProperty('--secondary-color', currentSettings.buttonSecondaryBg)
 
-    // Button colors
-    root.style.setProperty('--button-primary-text', displayTheme.value ? buttonTextColor(currentSettings.buttonPrimaryBg) : '#ffffff')
-    root.style.setProperty('--button-primary-hover', adjustColor(currentSettings.buttonPrimaryBg, -20))
-    root.style.setProperty('--primary-hover', adjustColor(currentSettings.buttonPrimaryBg, -20))
-    root.style.setProperty('--button-primary-border', currentSettings.buttonPrimaryBg)
-    root.style.setProperty('--button-secondary-text', displayTheme.value ? buttonTextColor(currentSettings.buttonSecondaryBg) : '#ffffff')
-    root.style.setProperty('--button-secondary-hover', adjustColor(currentSettings.buttonSecondaryBg, -20))
-    root.style.setProperty('--secondary-hover', adjustColor(currentSettings.buttonSecondaryBg, -20))
-    root.style.setProperty('--button-secondary-border', currentSettings.buttonSecondaryBg)
-    root.style.setProperty('--button-danger-text', displayTheme.value ? buttonTextColor(currentSettings.buttonDangerBg) : '#ffffff')
-    root.style.setProperty('--button-danger-hover', adjustColor(currentSettings.buttonDangerBg, -20))
-    root.style.setProperty('--button-danger-border', currentSettings.buttonDangerBg)
+    // Remaining Core consumers use the same readable button pairs as the SDK.
+    const colors = uiDesign.value[themeStore.theme]
+    for (const [name, background, foreground] of [
+      ['primary', colors.accent, colors.accent_text],
+      ['secondary', colors.secondary, colors.secondary_text],
+      ['danger', colors.danger, colors.danger_text],
+    ] as const) {
+      const hover = buttonHoverBackground(background, foreground)
+      root.style.setProperty(`--button-${name}-bg`, background)
+      root.style.setProperty(`--button-${name}-text`, foreground)
+      root.style.setProperty(`--button-${name}-hover`, hover)
+      root.style.setProperty(`--button-${name}-border`, background)
+      if (name !== 'danger') {
+        root.style.setProperty(`--${name}-color`, background)
+        root.style.setProperty(`--${name}-hover`, hover)
+      }
+    }
 
     // Input colors
     root.style.setProperty('--input-bg', currentSettings.cardBg)
@@ -436,10 +441,6 @@ export const useSettingsStore = defineStore('settings', () => {
       root.style.setProperty(key, value)
     }
     if (installedDesign.value && !previewDesign.value && !appearanceRecovery.value) {
-      const colors = uiDesign.value[themeStore.theme]
-      root.style.setProperty('--button-primary-text', colors.accent_text)
-      root.style.setProperty('--button-secondary-text', colors.secondary_text)
-      root.style.setProperty('--button-danger-text', colors.danger_text)
       root.style.setProperty('--input-focus-border', colors.focus)
       const assets = packagePreview.value ? packagePreview.value.assets : themeAssets.value
       if (assets?.font) root.style.setProperty('--ui-font', `"${assets.font.family}", ${root.style.getPropertyValue('--ui-font')}`)
@@ -451,16 +452,6 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(activeTheme, updateCSSVariables)
   watch(appearanceRecovery, updateCSSVariables)
   watch(themePreferences, updateCSSVariables)
-
-  // Helper function to adjust color brightness
-  const adjustColor = (color: string, amount: number): string => {
-    // Simple color adjustment - darken by reducing RGB values
-    const hex = color.replace('#', '')
-    const r = Math.max(0, parseInt(hex.substr(0, 2), 16) + amount)
-    const g = Math.max(0, parseInt(hex.substr(2, 2), 16) + amount)
-    const b = Math.max(0, parseInt(hex.substr(4, 2), 16) + amount)
-    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
-  }
 
   // Language-aware helper functions
   const isLanguageSpecific = (key: string): boolean => {

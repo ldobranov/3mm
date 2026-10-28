@@ -16,7 +16,6 @@ from three_mm_protocol import (
     ApplicationExtensionV1,
     CompiledUiExtensionV1,
     ModuleManifestV2,
-    RuntimeExtensionV1,
     ThemeExtensionV1,
     meets_minimum_version,
 )
@@ -52,7 +51,6 @@ class ValidatedModulePackage:
     manifest: ModuleManifestV2
     sha256: str
     size_bytes: int
-    runtime_extension: RuntimeExtensionV1 | None = None
     compiled_ui: CompiledUiExtensionV1 | None = None
     application_extension: ApplicationExtensionV1 | None = None
     theme_extension: ThemeExtensionV1 | ThemeExtensionV2 | None = None
@@ -209,7 +207,6 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
     package_files = {
         item.filename.replace("\\", "/") for item in infos if not item.is_dir()
     }
-    runtime_extension = None
     compiled_ui = None
     application_extension = None
     theme_extension = None
@@ -222,35 +219,6 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
         or "theme-extension.json" in package_files
     ):
         theme_extension = _read_theme_extension(archive, manifest, package_files)
-    elif manifest.entrypoints.get("ui") == "runtime-extension.json":
-        if set(manifest.runtimes) != {"ui"}:
-            raise ModulePackageError("runtime extensions may only target the UI runtime")
-        if manifest.registrations:
-            raise ModulePackageError(
-                "runtime extension navigation must be declared only in runtime-extension.json"
-            )
-        allowed_files = {"manifest.json", "runtime-extension.json"}
-        unexpected = sorted(package_files - allowed_files)
-        if unexpected:
-            raise ModulePackageError(
-                f"runtime extension contains forbidden files: {', '.join(unexpected)}"
-            )
-        try:
-            runtime_extension = RuntimeExtensionV1.model_validate_json(
-                archive.read("runtime-extension.json")
-            )
-        except (KeyError, ValidationError) as exc:
-            raise ModulePackageError(f"invalid runtime-extension.json: {exc}") from exc
-        if (
-            runtime_extension.module_id != manifest.module_id
-            or runtime_extension.version != manifest.version
-        ):
-            raise ModulePackageError("runtime extension identity must match manifest v2")
-        expected_permissions = {"data.read"}
-        if "runtime.data.write" in runtime_extension.permissions:
-            expected_permissions.add("data.write")
-        if set(manifest.permissions) != expected_permissions:
-            raise ModulePackageError("runtime extension permissions must match manifest v2")
     elif manifest.entrypoints.get("core") == "application-extension.json":
         if set(manifest.runtimes) not in ({"core"}, {"core", "ui"}):
             raise ModulePackageError(
@@ -515,13 +483,14 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
             raise ModulePackageError(
                 f"compiled UI source package contains forbidden files: {', '.join(forbidden)}"
             )
+    elif "ui" in manifest.runtimes:
+        raise ModulePackageError("unsupported UI entrypoint; use the current compiled application contract")
     if any(item.startswith("installation.") for item in manifest.permissions) and application_extension is None:
         raise ModulePackageError("installation identity permissions require an application extension")
     return ValidatedModulePackage(
         manifest=manifest,
         sha256=hashlib.sha256(package).hexdigest(),
         size_bytes=len(package),
-        runtime_extension=runtime_extension,
         compiled_ui=compiled_ui,
         application_extension=application_extension,
         theme_extension=theme_extension,

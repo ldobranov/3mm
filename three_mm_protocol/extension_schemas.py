@@ -16,7 +16,6 @@ from three_mm_protocol.application_event_publication import (
 from three_mm_protocol.application_extension import ApplicationExtensionV1
 from three_mm_protocol.compiled_extension import CompiledUiExtensionV1
 from three_mm_protocol.module_manifest import ModuleManifestV2
-from three_mm_protocol.runtime_extension import RuntimeExtensionV1
 from three_mm_protocol.theme_extension import ThemeExtensionV1
 from three_mm_protocol.theme_extension_v2 import ThemeExtensionV2
 
@@ -37,12 +36,6 @@ _CONTRACTS: tuple[tuple[str, str, str, type[BaseModel]], ...] = (
         "publication_contract_version",
         "application-event-publications.json",
         ApplicationEventPublicationsV1,
-    ),
-    (
-        "runtime-extension.v1",
-        "runtime_extension_version",
-        "runtime-extension.json",
-        RuntimeExtensionV1,
     ),
     (
         "compiled-ui.v1",
@@ -153,6 +146,14 @@ def extension_schema_catalog() -> dict:
             # Bounded reviewed-native authority, not general installer or
             # hostile-code support. Structural validity still grants no rights.
             contracts[contract_id]["declaration_support"] = {
+                'platform_requirements': {
+                    'contract_version': 1, 'sdk_version': '1.3',
+                    'basis': 'core_transport_contract',
+                    'required_missing': 'refused_before_stage_and_activation',
+                    'optional_missing': 'degraded_without_new_authority',
+                    'resource_bindings': 'separate_unchanged_required_declarations',
+                    'runtime_readiness': 'not_evaluated',
+                },
                 "session_bindings": {
                     "contract_version": 1,
                     "sdk_version": "1.3",
@@ -225,6 +226,15 @@ def extension_schema_catalog() -> dict:
                     "authority_administration": "core_admin_review_api",
                     "native_trust_administration": "local_core_only",
                     "runtime_max_file_bytes": 1024 * 1024,
+                    'streaming_v2': {
+                        'contract_version': 2, 'chunk_bytes': 256 * 1024,
+                        'max_file_bytes': 1024**3, 'max_total_bytes': 4 * 1024**3,
+                        'max_files': 4096, 'max_uploads': 16, 'max_staging_bytes': 2 * 1024**3,
+                        'resumable': True, 'atomic_checksum_finalize': True,
+                        'browser': 'exact_operator_or_administrator_route_and_live_user',
+                        'public_links': 'separate_publish_scope_expiring_revision_capability',
+                        'media': 'optional_bounded_image_provider_v1',
+                    },
                 },
                 "storage.relational": {
                     "contract_version": 1,

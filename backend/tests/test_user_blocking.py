@@ -47,7 +47,9 @@ def test_migration_preserves_existing_accounts(tmp_path):
         connection.execute(text('ALTER TABLE users DROP COLUMN token_version'))
         connection.execute(text("INSERT INTO users (username,email,role) VALUES ('existing','existing@example.invalid','admin')"))
     engine.dispose()
-    _alembic(url, 'upgrade', 'head')
+    # Exercise this feature's reversible schema before the later persistent
+    # actor identity migration, whose populated downgrade deliberately refuses.
+    _alembic(url, 'upgrade', '9e74f5c60d64')
     with engine.connect() as connection:
         assert connection.execute(text('SELECT is_blocked, token_version FROM users')).one() == (0, 0)
     engine.dispose()

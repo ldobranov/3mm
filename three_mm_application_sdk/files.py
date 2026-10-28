@@ -71,6 +71,8 @@ class ApplicationFileStorage:
     mode: Literal["read", "read_write"] = "read_write"
     limits: ApplicationFileLimits = ApplicationFileLimits()
 
+    _namespace = "sdk-files"
+
     def __post_init__(self) -> None:
         if not isinstance(self.data_dir, Path):
             raise ValueError("Private file storage requires a host-supplied directory")
@@ -147,13 +149,13 @@ class ApplicationFileStorage:
             data_fd = self._open_data()
             if write:
                 try:
-                    os.mkdir("sdk-files", mode=0o700, dir_fd=data_fd)
+                    os.mkdir(self._namespace, mode=0o700, dir_fd=data_fd)
                     os.fsync(data_fd)
                 except FileExistsError:
                     pass
             try:
                 namespace_fd = os.open(
-                    "sdk-files",
+                    self._namespace,
                     os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
                     dir_fd=data_fd,
                 )
@@ -176,7 +178,7 @@ class ApplicationFileStorage:
                 ) from exc
             # Detect a detached/replaced namespace or lock before using it.
             for parent, name, fd in (
-                (data_fd, "sdk-files", namespace_fd),
+                (data_fd, self._namespace, namespace_fd),
                 (namespace_fd, ".lock", lock_fd),
             ):
                 named = os.stat(name, dir_fd=parent, follow_symlinks=False)

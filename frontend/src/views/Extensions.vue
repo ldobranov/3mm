@@ -1,18 +1,14 @@
 <template>
-  <div class="view extensions-view ui-v2" :key="currentLanguage"
+  <div class="view extensions-view ui-v2"
     :data-card="settingsStore.uiDesign.components.card"
     :data-button="settingsStore.uiDesign.components.button">
     <div class="view-header">
       <h1 class="view-title">{{ t('extensions.title', 'Extensions') }}</h1>
 
-      <div v-if="isAdmin" class="header-actions">
-        <router-link class="ui-button ui-button--secondary ai-builder-link" to="/extensions/ai-builder">
-          <i class="bi bi-stars" aria-hidden="true"></i>
-          {{ t('extensions.aiBuilder.open', 'Open AI Builder') }}
-        </router-link>
-      </div>
     </div>
 
+    <ApplicationKioskDialog v-if="kioskTarget" :module-id="kioskTarget.id.replace('application:', '')" :name="kioskTarget.name"
+      :active="kioskTarget.is_enabled && kioskTarget.status === 'active'" @close="kioskTarget = null" />
     <!-- Upload Section -->
     <div v-if="isAdmin" class="ui-section upload-section">
       <div class="card-content">
@@ -62,6 +58,8 @@
           <span v-if="!loading" class="ui-badge extension-count">{{ extensions.length }}</span>
         </div>
         <div v-if="operationError" class="error-message" role="alert">{{ operationError }}</div>
+        <p v-if="catalogUnavailable" class="ui-help" role="status">{{ recoveryLabel('catalog') }}</p>
+        <p v-if="operationSuccess" class="success-message" role="status">{{ operationSuccess }}</p>
         <div v-if="loading" class="ui-section loading" role="status">{{ t('extensions.loadingExtensions', 'Loading extensions...') }}</div>
         <div v-else-if="extensions.length === 0" class="ui-section no-extensions" role="status">
           {{ t('extensions.noExtensionsInstalled', 'No extensions installed yet.') }}
@@ -107,10 +105,10 @@
                 : t('themePackages.manageHelp', 'Enable this version, then choose it in Settings → Theme Customization. Enabling does not change the selected theme.') }}
             </p>
             <p v-if="requiresApplicationRecovery(ext)" class="ui-help application-recovery-note">
-              {{ t('extensions.applicationRecoveryHelp', 'The application operation is unfinished. Uninstall will first stop and verify its runtime. Its data and uploaded package are preserved.') }}
+              {{ recoveryLabel('notice') }}
             </p>
             <div v-if="ext.source !== 'compiled'" class="extension-actions">
-               <div v-if="(ext.source === 'runtime' && ext.is_installed) || ext.source === 'application'" class="version-controls">
+               <div v-if="ext.source === 'application'" class="version-controls">
                  <label :for="`version-${ext.id}`">{{ t('extensions.version', 'Version') }}</label>
                  <select class="ui-control" :id="`version-${ext.id}`" v-model="selectedVersions[ext.id]">
                    <option v-for="version in ext.available_versions" :key="version" :value="version">
@@ -124,36 +122,47 @@
                    @click="activateVersion(ext)"
                  >
                    {{ activatingVersion === ext.id
-                     ? t('extensions.activatingVersion', 'Activating...')
-                     : ext.source === 'application' && !ext.is_enabled
+                     ? versionLabel('working')
+                     : needsPackagePreparation(ext)
+                       ? versionLabel('prepare')
+                     : ext.source === 'application' && !ext.is_installed
                        ? t('extensions.installApplication', 'Install and activate')
                        : t('extensions.activateVersion', 'Activate version') }}
                  </UiButton>
                </div>
+               <p v-if="needsPackagePreparation(ext)" class="ui-help package-preparation-help">
+                 {{ ext.is_enabled ? versionLabel('stopFirst') : versionLabel('reviewFirst') }}
+               </p>
                <div class="extension-action-footer">
-                 <span v-if="(ext.source === 'runtime' || ext.source === 'application') && ext.is_installed" class="managed-note">
+                 <span v-if="ext.source === 'application' && ext.is_installed" class="managed-note">
                    <i class="bi bi-database-check" aria-hidden="true"></i>
                    {{ t('extensions.runtimeDataPreserved', 'Data is preserved when disabled') }}
                  </span>
                  <div class="extension-action-buttons">
+                   <UiButton v-if="isAdmin && ext.can_manage && requiresApplicationRecovery(ext)"
+                     class="application-recovery-btn" :disabled="operationBusy !== null" @click="recoveryTarget = ext">
+                     {{ recoveryLabel('action') }}
+                   </UiButton>
+                   <UiButton v-if="isAdmin && ext.source === 'application' && ext.is_installed && hasKiosk(ext)"
+                     :disabled="operationBusy !== null" @click="kioskTarget = ext">{{ kioskLabel('terminals') }}</UiButton>
+                   <UiButton v-if="isAdmin && ext.source === 'application' && ext.can_manage && connectorSettingsSha(ext)"
+                     class="application-settings-btn" :disabled="operationBusy !== null || (ext.is_installed && connectorSettingsSha(ext) !== ext.package_sha256)" :aria-label="connectorLabel('title')"
+                     :title="connectorLabel('title')"
+                     @click="connectorSettingsTarget = { name: ext.name, packageSha: connectorSettingsSha(ext)! }">
+                     <span aria-hidden="true">⚙</span>
+                   </UiButton>
                    <UiButton v-if="isAdmin && ext.source === 'application' && ext.is_installed && ext.can_manage"
                      class="authority-manage-btn" :disabled="operationBusy !== null"
                      @click="authorityTarget = { moduleId: ext.id.replace('application:', ''), name: ext.name }">
                      <i class="bi bi-shield-check" aria-hidden="true"></i>{{ authorityLabel('manage') }}
                    </UiButton>
-                   <UiButton
-                     v-if="ext.source === 'runtime' && !ext.is_installed && ext.can_manage"
-                     type="button"
-                     class="version-btn"
-                     :disabled="operationBusy === ext.id"
-                     @click="reinstallExtension(ext)"
-                   >
-                     {{ operationBusy === ext.id
-                       ? t('extensions.reinstalling', 'Reinstalling...')
-                       : t('extensions.reinstall', 'Reinstall') }}
+                   <UiButton v-if="isAdmin && ext.source === 'application' && ext.is_installed && ext.can_manage && applicationPackageSha(ext, ext.version)"
+                     class="command-resources-btn" :disabled="operationBusy !== null"
+                     @click="commandResourceTarget = { moduleId: ext.id.replace('application:', ''), name: ext.name, packageSha: applicationPackageSha(ext, ext.version)! }">
+                     {{ commandResourceLabel('title') }}
                    </UiButton>
                    <UiButton
-                     v-if="(ext.source === 'runtime' && ext.is_installed && ext.can_manage) || ((ext.source === 'application' || ext.source === 'theme' || ext.source === 'language') && ext.can_manage)"
+                     v-if="((ext.source === 'application' || ext.source === 'theme' || ext.source === 'language') && ext.can_manage)"
                      type="button"
                      @click="deleteExtension(ext)"
                      variant="danger" class="delete-btn"
@@ -199,6 +208,16 @@
     <ApplicationAuthorityDialog v-if="isAdmin && authorityTarget" :key="authorityTarget.moduleId"
       :module-id="authorityTarget.moduleId" :name="authorityTarget.name"
       @close="authorityTarget = null" @changed="loadExtensions" />
+    <ApplicationRecoveryDialog v-if="isAdmin && recoveryTarget" :key="recoveryTarget.id"
+      :module-id="recoveryTarget.id.replace('application:', '')" :name="recoveryTarget.name"
+      @close="recoveryTarget = null" @recovered="applicationRecovered" />
+
+    <ApplicationCommandResourcesDialog v-if="isAdmin && commandResourceTarget" :key="commandResourceTarget.moduleId"
+      :module-id="commandResourceTarget.moduleId" :name="commandResourceTarget.name" :package-sha="commandResourceTarget.packageSha"
+      @close="commandResourceTarget = null" @changed="loadExtensions" />
+    <ApplicationConnectorSettingsDialog v-if="isAdmin && connectorSettingsTarget" :key="connectorSettingsTarget.packageSha"
+      :package-sha="connectorSettingsTarget.packageSha" :name="connectorSettingsTarget.name"
+      @close="connectorSettingsTarget = null" @changed="loadExtensions" />
 
     <!-- Application installation configuration -->
     <UiDialog v-if="showConfigurationModal" :open="showConfigurationModal"
@@ -207,6 +226,9 @@
       @click="closeOnBackdrop($event, cancelApplicationConfiguration)">
       <div class="modal-body ui-stack">
         <p>{{ t('extensions.configureApplicationHelp', 'Choose which managed device this application should use. The selection is preserved across updates.') }}</p>
+        <p v-if="configurationTarget && needsPackagePreparation(configurationTarget.extension, configurationTarget.sha256)" class="ui-help">
+          {{ versionLabel('reviewFirst') }}
+        </p>
         <div v-for="(field, index) in configurationFields" :key="field.key" class="ui-field configuration-field">
           <label :for="`application-config-${field.key}`">{{ field.label }}</label>
           <select
@@ -215,14 +237,14 @@
             v-model="configurationValues[field.key]"
             :required="field.required"
           >
-            <option value="" disabled>{{ t('extensions.selectDevice', 'Select a device') }}</option>
+            <option value="" :disabled="field.required">{{ field.required ? t('extensions.selectDevice', 'Select a device') : t('extensions.noDeviceSelected', 'None (optional)') }}</option>
             <option v-for="device in configurationDevices" :key="device.device_id" :value="device.device_id">
               {{ device.display_name || device.device_id }} · {{ device.role }}
             </option>
           </select>
           <small v-if="field.description" class="ui-help">{{ field.description }}</small>
         </div>
-        <div v-if="configurationDevices.length === 0" class="error-message" role="alert">
+        <div v-if="configurationDevices.length === 0" :class="configurationFields.some(field => field.required) ? 'error-message' : 'ui-help'" role="status">
           {{ t('extensions.noDevicesAvailable', 'No active managed devices are available.') }}
         </div>
         <div v-if="configurationError" class="error-message" role="alert">{{ configurationError }}</div>
@@ -233,8 +255,10 @@
         </UiButton>
         <UiButton variant="primary" class="version-btn" :loading="configurationSaving" :disabled="!canSaveApplicationConfiguration" @click="confirmApplicationConfiguration">
           {{ configurationSaving
-            ? t('extensions.activatingVersion', 'Activating...')
-            : t('extensions.installApplication', 'Install and activate') }}
+            ? versionLabel('working')
+            : configurationTarget && needsPackagePreparation(configurationTarget.extension, configurationTarget.sha256)
+              ? versionLabel('prepare')
+              : t('extensions.installApplication', 'Install and activate') }}
         </UiButton>
       </template>
     </UiDialog>
@@ -261,8 +285,6 @@
           ? t('extensions.uninstallApplicationConfirm', 'Uninstall this application extension? Its service, routes and access configuration will be removed. Its application data and uploaded package will be preserved.')
           : extensionToDelete?.source === 'application'
             ? t('extensions.deleteApplicationPackageConfirm', 'Delete this unused application package version? Preserved application data will not be deleted.')
-          : extensionToDelete?.source === 'runtime'
-            ? t('extensions.uninstallConfirm', 'Uninstall this runtime extension? Its routes and menu entries will be removed.')
           : t('extensions.deleteConfirm', 'Are you sure you want to delete this extension?') }}</p>
         <p v-if="deleteAction === 'remove' && extensionToDelete && requiresApplicationRecovery(extensionToDelete)" class="ui-help">
           {{ t('extensions.uninstallRecoveryConfirm', 'This application did not finish its last operation. Uninstall will stop and verify its runtime before removing it. Existing data and the uploaded package will be preserved. If runtime cleanup cannot be confirmed, removal will remain blocked.') }}
@@ -270,20 +292,6 @@
         <p><strong>{{ extensionToDelete?.name }}<template v-if="deleteAction !== 'erase-data'"> v{{ deleteTargetVersion(extensionToDelete) }}</template></strong></p>
         <div v-if="operationError" class="error-message" role="alert">{{ operationError }}</div>
 
-        <!-- Database data deletion checkbox - only show if extension has tables -->
-        <div v-if="extensionToDelete?.source === 'runtime'" class="ui-stack">
-          <label class="ui-check">
-            <input type="checkbox" v-model="deleteDatabaseData" />
-            {{ extensionToDelete?.source === 'runtime'
-              ? t('extensions.deleteRuntimeData', 'Also permanently delete all data created by this extension')
-              : t('extensions.deleteDatabaseData', 'Also delete all database tables and data created by this extension') }}
-          </label>
-          <small class="ui-help">{{ extensionToDelete?.source === 'runtime'
-            ? (deleteDatabaseData
-              ? t('extensions.deleteDatabaseDataWarning', 'This action cannot be undone. All data will be permanently lost.')
-              : t('extensions.preserveRuntimeData', 'Data will be preserved and becomes available after reinstalling the extension.'))
-            : t('extensions.deleteDatabaseDataWarning', 'This action cannot be undone. All selected data will be permanently lost.') }}</small>
-        </div>
 
       </div>
       <template #actions>
@@ -307,20 +315,28 @@
 </template>
 
 <script setup lang="ts">
+import ApplicationRecoveryDialog from '@/components/extensions/ApplicationRecoveryDialog.vue';
+import { interruptedLifecycleStatuses, useRecoveryLabels } from '@/components/extensions/recovery-labels';
 import { ref, onMounted, watch, computed } from 'vue';
 import http from '@/utils/dynamic-http';
 import { useI18n, i18n } from '@/utils/i18n';
 import { useSettingsStore } from '@/stores/settings';
 import { useThemeStore } from '@/stores/theme';
 import { useRouter } from 'vue-router';
-import { reloadRuntimeExtensionRoutes } from '@/utils/runtime-extensions';
 import { getCompiledUiCatalog } from '@/utils/compiled-ui';
 import { useUiLabels } from '@/utils/ui-labels';
 import UiButton from '@/components/ui/UiButton.vue';
 import UiDialog from '@/components/ui/UiDialog.vue';
 import PackageInspection from '@/components/extensions/PackageInspection.vue';
 import ApplicationAuthorityDialog from '@/components/extensions/ApplicationAuthorityDialog.vue';
+import ApplicationCommandResourcesDialog from '@/components/extensions/ApplicationCommandResourcesDialog.vue';
+import ApplicationKioskDialog from '@/components/extensions/ApplicationKioskDialog.vue';
+import { useKioskLabels } from '@/utils/kiosk-labels';
+import ApplicationConnectorSettingsDialog from '@/components/extensions/ApplicationConnectorSettingsDialog.vue';
+import { useConnectorSettingsLabels } from '@/components/extensions/connector-settings-labels';
+import { useCommandResourceLabels } from '@/components/extensions/command-resource-labels';
 import { useAuthorityLabels } from '@/components/extensions/authority-labels';
+import { authorityRequestId, readAuthorityStatus } from '@/components/extensions/authority-management';
 
 const { t, currentLanguage } = useI18n();
 const settingsStore = useSettingsStore();
@@ -329,11 +345,24 @@ const router = useRouter();
 const label = useUiLabels();
 const authorityLabel = useAuthorityLabels();
 const authorityTarget = ref<{ moduleId: string; name: string } | null>(null);
+const commandResourceLabel = useCommandResourceLabels();
+const commandResourceTarget = ref<{ moduleId: string; name: string; packageSha: string } | null>(null);
+const connectorSettingsTarget = ref<{ name: string; packageSha: string } | null>(null);
+const connectorLabel = useConnectorSettingsLabels();
+const kioskLabel = useKioskLabels();
+const kioskTarget = ref<Extension | null>(null);
+const recoveryLabel = useRecoveryLabels();
+const recoveryTarget = ref<Extension | null>(null);
+const catalogUnavailable = ref(false);
+const operationSuccess = ref('');
+const hasKiosk = (ext: Extension) => Object.values(ext.kiosk_by_version || {}).includes(ext.package_sha256 || '');
+const connectorSettingsSha = (extension: Extension): string | null =>
+  extension.connector_settings_by_version?.[selectedVersions.value[extension.id] || extension.version] || null;
 
 
 interface Extension {
   id: string;
-  source: 'runtime' | 'compiled' | 'application' | 'theme' | 'language';
+  source: 'compiled' | 'application' | 'theme' | 'language';
   name: string;
   type: string;
   version: string;
@@ -348,6 +377,8 @@ interface Extension {
   package_sha256_by_version?: Record<string, string>;
   is_installed: boolean;
   is_selected?: boolean;
+  connector_settings_by_version?: Record<string, string>;
+  kiosk_by_version?: Record<string, string>;
 }
 
 interface ThemeCatalogItem {
@@ -362,6 +393,8 @@ interface ThemeCatalogItem {
 }
 
 interface ModulePackageCatalogItem {
+  has_connector_settings?: boolean;
+  has_kiosk_interface?: boolean;
   module_id: string;
   version: string;
   sha256: string;
@@ -374,6 +407,7 @@ interface ModulePackageCatalogItem {
 
 interface ApplicationInstallation {
   module_id: string;
+  package_sha256: string | null;
   active_version: string | null;
   status: string;
   enabled: boolean;
@@ -413,7 +447,6 @@ const uploadError = ref('');
 const uploadSuccess = ref('');
 const showDeleteModal = ref(false);
 const extensionToDelete = ref<Extension | null>(null);
-const deleteDatabaseData = ref(false);
 const selectedVersions = ref<Record<string, string>>({});
 const activatingVersion = ref<string | null>(null);
 const operationBusy = ref<string | null>(null);
@@ -430,8 +463,7 @@ const configurationError = ref('');
 const isAdmin = computed(() => (localStorage.getItem('role') || '') === 'admin');
 
 const canSaveApplicationConfiguration = computed(() =>
-  configurationDevices.value.length > 0
-  && configurationFields.value.every(field =>
+  configurationFields.value.every(field =>
     !field.required || Boolean(configurationValues.value[field.key]),
   ),
 );
@@ -446,16 +478,26 @@ const extensionSourceLabel = (extension: Extension): string => {
   if (extension.source === 'application') return 'Application';
   if (extension.source === 'language') return t('languagePackages.kind', 'Language');
   if (extension.source === 'theme') return t('themePackages.kind', 'Theme');
-  return 'Runtime';
+  return 'Application';
 };
-
-const applicationLifecyclePendingStatuses = new Set([
-  'activating', 'disabling', 'uninstalling', 'recovering', 'recovery_required',
-]);
 
 const requiresApplicationRecovery = (extension: Extension): boolean =>
   extension.source === 'application' && extension.is_installed
-  && applicationLifecyclePendingStatuses.has(extension.status);
+  && interruptedLifecycleStatuses.has(extension.status);
+
+const applicationRecovered = async () => {
+  const target = recoveryTarget.value;
+  recoveryTarget.value = null;
+  if (!target) return;
+  operationError.value = '';
+  operationSuccess.value = recoveryLabel('stopped');
+  window.dispatchEvent(new Event('menu-refresh'));
+  if (!await loadExtensions()) return;
+  const current = extensions.value.find(item => item.id === target.id);
+  if (current?.status === 'disabled' && !current.is_enabled && current.package_sha256) {
+    authorityTarget.value = { moduleId: target.id.replace('application:', ''), name: current.name };
+  }
+};
 
 const extensionStatusLabel = (extension: Extension): string =>
   requiresApplicationRecovery(extension)
@@ -464,6 +506,53 @@ const extensionStatusLabel = (extension: Extension): string =>
 
 const applicationPackageSha = (extension: Extension, version: string): string | null =>
   extension.package_sha256_by_version?.[version] || null;
+
+const versionLabel = (key: 'prepare' | 'working' | 'stopFirst' | 'reviewFirst'): string => {
+  const labels = currentLanguage.value.startsWith('bg') ? {
+    prepare: 'Подготви версията', working: 'Обработване…',
+    stopFirst: 'Изключи текущата версия, преди да подготвиш избрания пакет. Данните се запазват.',
+    reviewFirst: 'Подготовката запазва данните и не стартира код. Прегледай и одобри достъпа на новия пакет преди активиране.',
+  } : {
+    prepare: 'Prepare version', working: 'Working…',
+    stopFirst: 'Turn off the current version before preparing the selected package. Its data is preserved.',
+    reviewFirst: 'Preparation preserves data and runs no code. Review and approve the new package’s access before activation.',
+  };
+  return labels[key];
+};
+
+const needsPackagePreparation = (extension: Extension, sha256 = applicationPackageSha(
+  extension, selectedVersions.value[extension.id] || extension.version,
+)): boolean => extension.source === 'application' && extension.is_installed
+  && Boolean(sha256 && sha256 !== extension.package_sha256);
+
+const applyApplicationPackage = async (extension: Extension, sha256: string,
+  configuration?: Record<string, string>): Promise<boolean> => {
+  if (!needsPackagePreparation(extension, sha256)) {
+    if (configuration) await http.post(`/api/v1/application-extensions/packages/${sha256}/activate`, { configuration });
+    else await http.post(`/api/v1/application-extensions/packages/${sha256}/activate`);
+    await openApplicationAccessIfNeeded(extension);
+    return true;
+  }
+  const moduleId = extension.id.replace('application:', '');
+  const { data } = await http.get(`/api/v1/application-extensions/${encodeURIComponent(moduleId)}/authority`, { timeout: 12000 });
+  const status = readAuthorityStatus(data);
+  if (status.artifact_sha256 !== extension.package_sha256 || status.installation_enabled
+    || status.installation_status !== 'disabled' || status.grant_state === 'unavailable') {
+    throw new Error('Refresh the application’s current access and stopped state before preparing a version.');
+  }
+  await http.post(`/api/v1/application-extensions/packages/${sha256}/stage`, {
+    request_id: authorityRequestId(), expected_artifact_sha256: status.artifact_sha256,
+    expected_revision: status.grant_record_revision, configuration: configuration || {},
+  }, { timeout: 12000 });
+  await loadExtensions();
+  const current = extensions.value.find(item => item.id === extension.id);
+  if (!current || current.package_sha256 !== sha256 || current.is_enabled || current.status !== 'disabled') {
+    throw new Error('The prepared package could not be confirmed. Refresh before continuing.');
+  }
+  authorityTarget.value = { moduleId, name: current.name };
+  window.dispatchEvent(new Event('menu-refresh'));
+  return false;
+};
 
 const openApplicationAccessIfNeeded = async (extension: Extension) => {
   if (!isAdmin.value) return;
@@ -491,9 +580,7 @@ const activateApplicationPackage = async (
     ? response.data.fields as ApplicationConfigurationField[]
     : [];
   if (fields.length === 0) {
-    await http.post(`/api/v1/application-extensions/packages/${sha256}/activate`);
-    await openApplicationAccessIfNeeded(extension);
-    return true;
+    return applyApplicationPackage(extension, sha256);
   }
   configurationFields.value = fields;
   configurationDevices.value = Array.isArray(response.data?.devices)
@@ -520,21 +607,22 @@ const cancelApplicationConfiguration = () => {
 
 const confirmApplicationConfiguration = async () => {
   if (!configurationTarget.value || !canSaveApplicationConfiguration.value) return;
+  operationSuccess.value = '';
   configurationSaving.value = true;
   configurationError.value = '';
   const target = configurationTarget.value;
   operationBusy.value = target.extension.id;
   try {
-    await http.post(
-      `/api/v1/application-extensions/packages/${target.sha256}/activate`,
-      { configuration: { ...configurationValues.value } },
-    );
+    const configuration = Object.fromEntries(configurationFields.value
+      .filter(field => field.required || configurationValues.value[field.key])
+      .map(field => [field.key, configurationValues.value[field.key]!]))
+    const activated = await applyApplicationPackage(target.extension, target.sha256, configuration);
     configurationSaving.value = false;
     cancelApplicationConfiguration();
     await getCompiledUiCatalog(true);
     window.dispatchEvent(new Event('menu-refresh'));
     await loadExtensions();
-    await openApplicationAccessIfNeeded(target.extension);
+    if (activated) await openApplicationAccessIfNeeded(target.extension);
   } catch (error) {
     configurationError.value = errorMessage(
       error,
@@ -554,9 +642,7 @@ const confirmApplicationConfiguration = async () => {
 };
 
 const isUninstallAction = (extension: Extension): boolean =>
-  extension.source === 'runtime' || (
-    extension.source === 'application' && extension.is_installed
-  );
+  extension.source === 'application' && extension.is_installed;
 
 const deleteTargetVersion = (extension: Extension | null): string => {
   if (!extension) return '';
@@ -571,11 +657,12 @@ const canActivateVersion = (extension: Extension): boolean => {
   if (!extension.can_manage || !version || operationBusy.value === extension.id
     || requiresApplicationRecovery(extension)) return false;
   if (extension.source === 'application') {
+    if (needsPackagePreparation(extension) && extension.is_enabled) return false;
     return Boolean(applicationPackageSha(extension, version)) && (
       !extension.is_enabled || version !== extension.version
     );
   }
-  return extension.source === 'runtime' && version !== extension.version;
+  return false;
 };
 
 const buildApplicationExtensions = (
@@ -592,31 +679,40 @@ const buildApplicationExtensions = (
     versions.push(pkg);
     packagesByModule.set(pkg.module_id, versions);
   }
+  // Recovery depends on the installation row, not optional package/UI health.
+  for (const installation of installations) {
+    if (!packagesByModule.has(installation.module_id)) packagesByModule.set(installation.module_id, []);
+  }
 
   return Array.from(packagesByModule.entries()).map(([moduleId, modulePackages]) => {
     const ordered = [...modulePackages].sort((left, right) =>
       left.version.localeCompare(right.version, undefined, { numeric: true }),
     );
     const installation = installationByModule.get(moduleId);
-    const selectedPackage = ordered.find(pkg => pkg.version === installation?.active_version)
+    const selectedPackage = ordered.find(pkg => pkg.sha256 === installation?.package_sha256)
+      || ordered.find(pkg => pkg.version === installation?.active_version)
       || ordered[ordered.length - 1];
     const active = installation?.status === 'active' && installation.enabled;
     return {
       id: `application:${moduleId}`,
       source: 'application',
-      name: selectedPackage.manifest.name || moduleId,
+      name: selectedPackage?.manifest.name || moduleId,
       type: 'application',
-      version: installation?.active_version || selectedPackage.version,
-      description: selectedPackage.manifest.description
+      version: installation?.active_version || selectedPackage?.version || '—',
+      description: selectedPackage?.manifest.description
         || t('extensions.applicationDescription', 'Core-hosted application extension'),
       status: installation?.status || 'staged',
       is_enabled: Boolean(active),
       created_at: '',
       can_manage: isAdmin.value,
       available_versions: ordered.map(pkg => pkg.version),
-      package_sha256: selectedPackage.sha256,
+      package_sha256: installation?.package_sha256 || selectedPackage?.sha256 || null,
       package_sha256_by_version: Object.fromEntries(
         ordered.map(pkg => [pkg.version, pkg.sha256]),
+      ),
+      kiosk_by_version: Object.fromEntries(ordered.filter(pkg => pkg.has_kiosk_interface === true).map(pkg => [pkg.version, pkg.sha256])),
+      connector_settings_by_version: Object.fromEntries(
+        ordered.filter(pkg => pkg.has_connector_settings === true).map(pkg => [pkg.version, pkg.sha256]),
       ),
       // A failed first activation still owns a lifecycle row and runtime state.
       is_installed: Boolean(installation),
@@ -626,16 +722,17 @@ const buildApplicationExtensions = (
 
 const loadExtensions = async () => {
   loading.value = true;
+  catalogUnavailable.value = false;
+  const unavailableCatalog = () => { catalogUnavailable.value = true; return { data: [] }; };
   try {
-    const [catalogResponse, compiledPackages, modulePackagesResponse, applicationInstallationsResponse, themesResponse, languagesResponse, retainedDataResponse] = await Promise.all([
-      http.get('/api/v1/runtime-extensions/catalog', { params: { language: currentLanguage.value } }),
-      getCompiledUiCatalog(true),
-      isAdmin.value ? http.get('/api/v1/modules/packages') : Promise.resolve({ data: [] }),
-      isAdmin.value ? http.get('/api/v1/application-extensions') : Promise.resolve({ data: [] }),
-      isAdmin.value ? http.get('/api/v1/modules/themes/catalog') : Promise.resolve({ data: { items: [] } }),
-      isAdmin.value ? http.get('/api/v1/modules/languages/catalog') : Promise.resolve({ data: { items: [] } }),
+    const [compiledPackages, modulePackagesResponse, applicationInstallationsResponse, themesResponse, languagesResponse, retainedDataResponse] = await Promise.all([
+      getCompiledUiCatalog(true).catch(() => { catalogUnavailable.value = true; return []; }),
+      isAdmin.value ? http.get('/api/v1/modules/packages', { timeout: 12000 }).catch(unavailableCatalog) : Promise.resolve({ data: [] }),
+      isAdmin.value ? http.get('/api/v1/application-extensions', { timeout: 12000 }) : Promise.resolve({ data: [] }),
+      isAdmin.value ? http.get('/api/v1/modules/themes/catalog', { timeout: 12000 }).catch(unavailableCatalog) : Promise.resolve({ data: { items: [] } }),
+      isAdmin.value ? http.get('/api/v1/modules/languages/catalog', { timeout: 12000 }).catch(unavailableCatalog) : Promise.resolve({ data: { items: [] } }),
       isAdmin.value
-        ? http.get('/api/v1/application-extensions/retained-data').then(response => ({ data: response.data, unavailable: false }))
+        ? http.get('/api/v1/application-extensions/retained-data', { timeout: 12000 }).then(response => ({ data: response.data, unavailable: false }))
           .catch(() => ({ data: [], unavailable: true }))
         : Promise.resolve({ data: [], unavailable: false }),
     ]);
@@ -691,12 +788,15 @@ const loadExtensions = async () => {
       is_installed: item.is_installed, created_at: '', can_manage: isAdmin.value,
       available_versions: [item.version], package_sha256: item.sha256,
     }));
-    extensions.value = [...(catalogResponse.data || []), ...applications, ...compiled, ...themes, ...languages];
+    extensions.value = [...applications, ...compiled, ...themes, ...languages];
     selectedVersions.value = Object.fromEntries(
       extensions.value.map(extension => [extension.id, extension.version])
     );
+    return true;
   } catch (error) {
     console.error('Failed to load extensions:', error);
+    operationError.value = t('extensions.loadError', 'Extensions could not be loaded. Refresh before continuing.');
+    return false;
   } finally {
     loading.value = false;
   }
@@ -711,6 +811,7 @@ const handleFileSelect = (event: Event) => {
 
 const uploadExtension = async () => {
   if (!selectedFile.value) return;
+  operationSuccess.value = '';
 
   uploading.value = true;
   uploadError.value = '';
@@ -743,6 +844,7 @@ const uploadExtension = async () => {
 };
 
 const toggleExtension = async (extension: Extension, event: Event) => {
+  operationSuccess.value = '';
   const target = event.target as HTMLInputElement;
   const isEnabled = target.checked;
   operationBusy.value = extension.id;
@@ -782,14 +884,6 @@ const toggleExtension = async (extension: Extension, event: Event) => {
       window.dispatchEvent(new Event('menu-refresh'));
       await loadExtensions();
       return;
-    } else if (extension.source === 'runtime') {
-      const moduleId = extension.id.replace('runtime:', '');
-      await http.patch(
-        `/api/v1/runtime-extensions/definitions/${encodeURIComponent(moduleId)}`,
-        { enabled: isEnabled }
-      );
-      await reloadRuntimeExtensionRoutes(router);
-      window.dispatchEvent(new Event('menu-refresh'));
     }
 
     // Update local state
@@ -813,14 +907,12 @@ const toggleExtension = async (extension: Extension, event: Event) => {
 const deleteExtension = (extension: Extension) => {
   extensionToDelete.value = extension;
   deleteAction.value = 'remove';
-  deleteDatabaseData.value = false;
   showDeleteModal.value = true;
 };
 
 const eraseApplicationData = (extension: Extension) => {
   extensionToDelete.value = extension;
   deleteAction.value = 'erase-data';
-  deleteDatabaseData.value = false;
   showDeleteModal.value = true;
 };
 
@@ -835,6 +927,7 @@ const eraseRetainedApplicationData = (item: RetainedApplicationData) => {
 const activateVersion = async (extension: Extension) => {
   const version = selectedVersions.value[extension.id];
   if (!canActivateVersion(extension) || !version) return;
+  operationSuccess.value = '';
 
   activatingVersion.value = extension.id;
   operationBusy.value = extension.id;
@@ -846,12 +939,6 @@ const activateVersion = async (extension: Extension) => {
       const activated = await activateApplicationPackage(extension, sha256);
       if (!activated) return;
       await getCompiledUiCatalog(true);
-    } else {
-      const moduleId = extension.id.replace('runtime:', '');
-      await http.post(
-        `/api/v1/runtime-extensions/definitions/${encodeURIComponent(moduleId)}/versions/${encodeURIComponent(version)}/activate`
-      );
-      await reloadRuntimeExtensionRoutes(router);
     }
     window.dispatchEvent(new Event('menu-refresh'));
     await loadExtensions();
@@ -868,25 +955,9 @@ const activateVersion = async (extension: Extension) => {
 const errorMessage = (error: any, fallback: string): string =>
   error?.response?.data?.detail || error?.response?.data?.error || fallback;
 
-const reinstallExtension = async (extension: Extension) => {
-  if (!extension.package_sha256 || !extension.can_manage) return;
-  operationBusy.value = extension.id;
-  operationError.value = '';
-  try {
-    await http.post(`/api/v1/runtime-extensions/packages/${extension.package_sha256}/activate`);
-    await reloadRuntimeExtensionRoutes(router);
-    window.dispatchEvent(new Event('menu-refresh'));
-    await loadExtensions();
-  } catch (error) {
-    console.error('Failed to reinstall runtime extension:', error);
-    operationError.value = errorMessage(error, t('extensions.reinstallError', 'Could not reinstall the extension.'));
-  } finally {
-    operationBusy.value = null;
-  }
-};
-
 const confirmDeleteExtension = async () => {
   if (!extensionToDelete.value) return;
+  operationSuccess.value = '';
   operationBusy.value = extensionToDelete.value.id;
   operationError.value = '';
 
@@ -907,14 +978,6 @@ const confirmDeleteExtension = async () => {
       const [, moduleId, version] = extensionToDelete.value.id.split(':');
       await http.delete(`/api/v1/modules/compiled-ui/packages/${encodeURIComponent(moduleId)}/${encodeURIComponent(version)}`);
       await getCompiledUiCatalog(true);
-    } else if (extensionToDelete.value.source === 'runtime') {
-      const moduleId = extensionToDelete.value.id.replace('runtime:', '');
-      await http.delete(
-        `/api/v1/runtime-extensions/definitions/${encodeURIComponent(moduleId)}`,
-        { params: { delete_data: deleteDatabaseData.value } }
-      );
-      await reloadRuntimeExtensionRoutes(router);
-      window.dispatchEvent(new Event('menu-refresh'));
     } else if (extensionToDelete.value.source === 'application') {
       const moduleId = extensionToDelete.value.id.replace('application:', '');
       if (extensionToDelete.value.is_installed) {
@@ -947,7 +1010,6 @@ const cancelDeleteExtension = () => {
   showDeleteModal.value = false;
   extensionToDelete.value = null;
   deleteAction.value = 'remove';
-  deleteDatabaseData.value = false;
 };
 
 // Keep the in-flight target stable while an install/remove request is pending.
@@ -1053,7 +1115,7 @@ watch(currentLanguage, async () => {
 .configuration-field label { font-weight: 550; }
 @media (max-width: 720px) {
   .view-header { align-items: stretch; flex-direction: column; }
-  .header-actions, .ai-builder-link { width: 100%; }
+  .header-actions { width: 100%; }
   .upload-form { grid-template-columns: minmax(0, 1fr); }
   .extensions-grid { grid-template-columns: minmax(0, 1fr); }
 }

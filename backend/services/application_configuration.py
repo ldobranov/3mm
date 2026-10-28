@@ -16,19 +16,40 @@ class ApplicationConfigurationError(ValueError):
     """Raised when installation configuration does not match its manifest."""
 
 
-def device_configuration_keys(definition: ApplicationExtensionV1) -> tuple[str, ...]:
+def device_configuration_keys(definition: ApplicationExtensionV1, *, required_only=False) -> tuple[str, ...]:
     """Return configuration keys that scope declared event subscriptions to devices."""
     return tuple(
         sorted(
             {
                 subscription.device_scope_config_key
                 for subscription in definition.event_subscriptions
+                if not required_only or f'event:{subscription.subscription_id}' not in definition.optional_resources
             }
-            | {item.target_device_config_key for item in definition.command_bindings}
-            | {item.sensor_device_config_key for item in definition.command_bindings if item.sensor_device_config_key}
-            | {item.target_device_config_key for item in definition.session_bindings}
+            | {item.target_device_config_key for item in definition.command_bindings
+                if not required_only or f'command:{item.binding_id}' not in definition.optional_resources}
+            | {item.sensor_device_config_key for item in definition.command_bindings if item.sensor_device_config_key
+                and (not required_only or f'command:{item.binding_id}' not in definition.optional_resources)}
+            | {item.target_device_config_key for item in definition.session_bindings
+                if not required_only or f'session:{item.binding_id}:open' not in definition.optional_resources}
         )
     )
+
+def require_available_device_bindings(definition, configuration, available):
+    keys=set(device_configuration_keys(definition))
+    required=set(device_configuration_keys(definition,required_only=True))
+    invalid=sorted(key for key in required | (keys & configuration.keys()) if configuration.get(key) not in available)
+    if invalid: raise ApplicationConfigurationError('Select an available device for: '+', '.join(invalid))
+
+
+def resolve_device_selection(schema, defaults, definition, *, existing=None, selection=None):
+    """An explicit form is the full device selection; omission preserves it."""
+    if selection is not None:
+        keys=set(device_configuration_keys(definition))
+        if set(selection)-keys: raise ApplicationConfigurationError('Only declared device bindings may be selected')
+        optional=keys-set(device_configuration_keys(definition,required_only=True))
+        defaults={k:v for k,v in defaults.items() if k not in optional}
+        existing={k:v for k,v in (existing or {}).items() if k not in optional}
+    return resolve_application_configuration(schema,defaults,definition,existing=existing,overrides=selection)
 
 
 def _matches_type(value: object, expected: str) -> bool:
@@ -116,10 +137,16 @@ def resolve_application_configuration(
             "Application configuration schema is invalid"
         )
     result = dict(defaults)
+    if existing is not None:
+        # Persisted configuration is a complete device choice. An omitted
+        # optional binding must not reappear from package defaults on review or
+        # restart after the administrator explicitly cleared it.
+        optional=set(device_configuration_keys(definition))-set(device_configuration_keys(definition,required_only=True))
+        for key in optional-set(existing):result.pop(key,None)
     result.update(existing or {})
     result.update(overrides or {})
     required = set(schema.get("required", [])) | set(
-        device_configuration_keys(definition)
+        device_configuration_keys(definition, required_only=True)
     )
     missing = sorted(key for key in required if key not in result)
     if missing:

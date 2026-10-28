@@ -11,6 +11,7 @@ from pathlib import Path
 
 from backend.services.application_configuration import resolve_application_configuration
 from backend.services.module_packages import MAX_PACKAGE_BYTES, validate_module_package
+from backend.services.application_requirements import require_platform_requirements
 from three_mm_application_sdk.relational_receipts import _RelationalReceiptStore
 from three_mm_application_sdk.relational_upgrade_receipts import (
     receipt_metadata_digest,
@@ -192,6 +193,7 @@ def upgrade_prepared_relational_database(
     source, _ = _package(source_package_path, ticket["source_package_sha256"])
     target, blob = _package(package_path, ticket["package_sha256"])
     definition = target.application_extension
+    require_platform_requirements(definition)
     configuration = resolve_application_configuration(
         target.manifest.configuration_schema,
         target.manifest.configuration_defaults,

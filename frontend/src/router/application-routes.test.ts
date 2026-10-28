@@ -3,11 +3,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { compiledRouteRecords, createRouterWithDynamicRoutes } from './index'
 import http from '@/utils/dynamic-http'
 import * as compiledUi from '@/utils/compiled-ui'
-import { mergeNavigationItems } from '@/utils/menu-navigation'
 import type { CompiledUiPackage } from '@/utils/compiled-ui'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { useApplicationHost, type ApplicationHost } from '@/extension-ui/application-v1'
+import { i18n } from '@/utils/i18n'
 
 
 function applicationPackage(audience: 'public' | 'kiosk' | 'operator' | 'administrator'): CompiledUiPackage {
@@ -34,22 +34,48 @@ function applicationPackage(audience: 'public' | 'kiosk' | 'operator' | 'adminis
 
 
 describe('application compiled routes', () => {
+  it('removes retired built-in products while preserving installed application routes', async () => {
+    const api = vi.spyOn(http, 'get').mockResolvedValue({ data: { items: [] } })
+    const catalog = vi.spyOn(compiledUi, 'getCompiledUiCatalog').mockResolvedValue([applicationPackage('operator')])
+    try {
+      const router = await createRouterWithDynamicRoutes()
+      for (const path of ['/extensions/ai-builder', '/automations/proposals', '/dashboard', '/dashboard/1/edit', '/@owner/status']) {
+        expect(router.resolve(path).name).toBe('NotFound')
+      }
+      expect(router.resolve('/application/operator').meta.applicationAudience).toBe('operator')
+      expect(router.resolve('/extensions').meta.requiresRole).toBe('admin')
+    } finally { api.mockRestore(); catalog.mockRestore() }
+  })
   it('provides the public host at the actual dynamic route boundary and disposes it on unmount', async () => {
     let host!: ApplicationHost
-    const child = defineComponent({ setup() { host = useApplicationHost(); return () => h('p', 'Loaded application') } })
+    const locale = ref('bg-BG'), changed = vi.fn()
+    const language = vi.spyOn(i18n, 'getCurrentLanguage').mockImplementation(() => locale.value)
+    const child = defineComponent({ props: { locale: String }, setup(props) {
+      host = useApplicationHost()
+      host.presentation.subscribe(changed)
+      return () => h('p', ['Loaded application', h('span', props.locale)])
+    } })
     const loader = vi.spyOn(compiledUi, 'loadCompiledComponent').mockResolvedValue(child)
     try {
       const pkg = applicationPackage('operator')
       const route = compiledRouteRecords([pkg])[0]
       const component = await (route.component as () => Promise<ReturnType<typeof defineComponent>>)()
       const wrapper = mount(component)
-      expect(wrapper.text()).toBe('Loaded application')
-      expect(Object.keys(host)).toEqual(['getInfo', 'sessions', 'invoke'])
+      expect(wrapper.find('span').text()).toBe('bg-BG')
+      expect(host.presentation.getInfo()).toEqual({ locale: 'bg-BG' })
+      expect(Object.keys(host)).toEqual(['access', 'delegations', 'presentation', 'getInfo', 'sessions', 'administration', 'files', 'invoke'])
       expect(loader).toHaveBeenCalledWith(pkg, pkg.entrypoints[0])
+      locale.value = 'en'
+      await nextTick()
+      expect(wrapper.find('span').text()).toBe('en')
+      expect(changed).toHaveBeenCalledExactlyOnceWith({ locale: 'en' })
       wrapper.unmount()
+      locale.value = 'bg'
+      expect(changed).toHaveBeenCalledOnce()
+      expect(() => host.presentation.getInfo()).toThrowError(expect.objectContaining({ code: 'disposed' }))
       await expect(host.getInfo()).rejects.toMatchObject({ code: 'disposed' })
       await expect(host.sessions!.targets()).rejects.toMatchObject({ code: 'disposed' })
-    } finally { loader.mockRestore() }
+    } finally { loader.mockRestore(); language.mockRestore() }
   })
   it('guards appearance preview and recovery with the existing admin boundary', async () => {
     const api = vi.spyOn(http, 'get').mockResolvedValue({ data: { items: [] } })
@@ -72,13 +98,11 @@ describe('application compiled routes', () => {
       const automatic = router.getRoutes()
         .filter(route => route.meta.menuLabel)
         .map(route => ({ path: route.path, label: String(route.meta.menuLabel) }))
-      for (const path of ['/automations/proposals', '/system/updates', '/settings/ui-preview']) {
+      for (const path of ['/system/updates', '/settings/ui-preview']) {
         const route = router.resolve(path)
         expect(route.meta.requiresAuth).toBe(true)
         expect(route.meta.requiresRole).toBe('admin')
-        expect(mergeNavigationItems([], automatic).some(item => item.path === path)).toBe(false)
-        expect(mergeNavigationItems([{ path, label: 'Custom label' }], automatic))
-          .toContainEqual({ path, label: 'Custom label' })
+        expect(automatic.some(item => item.path === path)).toBe(false)
       }
     } finally {
       api.mockRestore()

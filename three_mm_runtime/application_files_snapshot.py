@@ -69,6 +69,8 @@ def capture_private_files(data_root: Path, rollback_root: Path) -> None:
         json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8"),
     )
     _sync_directory(rollback_root)
+    from three_mm_runtime.application_media_snapshot import capture_media
+    capture_media(data_root, rollback_root)
 
 
 def _manifest(rollback_root: Path) -> dict:
@@ -132,6 +134,8 @@ def restore_private_files(
     The service MUST be confirmed stopped. No recursive copy of unvalidated data,
     no arbitrary data-root deletion and no in-place replay of a partial restore.
     """
+    from three_mm_runtime.application_media_snapshot import stage_media, switch_media
+    media_present = stage_media(rollback_root, service_uid, service_gid)
     storage = ApplicationFileStorage(rollback_root, mode="read", limits=LIMITS)
     storage._supported()
     manifest = _manifest(rollback_root)
@@ -204,3 +208,4 @@ def restore_private_files(
         if rollback_fd is not None:
             os.close(rollback_fd)
         os.close(data_fd)
+    switch_media(data_root, rollback_root, media_present)

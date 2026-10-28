@@ -130,6 +130,54 @@ def test_bootstrap_installs_network_packages_only_for_explicit_management(profil
     assert ('nodejs' in packages) == (profile == 'full')
 
 
+@pytest.mark.parametrize('installer', ['bootstrap', 'immutable'])
+@pytest.mark.parametrize('stored,override,marker,expected', [
+    (None, '', '', 'network-manager'),
+    (None, 'host', '', 'host'),
+    ('host', '', '', 'host'),
+    ('network-manager', '', '', 'network-manager'),
+    ('', '', '', 'host'),
+    (None, '', 'current', 'host'),
+    (None, '', 'provisioning', 'host'),
+    ('host', 'network-manager', '', 'network-manager'),
+    ('network-manager', 'host', '', 'host'),
+    (None, 'invalid', '', None),
+])
+def test_network_default_restores_fresh_ap_and_preserves_upgrades(
+    tmp_path, installer, stored, override, marker, expected,
+):
+    environment = tmp_path / '3mm.env'
+    current = tmp_path / 'current'
+    if stored is not None:
+        environment.write_text(f'THREE_MM_NETWORK_BACKEND={stored}\n')
+    if marker == 'current':
+        current.symlink_to(tmp_path / 'previous-release', target_is_directory=True)
+    if marker == 'provisioning':
+        (tmp_path / 'provisioning').mkdir()
+    if installer == 'bootstrap':
+        bootstrap = (Path(__file__).parents[2] / 'install.sh').read_text()
+        source = bootstrap[bootstrap.index('if [[ -z $network_backend && -f /etc/3mm/3mm.env'):
+                           bootstrap.index('[[ $channel == stable')]
+        source = source.replace('/etc/3mm/3mm.env', environment.as_posix()).replace(
+            '/opt/3mm/current', current.as_posix()).replace('/var/lib/3mm', tmp_path.as_posix())
+    else:
+        source = section('network_backend=${THREE_MM_NETWORK_BACKEND:-}', 'ai_master_key_file=')
+    result = run(
+        f'network_backend={shlex.quote(override)}\n'
+        f'THREE_MM_NETWORK_BACKEND={shlex.quote(override)}\n'
+        f'environment_file={shlex.quote(environment.as_posix())}\n'
+        f'current_link={shlex.quote(current.as_posix())}\n'
+        f'state_root={shlex.quote(tmp_path.as_posix())}\n'
+        + 'THREE_MM_BOOTSTRAP_PACKAGES=()\nfail() { echo "$*" >&2; exit 1; }\n'
+        + source + '\nprintf "backend=%s\\n" "$network_backend"\n'
+    )
+    if expected is None:
+        assert result.returncode != 0
+    else:
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == f'backend={expected}'
+
+
 @pytest.mark.parametrize('profile', ['full', 'node'])
 def test_profile_selects_only_its_units(profile):
     result = run(f'install_profile={profile}\n' +

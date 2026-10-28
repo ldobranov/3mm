@@ -66,9 +66,9 @@ def _saved_selection(manager, db, key, installation_id, subject):
         if value["state"] != "active":
             return None
         data = value["data"]
-        approved = authority._parse(type(subject), data["subject"])
+        approved = authority._parse(getattr(authority, 'PolicySubjectV' + str(data['subject']['subject_version'])), data['subject'])
         native, _ = manager._policy(db, key, subject, data["native_review_id"])
-        if (authority._resource_identity(subject) != authority._resource_identity(approved)
+        if (authority._resource_identity(subject, required_only=True) != authority._resource_identity(approved, required_only=True)
                 or native["revision"] != data["native_revision"]):
             return None
         return data
@@ -87,12 +87,16 @@ def preview(manager, installation_id, *, actor_token, request_id):
     with manager._write(installation_id, actor_token, request_id, "consent_preview", {}) as (db, key, mutation, actor, result):
         if result:
             return result
-        subject = manager._subject(db, key, installation_id, prepared)
+        unavailable = []
+        subject = manager._subject(db, key, installation_id, prepared, diagnostics=unavailable)
         permissions = _permissions(prepared)
         current_human = _human_grants(db, installation_id, actor[0])
         saved = _saved_selection(manager, db, key, installation_id, subject)
         scopes = sorted(authority._subject_scopes(subject))
-        selected = saved["selection"]["scopes"] if saved else scopes
+        selected = [scope for scope in saved['selection']['scopes'] if scope in scopes
+            and authority.optional_scope_current(subject, {'data':saved}, scope)] if saved else [scope for scope in scopes
+            if scope not in {'storage:private_files_publish', 'storage:private_files_transform'}
+            and scope not in subject.optional_resources]
         known_permissions = [item["permission_id"] for item in permissions]
         user_saved = bool(current_human) or bool(saved and saved.get("actor_user_id") == actor[0])
         selected_human = [item for item in current_human if item in known_permissions] if user_saved else known_permissions
@@ -108,16 +112,27 @@ def preview(manager, installation_id, *, actor_token, request_id):
         value = authority._envelope("plan", identifier, installation_id, "consent_preview", data)
         authority._save(db, key, "plan", Plan(plan_id=identifier, installation_id=installation_id), value)
         installation = db.get(ApplicationExtensionInstallation, installation_id)
+        access_saved = saved is not None
+        if access_saved and installation.active_version is None:
+            # A recovered/unactivated candidate cannot renew an obsolete grant
+            # as an ordinary disable/enable cycle can. Keep the saved choices
+            # visible, but require explicit current consent before activation.
+            try:
+                manager._require_current_grant(db, key, installation_id, prepared)
+            except (authority.AuthorityManagementError, AuthorityReviewKeyError, ValueError, TypeError, KeyError, AttributeError):
+                access_saved = False
         result.update(consent_version=1, preview_id=identifier, revision=value["revision"],
             fingerprint=fingerprint, expires_in_seconds=TTL_MS // 1000,
             module_id=subject.binding.principal.module_id, installation_id=installation_id,
             artifact_sha256=subject.binding.candidate.sha256,
             built_ui_sha256=subject.binding.candidate.built_ui_sha256,
             scopes=scopes, selected_scopes=sorted(selected),
+            optional_resources=list(subject.optional_resources),
+            unavailable_resources=unavailable,
             resources={name: [item.model_dump(mode="json") for item in items]
                 for name, items in authority._resources(subject).items()},
             user_permissions=permissions, selected_user_permissions=selected_human,
-            access_saved=saved is not None, installation_enabled=installation.enabled,
+            access_saved=access_saved, installation_enabled=installation.enabled,
             installation_status=installation.status)
     return result
 

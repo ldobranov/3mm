@@ -123,6 +123,20 @@ describe('Settings themed workspace compatibility', () => {
     expect(http.put).toHaveBeenCalledWith('/menu/update', expect.objectContaining({ id: 3, language: 'en', items: [expect.objectContaining({ audience: 'authenticated' })] }))
   })
 
+  it('deletes the last active menu and leaves an empty header configuration', async () => {
+    const wrapper = await mountView(); await selectSection(wrapper, 'menu')
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    http.delete.mockResolvedValue({ data: { deleted: true, menu_id: 3 } })
+    const previousGet = http.get.getMockImplementation()!
+    http.get.mockImplementation(async (path: string) => path === '/menu/read'
+      ? { data: { items: [] } } : previousGet(path))
+    await wrapper.get('.menu-delete').trigger('click'); await flushPromises()
+    expect(http.delete).toHaveBeenCalledWith('/menu/3')
+    expect(wrapper.find('.menu-delete').exists()).toBe(false)
+    expect(wrapper.get('.menu-empty-state').text()).toContain('The header has no navigation links.')
+    expect(wrapper.findComponent(MenuConfigurationSection).props('currentMenuItems')).toEqual([])
+  })
+
   it('preserves non-admin visibility without mounting privileged sections or querying their settings', async () => {
     localStorage.setItem('role', 'user')
     const wrapper = await mountView()
@@ -146,16 +160,15 @@ describe('Settings themed workspace compatibility', () => {
     expect(http.post).not.toHaveBeenCalled()
   })
 
-  it('keeps default and session saves unchanged and does not submit blank API keys', async () => {
+  it('keeps default and session saves after removing the product provider editor', async () => {
     const wrapper = await mountView(); const application = wrapper.findComponent(ApplicationSettingsSection)
     application.findComponent(ThemeSelector).vm.$emit('update:modelValue', 'dark'); await flushPromises()
     expect(http.post).toHaveBeenCalledWith('/settings/create', expect.objectContaining({ key: 'default_theme', value: 'dark', language_code: '' }))
     await wrapper.get('#session-duration-hours').setValue(24)
     await application.findAll('button').find(button => button.text() === 'Save session duration')!.trigger('click'); await flushPromises()
     expect(http.put).toHaveBeenCalledWith('/api/admin/session-settings', { duration_hours: 24 })
-    await wrapper.get('#ai-provider').setValue('groq')
-    await application.findAll('button').find(button => button.text() === 'Save AI settings')!.trigger('click'); await flushPromises()
-    expect(http.post).toHaveBeenLastCalledWith('/api/admin/ai-settings', { provider: 'groq' })
-    expect(wrapper.get('label[for="groq-api-key"]').text()).toBe('Groq API Key')
+    expect(wrapper.find('#ai-provider').exists()).toBe(false)
+    expect(wrapper.find('label[for="groq-api-key"]').exists()).toBe(false)
+    expect(http.get).not.toHaveBeenCalledWith('/api/admin/ai-settings')
   })
 })

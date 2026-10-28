@@ -18,6 +18,7 @@ from backend.services import application_authority_management as authority
 from backend.services.application_authority_context import _canonical_bytes
 from backend.services.application_authority_sources import _configuration
 from backend.services.application_files import _principal
+from backend.services.application_requirements import require_platform_requirements
 from backend.services.application_policy_reviews import _actor
 from backend.services.authority_metadata import (
     authority_transaction,
@@ -211,6 +212,7 @@ def _issue_preparation(
         purpose = "namespace_preparation"
     expected = authority._identifier(expected_grant_record_revision)
     prepared = manager._prepare(installation_id)
+    require_platform_requirements(prepared[1].application_extension)
     with manager._write(
         installation_id,
         actor_token,

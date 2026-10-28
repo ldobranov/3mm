@@ -50,15 +50,16 @@ def test_clean_database_migrates_to_head_and_back_to_base(tmp_path):
     engine = create_engine(database_url)
     inspector = inspect(engine)
     tables = set(inspector.get_table_names())
+    assert {"retired_pages","retired_extensions","retired_language_packs","language_extension_installations"} <= tables
+    assert not {"pages","extensions","language_packs","setting_translations","extension_tables","extension_fields","table_translations","migration_history"} & tables
     assert "settings" in tables
     assert "devices" in tables
-    assert "automation_proposals" in tables
-    assert "automation_revisions" in tables
-    assert "ai_jobs" in tables
-    assert "ai_usage_ledger" in tables
-    assert "extension_projects" in tables
-    assert "extension_project_files" in tables
-    assert "extension_project_builds" in tables
+    product_tables = {"automation_proposals", "automation_revisions", "ai_jobs",
+        "ai_usage_ledger", "extension_projects", "extension_project_files", "extension_project_builds"}
+    assert not product_tables & tables
+    assert {"retired_" + name for name in product_tables} <= tables
+    assert {"retired_runtime_extension_definitions", "retired_runtime_entity_records"} <= tables
+    assert not {"runtime_extension_definitions", "runtime_entity_records"} & tables
     assert "application_extension_installations" in tables
     assert {'application_command_epochs', 'application_command_requests'} <= tables
     installation_columns = {
@@ -67,7 +68,9 @@ def test_clean_database_migrates_to_head_and_back_to_base(tmp_path):
     }
     assert "configuration" in installation_columns
     assert "application_permission_grants" in tables
-    assert {'group_roles', 'role_application_grants', 'role_dashboard_grants'} <= tables
+    assert {'group_roles', 'role_application_grants', 'module_package_retained_references'} <= tables
+    assert not {'displays', 'widgets', 'role_dashboard_grants'} & tables
+    assert {'retired_displays', 'retired_widgets', 'retired_role_dashboard_grants'} <= tables
     assert "application_kiosk_enrollments" in tables
     assert "application_kiosk_terminals" in tables
     assert "application_event_deliveries" in tables
@@ -79,7 +82,7 @@ def test_clean_database_migrates_to_head_and_back_to_base(tmp_path):
     assert {'lease_token', 'last_scheduled_at', 'last_duration_ms', 'last_lateness_ms'} <= {
         column['name'] for column in inspector.get_columns('application_job_states')}
     assert "application_sync_checkpoints" in tables
-    build_columns = {column["name"] for column in inspector.get_columns("extension_project_builds")}
+    build_columns = {column["name"] for column in inspector.get_columns("retired_extension_project_builds")}
     assert {"artifact_path", "package_kind", "installed_at"} <= build_columns
     engine.dispose()
 

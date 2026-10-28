@@ -81,7 +81,6 @@ def test_corrupt_provisioning_state_fails_agent_startup(tmp_path):
 def test_setup_service_role_is_consumed_by_agent(tmp_path):
     import sqlite3
     from setup_service.config import SetupSettings
-    from three_mm_provisioning.setup_access import FileSetupAccessStore
     provisioning_store = FileProvisioningStore(tmp_path / "setup")
     setup_settings=SetupSettings(data_dir=tmp_path/"setup",core_database_path=tmp_path/"core.db")
     with sqlite3.connect(setup_settings.core_database_path) as db:
@@ -95,8 +94,7 @@ def test_setup_service_role_is_consumed_by_agent(tmp_path):
     network=MockNetworkAdapter()
     setup_app=create_setup_app(network,provisioning_store,setup_settings,capability_provider=lambda:[])
     with TestClient(setup_app) as setup_client:
-        token=FileSetupAccessStore(setup_settings.data_dir).issue(setup_app.state.setup_runtime.access_snapshot)
-        response=setup_client.post("/api/v1/setup/configure",json=setup_payload,headers={"Authorization":"Bearer "+token})
+        response=setup_client.post("/api/v1/setup/configure",json=setup_payload)
     assert network.calls==[]  # Host-managed networking is preserved; no Wi-Fi operation.
 
     settings = AgentSettings(

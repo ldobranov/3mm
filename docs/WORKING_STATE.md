@@ -1,8 +1,2753 @@
 # Current working state
 
-Updated: 2026-10-25. Start here; follow linked details only as needed.
+Updated: 2026-10-28. Start here; follow linked details only as needed.
 
 ## Active task and next result
+
+- **Owner-requested 0.3.1 checkpoint, 2026-10-28.** Owner explicitly authorized
+  a commit outside main with Core version 0.3.1. Working branch:
+  `codex/core-sdk-0.3.1`, based on `ebb98fb`. Scope is the accumulated supported
+  CAP/Core extraction, setup/deployment, SDK and performance work in this chat;
+  independent protocol/SDK/application version axes remain unchanged. No push,
+  tag, release, deployment or device mutation is requested. VERSION, changelog
+  and README describe the local unreleased checkpoint. Staged scope reviewed:
+  accumulated supported CAP profiles, optional-product extraction, onboarding/
+  recovery, deployment tooling and SDK optimization. Existing immutable kits retain
+  their original version/content; they are not silently relabeled 0.3.1.
+
+  The two previously recorded retained-data fixture failures are corrected:
+  backfill/downgrade tests target their own historical migration while separate
+  clean/precreated tests still validate head; the activation identity test uses
+  a current typed, device-independent declaration and configuration entrypoint.
+  Its retained identity/helper-denial assertions remain intact. Full integration
+  also exposed a real floating-point countdown boundary: a 600-second diagnostic
+  session could initially report 601. Store the requested bound and clamp only
+  the displayed remaining time; the actual expiry/rate/ownership rules remain
+  unchanged. Three deterministic exponent-boundary cases plus direct consumers
+  passed; the protocol/SDK version axes did not change.
+
+  Local checks: **6661 unique primary Python cases passed / 618 explicit skips**,
+  covering all existing CI Python/tooling groups. Backend's 4886 collected cases
+  were accounted for across resumed batches, with worker-disconnect's 4 cases
+  in their own fresh process. The initial stopped runs (2483/690 passes) are not
+  called green gates: only their unchanged successful/skipped families are
+  reused, with the repaired case and remaining modules checked afterward.
+  Fresh diagnostics/direct consumers: **88 passed**; retained-data suites:
+  **11 passed**, followed by the exact repaired denial on final product code.
+  Other completed groups: **1655 passed / 3 skipped** core/Agent/protocol/runtime/
+  provisioning/setup/libraries; **653 passed / 7 skipped** deployment/SDK;
+  **68 passed** tooling. Counts overlap where fixtures/direct consumers repeat;
+  the 6661 total is deduplicated, not the sum of every run.
+
+  Separate optional image profile: **71 passed / 1 root-driver skip**, including
+  real Pillow media and native image-host artifact checks. Pillow 13.0.0 was
+  installed only in a disposable test target, not Core's dependency environment.
+  **732 frontend tests / type-check / build passed**, cache
+  `e61e97f6b29be0253f89b4ae7264ac686d37959d18bdb3fb5fdd9d14d754ced5`.
+  Native Windows deployment command doubles passed without network. Environment:
+  unprivileged WSL Linux/CPython 3.14.4 and Node 22.22.1; canonical Python 3.13
+  CI and opt-in/root/systemd/hardware release acceptance remain distinct gates.
+  Existing physical acceptance is retained, not rerun or enlarged here.
+
+  Initial broad source `f23703589af5b455881bb17a64082144a2265120568208d77cb1e47b08703f34`;
+  final checked product source
+  `2aba6bc2c834a133debca852e83bd009c2f994af5ec931e91a1a076ef1269bf6`.
+  Only the retained fixture and diagnostic module/tests changed between those
+  executable snapshots; affected checks were rerun. Exact source inputs, JUnit,
+  per-family coverage accounting, staged diff/tree audit and logs are in ignored
+  `.runtime/checkpoint-031/`. Preserved legacy/reference snapshots retain their
+  verified original bytes and inherited whitespace; active-code whitespace is
+  clean. No generated archives, databases, keys, access notes or credentials are
+  staged. Only this handoff prose follows verification. Next: owner review and
+  any separately requested branch publication, merge or new 0.3.1 deployment kit.
+
+- **General Core/SDK invocation optimization completed locally, 2026-10-28.**
+  Owner authorized the common optimization below. UI code trust now resolves
+  current package/lifecycle, incarnation, Core identity and recovery generation
+  without reconstructing unrelated service-resource policy. Full policy and UI
+  trust share the same authenticated native-review/binding/risk validation.
+  Grant/native records and their revision/seals remain fresh at every boundary;
+  service resource use keeps its independent current authority checks.
+
+  A bounded request-local scope reuses verified ZIP/descriptor/build objects
+  across both invocation thread-pool phases and nested UI route checks. Reuse
+  checks file identity, size, mtime/ctime, owner/mode and protected build inventory;
+  detected drift poisons the entry. Scope exit clears retained objects, including
+  copied contexts. No actor/grant/approval cache or operation replay. SDK coalesces
+  only in-flight getInfo calls on one mounted host and exact origin/credential;
+  it binds discovery to that actual credential and refuses actor/origin changes.
+  Completion/failure discards discovery, and each invocation still sends its own
+  single POST. No application-specific Core branch, app edit, dependency/schema/
+  protocol/version change, reset or deployment. Existing M21 proof/transactions
+  and owner-accepted reader/AP tests remain intact.
+
+  Matched metadata-only Pi comparison, actual Core UID and connection-enforced
+  query_only: old warmed independent UI checks 374.54/382.29/459.04 ms; candidate
+  105.29/102.35/101.54 ms. Repeated boundaries in one request fell from roughly
+  363–380 ms to 63–69 ms after its initial 112.56 ms check, about 5–6x for the
+  repeated verification segment. Initial cold verification was 597.34 vs 186.45
+  ms. Candidate modules were injected only into a separate diagnostic process;
+  archive audit matched all seven measured module hashes. No business query,
+  scan or installed service/config/grant/key change. This is not an end-to-end
+  browser latency result; owner measures clients/stays after deployment.
+
+  Final frozen source
+  `ac779a1e641a0e42e228065ea35fcdd61a8d5b8213cbe700447a3cad72f97635`:
+  **1431 passed / 7 explicit skips** in the affected authority/consent/access,
+  administration/session/kiosk, invocation/IPC, resources, package/compatibility,
+  relational registration/candidate, compiled UI and controller group (185.33 s),
+  evidence `d80694e64b2549300fb6f2581f01f6a100918d65873597164aad138808b87c53`.
+  Separate same-source runs: **4 worker-disconnect checks passed**, and **5 root
+  checks passed**, supplying the skipped foreign-UID/real relational helper
+  coverage. The two non-POSIX refusal cases remain environment-specific skips.
+  **732 frontend tests plus type-check/build passed**; preparation reused that
+  exact checked build `96fd58a9adffef87d0cf5a3e7b24c10ab982b1bd4cce1259735086b0c8fd2f97`.
+  An initial compatibility regression in the default version source was caught
+  and fixed before this evidence. A mixed run stalled at the existing ASGI
+  worker-stream fixture (py-spy confirmed TestClient.receive line 194); it was
+  interrupted and is not a successful gate. Final verification deliberately
+  runs that unchanged module in its own fresh process, without weakening tests.
+
+  Ready owner-run Core-only kit:
+  `.runtime/deploy/artifacts/0f5e4e5ce7f985e9bc848597680a11df8e03a1d5d4bad02a1939bf4b42ec4207`,
+  release `local-0f5e4e5ce7f985e9bc848597`, 14.60 MiB, prepared in 218.812 s.
+  Archive audit confirmed all hashes, exact current source/evidence, new frontend
+  and retained Agent/default host. Only this handoff prose follows audit.
+  Next: owner deploys the kit when ready and measures the ordinary clients/stays
+  refresh. Ignored probes/audit live in `.runtime/provider-onboarding/`.
+
+- **Owner acceptance and read-latency diagnosis, 2026-10-28.** Owner confirms the
+  UI-build 409 correction works and the real reader test passed. Core is now
+  `local-e22b77666d7687b0ed302542`; do not reopen the accepted reader scenario.
+  New question: registrations/stays take 10–12 seconds to load. Metadata-only SSH
+  timing as Core UID, with DB connection-enforced query_only, measured one ZIP
+  read/validation at 26.50 ms, protected compiled-build verification at 25.93 ms,
+  application descriptor loading at 23.47 ms, and one full UI trust verification
+  at **567.33 ms**. Profiling a separate call shows full `_subject` composition
+  dominates that trust check; its instrumented cumulative timings include profiler
+  overhead and must not be added to uninstrumented stage durations. Snapshot:
+  load average 0.22, 288 MiB memory available, temperature 48.3 C.
+
+  Code-path accounting: ordinary UI-bound operations call `admit` five times and
+  invocation preparation three times. Both paths independently repeat complete
+  compiled-UI trust, including package/build preparation and full authority
+  subject/policy reconstruction. One Desk refresh first calls `host.getInfo`,
+  then starts both list queries; SDK `invoke` calls `getInfo` again for each one.
+  This is up to 19 full UI trust checks for the two-list refresh, before counting
+  relational authority/metadata work. Lists render together after Promise.all.
+  These counts come from current code, not an end-to-end HTTP timing trace; the
+  observed repeated verification cost explains a substantial part of 10–12 s.
+  Existing application list handlers use paged local SQL. No business operation,
+  scan, permission change, deployment or app-source edit was performed here.
+
+  Proposed next bounded Core/SDK performance result: prepare/verify immutable
+  package, descriptor and UI build once per invocation and reuse those exact
+  objects at repeated boundaries; retain fresh actor, native-review, package/
+  lifecycle/recovery and resource-grant checks at their current admission and
+  completion points. UI code trust should not reconstruct unrelated full service
+  resource policy on every read. Coalesce concurrent SDK getInfo requests for the
+  same mounted host without caching authorization or replaying operations.
+  This is a general mechanism; no Child Center-specific Core fast path. This
+  turn is diagnosis only; implementation/performance acceptance remains next.
+  Ignored measurement script: `.runtime/provider-onboarding/profile-ui-read-cost.py`.
+  Documentation/diagnostic-only work needs no frontend build or runtime suite.
+
+- **Recurring UI-build 409 diagnosed and corrected locally, 2026-10-28.** Owner
+  still sees `Application UI build is unavailable; reload the interface` after
+  Ctrl+F5 on Child Center query operations. Read-only SSH as the actual Core UID
+  confirmed installed release `local-952351ef39ef30d1d4dfb60a`, active app 0.7.9,
+  exact ZIP and protected compiled build
+  `8f690b1facac83ecf701590f57eb9bdff10388b89ea28005be0d3fa42a5110b2`, matching
+  native binding/revision and successful isolated UI trust. Two concurrent trust
+  checks on the installed code reproduced one `AuthorityReviewKeyError` at
+  0.368 s while the other succeeded at 0.445 s: read-only UI checks used the same
+  exclusive key lock and exceeded its 250 ms admission wait. No business queries
+  or scans were invoked. Initial standalone probes needed full ORM registration
+  and Core's ordinary file engine with connection-enforced query_only; custom
+  read-only URI engines are intentionally rejected by the snapshot contract.
+
+  Added a dedicated shared `read_locked` verification lease, used only by UI
+  trust verification/read snapshots. Its public adapter refuses new seals and
+  encrypted recovery responses; fingerprint/verification/decryption retain the
+  current key/DB binding and expiry checks. Approval/effect admission, key
+  provisioning/rotation/recovery remain exclusive. No timeout increase, grant
+  cache, permission fallback, mutation replay, schema/dependency/SDK change.
+  Old code fails both deterministic overlapping-reader regressions; corrected
+  verification and exact snapshot paths pass, then refuse revoked native trust.
+  Real key tests retain writer/rotation exclusion, no signing through read leases,
+  tamper/expired-lease denials. Candidate versions of only the two Core modules
+  were loaded in a separate read-only diagnostic process on the Pi: both checks
+  passed (0.770/0.689 s); installed files/services/keys/grants were not changed.
+
+  Final frozen source
+  `aa706785f273cf1e880b5f2c6432d09b0eacaff17148f62b1a2ea1353b56f282`:
+  **1263 passed / 3 explicit root/non-POSIX skips** in the affected authority,
+  consent, access, administration, browser session, invocation/IPC, kiosk,
+  compiled UI/provenance and controller group. A separate disposable root run
+  passed both the real foreign-UID key denial and shared-lease test; remaining
+  non-POSIX refusal skips do not assert POSIX coverage. Reused unchanged
+  **728-test frontend/type-check/build** cache
+  `51dde2a6926fb64a79460c5390bfa2ff9bf66e0b8a6814ba3b0139061412cf47`.
+  Ready owner-run Core-only kit:
+  `.runtime/deploy/artifacts/e22b77666d7687b0ed302542e7fd4d6ab92d0c3bfe1a12738b16e12622c09e9f`,
+  release `local-e22b77666d7687b0ed302542`, evidence
+  `780cede587e4f60931af22cdfdd22524f1694b7d95a8ebd0863137e35bea7183`.
+  Prepared in 197.534 seconds, 14.59 MiB. Audit confirmed kit/archive/source
+  hashes, the exact two candidate module hashes tested on Pi, unchanged frontend
+  and retained Agent/default-host specifications. Only handoff prose follows
+  audit. No deployment, app ZIP edit, actual app operation, permission/config
+  change, reset, publication or commit. Next: owner deploys this kit and retries
+  the normal Child Center UI reads; owner retains business acceptance tests.
+
+  Separate existing test maintenance findings: an initial mixed 150-file run
+  reached 2747 passes/597 skips but had two retained-data failures and stalled in
+  the ASGI worker-stream fixture; it was interrupted, never accepted as a green
+  gate. Both retained-data failures reproduce on unchanged pre-fix source
+  `1e50704...`: guarded stable-subject downgrade and a mock of the removed
+  `resolve_application_configuration` route symbol. Both fixtures are corrected
+  at the later owner-requested 0.3.1 checkpoint recorded above.
+  The worker case passes separately on both old/new code; its entire module also
+  passes in the final affected group. No full-backend success is claimed.
+  Ignored diagnostic/check evidence is in `.runtime/provider-onboarding/`.
+
+- **Missing owner capability administration corrected locally, 2026-10-28.**
+  Read the last two `child-center` replies: installed Core is
+  `local-0a42e1568206f3095e21f375`, Agent pin
+  `ed8febbce804770bbf762eee78cc21d762f64ec696247a5243b8ea82ce7b14ec`.
+  This is reused sibling read-only evidence, not a new device session here.
+  The previous implementation tested administrator selection through API only;
+  the owner's normal UI step was missing. Devices now has a Capabilities action
+  per device, opening a provider-neutral editor through existing administrator
+  provider/configuration/enable and catalog-v3 APIs. It shows reported offers,
+  retained selections, enabled state and live readiness independently. Module/
+  platform/inventory-only rows are descriptive. Withdrawn retained selections
+  require an explicit clear before a new selection can be saved. No app-specific
+  branch, API/auth change, schema migration, automatic grant/enable or scan replay.
+  Bounded browser decoding binds device/provider/target/revision; one-shot writes
+  refuse uncertain/foreign acknowledgements. Conflict/denial/lost response blocks
+  mutation until an explicit fresh read. Saving one provider preserves drafts of
+  other providers. Admin page/role guards and backend authority remain in force.
+  Shared CAP09 controls/tokens retain theme and component settings; EN fallbacks
+  and BG language-source labels added. BG installed package is not replaced.
+
+  Verification: **728 frontend tests and type-check/build passed**, cache
+  `51dde2a6926fb64a79460c5390bfa2ff9bf66e0b8a6814ba3b0139061412cf47`,
+  source `1e50704cae4f4cc935f2b8956d9d42e85ac95231550b6e46df9845b6780cc2cf`.
+  Includes the actual Devices button -> editor -> save flow, explicit selection,
+  revisions/disable, 409/403/timeout, other drafts, withdrawals, inventory-only,
+  non-admin denial and foreign response/target rejection. **53 backend checks
+  passed**, including three actual HTTP provider/catalog snapshots decoded by the
+  real browser TypeScript (unselected, selected, disabled). That run used source
+  `dba41aa74e85cf8e22690de68c1790042098ec51d828a116b615e05381d07eea`;
+  only a TS target-compatible own-property check changed afterward, covered by
+  final full frontend. Broader unchanged provider/Agent/runtime evidence below is
+  reused. Synthetic browser review exercised save/readiness and a lost-ack then
+  explicit-refresh path; light/outline and 390x844 dark/BG, maximum identifiers:
+  no document/panel/card overflow. Screenshot/evidence in ignored
+  `.runtime/provider-onboarding/`. Viewport reset and owned tab/server closed.
+  Ready owner-run Core-only kit:
+  `.runtime/deploy/artifacts/952351ef39ef30d1d4dfb60a6f485e3488c22adbd13a1a26e86f4973c16f7af8`,
+  release `local-952351ef39ef30d1d4dfb60a`. Prepared in 45.677 seconds; 14.59 MiB.
+  **89 preparation checks passed** (the 53 backend checks above plus 36 controller
+  checks), evidence `25d29679d8232383153e953247de7874c57cdc71eb8958a5b7a37e5569c052e7`.
+  Reused the final 728-test frontend build. Independent kit audit confirmed all
+  hashes, exact source proof, the actual compiled Devices administration chunk and
+  unchanged Agent sources; independent Agent pin remains retained. Only handoff
+  prose/plan changed after audit; existing immutable kits are unchanged.
+  Next: owner runs the supplied command, then Devices -> Capabilities,
+  explicit source selection, fresh application event consent and ONE new scan.
+  No SSH, real provider selection, app grant, deployment, publication or commit.
+
+- **Owner-run Core + Agent rollout prepared, 2026-10-28.** Ready immutable kit:
+  `.runtime/deploy/artifacts/0a42e1568206f3095e21f375442e52f37e9c463008aad17e45fcd10cc4f4fdd5`,
+  release `local-0a42e1568206f3095e21f375`, ARM64/Python 3.13/image host.
+  `deploy.ps1 -Action Deploy -Bundle <that folder>` applies the sealed selection;
+  no extra flag is required at deployment. Permanent `-WithAgent` preparation
+  explicitly includes the independent Agent pin. Core-only kits still retain it.
+  The new release's constrained venv builds the exact selected Agent sources and
+  dependencies; standard `service_component agent update/probe` owns identity,
+  Core continuity and rollback. Agent configuration is preserved. Partial failure
+  remains failed/inspect-only, not a successful or blindly replayed deployment;
+  Agent rollback is independent and does not undo an already successful Core.
+  Other independent services/application pins are not updated by this option.
+
+  New frozen preparation evidence `9cdf688002dd40473b6d3f2954ed9f1f942382fac8d7ce6e8b969519f82a596d`:
+  **396 passed / 1 explicit non-POSIX refusal-case skip**, including controller,
+  real native Agent build/isolated staging, service-component update/rollback,
+  all Agent and focused onboarding/consent/event-authority regressions.
+  PowerShell command doubles passed without network. Reused the unchanged
+  **715-test frontend/type-check/build** cache recorded below, and the unchanged
+  broader integration evidence. Prepared in 75.965 seconds; 14.59 MiB kit.
+  Independent audit validated kit members/digests, Core archive, Agent source
+  binding, exact workspace against evidence and `Prepare -Bundle ... -WithAgent`.
+  Only deploy controller/wrapper and their tests changed after prior product
+  verification; README/check policy documented the permanent option. This handoff
+  prose is the only edit after package audit and needs no runtime rerun.
+  No SSH/device action, deployment, commit, publication, config/grant change or
+  scan replay. Next: owner runs the supplied command on `rasp-3mm.local`, then
+  explicit provider selection, fresh application event consent and ONE new scan.
+
+- **General Agent provider onboarding and optional-resource diagnostics completed
+  locally, 2026-10-28.** Owner authorized implementing the common path discussed
+  below. `AgentProviderRegistry` accepts bounded adapter declarations/health,
+  reconciles authenticated existing provider v2 endpoints with revision/identity
+  checks, and publishes ephemeral health. New offers stay unselected; Core-owned
+  enabled/configuration and application consent remain separate. A bounded
+  device-bound local journal remembers ownership before publish so lost acks and
+  adapter removal/restart reconcile without adopting other providers. Health/report
+  faults are isolated across providers and cannot kill the Agent heartbeat loop.
+  Normal Agent factory wiring now includes the enabled mock identifier adapter;
+  its inventory names come from the same declarations. Disabled mock after restart
+  withdraws the previously reported source. No Core app/vendor-specific branch.
+
+  Event source admission reuses current capability availability: v2/C14 providers
+  with missing/stale/unhealthy/offline evidence cannot acquire/reuse event access.
+  Consent preview now carries bounded redacted `unavailable_resources` for omitted
+  optional scopes, including later command-schema mismatches, outside the sealed
+  grant subject. Required failures still refuse. Core frontend validates the
+  coordinated DTO and shows EN/BG explanations before collapsed permission
+  details; it cannot select an unavailable scope or implicitly enable/grant it.
+  No device protocol/manifest/application SDK version, DB migration or dependency
+  change. BG changes are source only, not a rebuilt language package.
+
+  Evidence: frozen unprivileged WSL Linux/Python 3.14 source
+  `a4fe2e5289b0dd225b6f7c88038e2c741e70e5553bb777b0e05b113561dbc5f7`:
+  **1178 passed / 2 explicit root-driver/transient-systemd skips** across protocol,
+  registry/availability, device/event transports, sealed authority/context,
+  consent/lifecycle, event delivery/publication and actual independent Runtime
+  processes, resource discovery, startup/release and service component gates.
+  Final source `c99b18f59dd33079321898fd5c70e93a7c65a4ffc331083d29cb9e179232a0e7`:
+  **323 passed / 1 non-POSIX refusal-case skip**, all Agent tests plus actual HTTP
+  onboarding, optional/consent HTTP->TypeScript, event authority and source/subject
+  regressions; **715 frontend tests and type-check/build passed**, checked frontend
+  cache `c1132df6842eedc1bbf48db350b396bffcec6b0d013180630c5ed1979954e7a3`.
+  Groups overlap; not summed. Changes after broad integration are only optional
+  diagnostic propagation, its test call/coverage and UI labels/wrapping; final
+  focused/full-frontend checks cover these. Other broad evidence is reused.
+
+  New conformance uses actual Agent factory configuration, normal authenticated
+  HTTP provider/configuration/event routes and fresh sealed consent, without
+  SQL-seeded reader providers. Two distinct app IDs and unrelated identifier/
+  measurement adapters use the same Core path. A real signed native peer uses
+  public own-SQLite SDK transactions: two subscriptions yield one receipt for one
+  fresh event; an earlier unapproved scan is not replayed. Disabled, unselected,
+  withdrawn, revoked, conflicting, unhealthy/stale sources and foreign response
+  identities are denied; lost acknowledgement/restart and broken adapter health
+  do not mint authority. The second sensor is a test adapter, not shipped hardware.
+  Browser review used current components in an owned synthetic local fixture,
+  desktop light/EN and 390px dark/BG, including a maximum-length subscription ID:
+  no horizontal overflow, missing sources clearly explained, unrelated permissions
+  remain available. Source matches checked product/tests; whitespace passed.
+
+  Owner-run coordinated Core + independently delivered Agent kit is now prepared
+  above; after rollout, provider selection, fresh event consent and ONE new real
+  Child Center scan on `rasp-3mm.local`. No Child Center ZIP change is needed for
+  this Core/Agent integration. Existing rollout bundles remain immutable and do
+  not contain this work. No SSH/device action, deployment, app source edit,
+  historical scan replay, version bump, commit or publication. Preview viewport
+  reset and owned tab/server closed at handoff; ignored local evidence remains in
+  `.runtime/provider-onboarding/`. Public contract/plan updated, no new report.
+
+- **Reader/provider integration review, 2026-10-28.** Owner asked to read the
+  latest 2–3 `child-center` replies about `identifier.scan.v1` and explain how to
+  avoid repeated Core changes for each application/device. Read the last three
+  turns and the sibling's current reader contract; reused its installed read-only
+  evidence, without another SSH session or replay. Agent accepts scans and Core
+  stores them, but the effective capability registry exposes only GPIO; the
+  selected reader scopes resolve `capability_unresolved` and optional event
+  choices disappear from consent. Current local `agent/main.py` confirms the mock
+  only appends a capability name to legacy inventory; that is not a provider
+  report, configured selection, current control revision or application consent.
+
+  Existing Core provider report/configuration/enable APIs and generic `_event`
+  source resolution already accept provider-neutral declarations. The bounded
+  next result should connect enabled Agent adapters through one shared provider
+  onboarding/synchronization path and expose unresolved optional resource reasons
+  generally in administration (CAP01 + CAP07). Do not add a Child Center resolver,
+  infer grants from ingestion, fabricate a DB provider or auto-replay old scans.
+  Acceptance should use normal Agent onboarding, explicit provider selection and
+  fresh event consent, then one new scan; include disabled/unselected/revoked/
+  conflicting/stale sources and a second unrelated test provider using the same
+  path without a Core branch. Driver-specific payload/IO belongs in the adapter,
+  business meanings in the app; Core owns shared validation, authority, routing
+  and delivery. New providers of supported contracts should need no Core edit;
+  genuinely new execution/trust semantics may still require a shared contract.
+  Read-only review plus handoff prose only; no product edits, tests, device
+  changes, deployment or message to the sibling chat in this turn.
+
+  Follow-up owner-requested generality audit: reviewed the Child Center-driven
+  presentation/connector/kiosk contracts and actual shared implementation paths
+  for configuration, actor/delegation, staging/recovery and invocation. Those
+  mechanisms use manifest declarations and installation/artifact identities;
+  no Child Center/Barsy/reader-setting-specific references were found in inspected
+  production Core/Agent/protocol/runtime/SDK/frontend/deployment sources. Vendor
+  requests and child/bracelet/stay rules belong to the sibling app. Generality is
+  bounded: connector settings cover declared connector profiles, same-app
+  delegation covers the accepted own-SQLite execution profile, and lifecycle
+  families retain their separate contracts. Reader onboarding remains the concrete
+  uncompleted integration above; synthetic broker-provider fixtures do not prove
+  normal Agent enrollment. An instance-specific administrative recovery is an
+  operational action, distinct from the general recovery mechanism it exercised.
+  Audit only: existing test evidence reviewed, no tests newly run or code changed.
+
+- **CAP09 button-state review and fixes completed locally, 2026-10-28.** Owner
+  requested a broader review of similar presentation defects, fixes and a deploy
+  command. Fixed the confirmed secondary hover bug: the shared generic rule
+  changed its gray background to white while keeping white text. Primary/danger
+  also mixed their backgrounds toward the foreground, reducing contrast; the
+  old Core aliases independently always darkened buttons and forced white text
+  without a theme package. They now share the effective SDK background/text
+  pairs and a bounded hover derivation that never lowers the original contrast.
+  Outline foregrounds retain accent/danger when readable on their normal/hover
+  surface, otherwise use black/white. No manifest/Theme Design schema or public
+  UI version change. Disabled/loading and keyboard focus behavior remain intact.
+
+  Final frozen source:
+  `032252d32dacf1ac2ebabc212174aef952dc81a2b51dbbf3ac8cc84d216e020c`.
+  New evidence: **714 frontend tests, type-check/build, 188 targeted Python
+  checks passed** through the deployment controller. Same Python selection as
+  below; new regression coverage includes 100 foreground/background pairs,
+  built-in/saved/package light/dark and legacy/SDK projection during preview and
+  mode switches. Browser verification used actual production CSS/import-map SDK:
+  84 real hover cases across built-in/package/custom, light/dark, solid/outline,
+  SDK variants and old Core buttons, all text contrast >= 4.5 (minimum 4.5275).
+  Five disabled/loading controls remained disabled and kept their colors under
+  the pointer. Keyboard focus is visible; draft preserved. The earlier fixture
+  had missed built-in light secondary white text by testing v2 dark foregrounds.
+
+  Ready bundle:
+  `.runtime/deploy/artifacts/01e6e984294e8ae1f6df23b127c0af1264c56c8c89e21b717f4bc02e3f63ad15`;
+  immutable release `local-01e6e984294e8ae1f6df23b1`. Preparation 52.736 s,
+  kit 14.58 MiB. Ready/checks/payload digests validated; new secondary hover CSS
+  inspected in the archive. Backend/deployment/runtime sources and native host
+  spec equal the prior kit below, so unchanged runtime evidence is reused rather
+  than rerun. Only contract/handoff prose changed after checked product inputs.
+  This bundle supersedes the previous command and includes its changes.
+
+  Next: owner runs the supplied `deploy.ps1 -Action Deploy -SshHost
+  raspberry@rasp-3mm.local -Bundle <ready folder>` command, waits for
+  `3mm update succeeded`, Ctrl+C, then Ctrl+F5 and checks Settings/Extensions/apps.
+  Device acceptance remains pending; no SSH/device deployment, app ZIP/version
+  change, commit or publication. Owned temporary QA tab/server closed at handoff;
+  screenshot and detailed measurements remain in ignored `.runtime/cap09-theme/`.
+
+- **CAP09 theme alignment completed locally; rollout kit ready, 2026-10-27.**
+  Owner approved the proposed scope and requested a command to deploy personally.
+  Settings previews now use the actual public SDK surface/buttons/fields/forms/
+  tables/states/dialog, with the same effective design projection and shared
+  stylesheet delivered in the public ESM CSS closure. Removed duplicate field,
+  table and state styling. Single-line fields align independently of help/error
+  height; checkbox layout, readonly/disabled/error/focus, local table scrolling
+  and loading/error/empty states use common tokens. Native controls use the local
+  palette's color-scheme; nested surfaces own button/card variants. Scoped the
+  legacy global header padding/alignment to the Core app header so extension
+  semantic headers retain their own layout. Added optional field placeholder and
+  autofocus; public UI contract version and existing consumers remain unchanged.
+
+  Verification on the final frozen source
+  `e88be5cdef926a144764fa8caf3d8cb411254aadd1c2b76eb4f7d4cd5f80b783`:
+  **710 frontend tests, type-check/build and 188 targeted Python checks passed**
+  through the deployment controller. Python scope: compiled UI/reference package,
+  themes/customization/options/v2, release builder and deploy. New integration
+  coverage checks actual Settings save/reload and sibling SDK draft preservation;
+  mode/variants/density changes do not remount or submit the draft. Earlier backend
+  runtime evidence is reused, not rerun: archive comparison confirms no backend
+  change from the prior CAP04/CAP03 kit and the native host specification is equal.
+
+  Browser verification used owned local fixtures with real Settings stores and,
+  separately, the final production CSS/JS/import map with the unchanged CAP09
+  example. Confirmed light/dark, explicit Settings save, outline/raised variants,
+  custom font/size/radius, EN/BG, preserved drafts, keyboard focus and dialog
+  validation/focus return. A light palette preview remains light inside dark Core.
+  At 390 px, all single-line controls are 44 px, the page has no horizontal
+  overflow, and a wide table scrolls locally; desktop compact fields are 36 px.
+  Temporary viewport was reset; preview tabs/servers are closed at handoff.
+
+  Ready bundle:
+  `.runtime/deploy/artifacts/ed38e7345aba67bbe32341f0bea91d9877c73f2245fd0a4fe5fc39f475c7efbb`;
+  immutable release `local-ed38e7345aba67bbe32341f0`. Preparation took 50.874 s;
+  kit is 14.58 MiB. Ready/payload/checks digests and shared CSS in the archive
+  were verified. This supersedes the prior rollout command below and includes
+  that kit's CAP04/CAP03 changes. No app ZIP rebuild/reinstall is needed for the
+  shared component fix. Three Bulgarian Settings sample labels were added to
+  language source only; no language ZIP/version or installed package was changed.
+
+  Next: owner runs `deploy.ps1 -Action Deploy -SshHost raspberry@rasp-3mm.local
+  -Bundle <the ready folder>`, waits for `3mm update succeeded`, closes the log
+  viewer with Ctrl+C and reloads with Ctrl+F5. Device acceptance remains pending.
+  No SSH/upload/device deployment, schema/auth change, commit, package version
+  change or publication in this task. The prior rollout is not assumed installed.
+
+- **CAP04/CAP03 rollout kit ready for owner-run deployment, 2026-10-27.**
+  Owner requested a ready `deploy.ps1 -Action Deploy -Bundle ...` command and
+  will execute it personally. Prepared with the existing `-Action Prepare`
+  controller for ARM64 / Python 3.13 / image-provider profile. Bundle:
+  `.runtime/deploy/artifacts/c9be6fdcd856741f181ad690cc8ae73e44291bda89ba35adb822230913727540`;
+  immutable release `local-c9be6fdcd856741f181ad690`. Preparation took 128 s.
+  **421 targeted tests passed** across invocation/response/peer, actor/UI/access,
+  consent/recovery/staging/lifecycle, relational admission and release/deploy
+  gates; checked frontend build was reused by exact cache identity. Other
+  unchanged-profile evidence remains as recorded below, not newly rerun coverage.
+  Checked source snapshot: `0687d5a3a6424ab64c0e7b4276521b059125ecd9133ff45b639dc54aa45d2516`.
+  Source audit found no non-document changes since the accepted local result.
+  Validated ready/payload/checks digests and inspected the archive: both changed
+  Core services match the workspace and the new recovery UI is in the prebuilt
+  frontend. Only `application_invocation_relay.py` and `application_consent.py`
+  differ in Core production inputs from the previous kit; native host spec is
+  unchanged and normal deployment may reuse the installed matching host.
+  Kit size 14.6 MiB. No separate component update is needed for this Core fix.
+
+  Target remains `raspberry@rasp-3mm.local`. No SSH connection, upload, remote
+  job or deployment was started; target receipt still names the prior kit.
+  Next: owner runs the supplied command, waits for `3mm update succeeded`, closes
+  only the log viewer with Ctrl+C, refreshes the browser, then checks Child Center
+  reads and the supported web recovery/fresh-consent path. Device acceptance is
+  pending. No commit, package version change or publication.
+
+- **CAP04 correction and first CAP03 web recovery result completed locally, 2026-10-27.**
+  Owner requested the proven CAP04 fix, then work on CAP03. Invocation admission
+  now finishes artifact/UI/actor/metadata checks and the final writer fence before
+  reserving response capacity, immediately followed by connect/send/FD handoff.
+  No DB/artifact work runs inside that short handoff window. Existing 1 s reserve,
+  2 s Core / 3 s Runtime handoff, eight slots, signatures and fresh completion
+  policy remain. Reservation/connect/deadline refusal before send is explicitly
+  not-dispatched; partial send/lost handoff/result remains unconfirmed. No retry.
+  No SDK, schema or Runtime contract change; health/status retain their own gates.
+
+  Extensions now offers an explicit recovery dialog for interrupted lifecycles:
+  current stage/error, external-effect review, existing admin recovery API,
+  verified stop with data/configuration/packages preserved, then fresh access
+  review and separate manual activation. Unknown stop replies require read-only
+  refresh before another deliberate attempt. No inferred rollback, old grant
+  restoration or business replay. Missing/broken optional compiled UI/package/
+  theme/language catalogs do not hide installation recovery; catalog requests
+  are bounded. Current registered v2 candidates keep saved permission choices,
+  but obsolete-epoch consent after recovery is not shown as currently saved;
+  fresh explicit approval is required. Ordinary confirmed disable/enable remains
+  separate. This also resolves the saved-consent dead end observed below.
+
+  Verification uses frozen WSL unprivileged Linux/Python 3.14 sources, overlapping
+  groups (not totals). Gateway bytes match `7f5ed1d7b8f51ce75199aa6b40df1bb24ef74348e93496b940e7e69ad7def0af`:
+  its real signed HTTP/Runtime process, two concurrent 2.15 s admissions, response
+  slots/FD boundaries, revocation/no-replay, peer callback and lifecycle-authority
+  cases passed. A new unit test's thread-bound SQLite fixture was corrected in
+  `6d36ca21bcecec22b60269becb168de5231ca15118dac991b858987f39fc30b6`:
+  **81 passed** invocation phases/current denial, actor/UI, access/extensions and
+  recovery; **46 passed / 25 root-profile skips** relational consumers. Final
+  consent/lifecycle/install/staging/scoped-gate group on
+  `589478b70b4b4f8583465fb485275686d9b9c047fa71d3ef9c522bcffa9926db`:
+  **118 passed**, including real sealed preparation -> HTTP recovery -> fresh
+  consent and preservation of an ordinary disabled empty selection. Legacy
+  adoption is not converted into inert provenance by recovery; it stays closed.
+  **708 frontend tests and type-check/build passed** on
+  `21fc56c628fb179414a11a01ab6f98ada7dfd66f12a7b03059ac4acd74f10c36`;
+  frontend source bytes are identical in the final backend snapshot. Local UI
+  review covered desktop/light and 390 px mobile/dark/Bulgarian, explicit review
+  enabling and transition to access review. Temporary preview tab/server closed.
+  Only plan/handoff prose changed after those checked inputs.
+
+  Next acceptance: a separately requested rollout, then owner checks ordinary
+  Child Center reads and web recovery/fresh consent on `rasp-3mm.local`.
+  CAP03 dependency planning and other dedicated lifecycle profiles are not closed
+  by this bounded result. No device access/change/deployment, sibling edit,
+  commit, version bump or publication in this turn.
+
+- **Diagnosis preceding the CAP04 correction above, 2026-10-27.**
+  Owner paused CAP work to diagnose the screenshot and asked to read the last
+  2–3 `child-center` answers. Read those answers and its current handoff; reuse
+  their verified native/schema/Runtime probes rather than repeat app checks.
+  Installed Core remains `local-84228718477a9363de03a33d`, app 0.7.9.
+
+  A bounded isolated probe used the actual Core environment, verified configured
+  DB path and real Core UID/supplementary groups, current existing validated
+  login, real routes/UI trust/authority fences and the installed Runtime/host.
+  It sent only four declared read queries (two serial, then a concurrent pair),
+  printing stage/type/stack location/timing/status only: no request/result bodies,
+  bearer/key or personal values. Serial registrations/visits reads returned 200;
+  Runtime receive was 0.005 s. During the concurrent pair, one request reached
+  `_send` with **handoff_remaining=-0.078 s**, then raised `TimeoutError` at
+  `application_invocation_relay.py:_send:46` -> wire `remaining:75`, **before
+  connect/send**. That HTTP response was 409; the other query returned 200.
+  Admission cost for the failed request was 3.495 s (includes work before reserve).
+
+  Confirmed causal path: `ResponseWaiter.reserve()` starts Core's 2-second
+  handoff deadline before repeated expensive admission/UI/artifact preparation.
+  Concurrent ARM work can consume it before application dispatch. The generic
+  `invoke_with_relay` catch then misclassifies this known pre-send timeout as
+  `Application result is unconfirmed; do not replay`. Runtime separately allows
+  3 seconds from reservation to FD handoff, so changing only Core's timer would
+  not resolve the protocol ordering/budget issue. This is a proven failure path,
+  not a claim that every possible 409 has this cause or that trust may be skipped.
+
+  The bounded Core fix identified here was to separate costly admission/preparation from the short
+  reservation/FD handoff budget while retaining fresh actor/UI/lifecycle/key
+  checks and response capacity limits; preserve not-dispatched versus unknown
+  outcomes. Regress deterministic slow/concurrent preparation, actual revoke,
+  package/key/UI drift and lost/uncertain responses. No automatic mutation retry,
+  arbitrary timeout increase or application-specific Core condition.
+  Child Center's independent misleading-access UI fix remains in that checkout,
+  outside its delivered 0.7.9 ZIP. This turn changed only the diagnostic helper in
+  ignored `.runtime` and this handoff; no product code, device restart/deployment,
+  new login/grant, business mutation, package version or sibling source edit.
+
+- **Requested Raspberry rollout completed, 2026-10-27.** Owner explicitly asked
+  to deploy the completed CAP02/kiosk/optional-reader work. `rasp-3mm.local`
+  (ARM64, Python 3.13.5) now runs immutable Core
+  `local-84228718477a9363de03a33d`; previous pointer remains
+  `local-a752cef1799fd6e5977059f7`. Preparation/deployment used `deploy.ps1` with
+  its checked kit, detached systemd worker, ordinary installer backup/migration/
+  health/rollback. Kit key
+  `84228718477a9363de03a33d9e5ed929e1e0c062d9a3d0c666894a8ca05c30ad`.
+  Fresh prepared evidence: **358 passed / 2 other-profile skips**, full frontend
+  tests and build. Byte comparison confirmed Runtime/wire/protocol/SDK production
+  inputs unchanged from the accepted 1709-test source below; that evidence reused.
+
+  Core publication intentionally retains independent component pins. This rollout
+  therefore separately applied the standard update/probe transactions to
+  Platform Runtime and connector worker, both now
+  `3400e4bdb089776b75cdc1b953ae7809de94dfbb7f60f267b7d581b8ee1efe14`,
+  and all five active application hosts (Child Center, Command Probe, File Probe,
+  Fleet, Task Probe), now
+  `6215a0118d52d9144299d84535f57e8b48131b304e521334fcf022ddd670b37b`.
+  Native image provider retained. Every host passed health and the real signed
+  `three_mm.delegation.info` contract-1 probe; Core PID/generation stayed unchanged
+  through these independent updates. Both detached jobs report succeeded; old
+  component pins remain available through their normal rollback journals/pointers.
+  The one-shot rollout helper/status is in the protected deployment job directory,
+  not a new Core mechanism. Repeating a Core kit does not itself update app pins.
+
+  Post-deploy `/ready` and `/kiosk/connect` return 200; served frontend is
+  `main-DRjdNqM4.js`. Anonymous terminal-list request returns 401. Schema head is
+  `b096b7e82f86`. Read-only comparison with the installer's persistent DB backup
+  confirmed existing account IDs/password hashes/roles and application versions,
+  identities/configuration/enabled state preserved; stable user subjects valid.
+  Backup: `/var/lib/3mm/deploy-backups/local-84228718477a9363de03a33d/3mm.db`.
+  No business command, new permission approval, app package upload, version bump,
+  commit or publication. Owner-run Child Center/kiosk/reader tests remain next;
+  refresh/re-login for the new login contract and re-pair old kiosk identities.
+
+- **Child Center's two shared Core gaps completed locally, 2026-10-27.**
+  Owner asked to implement them after the read-only handoff review. CAP02/CAP09:
+  generic exact-artifact terminal management in Extensions, static Core
+  `/kiosk/connect`, recoverable original enrollment/claim, single-flight auth-only
+  renewal and revocation. Core owns credentials/proof/token, current kiosk catalog
+  navigation and mounted-surface checks; applications keep ordinary public SDK
+  calls. Human login is separate; no business invocation is replayed. Menu and
+  Command Palette use the checked module identity, with no new header link.
+  Admin list/revoke remain available when optional UI/key is broken. Encrypted,
+  finite response recovery uses the existing sealed action journal, key lease and
+  authority writer, not plaintext audit data or a new general-purpose token API.
+  Migration `b096b7e82f86` preserves legacy rows without adopting null-incarnation
+  credentials; re-pair them after rollout, no wipe/reset. Populated identity
+  downgrade is guarded.
+
+  CAP01/CAP03: zero optional reader/device selections work even with no devices;
+  every supplied ID remains approved/not-revoked under final activation/staging.
+  Explicit empty selection removes optional bindings; omitted configuration
+  preserves the saved choice. Required/schema checks and non-device configuration
+  remain enforced; defaults cannot restore a cleared optional binding. Selector
+  supports clearing a saved optional device. Public contract/examples updated in
+  [the existing contracts](EXTENSION_PLATFORM_V2_PUBLIC_CONTRACTS.md#core-owned-kiosk-pairing-and-optional-device-selection-2026-10-27).
+
+  Verification on frozen WSL unprivileged Linux/Python 3.14 sources (overlapping
+  groups, not totals): `9c4f444185c70546c2ed8c4436b47158aa67c0e160604e1c10184bcf1d73e367`
+  **226 passed / 4 root-profile skips** actor/UI/signed invoke/diagnostics,
+  optional resources, staging, relational consumers and migrations/extraction.
+  `a1ea8ffa54e1fdccb206ded8c8194b5b86d16f7e55db8fb829b24d6fdce5e237`:
+  **174 passed / 2 platform-profile skips** pairing/key/identity denial, optional
+  selection, current consent/actor and delegation consumers; **692 frontend tests,
+  type-check/build passed**. `8dbc3efe493048a7feb79fc2b0decac57d45929394ca3749d37d4f02b095cbb9`:
+  **175 passed** final activation omission/clear, staging, consent, scoped access,
+  startup and release builder; **22 passed** controller/bootstrap after explicit
+  storage-cleanup failure fix, type-check/build passed. `b13e5299fdce87781e485095c961fd80e3811f5f7ba5013ed5326751d0dc36f1`:
+  **25 passed** actual media/neutral-reference kiosk consumers after updating
+  request fixtures; **37 passed** host export/credential/no-replay tests. Reused
+  unchanged earlier Runtime/SDK evidence below; no new full-backend/root/ARM claim.
+  Final source `51ff9006fe34704ea38a16f164dcff396b91d97ea4497f3b4159d826e61ac362`:
+  full frontend suite, type-check and production build passed again after the
+  dialog link-field layout adjustment and controller cleanup fix. Backend logic
+  matches the checked groups above; later backend edits only remove unused
+  imports/update current test request fixtures. New-file syntax/whitespace and
+  scoped diff check passed. Only this handoff text changed after that check.
+  Visual review used actual components with synthetic local HTTP fixtures,
+  EN/BG, light/dark and 390px content/358px dialog widths; no device connection.
+
+  Next: an explicitly requested rollout and owner-run Child Center/kiosk/reader
+  acceptance on `rasp-3mm.local`. No deployment, package version, commit, branch,
+  publication or Child Center edit here; user/M21 source preserved. General web
+  installation lifecycle recovery remains the separate recorded CAP03 follow-up.
+
+- **CAP02 closed locally for the current supported profile, 2026-10-27.**
+  Finished the owner-requested Core/browser/native actor contract: stable opaque
+  `subject_id`, current tracked login/nonce, immutable initiator/executor and
+  explicit human application permissions separate from platform administration
+  and service grants. Additive migration preserves accounts/passwords/roles/
+  sessions/grants and refuses populated downgrade before erasing stable subjects.
+  Refresh preserves a login, while numeric account/session reuse cannot inherit
+  an older intent. Browser files require explicit permissions even for platform
+  admin; connector receipt ownership binds the exact login across refresh.
+
+  Added `host.access.getInfo()` and finite same-app operator delegation through
+  `host.delegations.create/lookup/cancel` and native SDK execute/lookup. Existing
+  sealed action journal and invoke relay hold the exact operation/input, human,
+  executor, artifact/UI/config/grant/boot and expiry. Fresh admission/completion,
+  fixed input digest, signed transport and actual host process pin prevent stale
+  authority or executor substitution. No admin promotion/redelegation/automatic
+  retry; consumed or unknown outcomes cannot run again after restart. A separate
+  `three_mm.delegation.info` probe preserves existing host/task metadata ABIs and
+  independent health/update/rollback. Required release files and Runtime actions
+  are integrated. Public contracts include author examples and budgets.
+
+  Verification: WSL unprivileged Linux/Python 3.14. Full backend on source
+  `05cd1b422ab7bdcda10d214dd19b5ee44589d66e79410fe5495518ec4d0282ec`
+  produced **4196 passed / 608 skips / 8 failures**. The eight failures were
+  diagnosed, repaired and rechecked in affected groups; this is not relabelled
+  as a later all-green full-backend run. Fixes cover metadata ABI preservation,
+  additive user-column projections/downgrade guard, real tracked-login/valid
+  kiosk fixtures and deterministic immutable theme ZIP fixture timestamps.
+
+  Final production source
+  `59a22e78f6de3312792ff12989dc083b193fd3d5bfc9261149cc7478fef86fe6`:
+  **1709 passed / 7 optional-image/root-profile skips** full SDK/protocol/runtime
+  plus independent host/Runtime components, including real update/rollback;
+  **78 passed** delegation, scoped rights, diagnostic process, theme fixture and
+  native-host/live-task readiness; **21 passed** affected migration/extraction
+  group, with its last additive-column test fixture repaired separately below.
+  **665 frontend tests passed**, production build and type-check passed on
+  `566eae13a5d29e72ce73056a9658092b86fc5eafd52fa1ffb6554118925d24a6`;
+  frontend bytes are unchanged in the final source.
+  Final fixture source
+  `e6ec9f3f6e70f4b6a8b7d1044c331e5cd78114c62c85b74e2a21779e42ce5834`:
+  **4 passed** complete CRUD extraction file. Compared production/source files
+  against 59a22e78: only that test changed; subsequent edits are documentation.
+  Earlier successful backend cases for unchanged inputs are reused. Whitespace
+  check passed. No full release/root/ARM acceptance claim.
+
+  Acceptance boundary: SDK 1.3 ordinary own SQLite operator query/command ≤10 s,
+  finite delegation ≤300 s. Cross-installation composition is CAP14; named
+  guest/customer identities and business ACL remain app-owned. No credentials or
+  bearer grant reach the browser/context. No device access/deployment, package
+  version, commit, branch or publication in this turn; user/M21 source preserved.
+  A later explicitly requested rollout must include Core, Runtime and required
+  pinned hosts, then fresh login for pre-nonce prototype sessions and owner device
+  tests. Web lifecycle recovery remains the recorded separate CAP03 follow-up.
+
+- **CAP02 first Core HTTP/native SDK profile completed locally, 2026-10-27.** Owner confirms
+  the recovered application now works. This closes the pending manual activation
+  probe below; it is not acceptance of every lifecycle/profile or external Barsy
+  operation. Implemented one bounded CAP02 path: Core forwards the verified human
+  or kiosk identity and current declared application permissions into the real
+  native SDK `OperationContext`. Frozen `context.actor` and immutable permission
+  tuples distinguish user/kiosk/anonymous/service/worker/installation observations;
+  `has_application_permission` never infers business rights from platform admin.
+  Invalid/mixed human/nonhuman claims are rejected after envelope authentication.
+  Removed the implicit platform-admin bypass specifically from operator routes
+  and operations; explicitly declared administrator endpoints keep their separate
+  platform-role check. `/access` reports platform administration and exact current
+  application permission IDs separately. Existing direct/role/group grants and
+  fresh relay admission/completion checks remain the authority source. Current
+  tests/consumers and the public contract were updated together; no schema change.
+
+  Verification on frozen source
+  `80737f02698ad034a6a8c107626c0fdf30116993cbe6a2340d2374234c51b866`:
+  **55 passed** HTTP/access/actor/UI-host; **221 passed** group/user/session,
+  compiled UI/provenance, real signed UI/service-grant separation, invocation/
+  response relay, peer, consent/lifecycle and current app/CRUD consumers;
+  **311 passed** browser media/file review/execution/authority, relational and
+  peer consumers, transport and startup; **460 passed / 2 optional image-profile
+  skips** full SDK plus native host/dispatch/file/relational-session/peer-host.
+  Only additional actor tests and documentation changed after that source.
+  Final source `7a2ec90208ca92ebf5771d43c6ab4ef8c463b2426c9b54a142af165110be4502`:
+  **149 passed / 2 explicit optional-image/root-driver skips** complete actor file
+  plus independent host component/release builder. The actor file overlaps 28
+  earlier SDK cases and adds 8 worker/peer/invalid-audience cases. Production
+  bytes match the earlier checked source; that unchanged evidence is reused.
+  WSL non-root Linux/Python 3.14; no full release/root/ARM claim. Whitespace passed.
+  No frontend source change or frontend build; no deployment kit, device mutation,
+  version change, commit or publication. User/M21 source changes preserved.
+
+  At that first-slice handoff delegation/browser/resource completion remained
+  open; the completed local profile is recorded above. Worker/peer actor views
+  do not invent a delegated human or bearer token. A later rollout must update
+  required independent pinned hosts; matching SDK version alone does not add
+  the new actor API to an already installed host. Contract:
+  [CAP02 operation actor](EXTENSION_PLATFORM_V2_PUBLIC_CONTRACTS.md#cap02-operation-actor-and-human-application-permissions-2026-10-27).
+
+  Owner additionally requires a future **web recovery mechanism** for stuck app
+  installation/activation/update, to avoid dependence on SSH/manual rescue.
+  Recorded at [CAP03](CORE_SIMPLIFICATION_PLAN.md#cap03-пакети-и-жизнен-цикъл):
+  visible recovery action/status, explicit confirmation, verified stop with
+  preserved data/package, then fresh access review and continuation. Reuse the
+  existing Core recovery API; no automatic effect retry or grant restoration.
+  This is a planned separate step, not a request to implement recovery now or
+  interrupt CAP02. That request was recorded without implementing recovery UI.
+
+- **Raspberry updated by owner; explicit recovery completed, 2026-10-27.** Owner
+  reported deployment complete and continued the previously described recovery
+  step. SSH confirms `/opt/3mm/current` points to
+  `local-a752cef1799fd6e5977059f7` and Core is active. Before recovery, native
+  Child Center was already inactive after the owner update, while its Core row
+  remained `recovery_required` at the same 0.7.8 artifact.
+
+  Used a fresh administrator login and the existing public
+  `POST /api/v1/application-extensions/org.3mm.child-center/lifecycle/recover`
+  with explicit reviewed-outcome confirmation. Confirmed response: disabled,
+  enabled false, active_version null, error null. Independent systemd observation:
+  inactive/dead, unit disabled, MainPID 0, no pending job. All **3 application data
+  files have identical before/after content hashes**. No direct database repair,
+  uninstall, reinstall, rollback or application activation was performed.
+
+  Recovery left the historical grant sealed as active at an obsolete execution
+  epoch, so preview still reported `access_saved=true` although fresh stopped-
+  candidate activation requires a current grant. Confirmed the epoch mismatch
+  read-only and revoked only that obsolete record through the public authority
+  API using its exact current revision. Fresh preview now succeeds with disabled,
+  enabled false, `access_saved=false`, selected scopes empty. Optional connector
+  access remains an owner choice. No new native/resource/account consent was
+  granted, no application code was started and no connector request was made.
+  Temporary diagnostic administrator sessions were explicitly logged out;
+  credentials/tokens were not saved or emitted. Next is **owner** Ctrl+F5 ->
+  Application access -> Allow access -> Activate version, then the app probe.
+  Device activation acceptance remains pending that manual test. No new code or
+  runtime checks in this docs-only handoff; existing kit evidence below is reused.
+  Follow-up observation: historical saved-selection presentation after uncertain
+  recovery should distinguish an obsolete epoch from currently renewable consent;
+  the supported explicit revocation completed this operator recovery.
+
+- **Slow activation timeout fixed locally; replacement kit ready, 2026-10-27.**
+  Owner enabled diagnostic SSH. Read-only inspection confirms Raspberry Core is
+  `local-434ac4d9b979b0d5f6547ccf`. Logs show native consent succeeded at 17:02:17,
+  activation returned 409 at 17:03:09, and helper reported its caller disconnected
+  at 17:03:11. The exact Child Center 0.7.8 instance started at 17:03:06, remains
+  active without restarts, and has no retained activation rollback preimages.
+  Root read-only SQLite/selected metadata inspection confirms candidate/runtime
+  sha256 `fc77ca39c64ea0559b9c8ef0a3ffceedbb8607053f8bcc8fbbea726c7e09b90d`,
+  health budget 30 s, and Core `recovery_required`, disabled, no active version:
+  helper execution finished after Core's 40 s transport wait had expired. The
+  later preview 409 is the resulting lifecycle fence, separate from the DTO fix.
+
+  Ordinary activation now reserves 120 s for package validation, data preimages
+  and systemd preparation in addition to the manifest health window. Shared health
+  polling uses a monotonic elapsed deadline and caps each probe/delay to its
+  remaining time; late health success cannot confirm activation. Actual transport
+  loss still quarantines execution and cannot replay a consumed lifecycle ticket.
+  No authorization policy, schema, automatic retry or recovery bypass was added.
+
+  Reproduced three failures before production edits on frozen source
+  `1848a6a73c9a7fe5122f8a77b1d2c3c53f8e9487e71df59384a48d4745935b60`:
+  healthy delayed helper response caused 409; 3 s health budget took 33 s; late
+  ready response was accepted. Final source
+  `0de0b7e38d783d6248669a77cbb96a9eb61a91f356f4f906037a0e8d5502f6ae`:
+  **702 passed / 171 explicit root-helper skips** in 150.83 s. Targeted Core
+  lifecycle/recovery/consent/UI/connector settings, relational activation/boot/
+  reactivation consumers, runtime activation/lifecycle/helper/requirements,
+  startup/release/controller checks include all four new cases (including genuine
+  timeout staying fenced with no replay). Reused unchanged **635-test** frontend,
+  Vue type and build evidence `856e9522835962665df887d80ac565b260bfc42dd2fda8dfa6a9940612a4ca2a`.
+  This is local non-root evidence, not full root/ARM acceptance.
+
+  `deploy.ps1 -Action Prepare` completed in **182.661 s** controller time. Validated
+  hashes and inspected the packaged production timer code and corrected compiled
+  consent decoder. New immutable **aarch64 / Python 3.13 / image provider** kit,
+  14.56 MiB:
+  `.runtime/deploy/artifacts/a752cef1799fd6e5977059f7b4edcb102001c7c8e20b7581282038d4ab463b6f`,
+  release `local-a752cef1799fd6e5977059f7`. Previous kits remain untouched.
+  Next: owner deployment of this kit; then explicit lifecycle recovery to verified
+  stopped/disabled, fresh access review and owner activation test. Existing public
+  `POST /{module_id}/lifecycle/recover` requires current admin and explicit
+  `confirmed_external_outcome_reviewed: true`; no direct DB repair or implicit
+  acknowledgment is permitted. Current device remains in its observed state.
+  No remote activation/stop/restart/reinstall, grant change, reset or deployment,
+  sibling app edit, external connector call, version bump, commit or publication.
+  SSH diagnostics performed reads only; credentials never enter tracked inputs
+  or reports. Documentation updated after source freeze.
+
+- **Consent preview contract fixed; replacement Core kit prepared, 2026-10-27.**
+  Owner reports Child Center 0.7.8's Application access cannot load after upload.
+  Found a general Core mismatch: current backend consent previews always include
+  `optional_resources`, while the strict frontend DTO omitted/rejected that field,
+  even when it was empty. Updated the exact DTO/metadata validation and current
+  fixtures; preserved explicit scope subsets, native consent and all owner/artifact
+  checks. Unconfigured optional connectors are metadata, not offered/granted rights;
+  local-only consent remains possible without configuring the external service.
+
+  New cross-language test feeds actual authenticated FastAPI HTTP preview responses
+  through the real TypeScript decoder via the existing Node/esbuild toolchain.
+  Covers ordinary resources and only an unavailable optional connector with no
+  offered scopes. Reproduced the old decoder failure first on frozen source
+  `b7946072f5e648297fc48696737befd3c5ff3600169a279c7ba1b5efa6d8fbde`.
+  Final source `8f355d47d2434dd65ff76addb3b3be46f7d2fa5e23de002c9f329af8125b77a0`:
+  **425 passed / 4 explicit root-helper skips** targeted consent/connector settings,
+  UI host/authority, configuration, source/authority, staging/relational candidate,
+  startup/release/controller checks, including the new HTTP-to-TypeScript test.
+  **635 passed** full frontend suite + Vue types/production build. New negative
+  metadata/selection cases and a dialog test confirm no automatic approval and
+  one explicit native approval with an empty application-scope selection.
+  Reused unchanged broad integration evidence below; no full ARM/root claim.
+
+  Permanent `deploy.ps1 -Action Prepare` completed in **109.267 s** controller time.
+  Replacement immutable kit:
+  `.runtime/deploy/artifacts/434ac4d9b979b0d5f6547ccf5315aa30fb462c726a5a71af139da30d05d45fbc`,
+  release `local-434ac4d9b979b0d5f6547ccf`, **aarch64 / Python 3.13 / image provider**,
+  14.56 MiB. Exact commands and content-bound evidence are in `checks.json`.
+  Prior kits remain untouched and do not contain this fix. Owner's next step is
+  deploying this kit, refreshing the browser, then Application access -> Allow
+  access -> activate the reviewed version. No app uninstall/data reset is needed
+  for this DTO fix. Live device cause/acceptance remains owner-observed: read-only
+  SSH authentication was unavailable; no remote release identity was verified.
+  No device mutation/deployment, sibling app edits, real connector call, version
+  bump, commit or publication. This handoff changes documentation only after freeze.
+
+- **Earlier combined Core deploy prepared, 2026-10-27 (superseded by the kit above).**
+  Owner requested preparation only.
+  Ran the permanent `deploy.ps1 -Action Prepare` with an explicit reviewed target
+  selection for connector setup, UI host/authority, configuration, source/consent,
+  package staging/relational registration/candidate, startup/release and controller.
+  No code/test inputs changed since the preceding final verification. Reused the
+  broad unchanged integration evidence below; the new kit records its own targeted
+  checks: **424 passed / 4 explicit skips**, **627 passed** full frontend suite,
+  Vue types and production build. Python 66.457 s; controller 111.159 s; complete
+  PowerShell preparation **115.4 s**. Cached dependencies/native wheels preserved.
+
+  Ready bundle:
+  `.runtime/deploy/artifacts/f366fc6b45a3f5aede6473c97465cb620ed310da794f17af24c09ecd4050ffbc`,
+  release `local-f366fc6b45a3f5aede6473c9`, **aarch64 / Python 3.13 / image provider**,
+  14.56 MiB kit. Ready/checks/file hashes validated; inspected the Core archive for
+  all three new connector settings/provenance production modules and absence of
+  Git/environment/remote-attachment material. Inputs and exact check commands/log
+  digests are in its `checks.json`. This remains targeted local evidence, not full
+  Root/ARM acceptance or a published release. Locale + connector settings and prior
+  current Core work are included; old immutable kits are not altered.
+
+  No SSH, upload, remote observation, deployment, version change or publication.
+  Owner can deploy this exact bundle without rebuilding using
+  `deploy.ps1 -Action Deploy -Bundle <that folder> -SshHost raspberry@rasp-3mm.local`.
+  Completion is **`3mm update succeeded`**, after Core installation and default-host
+  publication. Existing independent Runtime/active-host pins remain preserved;
+  this is not a claim of their full CAP01 rollout. This handoff changes docs only,
+  after the bundle froze; its checked production inputs remain unchanged.
+
+- **Connector settings from Extensions implemented locally, 2026-10-27.** Owner
+  requests a settings gear for applications with settings and connector setup.
+  The protected package catalog derives `has_connector_settings` from each
+  validated immutable artifact. Extensions shows a Unicode gear only for those
+  versions; it opens a Core-owned Basic/Bearer/API-key/unauthenticated connection
+  form, not application code. Another version must first follow its existing
+  stopped candidate/preparation flow. Theme/initial/live language/EN fallback
+  remain Core-owned; removing the Extensions language remount key preserves drafts.
+
+  One key/guard/current-administrator transaction saves declaration-owned origin/
+  reference keys + binding + optional encrypted credential + sealed receipt.
+  Unrelated configuration is preserved. CAS covers artifact/Core generation/app
+  incarnation/epoch/configuration/binding/secret revisions. Rotation/revocation
+  shows affected bindings and requires confirmation, withdrawing existing access.
+  Actor validity is checked again before commit; errors never echo credential
+  input. Receipts belong to artifact/incarnation/admin/login session, survive Core
+  restart and token refresh within that login, and refuse another login/actor/app.
+  The Core client never refreshes/replays mutations. Session storage contains only
+  request ID/rejection disposition; lost/malformed/bare-conflict outcomes remain
+  pending for lookup. A definite refusal still requires successful outcome lookup
+  before another explicit edit. No credential material/digest enters receipts,
+  inspect, audit, application components or invoke. Same-origin code is still not
+  a browser sandbox.
+
+  First setup creates a stopped, unapproved inert installation without service/
+  wheel execution, external HTTP or application SQLite namespace/migration. Partial
+  multi-connector setup stays unreviewable until all required configuration is
+  supplied. Existing registration/adoption records remain immutable; separately
+  sealed configuration transitions preserve their exact other provenance. Own-SQLite
+  preparation/recovery remains unchanged. A stopped unreviewed installation can
+  configure before first native consent; running compatibility instances must stop
+  first. Save withdraws authority; then stop if running, review access and activate.
+  No automatic stop/start, grant resurrection, data reset or schema migration.
+
+  Verification: broad application/module backend selection on frozen source
+  `3ca0a1cc87a496c108862a8ed5be7d1fca9e5918ceec3ee29d060804d79cef71`:
+  **2738 passed / 597 explicit Root/optional-profile skips** in 667 s. Shared source,
+  staging/registration/adoption, broker and lifecycle code is unchanged afterwards;
+  that evidence is reused. Final source
+  `/var/tmp/3mm-connector-settings-tests/sources/bba57f1162cf90d92bf2b01ee0a7a961fb620a8f0ca9b1e02fad82254f37dc8b`:
+  **627 passed** full frontend suite + Vue types/Vite build; final connector tests
+  had **31 passed / 1 fixture failure** (the stopped-adoption fixture lacked the
+  human-permission tables). Only that fixture was completed with full test metadata;
+  its rerun on source `dc4688275a54b159f4667ae7e180fce21c944a6096c05dfed9db29e67ce357cc`
+  **1 passed**. Thus all **32 connector cases** are verified, including first setup,
+  atomic failure, concurrent initial save, real grant withdrawal, CAS/isolation,
+  old/new own-SQLite registration, final-session expiry, token refresh and receipts.
+  Production files match the final tested source; afterwards only fixture/docs
+  changed. Logs: `/var/tmp/3mm-cs-{backend-integration,frontend-final,frontend-build-final}.log`.
+  Diff/whitespace checks passed. Isolated fake-data browser review covered desktop
+  light/EN and 390px phone dark/BG, scrolling/footer; preview tab/server were closed.
+
+  Scope is the Core entry from Extensions. The proposed in-application public
+  `administration.connectors` facade/route allowlists remain unimplemented and are
+  not advertised; applications need no private API for this Core settings flow.
+  Native connector execution remains the existing SDK broker. No sibling Child
+  Center changes, real Barsy check, device/SSH/deploy, version bump, commit or
+  publication. Earlier ready kits stay immutable and exclude this work. Next is
+  owner-selected combined deployment/device acceptance, then the separate app's
+  connector declaration and explicit connection/catalog operation port.
+
+- **Child Center presentation contract implemented locally; connector contract
+  audited, 2026-10-27.** Owner supplied the sibling's
+  `CORE_PRESENTATION_CONTRACT.md` and `CORE_CONNECTOR_ADMINISTRATION_CONTRACT.md`
+  and requested general Core fixes. Completed the bounded presentation result:
+  `ApplicationHost.presentation.version = 1`, synchronous frozen locale info,
+  live subscription/unsubscribe, cleanup and retained-handle refusal on disposal.
+  The actual compiled application route loader supplies the same reactive root
+  `locale` prop; updates patch its component instance, preserving form/error state.
+  Both use the existing effective Core/header i18n source, including its fallback.
+  Host feature metadata advertises `presentation_version: 1`; native SDK/manifest
+  versions are unchanged. Existing Core theme tokens/variants remain authoritative.
+  Child Center's current `source/frontend/local` roots already accept this prop;
+  no sibling code, catalogue, package or version was changed. Catalogue ownership
+  and regional/base/EN per-key fallback are documented authoring rules, not a new
+  compiler catalogue validator.
+
+  Connector setup is **still open**, not implemented by this slice. Existing
+  encrypted Basic/bearer/API-key storage and connector broker are present, but
+  separate secret/binding REST calls cannot implement the proposed atomic setup.
+  The missing common operation must save configuration keys + secret reference +
+  binding together, support installed inert/disabled bootstrap from Extensions,
+  preserve sealed configuration provenance and the prepared relational lifecycle,
+  and provide explicit route allowlists/CAS/current-actor checks/redacted durable
+  outcomes. Do not mount unapproved native UI to resolve a required connector,
+  introduce a private application HTTP/token workaround, or claim Barsy readiness.
+  No connector credentials, grants or business-network operation were touched.
+
+  New verification on frozen Linux source
+  `/var/tmp/3mm-presentation-contract-tests/sources/fa347bab9ef72924bd5368f7cab9909a7309681ddd0c93efdd7c603a249dfe40`:
+  **612 passed**, full frontend suite including actual dynamic route binding,
+  initial/live locale, draft/error retention, explicit unsubscribe/disposal and
+  existing shell/theme cases; Vue type-check and Vite production build passed.
+  **60 passed** backend UI-host/UI-authority/administration integration checks,
+  including existing denial/revocation boundaries; whitespace checks passed.
+  Logs: `/var/tmp/3mm-presentation-frontend-{tests,build}.log`. Afterwards only
+  documentation changed; checked production/test files are unchanged.
+  No live device/browser acceptance, deployment, SSH, commit or publication.
+  The earlier immutable ready kit below is preserved and excludes this new code;
+  a later combined deploy must prepare a new kit. Next bounded implementation is
+  the connector administration/bootstrap contract, before a Barsy product port.
+
+- **Owner-operated Raspberry Core deploy prepared; Child Center contract review,
+  2026-10-27.** Owner asks for deployment instructions and review of the other
+  `child-center` chat (local thread `01a17b8c-3664-7bf0-ad39-35f743afd21a`).
+  Read that chat and the sibling's presentation/connector contracts; no message
+  sent to it and no application source edited. Current Child Center 0.7.7 has
+  Core-owned presentation and EN fallback catalogues, but initial/live locale
+  is absent from the public Core host. Barsy connector execution already exists;
+  missing generic administrator setup/credentials UI and bootstrap/atomic binding
+  are CAP06/09/12 gaps. Current Child Center declares no connector and its Barsy
+  catalog/account/payment operations are not ported. No live Barsy test occurred.
+  Owner's rule is no private HTTP/token/CLI workaround for application integration.
+
+  Repaired the three stale deploy-template assertions to follow the permanent
+  controller/immutable installer rather than the retired PowerShell monolith.
+  **51 passed** systemd-template/deploy-controller checks plus Windows command
+  doubles (no network). Local `deploy.ps1 -Action Prepare` completed in **92.763 s**:
+  `.runtime/deploy/artifacts/06b4bba745029044ee43e9c5be4b4023a936236122e9421e8af007cd4344bc4d`,
+  release `local-06b4bba745029044ee43e9c5`, aarch64 / Python 3.13 / optional image
+  provider included. New checked evidence: **1338 passed / 2 explicit optional
+  Pillow skips** targeted Python selection (previous isolated-provider conformance
+  remains valid), **610 passed** full frontend tests plus types/production build.
+  Selection, exact source, environment, hashes and logs are in its `checks.json`.
+  This is a local, unpublished ready kit, not a release/full Root/ARM acceptance.
+
+  No SSH, transfer, device change or deployment was performed. Owner can run
+  `deploy.ps1 -Action Deploy -Bundle <that exact folder>` against
+  `raspberry@rasp-3mm.local`; Status/Logs observe the detached job. This controller
+  updates Core and publishes the native host default, while preserving existing
+  independent Runtime/host pins. Do not describe its success alone as a complete
+  CAP01 native-component rollout. After the owner's Core result, inspect current
+  component/active-instance identities and complete the explicitly selected
+  Runtime/host health/rollback updates through their existing CLI. Locale and
+  connector-administration contracts are reviewed next work, not implemented here.
+
+- **CAP01 supported profile implemented locally, 2026-10-27.** Owner requested
+  both remaining parts: optional resources at installation and remaining current
+  provider observations. Deployment is still explicitly deferred. SDK 1.3
+  `optional_resources` accepts up to 16 exact declared command/connector/event/
+  session scopes. Missing/incompatible optional resources can be omitted from
+  review; required resources and the author's configuration schema still apply.
+  Empty optional device selectors are omitted by the existing configuration UI.
+  Optional scopes default unselected. Their loss/replacement does not withdraw
+  required authority, but each optional use must match the exact sealed approved
+  resource. A newly appearing/replaced provider requires fresh explicit consent;
+  no automatic selection, fallback, grant, mutation retry or data reset.
+
+  Resource rows now include `required`. Current connector/event/task workers have
+  bounded local nonce/contract/kernel-principal probes; event/task observations
+  also verify the exact signed host instance/artifact/configuration. Task probes
+  cannot claim, dispatch or tick work and expire after lost Core connectivity.
+  The task unit owns `/run/3mm-tasks`; Core remains administrable when probes fail.
+  Publications and status/peer metadata use the actual Core-local journal/read
+  profile, without business HTTP, remote reporting or a remote-connectivity claim.
+  Optional session loss no longer makes the required grant globally ineffective.
+
+  Current profile is explicit: owned data/prepared SQL and peer-consent lifecycles
+  cannot be waived through this optional field; unresolved sensor commands and
+  unsupported combinations reject. Browser discovery remains reviewed admin
+  opt-in, not operator/kiosk delegation. Current SDK/frontend and applicable
+  independent Runtime/host components are required; matching version labels alone
+  do not install new APIs into old components. Later rollout must explicitly
+  update/probe/rollback those components. No Root/ARM/live acceptance is claimed.
+
+  Evidence: broad Linux source
+  `/var/tmp/3mm-cap01-final-tests/sources/ad9a24aa65a52735c01890d659cdd8d50fb5623e24f1cd5a0284d94959a19feb`:
+  all `backend/tests/test_application_*.py` plus module packages, startup, release
+  builder, transport and Runtime/event processes completed at **2788 passed /
+  599 explicit skips / 1 failure**. The failure was an outdated retained-data
+  test double missing `platform_requirements` and keyword support; it was updated,
+  with the full retained-data/optional-resource set **14 passed**, including a new
+  incompatible-provider case. This broad run was not initially green.
+  Final frozen source `ff25cfad6648fb7dd7acba93e2a491ea6bef287b120e97cd541d7bc8e7f9e18d`:
+  **118 passed / 24 deselected** focused authority/consent/session/resource/native
+  worker/retained-data checks. The only production changes after the broad source
+  were the optional-session status filter, avoiding a redundant nonoptional
+  resolution, and stricter provider contract scalar validation; affected checks
+  were rerun on the final code, other evidence reused for unchanged inputs.
+  Full SDK/protocol: **1046 passed**, isolated Pillow profile; frontend **113
+  passed**, type-check and Vite build passed. Runtime/native component group:
+  **598 passed / 4 explicit skips / 3 pre-existing deploy-template failures**,
+  completing the initially interrupted run's suffix rather than rerunning passes.
+  The three assertions expect the retired monolithic deploy.ps1 implementation
+  (`test_installer_owns_the_atomic_release_and_rollback_boundary`,
+  `test_deploy_accepts_setup_or_application_runtime`,
+  `test_deploy_records_the_validated_project_version`). Their file and deploy.ps1
+  were byte-identical to the previous handoff. Record for the deployment-tooling
+  scope before its next release gate; do not claim a fully green runtime suite.
+
+  No deployment preparation/rollout, device/browser actions, version bump, commit
+  or publication. Preserve independent Child Center/M21 and accepted AP/setup/
+  menu/Fleet work. Pending CAP11 Download change still awaits combined rollout.
+  Next owner-selected CAP can proceed; device acceptance remains a later step.
+
+- **Earlier CAP01 resource observations and administrator browser access complete locally,
+  2026-10-27.** Owner authorized continuing CAP01; deployment remains deferred.
+  `platform.discover_resources(scopes)` observes at most 16 exact own scopes via
+  the existing signed `platform.discover` subrequest, without another registry,
+  Runtime action, grant, selection, namespace creation or business operation.
+  The shared report separates declaration/configuration, application service
+  access, readiness/reasons, provider contract and the selected resource identity.
+  Unapproved scopes are redacted; configured-but-unobserved executors stay unknown.
+
+  Current probes reuse command catalog/health, signed file-worker metadata,
+  prepared SQL host status and trusted session connectivity. Optional image
+  readiness is separate from files: a bounded child checks in-memory PNG/JPEG/
+  WebP encode/decode; missing -> unavailable, broken/timeout -> unknown. Neither
+  Core nor the file executor imports Pillow. Core-local checkpoint/identity reads
+  can report ready; other resource families have no invented readiness. IPC holds
+  no DB/key leases; current package, grant, authority/recovery/resource and runtime
+  bindings are reread before returning. Authority change discards the response.
+
+  Reviewed administrator UI routes explicitly opt in with
+  `administration_reads: ["resources.inspect"]`; browser callers use
+  `host.administration.resources.inspect(scopes)`. Core checks the current human
+  session and source/build trust before and after observation. No caller-selected
+  other installation, secret, private path or delegated service credential; the
+  browser validates/correlates a bounded public projection. Service access remains
+  separately required. No screen/menu addition or application version change.
+
+  New evidence, frozen source
+  `/var/tmp/3mm-cap01-resource-tests/sources/7162e897b7f84fc799f74896980d47ea6d693062b011e18ad53b42f81c6f8a6a`:
+  **501 passed** SDK plus affected protocol contracts, with Pillow 13.0.0 only in
+  isolated `/var/tmp/3mm-cap01-image-provider` (Core test venv unchanged);
+  **190 passed** affected Core/resource/UI/admin/transport/media/requirements,
+  relational-status and session-runtime integration; **138 passed / 1 explicit
+  skip** release-builder/native host/Runtime components and application-host
+  consumers (isolated-root host driver not run). **75 passed** browser host/UI
+  contract checks; frontend type-check and Vite build passed. Frozen source
+  `73bb6ec58c079079bf64609dd7ada011b3769856f29ef9f797f19339bf0bd126`
+  adds documentation and two packaged-host tests only: **2 passed**, both with
+  and without the image provider, clean isolated interpreter, codecs absent from
+  the parent and no Core imports. Prior green evidence is reused for unchanged
+  content; no Root/ARM/hardware/browser visual acceptance is claimed.
+
+  **At that handoff CAP01 remained open:** actual optional resource dependencies at installation,
+  real probes for remaining families and any needed operator/kiosk browser
+  profile. Existing source composition can remain unreviewable/redacted if a
+  declared resource is unresolved; transport optional flags do not waive that.
+  Next bounded result: optional-resource composition with exact retained choices,
+  fresh consent and healthy/missing/revoked scenarios for the chosen profile.
+  No deployment preparation/rollout, device/browser actions, commit, version bump
+  or publication. Preserve Child Center/M21 and accepted AP/setup/menu/Fleet work;
+  pending CAP11 Download correction still awaits the later combined deployment.
+
+- **Earlier CAP01 SDK discovery and pre-activation dependency gates complete locally,
+  2026-10-27.** Owner asks to close CAPs in order and authorizes continuing CAP01;
+  deployment remains explicitly deferred. The first SDK observation composes
+  signed platform/command reads with required/optional outcomes, a single <=35 s
+  deadline and final identity fence; no selection, grant, retry or effect dispatch.
+  Core reports only the listener's actual allowed operation set.
+
+  The second slice adds `platform_requirements` to SDK 1.3 application descriptors:
+  at most 16 unique transport needs, exact contract version/operations, required
+  missing -> blocked and optional missing -> degraded. A shared pure assessment
+  now serves both Core and SDK. The administrator-only package report revalidates
+  exact bytes and is read-only/no-store; it is never accepted as an activation
+  ticket. Standard stage/activation checks precede lifecycle/key/helper changes.
+  Native activation rechecks before application paths/keys, stop or database work.
+  Prepared relational registration/adoption and preparation/start/upgrade issuers
+  check before issuing work; their native helpers check before package effects.
+  Outcome callbacks, disable/uninstall and recovery keep their existing rules.
+
+  Validated author declarations reach `context.platform_requirements` as a tuple,
+  with host validation before importing application/migration code. No startup RPC
+  is added; absent declarations leave existing metadata unchanged. The deployment
+  contract requires the shared model/SDK files and the new Core assessment helper.
+  No database migration, new grant scope, resource waiver, service or transport
+  action. Optional dependencies do not bypass normal fresh consent or restore an
+  old grant. Unsupported installed applications remain stoppable/removable.
+
+  Limits: the persistent field checks **Core transport support only**, explicitly
+  leaving permission approval, resource bindings and runtime readiness unevaluated.
+  It forbids resource `binding_id`; optional transport flags do not make existing
+  command/session/SQL resources optional. Actual independent Runtime/host/provider
+  availability, other resource-family observations, optional-resource composition
+  and browser SDK exposure were left for the third slice above. Optional-resource
+  composition and remaining profile gaps still prevent marking the whole CAP closed.
+
+  Evidence on unchanged Linux dependency environment: runtime snapshot
+  `/var/tmp/3mm-cap01-dependency-tests/sources/89ca03281c7783ba9030487f4d220ef7a2b9d0856ff9ce61c91d486f5270211a`;
+  final `101bf769fd2f0130977a2fc30f497f3c3b518bc93989be38d085a7a552489a55`
+  was verified to differ ONLY in deployment-contract required-file ordering.
+  The initial broad run was interrupted after **70 builder failures / 756 passed /
+  215 skipped**; it was NOT a green run. Canonical ordering was repaired. Reused
+  737 unchanged passing cases and 215 explicit skips; reran ALL 89 builder tests
+  plus every unfinished node, asserting the same 1697-node collection: **371
+  passed / 374 skipped / 952 evidence-reused deselections**. Thus the chosen Core,
+  lifecycle, protocol and relational set completes at **1108 passed / 589 explicit
+  privileged-profile skips**. Two later tests-only stop/removal regressions passed
+  on unchanged runtime code (**1110 passed** including these additions). Separate
+  complete SDK/native component/Node groups: **451 passed / 2 explicit skips**
+  (optional image dependency, isolated-root host driver). Additional staging,
+  privileged archive validation, release-smoke and Node readers: **112 passed**;
+  these overlap the Node group, so do not sum all groups as unique tests. Initial
+  focused 27/12 checks are included, not extra totals. No Root/ARM live acceptance
+  is newly claimed. Declaration parsing, denial before effects, current consent,
+  unchanged old data/keys, report auth/integrity and continued administration are
+  covered. Source/runtime checks were not repeated for subsequent docs-only edits.
+
+  No frontend changes/build, device/browser actions, deployment preparation,
+  rollout, version bump, commit or publication. Preserve independent Child Center
+  and M21 source. The third slice above continues family/provider readiness and
+  browser access; retain explicit deployment deferral and the pending local CAP11
+  Download correction. Do not reopen accepted AP/setup/menu/Fleet checks.
+
+- **Child Center checkout and migration assessment, owner-requested 2026-10-27.**
+  Cloned `https://github.com/ldobranov/3mm-child-center` into sibling Desktop
+  `3mm-child-center`, HEAD `15349d0`; no application source edits, commit, push,
+  deployment, live Barsy request or hardware action. Scope ends at assessment.
+  The deterministic builder, rather than the historical 0.6.7 JSON templates,
+  produces 0.7.6 / schema 0020 / SDK 1.0, ReliableRuntime, 70 operations,
+  eight routes, two event subscriptions and three legacy jobs. Domain covers
+  kiosk/client registration, bracelets, visits/stays, Barsy accounts/consumption/
+  payment, optional sensor-confirmed access and privacy/reconciliation journals.
+
+  Current working-tree Core's real `validate_module_package(...,
+  architecture="aarch64")` rejects the generated bytes with `scheduled application
+  jobs are retired; no supported scoped scheduler`. Replacing jobs with CAP08
+  tasks alone is invalid: current task declarations exclude connectors, events
+  and scoped relational composition (`three_mm_protocol/application_extension.py`).
+  Sensor-bound commands also fail scoped source composition with
+  `sensor_contract_unresolved` (`application_authority_subjects.py`). These are
+  generic capability gaps, not grounds for restoring legacy jobs or app-name
+  branches in Core. SDK 1.0 alone is not the demonstrated package rejection.
+
+  Migration direction: one authoritative current descriptor/build instead of
+  cumulative release patch scripts; current SDK/resource declarations and
+  scoped storage preparation/migrations; route operations via the public
+  `@3mm/application-ui/v1` host instead of app-managed authToken/HTTP calls.
+  Connector/secret administration and kiosk enrollment/renewal need a separate
+  public-host coverage audit, since invoke alone does not replace those flows.
+  Preserve durable business IDs, uncertain-outcome review, access confirmation
+  and payment safeguards. First bounded implementation candidate: registrations,
+  clients and local visits on the public host/scoped storage, followed separately
+  by generic recurring effectful-work composition and sensor command support.
+  Existing 2026-09-23 incident also identifies equal 10-second operation/connector
+  budgets; migration must use bounded durable steps and slow/lost-reply checks.
+
+  New evidence: WSL cached test environment, **71 passed / three existing
+  Pydantic deprecation warnings / 14.60 s**, current sibling source plus current
+  Core SDK, exact suites `test_billing_units`, `test_closure_reconciliation`,
+  `test_privacy`, `test_access_journal`. These are synthetic domain checks, not
+  complete application, native activation, UI, ARM execution or device acceptance.
+  No frontend build needed for this assessment/documentation handoff.
+
+- **Permanent local deployment path implemented, owner-requested 2026-10-27.**
+  Owner explicitly requested the `deploy.ps1` implementation while testing CAP11.
+  The wrapper now supports Prepare / Deploy / Status / Logs, defaulting to
+  `raspberry@rasp-3mm.local`, ARM64 / Python 3.13 with interactive SSH/sudo.
+  Current working source is frozen without Git mutation/publication or version
+  changes. `tools/deploy.py` reuses the existing release builder and lab source
+  exclusions. Immutable ready kits retain source/check inventories and checksums.
+  Content/environment caches cover frontend dependencies/output, Python evidence,
+  and ABI-specific offline native wheels. Explicit reviewed TestPaths selections
+  get distinct targeted evidence; unchanged local inputs can reuse the last
+  successful selection. Published release gates remain unchanged. Node generated
+  `.tmp`, `.vite`, `.vite-temp`, `.vue-global-types` directories are excluded from
+  dependency integrity comparison; actual package files remain checked.
+
+  `tools/deploy_remote.py` runs a root-private verified snapshot as a detached
+  systemd job, uses the existing immutable Core backup/health/rollback installer,
+  retains the kit when the installer consumes its separate archive copy, preserves
+  installed frontend origin/networking and reuses an exactly matching native host.
+  Changed native code is built/checked offline before Core activation, then the
+  existing journaled publisher selects the default for new applications only.
+  Existing instance pins/grants/data/menu remain unchanged. A repeat observes
+  active work; failed/uncertain dispatch is never blindly replayed. Status/Logs
+  do not prepare/upload/start work. Final success is `3mm update succeeded`.
+
+  CAP11 owner reports uploads/deletion and other checks work, but Download did
+  not save and publish/transform returned 403. Owner confirmed the separate
+  permissions were unchecked and will enable them; await their result. Do not
+  weaken grants or call CAP11 fully accepted. Download had a separate Core CORS
+  defect: `X-Content-SHA256` / `X-Chunk-SHA256` were hidden across UI/API ports.
+  Expose these integrity headers alongside the existing auth header; preserve
+  origins/auth and SDK checksum enforcement. Real signed-worker HTTP regression
+  checks actual Core CORS options, checksums and untrusted-origin denial.
+
+  New final bounded Linux checks **231 passed / 1 explicit isolated-root skip**:
+  deployment controller (25), media HTTP/admission, Core startup, release builder,
+  native component and installer checks. Wrapper parse/transfer/observation/hash
+  refusals pass Windows command doubles without network. Frontend **598 passed**
+  and type-check/build passed on the first preparation; exact unchanged frontend
+  evidence/output reused for the final source. First cold preparation ~102 s;
+  final changed-tool preparation 62.383 s, then identical default Prepare
+  **24.265 s**, same kit/release bytes, no test/build execution. These are local
+  preparation measurements, not Raspberry install timing. Standard installer and
+  host-boundary evidence is reused unchanged; no new ARM/root/systemd-device or
+  browser acceptance is claimed.
+
+  Ready `.runtime/deploy/artifacts/f494d43e4e5b13efc439df0ab1b4928dced5a25b78d352c385c3c1d3430ddb4f`,
+  release `local-f494d43e4e5b13efc439df0a`, VERSION remains beta.57. Kit 15239547 B,
+  SHA256 `d75b0a67e431a310ef5abc129c92faa290e039baef90e7fadbd28ae24ea6bb73`;
+  Core SHA256 `da7f905582bbc409c59147b45c45f6a0a8bae1c9bcdceeb12bff71125b48e30b`.
+  No agent device read/mutation/browser action, commit, push or version bump.
+  Prior `.runtime/cap11-deploy` artifacts remain unchanged. Owner clarification:
+  deployment is deferred until after further development; the current request
+  was to make deployment easy, not to perform or schedule another rollout now.
+  Keep the Download correction local until that later deployment. Await owner
+  permission-check results and selection of the next bounded development step.
+  Do not reopen accepted AP/setup/menu/Fleet tests.
+
+- **Owner-authorized CAP11 Raspberry rollout, prepared 2026-10-27.** Owner now
+  explicitly asks to install the new Core on `rasp-3mm.local`, superseding the
+  previous local-only CAP11 scope for this rollout. The known SSH host responds,
+  but batch authentication fails (`publickey,password`); no usable device
+  credential is recorded. No agent device read/mutation or browser automation
+  occurred. Deliver the checked owner-run PowerShell launcher; it prompts locally
+  for SSH/sudo and runs a detached systemd job. Do not call the deployment done
+  before owner logs/health confirmation. No commit/publication/version bump.
+
+  Immutable local Core release `local-cap11-20261027-arm64-r1`, VERSION remains
+  beta.57. Archive `.runtime/cap11-deploy/3mm-local-cap11-20261027-aarch64.tar.gz`,
+  **3617836 bytes / 1465 files**, SHA256
+  `72e5e1ba729f95101b7bc4a19cf6076dac9417758c8f6b6095839684b0226fbe`.
+  Source hashes match the accepted CAP11 baseline except the necessary generic
+  default-host publisher and its tests. Reuse prior implementation checks.
+  Re-emitted prebuilt frontend/type-check pass after temporary WSL source cleanup;
+  new staging uses persistent `/var/tmp`. No independent user code was changed.
+
+  CAP11 requires a new native host for fresh file-profile-v2 applications; merely
+  retaining the old default bootstrap would leave new apps on the old worker.
+  Added explicit CLI `publish-default` / `recover-default` with the shared release
+  lock, existing component journal, native artifact verification and previous
+  pointer. Existing instances remain on their own pins and no application is
+  started/enabled/granted by default publication. Component suite **20 passed /
+  1 explicit isolated-root skip**, including interrupted publication rollback and
+  preserved existing bindings. Prior separate-principal host evidence is reused
+  for the unchanged stage/process boundary.
+
+  Separate offline native-host builder bundle
+  `.runtime/cap11-deploy/3mm-cap11-host-wheels-aarch64-cp313.tar.gz`, **13911320
+  bytes / 9 pinned wheels**, SHA256
+  `1e779b408be29c065f6da889914bb8559bc6a9093c833ec1b14d1b5070b63e6b`.
+  Includes the separately locked Pillow provider; CPython 3.13 ARM64 binaries were
+  downloaded and hashed, not executed on this x86_64 machine. The detached device
+  job verifies/installs them in a separate builder and builds/tests the native
+  image dependency **before changing Core**. It then uses the normal Core
+  backup/health/rollback installer, preserves installed frontend URL and networking,
+  publishes the verified default for new applications and checks Core readiness.
+  Core and existing application host environments are not given Pillow implicitly.
+
+  `.runtime/cap11-deploy/Deploy-Raspberry-Cap11.ps1` checks/uploads Core, host-wheel
+  bundle and `Update-Cap11.sh`, then starts the root detached job. Full success is
+  the distinct final line **`CAP11 update succeeded`**, after the installer and
+  host publication; the installer's earlier success line alone is insufficient.
+  Closing SSH/PuTTY only closes the journal viewer. Existing stage/unknown base,
+  wrong architecture/Python, corrupt bytes or host build failure refuse rather
+  than blindly retry. Stage/journal: `3mm-cap11-20261027-r1`.
+  Launcher checks pass using real files/hashes/archive parsing/shell and command
+  doubles, including failure-before-Core ordering and no network override.
+  PowerShell parse/hash/target/failure checks pass with mocked scp/ssh only.
+  Archive byte roundtrip, deployment contract, public ESM closure and no host ELF
+  in Core pass. Device installation and the owner's File Probe UI acceptance are
+  still pending. Next: owner runs the supplied PowerShell command and reports the
+  final job result; do not automatically install File Probe or repeat accepted AP
+  tests. The rollout creates no new saved menu items.
+
+- **CAP11 files/media implemented and checked locally, 2026-10-26.** Owner confirms
+  Task Probe works, closing its delivered consent correction. Owner authorizes
+  CAP11 and then explicitly expands from the initial <=1 MiB private-file path
+  to the complete CAP11 result, **without deployment on Raspberry**. Include
+  bounded streaming/resumable uploads, checksum/atomic finalize/interrupted-upload
+  lifecycle, ownership/quotas/metadata, private/public access, expiring links,
+  revoke/uninstall/retained-data semantics and optional media transformation
+  worker/provider with traceable originals/derivatives. Keep ordinary Core
+  administration independent and use generic contracts, never app-name branches.
+  Owner performs browser/device visual checks; no agent UI automation or device
+  mutation. No commit, publication, version bump of existing packages or deployment
+  is authorized by this scope. New shared file permission/auth changes are in scope.
+
+  Delivered file-contract-v2 on the existing current-grant/file-worker boundary:
+  raw 256 KiB chunks, durable offset/resume, full checksum/CAS atomic finalize,
+  bounded staging/expiry/cancel/cleanup, metadata/pagination and original/derivative
+  quotas. Browser and Python public SDKs use the same generic mechanism. Human
+  route/session/build permissions remain separate from read/write/publish/transform
+  service scopes. Fresh normal consent leaves publish/transform unchecked. Public
+  links pin owner/incarnation/package/grant/file revision, expiry and download
+  count; bearer secrets stay in fragments/POST bodies and only hashes are stored.
+  Revocation stops later chunks. Missing/unsafe metadata fails closed; no reset.
+
+  Optional Pillow image provider runs outside Core with pixel/byte/CPU/memory/time
+  bounds; source/derivative/job provenance is retained. Native application-host
+  build can explicitly bundle its separately pinned dependency. Files/media
+  participate in normal activation snapshots, SQL recovery/rollback proofs,
+  retained-data uninstall and explicit erasure. No Core DB migration was needed.
+  [Public contract and limits](APPLICATION_FILES.md).
+
+  Verification uses disposable WSL Linux/Python 3.14.4 sources and native workers,
+  not Raspberry. Ignored `.runtime/cap11` keeps source inventories and logs.
+  Broad Python gate on its frozen baseline: **6244 passed / 615 explicit profile
+  skips**, with two new fixture/test-expectation failures subsequently corrected
+  and passed in affected reruns (real kiosk fixture, wrapped filesystem fault).
+  Reuse unchanged broad results; do not relabel that initial command all-green.
+  Final affected integration **198 passed** and final complete SDK/direct-host/
+  native/browser-file integration **356 passed**, including those repaired cases,
+  actual >1 MiB streaming, lost ACK/no replay, human/service denial, mid-download
+  revoke, CAS/checksum, snapshots and explicit retained-data erasure. These groups
+  overlap; their counts are not additive. Later SDK changes are covered by the
+  final SDK/direct-consumer group, not the earlier broad run.
+
+  Isolated root SQL preparation/recovery/upgrade/rollback slice: **174 initial
+  passes + all 15 exact failures passed after fixing test-source traversal**, plus
+  the separate-principal application-host case passed. The failures came from a
+  0700 temporary source root preventing the dropped-UID worker importing code;
+  changing only that disposable public-code directory to 0755 repaired it. No
+  production permission bypass or installed account/service change. Other
+  disposable systemd/root profiles remain explicitly unrun, not claimed passes.
+  Frontend full **598 passed**, then **103 passed** for the final affected consent,
+  file host and route boundary changes; type-check/production build pass. Reuse
+  unaffected frontend checks. Actual install-time compiler and public prebuilt
+  ESM SSR pass for empty and saved-upload states; this is not visual acceptance.
+  A clean native x86_64 application-host artifact with the locked optional Pillow
+  dependency passed Core-dependency isolation and actual PNG -> WebP resize.
+
+  Separate local reference `org.3mm.file-probe` 1.0.0, route `/file-probe`, uses
+  only public SDKs and adds no saved menu items. ZIP
+  `.runtime/cap11/file-probe-1.0.0.zip`, **5612 bytes**, SHA256
+  `2d82f10f16548d5d6941b687acb46d3186749a3acc1e81c195bb5e7f31dd27cb`.
+  Source is `modules/file-probe`; instructions are in its README. The demo has
+  an 8 MiB/file ceiling; streaming was exercised above 1 MiB locally, not at the
+  structural 1 GiB ceiling or under Raspberry power-loss/performance conditions.
+  Existing published packages/releases are untouched; no new Core deployment
+  archive or ARM provider artifact is implied. Finish point: complete local CAP11
+  implementation and evidence. Later owner-run phone/Raspberry acceptance requires
+  an explicitly updated Core/application host (and optional image-provider host
+  artifact). No device deployment or browser automation was performed. Stop here;
+  choose the next capability or rollout separately with the owner.
+
+- **First CAP09 UI slice accepted, owner-confirmed 2026-10-26.** Owner reports
+  that both named form checks and the other demo checks pass on the Raspberry
+  test page. This closes the bounded manual acceptance for the delivered shared
+  fields/forms, table/pagination and UI states. It is owner-observed acceptance;
+  no agent screenshots, exact viewport dimensions or separate per-theme/keyboard
+  matrix were supplied. Do not reopen this accepted slice to repeat the same
+  checks. The broader CAP09 catalogue remains separate.
+
+  Owner clarified
+  that they want to operate the visual checks themselves. Stop agent browser
+  automation; before this correction only app/browser inventory and skill/docs
+  reads occurred, without navigation, input, screenshots, upload or device action.
+  Prepared a separate UI-only manifest-v2 demo `org.3mm.cap09-ui-check` 1.0.0,
+  route `/cap09-ui-check`, in ignored `.runtime/cap09-manual`.
+  ZIP `cap09-ui-check-1.0.0.zip`, 4,306 bytes, SHA256
+  `7f0a0a65d6389e227c03a0a9dd9e90b5e4bc42099c1cf3516832cff48dc7166f`.
+  It imports the delivered public UiField/Form/Table/State/Surface/Button,
+  declares no permissions/capabilities/backend service and uses in-memory sample
+  data. No automatic menu links or Core changes are needed. Owner-run acceptance
+  uses Extensions and `http://rasp-3mm.local:8080/cap09-ui-check` as administrator.
+
+  Native required/email/number controls, readonly/disabled/checkbox/select/date/
+  multiline fields, explicit busy release, local preview, two table pages, empty
+  table and loading/error/empty examples are available in BG/EN. Core's own theme
+  switch supplies appearance; the demo does not emulate it with hardcoded colors.
+  Automated demo checks **2 passed** (validation/local draft/language/pagination/
+  state/busy/escaping), manifest-v2 validation and actual install-time compilation
+  passed; source hashes and build metadata are in ignored `package.json`.
+  The first local build correctly refused unprotected Windows-mounted output;
+  recompiling to a real Linux-owned temporary artifact passed without weakening
+  provenance checks. Prior Core checks are reused for unchanged code; no Core
+  frontend rebuild, publication, version bump of an existing package or agent
+  deployment occurred. The later owner confirmation above supplies the previously
+  pending manual visual acceptance. This closure changes documentation only;
+  diff/whitespace checked, prior successful checks reused unchanged. Fleet,
+  Digital Output and AP/setup acceptance stay closed. Uploads/file picker, task
+  progress, filters and editors remain future scoped results; no new work or demo
+  removal is started by this acceptance message.
+
+- **Raspberry Fleet version-update acceptance complete, owner-confirmed
+  2026-10-26.** After the combined Core deployment instructions, the owner reports
+  completion on `rasp-3mm.local`: removed Fleet 0.1.12 to establish the starting
+  state, installed 0.1.11, then successfully updated that installation to 0.1.12.
+  Subsequent repeated tests for `org.3mm.digital-output` also succeeded. The
+  0.1.11 -> 0.1.12 transition is now real-device owner acceptance of the normal
+  version-update path, extending the earlier fresh-install-only acceptance.
+  The selected Fleet update / Digital Output scenario has no remaining reported
+  blocker; do not repeat it solely to close the same issue.
+
+  This closes the owner-run rollout/update acceptance pending below for the
+  delivered `local-cap03-cap09-20261026-arm64-r1` candidate. The agent has not
+  authenticated to the device or independently read its installed release/logs.
+  No additional measured data-preservation, failure/rollback, Task Probe consent
+  or CAP09 visual scenario was reported; their previous evidence/limits remain.
+  CAP09's first UI slice is delivered with this candidate, without acceptance of
+  the entire CAP09 catalogue. Existing AP/setup acceptance stays closed.
+
+  Documentation-only closure: update this state and the CAP03 plan status,
+  inspect diff/whitespace and reuse unchanged implementation/package/launcher
+  checks. No runtime test/build, device action, package replacement, commit,
+  publication or version bump is needed for recording the owner's result.
+
+- **Owner-authorized Raspberry rollout preparation, 2026-10-26.** Owner now asks
+  to deploy the combined result and explicitly selects CAP09 forms/tables/UI
+  states. Prepare one immutable ARM64 Core candidate from the checked source and
+  prebuilt frontend, including the earlier Task Probe consent UI correction.
+  Reuse the recorded implementation checks for unchanged inputs; verify the
+  delivered bytes, deployment contract and detached upgrade launcher separately.
+  Existing AP/menu or Task-access local installations are the two known bases;
+  preserve the installed frontend URL, networking backend, data and native pins
+  through normal installer backup/health/rollback. Batch SSH authentication to
+  `raspberry@rasp-3mm.local` failed; no device state was read or changed. Owner-run
+  PowerShell/PuTTY deployment is the available path unless access changes.
+
+  Prepared immutable release `local-cap03-cap09-20261026-arm64-r1`, archive
+  `.runtime/package-staging/3mm-local-cap03-cap09-20261026-aarch64.tar.gz`, SHA256
+  `293664bed2fc733ab995c04fd463c1844b4b14f3f58a3209478d93398af2d757`,
+  3,572,167 bytes / 1,447 delivered files. VERSION remains beta.57; metadata
+  identifies the local working tree, ARM64/Python 3.13 profile and two accepted
+  bases. Existing archives stay immutable. Source hashes, deployment contract,
+  every delivered byte/metadata roundtrip, absence of host ELF, generic staging
+  path replacement and prebuilt public UI CSS links pass. No runtime code changed
+  during packaging; reuse the 237/584/8, type/build and actual API/compiler evidence.
+
+  Companion `Update-Cap03-Cap09.sh` verifies checksum/architecture/base, copies
+  root-owned staging inputs, then launches an independent systemd job. The
+  standard installer handles backup, current-release switch, health and rollback;
+  stored frontend origin/network backend are preserved. Launcher verification
+  accepts both known full bases, refuses unrelated/node/already-target bases,
+  missing URL/wrong architecture/corruption/existing stage, and checks detached
+  normal-installer delegation with command doubles. No live services were used.
+  `Deploy-Raspberry-Cap03-Cap09.ps1` verifies both local file hashes, copies them
+  using owner SSH authentication, then invokes the launcher with sudo. PowerShell
+  parsing, exact arguments and refusal after failed copy pass with command doubles.
+  At preparation handoff SSH authentication was unavailable to the agent and no
+  agent transfer/deployment occurred. The later owner confirmation above closes
+  the previously pending owner-run rollout and normal version-update acceptance.
+
+- **Combined local CAP03 update path + first CAP09 UI slice, 2026-10-26.**
+  Owner confirms Fleet 0.1.12 and the following probes succeeded after completely
+  uninstalling 0.1.11. This closes the HTTP LAN button correction/device trial;
+  it does not accept an in-place version update. Owner reports the same activation
+  refusal on VM 0.1.10 -> 0.1.11; the previous manual VM intervention is not proof
+  of the normal update flow. Owner wants further original-plan progress before
+  another Core rollout. That hold is superseded by the owner's rollout request
+  above. CAP09 was initially the announced default recommendation; the owner has
+  now explicitly selected that scope.
+
+  CAP03: ordinary stopped native applications now share the sealed inert package
+  preparation previously limited to tasks. Extensions shows stop -> prepare ->
+  review exact new access -> activate; it does not auto-start or inherit previous
+  artifact consent. Preparation rechecks live administrator, old package/grant,
+  configuration/epoch/identity and unresolved execution, fences old command rights
+  and registers the exact candidate without helper/wheel/migration execution.
+  Missing grants allow preparation only, never code approval; corrupt grants or
+  provenance fail closed. Inert activation additionally requires the current
+  effective-for-this-stopped-instance grant. Two reproduced regressions (abandon
+  an update and return to old bytes; revoke approval before startup) initially
+  reached the helper through old native trust. Both now refuse helper execution
+  until fresh consent. Same-artifact non-inert lifecycle rules remain unchanged.
+  Instance/incarnation, data and historical results stay
+  owned by the same installation. The exact public package SHA is exposed so a
+  stopped candidate is not confused with a newer upload; activation preserves the
+  previous package pin. Returning to a prior package also needs fresh consent.
+  Relational migrations/session providers retain their dedicated prepared paths.
+  One shared service replaces the task-only service; existing opaque v1 sealing
+  tags remain the persisted provenance format, without a second adapter.
+
+  CAP09: public `@3mm/ui/v1` now additionally exports UiField/UiForm/UiTable/UiState.
+  They supply labelled native controls, local drafts/validation, controlled table
+  pagination, busy/error/empty semantics and public theme tokens. They expose no
+  Core stores, credentials, private clients or automatic fetch/mutation/retry.
+  Current optional CRUD renderer consumes these primitives while preserving its
+  SDK permission/outcome/pending-ID rules. Its same HTTP LAN randomUUID defect
+  was a demonstrated consumer blocker; secure byte IDs now fail visibly before
+  dispatch if generation/persistence fails. No Contacts/application version or
+  immutable ZIP was changed. Fresh renderer builds require the new UI exports.
+
+  Real production bundling exposed a necessary delivery dependency: import-map
+  ESM does not invoke Vite's dynamic-import stylesheet loader. The existing public
+  entry plugin now includes each exposed entry's CSS closure in prebuilt HTML.
+  A neutral disposable v2 package goes through the actual compiler and links the
+  actual prebuilt public ESM, verifying the eight exports, loaded hashed CSS and
+  four EN/BG/card-variant server renderings. This is presentation structure, not
+  browser layout/theme-color/mobile or Raspberry visual acceptance. Existing
+  declined preview permission was respected; no alternate browser was used.
+
+  New evidence: **4049 unique backend cases passed, 608 explicit profile/root
+  skips**, combining 4028 initial passes with 21 repaired environment cases.
+  The initial broad run's 21 failures were all AF_UNIX path-length errors from
+  the helper's overlong TMPDIR. All exact 21 passed with a short owned basetemp;
+  no runtime production repair or suppressed case was needed. Preserve both raw
+  logs; this is combined coverage, not one uninterrupted clean run. The 14 new
+  staging/security cases and earlier 163 direct-consumer passes overlap this
+  total. Later amendments expose the selected public package SHA through one
+  outer join rather than exposing internal package IDs, and require a current
+  grant on the inert-only activation branch. Final direct-consumer gate **237
+  passed**, including all 16 staging cases, old/native/relational denial, tasks,
+  command rebinding, lifecycle and consent. Its two additional regressions bring
+  combined unique backend coverage to **4051 passes / 608 skips**. The earlier
+  full run is reused for unchanged consumers, not relabelled as testing these
+  later amendments. Frontend amendments have separate final checks.
+
+  Final Core frontend **584 passed**, type-check/production build passed; optional
+  CRUD **8 passed** and its separate public-import TypeScript check passed.
+  Exact immutable Fleet 0.1.11 -> 0.1.12 -> 0.1.11 API/consent/lifecycle cycle
+  passed locally, with real keys/logins/SQLite/package bytes and actual UI
+  compilation. Runtime helper I/O is a double, not a live VM/Pi process trial;
+  no manual grant/database workaround is used between lifecycle requests.
+  Neutral prebuilt ESM/compiler checks pass. Logs, helper sources and exact
+  frozen inputs are in ignored `.runtime/package-staging`; source snapshot is
+  `/tmp/3mm-package-staging-0jz2y7hw`. Prior unrelated Runtime/SDK/Agent evidence
+  remains prior evidence for unchanged inputs, not new suite passes.
+
+  No schema/reset, owner-device access, Core archive replacement, version bump,
+  commit or publication. Accepted AP/setup/navigation work stays closed. This
+  supersedes the pending Fleet/GPIO acceptance statements below; the separate
+  Task Probe consent correction is included in the delivered Core candidate.
+  The later package preparation and owner-run acceptance above close the selected
+  rollout/version-update result. CAP09 uploads,
+  task monitor, filters/editors and the broader CAP catalogue remain separate.
+
+- **Fleet HTTP LAN button failure fixed; local 0.1.12 ZIP ready, 2026-10-26.**
+  Owner clarified that `Install selected module` does nothing. The shared Fleet
+  mutation handler called secure-context-only `crypto.randomUUID()` before its
+  error handling/persistence. On HTTP LAN browsers the call fails before any host
+  request. Three regression cases without `randomUUID` reproduce this for
+  install/disable/output actions. Fleet now derives the existing 32-hex request ID
+  from 16 bytes of `crypto.getRandomValues`; IDs are still saved before one
+  dispatch, with lookup-only recovery of pending requests. Failure to obtain
+  secure randomness displays a localized local error and sends nothing.
+
+  Owner explicitly approved local Fleet **0.1.12** without publication. Source
+  VERSION/README updated in sibling `3mm-fleet`; schema/SDK versions, Core,
+  Digital GPIO package, permissions and pending-request storage keys are
+  unchanged. Old immutable 0.1.11 ZIP retains SHA256 `a33d5c0129d7cb79d625f5ffff78b5c0b2a85f9709e638799a6cc6abf8faf6da`.
+  New ZIP `C:/Users/SIMPLEX-3260/Desktop/3mm-fleet/dist/3mm-fleet-0.1.12.zip`,
+  SHA256 `f2927292be602e67754382406beeb497d13ccbe2101906e075a41e610ef7733a`,
+  compiled UI SHA256 `5b87b4d7d254e54a103ee77b9efefd293c1829d1abc940420fa7ee732b075f6e`.
+  An identical copy and evidence are in ignored `.runtime/fleet-http`.
+
+  New checks: Fleet **22 UI cases passed**, including HTTP LAN and failed-RNG
+  refusal; **3 package build cases passed** at approved 0.1.12. Type-check passed
+  before the VERSION/docs-only update and is reused for identical TS/Vue/import
+  inputs. Final actual 0.1.12 ZIP builds deterministically, validates and compiles
+  through the current Core pipeline. Both repositories' whitespace checks pass.
+  No Core change or full Core build was needed for this Fleet correction. No
+  real-device mutation, module retry, GPIO command, commit or publication occurred.
+  Next: owner uploads/selects 0.1.12 and confirms the install request now appears
+  and reaches a device result. Physical-device acceptance remains owner-run;
+  Task Probe's separate Core consent correction below is prepared, not deployed.
+
+- **Task consent UI failure reproduced and fixed locally, 2026-10-26; rollout
+  pending.** In response to the GPIO diagnostic question the owner supplied
+  `Result task probe` / `Application access could not be loaded`. Actual Core
+  consent responses were exported from real disposable authority/key/SQLite
+  fixtures and the exact Task Probe 0.2.0 ZIP. The unchanged non-task response
+  passes the frontend; task response fails with `Unsupported authority status`.
+  The initial hypothesis that every non-task response includes empty tasks was
+  disproved: `_resources` includes only subject fields. This confirmed defect is
+  specifically the missing frontend task scope/resource contract, not proof of
+  the separate reported Digital GPIO failure.
+
+  The shared frontend DTO validator now supports bounded task rights, exact owned
+  package/handler bindings and matching scalar schemas/limits. Task profiles
+  continue to reject other resource families; malformed, foreign, duplicate and
+  mismatched resources fail closed. The consent dialog displays the task details
+  and sends only the reviewed selection. No server auth/admission, grants,
+  schedules, worker enablement, application ZIP or manifest version changed.
+
+  New evidence: real backend consent export 1 passed; initial frontend regression
+  failed only for Task Probe and passed for non-task; repaired targeted 84 passed,
+  final full frontend **570 passed**, TypeScript/production build and whitespace
+  passed. Initial type-check issues in a test fixture type and ES target helper
+  were repaired; final build replaces that failed build. Backend/runtime/Agent
+  Python bytes match the accepted AP/menu snapshot, so their existing evidence
+  is reused, not rerun/relabelled. Component test loads the real response and
+  checks exact permission submission; no new browser/device acceptance is claimed.
+
+  Prepared immutable local ARM64 Core update, release
+  `local-task-access-20261026-arm64-r1`, archive
+  `.runtime/consent-ui/3mm-local-task-access-20261026-aarch64.tar.gz`, SHA256
+  `503be2470f524fef659045f97f7fbfcd9f957427c8fa60b554115b885144eec5`.
+  Companion `Update-Raspberry.sh` accepts only the AP/menu base, detaches its job,
+  preserves the stored frontend URL/backend, and delegates to normal immutable
+  installation/backup/rollback. Archive contract/byte roundtrip, unchanged-Python
+  audit, shell syntax and isolated launcher command doubles passed. Logs/input
+  hashes/package metadata are in ignored `.runtime/consent-ui`; new DTO fixtures
+  are disposable Core responses with no user credentials. Existing artifacts
+  remain immutable. Nothing deployed, no SSH credentials available, no commit,
+  publication/version bump/delegation. AP/setup remains accepted. Next: owner-run
+  Core update and permission-dialog confirmation. The separately clarified Fleet
+  no-op button now has a local 0.1.12 correction, recorded above.
+
+- **Active: Digital GPIO installation failure through Fleet on fresh Raspberry,
+  2026-10-26.** Owner reports failure after receiving Fleet 0.1.11 and Digital GPIO
+  Output 1.1.0. The reply instead shows Task Probe's consent loading failure; its
+  fix is recorded above. Owner subsequently clarified the Fleet button no-op;
+  its HTTP request-ID failure and local correction are recorded above.
+  The exact supplied GPIO ZIP (`e7ab19b266db360fc76b87204080c3ac863d13ad8c2a8c3657525e697da6991a`)
+  passes current frozen Core validation for aarch64/protocol 1.0 and installs to
+  active in a disposable local AgentModuleRuntime with MockDigitalGpioDriver.
+  This excludes a general ZIP/declared-ARM-architecture failure in that local
+  profile; it is not evidence of successful installation on the device. Helper:
+  ignored `.runtime/ap-menu/inspect_gpio_package.py`. Batch-mode read-only SSH
+  could not authenticate, so no device log/state was obtained and no remote
+  installation, retry, GPIO command or configuration change occurred. The failed
+  stage is now reproduced in Fleet before dispatch; next is owner acceptance of
+  the 0.1.12 package. AP/setup acceptance below stays closed.
+
+- **Fresh Raspberry AP/setup acceptance complete, owner-confirmed 2026-10-26.**
+  After the clean Linux installation and owner-run installation trial, the owner
+  reports that everything works as intended and explicitly closes the initial AP
+  and automatic setup-opening tests. These two scenarios are accepted on the real
+  Raspberry Pi 3B+; no additional AP/captive-portal test remains required for this
+  correction. This is owner-observed hardware acceptance, not an agent-run probe
+  or an extension of the historical C5 matrix to other hardware scenarios.
+
+  Owner requested direct installation commands with owner execution. Prepared
+  ignored `.runtime/ap-menu/3mm-local-ap-menu-20261026-aarch64.tar.gz`, release
+  `local-ap-menu-20261026-arm64-r1`, SHA256
+  `5b30b518f6ea2437d5f1694f7d90e503a89d00c9414196f259e000298a2cb77a`.
+  It contains the checked frozen AP/menu correction and prebuilt frontend, 1438
+  delivered files/3543884 bytes; source VERSION beta.57 is unchanged and metadata
+  truthfully records local working-tree source and ARM64/Python 3.13 trial scope.
+  No host ELF binaries are delivered: independent native components bootstrap
+  from their source on the Raspberry through the existing immutable installer.
+
+  Companion `Install-Raspberry.sh` verifies the archive and clean-install scope,
+  stages root-owned inputs and detaches the job **before** APT/NetworkManager
+  changes. It installs the same bootstrap dependencies with NetworkManager/
+  dnsmasq, runs host preflight and delegates to shipped `install-systemd.sh` with
+  explicit managed backend. One SCP command copies both files; owner then runs
+  `sudo bash ~/Install-Raspberry.sh`. The SSH connection may close when initial
+  AP starts; installation/logging remain independent of PuTTY.
+
+  New checks: archive/source manifest hashes, deployment contract, every delivered
+  file byte and metadata roundtrip, no host ELF, shell syntax and launcher command
+  doubles (detachment before packages/network, backend/installer argument flow,
+  corruption refusal) passed. These doubles do not exercise root services or real
+  ARM/AP. Reuse the correction's 496 Python/547 frontend/type-check/build evidence
+  for unchanged source/dependencies; no additional runtime-suite claim. Details in
+  ignored `.runtime/ap-menu/package-arm64.json` and helper sources. The owner's
+  real-device confirmation above closes the previously pending AP/setup trial;
+  Raspberry has not been accessed by the agent. This acceptance update changes
+  documentation only; diff/whitespace checked, no runtime rerun needed. Existing
+  automated evidence is reused unchanged. No new device action, publication,
+  commit, version bump, reset or delegation occurred during closure.
+
+- **Installer/AP and empty navigation correction complete locally, 2026-10-26.**
+  Owner rejected the host-only Raspberry installation instructions and compulsory
+  header links. The public one-command bootstrap was still present; the supplied
+  `THREE_MM_NETWORK_BACKEND=host` disabled managed Wi-Fi/AP. Standard fresh
+  bootstrap and immutable installation now default to `network-manager`; explicit
+  `host`, stored choices and older installations without a backend remain
+  preserved. First-setup AP selection accepts the connected Wi-Fi adapter carrying
+  SSH after the job is detached. Provisioned roles/recovery do not enter this AP
+  path; no reset or role inference was added.
+
+  Header/sidebar/mobile navigation now renders only the active saved menu, with
+  no automatic Core/module/app append, inactive-menu fallback or generated error
+  fallback. Removing every item, deleting the active/last menu and leaving no
+  active menu are supported. Removed compulsory appearance-recovery links from
+  both shells; Settings, route registry, editor choices, auth/audience filtering,
+  themes and Command Palette remain available. `/settings` and Ctrl+K provide
+  administration with an empty menu. The previous C5 conclusion that fresh header
+  links should be compulsory is explicitly superseded by the owner's preference.
+
+  New evidence from frozen current inputs in `/tmp/3mm-ap-menu-3j621xe_`, existing
+  local Linux/Python 3.14 and npm environments: **496 Python passed, four explicit
+  root/systemd acceptance skips; 547 frontend passed; TypeScript/production build
+  passed; diff/whitespace passed.** Python scope includes all deployment,
+  provisioning and setup-service tests, direct runtime activation/services/
+  bootstrap/unit consumers, menu routes/items, first-boot preflight and network
+  recovery routes. Consumer audit: `setup_interface` is used only by initial AP
+  start and runtime activation/health; menu deletion retains its existing admin
+  dependency. These are bounded regressions, not a rerun of all historical Core
+  suites. A strengthened connected-Wi-Fi AP test reran successfully (three cases,
+  replacing its earlier evidence); no production Python changed after the 496
+  gate. Final frontend run replaces an intermediate failure from two old shell
+  expectations of automatic module navigation. Logs/XML and input hashes are in
+  ignored `.runtime/ap-menu`; previous C5 archives remain immutable.
+
+  At this local-code handoff browser permission for the localhost preview was
+  declined; no agent visual inspection is claimed and the owned preview was
+  stopped. Physical ARM Wi-Fi/AP was then pending; the later clean-install trial
+  and explicit owner acceptance above now close initial AP/automatic setup
+  opening. The agent did not access or change Raspberry. No distributable,
+  commit, version bump, publication or delegation occurred at that earlier handoff.
+
+- **C5 local acceptance complete for the selected bounded Linux x86_64 profile,
+  2026-10-26.** Owner requested C5 after the four bounded C3 extractions. Actual
+  filtered candidate boots under systemd in an owned nspawn machine with private
+  networking, no owner-state mounts and the same checked dependency environment.
+  Administration/login/admin denial remains available without optional Runtime or
+  applications; essential DB failure is visible and recovers after access returns.
+  The actual r2 browser confirms EN/BG, light/dark, 390x844 mobile navigation without
+  horizontal overflow, viewer filtering and Settings route denial.
+
+  Historical C5 r2 navigation added Settings/Extensions labels to the common route
+  registry and exposed them automatically alongside Devices. Its 541 frontend
+  cases/type-check/build passed at that time. The owner subsequently rejected
+  compulsory navigation; the correction above removes automatic header links
+  while retaining route metadata for Settings/Command Palette discovery. C5 r2's
+  archived checks do not validate the later correction.
+
+  New delivered-payload evidence: 64 unique named outer Python cases passed,
+  combining initial/repaired runs; the Terminal harness additionally proves two
+  real M20 browser-to-sandbox human/service revoke cases. Terminal provider source
+  is pinned to public commit `715c3fb9e5eab3408e89c02939ab16b546509cea`. Real PTY
+  prompt/resize/asynchronous output/EOF/close, dynamic identity, private-path/network
+  denial and cgroup cleanup/link-loss pass. Two v2 reference packages run actual
+  hosts through install/update/rollback and explicit executor stop/restart while
+  Core/Runtime/peer PIDs and own data survive. That package fixture uses the
+  existing compatibility review profile; scoped command/task/data admission and
+  cross-principal denial are separately exercised. One helper namespace failure
+  was a missing installer-created directory in the manual lab; corrected there,
+  the exact failing case passed without changing production hardening.
+
+  Real stopped symlink cutover from CAP08 r2/schema5a to candidate/schema9e passed
+  with every value from 82 predecessor tables preserved under explicit mapping.
+  Populated downgrade refused unchanged; exact snapshot restore plus the production
+  authority fence restarted the old release successfully. A second upgrade, current
+  admin/user denial, blocked/revoked sessions and required-DB failure/recovery pass.
+  Same-lab three-start medians: readiness 1.954 -> 1.740 s, idle RSS 178740 ->
+  164060 KiB. Separate import-only file-module closure is 1158 -> 1006 (backend
+  177 -> 149); delivered frontend 44/1408221 -> 30/1138188 files/bytes. These are
+  isolated idle/import observations, not capacity, hardware or credit estimates.
+
+  Reuse the previous 6131 Python passes, tooling 32 and shared CRUD UI 5 for
+  unchanged inputs; counts overlap the newly executed cases and are not added.
+  Python source/dependencies match the full C3 gate, including its documented
+  whitespace-only Menu amendment; no later Python fix invalidates that evidence.
+  New frontend evidence replaces its previous 535 cases/build. Source audit keeps
+  all 78 moved originals and finds no additional pre-C3 runtime deltas against
+  the installed CAP08 baseline. Native x86_64 Runtime/host/Agent/session/public-web
+  candidates build and deployment-contract/pip checks pass. Platform Runtime build
+  remains `82cd97b95ff353f7e625f7bbce7bb62d81f51f574e8ee52d8fa23ad2505ed245`.
+
+  Immutable local package `core-c5-local-20261026-r2.tar.gz`, SHA256
+  `9805a5562ae55b29de0136fe77fac4d46d4ac75ea2d571ecb0f9e00bded74b00`, is in
+  ignored `.runtime/c5` with checksum, XML/logs, screenshots and final evidence.
+  It has 1425 delivered files from 1536 frozen source inputs; truthful working-tree
+  metadata and source VERSION beta.57 are retained. R1 is preserved. The owned lab
+  and preview are stopped; private recovery evidence remains in
+  `/var/tmp/3mm-c5-20261026`. Diff/whitespace checks pass.
+
+  Limits: C5 did not execute/deploy ARM/ARMv6, physical GPIO, remote Terminal or
+  additional capability profiles; it reused the checked dependency venv rather
+  than rerunning a fresh full installer. These are not new passes for historical
+  P6 devices. Next explicit result is owner-VM rollout with fresh task/quiescence
+  preflight and the immutable installer's backup/rollback coordination. Owner VM
+  remains CAP08 r2/schema5a (zero unresolved task runs at read-only final inventory).
+  No owner deployment/reset, commit, branch, version bump, tag, publication,
+  delegation or A1 product SDK port occurred.
+
+- **C3 Page/Extension/universal-translation extraction complete locally,
+  2026-10-26.** Owner approved this next bounded stage. Fourteen original sources
+  and ten mixed reference files are preserved in source-only
+  `modules/legacy-content`; all 78 moved originals across C3 pass the source audit.
+  Core no longer imports the old models, Page/translation APIs, arbitrary table
+  engine or obsolete database scripts. Menu has its own Core model with unchanged
+  table/API/localized items/audience. Language state now contains only code,
+  selected immutable package and enabled flag; validated v2 packages still supply
+  translations, with current lifecycle/denial and English recovery fallback.
+  Common roles, settings, application authority and UI contracts remain.
+
+  Migration `9e74f5c60d64` archives eight old tables and page/extension subsets of
+  direct/role/group permissions without live principal FKs; an optional historical
+  multilingual table is preserved when present. Archive values survive deletion
+  of current principals. Unknown actual registered custom tables/incoming FKs
+  refuse preflight before schema changes, preserving independent data. No old
+  grants or executable extensions are restored. Empty rollback preserves all
+  predecessor column/type/default/nullability/key/index semantics and supports
+  full downgrade; populated history or optional prototype schema requires a
+  verified prior backup with matching release/package files.
+
+  Twelve-suite Linux nonroot gate: 6123 passed, 615 explicit profile/environment
+  skips. All four worker cases passed across three runs: the grouped run stalled
+  on the known streaming-test race after two passes; the remaining cases passed
+  separately. Four isolated real root-helper/nonroot-host relational cases passed
+  (SQL/receipt, revoke, restart, lost completion), replacing four profile skips.
+  Combined unique Python evidence: 6131 passed, 611 remaining skips; tooling 32
+  passed. Populated retirement, preflight refusal and current language/menu API
+  checks pass. Clean upgrade/check/downgrade and a second empty schema roundtrip
+  pass. Raw logs/XML and exact 1535 frozen inputs are in ignored
+  `.runtime/c3-content` and `/var/tmp/3mm-c3-content-20261026/source`.
+
+  A protected owner DB copy passed upgrade/check with all values from 82 source
+  tables preserved under explicit mapping, including one language selection and
+  11 task rows. Populated downgrade refused without changing that copy; another
+  disposable copy restored every original row/schema version from the verified
+  backup. Owner data has no registered custom table rows. Actual filtered Core
+  payload (1393 source/30 frontend files) excludes products/optional libraries/
+  legacy sources and passes boot/readiness/admin access/nonadmin denial. Reused
+  frontend 535 cases, shared CRUD UI 5 cases and production type-check/build:
+  all 189 relevant source/test/dependency inputs and delivered frontend files are
+  unchanged. Only docs and one verified whitespace-only Menu cleanup followed
+  the gate; its AST is unchanged. Diff/whitespace checks pass.
+
+  Next separate result: C5 integration/release acceptance and an explicitly scoped
+  VM deployment; product SDK ports remain separate. Unrelated unreferenced
+  `backend/utils/extension_relationships.py` is recorded for a later review, not
+  reopened here. Owner VM remains CAP08 r2/schema5a. No deployment, owner reset,
+  automatic import, commit, branch or delegation occurred.
+
+- **C3 declarative CRUD extraction complete locally, 2026-10-26.** Owner
+  approved the next bounded stage. Preserved 12 original sources (Core models/
+  routes/service/tests, protocol/renderer and old Contacts declarations) with
+  hashes, plus six mixed references. The optional `libraries/three_mm_crud` owns
+  typed validation, per-entity declarations, scoped own-data engine/migration and
+  Vue renderer. Contacts builds as an ordinary application/compiled UI candidate
+  at its unchanged, unpublished source version; no catalog artifact is replaced.
+  Generic localized UI metadata moved to `three_mm_protocol/ui_metadata.py` for
+  current application, compiled UI, theme, event and session consumers. Core no
+  longer registers the old CRUD API/ORM/frontend/catalog/schema-export paths.
+  Unknown UI entrypoints fail closed. Page/Extension/universal-translation legacy
+  paths are separate consumers and remain outside this bounded removal.
+
+  New migration `8d63e4b5fc53` preserves definitions/records in two FK-free
+  `retired_` archives; exact historical package dependencies use existing generic
+  pins. Populated retirement refuses automatic downgrade/import/grant conversion;
+  empty rollback restores the complete historical schema/indexes. Existing Core
+  admission and scoped relational authority remain unchanged. Personal-data
+  descriptors can explicitly choose inert `retention_policy:
+  until_explicit_erasure` alongside required administrator export/erasure; this
+  does not add task+SQLite support or change CAP08 execution limits.
+
+  CRUD commands use exact actor/payload identity, optimistic revisions, bounded
+  journals and read-only outcome lookup. Erasure removes payload/provenance while
+  retaining random request tombstones against delayed replay. UI persists only
+  pending IDs, requires outcome review and clears records on fresh access failure.
+  Import preserves original IDs/data/timestamps/provenance, validates current
+  limits and refuses collisions; no owner data or old authority is imported.
+
+  Combined current Python evidence: 6123 unique passes and 611 explicit remaining
+  environment/profile skips. The twelve-suite nonroot gate passed 6114/615 skips;
+  the previously stalled worker module ran separately (4 passed). Later optional
+  library refinements confirm routine refusals without ambiguous transactions,
+  localize outcomes and keep administrator erasure available at the normal command
+  journal limit. All three affected library/package consumer modules were rerun
+  from current sources (34 passed, including one added case), replacing their
+  earlier results. Four isolated real root-helper/nonroot-host relational tests
+  passed (normal SQL/receipt, revoke, restart, lost completion), replacing four
+  profile skips. Core/SDK/public-contract inputs remained unchanged after the broad
+  gate started; only five optional consumer/test files and docs changed later.
+  Raw XML/logs and initial/amended hashes are in ignored `.runtime/c3-crud`;
+  `/var/tmp/3mm-c3-crud-20261026/source` retains all 1518 frozen input hashes.
+
+  Frontend 535 cases, current shared CRUD UI 5 cases and production type-check/
+  build pass; unchanged clean npm dependency closure is reused. Tooling 32 cases
+  plus complete clean migration upgrade/check/downgrade pass (33 cases together).
+  Actual compiled Contacts table/form, Bulgarian labels/outcome and light/dark
+  themes passed browser inspection with a fixture-local host and no owner API
+  writes. Verified ZIP `contacts-c3-local-verified.zip` has SHA256
+  `b557e7bf25a79f643bce0ae50a48bfded35df8fe4af5f7853d6cadd0af718cc0`;
+  its UI compiles through the existing pipeline and own-data import runs from the
+  delivered wheel with private Core/Agent/Runtime imports forbidden. This is a
+  local, unpublished 1.0.0 candidate, not replacement of an immutable old version
+  or a claim of Contacts-specific owner-VM activation/hardware/systemd acceptance.
+
+  A protected owner DB copy passed upgrade/check/full downgrade, preserving all
+  82 original tables and 11 task rows under explicit mapping. Owner has no old
+  CRUD rows; populated fixtures cover preservation, FK isolation, package pins,
+  guarded recovery and explicit own-data import. Actual filtered Core payload
+  excludes products/optional CRUD (114 files) and passes boot/readiness/admin
+  access/nonadmin denial. Source audit verifies all 64 moved originals and six
+  current mixed references, unchanged runtime dependencies and no old CRUD API
+  in compiled Core UI. Whitespace checks pass. Next separate C3 candidate:
+  Page/Extension/universal-translation ownership and its real consumers. Other
+  product SDK ports and overall C5 remain separate. Owner VM remains CAP08
+  r2/schema5a; no deployment, release, commit, branch, delegation, reset or automatic
+  owner data migration.
+
+- **C3 Dashboards extraction complete locally, 2026-10-26.** Owner
+  approved the next proposed bounded C3 result. Moved 19 product route/model/
+  schema/frontend/store/test sources into `modules/dashboards/source/legacy`,
+  preserving original hashes in `modules/product-source-map.json`; 11 mixed
+  access/security/palette originals are retained as reference sources. Removed
+  live Dashboard routes/ORM registration, owner cleanup, dedicated role grants,
+  security selectors and rendering/editor imports. Common application roles/
+  grants, compiled UI packages/contracts, themes/i18n and current declarative CRUD
+  remain. Declarative data/contacts are a separate later ownership extraction;
+  their old product route reservations are removed and current Core administration
+  paths remain protected. The Command Palette now reads current routes/audiences
+  and localized metadata on open, retaining common keyboard/theme behavior.
+
+  New migration `7c52d3a4eb42` preserves three product tables and dashboard/widget
+  subsets of direct/role/group permissions as six `retired_` archives without
+  cascading FKs into live Core principals. Empty retirement can downgrade;
+  populated evidence refuses automatic authority restoration and requires verified
+  backup recovery. Matching compiled-widget dependencies become inert generic
+  `module_package_retained_references`; package retirement refuses pinned resources
+  even for damaged packages. Admin-only bounded reference inspection is available;
+  no unreviewed pin-release API or application authority is created. Historical
+  baseline DDL is frozen explicitly so clean migration does not import product
+  models. Original uploads/build artifacts and owner data are preserved.
+
+  Targeted existing schema/access/retirement/history checks 36 passed; four new
+  populated-retirement cases passed after fixture corrections. Runtime/retirement
+  consumer gate 39 passed. A protected copy of the owner DB passed upgrade/check/
+  downgrade with all 82 original tables/11 task rows preserved under explicit
+  mapping. Owner has no dashboards/widgets; populated fixture acceptance covers
+  layout/config/grants, exact package pins, no principal-delete cascade and
+  populated-downgrade refusal. A filtered Core payload physically excludes all
+  three product directories and AI library (78 files), then passes boot/readiness,
+  real admin access and nonadmin denial with optional services unavailable.
+
+  Linux frozen source `/var/tmp/3mm-c3-dashboards-20261026/source`; input hashes
+  and raw logs/XML in ignored `.runtime/c3-dashboards`. Clean npm lock install
+  excludes gridstack; production type-check/build and all 538 frontend cases pass.
+  Actual Users/Security/Command Palette components passed isolated browser review
+  in light/dark themes; fixture-local changes used no owner APIs/credentials.
+  The eleven-suite Python gate covers 6131 unique passes and 615 explicit
+  environment/profile skips. Its first run was interrupted at a stalled existing
+  worker-disconnect case after 2545 passes/597 skips; all four worker cases passed
+  independently. The remaining run passed 3586 cases/18 skips, excluding exactly
+  3142 completed cases from the first XML. Both raw results remain intact; this
+  is combined coverage, not a claim of one uninterrupted clean run. Tooling inputs remain
+  unchanged; reuse the previous 32 successful tooling cases. Source audit verifies
+  all 52 moved sources and 11 original reference copies; only gridstack was removed
+  from the frontend dependency closure. All 1491 frozen input hashes remain intact.
+  Later Python changes trim two trailing blank lines only, with equal ASTs; docs
+  and source-map scope metadata also changed. Whitespace checks pass. The next
+  separate C3 candidate is declarative CRUD ownership/current consumers; SDK/data
+  ports into runnable products and overall C5 acceptance remain separate work.
+  Owner VM remains CAP08 r2/schema5a; this is local work,
+  without deployment, commit, branch, publication, delegation or reset.
+
+- **C3 first extraction complete locally, 2026-10-26.** Owner
+  approved the proposed next bounded result: Builder and Automations, including
+  their shared AI clients; Dashboards follow separately. Removed their Core
+  router/ORM registration and frontend routes/provider controls. Preserved 33
+  moved source/test files with original SHA256 mapping in
+  `modules/product-source-map.json`; product sources are in
+  `modules/{builder,automations}/source/legacy`. Shared clients have a single
+  optional owner, `libraries/three_mm_ai`, with independent tests and no Core
+  dependency. These preserved product sources still require a public-SDK/data
+  port before becoming runnable application packages. Source-only markers keep
+  all three directories out of Core release payloads; normal compiled UI/package
+  validation remains common Core behavior.
+
+  Additive retirement migration `6b41c293da31` renames nine product tables to
+  `retired_` recovery evidence and moves the three provider settings/associated
+  translations out of live settings, preserving their values. Live Core metadata
+  does not register them; Alembic excludes reserved retired tables from destructive
+  autogenerate proposals. Guarded downgrade refuses current setting/ID collisions.
+  Existing `AI_SETTINGS_MASTER_KEY` provisioning/recovery remains unchanged:
+  it also protects Core identity/application secrets. Generic HTTP/crypto
+  dependencies used by Core, Agent and coordinated bootstrap are retained.
+
+  Targeted migration/registry/command/public-widget/release gate 115 passed;
+  optional AI library 9 passed; tooling 32 passed. A private copy of the real owner
+  DB passed upgrade/check/downgrade, preserving all 82 tables and 11 task rows.
+  Actual filtered Core payload excludes 45 product/library files; boot/readiness,
+  real admin login/access and nonadmin denial pass with those sources physically
+  absent and optional services unavailable. Type-check/production frontend build
+  passed. Browser inspection of actual Settings/Extensions components in isolated
+  fixtures passed in light/dark themes; no live owner credentials or API writes.
+  Frontend gate had 558 passes and one old AI-control expectation; repaired
+  Settings suite 7 passed, giving 559 unique successful frontend cases. Broad
+  eleven-suite Python gate produced 6119 passes, 615 explicit environment/profile
+  skips and five test-expectation failures: four historical authority snapshots
+  needed the explicit retired-table transition; the source-only test also needed
+  to respect the intentional stale frontend exclusion. All three affected Python
+  test modules then passed: 91 cases, including all five failures and the corrected
+  temporary uploads fixture. This gives 6124 unique successful Python cases;
+  raw failed XML remains intact beside repair evidence. No production changes
+  followed the full gate; its successful evidence is reused only for unchanged
+  content. Exact source preservation and initial/amended input hashes are checked
+  by `final-evidence.json` in ignored `.runtime/c3-ai`. Linux source snapshot:
+  `/var/tmp/3mm-c3-ai-20261026/source`. `git diff --check` passed.
+
+  Built independent `three_mm_ai-0.1.0-py3-none-any.whl`, SHA256
+  `f69d3066b75bf9395e51b1fdb25975bcea91e04cc48801ff33840bf40f9fdd7d`;
+  unpacked/imported with Core imports forbidden. It is not installed into Core.
+  Generic release source-only/required-file checks and compiled frontend confirm
+  the retired AI endpoints/routes are absent. Owner VM remains accepted CAP08
+  r2/schema `5a30b182c920`; no deployment, commit, branch, publication, delegation
+  or reset in this extraction. Existing Agent automation execution is preserved;
+  no historical proposal/job/effect is converted or replayed. Dashboards and its
+  declarative consumers are the next separate C3 result. Full C5, new external
+  Terminal, ARM/hardware/root-systemd acceptance remain outside this result.
+
+- **CAP08 complete in the agreed bounded profile, deployed and verified,
+  2026-10-26.** Owner scope is CAP08 and its associated Core cleanup; full C3
+  extraction of Builder/Automations/Dashboards is excluded. `bounded_task_v1`
+  supplies one-shot, interval and IANA weekday-calendar work, fixed skip-misfire/
+  gap and earliest-fold policies, durable occurrence cursors and explicit bounded
+  history retention. One journal/start/result path serves manual and periodic
+  work. The optional independent worker computes schedules and invokes code;
+  Core retains admission, current authority and durable outcomes, with no timer
+  loop or application execution. Task command composition uses the existing
+  command queue and one-use physical permit, separately approved command scope
+  and exact live task lease. Unconfirmed issued effects hold the owner unknown;
+  no automatic handler/effect retry. Historical jobs retain recovery evidence
+  only, without an execution path. Contract: [Application tasks](APPLICATION_TASKS.md).
+
+  Current immutable Core is `/opt/3mm/releases/core-cap08-complete-20261026-r2`,
+  archive SHA256 `df09cb2b61d4f555b2b8aded22c0d675518b504820630b3f451b9c60c7a228c8`;
+  schema `5a30b182c920`. Runtime/connector build
+  `82cd97b95ff353f7e625f7bbce7bb62d81f51f574e8ee52d8fa23ad2505ed245`;
+  default/task-host build
+  `38fd949275153798f9f561188c1f735e9a056e95dac801bf970da2619119eb4b`.
+  Normal immutable installer and additive retained-data migration passed.
+  Runtime validation now validates each artifact's own bounded source map/hash;
+  actual old/new payload-layout rollback and forward passed without restarting
+  Core. The separate task worker remains explicitly enabled for this owner VM.
+
+  Upgraded Task Probe to 0.2.0, SHA256
+  `c12ae446eb714176618d6c56e01fa68be609454cd176e90d6257060994a02347`, preserving
+  instance `157f6b9d9ea8f27a240caff5`, incarnation, local data and all four old
+  task records. The old exact-artifact native activation guard correctly refused
+  an unreviewed replacement. Added generic admin/CAS staging for a stopped task
+  package: sealed inert registration, fresh exact-artifact consent, then normal
+  activation. No application code runs during staging. Unresolved task/legacy
+  claims block it. Installed independent Task Command Probe 0.2.0, SHA256
+  `36dd724fed9caadea2666cdc2d87124a611a7b3dd7044054febcba7596b2c08d`, with
+  only `task:switch_output`/`command:output` on the existing co-located mock Agent.
+  Existing Fleet 0.1.11 and Output button 0.1.0 retain their instances, host pins
+  and sealed grants. Owner users/roles, Core/device identities, configuration/key
+  file hashes, Agent/public-web/session-worker pins and prebuilt frontend remain
+  unchanged. All four app health checks, eleven services, Core readiness and
+  Runtime/connector probes pass. Final journal: 9 succeeded/2 cancelled tasks;
+  2 exhausted/2 cancelled schedules; no queued/running/unknown tasks or live
+  schedules. No delegation, commit, publication, reset or frontend build.
+
+  Evidence is frozen by per-file hashes in ignored `.runtime/cap08-complete`;
+  staging payload `/var/tmp/3mm-cap08-complete-20261026/payload`. The ten Python
+  suites produced 6139 passes, 615 explicit skips and one stale
+  migration-head test assertion. Corrected that test to use the actual head;
+  all 3 retained-data migration tests then passed, giving 6140 unique successful
+  cases for those inputs. Raw failed XML is retained, alongside the repair XML.
+  After adding stopped-task staging, reran the 20 affected authority/source/
+  consent/lifecycle/registration/task/schema modules: 636 passed, 7 explicit
+  isolated-root/non-POSIX skips. This rerun covers the later production edits;
+  earlier full-suite evidence is reused only for unchanged content. An initial
+  stale inventory test import was repaired to the already-extracted service,
+  without production inventory changes. `git diff --check` passed.
+
+  Actual owner VM SDK acceptance: three interval results 5050, one next-minute
+  Europe/Sofia calendar result 5050; Core/host/worker restart preserves receipts
+  and attempt counts; Core remains administrable with the worker stopped;
+  three late occurrences skipped with zero handler attempts/no catch-up burst;
+  queued cancellation never enters the handler; revocation refuses admission
+  and fresh consent does not revive an old schedule. Task-mediated ON then OFF
+  each has one handler attempt and one confirmed Agent command/delivery with
+  task provenance. `live-result.json` records 21 passed assertions;
+  `final-audit.json` records 33 preservation/artifact/health/authority checks.
+  This is Linux x86_64/WSL and mock GPIO acceptance, not new ARM/physical GPIO,
+  hostile-native sandbox, arbitrary workflow or scheduler-UI acceptance.
+  General C3/C5 and other capability families remain separate future scopes.
+  Owner test: `modules/task-probe/Test-VM.ps1 --interval 5 --runs 3`;
+  calendar: `--calendar --timezone Europe/Sofia`; `--lookup` observes saved intent.
+
+- **CAP08 first task profile deployed and owner-tested, 2026-10-26.**
+  Owner explicitly requested VM rollout and a usable test. Current immutable Core:
+  `/opt/3mm/releases/core-cap08-20261026-r3`; schema `4f29a071b819`. Built the
+  candidate from the exact previous accepted Fleet release plus scoped CAP08
+  files, retaining its verified prebuilt frontend and independent M21 source.
+  Runtime and connector-worker use immutable build
+  `bbdd4d247473fc9c342945d71b273b854ddbb59cb9cd9f08ecb7f3915f33872d`;
+  new default native host and Task Probe use build
+  `398b000fefdd92919a08a5b899645bd50b1c4e495f0fe4ec40f5140b31d3ce44`.
+  Existing Fleet/output host pins, Agent/public-web/session-worker pins, owner
+  accounts, Core/device identities, roles and configuration are retained.
+  Added explicit optional `deployment/systemd/3mm-task-worker.service`, installed
+  and enabled only for this authorized rollout, outside automatic installer unit
+  selection. It runs as 3mm-platform with app-socket group access, independent
+  Runtime code/environment, private network, resource limits and inaccessible
+  Core DB/configuration/application keys. Core readiness survives stopping it.
+  No new account, device, framework, frontend build or version-axis change.
+
+  Deployment preparation found two actual integration omissions and fixed them:
+  the shipped Runtime contract now lists all five task SDK actions; the shared
+  public consent/review HTTP scope validator admits `task:<id>`. Added regression
+  coverage for the shipped manifest and public request models. Final frozen
+  candidate task/schema/consent gate: 56 passes. Deployment Runtime/native-host/
+  release-builder gate: 115 passes, one explicit isolated-root driver skip.
+  Earlier 977 protocol/SDK/task/migration and 1390 authority/Runtime checks are
+  reused for their unchanged production inputs; they do not claim to cover the
+  later HTTP-validator fix, which has the new focused gate and live API proof.
+  Additive migration first passed on a copy of the actual owner DB without
+  changing existing rows, then ran through the normal installer on VM.
+
+  The first installer attempt rejected the old Runtime payload's file set after
+  `tasks.py` was added and rolled back. Its readiness diagnostic was conservative;
+  the old Core/Agent/Runtime were subsequently confirmed active. Per the existing
+  recovery contract that rollback fenced old authority. A coordinated second
+  rollout staged immutable Runtime/connector/default-host artifacts, recorded
+  their old pins and provided restoration on installer failure. Final r3 includes
+  the HTTP consent fix. Used the existing authenticated/audited `recover-key` CLI
+  as the Core UID with CAS, then normal current-administrator consent APIs to
+  restore ONLY the previous exact Fleet/output scope and human-permission
+  selections for unchanged package/configuration/instances. Old seals were not
+  reactivated; no database reset or fabricated native manual review occurred.
+
+  Installed unchanged Task Probe ZIP0.1.0, SHA256
+  `56b22afd96a34d576aa2cd160f3642c2f147604f43371abd4e9dc73f876d430d`, through normal
+  upload/activation/current-owner consent. Exact scope: `task:calculate`, no human
+  extension permissions or external resources. Instance:
+  `157f6b9d9ea8f27a240caff5`. Two delayed real SDK requests reached queued ->
+  running/progress50 -> succeeded/progress100/result5050. One queued request was
+  cancelled with no handler attempt. Core/native-host/worker restart preserved
+  the first request/result with exactly one original attempt. Final app journal
+  has two handler attempts; Core has two successes and one cancellation, no
+  unresolved work. Actual distinct worker UID, seccomp/NoNewPrivileges, separate
+  network namespace, namespace-denied Core DB/application keys and absent Core
+  imports were checked. Final 56 VM state checks pass, including seven services,
+  all three application health/grants, Fleet's actual device read and Output
+  button's granted observation. Browser/physical GPIO/new scheduler UI are not
+  claimed by this SDK/terminal acceptance.
+
+  Owner test: run `modules/task-probe/Test-VM.ps1` from PowerShell. It launches the
+  installed CLI as the app UID using its independently pinned SDK. Default delay
+  five seconds, upper100, expected total5050. `--lookup` reads the saved request;
+  `--cancel` cancels it only while queued. The UUID is fsynced before the single
+  submit; pending/unknown requests cannot be overwritten by another test. No
+  secrets are exposed in the command/output. See modules/task-probe/README.md.
+
+  Recovery: `/opt/3mm/previous` points to r2 (same additive schema); original
+  `core-fleet-actions-20261025` remains immutable. Pre-upgrade DB backup:
+  `/var/lib/3mm/deploy-backups/core-cap08-20261026/3mm.db`; later r2/r3 backups and
+  a private pre-key-recovery backup remain on VM. Crossing the old/new Runtime
+  payload file-set boundary requires coordinated Core/component pin recovery;
+  the strict component validator is not an automatic compatibility adapter.
+  In particular, the old `previous` Runtime artifacts are retained as recovery
+  evidence, not a claim that a standalone current-helper update/rollback across
+  that boundary is supported. Do not destructively downgrade populated task
+  history. The recorded coordinator/pins are in ignored
+  `/var/tmp/3mm-cap08-20261026/{before-state.json,coordinated-rollout.json}`;
+  source/evidence/scripts and final VM results are in ignored `.runtime/tasks`.
+  Final archive SHA256:
+  `07884bd2c890523231a579afc8523bc539fce55dcb7eae3c91ba20ca2d56db0e`.
+  Owner subsequently ran the documented PowerShell command and supplied its full
+  successful output: request `0c7e31708dd545e595aa1124fbcc7b63`, task run
+  `task_9a94b28b48604eada77de7ee773633c1`, queued/progress0 -> running/progress50 ->
+  succeeded/progress100 with total5050 and `PASS`. This confirms owner acceptance
+  of the first deployed one-shot SDK path. The earlier two-success/one-cancellation
+  journal counts describe pre-handoff verification, not current totals after this
+  new owner request. This follow-up updates documentation only; prior executable
+  checks are reused, with no new runtime test or deployment.
+  The bounded rollout and owner acceptance are complete; broader CAP08,
+  recurring/calendar work and systematic C3 extraction remain separate scopes.
+  No branch, commit, push, tag or publication.
+
+- **CAP08 first bounded task profile implemented locally, 2026-10-25.** Owner
+  authorized continuing the original Core/SDK plan with a narrow task contract
+  and working example. Implemented `bounded_result_once_v1`: dedicated descriptor
+  `tasks` / internal `kind: task`, exact sealed `task:<id>` consent through the
+  existing authority manager (new internal task-only context11), persistent
+  request/result journal, UTC due/deadline, progress, queued cancellation and
+  one-use dispatch/start permits. Compatibility, schedules and old `kind: job`
+  remain refused. The first artifact profile admits result-only tasks, with no
+  command/connector/event/session/peer/checkpoint or scoped file/relational mix.
+  External effects, recurring/calendar scheduling and composition require another
+  bounded contract; CAP08 as a whole is not complete.
+  Core owns admission and journal state, not execution or waiting. A separate
+  optional unprivileged worker is included in the independent Runtime artifact
+  via `--task-worker`. It performs signed host probes/RPC outside Core; it receives
+  no Core DB access or signing keys. Separate `three_mm.task.info` verifies live
+  start support plus exact instance/artifact/configuration; the existing host-info
+  shape remains unchanged. The native host consumes a current one-use start permit
+  before application code. Leases use UTC plus boot-monotonic time including
+  suspend, with boot/worker/epoch/grant/incarnation fencing. Claimed work is never
+  blindly redispatched. A provably unexposed invocation can fail not_dispatched;
+  exposed uncertain work stays unknown and holds its owner's slot until stopped
+  administrator reconciliation. The same current-administrator sealed action
+  ledger provides idempotent resolution without manufacturing success.
+  One execution per incarnation; pending budget8 per owner,32 live owners and1024
+  history records per incarnation. Dedicated tasks are not an OS hostile-code
+  sandbox or a hard CPU termination guarantee. Handler progress is0–99; only a
+  valid in-time result becomes success/progress100. SDK lost-reply recovery is
+  lookup-only. Historical lookup is owned by installation AND incarnation.
+  Added explicit migration4f29a071b819 after3e189f465708. It creates only the new
+  journal, with no grant backfill/reset. Updated the dynamic legacy baseline's
+  exclusion list so older schema history stays unchanged. Empty downgrade works;
+  populated task history refuses destructive downgrade. Adjusted the existing
+  head-migration test expectations for the added empty catalog. The broader gate
+  caught and corrected a misplaced duplicate-policy validator before completion.
+  No production/test source edits followed the final passing gates.
+  Verification:977 passes for new task/schema scenarios, migration history,
+  complete protocol/SDK suites;1390 passes/7 explicit skips for affected authority,
+  consent, platform/access, old-job refusal, module packages, real Runtime process
+  and complete Runtime tests. The skips are non-POSIX alternatives or explicit
+  root/distinct-UID/systemd ownership gates; this same-user functional acceptance
+  does not claim those proofs or full release CI. Final tests use actual sealed
+  consent, signed SDK through packaged Runtime, packaged worker, self-contained
+  native host under `-I -S` with vendor locks and no visible Core dependencies,
+  durable one-use permits and an own SQLite attempt journal. They confirm delayed
+  arithmetic result5050, progress, restart without replay, lost admission reply,
+  strict idempotency/timing, revocation/reconsent, foreign owner/incarnation,
+  deadlines/budgets, worker loss/unknown, current start denial before code,
+  one-use permits, forged worker frames, boot/time rollback and guarded resolution.
+  A real-Core fingerprint test was rerun with frozen source after it correctly
+  detected source edits during the earlier run; final independent update/rollback
+  gate passes. No frontend changes/build or runtime UI acceptance was needed.
+  Neutral source: examples/task_probe and modules/task-probe; contract:
+  docs/APPLICATION_TASKS.md. Local initial0.1.0 ZIP:
+  modules/task-probe/dist/task-probe-0.1.0.zip, SHA256
+  56b22afd96a34d576aa2cd160f3642c2f147604f43371abd4e9dc73f876d430d.
+  Evidence/input hashes: ignored .runtime/tasks/{checked-inputs.json,final-tasks.xml,
+  regressions.xml}. Matching new Core/Runtime/native-host artifacts and an explicit
+  optional worker rollout are the next target-environment gate. This task did not
+  deploy/migrate the owner VM, alter component pins, or add an always-on installer
+  service; /opt/3mm/current remains core-fleet-actions-20261025 with the previously
+  accepted Fleet/output application. No branch, commit, push, tag, publication or
+  release/SDK version bump. Independent M21/source work preserved. This closes the
+  local first C1/C2 task result; systematic C3 extraction and broader C5 remain.
+
+- **Independent operator output application accepted on VM, 2026-10-25.** Owner
+  approved the proposed next bounded step: a small application using the existing
+  CommandProbe/SDK, one explicitly approved output, durable command results,
+  revocation/restart and a second provider with the same application package.
+  Added modules/command-probe: deterministic Manifest-v2 package0.1.0, public-SDK
+  service and minimal English/Bulgarian operator UI at /output-button. The wheel
+  reuses examples/command_probe. One declared binding `output` requests
+  gpio.digital.control1.0/set_output, channel gpio.output.1 and a boolean value.
+  Device selection, exact resource consent and resource replacement reuse existing
+  Core mechanisms. The application has no administrator route/reads/actions,
+  raw HTTP, browser credentials, inventory enumeration or additional Core branch.
+  The service scopes browser UUIDs to the trusted operator user; lookup does not
+  disclose another actor's request. Pending UUIDs are saved before the single send;
+  lost responses/reload use status reads, with explicit outcome review for uncertain
+  work. Displayed values are command results, not live GPIO state. Background
+  observation preserves usable idle buttons while current authority is rechecked
+  by Core at effect admission/permit. No shared contract, SDK or Core production
+  source change; no Core schema migration or version change.
+  New Linux checks: three integration scenarios pass with actual final ZIP/UI
+  compiler/native loader, ordinary-user operator admission, separate signed SDK
+  Runtime, command queue, execution permits, journals and real mock Agent runtimes.
+  They cover ON/OFF, request conflicts, actor isolation, permission/resource/session
+  revocation, Core authority socket restart and no effect replay. Explicit sealed
+  resource replacement from a native provider to an embedded_firmware provider
+  executes the same package/binding on a second mock Agent; old requests stay on
+  the original device. External helper systemd start and response peer are simulated
+  in these isolated tests; their Core fencing/result checks remain real. Final UI
+  nine cases and vue-tsc pass. Install-time UI compilation succeeds both locally
+  and on owner Core. Browser inspection covers the exact final compiled package,
+  ordinary user, pending/confirmed ON/OFF, revoked-resource clearing/denial,
+  Bulgarian, desktop/light and390px/dark. The POSIX skip marker/import cleanup
+  followed the passing Linux integration run; executable scenario logic and package
+  are unchanged, so that evidence is reused. Unchanged prior Core/SDK checks remain
+  applicable; no broad release gate is claimed for this independent package.
+  Installed the new application through normal owner Core upload, activation and
+  current-administrator package consent APIs, selecting vm-3mm and ONLY
+  `command:output` plus `control_output` for the existing owner. No new account,
+  fabricated owner-registry device, Fleet change or other application grant change.
+  Core remains /opt/3mm/releases/core-fleet-actions-20261025. Instance:
+  bdb37806a297418a4bc01910. Source ZIP SHA256:
+  efa0a5cd5119373dbc7097df4d88e29f4f89dae1fadadc2966f388823cdf7979;
+  compiled UI1f2ffc14ad5b2900265ae59bfdb8f5fad5b0c438f3d626b4f8e68bb3cae3cafa.
+  Local ZIP: modules/command-probe/dist/output-button-0.1.0.zip (not published).
+  Owner WSL acceptance uses the actual installed service, signed Runtime and
+  Agent-module Digital GPIO Output1.1.0 with verified mock driver. Agent confirms
+  ON/OFF; actual application systemd restart preserves the original result with
+  no additional command. The first query immediately after Type=simple startup
+  was unconfirmed before the socket was ready; query-only recovery found the same
+  receipt, with no command resend. Resource revocation then returns access-required
+  and refuses a new command without queueing. Fresh normal consent restores access;
+  final OFF is confirmed and Agent state reports false. Three commands total for
+  this acceptance, all succeeded. DB integrity, existing users/Core identity/Fleet
+  installation, six main services and both application health checks pass. Backup:
+  /var/lib/3mm/deploy-backups/output-button-20261025/before-install.db.
+  Owner subsequently supplied screenshots of the installed Output button showing
+  both On and Off as "Confirmed by the device", with distinct request IDs on
+  dev_e5cd9f422fae44dd822fbf99acfb5ed9 / org.3mm.digital-output. This independently
+  confirms owner UI acceptance of both effects in the VM mock profile. Screenshot
+  order does not establish the current output state. This follow-up changes only
+  documentation; the implementation and previous verification evidence are reused.
+  Overall-plan review: updated CORE_SIMPLIFICATION_PLAN to mark the first working
+  path accepted. This closes the selected command mechanisms, not the whole
+  application platform: systematic C3 removal of product imports/routes/models/
+  dependencies and broader C5 acceptance remain ahead. Current Core still includes
+  Builder, Automations, display and extension-project routes/models. This is a
+  status clarification only, not authorization for another implementation scope.
+  Owner uses the operator contract from their administrator account on VM; the
+  isolated test separately proves normal-user permissions. Second-provider
+  replacement is isolated acceptance, not a second live owner device. Physical
+  GPIO and OTA remain outside scope. No further implementation is pending in this
+  bounded result; owner can open http://localhost/output-button. No branch, commit,
+  push, tag or publication. Independent M21/source work preserved. Evidence is in
+  ignored .runtime/command-probe; temporary acceptance server stopped at handoff.
+
+- **Fleet Agent module path accepted on owner VM, 2026-10-25.** Owner
+  approved this bounded next path and explicitly approved local Fleet0.1.11,
+  retaining manual Fleet installation. Added generic current-administrator
+  ApplicationHost module catalog/install/disable, capability discovery/state/invoke
+  and command-status methods. Manifest-v2 route declarations gate each operation;
+  service scopes remain separate and Fleet receives no browser token or URL proxy.
+  Writes recheck the tracked administrator, active exact package/build/native
+  approval and declared route/action inside the existing authority write lease.
+  They reuse shared module lifecycle/command queue mechanisms with sealed,
+  app/actor/request-bound receipts. Changed requests cannot reuse an identifier;
+  uncertain replies are resolved by status reads without automatic mutation replay.
+  Capability admission and first dispatch pin the selected provider/declaration
+  and device control generation. No Core-specific Fleet/GPIO branch, new database
+  schema, migration or reset; no separate module registry or Agent runtime update.
+  Fleet device details expose target confirmation, module selection/install/disable,
+  schema-derived boolean controls and distinct pending/confirmed/failed/unknown
+  outcomes. Persisted requests survive reload; storage failure blocks sending.
+  Physical GPIO and Node OTA remain outside this acceptance point.
+  New checks: affected Python gate220 passes, followed after final small backend
+  changes by focused131 passes (overlapping gates, not351 unique cases). These cover
+  authority denial/revocation/isolation, idempotency, module lifecycle, provider
+  replacement before dispatch and real mock-Agent install/ON/OFF/disable. Core
+  frontend63 and Fleet frontend18/build3 pass; both vue-tsc checks and Core Vite
+  production build pass. Final Fleet ZIP validates/compiles against current Core,
+  exact native approval with empty service scopes and native loader health pass;
+  final package probe confirms install -> Core queue -> real AgentModuleRuntime
+  with MockDigitalGpioDriver -> ON -> OFF and confirmed results/state. Browser
+  acceptance exercised that actual compiled package/public host in disposable Core
+  data, including pending locks, recovery after a missing response, Bulgarian,
+  desktop/light and390px/dark controls. Existing unchanged evidence was reused;
+  no full release CI or physical-output acceptance is claimed.
+  Local artifacts (no publication):
+  C:/Users/SIMPLEX-3260/Desktop/3mm-fleet/dist/3mm-fleet-0.1.11.zip,
+  SHA256 a33d5c0129d7cb79d625f5ffff78b5c0b2a85f9709e638799a6cc6abf8faf6da;
+  dist/digital-output-1.1.0.zip in the same checkout,
+  SHA256 e7ab19b266db360fc76b87204080c3ac863d13ad8c2a8c3657525e697da6991a.
+  Previous Fleet0.1.10 ZIP remains preserved.
+  Updated owner WSL Core with the standard immutable installer, retaining role,
+  host-managed networking and six independent component pins. Current release:
+  /opt/3mm/releases/core-fleet-actions-20261025; rollback:
+  /opt/3mm/releases/core-fleet-host-20261025. Installer exited0; source1435 and
+  frontend44 files match payload, all199 frontend inputs match the checked build.
+  Still beta.57 with the working tree over ebb98fb; archive SHA256
+  ed260c6791115d7727294951da605175cc6dd6e6929a2a90e4c01e02fc4d2f9e.
+  Six main services, Core/Agent readiness, Core health, public UI modules and the
+  current Fleet native host are healthy. New protected routes are installed and
+  unauthenticated mutation is denied. DB integrity, installer backup, previous
+  users/packages/identities and stable session/application identities verified.
+  During verification the owner independently installed/approved the exact
+  Fleet0.1.11 ZIP and uploaded the exact Digital GPIO Output1.1.0 ZIP; normal owner
+  consent/session changes explain changed rows. Current exact UI approval passes.
+  This agent did not install/approve Fleet or change its grants. Agent GPIO driver
+  is configured mock; module_installations and device_commands were empty at the
+  initial handoff. The owner subsequently confirmed that Install, Disabled,
+  Switch on and Switch off work on the VM. This user-reported acceptance closes
+  the bounded Fleet -> Core -> Agent module path; no additional implementation
+  is pending in this scope. Physical GPIO and OTA remain unverified. Recording
+  this acceptance changes documentation only; existing checks are reused without
+  a runtime rerun. No commit, push, tag, branch, release or independent M21 change.
+  Evidence: ignored .runtime/fleet-actions and
+  .runtime/fleet-actions-deploy; temporary acceptance server stopped at handoff.
+
+- **Core device-read host deployed; owner installs Fleet, 2026-10-25.** Owner
+  explicitly requested the Core update and reserved Fleet installation for themself.
+  Deployed the current beta.57 working tree with the standard immutable full-profile
+  installer on owner WSL Ubuntu-26.04, retaining host-managed networking and role.
+  Current: /opt/3mm/releases/core-fleet-host-20261025; rollback previous:
+  /opt/3mm/releases/core-sdk-resources-ui-20261025-r2. Installer unit
+  3mm-core-fleet-deploy-20261025 exited0. Source1432 files and all44 emitted frontend
+  files match the prepared payload; all199 frontend inputs match the checked build,
+  which was reused with the previous bounded Core/Fleet verification evidence.
+  Fresh installed checks: six main services active; Core/Agent readiness, Core health,
+  Web and public host module HTTP200; both administrator device-read routes installed
+  and unauthenticated reads denied. Runtime is bound to the current Core PID.
+  DB integrity and installer backup verified; existing users, sessions, package rows,
+  identities and grants preserved. All six independent component pins retained.
+  Before deployment there were0 installed applications. During final verification
+  the owner uploaded the exact Fleet ZIP c89d2dc5… and activated/approved it through
+  the normal administrator flow (activation/consent audit evidence). This expected
+  addition explains changed whole-table fingerprints; previous rows and pre-update
+  backup fingerprints were checked separately. Fleet0.1.10 is active and its native
+  host signed health probe passes. This agent did not upload/activate/approve Fleet
+  or modify its grants; only read its resulting status. No reset, new account,
+  version bump, branch, commit, push or release. Independent M21 source preserved.
+  Core archive SHA256:
+  4dabedc1279c8e3dca70b57894cd459efe70d3e21e7e222e6b2cc93ae64d4587.
+  Evidence: ignored .runtime/fleet-deploy and /var/tmp/3mm-fleet-core-20261025.
+  Owner screenshots now confirm the installed list and detail at localhost/fleet:
+  vm-3mm is Online/Hub, with live inventory, CPU/RAM/storage and the device-module
+  section. The section is correctly empty; Core applications are separate from
+  Agent modules on that device. This closes the first read-only path on the VM.
+  Next: select the next bounded management contract with the owner; no further
+  implementation is authorized by the screenshots alone. No physical actions or
+  Fleet management contracts were added or exercised during this deployment.
+
+- **Fleet first ApplicationHost path, 2026-10-25.** Owner approved starting the
+  bounded list/detail adaptation. Implemented generic, per-administrator-route
+  `administration_reads` declarations (`devices.list`, `devices.detail`) and the
+  credential-free `host.administration.devices.list/detail` contract. Each GET
+  binds the source/build hashes and rechecks current tracked login/role/session,
+  active installation, native UI approval and declared route in the same
+  DB-enforced read-only snapshot as the registry projection. Service scopes remain
+  separate. Existing device routes reuse the shared projection; no new tables,
+  migration, duplicate registry, generic URL proxy or Fleet-specific Core case.
+  Fleet on Desktop now declares SDK1.3 and uses that host for paged devices,
+  inventory schema2 and installed modules. Removed the direct-token HTTP helper
+  and its former approval/GPIO/capability/module-mutation/Node-update controls as
+  a complete obsolete path. No token fallback remains in Fleet source. Kept
+  administrator routes, explicit menu navigation, Bulgarian and public UI theme
+  tokens. Management actions are a later bounded contract, not silently available.
+  Checks on Ubuntu-26.04/Python3.14 and the installed Core Vue toolchain: focused
+  Python gate52 passes (51 unchanged passing cases plus the corrected native-revoke
+  fixture case rerun alone); earlier affected regression gate149 and the initial ui-host cases
+  remain valid for unchanged consumers, with overlap rather than an extra total.
+  Core frontend82 pass (unchanged65 reused, new host17 after fixture correction),
+  Fleet UI11/build3 pass; Core/Fleet vue-tsc and Core Vite production build pass.
+  The real final Fleet ZIP validates and compiles through the install-time compiler;
+  native host loader health is ready. Exact native approval with empty service
+  scopes admits list/detail and denies each route's undeclared counterpart.
+  Browser acceptance uses disposable Core data, actual compiled Fleet assets,
+  built public UI modules and current Core host source: list/detail SPA navigation,
+  Bulgarian, light/dark, 390px layout and clearing data after real session revocation.
+  Final ZIP: C:/Users/SIMPLEX-3260/Desktop/3mm-fleet/dist/3mm-fleet-0.1.10.zip,
+  SHA256 c89d2dc55a2df59843e0a655de0d0b659f8e5718d219fd63da7b4822105b71af;
+  emitted UI fa47a49d49d2b595516626e48ebc36536091864e3fa33a6633e24df282d74bf8.
+  Ignored evidence: .runtime/fleet; temporary preview server stopped. Visual
+  evidence predates only unused-CSS/locale cleanup and the corrected loading label;
+  the final ZIP was recompiled/rechecked afterwards. No full release CI, installed
+  VM/native service or physical-device acceptance is claimed. No version bump,
+  branch, commit/push, release, reset or VM change. Preserved independent Core/M21
+  source changes. Next gate: matching immutable Core update on the owner VM,
+  Fleet installation and normal application access approval, then owner-device
+  acceptance. Current VM still uses core-sdk-resources-ui-20261025-r2.
+
+- **Fleet checkout and readiness assessment, 2026-10-25.** Owner asked whether
+  Fleet can be checked out on Desktop and adapted to the new Core. Cloned
+  https://github.com/ldobranov/3mm-fleet to
+  C:/Users/SIMPLEX-3260/Desktop/3mm-fleet at b67f467 (0.1.10); preserved its main
+  branch/source. Its Manifest v2/application/compiled-UI package validates against
+  current Core beta.57. Existing Fleet build3 and UI20 cases pass using the
+  installed Core toolchain. Baseline ZIP built in Fleet's ignored dist directory.
+  This establishes build/schema readiness, not native startup or live integration.
+  Fleet is an administrator UI over generic device/enrollment/capability/module/
+  GPIO/Node-update APIs; Core retains those authorities and registry ownership.
+  Current Fleet still declares SDK1.0 and reads browser authToken directly.
+  The credential-free ApplicationHost currently exposes application operations
+  and sessions, not the generic administrator device-management surface Fleet
+  needs. The proven command-binding vertical alone does not cover that surface.
+  Next bounded adaptation: define/use the common current-administrator UI contract
+  for device list/detail, preserving active-package/role/revocation checks and
+  avoiding credential exposure, then extend the same path to management actions.
+  No Fleet-specific Core exception, authority downgrade, commit/push/version
+  change or VM/Fleet installation was performed during this assessment. Fleet's
+  reviewed-native direct HTTP mode remains a distinct existing profile; do not
+  label it a completed migration to the credential-free SDK/host model.
+
+- **Administrator command resource UI and VM update, 2026-10-25.** Continued
+  the accepted command vertical with Extensions → Command resources for installed,
+  administrator-managed applications. The dialog reads declared requirements,
+  pages compatible candidates without automatic selection, separates readiness,
+  and reviews both exact devices/providers before explicit restart approval.
+  Changed/expired/foreign previews cannot apply. Lost apply/recovery replies lead
+  to status reads without mutation replay. Current pending changes are found
+  server-side after browser/Core restart; stale historical interrupted records
+  are discarded once a different epoch/recovery supersedes them. Recovery requires
+  a separate acknowledgment, then leaves fresh consent/activation to the owner.
+  Added only command metadata to configuration, versioned admin observations and
+  an admin-only read-only current-pending projection; no registry/schema change.
+  Existing initial-install device configuration remains its own dialog.
+  Checks: 112 frontend cases (final dialog13, reused99 unchanged cases), 87
+  affected Python cases (rebinding/current-pending32 and direct regressions55),
+  vue-tsc and Vite production build pass. Browser inspection covers desktop/light
+  and a 390px iframe/dark with disposable provider data; fixtures are absent from
+  the production bundle. Prior broader Core/SDK evidence remains for unchanged
+  mechanisms; no full release CI or physical provider trial is claimed.
+  Installed with the standard immutable installer on owner WSL Ubuntu-26.04.
+  Final current: /opt/3mm/releases/core-sdk-resources-ui-20261025-r2; previous:
+  /opt/3mm/releases/core-sdk-resources-ui-20261025. The first UI deployment was
+  superseded by the final historical-pending refresh correction. Installer exit0,
+  all six main services active, Core health/readiness and Windows :8080 return200.
+  Source/frontend match the prepared package; the new protected pending GET is
+  installed; DB integrity, users, provisioning/Agent/Core identities, packages and
+  grants match pre-update fingerprints. Backups and older releases are retained.
+  Independent Runtime and native host inputs/pins match and were retained. Still
+  beta.57, includes_working_tree=true over ebb98fb; no commit/push/tag/reset or
+  independent M21 change. Archive SHA-256:
+  9019ca5acb1701887d79e560fea85417d125d23901db07f5f5627824ba42f2e5.
+  Evidence: ignored .runtime/command-ui and /var/tmp/3mm-resources-ui-20261025-r2.
+  VM currently has no installed applications; visible resource workflow was
+  inspected with isolated fixtures. Next: owner application/provider acceptance
+  on the updated VM, then choose the next bounded capability scope.
+
+- **Core/SDK deployed to the owner VM, 2026-10-25.** Owner explicitly requested
+  deployment of discovery and command resource replacement to the local VM.
+  Installed current ebb98fb working tree on WSL Ubuntu-26.04 with the standard
+  immutable full-profile installer, host-managed networking and existing Hub
+  setup. Installer unit 3mm-core-sdk-deploy-20261025 exited 0. Current release is
+  /opt/3mm/releases/core-sdk-rebinding-20261025; previous is
+  /opt/3mm/releases/setup-access-ap-20261025. Version remains 0.3.0-beta.57 with
+  includes_working_tree=true; no version bump, commit, push, tag or reset.
+  All 193 frontend inputs matched the installed build, which was reused exactly;
+  prior checked Python inputs also matched, so the 3817-case evidence below is
+  reused rather than rerun. Full source payload: 1422 files, archive SHA-256
+  a72eb105719210648af42e2ce945d2ecaedaabd5d4dff93f00cef9847cf05117.
+  Updated the independent Platform Runtime through its transactional updater to
+  1ad17d048894abbbb6cc3374920562a125f00cffad6873d235482e426a8db932,
+  retaining its previous pin and proving unchanged Core PID during that update.
+  Staged the native application-host bundle with its real isolated 3mm-app probe,
+  then moved the default for new instances under release/component locks to
+  b53a0ec571cd6c416f7ab2cd73dac7cdd4f75492aeb21baf935aa5577aabb0b6.
+  Previous default/pinned instances were preserved; there are no installed apps.
+  Fresh verification: SQLite integrity; provisioning/Agent identity, users,
+  packages, Core identity and authority-grant fingerprints unchanged; installer
+  DB backup present; installed source and frontend match the prepared package;
+  six main services active; Core/Agent/Web/Runtime have no automatic restarts.
+  Core health/readiness and Windows http://localhost:8080 return 200. All five
+  new API paths are present, unauthenticated discovery/rebind is denied, live
+  Runtime exposes command.discover and the isolated host imports the new SDK.
+  Evidence: /var/tmp/3mm-core-sdk-20261025 and ignored
+  .runtime/vm-core-sdk-20261025; backup: /var/lib/3mm/deploy-backups/core-sdk-rebinding-20261025.
+  This is VM deployment acceptance, not a live hardware/provider rebinding trial.
+  Next: owner use of the updated VM; no new frontend chooser was added.
+
+- **Explicit command resource replacement, 2026-10-25.** Owner authorized the
+  next bounded vertical: replace a resource of the same running application.
+  Added admin preview/apply/status/recover endpoints over existing sealed plans,
+  grants and helper lifecycle tickets. Preview shows both resources/providers;
+  explicit approval retains the selected scopes and human grants. Core retires
+  the old epoch, saves desired configuration behind an inactive lifecycle fence,
+  then enables it with a fresh resource grant only after confirmed same-artifact
+  restart and current actor/resource/policy checks. No automatic failover or
+  replay. Interrupted work requires positive quiescence evidence, followed by
+  fresh ordinary consent/activation. Late old activation cannot overwrite that
+  recovery. Shared lifecycle ticket code is reused by ordinary routes and rebind.
+  Command lookup exposes original target and execution receipt separately from
+  invalidated authority. A retained logical request cannot move to another target;
+  claimed commands retain their original result path under existing expiry rules.
+  Scope is an active installation with a current grant, isolated command config
+  key and exact compatible contract. Shared-resource config changes, relational
+  applications and sensor authority are refused. No UI chooser, schema migration,
+  deployment, commit, reset or independent M21/setup/AP change.
+  Verification: affected application/authority/lifecycle, device broker, Runtime,
+  protocol and SDK selection has 3817 distinct passes and 598 expected skips
+  (596 require root/distinct OS principals/systemd, 2 are non-POSIX refusals).
+  Includes all 29 rebinding cases and 286 SDK cases. Initial broad run stopped
+  at an old lifecycle expectation that claimed work becomes failed; corrected
+  it to retain the original receipt path. Reused its 1038 unaffected passes and
+  4 skips; final rebind/lifecycle/remainder run has 2493 passes/594 skips, plus
+  286 SDK passes. Final active-installation restriction is covered by that fresh
+  rebind run. Linux Ubuntu-26.04, Python3.14.4/pytest8.4.1, base ebb98fb plus
+  preserved local work. XML, exact commands, input hashes and aggregate evidence
+  are under ignored .runtime/command-rebinding. Final hash comparison found no
+  subsequent production/test changes; only docs followed. Whitespace passes.
+  New local documentation links resolve. Existing references to sibling project
+  repositories in the simplification plan are unavailable on this checkout.
+  External systemd/device effects are simulated; no live hardware, root-helper
+  ownership proof or full release CI is claimed. Next: owner review of this
+  bounded result; further capabilities/UI/device acceptance remain separate scope.
+
+- **First Core/SDK command vertical, 2026-10-25.** Owner accepted proving one
+  working path with a second provider before broader capability design/cleanup.
+  Added admin-only, paginated command requirement discovery over the existing
+  capability registry; exact versions/canonical argument schemas, source
+  resolvability and current readiness remain separate. Missing/stale health is
+  unknown. Signed SDK command.discover uses a DB-enforced read-only snapshot and
+  current sealed command grant; it returns only the selected resource, or a
+  resource-free access-required observation. No compatibility grant fallback,
+  key creation, configuration write, provider switch or execution from discovery.
+  Existing activation configuration + administrator consent select/authorize a
+  resource for a fresh installation. The SDK-only examples/command_probe client
+  submits through the existing queue/one-use permit and recovers durable results.
+  Two native/embedded provider profiles are candidates without special Core or
+  client names. Tests use real admin HTTP selection/denial, package validation,
+  consent seals, a separate packaged Runtime process, signed SDK, queue, permits
+  and journals. Simulated installer/effects do not claim live systemd or hardware.
+  Restart, no replay, revoked grants, provider drift, offline/stale health,
+  isolation, no discovery writes/key creation and bounded pages are covered.
+  Final affected Linux/Ubuntu-26.04 Python3.14.4/pytest8.4.1 selection: 1417 passed,
+  1 expected non-POSIX-refusal skip, 87.14s. Includes full protocol/SDK suites,
+  command/authority/consent/configuration/access/capability regressions, Runtime
+  transport/component and Agent journal. No production/test edits followed;
+  only documentation/evidence. XML and final input hashes are under ignored
+  .runtime/command-discovery. Base ebb98fb plus the existing setup/AP changes and
+  this scoped change; no full release CI, frontend build, commit or deployment.
+  Material limits: exact schema equality, existing device command profile,
+  no new UI chooser. The later resource-replacement entry above supersedes the
+  initial no-rebinding limit. Ordinary activation still refuses unreviewed staged
+  configuration. This evidence describes that earlier tree, not the later edits.
+
+- **Refresh local setup/AP work onto latest main, 2026-10-25.** Fetched and
+  fast-forwarded d68468c to ebb98fb, then reapplied all local setup/AP changes.
+  The single conflict in the helper writable-path test preserves both upstream's
+  application-host scope assertion/comment and our recovery DNS directory.
+  Compared with the saved pre-sync tree, only the five upstream CI/docs/test
+  files changed; application code, dependencies and frontend remain identical.
+  Fresh Linux systemd-template check: 26/26 pass; prior setup/AP/auth/frontend
+  evidence below is reused for unchanged inputs. Diff whitespace and unresolved
+  conflict checks pass; origin/main was reconfirmed at ebb98fb after integration.
+  No commit, push or additional deployment. WSL retains setup-access-ap-20261025;
+  the upstream changes require no application update. Next: owner's acceptance,
+  including the previously outstanding physical Wi-Fi captive-popup check.
+
+- **Code-free setup and AP captive portal, 2026-10-25.** Owner requested removal
+  of the temporary code and automatic portal discovery after joining an AP.
+  Removed code store/CLI/bearer form/API fields and URL fragments together.
+  Setup APIs now follow live initial/recovery/pending-activation state, deny
+  changed state and closed recovery, and retain same-origin JSON mutation checks,
+  fixed recovery identity/admin, existing admin proof and transaction fencing.
+  Both initial and recovery APs direct HTTP captive probes to 10.42.0.1:8895/setup.
+  Existing Web handles only requests arriving on the active recovery AP address;
+  Node/no-Web uses the optional port-80 listener. Recovery DNS configuration is
+  loaded for AP startup, removed afterward/on failure and cleaned on recovery.
+  Full and Node installers prepare its directory; helpers retain scoped writes.
+  Linux setup/provisioning/role/routes/web/runtime selection: 234 pass, one stale
+  DNS-template expectation corrected; final systemd/admin/Node installer group
+  80/80 passes, reusing unchanged passes from that selection. Earlier stale
+  helper writable-path assertion was aligned with the existing application-host
+  path plus the new DNS path. Frontend final affected tests 13/13, TS and Vite pass;
+  the accidentally broad initial run had 498 passes and one old code-link case,
+  corrected by the final affected run. Browser preview shows the form directly.
+  Installed via standard immutable installer (exit 0) on Ubuntu-26.04:
+  current /opt/3mm/releases/setup-access-ap-20261025, previous
+  local-d68468c-20261025, still beta.57 with reviewed local changes over d68468c.
+  Owner had completed Hub setup as vm-3mm before this update. Provisioning,
+  Agent identity and administrator rows match pre-update fingerprints; SQLite
+  integrity, Core readiness, five primary services and Windows :8080 pass.
+  No reset, commit, push, release or physical-device deployment. Actual phone/
+  laptop captive popup on Wi-Fi remains a hardware check; WSL has no AP adapter.
+  OS policy controls popup/notification; manual AP URL remains available.
+  Inputs/check logs: /var/tmp/3mm-local-build; deployment/backup evidence:
+  /var/tmp/3mm-setup-update-20261025 and ignored .runtime/wsl-install.
+
+- **Local owner WSL installation, 2026-10-25.** Installed clean Ubuntu-26.04
+  (Ubuntu 26.04.1, systemd, x86_64) from local clean commit d68468c using the
+  standard full-profile immutable installer, host-managed networking and origin
+  http://localhost:8080. Current: /opt/3mm/releases/local-d68468c-20261025,
+  version 0.3.0-beta.57. Owner will perform setup; no role was selected here.
+  Locked pnpm 10.13.1 install, frontend type-check/build passed. Installer unit
+  3mm-local-install-20261025-r3 exited 0; setup-local/update-helper active,
+  Linux readiness and Windows localhost:8895/ready returned ready, and
+  http://localhost:8895/setup returned 200. Earlier launch attempts failed before
+  installer mutation (relative path and launcher line ending), corrected in r3.
+  Build inputs/logs are in /var/tmp/3mm-local-build and ignored .runtime/wsl-install.
+  No full suite, owner setup, reboot persistence or extension acceptance claimed.
+  A hidden WSL keepalive launch was blocked by execution policy; leave an Ubuntu
+  terminal open during owner setup if the distribution otherwise stops.
 
 - **Release beta.57 requested, 2026-10-25.** Owner accepted the current work
   and requested one release covering it. Latest correction: both main CI and the
@@ -142,9 +2887,9 @@ Updated: 2026-10-25. Start here; follow linked details only as needed.
   is GET/HEAD, and generic media/public-mutation/composition are design gaps,
   not features claimed as complete. C0-C5 now cover contracts and executable
   foundation before source cleanup/acceptance; A1 builds current apps afterward.
-  Next proposed bounded design is CAP08 task/schedule admission and execution,
-  with claim/lease, durable identity, retry/unknown and lifecycle semantics;
-  no old scheduler revival or mass rename. Preserve Terminal and the accepted
+  The earlier proposed CAP08 design is superseded by the first working command
+  vertical above; task/schedule claim/lease, retry and lifecycle design remains
+  a later candidate, with no old scheduler revival or mass rename. Preserve Terminal and the accepted
   M20/P0-P6/common-session/removal/retained-data boundaries, app sources/data,
   independent repositories and installed devices. Verification: static current
   contract/source review and documentation links/whitespace/consistency only;

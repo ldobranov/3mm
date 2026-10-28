@@ -87,7 +87,7 @@
       <i class="bi bi-list-nested" aria-hidden="true"></i>
       <div>
         <strong>{{ t('settings.noMenusAvailable', 'No custom menus configured') }}</strong>
-        <p>{{ t('settings.noMenusHelp', 'The current navigation is generated dynamically from enabled modules. A custom menu must exist before its items can be edited here.') }}</p>
+        <p>{{ t('settings.emptyHeaderMenuHelp', 'The header has no navigation links. Create a menu to choose links, or leave it empty. Settings remain available at /settings and through Ctrl+K.') }}</p>
       </div>
     </div>
   </SettingsSection>

@@ -252,8 +252,9 @@ across those faults would require an additional hardware/availability design.
 1. Develop and test a provider against a fixed Core/Runtime contract in the Linux
    development environment. No version bump or published release per experiment.
 2. Install a local development artifact into the isolated test deployment. Existing
-   `deploy.ps1 -IncludeWorkingTree` shows a reviewed local-snapshot path already
-   exists; it still deploys the common release and is not component independence.
+   `deploy.ps1 -Action Prepare` produces a checked immutable local snapshot and
+   reuses unchanged build evidence; it still deploys the common release and is
+   not component independence.
 3. Run affected provider/SDK checks, boundary denial/revocation checks and a small
    Core-survival smoke test. Run ARM/ARMv6 trials only where platform behavior is
    relevant; preserve previous evidence for unchanged artifacts/environments.

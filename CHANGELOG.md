@@ -6,6 +6,58 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.1] - 2026-10-28
+
+### Added
+
+- Common application resource/provider discovery, explicit device capability
+  selection, human actor/delegation and kiosk access contracts.
+- Result-bearing background tasks and periodic schedules with current authority,
+  bounded execution and explicit outcomes.
+- Streaming private files, bounded temporary downloads and optional image
+  derivatives through the application SDK.
+- Shared UI forms, tables and loading/error/empty states that follow Core theme,
+  component settings and locale. Application connector settings are accessible
+  from Extensions.
+- Web administration for uncertain application lifecycle recovery and reusable,
+  content-verified local deployment bundles.
+
+### Changed
+
+- Extract Builder, Automations, Dashboards, declarative CRUD and legacy content
+  from Core into preserved optional source packages/libraries. Runtime and
+  application registration remain data-driven.
+- Restore the one-command Raspberry installer with managed Wi-Fi/AP on a clean
+  installation, optional host networking, setup recovery and configurable empty
+  navigation. Existing upgrade network choices remain preserved.
+- Reuse verified immutable code within one invocation and coalesce concurrent
+  browser SDK discovery. Current actor, native approval and resource authority
+  still gate admission, execution and response delivery.
+
+### Fixed
+
+- Exact-package application upgrades, consent preparation and recoverable
+  activation failures no longer require uninstalling the previous version.
+- Shared read-only UI trust leases prevent concurrent verification from
+  contending for the exclusive signing/administration lock.
+- Application UI bindings, provider onboarding and optional-resource diagnostics
+  retain exact identity and current revocation checks.
+- Theme hover/focus/disabled colors and shared component variants follow the
+  configured light/dark presentation.
+- Diagnostic session countdowns remain within their requested TTL at floating
+  clock boundaries; expiry and administrator-only access stay unchanged.
+
+### Upgrade and verification
+
+- Schema history now ends at `b096b7e82f86`, including task/schedule tables,
+  preserved optional-product data, stable user subjects and kiosk incarnations.
+  Some populated downgrades intentionally refuse; preserve database/key backups.
+- Core version 0.3.1 is independent of Device Protocol 1.0, Application SDK 1.3
+  and separately packaged applications/services.
+- This is a local branch checkpoint. No tag, push, publication or deployment is
+  implied. Supported profiles, measured performance, owner acceptance and exact
+  verification evidence/limits are recorded in [WORKING_STATE](docs/WORKING_STATE.md).
+
 ## [0.3.0-beta.57] - 2026-10-25
 
 ### Added

@@ -86,7 +86,9 @@ def test_protected_recovery_unit_coexists_with_workloads_without_nm_dependency()
     assert "--read-only" not in unit["ExecStart"]
     assert "--network-helper-socket" in unit["ExecStart"]
     assert "Requires" not in unit and "Conflicts" not in unit
-    assert unit["CapabilityBoundingSet"] == ""
+    assert unit["CapabilityBoundingSet"] == "CAP_NET_BIND_SERVICE"
+    assert unit["AmbientCapabilities"] == "CAP_NET_BIND_SERVICE"
+    assert "--recovery-captive-port 80" in unit["ExecStart"]
 
 
 def test_web_uses_only_the_low_port_bind_capability() -> None:
@@ -123,9 +125,9 @@ def test_setup_ap_owns_the_captive_dns_lifecycle() -> None:
     assert setup_ap["ExecStopPost"] == (
         "/usr/bin/rm -f " "/etc/NetworkManager/dnsmasq-shared.d/3mm-captive-portal.conf"
     )
-    assert CAPTIVE_DNS_CONFIG.read_text(encoding="utf-8").splitlines()[-1] == (
-        "address=/#/10.42.0.1"
-    )
+    assert CAPTIVE_DNS_CONFIG.read_text(encoding="utf-8").splitlines()[-2:] == [
+        "address=/#/10.42.0.1", "local=/#/"
+    ]
 
 
 def test_update_helper_exposes_only_a_local_hardened_scheduler() -> None:
@@ -148,7 +150,7 @@ def test_update_helper_exposes_only_a_local_hardened_scheduler() -> None:
         "-/opt/3mm-application-hosts/instances "
         "/var/lib/3mm/backups /var/lib/3mm/core/backup-imports "
         "/var/lib/3mm/application-extensions /etc/3mm/application-extensions "
-        "/run/lock /var/lib/3mm/provisioning"
+        "/run/lock /var/lib/3mm/provisioning /etc/NetworkManager/dnsmasq-shared.d"
     )
     assert (
         "--network-recovery-policy /var/lib/3mm/core/network-recovery-policy.json"
@@ -288,8 +290,10 @@ def test_installer_owns_the_atomic_release_and_rollback_boundary() -> None:
     assert "trap rollback ERR" in installer
     assert "source.backup(backup)" in installer
     assert "venv_dir=$install_root/venv" not in installer
-    assert "deployment\\install-systemd.sh" in launcher
-    assert "remote-deploy.sh" not in launcher
+    worker = (SYSTEMD_DIR.parents[1] / 'tools/deploy_remote.py').read_text(encoding='utf-8')
+    assert 'tools/deploy.py' in launcher
+    assert "source / 'deployment/install-systemd.sh'" in worker
+    assert "phase('install Core'" in worker
 
 
 def test_installer_uses_a_root_owned_cache_outside_protected_home() -> None:
@@ -356,21 +360,16 @@ def test_node_starts_update_helpers_before_runtime() -> None:
 
 
 def test_deploy_accepts_setup_or_application_runtime() -> None:
-    launcher = (SYSTEMD_DIR.parents[1] / "deploy.ps1").read_text(encoding="utf-8")
-
-    assert "systemctl is-active --quiet 3mm-setup.service" in launcher
-    assert "$runtimeMode -eq 'setup'" in launcher
-    assert "$runtimeMode -eq 'application'" in launcher
-    assert "http://$($originUri.Host):8895/ready" in launcher
-    assert "http://10.42.0.1:8895/setup" in launcher
+    installer = INSTALLER.read_text(encoding='utf-8')
+    assert '3mm-setup.service|http://127.0.0.1:8895/ready' in installer
+    assert 'Runtime planner did not activate an application or setup service.' in installer
+    assert 'verify_frontend_access' in installer
 
 
 def test_deploy_records_the_validated_project_version() -> None:
-    launcher = (SYSTEMD_DIR.parents[1] / "deploy.ps1").read_text(encoding="utf-8")
-
-    assert "Join-Path $repoRoot 'VERSION'" in launcher
-    assert "$projectVersion -notmatch" in launcher
-    assert "version = $projectVersion" in launcher
+    builder = (SYSTEMD_DIR.parents[1] / 'tools/deploy.py').read_text(encoding='utf-8')
+    assert "'version': (source / 'VERSION').read_text().strip()" in builder
+    assert 'write_release_archive' in builder
 
 
 def test_public_bootstrap_uses_verified_release_and_detached_installation() -> None:

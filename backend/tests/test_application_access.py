@@ -1,6 +1,9 @@
 import json
+import base64,hashlib,os,uuid
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives import serialization
 import subprocess
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -8,6 +11,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
+import pytest
 
 import backend.database  # noqa: F401 - register the complete Core model graph
 from backend.config import ApplicationRuntimeSettings
@@ -20,6 +24,7 @@ from backend.db.module import (
     ModulePackage,
 )
 from backend.db.user import User
+from backend.db.session import UserSession
 from backend.routes import application_extensions, modules
 from backend.routes.application_extensions import router as application_router
 from backend.routes.modules import router as module_router
@@ -58,9 +63,8 @@ def fake_compiler(command, **_kwargs):
 
 def environment(monkeypatch, tmp_path, blob=None):
     engine = create_engine(
-        "sqlite://",
+        "sqlite:///"+str(tmp_path/"access.db"),
         connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
     db = Session(engine)
@@ -71,7 +75,8 @@ def environment(monkeypatch, tmp_path, blob=None):
 
     blob = blob or application_package()
     validated = validate_module_package(blob)
-    archive = tmp_path / f"{validated.sha256}.zip"
+    (tmp_path/"modules").mkdir(exist_ok=True)
+    archive = tmp_path / "modules" / f"{validated.sha256}.zip"
     archive.write_bytes(blob)
     package = ModulePackage(
         module_id=validated.manifest.module_id,
@@ -120,9 +125,32 @@ def environment(monkeypatch, tmp_path, blob=None):
     app.include_router(refresh_router, prefix="/api")
     app.dependency_overrides[get_db] = lambda: db
     client = TestClient(app)
-    admin_token = create_access_token(str(admin.id), {"role": "admin"})
-    operator_token = create_access_token(str(operator.id), {"role": "user"})
+    admin_session = UserSession(user_id=admin.id, token="pending-admin", is_active=True,
+        expires_at=datetime.now(UTC) + timedelta(hours=1))
+    operator_session = UserSession(user_id=operator.id, token="pending-operator", is_active=True,
+        expires_at=datetime.now(UTC) + timedelta(hours=1))
+    db.add_all([admin_session, operator_session]); db.flush()
+    admin_token = create_access_token(str(admin.id), {"role": "admin", "sid": admin_session.id, "token_version": admin.token_version})
+    operator_token = create_access_token(str(operator.id), {"role": "user", "sid": operator_session.id, "token_version": operator.token_version})
+    admin_session.token = admin_token; operator_session.token = operator_token; db.commit()
+    if os.name=='posix':
+        from backend.db.installation_identity import CoreInstallationIdentity
+        from backend.services import application_authority_management as authority
+        public=Ed25519PrivateKey.generate().public_key().public_bytes(serialization.Encoding.Raw,serialization.PublicFormat.Raw)
+        db.add(CoreInstallationIdentity(singleton_id=1,installation_id='inst_'+'5'*32,identity_version=1,key_generation=1,
+            key_id=hashlib.sha256(public).hexdigest(),public_key=base64.b64encode(public).decode(),encrypted_private_key='unused',created_at=datetime.now(UTC)))
+        db.commit()
+        manager=authority.ApplicationAuthorityManager(engine,uploads_root=tmp_path,core_version='0.3.0',review_key_directory=tmp_path/'review')
+        manager.keys.provision()
+        monkeypatch.setattr(authority,'configured_manager',lambda _engine:manager)
     return client, db, engine, admin, operator, installation, package, admin_token, operator_token
+
+
+def kiosk_enrollment(label='Kiosk',**extra):
+    return dict(request_id=uuid.uuid4().hex,label=label,**extra)
+
+def kiosk_claim(code,**extra):
+    return dict(request_id=uuid.uuid4().hex,recovery_proof=base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip('='),code=code,**extra)
 
 
 def headers(token):
@@ -217,26 +245,82 @@ def test_operator_permission_is_server_enforced_and_revocable(monkeypatch, tmp_p
         engine.dispose()
 
 
+@pytest.mark.parametrize('selection,devices,expected',[
+    ({},[],200),({'READER_DEVICE_ID':'dev_'+'1'*32},['dev_'+'1'*32],200),
+    ({'SECONDARY_DEVICE_ID':'dev_'+'2'*32},[],422),
+])
+def test_activation_handles_zero_optional_devices_but_checks_every_supplied_binding(monkeypatch,tmp_path,selection,devices,expected):
+    from backend.tests.test_application_configuration import optional_readers,reader_schema
+    definition=optional_readers().model_dump(mode='json')
+    from backend.tests.test_module_packages import application_manifest
+    manifest=application_manifest(configuration_schema=reader_schema())
+    client,db,engine,_,_,installation,package,token,_=environment(monkeypatch,tmp_path,application_package(definition=definition,manifest_value=manifest))
+    calls=[]
+    for device in devices:db.add(Device(device_id=device,display_name='Reader',role='node',protocol_version='1.0',approved_at=datetime.now(UTC)))
+    db.commit()
+    monkeypatch.setattr(application_extensions.UpdateHelperClient,'activate_application_extension',lambda *_args:calls.append(True) or dict(module_id=package.module_id,version=package.version,instance_id=installation.instance_id,socket_path=installation.socket_path))
+    try:
+        response=client.post(f'/api/v1/application-extensions/packages/{package.sha256}/activate',headers=headers(token),json={'configuration':selection})
+        assert response.status_code==expected,response.text
+        assert len(calls)==int(expected==200)
+        if expected==200:
+            db.refresh(installation)
+            assert {k:v for k,v in installation.configuration.items() if k.endswith('DEVICE_ID')}==selection
+            if selection:
+                # Missing configuration is ordinary activation, not a new empty
+                # device choice; explicit empty selection clears optional keys.
+                for body in ({},None):
+                    kept=client.post(f'/api/v1/application-extensions/packages/{package.sha256}/activate',headers=headers(token),json=body)
+                    assert kept.status_code==200,kept.text
+                    db.refresh(installation);assert installation.configuration['READER_DEVICE_ID']==selection['READER_DEVICE_ID']
+                cleared=client.post(f'/api/v1/application-extensions/packages/{package.sha256}/activate',headers=headers(token),json={'configuration':{}})
+                assert cleared.status_code==200,cleared.text
+                db.refresh(installation);assert 'READER_DEVICE_ID' not in installation.configuration
+    finally:db.close();engine.dispose()
+
+
+def test_optional_device_revoked_after_preflight_cannot_start_runtime(monkeypatch,tmp_path):
+    from backend.tests.test_application_configuration import optional_readers,reader_schema
+    from backend.tests.test_module_packages import application_manifest
+    from sqlalchemy import update
+    device='dev_'+'1'*32
+    blob=application_package(definition=optional_readers().model_dump(mode='json'),manifest_value=application_manifest(configuration_schema=reader_schema()))
+    client,db,engine,_,_,installation,package,token,_=environment(monkeypatch,tmp_path,blob)
+    db.add(Device(device_id=device,display_name='Reader',role='node',protocol_version='1.0',approved_at=datetime.now(UTC)));db.commit()
+    prepare=application_extensions.prepare_lifecycle_consent
+    def revoke_before_lock(*args):
+        result=prepare(*args)
+        with engine.begin() as connection:connection.execute(update(Device).values(revoked_at=datetime.now(UTC)))
+        return result
+    monkeypatch.setattr(application_extensions,'prepare_lifecycle_consent',revoke_before_lock)
+    calls=[];monkeypatch.setattr(application_extensions.UpdateHelperClient,'activate_application_extension',lambda *_args:calls.append(True))
+    try:
+        response=client.post(f'/api/v1/application-extensions/packages/{package.sha256}/activate',headers=headers(token),json={'configuration':{'READER_DEVICE_ID':device}})
+        assert response.status_code==409,response.text
+        assert calls==[]
+    finally:db.close();engine.dispose()
+
+
 def test_kiosk_enrollment_session_and_revocation_are_independent_from_users(monkeypatch, tmp_path):
     client, db, engine, _admin, _operator, _installation, _package, admin_token, _operator_token = environment(monkeypatch, tmp_path)
     try:
         base = "/api/v1/application-extensions/org.3mm.workflow-reference/kiosk"
         created = client.post(
             f"{base}/enrollments",
-            json={"label": "Front desk tablet"},
+            json=kiosk_enrollment('Front desk tablet'),
             headers=headers(admin_token),
         )
         assert created.status_code == 201
         claimed = client.post(
             f"{base}/enrollments/claim",
-            json={"code": created.json()["code"]},
+            json=kiosk_claim(created.json()['code']),
         )
         assert claimed.status_code == 200
         identity = claimed.json()
         assert client.post(
             f"{base}/enrollments/claim",
-            json={"code": created.json()["code"]},
-        ).status_code == 400
+            json=kiosk_claim(created.json()['code']),
+        ).status_code == 409
         session = client.post(
             f"{base}/sessions",
             json={
@@ -316,16 +400,20 @@ def test_compiled_application_catalog_returns_only_authorized_routes(monkeypatch
         operator_item = client.get(catalog, headers=headers(operator_token)).json()["items"][0]
         assert [item["entrypoint_id"] for item in operator_item["entrypoints"]] == ["operations"]
         assert operator_item["entrypoints"][0]["application_audience"] == "operator"
+        assert client.get(catalog, headers=headers(admin_token)).json()["items"] == []
+        db.add(ApplicationPermissionGrant(application_installation_id=installation.id,
+            user_id=_admin.id, permission_id="records_manage"))
+        db.commit()
         admin_item = client.get(catalog, headers=headers(admin_token)).json()["items"][0]
         assert [item["entrypoint_id"] for item in admin_item["entrypoints"]] == ["operations"]
         enrollment = client.post(
             "/api/v1/application-extensions/org.3mm.workflow-reference/kiosk/enrollments",
-            json={"label": "Catalog tablet"},
+            json=kiosk_enrollment('Catalog tablet'),
             headers=headers(admin_token),
         ).json()
         kiosk_token = client.post(
             "/api/v1/application-extensions/org.3mm.workflow-reference/kiosk/enrollments/claim",
-            json={"code": enrollment["code"]},
+            json=kiosk_claim(enrollment['code']),
         ).json()["access_token"]
         kiosk_item = client.get(catalog, headers=headers(kiosk_token)).json()["items"][0]
         assert [item["entrypoint_id"] for item in kiosk_item["entrypoints"]] == ["registration"]

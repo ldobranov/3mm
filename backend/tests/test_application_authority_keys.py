@@ -40,6 +40,25 @@ def record():
         keys.ReviewKeyBinding(CORE_ID, GENERATION)), bytes(range(32)))
 
 
+@posix_only
+def test_recovery_ciphertexts_are_private_purpose_separated_tamper_and_generation_bound(installed):
+    from sqlalchemy.orm import Session
+    engine,store,_=installed;store.provision()
+    with store.locked() as key,Session(engine) as db:
+        db.begin()
+        secret={'code':'private-code'}
+        encrypted=key.encrypted_receipt(db,'kiosk.enrollment',secret)
+        assert secret['code'] not in encrypted
+        assert key.encrypted_receipt(db,'kiosk.enrollment',ciphertext=encrypted)==secret
+        for purpose,ciphertext in [('kiosk.claim',encrypted),('kiosk.enrollment',encrypted[:-8]+'tampered'),('unknown',encrypted)]:
+            with pytest.raises(keys.AuthorityReviewKeyError):key.encrypted_receipt(db,purpose,ciphertext=ciphertext)
+        with pytest.raises(keys.AuthorityReviewKeyError):key.encrypted_receipt(db,'kiosk.claim',{'credential':'x'*2048})
+    with engine.begin() as db:db.execute(update(CoreAuthorityGuard).values(generation='9'*32))
+    with pytest.raises(keys.AuthorityReviewKeyError),store.locked() as key,Session(engine) as db:
+        db.begin()
+        key.encrypted_receipt(db,'kiosk.enrollment',ciphertext=encrypted)
+
+
 @pytest.fixture
 def installed(tmp_path):
     engine = create_engine(f"sqlite:///{(tmp_path / 'core.db').as_posix()}")
@@ -57,6 +76,33 @@ def installed(tmp_path):
     store = keys.CoreReviewKeyStore(engine, tmp_path / "authority-review")
     yield engine, store, tmp_path / "authority-review"
     engine.dispose()
+
+
+@posix_only
+def test_read_leases_share_verification_but_exclude_key_writes_and_signing(installed):
+    from sqlalchemy.orm import Session
+    engine, store, _ = installed
+    original = store.provision(); payload = {'result': 'fixture'}
+    with store.locked() as writer, Session(engine) as db:
+        db.begin()
+        key_id, seal = writer.seal(db, 'action', payload)
+        encrypted = writer.encrypted_receipt(db, 'kiosk.enrollment', {'code': 'fixture'})
+    with store.read_locked() as first, store.read_locked() as second, Session(engine) as db:
+        db.begin()
+        first.verify(db, 'action', payload, key_id, seal)
+        second.verify(db, 'action', payload, key_id, seal)
+        with pytest.raises(keys.AuthorityReviewKeyError): first.verify(db, 'action', {'result':'changed'}, key_id, seal)
+        with pytest.raises(keys.AuthorityReviewKeyError): first.seal(db, 'action', payload)
+        with pytest.raises(keys.AuthorityReviewKeyError): first.encrypted_receipt(db, 'kiosk.enrollment', {'code':'new'})
+        assert first.encrypted_receipt(db, 'kiosk.enrollment', ciphertext=encrypted) == {'code':'fixture'}
+        with pytest.raises(keys.AuthorityReviewKeyError):
+            with store.locked(): pass
+        with pytest.raises(keys.AuthorityReviewKeyError): store.rotate(expected_key_id=original.key_id)
+    with Session(engine) as db:
+        db.begin()
+        with pytest.raises(keys.AuthorityReviewKeyError): first.verify(db, 'action', payload, key_id, seal)
+    assert store.identity() == original
+    assert store.rotate(expected_key_id=original.key_id).key_id != original.key_id
 
 
 def fingerprint(configuration=None, *, principal=None, key=None):

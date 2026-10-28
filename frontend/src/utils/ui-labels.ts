@@ -15,6 +15,7 @@ const en = {
   mode: 'Color mode', light: 'Light', dark: 'Dark', primitives: 'Shared controls',
   primary: 'Primary action', secondary: 'Secondary action', danger: 'Danger action', disabled: 'Disabled', loading: 'Loading',
   forms: 'Form controls', name: 'Name', namePlaceholder: 'A clear, descriptive name',
+  empty: 'Empty', emptyMessage: 'There are no example records.', errorState: 'Error',
   description: 'Description', descriptionPlaceholder: 'Optional details', error: 'Please enter a name.',
   enabled: 'Enable this example', enabledHelp: 'Demonstration only — no hardware or application operations.',
   dialog: 'Open test dialog', dialogTitle: 'Review example settings', cancel: 'Cancel', confirm: 'Validate example',

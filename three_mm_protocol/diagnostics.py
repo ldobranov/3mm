@@ -79,6 +79,7 @@ class DiagnosticSession:
         self._records = deque()
         self._active = False
         self._deadline = 0.0
+        self._ttl_seconds = 0
         self._session_id = None
         self._bytes = 0
         self._accepted = 0
@@ -111,6 +112,7 @@ class DiagnosticSession:
             self._dropped = dict.fromkeys(self._dropped, 0)
             self._window = int(now)
             self._deadline = now + ttl_seconds
+            self._ttl_seconds = ttl_seconds
             self._scope = {"profile": profile, "operation": operation, "instance_id": instance_id, "trace_id": trace_id}
             self._session_id = uuid.uuid4().hex
             self._active = True
@@ -127,7 +129,9 @@ class DiagnosticSession:
             "schema_version": 1, "session_id": self._session_id,
             "component": self.component, "version": self.version,
             "active": self._active, "scope": dict(self._scope),
-            "remaining_seconds": max(0, math.ceil(self._deadline - now)),
+            # Floating addition/subtraction across a binary exponent boundary
+            # can round the initial difference just above the requested TTL.
+            "remaining_seconds": min(self._ttl_seconds, max(0, math.ceil(self._deadline - now))),
             "buffer_bytes": self._bytes, "max_buffer_bytes": self.max_bytes,
             "records": len(self._records), "accepted": self._accepted,
             "dropped": dict(self._dropped),

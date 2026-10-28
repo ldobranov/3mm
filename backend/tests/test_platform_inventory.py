@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from backend.db.device import Device, DeviceCredential, DeviceInventorySnapshot
 from backend.db.module import ApplicationExtensionInstallation
 from backend.routes import device_capabilities, device_ingest
-from backend.routes.modules import _device_architecture
+from backend.services.device_module_management import _device_architecture
 from backend.services.device_pairing import credential_secret_hash
 from backend.services.installation_projection import installation_projection
 from backend.tests.test_device_ingest_routes import (

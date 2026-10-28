@@ -136,10 +136,8 @@ def test_manual_setup_requires_exact_confirmation_and_uses_fixed_helper_action(
         assert accepted.json()["status"] == "queued"
         assert accepted.json()["setup_network"] is None
         assert accepted.json()["setup_url"].endswith(".local:8895/setup")
-        code = accepted.json()["access_code"]
-        from three_mm_provisioning.setup_access import FileSetupAccessStore
-        assert FileSetupAccessStore(tmp_path).valid(code, None)
-        assert code not in (tmp_path / "setup-access.json").read_text()
+        assert "access_code" not in accepted.json()
+        assert not (tmp_path / "setup-access.json").exists()
         assert calls and calls[0] > 0
         audit = db.execute(select(AuditLog)).scalar_one()
         assert audit.action == "NETWORK_SETUP_REQUESTED"
@@ -168,6 +166,7 @@ def test_ap_requires_admin_interface_and_exact_acknowledgement(tmp_path, monkeyp
         response=client.post("/api/v1/network-recovery/access-point",json=body,headers=headers)
         assert response.status_code==202 and response.json()["setup_url"]=="http://10.42.0.1:8895/setup"
         assert response.json()["setup_network"].startswith("3mm Setup ")
+        assert "access_code" not in response.json()
         assert len(calls)==1 and calls[0][0][0]=="start" and calls[0][1]=={"interface":"wifi0","duration":300}
         identifier=response.json()["id"]
         stop_body={"confirmation":"STOP ACCESS POINT","id":identifier}
@@ -179,18 +178,18 @@ def test_ap_requires_admin_interface_and_exact_acknowledgement(tmp_path, monkeyp
     finally:db.close()
 
 
-def test_unwritable_setup_code_store_fails_before_scheduling(tmp_path, monkeypatch):
+def test_setup_helper_failure_still_refuses_activation(tmp_path, monkeypatch):
     client, db, token, _viewer=make_client(tmp_path, monkeypatch)
     calls=[]
-    class Store:
-        def __init__(self,_data):pass
-        def issue(self,_snapshot):raise OSError(30,"Read-only filesystem")
     class Helper:
-        def __init__(self,_path):calls.append("helper constructed")
-    monkeypatch.setattr(network_recovery,"FileSetupAccessStore",Store)
+        def __init__(self,_path):pass
+        def request_network_setup(self, _user_id):
+            calls.append('request')
+            raise network_recovery.UpdateHelperError('helper unavailable')
     monkeypatch.setattr(network_recovery,"UpdateHelperClient",Helper)
     try:
         result=client.post("/api/v1/network-recovery/setup",headers={"Authorization":"Bearer "+token},json={"confirmation":"START SETUP"})
-        assert result.status_code==503 and result.json()=={"detail":"setup_access_unavailable"}
-        assert calls==[]
+        assert result.status_code==409 and result.json()=={"detail":"helper unavailable"}
+        assert calls==['request']
+        assert db.execute(select(AuditLog)).first() is None
     finally:db.close()

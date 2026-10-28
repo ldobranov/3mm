@@ -28,6 +28,7 @@ from three_mm_protocol.node_updates import NodeUpdateOperation
 from three_mm_protocol.transport import DeviceTransportError
 from three_mm_protocol.device_platform import challenge, DevicePlatformSnapshotV1
 from three_mm_protocol.capability_availability import CapabilityAvailabilityReportV1
+from three_mm_protocol.device_capabilities import CapabilityProviderSnapshotV2
 
 
 class HttpTransportError(DeviceTransportError, requests.RequestException):
@@ -294,6 +295,29 @@ class HttpDeviceTransport:
                 "put", "runtime-features", payload=report.model_dump(mode="json")
             ).json()
         )
+
+    def provider(self, provider_type, provider_id):
+        # Protocol identifiers are validated before they become path segments.
+        from pydantic import TypeAdapter
+        from three_mm_protocol.device_capabilities import ProviderId, ProviderType
+        TypeAdapter(ProviderType).validate_python(provider_type)
+        TypeAdapter(ProviderId).validate_python(provider_id)
+        response = self._request('get', f'capability-providers/{provider_type}/{provider_id}', legacy_missing=True)
+        if response is None:
+            return None
+        value = CapabilityProviderSnapshotV2.model_validate(response.json())
+        if (value.device_id, value.provider_type, value.provider_id) != (self.device_id, provider_type, provider_id):
+            raise HttpRejected('Provider response identity mismatch')
+        return value
+
+    def report_provider(self, report):
+        if report.device_id != self.device_id or report.schema_version != 2:
+            raise ValueError('Provider report identity/schema mismatch')
+        value = CapabilityProviderSnapshotV2.model_validate(self._request('put',
+            f'capability-providers/{report.provider_type}/{report.provider_id}', payload=report.model_dump(mode='json')).json())
+        if (value.device_id, value.provider_type, value.provider_id) != (self.device_id, report.provider_type, report.provider_id):
+            raise HttpRejected('Provider response identity mismatch')
+        return value
 
     def authorize_execution(self, command_id):
         if self._ensure_authority():
