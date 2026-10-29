@@ -129,6 +129,35 @@ def test_bundled_language_is_generic_and_never_resurrects_after_disable_or_delet
     assert r.client.delete(f'{BASE}/packages/{digest}',headers=headers).status_code==200
     seed.seed();assert list(r.db.scalars(select(ModulePackage)))==[]
 
+
+def test_new_bundled_language_version_is_staged_without_replacing_the_selected_package(runtime):
+    r=runtime;directory=r.tmp/'bundles'/'any-name';directory.mkdir(parents=True)
+    def stage_bundle(blob):
+        with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+            for name in archive.namelist():(directory/name).write_bytes(archive.read(name))
+    def sessions():yield r.db
+    stage_bundle(package())
+    seed=BundledLanguagePackages(sessions,r.config,r.tmp/'bundles')
+    seed.seed()
+    selected=r.db.scalar(select(LanguageExtensionInstallation).where(LanguageExtensionInstallation.code=='de'))
+    previous=selected.module_package_id
+
+    stage_bundle(package(version='1.0.1',values={'runtimeUpdates':{'same':'Updated package translation'}}))
+    seed.seed()
+    r.db.refresh(selected)
+    assert selected.module_package_id==previous and selected.enabled
+    assert r.client.get('/api/translations/de').json()['frontend']['test']['greeting']=='1.0.0'
+    updated=r.db.scalar(select(ModulePackage).where(ModulePackage.version=='1.0.1'))
+    assert updated is not None and updated.id!=previous
+    headers=r.headers(r.admin)
+    assert r.client.post(f'{BASE}/packages/{updated.sha256}/enable',headers=headers).status_code==200
+    assert r.client.get('/api/translations/de').json()['frontend']['runtimeUpdates']['same']=='Updated package translation'
+    r.db.refresh(selected)
+    assert selected.module_package_id==updated.id
+    seed.seed()
+    assert len(list(r.db.scalars(select(ModulePackage))))==2
+
+
 def test_bulgarian_delivery_contains_the_moved_ui_and_device_dictionaries():
     directory=ROOT/'modules/language-bg';stream=io.BytesIO()
     with zipfile.ZipFile(stream,'w') as archive:
@@ -139,6 +168,9 @@ def test_bulgarian_delivery_contains_the_moved_ui_and_device_dictionaries():
     assert definition.frontend['uiPlatform']['language']=='Език'
     assert definition.frontend['applicationAuthority']['manage']
     assert definition.frontend['packageInspection']['help']
+    assert definition.frontend['runtimeUpdates']['same']
+    assert definition.frontend['runtimeUpdates']['notDeclared']
+    assert definition.frontend['runtimeUpdates']['reason']['runtime_updated']
 
 
 @pytest.mark.parametrize('target',['0ae56c1324d5','head'])
