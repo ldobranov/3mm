@@ -119,12 +119,53 @@ def setup_dispatch(tmp_path, monkeypatch):
     def lock():
         remote.STATE.mkdir(exist_ok=True); yield
     monkeypatch.setattr(remote, 'dispatch_lock', lock)
-    monkeypatch.setattr(remote, 'current_metadata', lambda: {'profile': 'full', 'deployment_key': 'old'})
+    current = tmp_path / 'current'; current.mkdir()
+    (current / '.3mm-install-profile').write_text('full\n')
+    monkeypatch.setattr(remote, 'CURRENT', current)
+    monkeypatch.setattr(remote, 'current_metadata', lambda: {'deployment_key': 'old'})
     monkeypatch.setattr(remote, 'ready', lambda: True)
     monkeypatch.setattr(remote, 'host_matches', lambda _: True)
     calls = []
     monkeypatch.setattr(remote.subprocess, 'run', lambda *a, **k: calls.append(a[0]))
     return calls
+
+
+def test_published_core_without_metadata_profile_uses_installer_marker(tmp_path, monkeypatch):
+    folder, value, ready = kit(tmp_path); calls = setup_dispatch(tmp_path, monkeypatch)
+    monkeypatch.setattr(remote, 'current_metadata', lambda: {'release_id': 'v0.3.2', 'version': '0.3.2'})
+    assert remote.start(folder / 'kit.tar.gz', ready['kit_sha256'])['state'] == 'dispatching'
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize('profile', ['node', 'unknown', ''])
+def test_invalid_or_node_profile_cannot_dispatch_even_with_full_metadata(tmp_path, monkeypatch, profile):
+    folder, value, ready = kit(tmp_path); calls = setup_dispatch(tmp_path, monkeypatch)
+    (remote.CURRENT / '.3mm-install-profile').write_text(profile + '\n')
+    monkeypatch.setattr(remote, 'current_metadata', lambda: {'profile': 'full'})
+    with pytest.raises(ValueError, match='profile'):
+        remote.start(folder / 'kit.tar.gz', ready['kit_sha256'])
+    assert not calls and not (remote.STATE / value['key']).exists()
+
+
+def test_missing_profile_marker_cannot_dispatch(tmp_path, monkeypatch):
+    folder, value, ready = kit(tmp_path); calls = setup_dispatch(tmp_path, monkeypatch)
+    (remote.CURRENT / '.3mm-install-profile').unlink()
+    with pytest.raises(FileNotFoundError):
+        remote.start(folder / 'kit.tar.gz', ready['kit_sha256'])
+    assert not calls and not (remote.STATE / value['key']).exists()
+
+
+@pytest.mark.parametrize('mismatch', ['architecture', 'Python'])
+def test_target_mismatch_still_refuses_before_dispatch(tmp_path, monkeypatch, mismatch):
+    folder, value, ready = kit(tmp_path); calls = setup_dispatch(tmp_path, monkeypatch)
+    if mismatch == 'architecture':
+        monkeypatch.setattr(remote.platform, 'machine', lambda: 'foreign')
+    else:
+        from types import SimpleNamespace
+        monkeypatch.setattr(remote, 'sys', SimpleNamespace(version_info=(9, 9)))
+    with pytest.raises(ValueError, match=mismatch):
+        remote.start(folder / 'kit.tar.gz', ready['kit_sha256'])
+    assert not calls and not (remote.STATE / value['key']).exists()
 
 
 def test_repeat_observes_and_lost_dispatch_ack_never_replays(tmp_path, monkeypatch):

@@ -144,6 +144,16 @@ def current_metadata():
     return json.loads((CURRENT / '.3mm-release.json').read_text())
 
 
+def installed_profile():
+    # The installer owns this marker; published release metadata has no profile.
+    path = CURRENT / '.3mm-install-profile'
+    regular(path, 64)
+    value = path.read_text().strip()
+    if value not in {'full', 'node'}:
+        raise ValueError('Invalid installed profile marker')
+    return value
+
+
 def ready():
     try:
         with urllib.request.urlopen('http://127.0.0.1:8887/ready', timeout=5) as response:
@@ -209,8 +219,12 @@ def dispatch_snapshot(kit, incoming):
     unpack(kit, incoming, kit=True)
     value = read_bundle(incoming); key = value['key']; target = STATE / key
     installed = current_metadata()
-    if installed.get('profile') != 'full' or platform.machine() != value['architecture'] or '.'.join(map(str, sys.version_info[:2])) != value['python']:
-        raise ValueError('Installed profile/architecture/Python does not match this kit')
+    if installed_profile() != 'full':
+        raise ValueError('Installed profile does not match this full Core kit')
+    if platform.machine() != value['architecture']:
+        raise ValueError('Installed architecture does not match this kit')
+    if '.'.join(map(str, sys.version_info[:2])) != value['python']:
+        raise ValueError('Deployment Python does not match this kit')
     record_path = target / 'status.json'
     record = json.loads(record_path.read_text()) if record_path.exists() else None
     result = decision(record, value, installed, ready(), host_matches(value['host']) and agent_ready(value['agent']))
