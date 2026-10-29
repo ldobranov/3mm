@@ -37,6 +37,17 @@ class UpdateHelperClient:
         }
         self._request(payload)
 
+    def platform_runtime_status(self):
+        return self._request({'action': 'platform_runtime_status'}, expected_status='inspected')['runtime']
+
+    def platform_runtime_operation(self, payload):
+        from three_mm_runtime.platform_runtime_updates import validate_request
+        validate_request(payload)
+        result = self._request(payload)
+        if result.get('request_id') != payload['request_id']:
+            raise UpdateHelperError('Runtime operation identity is unconfirmed. Do not resend.')
+        return result['request_id']
+
     def request_access_point(self, action: str, user_id: int, identifier: str, *, interface=None, duration=300):
         if action not in {"start", "stop"}:
             raise ValueError("Invalid access point action")
@@ -401,6 +412,7 @@ class UpdateHelperClient:
                     and isinstance(result.get("message"), str)):
                 raise UpdateHelperError(result["message"])
             messages = {
+                'runtime_update_unavailable': 'Runtime operation could not be confirmed. Refresh status; do not resend it.',
                 "relational_empty_preparation_unconfirmed": "Preparation reconciliation is unconfirmed. Do not retry; retain evidence for fresh local review.",
                 "relational_boot_enable_unconfirmed": "Relational boot enable is unconfirmed. Do not retry; retain evidence for explicit stop/review.",
                 "relational_preparation_unconfirmed": "Relational preparation is unconfirmed. Do not retry; preserve evidence and review recovery.",

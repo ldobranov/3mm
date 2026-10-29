@@ -50,6 +50,8 @@
       </div>
     </section>
 
+    <PlatformRuntimeUpdates :maintenance-override-required="requiresMaintenanceOverride" />
+
     <div v-if="selectedChannel !== 'stable'" class="notice notice-warning" role="status">
       <i class="bi bi-exclamation-diamond" aria-hidden="true"></i>
       {{ t('systemUpdates.previewChannelWarning', 'Preview channels may contain unfinished changes. Installation still requires the same verification and explicit approval.') }}
@@ -359,6 +361,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
+import PlatformRuntimeUpdates from '@/components/settings/PlatformRuntimeUpdates.vue'
 
 type UpdateStatus =
   | 'not_checked'

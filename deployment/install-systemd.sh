@@ -708,6 +708,8 @@ required_files=(
   three_mm_runtime/session_worker.py
   three_mm_runtime/session_worker_client.py
   three_mm_runtime/update_helper.py
+  three_mm_runtime/platform_runtime_updates.py
+  backend/services/platform_runtime_updates.py
   three_mm_runtime/application_activation.py
   three_mm_runtime/application_host.py
   three_mm_runtime/application_transport.py

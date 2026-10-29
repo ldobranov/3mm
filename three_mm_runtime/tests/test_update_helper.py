@@ -21,6 +21,54 @@ from three_mm_runtime import update_helper
 from three_mm_runtime.update_helper import UpdateMutationBoundary
 
 
+@pytest.mark.parametrize('peer', [None, 999, True])
+def test_runtime_web_workflow_refuses_foreign_or_unobserved_core_peer(tmp_path, monkeypatch, peer):
+    monkeypatch.setattr(update_helper, '_service_ids', lambda *_: (1000, 1000))
+    result = update_helper._handle_request({'action':'platform_runtime_status'},
+        stage_root=tmp_path/'stage', state_root=tmp_path/'state', allowlist=tmp_path/'allow',
+        status_file=tmp_path/'status', relational_peer_uid=peer)
+    assert result == {'ok':False, 'error':'runtime_update_unavailable'}
+    assert not (tmp_path/'state').exists()
+
+
+def test_runtime_scheduler_only_launches_fixed_worker_and_component_paths():
+    calls = []
+    class Runner:
+        def run(self, arguments):
+            calls.append(arguments)
+            return 0
+    boundary = UpdateMutationBoundary(runner=Runner())
+    boundary.schedule_platform_runtime('a'*32)
+    assert len(calls) == 1
+    assert '--unit=3mm-platform-runtime-update-'+'a'*32 in calls[0]
+    assert 'three_mm_runtime.platform_runtime_updates' in calls[0]
+    assert calls[0][-2:] == ['--job-id', 'a'*32]
+    assert '--artifact' not in calls[0] and not any('application-hosts' in item for item in calls[0])
+    with pytest.raises(ValueError): boundary.schedule_platform_runtime('../../escape')
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='Real kernel Unix peer credentials')
+def test_runtime_socket_observes_kernel_core_uid_not_a_payload_claim(tmp_path, monkeypatch):
+    import json
+    import socket
+    from three_mm_runtime import platform_runtime_updates
+    seen = []
+    class Workflow:
+        def __init__(self, **kwargs): pass
+        def status(self):
+            seen.append('status')
+            return {'ready':True}
+    monkeypatch.setattr(platform_runtime_updates, 'RuntimeUpdates', Workflow)
+    monkeypatch.setattr(update_helper, '_service_ids', lambda *_: (os.getuid(), os.getgid()))
+    client, server = socket.socketpair()
+    with client, server:
+        client.sendall(b'{"action":"platform_runtime_status"}\n')
+        update_helper._serve_connection(server, stage_root=tmp_path/'stage', state_root=tmp_path/'state',
+            allowlist=tmp_path/'allow', status_file=tmp_path/'status')
+        assert json.loads(client.recv(4096))['runtime']['ready'] is True
+    assert seen == ['status']
+
+
 @pytest.mark.skipif(os.name != "posix", reason="Unix helper listener")
 def test_host_networking_does_not_block_update_listener_without_network_manager(tmp_path, monkeypatch):
     import grp

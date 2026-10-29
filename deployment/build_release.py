@@ -170,6 +170,8 @@ def read_source_payload(source_archive: Path) -> list[PayloadFile]:
         "deployment/systemd/3mm-public-web.service",
         "frontend/compiler/package.json",
         "three_mm_runtime/update_helper.py",
+        'three_mm_runtime/platform_runtime_updates.py',
+        'backend/services/platform_runtime_updates.py',
         "three_mm_runtime/application_activation.py",
         "three_mm_runtime/application_host.py",
         "three_mm_runtime/application_host_identity.py",

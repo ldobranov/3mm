@@ -1,6 +1,6 @@
 """Administrator-only catalog, staging and explicit system update approval API."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -36,8 +36,58 @@ from backend.services.update_staging import (
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from three_mm_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
+from backend.services.platform_runtime_updates import (
+    RuntimeUpdateStatus, RuntimePrepareRequest, RuntimeApplyRequest, RuntimeAccepted,
+)
 
 router = APIRouter(prefix="/api/v1/system-updates", tags=["system-updates"])
+
+@router.get('/runtime', response_model=RuntimeUpdateStatus)
+def platform_runtime_status(response: Response, _admin: User = Depends(require_admin)):
+    response.headers['Cache-Control'] = 'no-store'
+    try:
+        value = UpdateHelperClient(get_settings().updates.helper_socket).platform_runtime_status()
+        return RuntimeUpdateStatus.model_validate(value)
+    except (UpdateHelperError, ValueError, KeyError):
+        raise HTTPException(409, 'Runtime status is unavailable; Core administration remains available.') from None
+
+
+def _runtime_operation(action, payload, admin, db):
+    data = payload.model_dump(exclude={'maintenance_override'})
+    data.update(action=action, requested_by_user_id=admin.id)
+    try:
+        identifier = UpdateHelperClient(get_settings().updates.helper_socket).platform_runtime_operation(data)
+    except (UpdateHelperError, ValueError, KeyError):
+        raise HTTPException(409, 'Runtime operation could not be confirmed. Refresh its status; do not resend.') from None
+    db.add(AuditLog(user_id=admin.id, action='PLATFORM_RUNTIME_OPERATION_ACCEPTED',
+        entity_type='platform_runtime', entity_name=identifier,
+        changes={'operation': action, 'request_id': identifier}))
+    db.commit()
+    return RuntimeAccepted(request_id=identifier)
+
+
+@router.post('/runtime/prepare', response_model=RuntimeAccepted, status_code=202)
+def prepare_platform_runtime(payload: RuntimePrepareRequest,
+        admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    return _runtime_operation('platform_runtime_prepare', payload, admin, db)
+
+
+@router.post('/runtime/apply', response_model=RuntimeAccepted, status_code=202)
+def apply_platform_runtime(payload: RuntimeApplyRequest,
+        admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    if payload.confirmation != 'UPDATE RUNTIME ' + payload.build_id:
+        raise HTTPException(422, 'Confirm the exact Runtime build.')
+    try:
+        ensure_apply_is_allowed(get_settings().updates, maintenance_override=payload.maintenance_override)
+    except UpdatePolicyError as exc:
+        raise HTTPException(409, str(exc)) from None
+    return _runtime_operation('platform_runtime_apply', payload, admin, db)
+
+
+@router.post('/runtime/recover', response_model=RuntimeAccepted, status_code=202)
+def recover_platform_runtime(payload: RuntimePrepareRequest,
+        admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    return _runtime_operation('platform_runtime_recover', payload, admin, db)
 
 
 class UpdateChannelRequest(BaseModel):

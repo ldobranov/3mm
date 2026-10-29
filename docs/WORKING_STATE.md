@@ -1,8 +1,265 @@
 # Current working state
 
-Updated: 2026-10-28. Start here; follow linked details only as needed.
+Updated: 2026-10-29. Start here; follow linked details only as needed.
 
 ## Active task and next result
+
+- **CAP03 Platform Runtime web update: selected checks + owner live switch passed, 2026-10-29.**
+  Exact commit-scope review (read-only Git, no staging/commit/push): initially 22 dirty/new
+  source/docs paths at HEAD `395b01b316a82bb7bf03bb43a35435773e4648cc`; index empty.
+  Proposed split: Core feature 16 whole files + CAP03-only WORKING_STATE fragment,
+  separate tested deploy-profile fix 2 files, and newly owner-requested BG 1.0.1
+  package/tests 4 files (23 paths total, including the now-modified BG manifest).
+  Explicit allowlist is local
+  ignored .runtime/cap03-runtime-web/commit-scope.json. Preserve the pre-existing
+  marketplace direction and independent CAP13 notes outside this commit scope.
+  Owner explicitly resumed language work and requested BG 1.0.1 so the files are
+  not forgotten. Updated modules/language-bg/{manifest,language-extension}.json
+  to matching 1.0.1; kept manifest v2, language schema v1 and Core VERSION 0.3.2.
+  Restore the three formerly deferred files together with this BG manifest to
+  a separate language commit scope. Existing selection stays unchanged until
+  explicit enable; no automatic activation, upload or device action.
+  Owner-run Windows/Vitest 3.2.7 actual Runtime BG/EN i18n: **2 passed**,
+  2026-10-29 19:26:04, 2.82 s. Owner-run selected language package/lifecycle/
+  revocation group: **4 passed**, 4.23 s, 12 warnings, source
+  `7892fae39df337c3e0b98bed1074d3f5628ee691f15c4151dec8ce5a61d7db22`,
+  same cached Ubuntu/Python 3.14.4 and dependency digest recorded below; JUnit
+  `/tmp/3mm-cap03-runtime-web-uoexfkrn/results.xml`, exit 0.
+  Owner generated the validated data-only BG 1.0.1 ZIP at ignored
+  `.runtime/cap03-runtime-web/packages/language-bg-1.0.1.zip`: 117743 bytes,
+  SHA-256 `f060633b95f99d1b338be7262b9c3accbfc6e947360b87af24eafbcc5025467e`.
+  Agent read-only hashing matches that size/digest. Activation was not requested;
+  no device-language delivery/selection is claimed. Existing 24 UI cases/type-check/
+  build and Runtime evidence are reused for unchanged UI/code/dependencies, not
+  reported as one new 26-case run or a new full release gate.
+  Ignored prepare-language.py requires approved 1.0.1 and validates with the actual
+  Core package validator; immutable existing output must match or it refuses.
+  Agent static AST/JSON/version consistency checks only; no package generation or
+  runtime/frontend test execution. The new owner language checks and ZIP are green.
+  Review found P2 in Runtime card: same IDs/digests with compatible=false after
+  Refresh leave reviewCurrent true and acknowledged Confirm enabled; submit then
+  exits at !canApply with no request or clear modal feedback. Server/submit denial
+  is intact. Owner then explicitly requested this fix and owner-run test commands.
+  Implemented UI-only fix: Confirm also checks current action eligibility;
+  a trusted refreshed denial invalidates the review, clears resource/maintenance
+  acknowledgements and shows existing review-changed feedback. The invalidation
+  is sticky until explicit close/reopen even if eligibility returns; no automatic
+  reapproval, resend or request ID replacement. Local sending/unconfirmed outcomes
+  do not trigger this refresh invalidation. Existing submit and server checks stay.
+  Added three parameterized regressions: compatibility=false, candidate already
+  current, and recovery required, with unchanged IDs/digests, zero POSTs, cleared
+  acknowledgements and fresh review requirement. Owner then ran the scoped checks
+  on Windows, 2026-10-29 19:13:50: Vitest 3.2.7 **24 passed** (13 Runtime card,
+  11 SystemUpdates), 4.91 s; vue-tsc/type-check passed; Vite 6.4.3 build passed,
+  309 modules, 7.92 s. This verifies the Confirm fix and all three regressions;
+  P2 is closed. No language test was included or claimed in that 24-case run.
+  Current selected 11 UI/direct-dependency/lock raw-byte input identity is
+  `7f0cba69f3131de611eb5172346a063816305f2c5721ba25025d3332eb254f6d`.
+  Read-only hashing after the result confirmed these inputs unchanged; only
+  handoff/plan/scope metadata edits follow. No agent-run tests/build.
+  Historical 23-pass UI/type/build evidence below predates this fix and is not
+  claimed for new code. Runtime/API/tooling/device evidence is unchanged/reused;
+  no Python reruns, additional device rollback/Apply, dependency installation,
+  Git staging/commit/push or Core version changes by agent.
+  UI visual check and canonical CI remain. Deploy preparation inventories dirty
+  AND untracked source, not only staged paths: a commit allowlist does not filter
+  a later local deploy kit. The resumed language files now have the separate owner
+  checks above; their selected device version still requires explicit enable.
+
+  The revised UI including Confirm is now owner-tested, NOT yet deployed.
+  Matching current/candidate build is shown as already current before
+  the stale-binding branch; canApply/authority/worker/Runtime paths are unchanged.
+  Status-provided operation ID remains visible after page reload; a locally
+  unconfirmed request ID takes precedence over a different server operation.
+  Candidate missing declarations now say "Not declared in the Core contract",
+  separate from live "Not advertised". The card opts into existing ui-v2 controls,
+  theme tokens/disabled styles/dialog styles and narrow-width hash wrapping.
+  Added two Runtime-card cases plus actual BG/EN i18n/dialog cases; expanded the
+  existing language-delivery check and added generic bundled-new-version staging
+  / explicit selection regression. No language lifecycle production code changed.
+  Owner's earlier language deferral is superseded by the explicit BG 1.0.1 file
+  request above. Source versions are now 1.0.1; Core stays 0.3.2. Existing device
+  language package/selection is not silently replaced. Owner completed ZIP generation
+  after targeted language checks as recorded above; upload/activation is not claimed.
+  Owner-run Windows results for the revised UI, 2026-10-29 18:37:08: Vitest 3.2.7
+  **23 passed** in 3 files (11 SystemUpdates, 10 Runtime card, 2 actual BG/EN i18n),
+  24.64 s; vue-tsc/type-check passed; Vite 6.4.3 production build passed, 309
+  modules, 6.83 s. Selected 14 UI/translation/direct-UI-dependency/lock input
+  identity (sorted path->raw-byte SHA JSON) is
+  `b904f0596c1ca6cde3e81069d8703f77ac64eab1af949d65401ed756dd84a753`.
+  No executable inputs changed after this owner run, only handoff/plan docs.
+  This is new UI evidence, not a new full backend/release test run. The added
+  language-delivery backend case was not included in that earlier UI run; it is
+  now covered by the separate owner four-case language group above. Existing
+  Runtime/API/tooling/device evidence remains
+  applicable to unchanged execution logic; do not repeat the accepted device
+  rollback/Apply just for these UI changes. Light/dark/narrow visual review
+  of the updated UI remains after an explicitly requested deployment; live BG
+  delivery/visual acceptance awaits the new package's explicit enable. Agent AST/JSON and whitespace
+  checks only passed; no pytest/Vitest/type-check/build/package generation run.
+
+  Owner explicitly requested implementation files and commands, with tests run by
+  owner. No agent-run pytest/Vitest/build, commit, push or device operation.
+  Updates gains a separate Runtime card and admin-only typed no-store API.
+  Candidate source is ONLY the root-owned installed Core; no caller source/path,
+  upload/URL, dependency installation, bootstrap, host updates or grant changes.
+  Real Core SO_PEERCRED is required at the root helper. Fixed bounded systemd
+  workers reuse RuntimeStore/global release lock, recheck source/Core generation,
+  current Runtime and exact candidate. Preparation cannot switch a service;
+  Apply has separate exact-build consent and existing maintenance policy.
+  One root-owned candidate/operation is kept; same accepted current request is
+  not rescheduled. Scheduling loss stays unknown, status polling never POSTs.
+  Interrupted workers/transactions require explicit recovery without update replay.
+  Read-only status does not initialize directories or change pins. Core, other
+  services, application hosts, grants, DB schema and version axes are unchanged.
+
+  Prepared tests cover real disposable artifacts/Runtime transactions, failed
+  candidate rollback, interruption/recovery, queued Core drift, tampered archive,
+  stale/conflicting requests, helper peer/scheduler boundary, auth/revocation,
+  API audit/redaction, LAN-safe request IDs and explicit browser consent/no replay.
+  Owner commands: PowerShell
+  `.runtime/cap03-runtime-web/test.ps1 -Group backend`, then `-Group packaging`,
+  then `-Group frontend`. Backend/packaging use dev-lab verified source snapshots,
+  private /tmp data and the existing cached unprivileged Ubuntu Python (override
+  with -LinuxPython); frontend uses existing locked Windows dependencies.
+  Scripts install nothing and never deploy. Full canonical CI/release and
+  EN/BG/light/dark/narrow-browser review remain required; no visual pass claimed.
+  Agent static checks only: Python AST/JSON syntax, sorted unique deployment
+  required paths, PowerShell runner parser and diff whitespace passed. No source
+  module/test execution, TypeScript check, build or browser run is claimed.
+  Owner-run backend on source
+  `9671eee58d658f90ca6a5fdaf0d269960e917f5e0aafbc76d9a53098ccc52357`,
+  cached unprivileged Ubuntu/Python 3.14.4, unchanged dependency digest
+  `157780b7b0276402845e07a72c374b5a646690a1683b64ebb6423e6dc57a2f3f`:
+  **107 passed / 1 failed**, 8.84 s, no skips. JUnit
+  `/tmp/3mm-cap03-runtime-web-smku8jhc/results.xml`. Failure was the NEW test's
+  `with socket.socketpair()` tuple, before any handler/peer assertion executed.
+  Fixed only the fixture to enter both individual socket context managers; no
+  production, dependency, contract, or assertion change. Runner now offers
+  `--group peer` for this ONE case. Reuse the other 107 owner-run passes; do not
+  rerun the whole group or call the repaired test passed before owner results.
+  Owner then ran the repaired peer case on source
+  `8affaa84808512f1918921b361440677f27754e0cdef81f5af2abfdbf84bd74f`:
+  **1 passed**, 2.10 s, `/tmp/3mm-cap03-runtime-web-tg7jnn98/results.xml`.
+  Reuse the other 107 passes above; not a new single-run 108-pass claim.
+  On that SAME snapshot/environment/dependency digest, owner-run packaging:
+  **141 passed**, 4.98 s, `/tmp/3mm-cap03-runtime-web-hxyp_p_a/results.xml`.
+  Covers release builder, WP4 release contract and frontend-access/installer
+  preservation. No skips reported. Only handoff/ignored-runner edits follow.
+  Windows execution policy blocks .ps1 loading; owner uses direct console
+  commands without changing policy. Frontend commands use npm.cmd, not npm.ps1.
+  Owner-run Windows frontend: **19 passed** (11 SystemUpdates integration/catalog,
+  8 Runtime-card cases), Vitest 3.2.7; vue-tsc/type-check passed, Vite 6.4.3
+  production build passed (309 modules, 6.77 s build). Current 230 tracked/new
+  frontend source/config/lock files plus Bulgarian language input identity:
+  `47c9ad138436d9f6425454f5a480e6a3abad7976efde2ba155b9134f3e3c4790`.
+  No task executable inputs changed after these owner runs; subsequent edits
+  are handoff/plan documentation only. Preserve unrelated marketplace notes.
+  All selected owner-run automated groups are now green with the explicit reuse
+  above; not a new full canonical Python 3.13/Node 22 CI/release run and not native
+  root/systemd or final-device acceptance of the new web updater.
+  Owner attempted local kit `e676df64e7c419f16121cdd76d347ff1f060cedd410cbc14d0c3cd5c891d34c6`:
+  preparation reused frontend `7a5b2100ad71` and exact checks `280a9b2173da`;
+  transfer succeeded, remote controller rejected profile/architecture/Python
+  BEFORE recording/scheduling a job or invoking the installer. No successful
+  deployment is claimed. The separate deploy.ps1 call was blocked by Windows
+  execution policy. Do not change policy or repeat deployment before inspection.
+  Demonstrated tooling blocker: dispatch required `profile: full` in published
+  .3mm-release.json, but build_release does not emit that field. Fixed local
+  deploy_remote to read the installer's canonical .3mm-install-profile marker
+  instead (no fallback/inference); missing/invalid/Node markers still refuse.
+  Architecture and Python checks remain strict with distinct errors. Added
+  published-metadata regression and refusal tests in tools/tests/test_deploy.py.
+  Owner-run tooling regression on source
+  `970d03e409ea58d6d39c22b5831ccf74caf8b087e9d72b4bf73776f25ca3e2d1`:
+  **43 passed**, 3.53 s, no skips, same cached Ubuntu/Python 3.14.4 and dependency
+  digest above; JUnit `/tmp/3mm-cap03-runtime-web-_842pqrd/results.xml`.
+  Owner read-only target preflight: installer marker `full`, machine `aarch64`,
+  sudo system Python `3.13.5`, Core `/ready` ready. These match the selected kit
+  target; no device operation by agent. Existing CAP03 runtime/frontend evidence
+  is unchanged; the old immutable kit still contains the faulty controller and
+  must not be reused. A fresh kit must contain the repaired controller; local
+  preparation can select only tools/tests/test_deploy.py, reusing other unchanged
+  CAP03 evidence above rather than rerunning backend/packaging groups.
+  Owner then prepared fresh local kit
+  `18ce79ec288d39f485ebd77ddba1d33d92cf3d84a4b853ba5fa05131e30b4853`:
+  targeted deploy-module verification succeeded; frontend `7a5b2100ad71` reused,
+  preparation 65.264 s. Local artifact at .runtime/deploy/artifacts/<key>/;
+  kit SHA-256 `a72098e1b99422acba3ce0e64f5656774683c03f3253b12468d2ff70ce9cc163`.
+  Agent read-only file hashing confirms ready/checks/file digests, the packaged
+  controller equals current source with LF normalization, and no Agent rollout
+  is selected. This is NOT an installer/device acceptance; upload/start commands
+  handed to owner, no remote action by agent and no new source/build/test run.
+  Owner returned detached deployment success, 2026-10-29 11:20:07 rasp-3mm:
+  key above, release `local-18ce79ec288d39f485ebd77d`, state `succeeded`, phase
+  `ready`; installer 182.29 s, validate/extract 1.051 s. This controller only
+  reports success after its final Core/host/selected-component readiness checks.
+  The supplied phases contain no native-host rebuild/publication or Agent update.
+  Local CAP03 Core deployment is accepted as successful, NOT the independent
+  Runtime web update itself. No published release/version bump is implied.
+  Owner Prepare-only device acceptance PASS: before/after Core MainPID `820827`,
+  ActiveEnterTimestamp `2026-10-29 11:19:36 EET`, Runtime current `3af4df43...` all
+  unchanged. Owner screenshot confirms live Ready, four displayed contracts 1,
+  operation Succeeded/candidate_prepared, candidate build equals current exact
+  `3af4df434255fa2700f21ffc9b4510382bb5f55d28bc4b248ffc271fd3429e80`,
+  candidate SHA `5464bed8dfcb0a0b04f1d3af0b8c6ecdf4d4b972bb356e4e3be2750d8e6e66f3`,
+  and explicit already-current/no-update-needed message. This proves installed
+  preparation/no-switch/no-op, NOT an actual Apply/switch/rollback test.
+  Partial visual evidence: dark desktop layout with BG surrounding Core UI;
+  Runtime card remains English fallback. Code inspection: languages are pinned
+  data packages, bundled same-version seeding never overwrites an existing
+  selection; actual selected device language package not inspected. Track BG
+  delivery before claiming translated-device acceptance, no language mutation.
+  Candidate Event delivery is Not advertised while live status is 1: the strict
+  installed source contract omits event_delivery_contract; candidate reads only
+  declarations, live status reads the socket. No missing live events is proven.
+  Owner explicitly consented to the controlled Raspberry Runtime-only rollback
+  and subsequent web Apply test, acknowledging SDK interruption/CAP13 temporary
+  unavailability. Hand off standard installed platform_runtime_component rollback
+  with exact current `3af4df43...`, previous
+  `3400e4bdb089776b75cdc1b953ae7809de94dfbb7f60f267b7d581b8ee1efe14`,
+  installed local Core release, active services and no-pending-transaction guards.
+  Record Core PID/start time across both switches. CLI uses the existing global
+  release lock, RuntimeStore validation, readiness and automatic failure rollback;
+  no hand-edited symlinks, service/Agent/host/grant changes or reset.
+  After successful rollback, refresh UI and Prepare a NEW candidate: the previous
+  candidate bound current_build_id to `3af4...` and is deliberately stale. Review
+  exact `3af4...` build and confirm Apply once. Keep request ID/no automatic replay.
+  Owner returned successful standard Runtime-only rollback to exact `3400e4bd...`,
+  status ready, Core PID `820827`, same `2026-10-29 11:19:36 EET` start time,
+  Core `/ready` ready. Subsequent screenshot confirms fresh web preparation on
+  `3400...` with compatible `3af4...` candidate and declared query contract 1;
+  live old build correctly advertises no query contract.
+  Owner then returned actual web Apply PASS: operation Succeeded/runtime_updated,
+  exact current `3af4...`, previous `3400...`, Runtime Ready with all four displayed
+  live contracts 1. Console independently confirms Core PID/start time unchanged
+  across both switches and Core ready. This closes the agreed Raspberry Prepare /
+  same-build no-op / consented CLI rollback / distinct-build web Apply smoke,
+  not whole CAP03 or forced-failure/interrupted Recover on the live device.
+  The post-Apply stale-candidate message reflects its old current_build_id binding,
+  not a failed update; no repeat Prepare/Apply is needed for that message.
+  Owner-run post-update CAP13 alpha SDK query PASS: status `returned`, query v1,
+  binding `directory`, exact provider `2aa790360ad8655de00819d0`, contract digest
+  `187075c507c734a026dc0d2880a3d0cbb01b0fb6e724faa3fe207a4b432aee2f`,
+  found true, Unicode label `Здравей · CAP13 alpha`, application caller
+  `13642b0f10fe9217fccb93fa` / `org.3mm.cap13-test-consumer`, human_delegated false.
+  This proves one real existing application query after the Runtime web switch;
+  it is not full SDK-family/load conformance or a repeat of the whole CAP13 smoke.
+  The agreed bounded Runtime-only web-update happy path is now functionally
+  verified on Raspberry, including application traffic after reconnection.
+  NEXT: owner-run three scoped commits; BG 1.0.1 checks/validated ZIP and revised
+  core UI checks are green. The ignored stage.py helper verifies frozen source
+  hashes and an empty index, stages only the explicit group, and constructs the
+  CAP03-only WORKING_STATE index blob without editing the working file. Owner
+  invokes ordinary git commit separately; hooks remain enabled. No push, tag or
+  release is included. CAP09/Reka and unrelated notes remain outside this group.
+  No further
+  device mutations or repetitive checks are needed for the accepted happy path.
+  Updated-UI visual review, exact commit scope and canonical CI still remain
+  before an explicitly authorized release. Reuse unchanged automated evidence;
+  no new agent-run tests/build/device action, commit or push.
+  Preserve the accepted CAP13 device profile below.
+  The only pre-existing dirty file was this handoff.
 
 - **0.3.2 CI regression repair, 2026-10-28.** Owner reported failed main CI and
   explicitly authorized fixing, committing and pushing the correction. Run

@@ -151,6 +151,32 @@ class UpdateMutationBoundary:
         self._manifest_asset_name = manifest_asset_name
         self._runner = runner or SubprocessUpdateCommandRunner()
 
+    def schedule_platform_runtime(self, identifier: str) -> None:
+        import re
+        if type(identifier) is not str or re.fullmatch(r'[0-9a-f]{32}', identifier) is None:
+            raise ValueError('Invalid Runtime operation identity')
+        arguments = [self._systemd_run, '--unit=3mm-platform-runtime-update-' + identifier,
+            '--collect', '--property=Type=exec', '--property=RuntimeMaxSec=120s',
+            '--property=TimeoutStartSec=120s', '--property=NoNewPrivileges=true',
+            '--property=MemoryMax=128M', '--property=TasksMax=32',
+            '--property=PrivateTmp=true', '--property=ProtectHome=true',
+            '--property=ProtectSystem=strict',
+            '--property=ReadWritePaths=/opt/3mm-platform-runtime /var/lib/3mm-platform-updates /run/lock',
+            '--property=RestrictAddressFamilies=AF_UNIX',
+            '/usr/bin/env', 'PYTHONPATH=/opt/3mm/current', self._python,
+            '-m', 'three_mm_runtime.platform_runtime_updates', '--job-id', identifier]
+        if self._runner.run(arguments) != 0:
+            raise RuntimeError('Runtime worker scheduling is unconfirmed')
+
+    def platform_runtime_worker_active(self, identifier: str) -> bool:
+        import re
+        if type(identifier) is not str or re.fullmatch(r'[0-9a-f]{32}', identifier) is None:
+            raise ValueError('Invalid Runtime operation identity')
+        result = subprocess.run([self._systemctl, 'show',
+            '3mm-platform-runtime-update-' + identifier + '.service',
+            '--property=ActiveState', '--value'], capture_output=True, text=True, timeout=3)
+        return result.returncode == 0 and result.stdout.strip() in {'active', 'activating', 'reloading', 'deactivating'}
+
     def schedule(
         self,
         *,
@@ -421,6 +447,22 @@ def _handle_request(
     # values before any dispatch branch can hash an array/object as an action.
     if type(payload) is not dict or type(payload.get("action")) is not str:
         return {"ok": False, "error": "invalid_request"}
+    from three_mm_runtime.platform_runtime_updates import ACTIONS as RUNTIME_UPDATE_ACTIONS
+    if payload['action'] in RUNTIME_UPDATE_ACTIONS:
+        from three_mm_runtime.platform_runtime_updates import RuntimeUpdates, validate_request
+        try:
+            validate_request(payload)
+            core_uid, _ = _service_ids(service_user, service_group)
+            if type(relational_peer_uid) is not int or relational_peer_uid != core_uid:
+                raise ValueError('Runtime administration requires the real Core peer')
+            selected = boundary or UpdateMutationBoundary()
+            workflow = RuntimeUpdates(worker_active=selected.platform_runtime_worker_active)
+            if payload['action'] == 'platform_runtime_status':
+                return {'ok': True, 'status': 'inspected', 'runtime': workflow.status()}
+            operation = workflow.queue(payload, selected.schedule_platform_runtime)
+            return {'ok': True, 'status': 'queued', 'request_id': operation['request_id']}
+        except (OSError, ValueError, KeyError, RuntimeError, TypeError, OverflowError, subprocess.SubprocessError):
+            return {'ok': False, 'error': 'runtime_update_unavailable'}
     if (type(payload) is dict and type(payload.get("action")) is str
         and payload["action"] in UPGRADE_ACTIONS):
         from three_mm_runtime.application_relational_control import CoreMetadataClient
@@ -922,7 +964,8 @@ def _serve_connection(connection, **request_arguments):
             raise ValueError("request_too_large")
         from backend.services.application_authority_context import _unique_object
         payload = json.loads(request.split(b"\n", 1)[0], object_pairs_hook=_unique_object)
-        if isinstance(payload, dict) and (payload.get("action") in ("prepare_application_relational", "activate_application_relational", "recover_application_relational_start", "reactivate_application_relational", "enable_application_relational_boot", "recover_application_relational_preparation", "resume_application_relational_preparation") or type(payload.get("action")) is str and payload["action"] in UPGRADE_ACTIONS):
+        from three_mm_runtime.platform_runtime_updates import ACTIONS as RUNTIME_UPDATE_ACTIONS
+        if isinstance(payload, dict) and type(payload.get('action')) is str and (payload['action'] in RUNTIME_UPDATE_ACTIONS or payload.get("action") in ("prepare_application_relational", "activate_application_relational", "recover_application_relational_start", "reactivate_application_relational", "enable_application_relational_boot", "recover_application_relational_preparation", "resume_application_relational_preparation") or payload["action"] in UPGRADE_ACTIONS):
             if os.name != "posix" or not hasattr(socket, "SO_PEERCRED"):
                 raise ValueError("Local Core peer credentials required")
             import struct

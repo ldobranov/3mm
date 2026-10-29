@@ -17,7 +17,7 @@ RestartSec=5s
 RuntimeDirectory=3mm
 RuntimeDirectoryMode=0750
 RuntimeDirectoryPreserve=yes
-StateDirectory=3mm/update-helper 3mm-setup-helper 3mm-application-host-updates
+StateDirectory=3mm/update-helper 3mm-setup-helper 3mm-application-host-updates 3mm-platform-updates
 StateDirectoryMode=0750
 NoNewPrivileges=true
 # Retain only the UID-switch capability across hardened helper exec. Migration
