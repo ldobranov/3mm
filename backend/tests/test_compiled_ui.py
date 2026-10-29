@@ -93,7 +93,7 @@ def test_compiler_publishes_content_addressed_artifact_atomically(monkeypatch, t
     assert Path(calls[0][3]).parent.parent == artifact.path.parent
 
 
-@pytest.mark.parametrize("imported", ["@/stores/auth", "@/components/ui/UiButton.vue", "@3mm/ui/v2", "@3mm/ui/v1/context", "@3mm/application-ui/v2", "@3mm/application-ui/v1/internal"])
+@pytest.mark.parametrize("imported", ["@/stores/auth", "@/components/ui/UiButton.vue", "@3mm/ui/v2", "@3mm/ui/v1/context", "@3mm/application-ui/v2", "@3mm/application-ui/v1/internal", "reka-ui"])
 def test_compiler_rejects_non_allowlisted_import_before_execution(monkeypatch, tmp_path, imported):
     blob = package(
         f"<script setup>import value from '{imported}'</script><template>{{{{ value }}}}</template>"

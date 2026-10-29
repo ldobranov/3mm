@@ -4,6 +4,191 @@ Updated: 2026-10-29. Start here; follow linked details only as needed.
 
 ## Active task and next result
 
+- **CAP09 shared editing slice accepted on Raspberry, 2026-10-29.** Owner completed
+  the agreed checkpoint: Core/CAP03 `722c287`, deploy-profile fix `988f9e3`, BG
+  1.0.1 `e375cad` (current main). Read-only Git log confirms those three commits;
+  unrelated WORKING_STATE notes remain dirty as intended. No agent commit/push.
+  Owner approved Reka UI and retained the workflow: agent prepares source,
+  owner runs tests. Bounded result: public `UiEditorForm`, `UiRecordPicker` and
+  `UiCollectionEditor`, additive behind @3mm/ui/v1 with the existing host Vue,
+  theme tokens and credentials-free presentation boundary. No server/API/SDK
+  production, auth, schema, version-axis, app migration, hardware or device change.
+  Editor exposes local draft save/cancel intents, native validity and externally
+  controlled busy/disabled/unconfirmed/conflict gates; recovery slot is outside
+  the disabled fieldset. It owns no persistence, retries or request identities.
+  Record picker wraps the real Reka combobox, supports keyboard/local/external
+  search, single/multiple stable IDs, selected labels outside a result page and
+  explicit removal. Popup stays inline in its surface/dialog. No automatic
+  search/selection mutation on supplied result pages, theme or locale changes.
+  Collection uses stable keys, immutable move/remove arrays, caller-owned add,
+  min/max limits, keyboard buttons/focus and fail-visible duplicate-key refusal.
+  The neutral ui-reference source adds two editing patterns with EN/BG copy;
+  it changes only an in-memory draft. Existing compiled UI manifests/versions and
+  immutable ZIPs are unchanged; no example package was built/deployed.
+  Approved Reka is pinned to 2.11.0. Registry metadata was read and both lockfiles
+  generated using npm 11.17.0 and canonical pnpm 10.13.1 on Windows/Node 24.19.0,
+  lockfile-only with dependency lifecycle scripts disabled. No node_modules
+  installation, test, type-check or build was run by agent. npm also updates the
+  shared Floating UI resolution; pnpm peer-context normalization is recorded in
+  its generated lock diff. Existing dependencies' test evidence is NOT claimed
+  for this new library/code. The owner has now completed clean Node 22/pnpm
+  10.13.1 frozen-lock installation, all frontend tests and type-check/build, with
+  exact evidence below; canonical CI remains. The compiler still disallows direct `reka-ui` imports;
+  one refusal case was added without changing its production allowlist. Owner
+  selected Python checks: backend/tests/test_compiled_ui.py and
+  backend/tests/test_ui_reference_package.py (no broad runtime rerun needed for
+  this presentation-only slice). New UI regressions and public export/consumer
+  checks are included in the owner's passing full frontend run below. Visual light/dark/390px/keyboard and real prebuilt
+  import-map delivery remain after owner build/deployment approval. Barsy and
+  Crypto Monitor source and devices were not changed; their adaptation follows
+  review of these controls and agreement on their independent app versions.
+  Ignored .runtime/cap09-editors/check.py reuses dev-lab verified unpack and
+  isolated test state. Owner invokes it with the existing unprivileged Ubuntu
+  Python and existing Node 22 directory: clean pnpm 10.13.1 frozen install, all
+  frontend tests, type-check/build, then only the two Python UI modules. It writes
+  logs/JUnit in its private /tmp copy, never the workspace node_modules or live
+  installation. Owner's first runner preflight stopped before any install/check:
+  its hardcoded historical Node 22.23.3 directory was absent. Read-only Ubuntu
+  inspection then confirms /usr/bin/node v22.22.1 and /usr/bin/corepack (also
+  /usr/local/bin/pnpm, which this pinned runner does not use). Fixed only the
+  ignored runner to discover the existing tools on PATH, retaining explicit
+  --node-bin /usr/bin and strict Node-major validation. No system tools changed,
+  install or test started; the source checks remain pending owner.
+  Owner explicitly confirms Ubuntu is test-only for now, NOT a deployment
+  target. Its older installed Core is unrelated to the verified source-copy
+  checks; do not update /opt/3mm/current, install services or restart them there.
+  Owner's next attempt used source
+  `805253bfeae01cb9e7334bbfa6549f08a7271ca61fb79e4732f495d8808915e8`,
+  Node 22.22.1/pnpm 10.13.1/Python 3.14.4, run
+  `/tmp/3mm-cap09-editors-zc6o_hyu`. pnpm refused before dependency installation
+  or tests: frontend/package.json was absent. Agent error: the reused dev-lab
+  snapshot was Python-only, not a complete frontend source copy. Fixed the common
+  packer with explicit --with-frontend (default Python scope unchanged), retaining
+  regular-file/traversal/digest/size/private-state guards and excluding frontend
+  build/coverage/cache output. SOURCE_ROOTS consumed by deploy is unchanged.
+  Added three provenance/isolation regressions in tools/tests/test_dev_lab.py;
+  owner runner now runs those checks before pnpm and refuses missing UI manifest,
+  locks or editor sources before any package operation. No check run by agent;
+  old incomplete snapshot cannot test this UI and must be repacked with the flag.
+  Owner now reports full frontend **78 files / 780 tests passed**, 58.72 s,
+  2026-10-29 20:40:01. Vitest stayed in watch mode: the runner incorrectly used
+  npm's extra `--` separator with pnpm run. Removed that separator only from the
+  ignored runner; no tested application/dependency inputs changed. Owner should
+  press q once in the existing watch process so the already-running runner can
+  advance to type-check/build and the selected Python UI tests, without repeating
+  the successful 780-case run. Those later results are NOT yet supplied/claimed;
+  do not reuse the earlier incomplete-archive SHA as this successful run's identity.
+  Owner instead reran the runner from the beginning and returned overall success:
+  `/tmp/3mm-cap09-editors-2a3uanx0`, exit_code 0, deployment not_requested.
+  Read-only inspection of check-1/check-3 logs confirms tooling **13 passed**
+  (0.07 s) and full frontend **78 files / 780 tests passed**, start 20:43:45,
+  147.09 s. Owner output confirms vue-tsc passed, Vite 6.4.3 production build
+  passed (943 transformed modules, 8.00 s), and selected Python UI **13 passed**,
+  6 warnings, 2.44 s; JUnit tooling.xml/python.xml under that private run.
+  Environment: Node 22.22.1, pinned pnpm 10.13.1, cached Python 3.14.4.
+  The verified archive identity is
+  `3939d30e21b216285ab39bd7358e148b84ed7eea2437f62dde6f1988de384284`.
+  Agent read-only comparison confirms all 1457 manifest source members match
+  the completed run's source exactly; no mismatches. No test/build rerun by agent.
+  The missing config.json Vite warning is expected in this isolated snapshot:
+  live configuration is excluded, normal Vite defaults were used and build
+  succeeded. Do not copy device config or change production fallback for it.
+  This closes the selected clean-copy automated gate, not whole CAP09, real
+  compiled-reference/browser delivery, canonical CI or device acceptance.
+  Only handoff/docs edits follow; no execution-input changes or repeated checks.
+  Owner now explicitly authorizes Raspberry deployment for visual acceptance.
+  Agent still prepares files/commands; owner performs checks and deployment.
+  Use the existing standard tools/deploy.py prepare path with aarch64/Python
+  3.13/without-images, matching the previous Raspberry full-profile kit; no Agent
+  update, version bump, rights approval, reset or sibling-app rollout. Ubuntu is
+  only the build/test host, never an installation target. Existing owner proof
+  remains valid for unchanged code, but deploy.py's separate npm cache may need
+  its own checked frontend build (not a fabricated reuse of pnpm evidence).
+  Limit selected Python preparation to tools/tests/test_dev_lab.py and the two
+  UI modules already checked; do not request the full backend/runtime suites.
+  First handoff is local preparation plus the normal UI-only reference ZIP
+  builder. Actual transfer/start follows the ready bundle identity and current
+  target/backup preflight; use the standard checksum/immutable installer/rollback
+  path, keep the request/key on uncertainty, and do not replay a failed rollout.
+  NEXT: owner returns the prepared bundle JSON, then Raspberry rollout and
+  visual light/dark/narrow/keyboard review, followed by exact scoped commit review.
+  No agent-run preparation/build/test/ZIP/deployment, commit or publication.
+  CAP14 and adaptation of the independently developed apps remain out of scope.
+  Owner completed standard deployment preparation successfully, 285.795 s:
+  key `468e6efe8f771fe91cb274255716225e94da2178460033338345ecc71ef53420`,
+  release `local-468e6efe8f771fe91cb27425`, bundle under .runtime/deploy/artifacts/.
+  It ran its own npm ci/test/build and the explicit three Python UI/tooling files;
+  no full Python selection. Agent read-only hash validation confirms all ready
+  payloads, kit and checks.json; kit SHA-256
+  `c37c9190b85471acb4d834c7edee7a2fd8caf567c95bee04b0f9f8943066e47d`.
+  Manifest is aarch64/Python 3.13, Agent not selected, image_provider false,
+  matching the preceding Raspberry kit profile. UI reference ZIP also exists.
+  NEXT handoff: owner confirms current backup, verifies the exact kit again,
+  records the dispatch key, then uses standard SCP/checksum/deploy_remote start
+  --follow to raspberry@rasp-3mm.local. Core/app interruption is expected during
+  installation; Ubuntu remains build/test-only. No remote dispatch by agent,
+  no installed/visual success yet. On error/lost reply inspect this exact key;
+  do not repeat installation or accept a changed SSH host key automatically.
+  Owner returned successful Raspberry rollout, 2026-10-29 21:19:17:
+  exact key/release above, state succeeded, phase ready; install Core 187.76 s,
+  validate/extract 1.201 s, standard worker deactivated successfully. Accept this
+  as the Core rollout result, not visual/component acceptance or publication.
+  NEXT: owner uploads the already-built UI-only reference ZIP through Extensions,
+  enables it and opens /ui-reference as administrator. ZIP SHA-256
+  `a3fee93aa5f26c0e76191eaf73a96961f525b97b8df69a1271c3db0c2f059ca1`,
+  5617 bytes, module org.3mm.ui-reference 1.0.0. No business service/resources or
+  hardware operations; the example edits only in-memory data. If an existing
+  same-version package conflicts, inspect instead of deleting/resetting it.
+  Visual desktop/light/dark/narrow/keyboard acceptance remains pending owner.
+  Owner screenshot at /ui-reference confirms the deployed public editing
+  components render in the real Raspberry/Core shell, dark desktop view:
+  editor state controls, searchable selection/chip, panel fields, add/remove
+  and ordering buttons are present. Search text "asd" retains Article alpha;
+  this is the expected separation of search and selected IDs. Treat as initial
+  real compiled-UI/import-map/theme delivery evidence, not completed behavior,
+  light/narrow/keyboard or contrast acceptance. Muted help text looks faint in
+  the supplied capture; verify its readability during theme review before
+  declaring visual completion, without guessing contrast ratios from the image.
+  NEXT owner manual check: clear search, choose beta with keyboard, edit/reorder
+  a panel, verify dirty/save/discard and min/max controls; then unresolved states
+  and presentation changes. No application or device mutations by agent.
+  Owner then explicitly confirms beta is added and reports the current example
+  works normally. Record the real multi-selection smoke as PASS, not evidence
+  that open/closed screenshots alone proved failure. Do not repeat that check.
+  Explicit unresolved-state, light/narrow and readability review still pending;
+  next manual check preserves an unsaved draft through simulated Unconfirmed and
+  Conflict, verifies disabled editing/save/discard and explicit Resolve recovery.
+  Owner confirms all four unresolved-state manual steps successful ("всичко 6"):
+  simulated Unconfirmed/Conflict lock editing/save/discard, preserve the draft,
+  and explicit Resolve restores editing with the same draft. Accept this bounded
+  real-browser presentation behavior; it is not a real server conflict, command
+  reconciliation or new authority proof. Remaining visual gate: live EN/BG label
+  switch, light/dark readability (including muted help/placeholder) and 390px
+  layout/keyboard without horizontal page overflow or lost draft.
+  Owner now confirms the final three requested presentation checks successful
+  ("6"): demo EN/BG label switching without lost draft, light/dark readability
+  and narrow ~390px layout. Accept this bounded real-device/shared-editor slice;
+  do not claim measured contrast ratios, a complete accessibility/browser/theme
+  matrix, all CAP09 capabilities, or migrated Barsy/Crypto Monitor.
+  Exact commit-scope review is complete, read-only Git at
+  e375cad30f8e87415dcefe9ecca2abd7ef08bb03; index remains empty. All 17 changed
+  non-Markdown source/test/config/lock files match the checked deployment inputs
+  byte-for-byte. No blocking finding; no tests/build repeated. Documentation-only
+  updates record acceptance and correct the pnpm CLI example (no extra npm-style
+  -- separator that previously entered watch mode). Reuse the owner's successful
+  automated and device evidence above; no new code/dependency changes follow.
+  Proposed split: CAP09 UI/dependency/reference/docs 18 whole files plus only
+  this CAP09 WORKING_STATE entry (19 paths); independent dev-lab frontend-snapshot
+  tooling/docs 3 files. Explicit ignored allowlist:
+  .runtime/cap09-editors/commit-scope.json. Preserve marketplace direction,
+  separate CAP13 notes and older approved CAP09/CAP14 direction outside the
+  partial handoff commit; exclude .runtime, dist, node_modules, caches and secrets.
+  Owner explicitly authorizes the agent to create both reviewed local commits.
+  Keep their messages/scope as recorded above; exact commit IDs belong to Git
+  history. No new tests are needed for unchanged checked inputs. NEXT: canonical
+  CI and any push/publication only when separately authorized; no tag, version
+  change or further deployment. Business-app adaptation and CAP14 remain separate.
+
 - **CAP03 Platform Runtime web update: selected checks + owner live switch passed, 2026-10-29.**
   Exact commit-scope review (read-only Git, no staging/commit/push): initially 22 dirty/new
   source/docs paths at HEAD `395b01b316a82bb7bf03bb43a35435773e4648cc`; index empty.

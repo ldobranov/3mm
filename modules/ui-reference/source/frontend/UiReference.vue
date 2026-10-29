@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { UiSurface, UiButton, UiDialog, UI_CONTRACT_VERSION } from '@3mm/ui/v1'
+import EditingReference from './EditingReference.vue'
 
 // This reference deliberately has no API client, business operations or Core imports.
 const language = ref('en')
@@ -62,6 +63,7 @@ function confirm() {
         </div>
       </section>
     </div>
+    <EditingReference :locale="language" />
     <UiDialog v-model:open="open" :title="text.dialog" :close-label="text.close">
       <p>{{ name }}</p>
       <template #actions>

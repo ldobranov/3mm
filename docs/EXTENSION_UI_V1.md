@@ -7,6 +7,15 @@
 Това е **browser presentation contract**, независим от Application SDK 1.3,
 Device Protocol 1.0, `compiled_ui_version: 1` и Theme Design API 2.
 
+Локално допълнение CAP09, 2026-10-29: подготвени са `UiEditorForm`,
+`UiRecordPicker` и `UiCollectionEditor` с одобрена Reka UI 2.11.0. Собственикът
+изпълни успешно чистите Node 22/pnpm проверки: 780 frontend теста, type-check,
+build и по 13 tooling/Python UI теста. Core кандидатът е внедрен на Raspberry;
+собственикът потвърди работата на примера, Unconfirmed/Conflict/Resolve, EN/BG,
+светъл/тъмен и тесен изглед. Това е приемане на този ограничен редакторски срез,
+не на целия CAP09 каталог или на мигрирани бизнес приложения. Точната snapshot
+среда и deployment са в WORKING_STATE.
+
 ## Публичен вход
 
 ### Единен изглед със Settings (CAP09, 2026-10-27)
@@ -155,7 +164,8 @@ Core frontend build публикува versioned module и hashed chunks. Host i
 Vue, Pinia, theme store, CSS framework, CDN или runtime dependency download.
 
 Публичните exports са **само** `UI_CONTRACT_VERSION = 1`, `UiSurface`, `UiButton`,
-`UiDialog`, `UiField`, `UiForm`, `UiTable`, `UiState`.
+`UiDialog`, `UiField`, `UiForm`, `UiTable`, `UiState`, `UiEditorForm`,
+`UiRecordPicker`, `UiCollectionEditor`.
 Новите exports са additive в текущия прототип; изискват Core build, който ги
 публикува. Не са обещание, че стар UI-v1 host съдържа новите компоненти.
 Вътрешни source paths, stores, router, theme loader, injection key,
@@ -181,6 +191,9 @@ version range не различава beta revisions; версията на UI e
 | `UiForm` | `busy` изключва fieldset; default slot; `submit` event само при валидна native форма и без busy. Не извършва заявка. |
 | `UiTable` | Задължителни `rows`, `columns: {key,label}[]`, `rowKey(row)`, `caption`, `emptyLabel`; `#cell="{row,column,value}"`; controlled `hasPrevious`/`hasNext`, `previous`/`next` events, `busy` и преводими `previousLabel`/`nextLabel`/`paginationLabel`. |
 | `UiState` | Задължителни `kind`: loading/error/empty и `message`; default slot за изрично действие на приложението; role status/alert и loading `aria-busy`. |
+| `UiEditorForm` | `title`, `description?`, `dirty`, `busy`, `disabled`, `valid`; `state`: idle/unconfirmed/conflict; `error?`. `save` само от валидна, променена и отключена форма; `cancel` е намерение за отхвърляне на draft. Default slot `{disabled}` и `#recovery` извън заключения fieldset. Преводими `saveLabel`, `cancelLabel`, `dirtyLabel`, `savedLabel`, `unconfirmedLabel`, `conflictLabel`. |
+| `UiRecordPicker` | `id`, `label`, `options: {id,label,description?,disabled?}[]`, `v-model`: string/null или string[] с `multiple`; `v-model:search`. `filterMode`: local (default) или external; `selectedOptions` са labels за избрани записи извън текущата страница. `disabled`, `busy`, `description`, `error`, `placeholder`; преводими empty/loading/selected/remove/toggle/unavailable labels. |
+| `UiCollectionEditor` | `v-model`: масив от draft записи, `title`, `itemKey(item): string`, `itemLabel(item): string`; default slot `{item,index,disabled}`; `add` и `update:modelValue` намерения. `disabled`, `minItems`, `maxItems`, преводими add/remove/moveUp/moveDown/empty/invalidKeys labels. |
 
 `UiSurface` се поставя около route/widget/editor UI; не сменя shell, menu или
 route authorization. Наследява live theme/preview варианти без повторно монтиране
@@ -218,6 +231,45 @@ HTML. Директният ESM import не минава през Vite dynamic-im
 работи без `crypto.randomUUID` на HTTP LAN. Това не променя готовите immutable
 Contacts пакети и не публикува нова версия на приложение. Upload, task monitor,
 filters и бизнес editors остават извън тази първа CAP09 част.
+
+### Общ редакторски профил (локално подготвен, 2026-10-29)
+
+Редакторът, избраните записи и подреждането променят само draft на приложението.
+Няма Core бизнес CRUD engine, schema migration, endpoint, token, автоматично
+записване, retry или генериране на mutation ID. Приложението запазва server
+validation, проверката на права/ревизия, single-flight busy, request ID и
+разрешаването на непотвърден резултат. След `save` задайте busy синхронно преди
+асинхронната операция. `cancel` не е отмяна/rollback на вече изпратена операция.
+`unconfirmed` и `conflict` заключват формата и двата бутона, без да чистят draft;
+само собственикът може да ги разреши чрез изрично read/reconcile в `#recovery`.
+Промяна на props, locale или theme не извършва действие.
+
+`UiRecordPicker` използва реален Reka combobox с единичен/множествен избор и
+клавиатурна навигация. `search` е отделно от избраните IDs: въвеждането на текст
+не избира/изчиства запис, а Enter в полето не записва обкръжаващата форма.
+Идентификаторите на options трябва да са уникални непразни string стойности.
+При external mode приложението зарежда разрешената страница и управлява busy,
+cursor, debounce и отхвърляне на остарели отговори; компонентът няма loader.
+`selectedOptions` пази само видими labels за вече избраните IDs, не дава право
+да се избере нов запис извън текущите options. Изчезнал от страницата избор не
+се изтрива автоматично. При отнет достъп приложението чисти недостъпните данни
+и подава disabled; тези визуални контроли не са authority.
+
+`UiCollectionEditor` изисква стабилни string ключове, не array index. Duplicate/
+празни ключове блокират редакциите с видима грешка, без да поправят данните.
+Move/remove емитват нов масив, без да мутират подадения; `add` и създаването на
+нов стабилен ID са отговорност на приложението. Тези събития са за draft, не за
+директна физическа/бизнес операция. Подайте slot disabled на вложени контроли.
+Няма drag-and-drop-only действие: подреждането има именувани native бутони,
+достъпни с клавиатура, и запазва фокуса/идентичността на редактирания елемент.
+
+Reka UI 2.11.0 е вътрешна build зависимост на Core, не нов extension import.
+Публичният compiler продължава да отказва `reka-ui`, private subpaths и Core
+stores. Компонентите ползват общия host Vue runtime и public theme tokens;
+popup-ът остава inline в същия UiSurface/диалог, без teleport в body или CDN.
+Няма промяна в manifest/SDK/Core/езиковите версии. Source примерът в
+`modules/ui-reference` показва избор на записи и подредени панели с общите
+компоненти; съществуващи immutable ZIP файлове не се променят.
 
 `UiDialog` трябва да остане **вътре в UiSurface**, без teleport извън него.
 Има inert background, Tab/Shift+Tab containment, Escape/close request и връщане

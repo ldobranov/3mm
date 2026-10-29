@@ -682,6 +682,23 @@ Retention, отчет, reminder и външна доставка използв�
 
 ### CAP09 Общ интерфейс и browser SDK
 
+**Приет ограничен редакторски срез, 2026-10-29:** собственикът одобри Reka UI.
+Публичният `@3mm/ui/v1` получава `UiEditorForm` (draft/save/cancel и явни
+conflict/unconfirmed състояния), `UiRecordPicker` (търсене, единичен/множествен
+избор със стабилни IDs) и `UiCollectionEditor` (подредена draft колекция).
+Реалната Reka 2.11.0 е вътрешна Core build зависимост; приложенията не импортират
+библиотеката директно. Запазват се theme tokens, host Vue и compiler allowlist.
+Няма нов CRUD backend, UI framework, auth, migration, автоматичен invoke/retry,
+TanStack Table или hardware действия. Общият неутрален source пример показва
+двата редакторски модела с EN/BG текстове. Owner-run чистият Node 22/pnpm 10.13.1
+срез е успешен: 780 frontend теста, type-check, build и по 13 tooling/Python UI
+теста; точният snapshot е в WORKING_STATE. Агентът не изпълнява тестове/build.
+Core кандидатът е внедрен на Raspberry; собственикът потвърди избора, редактора,
+демо Unconfirmed/Conflict/Resolve, EN/BG, светла/тъмна тема и тесен изглед.
+Реално адаптиране на Barsy/Crypto Monitor и останалият CAP09 каталог остават
+отделен обхват. Това не е публикуван release. Точният договор е в
+[Public Extension UI](EXTENSION_UI_V1.md#общ-редакторски-профил-локално-подготвен-2026-10-29).
+
 **Изравняване с темите, 2026-10-27:** Settings preview и SDK вече използват
 едни и същи компоненти и общи визуални правила. Текущата палитра управлява
 native color-scheme, шрифта, радиусите, плътността и component variants.

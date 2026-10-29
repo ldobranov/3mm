@@ -9,6 +9,20 @@ validation, status badges and table classes. Its only CSS is scoped layout.
 The EN/BG language selector is local demonstration content, not a second Core
 language setting. Confirm changes only the in-memory demo result.
 
+The source now also demonstrates the next CAP09 editing slice: public
+`UiEditorForm`, `UiRecordPicker` (Core-owned Reka UI) and `UiCollectionEditor`.
+Search/select records, add/remove/reorder panels, edit a title, save/discard the
+local draft and switch between editable/conflict/unconfirmed states. A recovery
+button resolves only the simulated state; it never reads or retries an operation.
+The editor requires a Core build publishing these new exports. Owner clean-copy
+checks passed: 780 frontend tests, type-check/build and 13 tooling + 13 Python UI
+tests. The owner then installed it on Raspberry and accepted selection/editing,
+unconfirmed/conflict/resolve, EN/BG and light/dark/narrow presentation. This is
+bounded manual acceptance of this example, not a measured accessibility audit or
+all possible theme/browser combinations. An older
+UI-v1 host does not gain the new exports merely by keeping the same contract name.
+Existing generated packages are not overwritten or deployed by this source edit.
+
 Build from the repository root:
 
 ```powershell
@@ -30,3 +44,6 @@ Review under two installed v2 themes, light/dark, mobile and built-in fallback.
 Entering a draft, switching appearance and cancelling a native dialog must not
 send requests or discard the draft. A Core live lifecycle check is distinct from
 the isolated local proof recorded in the [V7 report](../../docs/THEME_PLATFORM_V2_V7_REPORT.md).
+For the editing slice also check keyboard search/selection, reorder focus,
+translated labels and the disabled Save/Discard controls in both unresolved
+states. A broad table engine and application-specific migrations are not included.
