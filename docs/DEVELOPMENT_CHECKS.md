@@ -21,7 +21,7 @@ frontend directory with Node 22 and pnpm 10.13.1 using the CI commands:
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm run test:unit -- --run
+pnpm run test:unit --run
 pnpm run type-check
 pnpm run build-only
 ```
@@ -80,6 +80,11 @@ Choose the comparison intentionally; do not include unrelated user work.
 
 This schedules components; it is not a complete dependency graph. Use full checks
 when a change crosses these groups or its dependencies are uncertain.
+
+For a verified dev-lab snapshot that will run frontend checks, use
+`python tools/dev_lab.py pack --with-frontend`. The default `pack` stays minimal
+for Python checks and omits the main frontend. The opt-in still excludes
+node_modules, build/coverage/cache output and private environment/key/data files.
 
 The Python integration group includes optional `libraries/three_mm_ai/tests` and
 `libraries/three_mm_crud/tests`; their source-path setup is test-only and does not

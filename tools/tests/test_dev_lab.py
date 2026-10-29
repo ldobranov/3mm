@@ -73,6 +73,52 @@ class DevLabTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 dev_lab.pack(source)
 
+    def test_python_snapshot_stays_minimal_without_frontend_opt_in(self):
+        names = ["backend/example.py", "frontend/package.json", "frontend/pnpm-lock.yaml",
+                 "frontend/src/example.vue", "frontend/compiler/compile-ui-extension.mjs"]
+        for name in names:
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"source")
+
+        def git(_repo, *args):
+            return b"a" * 40 if args[0] == "rev-parse" else b"\0".join(name.encode() for name in names)
+
+        with mock.patch.object(dev_lab, "git", side_effect=git), mock.patch("builtins.print"):
+            archive = dev_lab.pack(self.root)
+        manifest = dev_lab.unpack(archive, self.root / "extracted")
+        self.assertEqual(set(manifest["files"]), {
+            "backend/example.py", "frontend/compiler/compile-ui-extension.mjs"})
+
+    def test_opt_in_frontend_snapshot_preserves_manifests_locks_and_dirty_ui(self):
+        names = ["frontend/package.json", "frontend/package-lock.json", "frontend/pnpm-lock.yaml",
+                 "frontend/src/extension-ui/NewEditor.vue", "frontend/vite.config.ts",
+                 "frontend/compiler/package.json", "modules/ui-reference/source/frontend/Reference.vue"]
+        for index, name in enumerate(names):
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(f"source {index}\r\n".encode())
+
+        def git(_repo, *args):
+            return b"a" * 40 if args[0] == "rev-parse" else b"\0".join(name.encode() for name in names)
+
+        with mock.patch.object(dev_lab, "git", side_effect=git), mock.patch("builtins.print"):
+            archive = dev_lab.pack(self.root, with_frontend=True)
+        destination = self.root / "extracted"
+        manifest = dev_lab.unpack(archive, destination)
+        self.assertEqual(set(manifest["files"]), set(names))
+        for name in names:
+            self.assertEqual((destination / name).read_bytes(), (self.root / name).read_bytes())
+
+    def test_frontend_opt_in_still_refuses_generated_private_and_unsafe_paths(self):
+        for name in ("frontend/node_modules/reka-ui/package.json", "frontend/dist/index.html",
+                     "frontend/dist-ssr/entry.js", "frontend/coverage/report.json",
+                     "frontend/.vite/cache.json", "frontend/.cache/file.json",
+                     "frontend/.env.production", "frontend/secret.pem", "frontend/data/live.db",
+                     "frontend/../../outside.py", "frontend\\src\\example.vue"):
+            with self.subTest(name=name):
+                self.assertFalse(dev_lab.source_path(name, with_frontend=True))
+
     def test_verified_source_roundtrip_preserves_exact_bytes(self):
         content = b"# source\r\nprint('ok')\r\n"
         destination = self.root / "source"

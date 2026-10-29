@@ -297,13 +297,16 @@ def digest(blob: bytes) -> str:
     return hashlib.sha256(blob).hexdigest()
 
 
-def source_path(name: str) -> bool:
+def source_path(name: str, *, with_frontend: bool = False) -> bool:
     path = PurePosixPath(name)
     parts = path.parts
     if (not parts or path.is_absolute() or ".." in parts or "\\" in name
             or ":" in name or name != path.as_posix()):
         return False
-    if name not in ROOT_FILES and parts[0] not in SOURCE_ROOTS:
+    if (name not in ROOT_FILES and parts[0] not in SOURCE_ROOTS
+            and not (with_frontend and parts[0] == "frontend")):
+        return False
+    if parts[0] == "frontend" and set(parts) & {"dist", "dist-ssr", "coverage", ".vite", ".cache"}:
         return False
     return not (
         set(parts) & EXCLUDED_PARTS
@@ -316,14 +319,14 @@ def git(repo: Path, *args: str) -> bytes:
     return subprocess.check_output(["git", *args], cwd=repo)
 
 
-def pack(repo: Path) -> Path:
+def pack(repo: Path, *, with_frontend: bool = False) -> Path:
     repo = repo.resolve()
     names = git(repo, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
     files = {}
     total = 0
     for raw in sorted(set(names.split(b"\0")) - {b""}):
         name = os.fsdecode(raw)
-        if not source_path(name):
+        if not source_path(name, with_frontend=with_frontend):
             continue
         path = repo / name
         if not path.exists() and not path.is_symlink():
@@ -371,7 +374,7 @@ def unpack(archive: Path, destination: Path) -> dict:
         if sum(member.size for member in members) > MAX_SOURCE_BYTES + 2 * 1024 * 1024:
             raise ValueError("Snapshot exceeds the lab size budget")
         for member in members:
-            if not member.isfile() or (member.name != MANIFEST and not source_path(member.name)):
+            if not member.isfile() or (member.name != MANIFEST and not source_path(member.name, with_frontend=True)):
                 raise ValueError("Snapshot contains an unsafe or non-source member")
         manifest = json.load(bundle.extractfile(MANIFEST))
         hashes = manifest["files"]
@@ -482,14 +485,16 @@ def run_lab(archive: Path, profile: str, fresh: bool = False) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("pack")
+    pack_parser = commands.add_parser("pack")
+    pack_parser.add_argument("--with-frontend", action="store_true",
+                             help="Include frontend source/config/locks for clean UI checks; never node_modules or build output.")
     run = commands.add_parser("run")
     run.add_argument("--archive", type=Path, required=True)
     run.add_argument("--profile", choices=PROFILES, default="p0")
     run.add_argument("--fresh-env", action="store_true")
     args = parser.parse_args()
     if args.command == "pack":
-        pack(Path(__file__).resolve().parents[1])
+        pack(Path(__file__).resolve().parents[1], with_frontend=args.with_frontend)
         return 0
     return run_lab(args.archive, args.profile, args.fresh_env)
 
