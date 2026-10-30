@@ -1,4 +1,5 @@
 """Real Core authority, sealed event grant, independent stdlib Runtime and service."""
+from contextlib import ExitStack
 from datetime import UTC, datetime
 import hashlib
 import json
@@ -8,6 +9,7 @@ import pwd
 import socket
 import subprocess
 import sys
+import threading
 import time
 
 import pytest
@@ -73,7 +75,14 @@ def event_core(event_granted,monkeypatch,request):
             operation['timeout_seconds']=10 if 'core_restart' in request.node.name else 2
     replace_package(state,definition,state.validated.manifest.model_dump(mode='json'))
     activate_events(state)
-    with core_stack(state,monkeypatch) as s:yield s
+    with ExitStack() as parent_state:
+        if getattr(request,'param',None)=='locked_parent_claim':
+            # Model a parent worker at the fork boundary. Keep the parent's
+            # lock held throughout, so only correct child isolation can pass.
+            parent_claim=threading.Lock()
+            parent_state.enter_context(parent_claim)
+            monkeypatch.setattr(broker,'_claim_lock',parent_claim)
+        with core_stack(state,monkeypatch) as s:yield s
 
 
 @pytest.fixture
@@ -149,6 +158,18 @@ def test_bad_or_blocked_handler_is_bounded_and_core_stays_administrable(event_st
     wait_for_event(s,lambda:s.deliveries()[0]['status']=='acknowledged',phase='explicit_retry')
     assert s.deliveries()[0]['attempts']==2 and len(s.seen())==2
     assert s.command('fingerprint')==before
+
+
+@pytest.mark.parametrize('event_core',['locked_parent_claim'],indirect=True)
+def test_forked_core_has_an_independent_event_claim_lock(event_stack):
+    from backend.services import application_events as broker
+    s=event_stack;before=s.command('fingerprint')
+    assert broker._claim_lock.locked()
+    s.enqueue('fork')
+    wait_for_event(s,lambda:s.deliveries()[0]['status']=='acknowledged',phase='fork_dispatch')
+    assert s.deliveries()[0]['attempts']==1 and len(s.seen())==1
+    assert broker._claim_lock.locked()  # Never release/reset the parent's lock.
+    assert s.http('/settings/read')[0]==200 and s.command('fingerprint')==before
 
 
 def test_runtime_kill_cannot_replay_until_durable_lease_expires(event_stack):

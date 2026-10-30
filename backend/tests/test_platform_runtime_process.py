@@ -78,6 +78,10 @@ def _serve_core(state,base,runtime_uid,core_uid,core_gid,pipe):
         main.system_update_check_manager=Idle()
         # Fault only this owned test Core, after durable send and before FD handoff.
         from backend.services import application_events as event_broker
+        # This fixture forks the multithreaded pytest process, unlike the
+        # installed Core's fresh interpreter. A parent-owned claim lock cannot
+        # coordinate this child's independent queue and must not fence it.
+        event_broker._claim_lock = threading.Lock()
         sender=event_broker._send_event_invocation
         def send_event(prepared,request_id):
             origin=sender(prepared,request_id)
