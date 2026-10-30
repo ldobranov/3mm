@@ -6,6 +6,53 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.3] - 2026-10-30
+
+Prepared release; publication still requires the immutable tag's full gates.
+
+### Added
+
+- Reviewed Platform Runtime-only updates through System updates: prepare from
+  the installed Core, inspect the exact candidate, separately confirm Apply,
+  observe durable status and recover an interrupted operation without replay.
+  Core stays running; application-host pins and application rights are unchanged.
+- Shared draft forms, searchable record selection and ordered collection editing
+  through the public UI contract, with Reka UI as an internal Core dependency.
+- Multiple named menus in header/sidebar/footer regions and independent sticky
+  settings, retaining route, audience, language and kiosk filtering.
+
+### Changed
+
+- One built-in light/dark theme and one appearance editor with isolated draft
+  previews. Explicit theme packages and their saved settings remain available;
+  retired prototype color records are preserved rather than erased or imported.
+- Header and Menu settings use shared editors, language-preserving drafts,
+  explicit save/discard/delete and readback after uncertain results.
+- Bulgarian language pack 1.0.2 includes the Runtime, theme and Header/Menu
+  labels. Existing language selection is preserved; enable the new package
+  explicitly after upgrade. The earlier test 1.0.1 ZIP is not overwritten.
+
+### Fixed
+
+- Exact staged connector registration takes precedence over historical initial
+  registration after an application upgrade, without bypassing sealed proofs,
+  current configuration or fresh resource approval.
+- Local deployment reads the installed profile from its canonical marker.
+- Forked test Core processes use their own event-claim lock. A regression
+  reproduces the inherited-parent-lock refusal before the fix and verifies
+  delivery after it; production Runtime deadlines and queue rules are unchanged.
+
+### Verification and limits
+
+- Main CI at e615d72 passed Python, frontend and tooling. Owner Raspberry trials
+  accepted the limited Runtime update path and the theme/Header/Menu work.
+- This preparation changes release metadata and the language package version,
+  not runtime behavior. Owner metadata/package checks passed (98 tests); Release
+  still repeats all configured gates and reproducible builds for the exact tag.
+- No new database migration relative to 0.3.2. Protocol 1.0 and Application SDK
+  1.3 remain independent. Runtime/host/Agent pins, Terminal, I2C hardware, full
+  CAP03/CAP09/CAP13 and WP5 isolation are not implicitly updated or completed.
+
 ## [0.3.2] - 2026-10-28
 
 Prepared source; publication still requires the immutable tag's full release gates.

@@ -8,10 +8,11 @@ combines a central Core, a persistent device Agent, provisioning and reviewed
 applications through common capability contracts and SDKs. Builder, dashboards
 and other product features live in optional source packages/libraries.
 
-> **Project status:** Development prototype (pre-1.0). This source prepares **Core 0.3.2**, covering
-> common resource discovery, actor/delegation access, lifecycle recovery,
-> tasks/schedules, shared themed UI, files/media and invocation optimization.
-> The [0.3.2 changelog](CHANGELOG.md#032---2026-10-28) describes the supported scope.
+> **Project status:** Development prototype (pre-1.0). This source prepares **Core 0.3.3**, adding
+> reviewed Runtime-only web updates, shared editing controls, one built-in
+> light/dark theme, and Header/Menu editing with menu placement and sticky zones.
+> It also fixes connector upgrade registration and includes Bulgarian pack 1.0.2.
+> The [0.3.3 changelog](CHANGELOG.md#033---2026-10-30) describes the supported scope.
 > It builds on the accepted
 > Core stabilization, Standalone/Hub/Node setup and Wi-Fi/AP recovery, bounded
 > diagnostics, independent optional runtimes and manifest-v2 language extensions.
@@ -23,7 +24,7 @@ and other product features live in optional source packages/libraries.
 > Host/root administration, public Cloud, full remote Terminal UI and whole
 > M21/WP5 isolation remain separate work. Terminal 1.0.3 is an independent package.
 > Native application approval permits Linux code execution and is **not a sandbox**.
-> The [0.3.2 release notes](docs/RELEASE_NOTES_0.3.2.md) describe upgrades,
+> The [0.3.3 release notes](docs/RELEASE_NOTES_0.3.3.md) describe upgrades,
 > independent components and owner device trials. Preserve database/key backups;
 > populated history can refuse downgrade, and an older Core pointer alone does
 > not restore the previous database or independent component versions.
@@ -38,7 +39,7 @@ and other product features live in optional source packages/libraries.
 > Platform Runtime and application-host/SDK components plus normal release gates.
 > Commands, user delegation, recursive/remote composition and scoped-relational
 > query providers remain outside this profile. See [CAP13 contract and limits](docs/CORE_SIMPLIFICATION_PLAN.md#cap13-композиция-между-приложения)
-> and the [prepared changelog](CHANGELOG.md#032---2026-10-28).
+> and its [0.3.2 changelog](CHANGELOG.md#032---2026-10-28).
 > CI runs automatically on branch pushes. An immutable version tag runs all
 > Release checks and reproducible builds; assets appear only after successful
 > publication. Device trials are separate from publication. The release badge
