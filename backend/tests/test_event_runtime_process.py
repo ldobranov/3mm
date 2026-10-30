@@ -31,6 +31,37 @@ SERVICE=SERVICE.replace("result={'status':200,'content_type':'text/html; charset
 SERVICE=SERVICE.replace("if mode=='request_id':response['request_id']='foreign'", "if mode=='request_id':response=sign_message({**response,'request_id':'foreign'},secret)")
 
 
+def wait_for_event(s, predicate, *, phase, seconds=5):
+    """Keep the assertion budget; retain owned child state when it expires."""
+    try:
+        wait_for(predicate, seconds=seconds)
+    except AssertionError as error:
+        details = {
+            'phase': phase, 'wait_seconds': seconds,
+            'peer_exit': s.event_peer.poll(), 'core_exit': s.core.exitcode,
+            'runtime_exit': s.control.process.poll(),
+        }
+        for name, read in [('seen_count', lambda: len(s.seen())),
+                           ('deliveries', s.deliveries)]:
+            try:
+                value = read()
+                # Dispatch metadata/payloads are unnecessary for this diagnosis.
+                details[name] = ([{key: row[key] for key in ('id', 'status', 'attempts', 'error')}
+                                  for row in value] if name == 'deliveries' else value)
+            except Exception as failure:
+                details[name] = {'read_error': type(failure).__name__}
+        for name, path in [('runtime_log', s.base/'runtime.log'),
+                           ('peer_log', s.base/'event-peer.log')]:
+            try:
+                with path.open('rb') as stream:
+                    stream.seek(0, os.SEEK_END)
+                    stream.seek(max(0, stream.tell()-4096))
+                    details[name] = stream.read(4096).decode('utf-8', errors='replace')
+            except OSError as failure:
+                details[name] = {'read_error': type(failure).__name__}
+        raise AssertionError('Event process wait failed: '+json.dumps(details, sort_keys=True)) from error
+
+
 @pytest.fixture
 def event_core(event_granted,monkeypatch,request):
     from backend.services import application_events as broker
@@ -52,9 +83,12 @@ def event_stack(event_core):
     if os.geteuid()==0:
         app=pwd.getpwnam('3mm-app');os.chown(root,app.pw_uid,app.pw_gid)
         options={'user':app.pw_uid,'group':app.pw_gid,'extra_groups':[]}
-    peer=subprocess.Popen(['/usr/bin/python3','-c',SERVICE,str(root),(b's'*32).hex()],cwd=SOURCE,
-        env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','PYTHONPATH':str(SOURCE)},
-        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,**options)
+    # Owned fixture log is included in a failed wait before core_stack removes
+    # its temporary directory; a silent peer failure must not look like a hang.
+    with (s.base/'event-peer.log').open('ab') as peer_log:
+        peer=subprocess.Popen(['/usr/bin/python3','-c',SERVICE,str(root),(b's'*32).hex()],cwd=SOURCE,
+            env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','PYTHONPATH':str(SOURCE)},
+            stdout=peer_log,stderr=peer_log,**options)
     engine=create_engine('sqlite:///'+str(s.base/'core/3mm.db'))
     try:
         wait_for(lambda:(root/'service.sock').exists())
@@ -105,14 +139,14 @@ def test_real_worker_acknowledges_durable_event_and_preserves_core(event_stack):
 def test_bad_or_blocked_handler_is_bounded_and_core_stays_administrable(event_stack,mode):
     s=event_stack;before=s.command('fingerprint');(s.event_root/'mode').write_text(mode)
     s.enqueue(mode)
-    wait_for(lambda:len(s.seen())==1)
+    wait_for_event(s,lambda:len(s.seen())==1,phase='first_dispatch')
     for _ in range(4):assert s.http('/settings/read')[0]==200
     assert s.client.discover_platform()['instance_id']=='a'*24
-    wait_for(lambda:s.deliveries()[0]['status']=='pending',seconds=5)
+    wait_for_event(s,lambda:s.deliveries()[0]['status']=='pending',phase='bounded_failure',seconds=5)
     assert s.deliveries()[0]['attempts']==1
     time.sleep(.1);assert len(s.seen())==1
     (s.event_root/'mode').write_text('valid');s.command('event_retry')
-    wait_for(lambda:s.deliveries()[0]['status']=='acknowledged')
+    wait_for_event(s,lambda:s.deliveries()[0]['status']=='acknowledged',phase='explicit_retry')
     assert s.deliveries()[0]['attempts']==2 and len(s.seen())==2
     assert s.command('fingerprint')==before
 
