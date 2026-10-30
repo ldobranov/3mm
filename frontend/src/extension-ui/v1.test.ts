@@ -8,7 +8,9 @@ import { builtinUiDesign } from '../utils/ui-design'
 vi.mock('@/stores/settings', () => ({ useSettingsStore: () => ({ headerSettings: { siteName: 'Reference' } }) }))
 vi.mock('@/utils/ui-labels', () => ({ useUiLabels: () => (key: string) => key }))
 vi.mock('vue-router', () => ({ useRoute: () => ({ fullPath: '/' }) }))
-vi.mock('../components/Menu.vue', () => ({ default: { template: '<div />' } }))
+// The shell now keeps page content in Menu's stable named slot. This test
+// replaces navigation only; it must not swallow the extension's draft surface.
+vi.mock('../components/Menu.vue', () => ({ default: { template: '<div><slot name="content" /></div>' } }))
 vi.mock('../components/ThemeToggle.vue', () => ({ default: { template: '<button />' } }))
 
 afterEach(() => vi.restoreAllMocks())

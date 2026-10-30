@@ -1,20 +1,22 @@
 <script setup lang="ts">
 import { computed, provide, ref, useId } from 'vue'
-import { UiButton, UiDialog, UiField, UiForm, UiState, UiSurface, UiTable } from '@/extension-ui/v1'
+import { UiButton, UiCollectionEditor, UiDialog, UiEditorForm, UiField, UiForm, UiRecordPicker, UiState, UiSurface, UiTable } from '@/extension-ui/v1'
 import { extensionUiKey } from '@/extension-ui/context'
 import { useUiLabels } from '@/utils/ui-labels'
 import { useSettingsStore } from '@/stores/settings'
 import { useThemeStore } from '@/stores/theme'
-import { uiDesignVariables } from '@/utils/ui-design'
+import { uiDesignVariables, type UiDesign } from '@/utils/ui-design'
+import type { ResolvedHeaderSettings } from '@/utils/header-settings'
 import type { ThemeMode } from '@/utils/theme-extension'
 
-const props = defineProps<{ mode?: ThemeMode; controlsOnly?: boolean }>()
+const props = defineProps<{ mode?: ThemeMode; controlsOnly?: boolean; design?: UiDesign; header?: ResolvedHeaderSettings }>()
 const settings = useSettingsStore()
-provide(extensionUiKey, computed(() => settings.uiDesign.components))
+const design = computed(() => props.design ?? settings.uiDesign)
+provide(extensionUiKey, computed(() => design.value.components))
 const modes = useThemeStore()
 const paletteMode = computed(() => props.mode ?? modes.theme)
 const variables = computed(() => {
-  const tokens = uiDesignVariables(settings.uiDesign, paletteMode.value, settings.headerSettings)
+  const tokens = uiDesignVariables(design.value, paletteMode.value, props.header ?? settings.headerSettings)
   // Inherit the already verified package font, not the system-font fallback.
   delete tokens['--ui-font']
   return tokens
@@ -25,6 +27,19 @@ const open = ref(false)
 const name = ref('')
 const description = ref('')
 const enabled = ref(true)
+const editorState = ref<'idle' | 'unconfirmed' | 'conflict'>('idle')
+const selected = ref<string[]>(['first'])
+const panels = ref([{ id: '1', title: '' }, { id: '2', title: '' }])
+const sampleValue = () => JSON.stringify({ selected: selected.value, panels: panels.value })
+const savedSample = ref(sampleValue())
+const sampleDirty = computed(() => sampleValue() !== savedSample.value)
+const discardSample = () => {
+  const saved = JSON.parse(savedSample.value) as { selected: string[]; panels: { id: string; title: string }[] }
+  selected.value = saved.selected; panels.value = saved.panels
+}
+let panelSequence = 2
+const addPanel = () => { if (panels.value.length < 2) panels.value = [...panels.value, { id: String(++panelSequence), title: '' }] }
+const pickerOptions = computed(() => [{ id: 'first', label: label('primary') }, { id: 'second', label: label('secondary') }])
 const state = ref<'loading' | 'error' | 'empty'>('loading')
 const attempted = ref(false)
 const validated = ref(false)
@@ -40,6 +55,7 @@ const validate = () => {
 <template>
   <UiSurface class="component-preview ui-stack" :style="variables" :data-mode="paletteMode" :aria-label="label('livePreview')">
     <div class="preview-heading"><h3>{{ label('livePreview') }}</h3><p class="ui-help">{{ label('enabledHelp') }}</p></div>
+    <div class="preview-appearance-bar ui-row"><strong>{{ (header ?? settings.headerSettings).siteName }}</strong><span>{{ label(paletteMode) }}</span></div>
     <section class="ui-section ui-stack">
       <h4>{{ label('primitives') }}</h4>
       <div class="ui-row"><UiButton variant="primary">{{ label('primary') }}</UiButton><UiButton>{{ label('secondary') }}</UiButton><UiButton variant="danger">{{ label('danger') }}</UiButton></div>
@@ -67,6 +83,31 @@ const validate = () => {
       </UiTable>
     </section>
     <section v-if="!controlsOnly" class="ui-section ui-stack">
+      <div class="ui-row">
+        <UiButton v-for="kind in ['idle', 'unconfirmed', 'conflict'] as const" :key="kind" :aria-pressed="editorState === kind" @click="editorState = kind">
+          {{ label(kind === 'idle' ? 'ready' : kind === 'unconfirmed' ? 'previewUnconfirmed' : 'previewConflict') }}
+        </UiButton>
+      </div>
+      <UiEditorForm :title="label('editingControls')" :description="label('enabledHelp')" :dirty="sampleDirty" :state="editorState"
+        :save-label="label('confirm')" :cancel-label="label('cancel')" :dirty-label="label('localSampleDraft')" :saved-label="label('validated')"
+        :unconfirmed-label="label('appearanceUnconfirmed')" :conflict-label="label('appearanceConflict')"
+        @save="savedSample = sampleValue()" @cancel="discardSample">
+        <template #default="{ disabled }">
+          <UiRecordPicker :id="`${formId}-records`" :label="label('resource')" v-model="selected" multiple :options="pickerOptions" :disabled="disabled"
+            :placeholder="label('namePlaceholder')" :empty-label="label('emptyMessage')" :selected-label="label('resource')"
+            :remove-label="label('remove')" :toggle-label="label('chooseRecords')" :loading-label="label('loading')" :unavailable-label="label('disabled')" />
+          <UiCollectionEditor :title="label('orderedPanels')" v-model="panels" :item-key="item => item.id" :item-label="item => `${label('panel')} ${item.id}`" @add="addPanel"
+            :disabled="disabled" :min-items="1" :max-items="2" :add-label="label('addPanel')" :remove-label="label('remove')"
+            :move-up-label="label('moveUp')" :move-down-label="label('moveDown')" :empty-label="label('emptyMessage')" :invalid-keys-label="label('errorState')">
+            <template #default="{ item, disabled: locked }">
+              <UiField :id="`${formId}-${item.id}`" :label="label('name')" v-model="item.title" :disabled="locked" :placeholder="label('namePlaceholder')" />
+            </template>
+          </UiCollectionEditor>
+        </template>
+        <template #recovery><UiButton @click="editorState = 'idle'">{{ label('resolveExample') }}</UiButton></template>
+      </UiEditorForm>
+    </section>
+    <section v-if="!controlsOnly" class="ui-section ui-stack">
       <div class="ui-row"><UiButton v-for="kind in ['loading', 'error', 'empty'] as const" :key="kind" :aria-pressed="state === kind" @click="state = kind">{{ label(kind === 'error' ? 'errorState' : kind) }}</UiButton></div>
       <UiState :kind="state" :message="label(state === 'empty' ? 'emptyMessage' : state)" />
     </section>
@@ -84,4 +125,5 @@ const validate = () => {
 .component-preview { min-width: 0; background: var(--ui-canvas); padding: calc(var(--ui-space) * 3); border-radius: var(--ui-radius-md); }
 .component-preview h3, .component-preview h4 { margin: 0; font-size: 1em; font-weight: 650; }
 .preview-heading { display: grid; gap: calc(var(--ui-space) * 2); }
+.preview-appearance-bar { justify-content: space-between; padding: calc(var(--ui-space) * 3); border-radius: var(--ui-radius-sm); background: var(--ui-header-bg); color: var(--ui-header-text); }
 </style>

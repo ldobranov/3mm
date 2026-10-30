@@ -3,9 +3,9 @@ import { reactive, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const http = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() }))
-const saves = vi.hoisted(() => ({ upsert: vi.fn(), header: vi.fn(), load: vi.fn(), css: vi.fn() }))
+const saves = vi.hoisted(() => ({ upsert: vi.fn(), read: vi.fn(), header: vi.fn(), load: vi.fn(), css: vi.fn() }))
 vi.mock('@/utils/dynamic-http', () => ({ default: http }))
-vi.mock('@/utils/settings-api', () => ({ upsertSettings: saves.upsert }))
+vi.mock('@/utils/settings-api', () => ({ upsertSettings: saves.upsert, readSettings: saves.read }))
 const language = ref('en')
 vi.mock('@/utils/i18n', () => ({ useI18n: () => ({ currentLanguage: language, t: (_key: string, fallback: string) => fallback }) }))
 const route = reactive({ query: {} as Record<string, string> })
@@ -19,7 +19,7 @@ const settings = reactive({
   uiDesign: { components: { card: 'raised', button: 'outline' } },
   activeTheme: null as object | null, isPackagePreview: false,
   headerSettings: { siteName: 'Reference', headerMessage: 'Welcome', logoUrl: '', backgroundColor: '#ffffff', textColor: '#111111' },
-  lightStyleSettings: {}, darkStyleSettings: {}, loadSettings: saves.load,
+  loadSettings: saves.load,
   saveHeaderSettings: saves.header, updateCSSVariables: saves.css,
 })
 vi.mock('@/stores/settings', () => ({ useSettingsStore: () => settings }))
@@ -28,14 +28,16 @@ import Settings from './Settings.vue'
 import ApplicationSettingsSection from '@/components/settings/ApplicationSettingsSection.vue'
 import HeaderCustomizationSection from '@/components/settings/HeaderCustomizationSection.vue'
 import MenuConfigurationSection from '@/components/settings/MenuConfigurationSection.vue'
-import LanguageSelector from '@/components/LanguageSelector.vue'
 import ThemeSelector from '@/components/ThemeSelector.vue'
 
 const mounted: Array<ReturnType<typeof mount>> = []
+let savedLogo = ''
+let savedTexts: Record<string, Record<string, string>>
 const mountView = async () => {
   const wrapper = mount(Settings, { global: { stubs: {
     ThemePackagesSection: { props: ['active'], template: '<div class="package-editor" :data-active="active" />' },
-    ThemeCustomizationSection: true, MenuEditor: true, ImageEditorModal: true,
+    MenuEditor: true, ImageEditorModal: true,
+    UiDialog: { props: ['open'], template: '<div v-if="open" role="dialog"><slot /><slot name="actions" /></div>' },
     NetworkConfigurationSection: true, SystemControlSection: true,
     BackupRecoverySection: true, DiagnosticsSection: true,
   } } })
@@ -54,11 +56,19 @@ describe('Settings themed workspace compatibility', () => {
     vi.clearAllMocks(); localStorage.clear(); localStorage.setItem('role', 'admin'); localStorage.setItem('authToken', 'test-only')
     route.query = {}; language.value = 'en'; settings.activeTheme = null; settings.isPackagePreview = false
     settings.headerSettings.logoUrl = ''
+    savedLogo = ''; savedTexts = { en: { site_name: 'Reference' }, bg: { site_name: 'Пример' } }
+    saves.read.mockImplementation(async () => [{ key: 'logo_url', value: savedLogo, language_code: null }])
+    saves.upsert.mockImplementation(async (values: { key: string; value: string; language_code: string | null }[]) => {
+      for (const item of values) {
+        if (item.key === 'logo_url') savedLogo = item.value
+        else if (item.language_code) (savedTexts[item.language_code] ??= {})[item.key] = item.value
+      }
+    })
     http.get.mockImplementation(async (path: string) => {
       if (path === '/language/available') return { data: { languages: ['en', 'bg'] } }
       if (path.startsWith('/settings/language/')) {
         const code = path.endsWith('/bg') ? 'bg' : 'en'
-        return { data: { items: [{ key: 'site_name', value: code === 'en' ? 'Reference' : 'Пример', language_code: code }] } }
+        return { data: { items: Object.entries(savedTexts[code]!).map(([key, value]) => ({ key, value, language_code: code })) } }
       }
       if (path === '/menu/read') return { data: { items: [{ id: 3, name: 'Navigation', is_active: true, items: [{ path: '/dynamic-page', label: { en: 'Dynamic page', bg: 'Динамична страница' }, audience: 'authenticated' }] }] } }
       if (path === '/api/admin/session-settings') return { data: { duration_hours: 168, minimum_hours: 1, maximum_hours: 720 } }
@@ -100,17 +110,22 @@ describe('Settings themed workspace compatibility', () => {
     await selectSection(wrapper, 'header')
     const header = wrapper.findComponent(HeaderCustomizationSection)
     await wrapper.get('#site-name').setValue('English draft')
-    await header.findComponent(LanguageSelector).vm.$emit('update:modelValue', 'bg'); await flushPromises()
+    await header.get('#header-language').setValue('bg'); await flushPromises()
     expect(wrapper.get('#site-name').element).toHaveProperty('value', 'Пример')
     await wrapper.get('#site-name').setValue('Български текст')
     await selectSection(wrapper, 'theme'); await selectSection(wrapper, 'header')
-    await header.findComponent(LanguageSelector).vm.$emit('update:modelValue', 'en'); await flushPromises()
+    await header.get('#header-language').setValue('en'); await flushPromises()
     expect(wrapper.get('#site-name').element).toHaveProperty('value', 'English draft')
     header.vm.$emit('logo-upload', '/uploads/settings/logo.png'); await flushPromises()
+    expect(settings.headerSettings.logoUrl).toBe('')
     await header.get('form').trigger('submit'); await flushPromises()
-    expect(saves.upsert).toHaveBeenCalledWith([expect.objectContaining({ key: 'site_name', value: 'English draft', language_code: 'en' })])
-    expect(saves.header).toHaveBeenCalledWith(false)
-    expect(settings.headerSettings.logoUrl).toBe('/uploads/settings/logo.png')
+    expect(saves.upsert).toHaveBeenCalledWith([
+      expect.objectContaining({ key: 'site_name', value: 'English draft', language_code: 'en' }),
+      expect.objectContaining({ key: 'header_message', language_code: 'en' }),
+      expect.objectContaining({ key: 'logo_url', value: '/uploads/settings/logo.png', language_code: null }),
+    ])
+    expect(saves.header).not.toHaveBeenCalled()
+    expect(header.props('state')).toBe('idle')
     expect(header.find('input[type=color]').exists()).toBe(false)
   })
 
@@ -125,16 +140,85 @@ describe('Settings themed workspace compatibility', () => {
 
   it('deletes the last active menu and leaves an empty header configuration', async () => {
     const wrapper = await mountView(); await selectSection(wrapper, 'menu')
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     http.delete.mockResolvedValue({ data: { deleted: true, menu_id: 3 } })
     const previousGet = http.get.getMockImplementation()!
     http.get.mockImplementation(async (path: string) => path === '/menu/read'
       ? { data: { items: [] } } : previousGet(path))
     await wrapper.get('.menu-delete').trigger('click'); await flushPromises()
+    expect(http.delete).not.toHaveBeenCalled()
+    await wrapper.get('[role="dialog"] form').trigger('submit'); await flushPromises()
     expect(http.delete).toHaveBeenCalledWith('/menu/3')
     expect(wrapper.find('.menu-delete').exists()).toBe(false)
     expect(wrapper.get('.menu-empty-state').text()).toContain('The header has no navigation links.')
     expect(wrapper.findComponent(MenuConfigurationSection).props('currentMenuItems')).toEqual([])
+  })
+
+  it('keeps logo edits in the draft and discards them without writing settings', async () => {
+    const wrapper = await mountView(); await selectSection(wrapper, 'header')
+    const header = wrapper.findComponent(HeaderCustomizationSection)
+    header.vm.$emit('logo-upload', '/uploads/settings/new.png'); await flushPromises()
+    expect(header.props('headerSettings').logoUrl).toBe('/uploads/settings/new.png')
+    expect(settings.headerSettings.logoUrl).toBe('')
+    header.vm.$emit('discard'); await flushPromises()
+    expect(header.props('headerSettings').logoUrl).toBe('')
+    expect(saves.upsert).not.toHaveBeenCalled()
+  })
+
+  it('locks an uncertain header save and preserves the draft if the saved-value read fails', async () => {
+    const wrapper = await mountView(); await selectSection(wrapper, 'header')
+    const header = wrapper.findComponent(HeaderCustomizationSection)
+    saves.upsert.mockRejectedValueOnce(new Error('lost reply'))
+    await wrapper.get('#site-name').setValue('Keep this draft')
+    await header.get('form').trigger('submit'); await flushPromises()
+    expect(header.props('state')).toBe('unconfirmed')
+    header.vm.$emit('save-header-settings'); await flushPromises()
+    expect(saves.upsert).toHaveBeenCalledTimes(1)
+    saves.read.mockRejectedValueOnce(new Error('offline'))
+    header.vm.$emit('reload'); await flushPromises()
+    expect(wrapper.get('#site-name').element).toHaveProperty('value', 'Keep this draft')
+    expect(header.props('state')).toBe('unconfirmed')
+    header.vm.$emit('reload'); await flushPromises()
+    expect(header.props('state')).toBe('idle')
+    expect(wrapper.get('#site-name').element).toHaveProperty('value', 'Reference')
+    expect(saves.upsert).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not call an old saved snapshot confirmation of a changed header', async () => {
+    const wrapper = await mountView(); await selectSection(wrapper, 'header')
+    const header = wrapper.findComponent(HeaderCustomizationSection)
+    saves.upsert.mockResolvedValueOnce(undefined) // Acknowledged, but read still has the old values.
+    await wrapper.get('#site-name').setValue('Unconfirmed new value')
+    await header.get('form').trigger('submit'); await flushPromises()
+    expect(header.props('state')).toBe('unconfirmed')
+    expect(wrapper.get('#site-name').element).toHaveProperty('value', 'Unconfirmed new value')
+    expect(wrapper.text()).not.toContain('Header settings saved.')
+  })
+
+  it('keeps separate menu drafts and locks mutations after a lost save reply', async () => {
+    const wrapper = await mountView(); await selectSection(wrapper, 'menu')
+    const menu = wrapper.findComponent(MenuConfigurationSection)
+    const original = http.get.getMockImplementation()!
+    http.get.mockImplementation(async (path: string) => path === '/menu/read' ? { data: { items: [
+      { id: 3, name: 'Navigation', is_active: true, items: [{ path: '/dynamic-page', label: { en: 'Saved' }, audience: 'authenticated' }] },
+      { id: 4, name: 'Other', is_active: false, items: [] },
+    ] } } : original(path))
+    menu.vm.$emit('reload'); await flushPromises()
+    const draft = [{ path: '/dynamic-page', label: { en: 'Draft' }, audience: 'authenticated' }]
+    menu.vm.$emit('update:currentMenuItems', draft); await flushPromises()
+    menu.vm.$emit('update:activeMenuId', 4); await flushPromises()
+    expect(menu.props('currentMenuItems')).toEqual([])
+    menu.vm.$emit('update:activeMenuId', 3); await flushPromises()
+    expect(menu.props('currentMenuItems')).toEqual(draft)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    http.put.mockRejectedValueOnce(new Error('lost reply'))
+    menu.vm.$emit('save-menu'); await flushPromises()
+    expect(menu.props('state')).toBe('unconfirmed')
+    menu.vm.$emit('save-menu'); menu.vm.$emit('create-menu', 'Do not replay'); await flushPromises()
+    expect(http.put).toHaveBeenCalledTimes(1); expect(http.post).not.toHaveBeenCalled()
+    menu.vm.$emit('reload'); await flushPromises()
+    expect(menu.props('state')).toBe('idle')
+    expect(menu.props('currentMenuItems')[0].label).toEqual({ en: 'Saved' })
+    expect(http.put).toHaveBeenCalledTimes(1)
   })
 
   it('preserves non-admin visibility without mounting privileged sections or querying their settings', async () => {

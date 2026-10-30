@@ -4,199 +4,210 @@ import { createPinia, setActivePinia } from 'pinia'
 import { ref } from 'vue'
 import { builtinUiDesign } from '@/utils/ui-design'
 import { designPreferences, parseThemePreferences } from '@/utils/theme-customization'
+import { UiEditorForm } from '@/extension-ui/v1'
+import ThemeComponentPreview from './ThemeComponentPreview.vue'
 
-const mocks = vi.hoisted(() => ({ post: vi.fn(), getCurrentBackendUrl: async () => '' }))
+const mocks = vi.hoisted(() => ({ post: vi.fn(), get: vi.fn(), getCurrentBackendUrl: async () => '' }))
 vi.mock('@/utils/dynamic-http', () => ({ default: mocks }))
 vi.mock('@/utils/settings-api', () => ({ readSettings: async () => [], upsertSettings: vi.fn() }))
 const language = ref('en')
 vi.mock('@/utils/i18n', async () => { const { movedLanguageLabel } = await import('@/test-utils/language-messages'); return { useI18n: () => ({ t: (key: string, fallback: string) => movedLanguageLabel(key, fallback, language.value), currentLanguage: language }) } })
 import { useSettingsStore } from '@/stores/settings'
+import { useThemeStore } from '@/stores/theme'
 import ThemeAppearanceSection from './ThemeAppearanceSection.vue'
 
 const projection = () => ({ package_sha256: 'a'.repeat(64), theme: {
   theme_extension_version: 2, design_api_version: 2, module_id: 'org.example.theme', version: '2.0.0',
   name: { en: 'Example' }, base_theme: 'builtin.default', design: { ...builtinUiDesign(), header_style: 'theme' }, assets: [],
 } })
-const mountEditor = () => mount(ThemeAppearanceSection, { props: { sha256: 'a'.repeat(64) },
-  global: { stubs: { RouterLink: { template: '<a><slot /></a>' },
-    ColorPicker: { props: ['label', 'modelValue'], emits: ['update:modelValue'],
+const read = (value: unknown) => vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify(value) }))
+const mounted: ReturnType<typeof mount>[] = []
+const mountEditor = (sha256: string | null = 'a'.repeat(64)) => {
+  const wrapper = mount(ThemeAppearanceSection, { props: { sha256 },
+    global: { stubs: { RouterLink: true, ColorPicker: { props: ['label', 'modelValue'], emits: ['update:modelValue'],
       template: '<label>{{ label }}<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" /></label>' } } },
-})
+  })
+  mounted.push(wrapper)
+  return wrapper
+}
+const field = (wrapper: ReturnType<typeof mountEditor>, key: string) => wrapper.get(`[data-field="${key}"] select`)
+const saveButton = (wrapper: ReturnType<typeof mountEditor>) => wrapper.get('.appearance-workbench > form [type=submit]')
+const form = (wrapper: ReturnType<typeof mountEditor>) => wrapper.get('.appearance-workbench > form')
+const discard = (wrapper: ReturnType<typeof mountEditor>) => wrapper.get('.appearance-workbench > form .ui-editor-actions button')
 let settings: ReturnType<typeof useSettingsStore>
-describe('saved theme appearance controls', () => {
-  beforeEach(async () => {
-    vi.clearAllMocks(); localStorage.clear(); language.value = 'en'; setActivePinia(createPinia())
-    mocks.post.mockResolvedValue({ data: {} })
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify(projection()) }))
-    settings = useSettingsStore(); await settings.loadThemeAppearance()
-  })
-  afterEach(() => { vi.unstubAllGlobals(); document.documentElement.style.cssText = '' })
-  it('shows live samples of the selected theme beside its controls, without a separate preview link', async () => {
-    const wrapper = mountEditor()
-    expect(wrapper.find('.component-preview').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Live component preview')
-    expect(wrapper.text()).not.toContain('Open component preview')
-    await wrapper.get('[data-field=button]').setValue('outline')
-    expect(settings.uiDesign.components.button).toBe('outline')
+
+beforeEach(async () => {
+  vi.clearAllMocks(); localStorage.clear(); language.value = 'en'; setActivePinia(createPinia())
+  mocks.post.mockResolvedValue({ data: {} }); read(projection())
+  mocks.get.mockResolvedValue({ data: { items: [] } })
+  settings = useSettingsStore(); await settings.loadThemeAppearance()
+})
+afterEach(() => { mounted.splice(0).forEach(w => w.unmount()); vi.unstubAllGlobals(); document.documentElement.style.cssText = '' })
+
+describe('one theme editor with an isolated CAP09 draft', () => {
+  it('saves menu placements and sticky zones only with the appearance; discard restores the saved layout', async () => {
+    mocks.get.mockResolvedValue({ data: { items: [
+      { id: 1, name: 'Main', is_active: true }, { id: 2, name: 'Footer', is_active: false },
+    ] } })
+    const wrapper = mountEditor(); await flushPromises()
+    await wrapper.get('[data-menu-id="2"] select').setValue('footer')
+    await wrapper.get('[data-sticky="header"] input').setValue(true)
+    expect(settings.menuLayout).toBeNull()
     expect(mocks.post).not.toHaveBeenCalled()
-    wrapper.unmount()
+    expect(wrapper.get('[data-preview-region="footer"]').text()).toContain('Footer')
+    await discard(wrapper).trigger('click')
+    expect(wrapper.get('[data-menu-id="2"] select').element).toHaveProperty('value', 'hidden')
+    expect(wrapper.get('[data-sticky="header"] input').element).toHaveProperty('checked', false)
+    await wrapper.get('[data-menu-id="2"] select').setValue('footer')
+    await wrapper.get('[data-sticky="footer"] input').setValue(true)
+    const menu_layout = { placements: [{ menu_id: 1, location: 'primary' }, { menu_id: 2, location: 'footer' }],
+      sticky: { header: false, sidebar: false, footer: true } }
+    const saved = { ...designPreferences(settings.baseUiDesign, settings.headerSettings), menu_layout }
+    read({ ...projection(), customization: saved })
+    await form(wrapper).trigger('submit'); await flushPromises()
+    expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/api/v1/modules/themes/customization', { sha256: 'a'.repeat(64), preferences: saved })
+    expect(settings.menuLayout).toEqual(menu_layout)
   })
-  it('renders only the choices and colors offered by the package', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify({
-      ...projection(), theme: { ...projection().theme, customization_options: { navigation: ['sidebar', 'top'], colors: ['border'] } },
-    }) }))
-    await settings.loadThemeAppearance()
+  it('uses the shared editor and previews changes without restyling the installation', async () => {
     const wrapper = mountEditor()
-    expect(wrapper.find('[data-field=navigation]').exists()).toBe(true)
-    for (const field of ['density', 'button', 'card', 'custom-header']) expect(wrapper.find(`[data-field=${field}]`).exists()).toBe(false)
-    expect(wrapper.findAll('[data-color]')).toHaveLength(1)
-    expect(wrapper.find('[data-color=border]').exists()).toBe(true)
-    expect(settings.setPreferencePreview({ ...designPreferences(settings.baseUiDesign, settings.headerSettings), density: 'comfortable' })).toBe(false)
-    wrapper.unmount()
-  })
-  it('previews without writes, saves exact-theme preferences and reloads them', async () => {
-    const wrapper = mountEditor()
-    await wrapper.get('[data-field=navigation]').setValue('top')
-    expect(settings.uiDesign.layout.navigation).toBe('top')
-    expect(mocks.post).not.toHaveBeenCalled()
-    const saved = { ...designPreferences(settings.baseUiDesign, settings.headerSettings), navigation: 'top' }
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify({ ...projection(), customization: saved }) }))
-    await wrapper.get('form').trigger('submit'); await flushPromises()
-    expect(mocks.post).toHaveBeenCalledWith('/api/v1/modules/themes/customization', { sha256: 'a'.repeat(64), preferences: saved })
-    expect(settings.preferencePreview).toBeNull()
-    expect(wrapper.text()).toContain('Appearance saved.')
-    expect(wrapper.get('[type=submit]').attributes('disabled')).toBeDefined()
-    await settings.loadThemeAppearance(); await flushPromises()
-    expect(wrapper.text()).toContain('Appearance saved.')
-    wrapper.unmount(); await settings.loadThemeAppearance()
-    expect(settings.uiDesign.layout.navigation).toBe('top')
-    expect(settings.activeTheme?.theme_extension_version).toBe(2)
-  })
-  it('discards unsaved edits on section exit, and keeps failed saves unsaved', async () => {
-    mocks.post.mockRejectedValue(new Error('offline'))
-    const wrapper = mountEditor()
-    await wrapper.get('[data-field=navigation]').setValue('top')
-    await wrapper.get('form').trigger('submit'); await flushPromises()
-    expect(wrapper.get('[role=alert]').text()).toContain('Could not save')
-    expect(settings.preferencePreview?.navigation).toBe('top')
-    wrapper.unmount()
-    expect(settings.preferencePreview).toBeNull()
+    const original = document.documentElement.style.cssText
+    expect(wrapper.findComponent(UiEditorForm).exists()).toBe(true)
+    await field(wrapper, 'navigation').setValue('top')
+    await field(wrapper, 'button').setValue('outline')
+    expect(wrapper.findComponent(ThemeComponentPreview).props('design')).toMatchObject({ layout: { navigation: 'top' }, components: { button: 'outline' } })
     expect(settings.uiDesign.layout.navigation).toBe('sidebar')
-  })
-  it('prevents unreadable custom header colors and does not modify branding', async () => {
-    const wrapper = mountEditor()
-    const original = { ...settings.headerSettings }
-    await wrapper.get('[data-field=custom-header]').setValue(true)
-    expect(wrapper.get('[type=submit]').attributes('disabled')).toBeDefined()
-    await wrapper.findAll('input')[1].setValue('#123456')
-    expect(settings.uiDesign.header_style).toBe('saved')
-    expect(document.documentElement.style.getPropertyValue('--ui-header-bg')).toBe('#123456')
-    expect(settings.headerSettings).toEqual(original)
+    expect(settings.uiDesign.components.button).toBe('solid')
+    expect(document.documentElement.style.cssText).toBe(original)
     expect(mocks.post).not.toHaveBeenCalled()
-    wrapper.unmount()
+    await discard(wrapper).trigger('click')
+    expect(field(wrapper, 'navigation').element).toHaveProperty('value', 'sidebar')
+    expect(saveButton(wrapper).attributes('disabled')).toBeDefined()
   })
-  it('resets saved preferences and localizes the editor without changing personal mode', async () => {
-    settings.themePreferences = { ...designPreferences(settings.baseUiDesign, settings.headerSettings), navigation: 'top' }
-    const wrapper = mountEditor()
-    await wrapper.get('[data-action=reset]').trigger('click'); await flushPromises()
-    expect(mocks.post).toHaveBeenCalledWith('/api/v1/modules/themes/customization', { sha256: 'a'.repeat(64), preferences: null })
-    expect(settings.uiDesign.layout.navigation).toBe('sidebar')
-    expect(wrapper.text()).toContain('Theme defaults restored.')
-    language.value = 'bg'; await flushPromises()
-    expect(wrapper.text()).toContain('Запази оформлението')
-    wrapper.unmount()
-  })
-  it('rejects coercible enum values and keeps legacy colors when preparing built-in controls', async () => {
-    const original = { ...settings.headerSettings }
-    const prefs = designPreferences(settings.baseUiDesign, settings.headerSettings)
-    expect(parseThemePreferences({ ...prefs, navigation: ['top'] })).toBeNull()
-    settings.activeTheme = null
-    const wrapper = mount(ThemeAppearanceSection, { props: { sha256: null }, global: { stubs: { RouterLink: true, ColorPicker: true } } })
-    expect(wrapper.find('[role=alert]').exists()).toBe(false)
-    expect(settings.headerSettings).toEqual(original)
-    expect(settings.preferencePreview).toBeNull()
-    wrapper.unmount()
-  })
-  it('saves personal mode through existing preferences, separately from installation appearance', async () => {
-    localStorage.setItem('authToken', 'fixture')
-    const wrapper = mountEditor()
-    await wrapper.get('[data-field=mode]').setValue('dark'); await flushPromises()
-    expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/settings/create', { key: 'user_theme', value: 'dark', description: 'User theme preference' })
-    expect(wrapper.get('[type=submit]').attributes('disabled')).toBeDefined()
-    expect(settings.themePreferences).toBeNull()
-    expect(localStorage.getItem('theme')).toBe('dark')
-    wrapper.unmount()
-  })
-  it('edits, previews and saves independent palettes without changing the package or built-in colors', async () => {
-    const wrapper = mountEditor()
-    const before = JSON.stringify(settings.activeTheme)
-    const legacy = { ...settings.lightStyleSettings }
+  it('edits the single built-in palette through the same editor', async () => {
+    read({ theme: null }); await settings.loadThemeAppearance()
+    const wrapper = mountEditor(null)
     expect(wrapper.findAll('[data-color]')).toHaveLength(17)
     await wrapper.get('[data-color=border] input').setValue('#123456')
+    const saved = { ...designPreferences(settings.baseUiDesign, settings.headerSettings), colors: { light: { border: '#123456' } } }
+    read({ theme: null, customization: saved })
+    await form(wrapper).trigger('submit'); await flushPromises()
+    expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/api/v1/modules/themes/customization', { sha256: null, preferences: saved })
     expect(settings.uiDesign.light.border).toBe('#123456')
-    expect(document.documentElement.style.getPropertyValue('--card-border')).toBe('#123456')
-    expect(document.documentElement.style.getPropertyValue('--ui-border')).toBe('#123456')
-    expect(mocks.post).not.toHaveBeenCalled()
-    await wrapper.get('[data-field=palette-mode]').setValue('dark')
+    expect(saveButton(wrapper).attributes('disabled')).toBeDefined()
+  })
+  it('offers only declared package choices without another color/default editor', async () => {
+    read({ ...projection(), theme: { ...projection().theme, customization_options: { navigation: ['sidebar', 'top'], colors: ['border'] } } })
+    await settings.loadThemeAppearance()
+    const wrapper = mountEditor()
+    expect(field(wrapper, 'navigation').findAll('option')).toHaveLength(2)
+    for (const key of ['density', 'button', 'card', 'custom-header']) expect(wrapper.find(`[data-field="${key}"]`).exists()).toBe(false)
+    expect(wrapper.findAll('[data-color]')).toHaveLength(1)
+  })
+  it('saves both palettes once, preserves the package, then reflects a confirmed reload', async () => {
+    const wrapper = mountEditor(), before = JSON.stringify(settings.activeTheme)
+    await wrapper.get('[data-color=border] input').setValue('#123456')
+    await field(wrapper, 'palette-mode').setValue('dark')
+    expect(useThemeStore().theme).toBe('light')
     expect(localStorage.getItem('theme')).toBeNull()
     expect(wrapper.get('.component-preview').attributes('data-mode')).toBe('dark')
-    expect(wrapper.get('.component-preview').attributes('style')).toContain(`--ui-surface: ${builtinUiDesign().dark.surface}`)
-    expect(wrapper.get('[data-color=border] input').element).toHaveProperty('value', builtinUiDesign().dark.border)
     await wrapper.get('[data-color=border] input').setValue('#ABCDEF')
     const saved = { ...designPreferences(settings.baseUiDesign, settings.headerSettings),
       colors: { light: { border: '#123456' }, dark: { border: '#ABCDEF' } } }
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify({ ...projection(), customization: saved }) }))
-    await wrapper.get('form').trigger('submit'); await flushPromises()
-    expect(mocks.post).toHaveBeenCalledWith('/api/v1/modules/themes/customization', { sha256: 'a'.repeat(64), preferences: saved })
-    expect(settings.themePreferences?.colors).toEqual(saved.colors)
+    read({ ...projection(), customization: saved })
+    await form(wrapper).trigger('submit'); await flushPromises()
+    expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/api/v1/modules/themes/customization', { sha256: 'a'.repeat(64), preferences: saved })
+    expect(settings.uiDesign.light.border).toBe('#123456')
+    expect(settings.uiDesign.dark.border).toBe('#ABCDEF')
     expect(JSON.stringify(settings.activeTheme)).toBe(before)
-    expect(settings.lightStyleSettings).toEqual(legacy)
-    wrapper.unmount(); await settings.loadThemeAppearance()
-    expect(settings.uiDesign.dark.border).toBe('#ABCDEF')
+    expect(wrapper.text()).toContain('Appearance saved.')
   })
-  it('deep-copies saved palettes, discards drafts and resets only the selected palette', async () => {
+  it('loads defaults into the draft only; palette reset and discard never write', async () => {
     settings.themePreferences = { ...designPreferences(settings.baseUiDesign, settings.headerSettings),
-      colors: { light: { border: '#123456' }, dark: { border: '#ABCDEF' } } }
+      navigation: 'top', colors: { light: { border: '#123456' }, dark: { border: '#ABCDEF' } } }
     const wrapper = mountEditor()
-    await wrapper.get('[data-color=border] input').setValue('#456789')
-    expect(settings.themePreferences.colors?.light?.border).toBe('#123456')
-    await wrapper.get('[data-action=discard]').trigger('click')
-    expect(settings.uiDesign.light.border).toBe('#123456')
     await wrapper.get('[data-action=reset-palette]').trigger('click')
-    expect(settings.uiDesign.light.border).toBe(builtinUiDesign().light.border)
-    expect(settings.uiDesign.dark.border).toBe('#ABCDEF')
-    wrapper.unmount()
+    expect(wrapper.findComponent(ThemeComponentPreview).props('design')).toMatchObject({ light: { border: builtinUiDesign().light.border } })
     expect(settings.uiDesign.light.border).toBe('#123456')
+    await wrapper.get('[data-action=reset]').trigger('click')
+    expect(field(wrapper, 'navigation').element).toHaveProperty('value', 'sidebar')
+    expect(settings.uiDesign.layout.navigation).toBe('top')
+    await discard(wrapper).trigger('click')
+    expect(field(wrapper, 'navigation').element).toHaveProperty('value', 'top')
     expect(mocks.post).not.toHaveBeenCalled()
   })
-  it('blocks unreadable or unsafe color edits from both preview and Save', async () => {
+  it('blocks unreadable colors and keeps the saved appearance in the preview', async () => {
     const wrapper = mountEditor()
     await wrapper.get('[data-color=text] input').setValue('#ffffff')
-    expect(wrapper.get('[data-action=save]').attributes('disabled')).toBeDefined()
+    expect(saveButton(wrapper).attributes('disabled')).toBeDefined()
     expect(wrapper.text()).toContain('4.5:1')
-    expect(settings.uiDesign.light.text).toBe(builtinUiDesign().light.text)
-    await wrapper.get('form').trigger('submit')
+    expect(wrapper.findComponent(ThemeComponentPreview).props('design')).toMatchObject({ light: { text: builtinUiDesign().light.text } })
+    expect(parseThemePreferences({ ...designPreferences(settings.baseUiDesign, settings.headerSettings), navigation: ['top'] })).toBeNull()
+    expect(parseThemePreferences({ ...designPreferences(settings.baseUiDesign, settings.headerSettings), colors: { light: { border: 'url(https://bad.test)' } } })).toBeNull()
+    await form(wrapper).trigger('submit')
     expect(mocks.post).not.toHaveBeenCalled()
-    await wrapper.get('[data-action=discard]').trigger('click')
-    expect(wrapper.find('[role=alert]').exists()).toBe(false)
-    expect(parseThemePreferences({ ...designPreferences(settings.baseUiDesign, settings.headerSettings),
-      colors: { dark: { border: 'url(https://bad.test)' } } })).toBeNull()
-    wrapper.unmount()
+    await discard(wrapper).trigger('click')
+    expect(wrapper.find('.appearance-workbench > form [role=alert]').exists()).toBe(false)
   })
-  it('exposes only v1 colors, preserves both original palettes and derives readable button text', async () => {
-    settings.activeTheme = {
-      theme_extension_version: 1, design_api_version: 1, module_id: 'org.example.legacy', version: '1.0.0',
-      name: { en: 'Legacy' }, base_theme: 'builtin.default',
-      light: { body_bg: '#ABCDEF' }, dark: { body_bg: '#123456' },
-    }
+  it('keeps header draft and branding separate from the saved shell', async () => {
+    const wrapper = mountEditor(), original = { ...settings.headerSettings }
+    await wrapper.get('[data-field=custom-header] input').setValue(true)
+    expect(saveButton(wrapper).attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-field=header-background] input').setValue('#123456')
+    expect(wrapper.findComponent(ThemeComponentPreview).props('design')).toMatchObject({ header_style: 'saved' })
+    expect(wrapper.findComponent(ThemeComponentPreview).props('header')).toMatchObject({ backgroundColor: '#123456' })
+    expect(settings.headerSettings).toEqual(original)
+    expect(settings.uiDesign.header_style).toBe('theme')
+    expect(mocks.post).not.toHaveBeenCalled()
+  })
+  it('saves personal mode separately and preserves the palette draft', async () => {
+    localStorage.setItem('authToken', 'fixture')
     const wrapper = mountEditor()
-    expect(wrapper.findAll('[data-color]')).toHaveLength(11)
-    expect(wrapper.find('[data-color=focus]').exists()).toBe(false)
-    expect(settings.baseUiDesign.dark.canvas).toBe('#123456')
-    await wrapper.get('[data-color=accent] input').setValue('#ffffff')
-    expect(settings.uiDesign.light.accent_text).toBe('#000000')
-    expect(document.documentElement.style.getPropertyValue('--button-primary-bg')).toBe('#ffffff')
-    expect(settings.lightStyleSettings.buttonPrimaryBg).toBe('#007bff')
+    await wrapper.get('[data-color=border] input').setValue('#123456')
+    await field(wrapper, 'mode').setValue('dark'); await flushPromises()
+    expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/settings/create', { key: 'user_theme', value: 'dark', description: 'User theme preference' })
+    expect(field(wrapper, 'palette-mode').element).toHaveProperty('value', 'light')
+    expect(wrapper.get('[data-color=border] input').element).toHaveProperty('value', '#123456')
+    expect(settings.themePreferences).toBeNull()
+  })
+  it('locks a lost save reply without replay; explicit read resolves the saved outcome', async () => {
+    mocks.post.mockRejectedValue(new Error('lost reply'))
+    const wrapper = mountEditor()
+    await field(wrapper, 'navigation').setValue('top')
+    await form(wrapper).trigger('submit'); await flushPromises()
+    expect(wrapper.findComponent(UiEditorForm).props('state')).toBe('unconfirmed')
+    expect(saveButton(wrapper).attributes('disabled')).toBeDefined()
+    expect(discard(wrapper).attributes('disabled')).toBeDefined()
+    await form(wrapper).trigger('submit')
+    expect(mocks.post).toHaveBeenCalledTimes(1)
+    const saved = { ...designPreferences(settings.baseUiDesign, settings.headerSettings), navigation: 'top' }
+    read({ ...projection(), customization: saved })
+    await wrapper.get('[data-action=reload]').trigger('click'); await flushPromises()
+    expect(wrapper.findComponent(UiEditorForm).props('state')).toBe('idle')
+    expect(saveButton(wrapper).attributes('disabled')).toBeDefined()
+    expect(settings.uiDesign.layout.navigation).toBe('top')
+    expect(mocks.post).toHaveBeenCalledTimes(1)
+  })
+  it('preserves a conflicting draft and remains locked when the read is unavailable', async () => {
+    const wrapper = mountEditor()
+    await field(wrapper, 'button').setValue('outline')
+    settings.themePreferences = { ...designPreferences(settings.baseUiDesign, settings.headerSettings), navigation: 'top' }
+    await flushPromises()
+    expect(wrapper.findComponent(UiEditorForm).props('state')).toBe('conflict')
+    expect(field(wrapper, 'button').element).toHaveProperty('value', 'outline')
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
+    await wrapper.get('[data-action=reload]').trigger('click'); await flushPromises()
+    expect(wrapper.findComponent(UiEditorForm).props('state')).toBe('conflict')
+    expect(field(wrapper, 'button').element).toHaveProperty('value', 'outline')
+    expect(mocks.post).not.toHaveBeenCalled()
+  })
+  it('keeps drafts while switching language and discards them on section exit', async () => {
+    const wrapper = mountEditor()
+    await field(wrapper, 'navigation').setValue('top')
+    language.value = 'bg'; await flushPromises()
+    expect(wrapper.text()).toContain('Запази оформлението')
+    expect(field(wrapper, 'navigation').element).toHaveProperty('value', 'top')
     wrapper.unmount()
+    expect(settings.uiDesign.layout.navigation).toBe('sidebar')
+    expect(mocks.post).not.toHaveBeenCalled()
   })
 })

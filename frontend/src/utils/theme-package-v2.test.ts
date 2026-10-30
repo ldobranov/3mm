@@ -67,7 +67,7 @@ describe('installed v2 contract and asset fallback', () => {
   ])('rejects unsafe package or asset declarations', value => expect(parseInstalledTheme(value)).toBeNull())
   it('applies v2 colors/layout and recovery bypass, without saving or logout', async () => {
     const settings = useSettingsStore(), modes = useThemeStore()
-    settings.lightStyleSettings.bodyBg = '#ABCDEF'
+
     settings.headerSettings.logoUrl = 'saved-logo'
     localStorage.setItem('authToken', 'preserved')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify(projection()) }))
@@ -79,14 +79,14 @@ describe('installed v2 contract and asset fallback', () => {
     modes.setTheme('dark'); await nextTick()
     expect(document.documentElement.style.getPropertyValue('--ui-canvas')).toBe('#15191f')
     settings.appearanceRecovery = true; modes.setTheme('light'); await nextTick()
-    expect(document.documentElement.style.getPropertyValue('--body-bg')).toBe('#ABCDEF')
+    expect(document.documentElement.style.getPropertyValue('--body-bg')).toBe(builtinUiDesign().light.canvas)
     expect(settings.activeTheme?.theme_extension_version).toBe(2)
     expect(localStorage.getItem('authToken')).toBe('preserved')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => '{"theme":null}' }))
     settings.appearanceRecovery = false
     await settings.loadThemeAppearance()
     expect(settings.installedDesign).toBeNull()
-    expect(document.documentElement.style.getPropertyValue('--body-bg')).toBe('#ABCDEF')
+    expect(document.documentElement.style.getPropertyValue('--body-bg')).toBe(builtinUiDesign().light.canvas)
   })
   it('uses only the pinned public endpoint; auth/MIME failures retain fallback', async () => {
     const fetch = vi.fn().mockResolvedValue({ ok: false, status: 401 })
@@ -149,7 +149,7 @@ describe('installed v2 contract and asset fallback', () => {
   })
   it('keeps the installed selection intact during v2/v1/built-in previews and background refresh', async () => {
     const settings = useSettingsStore()
-    settings.lightStyleSettings.bodyBg = '#ABCDEF'
+
     localStorage.setItem('authToken', 'preserved')
     const fetch = vi.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify(projection()) })
     vi.stubGlobal('fetch', fetch)
@@ -172,7 +172,7 @@ describe('installed v2 contract and asset fallback', () => {
     expect(await settings.previewThemeAppearance({ theme: legacy }, '', new AbortController().signal)).toBe(true)
     expect(document.documentElement.style.getPropertyValue('--body-bg')).toBe('#123456')
     expect(await settings.previewThemeAppearance({ theme: null }, '', new AbortController().signal)).toBe(true)
-    expect(document.documentElement.style.getPropertyValue('--body-bg')).toBe('#ABCDEF')
+    expect(document.documentElement.style.getPropertyValue('--body-bg')).toBe(builtinUiDesign().light.canvas)
     expect(settings.activeTheme?.theme_extension_version).toBe(2)
     settings.clearPackagePreview()
     expect(document.documentElement.style.getPropertyValue('--body-bg')).toBe('#f4f5f7')

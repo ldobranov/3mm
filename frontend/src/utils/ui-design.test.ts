@@ -6,18 +6,31 @@ import { BUILTIN_STYLES, parseThemeDefinition, resolveThemeStyle } from './theme
 import { DEFAULT_HEADER_SETTINGS } from './header-settings'
 
 vi.mock('@/utils/dynamic-http', () => ({ default: { getCurrentBackendUrl: async () => '' } }))
-vi.mock('@/utils/settings-api', () => ({ readSettings: async () => [], upsertSettings: vi.fn() }))
+const retired = vi.hoisted(() => ({ items: [] as Array<{ key: string; value: string }> }))
+vi.mock('@/utils/settings-api', () => ({ readSettings: async () => retired.items, upsertSettings: vi.fn() }))
 vi.mock('@/utils/i18n', () => ({ useI18n: () => ({ currentLanguage: { value: 'en' } }) }))
 import { useSettingsStore } from '@/stores/settings'
 import { useThemeStore } from '@/stores/theme'
 
 describe('Design API 2 contract and v1 compatibility', () => {
-  beforeEach(() => { localStorage.clear(); setActivePinia(createPinia()) })
+  beforeEach(() => { retired.items = []; localStorage.clear(); setActivePinia(createPinia()) })
   afterEach(() => { document.documentElement.style.cssText = ''; vi.unstubAllGlobals() })
   it('validates built-in defaults, inheritance and exact zero radii', () => {
     expect(parseUiDesign(builtinUiDesign())).toEqual(builtinUiDesign())
     expect(parseUiDesign({ design_api_version: 2, scale: { radius_sm: 0 }, light: { accent: null } }))
-      .toMatchObject({ scale: { radius_sm: 0 }, header_style: 'saved' })
+      .toMatchObject({ scale: { radius_sm: 0 }, header_style: 'theme' })
+  })
+  it('uses one built-in design for loading, fallback and recovery, not retired saved palettes', async () => {
+    retired.items = [{ key: 'light_body_bg', value: '#ABCDEF' }, { key: 'dark_text_muted', value: '#111111' }]
+    const before = JSON.stringify(retired.items)
+    const settings = useSettingsStore()
+    await settings.loadSettings()
+    expect(settings.baseUiDesign).toEqual(builtinUiDesign())
+    useThemeStore().setTheme('dark'); await nextTick()
+    expect(document.documentElement.style.getPropertyValue('--ui-text-muted')).toBe(builtinUiDesign().dark.text_muted)
+    settings.appearanceRecovery = true; await nextTick()
+    expect(settings.uiDesign).toEqual(builtinUiDesign())
+    expect(JSON.stringify(retired.items)).toBe(before)
   })
   it.each([
     { design_api_version: 3 }, { design_api_version: 2, css: 'body{}' },
@@ -53,7 +66,7 @@ describe('Design API 2 contract and v1 compatibility', () => {
   })
   it('preserves header overrides unless explicitly opted out, without changing content', () => {
     const header = { ...DEFAULT_HEADER_SETTINGS, siteName: 'My name', backgroundColor: '#123456' }
-    const design = builtinUiDesign()
+    const design = { ...builtinUiDesign(), header_style: 'saved' as 'saved' | 'theme' }
     expect(uiDesignVariables(design, 'light', header)['--ui-header-bg']).toBe('#123456')
     design.header_style = 'theme'
     expect(uiDesignVariables(design, 'light', header)['--ui-header-bg']).toBe(design.light.surface)
@@ -86,7 +99,7 @@ describe('Design API 2 contract and v1 compatibility', () => {
   })
   it('updates legacy Core and SDK button pairs together through mode and preview changes', async () => {
     const settings = useSettingsStore(), modes = useThemeStore(), root = document.documentElement.style
-    settings.lightStyleSettings.buttonSecondaryBg = '#eeeeee'
+
     for (const preview of [builtinUiDesign(), null]) {
       settings.setDesignPreview(preview)
       for (const mode of ['dark', 'light'] as const) {
@@ -104,7 +117,7 @@ describe('Design API 2 contract and v1 compatibility', () => {
   })
   it('clears preview, refreshes mode/aliases, preserves installed theme and auth', async () => {
     const settings = useSettingsStore(), modes = useThemeStore()
-    settings.lightStyleSettings.bodyBg = '#ABCDEF'
+
     localStorage.setItem('authToken', 'preserved')
     expect(settings.setDesignPreview({ design_api_version: 2, header_style: 'theme' })).toBe(true)
     expect(document.documentElement.style.getPropertyValue('--ui-canvas')).toBe('#f4f5f7')
@@ -115,7 +128,7 @@ describe('Design API 2 contract and v1 compatibility', () => {
     expect(settings.previewDesign).not.toBeNull()
     settings.setDesignPreview(null); modes.setTheme('light'); await nextTick()
     expect(settings.previewDesign).toBeNull()
-    expect(document.documentElement.style.getPropertyValue('--ui-canvas')).toBe('#ABCDEF')
+    expect(document.documentElement.style.getPropertyValue('--ui-canvas')).toBe(builtinUiDesign().light.canvas)
     expect(settings.activeTheme).toBeNull()
     expect(localStorage.getItem('authToken')).toBe('preserved')
   })

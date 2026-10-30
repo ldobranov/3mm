@@ -9,11 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.db.audit_log import AuditLog
+from backend.db.menu import Menu
 from backend.db.module import ModulePackage, ThemeExtensionInstallation
 from backend.db.settings import Settings
 from backend.db.user import User
 from three_mm_protocol.theme_extension import ThemeColor
-from three_mm_protocol.theme_extension_v2 import contrast_ratio, validate_design
+from three_mm_protocol.theme_extension_v2 import DESIGN_DEFAULTS, contrast_ratio, validate_design
 
 
 UiColorKey = Literal[
@@ -39,6 +40,39 @@ class ThemeColorOverrides(BaseModel):
         return self
 
 
+class MenuPlacement(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    menu_id: int = Field(ge=1, le=2147483647)
+    location: Literal["primary", "header", "sidebar", "footer"]
+
+
+class StickyMenus(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    header: bool
+    sidebar: bool
+    footer: bool
+
+
+class MenuLayout(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    placements: list[MenuPlacement] | None = Field(default=None, max_length=16)
+    sticky: StickyMenus
+
+    @model_validator(mode="before")
+    @classmethod
+    def no_null_placements(cls, value):
+        if isinstance(value, dict) and "placements" in value and value["placements"] is None:
+            raise ValueError("Omit placements to follow the active menu")
+        return value
+
+    @model_validator(mode="after")
+    def unique_menus(self):
+        ids = [item.menu_id for item in self.placements or ()]
+        if len(set(ids)) != len(ids):
+            raise ValueError("Each menu may have only one location")
+        return self
+
+
 class ThemePreferences(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     navigation: Literal["sidebar", "top"]
@@ -49,6 +83,7 @@ class ThemePreferences(BaseModel):
     header_background_color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
     header_text_color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
     colors: ThemeColorOverrides | None = None
+    menu_layout: MenuLayout | None = None
 
     @model_validator(mode="after")
     def readable_header(self):
@@ -72,16 +107,15 @@ def customization_key(sha256: str | None) -> str:
 def validate_color_overrides(preferences: ThemePreferences, theme=None) -> None:
     if preferences.colors is None:
         return
-    if theme is None:
-        raise ValueError("Use the existing built-in color settings for the built-in theme")
     colors = preferences.colors.model_dump(exclude_none=True)
-    if theme.theme_extension_version == 1:
+    if theme is not None and theme.theme_extension_version == 1:
         if any(palette.keys() - LEGACY_COLOR_KEYS for palette in colors.values()):
             raise ValueError("This color is not supported by Theme Design API 1")
         # Preserve v1's existing color contract; do not impose v2 on legacy ZIPs.
         return
-    design = {**theme.design, **{
-        mode: {**theme.design[mode], **palette} for mode, palette in colors.items()
+    base = theme.design if theme is not None else DESIGN_DEFAULTS
+    design = {**base, **{
+        mode: {**base[mode], **palette} for mode, palette in colors.items()
     }}
     validate_design(design)  # Same bounded palette and contrast policy as v2 packages.
 
@@ -137,6 +171,15 @@ def save_customization(db: Session, request: ThemeCustomizationRequest, actor: U
             validate_preferences(request.preferences, theme)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+        placements = request.preferences.menu_layout.placements if request.preferences.menu_layout else None
+        if placements:
+            requested = {item.menu_id for item in placements}
+            existing = set(db.scalars(select(Menu.id).where(Menu.id.in_(requested))))
+            if existing != requested:
+                raise HTTPException(409, "Configured menus changed; reload before saving")
+        # Keep writer and public-reader budgets identical, including menu layout.
+        if len(json.dumps(request.preferences.model_dump(exclude_none=True), separators=(",", ":"))) > 2048:
+            raise HTTPException(422, "Theme preferences exceed the saved appearance limit")
     rows = list(db.scalars(select(Settings).where(
         Settings.key == customization_key(request.sha256),
         Settings.user_id.is_(None), Settings.language_code.is_(None),

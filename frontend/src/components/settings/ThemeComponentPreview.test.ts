@@ -67,12 +67,17 @@ describe('Settings uses the public SDK presentation', () => {
     const wrapper = mount(host); mounted.push(wrapper)
     const input = wrapper.get('#app-draft')
     await input.setValue('Keep after save')
-    await wrapper.get('[data-field=button]').setValue('outline')
-    await wrapper.get('[data-field=card]').setValue('raised')
-    await wrapper.get('[data-field=density]').setValue('comfortable')
+    await wrapper.get('[data-field=button] select').setValue('outline')
+    await wrapper.get('[data-field=card] select').setValue('raised')
+    await wrapper.get('[data-field=density] select').setValue('comfortable')
     await wrapper.get('[data-color=border] input[type=text]').setValue('#123456')
     expect(http.post).not.toHaveBeenCalled()
-    const saved = structuredClone(settings.preferencePreview)
+    const editor = wrapper.findComponent(ThemeAppearanceSection)
+    const preview = editor.findComponent(ThemeComponentPreview).props('design')!
+    const saved = { navigation: preview.layout.navigation, density: preview.layout.density, ...preview.components,
+      header_style: preview.header_style, header_background_color: settings.headerSettings.backgroundColor,
+      header_text_color: settings.headerSettings.textColor, colors: { light: { border: '#123456' } } }
+    expect(settings.uiDesign.components.button).toBe('solid')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify({ ...projection(), customization: saved }) }))
     await wrapper.get('form').trigger('submit'); await flushPromises()
     await settings.loadThemeAppearance(); await flushPromises()

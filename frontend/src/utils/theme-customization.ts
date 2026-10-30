@@ -1,5 +1,6 @@
 import { contrastRatio, parseUiDesign, UI_COLOR_KEYS, type UiColors, type UiDesign } from './ui-design'
 import { buttonTextColor } from './theme-extension'
+import { parseMenuLayout, type MenuLayout } from './menu-layout'
 
 export const LEGACY_UI_COLOR_KEYS = [
   'canvas', 'content', 'surface', 'surface_alt', 'text', 'text_secondary', 'text_muted',
@@ -36,7 +37,7 @@ export function themeCustomizationOptions(theme: { theme_extension_version: 1 | 
   if (theme?.theme_extension_version === 2 && theme.customization_options) return theme.customization_options
   // Old packages did not declare an editor. Preserve their existing controls.
   return { ...Object.fromEntries(Object.entries(THEME_VARIANTS).map(([key, values]) => [key, [...values]])),
-    colors: theme ? [...(theme.theme_extension_version === 2 ? UI_COLOR_KEYS : LEGACY_UI_COLOR_KEYS)] : [] } as ThemeCustomizationOptions
+    colors: theme?.theme_extension_version === 1 ? [...LEGACY_UI_COLOR_KEYS] : [...UI_COLOR_KEYS] } as ThemeCustomizationOptions
 }
 
 export interface ThemePreferences {
@@ -48,6 +49,7 @@ export interface ThemePreferences {
   header_background_color: string
   header_text_color: string
   colors?: ThemeColorOverrides
+  menu_layout?: MenuLayout
 }
 
 export function parseThemePreferences(value: unknown): ThemePreferences | null {
@@ -56,13 +58,18 @@ export function parseThemePreferences(value: unknown): ThemePreferences | null {
   const variants = { navigation: ['sidebar', 'top'], density: ['compact', 'comfortable'],
     button: ['solid', 'outline'], card: ['bordered', 'raised'], header_style: ['saved', 'theme'] }
   const keys = [...Object.keys(variants), 'header_background_color', 'header_text_color']
-  if (keys.some(key => !(key in p)) || Object.keys(p).some(key => ![...keys, 'colors'].includes(key)) ||
+  if (keys.some(key => !(key in p)) || Object.keys(p).some(key => ![...keys, 'colors', 'menu_layout'].includes(key)) ||
     Object.entries(variants).some(([key, allowed]) => typeof p[key] !== 'string' || !allowed.includes(p[key] as string))) return null
   for (const key of ['header_background_color', 'header_text_color']) {
     if (typeof p[key] !== 'string' || !/^#[a-f\d]{6}$/i.test(p[key])) return null
   }
   if (p.header_style === 'saved' && contrastRatio(p.header_background_color as string, p.header_text_color as string) < 4.5) return null
   const result = { ...p } as unknown as ThemePreferences
+  if ('menu_layout' in p) {
+    const layout = parseMenuLayout(p.menu_layout)
+    if (!layout) return null
+    result.menu_layout = layout
+  }
   if ('colors' in p) {
     if (!p.colors || typeof p.colors !== 'object' || Array.isArray(p.colors)) return null
     const colors = p.colors as Record<string, unknown>
@@ -87,7 +94,6 @@ export function themePreferencesValid(design: UiDesign, preferences: ThemePrefer
       Object.values(preferences.colors || {}).some(palette => Object.keys(palette).some(key => !options.colors.includes(key as keyof UiColors)))) return false
   }
   if (!preferences.colors) return true
-  if (version === null) return false
   if (version === 1) return Object.values(preferences.colors).every(palette =>
     Object.keys(palette).every(key => LEGACY_UI_COLOR_KEYS.includes(key as typeof LEGACY_UI_COLOR_KEYS[number])))
   return parseUiDesign(applyThemePreferences(design, preferences)) !== null

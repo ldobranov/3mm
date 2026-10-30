@@ -7,6 +7,7 @@ import http from '@/utils/dynamic-http'
 import ThemeAppearanceSection from './ThemeAppearanceSection.vue'
 import { useUiLabels } from '@/utils/ui-labels'
 import { useThemeStore } from '@/stores/theme'
+import { UiButton, UiField } from '@/extension-ui/v1'
 import ThemeComponentPreview from './ThemeComponentPreview.vue'
 
 const props = withDefaults(defineProps<{ active?: boolean }>(), { active: true })
@@ -38,9 +39,16 @@ let previewRequest = 0
 let initialMode: 'light' | 'dark' | null = null
 const selectedHash = computed(() => items.value.find(item => item.is_selected)?.sha256 || '')
 const label = (item: ThemeItem) => `${item.name.translations?.[currentLanguage.value] || item.name.en} · ${item.version}`
+const themeChoices = computed(() => [{ value: '', label: uiLabel('defaultTheme') }, ...items.value
+  .filter(item => item.is_available || item.is_selected)
+  .map(item => ({ value: item.sha256, label: label(item), disabled: !item.is_available }))])
+const installedName = computed(() => {
+  const item = items.value.find(item => item.is_selected)
+  return item ? label(item) : uiLabel('defaultTheme')
+})
 const previewName = computed(() => {
   const item = items.value.find(item => item.sha256 === previewHash.value)
-  return item ? label(item) : t('themePackages.builtin', 'Built-in — saved custom colors')
+  return item ? label(item) : uiLabel('defaultTheme')
 })
 const cancelPreview = (resetSelection = true) => {
   ++previewRequest
@@ -114,18 +122,16 @@ onMounted(refresh)
     :data-button="settings.uiDesign?.components.button" :data-card="settings.uiDesign?.components.card">
     <p class="theme-help">{{ t('themePackages.help', 'The theme applies to this installation. Light/dark mode remains a separate preference. Header and menu settings are preserved.') }}</p>
     <form class="theme-choice" @submit.prevent="apply">
-      <label for="installed-theme">{{ t('themePackages.select', 'Application theme') }}</label>
-      <select id="installed-theme" v-model="selection" class="input ui-control" :disabled="busy || previewBusy || !loaded">
-        <option value="">{{ t('themePackages.builtin', 'Built-in — saved custom colors') }}</option>
-        <option v-for="item in items.filter(item => item.is_available || item.is_selected)" :key="item.sha256"
-          :value="item.sha256" :disabled="!item.is_available">{{ label(item) }}</option>
-      </select>
+      <p>{{ uiLabel('installedAppearance') }}: <strong>{{ installedName }}</strong></p>
+      <UiField id="installed-theme" type="select" :model-value="selection" :options="themeChoices"
+        :label="t('themePackages.select', 'Application theme')" :disabled="busy || previewBusy || !loaded"
+        @update:model-value="typeof $event === 'string' && (selection = $event)" />
       <div class="theme-actions">
-        <button type="button" class="ui-button" :disabled="busy || previewBusy || !loaded" @click="preview">{{ uiLabel('previewTheme') }}</button>
-        <button type="submit" class="ui-button ui-button--primary" :disabled="busy || previewBusy || !loaded || selection === selectedHash">
+        <UiButton :disabled="busy || previewBusy || !loaded" @click="preview">{{ uiLabel('previewTheme') }}</UiButton>
+        <UiButton type="submit" variant="primary" :disabled="busy || previewBusy || !loaded || selection === selectedHash">
           {{ t('themePackages.apply', 'Apply theme') }}
-        </button>
-        <button type="button" class="ui-button" :disabled="busy || previewBusy" @click="refresh">{{ t('themePackages.refresh', 'Refresh') }}</button>
+        </UiButton>
+        <UiButton :disabled="busy || previewBusy" @click="refresh">{{ t('themePackages.refresh', 'Refresh') }}</UiButton>
       </div>
     </form>
     <section v-if="previewBusy || previewHash !== null" class="theme-preview" :aria-label="uiLabel('previewTheme')">

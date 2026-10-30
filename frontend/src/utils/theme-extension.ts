@@ -1,4 +1,6 @@
-// Design API v1 only: never turn arbitrary package keys into CSS properties.
+import defaults from '../../../three_mm_protocol/theme_design_defaults.json'
+
+// Design API v1 projection only: never turn arbitrary package keys into CSS properties.
 export const COLOR_TOKENS = {
   body_bg: 'bodyBg', content_bg: 'contentBg', card_bg: 'cardBg', panel_bg: 'panelBg',
   button_primary_bg: 'buttonPrimaryBg', button_secondary_bg: 'buttonSecondaryBg',
@@ -21,21 +23,20 @@ export interface ThemeDefinition {
   light: ThemeTokens
   dark: ThemeTokens
 }
-export const BUILTIN_STYLES = {
-  light: {
-    bodyBg: '#ffffff', contentBg: '#ffffff', cardBg: '#ffffff', panelBg: '#ffffff',
-    buttonPrimaryBg: '#007bff', buttonSecondaryBg: '#6c757d', buttonDangerBg: '#dc3545',
-    cardBorder: '#e3e3e3', textPrimary: '#222222', textSecondary: '#666666', textMuted: '#999999',
-    borderRadiusSm: 4, borderRadiusMd: 8, borderRadiusLg: 12,
-  },
-  dark: {
-    bodyBg: '#1f2937', contentBg: '#1f2937', cardBg: '#374151', panelBg: '#374151',
-    buttonPrimaryBg: '#3b82f6', buttonSecondaryBg: '#6b7280', buttonDangerBg: '#ef4444',
-    cardBorder: '#4b5563', textPrimary: '#e5e7eb', textSecondary: '#9ca3af', textMuted: '#6b7280',
-    borderRadiusSm: 4, borderRadiusMd: 8, borderRadiusLg: 12,
-  },
+export interface StyleSettings {
+  bodyBg: string; contentBg: string; cardBg: string; panelBg: string
+  buttonPrimaryBg: string; buttonSecondaryBg: string; buttonDangerBg: string
+  cardBorder: string; textPrimary: string; textSecondary: string; textMuted: string
+  borderRadiusSm: number; borderRadiusMd: number; borderRadiusLg: number
 }
-export type StyleSettings = typeof BUILTIN_STYLES.light
+function builtinStyle(mode: ThemeMode): StyleSettings {
+  const c = defaults[mode], s = defaults.scale
+  return { bodyBg: c.canvas, contentBg: c.content, cardBg: c.surface, panelBg: c.surface_alt,
+    buttonPrimaryBg: c.accent, buttonSecondaryBg: c.secondary, buttonDangerBg: c.danger,
+    cardBorder: c.border, textPrimary: c.text, textSecondary: c.text_secondary, textMuted: c.text_muted,
+    borderRadiusSm: s.radius_sm, borderRadiusMd: s.radius_md, borderRadiusLg: s.radius_lg }
+}
+export const BUILTIN_STYLES = { light: builtinStyle('light'), dark: builtinStyle('dark') }
 const object = (value: unknown): value is Record<string, any> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
 const tokensValid = (value: unknown): value is ThemeTokens => {

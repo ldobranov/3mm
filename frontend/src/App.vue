@@ -21,9 +21,8 @@ const label = useUiLabels()
 const appearanceReady = ref(false)
 const startupController = new AbortController()
 let disposed = false
-// V1 stays legacy; v2 opts into the Core-owned shell, except protected recovery.
-const modernShell = computed(() => !settingsStore.appearanceRecovery &&
-  (settingsStore.previewDesign !== null || settingsStore.installedDesign !== null || settingsStore.customizedDesign != null))
+// Built-in and installed themes share one shell. Recovery stays independent.
+const modernShell = computed(() => !settingsStore.appearanceRecovery)
 const shellMode = computed(() => resolveUiShellMode(route.meta))
 
 // Authentication status
@@ -141,7 +140,7 @@ watch(isAuthenticated, async (newVal, oldVal) => {
 })
 
 onMounted(async () => {
-  // Do not mount navigation/pages in the legacy layout before public appearance,
+  // Do not mount navigation/pages before public appearance,
   // saved mode, header settings and verified theme resources have settled.
   const signal = startupController.signal
   let timeout: ReturnType<typeof setTimeout> | undefined

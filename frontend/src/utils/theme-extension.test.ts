@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
+import { builtinUiDesign } from './ui-design'
 import { BUILTIN_STYLES, buttonTextColor, parseThemeDefinition, readThemeAppearance, resolveThemeStyle } from './theme-extension'
 
 vi.mock('@/utils/dynamic-http', () => ({ default: { getCurrentBackendUrl: async () => '' } }))
@@ -23,7 +24,7 @@ describe('Theme Design API adapter and loader', () => {
   it('inherits built-in, not saved legacy defaults, including zero radii', () => {
     const theme = parseThemeDefinition(definition())!
     const legacy = { ...BUILTIN_STYLES.light, bodyBg: '#ABCDEF', textPrimary: '#123456' }
-    expect(resolveThemeStyle(theme, 'light', legacy)).toMatchObject({ bodyBg: '#F5F6F8', textPrimary: '#222222', borderRadiusSm: 0 })
+    expect(resolveThemeStyle(theme, 'light', legacy)).toMatchObject({ bodyBg: '#F5F6F8', textPrimary: BUILTIN_STYLES.light.textPrimary, borderRadiusSm: 0 })
     expect(resolveThemeStyle(theme, 'dark', legacy).bodyBg).toBe('#181B20')
     expect(resolveThemeStyle(null, 'light', legacy)).toBe(legacy)
   })
@@ -62,7 +63,7 @@ describe('Theme Design API adapter and loader', () => {
   it('updates real CSS aliases across light/dark, refresh and built-in fallback', async () => {
     const settings = useSettingsStore()
     const modes = useThemeStore()
-    settings.lightStyleSettings.bodyBg = '#ABCDEF'
+
     settings.headerSettings.backgroundColor = '#121212'
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify({ theme: definition() }) }))
     await settings.loadThemeAppearance()
@@ -73,12 +74,11 @@ describe('Theme Design API adapter and loader', () => {
     await nextTick()
     expect(document.documentElement.style.getPropertyValue('--body-bg')).toBe('#181B20')
     expect(settings.headerSettings.backgroundColor).toBe('#121212')
-    expect(settings.lightStyleSettings.bodyBg).toBe('#ABCDEF')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => '{"theme":null}' }))
     await settings.loadThemeAppearance()
     modes.setTheme('light')
     await nextTick()
-    expect(document.documentElement.style.getPropertyValue('--body-bg')).toBe('#ABCDEF')
+    expect(document.documentElement.style.getPropertyValue('--body-bg')).toBe(builtinUiDesign().light.canvas)
     expect(settings.activeTheme).toBeNull()
   })
 

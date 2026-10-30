@@ -46,20 +46,6 @@
         <div v-show="activeSection === 'theme'" id="theme-settings" class="settings-anchor">
           <div class="section-cluster">
             <ThemePackagesSection v-if="isAdmin" :active="activeSection === 'theme'" />
-            <ThemeCustomizationSection
-              v-for="themeType in ['light', 'dark']"
-              v-show="!settingsStore.activeTheme && !settingsStore.isPackagePreview"
-              :key="themeType"
-              :theme-type="themeType"
-              :settings="themeType === 'light' ? lightStyleSettings : darkStyleSettings"
-              :saving="themeType === 'light' ? savingLightStyle : savingDarkStyle"
-              :t="t"
-              :settings-store="settingsStore"
-              :section-title="themeType === 'light'
-                ? t('settings.lightThemeCustomization', 'Light Theme Customization')
-                : t('settings.darkThemeCustomization', 'Dark Theme Customization')"
-              @save="themeType === 'light' ? saveLightStyleSettings() : saveDarkStyleSettings()"
-            />
           </div>
         </div>
 
@@ -72,13 +58,20 @@
             :site-name-fallback="headerSiteNameFallback"
             :header-message-fallback="headerMessageFallback"
             :header-settings="headerSettings"
-            :saving-header="savingHeader"
+            :saving-header="savingHeader || headerReading"
+            :dirty="headerDirty"
+            :disabled="!isAdmin || !headerReady"
+            :state="headerState"
+            :error="headerError"
             @update:header-language="handleHeaderLanguageChange"
             @update:current-site-name="currentSiteName = $event"
             @update:current-header-message="currentHeaderMessage = $event"
             @save-header-settings="saveHeaderSettings"
             @logo-upload="handleLogoUpload"
             @logo-remove="removeLogo"
+            @discard="discardHeader"
+            @reload="reloadHeader"
+            @open-theme="activeSection = 'theme'"
           />
         </div>
 
@@ -93,19 +86,21 @@
             :saving-menu="savingMenu"
             :creating-menu="creatingMenu"
             :managing-menu="managingMenu"
-            :settings-store="settingsStore"
+            :disabled="!isAdmin"
+            :unavailable="menuUnavailable"
+            :state="menuState"
+            :error="menuError"
             @update:menu-language="handleMenuLanguageChange"
-            @update:active-menu-id="activeMenuId = $event"
+            @update:active-menu-id="selectMenu"
             @update:current-menu-items="currentMenuItems = $event"
-            @add-menu-item="addMenuItem"
-            @edit-menu-item="editMenuItem"
-            @remove-menu-item="removeMenuItem"
             @create-menu="createMenu"
             @activate-menu="activateMenu"
             @rename-menu="renameMenu"
             @delete-menu="deleteMenu"
             @save-menu="saveMenu"
-            @drag-end="onDragEnd"
+            @discard="discardMenu"
+            @reload="reloadMenus"
+            @open-theme="activeSection = 'theme'"
           />
         </div>
 
@@ -142,19 +137,19 @@ import { useSettingsStore } from '@/stores/settings';
 import { useI18n } from '@/utils/i18n';
 import http from '@/utils/dynamic-http';
 import { isMenuRouteEligible } from '@/utils/menu-navigation';
-import { upsertSettings } from '@/utils/settings-api';
+import { readSettings, upsertSettings } from '@/utils/settings-api';
 import { readAvailableLanguages, readLanguageSettings } from '@/utils/language-api';
 import {
   DEFAULT_HEADER_SETTINGS,
   editableHeaderTextValue,
-  headerTextFallback
+  headerTextFallback,
+  resolveHeaderSettings
 } from '@/utils/header-settings';
 
 // Import extracted components
 import ApplicationSettingsSection from '@/components/settings/ApplicationSettingsSection.vue';
 import HeaderCustomizationSection from '@/components/settings/HeaderCustomizationSection.vue';
 import MenuConfigurationSection from '@/components/settings/MenuConfigurationSection.vue';
-import ThemeCustomizationSection from '@/components/settings/ThemeCustomizationSection.vue';
 import ThemePackagesSection from '@/components/settings/ThemePackagesSection.vue';
 import NetworkConfigurationSection from '@/components/settings/NetworkConfigurationSection.vue';
 import SystemControlSection from '@/components/settings/SystemControlSection.vue';
@@ -175,7 +170,6 @@ export default defineComponent({
     ApplicationSettingsSection,
     HeaderCustomizationSection,
     MenuConfigurationSection,
-    ThemeCustomizationSection,
     ThemePackagesSection,
     NetworkConfigurationSection,
     SystemControlSection,
@@ -205,8 +199,15 @@ export default defineComponent({
     const creatingMenu = ref(false);
     const managingMenu = ref(false);
     const savingHeader = ref(false);
-    const savingLightStyle = ref(false);
-    const savingDarkStyle = ref(false);
+    const headerReading = ref(false);
+    const headerReady = ref(false);
+    const headerState = ref<'idle' | 'unconfirmed'>('idle');
+    const headerError = ref('');
+    const menuState = ref<'idle' | 'unconfirmed'>('idle');
+    const menuError = ref('');
+    const menuUnavailable = ref(false);
+    const menuDrafts = new Map<number, any[]>();
+    const copyItems = (items: any[]) => JSON.parse(JSON.stringify(items));
     
     // Language selection refs - default to English
     const headerLanguage = ref<string>(localStorage.getItem('settingsHeaderLanguage') || 'en');
@@ -216,9 +217,8 @@ export default defineComponent({
     const currentMenuItems = ref<any[]>([]);
     
     // Local settings
-    const headerSettings = settingsStore.headerSettings;
-    const lightStyleSettings = settingsStore.lightStyleSettings;
-    const darkStyleSettings = settingsStore.darkStyleSettings;
+    const headerSettings = reactive({ ...settingsStore.headerSettings });
+    const savedLogo = ref('');
 
     const headerSiteNameFallback = computed(() => headerTextFallback(
       languageSettingsMap.value,
@@ -281,23 +281,41 @@ export default defineComponent({
     // Theme-specific local state
     const currentSiteName = ref('')
     const currentHeaderMessage = ref('')
+    const headerDirty = computed(() => {
+      const saved = languageSettingsMap.value.get(headerLanguage.value) || [];
+      return currentSiteName.value !== editableHeaderTextValue(saved, 'site_name', headerLanguage.value)
+        || currentHeaderMessage.value !== editableHeaderTextValue(saved, 'header_message', headerLanguage.value)
+        || headerSettings.logoUrl !== savedLogo.value;
+    });
+    const selectMenu = (id: number | null) => {
+      if (id === activeMenuId.value) return;
+      if (activeMenuId.value !== null) menuDrafts.set(activeMenuId.value, copyItems(currentMenuItems.value));
+      activeMenuId.value = id;
+      currentMenuItems.value = id === null ? [] : copyItems(menuDrafts.get(id) || menus.value.find(menu => menu.id === id)?.items || []);
+    };
     // API Functions
     const fetchMenus = async (preferredMenuId: number | null = activeMenuId.value) => {
       try {
         const response = await http.get('/menu/read');
-        const allMenus = response.data.items || [];
+        if (!Array.isArray(response.data.items)) throw new Error('Invalid menu response');
+        const allMenus = response.data.items;
         menus.value = allMenus;
+        menuUnavailable.value = false;
 
         if (allMenus.length > 0) {
           const preferredMenu = allMenus.find((menu: any) => menu.id === preferredMenuId);
-          activeMenuId.value = preferredMenu?.id || allMenus[0].id;
+          selectMenu(preferredMenu?.id || allMenus[0].id);
         } else {
-          activeMenuId.value = null;
+          selectMenu(null);
           currentMenuItems.value = [];
         }
+        return true;
       } catch (error) {
         console.error('Failed to fetch menus:', error);
         errorMessage.value = 'Failed to fetch menus.';
+        menuError.value = errorMessage.value;
+        menuUnavailable.value = true;
+        return false;
       }
     };
 
@@ -318,75 +336,69 @@ export default defineComponent({
       }
     };
 
-    const addMenuItem = (newItem: any) => {
-      if (!newItem.label || !newItem.path) return;
-
-      const labelObj: Record<string, string> = {};
-      labelObj[menuLanguage.value] = newItem.label;
-
-      currentMenuItems.value.push({
-        label: labelObj,
-        path: newItem.path,
-        audience: newItem.audience || 'authenticated'
-      });
+    const menuLocked = computed(() => !isAdmin.value || menuUnavailable.value || menuState.value !== 'idle'
+      || savingMenu.value || creatingMenu.value || managingMenu.value);
+    const discardMenu = () => {
+      if (menuLocked.value) return;
+      currentMenuItems.value = copyItems(activeMenu.value?.items || []);
+      if (activeMenuId.value !== null) menuDrafts.delete(activeMenuId.value);
     };
-
-    const editMenuItem = (index: number) => {
-      const item = currentMenuItems.value[index];
-      const newPath = prompt('Enter new path:', item.path);
-
-      if (newPath !== null) {
-        item.path = newPath;
-      }
-    };
-
-    const removeMenuItem = (index: number) => {
-      if (confirm('Remove this menu item?')) {
-        currentMenuItems.value.splice(index, 1);
-      }
-    };
-
-    const onDragEnd = () => {
-      console.log('Menu items reordered');
+    const reloadMenus = async () => {
+      if (savingMenu.value || creatingMenu.value || managingMenu.value) return;
+      managingMenu.value = true;
+      try {
+        if (!await fetchMenus()) return;
+        currentMenuItems.value = copyItems(activeMenu.value?.items || []);
+        for (const id of menuDrafts.keys()) if (!menus.value.some(menu => menu.id === id) || id === activeMenuId.value) menuDrafts.delete(id);
+        menuState.value = 'idle'; menuError.value = '';
+        window.dispatchEvent(new Event('menu-refresh'));
+      } finally { managingMenu.value = false; }
     };
 
     const saveMenu = async () => {
-      if (!activeMenu.value) return;
+      if (!activeMenu.value || menuLocked.value) return;
 
       savingMenu.value = true;
       errorMessage.value = '';
       successMessage.value = '';
+      menuError.value = '';
 
       try {
         // Send the menu data with the new optimal structure
         const menuData = {
           id: activeMenu.value.id,
           name: activeMenu.value.name,
-          items: currentMenuItems.value,
+          items: copyItems(currentMenuItems.value),
           language: menuLanguage.value
         };
 
         // Use the proper menu update endpoint
         await http.put(`/menu/update`, menuData);
 
+        // Refresh local menus data and menu display
+        if (!await fetchMenus()) throw new Error('Saved menu could not be read');
+        const confirmed = menus.value.find(menu => menu.id === menuData.id);
+        if (!confirmed || JSON.stringify(confirmed.items || []) !== JSON.stringify(menuData.items)) throw new Error('Menu read does not confirm this draft');
+        currentMenuItems.value = copyItems(activeMenu.value?.items || []);
+        menuDrafts.delete(menuData.id);
         successMessage.value = `Menu saved for ${menuLanguage.value.toUpperCase()}!`;
         setTimeout(() => successMessage.value = '', 3000);
-
-        // Refresh local menus data and menu display
-        await fetchMenus();
         window.dispatchEvent(new Event('menu-refresh'));
       } catch (error) {
         console.error('Failed to save menu:', error);
         errorMessage.value = 'Failed to save menu.';
+        menuState.value = 'unconfirmed'; menuError.value = errorMessage.value;
       } finally {
         savingMenu.value = false;
       }
     };
 
     const createMenu = async (name: string) => {
+      if (menuLocked.value || !name.trim()) return;
       creatingMenu.value = true;
       errorMessage.value = '';
       successMessage.value = '';
+      menuError.value = '';
 
       try {
         const response = await http.post('/menu/create', {
@@ -395,186 +407,140 @@ export default defineComponent({
           is_active: menus.value.length === 0
         });
         const createdMenuId = response.data.id as number;
-        await fetchMenus(createdMenuId);
+        if (!await fetchMenus(createdMenuId)) throw new Error('Created menu could not be read');
         currentMenuItems.value = [];
         successMessage.value = `Menu "${name}" created. You can add its items now.`;
         setTimeout(() => successMessage.value = '', 3000);
       } catch (error: any) {
         console.error('Failed to create menu:', error);
         errorMessage.value = error?.response?.data?.detail || 'Failed to create menu.';
+        menuState.value = 'unconfirmed'; menuError.value = errorMessage.value;
       } finally {
         creatingMenu.value = false;
       }
     };
 
     const activateMenu = async (menuId: number) => {
+      if (menuLocked.value) return;
       managingMenu.value = true;
       errorMessage.value = '';
       try {
         await http.post(`/menu/${menuId}/activate`);
-        await fetchMenus(menuId);
+        if (!await fetchMenus(menuId)) throw new Error('Active menu could not be read');
         successMessage.value = 'Active menu updated.';
         setTimeout(() => successMessage.value = '', 3000);
         window.dispatchEvent(new Event('menu-refresh'));
       } catch (error: any) {
         errorMessage.value = error?.response?.data?.detail || 'Failed to activate menu.';
+        menuState.value = 'unconfirmed'; menuError.value = errorMessage.value;
       } finally {
         managingMenu.value = false;
       }
     };
 
     const renameMenu = async ({ id, name }: { id: number; name: string }) => {
+      if (menuLocked.value || !name.trim()) return;
       managingMenu.value = true;
       errorMessage.value = '';
       try {
         await http.patch(`/menu/${id}`, { name });
-        await fetchMenus(id);
+        if (!await fetchMenus(id)) throw new Error('Renamed menu could not be read');
         successMessage.value = 'Menu renamed.';
         setTimeout(() => successMessage.value = '', 3000);
         window.dispatchEvent(new Event('menu-refresh'));
       } catch (error: any) {
         errorMessage.value = error?.response?.data?.detail || 'Failed to rename menu.';
+        menuState.value = 'unconfirmed'; menuError.value = errorMessage.value;
       } finally {
         managingMenu.value = false;
       }
     };
 
     const deleteMenu = async (menuId: number) => {
+      if (menuLocked.value) return;
       managingMenu.value = true;
       errorMessage.value = '';
       try {
         await http.delete(`/menu/${menuId}`);
-        await fetchMenus(null);
-        await safeLoadMenuForLanguage(menuLanguage.value);
+        if (!await fetchMenus(null)) throw new Error('Remaining menus could not be read');
+        menuDrafts.delete(menuId);
         successMessage.value = 'Menu deleted.';
         setTimeout(() => successMessage.value = '', 3000);
         window.dispatchEvent(new Event('menu-refresh'));
       } catch (error: any) {
         errorMessage.value = error?.response?.data?.detail || 'Failed to delete menu.';
+        menuState.value = 'unconfirmed'; menuError.value = errorMessage.value;
       } finally {
         managingMenu.value = false;
       }
     };
 
-    const handleLogoUpload = async (eventOrUrl: Event | string) => {
-      // Handle both the old file input method and new ImageUpload component method
-      if (typeof eventOrUrl === 'string') {
-        // New ImageUpload component method - direct URL
-        headerSettings.logoUrl = eventOrUrl;
-      } else {
-        // Old file input method
-        const target = eventOrUrl.target as HTMLInputElement;
-        const file = target.files?.[0];
-
-        if (!file) return;
-
-        if (file.size > 2 * 1024 * 1024) {
-          errorMessage.value = 'Logo file size must be less than 2MB';
-          return;
+    const headerLocked = computed(() => !isAdmin.value || !headerReady.value || savingHeader.value
+      || headerReading.value || headerState.value !== 'idle');
+    const handleLogoUpload = (url: string) => { if (!headerLocked.value) headerSettings.logoUrl = url; };
+    const removeLogo = () => { if (!headerLocked.value) headerSettings.logoUrl = ''; };
+    const discardHeader = () => {
+      if (headerLocked.value) return;
+      const saved = languageSettingsMap.value.get(headerLanguage.value) || [];
+      currentSiteName.value = editableHeaderTextValue(saved, 'site_name', headerLanguage.value);
+      currentHeaderMessage.value = editableHeaderTextValue(saved, 'header_message', headerLanguage.value);
+      headerSettings.logoUrl = savedLogo.value;
+      headerTextDrafts[headerLanguage.value] = { siteName: currentSiteName.value, headerMessage: currentHeaderMessage.value };
+    };
+    const readHeaderSnapshot = async (language: string, expected?: { siteName: string; headerMessage: string; logoUrl: string }) => {
+      const languages = Array.from(new Set(['en', language]));
+      const [all, localized] = await Promise.all([
+        readSettings(),
+        Promise.all(languages.map(async code => ({ code, items: await readLanguageSettings(code) }))),
+      ]);
+      const items = localized.find(value => value.code === language)!.items;
+      const actual = { siteName: editableHeaderTextValue(items, 'site_name', language),
+        headerMessage: editableHeaderTextValue(items, 'header_message', language), logoUrl: resolveHeaderSettings(items, all, language).logoUrl };
+      if (expected && JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error('Saved header does not confirm this draft');
+      // Apply only after every read succeeded. A failed or mismatching read is
+      // not confirmation and must not erase the unsaved draft.
+      for (const { code, items } of localized) languageSettingsMap.value.set(code, items);
+      savedLogo.value = actual.logoUrl;
+      headerSettings.logoUrl = savedLogo.value;
+      currentSiteName.value = actual.siteName;
+      currentHeaderMessage.value = actual.headerMessage;
+      headerTextDrafts[language] = { siteName: currentSiteName.value, headerMessage: currentHeaderMessage.value };
+      headerReady.value = true; headerState.value = 'idle'; headerError.value = '';
+    };
+    const reloadHeader = async (notify = true) => {
+      if (savingHeader.value || headerReading.value) return;
+      headerReading.value = true;
+      try {
+        await readHeaderSnapshot(headerLanguage.value);
+        if (notify) {
+          await settingsStore.loadSettings();
+          window.dispatchEvent(new Event('settings-updated'));
         }
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          headerSettings.logoUrl = e.target?.result as string;
-        };
-        reader.readAsDataURL(file);
-      }
+      } catch { headerError.value = t('uiPlatform.savedReadFailed', 'Could not read saved settings. The draft is kept.'); }
+      finally { headerReading.value = false; }
     };
-
-    const removeLogo = () => {
-      headerSettings.logoUrl = '';
-    };
-
     const saveHeaderSettings = async () => {
-      savingHeader.value = true;
-      errorMessage.value = '';
-      successMessage.value = '';
-
+      if (headerLocked.value || !headerDirty.value) return;
+      savingHeader.value = true; headerError.value = ''; successMessage.value = '';
+      const language = headerLanguage.value;
+      const expected = { siteName: currentSiteName.value, headerMessage: currentHeaderMessage.value, logoUrl: headerSettings.logoUrl };
       try {
-        const langCode = headerLanguage.value || 'en';
-
-        // Only text varies by language. An empty value intentionally uses the
-        // English/default fallback in the rendered header.
-        await Promise.all([
-          saveSettingForLanguage(
-            'site_name',
-            currentSiteName.value,
-            langCode,
-            `Site name in ${langCode.toUpperCase()}`
-          ),
-          saveSettingForLanguage(
-            'header_message',
-            currentHeaderMessage.value,
-            langCode,
-            `Header message in ${langCode.toUpperCase()}`
-          )
+        // Existing settings API performs individual writes, not a transaction.
+        // On any failure, read all saved values before permitting another save.
+        await upsertSettings([
+          { key: 'site_name', value: expected.siteName, language_code: language, description: `Site name in ${language.toUpperCase()}` },
+          { key: 'header_message', value: expected.headerMessage, language_code: language, description: `Header message in ${language.toUpperCase()}` },
+          { key: 'logo_url', value: expected.logoUrl, language_code: null, description: 'Shared site logo' },
         ]);
-
-        // Branding saves never rewrite the separately managed theme colors.
-        await settingsStore.saveHeaderSettings(false);
-
-        headerTextDrafts[langCode] = {
-          siteName: currentSiteName.value,
-          headerMessage: currentHeaderMessage.value
-        };
-
-        successMessage.value = `Header settings saved for ${langCode.toUpperCase()}!`;
-        setTimeout(() => successMessage.value = '', 3000);
-        await loadLanguageSettings(langCode);
-      } catch (error) {
-        console.error('Failed to save header settings:', error);
-        errorMessage.value = 'Failed to save header settings.';
-      } finally {
-        savingHeader.value = false;
-      }
-    };
-
-    const saveLightStyleSettings = async () => {
-      savingLightStyle.value = true;
-      errorMessage.value = '';
-      successMessage.value = '';
-
-      try {
-        await settingsStore.saveLightStyleSettings();
-        successMessage.value = 'Light style settings saved successfully!';
-        setTimeout(() => successMessage.value = '', 3000);
-
+        await readHeaderSnapshot(language, expected);
         await settingsStore.loadSettings();
-
-        if (themeStore.theme === 'light') {
-          settingsStore.updateCSSVariables();
-        }
-      } catch (error) {
-        console.error('Failed to save light style settings:', error);
-        errorMessage.value = 'Failed to save light style settings.';
-      } finally {
-        savingLightStyle.value = false;
-      }
+        window.dispatchEvent(new Event('settings-updated'));
+        successMessage.value = t('uiPlatform.brandingSaved', 'Header settings saved.');
+      } catch {
+        headerState.value = 'unconfirmed';
+        headerError.value = t('uiPlatform.brandingSaveFailed', 'Could not confirm every header setting. Read saved values before saving again.');
+      } finally { savingHeader.value = false; }
     };
-
-    const saveDarkStyleSettings = async () => {
-      savingDarkStyle.value = true;
-      errorMessage.value = '';
-      successMessage.value = '';
-
-      try {
-        await settingsStore.saveDarkStyleSettings();
-        successMessage.value = 'Dark style settings saved successfully!';
-        setTimeout(() => successMessage.value = '', 3000);
-
-        await settingsStore.loadSettings();
-
-        if (themeStore.theme === 'dark') {
-          settingsStore.updateCSSVariables();
-        }
-      } catch (error) {
-        console.error('Failed to save dark style settings:', error);
-        errorMessage.value = 'Failed to save dark style settings.';
-      } finally {
-        savingDarkStyle.value = false;
-      }
-    };
-
 
     const loadLanguageSettings = async (languageCode: string) => {
       try {
@@ -583,29 +549,6 @@ export default defineComponent({
         return items;
       } catch (error) {
         console.error(`Failed to load settings for language ${languageCode}:`, error);
-        return [];
-      }
-    };
-
-    const saveSettingForLanguage = async (key: string, value: string, languageCode: string, description?: string) => {
-      try {
-        const settingData = {
-          key,
-          value,
-          description: description || `${key} setting`,
-          language_code: languageCode
-        };
-
-        await upsertSettings([settingData]);
-
-        // Update the language settings map for the current language
-        const langSettings = languageSettingsMap.value.get(languageCode) || [];
-        const updatedSettings = langSettings.filter((item: Setting) => item.key !== key);
-        updatedSettings.push(settingData);
-        languageSettingsMap.value.set(languageCode, updatedSettings);
-
-      } catch (error) {
-        console.error('Failed to save language-specific setting:', error);
         throw error;
       }
     };
@@ -622,50 +565,22 @@ export default defineComponent({
 
     const handleHeaderLanguageChange = async (newLanguage: string) => {
       const previousLanguage = headerLanguage.value;
-      if (newLanguage === previousLanguage) return;
+      if (newLanguage === previousLanguage || headerLocked.value || !availableLanguages.value.includes(newLanguage)) return;
 
       headerTextDrafts[previousLanguage] = {
         siteName: currentSiteName.value,
         headerMessage: currentHeaderMessage.value
       };
 
-      headerLanguage.value = newLanguage;
-      localStorage.setItem('settingsHeaderLanguage', newLanguage);
-
-      const nextDraft = headerTextDrafts[newLanguage]
-        || await readHeaderTextDraft(newLanguage);
-      headerTextDrafts[newLanguage] = nextDraft;
-      currentSiteName.value = nextDraft.siteName;
-      currentHeaderMessage.value = nextDraft.headerMessage;
-    };
-
-    const loadMenuForLanguage = async (languageCode: string) => {
-      if (!activeMenu.value) return;
-
+      headerReading.value = true;
       try {
-        // With the new optimal structure, items already contain multilingual labels
-        // Just load them directly from the database
-        if (activeMenu.value.items && Array.isArray(activeMenu.value.items)) {
-          currentMenuItems.value = [...activeMenu.value.items];
-        } else {
-          currentMenuItems.value = [];
-        }
-      } catch (error) {
-        console.error('Failed to load menu for language:', error);
-        currentMenuItems.value = [];
-      }
-    };
-
-    // Prevent recursive updates
-    let isLoadingMenuLanguage = false;
-    const safeLoadMenuForLanguage = async (languageCode: string) => {
-      if (isLoadingMenuLanguage) return;
-      isLoadingMenuLanguage = true;
-      try {
-        await loadMenuForLanguage(languageCode);
-      } finally {
-        isLoadingMenuLanguage = false;
-      }
+        const nextDraft = headerTextDrafts[newLanguage] || await readHeaderTextDraft(newLanguage);
+        headerLanguage.value = newLanguage;
+        localStorage.setItem('settingsHeaderLanguage', newLanguage);
+        headerTextDrafts[newLanguage] = nextDraft;
+        currentSiteName.value = nextDraft.siteName; currentHeaderMessage.value = nextDraft.headerMessage;
+      } catch { headerError.value = t('uiPlatform.savedReadFailed', 'Could not read saved settings. The draft is kept.'); }
+      finally { headerReading.value = false; }
     };
 
     // Network configuration event handler
@@ -681,17 +596,7 @@ export default defineComponent({
 
       await Promise.all([settingsStore.loadSettings(), fetchMenus(), fetchAvailableLanguages()]);
 
-      // Menu items contain every localized label. Load the selected menu once;
-      // changing the editing language must not discard unsaved translations.
-      await safeLoadMenuForLanguage(menuLanguage.value);
-
-      const headerLanguages = Array.from(new Set(['en', headerLanguage.value]));
-      await Promise.all(headerLanguages.map(loadLanguageSettings));
-
-      const initialHeaderDraft = await readHeaderTextDraft(headerLanguage.value);
-      headerTextDrafts[headerLanguage.value] = initialHeaderDraft;
-      currentSiteName.value = initialHeaderDraft.siteName;
-      currentHeaderMessage.value = initialHeaderDraft.headerMessage;
+      await reloadHeader(false);
 
       loading.value = false;
       settingsStore.updateCSSVariables();
@@ -709,14 +614,6 @@ export default defineComponent({
       localStorage.setItem('settingsMenuLanguage', newLanguage);
     };
 
-    // Watch for active menu changes and reload menu items
-    watch(activeMenuId, async (newMenuId) => {
-      if (newMenuId) {
-        // Load menu items for the current language
-        await safeLoadMenuForLanguage(menuLanguage.value);
-      }
-    });
-
     return {
       // State
       menus,
@@ -730,12 +627,10 @@ export default defineComponent({
       creatingMenu,
       managingMenu,
       savingHeader,
-      savingLightStyle,
-      savingDarkStyle,
+      headerReading, headerReady, headerDirty, headerState, headerError,
+      menuState, menuError, menuUnavailable,
       headerSettings,
       settingsStore,
-      lightStyleSettings,
-      darkStyleSettings,
       headerLanguage,
       menuLanguage,
       availableLanguages,
@@ -756,21 +651,15 @@ export default defineComponent({
       t,
       handleHeaderLanguageChange,
       handleMenuLanguageChange,
-      loadMenuForLanguage,
-      addMenuItem,
-      editMenuItem,
-      removeMenuItem,
       createMenu,
       activateMenu,
       renameMenu,
       deleteMenu,
       saveMenu,
-      onDragEnd,
+      selectMenu, discardMenu, reloadMenus, discardHeader, reloadHeader,
       handleLogoUpload,
       removeLogo,
       saveHeaderSettings,
-      saveLightStyleSettings,
-      saveDarkStyleSettings,
       onNetworkConfigUpdated
     };
   },

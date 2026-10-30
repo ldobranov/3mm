@@ -6,6 +6,8 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 import ApplicationShell from './ApplicationShell.vue'
 import { builtinUiDesign } from '@/utils/ui-design'
 import { useSettingsStore } from '@/stores/settings'
+import { designPreferences } from '@/utils/theme-customization'
+import { defaultMenuLayout, type MenuLayout } from '@/utils/menu-layout'
 
 const api = vi.hoisted(() => ({ post: vi.fn(), get: vi.fn() }))
 vi.mock('@/utils/dynamic-http', () => ({ default: { ...api, getCurrentBackendUrl: async () => '' } }))
@@ -44,6 +46,62 @@ async function shell(role: string, mode: 'application' | 'public' | 'auth' | 'ki
   return wrapper
 }
 describe('shell uses the existing dynamic navigation and action boundary', () => {
+  const placedMenus = [
+    { id: 1, name: 'Main', is_active: true, items: [{ path: '/dashboard', label: 'Dashboard', audience: 'authenticated' }] },
+    { id: 2, name: 'Administration', is_active: false, items: [
+      { path: '/settings', label: 'Settings', audience: 'admin' }, { path: '/retired', label: 'Retired page' },
+    ] },
+    { id: 3, name: 'Information', is_active: false, items: [{ path: '/public', label: 'Public resource', audience: 'public' }] },
+  ]
+  const place = (layout: MenuLayout) => {
+    const settings = useSettingsStore()
+    settings.themePreferences = { ...designPreferences(settings.baseUiDesign, settings.headerSettings), menu_layout: layout }
+  }
+  it.each(['admin', 'registered', ''])('filters every placed menu for %s and keeps footer after the main content', async role => {
+    api.get.mockResolvedValue({ data: { items: placedMenus } })
+    const wrapper = await shell(role)
+    place({ ...defaultMenuLayout(), placements: [
+      { menu_id: 1, location: 'sidebar' }, { menu_id: 2, location: 'header' }, { menu_id: 3, location: 'footer' },
+    ] }); await flushPromises()
+    expect(wrapper.find('aside [data-menu-id="1"]').exists()).toBe(Boolean(role))
+    expect(wrapper.find('header [data-menu-id="2"]').exists()).toBe(role === 'admin')
+    expect(wrapper.find('footer [data-menu-id="3"]').text()).toBe('Public resource')
+    expect(wrapper.text()).not.toContain('Retired page')
+    const main = wrapper.get('main').element, footer = wrapper.get('footer').element
+    expect(main.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    wrapper.unmount()
+  })
+  it('supports sidebar and header together, sticky zones and an explicit empty selection without remounting content', async () => {
+    api.get.mockResolvedValue({ data: { items: placedMenus } })
+    const wrapper = await shell('admin'), main = wrapper.get('main').element
+    const design = builtinUiDesign(); design.layout.navigation = 'top'
+    await wrapper.setProps({ design })
+    place({ placements: [
+      { menu_id: 1, location: 'sidebar' }, { menu_id: 2, location: 'header' }, { menu_id: 3, location: 'footer' },
+    ], sticky: { header: true, sidebar: true, footer: true } }); await flushPromises()
+    expect(wrapper.find('.ui-sidebar-content--sticky').exists()).toBe(true)
+    expect(wrapper.find('.ui-toolbar--sticky').exists()).toBe(true)
+    expect(wrapper.find('.ui-footer--sticky').exists()).toBe(true)
+    expect(wrapper.find('header [data-menu-id="2"]').exists()).toBe(true)
+    expect(wrapper.find('aside [data-menu-id="1"]').exists()).toBe(true)
+    const drawer = wrapper.get('#ui-mobile-navigation')
+    expect(drawer.findAll('nav').map(nav => nav.attributes('data-menu-id'))).toEqual(['2', '1'])
+    place({ ...defaultMenuLayout(), placements: [] }); await flushPromises()
+    expect(wrapper.findAll('.ui-nav-item')).toHaveLength(0)
+    expect(wrapper.find('footer').exists()).toBe(false)
+    expect(wrapper.get('main').element).toBe(main)
+    wrapper.unmount()
+  })
+  it.each(['kiosk', 'display'] as const)('does not leak placed menus into %s pages', async mode => {
+    api.get.mockResolvedValue({ data: { items: placedMenus } })
+    const wrapper = await shell('admin', mode)
+    place({ placements: [{ menu_id: 2, location: 'header' }, { menu_id: 3, location: 'footer' }],
+      sticky: { header: true, sidebar: true, footer: true } }); await flushPromises()
+    expect(wrapper.findAll('[data-menu-id]')).toHaveLength(0)
+    expect(wrapper.find('aside').exists()).toBe(false)
+    expect(wrapper.find('footer').exists()).toBe(false)
+    wrapper.unmount()
+  })
   it.each(['admin','registered',''])('retains audience/route filtering for %s', async role => {
     const wrapper = await shell(role)
     const links = wrapper.findAll('aside a').map(link => link.text())

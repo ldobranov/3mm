@@ -7,7 +7,7 @@ import { readSettings, upsertSettings } from '@/utils/settings-api'
 import { resolveHeaderSettings } from '@/utils/header-settings'
 import { getToken } from '@/utils/auth'
 import { BUILTIN_STYLES, resolveThemeStyle, readThemeProjection } from '@/utils/theme-extension'
-import { adaptLegacyUi, buttonHoverBackground, parseUiDesign, uiDesignVariables, type UiDesign } from '@/utils/ui-design'
+import { adaptLegacyUi, builtinUiDesign, buttonHoverBackground, parseUiDesign, uiDesignVariables, type UiDesign } from '@/utils/ui-design'
 import { parseInstalledTheme, loadThemeAssets, designLegacyStyle, type InstalledTheme, type LoadedThemeAssets } from '@/utils/theme-package-v2'
 import { applyThemePreferences, parseThemePreferences, themePreferencesValid, themeCustomizationOptions, type ThemePreferences } from '@/utils/theme-customization'
 
@@ -25,14 +25,6 @@ export const useSettingsStore = defineStore('settings', () => {
   const installedDesign = computed(() => displayTheme.value?.theme_extension_version === 2 ? displayTheme.value.design : null)
   const appearanceRecovery = ref(false)
   const themePreferences = shallowRef<ThemePreferences | null>(null)
-  const preferencePreview = shallowRef<ThemePreferences | null>(null)
-  const setPreferencePreview = (value: unknown): boolean => {
-    const parsed = value === null ? null : parseThemePreferences(value)
-    if (value !== null && (!parsed || !themePreferencesValid(baseUiDesign.value, parsed, activeTheme.value?.theme_extension_version ?? null, themeCustomizationOptions(activeTheme.value)))) return false
-    preferencePreview.value = parsed
-    updateCSSVariables()
-    return true
-  }
   const themeAssets = shallowRef<LoadedThemeAssets | null>(null)
   const assetWarnings = computed(() => themeAssets.value?.warnings || [])
   const previewAssetWarnings = computed(() => packagePreview.value?.assets?.warnings || [])
@@ -187,36 +179,26 @@ export const useSettingsStore = defineStore('settings', () => {
     textColor: '#ffffff'
   })
 
-  // Style settings for light theme
-  const lightStyleSettings = reactive({ ...BUILTIN_STYLES.light })
-
-  // Style settings for dark theme
-  const darkStyleSettings = reactive({ ...BUILTIN_STYLES.dark })
-
-  // Computed property to get current theme settings
-  const baseStyleSettings = computed(() => {
-    if (installedDesign.value && !appearanceRecovery.value) return designLegacyStyle(installedDesign.value, themeStore.theme)
-    const legacyTheme = displayTheme.value?.theme_extension_version === 1 && !appearanceRecovery.value ? displayTheme.value : null
-    return resolveThemeStyle(legacyTheme, themeStore.theme,
-      themeStore.theme === 'dark' ? darkStyleSettings : lightStyleSettings)
-  })
+  // One built-in Design API palette. Retired light_*/dark_* settings are not
+  // another default and are never imported into it or erased automatically.
   const baseUiDesign = computed(() => {
     if (!appearanceRecovery.value && installedDesign.value) return installedDesign.value
     const legacyTheme = displayTheme.value?.theme_extension_version === 1 && !appearanceRecovery.value ? displayTheme.value : null
-    const design = adaptLegacyUi(baseStyleSettings.value, themeStore.theme)
-    // Editing the inactive mode must use that theme's real colors, not v2 defaults.
+    if (!legacyTheme) return builtinUiDesign()
+    const design = adaptLegacyUi(resolveThemeStyle(legacyTheme, themeStore.theme, BUILTIN_STYLES[themeStore.theme]), themeStore.theme)
     for (const mode of ['light', 'dark'] as const) {
-      design[mode] = adaptLegacyUi(resolveThemeStyle(legacyTheme, mode,
-        mode === 'dark' ? darkStyleSettings : lightStyleSettings), mode)[mode]
+      design[mode] = adaptLegacyUi(resolveThemeStyle(legacyTheme, mode, BUILTIN_STYLES[mode]), mode)[mode]
     }
     return design
   })
+  const baseStyleSettings = computed(() => designLegacyStyle(baseUiDesign.value, themeStore.theme))
   const effectivePreferences = computed(() => {
-    const value = !appearanceRecovery.value ? (packagePreview.value ? packagePreview.value.preferences : preferencePreview.value || themePreferences.value) : null
+    const value = !appearanceRecovery.value ? (packagePreview.value ? packagePreview.value.preferences : themePreferences.value) : null
     return value && themePreferencesValid(baseUiDesign.value, value, displayTheme.value?.theme_extension_version ?? null, themeCustomizationOptions(displayTheme.value)) ? value : null
   })
   const customizedDesign = computed(() => !appearanceRecovery.value && effectivePreferences.value
     ? applyThemePreferences(baseUiDesign.value, effectivePreferences.value, displayTheme.value?.theme_extension_version === 1) : null)
+  const menuLayout = computed(() => effectivePreferences.value?.menu_layout ?? null)
   const styleSettings = computed(() => customizedDesign.value && effectivePreferences.value?.colors
     ? designLegacyStyle(customizedDesign.value, themeStore.theme) : baseStyleSettings.value)
   const uiDesign = computed(() => previewDesign.value || customizedDesign.value || baseUiDesign.value)
@@ -252,75 +234,6 @@ export const useSettingsStore = defineStore('settings', () => {
       Object.assign(headerSettings, resolvedHeader)
 
       loaded.value = true
-
-      // Load style settings for both themes
-      // Light theme settings
-      const lightButtonPrimaryBg = items.find((s: any) => s.key === 'light_button_primary_bg')
-      const lightButtonSecondaryBg = items.find((s: any) => s.key === 'light_button_secondary_bg')
-      const lightButtonDangerBg = items.find((s: any) => s.key === 'light_button_danger_bg')
-      const lightCardBg = items.find((s: any) => s.key === 'light_card_bg')
-      const lightCardBorder = items.find((s: any) => s.key === 'light_card_border')
-      const lightPanelBg = items.find((s: any) => s.key === 'light_panel_bg')
-      const lightBodyBg = items.find((s: any) => s.key === 'light_body_bg')
-      const lightContentBg = items.find((s: any) => s.key === 'light_content_bg')
-      const lightTextPrimary = items.find((s: any) => s.key === 'light_text_primary')
-      const lightTextSecondary = items.find((s: any) => s.key === 'light_text_secondary')
-      const lightTextMuted = items.find((s: any) => s.key === 'light_text_muted')
-      const lightBorderRadiusSm = items.find((s: any) => s.key === 'light_border_radius_sm')
-      const lightBorderRadiusMd = items.find((s: any) => s.key === 'light_border_radius_md')
-      const lightBorderRadiusLg = items.find((s: any) => s.key === 'light_border_radius_lg')
-
-      // Dark theme settings
-      const darkButtonPrimaryBg = items.find((s: any) => s.key === 'dark_button_primary_bg')
-      const darkButtonSecondaryBg = items.find((s: any) => s.key === 'dark_button_secondary_bg')
-      const darkButtonDangerBg = items.find((s: any) => s.key === 'dark_button_danger_bg')
-      const darkCardBg = items.find((s: any) => s.key === 'dark_card_bg')
-      const darkCardBorder = items.find((s: any) => s.key === 'dark_card_border')
-      const darkPanelBg = items.find((s: any) => s.key === 'dark_panel_bg')
-      const darkBodyBg = items.find((s: any) => s.key === 'dark_body_bg')
-      const darkContentBg = items.find((s: any) => s.key === 'dark_content_bg')
-      const darkTextPrimary = items.find((s: any) => s.key === 'dark_text_primary')
-      const darkTextSecondary = items.find((s: any) => s.key === 'dark_text_secondary')
-      const darkTextMuted = items.find((s: any) => s.key === 'dark_text_muted')
-      const darkBorderRadiusSm = items.find((s: any) => s.key === 'dark_border_radius_sm')
-      const darkBorderRadiusMd = items.find((s: any) => s.key === 'dark_border_radius_md')
-      const darkBorderRadiusLg = items.find((s: any) => s.key === 'dark_border_radius_lg')
-
-      // Load light theme settings
-      // console.log('Loading light theme settings from backend')
-      lightStyleSettings.buttonPrimaryBg = lightButtonPrimaryBg?.value || '#007bff'
-      lightStyleSettings.buttonSecondaryBg = lightButtonSecondaryBg?.value || '#6c757d'
-      lightStyleSettings.buttonDangerBg = lightButtonDangerBg?.value || '#dc3545'
-      lightStyleSettings.cardBg = lightCardBg?.value || '#ffffff'
-      lightStyleSettings.cardBorder = lightCardBorder?.value || '#e3e3e3'
-      lightStyleSettings.panelBg = lightPanelBg?.value || '#ffffff'
-      lightStyleSettings.bodyBg = lightBodyBg?.value || '#ffffff'
-      lightStyleSettings.contentBg = lightContentBg?.value || '#ffffff'
-      lightStyleSettings.textPrimary = lightTextPrimary?.value || '#222222'
-      lightStyleSettings.textSecondary = lightTextSecondary?.value || '#666666'
-      lightStyleSettings.textMuted = lightTextMuted?.value || '#999999'
-      lightStyleSettings.borderRadiusSm = Math.min(parseInt(lightBorderRadiusSm?.value ?? '') || 4, 20)
-      lightStyleSettings.borderRadiusMd = Math.min(parseInt(lightBorderRadiusMd?.value ?? '') || 8, 30)
-      lightStyleSettings.borderRadiusLg = Math.min(parseInt(lightBorderRadiusLg?.value ?? '') || 12, 50)
-      // console.log('Light theme settings loaded:', lightStyleSettings)
-
-      // Load dark theme settings
-      // console.log('Loading dark theme settings from backend')
-      darkStyleSettings.buttonPrimaryBg = darkButtonPrimaryBg?.value || '#3b82f6'
-      darkStyleSettings.buttonSecondaryBg = darkButtonSecondaryBg?.value || '#6b7280'
-      darkStyleSettings.buttonDangerBg = darkButtonDangerBg?.value || '#ef4444'
-      darkStyleSettings.cardBg = darkCardBg?.value || '#374151'
-      darkStyleSettings.cardBorder = darkCardBorder?.value || '#4b5563'
-      darkStyleSettings.panelBg = darkPanelBg?.value || '#374151'
-      darkStyleSettings.bodyBg = darkBodyBg?.value || '#1f2937'
-      darkStyleSettings.contentBg = darkContentBg?.value || '#1f2937'
-      darkStyleSettings.textPrimary = darkTextPrimary?.value || '#e5e7eb'
-      darkStyleSettings.textSecondary = darkTextSecondary?.value || '#9ca3af'
-      darkStyleSettings.textMuted = darkTextMuted?.value || '#6b7280'
-      darkStyleSettings.borderRadiusSm = Math.min(parseInt(darkBorderRadiusSm?.value ?? '') || 4, 20)
-      darkStyleSettings.borderRadiusMd = Math.min(parseInt(darkBorderRadiusMd?.value ?? '') || 8, 30)
-      darkStyleSettings.borderRadiusLg = Math.min(parseInt(darkBorderRadiusLg?.value ?? '') || 12, 50)
-      // console.log('Dark theme settings loaded:', darkStyleSettings)
 
       // Apply CSS variables immediately after loading
       updateCSSVariables()
@@ -560,72 +473,6 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  // Save light style settings
-  const saveLightStyleSettings = async () => {
-    try {
-      const styleSettingsToSave = [
-        { key: 'light_body_bg', value: lightStyleSettings.bodyBg, description: 'Light theme body background color' },
-        { key: 'light_content_bg', value: lightStyleSettings.contentBg, description: 'Light theme content background color' },
-        { key: 'light_button_primary_bg', value: lightStyleSettings.buttonPrimaryBg, description: 'Light theme primary button background color' },
-        { key: 'light_button_secondary_bg', value: lightStyleSettings.buttonSecondaryBg, description: 'Light theme secondary button background color' },
-        { key: 'light_button_danger_bg', value: lightStyleSettings.buttonDangerBg, description: 'Light theme danger button background color' },
-        { key: 'light_card_bg', value: lightStyleSettings.cardBg, description: 'Light theme card background color' },
-        { key: 'light_card_border', value: lightStyleSettings.cardBorder, description: 'Light theme card border color' },
-        { key: 'light_panel_bg', value: lightStyleSettings.panelBg, description: 'Light theme panel background color' },
-        { key: 'light_text_primary', value: lightStyleSettings.textPrimary, description: 'Light theme primary text color' },
-        { key: 'light_text_secondary', value: lightStyleSettings.textSecondary, description: 'Light theme secondary text color' },
-        { key: 'light_text_muted', value: lightStyleSettings.textMuted, description: 'Light theme muted text color' },
-        { key: 'light_border_radius_sm', value: lightStyleSettings.borderRadiusSm.toString(), description: 'Light theme small border radius' },
-        { key: 'light_border_radius_md', value: lightStyleSettings.borderRadiusMd.toString(), description: 'Light theme medium border radius' },
-        { key: 'light_border_radius_lg', value: lightStyleSettings.borderRadiusLg.toString(), description: 'Light theme large border radius' }
-      ]
-
-      await upsertSettings(styleSettingsToSave)
-
-      // Only update CSS variables if light theme is active
-      if (themeStore.theme === 'light') {
-        updateCSSVariables()
-      }
-      window.dispatchEvent(new Event('settings-updated'))
-    } catch (err) {
-      console.error('Failed to save light style settings:', err)
-      throw err
-    }
-  }
-
-  // Save dark style settings
-  const saveDarkStyleSettings = async () => {
-    try {
-      const styleSettingsToSave = [
-        { key: 'dark_body_bg', value: darkStyleSettings.bodyBg, description: 'Dark theme body background color' },
-        { key: 'dark_content_bg', value: darkStyleSettings.contentBg, description: 'Dark theme content background color' },
-        { key: 'dark_button_primary_bg', value: darkStyleSettings.buttonPrimaryBg, description: 'Dark theme primary button background color' },
-        { key: 'dark_button_secondary_bg', value: darkStyleSettings.buttonSecondaryBg, description: 'Dark theme secondary button background color' },
-        { key: 'dark_button_danger_bg', value: darkStyleSettings.buttonDangerBg, description: 'Dark theme danger button background color' },
-        { key: 'dark_card_bg', value: darkStyleSettings.cardBg, description: 'Dark theme card background color' },
-        { key: 'dark_card_border', value: darkStyleSettings.cardBorder, description: 'Dark theme card border color' },
-        { key: 'dark_panel_bg', value: darkStyleSettings.panelBg, description: 'Dark theme panel background color' },
-        { key: 'dark_text_primary', value: darkStyleSettings.textPrimary, description: 'Dark theme primary text color' },
-        { key: 'dark_text_secondary', value: darkStyleSettings.textSecondary, description: 'Dark theme secondary text color' },
-        { key: 'dark_text_muted', value: darkStyleSettings.textMuted, description: 'Dark theme muted text color' },
-        { key: 'dark_border_radius_sm', value: darkStyleSettings.borderRadiusSm.toString(), description: 'Dark theme small border radius' },
-        { key: 'dark_border_radius_md', value: darkStyleSettings.borderRadiusMd.toString(), description: 'Dark theme medium border radius' },
-        { key: 'dark_border_radius_lg', value: darkStyleSettings.borderRadiusLg.toString(), description: 'Dark theme large border radius' }
-      ]
-
-      await upsertSettings(styleSettingsToSave)
-
-      // Only update CSS variables if dark theme is active
-      if (themeStore.theme === 'dark') {
-        updateCSSVariables()
-      }
-      window.dispatchEvent(new Event('settings-updated'))
-    } catch (err) {
-      console.error('Failed to save dark style settings:', err)
-      throw err
-    }
-  }
-
   return {
     activeTheme,
     appearanceUnavailable,
@@ -637,8 +484,7 @@ export const useSettingsStore = defineStore('settings', () => {
     baseUiDesign,
     customizedDesign,
     themePreferences,
-    preferencePreview,
-    setPreferencePreview,
+    menuLayout,
     appearanceRecovery,
     brandingLogo,
     assetWarnings,
@@ -648,8 +494,6 @@ export const useSettingsStore = defineStore('settings', () => {
     loadThemeAppearance,
     headerSettings,
     styleSettings,
-    lightStyleSettings,
-    darkStyleSettings,
     loading,
     error,
     loaded,
@@ -658,8 +502,6 @@ export const useSettingsStore = defineStore('settings', () => {
     loadSettings,
     updateCSSVariables,
     saveHeaderSettings,
-    saveLightStyleSettings,
-    saveDarkStyleSettings,
     // New language-aware functions
     isLanguageSpecific,
     isGlobal,

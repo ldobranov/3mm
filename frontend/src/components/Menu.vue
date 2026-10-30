@@ -1,5 +1,5 @@
 <template>
-  <slot v-if="$slots.default" :navigation="navigation" />
+  <slot v-if="$slots.default && custom" :navigation="navigation" />
   <nav
     v-else
     class="navbar navbar-expand-lg"
@@ -104,10 +104,13 @@
       <div v-if="errorMessage" class="alert alert-danger mt-3">{{ errorMessage }}</div>
     </div>
   </nav>
+  <slot name="content" :navigation="navigation" />
+  <slot name="footer" :navigation="navigation" />
 </template>
 
 <script lang="ts">
 import { defineComponent, ref, onMounted, computed, onUnmounted, watch } from 'vue';
+import type { PropType } from 'vue';
 import http from '@/utils/dynamic-http';
 import { useRouter } from 'vue-router';
 import { useI18n } from '@/utils/i18n';
@@ -118,13 +121,18 @@ import type { MenuAudience } from '@/utils/menu-navigation';
 import { readAvailableLanguages } from '@/utils/language-api';
 import { reloadCompiledUiRoutes } from '@/router';
 import { kioskRouteAvailable } from '@/utils/kiosk-session';
+import { resolveMenuRegions } from '@/utils/menu-layout';
 
 export default defineComponent({
   name: 'Menu',
+  props: {
+    custom: { type: Boolean, default: true },
+    primaryLocation: { type: String as PropType<'header' | 'sidebar'>, default: 'sidebar' },
+  },
   components: {
     ThemeToggle
   },
-  setup() {
+  setup(props) {
     interface MenuItem {
       label: string | { [key: string]: string };
       path: string;
@@ -132,7 +140,8 @@ export default defineComponent({
       audience?: MenuAudience;
     }
 
-    const menuItems = ref<MenuItem[]>([]);
+    const menus = ref<{ id: number; name: string; is_active: boolean; items: MenuItem[] }[]>([]);
+    const menuItems = computed(() => menus.value.find(menu => menu.is_active)?.items ?? []);
     const errorMessage = ref('');
     const authToken = ref(localStorage.getItem('authToken'));
     const role = ref(localStorage.getItem('role') || '');
@@ -161,9 +170,9 @@ export default defineComponent({
       return localizedNavigationLabel(item.label, currentLanguage.value) || 'Menu Item';
     };
 
-    const visibleMenuItems = computed(() => {
+    const filterItems = (items: MenuItem[]) => {
       // Filter menu items based on authentication and role
-      return menuItems.value.filter((item) => {
+      return items.filter((item) => {
         // Don't show login/logout in the regular menu items
         if (item.path === '/user/login' || item.path === '/user/logout') {
           return false;
@@ -184,6 +193,13 @@ export default defineComponent({
           routeRequiredRole: route?.meta?.requiresRole as string | undefined,
         });
       });
+    };
+    const visibleMenuItems = computed(() => filterItems(menuItems.value));
+    const regions = computed(() => {
+      const placed = resolveMenuRegions(menus.value, settingsStore.menuLayout, props.primaryLocation);
+      return Object.fromEntries(Object.entries(placed).map(([region, groups]) => [region,
+        groups.map(menu => ({ ...menu, items: filterItems(menu.items) })).filter(menu => menu.items.length),
+      ])) as Record<'header' | 'sidebar' | 'footer', typeof menus.value>;
     });
 
     const showLanguageSwitcher = computed(() => {
@@ -193,6 +209,7 @@ export default defineComponent({
     // Both shells render the SAME registry, filtering and action handlers.
     const navigation = computed(() => ({
       items: visibleMenuItems.value,
+      regions: regions.value,
       label: getMenuItemLabel,
       loggedIn: isLoggedIn.value,
       selectedLanguage: selectedLanguage.value,
@@ -210,41 +227,27 @@ export default defineComponent({
       localStorage.removeItem('role');
       localStorage.removeItem('username');
       updateAuthToken(); // Update the ref
-      buildMenuItems(); // Rebuild menu
       window.dispatchEvent(new Event('menu-refresh'));
       router.push('/user/login');
     };
 
-    const buildMenuItems = () => {
-      // Start with base menu items
-      const baseItems = [...menuItems.value.filter(item => 
-        item.path !== '/user/login' && item.path !== '/user/logout'
-      )];
-      
-      // Clear and rebuild
-      menuItems.value = baseItems;
-    };
-
+    let menuRequest = 0;
     const fetchMenuItems = async () => {
+      const request = ++menuRequest;
       try {
         // Load menu for current language - uses items field with translation support
         const response = await http.get(`/menu/read/${currentLanguage.value}`);
-        const menus = response.data.items || [];
-
-        // Only the administrator's selected menu contributes header links.
-        // Routes remain discoverable in Settings and the Command Palette.
-        const activeMenu = menus.find((m: any) => m.is_active);
-        menuItems.value = activeMenu && Array.isArray(activeMenu.items)
-          ? activeMenu.items
-          : [];
+        if (request !== menuRequest) return;
+        const values = response.data.items;
+        menus.value = Array.isArray(values) ? values.filter((menu: any) => Number.isInteger(menu?.id) &&
+          Array.isArray(menu.items)) : [];
 
         errorMessage.value = '';
       } catch (error) {
+        if (request !== menuRequest) return;
         console.error('Failed to fetch menu:', error);
-        menuItems.value = [];
+        menus.value = [];
       }
-
-      buildMenuItems();
     };
 
     const fetchAvailableLanguages = async () => {
@@ -335,6 +338,7 @@ export default defineComponent({
     });
 
     onUnmounted(() => {
+      ++menuRequest;
       window.removeEventListener('menu-refresh', refreshMenu);
       window.removeEventListener('settings-updated', handleSettingsUpdated);
       window.removeEventListener('storage', handleStorageChange);

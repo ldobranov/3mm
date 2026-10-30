@@ -15,7 +15,7 @@ vi.mock('@/utils/ui-labels', () => ({ useUiLabels: () => () => 'Loading' }))
 vi.mock('@/utils/settings-api', () => ({ readSettings: mocks.read }))
 vi.mock('@/utils/dynamic-http', () => ({ default: { post: vi.fn() } }))
 vi.mock('vue-router', () => ({ useRoute: () => ({ meta: {} }), RouterView: { template: '<main>Page</main>' } }))
-vi.mock('./components/ui/ApplicationShell.vue', () => ({ default: { template: '<div data-shell><slot /></div>' } }))
+vi.mock('./components/ui/ApplicationShell.vue', () => ({ default: { props: ['active'], template: '<div data-shell :data-active="active"><slot /></div>' } }))
 vi.mock('./components/CommandPalette.vue', () => ({ default: { template: '<div data-palette />' } }))
 import App from './App.vue'
 
@@ -55,6 +55,7 @@ describe('Initial appearance gate', () => {
     await flushPromises()
     expect(wrapper.find('[role="status"]').exists()).toBe(false)
     expect(wrapper.find('[data-shell]').text()).toBe('Page')
+    expect(wrapper.get('[data-shell]').attributes('data-active')).toBe('true')
     expect(mocks.css).toHaveBeenCalled()
   })
 
@@ -66,6 +67,7 @@ describe('Initial appearance gate', () => {
     await flushPromises()
     expect(mocks.appearance.mock.calls[0][0].aborted).toBe(true)
     expect(wrapper.find('[data-shell]').exists()).toBe(true)
+    expect(wrapper.get('[data-shell]').attributes('data-active')).toBe('true')
     window.dispatchEvent(new Event('settings-updated'))
     expect(mocks.appearance).toHaveBeenCalledTimes(2)
     expect(mocks.settings).toHaveBeenCalledTimes(1)

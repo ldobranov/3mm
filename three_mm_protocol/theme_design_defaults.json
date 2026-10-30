@@ -16,5 +16,5 @@
   "scale": { "unit": 4, "radius_sm": 6, "radius_md": 10, "radius_lg": 14 },
   "layout": { "navigation": "sidebar", "density": "compact", "content_width": 1440, "sidebar_width": 248 },
   "components": { "button": "solid", "card": "bordered" },
-  "header_style": "saved"
+  "header_style": "theme"
 }
