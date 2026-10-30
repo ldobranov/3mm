@@ -449,10 +449,13 @@ def _resolve_code_identity(db, installation_id, pin, package, *, registration_ke
         from backend.services.application_package_staging import registration_id
         marker = registration_id(db, installation_id, pin.module_package_id, pin.sha256)
         from backend.services.application_configuration_provenance import registration_id as connector_registration_id
-        if db.get(ApplicationAuthorityAction, connector_registration_id(db, installation_id)) is not None:
-            from backend.services.application_configuration_provenance import verify_registration
-        elif db.get(ApplicationAuthorityAction, marker) is not None:
+        # An exact staged package supersedes the historical first-registration
+        # marker, which is keyed only by installation/incarnation. A bad current
+        # proof must still fail closed; never fall back to the historical marker.
+        if db.get(ApplicationAuthorityAction, marker) is not None:
             from backend.services.application_package_staging import verify_registration
+        elif db.get(ApplicationAuthorityAction, connector_registration_id(db, installation_id)) is not None:
+            from backend.services.application_configuration_provenance import verify_registration
         else:
             from backend.services.application_relational_registration import verify_registration
         verify_registration(db, registration_key, installation_id, pin, package)

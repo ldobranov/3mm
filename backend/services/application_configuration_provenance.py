@@ -77,15 +77,17 @@ def current_registration(db, key, installation_id, pin, package):
     """Authenticate existing provenance before preparing a configuration change."""
     from backend.services import application_package_staging as staging
     from backend.services import application_relational_registration as relational
-    marker = registration_id(db, installation_id)
+    # Match code-identity resolution: the current package's explicit staging
+    # proof takes precedence over a first-registration marker from an old version.
+    marker = staging.registration_id(db, installation_id, pin.module_package_id, pin.sha256)
     if db.get(Action, marker) is not None:
-        verify_registration(db, key, installation_id, pin, package)
-        binding = lambda: _binding(db, key, installation_id, pin, package)
+        staging.verify_registration(db, key, installation_id, pin, package)
+        binding = lambda: staging._binding(db, key, installation_id, pin.module_package_id, package)
     else:
-        marker = staging.registration_id(db, installation_id, pin.module_package_id, pin.sha256)
+        marker = registration_id(db, installation_id)
         if db.get(Action, marker) is not None:
-            staging.verify_registration(db, key, installation_id, pin, package)
-            binding = lambda: staging._binding(db, key, installation_id, pin.module_package_id, package)
+            verify_registration(db, key, installation_id, pin, package)
+            binding = lambda: _binding(db, key, installation_id, pin, package)
         else:
             relational.verify_registration(db, key, installation_id, pin, package)
             marker = relational.candidate_registration_id(db, installation_id, pin)
