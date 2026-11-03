@@ -61,6 +61,7 @@ from backend.services.application_authority_policy import (
 )
 from backend.services.application_authority_sources import (
     _prepare_installed_package, _read_snapshot, _package_pin, _core_identity, _resolve_code_identity,
+    _Unavailable,
 )
 from backend.services.application_authority_subjects import _compose
 from backend.services.application_policy_reviews import _actor, PolicyReviewStoreError
@@ -254,10 +255,10 @@ class ApplicationAuthorityManager:
         try:
             queries = resolve_queries(self, db, key, installation_id, prepared,
                 proposed_configuration=proposed_configuration)
-        except AuthorityManagementError:
+            result = _compose(db, installation_id, *prepared, key,
+                proposed_configuration=proposed_configuration, queries=queries)
+        except (AuthorityManagementError, _Unavailable):
             raise AuthorityManagementError('unsupported_authority') from None
-        result = _compose(db, installation_id, *prepared, key,
-            proposed_configuration=proposed_configuration, queries=queries)
         subject = result.subject
         if subject is not None and subject.has_executable_frontend and prepared.built_ui_sha256:
             value = subject.model_dump(mode='json')

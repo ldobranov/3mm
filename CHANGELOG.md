@@ -6,7 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.5] - 2026-11-03
+
+- Includes the display and authority changes from the unpublished 0.3.4 tag.
+- Bundles Bulgarian 1.0.3 with hardware setup and recent HTTP failure labels.
+- Rejects a revoked required device source through the normal authority error
+  path instead of leaking an internal exception.
+
 ## [0.3.4] - 2026-11-03
+
+Tagged but not published.
 
 ### Added
 
