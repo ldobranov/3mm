@@ -1,5 +1,5 @@
 """Real admin health HTTP, signed app peer and independent response Runtime."""
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import replace
 import json
 import os
@@ -146,7 +146,13 @@ def test_full_shared_pool_leaves_core_threads_and_db_free(health_stack):
         assert s.http('/api/v1/diagnostics/components',headers=s.admin)[0]==200
         assert s.http('/settings/read')[0]==200 and time.monotonic()-start<1
         (s.health_root/'mode').write_text('valid')
-        assert all(p.result(timeout=2)[0]==200 for p in pending)
+        # The latency assertions above cover Core while all slots are held.
+        # Drain together under the HTTP watchdog, not a second, shorter
+        # per-future deadline competing with the real Runtime budget.
+        _, unfinished = wait(pending, timeout=10)
+        assert not unfinished, f'{len(unfinished)} health/status requests did not drain'
+        statuses = [request.result()[0] for request in pending]
+        assert statuses == [200] * 8
 
 
 def test_runtime_kill_update_rollback_preserve_core_and_do_not_resend_health(health_stack):
