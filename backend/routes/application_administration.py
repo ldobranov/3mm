@@ -180,7 +180,10 @@ def _write(db,module_id,entrypoint_id,body,authorization,operation,receipt):
             if saved:raise Replayed({k:v for k,v in saved.items() if k not in {'replayed','historical'}})
             device=current.scalar(select(Device).where(Device.device_id==body.device_id).with_for_update())
             if device is None:raise HTTPException(404,'Device was not found')
-            require_control_authority(current,device)
+            try:
+                require_control_authority(current,device)
+            except DeviceCommandError as exc:
+                raise HTTPException(409, str(exc)) from exc
             receipt['saved']=saved
             yield current,mutation,device
     except (AuthorityManagementError,AuthorityReviewKeyError):
