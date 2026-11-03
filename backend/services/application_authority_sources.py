@@ -550,12 +550,16 @@ def _resolve(db, installation_id, pin, package, *, registration_key=None, propos
     if status_read in app.platform_permissions and app.service.sdk_version == "1.3":
         from backend.services.application_status_read import resolve_status_scopes
 
-        application = db.execute(select(
-            ApplicationExtensionInstallation.module_id, ApplicationExtensionInstallation.instance_id,
-            ApplicationExtensionInstallation.enabled, ApplicationExtensionInstallation.status,
-        ).where(ApplicationExtensionInstallation.id == installation_id)).one()
         try:
+            application = db.execute(select(
+                ApplicationExtensionInstallation.module_id, ApplicationExtensionInstallation.instance_id,
+                ApplicationExtensionInstallation.enabled, ApplicationExtensionInstallation.status,
+            ).where(ApplicationExtensionInstallation.id == installation_id)).one()
             status_projections = resolve_status_scopes(db, application, principal, pin.sha256)
+        except SQLAlchemyError:
+            # The status snapshot could not be read. Abort the whole authority
+            # decision rather than using a partial subject or continuing SQL.
+            raise _Unavailable("source_unavailable") from None
         except (ValueError, RuntimeError, TypeError, AttributeError):
             # Never silently grant an empty/partly resolved requested family.
             pending.append(SourceIssue(reason="peer_authority_unresolved"))
