@@ -3,6 +3,7 @@
 from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
+from three_mm_protocol.capability_contracts import CapabilityContractV1
 
 BindingId = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,95}$")]
 DeviceId = Annotated[str, Field(pattern=r"^dev_[0-9a-f]{32}$")]
@@ -20,6 +21,7 @@ class CommandCandidateV1(BaseModel):
     provider_id: str | None = None
     provider_version: str | None = None
     contract_version: str | None = None
+    contract: CapabilityContractV1 | None = None
     compatible: bool
     selectable: bool
     blockers: list[str] = Field(max_length=8)
@@ -28,6 +30,8 @@ class CommandCandidateV1(BaseModel):
 
     @model_validator(mode="after")
     def consistent_candidate(self):
+        if self.contract is not None and self.contract.contract_version != self.contract_version:
+            raise ValueError("Candidate contract version changed")
         if self.selectable != (self.compatible and not self.blockers):
             raise ValueError("Selection must satisfy every requirement")
         if (self.readiness == "ready") != (self.readiness_reason is None):
@@ -57,6 +61,11 @@ class CommandDiscoveryV1(BaseModel):
 
     @model_validator(mode="after")
     def scoped_observation(self):
+        if any(item.contract is not None and (item.contract.capability_id != self.capability_id
+                or self.action not in item.contract.actions
+                or item.compatible and item.contract.contract_version != self.contract_version)
+                for item in self.candidates):
+            raise ValueError("Candidate contract does not describe the declared requirement")
         if len({item.device_id for item in self.candidates}) != len(self.candidates):
             raise ValueError("Duplicate candidate device")
         if self.access == "required" and (self.candidates or self.selected_device_id is not None):

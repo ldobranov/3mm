@@ -10,10 +10,15 @@ from three_mm_protocol.capability_contracts import CapabilityContractError, vali
 from three_mm_protocol.capability_availability import CapabilityAvailabilityReportV1, declaration_digest
 from datetime import UTC, datetime
 from agent import __version__
+from three_mm_protocol.hardware_profiles import validate_hardware_approval, hardware_profile
 
-AGENT_ALLOWED_PERMISSIONS = {"data.read", "data.write", "events.publish", "network.outbound", "process.spawn", "hardware.inventory", "hardware.gpio"}
+AGENT_ALLOWED_PERMISSIONS = {"data.read", "data.write", "events.publish", "network.outbound", "process.spawn", "hardware.inventory", "hardware.gpio", "hardware.display"}
 
 class ModuleLifecycleError(RuntimeError): pass
+
+def _manifest_digest(manifest):
+    raw = json.dumps(manifest.model_dump(mode='json'), sort_keys=True, separators=(',', ':'))
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 @dataclass(frozen=True, slots=True)
 class ModuleRuntimeResult:
@@ -23,16 +28,17 @@ class ModuleRuntimeResult:
     previous_version: str | None = None
 
 class CapabilityService(Protocol):
-    def invoke(self, action: str, arguments: dict) -> dict: ...
+    def invoke(self, action: str, arguments: dict, *, not_after: datetime | None = None) -> dict: ...
 
 RuntimeHandler = Callable[[ModuleManifestV2, Path], dict[str, CapabilityService] | None]
 
 class AgentModuleRuntime:
-    def __init__(self, data_dir: Path, *, architecture: str, protocol_version: str = "1.0", runtime_handlers: dict[str, RuntimeHandler] | None = None):
+    def __init__(self, data_dir: Path, *, architecture: str, protocol_version: str = "1.0", runtime_handlers: dict[str, RuntimeHandler] | None = None, device_id: str | None = None):
         self.root = data_dir / "modules"
         self.architecture = architecture
         self.protocol_version = protocol_version
         self.runtime_handlers = dict(runtime_handlers or {})
+        self.device_id = device_id
         self._services: dict[str, CapabilityService] = {}
         self._contracts = {}
         self._owners = {}
@@ -49,7 +55,7 @@ class AgentModuleRuntime:
         temp = path.with_suffix(".tmp"); temp.write_text(json.dumps(state, indent=2) + "\n")
         os.chmod(temp, 0o600); os.replace(temp, path)
 
-    def install(self, package: bytes, *, expected_sha256: str) -> ModuleRuntimeResult:
+    def install(self, package: bytes, *, expected_sha256: str, hardware_profile_approval=None) -> ModuleRuntimeResult:
         if hashlib.sha256(package).hexdigest() != expected_sha256:
             raise ModuleLifecycleError("package integrity mismatch")
         try:
@@ -67,6 +73,11 @@ class AgentModuleRuntime:
             raise ModuleLifecycleError("incompatible architecture")
         if set(manifest.permissions) - AGENT_ALLOWED_PERMISSIONS:
             raise ModuleLifecycleError("permission policy rejected package")
+        try:
+            approval = validate_hardware_approval(manifest, hardware_profile_approval,
+                device_id=self.device_id, package_sha256=expected_sha256)
+        except ValueError as exc:
+            raise ModuleLifecycleError(str(exc)) from exc
         previous = self.state(manifest.module_id).get("active_version")
         release = self.root / "releases" / manifest.module_id / manifest.version
         release.parent.mkdir(parents=True, exist_ok=True)
@@ -83,7 +94,9 @@ class AgentModuleRuntime:
             data_dir = self.root / "data" / manifest.module_id
             data_dir.mkdir(parents=True, exist_ok=True)
             self._activate(manifest, data_dir)
-            self._save_state(manifest.module_id, {"active_version": manifest.version, "enabled": True, "permissions": list(manifest.permissions), "capabilities": list(manifest.capabilities.provides), "registrations": [item.model_dump() for item in manifest.registrations]})
+            self._save_state(manifest.module_id, {"active_version": manifest.version, "enabled": True, "permissions": list(manifest.permissions), "capabilities": list(manifest.capabilities.provides), "registrations": [item.model_dump() for item in manifest.registrations],
+                "package_sha256": expected_sha256, "manifest_sha256": _manifest_digest(manifest),
+                "hardware_profile_approval": approval.model_dump() if approval is not None else None})
         except Exception:
             shutil.rmtree(stage, ignore_errors=True)
             raise
@@ -139,17 +152,25 @@ class AgentModuleRuntime:
         if contract is None:
             if payload.get('contract_version') is not None or payload.get('contract_digest') is not None:
                 raise CapabilityContractError('Versioned capability contract is unavailable')
-            return None
-        return contract.invocation(payload, require_digest=True)
+            definition = None
+        else:
+            definition = contract.invocation(payload, require_digest=True)
+        # Trusted providers may impose resource-specific validation that the
+        # bounded schema dialect cannot express (e.g. character repertoire).
+        # This must remain side-effect free and precede any driver call.
+        service = self._services[payload['capability_id']]
+        if hasattr(service, 'validate_invocation'):
+            service.validate_invocation(payload['action'], payload.get('arguments', {}))
+        return definition
 
-    def invoke(self, capability_id: str, action: str, arguments: dict, *, contract_version=None, contract_digest=None) -> dict:
+    def invoke(self, capability_id: str, action: str, arguments: dict, *, contract_version=None, contract_digest=None, not_after=None) -> dict:
         service = self._services.get(capability_id)
         if service is None:
             raise ModuleLifecycleError("capability is unavailable")
         definition = self.validate_invocation({'capability_id': capability_id, 'action': action,
             'arguments': arguments, 'contract_version': contract_version, 'contract_digest': contract_digest})
         try:
-            result = service.invoke(action, arguments)
+            result = service.invoke(action, arguments, not_after=not_after)
             if definition is not None:
                 validate_value(result, definition.result_schema)
             return result
@@ -247,8 +268,13 @@ class AgentModuleRuntime:
             manifest_path = self.root / "releases" / module_id / state["active_version"] / "manifest.json"
             try:
                 manifest = ModuleManifestV2.model_validate_json(manifest_path.read_text())
+                if hardware_profile(manifest) is not None:
+                    if state.get('manifest_sha256') != _manifest_digest(manifest):
+                        raise ModuleLifecycleError('Hardware provider manifest changed since approval')
+                    validate_hardware_approval(manifest, state.get('hardware_profile_approval'),
+                        device_id=self.device_id, package_sha256=state.get('package_sha256'))
                 self._activate(manifest, self.root / "data" / module_id)
-            except (OSError, ValidationError, ModuleLifecycleError) as exc:
+            except (OSError, ValueError, ModuleLifecycleError) as exc:
                 state["runtime_error"] = str(exc)
                 self._save_state(module_id, state)
 

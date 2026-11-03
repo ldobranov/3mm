@@ -248,16 +248,18 @@ def application_ui_artifact(db, installation, validated, *, expected_build=None)
     from backend.services.application_authority_management import (
         configured_manager, AuthorityManagementError, _UI_TRUST_SNAPSHOT, _UiTrustSnapshot,
     )
+    from backend.services.operation_diagnostics import authority_failure_span
 
-    # M21 supplies a freshly checked key -> snapshot lease. Reuse only that
+    # Core supplies a freshly checked key -> policy snapshot lease. Reuse only that
     # exact Session/build/installation result; never a boolean or stored token.
     # Other callers retain the independent native-review gate below.
     proof = db.info.get(_UI_TRUST_SNAPSHOT) if db is not None else None
     if proof is not None:
         try:
-            if type(proof) is not _UiTrustSnapshot:
-                raise AuthorityManagementError('native_review_unavailable')
-            return proof.artifact_for(db, installation.id, validated.sha256, expected_build)
+            with authority_failure_span('authority.ui_snapshot'):
+                if type(proof) is not _UiTrustSnapshot:
+                    raise AuthorityManagementError('native_review_unavailable')
+                return proof.artifact_for(db, installation.id, validated.sha256, expected_build)
         except AuthorityManagementError:
             raise CompiledUiBuildError('Application UI code trust is unavailable') from None
 

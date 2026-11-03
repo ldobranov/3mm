@@ -53,3 +53,28 @@ def test_unsupported_or_lost_discovery_never_falls_back_to_inventory_or_submit(m
         client.discover_command("output")
     assert not error.value.retryable
     assert calls == [("command.discover", {"binding_id": "output"})]
+
+
+@pytest.mark.parametrize('fault',[None,'foreign_capability','wrong_version','wrong_requirement_version','missing_action','unbounded'])
+def test_selected_provider_contract_is_bounded_correlated_data_not_live_io(monkeypatch,fault):
+    from three_mm_protocol.capability_contracts import CapabilityContractV1
+    value=observation()
+    contract={'schema_version':1,'capability_id':'example.output','contract_version':'1.0',
+        'actions':{'pulse':{'arguments_schema':{'type':'object','properties':{},'required':[], 'additionalProperties':False},
+                            'result_schema':{'type':'object','properties':{},'required':[], 'additionalProperties':False}}}}
+    if fault=='foreign_capability':contract['capability_id']='example.foreign'
+    if fault=='wrong_version':contract['contract_version']='2.0'
+    if fault=='wrong_requirement_version':value['contract_version']='2.0'
+    if fault=='missing_action':contract['actions']={}
+    if fault=='unbounded':contract['state_schema']={'type':'string'}
+    value['candidates'][0]['contract']=contract
+    client=ApplicationPlatformClient(Path('unused'),'a'*24,b's'*32)
+    calls=[]
+    def observe(action,payload):calls.append(action);return value
+    monkeypatch.setattr(client,'_call',observe)
+    if fault:
+        with pytest.raises(ApplicationPlatformError):client.discover_command('output')
+    else:
+        result=client.discover_command('output')
+        assert result['candidates'][0]['contract'] == CapabilityContractV1.model_validate(contract).model_dump(mode='json')
+    assert calls == ['command.discover']

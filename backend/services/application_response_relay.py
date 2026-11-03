@@ -13,6 +13,15 @@ CONTRACT = 1
 REPLY_BYTES = 1024 * 1024 + 1024
 
 
+class ApplicationResponseError(ValueError):
+    """Closed, non-sensitive Runtime observation; never proof of non-execution."""
+    def __init__(self, reason):
+        self.reason = reason if type(reason) is str and reason in {
+            'deadline_exceeded', 'response_unconfirmed', 'response_invalid', 'transport_unavailable',
+        } else 'response_invalid'
+        super().__init__('Application response is unconfirmed')
+
+
 @dataclass
 class ResponseWaiter:
     connection: socket.socket
@@ -51,24 +60,38 @@ class ResponseWaiter:
 
     async def receive(self):
         """Only the Runtime IPC socket is awaited; the app FD belongs to Runtime."""
-        self.connection.setblocking(False)
-        loop = asyncio.get_running_loop(); payload = bytearray()
-        async with asyncio.timeout(self.timeout_seconds + 1):
-            while len(payload) < REPLY_BYTES:
-                chunk = await loop.sock_recv(self.connection, min(65536, REPLY_BYTES-len(payload)))
-                if not chunk: break
-                payload.extend(chunk)
-                if b"\n" in chunk:
-                    frame, _, tail = payload.partition(b"\n")
-                    if tail: raise ValueError("Unexpected response relay tail")
-                    answer = decode_frame(frame)
-                    if (type(answer.get("application_response_contract")) is not int
-                            or answer.get("application_response_contract") != CONTRACT
-                            or answer.get("reserved") != self.nonce
-                            or set(answer) != {"application_response_contract", "reserved", "response"}):
-                        raise ValueError("Application response is unconfirmed")
-                    return answer["response"]
-        raise ValueError("Application response relay frame is incomplete")
+        try:
+            self.connection.setblocking(False)
+            loop = asyncio.get_running_loop(); payload = bytearray()
+            async with asyncio.timeout(self.timeout_seconds + 1):
+                while len(payload) < REPLY_BYTES:
+                    chunk = await loop.sock_recv(self.connection, min(65536, REPLY_BYTES-len(payload)))
+                    if not chunk: break
+                    payload.extend(chunk)
+                    if b"\n" in chunk:
+                        frame, _, tail = payload.partition(b"\n")
+                        if tail: raise ApplicationResponseError('response_invalid')
+                        answer = decode_frame(frame)
+                        if (type(answer.get("application_response_contract")) is not int
+                                or answer.get("application_response_contract") != CONTRACT
+                                or answer.get("reserved") != self.nonce):
+                            raise ApplicationResponseError('response_invalid')
+                        common = {'application_response_contract', 'reserved'}
+                        if set(answer) == common | {'response'}:
+                            return answer['response']
+                        if (set(answer) == common | {'failure'} and type(answer['failure']) is str
+                                and answer['failure'] in {'deadline_exceeded', 'response_unconfirmed'}):
+                            raise ApplicationResponseError(answer['failure'])
+                        raise ApplicationResponseError('response_invalid')
+            raise ApplicationResponseError('response_unconfirmed')
+        except ApplicationResponseError:
+            raise
+        except TimeoutError:
+            raise ApplicationResponseError('deadline_exceeded') from None
+        except OSError:
+            raise ApplicationResponseError('transport_unavailable') from None
+        except (ValueError, TypeError, KeyError, RecursionError):
+            raise ApplicationResponseError('response_invalid') from None
 
 
 # Core-owned lifecycle binding shared by health and admitted HTTP callbacks.
@@ -84,6 +107,10 @@ class ApplicationResponseBinding:
     secret: bytes
     request_id: str
     operation_id: str
+
+    @property
+    def authority_mode(self):
+        return self.snapshot[_BINDING_FIELDS.index('authority_mode')]
 
 
 def application_snapshot(installation, package):

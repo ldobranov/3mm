@@ -18,6 +18,8 @@ from backend.services.authority_metadata import AuthorityMetadataError
 from backend.services.device_module_authority import module_control_snapshot, record_module_transition
 from backend.services.module_packages import ModulePackageError, validate_module_package
 from three_mm_protocol.device_inventory import inventory_value
+from three_mm_protocol.hardware_profiles import validate_hardware_approval, HARDWARE_PROFILE_FEATURE
+from backend.services.device_runtime_features import read_runtime_features
 
 class InstallationResponse(BaseModel):
     module_id:str; desired_version:str; installed_version:str|None; status:str; enabled:bool; command_id:str|None; data_retained:bool; error:str|None
@@ -72,7 +74,7 @@ def _queue_lifecycle_command(db: Session, *, device: Device, **values):
 
 
 def install_module(sha256:str,device_id:str,_admin:User,db:Session,
-                   idempotency_key:str|None=None, *, write_scope=None, on_queued=None):
+                   idempotency_key:str|None=None, *, hardware_profile_approval=None, write_scope=None, on_queued=None):
     try:
         require_device_authority_session(db)
     except AuthorityMetadataError as exc:
@@ -98,9 +100,18 @@ def install_module(sha256:str,device_id:str,_admin:User,db:Session,
         raise HTTPException(409, "Theme extensions run in the UI, not on an Agent")
     if "agent" not in validated.manifest.runtimes:
         raise HTTPException(409, "Package does not declare an Agent runtime")
+    try:
+        approval = validate_hardware_approval(validated.manifest, hardware_profile_approval,
+            device_id=device_id, package_sha256=sha256)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
     encoded = base64.b64encode(blob).decode()
     try:
         with (write_scope or _write_scope)(db, device) as (db, mutation, current):
+            if approval is not None:
+                support = read_runtime_features(db, current)
+                if support is None or HARDWARE_PROFILE_FEATURE not in support.declaration['features']:
+                    raise HTTPException(409, 'Agent hardware-profile approval support is not advertised')
             package = db.get(ModulePackage, package_identity[0], populate_existing=True)
             if (package is None or (package.id, package.module_id, package.version, package.sha256) != package_identity
                     or (_device_architecture(db, current), current.protocol_version) != runtime_identity):
@@ -112,7 +123,8 @@ def install_module(sha256:str,device_id:str,_admin:User,db:Session,
             key = _lifecycle_idempotency_key(db, device=current, command_type="module.install", module_id=package.module_id,
                 legacy_key=f"module.install:{package.module_id}:{package.sha256}", client_key=idempotency_key, admin_id=admin_id)
             command, replay = _queue_lifecycle_command(db, device=current, command_type="module.install",
-                payload={"package_base64": encoded, "sha256": package.sha256, "module_id": package.module_id, "version": package.version},
+                payload={"package_base64": encoded, "sha256": package.sha256, "module_id": package.module_id, "version": package.version,
+                    **({'hardware_profile_approval': approval.model_dump()} if approval is not None else {})},
                 idempotency_key=key, ttl_seconds=900)
             if replay and installation is None:
                 raise HTTPException(409, "Module installation requires recovery")

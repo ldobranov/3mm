@@ -7,6 +7,7 @@ import importlib
 import json
 import os
 import socket
+import sqlite3
 import sys
 import time
 from collections import deque
@@ -21,11 +22,14 @@ from three_mm_application_sdk import (
     ApplicationFileStorageError,
     ApplicationMigration,
     ApplicationPlatformClient,
+    ApplicationPlatformError,
     ApplicationScopedFileStorage,
     ApplicationStorage,
     OperationContext,
 )
 from three_mm_protocol.application_extension import ApplicationPrivateFilesV1, ApplicationPrivateFilesV2
+from three_mm_protocol.diagnostics import HOST_SDK_FAILURES, validated_host_failure
+from three_mm_application_sdk.scoped_relational import ApplicationRelationalStorageError
 from three_mm_application_sdk.scoped_media import ApplicationScopedMediaStorage
 from three_mm_application_sdk.file_wire import MAX_SCOPED_FILE_BYTES
 from three_mm_runtime.application_file_executor import ApplicationFileExecutor
@@ -175,6 +179,42 @@ def _load_service(
     return service
 
 
+def _operation_failure(error, stage, started):
+    """Fixed negative-response detail only; never format the caught exception.
+
+    Stage/reason are observations, not proof that no effect happened. In
+    particular an SDK's not_dispatched phase cannot authorize a host-call replay.
+    """
+    reason = 'host_exception'
+    try:
+        if isinstance(error, ApplicationPlatformError):
+            code = error.reason
+            reason = 'host_sdk_' + (code if type(code) is str and code in HOST_SDK_FAILURES else 'operation_failed')
+        elif isinstance(error, sqlite3.Error):
+            code = getattr(error, 'sqlite_errorcode', None)
+            reason = ('host_sqlite_busy' if type(code) is int and
+                      (code & 0xff) in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED} else 'host_sqlite_error')
+        else:
+            for kind, label in (
+                (ApplicationFileStorageError, 'host_file_error'),
+                (ApplicationRelationalStorageError, 'host_relational_error'),
+                (ApplicationTransportError, 'host_transport_error'),
+                (PermissionError, 'host_permission_error'), (TimeoutError, 'host_timeout'),
+                (OSError, 'host_os_error'), (KeyError, 'host_key_error'),
+                (AttributeError, 'host_attribute_error'), (IndexError, 'host_index_error'),
+                (AssertionError, 'host_assertion_error'),
+                (TypeError, 'host_type_error'), (ValueError, 'host_value_error'),
+                (RuntimeError, 'host_runtime_error'),
+            ):
+                if isinstance(error, kind):
+                    reason = label
+                    break
+        return validated_host_failure({'version': 1, 'stage': stage, 'reason': reason,
+            'duration_ms': round((time.monotonic() - started) * 1000, 3)})
+    except Exception:
+        return None  # Optional diagnostics cannot replace the negative response.
+
+
 def serve(instance: str, root: Path, key_root: Path, group_id: int | None = None) -> None:
     instance_root = (root / instance).resolve()
     if root.resolve() not in instance_root.parents:
@@ -243,6 +283,8 @@ def _serve_requests(
             connection, _ = server.accept()
             with connection:
                 request_id = "invalid"
+                failure_started = time.monotonic()
+                failure_stage = 'application.host_request'
                 try:
                     request = verify_message(read_message(connection), secret)
                     request_id = str(request["request_id"])
@@ -292,6 +334,7 @@ def _serve_requests(
                             raise ApplicationTransportError(
                                 "Platform status requires the internal audience"
                             )
+                        failure_stage = 'application.host_storage'
                         response = {
                             "ok": True,
                             "result": (
@@ -312,6 +355,7 @@ def _serve_requests(
                             ),
                         )
                         continue
+                    failure_stage = 'application.host_context'
                     operations = metadata.get("operations")
                     declared = next(
                         (
@@ -379,6 +423,7 @@ def _serve_requests(
                             raise ApplicationTransportError("Task execution permit is no longer current")
                     elif context.task_execution is not None:
                         raise ApplicationTransportError("Task context is reserved for task handlers")
+                    failure_stage = 'application.host_storage'
                     ticket = request.get("relational_invocation")
                     if relational_runtime is None:
                         if ticket is not None:
@@ -395,15 +440,22 @@ def _serve_requests(
                             ticket, operation_id=operation_id
                         )
                     from three_mm_application_sdk.transaction_guard import host_operation
-                    with boundary, host_operation():
-                        result = service.handle(operation_id, payload, context)
+                    with boundary:
+                        with host_operation():
+                            failure_stage = 'application.host_handler'
+                            result = service.handle(operation_id, payload, context)
+                        failure_stage = 'application.host_storage'
+                    failure_stage = 'application.host_result'
                     if not isinstance(result, dict):
                         raise ApplicationTransportError(
                             "Application operation returned an invalid result"
                         )
                     response = {"ok": True, "result": result}
                 except Exception as exc:
-                    response = {"ok": False, "error": str(exc)[:500]}
+                    response = {"ok": False, "error": "Application operation failed; outcome may be unconfirmed"}
+                    detail = _operation_failure(exc, failure_stage, failure_started)
+                    if detail is not None:
+                        response['failure'] = detail
                 send_message(
                     connection,
                     sign_message(

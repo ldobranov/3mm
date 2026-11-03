@@ -55,6 +55,24 @@ optional validated instance ID, timestamp and duration enter records. Bodies,
 secrets, paths, SQL, terminal/PTY data and arbitrary exception/log strings are
 excluded. The support bundle remains separate from detailed records.
 
+For a verified negative application-host response, Core also records one
+failure-only `application.host_request/context/storage/handler/result` stage and
+a fixed `host_*` category. These labels distinguish request/context checks, SDK
+refusals/transport failures, SQLite contention, built-in error families and invalid
+handler results. They contain no exception text, arbitrary class names or stack
+traces. The host sends a generic error instead of the caught exception's message.
+The same Core-generated trace ID connects this observation with the HTTP409 and
+the enclosing invocation; the detailed record also retains the instance and
+host-reported elapsed milliseconds. The bounded recent-HTTP-failures ring retains
+the stage/category even when the opt-in session is off. Invalid, unknown or
+unsigned detail is not imported. Healthy calls add no host record.
+
+This requires both the updated Core and the independently pinned application
+host. Replacing only Core does not make an older host produce this information.
+Host detail is an observation, not a physical execution receipt or proof of
+non-execution. HTTP409, current policy checks and the no-replay boundary are
+unchanged; a nested SDK refusal never makes the outer call safe to replay.
+
 The timeline combines current Core records with **one explicitly imported producer
 NDJSON export**. It labels imported records as snapshots, shows producer drop
 counters, missing producers and truncation, and can save the merged JSON snapshot.

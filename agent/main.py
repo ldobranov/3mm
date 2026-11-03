@@ -18,11 +18,14 @@ from agent.core_client import (
     ReconciliationStore,
 )
 from agent.hardware import (
+    HardwareProfile,
     MockDigitalGpioDriver,
     MockIdentifierAdapter,
     create_hardware_driver,
 )
 from agent.modules.gpio import GPIO_ENTRYPOINT
+from agent.modules.character_display import character_display_handler
+from three_mm_protocol.character_display import DISPLAY_ENTRYPOINT
 from agent.gpio_configuration import GpioConfigurationManager
 from agent.automation_store import AutomationStore
 from agent.identity import AgentIdentity, AgentIdentityStore
@@ -122,7 +125,13 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
         module_runtime = AgentModuleRuntime(
             resolved_settings.data_dir,
             architecture=app.state.agent_runtime.inventory.architecture,
-            runtime_handlers={GPIO_ENTRYPOINT: gpio_configuration.handler(lambda event: app.state.module_event_sink(event))},
+            device_id=identity.device_id,
+            runtime_handlers={
+                GPIO_ENTRYPOINT: gpio_configuration.handler(lambda event: app.state.module_event_sink(event)),
+                DISPLAY_ENTRYPOINT: character_display_handler(
+                    native_allowed=resolved_settings.hardware_profile is HardwareProfile.NATIVE,
+                    lock_dir=resolved_settings.data_dir / "display-locks"),
+            },
         )
         module_runtime.start_active()
         automation_store = AutomationStore(resolved_settings.data_dir, module_runtime)

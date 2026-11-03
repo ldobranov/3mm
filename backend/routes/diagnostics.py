@@ -28,6 +28,7 @@ from backend.services.operational_alerts import (
 )
 from backend.utils.auth_dep import require_admin
 from backend.services.operation_diagnostics import core_diagnostics
+from backend.services.http_failures import recent_http_failures
 from three_mm_protocol.diagnostics import (
     DEFAULT_TTL_SECONDS, MAX_TTL_SECONDS, DiagnosticBusy,
 )
@@ -35,6 +36,26 @@ from three_mm_protocol.diagnostics import (
 
 router = APIRouter(prefix="/api/v1/diagnostics", tags=["diagnostics"])
 _merge_lock = threading.Lock()
+
+
+@router.get('/failures')
+def recent_failures(response: Response, _admin: User = Depends(require_admin)):
+    """Current Core process only. This does not start detailed recording."""
+    response.headers['Cache-Control'] = 'no-store'
+    return recent_http_failures.snapshot()
+
+
+@router.get('/failures/export')
+def export_recent_failures(_admin: User = Depends(require_admin)):
+    import json
+    snapshot = recent_http_failures.snapshot()
+    if snapshot['status'] != 'ready':
+        raise HTTPException(503, 'Recent failure snapshot is temporarily unavailable')
+    return Response(content=json.dumps(snapshot, ensure_ascii=True, allow_nan=False),
+        media_type='application/json', headers={
+            'Cache-Control': 'no-store',
+            'Content-Disposition': 'attachment; filename="3mm-recent-http-failures.json"',
+        })
 
 
 @router.get("/components")

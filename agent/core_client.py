@@ -299,6 +299,9 @@ class CorePublisher:
         if session_link_available(self.credential.device_id):
             features.add("interactive_sessions.v1")
         if self.module_runtime is not None:
+            from three_mm_protocol.hardware_profiles import HARDWARE_PROFILE_FEATURE
+            if getattr(self.module_runtime, 'device_id', None) == self.credential.device_id:
+                features.add(HARDWARE_PROFILE_FEATURE)
             features.update({"module_lifecycle", "application_execution_permits", CONTRACT_FEATURE})
             if self.capability_availability:
                 features.add(AVAILABILITY_FEATURE)
@@ -492,7 +495,7 @@ class CorePublisher:
                 return self.module_runtime.invoke(
                     command.payload['capability_id'], command.payload['action'], command.payload.get('arguments', {}),
                     contract_version=command.payload.get('contract_version'),
-                    contract_digest=command.payload.get('contract_digest'))
+                    contract_digest=command.payload.get('contract_digest'), not_after=command.expires_at)
             result = journal.execute(command, invoke_capability,
                 authorize=authorize if command.command_type == 'application.capability.invoke' else None)
             self._submit_result(result)
@@ -616,7 +619,8 @@ class CorePublisher:
             try:
                 if command.command_type == "module.install":
                     package = base64.b64decode(command.payload["package_base64"], validate=True)
-                    lifecycle = self.module_runtime.install(package, expected_sha256=command.payload["sha256"])
+                    lifecycle = self.module_runtime.install(package, expected_sha256=command.payload["sha256"],
+                        hardware_profile_approval=command.payload.get('hardware_profile_approval'))
                 else:
                     lifecycle = self.module_runtime.disable(command.payload["module_id"])
                 result = AgentCommandResult(

@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import uuid
 
 import pytest
-from backend.services.application_response_relay import ResponseWaiter
+from backend.services.application_response_relay import ResponseWaiter, ApplicationResponseError
 from backend.services.application_status_probe import StatusProbe,snapshot,finish_status_probe
 from three_mm_platform_runtime.responses import ApplicationResponses
 from three_mm_platform_wire import send_authority_frame,read_frame
@@ -49,6 +49,48 @@ def test_relay_reads_one_original_frame_and_does_not_dispatch(tmp_path):
             peer.settimeout(.05)
             assert peer.recv(1024)==b''  # Runtime wrote no request bytes to this FD.
         waiter.close();wait_empty(server)
+
+
+@pytest.mark.parametrize('failure', ['deadline_exceeded', 'response_unconfirmed'])
+def test_real_runtime_failure_reason_survives_core_decode_without_replay(tmp_path, failure):
+    with relay(tmp_path) as server:
+        waiter = ResponseWaiter.reserve(server.path, os.geteuid())
+        waiter.timeout_seconds = 1
+        origin, peer = socket.socketpair()
+        try:
+            waiter.handoff(origin)
+            origin.close()
+            if failure == 'response_unconfirmed':
+                peer.sendall(b'not a JSON response\n')
+            with pytest.raises(ApplicationResponseError) as error:
+                asyncio.run(waiter.receive())
+            assert error.value.reason == failure
+            assert str(error.value) == 'Application response is unconfirmed'
+            peer.settimeout(1)
+            assert peer.recv(1024) == b''  # No resend or recovery command.
+        finally:
+            origin.close(); peer.close(); waiter.close()
+        wait_empty(server)
+
+
+@pytest.mark.parametrize('damage', ['unknown', 'extra', 'both', 'nonce', 'version', 'type'])
+def test_failure_envelope_is_closed_and_cannot_supply_diagnostic_text(damage):
+    left, right = socket.socketpair()
+    nonce = uuid.uuid4().hex
+    frame = {'application_response_contract': 1, 'reserved': nonce, 'failure': 'deadline_exceeded'}
+    if damage == 'unknown':frame['failure'] = 'Bearer PRIVATE runtime exception'
+    elif damage == 'extra':frame['private'] = 'business body'
+    elif damage == 'both':frame['response'] = {'private': 'body'}
+    elif damage == 'nonce':frame['reserved'] = 'f' * 32 if nonce != 'f' * 32 else 'e' * 32
+    elif damage == 'version':frame['application_response_contract'] = True
+    else:frame['failure'] = {'private': 'body'}
+    with left, right:
+        right.sendall(json.dumps(frame).encode() + b'\n')
+        waiter = ResponseWaiter(left, nonce, timeout_seconds=1)
+        with pytest.raises(ApplicationResponseError) as error:
+            asyncio.run(waiter.receive())
+        assert error.value.reason == 'response_invalid'
+        assert 'PRIVATE' not in str(error.value) and 'body' not in str(error.value)
 
 
 @pytest.mark.parametrize('phase',['reserve_fd','handoff_missing_fd','handoff_version','handoff_nonce','handoff_timeout'])

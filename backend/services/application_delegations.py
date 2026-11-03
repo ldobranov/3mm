@@ -7,7 +7,7 @@ import asyncio
 import hashlib
 import json
 import os
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -241,26 +241,39 @@ def execute_delegation(engine, installation_id, delegation_id, *, transport_secr
         _audit(db, value["data"]["actor"]["user_id"], app.module_id, delegation_id, "running")
 
     with Session(engine) as db:
+        policy_key = None
+        @contextmanager
+        def boundary(*, fence=None):
+            nonlocal policy_key
+            with manager.invocation_transaction(db, installation_id, fence=fence) as key:
+                policy_key = key
+                try:
+                    yield
+                finally:
+                    policy_key = None
         def admit():
-            with manager.keys.locked() as key:
-                _, current = _load(db, manager, key, installation_id, delegation_id)
-                data = current["data"]
-                if current["state"] != "running" or current["revision"] != claim or _expired(data):
-                    raise ValueError("Delegation execution is no longer current")
-                app, principal, operation, permissions = _admit(manager, db, key, installation_id, prepared, data)
-                delegation = OperationDelegationV1(delegation_id=delegation_id, operation_id=operation.operation_id,
-                    required_permission=operation.required_permission, payload_sha256=digest(data["payload"]),
-                    initiator={"kind": "user", "user_id": principal.user_id, "subject_id": principal.subject_id}, executor=data["executor"],
-                    expires_at=datetime.fromisoformat(data["expires_at"]))
-                context = {"audience": "operator", "user_id": principal.user_id, "platform_administrator": False,
-                    "subject_id": principal.subject_id,
-                    "permission_ids": sorted(permissions), "correlation_id": "delegation:" + delegation_id,
-                    "idempotency_key": delegation_id if operation.kind == "command" else None,
-                    "executor": data["executor"], "delegation": delegation.model_dump(mode="json")}
-                package = db.get(ModulePackage, app.module_package_id)
-                return InvocationSpec(app, package, operation.operation_id, data["payload"], context, "operator", peer)
+            # The relay owns key -> DB -> row for this entire policy boundary.
+            # Do not reacquire EX from a callback after its DB fence.
+            if policy_key is None:
+                raise ValueError('Delegation policy boundary is unavailable')
+            _, current = _load(db, manager, policy_key, installation_id, delegation_id)
+            data = current["data"]
+            if current["state"] != "running" or current["revision"] != claim or _expired(data):
+                raise ValueError("Delegation execution is no longer current")
+            app, principal, operation, permissions = _admit(manager, db, policy_key, installation_id, prepared, data)
+            delegation = OperationDelegationV1(delegation_id=delegation_id, operation_id=operation.operation_id,
+                required_permission=operation.required_permission, payload_sha256=digest(data["payload"]),
+                initiator={"kind": "user", "user_id": principal.user_id, "subject_id": principal.subject_id}, executor=data["executor"],
+                expires_at=datetime.fromisoformat(data["expires_at"]))
+            context = {"audience": "operator", "user_id": principal.user_id, "platform_administrator": False,
+                "subject_id": principal.subject_id,
+                "permission_ids": sorted(permissions), "correlation_id": "delegation:" + delegation_id,
+                "idempotency_key": delegation_id if operation.kind == "command" else None,
+                "executor": data["executor"], "delegation": delegation.model_dump(mode="json")}
+            package = db.get(ModulePackage, app.module_package_id)
+            return InvocationSpec(app, package, operation.operation_id, data["payload"], context, "operator", peer)
         try:
-            result = bounded_object(asyncio.run(invoke_with_relay(db, settings, admit)), limit=32_768)
+            result = bounded_object(asyncio.run(invoke_with_relay(db, settings, admit, boundary=boundary)), limit=32_768)
             outcome, error = "succeeded", None
         except Exception:
             # Dispatch may have committed an effect. Never infer rollback or retry.

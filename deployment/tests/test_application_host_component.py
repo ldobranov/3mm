@@ -62,6 +62,23 @@ def test_native_artifact_is_reproducible_minimal_and_core_free(artifacts,tmp_pat
     assert result.returncode==0,result.stderr
     assert json.loads(result.stdout)['build_id']==build
     assert 'backend' not in (store.root/'current/.venv/pyvenv.cfg').read_text()
+    # The diagnostic classifier must also work from the isolated native closure,
+    # not just a checkout with Core and all development dependencies importable.
+    native = store.root/'current'
+    code = (
+        'import sys,time,importlib.util; '
+        f'sys.path[:0]=[{str(native/"host.pyz")!r},{str(native/"vendor")!r}]; '
+        'from three_mm_runtime.application_host import _operation_failure; '
+        'from three_mm_application_sdk import ApplicationPlatformError; '
+        'detail=_operation_failure(ApplicationPlatformError("PRIVATE",reason="operation_denied"),'
+        '"application.host_handler",time.monotonic()); '
+        'assert detail["reason"]=="host_sdk_operation_denied"; '
+        'assert "PRIVATE" not in str(detail); '
+        'assert importlib.util.find_spec("backend") is None'
+    )
+    classified = subprocess.run([str(native/'.venv/bin/python'), '-I', '-c', code],
+        cwd=tmp_path, env={'PATH': '/usr/bin:/bin'}, capture_output=True, text=True, timeout=10)
+    assert classified.returncode == 0, classified.stderr
 
 
 @pytest.mark.parametrize('image_provider', [False, True])

@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import socket
+import sqlite3
 import subprocess
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -167,6 +168,33 @@ class UpdateMutationBoundary:
             '-m', 'three_mm_runtime.platform_runtime_updates', '--job-id', identifier]
         if self._runner.run(arguments) != 0:
             raise RuntimeError('Runtime worker scheduling is unconfirmed')
+
+    def schedule_hardware_interfaces(self, identifier: str) -> None:
+        from three_mm_runtime.hardware_interfaces import HEX32
+        if type(identifier) is not str or not HEX32.fullmatch(identifier):
+            raise ValueError('Invalid hardware operation identity')
+        arguments = [self._systemd_run, '--unit=3mm-hardware-interfaces-' + identifier,
+            '--collect', '--property=Type=exec', '--property=RuntimeMaxSec=30s',
+            '--property=TimeoutStopSec=3s', '--property=NoNewPrivileges=true',
+            '--property=MemoryMax=96M', '--property=TasksMax=16',
+            '--property=PrivateTmp=true', '--property=ProtectHome=true',
+            '--property=ProtectSystem=strict', '--property=ProtectKernelModules=true',
+            '--property=ConfigurationDirectory=systemd/system/3mm-agent.service.d',
+            '--property=ReadWritePaths=/boot/firmware /etc/modules-load.d /etc/systemd/system/3mm-agent.service.d /var/lib/3mm-hardware-interfaces /run/lock',
+            '--property=RestrictAddressFamilies=AF_UNIX',
+            '/usr/bin/env', 'PYTHONPATH=/opt/3mm/current', self._python,
+            '-m', 'three_mm_runtime.hardware_interfaces', '--request-id', identifier]
+        if self._runner.run(arguments) != 0:
+            raise RuntimeError('Hardware worker scheduling is unconfirmed')
+
+    def hardware_interfaces_worker_active(self, identifier: str) -> bool:
+        from three_mm_runtime.hardware_interfaces import HEX32
+        if type(identifier) is not str or not HEX32.fullmatch(identifier):
+            raise ValueError('Invalid hardware operation identity')
+        result = subprocess.run([self._systemctl, 'show',
+            '3mm-hardware-interfaces-' + identifier + '.service', '--property=ActiveState', '--value'],
+            capture_output=True, text=True, timeout=2, check=False)
+        return result.returncode == 0 and result.stdout.strip() in {'active', 'activating', 'deactivating'}
 
     def platform_runtime_worker_active(self, identifier: str) -> bool:
         import re
@@ -447,6 +475,26 @@ def _handle_request(
     # values before any dispatch branch can hash an array/object as an action.
     if type(payload) is not dict or type(payload.get("action")) is not str:
         return {"ok": False, "error": "invalid_request"}
+    from three_mm_runtime.hardware_interfaces import ACTIONS as HARDWARE_ACTIONS
+    if payload['action'] in HARDWARE_ACTIONS:
+        from three_mm_runtime.hardware_interfaces import HardwareInterfaces, admin_revision, validate_request
+        try:
+            validate_request(payload)
+            core_uid, _ = _service_ids(service_user, service_group)
+            if type(relational_peer_uid) is not int or relational_peer_uid != core_uid:
+                raise ValueError('Real Core peer required')
+            admin_revision(application_database, payload['requested_by_user_id'])
+            selected = boundary or UpdateMutationBoundary()
+            workflow = HardwareInterfaces(database=application_database,
+                worker_active=selected.hardware_interfaces_worker_active)
+            if payload['action'] == 'hardware_interfaces_status':
+                return {'ok': True, 'status': 'inspected', 'interfaces': workflow.inspect(payload['device_id'])}
+            identifier = (workflow.restart(payload, selected.schedule_system_action)
+                if payload['action'] == 'hardware_interfaces_restart'
+                else workflow.queue(payload, selected.schedule_hardware_interfaces))
+            return {'ok': True, 'status': 'queued', 'request_id': identifier}
+        except (OSError, ValueError, KeyError, RuntimeError, TypeError, sqlite3.Error, subprocess.SubprocessError):
+            return {'ok': False, 'error': 'hardware_interfaces_unavailable'}
     from three_mm_runtime.platform_runtime_updates import ACTIONS as RUNTIME_UPDATE_ACTIONS
     if payload['action'] in RUNTIME_UPDATE_ACTIONS:
         from three_mm_runtime.platform_runtime_updates import RuntimeUpdates, validate_request
@@ -965,7 +1013,8 @@ def _serve_connection(connection, **request_arguments):
         from backend.services.application_authority_context import _unique_object
         payload = json.loads(request.split(b"\n", 1)[0], object_pairs_hook=_unique_object)
         from three_mm_runtime.platform_runtime_updates import ACTIONS as RUNTIME_UPDATE_ACTIONS
-        if isinstance(payload, dict) and type(payload.get('action')) is str and (payload['action'] in RUNTIME_UPDATE_ACTIONS or payload.get("action") in ("prepare_application_relational", "activate_application_relational", "recover_application_relational_start", "reactivate_application_relational", "enable_application_relational_boot", "recover_application_relational_preparation", "resume_application_relational_preparation") or payload["action"] in UPGRADE_ACTIONS):
+        from three_mm_runtime.hardware_interfaces import ACTIONS as HARDWARE_ACTIONS
+        if isinstance(payload, dict) and type(payload.get('action')) is str and (payload['action'] in RUNTIME_UPDATE_ACTIONS | HARDWARE_ACTIONS or payload.get("action") in ("prepare_application_relational", "activate_application_relational", "recover_application_relational_start", "reactivate_application_relational", "enable_application_relational_boot", "recover_application_relational_preparation", "resume_application_relational_preparation") or payload["action"] in UPGRADE_ACTIONS):
             if os.name != "posix" or not hasattr(socket, "SO_PEERCRED"):
                 raise ValueError("Local Core peer credentials required")
             import struct

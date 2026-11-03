@@ -13,7 +13,10 @@ from backend.db.audit_log import AuditLog
 from backend.services.application_authority_management import _load,_save,_envelope
 from backend.services.application_extensions import load_application_package
 from backend.services.application_requirements import require_platform_requirements
-from backend.services.application_configuration import resolve_device_selection,binding_configuration_keys,require_available_device_bindings
+from backend.services.application_configuration import (
+    resolve_device_selection, binding_configuration_keys, require_available_device_bindings,
+    device_configuration_keys, resolve_application_configuration,
+)
 from backend.services.authority_metadata import read_application_authority
 from backend.services.application_commands import invalidate_commands
 from backend.services.application_tasks import require_quiescent_task_journal
@@ -81,23 +84,38 @@ def stage_application_package(engine,sha256,request,actor_token):
             raise ValueError("This profile requires its dedicated prepared lifecycle")
         if set(request.configuration or {})-set(binding_configuration_keys(definition)):
             raise ValueError("Only declared resource bindings may be selected")
-        configuration=resolve_device_selection(package.manifest.get('configuration_schema') or {},
-            package.manifest.get('configuration_defaults') or {},definition,
-            existing=app.configuration,selection=request.configuration)
+        schema=package.manifest.get('configuration_schema') or {}
+        if request.complete_device_configuration:
+            required=set(device_configuration_keys(definition, required_only=True))
+            required.update(set(schema.get('required', ())) & set(device_configuration_keys(definition)))
+            missing=required-set(app.configuration or {})
+            if (package.id!=app.module_package_id or app.active_version is not None
+                    or app.authority_mode!='review_required' or request.expected_revision is not None
+                    or not missing or set(request.configuration or {})!=missing):
+                raise ValueError('Only missing required device choices may complete this inert registration')
+            configuration=resolve_application_configuration(schema,{},definition,
+                existing=app.configuration,overrides=request.configuration)
+        else:
+            configuration=resolve_device_selection(schema,
+                package.manifest.get('configuration_defaults') or {},definition,
+                existing=app.configuration,selection=request.configuration)
         if len(json.dumps(configuration,allow_nan=False).encode())>8192:
             raise ValueError("Application configuration exceeds its budget")
         pin=(package.id,package.module_id,package.version,package.sha256,package.file_path)
         original_configuration=dict(app.configuration or {})
     from backend.services.application_consent import _bootstrap_key
     _bootstrap_key(manager,actor_token)
-    body=request.model_dump(mode='json');body['package_sha256']=sha256
+    body=request.model_dump(mode='json',exclude={'complete_device_configuration'});body['package_sha256']=sha256
+    if request.complete_device_configuration:
+        body['complete_device_configuration']=True
     with manager._write(identifier,actor_token,request.request_id,'task_package_stage',body) as (db,key,mutation,actor,result):
         if result:
             return result
         current=db.get(Installation,identifier,populate_existing=True)
         candidate=db.get(ModulePackage,pin[0],populate_existing=True)
         grant_record=db.get(Grant,identifier)
-        revision=_load(db,key,'grant',grant_record,identifier)['revision'] if grant_record is not None else None
+        revision=(_load(db,key,'grant',grant_record,identifier)['revision']
+            if grant_record is not None and not request.complete_device_configuration else None)
         if (current.enabled or current.status!='disabled'
                 or (current.authority_incarnation,current.authority_epoch,current.instance_id,current.module_package_id)!=original
                 or current.module_package_id!=old.pin.module_package_id
@@ -106,6 +124,13 @@ def stage_application_package(engine,sha256,request,actor_token):
                 or candidate is None or (candidate.id,candidate.module_id,candidate.version,candidate.sha256,candidate.file_path)!=pin
                 or current.module_id!=candidate.module_id):
             raise ValueError("Stop the current application and refresh its exact review before staging")
+        if request.complete_device_configuration:
+            from backend.services import application_configuration_provenance as provenance
+            if current.active_version is not None or current.authority_mode!='review_required':
+                raise ValueError('Application registration changed before configuration was saved')
+            # Prove the incomplete first registration; do not repair missing or
+            # invalid evidence and do not carry a previous grant forward.
+            provenance.verify_registration(db,key,identifier,old.pin,old.package)
         require_quiescent_task_journal(db,identifier)
         if db.scalar(select(ApplicationJobState.id).where(ApplicationJobState.application_installation_id==identifier,
                 ApplicationJobState.lease_token.is_not(None)).limit(1)) is not None:
@@ -115,7 +140,8 @@ def stage_application_package(engine,sha256,request,actor_token):
         invalidate_commands(db,identifier)
         mutation.set_application_mode(read_application_authority(db,identifier),'review_required')
         current=db.get(Installation,identifier,populate_existing=True)
-        current.previous_package_id=current.module_package_id
+        if not request.complete_device_configuration:
+            current.previous_package_id=current.module_package_id
         current.module_package_id=candidate.id;current.active_version=None
         current.configuration=configuration;current.health_checked_at=None
         db.flush()

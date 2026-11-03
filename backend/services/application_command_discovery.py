@@ -70,6 +70,7 @@ def _candidate(db, binding, device, now):
         provider_id=offer.provider_id if offer else None,
         provider_version=offer.provider_version if offer else None,
         contract_version=offer.contract_version if offer else None,
+        contract=contract if contract and binding.action in contract.actions else None,
         compatible=compatible, selectable=not blockers, blockers=blockers,
         readiness=readiness, readiness_reason=reason,
     )
@@ -114,7 +115,8 @@ The actual submit/permit paths independently recheck current authority.
     now = datetime.now(UTC)
     denied = _result(binding, now=now, access="required")
     try:
-        with manager.keys.locked() as key, sources._read_snapshot(engine) as db:
+        # Discovery verifies the current selection, never creates a seal/permit.
+        with manager.keys.read_locked() as key, sources._read_snapshot(engine) as db:
             app = db.get(ApplicationExtensionInstallation, installation_id)
             if (app is None or app.instance_id != instance_id or not app.enabled
                     or app.status != "active"):

@@ -52,10 +52,12 @@ from backend.routes.role_routes import router as role_router
 from backend.routes.session_routes import router as session_router
 from backend.routes.system_updates import router as system_updates_router
 from backend.routes.system_control import router as system_control_router
+from backend.routes.hardware_interfaces import router as hardware_interfaces_router
 from backend.routes.network_recovery import router as network_recovery_router
 from backend.routes.node_updates import router as node_updates_router
 from backend.services.update_policy import system_update_check_manager
 from backend.services.core_components import CoreComponents
+from backend.services.http_failures import HttpFailureMiddleware
 
 # Import all route routers
 from backend.routes.settings import router as settings_router
@@ -154,6 +156,7 @@ class CustomErrorHandlerMiddleware(BaseHTTPMiddleware):
 # Add middleware to FastAPI app
 app.add_middleware(CustomErrorHandlerMiddleware)
 app.add_middleware(DeviceBodyLimitMiddleware)
+app.add_middleware(HttpFailureMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -162,7 +165,7 @@ app.add_middleware(
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
     # Browser file downloads verify these digests across the frontend/API ports.
-    expose_headers=["Authorization-Token", "X-Content-SHA256", "X-Chunk-SHA256"],
+    expose_headers=["Authorization-Token", "X-Content-SHA256", "X-Chunk-SHA256", "X-3mm-Trace-Id"],
 )
 
 # Mount static files for uploads
@@ -221,6 +224,7 @@ app.include_router(application_operations_router)
 app.include_router(installation_peers_router)
 app.include_router(system_updates_router)
 app.include_router(system_control_router)
+app.include_router(hardware_interfaces_router)
 app.include_router(network_recovery_router)
 app.include_router(backups_router)
 app.include_router(diagnostics_router)

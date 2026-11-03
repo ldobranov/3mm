@@ -99,6 +99,12 @@
                   <button class="btn-small capability-settings" @click="selectedCapabilitiesDeviceId = device.device_id">
                     {{ capabilityLabel('open') }}
                   </button>
+                  <button class="btn-small hardware-settings" @click="selectedHardwareDeviceId = device.device_id">
+                    {{ t('hardwareInterfaces.title', 'Hardware interfaces') }}
+                  </button>
+                  <button class="btn-small hardware-profiles-settings" @click="selectedProfilesDeviceId = device.device_id">
+                    {{ t('hardwareProfiles.title', 'Hardware providers') }}
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -107,6 +113,12 @@
         <DeviceCapabilitiesPanel v-if="selectedCapabilitiesDevice" :key="selectedCapabilitiesDevice.device_id"
           :device-id="selectedCapabilitiesDevice.device_id" :name="deviceName(selectedCapabilitiesDevice.device_id)"
           @close="selectedCapabilitiesDeviceId = ''" @changed="loadGpioCapabilities" />
+        <HardwareInterfacesPanel v-if="selectedHardwareDevice" :key="selectedHardwareDevice.device_id"
+          :device-id="selectedHardwareDevice.device_id" :name="deviceName(selectedHardwareDevice.device_id)"
+          @close="selectedHardwareDeviceId = ''" />
+        <HardwareProfilesPanel v-if="selectedProfilesDevice" :key="selectedProfilesDevice.device_id"
+          :device-id="selectedProfilesDevice.device_id" :name="deviceName(selectedProfilesDevice.device_id)"
+          @close="selectedProfilesDeviceId = ''" />
         <div v-if="selectedDiagnosticsDevice" class="diagnostics-panel">
           <div class="section-title-row">
             <h3>{{ selectedDiagnosticsDevice.display_name || selectedDiagnosticsDevice.device_id }}</h3>
@@ -215,6 +227,8 @@ import http from '@/utils/dynamic-http';
 import FleetPairing from '@/components/FleetPairing.vue';
 import DeviceInventorySummary from '@/components/DeviceInventorySummary.vue';
 import DeviceCapabilitiesPanel from '@/components/DeviceCapabilitiesPanel.vue';
+import HardwareInterfacesPanel from '@/components/HardwareInterfacesPanel.vue';
+import HardwareProfilesPanel from '@/components/HardwareProfilesPanel.vue';
 import { useDeviceCapabilityLabels } from '@/components/device-capability-labels';
 import { inventoryText, type DeviceInventory } from '@/utils/device-inventory';
 
@@ -222,6 +236,10 @@ const { t } = useI18n();
 const capabilityLabel = useDeviceCapabilityLabels();
 const selectedCapabilitiesDeviceId = ref('');
 const selectedCapabilitiesDevice = computed(() => devices.value.find(device => device.device_id === selectedCapabilitiesDeviceId.value));
+const selectedHardwareDeviceId = ref('');
+const selectedHardwareDevice = computed(() => devices.value.find(device => device.device_id === selectedHardwareDeviceId.value));
+const selectedProfilesDeviceId = ref('');
+const selectedProfilesDevice = computed(() => devices.value.find(device => device.device_id === selectedProfilesDeviceId.value));
 
 // State
 const inventoryLabel = (key: string, fallback: string) => t(`mainServer.inventory.${key}`, fallback);

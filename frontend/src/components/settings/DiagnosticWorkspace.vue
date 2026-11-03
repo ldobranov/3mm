@@ -7,6 +7,7 @@
     </div>
     <p v-if="error" class="workspace-error" role="alert">{{ error }}</p>
     <p v-if="loading" role="status">{{ t('diagnostics.loading', 'Checking device…') }}</p>
+    <RecentHttpFailures @trace="traceFilter = $event" />
     <div class="component-grid">
       <article v-for="item in components" :key="item.component" class="component-card">
         <div><strong>{{ componentName(item.component) }}</strong><span class="ui-badge" :class="{ 'workspace-warning': item.health !== 'ready' }">{{ healthName(item.health) }}</span></div>
@@ -57,6 +58,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
+import RecentHttpFailures from './RecentHttpFailures.vue'
 const { t } = useI18n()
 type Component = { component: string; version?: string; build_id: string | null; loaded_build_id?: string; health: string; reason: string }
 type Session = { session_id: string | null; active: boolean; remaining_seconds: number; records: number; dropped: Record<string,number>; scope?: { profile: string; operation: string | null; instance_id: string | null } }

@@ -52,6 +52,8 @@ from backend.services.application_configuration import (
 )
 from backend.services.module_packages import ModulePackageError
 from backend.services.application_code_scope import code_verification_scope
+from backend.services.operation_diagnostics import authority_diagnostic_scope, authority_failure_span
+from backend.services.http_failures import current_trace_id, note_dispatch
 from backend.services.application_requirements import (
     ApplicationRequirementsError, inspect_platform_requirements, require_platform_requirements,
 )
@@ -117,6 +119,7 @@ class StageApplicationPackageRequest(BaseModel):
     expected_artifact_sha256: str = Field(pattern=r'^[0-9a-f]{64}$')
     expected_revision: str | None = Field(default=None, pattern=r'^[0-9a-f]{32}$')
     configuration: dict | None = Field(default=None, max_length=64)
+    complete_device_configuration: bool = False
 
 
 class ApplicationAccessResponse(BaseModel):
@@ -293,7 +296,7 @@ def _user_from_claims(db: Session, claims: dict) -> User:
 async def _invoke_http(db, module_id, operation_id, request, audience, authorization=None):
     from backend.services.application_invocation_relay import InvocationSpec, invoke_with_relay
     correlation_id=uuid.uuid4().hex
-    def admit():
+    def admit(*, check_ui=True):
         installation=_installation(db,module_id);package=_active_package(db,installation)
         principal=(ApplicationPrincipal(kind="anonymous") if audience=="public"
             else resolve_application_principal(authorization,db))
@@ -311,7 +314,7 @@ async def _invoke_http(db, module_id, operation_id, request, audience, authoriza
                 raise HTTPException(403,"Application permission is required")
         if audience=="kiosk" and (principal.kind!="kiosk" or principal.kiosk_module_id!=module_id):
             raise HTTPException(403,"A kiosk session for this application is required")
-        if request.ui_context is not None:
+        if check_ui and request.ui_context is not None:
             _ui_route(package,request.ui_context,principal,permission_ids,audience,db=db,installation=installation)
         context={"audience":audience,"correlation_id":correlation_id,"idempotency_key":request.idempotency_key}
         context["executor"]={"kind":"application","module_id":module_id,
@@ -321,40 +324,71 @@ async def _invoke_http(db, module_id, operation_id, request, audience, authoriza
                 platform_administrator=principal.is_admin, subject_id=principal.subject_id)
         if audience=="kiosk":context["terminal_id"]=principal.terminal_id
         return InvocationSpec(installation,package,operation_id,request.payload,context,audience)
+    @contextmanager
+    def boundary(*, fence=None):
+        from backend.services.application_authority_management import configured_manager, AuthorityManagementError
+        from backend.services.application_authority_keys import AuthorityReviewKeyError
+        from backend.services.application_extensions import load_application_package
+        # Resolve the real actor before preparing protected code. This preflight
+        # grants nothing: all human/route/operation policy is re-read below.
+        try:
+            with authority_failure_span('authority.ui_preflight'):
+                preflight=admit(check_ui=False)
+                installation_id=preflight.installation.id
+                enforced=preflight.installation.authority_mode!='compatibility'
+                has_ui=load_application_package(preflight.package).compiled_ui is not None
+        finally:
+            db.rollback()
+        if enforced and has_ui:
+            manager=configured_manager(db.get_bind().engine)
+            try:
+                with manager.invocation_transaction(db,installation_id,fence=fence):
+                    yield
+            except (AuthorityManagementError,AuthorityReviewKeyError):
+                raise HTTPException(409,'Application UI code trust is temporarily unavailable') from None
+        else:
+            try:
+                if fence is not None:
+                    fence()
+                yield
+            finally:
+                db.rollback()
     def success():
         if audience=="kiosk":
             current=resolve_application_principal(authorization,db)
             terminal=db.scalar(select(ApplicationKioskTerminal).where(ApplicationKioskTerminal.terminal_id==current.terminal_id))
             if terminal is None:raise HTTPException(401,"Kiosk terminal is unavailable")
             terminal.last_seen_at=datetime.now(UTC)
-    try:return await invoke_with_relay(db,get_settings().applications,admit,on_success=success)
+    try:return await invoke_with_relay(db,get_settings().applications,admit,on_success=success,boundary=boundary)
     except ApplicationGatewayError as exc:raise HTTPException(409,str(exc)) from exc
 
 
 @code_verification_scope()
 def _ui_route(package, binding, principal, permission_ids, audience=None, *, db=None, installation=None):
-    if binding.artifact_sha256 != package.sha256:
-        raise HTTPException(409, "Application UI package changed; reload the interface")
-    definition = _definition(package)
-    route = next((item for item in definition.routes
-                  if item.entrypoint_id == binding.entrypoint_id), None)
-    if (route is None or principal is None
-            or (audience is not None and route.audience != audience)
-            or not can_access_application_route(
-                route, principal, module_id=package.module_id, permission_ids=permission_ids)):
-        raise HTTPException(403, "Application UI access is unavailable")
+    with authority_failure_span('authority.ui_binding'):
+        if binding.artifact_sha256 != package.sha256:
+            raise HTTPException(409, "Application UI package changed; reload the interface")
+        definition = _definition(package)
+        route = next((item for item in definition.routes
+                      if item.entrypoint_id == binding.entrypoint_id), None)
+        if (route is None or principal is None
+                or (audience is not None and route.audience != audience)
+                or not can_access_application_route(
+                    route, principal, module_id=package.module_id, permission_ids=permission_ids)):
+            raise HTTPException(403, "Application UI access is unavailable")
     mode = db.scalar(select(ApplicationExtensionInstallation.authority_mode).where(
         ApplicationExtensionInstallation.id == installation.id)) if db is not None and installation is not None else None
     if binding.built_ui_sha256 is not None or (installation is not None and mode != 'compatibility'):
         from backend.services.compiled_ui import application_ui_artifact, CompiledUiBuildError
         try:
-            if binding.built_ui_sha256 is None:
-                raise CompiledUiBuildError('Application UI build binding is required')
-            from backend.services.application_extensions import load_application_package
-            validated = load_application_package(package)
-            if validated.sha256 != package.sha256:
-                raise CompiledUiBuildError('Application UI package changed')
-            application_ui_artifact(db, installation, validated, expected_build=binding.built_ui_sha256)
+            with authority_failure_span('authority.ui_artifact'):
+                if binding.built_ui_sha256 is None:
+                    raise CompiledUiBuildError('Application UI build binding is required')
+                from backend.services.application_extensions import load_application_package
+                validated = load_application_package(package)
+                if validated.sha256 != package.sha256:
+                    raise CompiledUiBuildError('Application UI package changed')
+                application_ui_artifact(db, installation, validated, expected_build=binding.built_ui_sha256)
         except (CompiledUiBuildError, ApplicationGatewayError, ModulePackageError, OSError):
             raise HTTPException(409, 'Application UI build is unavailable; reload the interface') from None
     return definition, route
@@ -427,6 +461,15 @@ def get_application_ui_host(
             built_ui_sha256=built_ui_sha256)
     except ValueError:
         raise HTTPException(422, "Application UI binding is invalid") from None
+    # Discovery precedes every browser invocation. A refusal here never reaches
+    # the relay, so it needs its own trace rather than disappearing from exports.
+    note_dispatch('not_dispatched')
+    with authority_diagnostic_scope(current_trace_id('invoke_' + uuid.uuid4().hex), operation='application.ui.discover'):
+        with authority_failure_span('application.ui_discovery'):
+            return _application_ui_description(db, module_id, binding, authorization, response)
+
+
+def _application_ui_description(db, module_id, binding, authorization, response):
     principal = resolve_application_principal(authorization, db)
     installation = _installation(db, module_id)
     package = _active_package(db, installation)
@@ -619,6 +662,14 @@ def application_package_configuration(
     )
     device_values = [{'device_id': device.device_id, 'display_name': device.display_name, 'role': device.role} for device in devices]
     module_id, version = package.module_id, package.version
+    missing_device_keys = [
+        field["key"] for field in fields if field["required"]
+        and field["key"] not in (installation.configuration or {})
+    ] if (
+        installation is not None and installation.module_package_id == package.id
+        and installation.active_version is None and installation.status == "disabled"
+        and not installation.enabled and installation.authority_mode == "review_required"
+    ) else []
     if definition.query_dependencies:
         from backend.services.application_query_configuration import configuration_fields
         engine = db.get_bind().engine
@@ -628,6 +679,7 @@ def application_package_configuration(
         "module_id": module_id,
         "version": version,
         "fields": fields,
+        "missing_required_device_keys": missing_device_keys,
         "command_bindings": [{
             "binding_id": item.binding_id,
             "target_device_config_key": item.target_device_config_key,

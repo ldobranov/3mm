@@ -9,13 +9,14 @@ from pathlib import Path
 from typing import Literal
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 from backend.config import get_settings
 from backend.db.device import Device
+from backend.db.device import DeviceCommand
 from backend.db.module import (
     ApplicationExtensionInstallation,
     ModuleInstallation,
@@ -48,6 +49,11 @@ from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN, SEMVER_PATTERN
 from backend.routes.theme_extensions import router as theme_extensions_router
+from three_mm_protocol import ModuleManifestV2
+from three_mm_protocol.hardware_profiles import (
+    AgentModuleInstallRequest, AgentHardwareProfileV1, hardware_profile, HARDWARE_PROFILE_FEATURE,
+)
+from backend.services.device_runtime_features import read_runtime_features
 
 router=APIRouter(prefix="/api/v1/modules",tags=["modules"])
 router.include_router(theme_extensions_router)
@@ -57,6 +63,14 @@ class PackageResponse(BaseModel):
     has_connector_settings: bool = False
     has_kiosk_interface: bool = False
     model_config=ConfigDict(from_attributes=True)
+
+    @computed_field
+    @property
+    def hardware_profile(self) -> AgentHardwareProfileV1 | None:
+        try:
+            return hardware_profile(ModuleManifestV2.model_validate(self.manifest))
+        except ValueError:
+            return None  # One invalid optional package must not hide administration.
 
 
 
@@ -452,8 +466,44 @@ def compiled_ui_asset(module_id:str,version:str,sha256:str,asset_path:str,db:Ses
 
 @router.post("/packages/{sha256}/devices/{device_id}/install", response_model=InstallationResponse)
 def install_module(sha256: str, device_id: str, _admin: User = Depends(require_admin), db: Session = Depends(get_db),
-                   idempotency_key: str | None = Header(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")):
-    return module_management.install_module(sha256, device_id, _admin, db, idempotency_key)
+                   idempotency_key: str | None = Header(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$"),
+                   payload: AgentModuleInstallRequest | None = None):
+    return module_management.install_module(sha256, device_id, _admin, db, idempotency_key,
+        hardware_profile_approval=payload.hardware_profile_approval if payload is not None else None)
+
+
+@router.get('/devices/{device_id}/hardware-profiles')
+def hardware_profiles(device_id: str, response: Response, _admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Read-only candidates; neither catalog presence nor a saved setting is consent."""
+    response.headers['Cache-Control'] = 'no-store'
+    device = db.scalar(select(Device).where(Device.device_id == device_id))
+    if device is None:
+        raise HTTPException(404, 'Device was not found')
+    support = read_runtime_features(db, device)
+    items = []
+    for package in db.scalars(select(ModulePackage).order_by(ModulePackage.module_id, ModulePackage.version)):
+        item = PackageResponse.model_validate(package)
+        profile = item.hardware_profile
+        if profile is None:
+            continue
+        installed = db.scalar(select(ModuleInstallation).where(
+            ModuleInstallation.device_id == device.id, ModuleInstallation.module_id == package.module_id))
+        installation, request_id = None, None
+        if installed is not None:
+            installation = InstallationResponse.model_validate(installed).model_dump()
+            command = db.scalar(select(DeviceCommand).where(DeviceCommand.device_id == device.id,
+                DeviceCommand.command_id == installed.command_id))
+            if command is not None:
+                candidate = command.idempotency_key.rsplit(':', 1)[-1]
+                if re.fullmatch(r'[0-9a-f]{32}', candidate):
+                    request_id = candidate
+        items.append({'module_id': package.module_id, 'name': package.manifest.get('name') or package.module_id,
+            'version': package.version, 'sha256': package.sha256, 'profile': profile.model_dump(),
+            'installation': installation, 'request_id': request_id,
+            'installed_exact': installed is not None and installed.module_package_id == package.id})
+    return {'device_id': device_id,
+        'approval_supported': support is not None and HARDWARE_PROFILE_FEATURE in support.declaration['features'],
+        'items': items}
 
 
 @router.post("/{module_id}/devices/{device_id}/disable", response_model=InstallationResponse)

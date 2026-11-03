@@ -84,7 +84,7 @@ class DigitalGpioCapabilityService:
                 return {item: self.gpio.input(item).read() for item in self.inputs}
             return {item: self.gpio.output(item).read() for item in self.outputs}
 
-    def invoke(self, action: str, arguments: dict) -> dict:
+    def invoke(self, action: str, arguments: dict, *, not_after=None) -> dict:
         if action == "set_output":
             return self._set_output(arguments)
         if action == "pulse_output":

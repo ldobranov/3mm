@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from sqlalchemy import select
@@ -16,13 +16,17 @@ from backend.services.application_code_scope import load_verified_package
 from three_mm_protocol import ApplicationExtensionV1, ApplicationOperationV1
 from three_mm_runtime.application_transport import ApplicationServiceClient
 from three_mm_runtime.application_transport import ApplicationTransportError, DispatchPhase
+from three_mm_protocol.diagnostics import REASONS as DIAGNOSTIC_REASONS
 
 
 class ApplicationGatewayError(RuntimeError):
-    def __init__(self, message, *, phase=DispatchPhase.EXECUTION_UNCONFIRMED, retryable=False):
+    def __init__(self, message, *, phase=DispatchPhase.EXECUTION_UNCONFIRMED, retryable=False,
+                 diagnostic_reason='operation_failed'):
         super().__init__(message)
         self.phase = DispatchPhase(phase)
         self.retryable = retryable
+        self.diagnostic_reason = (diagnostic_reason if type(diagnostic_reason) is str
+            and diagnostic_reason in DIAGNOSTIC_REASONS else 'operation_failed')
 
 
 def load_application_package(package: ModulePackage):
@@ -104,6 +108,7 @@ class PreparedApplicationInvocation:
     relational_invocation: dict | None
     output_schema: dict
     expected_peer: tuple[int, int, str] | None = None
+    needs_relational_invocation: bool = False
 
 
 def invoke_application(installation, package, settings, operation_id, payload, context,
@@ -217,7 +222,7 @@ def prepare_application_invocation(
     socket_path = Path(installation.socket_path)
     if before_dispatch is not None and not before_dispatch():
         raise ApplicationGatewayError('Application lifecycle changed', phase=DispatchPhase.NOT_DISPATCHED)
-    ticket = None
+    needs_relational = False
     if definition.storage.relational is not None:
         if (
             context.get("audience") != required_audience
@@ -227,26 +232,32 @@ def prepare_application_invocation(
                 "Relational operation context is invalid",
                 phase=DispatchPhase.NOT_DISPATCHED,
             )
-        if operation_id != definition.service.health_operation_id and not defer_relational:
-            from backend.services.application_relational import (
-                RelationalAuthorityError,
-                prepare_host_invocation,
-            )
+        needs_relational = operation_id != definition.service.health_operation_id
+    prepared = PreparedApplicationInvocation(socket_path, secret, operation.timeout_seconds,
+        operation_id, payload, context, None, operation.output_schema,
+        needs_relational_invocation=needs_relational)
+    if defer_relational or not needs_relational:
+        return prepared
+    return complete_application_preparation(object_session(installation), installation.id,
+        prepared, required_audience=required_audience)
 
-            db = object_session(installation)
-            if db is None:
-                raise ApplicationGatewayError(
-                    "Relational invocation requires the Core authority session",
-                    phase=DispatchPhase.NOT_DISPATCHED,
-                )
-            try:
-                ticket = prepare_host_invocation(
-                    db, installation.id, operation_id,
-                    required_audience=required_audience, transport_secret=secret,
-                )
-            except RelationalAuthorityError as exc:
-                raise ApplicationGatewayError(
-                    str(exc), phase=DispatchPhase.NOT_DISPATCHED
-                ) from exc
-    return PreparedApplicationInvocation(socket_path, secret, operation.timeout_seconds,
-        operation_id, payload, context, ticket, operation.output_schema)
+
+def complete_application_preparation(db, installation_id, prepared, *, required_audience):
+    """Bounded metadata IPC, outside the UI key lease and caller DB snapshot.
+
+    The host-metadata adapter independently checks its current resource grant.
+    The relay rechecks human/code/lifecycle policy after this exchange, before
+    dispatch. A ticket is not a SQL execution permit or cached authorization.
+    """
+    if not prepared.needs_relational_invocation:
+        return prepared
+    if db is None:
+        raise ApplicationGatewayError('Relational invocation requires the Core authority session',
+            phase=DispatchPhase.NOT_DISPATCHED)
+    from backend.services.application_relational import RelationalAuthorityError, prepare_host_invocation
+    try:
+        ticket = prepare_host_invocation(db, installation_id, prepared.operation_id,
+            required_audience=required_audience, transport_secret=prepared.secret)
+    except RelationalAuthorityError as exc:
+        raise ApplicationGatewayError(str(exc), phase=DispatchPhase.NOT_DISPATCHED) from exc
+    return replace(prepared, relational_invocation=ticket, needs_relational_invocation=False)

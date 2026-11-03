@@ -930,15 +930,32 @@ async def invoke_application(installation, package, settings, operation_id, payl
     """Current peer callback dispatcher; no direct application response wait in Core."""
     from sqlalchemy import inspect
     from sqlalchemy.orm import object_session
+    from contextlib import contextmanager
+    from backend.services.application_authority_management import configured_manager
     from backend.services.application_invocation_relay import InvocationSpec, invoke_with_relay
     db=object_session(installation);identifier=inspect(installation).identity[0]
+    @contextmanager
+    def boundary(*, fence=None):
+        # Compatibility has no review key. Close its routing snapshot first;
+        # a later lifecycle fence/current admission still checks this mode.
+        mode=db.scalar(select(ApplicationExtensionInstallation.authority_mode).where(
+            ApplicationExtensionInstallation.id==identifier))
+        db.rollback()
+        if mode=='compatibility':
+            try:
+                if fence is not None:fence()
+                yield
+            finally:db.rollback()
+        else:
+            with configured_manager(db.get_bind().engine).invocation_transaction(db,identifier,fence=fence):
+                yield
     def admit():
         if not before_dispatch():raise ApplicationGatewayError("Peer callback authority changed")
         current=db.get(ApplicationExtensionInstallation,identifier,populate_existing=True)
         active=db.get(ModulePackage,current.module_package_id) if current is not None else None
         if active is None:raise ApplicationGatewayError("Peer callback package is unavailable")
         return InvocationSpec(current,active,operation_id,payload,context,required_audience)
-    return await invoke_with_relay(db,settings,admit)
+    return await invoke_with_relay(db,settings,admit,boundary=boundary)
 
 
 async def notify_bootstrap(db,binding_id):

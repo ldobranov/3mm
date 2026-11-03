@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.4] - 2026-11-03
+
+### Added
+
+- Reviewed hardware-interface and character-display setup, with separately
+  confirmed Raspberry Pi I²C enablement and device restart.
+- Bounded recent HTTP failure diagnostics and correlated application-host
+  failure categories, without raw exception details.
+
+### Fixed
+
+- Save missing required device choices on a stopped, prepared application
+  before reviewing access or activating the package.
+- Reduce avoidable review-key conflicts between application UI, commands and
+  connectors while preserving authority checks and uncertain-outcome handling.
+
 ## [0.3.3] - 2026-10-30
 
 Prepared release; publication still requires the immutable tag's full gates.

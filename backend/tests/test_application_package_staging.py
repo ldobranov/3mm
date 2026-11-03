@@ -111,6 +111,54 @@ def stage_body(s, **overrides):
         expected_revision=status['grant_record_revision'], configuration={}, **overrides)
 
 
+@pytest.mark.parametrize('approved_device', [False, True])
+def test_complete_inert_device_choice_before_consent(staged, approved_device):
+    from backend.services import application_authority_management as authority
+    from backend.services import application_authority_sources as sources
+    from backend.services import application_configuration_provenance as provenance
+
+    s = staged
+    with s.manager.keys.locked() as key, Session(s.engine) as db, db.begin():
+        app = db.get(Installation, 1)
+        device = app.configuration['TARGET_DEVICE_ID']
+        original = {name: value for name, value in app.configuration.items() if name != 'TARGET_DEVICE_ID'}
+        app.configuration = original
+        app.active_version = None
+        app.enabled = False
+        app.status = 'disabled'
+        app.authority_mode = 'review_required'
+        db.flush()
+        marker = provenance.registration_id(db, 1)
+        pin = SimpleNamespace(module_package_id=app.module_package_id,
+            version=s.validated.manifest.version, sha256=s.validated.sha256)
+        binding = provenance._binding(db, key, 1, pin, s.validated)
+        authority._save(db, key, 'action', Action(request_id=marker, installation_id=1),
+            authority._envelope('action', marker, 1, 'connector_registered_not_started',
+                {'operation': 'connector_first_registration', 'binding': binding}))
+        assert sources._package_pin(db, 1).active_version is None
+
+    url = s.base+'/packages/'+s.validated.sha256
+    fields = s.http.get(url+'/configuration', headers=s.headers)
+    assert fields.status_code == 200
+    assert fields.json()['missing_required_device_keys'] == ['TARGET_DEVICE_ID']
+    post(s, s.access+'/consent/preview', {'request_id': identity()}, status=409)
+    selected = device if approved_device else 'dev_'+'f'*32
+    result = post(s, url+'/stage', dict(request_id=identity(),
+        expected_artifact_sha256=s.validated.sha256, complete_device_configuration=True,
+        configuration={'TARGET_DEVICE_ID': selected}), status=200 if approved_device else 409)
+    assert s.calls == []
+    with Session(s.engine) as db:
+        app = db.get(Installation, 1)
+        assert app.status == 'disabled' and app.active_version is None and not app.enabled
+        assert app.authority_mode == 'review_required'
+        assert app.configuration == ({**original, 'TARGET_DEVICE_ID': device} if approved_device else original)
+        assert db.get(Grant, 1) is None
+    if approved_device:
+        assert result['execution'] == 'not_started'
+        preview = post(s, s.access+'/consent/preview', {'request_id': identity()})
+        assert not preview['access_saved'] and not preview['installation_enabled']
+
+
 @pytest.mark.parametrize('selected',[{}, {'TARGET_DEVICE_ID':'dev_'+'f'*32}])
 def test_optional_device_omission_is_saved_but_unknown_supplied_device_cannot_stage(staged,selected):
     s=staged

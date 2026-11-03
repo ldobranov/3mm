@@ -144,3 +144,36 @@ def test_optional_command_schema_mismatch_has_a_redacted_diagnostic(state):
     viewed=preview(s)
     assert viewed['scopes']==['connector:business_api']
     assert viewed['unavailable_resources']==[{'scope':'command:pulse','reason':'command_schema_containment_not_evaluated'}]
+
+
+def test_generic_command_shape_does_not_allow_reusing_a_grant_after_geometry_changes(state):
+    from copy import deepcopy
+    from three_mm_protocol.character_display import CharacterDisplayProfileV1
+    s=state
+    definition=s.validated.application_extension.model_dump(mode='json')
+    base=definition['command_bindings'][0]
+    profiles={width:CharacterDisplayProfileV1(columns=width).contract() for width in (16,20,24)}
+    definition['service']['sdk_version']='1.3'
+    definition['command_bindings']=[{**deepcopy(base),'binding_id':'display',
+                                    'arguments_schema':profiles[20].actions['write_frame'].arguments_schema}]
+    definition['optional_resources']=['command:display']
+    with Session(s.engine) as db: capabilities=deepcopy(db.get(DeviceCapabilityProvider,1).capabilities)
+    action=base['action']
+    capabilities[0]['contract']['actions'][action]['arguments_schema']=profiles[20].actions['write_frame'].arguments_schema
+    capabilities[0]['contract']['state_schema']=profiles[20].state_schema
+    with s.engine.begin() as db: db.execute(update(DeviceCapabilityProvider).values(capabilities=capabilities))
+    store_checkpoint_package(s,definition)
+    viewed=preview(s)
+    assert 'command:display' in viewed['scopes']
+    allow(s,viewed,scopes=['command:display','connector:business_api'])
+    assert require(s,'command:display')
+    for width in (16,24):
+        assert profiles[width].actions['write_frame'].arguments_schema == profiles[20].actions['write_frame'].arguments_schema
+        capabilities[0]['contract']['state_schema']=profiles[width].state_schema
+        with s.engine.begin() as db: db.execute(update(DeviceCapabilityProvider).values(capabilities=capabilities))
+        assert require(s,'connector:business_api')
+        with pytest.raises(authority.AuthorityManagementError):require(s,'command:display')
+        fresh=preview(s)
+        assert 'command:display' in fresh['scopes'] and 'command:display' not in fresh['selected_scopes']
+        allow(s,fresh,scopes=['command:display','connector:business_api'])
+        assert require(s,'command:display')

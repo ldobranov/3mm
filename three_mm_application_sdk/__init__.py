@@ -346,7 +346,12 @@ class ApplicationPlatformClient:
         return self._call("installation.peers.report", {"link_id": link_id, "report_id": report_id})
 
     def discover_command(self, binding_id: str) -> dict[str, object]:
-        """Observe a declared command's granted resource; never select or retry."""
+        """Observe only a granted selection and its bounded public contract.
+
+        Candidate ``contract`` is provider-declared schema data, not live device
+        state, a physical probe or an execution permit. Replacement/revocation
+        needs fresh M20 approval; submit independently rechecks authority.
+        """
         from three_mm_protocol.application_command_discovery import (
             CommandDiscoveryRequestV1, CommandDiscoveryV1,
         )

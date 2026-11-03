@@ -9,7 +9,7 @@ an old key unavailable even if its private file was copied back with the DB.
 """
 
 import base64
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from dataclasses import dataclass, field
 import hashlib
 import hmac
@@ -28,6 +28,7 @@ from backend.services.application_authority_context import (
 )
 from backend.services.application_authority_sources import _core_identity, _read_snapshot
 from backend.services.authority_metadata import read_authority_guard
+from backend.services.operation_diagnostics import authority_failure_span
 
 
 KEY_NAME = "configuration-key.json"
@@ -40,6 +41,15 @@ MAX_KEY_BYTES = 1024
 class AuthorityReviewKeyError(ValueError):
     def __init__(self):
         super().__init__("Authority review key is unavailable or stale")
+
+
+@contextmanager
+def _key_errors():
+    """Redact only work owned by the key adapter, never its lease's caller."""
+    try:
+        yield
+    except (OSError, ValueError, TypeError, SQLAlchemyError, RuntimeError):
+        raise AuthorityReviewKeyError() from None
 
 
 @dataclass(frozen=True)
@@ -264,14 +274,23 @@ class CoreReviewKeyStore:
 
     @contextmanager
     def _access(self, *, provision=False, shared=False):
+        resources = ExitStack()
         try:
-            if provision and shared:
-                raise AuthorityReviewKeyError()
-            with _private_directory(self._directory, create=provision) as directory:
-                with _key_lock(directory, create=provision, wait_seconds=self._lock_wait_seconds, shared=shared):
-                    yield directory
-        except (OSError, ValueError, TypeError, SQLAlchemyError, RuntimeError):
-            raise AuthorityReviewKeyError() from None
+            with _key_errors(), authority_failure_span('authority.key_acquire') as acquired:
+                if provision and shared:
+                    raise AuthorityReviewKeyError()
+                directory = resources.enter_context(_private_directory(self._directory, create=provision))
+                resources.enter_context(_key_lock(directory, create=provision,
+                    wait_seconds=self._lock_wait_seconds, shared=shared))
+                acquired()
+            # The lease caller may raise a gateway, policy or database error.
+            # It is not a failed key acquisition and must retain its identity.
+            yield directory
+        finally:
+            # Partial acquisition and normal/error exits all close the same
+            # resources. Cleanup failures still fail closed as actual key errors.
+            with _key_errors():
+                resources.close()
 
     def provision(self) -> ReviewKeyIdentity:
         """Explicit first creation; exact retry returns the SAME existing key.
@@ -295,6 +314,7 @@ class CoreReviewKeyStore:
         except (OSError, ValueError, TypeError, SQLAlchemyError, RuntimeError):
             raise AuthorityReviewKeyError() from None
 
+    @_key_errors()
     def _change(self, expected_key_id, *, recovery):
         with self._access() as directory:
             binding = self._binding()
@@ -323,6 +343,7 @@ class CoreReviewKeyStore:
         """
         return self._change(expected_key_id, recovery=True)
 
+    @_key_errors()
     def identity(self) -> ReviewKeyIdentity:
         with self._access() as directory:
             binding = self._binding()
@@ -331,6 +352,7 @@ class CoreReviewKeyStore:
                 raise AuthorityReviewKeyError()
             return record.identity
 
+    @_key_errors()
     def fingerprint(self, principal, configuration) -> ConfigurationIdentity:
         """Private evidence only. Schema/source validation belongs to the resolver.
 
@@ -347,6 +369,7 @@ class CoreReviewKeyStore:
                 raise AuthorityReviewKeyError()
             return result
 
+    @_key_errors()
     def _fingerprint_in_snapshot(self, db, principal, configuration) -> ConfigurationIdentity:
         """Resolver-only composition in its existing dedicated read snapshot.
 
@@ -384,7 +407,8 @@ class CoreReviewKeyStore:
     @contextmanager
     def _locked(self, *, read_only):
         with self._access(shared=read_only) as directory:
-            adapter = _LockedKey(self._engine, _read_record(directory), read_only=read_only)
+            with _key_errors():
+                adapter = _LockedKey(self._engine, _read_record(directory), read_only=read_only)
             try:
                 yield adapter
             finally:
@@ -396,6 +420,7 @@ class _LockedKey:
         self.engine, self._record, self.active = engine, record, True
         self.read_only = read_only
 
+    @_key_errors()
     def _check(self, db):
         if (not self.active or db.get_bind().engine is not self.engine or not db.in_transaction()
                 or self._record.identity.binding != ReviewKeyBinding(
@@ -433,6 +458,7 @@ class _LockedKey:
             raise AuthorityReviewKeyError()
         return self._signature(db, kind, payload)
 
+    @_key_errors()
     def _signature(self, db, kind, payload):
         self._check(db)
         if kind not in {"native", "plan", "grant", "action", "operation_delegation"}:

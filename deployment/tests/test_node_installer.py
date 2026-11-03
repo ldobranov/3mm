@@ -583,6 +583,10 @@ false
 
 def test_agent_environment_filters_core_secrets_and_keeps_host_settings(tmp_path):
     original=tmp_path/'core.env';original.write_text('DATABASE_URL=private\nAI_SETTINGS_MASTER_KEY=private\nJWT_SECRET=private\nTHREE_MM_AGENT_ROLE=node\nTHREE_MM_CORE_URL=https://hub.example\nTHREE_MM_GPIO_DRIVER=gpiod\nTHREE_MM_GPIO_INPUTS=1,2\nTHREE_MM_PROVISIONING_DATA_DIR=/state\n')
+    with original.open('a') as stream:
+        stream.write('THREE_MM_CHARACTER_DISPLAY_DRIVER=pcf8574\n'
+                     'THREE_MM_CHARACTER_DISPLAY_APPROVED_PROFILE='+'a'*64+'\n'
+                     'THREE_MM_CHARACTER_DISPLAY_PRIVATE_KEY=private\n')
     destination=tmp_path/'agent.env'
     start=SCRIPT.index('# Only Agent configuration enters its own environment;')
     source=SCRIPT[start:SCRIPT.index('PYTHONPATH=',start)]
@@ -597,6 +601,9 @@ install() {
     assert 'THREE_MM_AGENT_ROLE=node' in saved and 'THREE_MM_GPIO_INPUTS=1,2' in saved
     assert 'THREE_MM_CORE_URL=https://hub.example' in saved and 'THREE_MM_PROVISIONING_DATA_DIR=/state' in saved
     assert all(key not in saved for key in ('DATABASE_URL','AI_SETTINGS_MASTER_KEY','JWT_SECRET'))
+    assert 'THREE_MM_CHARACTER_DISPLAY_DRIVER' not in saved
+    assert 'THREE_MM_CHARACTER_DISPLAY_APPROVED_PROFILE' not in saved
+    assert 'THREE_MM_CHARACTER_DISPLAY_PRIVATE_KEY' not in saved
 
 
 @pytest.mark.parametrize('master_key', ['', 'environment-only-test-key'])

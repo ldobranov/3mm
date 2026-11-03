@@ -40,6 +40,27 @@ class UpdateHelperClient:
     def platform_runtime_status(self):
         return self._request({'action': 'platform_runtime_status'}, expected_status='inspected')['runtime']
 
+    def hardware_interfaces_status(self, device_id, user_id):
+        return self._request({'action': 'hardware_interfaces_status', 'device_id': device_id,
+            'requested_by_user_id': user_id}, expected_status='inspected')['interfaces']
+
+    def enable_i2c(self, device_id, user_id, **request):
+        payload = {'action': 'hardware_interfaces_enable_i2c', 'device_id': device_id,
+                   'requested_by_user_id': user_id, **request}
+        return self._hardware_operation(payload)
+
+    def restart_after_i2c(self, device_id, user_id, **request):
+        return self._hardware_operation({'action': 'hardware_interfaces_restart', 'device_id': device_id,
+                                        'requested_by_user_id': user_id, **request})
+
+    def _hardware_operation(self, payload):
+        from three_mm_runtime.hardware_interfaces import validate_request
+        validate_request(payload)
+        result = self._request(payload)
+        if result.get('request_id') != payload['request_id']:
+            raise UpdateHelperError('Hardware operation unconfirmed. Preserve the request ID; do not resend.')
+        return result['request_id']
+
     def platform_runtime_operation(self, payload):
         from three_mm_runtime.platform_runtime_updates import validate_request
         validate_request(payload)
@@ -412,6 +433,7 @@ class UpdateHelperClient:
                     and isinstance(result.get("message"), str)):
                 raise UpdateHelperError(result["message"])
             messages = {
+                'hardware_interfaces_unavailable': 'Hardware operation refused or unconfirmed. Preserve the request ID and inspect status; do not resend.',
                 'runtime_update_unavailable': 'Runtime operation could not be confirmed. Refresh status; do not resend it.',
                 "relational_empty_preparation_unconfirmed": "Preparation reconciliation is unconfirmed. Do not retry; retain evidence for fresh local review.",
                 "relational_boot_enable_unconfirmed": "Relational boot enable is unconfirmed. Do not retry; retain evidence for explicit stop/review.",

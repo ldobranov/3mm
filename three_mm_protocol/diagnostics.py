@@ -5,7 +5,7 @@ I/O or wait for a lock. Export is a separate pull operation. This is deliberatel
 independent of business/security audit and of the signed application wire format.
 """
 
-from three_mm_platform_wire import RUNTIME_ACTIONS
+from three_mm_platform_wire import RUNTIME_ACTIONS, ERROR_REASONS
 
 from collections import deque
 from contextlib import contextmanager
@@ -26,12 +26,27 @@ MAX_TTL_SECONDS = 1800
 IDENTITY_OPERATION = "installation.identity.get"
 TRACE_ID = re.compile(r"(?:platform|invoke)_[0-9a-f]{32}\Z")
 INSTANCE_ID = re.compile(r"[0-9a-f]{24}\Z")
-OPERATIONS = RUNTIME_ACTIONS | {"application.invoke", "device.setup"}
+OPERATIONS = RUNTIME_ACTIONS | {"application.invoke", "application.ui.discover", "device.setup"}
 COMPONENTS = {"core", "sdk", "agent", "setup", "runtime", "application-host", "public-web", "session-worker"}
 SETUP_TRACE_ID = re.compile(r"setup_[0-9a-f]{32}\Z")
 SETUP_STAGES = {"setup.attempt": None, "setup.network": "setup.attempt",
                 "setup.persist": "setup.attempt", "setup.activation": "setup.attempt"}
 VERSION = re.compile(r"(?:[0-9][a-zA-Z0-9.+_-]{0,63}|unknown)\Z")
+# Signed host observations, NOT execution receipts or authorization decisions.
+# Only these fixed labels may cross into the Core recorder; no exception text,
+# arbitrary Python class names, operation payloads or application-defined labels.
+HOST_FAILURE_STAGES = frozenset({
+    'application.host_request', 'application.host_context',
+    'application.host_storage', 'application.host_handler', 'application.host_result',
+})
+HOST_SDK_FAILURES = ERROR_REASONS | {'transport_unavailable', 'response_invalid', 'response_unconfirmed'}
+HOST_FAILURE_REASONS = frozenset({
+    'host_exception', 'host_runtime_error', 'host_value_error', 'host_type_error',
+    'host_key_error', 'host_attribute_error', 'host_index_error', 'host_assertion_error',
+    'host_permission_error', 'host_timeout', 'host_os_error',
+    'host_sqlite_busy', 'host_sqlite_error', 'host_file_error',
+    'host_relational_error', 'host_transport_error',
+}) | frozenset('host_sdk_' + reason for reason in HOST_SDK_FAILURES)
 STAGES = {
     "sdk.call": None,
     "core.request": "sdk.call",
@@ -40,6 +55,27 @@ STAGES = {
     "application.admission": None,
     "application.dispatch": "application.admission",
     "application.response": "application.dispatch",
+    "application.completion": "application.response",
+    # Failure-only completion checks. No additional records on healthy calls;
+    # the original response may already have produced an external effect.
+    "application.policy_check": "application.completion",
+    "application.binding_check": "application.completion",
+    "application.response_check": "application.completion",
+    "application.policy_recheck": "application.completion",
+    "application.commit": "application.completion",
+    "application.ui_discovery": None,
+    # Failure-only authority detail. These can occur during either admission or
+    # completion (or discovery); the trace ID joins the actual enclosing phase.
+    "authority.code_prepare": None,
+    "authority.key_acquire": None,
+    "authority.snapshot": None,
+    "authority.ui_trust": None,
+    "authority.ui_policy": None,
+    "authority.ui_preflight": None,
+    "authority.ui_binding": None,
+    "authority.ui_artifact": None,
+    "authority.ui_snapshot": None,
+    **{stage: 'application.response_check' for stage in HOST_FAILURE_STAGES},
 }
 RESULTS = {"ok", "denied", "error"}
 REASONS = {
@@ -47,7 +83,26 @@ REASONS = {
     "authority_unavailable", "operation_failed", "transport_unavailable",
     "response_invalid", "operation_denied", "deadline_exceeded", "request_invalid",
     "operation_unsupported", "response_too_large", "request_replayed", "overloaded",
-}
+    "response_unconfirmed",
+    "review_key_busy", "review_key_unavailable", "authority_database_busy",
+    "authority_database_unavailable", "ui_code_unavailable",
+} | HOST_FAILURE_REASONS
+
+
+def validated_host_failure(value):
+    """Copy only closed metadata from a verified negative host response.
+
+    Unknown or malformed diagnostics are ignored, never an operation success,
+    denial, replay permit or reason to fail an otherwise valid operation.
+    """
+    if (type(value) is not dict or set(value) != {'version', 'stage', 'reason', 'duration_ms'}
+            or type(value['version']) is not int or value['version'] != 1
+            or type(value['stage']) is not str or value['stage'] not in HOST_FAILURE_STAGES
+            or type(value['reason']) is not str or value['reason'] not in HOST_FAILURE_REASONS
+            or type(value['duration_ms']) not in (int, float)
+            or not 0 <= value['duration_ms'] <= 86_400_000 or not math.isfinite(value['duration_ms'])):
+        return None
+    return dict(value)
 
 
 class DiagnosticBusy(ValueError):

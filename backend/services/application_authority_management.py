@@ -46,6 +46,7 @@ from backend.services.application_authority_context import (
     MAX_INTEGER, _bounded_json, _canonical_bytes, _parse, _parse_versioned, review_authority_context,
 )
 from backend.services.application_authority_keys import CoreReviewKeyStore, AuthorityReviewKeyError
+from backend.services.operation_diagnostics import authority_failure_span
 from backend.services.application_authority_policy import (
     CorePolicyEvidenceV1, CorePolicyEvidenceV2, PolicySubjectV1, PolicySubjectV2,
     CorePolicyEvidenceV3, PolicySubjectV3,
@@ -76,6 +77,16 @@ class AuthorityManagementError(Exception):
     def __init__(self, reason="authority_unavailable"):
         self.reason = reason
         super().__init__("Application authority unavailable: " + reason)
+
+
+def _rollback_before_key_release(db):
+    try:
+        db.rollback()
+    except BaseException:
+        # A failed driver rollback must not return a lock-owning connection to
+        # the pool, or outlive the key lease. Invalidating closes that connection.
+        db.invalidate()
+        raise
 
 
 def _identifier(value):
@@ -221,19 +232,20 @@ class ApplicationAuthorityManager:
 
     def _prepare(self, installation_id, *, include_queries=True):
         try:
-            pin, package = _prepare_installed_package(self.engine, installation_id, self.uploads_root, self.core_version)
-            build = None
-            if package.compiled_ui is not None:
-                from backend.services.compiled_ui import load_compiled_ui_artifact, CompiledUiBuildError
-                try:
-                    build = load_compiled_ui_artifact(package).built_ui_sha256
-                except CompiledUiBuildError:
-                    pass  # Old/missing/changed outputs cannot acquire scoped UI trust.
-            prepared = _PreparedAuthority(pin, package, build)
-            if include_queries and package.application_extension.query_dependencies:
-                from backend.services.application_composition_authority import prepare_providers
-                return _PreparedAuthority(pin, package, build, prepare_providers(self, prepared))
-            return prepared
+            with authority_failure_span('authority.code_prepare'):
+                pin, package = _prepare_installed_package(self.engine, installation_id, self.uploads_root, self.core_version)
+                build = None
+                if package.compiled_ui is not None:
+                    from backend.services.compiled_ui import load_compiled_ui_artifact, CompiledUiBuildError
+                    try:
+                        build = load_compiled_ui_artifact(package).built_ui_sha256
+                    except CompiledUiBuildError:
+                        pass  # Old/missing/changed outputs cannot acquire scoped UI trust.
+                prepared = _PreparedAuthority(pin, package, build)
+                if include_queries and package.application_extension.query_dependencies:
+                    from backend.services.application_composition_authority import prepare_providers
+                    return _PreparedAuthority(pin, package, build, prepare_providers(self, prepared))
+                return prepared
         except (SQLAlchemyError, ValueError, OSError):
             raise AuthorityManagementError('artifact_unavailable') from None
 
@@ -377,6 +389,7 @@ class ApplicationAuthorityManager:
             result.update(native_review_id=identifier, native_revision=value["revision"], permission_approval="not_evaluated")
         return result
 
+    @authority_failure_span('authority.ui_trust')
     def require_ui_trust(self, installation_id, built_ui_sha256):
         """Code trust only: never approve resource grants or human route access."""
         expected = _digest(built_ui_sha256)
@@ -384,6 +397,7 @@ class ApplicationAuthorityManager:
         with self.keys.read_locked() as key, _read_snapshot(self.engine) as db:
             self._require_ui_trust_in_snapshot(db, key, installation_id, expected, prepared)
 
+    @authority_failure_span('authority.ui_trust')
     def _require_ui_trust_in_snapshot(self, db, key, installation_id, expected, prepared):
         # Native-code approval is independent of service-resource availability.
         # Re-read identity/recovery and authenticate both records at every boundary;
@@ -392,7 +406,8 @@ class ApplicationAuthorityManager:
         if prepared.package.compiled_ui is None or prepared.built_ui_sha256 != expected:
             raise AuthorityManagementError('artifact_changed')
         try:
-            guard, _, principal = _resolve_code_identity(db, installation_id, *prepared, registration_key=key)
+            with authority_failure_span('authority.snapshot'):
+                guard, _, principal = _resolve_code_identity(db, installation_id, *prepared, registration_key=key)
         except (SQLAlchemyError, ValueError):
             raise AuthorityManagementError('artifact_changed') from None
         binding = {'principal': principal.model_dump(mode='json'),
@@ -454,6 +469,57 @@ class ApplicationAuthorityManager:
             finally:
                 proof.active = False
                 db.info.pop(_UI_TRUST_SNAPSHOT, None)
+
+    @contextmanager
+    def invocation_transaction(self, db, installation_id, *, fence=None):
+        """One invocation policy boundary: key first, then this caller Session.
+
+        Immutable code is prepared before the lease. The optional lifecycle
+        fence obtains the caller's write position before policy reads, avoiding
+        SQLite read-to-write upgrades against a pending SDK writer. No helper,
+        application IPC or response wait may run inside this context.
+        A compiled UI gets an exact code proof; other packages keep their
+        existing policy checks. The yielded read-only key is live only here.
+        This never substitutes for human permissions or resource grants.
+        """
+        from backend.services.compiled_ui import load_compiled_ui_artifact, CompiledUiBuildError
+        if (db.in_transaction() or db.get_bind().engine is not self.engine
+                or _UI_TRUST_SNAPSHOT in db.info):
+            raise AuthorityManagementError('snapshot_backend_unsupported')
+        prepared = self._prepare(installation_id)
+        artifact = None
+        if prepared.package.compiled_ui is not None:
+            try:
+                artifact = load_compiled_ui_artifact(prepared.package)
+            except (CompiledUiBuildError, OSError, ValueError):
+                raise AuthorityManagementError('artifact_unavailable') from None
+            if (artifact.source_sha256 != prepared.package.sha256
+                    or artifact.built_ui_sha256 != prepared.built_ui_sha256):
+                raise AuthorityManagementError('artifact_changed')
+        with self.keys.read_locked() as key:
+            proof = None
+            try:
+                with authority_failure_span('authority.snapshot'):
+                    if fence is not None:
+                        fence()
+                    elif self.engine.dialect.name == 'sqlite':
+                        # Legacy sqlite3 does not BEGIN for SELECT. The code proof
+                        # must belong to a real snapshot, not just an ORM wrapper.
+                        db.connection().exec_driver_sql('BEGIN')
+                if artifact is not None:
+                    self._require_ui_trust_in_snapshot(db, key, installation_id,
+                        artifact.built_ui_sha256, prepared)
+                    proof = _UiTrustSnapshot(db, installation_id, artifact, db.get_transaction())
+                    db.info[_UI_TRUST_SNAPSHOT] = proof
+                with authority_failure_span('authority.ui_policy'):
+                    yield key
+            finally:
+                if proof is not None:
+                    proof.active = False
+                    db.info.pop(_UI_TRUST_SNAPSHOT, None)
+                # End the reader/writer BEFORE releasing the key lease. Never
+                # leave a caller snapshot blocking another key owner's commit.
+                _rollback_before_key_release(db)
 
     def create_review(self, installation_id, *, actor_token, request_id, native_review_id, scopes):
         # Validate bounded identifiers before storage; the Core-resolved subject
@@ -699,7 +765,9 @@ class ApplicationAuthorityManager:
                 "execution_class": "reviewed_native_only", "isolation_proven": False}
 
     def _inspect_reviewable(self, installation_id, prepared, *, observation=None, query_observation=None):
-        with self.keys.locked() as key, _read_snapshot(self.engine) as db:
+        # Status authenticates existing records; it cannot seal or approve one.
+        # Share verification with HTTP/SDK readers, but still exclude key changes.
+        with self.keys.read_locked() as key, _read_snapshot(self.engine) as db:
             subject = self._subject(db, key, installation_id, prepared)
             runtime_blockers = []
             row = db.get(Grant, installation_id)
@@ -821,12 +889,24 @@ def effect_admission(db, installation_id, scope):
         raise ValueError("Application resource grant is unavailable or stale")
     if db.new or db.dirty or db.deleted:
         raise ValueError('Application authority admission requires a clean session')
+    # End any ownership/routing reader before preparing code or waiting for the
+    # review key. A pending writer must never be blocked by our old snapshot.
+    db.rollback()
+    db.expire_all()
     released = False
     try:
         manager = configured_manager(db.get_bind().engine)
         prepared = manager._prepare(installation_id)  # ZIP outside key/guard.
         with ExitStack() as lease:
-            key = lease.enter_context(manager.keys.locked())
+            # Command/connector admission verifies seals but never signs one.
+            # Its DB write fence still serializes durable admission. A shared
+            # key lease excludes rotation and grant changes without also
+            # blocking unrelated UI readers during this admission.
+            verify_only = isinstance(scope, str) and scope.startswith(('command:', 'connector:'))
+            key = lease.enter_context(manager.keys.read_locked() if verify_only else manager.keys.locked())
+            # LIFO: finish/roll back this caller's transaction BEFORE the key,
+            # including policy/caller exceptions and early explicit release.
+            lease.callback(_rollback_before_key_release, db)
             if db.execute(update(CoreAuthorityGuard).where(CoreAuthorityGuard.singleton_id == 1)
                     .values(revision=CoreAuthorityGuard.revision)).rowcount != 1:
                 raise AuthorityManagementError()

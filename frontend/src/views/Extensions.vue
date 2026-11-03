@@ -226,7 +226,10 @@
       @click="closeOnBackdrop($event, cancelApplicationConfiguration)">
       <div class="modal-body ui-stack">
         <p>{{ t('extensions.configureApplicationHelp', 'Choose the resources this application should use. The selection is preserved across updates; access still needs approval.') }}</p>
-        <p v-if="configurationTarget && needsPackagePreparation(configurationTarget.extension, configurationTarget.sha256)" class="ui-help">
+        <p v-if="configurationTarget?.missingDeviceKeys.length" class="ui-help">
+          {{ currentLanguage.startsWith('bg') ? 'Запази устройството преди прегледа на правата. Приложението няма да стартира.' : 'Save the device selection before reviewing access. This does not start the application.' }}
+        </p>
+        <p v-else-if="configurationTarget && needsPackagePreparation(configurationTarget.extension, configurationTarget.sha256)" class="ui-help">
           {{ versionLabel('reviewFirst') }}
         </p>
         <div v-for="(field, index) in configurationFields" :key="field.key" class="ui-field configuration-field">
@@ -262,6 +265,8 @@
         <UiButton variant="primary" class="version-btn" :loading="configurationSaving" :disabled="!canSaveApplicationConfiguration" @click="confirmApplicationConfiguration">
           {{ configurationSaving
             ? versionLabel('working')
+            : configurationTarget?.missingDeviceKeys.length
+              ? (currentLanguage.startsWith('bg') ? 'Запази устройството' : 'Save device selection')
             : configurationTarget && needsPackagePreparation(configurationTarget.extension, configurationTarget.sha256)
               ? versionLabel('prepare')
               : t('extensions.installApplication', 'Install and activate') }}
@@ -466,7 +471,7 @@ const showConfigurationModal = ref(false);
 const configurationFields = ref<ApplicationConfigurationField[]>([]);
 const configurationDevices = ref<ApplicationConfigurationDevice[]>([]);
 const configurationValues = ref<Record<string, string>>({});
-const configurationTarget = ref<{ extension: Extension; sha256: string } | null>(null);
+const configurationTarget = ref<{ extension: Extension; sha256: string; missingDeviceKeys: string[] } | null>(null);
 const configurationSaving = ref(false);
 const configurationError = ref('');
 
@@ -594,7 +599,12 @@ const activateApplicationPackage = async (
   if (fields.length === 0) {
     return applyApplicationPackage(extension, sha256);
   }
-  configurationFields.value = fields;
+  const missingDeviceKeys = Array.isArray(response.data?.missing_required_device_keys)
+    ? fields.filter(field => field.kind === 'device' && field.required
+      && response.data.missing_required_device_keys.includes(field.key)).map(field => field.key)
+    : [];
+  configurationFields.value = missingDeviceKeys.length
+    ? fields.filter(field => missingDeviceKeys.includes(field.key)) : fields;
   configurationDevices.value = Array.isArray(response.data?.devices)
     ? response.data.devices as ApplicationConfigurationDevice[]
     : [];
@@ -602,7 +612,7 @@ const activateApplicationPackage = async (
     fields.map(field => [field.key, field.kind === 'application_query'
       ? field.value && field.export_value ? `${field.value}/${field.export_value}` : '' : field.value || '']),
   );
-  configurationTarget.value = { extension, sha256 };
+  configurationTarget.value = { extension, sha256, missingDeviceKeys };
   configurationError.value = '';
   showConfigurationModal.value = true;
   return false;
@@ -633,13 +643,22 @@ const confirmApplicationConfiguration = async () => {
         const choice = field.choices!.find(item => `${item.instance_id}/${item.export_id}` === configurationValues.value[field.key])!;
         return [[field.key, choice.instance_id], [field.export_key!, choice.export_id]];
       }))
-    const activated = await applyApplicationPackage(target.extension, target.sha256, configuration);
+    const completing = target.missingDeviceKeys.length > 0;
+    if (completing) {
+      await http.post(`/api/v1/application-extensions/packages/${target.sha256}/stage`, {
+        request_id: authorityRequestId(), expected_artifact_sha256: target.sha256,
+        complete_device_configuration: true, configuration,
+      }, { timeout: 12000 });
+    }
+    const activated = !completing && await applyApplicationPackage(target.extension, target.sha256, configuration);
     configurationSaving.value = false;
     cancelApplicationConfiguration();
     await getCompiledUiCatalog(true);
     window.dispatchEvent(new Event('menu-refresh'));
     await loadExtensions();
-    if (activated) await openApplicationAccessIfNeeded(target.extension);
+    if (completing) {
+      authorityTarget.value = { moduleId: target.extension.id.replace('application:', ''), name: target.extension.name };
+    } else if (activated) await openApplicationAccessIfNeeded(target.extension);
   } catch (error) {
     configurationError.value = errorMessage(
       error,

@@ -37,6 +37,18 @@ def response(status, body=None):
     return result
 
 
+def test_hardware_profile_support_requires_the_current_module_runtime_identity(tmp_path):
+    from agent.module_runtime import AgentModuleRuntime
+    from three_mm_protocol.hardware_profiles import HARDWARE_PROFILE_FEATURE
+    node = publisher(tmp_path)
+    node.module_runtime = AgentModuleRuntime(tmp_path, architecture='aarch64')
+    assert HARDWARE_PROFILE_FEATURE not in node._runtime_declaration()['features']
+    node.module_runtime.device_id = node.credential.device_id
+    assert HARDWARE_PROFILE_FEATURE in node._runtime_declaration()['features']
+    node.module_runtime.device_id = 'dev_'+'f'*32
+    assert HARDWARE_PROFILE_FEATURE not in node._runtime_declaration()['features']
+
+
 def test_negotiation_cache_reconnect_and_identity_bound_ack(monkeypatch, tmp_path):
     node = publisher(tmp_path)
     declaration = node._runtime_declaration()

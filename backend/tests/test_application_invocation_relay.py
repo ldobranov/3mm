@@ -6,11 +6,13 @@ import time
 
 from fastapi import HTTPException
 import pytest
-from sqlalchemy import event
+from sqlalchemy import event, update
 
 from backend.tests.test_application_health_probe import health_db, connector_db
 from backend.services import application_invocation_relay as relay
 from backend.services.application_extensions import ApplicationGatewayError
+from backend.db.module import ApplicationExtensionInstallation as Installation
+from three_mm_runtime.application_transport import sign_message
 from three_mm_runtime.application_transport import DispatchPhase
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Linux Runtime account admission')
@@ -42,7 +44,7 @@ def test_no_db_or_preparation_work_consumes_reserved_handoff_budget(health_db, m
     try:
         binding, waiter = relay.begin_invocation(db, settings, lambda: spec_for(app, package))
         assert binding.operation_id == 'health' and waiter.timeout_seconds == 10
-        assert preparations == [True, False]
+        assert preparations == [True, True]
     finally:
         event.remove(db.bind, 'before_cursor_execute', sql)
 
@@ -60,9 +62,11 @@ def test_current_admission_denial_prevents_reservation_and_dispatch(health_db, m
             elif denial == 'package': package.sha256 = 'e' * 64
         return spec_for(app, package)
     original = relay._prepare
+    preparations = []
     def prepare(*args, **kwargs):
         result = original(*args, **kwargs)
-        return replace(result, secret=b'z'*32) if denial == 'key' and not kwargs['defer_relational'] else result
+        preparations.append(True)
+        return replace(result, secret=b'z'*32) if denial == 'key' and len(preparations) == 2 else result
     monkeypatch.setattr(relay, '_prepare', prepare)
     monkeypatch.setattr(relay, '_reserve', lambda *args: pytest.fail('Reserved after admission denial'))
     monkeypatch.setattr(relay, '_send', lambda *args: pytest.fail('Dispatched after admission denial'))
@@ -79,6 +83,59 @@ def test_unavailable_response_runtime_is_known_not_dispatched(health_db, monkeyp
         relay.begin_invocation(db, settings, lambda: spec_for(app, package))
     assert error.value.phase == DispatchPhase.NOT_DISPATCHED
     assert not db.in_transaction()
+
+
+def test_enforced_relay_without_key_boundary_fails_before_prepare_or_dispatch(health_db, monkeypatch):
+    db, app, package, settings = health_db
+    app.authority_mode = 'enforced'
+    db.commit()
+    monkeypatch.setattr(relay, '_prepare', lambda *a, **kw: pytest.fail('Prepared without a key boundary'))
+    monkeypatch.setattr(relay, '_reserve', lambda *a: pytest.fail('Reserved without a key boundary'))
+    monkeypatch.setattr(relay, '_send', lambda *a: pytest.fail('Dispatched without a key boundary'))
+    with pytest.raises(ApplicationGatewayError, match='authority boundary') as error:
+        relay.begin_invocation(db, settings, lambda: spec_for(app, package))
+    assert error.value.phase == DispatchPhase.NOT_DISPATCHED
+    assert not db.in_transaction()
+
+
+def test_relational_metadata_is_prepared_once_outside_policy_transactions(health_db, monkeypatch):
+    from backend.services import application_relational
+    db, app, package, settings = health_db
+    metadata, sent = [], []
+    original = relay._prepare
+    def prepare(*args, **kwargs):
+        return replace(original(*args, **kwargs), needs_relational_invocation=True)
+    def prepare_host(db, installation_id, operation_id, **kwargs):
+        assert not db.in_transaction()
+        metadata.append((installation_id, operation_id))
+        return {'test_owned_ticket': True}
+    monkeypatch.setattr(relay, '_prepare', prepare)
+    monkeypatch.setattr(application_relational, 'prepare_host_invocation', prepare_host)
+    monkeypatch.setattr(relay, '_reserve', lambda *args: SimpleNamespace(timeout_seconds=0, close=lambda: None))
+    def send(waiter, prepared, request_id):
+        assert not db.in_transaction()
+        assert prepared.relational_invocation == {'test_owned_ticket': True}
+        assert not prepared.needs_relational_invocation
+        sent.append(request_id)
+    monkeypatch.setattr(relay, '_send', send)
+    relay.begin_invocation(db, settings, lambda: spec_for(app, package))
+    assert metadata == [(app.id, 'health')] and len(sent) == 1
+
+
+def test_completion_fence_failure_never_claims_not_dispatched(health_db, monkeypatch):
+    db, app, package, settings = health_db
+    monkeypatch.setattr(relay, '_reserve', lambda *args: SimpleNamespace(timeout_seconds=0, close=lambda: None))
+    sent = []
+    monkeypatch.setattr(relay, '_send', lambda *args: sent.append(True))
+    binding, waiter = relay.begin_invocation(db, settings, lambda: spec_for(app, package))
+    db.execute(update(Installation).where(Installation.id == binding.installation_id).values(authority_epoch='f' * 32))
+    db.commit()
+    response = sign_message({'version': 1, 'request_id': binding.request_id,
+        'timestamp': int(time.time()), 'ok': True, 'result': {'status': 'ready'}}, binding.secret)
+    with pytest.raises(ApplicationGatewayError, match='unconfirmed') as error:
+        relay.finish_invocation(db, settings, lambda: spec_for(app, package), binding, response)
+    assert error.value.phase == DispatchPhase.EXECUTION_UNCONFIRMED
+    assert len(sent) == 1 and not db.in_transaction()
 
 
 @pytest.mark.parametrize('failure', ['deadline', 'connect', 'partial_send', 'handoff'])

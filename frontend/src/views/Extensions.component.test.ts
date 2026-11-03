@@ -338,6 +338,31 @@ describe('Extensions management workflow', () => {
     expect(wrapper.find('.authority-dialog').exists()).toBe(false)
   })
 
+  it('saves missing required devices for an inert package without activating or granting access', async () => {
+    const sha = '9'.repeat(64), device = 'dev_' + '1'.repeat(32)
+    const moduleId = 'org.example.reader-app'
+    http.get.mockImplementation((url: string) => Promise.resolve({ data:
+      url === '/api/v1/modules/packages'
+        ? [{ module_id: moduleId, version: '1.0.0', sha256: sha, manifest: { name: 'Reader', entrypoints: { core: 'application-extension.json' } } }]
+        : url === '/api/v1/application-extensions'
+          ? [{ module_id: moduleId, package_sha256: sha, active_version: null, status: 'disabled', enabled: false }]
+          : url.endsWith('/configuration')
+            ? { missing_required_device_keys: ['READER_DEVICE_ID'],
+                fields: [{ key: 'READER_DEVICE_ID', kind: 'device', label: 'Reader device', required: true, value: null }],
+                devices: [{ device_id: device, display_name: 'Reader', role: 'node' }] }
+            : [] }))
+    const wrapper = await mountView()
+    await wrapper.get('.version-btn').trigger('click'); await flushPromises()
+    const save = wrapper.get('.ui-dialog-actions .version-btn')
+    expect(save.text()).toBe('Save device selection')
+    await wrapper.get('#application-config-READER_DEVICE_ID').setValue(device)
+    await save.trigger('click'); await flushPromises()
+    expect(http.post).toHaveBeenCalledWith(`/api/v1/application-extensions/packages/${sha}/stage`,
+      { request_id: expect.any(String), expected_artifact_sha256: sha, complete_device_configuration: true,
+        configuration: { READER_DEVICE_ID: device } }, { timeout: 12000 })
+    expect(http.post.mock.calls.some(([url]) => url.endsWith('/activate') || url.endsWith('/consent/allow'))).toBe(false)
+  })
+
   it('asks for a declared device binding before application activation', async () => {
     const packageSha = '9'.repeat(64)
     const deviceId = `dev_${'1'.repeat(32)}`

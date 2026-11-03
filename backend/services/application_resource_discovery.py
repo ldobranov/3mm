@@ -71,7 +71,8 @@ def discover_resources(engine, installation_id, instance_id, scopes, *, transpor
     host_probe = None
     provider_kinds = set()
     try:
-        with manager.keys.locked() as key, _read_snapshot(engine) as db:
+        # Read-only grant verification may overlap other HTTP/SDK readers.
+        with manager.keys.read_locked() as key, _read_snapshot(engine) as db:
             app = db.get(Installation, installation_id)
             if app is None or app.instance_id != instance_id or not app.enabled or app.status != 'active':
                 raise ValueError('Resource installation is not active')
@@ -187,7 +188,8 @@ def discover_resources(engine, installation_id, instance_id, scopes, *, transpor
         from backend.services.application_relational import observe_runtime_status
         sql_hello = observe_runtime_status(sql_probe)
     fresh = manager._prepare(installation_id)
-    with manager.keys.locked() as key, _read_snapshot(engine) as db:
+    # Acquire a NEW current verification lease after unleased provider IPC.
+    with manager.keys.read_locked() as key, _read_snapshot(engine) as db:
         app = db.get(Installation, installation_id)
         if (fresh.pin != prepared.pin or app is None or app.instance_id != instance_id
                 or not app.enabled or app.status != 'active'): raise ValueError('Resource observation changed')

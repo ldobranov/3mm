@@ -25,8 +25,20 @@ from three_mm_application_sdk import ApplicationPlatformError
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Actual sealed authority and Unix transport')
 
 
-def test_signed_resource_view_distinguishes_access_readiness_and_unobserved_executor(vertical):
+def test_signed_resource_view_distinguishes_access_readiness_and_missing_executor(vertical, monkeypatch):
+    import pwd
+    import backend.config as config
     s = vertical
+    # Never probe the developer host's /run socket or depend on whether its
+    # 3mm-connectors account exists. This case owns a known-absent worker path.
+    settings = config.get_settings()
+    missing_worker = s.runtime_socket.with_name('absent-connector.sock')
+    assert not missing_worker.exists()
+    applications = settings.applications.model_copy(update={
+        'connector_worker_socket': missing_worker,
+        'connector_worker_user': pwd.getpwuid(os.geteuid()).pw_name,
+    })
+    monkeypatch.setattr(config, 'get_settings', lambda: settings.model_copy(update={'applications': applications}))
     scopes = ['command:pulse', 'connector:business_api', 'command:not_declared']
     denied = s.sdk.discover_resources(scopes)
     assert denied['resources'][0]['access'] == 'required' and denied['resources'][0]['provider'] is None
@@ -43,7 +55,7 @@ def test_signed_resource_view_distinguishes_access_readiness_and_unobserved_exec
     assert command['access'] == 'granted' and command['readiness'] == 'ready'
     assert command['selected_resource_id'] == s.configuration['TARGET_DEVICE_ID']
     assert connector['configured'] is True and connector['access'] == 'granted'
-    assert connector['readiness'] == 'unknown' and connector['reasons'] == ['runtime_not_observed']
+    assert connector['readiness'] == 'unavailable' and connector['reasons'] == ['provider_unavailable']
     assert absent['declared'] is False and absent['provider'] is None
     with s.engine.begin() as db:
         db.execute(update(DeviceHeartbeat).where(DeviceHeartbeat.device_id==1).values(received_at=datetime.now(UTC)-timedelta(days=1)))

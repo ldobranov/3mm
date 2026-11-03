@@ -185,6 +185,9 @@ def test_full_path_second_provider_selection_restart_and_no_replay(vertical, tmp
     assert s.probe.observe()["access"] == "required"
     allow(s, preview(s), scopes=["command:pulse"])
     assert s.probe.observe()["selected_device_id"] == first["device_id"]
+    approved_contract=s.probe.observe()['candidates'][0]['contract']
+    assert approved_contract['capability_id'] == initial['capability_id']
+    assert initial['action'] in approved_contract['actions']
     queued = s.probe.submit(request_id="first", arguments={"channel": "output.1", "duration_ms": 50})
     assert queued["status"] == "queued"
     effects = []

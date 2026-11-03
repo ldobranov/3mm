@@ -36,6 +36,7 @@ ALLOWED_PERMISSIONS = {
     "secrets.use",
     "hardware.inventory",
     "hardware.gpio",
+    "hardware.display",
     "installation.identity.read",
     "installation.identity.prove",
     "installation.peers.enroll",
@@ -189,6 +190,11 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
         manifest = ModuleManifestV2.model_validate(json.loads(raw_manifest))
     except (json.JSONDecodeError, UnicodeDecodeError, ValidationError) as exc:
         raise ModulePackageError(f"invalid manifest v2: {exc}") from exc
+    from three_mm_protocol.hardware_profiles import hardware_profile
+    try:
+        hardware_profile(manifest)
+    except ValueError as exc:
+        raise ModulePackageError(str(exc)) from exc
     unsupported = sorted(set(manifest.permissions) - ALLOWED_PERMISSIONS)
     if unsupported:
         raise ModulePackageError(f"unsupported permissions: {', '.join(unsupported)}")
