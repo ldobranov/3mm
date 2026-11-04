@@ -500,6 +500,16 @@ def test_restore_request_rejects_paths_and_schedules_fixed_worker(
     command = calls[0]
     assert "/opt/3mm/current/deployment/restore_backup.py" in command
     assert command[-4:] == ("--backup-id", backup_id, "--requested-by-user-id", "7")
+    assert "--property=ProtectSystem=strict" in command
+    assert "--property=ProtectHome=true" in command
+    assert "--property=StateDirectory=3mm-application-host-updates" in command
+    writable = {argument.split("=", 2)[2] for argument in command
+                if argument.startswith("--property=ReadWritePaths=")}
+    assert writable == {
+        "/var/lib/3mm", "/etc/3mm", "/run/lock",
+        "/var/lib/3mm-application-host-updates",
+        "/opt/3mm-application-hosts/instances",
+    }
 
 
 def test_portable_export_keeps_password_inside_the_helper_request(

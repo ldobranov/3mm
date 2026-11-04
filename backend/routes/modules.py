@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -504,6 +504,133 @@ def hardware_profiles(device_id: str, response: Response, _admin: User = Depends
     return {'device_id': device_id,
         'approval_supported': support is not None and HARDWARE_PROFILE_FEATURE in support.declaration['features'],
         'items': items}
+
+
+@router.get("/agent-catalog")
+def agent_catalog(_admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Uploaded Agent packages AND installation rows, including missing packages."""
+    packages = list(db.scalars(select(ModulePackage).order_by(ModulePackage.module_id, ModulePackage.version)))
+    installs = list(db.execute(select(ModuleInstallation, Device)
+        .join(Device, Device.id == ModuleInstallation.device_id)
+        .order_by(Device.device_id, ModuleInstallation.module_id)))
+    referenced = {row.module_package_id for row, _ in installs}
+    items = []
+    for package in packages:
+        if "agent" not in package.manifest.get("runtimes", []) and package.id not in referenced:
+            continue
+        items.append({"module_id": package.module_id, "name": package.manifest.get("name") or package.module_id,
+            "version": package.version, "sha256": package.sha256,
+            "kind": "hardware_provider" if PackageResponse.model_validate(package).hardware_profile else "agent_module",
+            "installations": []})
+    by_sha = {item["sha256"]: item for item in items}
+    by_id = {p.id: by_sha[p.sha256] for p in packages if p.sha256 in by_sha}
+    for installation, device in installs:
+        item = by_id.get(installation.module_package_id)
+        if item is None:
+            item = {"module_id": installation.module_id, "name": installation.module_id,
+                    "version": installation.installed_version or installation.desired_version,
+                    "sha256": None, "kind": "agent_module", "installations": []}
+            items.append(item)
+            by_id[installation.module_package_id] = item
+        support = read_runtime_features(db, device)
+        latest = db.scalar(select(DeviceCommand).where(DeviceCommand.device_id == device.id,
+            DeviceCommand.command_id == installation.command_id))
+        item["installations"].append({"device_id": device.device_id,
+            "display_name": device.display_name or device.device_id,
+            **InstallationResponse.model_validate(installation).model_dump(),
+            "status": latest.status if latest is not None and latest.status != "succeeded" else installation.status,
+            "uninstall_supported": support is not None and "module.uninstall" in support.declaration["command_types"]})
+    return {"items": items}
+
+
+class ModuleUninstallRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    package_sha256: str | None = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_command_id: str | None
+    request_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    confirmation: str
+
+
+@router.post("/{module_id}/devices/{device_id}/uninstall")
+def uninstall_agent_module(module_id: str, device_id: str, body: ModuleUninstallRequest,
+                           admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    if re.fullmatch(MODULE_ID_PATTERN, module_id) is None or body.confirmation != module_id:
+        raise HTTPException(409, "Confirm the exact module identity")
+    return module_management.uninstall_module(module_id, device_id, admin, db,
+        package_sha256=body.package_sha256, expected_command_id=body.expected_command_id,
+        request_id=body.request_id)
+
+
+@router.get("/{module_id}/devices/{device_id}/uninstall-requests/{request_id}")
+def uninstall_outcome(module_id: str, device_id: str, request_id: str,
+                      admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    if re.fullmatch(MODULE_ID_PATTERN, module_id) is None or re.fullmatch(r"[0-9a-f]{32}", request_id) is None:
+        raise HTTPException(422, "Invalid removal identity")
+    device = db.scalar(select(Device).where(Device.device_id == device_id))
+    if device is None:
+        raise HTTPException(404, "Device was not found")
+    key = module_management._lifecycle_idempotency_key(db, device=device,
+        command_type="module.uninstall", module_id=module_id, legacy_key="",
+        client_key=request_id, admin_id=admin.id)
+    command = db.scalar(select(DeviceCommand).where(DeviceCommand.device_id == device.id,
+        DeviceCommand.idempotency_key == key, DeviceCommand.command_type == "module.uninstall"))
+    if command is None:
+        raise HTTPException(404, "Removal request is not recorded")
+    return {"request_id": request_id, "command_id": command.command_id,
+            "status": command.status, "error": command.error}
+
+
+@router.delete("/agent-packages/{sha256}")
+def delete_agent_package(sha256: str, _admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Retire bytes only after every device has confirmed complete removal."""
+    package = db.scalar(select(ModulePackage).where(ModulePackage.sha256 == sha256))
+    if package is None or "agent" not in package.manifest.get("runtimes", []):
+        raise HTTPException(404, "Agent package was not found")
+    archive, _ = _retired_package_paths(package)
+    # Serialize catalog retirement with module install/result transactions.
+    from backend.services.authority_metadata import authority_transaction
+    db.rollback()
+    with authority_transaction(db):
+        package = db.scalar(select(ModulePackage).where(ModulePackage.sha256 == sha256))
+        if package is None:
+            raise HTTPException(404, "Agent package was not found")
+        if db.scalar(select(ApplicationExtensionInstallation.id).where(or_(
+                ApplicationExtensionInstallation.module_package_id == package.id,
+                ApplicationExtensionInstallation.previous_package_id == package.id)).limit(1)) is not None:
+            raise HTTPException(409, "Package is still referenced by a Core application")
+        for installation in db.scalars(select(ModuleInstallation).where(ModuleInstallation.module_id == package.module_id)):
+            command = db.scalar(select(DeviceCommand).where(
+                DeviceCommand.command_id == installation.command_id,
+                DeviceCommand.device_id == installation.device_id))
+            if (installation.status != "uninstalled" or installation.enabled
+                    or installation.installed_version is not None or installation.data_retained
+                    or command is None or command.command_type != "module.uninstall"
+                    or command.status != "succeeded" or command.result.get("status") != "uninstalled"
+                    or command.result.get("module_id") != installation.module_id):
+                raise HTTPException(409, "Confirm full removal on every device before deleting this package")
+            if installation.module_package_id == package.id:
+                db.delete(installation)
+        if db.scalar(select(ModulePackageRetainedReference.reference_id).where(
+                ModulePackageRetainedReference.package_id == package.id).limit(1)) is not None:
+            raise HTTPException(409, "Package has retained resource references")
+        if db.scalar(select(DeviceCommand.id).where(
+                DeviceCommand.command_type == "module.install",
+                DeviceCommand.payload["module_id"].as_string() == package.module_id,
+                DeviceCommand.status.in_(("queued", "delivered"))).limit(1)) is not None:
+            raise HTTPException(409, "Package installation is pending")
+        for old_command in db.scalars(select(DeviceCommand).where(
+                DeviceCommand.command_type == "module.install",
+                DeviceCommand.payload["sha256"].as_string() == sha256)):
+            if old_command.status == "expired" and old_command.delivered_at is not None:
+                raise HTTPException(409, "A prior package installation is unconfirmed")
+            # Keep receipt identity/status, not an undeletable second ZIP copy.
+            old_command.payload = {key: value for key, value in old_command.payload.items()
+                                   if key != "package_base64"}
+        # Files first: failure keeps a visible catalog record for recovery.
+        db.flush()
+        archive.unlink(missing_ok=True)
+        db.delete(package)
+    return {"status": "deleted", "sha256": sha256}
 
 
 @router.post("/{module_id}/devices/{device_id}/disable", response_model=InstallationResponse)

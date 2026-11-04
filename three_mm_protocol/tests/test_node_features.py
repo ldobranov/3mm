@@ -41,6 +41,8 @@ def test_runtime_features_roundtrip_and_future_generic_contracts():
         {"command_types": []},
         {"command_types": ["capability.invoke", "module.install"]},
         {"features": sorted(MANDATORY_NODE_FEATURES | {"module_lifecycle"})},
+        {"features": sorted(MANDATORY_NODE_FEATURES | {"module_uninstall"})},
+        {"command_types": ["capability.invoke", "module.uninstall"]},
         {"expected_revision": True},
         {"expected_revision": -1},
         {"schema_version": 2},
@@ -53,3 +55,10 @@ def test_runtime_features_roundtrip_and_future_generic_contracts():
 def test_invalid_or_inconsistent_advertisements(changes):
     with pytest.raises(ValidationError):
         DeviceRuntimeFeaturesReportV1.model_validate(report(**changes))
+
+
+def test_module_removal_is_an_explicit_independent_runtime_contract():
+    value = DeviceRuntimeFeaturesReportV1.model_validate(report(
+        features=sorted(MANDATORY_NODE_FEATURES | {"module_lifecycle", "module_uninstall"}),
+        command_types=["capability.invoke", "module.install", "module.disable", "module.uninstall"]))
+    assert "module.uninstall" in value.command_types

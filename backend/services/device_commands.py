@@ -23,7 +23,7 @@ from backend.services.device_capability_registry import validate_invocation, can
 NODE_UPDATE_TERMINAL_OUTCOMES = frozenset({"succeeded", "rolled_back", "failed"})
 NODE_MUTATION_COMMAND_TYPES = frozenset({
     "gpio.write", "gpio.pulse", "capability.invoke", "application.capability.invoke",
-    "agent.gpio.configure", "module.install", "module.disable",
+    "agent.gpio.configure", "module.install", "module.disable", "module.uninstall",
 })
 
 
@@ -176,7 +176,7 @@ def deliver_next_command(
 
 
 def _update_module_receipt(db, device, command, mutation, *, source):
-    if command.command_type not in {"module.install", "module.disable"}:
+    if command.command_type not in {"module.install", "module.disable", "module.uninstall"}:
         return
     # A delayed old receipt must never overwrite the current installation episode.
     installation = db.scalar(select(ModuleInstallation).where(
@@ -193,6 +193,10 @@ def _update_module_receipt(db, device, command, mutation, *, source):
             installation.enabled = True
         else:
             installation.enabled = False
+            if command.command_type == "module.uninstall":
+                installation.installed_version = None
+                installation.data_retained = False
+                installation.status = "uninstalled"
     record_module_transition(db, mutation, device, installation, before, source=source)
 
 
@@ -335,6 +339,10 @@ def _record_command_result(db, *, device, result, mutation):
         return command, False
     if command.status != "delivered":
         raise DeviceCommandError("Command has not been delivered")
+    if command.command_type == "module.uninstall" and result.status == "succeeded":
+        if (result.output.get("module_id") != command.payload.get("module_id")
+                or result.output.get("status") != "uninstalled"):
+            raise DeviceCommandError("Module removal receipt is invalid")
     if _utc(command.expires_at) <= _utc(result.completed_at):
         command.status = "expired"
         return command, True

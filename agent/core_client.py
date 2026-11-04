@@ -303,6 +303,7 @@ class CorePublisher:
             if getattr(self.module_runtime, 'device_id', None) == self.credential.device_id:
                 features.add(HARDWARE_PROFILE_FEATURE)
             features.update({"module_lifecycle", "application_execution_permits", CONTRACT_FEATURE})
+            features.add("module_uninstall")
             if self.capability_availability:
                 features.add(AVAILABILITY_FEATURE)
         if self.adapter_providers is not None and self.capability_availability:
@@ -615,20 +616,24 @@ class CorePublisher:
                     command_id=command.command_id, device_id=self.credential.device_id,
                     status="failed", completed_at=datetime.now(UTC), error=str(exc),
                 )
-        elif command.command_type in {"module.install", "module.disable"} and self.module_runtime is not None:
+        elif command.command_type in {"module.install", "module.disable", "module.uninstall"} and self.module_runtime is not None:
             try:
                 if command.command_type == "module.install":
                     package = base64.b64decode(command.payload["package_base64"], validate=True)
                     lifecycle = self.module_runtime.install(package, expected_sha256=command.payload["sha256"],
                         hardware_profile_approval=command.payload.get('hardware_profile_approval'))
-                else:
+                elif command.command_type == "module.disable":
                     lifecycle = self.module_runtime.disable(command.payload["module_id"])
+                else:
+                    lifecycle = self.module_runtime.uninstall(command.payload["module_id"],
+                        expected_sha256=command.payload["package_sha256"],
+                        expected_version=command.payload["installed_version"])
                 result = AgentCommandResult(
                     command_id=command.command_id, device_id=self.credential.device_id,
                     status="succeeded", completed_at=datetime.now(UTC),
                     output={"module_id": lifecycle.module_id, "version": lifecycle.version, "status": lifecycle.status, "previous_version": lifecycle.previous_version},
                 )
-            except (KeyError, ValueError, ModuleLifecycleError) as exc:
+            except (KeyError, ValueError, OSError, RuntimeError) as exc:
                 result = AgentCommandResult(
                     command_id=command.command_id, device_id=self.credential.device_id,
                     status="failed", completed_at=datetime.now(UTC), error=str(exc),
@@ -643,7 +648,7 @@ class CorePublisher:
             )
         self.command_journal.save(command.idempotency_key, result, command=command)
         self._submit_result(result)
-        if command.command_type in {"module.install", "module.disable"} and self.gpio_configuration is not None:
+        if command.command_type in {"module.install", "module.disable", "module.uninstall"} and self.gpio_configuration is not None:
             self._reconcile_state()
             self._publish_capability_states()
 

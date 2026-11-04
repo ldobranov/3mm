@@ -6,6 +6,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.6] - 2026-11-04
+
+Prepared candidate; publication requires successful main CI followed by the
+immutable tag's release gates.
+
+### Added
+
+- Administrator inventory of uploaded Agent modules and hardware providers,
+  including per-device installations and records whose package is missing.
+- Explicit, confirmed full removal of an Agent module from one device, with
+  original-request outcome lookup. Uploaded-package deletion remains separate
+  and blocked while device installations still reference the module.
+- Bulgarian language pack 1.0.5 for Agent inventory and removal controls.
+  Version 1.0.4 is reserved for the unpublished local deployment candidate.
+
+### Fixed
+
+- Keep applications first in Extensions and place Agent inventory below in a
+  compact, initially collapsed section with per-package details.
+- Restore workers can write the scoped application-host journals and instance
+  pointers while keeping immutable host releases and default selection protected.
+- Restore and rollback activation load the current environment after each state
+  switch, with preflight checks before stopping services.
+- Verify restore completion against the current device API instead of the
+  removed `/access` endpoint, preserving required health and rollback checks.
+
 ## [0.3.5] - 2026-11-03
 
 - Includes the display and authority changes from the unpublished 0.3.4 tag.

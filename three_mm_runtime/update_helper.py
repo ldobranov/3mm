@@ -395,18 +395,15 @@ class UpdateMutationBoundary:
         backup_id: str,
         requested_by_user_id: int,
     ) -> None:
+        from deployment.restore_backup import RESTORE_SANDBOX_PROPERTIES
+
         arguments = (
             self._systemd_run,
             "--unit=3mm-backup-restore",
             "--collect",
             "--property=Type=exec",
             "--property=TimeoutStartSec=20min",
-            "--property=PrivateTmp=true",
-            "--property=ProtectSystem=strict",
-            "--property=ReadWritePaths=/var/lib/3mm",
-            "--property=ReadWritePaths=/etc/3mm",
-            "--property=ReadWritePaths=/run/lock",
-            "--property=ProtectHome=true",
+            *(f"--property={value}" for value in RESTORE_SANDBOX_PROPERTIES),
             "/usr/bin/env",
             "PYTHONPATH=/opt/3mm/current",
             self._python,

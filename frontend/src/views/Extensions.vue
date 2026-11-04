@@ -193,6 +193,8 @@
       </div>
     </section>
 
+    <AgentModulesInventory v-if="isAdmin" ref="agentInventory" />
+
     <section v-if="isAdmin && (orphanedApplicationData.length || retainedDataError)" class="ui-section retained-data-section" aria-labelledby="retained-data-title">
       <h2 id="retained-data-title">{{ t('extensions.preservedApplicationData', 'Preserved application data') }}</h2>
       <p class="ui-help">{{ t('extensions.preservedApplicationDataHelp', 'These applications and their packages have been removed. You can still permanently erase their preserved data.') }}</p>
@@ -327,6 +329,7 @@
 
 <script setup lang="ts">
 import ApplicationRecoveryDialog from '@/components/extensions/ApplicationRecoveryDialog.vue';
+import AgentModulesInventory from '@/components/AgentModulesInventory.vue';
 import { interruptedLifecycleStatuses, useRecoveryLabels } from '@/components/extensions/recovery-labels';
 import { ref, onMounted, watch, computed } from 'vue';
 import http from '@/utils/dynamic-http';
@@ -365,6 +368,7 @@ const kioskTarget = ref<Extension | null>(null);
 const recoveryLabel = useRecoveryLabels();
 const recoveryTarget = ref<Extension | null>(null);
 const catalogUnavailable = ref(false);
+const agentInventory = ref<InstanceType<typeof AgentModulesInventory> | null>(null);
 const operationSuccess = ref('');
 const hasKiosk = (ext: Extension) => Object.values(ext.kiosk_by_version || {}).includes(ext.package_sha256 || '');
 const connectorSettingsSha = (extension: Extension): string | null =>
@@ -871,6 +875,7 @@ const uploadExtension = async () => {
     if (fileInput) fileInput.value = '';
 
     // Reload extensions list
+    await agentInventory.value?.refresh?.();
     await loadExtensions();
   } catch (error: any) {
     uploadError.value = error.response?.data?.detail || t('extensions.uploadError', 'Failed to upload extension');

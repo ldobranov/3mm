@@ -27,6 +27,7 @@ MANDATORY_NODE_FEATURES = frozenset(
 FEATURE_COMMANDS = {
     "capability_invocation": frozenset({"capability.invoke"}),
     "module_lifecycle": frozenset({"module.install", "module.disable"}),
+    "module_uninstall": frozenset({"module.uninstall"}),
     "local_automations": frozenset({"automation.apply", "automation.remove"}),
     "gpio_configuration": frozenset({"agent.gpio.configure"}),
     "inventory_refresh": frozenset({"agent.refresh_inventory"}),

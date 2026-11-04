@@ -52,6 +52,26 @@ RUNTIME_SERVICES = (
     "3mm-application-extension@*.service",
 )
 BACKUP_ID_PATTERN = r"^bkp_\d{8}T\d{6}Z_[0-9a-f]{8}$"
+# Both the coordinator and its fresh-environment children need this boundary.
+# Binding a restored app writes a journal and an instance pointer, NOT binaries
+# or the default host selection. Keep those immutable roots read-only.
+RESTORE_HOST_WRITABLE_PATHS = (
+    Path("/var/lib/3mm-application-host-updates"),
+    Path("/opt/3mm-application-hosts/instances"),
+)
+RESTORE_SANDBOX_PROPERTIES = (
+    "User=root",
+    "Group=3mm",
+    "PrivateTmp=true",
+    "ProtectSystem=strict",
+    "ProtectHome=true",
+    "StateDirectory=3mm-application-host-updates",
+    "StateDirectoryMode=0750",
+    *(f"ReadWritePaths={path.as_posix()}" for path in (
+        Path("/var/lib/3mm"), Path("/etc/3mm"), Path("/run/lock"),
+        *RESTORE_HOST_WRITABLE_PATHS,
+    )),
+)
 
 
 class RestoreRuntime(Protocol):
@@ -61,20 +81,51 @@ class RestoreRuntime(Protocol):
 
 
 class SystemRestoreRuntime:
-    def _run(self, arguments: Sequence[str]) -> None:
+    def __init__(self, *, host_config: Path = Path("/etc/3mm/3mm.env")) -> None:
+        self.host_config = host_config
+
+    def _run(self, arguments: Sequence[str], *, timeout: int = 180) -> None:
         subprocess.run(
             list(arguments),
             check=True,
-            timeout=180,
+            timeout=timeout,
         )
-        
+
+    def _run_configured(self, arguments: Sequence[str]) -> None:
+        # PID 1 reads EnvironmentFile anew for EVERY child, after state switch
+        # or rollback. Inheriting the coordinator's environment would use the
+        # wrong master key. No shell sourcing, secret argv or env-file parser.
+        self._run((
+            "/usr/bin/systemd-run", "--quiet", "--pipe", "--wait", "--collect",
+            "--property=Type=exec", "--property=TimeoutStartSec=15s",
+            "--property=RuntimeMaxSec=180s", "--property=TimeoutStopSec=10s",
+            "--property=KillMode=control-group",
+            f"--property=EnvironmentFile={self.host_config}",
+            *(f"--property={value}" for value in RESTORE_SANDBOX_PROPERTIES),
+            *arguments,
+        ), timeout=210)
+
+    def preflight(self) -> None:
+        if self.host_config.is_symlink() or not self.host_config.is_file():
+            raise ValueError("Restore host configuration is unavailable")
+        for directory in RESTORE_HOST_WRITABLE_PATHS:
+            if directory.is_symlink() or not directory.is_dir():
+                raise ValueError("Restore host runtime directory is unavailable")
+            # Detect EROFS before stopping Core, including an older/incorrect
+            # worker mount namespace. Never touch an existing pointer/journal.
+            with tempfile.TemporaryFile(dir=directory):
+                pass
+        # Also prove systemd can establish the child namespace and load the
+        # mandatory current environment before any live state is moved.
+        self._run_configured(("/usr/bin/true",))
+
     def stop(self, services: Sequence[str]) -> None:
         self._run(("/usr/bin/systemctl", "stop", *services))
 
     def migrate(self) -> None:
         release = Path("/opt/3mm/current")
         python = release / ".venv/bin/python"
-        self._run(
+        self._run_configured(
             (
                 "/usr/sbin/runuser",
                 "-u",
@@ -94,7 +145,7 @@ class SystemRestoreRuntime:
 
     def activate_and_verify(self) -> None:
         release = Path("/opt/3mm/current")
-        self._run(
+        self._run_configured(
             (
                 "/usr/bin/env",
                 f"PYTHONPATH={release}",
@@ -102,7 +153,7 @@ class SystemRestoreRuntime:
                 str(release / "deployment/restore_application_extensions.py"),
             )
         )
-        self._run(
+        self._run_configured(
             (
                 "/usr/bin/env",
                 f"PYTHONPATH={release}",
@@ -483,7 +534,7 @@ def restore_backup(
         raise ValueError("Selected backup archive is unavailable")
     status_path = backup_root / "status.json"
     started_at = datetime.now(UTC)
-    controller = runtime or SystemRestoreRuntime()
+    controller = runtime or SystemRestoreRuntime(host_config=host_config)
     uid, gid = service_ids or _service_ids()
     write_backup_operation_status(
         status_path,
@@ -510,6 +561,11 @@ def restore_backup(
                 settings.backups.application_extensions_dir,
                 validate_files=False,
             )
+            # A valid backup alone is insufficient: the PREVIOUS database and
+            # key must also be recoverable if migration/activation later fails.
+            validate_identity_backup(state_root / "core/3mm.db", host_config)
+            if runtime is None:
+                controller.preflight()
             quarantine_restored_installation_peers(staging / "payload/core/3mm.db")
             _prepare_payload(
                 staging / "payload",

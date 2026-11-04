@@ -44,11 +44,11 @@ def _lifecycle_idempotency_key(
         digest = hashlib.sha256(identity.encode()).hexdigest()
         suffix = ":" + client_key if len(client_key) <= 48 else ""
         return "module.client:" + digest + suffix
-    opposite = "module.disable" if command_type == "module.install" else "module.install"
+    opposite = ("module.disable", "module.uninstall") if command_type == "module.install" else ("module.install",)
     completed = db.scalar(
         select(DeviceCommand).where(
             DeviceCommand.device_id == device.id,
-            DeviceCommand.command_type == opposite,
+            DeviceCommand.command_type.in_(opposite),
             DeviceCommand.payload["module_id"].as_string() == module_id,
             DeviceCommand.status == "succeeded",
             DeviceCommand.completed_at.is_not(None),
@@ -71,6 +71,24 @@ def _queue_lifecycle_command(db: Session, *, device: Device, **values):
     except DeviceCommandError as exc:
         raise HTTPException(409, str(exc)) from exc
     return command, existing is not None
+
+
+def _require_resolved_lifecycle(db, installation):
+    if installation is None or not installation.command_id:
+        return
+    command = db.scalar(select(DeviceCommand).where(
+        DeviceCommand.command_id == installation.command_id,
+        DeviceCommand.device_id == installation.device_id))
+    if command is None or command.status in {"queued", "delivered"} or (
+            command.status == "expired" and command.delivered_at is not None):
+        raise HTTPException(409, "Previous module operation is pending or unconfirmed; read its outcome first")
+    for earlier in db.scalars(select(DeviceCommand).where(
+            DeviceCommand.device_id == installation.device_id,
+            DeviceCommand.command_type.in_(("module.install", "module.disable", "module.uninstall")),
+            DeviceCommand.payload["module_id"].as_string() == installation.module_id)):
+        if earlier.status in {"queued", "delivered"} or (
+                earlier.status == "expired" and earlier.delivered_at is not None):
+            raise HTTPException(409, "Earlier module operation is pending or unconfirmed; recover it before removal")
 
 
 def install_module(sha256:str,device_id:str,_admin:User,db:Session,
@@ -120,6 +138,10 @@ def install_module(sha256:str,device_id:str,_admin:User,db:Session,
                 ModuleInstallation.device_id == current.id, ModuleInstallation.module_id == package.module_id,
             ).execution_options(populate_existing=True))
             before = module_control_snapshot(installation)
+            if installation is not None and installation.command_id:
+                previous = db.scalar(select(DeviceCommand).where(DeviceCommand.command_id == installation.command_id))
+                if previous is not None and previous.command_type == "module.uninstall" and previous.status != "succeeded":
+                    _require_resolved_lifecycle(db, installation)
             key = _lifecycle_idempotency_key(db, device=current, command_type="module.install", module_id=package.module_id,
                 legacy_key=f"module.install:{package.module_id}:{package.sha256}", client_key=idempotency_key, admin_id=admin_id)
             command, replay = _queue_lifecycle_command(db, device=current, command_type="module.install",
@@ -163,6 +185,11 @@ def disable_module(module_id:str,device_id:str,_admin:User,db:Session,
             ).execution_options(populate_existing=True))
             if installation is None:
                 raise HTTPException(404, "module installation was not found")
+            previous = db.scalar(select(DeviceCommand).where(DeviceCommand.command_id == installation.command_id))
+            if previous is not None and previous.command_type == "module.uninstall":
+                if installation.status == "uninstalled":
+                    raise HTTPException(409, "Module is already uninstalled")
+                _require_resolved_lifecycle(db, installation)
             before = module_control_snapshot(installation)
             key = _lifecycle_idempotency_key(db, device=current, command_type="module.disable", module_id=module_id,
                 legacy_key=f"module.disable:{module_id}:{installation.installed_version}", client_key=idempotency_key, admin_id=admin_id)
@@ -180,3 +207,62 @@ def disable_module(module_id:str,device_id:str,_admin:User,db:Session,
     if not replay:
         device_command_notifier.notify(device_pk)
     return response
+
+
+def uninstall_module(module_id, device_id, admin, db, *, package_sha256,
+                     expected_command_id, request_id):
+    """Queue exact, explicit removal; only the owning Agent can confirm erasure."""
+    try:
+        require_device_authority_session(db)
+    except AuthorityMetadataError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    device = db.scalar(select(Device).where(Device.device_id == device_id))
+    if device is None:
+        raise HTTPException(404, "Device was not found")
+    device_pk, admin_id = device.id, admin.id
+    try:
+        with _write_scope(db, device) as (db, mutation, current):
+            support = read_runtime_features(db, current)
+            if support is None or "module.uninstall" not in support.declaration["command_types"]:
+                raise HTTPException(409, "Update this Agent before removing modules")
+            key = _lifecycle_idempotency_key(db, device=current, command_type="module.uninstall",
+                module_id=module_id, legacy_key="", client_key=request_id, admin_id=admin_id)
+            prior = db.scalar(select(DeviceCommand).where(
+                DeviceCommand.device_id == current.id, DeviceCommand.idempotency_key == key))
+            if prior is not None:
+                if (prior.command_type != "module.uninstall"
+                        or prior.payload.get("requested_package_sha256") != package_sha256
+                        or prior.payload.get("expected_command_id") != expected_command_id):
+                    raise HTTPException(409, "Removal request identity has different content")
+                return {"command_id": prior.command_id, "status": prior.status}
+            installation = db.scalar(select(ModuleInstallation).where(
+                ModuleInstallation.device_id == current.id, ModuleInstallation.module_id == module_id)
+                .execution_options(populate_existing=True))
+            if installation is None:
+                raise HTTPException(404, "Module installation was not found")
+            if installation.status == "uninstalled":
+                raise HTTPException(409, "Module is already uninstalled")
+            package = db.get(ModulePackage, installation.module_package_id)
+            if ((package.sha256 if package is not None else None) != package_sha256
+                    or installation.command_id != expected_command_id):
+                raise HTTPException(409, "Module installation changed; refresh before removal")
+            _require_resolved_lifecycle(db, installation)
+            before = module_control_snapshot(installation)
+            active = db.scalar(select(ModulePackage).where(
+                ModulePackage.module_id == module_id, ModulePackage.version == installation.installed_version))
+            payload = {"module_id": module_id,
+                "package_sha256": active.sha256 if active is not None else None,
+                "installed_version": installation.installed_version,
+                "requested_package_sha256": package_sha256, "expected_command_id": expected_command_id}
+            command, _ = _queue_lifecycle_command(db, device=current, command_type="module.uninstall",
+                payload=payload, idempotency_key=key, ttl_seconds=300)
+            installation.command_id, installation.status = command.command_id, command.status
+            # Fence new application commands immediately, without claiming erasure.
+            installation.enabled = False
+            record_module_transition(db, mutation, current, installation, before,
+                source="uninstall_requested", admin_id=admin_id)
+            result = {"command_id": command.command_id, "status": command.status}
+    except AuthorityMetadataError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    device_command_notifier.notify(device_pk)
+    return result

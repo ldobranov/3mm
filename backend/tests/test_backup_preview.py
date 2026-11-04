@@ -617,7 +617,7 @@ def test_system_restore_refreshes_helper_after_health_verification(monkeypatch):
     monkeypatch.setattr(
         runtime,
         "_run",
-        lambda command: commands.append(tuple(command)),
+        lambda command, **_kwargs: commands.append(tuple(command)),
     )
     monkeypatch.setattr(restore_backup_module, "verify_release", lambda _endpoints: None)
 

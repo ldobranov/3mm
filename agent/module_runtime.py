@@ -1,6 +1,7 @@
 """Transactional, data-preserving Agent module lifecycle."""
 from __future__ import annotations
 import hashlib, io, json, os, shutil, tempfile, zipfile
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
@@ -11,6 +12,7 @@ from three_mm_protocol.capability_availability import CapabilityAvailabilityRepo
 from datetime import UTC, datetime
 from agent import __version__
 from three_mm_protocol.hardware_profiles import validate_hardware_approval, hardware_profile
+from three_mm_protocol.module_manifest import MODULE_ID_PATTERN
 
 AGENT_ALLOWED_PERMISSIONS = {"data.read", "data.write", "events.publish", "network.outbound", "process.spawn", "hardware.inventory", "hardware.gpio", "hardware.display"}
 
@@ -289,6 +291,49 @@ class AgentModuleRuntime:
             if service is not None and hasattr(service, "close"):
                 service.close()
         return ModuleRuntimeResult(module_id, state["active_version"], "disabled")
+
+    def uninstall(self, module_id: str, *, expected_sha256: str | None, expected_version: str | None = None) -> ModuleRuntimeResult:
+        """Remove only one module; retain the command journal for lost-ACK recovery."""
+        if type(module_id) is not str or re.fullmatch(MODULE_ID_PATTERN, module_id) is None:
+            raise ModuleLifecycleError("invalid module identity")
+        paths = [self._state_path(module_id),
+                 self.root / "releases" / module_id, self.root / "data" / module_id]
+        # Validate all targets before disabling anything. Never follow a linked
+        # module or parent into another module or outside the managed directory.
+        for path in paths:
+            if self.root.is_symlink() or path.parent.is_symlink() or path.is_symlink():
+                raise ModuleLifecycleError("linked module removal path")
+            if path.resolve() != self.root.resolve() / path.relative_to(self.root):
+                raise ModuleLifecycleError("invalid module removal path")
+            if path.is_dir() and any(child.is_symlink() for child in path.rglob("*")):
+                raise ModuleLifecycleError("linked module removal path")
+        state = self.state(module_id)
+        if state and ((expected_sha256 is not None and state.get("package_sha256") != expected_sha256)
+                      or (expected_version is not None and state.get("active_version") != expected_version)):
+            raise ModuleLifecycleError("module package changed before removal")
+        version = state.get("active_version") or ""
+        # Persist the stop before cleanup. A partial failure cannot reactivate
+        # a provider on Agent restart; its disabled state remains inspectable.
+        self._save_state(module_id, {**state, "enabled": False, "removal_pending": True})
+        owned = [capability_id for capability_id, owner in self._owners.items() if owner == module_id]
+        services = {id(self._services[key]): self._services[key] for key in owned}
+        for service in services.values():
+            if hasattr(service, "close"):
+                try:
+                    service.close()
+                except Exception as exc:
+                    raise ModuleLifecycleError("module runtime stop is unconfirmed") from exc
+        for capability_id in owned:
+            self._services.pop(capability_id, None)
+            self._contracts.pop(capability_id, None)
+            self._owners.pop(capability_id, None)
+        for path in paths[1:]:
+            if path.is_dir():
+                shutil.rmtree(path)
+            elif path.exists():
+                raise ModuleLifecycleError("invalid module removal path")
+        paths[0].unlink(missing_ok=True)
+        return ModuleRuntimeResult(module_id, version, "uninstalled")
 
     def close(self) -> None:
         """Release active services without changing their persistent enabled state."""

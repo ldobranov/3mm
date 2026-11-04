@@ -83,6 +83,7 @@ const mountView = async () => {
   const wrapper = mount(Extensions, {
     global: {
       stubs: {
+        AgentModulesInventory: true,
         RouterLink: { template: '<a><slot /></a>' }
       }
     }
@@ -133,6 +134,8 @@ describe('Extensions management workflow', () => {
     expect(http.get.mock.calls.some(([url]) => url.includes('runtime-extensions'))).toBe(false)
     expect(wrapper.text()).toContain('Indicator')
     expect(wrapper.text()).toContain('Compiled UI')
+    expect(wrapper.get('.extensions-list').element.compareDocumentPosition(
+      wrapper.get('agent-modules-inventory-stub').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it.each([['admin', true], ['user', false]])('shows settings only for declared connector packages and current admin UI (%s)', async (role, visible) => {

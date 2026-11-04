@@ -62,7 +62,7 @@ def verify_release(endpoints: ReleaseEndpoints) -> dict[str, str]:
     required_paths = {
         "/api/v1/modules/packages",
         "/api/v1/application-extensions",
-        "/access",
+        "/api/v1/devices",
     }
     missing_paths = sorted(required_paths - set(paths))
     _require(not missing_paths, f"Core is missing required API paths: {', '.join(missing_paths)}")

@@ -32,6 +32,57 @@ def test_integrity_and_architecture_fail_closed(tmp_path):
     with pytest.raises(ModuleLifecycleError,match="integrity"): runtime.install(blob,expected_sha256="0"*64)
     with pytest.raises(ModuleLifecycleError,match="architecture"): install(runtime,blob)
 
+
+def test_uninstall_erases_all_versions_profile_and_data_but_not_other_modules(tmp_path):
+    runtime = AgentModuleRuntime(tmp_path, architecture="aarch64")
+    first, second = package(), package("2.0.0")
+    install(runtime, first); install(runtime, second)
+    (runtime.root / "data/org.3mm.demo/value").write_text("private")
+    unrelated = runtime.root / "data/org.3mm.other"
+    unrelated.mkdir(); (unrelated / "keep").write_text("keep")
+    journal = tmp_path / "command-journal.sqlite"; journal.write_text("receipt")
+    result = runtime.uninstall("org.3mm.demo", expected_sha256=hashlib.sha256(second).hexdigest())
+    assert result.status == "uninstalled" and runtime.state("org.3mm.demo") == {}
+    assert not (runtime.root / "releases/org.3mm.demo").exists()
+    assert not (runtime.root / "data/org.3mm.demo").exists()
+    assert (unrelated / "keep").read_text() == "keep" and journal.read_text() == "receipt"
+    runtime.start_active()
+    assert runtime.registrations() == []
+    assert runtime.uninstall("org.3mm.demo", expected_sha256="a" * 64).status == "uninstalled"
+
+
+def test_uninstall_refuses_package_change_and_escape_before_deleting(tmp_path):
+    runtime = AgentModuleRuntime(tmp_path, architecture="aarch64"); blob = package(); install(runtime, blob)
+    with pytest.raises(ModuleLifecycleError, match="changed"):
+        runtime.uninstall("org.3mm.demo", expected_sha256="a" * 64)
+    for name in ("../org.3mm.demo", "", "/tmp", "org.3mm.demo/child"):
+        with pytest.raises(ModuleLifecycleError, match="identity"):
+            runtime.uninstall(name, expected_sha256=hashlib.sha256(blob).hexdigest())
+    assert runtime.state("org.3mm.demo")["enabled"]
+
+
+def test_uninstall_does_not_erase_on_service_close_failure(tmp_path):
+    runtime = AgentModuleRuntime(tmp_path, architecture="aarch64"); blob = package(); install(runtime, blob)
+    class Service:
+        def close(self): raise RuntimeError("close failed")
+    runtime._services["demo.ready"] = Service(); runtime._owners["demo.ready"] = "org.3mm.demo"
+    with pytest.raises(ModuleLifecycleError, match="stop is unconfirmed"):
+        runtime.uninstall("org.3mm.demo", expected_sha256=hashlib.sha256(blob).hexdigest())
+    assert runtime.state("org.3mm.demo")["enabled"] is False
+    assert (runtime.root / "releases/org.3mm.demo").exists()
+    assert runtime.state("org.3mm.demo")["removal_pending"] is True
+
+
+@pytest.mark.skipif(__import__("os").name != "posix", reason="Real symlink boundary")
+def test_uninstall_never_follows_an_outside_data_link(tmp_path):
+    runtime = AgentModuleRuntime(tmp_path, architecture="aarch64"); blob = package(); install(runtime, blob)
+    outside = tmp_path / "outside"; outside.mkdir(); (outside / "keep").write_text("keep")
+    (runtime.root / "data/org.3mm.demo/link").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ModuleLifecycleError, match="linked"):
+        runtime.uninstall("org.3mm.demo", expected_sha256=hashlib.sha256(blob).hexdigest())
+    assert (outside / "keep").read_text() == "keep"
+    assert runtime.state("org.3mm.demo")["enabled"]
+
 def gpio_package(*, outputs={"gpio.output.1": True}, entrypoint=GPIO_ENTRYPOINT, rules=[], pulse_min_ms=50, pulse_max_ms=10000, pulse_cooldown_ms=0):
     manifest = {"manifest_version":2,"module_id":"org.3mm.gpio-test","name":"GPIO test","version":"1.0.0","runtimes":["agent"],"entrypoints":{"agent":entrypoint},"compatibility":{"protocol":"1.0","architectures":["aarch64"]},"permissions":["hardware.gpio","data.write"],"capabilities":{"provides":["gpio.digital.input","gpio.digital.output"]},"configuration_defaults":{"inputs":["gpio.input.1"],"outputs":outputs,"rules":rules,"pulse_min_ms":pulse_min_ms,"pulse_max_ms":pulse_max_ms,"pulse_cooldown_ms":pulse_cooldown_ms},"health_check":{"type":"file_exists","path":"health/ready"},"registrations":[{"kind":"capability","registration_id":"gpio.digital.input"},{"kind":"capability","registration_id":"gpio.digital.control"}]}
     out=io.BytesIO()

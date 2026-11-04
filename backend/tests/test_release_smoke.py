@@ -27,7 +27,7 @@ def response_map(device_id: str = "device-123") -> dict[str, dict | str]:
         "http://core/openapi.json": {"paths": {
             "/api/v1/modules/packages": {},
             "/api/v1/application-extensions": {},
-            "/access": {},
+            "/api/v1/devices": {},
         }},
         "http://agent/ready": {"status": "ready", "device_id": device_id},
         "http://agent/api/v1/agent/hello": {"device_id": device_id},
@@ -79,3 +79,35 @@ def test_release_smoke_rejects_inconsistent_agent_identity(monkeypatch):
         release_smoke.verify_release(release_smoke.ReleaseEndpoints(
             core="http://core", agent="http://agent", web="http://web", timeout=2
         ))
+
+
+def test_restore_health_gate_accepts_actual_core_openapi_without_retired_access(monkeypatch):
+    from backend.main import app
+    from deployment import restore_backup
+
+    responses = response_map()
+    responses['http://core/openapi.json'] = app.openapi()
+    assert '/access' not in responses['http://core/openapi.json']['paths']
+    install_fake_network(monkeypatch, responses)
+    monkeypatch.setattr(restore_backup, 'ReleaseEndpoints', lambda **_kwargs:
+        release_smoke.ReleaseEndpoints(core='http://core', agent='http://agent', web='http://web', timeout=2))
+    runtime = restore_backup.SystemRestoreRuntime()
+    commands = []
+    monkeypatch.setattr(runtime, '_run', lambda command, **_kwargs: commands.append(tuple(command)))
+
+    # The real restore completion check must accept the actual current route
+    # registry. Do not mock verify_release or reintroduce a retired API adapter.
+    runtime.activate_and_verify()
+    assert commands[-1] == ('/usr/bin/systemctl', 'try-restart', '3mm-update-helper.service')
+
+
+@pytest.mark.parametrize('missing', [
+    '/api/v1/modules/packages', '/api/v1/application-extensions', '/api/v1/devices',
+])
+def test_current_required_core_api_is_still_mandatory(monkeypatch, missing):
+    responses = response_map()
+    del responses['http://core/openapi.json']['paths'][missing]
+    install_fake_network(monkeypatch, responses)
+    with pytest.raises(release_smoke.SmokeFailure, match='missing required API paths'):
+        release_smoke.verify_release(release_smoke.ReleaseEndpoints(
+            core='http://core', agent='http://agent', web='http://web', timeout=2))

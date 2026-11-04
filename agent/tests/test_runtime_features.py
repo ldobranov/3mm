@@ -166,6 +166,8 @@ def test_optional_advertisement_matches_components_and_verified_update_helper(
     monkeypatch.setattr(CorePublisher, "_node_update_support", lambda self: support)
     features = node._runtime_declaration()
     assert "module_lifecycle" in features["features"]
+    assert "module_uninstall" in features["features"]
+    assert "module.uninstall" in features["command_types"]
     assert "application.capability.invoke" in features["command_types"]
     assert "agent.update.prepare" in features["command_types"]
     assert "agent.update.apply" not in features["command_types"]
