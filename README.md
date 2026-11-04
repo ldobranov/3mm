@@ -8,11 +8,12 @@ combines a central Core, a persistent device Agent, provisioning and reviewed
 applications through common capability contracts and SDKs. Builder, dashboards
 and other product features live in optional source packages/libraries.
 
-> **Project status:** Development prototype (pre-1.0). This source prepares **Core 0.3.3**, adding
-> reviewed Runtime-only web updates, shared editing controls, one built-in
-> light/dark theme, and Header/Menu editing with menu placement and sticky zones.
-> It also fixes connector upgrade registration and includes Bulgarian pack 1.0.2.
-> The [0.3.3 changelog](CHANGELOG.md#033---2026-10-30) describes the supported scope.
+> **Project status:** Development prototype (pre-1.0). This source prepares **Core 0.3.7**, adding
+> reviewed web management of the local Agent and explicitly selected application
+> hosts, remote Node OTA controls, and supported hardware-provider configuration
+> through administration. It includes Bulgarian pack 1.0.6. Local component
+> update/rollback was exercised on Raspberry; remote Node device acceptance is
+> deferred. The [0.3.7 changelog](CHANGELOG.md#037---2026-11-04) describes the scope.
 > It builds on the accepted
 > Core stabilization, Standalone/Hub/Node setup and Wi-Fi/AP recovery, bounded
 > diagnostics, independent optional runtimes and manifest-v2 language extensions.
@@ -24,7 +25,7 @@ and other product features live in optional source packages/libraries.
 > Host/root administration, public Cloud, full remote Terminal UI and whole
 > M21/WP5 isolation remain separate work. Terminal 1.0.3 is an independent package.
 > Native application approval permits Linux code execution and is **not a sandbox**.
-> The [0.3.3 release notes](docs/RELEASE_NOTES_0.3.3.md) describe upgrades,
+> The [0.3.7 release notes](docs/RELEASE_NOTES_0.3.7.md) describe upgrades,
 > independent components and owner device trials. Preserve database/key backups;
 > populated history can refuse downgrade, and an older Core pointer alone does
 > not restore the previous database or independent component versions.

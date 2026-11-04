@@ -6,6 +6,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.7] - 2026-11-04
+
+Prepared candidate; publication requires successful main CI followed by the
+immutable tag's release gates.
+
+### Added
+
+- Reviewed local Agent and explicitly selected application-host preparation,
+  update, previous-build rollback and interrupted-operation recovery in Updates.
+  Preparation uses installed Core sources and the selected native component's
+  exact locked dependencies, without downloading or installing dependencies.
+- Remote Node Agent controls using the existing signed ARMv6 Node OTA package,
+  exact-device approval, maintenance policy and durable installation outcomes.
+  Actual remote-device acceptance remains deferred; unsupported profiles refuse.
+- Supported hardware-provider configuration in Devices, preparing deterministic
+  PCF8574T/HD44780 or simulated character-display packages without a local ZIP.
+  Installation, exact-profile approval, application access and physical writes
+  remain separate actions. Existing ZIP upload remains an advanced option.
+- Bulgarian language pack 1.0.6 for component updates and provider configuration.
+  Existing selected language versions are not silently replaced.
+
+### Fixed
+
+- Component status opens installed stores without creating bootstrap directories.
+- Distinguish proven pre-acceptance refusal from a lost acknowledgement; preserve
+  uncertain request identities instead of automatically repeating an update.
+- Permit the privileged helper's fixed Agent loopback identity check while
+  denying non-local IP traffic. Real Raspberry systemd boundary checks cover it.
+- Retain a safe component-operation failure location after automatic rollback,
+  without logging exception text, application results, keys or artifact contents.
+
 ## [0.3.6] - 2026-11-04
 
 Prepared candidate; publication requires successful main CI followed by the
