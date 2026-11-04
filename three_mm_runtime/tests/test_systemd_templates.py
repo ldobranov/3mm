@@ -141,7 +141,10 @@ def test_update_helper_exposes_only_a_local_hardened_scheduler() -> None:
     assert helper["NoNewPrivileges"] == "true"
     assert helper["ProtectKernelTunables"] == "true"
     assert helper["AmbientCapabilities"].split() == ["CAP_SETUID"]
-    assert helper["RestrictAddressFamilies"] == "AF_UNIX"
+    # Agent readiness uses loopback HTTP; IP access must remain local-only.
+    assert helper["RestrictAddressFamilies"] == "AF_UNIX AF_INET"
+    assert helper["IPAddressDeny"] == "any"
+    assert helper["IPAddressAllow"] == "localhost"
     assert helper["RuntimeDirectoryPreserve"] == "yes"
     assert helper["EnvironmentFile"] == "-/etc/3mm/3mm.env"
     assert helper["ExecStartPre"] == "/opt/3mm/current/.venv/bin/python -m three_mm_provisioning.recovery_access_point recover"
