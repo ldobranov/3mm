@@ -54,6 +54,7 @@ from three_mm_protocol.hardware_profiles import (
     AgentModuleInstallRequest, AgentHardwareProfileV1, hardware_profile, HARDWARE_PROFILE_FEATURE,
 )
 from backend.services.device_runtime_features import read_runtime_features
+from backend.services.hardware_provider_templates import provider_templates, prepare_provider
 
 router=APIRouter(prefix="/api/v1/modules",tags=["modules"])
 router.include_router(theme_extensions_router)
@@ -262,6 +263,11 @@ async def upload_package(package:UploadFile=File(...),_admin:User=Depends(requir
     except ModulePackageError as exc: raise HTTPException(422,str(exc)) from exc
     if expected_kind == "theme" and validated.theme_extension is None:
         raise HTTPException(422, "Choose a theme-extension v1 package")
+    return _store_package(blob, validated, db)
+
+
+def _store_package(blob, validated, db):
+    """One immutable catalog path for uploads and inert built-in preparation."""
     root=get_settings().backend.uploads_dir.resolve()/"modules"; root.mkdir(parents=True,exist_ok=True)
     path=root/f"{validated.sha256}.zip"
     package_created = not path.exists()
@@ -503,7 +509,36 @@ def hardware_profiles(device_id: str, response: Response, _admin: User = Depends
             'installed_exact': installed is not None and installed.module_package_id == package.id})
     return {'device_id': device_id,
         'approval_supported': support is not None and HARDWARE_PROFILE_FEATURE in support.declaration['features'],
-        'items': items}
+        'items': items, 'templates': provider_templates()}
+
+
+class HardwareProviderPreparation(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    template_id: str = Field(min_length=1, max_length=80)
+    configuration: dict = Field(max_length=16)
+
+
+@router.post('/devices/{device_id}/hardware-profiles/prepare')
+def prepare_hardware_provider(device_id: str, body: HardwareProviderPreparation, response: Response,
+                              _admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Prepare only catalog bytes. No install/approval, command, /dev or reboot."""
+    response.headers['Cache-Control'] = 'no-store'
+    device = db.scalar(select(Device).where(Device.device_id == device_id))
+    if device is None:
+        raise HTTPException(404, 'Device was not found')
+    if device.approved_at is None or device.revoked_at is not None:
+        raise HTTPException(409, 'Device is not currently approved')
+    try:
+        blob = prepare_provider(body.template_id, body.configuration)
+        validated = validate_module_package(blob)
+    except ValueError as exc:
+        raise HTTPException(422, 'Invalid provider configuration: ' + str(exc)[:1000]) from exc
+    profile = hardware_profile(validated.manifest)
+    if profile is None:
+        raise HTTPException(422, 'Template does not declare a hardware profile')
+    package = _store_package(blob, validated, db)
+    return {'device_id': device_id, 'package_sha256': package.sha256,
+            'profile_sha256': profile.profile_sha256, 'activation': 'not_requested'}
 
 
 @router.get("/agent-catalog")

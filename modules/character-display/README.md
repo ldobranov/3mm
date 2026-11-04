@@ -118,9 +118,25 @@ startup and new invocations, without clearing a physical LCD.
 
 ### Reviewed installation through Devices
 
-Use **Devices → Hardware providers** on the selected device. Upload the inert
-ZIP there, refresh the catalog, and inspect the device, package/profile digests
-and full configuration. Upload and inspection do not install or touch hardware.
+Use **Devices → Hardware providers** on the selected device. **Configure a
+supported provider** offers the installed HD44780/PCF8574T driver and a simulation
+template. Set the actual display ID, columns/rows, bus/address and backlight
+polarity, then **Prepare provider**. The administrator need not generate or
+transfer a ZIP: the server prepares the same deterministic data-only package
+using the shared builder and the normal immutable catalog. This step neither
+approves nor installs a provider, changes app rights, scans the bus or writes a
+frame. Preparation is repeatable for the same settings without a device command.
+Arbitrary drivers, code, manifests, permissions and paths are not template input.
+Driver topology validation still applies; the width is not a 16/20 whitelist.
+
+The prepared package appears in the existing catalog and Extensions inventory,
+including normal deletion/removal controls. Changing settings creates a different
+immutable profile; it does not silently rewrite an installed provider or move an
+application's approval. Disable the previous display provider before installing
+its replacement, then separately review the consuming application's binding.
+An existing ZIP can still be uploaded under the collapsed **Advanced** option.
+Inspect the selected device, package/profile digests and full configuration
+before proceeding. Preparation, upload and inspection do not touch hardware.
 The Agent must advertise `module_hardware_profiles.v1`; old/unadvertised Agent
 support is refused for native installation, not guessed from the Core version.
 

@@ -10,9 +10,39 @@ const item = (): HardwareProfilePackage => ({ module_id: 'org.example.hardware',
     configuration: { bus: 1, address: 39 } }, installed_exact: false, installation: null, request_id: null })
 beforeEach(() => { request.mockReset(); backend.mockResolvedValue('http://core.test') })
 describe('generic hardware-profile administration transport', () => {
+  it('prepares only settings through the inert endpoint and validates its identity', async () => {
+    request.mockResolvedValueOnce({ data: { device_id: DEVICE, package_sha256: 'b'.repeat(64),
+      profile_sha256: 'c'.repeat(64), activation: 'not_requested' } })
+    expect(await hardwareProfilesClient(DEVICE).prepare('example.display', { columns: 16 })).toBe('b'.repeat(64))
+    expect(request).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ method: 'POST',
+      url: `http://core.test/api/v1/modules/devices/${DEVICE}/hardware-profiles/prepare`,
+      data: { template_id: 'example.display', configuration: { columns: 16 } } }))
+    request.mockResolvedValueOnce({ data: { device_id: 'wrong', activation: 'not_requested' } })
+    await expect(hardwareProfilesClient(DEVICE).prepare('example.display', {})).rejects.toThrow()
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+  it('rejects a malformed template catalog instead of inventing configurable drivers', () => {
+    expect(() => readHardwareProfiles({ device_id: DEVICE, approval_supported: true, items: [],
+      templates: [{ template_id: 'example.display', name: 'Test', simulated: false, fields: [
+        { key: 'command', type: 'shell', default: '' }] }] }, DEVICE)).toThrow()
+  })
+  it('reads a real configurable field catalog and distinguishes invalid input from a lost preparation result', async () => {
+    const fields = [
+      { key: 'display_id', label: 'Display ID', type: 'text', default: 'display.main', maxlength: 64 },
+      { key: 'columns', label: 'Columns', type: 'number', default: 16, min: 1, max: 40 },
+      { key: 'rows', label: 'Rows', type: 'select', default: 2, options: [{ value: '2', label: '2' }] },
+      { key: 'backlight_active_high', label: 'Backlight', type: 'checkbox', default: true },
+    ]
+    const parsed = readHardwareProfiles({ device_id: DEVICE, approval_supported: true, items: [],
+      templates: [{ template_id: 'example.display', name: 'Example', simulated: false, fields }] }, DEVICE)
+    expect(parsed.templates[0]?.fields).toEqual(fields)
+    request.mockRejectedValueOnce({ response: { status: 422 } })
+    await expect(hardwareProfilesClient(DEVICE).prepare('example.display', { columns: 41 })).rejects.toThrow('invalidConfiguration')
+    expect(request).toHaveBeenCalledTimes(1)
+  })
   it('reads without writes and binds consent to exact package/profile/device with one request', async () => {
     const p = item(), client = hardwareProfilesClient(DEVICE)
-    request.mockResolvedValueOnce({ data: { device_id: DEVICE, approval_supported: true, items: [p] } })
+    request.mockResolvedValueOnce({ data: { device_id: DEVICE, approval_supported: true, items: [p], templates: [] } })
     await client.inspect()
     expect(request.mock.calls[0]![0].method).toBe('GET')
     request.mockResolvedValueOnce({ data: {} })
@@ -38,7 +68,7 @@ describe('generic hardware-profile administration transport', () => {
   it('refuses malformed identity or a changed backend before a mutation', async () => {
     expect(() => readHardwareProfiles({ device_id: 'wrong', approval_supported: true, items: [] }, DEVICE)).toThrow()
     const client = hardwareProfilesClient(DEVICE)
-    request.mockResolvedValueOnce({ data: { device_id: DEVICE, approval_supported: true, items: [] } })
+    request.mockResolvedValueOnce({ data: { device_id: DEVICE, approval_supported: true, items: [], templates: [] } })
     await client.inspect(); backend.mockResolvedValueOnce('http://other-core.test')
     await expect(client.mutate('install', item(), 'd'.repeat(32))).rejects.toThrow()
     expect(request).toHaveBeenCalledTimes(1)

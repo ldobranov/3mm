@@ -85,6 +85,23 @@ def test_deterministic_package_uses_normal_core_validation_and_no_code_or_raw_io
         assert set(archive.namelist()) == {"manifest.json", "health/ready"}
 
 
+@pytest.mark.parametrize('changes', [
+    {'columns': 16}, {'columns': 24}, {'columns': 40}, {'columns': 20, 'rows': 4},
+    {'columns': 21, 'rows': 4}, {'rows': 3}, {'address': 0x28},
+    {'controller': 'other'}, {'pin_map': 'other'},
+])
+def test_inert_builder_and_independent_native_driver_agree_on_supported_topology(builder, tmp_path, changes):
+    from agent.hardware.character_display import NativeCharacterDisplay
+    profile = CharacterDisplayProfileV1(driver='pcf8574', **changes)
+    try:
+        native = NativeCharacterDisplay(profile, tmp_path)
+    except ValueError:
+        with pytest.raises(ValueError): builder.build_package(profile)
+    else:
+        assert builder.build_package(profile)
+        native.close()
+
+
 def test_native_requires_installation_consent_not_an_ambient_environment_flag(tmp_path, builder, monkeypatch):
     monkeypatch.setenv('THREE_MM_CHARACTER_DISPLAY_DRIVER', 'pcf8574')
     monkeypatch.setenv('THREE_MM_CHARACTER_DISPLAY_APPROVED_PROFILE', 'a'*64)

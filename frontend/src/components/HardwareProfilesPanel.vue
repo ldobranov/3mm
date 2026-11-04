@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { UiButton, UiDialog, UiSurface } from '@/extension-ui/v1'
 import { useI18n } from '@/utils/i18n'
-import { hardwareProfilesClient, newHardwareRequestId, type HardwareProfileCatalog,
+import HardwareProviderSetup from './HardwareProviderSetup.vue'
+import { HardwareProfileError, hardwareProfilesClient, newHardwareRequestId, type HardwareProfileCatalog,
   type HardwareProfilePackage } from '@/utils/hardware-profiles'
 const props = defineProps<{ deviceId: string; name: string }>()
 const emit = defineEmits<{ close: [] }>()
@@ -11,6 +12,7 @@ const label = (key: string, fallback: string) => t('hardwareProfiles.' + key, fa
 const client = hardwareProfilesClient(props.deviceId), storageKey = 'hardware-profile-request:' + props.deviceId
 const catalog = ref<HardwareProfileCatalog | null>(null), busy = ref(false), uncertain = ref(false)
 const requestId = ref(''), error = ref(''), selected = ref(''), acknowledged = ref(false)
+const prepared = ref(false)
 const review = ref<{ action: 'install' | 'disable'; item: HardwareProfilePackage } | null>(null)
 const item = computed(() => catalog.value?.items.find(i => i.sha256 === selected.value))
 const running = (p: HardwareProfilePackage) => p.installed_exact && p.installation?.enabled && p.installation.status === 'succeeded'
@@ -57,6 +59,20 @@ async function upload(event: Event) {
   finally { if (episode === generation) busy.value = false; input.value = '' }
   if (episode === generation && !error.value) await load()
 }
+async function prepare(templateId: string, configuration: Record<string, string | number | boolean>) {
+  if (busy.value || uncertain.value) return
+  const episode = ++generation
+  busy.value = true; error.value = ''; review.value = null; prepared.value = false
+  try {
+    const sha = await client.prepare(templateId, configuration)
+    if (episode === generation) { selected.value = sha; prepared.value = true }
+  } catch (failure) {
+    if (episode === generation) error.value = failure instanceof HardwareProfileError
+      && failure.message === 'invalidConfiguration' ? 'invalidConfiguration' : 'prepareFailed'
+  }
+  finally { if (episode === generation) busy.value = false }
+  if (episode === generation && !error.value) await load()
+}
 onMounted(() => { requestId.value = sessionStorage.getItem(storageKey) || ''; void load() })
 </script>
 
@@ -66,12 +82,16 @@ onMounted(() => { requestId.value = sessionStorage.getItem(storageKey) || ''; vo
       <UiButton variant="quiet" :aria-label="label('close', 'Close')" @click="emit('close')">×</UiButton></header>
     <p>{{ label('help', 'Review the exact device, package and hardware profile before installation. This is not an application permission.') }}</p>
     <div class="actions"><UiButton class="refresh-profiles" :disabled="busy" @click="load">{{ label('refresh', 'Refresh status') }}</UiButton>
-      <label>{{ label('upload', 'Upload provider ZIP') }} <input class="upload-provider" type="file" accept=".zip" :disabled="busy" @change="upload"></label></div>
+    </div>
+    <details class="advanced-upload"><summary>{{ label('advancedUpload', 'Advanced: upload an existing provider package') }}</summary>
+      <label>{{ label('upload', 'Upload provider ZIP') }} <input class="upload-provider" type="file" accept=".zip" :disabled="busy" @change="upload"></label></details>
     <p v-if="error || uncertain" role="alert">{{ label(error || 'unconfirmed', 'Outcome unavailable or unconfirmed. Refresh status; do not repeat the request.') }}</p>
     <p v-if="requestId">{{ label('preserve', 'Preserve request ID') }}: <code>{{ requestId }}</code></p>
     <template v-if="catalog">
+      <HardwareProviderSetup :templates="catalog.templates" :busy="busy" :disabled="uncertain" @prepare="prepare" />
+      <p v-if="prepared" role="status">{{ label('prepared', 'Provider prepared. Nothing was installed or approved. Review the selected profile below to install it.') }}</p>
       <p v-if="!catalog.approval_supported" role="status">{{ label('unsupported', 'The Agent has not advertised hardware-profile approval support. Update Agent before installation.') }}</p>
-      <p v-if="!catalog.items.length">{{ label('empty', 'No hardware-profile package is uploaded. Upload its immutable ZIP first.') }}</p>
+      <p v-if="!catalog.items.length">{{ label('empty', 'No provider package is prepared. Configure a supported provider above or upload an existing package.') }}</p>
       <label v-else>{{ label('package', 'Provider package') }}
         <select v-model="selected" class="select-profile" :disabled="busy" @change="review = null">
           <option v-for="p in catalog.items" :key="p.sha256" :value="p.sha256">{{ p.name }} · {{ p.version }}</option>
