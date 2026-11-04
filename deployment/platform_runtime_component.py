@@ -162,7 +162,7 @@ def core_fingerprint():
 
 
 class RuntimeStore(ComponentStore):
-    def __init__(self,root=ROOT,state=STATE):super().__init__(root,state)
+    def __init__(self,root=ROOT,state=STATE,*,create=True,releases=None):super().__init__(root,state,create=create,releases=releases)
 
     def metadata(self,identifier):
         if not _id(identifier):raise ValueError("Runtime release identity is invalid")

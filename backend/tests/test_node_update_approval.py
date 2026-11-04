@@ -57,6 +57,18 @@ def setup(tmp_path, monkeypatch):
     engine.dispose()
 
 
+def test_node_web_apply_requires_current_maintenance_approval(setup, monkeypatch):
+    client, db, device, settings, headers, viewer, operation = setup
+    from backend.services.update_policy import UpdatePolicyError
+    def allowed(_settings, *, maintenance_override):
+        if not maintenance_override: raise UpdatePolicyError('Outside maintenance window')
+    monkeypatch.setattr('backend.routes.node_updates.ensure_apply_is_allowed', allowed)
+    url = f'/api/v1/devices/{DEVICE_ID}/node-updates/{operation}/apply'
+    assert client.post(url,headers=headers,json={'confirmed_install':True}).status_code==409
+    assert db.scalar(select(DeviceCommand).where(DeviceCommand.command_type=='agent.update.apply')) is None
+    assert client.post(url,headers=headers,json={'confirmed_install':True,'maintenance_override':True}).status_code==202
+
+
 def approve(setup):
     client, db, _device, _settings, headers, _viewer, op = setup
     response = client.post(f"/api/v1/devices/{DEVICE_ID}/node-updates/{op}/apply",

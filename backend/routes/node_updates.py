@@ -12,6 +12,7 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Response,
     status,
 )
 from pydantic import (
@@ -49,6 +50,7 @@ from backend.services.node_update_approval import NodeApprovalError, public_appr
 from backend.services.node_update_execution import (
     apply_command, approve_node_update, installation_outcome, record_node_update_outcome,
 )
+from backend.services.update_policy import UpdatePolicyError, ensure_apply_is_allowed
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from backend.utils.device_auth import require_device
@@ -133,6 +135,7 @@ class NodePrepareStatusResponse(BaseModel):
 class NodeApplyAdminRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     confirmed_install: StrictBool
+    maintenance_override: StrictBool = False
 
     @model_validator(mode="after")
     def explicit_confirmation(self):
@@ -201,10 +204,12 @@ def _current_node_release_id(
 )
 def check_node_update(
     device_id: str,
+    response: Response,
     channel: NodeUpdateChannel = "beta",
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> NodeUpdateCheckResponse:
+    response.headers['Cache-Control'] = 'no-store'
     device = db.scalar(
         select(Device).where(
             Device.device_id == device_id
@@ -478,9 +483,11 @@ def prepare_node_update(
 def node_update_status(
     device_id: str,
     operation_id: str,
+    response: Response,
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> NodePrepareStatusResponse:
+    response.headers['Cache-Control'] = 'no-store'
     settings = get_settings().updates
 
     device = db.scalar(
@@ -721,13 +728,14 @@ def apply_node_update(
     if device is None:
         raise HTTPException(404, "Device was not found")
     try:
+        ensure_apply_is_allowed(get_settings().updates, maintenance_override=payload.maintenance_override)
         command = approve_node_update(db, device, operation_id, admin, get_settings())
         return NodeApplyAdminResponse(
             operation_id=operation_id, command_id=command.command_id,
             command_status=command.status, expires_at=_aware_utc(command.expires_at),
             installation=installation_outcome(command),
         )
-    except (DeviceCommandError, NodeDeliveryError, NodeApprovalError, ValueError) as exc:
+    except (DeviceCommandError, NodeDeliveryError, NodeApprovalError, UpdatePolicyError, ValueError) as exc:
         db.rollback()
         raise HTTPException(409, str(exc)) from exc
 

@@ -37,14 +37,18 @@ def release_mutation_lock(path=Path('/run/lock/3mm-release-mutation.lock')):
 
 
 class ComponentStore:
-    def __init__(self,root,state):
+    def __init__(self,root,state,*,create=True,releases=None):
         self.root=Path(root).absolute();self.state=Path(state).absolute()
         if self.root.is_symlink() or self.state.is_symlink():raise ValueError("Runtime roots cannot be symlinks")
-        self.root.mkdir(parents=True,exist_ok=True,mode=0o755)
-        self.state.mkdir(parents=True,exist_ok=True,mode=0o700)
+        self.releases=Path(releases).absolute() if releases is not None else self.root/"releases"
+        if create:
+            self.root.mkdir(parents=True,exist_ok=True,mode=0o755)
+            self.state.mkdir(parents=True,exist_ok=True,mode=0o700)
+            self.releases.mkdir(parents=True,exist_ok=True,mode=0o755)
+        elif not all(p.is_dir() for p in (self.root,self.state,self.releases)):
+            raise ValueError("Installed component directories are unavailable")
         if self.state.stat().st_uid!=os.geteuid() or self.state.stat().st_mode&0o022:
             raise ValueError("Runtime update journal ownership is unsafe")
-        self.releases=self.root/"releases";self.releases.mkdir(exist_ok=True,mode=0o755)
         if self.releases.is_symlink():raise ValueError("Runtime release root is unsafe")
         self.journal=self.state/"transaction.json"
 

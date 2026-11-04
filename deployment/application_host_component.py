@@ -210,9 +210,8 @@ def validate_artifact(blob, expected):
 
 
 class HostStore(RuntimeStore):
-    def __init__(self, root, state, releases):
-        super().__init__(root,state)
-        self.releases=Path(releases);self.releases.mkdir(parents=True,exist_ok=True,mode=0o755)
+    def __init__(self, root, state, releases, *, create=True):
+        super().__init__(root,state,create=create,releases=releases)
         if self.releases.is_symlink(): raise ValueError("Host releases cannot be symlinked")
 
     def metadata(self, identifier):

@@ -18,6 +18,10 @@ class UpdateHelperError(RuntimeError):
     """Raised when the privileged update helper rejects or misses a request."""
 
 
+class ComponentUpdateNotAccepted(UpdateHelperError):
+    """An explicit negative acknowledgement before durable acceptance."""
+
+
 class UpdateHelperClient:
     def __init__(self, socket_path: Path, timeout_seconds: float = 10.0) -> None:
         self._socket_path = socket_path
@@ -39,6 +43,21 @@ class UpdateHelperClient:
 
     def platform_runtime_status(self):
         return self._request({'action': 'platform_runtime_status'}, expected_status='inspected')['runtime']
+
+    def component_status(self, component, target_id, user_id):
+        from three_mm_runtime.component_updates import validate_request
+        payload = {'action': 'component_status', 'component': component, 'target_id': target_id,
+                   'requested_by_user_id': user_id}
+        validate_request(payload)
+        return self._request(payload, expected_status='inspected')['component']
+
+    def component_operation(self, payload):
+        from three_mm_runtime.component_updates import validate_request
+        validate_request(payload)
+        result = self._request(payload)
+        if result.get('request_id') != payload['request_id']:
+            raise UpdateHelperError('Component request identity is unconfirmed. Do not resend.')
+        return result['request_id']
 
     def hardware_interfaces_status(self, device_id, user_id):
         return self._request({'action': 'hardware_interfaces_status', 'device_id': device_id,
@@ -428,6 +447,9 @@ class UpdateHelperClient:
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             raise UpdateHelperError("The system update helper is unavailable") from exc
         if not isinstance(result, dict) or result.get("ok") is not True:
+            if (type(payload.get('action')) is str and payload['action'].startswith('component_') and isinstance(result, dict)
+                    and result.get('error') == 'component_update_not_accepted'):
+                raise ComponentUpdateNotAccepted('Component request was not accepted; refresh and review')
             if (isinstance(result, dict)
                     and result.get("error") == "portable_restore_incompatible"
                     and isinstance(result.get("message"), str)):

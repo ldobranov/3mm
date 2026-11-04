@@ -197,10 +197,10 @@ def validate_artifact(blob,expected,component):
 
 class ServiceStore(ComponentStore):
     requires_active=True
-    def __init__(self,component,root=None,state=None):
+    def __init__(self,component,root=None,state=None,*,create=True):
         if component not in ROLES:raise ValueError('Unknown service component')
         self.component=component
-        super().__init__(root or Path('/opt/3mm-'+component),state or Path('/var/lib/3mm-'+component+'-updates'))
+        super().__init__(root or Path('/opt/3mm-'+component),state or Path('/var/lib/3mm-'+component+'-updates'),create=create)
     def metadata(self,identifier):
         if not _id(identifier):raise ValueError('Invalid service build')
         directory=self.releases/identifier;artifact=directory/'artifact.tar'

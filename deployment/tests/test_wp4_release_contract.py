@@ -20,6 +20,9 @@ WP4_FILES = (
     'backend/services/installation_status_binding.py',
     'frontend/compiler/compile-ui-extension.mjs',
     'three_mm_protocol/application_peer_read.py',
+    'backend/routes/component_updates.py',
+    'backend/services/component_updates.py',
+    'three_mm_runtime/component_updates.py',
 )
 
 

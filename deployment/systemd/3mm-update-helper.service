@@ -17,7 +17,7 @@ RestartSec=5s
 RuntimeDirectory=3mm
 RuntimeDirectoryMode=0750
 RuntimeDirectoryPreserve=yes
-StateDirectory=3mm/update-helper 3mm-setup-helper 3mm-application-host-updates 3mm-platform-updates 3mm-hardware-interfaces
+StateDirectory=3mm/update-helper 3mm-setup-helper 3mm-application-host-updates 3mm-platform-updates 3mm-hardware-interfaces 3mm-component-updates
 StateDirectoryMode=0750
 NoNewPrivileges=true
 # Retain only the UID-switch capability across hardened helper exec. Migration
@@ -33,7 +33,11 @@ ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
-RestrictAddressFamilies=AF_UNIX
+# Agent identity/readiness uses its fixed loopback HTTP endpoint. Retain Unix
+# control sockets and deny non-local IP traffic; no catalog/download access here.
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=localhost
 LockPersonality=true
 
 [Install]

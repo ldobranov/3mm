@@ -51,6 +51,8 @@
     </section>
 
     <PlatformRuntimeUpdates :maintenance-override-required="requiresMaintenanceOverride" />
+    <IndependentComponentUpdates :maintenance-override-required="requiresMaintenanceOverride" />
+    <RemoteAgentUpdates :maintenance-override-required="requiresMaintenanceOverride" />
 
     <div v-if="selectedChannel !== 'stable'" class="notice notice-warning" role="status">
       <i class="bi bi-exclamation-diamond" aria-hidden="true"></i>
@@ -362,6 +364,8 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
 import PlatformRuntimeUpdates from '@/components/settings/PlatformRuntimeUpdates.vue'
+import IndependentComponentUpdates from '@/components/settings/IndependentComponentUpdates.vue'
+import RemoteAgentUpdates from '@/components/settings/RemoteAgentUpdates.vue'
 
 type UpdateStatus =
   | 'not_checked'

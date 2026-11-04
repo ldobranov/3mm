@@ -41,6 +41,8 @@ from backend.services.platform_runtime_updates import (
 )
 
 router = APIRouter(prefix="/api/v1/system-updates", tags=["system-updates"])
+from backend.routes.component_updates import router as component_updates_router
+router.include_router(component_updates_router)
 
 @router.get('/runtime', response_model=RuntimeUpdateStatus)
 def platform_runtime_status(response: Response, _admin: User = Depends(require_admin)):

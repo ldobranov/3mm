@@ -169,6 +169,29 @@ class UpdateMutationBoundary:
         if self._runner.run(arguments) != 0:
             raise RuntimeError('Runtime worker scheduling is unconfirmed')
 
+    def schedule_component_update(self, identifier: str) -> None:
+        from three_mm_runtime.platform_runtime_updates import HEX32
+        if type(identifier) is not str or not HEX32.fullmatch(identifier):
+            raise ValueError('Invalid component operation identity')
+        arguments = [self._systemd_run, '--unit=3mm-component-update-' + identifier,
+            '--collect', '--property=Type=exec', '--property=RuntimeMaxSec=300s',
+            '--property=TimeoutStopSec=5s', '--property=NoNewPrivileges=true',
+            '--property=MemoryMax=384M', '--property=TasksMax=32',
+            '--property=PrivateTmp=true', '--property=ProtectHome=true', '--property=ProtectSystem=strict',
+            '--property=ReadWritePaths=-/opt/3mm-agent -/var/lib/3mm-agent-updates -/opt/3mm-application-hosts -/var/lib/3mm-application-host-updates /var/lib/3mm-component-updates /run/lock',
+            '--property=RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6',
+            '/usr/bin/env', 'PYTHONPATH=/opt/3mm/current', self._python, '-B',
+            '-m', 'three_mm_runtime.component_updates', '--job-id', identifier]
+        if self._runner.run(arguments) != 0:
+            raise RuntimeError('Component worker scheduling is unconfirmed')
+
+    def component_update_worker_active(self, identifier: str) -> bool:
+        from three_mm_runtime.platform_runtime_updates import HEX32
+        if type(identifier) is not str or not HEX32.fullmatch(identifier): raise ValueError('Invalid component worker')
+        result = subprocess.run([self._systemctl, 'show', '3mm-component-update-' + identifier + '.service',
+            '--property=ActiveState', '--value'], capture_output=True, text=True, timeout=2, check=False)
+        return result.returncode == 0 and result.stdout.strip() in {'active', 'activating', 'deactivating'}
+
     def schedule_hardware_interfaces(self, identifier: str) -> None:
         from three_mm_runtime.hardware_interfaces import HEX32
         if type(identifier) is not str or not HEX32.fullmatch(identifier):
@@ -472,6 +495,27 @@ def _handle_request(
     # values before any dispatch branch can hash an array/object as an action.
     if type(payload) is not dict or type(payload.get("action")) is not str:
         return {"ok": False, "error": "invalid_request"}
+    from three_mm_runtime.component_updates import ACTIONS as COMPONENT_UPDATE_ACTIONS
+    if payload['action'] in COMPONENT_UPDATE_ACTIONS:
+        from three_mm_runtime.component_updates import ComponentUpdates, ComponentNotAccepted, validate_request
+        try:
+            validate_request(payload)
+            core_uid, _ = _service_ids(service_user, service_group)
+            if type(relational_peer_uid) is not int or relational_peer_uid != core_uid:
+                raise ValueError('Real Core peer required')
+            from three_mm_runtime.hardware_interfaces import admin_revision
+            admin_revision(application_database, payload['requested_by_user_id'])
+            selected = boundary or UpdateMutationBoundary()
+            workflow = ComponentUpdates(database=application_database,
+                worker_active=selected.component_update_worker_active)
+            if payload['action'] == 'component_status':
+                return {'ok': True, 'status': 'inspected', 'component': workflow.status(payload['component'], payload['target_id'])}
+            result = workflow.queue(payload, selected.schedule_component_update)
+            return {'ok': True, 'status': 'queued', 'request_id': result['request_id']}
+        except ComponentNotAccepted:
+            return {'ok': False, 'error': 'component_update_not_accepted'}
+        except (OSError, ValueError, KeyError, RuntimeError, TypeError, OverflowError, sqlite3.Error, subprocess.SubprocessError):
+            return {'ok': False, 'error': 'component_update_unavailable'}
     from three_mm_runtime.hardware_interfaces import ACTIONS as HARDWARE_ACTIONS
     if payload['action'] in HARDWARE_ACTIONS:
         from three_mm_runtime.hardware_interfaces import HardwareInterfaces, admin_revision, validate_request
@@ -1010,8 +1054,9 @@ def _serve_connection(connection, **request_arguments):
         from backend.services.application_authority_context import _unique_object
         payload = json.loads(request.split(b"\n", 1)[0], object_pairs_hook=_unique_object)
         from three_mm_runtime.platform_runtime_updates import ACTIONS as RUNTIME_UPDATE_ACTIONS
+        from three_mm_runtime.component_updates import ACTIONS as COMPONENT_UPDATE_ACTIONS
         from three_mm_runtime.hardware_interfaces import ACTIONS as HARDWARE_ACTIONS
-        if isinstance(payload, dict) and type(payload.get('action')) is str and (payload['action'] in RUNTIME_UPDATE_ACTIONS | HARDWARE_ACTIONS or payload.get("action") in ("prepare_application_relational", "activate_application_relational", "recover_application_relational_start", "reactivate_application_relational", "enable_application_relational_boot", "recover_application_relational_preparation", "resume_application_relational_preparation") or payload["action"] in UPGRADE_ACTIONS):
+        if isinstance(payload, dict) and type(payload.get('action')) is str and (payload['action'] in RUNTIME_UPDATE_ACTIONS | COMPONENT_UPDATE_ACTIONS | HARDWARE_ACTIONS or payload.get("action") in ("prepare_application_relational", "activate_application_relational", "recover_application_relational_start", "reactivate_application_relational", "enable_application_relational_boot", "recover_application_relational_preparation", "resume_application_relational_preparation") or payload["action"] in UPGRADE_ACTIONS):
             if os.name != "posix" or not hasattr(socket, "SO_PEERCRED"):
                 raise ValueError("Local Core peer credentials required")
             import struct
