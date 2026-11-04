@@ -602,6 +602,7 @@ checks local browser CORS as well as readiness. See the
 | [Embedded Nodes extension plan](docs/EMBEDDED_NODES_EXTENSION_PLAN.md) | Deferred firmware/extension work outside Core |
 | [Runtime extension v1](docs/RUNTIME_EXTENSION_V1.md) | Declarative extension contract |
 | [Compiled extension v1](docs/COMPILED_EXTENSION_V1.md) | Reviewed Vue compilation boundary |
+| [Application development / CAP21](modules/application-starter/README.md) | Create a distinct project, preview its UI scenarios, check/build and review current contracts; no automatic installation |
 | [Application extension v1 plan](docs/APPLICATION_EXTENSION_V1_PLAN.md) | Planned trusted business-service and integration boundary |
 | [Extension Platform v2 plan](EXTENSION_PLATFORM_V2_CORE_PLAN.md) | Milestone 20 scope, accepted WP4 and other remaining work packages |
 | [Extension Platform test Beta](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md) | beta.54 scope, retained recovery evidence and bounded live smoke checks |

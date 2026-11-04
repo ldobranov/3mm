@@ -1,8 +1,27 @@
 # Current working state
 
-Updated: 2026-10-29. Start here; follow linked details only as needed.
+Updated: 2026-11-04. Start here; follow linked details only as needed.
 
 ## Active task and next result
+
+- **CAP21 local authoring cycle accepted, 2026-11-04.** Official source-only
+  application-starter demonstrates UI, own SQLite data/revisions/receipts and an
+  optional observed resource, using public SDK/UI only. Developer commands init,
+  preview, check and schemas create a distinct project, simulate six UI states,
+  run executed denial/UI/type/compiler checks and report actual validated
+  declarations before exclusive artifact publication. Existing local dependencies
+  only; no credentials, install, grants, physical output or automatic retry.
+  Linux authoring/controller/scaffold/preview/CLI89 passed/0 skipped; Windows
+  starter and separately generated application each Python6/UI15 plus strict types
+  and real compiler passed. Real Core/SDK permission/revoke/provider-loss/own-data
+  integration passed; external process transport doubled, no device acceptance.
+  Owner confirmed installed note persistence/edit denial and accepted local preview.
+  Source-only developer templates are not installed runtime modules. Pure-Python
+  profile and mock are not hostile-code isolation or universal conformance.
+  User now requests scoped CAP21 commit/push and continued local development while
+  CI runs. Reuse unchanged evidence, retain full CI/release gates; no tag, version
+  bump, release or device deployment requested. Preserve independent dev-lab,
+  simplification and mixed historical notes outside this commit.
 
 - **CAP09 shared editing slice accepted on Raspberry, 2026-10-29.** Owner completed
   the agreed checkpoint: Core/CAP03 `722c287`, deploy-profile fix `988f9e3`, BG

@@ -70,6 +70,21 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--url',help='Explicit isolated development Core URL')
     commands=parser.add_subparsers(dest='action',required=True)
+    create=commands.add_parser('init',help='Create a new local application source project; never overwrite')
+    create.add_argument('destination',type=Path)
+    create.add_argument('--module-id',required=True)
+    create.add_argument('--name',required=True)
+    create.add_argument('--route',required=True)
+    preview=commands.add_parser('preview',help='Loopback-only mock UI preview; no Core or installation')
+    preview.add_argument('project',type=Path)
+    preview.add_argument('--frontend',type=Path,help='Existing Core frontend toolchain directory')
+    preview.add_argument('--port',type=int,default=5178)
+    commands.add_parser('schemas',help='Export current public structural schemas; not semantic approval')
+    check=commands.add_parser('check',help='Check/build a local application project; no installation or API login')
+    check.add_argument('project',type=Path)
+    check.add_argument('--output',type=Path,required=True,help='New ZIP outside the source project')
+    check.add_argument('--frontend',type=Path,help='Existing Core frontend toolchain directory')
+    check.add_argument('--json',action='store_true',help='Machine-readable check result')
     for action in ('validate','upload'):
         commands.add_parser(action).add_argument('archive',type=Path)
     for action in ('activate','rollback'):
@@ -79,6 +94,53 @@ def main():
     commands.add_parser('status')
     args=parser.parse_args()
     try:
+        if args.action=='init':
+            from tools.application_scaffold import create_project
+            result=create_project(args.destination,module_id=args.module_id,name=args.name,route=args.route)
+            print(json.dumps(result,ensure_ascii=False,sort_keys=True))
+            return
+        if args.action=='preview':
+            from tools.application_preview import preview_project
+            preview_project(args.project,frontend=args.frontend,port=args.port)
+            return
+        if args.action=='schemas':
+            from three_mm_protocol.extension_schemas import extension_schema_catalog
+            print(json.dumps(extension_schema_catalog(),ensure_ascii=False,sort_keys=True))
+            return
+        if args.action=='check':
+            from tools.application_project import check_project, ProjectCheckError
+            try:
+                result=check_project(args.project,args.output,frontend=args.frontend)
+            except (ProjectCheckError,OSError,ValueError) as error:
+                result={'status':'failed','stage':getattr(error,'stage','project'),
+                    'message':str(error) if isinstance(error,ProjectCheckError) else 'Project inputs are invalid or unavailable.',
+                    'installation':'not_requested'}
+            if args.json:
+                print(json.dumps(result,sort_keys=True,ensure_ascii=False))
+            else:
+                print('Application check: '+result['status'].upper())
+                if result['status']=='passed':
+                    package=result['package']
+                    print(f"{package['module_id']} {package['version']}")
+                    print(f"Python: {result['python_passed']} passed | UI: {result['ui_passed']} passed | TypeScript and compiler: passed")
+                    print('Project scenarios: missing permission, revoked access, unavailable provider - passed')
+                    print('Package SHA256: '+package['sha256'])
+                    print('Package: '+package['path'])
+                    print('Human permissions to review: '+', '.join(result['review']['human_permissions']))
+                    print('Optional resources to select/review: '+', '.join(result['review']['optional_resources']))
+                else:
+                    print('Stopped at '+result['stage']+': '+result['message'])
+                    if result.get('package_publication') in {'published','unconfirmed'}:
+                        print('Package publication: '+result['package_publication'])
+                        print('Package SHA256: '+result['package']['sha256'])
+                        print('Package: '+result['package']['path'])
+                    for issue in result.get('issues',[]):
+                        print('  '+'.'.join(str(part) for part in issue['path'])+': '+issue['code'])
+                print('No installation, grants or live-device acceptance. Local tests are not native-code isolation.')
+                if 'report' in result:print('Report: '+result['report'])
+                if 'log' in result:print('Local check log: '+result['log'])
+            if result['status']!='passed':raise SystemExit(1)
+            return
         if args.action=='validate':print(json.dumps(inspect_package(args.archive)[1]));return
         if args.url is None:parser.error('--url must select an explicit isolated development Core')
         client=DevelopmentClient(args.url,getpass.getpass('Current admin token: '))
@@ -95,7 +157,12 @@ def main():
             result={'status':'exported'}
         else:result=json.loads(client.request('GET','/api/v1/diagnostics/workspace'))
         print(json.dumps(result,sort_keys=True))
-    except (ValueError,OSError):raise SystemExit('Development action failed. Inspect current state; no action was retried.') from None
+    except (ValueError,OSError) as error:
+        if args.action in ('init','preview'):
+            from tools.application_project import ProjectCheckError
+            message=str(error) if isinstance(error,ProjectCheckError) else 'Local project or toolchain is unavailable.'
+            raise SystemExit(message+' No installation or remote action was performed.') from None
+        raise SystemExit('Development action failed. Inspect current state; no action was retried.') from None
 
 
 if __name__=='__main__':main()

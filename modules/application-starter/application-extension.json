@@ -1,0 +1,39 @@
+{
+  "application_extension_version": 1,
+  "module_id": "org.3mm.application-starter",
+  "version": "1.0.0",
+  "service": {
+    "artifact": "service/starter_app-1.0.0-py3-none-any.whl",
+    "artifact_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "entrypoint": "starter_app.service:create_service", "health_operation_id": "health", "sdk_version": "1.3"
+  },
+  "permissions": [
+    {"permission_id": "note_read", "label": {"en": "Read the shared note and resource availability"}, "description": {"en": "Read this application's data and the availability of its optional resource; no hardware commands."}},
+    {"permission_id": "note_write", "label": {"en": "Edit the shared note"}, "description": {"en": "Change the note in this application's own database; no resource control."}}
+  ],
+  "operations": [
+    {"operation_id": "health", "kind": "query", "audiences": ["internal"], "idempotency": "forbidden",
+      "output_schema": {"type": "object", "additionalProperties": false, "properties": {"status": {"type": "string", "enum": ["ready"]}}, "required": ["status"]}},
+    {"operation_id": "read_note", "kind": "query", "audiences": ["operator"], "required_permission": "note_read", "idempotency": "forbidden",
+      "input_schema": {"type": "object", "properties": {}, "additionalProperties": false},
+      "output_schema": {"type": "object", "additionalProperties": false, "properties": {"text": {"type": "string", "maxLength": 200}, "revision": {"type": "integer", "minimum": 0}}, "required": ["text", "revision"]}},
+    {"operation_id": "save_note", "kind": "command", "audiences": ["operator"], "required_permission": "note_write", "idempotency": "required",
+      "input_schema": {"type": "object", "additionalProperties": false, "properties": {"text": {"type": "string", "maxLength": 200}, "revision": {"type": "integer", "minimum": 0}}, "required": ["text", "revision"]},
+      "output_schema": {"type": "object", "additionalProperties": false, "properties": {"text": {"type": "string", "maxLength": 200}, "revision": {"type": "integer", "minimum": 0}}, "required": ["text", "revision"]}},
+    {"operation_id": "lookup_save", "kind": "query", "audiences": ["operator"], "required_permission": "note_write", "idempotency": "forbidden",
+      "input_schema": {"type": "object", "additionalProperties": false, "properties": {"request_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"}}, "required": ["request_id"]},
+      "output_schema": {"type": "object", "additionalProperties": false, "properties": {"status": {"type": "string", "enum": ["found", "not_found"]}, "revision": {"type": ["integer", "null"]}}, "required": ["status", "revision"]}},
+    {"operation_id": "observe_resource", "kind": "query", "audiences": ["operator"], "required_permission": "note_read", "idempotency": "forbidden",
+      "input_schema": {"type": "object", "properties": {}, "additionalProperties": false},
+      "output_schema": {"type": "object", "additionalProperties": false, "properties": {"state": {"type": "string", "enum": ["ready", "access_required", "unavailable"]}}, "required": ["state"]}}
+  ],
+  "command_bindings": [{
+    "binding_id": "resource", "target_device_config_key": "RESOURCE_DEVICE_ID",
+    "capability_id": "gpio.digital.control", "contract_version": "1.0", "action": "set_output", "max_ttl_seconds": 10,
+    "arguments_schema": {"type": "object", "additionalProperties": false, "properties": {
+      "channel": {"type": "string", "maxLength": 32, "enum": ["gpio.output.1"]}, "value": {"type": "boolean"}}, "required": ["channel", "value"]}
+  }],
+  "optional_resources": ["command:resource"],
+  "routes": [{"route_id": "note", "entrypoint_id": "note", "audience": "operator", "required_permissions": ["note_read"], "order": 50}],
+  "storage": {"schema_revision": "0001", "migration_entrypoint": "starter_app.migrations:get_migrations", "classifications": ["private"], "contains_personal_data": false}
+}

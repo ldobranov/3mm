@@ -1,0 +1,6 @@
+{
+  "compiled_ui_version": 1,
+  "module_id": "org.3mm.application-starter",
+  "version": "1.0.0",
+  "entrypoints": [{"entrypoint_id": "note", "kind": "route", "source": "source/frontend/Notes.vue", "route": "/starter-note", "label": {"en": "Starter note"}}]
+}

@@ -1,0 +1,19 @@
+{
+  "manifest_version": 2,
+  "module_id": "org.3mm.application-starter",
+  "name": "Application starter — Note",
+  "version": "1.0.0",
+  "description": "A minimal application-owned note and optional reviewed resource observation. Never sends hardware commands.",
+  "runtimes": ["core", "ui"],
+  "entrypoints": {"core": "application-extension.json", "ui": "compiled-ui.json"},
+  "compatibility": {"protocol": "1.0", "core": ">=0.3.7", "architectures": ["any"]},
+  "capabilities": {"provides": [], "consumes": ["gpio.digital.control"]},
+  "permissions": ["data.read", "data.write", "process.spawn", "capabilities.invoke"],
+  "configuration_schema": {
+    "type": "object", "additionalProperties": false,
+    "properties": {"RESOURCE_DEVICE_ID": {"type": "string", "pattern": "^dev_[0-9a-f]{32}$"}}
+  },
+  "configuration_defaults": {},
+  "registrations": [],
+  "health_check": {"type": "json_file", "path": "application-extension.json"}
+}

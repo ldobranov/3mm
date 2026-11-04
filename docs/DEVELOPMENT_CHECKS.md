@@ -98,6 +98,20 @@ outside live Core ORM ownership; never use autogenerate to erase that evidence.
 
 ## Requested commits and reuse
 
+For the bounded CAP21 pure-Python application profile, use
+`python -m tools.extension_dev init NEW_DIRECTORY --module-id org.example.app --name "Example" --route /example`,
+then `preview NEW_DIRECTORY` and `check NEW_DIRECTORY --output OUTPUT_OUTSIDE_PROJECT/app.zip`
+through that same module. These are local authoring actions, not upload or grant
+approval. Existing Python/Node/Vue/compiler dependencies are required; no dependency
+installation is implicit. The example guide is `modules/application-starter/README.md`.
+Guard checks live in `tools/tests/test_application_project.py`,
+`test_application_scaffold.py`, `test_application_preview.py` and
+`test_extension_dev.py`. The common command runs the project's Python/scenario/UI
+checks, strict types and actual compiler; do not repeat the main frontend build
+for an unchanged toolchain. Mock scenarios are not live authority conformance;
+reuse the separate `backend/tests/test_application_starter.py` integration evidence
+only while its relevant service/contracts/Core/SDK inputs remain unchanged.
+
 1. Review the exact intended/staged diff; preserve unrelated/generated files.
 2. Reuse identifiable passed checks for unchanged content, dependencies and
    environment. Run only missing checks or those invalidated by a later edit.

@@ -1,0 +1,12 @@
+{
+  "development_version": 1,
+  "python_package": "starter_app",
+  "python_tests": ["tests/test_service.py"],
+  "ui_tests": "tests/vitest.config.mjs",
+  "preview": {"entrypoint_id": "note", "host": "preview/host.ts"},
+  "scenarios": {
+    "missing_permission": "tests/test_service.py::test_missing_permission",
+    "revoked_access": "tests/test_service.py::test_revoked_access",
+    "provider_unavailable": "tests/test_service.py::test_provider_unavailable"
+  }
+}
