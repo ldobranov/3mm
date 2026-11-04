@@ -276,7 +276,7 @@ Use `./dev-agents.sh` to start two independent mock devices.
 
 ## Raspberry Pi
 
-For a clean Raspberry Pi OS/Debian installation, the normal Beta bootstrap is
+For a clean Raspberry Pi OS/Debian installation, the normal Stable bootstrap is
 one command:
 
 ```bash
@@ -284,27 +284,38 @@ wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo
 ```
 
 Git is not required on the Raspberry Pi. The bootstrap selects the latest
-published Beta artifact for the device architecture, installs its reviewed APT
+published Stable artifact for the device architecture, installs its reviewed APT
 dependencies, verifies its size and SHA-256 digest, runs the read-only host
 preflight and starts the immutable installer as a detached systemd job. This
-allows installation over Wi-Fi: the SSH session is expected to close only when
-the device switches to its open `3mm Setup XXXX` access point.
+allows installation over Wi-Fi without tying the job to its SSH observer.
 
-On a fresh installation the standard command selects NetworkManager Wi-Fi/AP
-setup. Join `3mm Setup XXXX` and open `http://10.42.0.1:8895/setup` if the portal
-does not open automatically. Without a usable AP adapter, setup remains reachable
-over the existing LAN on port 8895. To keep networking entirely under the operating
-system, append `--network-backend host`:
+On a fresh installation the standard command preserves the current Ethernet or
+Wi-Fi network under host management. Open `http://<device-LAN-IP>:8895/setup`
+from the same network to finish setup. It does not install NetworkManager or
+switch Wi-Fi to an access point just because a Wi-Fi adapter is present.
+To explicitly choose the managed setup-AP path instead:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --network-backend host
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- -ap
 ```
 
-Updates preserve the stored network backend, role and device data. Enabling
-managed Wi-Fi on an existing host-managed installation requires an explicit
-`--network-backend network-manager`; it does not reset setup or automatically
-replace the configured role with an AP. Temporary AP access is available from
-Settings when a managed AP-capable adapter is present.
+On an unprovisioned AP-capable device this may disconnect Wi-Fi SSH. Join
+`3mm Setup XXXX`; the fallback portal is `http://10.42.0.1:8895/setup`.
+Without a usable AP adapter, managed setup remains reachable over the LAN.
+`-ap` (`--ap`) is the short form of `--network-backend network-manager`.
+The advanced `--network-backend host|network-manager` option remains available;
+conflicting `-ap` and explicit `host` options are refused.
+
+Updates without a network override preserve the stored backend, role and data.
+Neither `-ap` nor reinstallation resets a provisioned device or forces it into
+an access point. Temporary AP access on a configured managed device is a
+separate explicit control in Settings.
+
+Use `--channel beta` or `--channel test` only when deliberately installing a
+prerelease. Stable uses GitHub's latest published stable release, never a
+fallback to an old Beta. `--tag vX.Y.Z[-suffix]` pins one exact published release
+and infers its channel unless `--channel` or `THREE_MM_CHANNEL` was explicitly
+set; an explicit channel/tag mismatch is refused, not silently replaced.
 
 Header navigation starts empty. Administrators choose links in Settings → Menu
 Configuration and can remove every link or delete the last menu. Core and installed
@@ -325,8 +336,9 @@ wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo
 This command is **not available in beta.19 or earlier**; beta.20 published no assets. It requires
 the new bootstrap and `3mm-node-manifest.json` release asset. Other Node
 architectures/Python versions are rejected rather than compiling on-device.
-The fresh-install Setup AP changes Wi-Fi and may disconnect SSH. Setup only
-offers the Node role. Local enrollment and administrator approval are available
+The standard Node command also keeps the existing network. Add `-ap` only for
+managed setup Wi-Fi on fresh media; that path may disconnect Wi-Fi SSH. Setup
+only offers the Node role. Local enrollment and administrator approval are available
 through the optional Fleet extension; installing Node is not completed pairing.
 There is no permanent Node administration page. The optional Fleet extension
 provides a Hub-side Node runtime OTA interface; trust bootstrap is described below.
@@ -334,28 +346,24 @@ See [Node installation](docs/NODE_INSTALLATION.md) for scope and verification.
 
 ### Updating a paired Hub and Zero
 
-For this test Beta, first keep a verified pre-upgrade backup and update a disposable VM.
+First keep a verified pre-upgrade backup and update a disposable VM.
 Built-in encrypted backup/restore is Standalone-only; a Hub requires an independent
 recoverable VM snapshot/export, not an unsupported Hub backup/restore claim.
-After beta.55 publication, from a working beta.43–beta.54 full installation,
-select **Beta** in `/system/updates` and stage beta.55. Pending relational
-checkpoints block encrypted backup/restore and are not repaired by an update.
-Preserve the evidence and an independent verified VM snapshot; do not repeat
-preparation until explicit recovery. Older installations can manually
-bootstrap the current corrected full-profile release (Raspberry/WSL):
+Select **Stable** in `/system/updates` to review the current release. Pending
+relational checkpoints block encrypted backup/restore and are not repaired by
+an update; preserve evidence rather than repeating a failed operation blindly.
+For a reproducible manual full-profile update, select an exact published release:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.0-beta.55
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.7
 ```
 
-An older installed updater cannot acquire the target-installer fix before it
-runs. No bridge release or reset is required. Update the Zero over SSH
-with the Node bootstrap command above and add `--tag v0.3.0-beta.55` to select
-this exact release. Provisioned upgrades preserve identity and pairing, not
-Master reset. Real update/rollback and browser request/CPU checks remain pending;
-see [platform stability acceptance](docs/PLATFORM_STABILITY_ACCEPTANCE.md).
-Then upload Fleet `0.1.7` on the Hub through Extensions. Updating the Fleet ZIP
-alone does not update Core or the Zero Agent. Follow the
+Update the Zero over SSH with the Node bootstrap command above and add
+`--tag v0.3.7` to select the same release, or use the reviewed remote Agent
+update control when its trust and target requirements are met. Provisioned
+upgrades preserve identity and pairing; do not use Master reset to update.
+Updating a Fleet application ZIP alone does not update Core or the Zero Agent.
+Follow the
 [GPIO configuration guide](docs/FLEET_GPIO_CONFIGURATION.md) before enabling outputs.
 The signed Node OTA path requires an explicit one-time Hub key trust bootstrap;
 see [Node update scope and acceptance](docs/FLEET_NODE_OTA.md). Fleet 0.1.7
@@ -366,7 +374,7 @@ The new Node check reports the latest release and confirmed Hub OTA history;
 manual upgrades without that history remain unknown, not automatically up to date.
 
 Use `--tag` for a reproducible exact release, for example by appending
-`-s -- --tag v0.3.0-beta.11` after `sudo bash`. The Raspberry host password is
+`-s -- --tag v0.3.7` after `sudo bash`. The Raspberry host password is
 requested only by `sudo` and is never a command argument or repository value.
 
 During Beta, a brand-new empty database receives one test administrator:

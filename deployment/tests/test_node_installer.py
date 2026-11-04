@@ -119,8 +119,8 @@ def test_shell_syntax():
 @pytest.mark.parametrize('backend', ['host', 'network-manager'])
 def test_bootstrap_installs_network_packages_only_for_explicit_management(profile, backend):
     bootstrap = (Path(__file__).parents[2] / 'install.sh').read_text()
-    package_selection = bootstrap[bootstrap.index('THREE_MM_BOOTSTRAP_PACKAGES=('):bootstrap.index('[[ $channel == stable')]
-    result = run(f'THREE_MM_DEFAULT_CHANNEL=beta\nTHREE_MM_NETWORK_BACKEND={backend}\n'
+    package_selection = bootstrap[bootstrap.index('THREE_MM_BOOTSTRAP_PACKAGES=('):bootstrap.index('[[ -z $requested_tag ||')]
+    result = run(f'THREE_MM_DEFAULT_CHANNEL=stable\nTHREE_MM_NETWORK_BACKEND={backend}\n'
         f'set -- --profile {profile} --network-backend {backend}\n' + package_selection
         + '\nprintf "%s\\n" "${THREE_MM_BOOTSTRAP_PACKAGES[@]}"\n')
     assert result.returncode == 0, result.stderr
@@ -143,7 +143,7 @@ def test_bootstrap_installs_network_packages_only_for_explicit_management(profil
     ('network-manager', 'host', '', 'host'),
     (None, 'invalid', '', None),
 ])
-def test_network_default_restores_fresh_ap_and_preserves_upgrades(
+def test_network_default_keeps_public_bootstrap_on_lan_and_preserves_upgrades(
     tmp_path, installer, stored, override, marker, expected,
 ):
     environment = tmp_path / '3mm.env'
@@ -157,9 +157,13 @@ def test_network_default_restores_fresh_ap_and_preserves_upgrades(
     if installer == 'bootstrap':
         bootstrap = (Path(__file__).parents[2] / 'install.sh').read_text()
         source = bootstrap[bootstrap.index('if [[ -z $network_backend && -f /etc/3mm/3mm.env'):
-                           bootstrap.index('[[ $channel == stable')]
+                           bootstrap.index('[[ -z $requested_tag ||')]
         source = source.replace('/etc/3mm/3mm.env', environment.as_posix()).replace(
             '/opt/3mm/current', current.as_posix()).replace('/var/lib/3mm', tmp_path.as_posix())
+        # Public bootstrap explicitly passes host even to older immutable artifacts.
+        # The internal installer retains its existing direct-call default.
+        if stored is None and not override:
+            expected = 'host'
     else:
         source = section('network_backend=${THREE_MM_NETWORK_BACKEND:-}', 'ai_master_key_file=')
     result = run(

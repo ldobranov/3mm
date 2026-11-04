@@ -6,21 +6,41 @@ artifact. Do not confuse this with selecting the Node role in a full installatio
 ## Supported initial target
 
 - Raspberry Pi Zero W Rev 1.1, ARMv6 (`armv6l`).
-- Raspbian 13, CPython 3.13, NetworkManager and systemd.
+- Raspbian 13, CPython 3.13 and systemd; NetworkManager and a usable AP-capable
+  Wi-Fi adapter are additionally required for optional managed setup Wi-Fi.
 - A full installation on the existing Hub is independent and is not replaced.
 - No Core database, AI dependencies, npm/compiler, business extensions or default
   Core administrator account are created on a minimal Node.
 
-After publishing a release with Node assets, install using:
+Install from the latest published Stable release using the command below. That
+release must include Node assets; missing assets are an error, not permission to
+fall back to an older Beta:
 
 ```bash
 wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --profile node
 ```
 
-Add `--tag vX.Y.Z` to select a published version explicitly. The bootstrap validates
-the separate `3mm-node-manifest.json`, host Python/architecture, archive size and
-SHA-256. It runs detached so fresh-install AP activation may safely disconnect SSH.
-Join `3mm Setup XXXX`; the fallback portal is `http://10.42.0.1:8895/setup`.
+The standard command retains the existing host-managed Ethernet or Wi-Fi network.
+Open `http://<LAN-IP>:8895/setup` from another device on that LAN to choose the
+Node role and Hub address; the host's network configuration remains separate.
+
+To explicitly select managed setup Wi-Fi on a fresh Node instead:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --profile node -ap
+```
+
+On an unprovisioned AP-capable device this may disconnect Wi-Fi SSH. Join
+`3mm Setup XXXX`; the fallback portal is `http://10.42.0.1:8895/setup`. The job
+runs detached, so losing its SSH observer does not terminate installation.
+`-ap` selects the managed backend; it does not reset an already provisioned Node,
+change its role or force an AP to start. Updates without an override retain the
+stored backend and role. The advanced `--network-backend host|network-manager`
+option remains available; `-ap` is the short form for `network-manager`.
+
+Add `--tag vX.Y.Z` to select an exact published version or `--channel beta|test`
+to explicitly choose a prerelease channel. The bootstrap validates the separate
+`3mm-node-manifest.json`, host Python/architecture, archive size and SHA-256.
 Only Node is selectable; direct requests for Hub/Standalone are rejected before
 network changes. A saved Hub address is not completed enrollment. Pairing remains
 the next Fleet stage; no cloud is needed for local installation.
@@ -45,8 +65,10 @@ No Rust/C build runs on Zero. New native versions require explicit review.
 The existing immutable layout, deployment lock, environment backup, readiness
 checks and previous-release link are reused. Existing Node identity, configured
 Hub URL and GPIO mappings are retained. Cross-profile replacements are refused.
-Node uses `3mm-node-recovery.service`, not the Core update helper. There is no
-Node OTA UI yet; the same bootstrap/installer can apply a later Node artifact.
+Node uses `3mm-node-recovery.service`, not the Core update helper. The same
+bootstrap/installer can apply a later Node artifact. Core's System Updates also
+provides reviewed signed OTA controls for supported enrolled Nodes; actual
+remote-device acceptance remains separate from local installer checks.
 
 Published beta.25 includes the separate **Node update helper**, authenticated
 Hub-to-Node preparation/delivery and Agent prepare command wiring. Signed Hub
@@ -67,7 +89,8 @@ curl -fsS http://127.0.0.1:8890/ready
 sudo /opt/3mm/current/.venv/bin/python -m pip check
 ```
 
-Agent runs after provisioning; during first-boot setup inspect `3mm-setup`,
-`3mm-setup-ap` and `3mm-network-helper` instead. No GPIO output is enabled by
+Agent runs after provisioning; during first-boot setup inspect `3mm-setup`.
+For the optional managed AP path, also inspect `3mm-setup-ap` and
+`3mm-network-helper`. No GPIO output is enabled by
 installation. Electrical tests, pairing and access-control behavior are not
 certified by these health checks. See [target evidence](FLEET_ZERO_BASELINE.md).

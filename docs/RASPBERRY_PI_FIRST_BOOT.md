@@ -1,7 +1,8 @@
 # Raspberry Pi installation and first boot
 
-Status: one-command clean-media bootstrap, setup AP and return to the normal
-Standalone runtime are physically validated on the Raspberry Pi 3B+ baseline.
+Status: the standard bootstrap selects Stable and retains the existing LAN.
+The earlier explicit setup-AP flow was physically validated on the Raspberry Pi
+3B+ baseline; that evidence is not a new clean-media acceptance of these defaults.
 
 This guide installs one Raspberry Pi as a 3mm Standalone device. It deliberately
 keeps Raspberry, Wi-Fi and user-selected passwords out of commands, files and
@@ -14,17 +15,17 @@ The current physical baseline is a Raspberry Pi 3B+ running Debian GNU/Linux 13
 on `aarch64`. The accepted host has Python 3.13.5, Node.js 20.19.2, npm 9.2.0,
 NetworkManager and a Wi-Fi interface named `wlan0`.
 
-The public bootstrap installs only the reviewed APT dependencies recorded in
-the release manifest. It does not alter the firewall or replace the
-host's network manager. The immutable installer creates the `3mm` system
+The public bootstrap installs the reviewed clean-host and release prerequisites.
+By default it retains host-managed networking; managed Wi-Fi/AP setup is opt-in.
+It does not alter the firewall. The immutable installer creates the `3mm` system
 account, release-specific Python environment, persistent directories and
 systemd units. Internet access is required while the release and dependencies
 are downloaded.
 
 Ethernet is preferred but no longer required for the first installation. The
-public bootstrap starts the immutable installer as a detached systemd job. An
-unprovisioned release can therefore change `wlan0` into the setup access point
-without terminating the installation when the Wi-Fi SSH session closes.
+public bootstrap starts the immutable installer as a detached systemd job. When
+the optional `-ap` path is selected on an unprovisioned device, installation can
+finish even if changing `wlan0` to the setup access point closes Wi-Fi SSH.
 
 ## 1. Prepare the Raspberry Pi
 
@@ -40,8 +41,10 @@ The host must provide:
 
 - Python 3.10 or newer with the `venv` module;
 - Node.js 20 or newer and npm;
-- `bash`, `tar`, `flock`, `systemctl` and `nmcli`;
-- active NetworkManager managing an interface named `wlan0`.
+- `bash`, `tar`, `flock` and `systemctl`.
+
+The optional `-ap` path additionally requires active NetworkManager and a usable
+AP-capable Wi-Fi adapter; the host-managed LAN path does not require Wi-Fi/AP.
 
 ## 2. Install with one command
 
@@ -52,22 +55,38 @@ wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo
 ```
 
 Git is not required on the device. The bootstrap selects the latest published
-Beta release for the current architecture, validates the release manifest,
+Stable release for the current architecture, validates the release manifest,
 installs its reviewed dependencies, verifies the artifact size and SHA-256,
 and runs the read-only preflight automatically. It then delegates activation to
 the existing rollback-capable immutable installer.
 
 The background job survives loss of the SSH connection. Its unit name is
-printed before the command returns and its log can be followed while LAN access
-remains with the printed `journalctl` command. On a Wi-Fi-only first boot, loss
-of SSH after that point is expected; continue from the phone on `3mm Setup
-XXXX`.
+printed before the command returns and its log can be followed with the printed
+`journalctl` command. The standard command retains the current Ethernet or Wi-Fi
+connection. Complete setup from another device on that LAN at:
+
+```text
+http://<LAN-IP>:8895/setup
+```
+
+To explicitly enable managed setup Wi-Fi on a fresh installation instead:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- -ap
+```
+
+This selects the managed networking backend. On an unprovisioned AP-capable
+device, Wi-Fi SSH may close when `3mm Setup XXXX` starts. On a provisioned device
+`-ap` does not reset the saved role or force a setup access point. Updates without
+an override retain the saved backend, role and data. The advanced
+`--network-backend host|network-manager` option remains available; `-ap` is the
+short form for choosing `network-manager`, not a reset command.
 
 To pin an exact published release:
 
 ```bash
 wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | \
-  sudo bash -s -- --tag v0.3.0-beta.9
+  sudo bash -s -- --tag v0.3.7
 ```
 
 ## 3. Local development updates
@@ -115,7 +134,8 @@ The install runs independently of SSH. Wait for `3mm update succeeded`; closing
 the observer does not stop it. Status/Logs never upload or repeat an install.
 An uncertain/failed job requires inspection before further action. This local
 update path expects a provisioned device with Core ready. The clean-OS installer
-above still enters setup on port 8895 with the captive HTTP entry on port 80.
+above exposes setup on port 8895 over the existing LAN. The optional managed AP
+path also provides a captive HTTP entry on port 80.
 
 After installation, the release itself can be checked without mutation:
 
@@ -126,14 +146,20 @@ python3 /opt/3mm/current/deployment/first_boot_preflight.py \
 
 ## 4. Complete setup from a phone
 
-The unprovisioned device enables only:
+With the standard host-managed installation, open
+`http://<LAN-IP>:8895/setup` from a phone on the same network. Complete the device
+name, locale and Standalone role without replacing the host's network settings.
+On success, Core, Web and Agent start; the existing LAN connection is retained.
+
+With explicit `-ap` managed setup, the unprovisioned device uses:
 
 - `3mm-network-helper.service`;
 - `3mm-setup-ap.service`;
 - `3mm-setup.service`.
 
-Join the open Wi-Fi network named `3mm Setup XXXX`. It intentionally has no
-password and exists only during setup or an explicit network reset. The phone
+For that optional AP path, join the open Wi-Fi network named `3mm Setup XXXX`.
+It intentionally has no password and exists only during setup or an explicit
+network reset. The phone
 should detect the captive portal and open the setup page automatically. Some
 operating systems show a **Sign in to network** notification instead. If the
 page does not open, use the fallback address:
@@ -142,14 +168,14 @@ page does not open, use the fallback address:
 http://10.42.0.1:8895/setup
 ```
 
-Select a nearby network from the scan results, or enter its name manually.
-Enter its password, device name and locale, then select **Standalone**. The
+In managed setup, select a nearby network from the scan results, or enter its
+name manually. Enter its password, device name and locale, then select **Standalone**. The
 portal follows the saved application theme. The Wi-Fi password is passed to
 NetworkManager and is not stored in the provisioning journal, application
 database or logs.
 
-On success the setup access point is removed, the saved Wi-Fi profile becomes
-active, and Core, Web and Agent replace the setup services. On failure the
+On managed setup success the access point is removed, the saved Wi-Fi profile
+becomes active, and Core, Web and Agent replace the setup services. On failure the
 network change is rolled back and setup mode remains available.
 
 The current **Administrator name** field remains provisioning metadata and does
@@ -228,12 +254,14 @@ Then verify:
 - the local Agent is present and online in Devices;
 - health, hello and inventory expose one stable device identity;
 - a reboot returns to Core, Web and Agent without recreating the setup AP;
-- an explicit network reset returns to the open setup AP and preserves the
-  application database and Agent identity.
+- on the optional managed networking path, explicit setup Wi-Fi recovery
+  preserves the application database and Agent identity.
 
 ## 8. Recover or move the device to another Wi-Fi network
 
-Sign in as an administrator and open **Settings → Network Configuration**.
+For the optional managed networking path, sign in as an administrator and open
+**Settings → Network Configuration**. Host-managed networking remains managed by
+the operating system; this installation does not silently enable AP recovery.
 This panel provides two independent controls:
 
 - **Start setup Wi-Fi** immediately switches the device to its open
@@ -264,8 +292,9 @@ Administrators can open **Settings → Device Control** after provisioning.
 - **Factory reset** requires the exact phrase `FACTORY RESET`. It deletes
   persistent 3mm users, settings, dashboards, extensions, Agent identity,
   provisioning data, deployment backups and update-helper state. The current
-  immutable release and Raspberry Pi OS remain installed, and setup Wi-Fi is
-  started again.
+  immutable release and Raspberry Pi OS remain installed. Setup returns through
+  the configured network backend: LAN for host-managed networking or setup Wi-Fi
+  for the supported managed AP path.
 
 Factory reset is not an SD-card erase. The last verified NetworkManager Wi-Fi
 profile remains available as a connection rollback until setup successfully

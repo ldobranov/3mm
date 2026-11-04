@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 readonly THREE_MM_REPOSITORY="ldobranov/3mm"
-readonly THREE_MM_DEFAULT_CHANNEL="beta"
+readonly THREE_MM_DEFAULT_CHANNEL="stable"
 readonly THREE_MM_BOOTSTRAP_ROOT="/var/tmp/3mm-bootstrap"
 THREE_MM_BOOTSTRAP_PACKAGES=(
   avahi-daemon
@@ -15,11 +15,13 @@ THREE_MM_BOOTSTRAP_PACKAGES=(
   util-linux
 )
 
-channel=${THREE_MM_CHANNEL:-$THREE_MM_DEFAULT_CHANNEL}
+channel=${THREE_MM_CHANNEL:-}
 requested_tag=${THREE_MM_TAG:-}
 frontend_origin=${THREE_MM_FRONTEND_ORIGIN:-}
 install_profile=full
 network_backend=${THREE_MM_NETWORK_BACKEND:-}
+network_backend_option=
+ap_requested=0
 
 usage() {
   cat <<'EOF'
@@ -30,14 +32,17 @@ Usage:
 
 Options:
   --profile full|node        Full app (default) or minimal Node (ARMv6/Python 3.13)
-  --network-backend host|network-manager  Preserve host networking or enable Wi-Fi/AP setup (fresh default)
-  --channel stable|beta|test  Release channel (default: beta)
-  --tag vX.Y.Z[-suffix]      Install one exact published release
+  -ap, --ap                 Opt into NetworkManager Wi-Fi/AP setup on fresh media
+  --network-backend host|network-manager  Advanced network selection (fresh default: host)
+  --channel stable|beta|test  Release channel (default: stable, or inferred from --tag)
+  --tag vX.Y.Z[-suffix]      Install one exact published release; explicit channel must match
   --frontend-origin URL      Public HTTP(S) origin; preserves existing URL on update
   -h, --help                 Show this help
 
-The job is detached before 3mm changes Wi-Fi into its setup access point, so
-installation can safely be started over a Wi-Fi SSH connection.
+Without -ap, fresh installation keeps the current host network. Open
+http://<device-LAN-IP>:8895/setup to finish setup. Updates preserve a saved
+network backend, role and data. -ap does not reset an already configured device.
+The job is detached before optional setup AP activation can disconnect SSH.
 EOF
 }
 
@@ -48,9 +53,14 @@ fail() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -ap|--ap)
+      ap_requested=1
+      shift
+      ;;
     --network-backend)
       [[ $# -ge 2 ]] || fail "--network-backend requires a value"
       network_backend=$2
+      network_backend_option=$2
       shift 2
       ;;
     --profile)
@@ -59,7 +69,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --channel)
-      [[ $# -ge 2 ]] || fail "--channel requires a value"
+      [[ $# -ge 2 && -n $2 ]] || fail "--channel requires a value"
       channel=$2
       shift 2
       ;;
@@ -83,6 +93,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 [[ $install_profile == full || $install_profile == node ]] || fail "profile must be full or node"
+if [[ $ap_requested -eq 1 ]]; then
+  [[ -z $network_backend_option || $network_backend_option == network-manager ]] || \
+    fail "-ap conflicts with --network-backend host"
+  network_backend=network-manager
+fi
 if [[ $install_profile == node ]]; then
   THREE_MM_BOOTSTRAP_PACKAGES=(avahi-daemon ca-certificates curl python3 python3-venv util-linux)
 fi
@@ -90,23 +105,29 @@ if [[ -z $network_backend && -f /etc/3mm/3mm.env ]]; then
   network_backend=$(awk -F= '$1 == "THREE_MM_NETWORK_BACKEND" {value=$2} END {print value}' /etc/3mm/3mm.env)
 fi
 if [[ -z $network_backend ]]; then
-  # Fresh bootstrap retains the one-command Wi-Fi/AP setup. Never infer a
-  # networking change when updating an installation without a saved backend.
-  if [[ -f /etc/3mm/3mm.env || -L /opt/3mm/current || -d /var/lib/3mm/provisioning ]]; then
-    network_backend=host
-  else
-    network_backend=network-manager
-  fi
+  # Neither fresh media nor missing old metadata authorizes a network takeover.
+  network_backend=host
 fi
 [[ $network_backend == host || $network_backend == network-manager ]] || fail "network backend must be host or network-manager"
 if [[ $network_backend == network-manager ]]; then
   THREE_MM_BOOTSTRAP_PACKAGES+=(dnsmasq-base network-manager)
 fi
 
-[[ $channel == stable || $channel == beta || $channel == test ]] || \
-  fail "channel must be stable, beta or test"
 [[ -z $requested_tag || $requested_tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || \
   fail "tag must use vX.Y.Z semantic-version form"
+if [[ -z $channel ]]; then
+  channel=$THREE_MM_DEFAULT_CHANNEL
+  if [[ -n $requested_tag ]]; then
+    channel=stable
+    if [[ $requested_tag == *-* ]]; then
+      tag_suffix=${requested_tag#*-}
+      channel=beta
+      if [[ ${tag_suffix%%.*} == [tT][eE][sS][tT] ]]; then channel=test; fi
+    fi
+  fi
+fi
+[[ $channel == stable || $channel == beta || $channel == test ]] || \
+  fail "channel must be stable, beta or test"
 [[ ${EUID:-$(id -u)} -eq 0 ]] || \
   fail "run through sudo, for example: wget -qO- .../install.sh | sudo bash"
 
@@ -187,6 +208,8 @@ release_id_file="$stage/release-id"
 printf 'Selecting the published %s release for %s...\n' "$channel" "$architecture"
 if [[ -n $requested_tag ]]; then
   release_api="https://api.github.com/repos/$THREE_MM_REPOSITORY/releases/tags/$requested_tag"
+elif [[ $channel == stable ]]; then
+  release_api="https://api.github.com/repos/$THREE_MM_REPOSITORY/releases/latest"
 else
   release_api="https://api.github.com/repos/$THREE_MM_REPOSITORY/releases?per_page=20"
 fi
@@ -226,6 +249,10 @@ def valid_release(item: object) -> bool:
 if requested_tag:
     if not valid_release(payload) or payload.get("tag_name") != requested_tag:
         raise SystemExit("Requested tag is not a published release in this channel")
+    selected = payload
+elif channel == "stable":
+    if not valid_release(payload):
+        raise SystemExit("Latest published Stable release is invalid")
     selected = payload
 else:
     if not isinstance(payload, list):
@@ -425,10 +452,11 @@ Log while LAN access remains: journalctl -fu $unit.service
 EOF
 if [[ $network_backend == network-manager ]]; then
   cat <<'EOF'
-This Wi-Fi SSH connection is expected to close when setup mode starts.
-Then join the open network "3mm Setup XXXX" from a phone. The setup page should
-open automatically; fallback: http://10.42.0.1:8895/setup
+Managed setup networking is enabled. On fresh media, Wi-Fi SSH may close when
+the setup access point starts. Then join "3mm Setup XXXX" from a phone;
+fallback: http://10.42.0.1:8895/setup
+An existing device role is preserved; this does not force setup AP or reset data.
 EOF
 else
-  printf 'Host networking is preserved. Select the initial device role through the local administration tools; no role is inferred from Wi-Fi hardware.\n'
+  printf 'Host networking is preserved. For initial setup open http://<device-LAN-IP>:8895/setup in this network. Existing role and data are preserved.\n'
 fi
