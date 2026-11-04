@@ -127,12 +127,19 @@ After reviewing the UI, stop preview and run the common check/build command:
 python -m tools.extension_dev check PATH_TO_PROJECT --frontend PATH_TO_CORE_FRONTEND --output OUTPUT_OUTSIDE_PROJECT/app-1.zip
 ```
 
-The check command executes this project's trusted tests, validates the actual
-package, checks required denial scenarios, UI types and compilation, then writes
+The check command validates the actual package and probes its packaged migrations
+with disposable public-SDK SQLite data (clean creation, reopen, current-plan
+prefix upgrades and per-revision rollback). It executes this project's trusted
+tests, checks required denial scenarios, UI types and compilation, then writes
 a new ZIP/report/log. It installs nothing and never downloads dependencies. Missing
 rights, revocation and provider unavailability must not be skipped to get green.
 Tests run native developer code, not a hostile-code sandbox. Results are local
 evidence, not a live Core/device acceptance or permission to execute native code.
+Migration checks do not prove upgrades of old installed business data. Scoped
+relational storage is outside this profile and refuses before ZIP publication;
+do not skip a required migration check or replace it with a simulated success.
+The declared migration target must be the final revision. This local profile has
+32-revision/16-MiB-per-database/60-second-worker limits; timeout is not process-tree isolation.
 
 `development.json` selects project tests. Its optional preview profile uses only
 project-owned mock data/bindings; it is not a Core authorization authority.

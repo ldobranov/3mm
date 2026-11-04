@@ -4,6 +4,22 @@ Updated: 2026-11-04. Start here; follow linked details only as needed.
 
 ## Active task and next result
 
+- **CAP21 packaged migration checks, 2026-11-04.** The prior authoring commit
+  9290426db8e8b09551162405bc2d1eedb340b1b2 passed full CI41903345802. Owner
+  approves a separate migration-check commit/push, then continued bounded catalog
+  work. check now tests the exact packaged wheel via public SDK ApplicationStorage
+  on disposable SQLite before artifact publication: clean/final-target/stable
+  revision plan, current-prefix upgrade, reopen, integrity/FK and per-revision
+  rollback after injected failure. No service factory, installed data or authority
+  changes. Scoped relational is explicitly unsupported by this local profile.
+  Limits:32 revisions,16MiB per database,60-second direct worker; not hostile-code
+  isolation or historical business-data migration certification. Linux five-suite
+  run111 passed before final coherence fix; final helper21 passed/0 skipped
+  replaces helper evidence; unchanged consumers reused. Final common workflow for
+  source8cc2e256... passed Python6/UI15/types/real compiler plus migration checks;
+  packageb40dd42f... unchanged. No version/tag/release/deployment. Preserve unrelated
+  dev-lab, simplification, device experiments and mixed historical notes.
+
 - **CAP21 local authoring cycle accepted, 2026-11-04.** Official source-only
   application-starter demonstrates UI, own SQLite data/revisions/receipts and an
   optional observed resource, using public SDK/UI only. Developer commands init,

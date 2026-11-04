@@ -69,11 +69,16 @@ The command:
 2. Builds a deterministic pure-Python service wheel and Manifest-v2 ZIP, then
    uses the actual current package/semantic validator. Service imports from
    private Core internals fail an authoring lint; this is not a security sandbox.
-3. Runs project Python tests and verifies that all three declared denial
+3. Imports the declared migration factory from the exact packaged wheel in a
+   separate bounded local process. Uses disposable SQLite data to check clean
+   creation to the declared target, database and foreign-key integrity,
+   reopen/reapply without changed content, upgrade from each earlier revision,
+   and rollback after an injected failure in each revision of the current plan.
+4. Runs project Python tests and verifies that all three declared denial
    scenarios actually execute. A failure, skip or missing scenario is not green.
-4. Runs the project's UI tests, strict Vue/TypeScript check and the actual
+5. Runs the project's UI tests, strict Vue/TypeScript check and the actual
    installed-package UI compiler. It does not rebuild the main Core frontend.
-5. Writes a new ZIP, `.report.json` and `.checks.log` outside the source project.
+6. Writes a new ZIP, `.report.json` and `.checks.log` outside the source project.
    Existing files are never overwritten. Use a new output name for a fresh run.
 
 The normal output is a short readable summary. Add `--json` for automation. The
@@ -81,6 +86,24 @@ report includes the source hash, exact ZIP hash, compiler/build identity, execut
 checks and validated declarations: operation permissions/idempotency, resource
 contracts, storage and SDK/Core compatibility. This is a pre-installation review,
 not a claim that code trust, installed grants or a provider are ready.
+
+The migration result contains revisions/counts and verification flags, not table
+content. A broken factory, invalid plan, missing target or failed integrity/reopen
+check stops at `migrations` without publishing a ZIP. The declared target must be
+the last revision, and repeated factory calls must declare the same revision
+sequence; a later untested migration cannot silently pass. Rollback is
+per revision: already completed earlier migrations remain. The fault probe also
+refuses partial changes left by callbacks, including premature commits.
+Only public SDK SQLite
+storage is supported by this bounded profile; a scoped relational declaration
+requires its own lifecycle adapter and currently refuses this check. No service
+factory is started by the migration probe. Migration code is still trusted local
+developer code, not a security sandbox. This check does not certify migration of
+an old installed package, real business data, backup/restore or privacy retention;
+add those domain-specific fixtures to project tests before shipping an update.
+This local profile allows up to 32 migrations, 16 MiB per disposable database
+and a 60-second worker budget. Timeout ends that worker, not arbitrary processes
+that developer code may start; neither check nor preview is process isolation.
 
 Failures exit nonzero with their exact stage; missing, empty, skipped or invalid
 test evidence is not a pass. Complete log/report evidence is prepared before

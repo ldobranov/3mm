@@ -304,6 +304,7 @@ def check_project(project, output, *, frontend=None):
     """Check a frozen local source copy with existing tools. No installs or API calls."""
     from backend.services.module_packages import validate_module_package
     from backend.services.compiled_ui import compile_ui_package
+    from tools.application_migrations import run_packaged_migrations
 
     project = Path(project).absolute()
     output = Path(output).absolute()
@@ -361,6 +362,10 @@ def check_project(project, output, *, frontend=None):
                     'scope': 'package, model and cross-document rules; not installed authority'}
                 summary['review'] = declaration_review(validated)
                 summary['stages'].append('package_validation')
+                phase = 'migrations'
+                summary['migrations'] = run_packaged_migrations(blob, validated,
+                    root=root, environment=environment, log=log)
+                summary['stages'].append('packaged_migrations')
                 phase = 'python'
                 run_check([sys.executable, '-m', 'pytest', '-q', '-p', 'no:cacheprovider', '--strict-markers',
                            '--rootdir='+str(snapshot),

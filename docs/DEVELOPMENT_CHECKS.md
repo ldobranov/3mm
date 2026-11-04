@@ -107,10 +107,16 @@ installation is implicit. The example guide is `modules/application-starter/READ
 Guard checks live in `tools/tests/test_application_project.py`,
 `test_application_scaffold.py`, `test_application_preview.py` and
 `test_extension_dev.py`. The common command runs the project's Python/scenario/UI
-checks, strict types and actual compiler; do not repeat the main frontend build
+checks, packaged public-SDK SQLite migration lifecycle, strict types and actual
+compiler; do not repeat the main frontend build
 for an unchanged toolchain. Mock scenarios are not live authority conformance;
 reuse the separate `backend/tests/test_application_starter.py` integration evidence
 only while its relevant service/contracts/Core/SDK inputs remain unchanged.
+The migration probe executes the exact wheel's declared factory in a bounded
+local subprocess with disposable data; it never starts the service. Gate tests
+are `tools/tests/test_application_migrations.py` plus runner refusal/publication
+coverage. Current-plan prefix upgrades and reopen are not proof of compatibility
+with real older databases; application-specific migration fixtures remain needed.
 
 1. Review the exact intended/staged diff; preserve unrelated/generated files.
 2. Reuse identifiable passed checks for unchanged content, dependencies and

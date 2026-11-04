@@ -102,6 +102,23 @@ def test_cli_retains_exact_identity_if_evidence_fails_after_package_publication(
     assert str(tmp_path/'app.zip') in output
 
 
+def test_check_cli_explains_packaged_migration_evidence(monkeypatch, tmp_path, capsys):
+    from tools import application_project, extension_dev
+    import sys
+    monkeypatch.setattr(sys, 'argv', ['extension-dev', 'check', 'project', '--output', str(tmp_path/'app.zip')])
+    monkeypatch.setattr(application_project, 'check_project', lambda *_a, **_kw: {
+        'status': 'passed', 'python_passed': 6, 'ui_passed': 15,
+        'migrations': {'target_revision': '0002', 'prefix_upgrade_count': 1},
+        'package': {'module_id': 'org.example.note', 'version': '1.0.0',
+                    'sha256': 'a'*64, 'path': str(tmp_path/'app.zip')},
+        'review': {'human_permissions': ['note_read'], 'optional_resources': []},
+    })
+    extension_dev.main()
+    output = capsys.readouterr().out
+    assert 'Packaged migrations: 0002 | reopen and rollback: passed | prefix upgrades: 1' in output
+    assert 'No installation, grants or live-device acceptance' in output
+
+
 @pytest.mark.parametrize('action', ['init', 'preview', 'schemas'])
 def test_local_commands_do_not_prompt_for_credentials_or_require_url(monkeypatch, tmp_path, capsys, action):
     from tools import extension_dev

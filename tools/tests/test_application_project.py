@@ -99,6 +99,13 @@ def fake_pipeline(monkeypatch, tmp_path, *, skipped=False, missing=False, change
         (path/'build-toolchain.json').write_text('{}')
         return SimpleNamespace(built_ui_sha256='f'*64, path=path)
     monkeypatch.setattr(compiled_ui, 'compile_ui_package', compile_)
+    from tools import application_migrations
+    monkeypatch.setattr(application_migrations, 'run_packaged_migrations', lambda *_a, **_kw: {
+        'status': 'passed', 'target_revision': '0001', 'revision_count': 1,
+        'prefix_upgrade_count': 0, 'reopen_verified': True, 'integrity_verified': True,
+        'rollback_verified': True, 'rollback_probe_count': 1,
+        'scope': 'controller double; real packaged migrations verified separately',
+    })
     return frontend, calls
 
 
@@ -132,6 +139,9 @@ def test_success_has_exact_package_review_and_never_overwrites(source, tmp_path,
     assert binding['capability_id'] == 'gpio.digital.control' and binding['contract_version'] == '1.0'
     assert result['review']['storage']['schema_revision'] == '0001'
     assert result['semantic_validation']['status'] == 'passed'
+    assert result['migrations']['status'] == 'passed'
+    assert result['migrations']['target_revision'] == result['review']['storage']['schema_revision']
+    assert result['stages'].index('packaged_migrations') < result['stages'].index('python_and_denial_scenarios')
     assert 'not installed authority' in result['semantic_validation']['scope']
     assert validate_module_package(output.read_bytes()).sha256 == result['package']['sha256']
     assert result['live_acceptance'] == 'not_performed'
@@ -140,6 +150,25 @@ def test_success_has_exact_package_review_and_never_overwrites(source, tmp_path,
     assert json.loads(output.with_suffix('.report.json').read_text()) == result
     with pytest.raises(project.ProjectCheckError, match='already exists'):
         project.check_project(source, output, frontend=frontend)
+
+
+def test_packaged_migration_refusal_stops_before_project_tests_and_zip(source, tmp_path, monkeypatch):
+    frontend, calls = fake_pipeline(monkeypatch, tmp_path)
+    from tools import application_migrations
+    def refuse(blob, validated, *, root, environment, log):
+        assert validate_module_package(blob).sha256 == validated.sha256
+        assert root.is_dir() and root != source
+        assert 'PYTHONPATH' in environment
+        log.write('Local migration test refusal\n')
+        raise project.ProjectCheckError('migrations', 'Packaged migrations did not pass.')
+    monkeypatch.setattr(application_migrations, 'run_packaged_migrations', refuse)
+    output = tmp_path/'migration-failure.zip'
+    result = project.check_project(source, output, frontend=frontend)
+    assert result['status'] == 'failed' and result['stage'] == 'migrations'
+    assert calls == [] and not output.exists() and result['package_publication'] == 'not_published'
+    assert result['review']['storage']['schema_revision'] == '0001'
+    assert json.loads(output.with_suffix('.report.json').read_text())['stage'] == 'migrations'
+    assert 'Local migration test refusal' in output.with_suffix('.checks.log').read_text()
 
 
 def test_source_symlink_is_refused(source, tmp_path):

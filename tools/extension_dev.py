@@ -123,6 +123,8 @@ def main():
                     package=result['package']
                     print(f"{package['module_id']} {package['version']}")
                     print(f"Python: {result['python_passed']} passed | UI: {result['ui_passed']} passed | TypeScript and compiler: passed")
+                    migrations=result['migrations']
+                    print(f"Packaged migrations: {migrations['target_revision']} | reopen and rollback: passed | prefix upgrades: {migrations['prefix_upgrade_count']}")
                     print('Project scenarios: missing permission, revoked access, unavailable provider - passed')
                     print('Package SHA256: '+package['sha256'])
                     print('Package: '+package['path'])
