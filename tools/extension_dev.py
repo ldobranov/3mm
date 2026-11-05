@@ -80,11 +80,22 @@ def main():
     preview.add_argument('--frontend',type=Path,help='Existing Core frontend toolchain directory')
     preview.add_argument('--port',type=int,default=5178)
     commands.add_parser('schemas',help='Export current public structural schemas; not semantic approval')
+    catalog=commands.add_parser('catalog',help='Export current authoring contracts, or validate project declarations; no execution or installation')
+    catalog.add_argument('project',type=Path,nargs='?',help='Optional local source project; never imports application code')
+    compare=commands.add_parser('compare',help='Review declaration changes between two local ZIPs for the same application')
+    compare.add_argument('previous',type=Path)
+    compare.add_argument('candidate',type=Path)
+    compare.add_argument('--json',action='store_true',help='Machine-readable comparison')
+    client=commands.add_parser('generate-client',help='Generate a typed local UI client; no application execution or API login')
+    client.add_argument('project',type=Path)
+    client.add_argument('--output',type=Path,help='Project-relative source/frontend/*.ts; defaults to generated_client in development.json')
+    client.add_argument('--replace',action='store_true',help='Explicitly replace only this generator\'s existing client for the same application')
     check=commands.add_parser('check',help='Check/build a local application project; no installation or API login')
     check.add_argument('project',type=Path)
     check.add_argument('--output',type=Path,required=True,help='New ZIP outside the source project')
     check.add_argument('--frontend',type=Path,help='Existing Core frontend toolchain directory')
     check.add_argument('--json',action='store_true',help='Machine-readable check result')
+    check.add_argument('--previous-archive',type=Path,help='Explicit trusted previous ZIP; executes the project upgrade fixture on disposable data')
     for action in ('validate','upload'):
         commands.add_parser(action).add_argument('archive',type=Path)
     for action in ('activate','rollback'):
@@ -107,10 +118,68 @@ def main():
             from three_mm_protocol.extension_schemas import extension_schema_catalog
             print(json.dumps(extension_schema_catalog(),ensure_ascii=False,sort_keys=True))
             return
+        if args.action=='catalog':
+            from tools.application_catalog import application_catalog
+            from tools.application_project import ProjectCheckError
+            try:
+                result=application_catalog(args.project)
+            except (ProjectCheckError,OSError,ValueError) as error:
+                print(json.dumps({'status':'failed','stage':getattr(error,'stage','catalog'),
+                    'message':str(error) if isinstance(error,ProjectCheckError) else 'Catalog inputs are invalid or unavailable.',
+                    'installation':'not_requested'},ensure_ascii=False,sort_keys=True))
+                raise SystemExit(1) from None
+            print(json.dumps(result,ensure_ascii=False,sort_keys=True))
+            return
+        if args.action=='compare':
+            from tools.application_package_review import compare_application_packages, PackageReviewError
+            try:
+                result=compare_application_packages(args.previous,args.candidate)
+            except PackageReviewError as error:
+                if args.json:
+                    print(json.dumps({'status':'failed','message':str(error),'installation':'not_requested'}))
+                else:
+                    print('Package comparison stopped: '+str(error))
+                raise SystemExit(1) from None
+            if args.json:
+                print(json.dumps(result,sort_keys=True))
+            else:
+                print('Application package comparison (declarations only): '+result['module_id'])
+                for side in ('previous','candidate'):
+                    identity=result[side]
+                    print(f"{side.title()}: {identity['version']} | data revision {identity['schema_revision']} | SHA256 {identity['sha256']}")
+                print('Service artifact bytes: '+('changed' if result['service_artifact_changed'] else 'unchanged'))
+                for document, change in result['changes'].items():
+                    print(document+': '+', '.join(change['fields']))
+                    for field, items in change['items'].items():
+                        for key in ('added','removed'):
+                            if items[key]:print(f"  {field} {key}: "+', '.join(items[key]))
+                        for item, fields in items.get('changed',{}).items():
+                            print(f"  {field} {item}: "+', '.join(fields))
+                if not result['changes']:print('No declaration differences (excluding version and artifact identity).')
+                print('No code was run. This comparison is not migration verification, approval or installation.')
+            return
+        if args.action=='generate-client':
+            from tools.application_client import generate_client
+            from tools.application_project import configuration, ProjectCheckError
+            try:
+                output=args.output
+                if output is None:
+                    declared=configuration(args.project).get('generated_client')
+                    if not declared:
+                        raise ProjectCheckError('client', 'Declare generated_client or provide --output source/frontend/*.ts.')
+                    output=Path(declared)
+                result=generate_client(args.project,output,replace=args.replace)
+            except (ProjectCheckError,OSError,ValueError) as error:
+                print(json.dumps({'status':'failed','stage':getattr(error,'stage','client'),
+                    'message':str(error) if isinstance(error,ProjectCheckError) else 'Client inputs are invalid or unavailable.',
+                    'installation':'not_requested'},ensure_ascii=False,sort_keys=True))
+                raise SystemExit(1) from None
+            print(json.dumps(result,ensure_ascii=False,sort_keys=True))
+            return
         if args.action=='check':
             from tools.application_project import check_project, ProjectCheckError
             try:
-                result=check_project(args.project,args.output,frontend=args.frontend)
+                result=check_project(args.project,args.output,frontend=args.frontend,previous_archive=args.previous_archive)
             except (ProjectCheckError,OSError,ValueError) as error:
                 result={'status':'failed','stage':getattr(error,'stage','project'),
                     'message':str(error) if isinstance(error,ProjectCheckError) else 'Project inputs are invalid or unavailable.',
@@ -125,6 +194,9 @@ def main():
                     print(f"Python: {result['python_passed']} passed | UI: {result['ui_passed']} passed | TypeScript and compiler: passed")
                     migrations=result['migrations']
                     print(f"Packaged migrations: {migrations['target_revision']} | reopen and rollback: passed | prefix upgrades: {migrations['prefix_upgrade_count']}")
+                    if 'generated_client' in result:
+                        print('Generated client: current')
+                    print('Previous package upgrade: '+result.get('upgrade',{}).get('status','not_requested'))
                     print('Project scenarios: missing permission, revoked access, unavailable provider - passed')
                     print('Package SHA256: '+package['sha256'])
                     print('Package: '+package['path'])

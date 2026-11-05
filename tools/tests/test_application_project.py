@@ -145,6 +145,8 @@ def test_success_has_exact_package_review_and_never_overwrites(source, tmp_path,
     assert 'not installed authority' in result['semantic_validation']['scope']
     assert validate_module_package(output.read_bytes()).sha256 == result['package']['sha256']
     assert result['live_acceptance'] == 'not_performed'
+    assert result['generated_client']['status'] == 'passed'
+    assert result['upgrade']['status'] == 'not_requested'
     assert result['package_publication'] == 'published'
     assert result['evidence'] == {'report': 'published', 'log': 'published'}
     assert json.loads(output.with_suffix('.report.json').read_text()) == result
@@ -382,3 +384,74 @@ def test_late_report_failure_retains_exact_published_package_identity(source, tm
     assert result['evidence']['report'] == ('unconfirmed' if persistent else 'published')
     if not persistent:
         assert json.loads(Path(result['report']).read_text())['status'] == 'failed'
+
+
+@pytest.mark.parametrize('field,value', [
+    ('generated_client', '../outside.ts'), ('generated_client', 'source/frontend/../../outside.ts'),
+    ('generated_client', 'source/frontend/client.js'), ('upgrade_fixture', 'service/starter_app/service.py'),
+    ('upgrade_fixture', 'tests/../outside.py'),
+    ('type_tests', []), ('type_tests', ['source/frontend/client.generated.ts']),
+])
+def test_authoring_inputs_remain_within_their_explicit_source_area(source, field, value):
+    change_config(source, lambda config: config.update({field: value}))
+    with pytest.raises(project.ProjectCheckError):
+        project.configuration(source)
+
+
+@pytest.mark.parametrize('missing', [False, True])
+def test_stale_or_missing_generated_client_stops_before_execution_and_publication(source, tmp_path, monkeypatch, missing):
+    frontend, calls = fake_pipeline(monkeypatch, tmp_path)
+    client = source / project.configuration(source)['generated_client']
+    if missing:
+        client.unlink()
+    else:
+        client.write_text('// stale generated declaration\n')
+    from tools import application_migrations
+    monkeypatch.setattr(application_migrations, 'run_packaged_migrations',
+        lambda *_a, **_kw: pytest.fail('Stale client must stop before code execution'))
+    result = project.check_project(source, tmp_path/'stale.zip', frontend=frontend)
+    assert result['status'] == 'failed' and result['stage'] == 'generated_client'
+    assert calls == [] and result['package_publication'] == 'not_published'
+    assert not (tmp_path/'stale.zip').exists()
+
+
+def test_previous_archive_needs_an_explicit_project_fixture(source, tmp_path, monkeypatch):
+    frontend, calls = fake_pipeline(monkeypatch, tmp_path)
+    change_config(source, lambda config: config.pop('upgrade_fixture'))
+    previous = tmp_path/'previous.zip'
+    previous.write_bytes(project.build_package(source))
+    result = project.check_project(source, tmp_path/'candidate.zip', frontend=frontend, previous_archive=previous)
+    assert result['status'] == 'failed' and result['stage'] == 'upgrade'
+    assert calls == [] and result['package_publication'] == 'not_published'
+
+
+@pytest.mark.parametrize('refused', [False, True])
+def test_previous_package_upgrade_is_exact_and_gates_artifact_publication(source, tmp_path, monkeypatch, refused):
+    frontend, calls = fake_pipeline(monkeypatch, tmp_path)
+    from tools import application_upgrade
+    previous = tmp_path/'previous.zip'
+    previous_bytes = project.build_package(source)
+    previous.write_bytes(previous_bytes)
+    seen = []
+    def upgrade(old_blob, old_validated, new_blob, new_validated, *, fixture, root, environment, log):
+        assert old_blob == previous_bytes
+        assert validate_module_package(old_blob).sha256 == old_validated.sha256
+        assert validate_module_package(new_blob).sha256 == new_validated.sha256
+        assert fixture.is_file() and fixture != source/'tests/upgrade_fixture.py'
+        assert root in fixture.parents and 'PYTHONPATH' in environment
+        seen.append(old_validated.sha256)
+        if refused:
+            raise project.ProjectCheckError('upgrade', 'Domain upgrade fixture did not pass.')
+        return {'status': 'passed', 'scope': 'controller double; exact wheel execution tested separately'}
+    monkeypatch.setattr(application_upgrade, 'run_packaged_upgrade', upgrade)
+    output = tmp_path/'candidate.zip'
+    result = project.check_project(source, output, frontend=frontend, previous_archive=previous)
+    assert seen == [result['previous_package']['sha256']]
+    assert result['status'] == ('failed' if refused else 'passed')
+    assert output.exists() is not refused
+    if refused:
+        assert result['stage'] == 'upgrade' and calls == []
+        assert result['package_publication'] == 'not_published'
+    else:
+        assert result['upgrade']['status'] == 'passed'
+        assert result['stages'].index('previous_package_upgrade') < result['stages'].index('python_and_denial_scenarios')

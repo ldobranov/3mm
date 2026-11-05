@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noEmit": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/cap21.tsbuildinfo"
+  },
+  "include": [
+    "../modules/application-starter/source/frontend/**/*.vue",
+    "../modules/application-starter/source/frontend/**/*.ts",
+    "../modules/application-starter/preview/host.ts",
+    "../modules/application-starter/tests/client.types.ts"
+  ],
+  "exclude": []
+}

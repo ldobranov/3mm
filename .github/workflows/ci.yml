@@ -150,6 +150,12 @@ jobs:
         if: needs.plan.outputs.frontend == 'true'
         working-directory: frontend
         run: pnpm run type-check
+      - name: Check CAP21 example and generated client
+        if: needs.plan.outputs.frontend == 'true'
+        working-directory: frontend
+        run: |
+          pnpm exec vue-tsc --project tsconfig.cap21.json
+          pnpm exec vitest run --config ../modules/application-starter/tests/vitest.config.mjs --maxWorkers=1
       - name: Build production frontend
         if: needs.plan.outputs.frontend == 'true'
         working-directory: frontend

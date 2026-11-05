@@ -12,7 +12,7 @@ import tempfile
 
 from three_mm_protocol.module_manifest import MODULE_ID_PATTERN
 from three_mm_protocol.ui_metadata import ROUTE_PATTERN
-from tools.application_project import ProjectCheckError, build_package, fingerprint, inputs, local_path
+from tools.application_project import ProjectCheckError, build_package, configuration, fingerprint, inputs, local_path
 
 TEMPLATE = Path(__file__).resolve().parents[1]/'modules/application-starter'
 INITIAL_VERSION = '1.0.0'
@@ -127,6 +127,33 @@ After reviewing the UI, stop preview and run the common check/build command:
 python -m tools.extension_dev check PATH_TO_PROJECT --frontend PATH_TO_CORE_FRONTEND --output OUTPUT_OUTSIDE_PROJECT/app-1.zip
 ```
 
+The UI uses the configured generated client. After changing declarations/version,
+run `python -m tools.extension_dev generate-client PATH_TO_PROJECT --replace`.
+It replaces only an unedited generator-owned file for this module, never arbitrary
+source, and reports a retained `.runtime/client-recovery` backup. A competing
+writer is never overwritten; inspect the reported recovery file on refusal.
+Queries need payload only; commands also need the caller-owned original
+idempotency key. The client invokes once, propagates errors and grants no access.
+TypeScript is structural; actual JSON/bounds/permissions remain runtime checks.
+Missing/stale generated content stops `check` before migration/test execution.
+Declared `type_tests` add positive and expected-negative compile-only cases.
+
+For a newer candidate, preserve the exact checked previous ZIP and use
+`check PATH_TO_PROJECT --previous-archive OLD_ZIP --output NEW_ZIP`.
+The standalone `upgrade_fixture` seeds old-package disposable data and verifies
+it with the candidate in a separate process. Adapt its domain assertions; the
+example proves note/actor-scoped receipt retention, not all business histories.
+New-migration rollback probes, integrity and reopen are checked before publishing.
+No installed data/device/rights are touched. No previous ZIP means the report
+explicitly says upgrade `not_requested`, not upgrade passed.
+
+Before executing project code, `python -m tools.extension_dev catalog` exports
+the current checkout's public contracts and authoring limits as JSON. Add
+`PATH_TO_PROJECT` to inspect the exact candidate declarations and source/package
+hashes using the real package validator, without importing application code,
+running tests/migrations/compiler or contacting Core. Catalog output is not a
+check pass, code trust, granted access or installed provider readiness.
+
 The check command validates the actual package and probes its packaged migrations
 with disposable public-SDK SQLite data (clean creation, reopen, current-plan
 prefix upgrades and per-revision rollback). It executes this project's trusted
@@ -221,6 +248,12 @@ def create_project(destination, *, module_id, name, route):
                 target.write_bytes(data)
             from backend.services.module_packages import validate_module_package
             checked = validate_module_package(build_package(staged))
+            generated = configuration(staged).get('generated_client')
+            if generated:
+                from tools.application_client import render_client
+                source[generated] = render_client(checked.application_extension).encode('utf-8')
+                local_path(staged, generated).write_bytes(source[generated])
+                checked = validate_module_package(build_package(staged))
             if (checked.manifest.module_id != module_id or checked.manifest.version != INITIAL_VERSION
                     or checked.compiled_ui.entrypoints[0].route != route):
                 raise ProjectCheckError('create', 'Generated application identity does not match the requested project.')

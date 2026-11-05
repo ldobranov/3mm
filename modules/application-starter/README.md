@@ -62,23 +62,102 @@ command never runs npm/pnpm/pip installs, downloads, API login, upload, grants,
 activation, restart or hardware output. Missing dependencies cause a clear stop.
 Do not share Windows and Linux native Node dependencies between environments.
 
-The command:
+## Inspect contracts before running code
+
+```powershell
+python -m tools.extension_dev catalog
+python -m tools.extension_dev catalog .runtime/my-note
+```
+
+Both commands print deterministic JSON for editors and automation. The first
+describes this checkout's current public contracts, SDK/UI errors, transport
+budgets and local authoring limits, with hashes of their source files. Structural
+schemas come from the actual public models; cross-document semantic rules remain
+in the referenced validators rather than a second copied policy.
+
+With a project argument, the catalog builds and validates the candidate package
+in memory and includes its exact source/package hashes, full application
+declarations and review requirements. It does not import the application, execute
+tests or migrations, compile UI, install dependencies, prompt for credentials or
+contact Core. Unsupported authoring profiles are distinguished from valid package
+declarations; they are not silently called checkable. Use `check` for executed
+verification and artifact publication.
+
+This is **not an installed capability inventory**. Declared permissions are not
+grants, a declared resource is not an available provider, and an error code alone
+does not prove whether a request was sent or permit a retry. Installation still
+requires current Core validation, exact-package approval and resource selection.
+`schemas` remains the structural-only export; `catalog` adds source references and
+local declaration inspection, not runtime authority.
+
+## Generate the UI operation client
+
+The example and newly created projects declare `generated_client` in
+`development.json`. Their UI calls the generated `createApplicationClient(host)`
+methods rather than spelling raw operation names and payloads at every call site.
+
+```powershell
+python -m tools.extension_dev generate-client .runtime/my-note
+```
+
+After changing operations, input/output schemas, permissions, audiences or the
+package version, explicitly regenerate an existing client:
+
+```powershell
+python -m tools.extension_dev generate-client .runtime/my-note --replace
+```
+
+An identical file is unchanged. Replacement is explicit and accepts only an
+unedited file produced by this generator for the same module. Other files are not
+overwritten. Explicit replacement retains the displaced source under the
+project's `.runtime/client-recovery/` and reports `recovery_file`; it is excluded
+from source packaging. It may briefly leave the target absent while publishing
+the new file exclusively. If another editor writes the target meanwhile, that
+file is not overwritten: generation stops and retains/restores the prior source
+without replacing the other writer. Inspect the reported recovery file after a
+refusal. `--output source/frontend/other-client.ts` chooses another local file;
+its existing parent directory must be inside that project's frontend source.
+Keep `generated_client` pointing to the file the UI actually imports. Project
+creation regenerates the client for the new identity automatically.
+
+Queries take a typed payload; commands additionally require the caller-owned
+original `idempotencyKey`. Internal-only operations are not exposed. Each method
+calls the public host exactly once, propagates its result/error and never retries,
+creates an identity, grants access or changes audiences. TypeScript catches
+misspelled fields, missing required fields, wrong scalar types and invalid literal
+enums. Integerness, lengths, patterns, extra fields on nonliteral objects and other
+runtime JSON constraints still require current Core/service validation. Returned
+types are not an independent runtime validation of the host's response.
+
+The generator supports explicit object/array/scalar schemas, required/optional
+fields, primitive enums and nullable types. Unsupported references/combinators or
+unrepresentable mixed additional-property schemas stop generation; they never
+silently become `any`. `tests/client.types.ts` holds positive and expected-negative
+compile cases; the declared `type_tests` are included in strict type checking.
+
+## What the common check verifies
+
+The `check` command:
 
 1. Freezes supported source files in a disposable local directory; refuses
    escaping paths/symlinks and checks for source changes before publishing output.
 2. Builds a deterministic pure-Python service wheel and Manifest-v2 ZIP, then
    uses the actual current package/semantic validator. Service imports from
    private Core internals fail an authoring lint; this is not a security sandbox.
-3. Imports the declared migration factory from the exact packaged wheel in a
+3. Refuses a missing/stale declared generated client before executing project
+   code. Imports the declared migration factory from the exact packaged wheel in a
    separate bounded local process. Uses disposable SQLite data to check clean
    creation to the declared target, database and foreign-key integrity,
    reopen/reapply without changed content, upgrade from each earlier revision,
    and rollback after an injected failure in each revision of the current plan.
-4. Runs project Python tests and verifies that all three declared denial
+4. If an explicit previous archive is selected, verifies its fixture-seeded data
+   upgrade as described below. Otherwise the report says `not_requested`.
+5. Runs project Python tests and verifies that all three declared denial
    scenarios actually execute. A failure, skip or missing scenario is not green.
-5. Runs the project's UI tests, strict Vue/TypeScript check and the actual
+6. Runs the project's UI tests, strict Vue/TypeScript check (including declared
+   compile-only cases) and the actual
    installed-package UI compiler. It does not rebuild the main Core frontend.
-6. Writes a new ZIP, `.report.json` and `.checks.log` outside the source project.
+7. Writes a new ZIP, `.report.json` and `.checks.log` outside the source project.
    Existing files are never overwritten. Use a new output name for a fresh run.
 
 The normal output is a short readable summary. Add `--json` for automation. The
@@ -104,6 +183,61 @@ add those domain-specific fixtures to project tests before shipping an update.
 This local profile allows up to 32 migrations, 16 MiB per disposable database
 and a 60-second worker budget. Timeout ends that worker, not arbitrary processes
 that developer code may start; neither check nor preview is process isolation.
+
+## Verify an update from a previous package
+
+Keep the exact checked previous ZIP outside the project. Change the independent
+application version consistently in all three descriptors and the service wheel
+artifact path; add forward migrations when the schema changes. Update versioned
+test fixtures as appropriate and regenerate the client. Do not overwrite a
+published package with different bytes under its old version.
+
+```powershell
+python -m tools.extension_dev check .runtime/my-note --previous-archive .runtime/my-note-1.zip --output .runtime/my-note-2.zip
+```
+
+The candidate must be the same module with strictly newer SemVer precedence.
+`development.json` names a standalone `upgrade_fixture` under `tests/`:
+
+- `seed(application)` uses the old packaged service/data and returns a bounded
+  JSON object containing expected outcomes.
+- `verify(application, expected)` uses the candidate service to assert retained
+  domain data/receipts and returns `None`. It must not change logical database
+  contents/history, even when reading an original idempotent receipt.
+
+The shipped fixture saves a disposable note with the old service and verifies
+the note and actor-scoped original receipt after upgrade and reopen. Adapt it to
+your domain; an empty/no-op fixture does not prove preservation of your data.
+The fixture may import standard-library/public SDK and that phase's packaged
+service, not sibling project test helpers. Two distinct isolated Python processes
+avoid importing old and new service versions into the same module cache. Both use
+the current public SDK, declared configuration defaults and no platform client;
+this is not a test of real installed configuration, credentials or provider access.
+
+The runner pins ZIP/wheel/fixture hashes, checks old revision history as a prefix,
+integrity and reopen. New migrations also receive injected-failure rollback probes
+against copies of the old seeded data. A same-schema version update reports
+rollback as `not_applicable`; successful schema changes are not automatically
+downgraded. Failure refuses the new ZIP while retaining the local report/log.
+The 60-second budget is per direct worker, with the same database/dump limits as
+migration checks. No installed database, backup, device, deployment or grant is
+touched. This is trusted developer-code execution and fixture-specific evidence,
+not hostile-code isolation or proof for every historical business database.
+
+## Review the two built archives
+
+```powershell
+python -m tools.extension_dev compare .runtime/my-note-1.zip .runtime/my-note-2.zip
+```
+
+Use `--json` for a machine-readable comparison. Both exact ZIPs are validated
+against the checkout's current package rules. The report identifies both hashes
+and data revisions, distinguishes changed service bytes from declaration changes,
+and names added, removed or edited permissions, operations and resource bindings.
+It does not print configuration values, schemas or service code. A different
+application or different bytes reusing one version are refused. The comparison
+does not decide upgrade order, source-code equivalence, migration correctness or
+installed approval. No app execution, Core connection or installation occurs.
 
 Failures exit nonzero with their exact stage; missing, empty, skipped or invalid
 test evidence is not a pass. Complete log/report evidence is prepared before
@@ -131,8 +265,11 @@ hardware acceptance.
 - `service/starter_app`: SDK-only service and forward migration `0001`.
 - `source/frontend/Notes.vue`: host operations and themed shared editing controls;
   English/Bulgarian messages follow the host's current presentation locale.
+- `source/frontend/client.generated.ts`: source-derived UI operation methods;
+  regenerate explicitly after declaration changes, never edit it by hand.
 - `tests`: note persistence/isolation/conflicts, permission removal and provider
-  loss, plus public-host UI behavior. `development.json` names these inputs.
+  loss, typed-client and public-host UI behavior, plus the previous-package data
+  fixture. `development.json` names these inputs.
 
 Use `init` for a separate identity, then update the service, UI and tests. Use only
 standard-library/public SDK/protocol runtime imports in this minimal profile.

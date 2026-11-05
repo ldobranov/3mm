@@ -2,8 +2,10 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { UiButton, UiField, UiForm, UiSurface } from '@3mm/ui/v1'
 import { ApplicationHostError, useApplicationHost, type ApplicationPayload } from '@3mm/application-ui/v1'
+import { createApplicationClient } from './client.generated'
 
 const host = useApplicationHost()
+const client = createApplicationClient(host)
 const labels = {
   en: { title: 'Starter note', intro: 'Application-owned data. The optional resource is observed, never operated.',
     note: 'Shared demonstration note', help: 'Up to 200 characters. Do not enter personal data in this example.',
@@ -44,13 +46,13 @@ async function reload() {
   busy.value = true; allowed.value = false; notice.value = ''; error.value = ''
   try {
     const info = await host.getInfo()
-    const value = await host.invoke('read_note', {})
+    const value = await client.read_note({})
     if (disposed) return
     note(value); uncertain.value = false
     allowed.value = info.operations.some(item => item.operation_id === 'save_note')
     // Optional resource failure is independent of application-owned data.
     try {
-      const observed = await host.invoke('observe_resource', {})
+      const observed = await client.observe_resource({})
       if (!disposed) resource.value = ['ready', 'access_required', 'unavailable'].includes(String(observed.state))
         ? observed.state as typeof resource.value : 'unknown'
     } catch { if (!disposed) resource.value = 'unknown' }
@@ -58,12 +60,12 @@ async function reload() {
   finally { if (!disposed) busy.value = false }
 }
 async function save() {
-  if (!canSave.value) return
+  if (!canSave.value || revision.value === null) return
   const payload = { text: text.value, revision: revision.value }
   const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('')
   busy.value = true; error.value = ''; notice.value = ''
   try {
-    const value = await host.invoke('save_note', payload, { idempotencyKey: id })
+    const value = await client.save_note(payload, { idempotencyKey: id })
     if (!disposed) { note(value); notice.value = t('saved') }
   } catch (failure) {
     if (!disposed) {

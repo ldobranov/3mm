@@ -1045,6 +1045,19 @@ reference packages и изолирана dev лаборатория. Нужен 
 Structure-only JSON Schema не замества semantic validation или право за
 изпълнение. Непознат required договор отказва activation с разбираема причина.
 
+**Реализиран authoring профил v1, 2026-11-04:** самостоятелно приложение
+Manifest v2 / public SDK 1.3 / Vue UI / собствен SQLite. Единният инструмент
+`tools.extension_dev` покрива `init → catalog → preview → generate-client → check`.
+Каталогът идва от текущите модели/валидатори; типизираният UI клиент няма свой
+транспорт, права или retry. `check` отказва остарял клиент и включва migration,
+denial/revoke/provider-fault, UI/type/compiler проверки преди нов ZIP/report/log.
+Изричният `--previous-archive` добавя стар пакет → fixture данни → нов пакет в
+отделни процеси, с проверки за domain данни/receipts, нови миграции, reopen и
+rollback при прекъсване. Без стар ZIP няма твърдение за проверено обновяване.
+Този затворен цикъл не инсталира и не одобрява код/ресурси. Native зависимости,
+scoped relational migration adapters, универсални templates за всяка capability
+и hostile-code isolation не се представят като поддържани от този профил.
+
 ## Задължителен опис на всеки договор
 
 За всяка избрана CAP възможност попълваме следното преди runtime реализация.

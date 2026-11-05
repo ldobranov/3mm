@@ -118,6 +118,39 @@ are `tools/tests/test_application_migrations.py` plus runner refusal/publication
 coverage. Current-plan prefix upgrades and reopen are not proof of compatibility
 with real older databases; application-specific migration fixtures remain needed.
 
+`python -m tools.extension_dev catalog [PROJECT]` is read-only local JSON
+inspection of current public model schemas, source identities, errors and limits;
+an optional project uses the real package validator without executing app code.
+Use `tools/tests/test_application_catalog.py` and `test_application_catalog_cli.py`
+plus affected CLI/scaffold consumers. A schema/catalog inspection is not executed
+project verification, installed authority or provider readiness. No main frontend
+build or live-device actions are needed for a catalog-only change.
+
+The current CAP21 completion adds `generate-client PROJECT [--replace]` and
+`check PROJECT --previous-archive OLD_ZIP --output NEW_ZIP`. Project configuration
+may declare `generated_client`, `type_tests` and standalone `upgrade_fixture`.
+The generated client must match current declarations before any executed checks;
+upgrade verification runs old/candidate exact wheels on fixture-seeded disposable
+data in separate bounded processes. No previous ZIP is an explicit `not_requested`,
+not historical-data acceptance. Check generator/upgrade/controller/scaffold/CLI
+tests together, then run the actual common workflow including a schema-changing
+previous-package example. The generator's separate real TypeScript/one-dispatch
+acceptance cases require `THREE_MM_CLIENT_TOOLCHAIN_ACCEPTANCE=1` and the existing
+frontend toolchain; missing tools fail that opt-in run. Ordinary Python tooling
+tests need no Node and must not pretend to have performed those acceptance cases.
+CI's existing frontend job also runs the starter UI/client tests and its dedicated
+strict type configuration using the already installed locked dependencies. Release
+runs both that example gate and the explicit real generated-client toolchain cases.
+Existing Core permission/revoke integration remains separate from project mocks.
+
+`python -m tools.extension_dev compare OLD_ZIP NEW_ZIP [--json]` is the local
+package-review step. It validates both exact ZIPs with current Core package rules
+and compares declarations without running code. `test_application_package_review.py`
+covers real package differences, same-version conflicts and CLI refusal/no API
+access. Neither static comparison nor unchanged declarations prove migration
+success or current approvals. No runtime suite or frontend build is needed for a
+change limited to this read-only reviewer and its CLI dispatch.
+
 1. Review the exact intended/staged diff; preserve unrelated/generated files.
 2. Reuse identifiable passed checks for unchanged content, dependencies and
    environment. Run only missing checks or those invalidated by a later edit.

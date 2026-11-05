@@ -47,7 +47,7 @@ def local_path(root, relative):
 def configuration(root):
     value = json.loads(local_path(root, 'development.json').read_text(encoding='utf-8-sig'))
     required = {'development_version', 'python_package', 'python_tests', 'ui_tests', 'scenarios'}
-    if (type(value) is not dict or not required <= set(value) or set(value) - required - {'preview'}
+    if (type(value) is not dict or not required <= set(value) or set(value) - required - {'preview', 'generated_client', 'upgrade_fixture', 'type_tests'}
             or type(value['development_version']) is not int or value['development_version'] != 1
             or not isinstance(value['python_package'], str) or not re.fullmatch('[a-z][a-z0-9_]{0,63}', value['python_package'])
             or type(value['python_tests']) is not list or not 1 <= len(value['python_tests']) <= 16
@@ -72,6 +72,26 @@ def configuration(root):
                 or not preview['host'].endswith('.ts')):
             raise ProjectCheckError('project', 'Preview needs an entrypoint ID and a local preview/*.ts host.')
         local_path(root, preview['host'])
+    if 'generated_client' in value:
+        generated = value['generated_client']
+        if (not isinstance(generated, str) or not generated.startswith('source/frontend/')
+                or not generated.endswith('.ts') or '\\' in generated or '..' in Path(generated).parts
+                or Path(generated).is_absolute()):
+            raise ProjectCheckError('project', 'generated_client must name a project-local source/frontend/*.ts file.')
+        # A newly declared client may not exist until explicit generation.
+        # check_project requires the actual file and its exact generated content.
+    if 'upgrade_fixture' in value:
+        fixture = value['upgrade_fixture']
+        if not isinstance(fixture, str) or not fixture.startswith('tests/') or not fixture.endswith('.py'):
+            raise ProjectCheckError('project', 'upgrade_fixture must name a local tests/*.py file.')
+        local_path(root, fixture)
+    if 'type_tests' in value:
+        if type(value['type_tests']) is not list or not 1 <= len(value['type_tests']) <= 16:
+            raise ProjectCheckError('project', 'type_tests must name one to sixteen local tests/*.ts files.')
+        for name in value['type_tests']:
+            if not isinstance(name, str) or not name.startswith('tests/') or not name.endswith('.ts'):
+                raise ProjectCheckError('project', 'Type-only checks must be local tests/*.ts files.')
+            local_path(root, name)
     return value
 
 
@@ -300,7 +320,7 @@ def publish_outputs(root, output, summary, blob):
     return summary
 
 
-def check_project(project, output, *, frontend=None):
+def check_project(project, output, *, frontend=None, previous_archive=None):
     """Check a frozen local source copy with existing tools. No installs or API calls."""
     from backend.services.module_packages import validate_module_package
     from backend.services.compiled_ui import compile_ui_package
@@ -362,10 +382,39 @@ def check_project(project, output, *, frontend=None):
                     'scope': 'package, model and cross-document rules; not installed authority'}
                 summary['review'] = declaration_review(validated)
                 summary['stages'].append('package_validation')
+                if 'generated_client' in config:
+                    phase = 'generated_client'
+                    from tools.application_client import render_client
+                    generated = source.get(config['generated_client'])
+                    expected = render_client(validated.application_extension).encode('utf-8')
+                    if generated != expected:
+                        raise ProjectCheckError('generated_client',
+                            'The declared generated client is missing or stale. Generate it explicitly before checking.')
+                    summary['generated_client'] = {'status': 'passed', 'path': config['generated_client'],
+                        'sha256': hashlib.sha256(expected).hexdigest()}
+                    summary['stages'].append('generated_client')
                 phase = 'migrations'
                 summary['migrations'] = run_packaged_migrations(blob, validated,
                     root=root, environment=environment, log=log)
                 summary['stages'].append('packaged_migrations')
+                summary['upgrade'] = {'status': 'not_requested',
+                    'scope': 'no previous package or real historical data was checked'}
+                if previous_archive is not None:
+                    phase = 'upgrade'
+                    if 'upgrade_fixture' not in config:
+                        raise ProjectCheckError('upgrade', 'Previous-package checks require an explicit tests/*.py upgrade_fixture.')
+                    from three_mm_protocol.diagnostic_snapshot import read_regular
+                    from backend.services.module_packages import MAX_PACKAGE_BYTES
+                    from tools.application_upgrade import run_packaged_upgrade
+                    previous_blob = read_regular(Path(previous_archive), MAX_PACKAGE_BYTES)
+                    previous_validated = validate_module_package(previous_blob)
+                    summary['previous_package'] = {'module_id': previous_validated.manifest.module_id,
+                        'version': previous_validated.manifest.version, 'sha256': previous_validated.sha256,
+                        'bytes': len(previous_blob)}
+                    summary['upgrade'] = run_packaged_upgrade(previous_blob, previous_validated, blob, validated,
+                        fixture=local_path(snapshot, config['upgrade_fixture']),
+                        root=root, environment=environment, log=log)
+                    summary['stages'].append('previous_package_upgrade')
                 phase = 'python'
                 run_check([sys.executable, '-m', 'pytest', '-q', '-p', 'no:cacheprovider', '--strict-markers',
                            '--rootdir='+str(snapshot),
@@ -398,6 +447,7 @@ def check_project(project, output, *, frontend=None):
                         '@3mm/ui/v1': [str(frontend/'src/extension-ui/v1.ts')],
                         '@3mm/application-ui/v1': [str(frontend/'src/extension-ui/application-v1.ts')]}},
                     'include': [str(snapshot/'source/frontend/**/*.vue'), str(snapshot/'source/frontend/**/*.ts'),
+                                *[str(snapshot/name) for name in config.get('type_tests', [])],
                                 *([str(snapshot/config['preview']['host'])] if 'preview' in config else [])]}), encoding='utf-8')
                 run_check([node, str(typescript), '--project', str(tsconfig)],
                     cwd=snapshot, environment=environment, stage='typecheck', log=log)
