@@ -172,11 +172,13 @@ def test_target_installer_writes_merged_policy_and_keeps_unrelated_state(tmp_pat
         f"frontend_cors_origins={shlex.quote(json.dumps(origins))}\n"
         "install_profile=full\nenvironment_backup_created=1\n"
         "frontend_origin=http://localhost\n"
+        "ai_master_key=synthetic-preflight-key\n"
         "log() { :; }\n"
         'mktemp() { command mktemp "$test_root/3mm.env.XXXXXX"; }\n'
+        # Exercise the whole staged environment, stopping before the live write.
         + section(
             'log "Updating the persistent service environment"',
-            "if [[ -s $ai_master_key_file ]]; then",
+            'install -o root -g 3mm -m 0640 "$environment_tmp" "$environment_file"',
         )
         + '\nfi\nprintf "%s" "$environment_tmp"\n'
     )
