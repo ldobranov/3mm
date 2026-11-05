@@ -255,7 +255,7 @@ class CoreReviewKeyStore:
     Directory is trusted Core configuration, NOT a request/package path. Normal
     deployment location: /var/lib/3mm/core/authority-review (not public uploads).
     Must run as the Core UID; root and application UIDs are not interchangeable.
-    The local admin CLI coordinates/audits explicit creation/rotation/recovery;
+    Core administrators explicitly coordinate and audit key changes;
     approval/apply/effect admission revalidate the current key under a lease.
     A key seal alone is not a grant or an OS/browser isolation proof.
     """
@@ -269,8 +269,11 @@ class CoreReviewKeyStore:
 
     def _binding(self):
         with _read_snapshot(self._engine) as db:
-            guard = read_authority_guard(db)
-            return ReviewKeyBinding(_core_identity(db), guard.generation)
+            return self._binding_in(db)
+
+    @staticmethod
+    def _binding_in(db):
+        return ReviewKeyBinding(_core_identity(db), read_authority_guard(db).generation)
 
     @contextmanager
     def _access(self, *, provision=False, shared=False):
@@ -342,6 +345,46 @@ class CoreReviewKeyStore:
         for operator-led quarantine, not automatic deletion/repair here.
         """
         return self._change(expected_key_id, recovery=True)
+
+    def local_recovery_status(self):
+        """Describe a same-installation stale key without exporting material."""
+        try:
+            with self._access(shared=True) as directory:
+                old = _read_record(directory).identity
+                binding = self._binding()
+                if old.binding == binding:
+                    return {'state': 'current'}
+                if old.binding.core_installation_id == binding.core_installation_id:
+                    return {'state': 'recovery_required', 'expected_key_id': old.key_id,
+                            'expected_generation': binding.recovery_generation}
+        except (OSError, ValueError, TypeError, SQLAlchemyError, RuntimeError):
+            pass
+        return {'state': 'unavailable'}
+
+    @contextmanager
+    def local_recovery_writer(self):
+        """Keep the key lease outside the caller's guarded admin transaction."""
+        with self._access() as directory:
+            active = True
+
+            @_key_errors()
+            def replace(db, *, expected_key_id, expected_generation):
+                if not active or db.get_bind().engine is not self._engine or not db.in_transaction():
+                    raise AuthorityReviewKeyError()
+                binding = self._binding_in(db)
+                old = _read_record(directory).identity
+                if (old.key_id != expected_key_id or binding.recovery_generation != expected_generation
+                        or old.binding.core_installation_id != binding.core_installation_id
+                        or old.binding == binding):
+                    raise AuthorityReviewKeyError()
+                record = _new_record(binding)
+                _write_record(directory, record)
+                return record.identity
+
+            try:
+                yield replace
+            finally:
+                active = False
 
     @_key_errors()
     def identity(self) -> ReviewKeyIdentity:

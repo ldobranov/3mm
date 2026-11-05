@@ -16,7 +16,7 @@ import time
 import urllib.request
 
 import pytest
-from sqlalchemy import create_engine,update,select
+from sqlalchemy import create_engine,event,update,select
 from sqlalchemy.orm import sessionmaker
 
 from backend.tests.test_application_identity_read import (
@@ -48,6 +48,11 @@ def core_digest():
 
 def _serve_core(state,base,runtime_uid,core_uid,core_gid,pipe):
     try:
+        # The test forks a parent with a populated SQLite pool. The installed
+        # Core starts fresh; sharing parent DBAPI handles here can leave the
+        # authority worker using inherited SQLite state. Never close the
+        # parent's handles from the child, including on test Core restart.
+        state.engine.dispose(close=False)
         if os.geteuid()==0:
             os.setgroups([runtime_uid]);os.setgid(core_gid);os.setuid(core_uid)
         import backend.main as main
@@ -225,6 +230,15 @@ def core_stack(state,monkeypatch):
         with state.engine.connect() as connection,sqlite3.connect(database) as destination:
             connection.connection.driver_connection.backup(destination)
         state.engine=create_engine(f'sqlite:///{database}',connect_args={'check_same_thread':False})
+        if getattr(state, 'verify_fork_db_pool', False):
+            @event.listens_for(state.engine, 'connect')
+            def remember_owner(_connection, record):
+                record.info['test_owner_pid'] = os.getpid()
+
+            @event.listens_for(state.engine, 'checkout')
+            def verify_owner(_connection, record, _proxy):
+                assert record.info['test_owner_pid'] == os.getpid(), 'Test Core inherited a parent database handle'
+
         state.root=uploads;state.key_directory=keys
         state.manager.engine=state.engine;state.manager.uploads_root=uploads
         state.manager.keys._engine=state.engine;state.manager.keys._directory=keys
@@ -239,10 +253,28 @@ def core_stack(state,monkeypatch):
             for path in [core,*core.rglob('*')]:os.chown(path,core_uid,core_gid)
             os.chown(base/'authority',core_uid,runtime_uid)
             os.chown(base/'runtime',runtime_uid,core_gid);(base/'runtime').chmod(0o2750)
-        parent,child=multiprocessing.get_context('fork').Pipe()
-        process=multiprocessing.get_context('fork').Process(target=_serve_core,args=(state,base,runtime_uid,core_uid,core_gid,child))
-        process.start();child.close()
-        assert parent.poll(20),'Core did not start';ready=parent.recv();assert 'error' not in ready,ready
+        def start_core():
+            context = multiprocessing.get_context('fork')
+            connection, child = context.Pipe()
+            worker = context.Process(target=_serve_core, args=(state, base, runtime_uid, core_uid, core_gid, child))
+            try:
+                worker.start()
+                child.close()
+                assert connection.poll(20), 'Core did not start'
+                started = connection.recv()
+                assert 'error' not in started, started
+                return worker, connection, started
+            except BaseException:
+                connection.close()
+                if worker.pid is not None:
+                    if worker.is_alive():
+                        worker.kill()
+                    worker.join(timeout=3)
+                raise
+            finally:
+                child.close()
+
+        process, parent, ready = start_core()
         store=RuntimeStore(base/'components',base/'updates')
         control=RuntimeProcesses(store,base,core_uid,runtime_uid)
         def command(action):
@@ -271,11 +303,7 @@ def core_stack(state,monkeypatch):
             nonlocal process,parent,ready
             if process.is_alive():process.kill();process.join(timeout=3)
             parent.close()
-            parent,child=multiprocessing.get_context('fork').Pipe()
-            process=multiprocessing.get_context('fork').Process(target=_serve_core,
-                args=(state,base,runtime_uid,core_uid,core_gid,child))
-            process.start();child.close()
-            assert parent.poll(20);ready=parent.recv();assert 'error' not in ready,ready
+            process, parent, ready = start_core()
             s.core=process
             return ready
         s.restart_core=restart_core

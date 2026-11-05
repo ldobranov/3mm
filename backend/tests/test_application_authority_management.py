@@ -446,6 +446,97 @@ def test_real_offline_restore_fences_old_grants_but_allows_fresh_local_review(in
         assert submit_command(db, db.get(Installation, 1), command())['status'] == 'queued'
 
 
+def test_administrator_can_recover_reviews_after_offline_rollback_without_adopting_access(installed, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from pathlib import Path
+    from backend.db.audit_log import AuditLog
+    from backend.db.module import ApplicationPermissionGrant
+    from backend.routes.application_authority import router
+    from backend.routes.application_extensions import router as lifecycle
+    from backend.utils.db_utils import get_db
+    from deployment.authority_recovery import fence_recovered_authority
+    from three_mm_runtime.update_helper_client import UpdateHelperClient
+
+    s = installed
+    ApplicationPermissionGrant.__table__.create(s.engine, checkfirst=True)
+    activate_grant(s)
+    before = s.keys.identity()
+    with s.engine.begin() as db:
+        db.execute(update(Installation).values(enabled=False, status='disabled'))
+    fence_recovered_authority(Path(s.engine.url.database), reason='backup_restore')
+    app = FastAPI()
+    app.include_router(router)
+    app.include_router(lifecycle)
+
+    def database():
+        with Session(s.engine) as db:
+            yield db
+
+    def no_start(*_args, **_kwargs):
+        pytest.fail('Recovery must not start the application')
+
+    monkeypatch.setattr(UpdateHelperClient, 'activate_application_extension', no_start)
+    app.dependency_overrides[get_db] = database
+    headers = {'Authorization': 'Bearer ' + s.token}
+    non_admin = {'Authorization': 'Bearer ' + s.user_token}
+    sessionless = {'Authorization': 'Bearer ' + create_access_token('1', {'token_version': 0})}
+    base = '/api/v1/application-extensions'
+    recover = base + '/authority/review-key-recovery'
+    consent = base + '/' + s.validated.manifest.module_id + '/authority/consent/preview'
+    activate = base + '/packages/' + s.validated.sha256 + '/activate'
+
+    with TestClient(app) as client:
+        assert client.get(recover).status_code == 401
+        assert client.get(recover, headers=non_admin).status_code == 403
+        response = client.get(recover, headers=headers)
+        assert response.headers['cache-control'] == 'no-store'
+        ticket = response.json()
+        assert set(ticket) == {'state', 'expected_key_id', 'expected_generation'}
+        assert ticket['state'] == 'recovery_required' and ticket['expected_key_id'] == before.key_id
+        assert client.post(consent, json={'request_id': identity()}, headers=headers).json() == {
+            'detail': {'code': 'review_key_recovery_required'}}
+        assert client.post(activate, json={'configuration': {}}, headers=headers).json() == {
+            'detail': {'code': 'review_key_recovery_required'}}
+
+        payload = {k: v for k, v in ticket.items() if k != 'state'}
+        assert client.post(recover, json=payload, headers=headers).status_code == 422
+        assert client.post(recover, json={**payload, 'confirm_recovery_without_permissions': 1}, headers=headers).status_code == 422
+        payload['confirm_recovery_without_permissions'] = True
+        assert client.post(recover, json=payload, headers=non_admin).status_code == 403
+        assert client.post(recover, json=payload, headers=sessionless).status_code == 403
+        assert client.post(recover, json={**payload, 'expected_key_id': 'review_' + identity()}, headers=headers).status_code == 409
+        # A second rollback after preview invalidates the old approval of recovery.
+        fence_recovered_authority(Path(s.engine.url.database), reason='backup_restore')
+        assert client.post(recover, json=payload, headers=headers).status_code == 409
+        next_ticket = client.get(recover, headers=headers).json()
+        assert next_ticket['expected_key_id'] == before.key_id
+        payload['expected_generation'] = next_ticket['expected_generation']
+        assert client.post(recover, json=payload, headers=headers).json() == {
+            'state': 'current', 'permission_approval': 'not_evaluated'}
+        assert client.post(recover, json=payload, headers=headers).status_code == 409
+        assert client.get(recover, headers=headers).json() == {'state': 'current'}
+        assert client.post(activate, json={'configuration': {}}, headers=headers).status_code == 409
+        assert not s.manager.inspect(1)['grant_effective']
+        response = client.post(consent, json={'request_id': identity()}, headers=headers)
+        assert response.status_code == 200, response.text
+        preview = response.json()
+        assert preview['access_saved'] is False
+        assert s.keys.identity().key_id != before.key_id
+        with Session(s.engine) as db:
+            assert not db.get(Installation, 1).enabled
+            assert db.get(Grant, 1).key_id == before.key_id
+            audit = db.scalars(select(AuditLog).where(AuditLog.action == 'APPLICATION_AUTHORITY_KEY')).one()
+            assert audit.user_id == 1 and audit.changes['operation'] == 'recover-key-web'
+
+        response = client.post(consent.replace('/preview', '/allow'), headers=headers, json={
+            'request_id': identity(), 'preview_id': preview['preview_id'],
+            'expected_revision': preview['revision'], 'fingerprint': preview['fingerprint'],
+            'scopes': [], 'user_permissions': [], 'accept_native_code': True})
+        assert response.status_code == 200, response.text
+        assert response.json()['saved'] is True and response.json()['installation_enabled'] is False
+
+
 def test_actual_lifecycle_gate_reenables_same_artifact_with_saved_consent(installed, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient

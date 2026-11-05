@@ -264,16 +264,22 @@ def test_rotation_cas_and_recovery_never_restore_old_key_identity(installed):
 
 @posix_only
 def test_foreign_core_and_missing_material_require_explicit_new_local_key(installed):
+    from sqlalchemy.orm import Session
     engine, store, directory = installed
     first = store.provision()
     with engine.begin() as db:
         db.execute(update(CoreInstallationIdentity).values(installation_id="inst_" + "8" * 32))
+    assert store.local_recovery_status() == {'state': 'unavailable'}
+    with store.local_recovery_writer() as replace, Session(engine) as db, db.begin():
+        with pytest.raises(keys.AuthorityReviewKeyError):
+            replace(db, expected_key_id=first.key_id, expected_generation=GENERATION)
     with pytest.raises(keys.AuthorityReviewKeyError):
         store.identity()
     recovered = store.recover(expected_key_id=first.key_id)
     assert recovered.binding.core_installation_id != first.binding.core_installation_id
     assert recovered.key_id != first.key_id
     (directory / keys.KEY_NAME).unlink()
+    assert store.local_recovery_status() == {'state': 'unavailable'}
     with pytest.raises(keys.AuthorityReviewKeyError):
         store.identity()
     assert store.provision().key_id != recovered.key_id

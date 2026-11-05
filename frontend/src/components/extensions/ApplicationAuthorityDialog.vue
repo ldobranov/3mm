@@ -6,16 +6,18 @@ import http from '@/utils/dynamic-http'
 import { useAuthorityLabels, type AuthorityLabel } from './authority-labels'
 import { authorityRequestId, readAuthorityStatus, type AuthorityStatus } from './authority-management'
 import { readConsentPreview, readConsentResult, type ApplicationConsentPreview } from './application-consent'
+import { useRecoveryLabels } from './recovery-labels'
 
 const props = defineProps<{ moduleId: string; name: string }>()
-const emit = defineEmits<{ close: []; changed: [] }>()
+const emit = defineEmits<{ close: []; changed: []; reviewRecoveryRequired: [] }>()
 const label = useAuthorityLabels()
+const recoveryLabel = useRecoveryLabels()
 const base = `/api/v1/application-extensions/${encodeURIComponent(props.moduleId)}/authority`
 const preview = ref<ApplicationConsentPreview | null>(null)
 const status = ref<AuthorityStatus | null>(null)
 const selected = ref<string[]>([]), selectedUser = ref<string[]>([])
 const busy = ref(false), confirmRevoke = ref(false)
-const error = ref<AuthorityLabel | null>(null), notice = ref<AuthorityLabel | null>(null)
+const error = ref<AuthorityLabel | 'keyRecoveryRequired' | null>(null), notice = ref<AuthorityLabel | null>(null)
 const now = ref(Date.now())
 let deadline = 0, generation = 0
 const timer = setInterval(() => { now.value = Date.now() }, 1000)
@@ -36,9 +38,13 @@ const kinds = ['commands', 'connectors', 'events', 'publications', 'private_file
 const kindLabels = { commands: 'commands', connectors: 'connectors', events: 'events', publications: 'publications',
   private_files: 'privateFiles', relational: 'relational', checkpoints: 'checkpoints', identities: 'identities',
   status_projections: 'statusProjections', peer_reads: 'peerReads', sessions: 'sessions', tasks: 'tasks' } as const
-function failure(cause: unknown, mutation = false): AuthorityLabel {
+function failure(cause: unknown, mutation = false): AuthorityLabel | 'keyRecoveryRequired' {
   const response = (cause as { response?: { status?: number; data?: { detail?: { code?: string } } } })?.response
   if (response?.status === 401 || response?.status === 403) return 'actor'
+  if (response?.status === 409 && response.data?.detail?.code === 'review_key_recovery_required') {
+    emit('reviewRecoveryRequired')
+    return 'keyRecoveryRequired'
+  }
   if (mutation && !response) return 'consentUncertain'
   return response?.status === 409 ? 'consentStale' : 'consentUnavailable'
 }
@@ -146,7 +152,7 @@ onMounted(refresh)
     <div class="authority-body ui-stack" :aria-busy="busy">
       <div><h3>{{ name }}</h3><p class="ui-help">{{ label('consentHelp') }}</p></div>
       <p class="authority-native">{{ label('consentNative') }}</p>
-      <p v-if="error" class="authority-error" role="alert">{{ label(error) }}</p>
+      <p v-if="error" class="authority-error" role="alert">{{ error === 'keyRecoveryRequired' ? recoveryLabel(error) : label(error) }}</p>
       <p v-if="notice" class="authority-notice" role="status">{{ label(notice) }}</p>
       <p v-if="busy" class="ui-help" role="status">{{ label('consentLoading') }}</p>
       <template v-if="preview">

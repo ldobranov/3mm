@@ -197,8 +197,14 @@ review/grant. Do not restore an old key to force old grants valid.
 
 Restore/rollback/reset fences retain evidence while invalidating current authority.
 A copied private key does not bypass a fresh recovery generation. After recovery,
-explicit local `recover-key`, fresh native attestation and permission review/apply
+explicit review-key recovery, fresh native attestation and permission review/apply
 are needed. Neither reapproval nor recovery releases uncertain jobs or replays work.
+For a readable stale key bound to the same Core installation, an administrator can
+use **Extensions → Restore application access reviews**. The reviewed key ID and
+recovery generation must still match at confirmation. This replaces only the Core
+review key; application data, package state and grants are not rewritten. Review
+each affected application's access before separately activating it. Missing,
+foreign or invalid key material cannot be overwritten through this recovery action.
 Backup/export retains authority tables as evidence; this report does not claim a
 complete portable backup/UI restore rehearsal or interrupted-stage recovery.
 

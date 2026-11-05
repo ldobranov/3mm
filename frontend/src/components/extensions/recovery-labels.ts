@@ -13,6 +13,14 @@ const en = {
   inactive: 'This stage does not need lifecycle recovery. Close and use the normal application controls.',
   notice: 'An unfinished lifecycle needs recovery. Recover to a verified stopped state, or uninstall while preserving data.',
   catalog: 'Some package details are unavailable. Installed applications can still be recovered.',
+  keyRecoveryTitle: 'Restore application access reviews',
+  keyRecoveryHelp: 'Core was recovered and its previous review key is no longer current. Create a fresh key so applications can be reviewed again.',
+  keyRecoveryConfirm: 'I understand that old approvals will not be restored and no application will be started.',
+  keyRecoveryAction: 'Restore review access',
+  keyRecoveryReady: 'Reviews are available again. Review each affected application’s access before activating it.',
+  keyRecoveryUnavailable: 'Recovery is not currently available. Refresh the status or check Core recovery before continuing.',
+  keyRecoveryUnconfirmed: 'Recovery was not confirmed. Refresh the status before taking another action.',
+  keyRecoveryRequired: 'Core access reviews need recovery. Close this dialog and use “Restore application access reviews” on Extensions.',
 }
 const bg: typeof en = {
   action: 'Възстанови приложението', title: 'Възстановяване на приложение', close: 'Затвори', refresh: 'Обнови състоянието',
@@ -27,6 +35,14 @@ const bg: typeof en = {
   inactive: 'Този етап не изисква възстановяване. Затвори и използвай обичайните действия за приложението.',
   notice: 'Незавършената операция изисква възстановяване. Възстанови до проверено спряно състояние или деинсталирай със запазване на данните.',
   catalog: 'Част от данните за пакетите не са достъпни. Инсталираните приложения могат да бъдат възстановени.',
+  keyRecoveryTitle: 'Възстановяване на прегледите за достъп',
+  keyRecoveryHelp: 'Core е възстановен и предишният ключ за прегледи вече не е актуален. Създай нов ключ, за да могат приложенията да бъдат прегледани отново.',
+  keyRecoveryConfirm: 'Разбирам, че старите одобрения няма да се върнат и няма да се стартира приложение.',
+  keyRecoveryAction: 'Възстанови прегледите',
+  keyRecoveryReady: 'Прегледите отново са достъпни. Прегледай достъпа на всяко засегнато приложение преди активиране.',
+  keyRecoveryUnavailable: 'Възстановяването не е достъпно в момента. Обнови състоянието или провери възстановяването на Core.',
+  keyRecoveryUnconfirmed: 'Възстановяването не е потвърдено. Обнови състоянието, преди да продължиш.',
+  keyRecoveryRequired: 'Прегледите за достъп в Core трябва да бъдат възстановени. Затвори прозореца и използвай „Възстановяване на прегледите за достъп“ в „Разширения“.',
 }
 export const interruptedLifecycleStatuses = new Set(['activating', 'disabling', 'uninstalling', 'recovering', 'recovery_required'])
 export function useRecoveryLabels() {

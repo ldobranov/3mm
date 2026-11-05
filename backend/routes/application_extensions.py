@@ -204,11 +204,14 @@ def _activation_authority(db, expected, sha256, configuration, guard):
         return
     from backend.services.application_authority_management import configured_manager, AuthorityManagementError
     from backend.services.application_authority_keys import AuthorityReviewKeyError
+    manager = configured_manager(db.get_bind().engine)
     try:
-        with configured_manager(db.get_bind().engine).native_activation(
+        with manager.native_activation(
                 expected.installation_id, sha256, configuration, guard) as key:
             yield key
     except (AuthorityManagementError, AuthorityReviewKeyError, ValueError):
+        if manager.keys.local_recovery_status()['state'] == 'recovery_required':
+            raise HTTPException(409, {'code': 'review_key_recovery_required'}) from None
         raise HTTPException(409, 'Application access for this exact package is required. Stop the application, prepare the selected version and approve its access before activation.') from None
 
 

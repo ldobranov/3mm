@@ -3,7 +3,7 @@
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -69,6 +69,20 @@ class RevokeRequest(BaseModel):
     expected_revision: Identifier
 
 
+class LocalReviewKeyRecoveryRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    expected_key_id: Annotated[str, Field(pattern=r'^review_[0-9a-f]{32}$')]
+    expected_generation: Identifier
+    confirm_recovery_without_permissions: Literal[True]
+
+    @field_validator('confirm_recovery_without_permissions', mode='before')
+    @classmethod
+    def require_explicit_confirmation(cls, value):
+        if value is not True:
+            raise ValueError('Explicit recovery confirmation is required')
+        return value
+
+
 class CommandRebindPreviewRequest(ConsentPreviewRequest):
     binding_id: Annotated[str, Field(pattern=r'^[a-z][a-z0-9_]{0,95}$')]
     device_id: Annotated[str, Field(pattern=r'^dev_[0-9a-f]{32}$')]
@@ -109,6 +123,19 @@ def _call(db, response, operation):
         raise HTTPException(409, {'code': 'authority_unavailable'}) from None
 
 
+@router.get('/authority/review-key-recovery', dependencies=[Depends(require_admin)])
+def review_key_recovery_status(response: Response, db: Session = Depends(get_db)):
+    return _call(db, response, lambda manager: manager.keys.local_recovery_status())
+
+
+@router.post('/authority/review-key-recovery', dependencies=[Depends(require_admin)])
+def recover_review_key(request: LocalReviewKeyRecoveryRequest, response: Response,
+        authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
+    token = _token(authorization)
+    return _call(db, response, lambda manager: manager.recover_local_review_key(actor_token=token,
+        expected_key_id=request.expected_key_id, expected_generation=request.expected_generation))
+
+
 @router.get('/{module_id}/authority', dependencies=[Depends(require_admin)])
 def authority_status(module_id: str, response: Response, db: Session = Depends(get_db)):
     identifier = _target(db, module_id)
@@ -145,8 +172,16 @@ def preview_package_consent(module_id: str, request: ConsentPreviewRequest, resp
         authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
     from backend.services.application_consent import preview
     identifier, token = _target(db, module_id), _token(authorization)
-    return _call(db, response, lambda manager: preview(manager, identifier,
-        actor_token=token, **request.model_dump()))
+
+    def prepare(manager):
+        try:
+            return preview(manager, identifier, actor_token=token, **request.model_dump())
+        except AuthorityReviewKeyError:
+            if manager.keys.local_recovery_status()['state'] == 'recovery_required':
+                raise AuthorityManagementError('review_key_recovery_required') from None
+            raise
+
+    return _call(db, response, prepare)
 
 
 @router.post('/{module_id}/authority/consent/allow', dependencies=[Depends(require_admin)])

@@ -227,6 +227,20 @@ class _UiTrustSnapshot:
 
 
 class ApplicationAuthorityManager:
+    def recover_local_review_key(self, *, actor_token, expected_key_id, expected_generation):
+        """Recover review infrastructure only; do not repair or adopt any old seal."""
+        try:
+            with self.keys.local_recovery_writer() as replace, Session(self.engine) as db, authority_transaction(db) as mutation:
+                actor = _actor(db, actor_token)
+                key = replace(db, expected_key_id=expected_key_id, expected_generation=expected_generation)
+                db.add(AuditLog(user_id=actor[0], action='APPLICATION_AUTHORITY_KEY',
+                    entity_type='core_authority', changes={'key_id': key.key_id,
+                        'operation': 'recover-key-web', 'permission_approval': 'not_evaluated'}))
+                mutation.advance_guard_revision()
+        except PolicyReviewStoreError:
+            raise AuthorityManagementError('actor_unavailable') from None
+        return {'state': 'current', 'permission_approval': 'not_evaluated'}
+
     def __init__(self, engine, *, uploads_root, core_version, review_key_directory, key_lock_wait_seconds=0):
         self.engine, self.uploads_root, self.core_version = engine, Path(uploads_root), core_version
         self.keys = CoreReviewKeyStore(engine, Path(review_key_directory), lock_wait_seconds=key_lock_wait_seconds)

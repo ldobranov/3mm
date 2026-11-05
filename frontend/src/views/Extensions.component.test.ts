@@ -138,6 +138,32 @@ describe('Extensions management workflow', () => {
       wrapper.get('agent-modules-inventory-stub').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  it('offers explicit review recovery independently of the app list, with read-only recovery after a lost reply', async () => {
+    const base = '/api/v1/application-extensions/authority/review-key-recovery'
+    const ticket = { expected_key_id: 'review_' + 'a'.repeat(32), expected_generation: 'b'.repeat(32) }
+    const otherGet = http.get.getMockImplementation()!
+    let recovered = false
+    http.get.mockImplementation((url: string) => url === base ? Promise.resolve({ data: recovered
+      ? { state: 'current' } : { state: 'recovery_required', ...ticket } }) : otherGet(url))
+    http.post.mockImplementationOnce(async () => { recovered = true; throw new Error('lost reply') })
+
+    const wrapper = await mountView()
+    const recovery = wrapper.get('section[aria-labelledby="review-recovery-title"]')
+    expect(wrapper.text()).toContain('Clock')
+    expect(recovery.get('button').attributes()).toHaveProperty('disabled')
+    expect(http.post).not.toHaveBeenCalled()
+    await recovery.get('input[type="checkbox"]').setValue(true)
+    await recovery.get('button').trigger('click')
+    await flushPromises()
+    expect(recovery.text()).toContain('Recovery was not confirmed')
+    expect(http.post).toHaveBeenCalledExactlyOnceWith(base,
+      { ...ticket, confirm_recovery_without_permissions: true }, { timeout: 12000 })
+    await recovery.get('button').trigger('click')
+    await flushPromises()
+    expect(recovery.text()).toContain('Reviews are available again')
+    expect(http.post).toHaveBeenCalledTimes(1)
+  })
+
   it.each([['admin', true], ['user', false]])('shows settings only for declared connector packages and current admin UI (%s)', async (role, visible) => {
     localStorage.setItem('role', role)
     http.get.mockImplementation((url: string) => Promise.resolve({ data:

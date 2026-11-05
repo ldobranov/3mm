@@ -7,6 +7,7 @@
 
     </div>
 
+    <ApplicationReviewRecovery v-if="isAdmin" ref="reviewRecovery" />
     <ApplicationKioskDialog v-if="kioskTarget" :module-id="kioskTarget.id.replace('application:', '')" :name="kioskTarget.name"
       :active="kioskTarget.is_enabled && kioskTarget.status === 'active'" @close="kioskTarget = null" />
     <!-- Upload Section -->
@@ -209,7 +210,7 @@
 
     <ApplicationAuthorityDialog v-if="isAdmin && authorityTarget" :key="authorityTarget.moduleId"
       :module-id="authorityTarget.moduleId" :name="authorityTarget.name"
-      @close="authorityTarget = null" @changed="loadExtensions" />
+      @close="authorityTarget = null" @changed="loadExtensions" @review-recovery-required="reviewRecovery?.refresh()" />
     <ApplicationRecoveryDialog v-if="isAdmin && recoveryTarget" :key="recoveryTarget.id"
       :module-id="recoveryTarget.id.replace('application:', '')" :name="recoveryTarget.name"
       @close="recoveryTarget = null" @recovered="applicationRecovered" />
@@ -343,6 +344,7 @@ import UiButton from '@/components/ui/UiButton.vue';
 import UiDialog from '@/components/ui/UiDialog.vue';
 import PackageInspection from '@/components/extensions/PackageInspection.vue';
 import ApplicationAuthorityDialog from '@/components/extensions/ApplicationAuthorityDialog.vue';
+import ApplicationReviewRecovery from '@/components/extensions/ApplicationReviewRecovery.vue';
 import ApplicationCommandResourcesDialog from '@/components/extensions/ApplicationCommandResourcesDialog.vue';
 import ApplicationKioskDialog from '@/components/extensions/ApplicationKioskDialog.vue';
 import { useKioskLabels } from '@/utils/kiosk-labels';
@@ -359,6 +361,7 @@ const router = useRouter();
 const label = useUiLabels();
 const authorityLabel = useAuthorityLabels();
 const authorityTarget = ref<{ moduleId: string; name: string } | null>(null);
+const reviewRecovery = ref<InstanceType<typeof ApplicationReviewRecovery> | null>(null);
 const commandResourceLabel = useCommandResourceLabels();
 const commandResourceTarget = ref<{ moduleId: string; name: string; packageSha: string } | null>(null);
 const connectorSettingsTarget = ref<{ name: string; packageSha: string } | null>(null);
@@ -997,8 +1000,14 @@ const activateVersion = async (extension: Extension) => {
   }
 };
 
-const errorMessage = (error: any, fallback: string): string =>
-  error?.response?.data?.detail || error?.response?.data?.error || fallback;
+const errorMessage = (error: any, fallback: string): string => {
+  const detail = error?.response?.data?.detail;
+  if (detail?.code === 'review_key_recovery_required') {
+    void reviewRecovery.value?.refresh();
+    return recoveryLabel('keyRecoveryRequired');
+  }
+  return typeof detail === 'string' ? detail : error?.response?.data?.error || fallback;
+};
 
 const confirmDeleteExtension = async () => {
   if (!extensionToDelete.value) return;

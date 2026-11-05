@@ -82,6 +82,7 @@ def event_core(event_granted,monkeypatch,request):
             parent_claim=threading.Lock()
             parent_state.enter_context(parent_claim)
             monkeypatch.setattr(broker,'_claim_lock',parent_claim)
+            state.verify_fork_db_pool = True
         with core_stack(state,monkeypatch) as s:yield s
 
 
@@ -161,7 +162,7 @@ def test_bad_or_blocked_handler_is_bounded_and_core_stays_administrable(event_st
 
 
 @pytest.mark.parametrize('event_core',['locked_parent_claim'],indirect=True)
-def test_forked_core_has_an_independent_event_claim_lock(event_stack):
+def test_forked_core_has_an_independent_event_claim_lock_and_pool(event_stack):
     from backend.services import application_events as broker
     s=event_stack;before=s.command('fingerprint')
     assert broker._claim_lock.locked()
