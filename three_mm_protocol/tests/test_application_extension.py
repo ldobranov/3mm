@@ -9,6 +9,7 @@ from three_mm_protocol import (
     public_http_request_schema_v1,
     public_http_response_schema_v1,
 )
+from three_mm_protocol.public_webhooks import webhook_delivery_input_schema, webhook_delivery_result_schema
 
 
 def definition(**changes):
@@ -464,3 +465,45 @@ def test_administration_actions_are_closed_unique_and_administrator_only(actions
     with pytest.raises(ValueError):
         ApplicationRouteV1(route_id='manage',entrypoint_id='manage',audience=audience,
             administration_actions=actions,required_permissions=('manage',))
+
+
+def webhook_definition():
+    value = definition(routes=[], permissions=[], jobs=[], event_subscriptions=[], connectors=[])
+    value["service"]["sdk_version"] = "1.3"
+    value["storage"] = {key: value["storage"][key] for key in ("schema_revision", "migration_entrypoint")}
+    value["operations"] = [value["operations"][0], dict(operation_id="receive_event", kind="command",
+        audiences=["internal"], idempotency="required", audit="redacted",
+        input_schema=webhook_delivery_input_schema(), output_schema=webhook_delivery_result_schema())]
+    value["public_webhook"] = dict(contract_version=1, webhook_id="receive", path="/webhooks/demo",
+                                  signature_profile="hmac_sha256_v1", handler_operation_id="receive_event")
+    return value
+
+
+def test_webhook_declaration_is_optional_and_has_an_exact_contract():
+    value = webhook_definition()
+    assert ApplicationExtensionV1.model_validate(value).model_dump(mode="json")["public_webhook"] == value["public_webhook"]
+    del value["public_webhook"]
+    assert "public_webhook" not in ApplicationExtensionV1.model_validate(value).model_dump(mode="json")
+
+
+@pytest.mark.parametrize("change", [
+    {"contract_version": True}, {"signature_profile": "none"}, {"path": "/api/webhooks"},
+    {"path": "/webhooks/{tenant}"}, {"path": "/webhooks//demo"}, {"path": "/webhooks/%64emo"},
+    {"handler_operation_id": "health"}, {"handler_operation_id": "missing"},
+])
+def test_invalid_webhook_declarations_are_rejected(change):
+    value = webhook_definition()
+    value["public_webhook"].update(change)
+    with pytest.raises(ValidationError):
+        ApplicationExtensionV1.model_validate(value)
+
+
+@pytest.mark.parametrize("change", [
+    {"audiences": ["public"]}, {"audit": "metadata"},
+    {"input_schema": {"type": "object", "additionalProperties": False, "properties": {}}},
+])
+def test_webhook_handler_is_private_redacted_and_closed_schema(change):
+    value = webhook_definition()
+    value["operations"][1].update(change)
+    with pytest.raises(ValidationError, match="exact dedicated"):
+        ApplicationExtensionV1.model_validate(value)

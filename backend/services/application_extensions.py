@@ -150,6 +150,9 @@ def prepare_application_invocation(
     if operation.kind == "job":
         raise ApplicationGatewayError("Scheduled application jobs are retired",
                                       phase=DispatchPhase.NOT_DISPATCHED)
+    if definition.public_webhook is not None and operation_id == definition.public_webhook.handler_operation_id:
+        raise ApplicationGatewayError("Webhook command requires dedicated delivery",
+                                      phase=DispatchPhase.NOT_DISPATCHED)
     form_route = next((route for route in definition.public_http_routes if route.form_operation_id is not None
                        and operation_id in (route.handler_operation_id, route.form_operation_id)), None)
     is_form = form_route is not None and operation_id == form_route.form_operation_id

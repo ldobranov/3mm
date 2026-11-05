@@ -105,7 +105,7 @@ class ApplicationDispatchTests(unittest.TestCase):
             input_schema={}, output_schema={'properties': {'done': {'type': 'boolean'}}, 'required': ['done']}, timeout_seconds=0.1)
         storage = ApplicationStorageV1(schema_revision='0001', migration_entrypoint='fixture:migrations')
         package = SimpleNamespace(compiled_ui=None, application_extension=SimpleNamespace(
-            operations=[operation], storage=storage, public_http_routes=[]))
+            operations=[operation], storage=storage, public_http_routes=[], public_webhook=None))
         with patch.object(gateway, 'load_application_package', return_value=package):
             return gateway.invoke_application(app, object(), SimpleNamespace(key_root=self.root), 'job', {},
                 {'idempotency_key': 'stable'}, required_audience='internal', before_dispatch=before_dispatch)

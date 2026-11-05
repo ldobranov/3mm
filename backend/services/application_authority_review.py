@@ -183,6 +183,8 @@ def _declarations(
         scope["methods"] = sorted(route.methods)
         scope["content_types"] = sorted(route.content_types)
         scopes[f"public_http:{route.route_id}"] = scope
+    if app.public_webhook is not None:
+        scopes[f"public_webhook:{app.public_webhook.webhook_id}"] = app.public_webhook.model_dump(mode="json")
 
     for command in app.command_bindings:
         key = f"command:{command.binding_id}"

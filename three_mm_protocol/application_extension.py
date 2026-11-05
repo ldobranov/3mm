@@ -441,6 +441,21 @@ class ApplicationPublicHttpRouteV1(StrictApplicationModel):
         return self
 
 
+class ApplicationPublicWebhookV1(StrictApplicationModel):
+    contract_version: Literal[1]
+    webhook_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    path: str = Field(max_length=160, pattern=r"^/webhooks/[a-z0-9_-]+(?:/[a-z0-9_-]+)*$")
+    signature_profile: Literal["hmac_sha256_v1"]
+    handler_operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
+
+    @field_validator("contract_version", mode="before")
+    @classmethod
+    def integer_contract_version(cls, value):
+        if type(value) is not int:
+            raise ValueError("Webhook contract version must be an integer")
+        return value
+
+
 class ApplicationEventSubscriptionV1(StrictApplicationModel):
     subscription_id: str = Field(pattern=IDENTIFIER_PATTERN)
     event_type: str = Field(pattern=APPLICATION_EVENT_PATTERN, max_length=160)
@@ -721,6 +736,7 @@ class ApplicationExtensionV1(StrictApplicationModel):
     )
     routes: tuple[ApplicationRouteV1, ...] = Field(default=(), max_length=64)
     public_http_routes: tuple[ApplicationPublicHttpRouteV1, ...] = Field(default=(), max_length=64)
+    public_webhook: ApplicationPublicWebhookV1 | None = Field(default=None, exclude_if=lambda value: value is None)
     event_subscriptions: tuple[ApplicationEventSubscriptionV1, ...] = Field(
         default=(),
         max_length=64,
@@ -849,14 +865,29 @@ class ApplicationExtensionV1(StrictApplicationModel):
             if actual.digest() != contract.digest():
                 raise ValueError('Query export schemas must match the handler exactly')
         form_operations = [route.form_operation_id for route in self.public_http_routes if route.form_operation_id]
-        if form_operations:
-            if len(self.public_http_routes) != 1 or (self.platform_requirements or self.platform_permissions
+        if form_operations or self.public_webhook is not None:
+            if (self.platform_requirements or self.platform_permissions
                     or self.optional_resources or self.peer_receiver or self.peer_bindings or self.event_subscriptions
                     or self.connectors or self.jobs or self.tasks or self.checkpoints or self.command_bindings
                     or self.session_bindings or self.session_providers or self.query_exports or self.query_dependencies
                     or self.storage.private_files or self.storage.relational
                     or any(item.emitted_events for item in self.operations)):
+                if self.public_webhook is not None:
+                    raise ValueError('Public webhook profile supports only application-owned SQLite data')
                 raise ValueError('Public form profile supports one form and only application-owned SQLite data')
+        if form_operations and len(self.public_http_routes) != 1:
+            raise ValueError('Public form profile supports one form and only application-owned SQLite data')
+        if self.public_webhook is not None:
+            from three_mm_protocol.public_webhooks import webhook_delivery_input_schema, webhook_delivery_result_schema
+            handler = operations.get(self.public_webhook.handler_operation_id)
+            if self.service.sdk_version != '1.3' or self.routes or self.public_http_routes:
+                raise ValueError('Public webhook requires a dedicated SDK 1.3 package without browser routes')
+            if (handler is None or handler.operation_id == self.service.health_operation_id
+                    or handler.kind != 'command' or handler.audiences != ('internal',)
+                    or handler.required_permission is not None or handler.audit != 'redacted'
+                    or handler.input_schema != webhook_delivery_input_schema()
+                    or handler.output_schema != webhook_delivery_result_schema()):
+                raise ValueError('Public webhook requires its exact dedicated, redacted internal command')
         for route in self.public_http_routes:
             operation = operations.get(route.handler_operation_id)
             if operation is None:

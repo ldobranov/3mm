@@ -171,6 +171,167 @@ account, login, permanent draft, reverse-proxy setup or data-erasure service.
 Guest mode requires coordinated Core, Runtime, Public Web and application-host
 builds and stays off in the standard service configuration.
 
+### CAP12 — signed callback verifier (local contract only)
+
+The initial profile verifies machine-to-machine POST bytes. Its standalone
+loopback lab does not register a route in the installed Public Web service,
+enable an existing form endpoint, or dispatch to an application. The reference
+profile is not an adapter for a vendor's own signature format.
+
+- An endpoint has a locally configured audience (32 lowercase hex characters)
+  and its own independently generated 32-byte secret. Only trusted endpoint
+  configuration selects these values. Neither value is inferred from Host,
+  query parameters, a browser session, or a caller-selected key.
+- The sender supplies a stable event ID (1–128 characters, starting with an
+  ASCII letter or digit; the rest may also contain `_.:-`), a canonical
+  positive Unix timestamp in seconds (1–11 ASCII digits, no leading zero),
+  and a signature `v1=<64 lowercase hex digits>`. The verifier allows up to
+  300 seconds of age and 30 seconds of future skew. The body is 1–65536 bytes.
+- The MAC is HMAC-SHA256. Sign the ASCII fields
+  `3mm.webhook.v1`, `POST`, audience, timestamp and event ID, each followed by
+  a single LF, then append the raw body with no decoding, reserialization or
+  additional LF. The proof contains the body digest, not the body or secret.
+  An independent signing vector lives in the protocol tests.
+
+The lab listens only on IPv4 loopback and accepts only its literal POST path:
+`/webhook` in standalone mode or the reviewed package's path below. It needs
+the exact loopback Host, one Content-Length, and
+`application/octet-stream`. Supply exactly one of each signed header:
+`X-3mm-Webhook-Id`, `X-3mm-Webhook-Timestamp`, and
+`X-3mm-Webhook-Signature`. No browser credentials, transfer/content encoding,
+or query string. The listener uses one worker with an absolute read deadline
+and rejects an oversized declared body before reading it.
+
+The dedicated SQLite inbox uses a versioned lab schema, not a Core migration.
+It commits the body and one receipt per event ID before `202`. A freshly signed
+retry with the same body returns the original receipt, even after the raw body
+is removed; a different body for that ID returns `409`. Verification always
+precedes lookup. `202` means originally accepted, not processed by an application
+or guaranteed to remain deliverable. Storage/commit failures cannot return `202`.
+Use only synthetic bodies in a private disposable directory; stop the lab before
+changing the key. Other audiences and unrelated databases are not overwritten.
+
+From the repository root, run the real loopback/SQLite test (including a
+process restart) without a live device or external service:
+
+```sh
+python -m pytest -q tools/tests/test_webhook_lab.py three_mm_protocol/tests/test_public_webhooks.py
+```
+
+To run just the lab manually, provide an existing private state directory, a
+32-hex audience and a file containing exactly 32 random bytes:
+
+```sh
+python -m tools.webhook_lab --state-dir "$CAP12_STATE_DIR" --audience "$CAP12_AUDIENCE" --key-file "$CAP12_KEY_FILE"
+```
+
+The URL printed by the lab has an ephemeral port. Do not proxy or expose it.
+The CLI remains synthetic and has no Core configuration.
+
+An SDK 1.3 manifest-v2 package may opt in through `application-extension.json`:
+
+```json
+{
+  "public_webhook": {
+    "contract_version": 1,
+    "webhook_id": "receive",
+    "path": "/webhooks/demo",
+    "signature_profile": "hmac_sha256_v1",
+    "handler_operation_id": "receive_event"
+  }
+}
+```
+
+This is a bounded, resource-free profile: one literal path under `/webhooks/`,
+no browser routes or declared platform effects, and a separate redacted, idempotent
+internal command. Use `webhook_delivery_input_schema()` and
+`webhook_delivery_result_schema()` from `three_mm_protocol.public_webhooks`.
+The generic invocation gateway refuses this command. A declaration can be
+reviewed, but does not register a route in the installed service.
+
+The reviewed integration lab creates a `ReviewedWebhookAdmission` for that
+declaration with an explicit audience, installation ID, instance ID and
+package SHA-256 in a disposable Core database. After signature verification, it rechecks the
+current sealed grant and active installation under Core's authority fence,
+holds that fence through the short local inbox commit, and releases it before
+HTTP output. Both new submissions and duplicate receipt lookups refuse after
+disable, revocation or package change. A new grant does not reopen an old
+binding. The version-2 lab inbox records the binding fingerprint and cannot
+be reopened in standalone mode or with a replacement grant. Keep earlier
+version-1 lab files untouched and use a fresh private directory and new
+audience for a new trial; no Core database migration or reset.
+
+Receiving an event and delivering it are separate decisions. A current admin
+session reviews the exact declaration/binding via `review_delivery`; then
+`decide_delivery` requires explicit confirmation, that fingerprint, the
+expected decision revision, and a request ID. The decision and its audit
+receipt use the existing sealed Core journal. `hold_delivery` checks both that
+separate approval and the current package authority before a future delivery
+can be admitted. Delivery revocation leaves the inbox and its receipts intact;
+historical approval receipts do not grant access. A different audience,
+artifact, grant revision or review key does not inherit approval.
+
+`tools.webhook_delivery_lab.deliver_one` explicitly selects one durable receipt
+and the reviewed test host. Under the delivery gate it verifies the stored body
+digest and commits a unique attempt as `unconfirmed` before any socket I/O.
+The Core fence is released before contacting the private Unix socket; revocation
+prevents new claims but cannot recall an already admitted attempt. The host
+receives the exact bytes in Base64, the event ID, and the receipt ID as the
+idempotency key. The bounded signed RPC pins the instance and package; no user
+identity, ingress signing key or credentials are forwarded.
+
+Only a valid signed response for that attempt may confirm `delivered` or
+`rejected`. A failed connection before sending records `not_dispatched`;
+partial send, a lost or invalid response, or a failed outcome commit leaves
+`unconfirmed`. A second call reads the recorded attempt without sending, even
+when no execution was confirmed.
+
+The version-4 lab retains at most 128 raw bodies and admits a new delivery claim
+only within one hour of admission, measured by the host clock. A terminal
+attempt drops its body in the same transaction. An expired receipt without an
+attempt cannot be claimed, and a previously claimed attempt keeps its recorded
+status; expiry does not cancel an admitted invocation. Signed admission,
+approved claims, or explicit local `prune_expired()` maintenance remove elapsed
+bodies. There is no idle background sweep. SQLite can reuse the freed space;
+this does not guarantee file shrinkage or erasure from journals, backups or the
+underlying medium.
+
+The inbox keeps the event ID, digest, receipt and attempt metadata for its
+lifetime, capped at 4096 receipts. At either limit it refuses new events with
+`503` without evicting prior IDs; a newly signed request must not silently
+reintroduce a previously accepted event. A matching version-2/3 inbox upgrades
+atomically, preserving receipts and attempt outcomes. Older bodies with no
+recorded expiry get one hour from upgrade unless already terminal.
+
+`tools.webhook_delivery_lab.consume_pending` is the explicit local consumer
+cycle. It takes no event ID from the caller and processes at most four
+eligible receipts serially, earliest expiry first and insertion order for
+ties. It skips expired bodies and every prior attempt. It rechecks the sealed
+approval and exact host before each claim, and commits the claim before
+sending. An absent socket blocks a new claim; if it disappears after claiming,
+the original result is still recorded without automatic retry. Revocation
+stops the next claim even if the admitted call is still finishing.
+
+The cycle reports `drained`, `limit_reached`, `blocked`, or `paused` and the
+receipt/attempt/status metadata of work it performed. An unconfirmed or
+not-dispatched attempt pauses the cycle. An explicitly started later cycle
+can handle other pending receipts, but cannot replay that attempt. The caller
+owns scheduling and runs one cycle at a time; the lab installs no timer or
+daemon. No bodies, signing keys or exception details are reported.
+
+Local acceptance (POSIX, no installed Core or external service):
+
+```sh
+python -m pytest -q tools/tests/test_webhook_lab.py three_mm_protocol/tests/test_public_webhooks.py backend/tests/test_application_webhook_admission.py
+```
+
+This closes the loopback candidate, not the full public rollout. Before
+enabling deployed ingress, verify explicit route ownership on the isolated
+Public Web listener, operator key provisioning/rotation, supervised consumer
+start/stop and quotas, and restart/revocation on the actual service boundary.
+This candidate adds no Core tables, admin endpoint, public route or installed
+worker, and does not add vendor-specific verification or challenge adapters.
+
 ## Route ownership
 
 Core reconstructs the public route registry from active application packages.
