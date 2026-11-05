@@ -147,6 +147,9 @@ def prepare_application_invocation(
     validated = load_application_package(package)
     definition = validated.application_extension
     operation = find_operation(definition, operation_id)
+    if operation.kind == "job":
+        raise ApplicationGatewayError("Scheduled application jobs are retired",
+                                      phase=DispatchPhase.NOT_DISPATCHED)
     form_route = next((route for route in definition.public_http_routes if route.form_operation_id is not None
                        and operation_id in (route.handler_operation_id, route.form_operation_id)), None)
     is_form = form_route is not None and operation_id == form_route.form_operation_id
@@ -160,9 +163,6 @@ def prepare_application_invocation(
             required_audience != 'public' or context.get('audience') != 'public'
             or set(context) != public_context_fields)):
         raise ApplicationGatewayError('Public form command requires dedicated ingress',
-                                      phase=DispatchPhase.NOT_DISPATCHED)
-    if operation.kind == "job":
-        raise ApplicationGatewayError("Scheduled application jobs are retired",
                                       phase=DispatchPhase.NOT_DISPATCHED)
     if operation.kind == "task":
         from three_mm_protocol.application_tasks import TaskExecutionV1
