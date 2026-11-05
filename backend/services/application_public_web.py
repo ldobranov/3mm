@@ -224,7 +224,7 @@ def resolve_public_route(
     path: str,
 ) -> tuple[PublicRouteBinding, dict[str, str]]:
     normalized_method = method.upper()
-    if normalized_method not in {"GET", "HEAD"}:
+    if normalized_method not in {"GET", "HEAD", "POST"}:
         raise ApplicationPublicWebError("Public HTTP method is not allowed", status_code=405)
     normalized_path = _normalized_request_path(path)
     path_match: tuple[PublicRouteBinding, dict[str, str]] | None = None
@@ -245,7 +245,8 @@ def resolve_public_route(
     if path_match is None:
         raise ApplicationPublicWebError("Public HTTP route was not found", status_code=404)
     binding, parameters = path_match
-    if normalized_method not in binding.route.methods:
+    if (binding.route.form_operation_id is None if normalized_method == 'POST'
+            else normalized_method not in binding.route.methods):
         raise ApplicationPublicWebError("Public HTTP method is not allowed", status_code=405)
     return binding, parameters
 
@@ -280,18 +281,7 @@ def _forwarded_headers(headers: Mapping[str, str]) -> dict[str, str]:
     return forwarded
 
 
-def prepare_public_http(
-    db: Session,
-    settings: ApplicationRuntimeSettings,
-    *,
-    method: str,
-    path: str,
-    query: Mapping[str, str | Sequence[str]] | None = None,
-    headers: Mapping[str, str] | None = None,
-):
-    """Resolve current public authority without waiting for application code."""
-
-    binding, path_params = resolve_public_route(db, method, path)
+def _active_public_installation(db, binding):
     if binding.installation_id is None:
         raise ApplicationPublicWebError("Public HTTP route is not active")
     installation = db.get(
@@ -308,10 +298,27 @@ def prepare_public_http(
         or installation.active_version != package.version
     ):
         raise ApplicationPublicWebError("Public HTTP application is unavailable")
-    if installation.authority_mode != "compatibility":
+    expected_mode = 'enforced' if binding.route.form_operation_id is not None else 'compatibility'
+    if installation.authority_mode != expected_mode:
         # Registry ownership is not a scoped execution grant. Keep the route
         # reserved (and other applications usable), but never invoke its code.
         raise ApplicationPublicWebError("Public HTTP has no supported scoped resource grant")
+    return installation, package
+
+
+def prepare_public_http(
+    db: Session,
+    settings: ApplicationRuntimeSettings,
+    *,
+    method: str,
+    path: str,
+    query: Mapping[str, str | Sequence[str]] | None = None,
+    headers: Mapping[str, str] | None = None,
+    _resolved: tuple[PublicRouteBinding, dict[str, str]] | None = None,
+):
+    """Resolve current public read authority without waiting for application code."""
+    binding, path_params = _resolved if _resolved is not None else resolve_public_route(db, method, path)
+    installation, package = _active_public_installation(db, binding)
 
     try:
         request = ApplicationPublicHttpRequestV1.model_validate(
@@ -329,6 +336,22 @@ def prepare_public_http(
         ) from exc
 
     return binding, installation, package, request
+
+
+def prepare_public_form(db, path, fields):
+    from backend.services.application_extensions import find_operation
+    from three_mm_protocol.public_forms import GUEST_PROOF_FIELD, public_form_payload
+
+    binding, _ = resolve_public_route(db, 'POST', path)
+    installation, package = _active_public_installation(db, binding)
+    operation = find_operation(load_application_definition(package), binding.route.form_operation_id)
+    if binding.route.guest_session:
+        fields = {name: value for name, value in fields.items() if name != GUEST_PROOF_FIELD}
+    try:
+        request_id, payload = public_form_payload(fields, operation.input_schema)
+    except ValueError as exc:
+        raise ApplicationPublicWebError('Public form is invalid', status_code=400) from exc
+    return binding, installation, package, request_id, payload
 
 
 def validate_public_http_response(binding, result):

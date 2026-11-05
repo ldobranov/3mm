@@ -60,6 +60,36 @@ class DevLabTests(unittest.TestCase):
         self.assertEqual((destination / "backend/example.py").read_bytes(), b"dirty source")
         self.assertNotIn("backend/deleted.py", manifest["files"])
 
+    def test_optional_library_source_is_explicit_and_roundtrips_without_installation(self):
+        ordinary = 'backend/example.py'
+        library = ['libraries/shared/shared/__init__.py', 'libraries/shared/shared/engine.py',
+                   'libraries/shared/frontend/Page.vue', 'libraries/shared/.3mm-source-only']
+        private = ['libraries/shared/private.env', 'libraries/shared/data/live.db',
+                   'libraries/shared/node_modules/package/index.js', 'libraries/shared/dist/bundle.js']
+        names = [ordinary, 'frontend/package.json', *library, *private]
+        for name in names:
+            path = self.root/name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'source fixture')
+        def git(_repo, *args):
+            return b'a'*40 if args[0] == 'rev-parse' else b'\0'.join(name.encode() for name in names)
+        with mock.patch.object(dev_lab, 'git', side_effect=git), mock.patch('builtins.print'):
+            minimal = dev_lab.pack(self.root)
+            included = dev_lab.pack(self.root, with_libraries=True)
+        self.assertEqual(set(dev_lab.unpack(minimal, self.root/'minimal')['files']), {ordinary})
+        manifest = dev_lab.unpack(included, self.root/'with-libraries')
+        self.assertEqual(set(manifest['files']), {ordinary, *library})
+        self.assertEqual((self.root/'with-libraries'/library[0]).read_bytes(), b'source fixture')
+
+    def test_optional_library_source_preserves_private_generated_and_path_guards(self):
+        for name in ('libraries/x/../../outside.py', '/libraries/x/module.py',
+                     'libraries\\x\\module.py', 'libraries/x/.git/config',
+                     'libraries/x/.venv/lib/module.py', 'libraries/x/.env.local',
+                     'libraries/x/secret.pem', 'libraries/x/.cache/value.json',
+                     'libraries/x/coverage/index.html', 'libraries/x/dist-ssr/entry.js'):
+            with self.subTest(name=name):
+                self.assertFalse(dev_lab.source_path(name, with_libraries=True))
+
     def test_pack_refuses_symlink_escape(self):
         source = self.root / "repo"
         (source / "backend").mkdir(parents=True)

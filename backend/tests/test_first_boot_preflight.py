@@ -64,6 +64,14 @@ def test_host_managed_preflight_never_requires_or_probes_network_manager():
     assert not any("network-manager" in check.name or "nmcli" in check.name for check in checks)
 
 
+def test_armv6_hub_requires_the_tested_python_minor():
+    for version, expected in (((3, 13, 5), True), ((3, 12, 3), False), ((3, 14, 0), False)):
+        checks = run_preflight(command_lookup=_lookup, runner=_runner, system_name="Linux",
+            machine="armv6l", python_version=version, python_executable="/usr/bin/python3")
+        status = {check.name: check.passed for check in checks}
+        assert status["host.architecture"] and status["runtime.python"] is expected
+
+
 def test_selected_network_manager_requires_its_adapter_before_activation():
     checks = run_preflight(command_lookup=_lookup, runner=_runner, system_name="Linux",
         machine="x86_64", python_version=(3, 13), python_executable="/usr/bin/python3",

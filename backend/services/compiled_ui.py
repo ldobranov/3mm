@@ -6,6 +6,7 @@ import io
 import hashlib
 import json
 import os
+import platform
 import re
 import subprocess
 import tempfile
@@ -112,10 +113,12 @@ def compile_ui_package(
     package: bytes,
     validated: ValidatedModulePackage,
     *,
-    timeout_seconds: int = 90,
+    timeout_seconds: int | None = None,
 ) -> CompiledUiArtifact:
     if validated.compiled_ui is None:
         raise CompiledUiBuildError("module package does not contain compiled UI source")
+    if timeout_seconds is None:
+        timeout_seconds = 300 if platform.machine() == "armv6l" else 90
 
     root = compiled_artifacts_dir().resolve()
     destination = (

@@ -22,7 +22,7 @@ def release(tag='v0.3.7', **values):
 
 
 def selection(tmp_path, arguments=(), *, channel='', network='', stored=None,
-              tag='', payload=None, manifest_changes=None):
+              tag='', payload=None, manifest_changes=None, machine=None):
     environment = tmp_path/'stored.env'
     if stored is not None:
         environment.write_text('THREE_MM_NETWORK_BACKEND='+stored+'\n')
@@ -31,7 +31,7 @@ def selection(tmp_path, arguments=(), *, channel='', network='', stored=None,
     selected = payload if isinstance(payload, dict) else release()
     version = selected.get('tag_name', 'v0.3.7')[1:]
     profile = 'node' if 'node' in arguments else 'full'
-    architecture = 'armv6l' if profile == 'node' else 'aarch64'
+    architecture = machine or ('armv6l' if profile == 'node' else 'aarch64')
     release_channel = ('test' if version.partition('-')[2].split('.')[0].lower() == 'test'
                        else 'beta') if '-' in version else 'stable'
     filename = f'3mm-{version}-{architecture}.tar.gz'
@@ -88,6 +88,14 @@ def test_plain_bootstrap_uses_published_stable_and_keeps_lan_without_network_pac
     assert 'network-manager' not in result.stdout and 'dnsmasq-base' not in result.stdout
     assert 'forbidden-' not in result.stdout
     assert ('3mm-node-manifest.json' in result.stdout) == (profile == 'node')
+
+
+def test_armv6_hub_fetches_its_full_catalog_not_the_node_or_older_hub_catalog(tmp_path):
+    result = selection(tmp_path, machine='armv6l')
+    assert result.returncode == 0, result.stderr
+    assert '/3mm-armv6-update-manifest.json' in result.stdout
+    assert '/3mm-node-manifest.json' not in result.stdout
+    assert 'backend=host profile=full' in result.stdout
 
 
 @pytest.mark.parametrize('flag', ['-ap', '--ap'])

@@ -141,6 +141,10 @@ if [[ $install_profile == node ]]; then
   python3 -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 13) else "Node requires Python 3.13")'
 else
 case "$architecture" in
+  armv6l)
+    python3 -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 13) else "ARMv6 Hub requires Python 3.13")'
+    THREE_MM_BOOTSTRAP_PACKAGES+=(build-essential python3-dev)
+    ;;
   aarch64|armv7l|x86_64) ;;
   *) fail "unsupported architecture: $architecture" ;;
 esac
@@ -266,7 +270,11 @@ PY
 
 selected_tag=$(<"$selected_tag_file")
 manifest_name=3mm-update-manifest.json
-if [[ $install_profile == node ]]; then manifest_name=3mm-node-manifest.json; fi
+if [[ $install_profile == node ]]; then
+  manifest_name=3mm-node-manifest.json
+elif [[ $architecture == armv6l ]]; then
+  manifest_name=3mm-armv6-update-manifest.json
+fi
 manifest_url="https://github.com/$THREE_MM_REPOSITORY/releases/download/$selected_tag/$manifest_name"
 wget --https-only --secure-protocol=TLSv1_2 --timeout=30 --tries=3 \
   -qO "$manifest" "$manifest_url" || fail "could not download the release manifest"

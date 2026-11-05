@@ -53,6 +53,16 @@ describe('explicit web lifecycle recovery', () => {
     expect(http.post).not.toHaveBeenCalled()
   })
 
+  it('offers an explicit recovery review for a stopped package with missing provenance', async () => {
+    http.get.mockResolvedValue({ data: [{ ...stopped, recovery_preparation_required: true }] })
+    const wrapper = await open()
+    expect(wrapper.get('.recover-confirm-btn').attributes('disabled')).toBeDefined()
+    await wrapper.get('input').setValue(true)
+    await wrapper.get('.recover-confirm-btn').trigger('click'); await flushPromises()
+    expect(http.post).toHaveBeenCalledTimes(1)
+    expect(wrapper.emitted('recovered')).toHaveLength(1)
+  })
+
   it.each(['timeout', 'conflict', 'wrong_module', 'active_reply'])('requires a read-only refresh after an uncertain result (%s)', async mode => {
     if (mode === 'timeout' || mode === 'conflict') http.post.mockRejectedValue({ response: { status: 409 } })
     else http.post.mockResolvedValue({ data: mode === 'wrong_module' ? { ...stopped, module_id: 'org.example.other' } : initial })

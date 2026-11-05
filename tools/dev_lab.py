@@ -37,6 +37,71 @@ EXCLUDED_SUFFIXES = frozenset({".env", ".key", ".pem", ".pfx", ".db", ".sqlite",
 MANIFEST = ".dev-lab-manifest.json"
 MAX_SOURCE_BYTES = 128 * 1024 * 1024
 PROFILES = {
+    "cap14-display-geometry": (
+        "three_mm_protocol/tests/test_character_display.py",
+        "three_mm_protocol/tests/test_hardware_profiles.py",
+        "agent/tests/test_character_display.py",
+        "agent/tests/test_character_display_transport.py",
+        "agent/tests/test_hardware_profile_approval.py",
+        "backend/tests/test_hardware_profile_installation.py",
+        "backend/tests/test_application_optional_resources.py",
+        "backend/tests/test_application_command_discovery.py",
+        "backend/tests/test_application_command_providers.py",
+        "backend/tests/test_application_command_rebinding.py",
+        "backend/tests/test_application_command_recovery.py",
+        "three_mm_application_sdk/tests/test_command_discovery.py",
+        "three_mm_application_sdk/tests/test_requirement_discovery.py",
+        "deployment/tests/test_application_host_component.py::test_native_artifact_is_reproducible_minimal_and_core_free",
+        "deployment/tests/test_service_component.py::test_native_service_is_reproducible_and_contains_no_core[agent]",
+        "tools/tests/test_dev_lab.py",
+    ),
+    "cap14-profile-approval": (
+        "three_mm_protocol/tests/test_hardware_profiles.py",
+        "three_mm_protocol/tests/test_node_features.py",
+        "agent/tests",
+        "backend/tests/test_hardware_profile_installation.py",
+        "backend/tests/test_module_packages.py",
+        "backend/tests/test_module_lifecycle_idempotency.py",
+        "backend/tests/test_device_module_authority.py",
+        "backend/tests/test_device_capability_routes.py",
+        "backend/tests/test_device_capability_providers.py",
+        "backend/tests/test_core_startup.py",
+        "deployment/tests/test_node_installer.py::test_agent_environment_filters_core_secrets_and_keeps_host_settings",
+        "deployment/tests/test_service_component.py::test_native_service_is_reproducible_and_contains_no_core[agent]",
+        "deployment/tests/test_wp4_release_contract.py",
+    ),
+    "cap14-profile-approval-retest": (
+        "agent/tests/test_character_display.py::test_manifest_cannot_lie_about_its_hardware_binding",
+        "backend/tests/test_module_packages.py::test_reference_contacts_builds_as_an_application_with_own_relational_data",
+        "tools/tests/test_dev_lab.py",
+    ),
+    "cap14-i2c-boot": (
+        "three_mm_runtime/tests/test_hardware_interfaces.py",
+        "backend/tests/test_hardware_interface_routes.py",
+    ),
+    "cap14-i2c-web": (
+        "three_mm_runtime/tests/test_hardware_interfaces.py",
+        "three_mm_runtime/tests/test_update_helper.py",
+        "three_mm_runtime/tests/test_systemd_templates.py",
+        "backend/tests/test_hardware_interface_routes.py",
+        "backend/tests/test_system_control_routes.py",
+        "backend/tests/test_device_registry_routes.py",
+        "backend/tests/test_core_startup.py",
+        "backend/tests/test_release_builder.py",
+        "tools/tests/test_dev_lab.py",
+    ),
+    "cap14-display": (
+        "three_mm_protocol/tests/test_character_display.py",
+        "agent/tests",
+        "backend/tests/test_capability_contracts.py",
+        "backend/tests/test_application_authority_sources.py",
+        "backend/tests/test_application_command_providers.py",
+        "backend/tests/test_application_command_rebinding.py",
+        "backend/tests/test_application_command_recovery.py",
+        "deployment/tests/test_node_installer.py::test_agent_environment_filters_core_secrets_and_keeps_host_settings",
+        "deployment/tests/test_service_component.py::test_units_use_independent_artifacts_and_filtered_agent_environment",
+        "deployment/tests/test_service_component.py::test_native_service_is_reproducible_and_contains_no_core[agent]",
+    ),
     "p5-process": ("backend/tests/test_diagnostic_process.py",),
     "p5-packaging": ("backend/tests/test_release_builder.py", "deployment/tests/test_node_release.py", "deployment/tests/test_application_host_component.py::test_native_artifact_is_reproducible_minimal_and_core_free", "deployment/tests/test_service_component.py::test_native_service_is_reproducible_and_contains_no_core", "setup_service/tests/test_api.py::test_diagnostics_are_opt_in_bounded_metadata", "backend/tests/test_language_extensions.py"),
     "p5-core": ("three_mm_protocol/tests/test_diagnostics.py", "three_mm_protocol/tests/test_diagnostic_snapshot.py", "three_mm_application_sdk/tests/test_platform_diagnostics.py", "backend/tests/test_diagnostics.py", "backend/tests/test_diagnostic_workspace.py", "tools/tests/test_extension_dev.py"),
@@ -297,16 +362,17 @@ def digest(blob: bytes) -> str:
     return hashlib.sha256(blob).hexdigest()
 
 
-def source_path(name: str, *, with_frontend: bool = False) -> bool:
+def source_path(name: str, *, with_frontend: bool = False, with_libraries: bool = False) -> bool:
     path = PurePosixPath(name)
     parts = path.parts
     if (not parts or path.is_absolute() or ".." in parts or "\\" in name
             or ":" in name or name != path.as_posix()):
         return False
     if (name not in ROOT_FILES and parts[0] not in SOURCE_ROOTS
-            and not (with_frontend and parts[0] == "frontend")):
+            and not (with_frontend and parts[0] == "frontend")
+            and not (with_libraries and parts[0] == "libraries")):
         return False
-    if parts[0] == "frontend" and set(parts) & {"dist", "dist-ssr", "coverage", ".vite", ".cache"}:
+    if parts[0] in {"frontend", "libraries"} and set(parts) & {"dist", "dist-ssr", "coverage", ".vite", ".cache"}:
         return False
     return not (
         set(parts) & EXCLUDED_PARTS
@@ -319,14 +385,14 @@ def git(repo: Path, *args: str) -> bytes:
     return subprocess.check_output(["git", *args], cwd=repo)
 
 
-def pack(repo: Path, *, with_frontend: bool = False) -> Path:
+def pack(repo: Path, *, with_frontend: bool = False, with_libraries: bool = False) -> Path:
     repo = repo.resolve()
     names = git(repo, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
     files = {}
     total = 0
     for raw in sorted(set(names.split(b"\0")) - {b""}):
         name = os.fsdecode(raw)
-        if not source_path(name, with_frontend=with_frontend):
+        if not source_path(name, with_frontend=with_frontend, with_libraries=with_libraries):
             continue
         path = repo / name
         if not path.exists() and not path.is_symlink():
@@ -374,7 +440,7 @@ def unpack(archive: Path, destination: Path) -> dict:
         if sum(member.size for member in members) > MAX_SOURCE_BYTES + 2 * 1024 * 1024:
             raise ValueError("Snapshot exceeds the lab size budget")
         for member in members:
-            if not member.isfile() or (member.name != MANIFEST and not source_path(member.name, with_frontend=True)):
+            if not member.isfile() or (member.name != MANIFEST and not source_path(member.name, with_frontend=True, with_libraries=True)):
                 raise ValueError("Snapshot contains an unsafe or non-source member")
         manifest = json.load(bundle.extractfile(MANIFEST))
         hashes = manifest["files"]
@@ -488,13 +554,15 @@ def main() -> int:
     pack_parser = commands.add_parser("pack")
     pack_parser.add_argument("--with-frontend", action="store_true",
                              help="Include frontend source/config/locks for clean UI checks; never node_modules or build output.")
+    pack_parser.add_argument("--with-libraries", action="store_true",
+                             help="Include optional library source for consumer checks, without installing it into Core.")
     run = commands.add_parser("run")
     run.add_argument("--archive", type=Path, required=True)
     run.add_argument("--profile", choices=PROFILES, default="p0")
     run.add_argument("--fresh-env", action="store_true")
     args = parser.parse_args()
     if args.command == "pack":
-        pack(Path(__file__).resolve().parents[1], with_frontend=args.with_frontend)
+        pack(Path(__file__).resolve().parents[1], with_frontend=args.with_frontend, with_libraries=args.with_libraries)
         return 0
     return run_lab(args.archive, args.profile, args.fresh_env)
 

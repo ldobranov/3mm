@@ -58,7 +58,10 @@ class PublicWebRuntime(PlatformRuntime):
                         extra.close(); raise ValueError("Unexpected result socket")
                     if result.get("public_web_contract") != 1: raise ValueError("Unsupported public authority")
                 response = {"version": 1, "request_id": request_id, "ok": result.get("ok") is True}
-                if response["ok"]: response["response"] = result["response"]
+                if response["ok"]:
+                    response["response"] = result["response"]
+                    if 'guest_cookie' in result:
+                        response['guest_cookie'] = result['guest_cookie']
                 else: response["status"] = result.get("status", 503)
                 connection.settimeout(remaining(deadline)); connection.sendall(_frame(response))
         except (OSError,ValueError,TypeError,KeyError,RecursionError):

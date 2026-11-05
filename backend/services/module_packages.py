@@ -250,6 +250,12 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
                 "application extension identity must match manifest v2"
             )
 
+        if any(route.form_operation_id for route in application_extension.public_http_routes) and (
+                set(manifest.runtimes) != {'core'} or manifest.capabilities.provides
+                or manifest.capabilities.consumes or manifest.dependencies
+                or set(manifest.permissions) - {'data.read', 'data.write', 'process.spawn'}):
+            raise ModulePackageError('Public form profile cannot request additional runtimes or platform resources')
+
         if application_extension.jobs or any(item.kind == "job" for item in application_extension.operations):
             raise ModulePackageError("scheduled application jobs are retired; no supported scoped scheduler")
 

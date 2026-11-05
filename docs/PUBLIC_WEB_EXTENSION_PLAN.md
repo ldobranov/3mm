@@ -1,6 +1,6 @@
 # Public Web Runtime & Extension Contract
 
-Status: **completed on the focused branch on 2026-10-07**. Physical Raspberry acceptance passed on runtime commit `996760f6`.
+Status: **GET/HEAD baseline completed on 2026-10-07**. Physical Raspberry acceptance passed on runtime commit `996760f6`. The bounded CAP10 form profile below is a separate local change.
 Milestone: 19
 Base: `401372c6` / `0.3.0-beta.40`
 
@@ -51,7 +51,8 @@ extension without additional generic platform support.
 2. Application services remain outside the Core process.
 3. An extension never registers a FastAPI router or opens an unmanaged listener.
 4. Routes are declarative, bounded and validated before activation.
-5. A public HTTP handler is an isolated `public` query operation.
+5. A public page uses an isolated `public` query operation. Anonymous POST is
+   available only for the explicitly reviewed, bounded form profile below.
 6. The public gateway forwards only a small normalized request model. Core
    sessions, administrator cookies, Authorization and raw internal headers are
    not forwarded.
@@ -101,9 +102,74 @@ A route can opt into at most 512 KiB of decoded body data; the default is
 256 KiB. Response headers are allowlisted to generic caching/content metadata. Redirect location is a dedicated field rather than an
 arbitrary header.
 
-The handler's declared operation schemas must match the v1 public HTTP request
+The GET/HEAD handler's declared operation schemas must match the v1 public HTTP request
 and response schemas exactly. This keeps package review deterministic and avoids
 a new Core branch for every public application.
+
+### CAP10 — bounded anonymous form
+
+An application can declare one literal public route with `form_operation_id`.
+GET/HEAD renders the form; POST on that exact path calls the dedicated anonymous
+command. A command declares a closed object of 1–8 required, bounded single-line
+strings. It cannot be invoked through the administrative application API. The
+form profile declares no platform effects or external providers; the reference
+uses only its own SQLite database. Native code still requires review and this is
+not a sandbox. An exact active package and a current sealed application approval
+are checked at admission and again before the result is confirmed.
+
+POST is disabled by default. An explicitly configured listener accepts only its
+exact `Host` and `Origin`, UTF-8 URL-encoded form fields and a single bounded
+`Content-Length` (4 KiB maximum; 3 seconds to read the body). There is no cookie,
+authorization, source-IP or forwarded-header field in the application payload.
+The prototype permits four concurrent submissions, 12 per socket peer and 120
+total per 60-second window. This is an abuse bound, not authentication or
+edge protection; all clients behind one proxy share that peer's budget. TLS,
+external ingress, trusted proxy identity, guest/customer sessions and payments
+are not configured by this change.
+
+The form carries `_request_id`, a random 32-character lowercase hex string. It
+is not a credential. The reference stores the key and choice in one SQLite
+transaction: same key and value confirms the original record, different value
+is refused. At 1,024 records it refuses new records without removing old keys.
+A lost result or access revoked after admission may leave a committed record;
+no layer automatically repeats the submission. The reference build and local
+acceptance procedure are in the [form README](../modules/public-form-reference/README.md).
+
+### CAP10 — temporary guest draft
+
+`guest_session: true` opts the bounded form profile into a temporary guest
+context. The declaration must explicitly list `methods: ["GET"]`, an ASCII
+literal path and an HTML page; POST still uses `form_operation_id`. There is no
+guest context on HEAD, other routes, Core's application API or authenticated
+operations. The application reads `context.public_guest` on the current SDK
+1.3 host: `guest_id` and `expires_at` only. The actor stays anonymous and has no
+Core, user or platform permissions.
+
+Enable it only on a dedicated form origin with `--form-origin` and
+`--guest-forms`. Core issues a signed 15-minute cookie after a successful
+reviewed GET. It is bound to the exact origin, route, package, installation and
+authority epoch, and stops working after a Core restart. GET does not extend
+its expiry. Only Public Web sets the cookie; the native application never
+receives the raw credential. HTTPS uses a host-only `__Host-` cookie with
+`Secure`, `HttpOnly` and `SameSite=Strict`; use a separate hostname from admin
+and other mutually untrusted sites, since cookies do not isolate by port.
+[HTTP cookie prefix rules](https://httpwg.org/http-extensions/draft-ietf-httpbis-rfc6265bis.html#name-the-__host--prefix).
+Plain HTTP is restricted to a loopback test listener and uses a path-scoped lab cookie.
+
+The app includes the verified guest ID as a hidden `_guest_id` field. POST
+still needs the exact Origin and must present both the valid cookie and the
+matching form field. The field is not a credential, is not passed in the app
+payload, and must not be used in URLs. This prevents an old tab submitting a
+draft into a different guest session. Expired, missing or tampered proof is
+refused before dispatch. No cookies are issued on approval failure or on POST.
+
+The [guest draft example](../modules/public-guest-reference/README.md) stores
+only a preset choice in app-owned SQLite, scoped by guest ID. Reusing a request
+ID for that guest cannot add a second record. Expired drafts cannot be resumed;
+their rows are pruned on a subsequent valid write. This is not a customer
+account, login, permanent draft, reverse-proxy setup or data-erasure service.
+Guest mode requires coordinated Core, Runtime, Public Web and application-host
+builds and stays off in the standard service configuration.
 
 ## Route ownership
 

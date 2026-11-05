@@ -246,7 +246,7 @@ class HostStore(RuntimeStore):
                 credentials={'user':user.pw_uid,'group':user.pw_gid,'extra_groups':[]}
             result=subprocess.run([str(temporary/'.venv/bin/python'),'-I',str(temporary/'host.pyz'),'--component-info'],
                 cwd=temporary,env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'},capture_output=True,text=True,
-                timeout=15,**credentials)
+                timeout=120 if platform.machine() == 'armv6l' else 15,**credentials)
             if result.returncode or json.loads(result.stdout).get('build_id')!=identifier:
                 raise ValueError("Isolated host dependency/import check failed: "+result.stderr[-800:])
             os.chmod(temporary,0o555);temporary.rename(target);_fsync(self.releases)

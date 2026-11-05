@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -83,6 +83,7 @@ from three_mm_runtime.update_helper_client import (
     APPLICATION_ACTIVATION_SETUP_BUDGET_SECONDS, UpdateHelperClient, UpdateHelperError,
 )
 from three_mm_runtime.application_activation import application_instance_id
+from three_mm_runtime.application_startup import application_startup_budget
 from three_mm_runtime.application_transport import ApplicationTransportError
 
 
@@ -105,6 +106,7 @@ class ApplicationInstallationResponse(BaseModel):
 
 class ApplicationInstallationCatalogResponse(ApplicationInstallationResponse):
     package_sha256: str | None
+    recovery_preparation_required: bool = False
 
 
 class ApplicationActivationRequest(BaseModel):
@@ -576,11 +578,15 @@ def list_application_extensions(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    rows = db.execute(select(ApplicationExtensionInstallation, ModulePackage.sha256)
+    rows = db.execute(select(ApplicationExtensionInstallation, ModulePackage)
         .outerjoin(ModulePackage, ModulePackage.id == ApplicationExtensionInstallation.module_package_id)
         .order_by(ApplicationExtensionInstallation.module_id))
     return [{**ApplicationInstallationResponse.model_validate(installation).model_dump(),
-        'package_sha256': sha256} for installation, sha256 in rows]
+        'package_sha256': package.sha256 if package else None,
+        'recovery_preparation_required': (
+            installation.status == "disabled" and installation.active_version is None
+            and _needs_recovery_registration(db, installation, package)
+        )} for installation, package in rows]
 
 
 @router.post('/packages/{sha256}/stage', dependencies=[Depends(require_admin)])
@@ -754,7 +760,8 @@ def activate_application_extension(
     package_id, module_id, version = package.id, package.module_id, package.version
     helper = UpdateHelperClient(
         get_settings().applications.helper_socket,
-        timeout_seconds=definition.service.startup_timeout_seconds + APPLICATION_ACTIVATION_SETUP_BUDGET_SECONDS,
+        timeout_seconds=application_startup_budget(definition.service.startup_timeout_seconds)
+        + APPLICATION_ACTIVATION_SETUP_BUDGET_SECONDS,
     )
     try:
         validate_public_http_candidate(db, package, definition)
@@ -983,7 +990,35 @@ def _require_no_unresolved_tasks(db, installation_id):
         raise HTTPException(409, "Disable the application and resolve outstanding job claims before uninstalling")
 
 
-def _recover_lifecycle(module_id, actor_id, db, *, removing=False, external_outcome_reviewed=False):
+def _needs_recovery_registration(db, installation, package):
+    from types import SimpleNamespace
+    from backend.services.application_authority_sources import has_inert_registration
+
+    if (installation.enabled or installation.authority_mode == "compatibility"
+            or package is None or package.module_id != installation.module_id):
+        return False
+    pin = SimpleNamespace(module_package_id=package.id, sha256=package.sha256, version=package.version)
+    try:
+        return not has_inert_registration(db, installation.id, pin)
+    except ValueError:
+        # A missing Core identity or invalid prior evidence is not eligibility.
+        return False
+
+
+def _prepare_recovery_registration(db, package):
+    from backend.services.application_authority_inspection import AuthorityInspectionBaseline, _read_baseline
+    from backend.services.application_authority_management import configured_manager
+    from backend.services.application_package_staging import _supported
+
+    manager = configured_manager(db.get_bind().engine)
+    candidate = _read_baseline(AuthorityInspectionBaseline(package.module_id, package.version,
+        package.sha256, None, "disabled", None), manager.uploads_root, manager.core_version)
+    if not _supported(candidate.application_extension):
+        return None
+    return manager, candidate, _package_state(package)
+
+
+def _recover_lifecycle(module_id, actor_id, db, *, removing=False, external_outcome_reviewed=False, actor_token=None):
     """Quiesce an exact pending generation; no activation, rollback or replay.
 
     Removal retires the application and preserves its data. It never represents
@@ -991,7 +1026,17 @@ def _recover_lifecycle(module_id, actor_id, db, *, removing=False, external_outc
     The verified runtime stays lifecycle-fenced until removal is committed.
     """
     guard, expected, state = _prepare_lifecycle(db, module_id)
-    if state[4] not in INTERRUPTED_LIFECYCLE_STATUSES:
+    registration = None
+    if not removing:
+        installation = db.get(ApplicationExtensionInstallation, expected.installation_id)
+        package = db.get(ModulePackage, state[0])
+        if _needs_recovery_registration(db, installation, package):
+            try:
+                registration = _prepare_recovery_registration(db, package)
+            except (OSError, ValueError, RuntimeError):
+                pass  # An unavailable package must not prevent stopping the runtime.
+    repairing_disabled = registration is not None and state[4:6] == ("disabled", False) and state[3] is None
+    if state[4] not in INTERRUPTED_LIFECYCLE_STATUSES and not repairing_disabled:
         raise HTTPException(409, "Only an interrupted or unconfirmed lifecycle can be recovered")
     helper = UpdateHelperClient(get_settings().applications.helper_socket, timeout_seconds=45)
     with _lifecycle_write(db, expected_guard=guard) as authority:
@@ -1014,23 +1059,42 @@ def _recover_lifecycle(module_id, actor_id, db, *, removing=False, external_outc
     except UpdateHelperError as exc:
         _lifecycle_failed(db, ticket, actor_id)
         raise HTTPException(409, "Application runtime could not be confirmed stopped; recovery is required") from exc
-    with _lifecycle_write(db) as authority:
-        installation = _lock_lifecycle(db, authority, ticket)
-        installation.status = "recovering" if removing else "disabled"
-        installation.enabled = False
-        # We proved quiescence, not which package/data migration succeeded.
-        installation.active_version = None
-        installation.health_checked_at = None
-        installation.error = None
-        _lifecycle_audit(
-            db, actor_id, module_id, "APPLICATION_EXTENSION_LIFECYCLE_RECOVERED",
-            previous_status=state[4], outcome="stopped_for_removal" if removing else "stopped_disabled",
-            external_outcome_reviewed=external_outcome_reviewed,
-            requested_action="uninstall" if removing else "recover",
-            data_preserved=True,
-        )
-        response = ApplicationInstallationResponse.model_validate(installation)
-        removal_pin = (read_application_authority(db, installation.id), _lifecycle_state(installation))
+    from backend.services.application_authority_management import AuthorityManagementError
+    from backend.services.application_authority_keys import AuthorityReviewKeyError
+    from backend.services.application_consent import _bootstrap_key
+    from backend.services.application_package_staging import register_recovered_package
+    try:
+        if registration is not None:
+            manager, candidate, package_pin = registration
+            _bootstrap_key(manager, actor_token)
+        with (manager.keys.locked() if registration is not None else nullcontext()) as key, _lifecycle_write(db) as authority:
+            installation = _lock_lifecycle(db, authority, ticket)
+            if registration is not None:
+                package = db.get(ModulePackage, state[0], populate_existing=True)
+                if (package is None or _package_state(package) != package_pin
+                        or not _needs_recovery_registration(db, installation, package)):
+                    authority.reject()
+                # No existing grant is carried forward. The lifecycle epoch was
+                # already advanced; consent must review this exact inert pin.
+                register_recovered_package(db, key, installation, candidate)
+            installation.status = "recovering" if removing else "disabled"
+            installation.enabled = False
+            # We proved quiescence, not which package/data migration succeeded.
+            installation.active_version = None
+            installation.health_checked_at = None
+            installation.error = None
+            _lifecycle_audit(
+                db, actor_id, module_id, "APPLICATION_EXTENSION_LIFECYCLE_RECOVERED",
+                previous_status=state[4], outcome="stopped_for_removal" if removing else "stopped_disabled",
+                external_outcome_reviewed=external_outcome_reviewed,
+                requested_action="uninstall" if removing else "recover",
+                data_preserved=True,
+            )
+            response = ApplicationInstallationResponse.model_validate(installation)
+            removal_pin = (read_application_authority(db, installation.id), _lifecycle_state(installation))
+    except (AuthorityManagementError, AuthorityReviewKeyError, ValueError) as exc:
+        _lifecycle_failed(db, ticket, actor_id)
+        raise HTTPException(409, "The runtime stopped but the exact package could not be prepared for access review") from exc
     return (response, *removal_pin) if removing else response
 
 
@@ -1038,6 +1102,7 @@ def _recover_lifecycle(module_id, actor_id, db, *, removing=False, external_outc
 def recover_application_extension(
     module_id: str,
     request: ApplicationLifecycleRecoveryRequest,
+    authorization: str | None = Header(default=None),
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -1045,6 +1110,7 @@ def recover_application_extension(
     return _recover_lifecycle(
         module_id, admin.id, db,
         external_outcome_reviewed=request.confirmed_external_outcome_reviewed,
+        actor_token=authorization[7:] if authorization and authorization.lower().startswith("bearer ") else None,
     )
 
 

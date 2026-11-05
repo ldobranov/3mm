@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 import base64
+from dataclasses import dataclass, field
 import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import re
 import socket
+import threading
 import time
 from typing import Mapping
 from urllib.parse import parse_qs, unquote_to_bytes, urlsplit
@@ -17,7 +19,12 @@ import uuid
 
 from pydantic import ValidationError
 
+from three_mm_platform_wire import read_frame, remaining
 from three_mm_protocol import ApplicationPublicHttpResponseV1
+from three_mm_protocol.public_forms import (
+    FORM_ID, FORM_REQUEST_ID, GUEST_COOKIE, GUEST_PROOF_FIELD, GUEST_TTL_SECONDS,
+    MAX_FORM_BYTES, MAX_FORM_FIELDS, guest_cookie_name, public_form_origin_host,
+)
 
 
 PUBLIC_WEB_TRANSPORT_VERSION = 1
@@ -29,12 +36,24 @@ _SAFE_REQUEST_HEADERS = (
     "if-modified-since",
 )
 _BAD_PERCENT = re.compile(r"%(?![0-9A-Fa-f]{2})")
+FORM_BODY_SECONDS = 3
+FORM_CONCURRENT = 4
+FORM_WINDOW_SECONDS = 60
+FORM_PER_SOURCE = 12
+FORM_PER_WINDOW = 120
 
 
 class PublicWebRuntimeError(RuntimeError):
     def __init__(self, status_code: int = 503) -> None:
         super().__init__("Public web Runtime gateway is unavailable")
-        self.status_code = status_code if status_code in {400, 404, 405, 503} else 503
+        self.status_code = status_code if status_code in {400, 403, 404, 405, 503} else 503
+
+
+@dataclass(frozen=True, slots=True)
+class GuestPage:
+    response: ApplicationPublicHttpResponseV1
+    path: str
+    cookie: str = field(repr=False)
 
 
 class PublicWebRuntimeClient:
@@ -49,7 +68,9 @@ class PublicWebRuntimeClient:
         path: str,
         query: Mapping[str, list[str]],
         headers: Mapping[str, str],
-    ) -> ApplicationPublicHttpResponseV1:
+        form: Mapping[str, str] | None = None,
+        guest: dict[str, str | None] | None = None,
+    ) -> ApplicationPublicHttpResponseV1 | GuestPage:
         request_id = uuid.uuid4().hex
         request = {
             "version": PUBLIC_WEB_TRANSPORT_VERSION,
@@ -59,10 +80,13 @@ class PublicWebRuntimeClient:
             "query": dict(query),
             "headers": dict(headers),
         }
+        if form is not None:
+            request['form'] = dict(form)
+        if guest is not None:
+            request['guest'] = guest
         encoded = json.dumps(request, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n"
         if len(encoded) > PUBLIC_WEB_MESSAGE_BYTES:
             raise PublicWebRuntimeError(400)
-        from three_mm_platform_wire import read_frame, remaining
         deadline = time.monotonic() + self.timeout_seconds
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
@@ -82,12 +106,22 @@ class PublicWebRuntimeClient:
         if response["ok"] is False:
             status = response.get("status")
             raise PublicWebRuntimeError(status if isinstance(status, int) else 503)
-        if set(response) != {"version", "request_id", "ok", "response"}:
+        fields = {"version", "request_id", "ok", "response"}
+        if 'guest_cookie' in response:
+            fields.add('guest_cookie')
+        if set(response) != fields:
             raise PublicWebRuntimeError()
         try:
-            return ApplicationPublicHttpResponseV1.model_validate(response["response"])
+            body = ApplicationPublicHttpResponseV1.model_validate(response["response"])
         except ValidationError as exc:
             raise PublicWebRuntimeError() from exc
+        if 'guest_cookie' not in response:
+            return body
+        token = response['guest_cookie']
+        if (method != 'GET' or guest is None or body.status != 200
+                or not isinstance(token, str) or GUEST_COOKIE.fullmatch(token) is None):
+            raise PublicWebRuntimeError()
+        return GuestPage(body, path, token)
 
 
 def _decode_path(raw_path: str) -> str:
@@ -117,6 +151,20 @@ def _query(raw_query: str) -> dict[str, list[str]]:
     return {str(key): [str(value) for value in values] for key, values in parsed.items()}
 
 
+def _form_fields(body: bytes, *, allow_guest=False) -> dict[str, str]:
+    raw = body.decode('ascii', errors='strict')
+    if _BAD_PERCENT.search(raw):
+        raise ValueError('Invalid form encoding')
+    parsed = parse_qs(raw, keep_blank_values=True, strict_parsing=True,
+                      encoding='utf-8', errors='strict', max_num_fields=MAX_FORM_FIELDS + 1 + allow_guest)
+    special = {FORM_REQUEST_ID, GUEST_PROOF_FIELD} if allow_guest else {FORM_REQUEST_ID}
+    if (any(len(values) != 1 or (name not in special and re.fullmatch(r'[a-z][a-z0-9_]{0,63}', name) is None)
+            for name, values in parsed.items())
+            or FORM_ID.fullmatch(parsed.get(FORM_REQUEST_ID, [''])[0]) is None):
+        raise ValueError('Invalid form fields')
+    return {name: values[0] for name, values in parsed.items()}
+
+
 class PublicWebHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -127,9 +175,23 @@ class PublicWebHTTPServer(ThreadingHTTPServer):
         handler_class,
         *,
         client: PublicWebRuntimeClient,
+        form_origin: str | None = None,
+        guest_forms: bool = False,
         bind_and_activate: bool = True,
     ):
         self.client = client
+        self.form_origin = form_origin
+        self.form_host = public_form_origin_host(form_origin) if form_origin is not None else None
+        if guest_forms and form_origin is None:
+            raise ValueError('Public guest forms require --form-origin')
+        if guest_forms and form_origin.startswith('http://') and server_address[0] not in {'127.0.0.1', 'localhost'}:
+            raise ValueError('HTTP guest forms require a loopback listener')
+        self.guest_forms = guest_forms
+        self.form_slots = threading.BoundedSemaphore(FORM_CONCURRENT)
+        self.form_rate_lock = threading.Lock()
+        self.form_window = time.monotonic()
+        self.form_total = 0
+        self.form_sources: dict[str, int] = {}
         self.last_activity = time.monotonic()
         super().__init__(server_address, handler_class, bind_and_activate=bind_and_activate)
 
@@ -137,11 +199,27 @@ class PublicWebHTTPServer(ThreadingHTTPServer):
         self.last_activity = time.monotonic()
         return super().process_request(request, client_address)
 
+    def admit_form(self, source: str) -> bool:
+        # Use only the actual socket peer; X-Forwarded-For is untrusted.
+        with self.form_rate_lock:
+            now = time.monotonic()
+            if now - self.form_window >= FORM_WINDOW_SECONDS:
+                self.form_window = now
+                self.form_total = 0
+                self.form_sources.clear()
+            count = self.form_sources.get(source, 0)
+            if count >= FORM_PER_SOURCE or self.form_total >= FORM_PER_WINDOW:
+                return False
+            self.form_sources[source] = count + 1
+            self.form_total += 1
+            return True
+
 
 class PublicWebRequestHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "3mm-Public-Web/1"
     sys_version = ""
+    timeout = 5  # Bound idle I/O on the public listener, including header reads.
 
     @property
     def public_server(self) -> PublicWebHTTPServer:
@@ -160,20 +238,37 @@ class PublicWebRequestHandler(BaseHTTPRequestHandler):
                 result[name] = values[0]
         return result
 
-    def _request(self) -> ApplicationPublicHttpResponseV1:
-        content_length = self.headers.get("Content-Length")
-        if content_length is not None:
-            try:
-                if int(content_length) != 0:
-                    raise ValueError("GET/HEAD request bodies are not supported")
-            except ValueError as exc:
-                raise ValueError("invalid content length") from exc
+    def _guest_input(self, path: str) -> dict:
+        server = self.public_server
+        if (not server.guest_forms or self.command not in ('GET', 'POST')
+                or self.headers.get_all('Host', []) != [server.form_host]
+                or self.headers.get_all('Origin', []) not in ([], [server.form_origin])
+                or self.headers.get_all('Sec-Fetch-Site', []) not in ([], ['same-origin'], ['none'])):
+            return {}
+        headers = self.headers.get_all('Cookie', [])
+        if sum(map(len, headers)) > 8192:
+            return {}
+        name = guest_cookie_name(server.form_origin, path)
+        tokens = []
+        for header in headers:
+            for cookie in header.split(';'):
+                key, separator, value = cookie.strip().partition('=')
+                if key.strip() == name:
+                    tokens.append(value.strip() if separator else '')
+        if len(tokens) > 1:
+            return {}
+        token = tokens[0] if tokens and GUEST_COOKIE.fullmatch(tokens[0]) else None
+        return {'guest': {'origin': server.form_origin, 'cookie': token}}
+
+    def _request(self) -> ApplicationPublicHttpResponseV1 | GuestPage:
         parts = urlsplit(self.path)
+        path = _decode_path(parts.path)
         return self.public_server.client.request(
             method=self.command,
-            path=_decode_path(parts.path),
+            path=path,
             query=_query(parts.query),
             headers=self._request_headers(),
+            **(self._guest_input(path) if not parts.query else {}),
         )
 
     @staticmethod
@@ -184,10 +279,30 @@ class PublicWebRequestHandler(BaseHTTPRequestHandler):
             return base64.b64decode(response.body_base64, validate=True)
         return b""
 
-    def _write_response(self, response: ApplicationPublicHttpResponseV1) -> None:
+    def _write_response(self, response: ApplicationPublicHttpResponseV1 | GuestPage) -> None:
+        cookie = None
+        if isinstance(response, GuestPage):
+            origin = self.public_server.form_origin
+            token = GUEST_COOKIE.fullmatch(response.cookie)
+            if token is None or origin is None or not self.public_server.guest_forms:
+                return self._write_error(503)
+            max_age = min(GUEST_TTL_SECONDS, int(token[2]) - int(time.time()))
+            if max_age <= 0:
+                return self._write_error(503)
+            secure = '; Secure' if origin.startswith('https://') else ''
+            if re.fullmatch(r'/[A-Za-z0-9_/-]+', response.path) is None:
+                return self._write_error(503)
+            cookie_path = '/' if secure else response.path
+            cookie = (f'{guest_cookie_name(origin, response.path)}={response.cookie}; Path={cookie_path}; '
+                      f'Max-Age={max_age}; HttpOnly; SameSite=Strict{secure}')
+            response = response.response
         body = self._body(response)
         self.send_response(response.status)
         self.send_header("X-Content-Type-Options", "nosniff")
+        if cookie is not None:
+            self.send_header('Set-Cookie', cookie)
+        if self.command == 'POST':
+            self.send_header('Connection', 'close')
         for name, value in response.headers.items():
             self.send_header(name, value)
         if response.location is not None:
@@ -203,16 +318,26 @@ class PublicWebRequestHandler(BaseHTTPRequestHandler):
     def _write_error(self, status: int) -> None:
         messages = {
             400: b"Bad Request\n",
+            403: b"Forbidden\n",
             404: b"Not Found\n",
             405: b"Method Not Allowed\n",
+            408: b"Request Timeout\n",
+            413: b"Payload Too Large\n",
+            415: b"Unsupported Media Type\n",
+            417: b"Expectation Failed\n",
+            429: b"Too Many Requests\n",
             503: b"Service Unavailable\n",
         }
         status = status if status in messages else 503
         body = messages[status]
+        if status == 503 and self.command == 'POST':
+            body = b'Form submission was not confirmed. Do not send a new request for the same submission.\n'
         self.send_response(status)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.close_connection = True
+        self.send_header('Connection', 'close')
         if status == 405:
             self.send_header("Allow", "GET, HEAD")
         self.send_header("Content-Length", str(len(body)))
@@ -221,6 +346,9 @@ class PublicWebRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _handle_public(self) -> None:
+        lengths = self.headers.get_all('Content-Length', [])
+        if 'Transfer-Encoding' in self.headers or (lengths and lengths != ['0']):
+            return self._write_error(400)
         if self.path=="/__3mm_component__/health":
             from three_mm_runtime.component_identity import component_health
             identity=component_health()
@@ -248,7 +376,61 @@ class PublicWebRequestHandler(BaseHTTPRequestHandler):
         self._handle_public()
 
     def do_POST(self) -> None:
-        self._write_error(405)
+        self.close_connection = True
+        server = self.public_server
+        if server.form_origin is None:
+            return self._write_error(405)
+        if (self.headers.get_all('Origin', []) != [server.form_origin]
+                or self.headers.get_all('Host', []) != [server.form_host]):
+            return self._write_error(403)
+        if 'Expect' in self.headers:
+            return self._write_error(417)
+        if 'Transfer-Encoding' in self.headers:
+            return self._write_error(400)
+        if ('Content-Encoding' in self.headers or
+                self.headers.get_all('Content-Type', []) != ['application/x-www-form-urlencoded']):
+            return self._write_error(415)
+        lengths = self.headers.get_all('Content-Length', [])
+        if len(lengths) != 1 or not re.fullmatch(r'[1-9][0-9]{0,9}', lengths[0]):
+            return self._write_error(400)
+        length = int(lengths[0])
+        if length > MAX_FORM_BYTES:
+            return self._write_error(413)
+        if not server.form_slots.acquire(blocking=False):
+            return self._write_error(429)
+        try:
+            if not server.admit_form(self.client_address[0]):
+                return self._write_error(429)
+            if self.path != self.requestline.split()[1] or '?' in self.path or '#' in self.path:
+                raise ValueError('Invalid form target')
+            path = _decode_path(self.path)
+            deadline = time.monotonic() + FORM_BODY_SECONDS
+            body = bytearray()
+            while len(body) < length:
+                self.connection.settimeout(remaining(deadline))
+                chunk = self.rfile.read1(length - len(body))
+                if not chunk:
+                    raise ValueError('Incomplete form body')
+                body.extend(chunk)
+            self.connection.settimeout(self.timeout)
+            guest = self._guest_input(path)
+            result = server.client.request(method='POST', path=path, query={}, headers={},
+                                           form=_form_fields(body, allow_guest=server.guest_forms), **guest)
+        except TimeoutError:
+            return self._write_error(408)
+        except ValueError:
+            return self._write_error(400)
+        except PublicWebRuntimeError as exc:
+            return self._write_error(exc.status_code)
+        finally:
+            server.form_slots.release()
+        self._write_response(result)
+
+    def handle_expect_100(self) -> bool:
+        if self.command == 'POST':
+            self._write_error(417)
+            return False
+        return super().handle_expect_100()
 
     def do_PUT(self) -> None:
         self._write_error(405)
@@ -269,22 +451,29 @@ def create_server(
     port: int = 8081,
     *,
     client: PublicWebRuntimeClient | None = None,
+    form_origin: str | None = None,
+    guest_forms: bool = False,
 ) -> PublicWebHTTPServer:
     return PublicWebHTTPServer(
         (host, port),
         PublicWebRequestHandler,
         client=client or PublicWebRuntimeClient(runtime_socket),
+        form_origin=form_origin, guest_forms=guest_forms,
     )
 
 
 def create_server_from_socket(
     runtime_socket: Path,
     listener: socket.socket,
+    *,
+    form_origin: str | None = None,
+    guest_forms: bool = False,
 ) -> PublicWebHTTPServer:
     server = PublicWebHTTPServer(
-        ("127.0.0.1", 0),
+        listener.getsockname(),
         PublicWebRequestHandler,
         client=PublicWebRuntimeClient(runtime_socket),
+        form_origin=form_origin, guest_forms=guest_forms,
         bind_and_activate=False,
     )
     server.socket.close()
@@ -320,6 +509,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8081)
     parser.add_argument("--idle-seconds", type=int, default=60)
+    parser.add_argument('--form-origin', help='Explicit origin for anonymous forms; omitted disables POST')
+    parser.add_argument('--guest-forms', action='store_true', help='Allow explicitly declared guest forms on the form origin')
     return parser
 
 
@@ -327,9 +518,11 @@ def main(argv: list[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     if arguments.systemd_socket:
         listener = inherited_systemd_socket()
-        server = create_server_from_socket(arguments.runtime_socket, listener)
+        server = create_server_from_socket(arguments.runtime_socket, listener, form_origin=arguments.form_origin,
+                                           guest_forms=arguments.guest_forms)
     else:
-        server = create_server(arguments.runtime_socket, arguments.host, arguments.port)
+        server = create_server(arguments.runtime_socket, arguments.host, arguments.port, form_origin=arguments.form_origin,
+                               guest_forms=arguments.guest_forms)
     try:
         serve_until_idle(server, arguments.idle_seconds)
     finally:

@@ -54,11 +54,25 @@ def verify_registration(db,key,installation_id,pin,package):
         raise _Unavailable('installation_unavailable')
     identifier=registration_id(db,installation_id,pin.module_package_id,pin.sha256)
     proof=_load(db,key,'action',db.get(Action,identifier),identifier)
-    if (proof['state']!='task_registered_not_started'
-            or set(proof['data'])!={'operation','actor','binding'} or proof['data']['operation']!='task_package_stage'
+    data=proof['data']
+    provenance = (proof['state']=='task_registered_not_started' and
+                  set(data)=={'operation','actor','binding'} and data['operation']=='task_package_stage')
+    recovered = (proof['state']=='recovered_disabled' and
+                 set(data)=={'operation','binding'} and data['operation']=='lifecycle_recovery')
+    if (not (provenance or recovered)
             or not binding_matches(db,key,installation_id,identifier,proof['revision'],
-                proof['data']['binding'],_binding(db,key,installation_id,pin.module_package_id,package))):
+                data['binding'],_binding(db,key,installation_id,pin.module_package_id,package))):
         raise AuthorityManagementError('registration_unavailable')
+
+
+def register_recovered_package(db, key, installation, package):
+    """Record an exact stopped candidate, not approval or a rollback claim."""
+    identifier = installation.id
+    marker = registration_id(db, identifier, installation.module_package_id, package.sha256)
+    binding = _binding(db, key, identifier, installation.module_package_id, package)
+    _save(db, key, 'action', Action(request_id=marker, installation_id=identifier),
+          _envelope('action', marker, identifier, 'recovered_disabled',
+                    {'operation': 'lifecycle_recovery', 'binding': binding}))
 
 
 def _supported(definition):

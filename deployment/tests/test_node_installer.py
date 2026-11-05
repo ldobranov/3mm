@@ -199,22 +199,24 @@ def test_profile_selects_only_its_units(profile):
     assert ('3mm-node-recovery.service' in units) == (profile == 'node')
 
 
-@pytest.mark.parametrize('profile', ['full', 'node'])
-def test_dependency_branch_and_validation_order(profile):
+@pytest.mark.parametrize(('profile', 'architecture'), [('full', 'aarch64'), ('full', 'armv6l'), ('node', 'armv6l')])
+def test_dependency_branch_and_validation_order(profile, architecture):
     # Replace only the interpreter command with a shell function. No venv or
     # dependencies are installed by this bounded test.
     source = section('log "Creating the release-specific Python environment"',
                      'log "Stopping services and backing up persistent state"')
     source = source.replace('"$release_dir/.venv/bin/python"', 'test_python')
-    result = run(f'install_profile={profile}\n' + '''
+    result = run(f'install_profile={profile}\narchitecture={architecture}\n' + '''
 release_dir=/test/release
 deploy_home=/test/home
 npm_cache=/test/npm
 environment_file=/test/env
+ai_master_key_file=/test/old-key
+database=/test/db
 device_hostname=test-host
 frontend_origin=http://localhost
 log() { :; }
-python3() { printf 'venv\\n'; }
+python3() { printf 'python3 %s\\n' "$*"; }
 test_python() { printf 'python %s\\n' "$*"; }
 npm() { printf 'npm %s\\n' "$*"; }
 fail() { return 1; }
@@ -227,9 +229,38 @@ fail() { return 1; }
         assert 'validate_profile_role' in result.stdout
         assert 'backend/requirements' not in result.stdout
         assert 'npm install' not in result.stdout
+        assert 'armv6_ui_tools.py' not in result.stdout
     else:
         assert 'backend/requirements.txt' in result.stdout
-        assert 'npm install' in result.stdout
+        if architecture == 'armv6l':
+            assert result.stdout.index('npm ci') < result.stdout.index('armv6_ui_tools.py install')
+        else:
+            assert 'npm install' in result.stdout
+            assert 'armv6_ui_tools.py' not in result.stdout
+
+
+def test_unverifiable_key_stops_before_runtime_plan_or_service_shutdown():
+    source = section('log "Checking the runtime plan before stopping existing services"',
+                     'log "Stopping services and backing up persistent state"')
+    source = source.replace('"$release_dir/.venv/bin/python"', 'test_python')
+    result = run('''
+install_profile=full
+release_dir=/test/release
+environment_file=/test/env
+ai_master_key_file=/test/old-key
+database=/test/db
+device_hostname=test-host
+frontend_origin=http://localhost
+log() { :; }
+test_python() {
+  if [[ $1 == '-' ]]; then echo 'unverifiable key' >&2; return 1; fi
+  printf 'python %s\\n' "$*"
+}
+''' + source + '\necho must-not-continue\n')
+    assert result.returncode != 0
+    assert 'unverifiable key' in result.stderr
+    assert 'three_mm_runtime.install_bootstrap' not in result.stdout
+    assert 'must-not-continue' not in result.stdout
 
 
 def test_node_failed_dependency_check_stops_before_preflight():

@@ -33,7 +33,9 @@ except ImportError:
         validate_deployment_contract, validate_platform_runtime_contract,
     )
 
-SUPPORTED_ARCHITECTURES = ("aarch64", "armv7l", "x86_64")
+from deployment.armv6_ui_tools import FILES as ARMV6_FILES, TOOLS_PATH, artifact_inputs
+
+SUPPORTED_ARCHITECTURES = ("aarch64", "armv7l", "x86_64", "armv6l")
 COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 SEMVER_PATTERN = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -343,6 +345,7 @@ def build_release_assets(
     channel: str,
     architectures: Iterable[str],
     source_date_epoch: int,
+    armv6_ui_tools: Path | None = None,
 ) -> dict[str, object]:
     if not REPOSITORY_PATTERN.fullmatch(repository):
         raise ReleaseBuildError("Repository must use the owner/name format")
@@ -366,6 +369,19 @@ def build_release_assets(
         raise ReleaseBuildError("Release architectures are invalid or duplicated")
 
     source_payload = read_source_payload(source_archive)
+    if any(item.name.startswith(TOOLS_PATH + "/") for item in source_payload):
+        raise ReleaseBuildError("ARMv6 compiler artifacts must be supplied separately")
+    if ("armv6l" in selected_architectures) != (armv6_ui_tools is not None):
+        raise ReleaseBuildError("ARMv6 releases require separate ARMv6 compiler artifacts")
+    armv6_payload = []
+    if armv6_ui_tools is not None:
+        try:
+            armv6_payload = [
+                PayloadFile(f"{TOOLS_PATH}/{name}", data, 0o755 if name == "esbuild" else 0o644)
+                for name, data in zip(ARMV6_FILES, artifact_inputs(armv6_ui_tools), strict=True)
+            ]
+        except (OSError, ValueError) as exc:
+            raise ReleaseBuildError(str(exc)) from exc
     version_file = next(item for item in source_payload if item.name == "VERSION")
     try:
         source_version = version_file.data.decode("ascii").strip()
@@ -402,7 +418,7 @@ def build_release_assets(
         }
         sha256, size_bytes = write_release_archive(
             output_dir / filename,
-            payload,
+            payload + (armv6_payload if architecture == "armv6l" else []),
             metadata,
             epoch=source_date_epoch,
         )
@@ -424,16 +440,23 @@ def build_release_assets(
         "release_id": tag,
         "commit": commit,
         "channel": channel,
-        "artifacts": artifacts,
+        "artifacts": [],
         "dependencies": {"apt_packages": packages},
     }
-    manifest_file = output_dir / "3mm-update-manifest.json"
-    manifest_file.write_text(
-        json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    return manifest
+    # Installed Core releases validate every entry in the original manifest.
+    # Keep the ARMv6 Hub catalog separate so adding it does not break their OTA.
+    manifests = []
+    for filename, armv6 in (("3mm-update-manifest.json", False), ("3mm-armv6-update-manifest.json", True)):
+        matching = [item for item in artifacts if (item["architecture"] == "armv6l") == armv6]
+        if not matching:
+            continue
+        result = {**manifest, "artifacts": matching}
+        (output_dir / filename).write_text(
+            json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8", newline="\n",
+        )
+        manifests.append(result)
+    return manifests[0]
 
 
 def parse_args() -> argparse.Namespace:
@@ -458,6 +481,7 @@ def parse_args() -> argparse.Namespace:
         required=True,
     )
     parser.add_argument("--source-date-epoch", type=int, required=True)
+    parser.add_argument("--armv6-ui-tools", type=Path)
     return parser.parse_args()
 
 
@@ -477,6 +501,7 @@ def main() -> int:
             channel=args.channel,
             architectures=args.architectures,
             source_date_epoch=args.source_date_epoch,
+            armv6_ui_tools=args.armv6_ui_tools,
         )
     except ReleaseBuildError as exc:
         raise SystemExit(f"Release build failed: {exc}") from exc

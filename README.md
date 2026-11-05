@@ -8,12 +8,10 @@ combines a central Core, a persistent device Agent, provisioning and reviewed
 applications through common capability contracts and SDKs. Builder, dashboards
 and other product features live in optional source packages/libraries.
 
-> **Project status:** Development prototype (pre-1.0). This source prepares **Core 0.3.7**, adding
-> reviewed web management of the local Agent and explicitly selected application
-> hosts, remote Node OTA controls, and supported hardware-provider configuration
-> through administration. It includes Bulgarian pack 1.0.6. Local component
-> update/rollback was exercised on Raspberry; remote Node device acceptance is
-> deferred. The [0.3.7 changelog](CHANGELOG.md#037---2026-11-04) describes the scope.
+> **Project status:** Development prototype (pre-1.0). This source prepares **Core 0.3.8**:
+> the ARMv6 Hub installer, safer application recovery, CAP21 developer tooling
+> and opt-in CAP10 public forms. The [changelog](CHANGELOG.md#038---2026-11-05)
+> describes the scope. Bulgarian pack 1.0.6 remains unchanged.
 > It builds on the accepted
 > Core stabilization, Standalone/Hub/Node setup and Wi-Fi/AP recovery, bounded
 > diagnostics, independent optional runtimes and manifest-v2 language extensions.
@@ -25,7 +23,7 @@ and other product features live in optional source packages/libraries.
 > Host/root administration, public Cloud, full remote Terminal UI and whole
 > M21/WP5 isolation remain separate work. Terminal 1.0.3 is an independent package.
 > Native application approval permits Linux code execution and is **not a sandbox**.
-> The [0.3.7 release notes](docs/RELEASE_NOTES_0.3.7.md) describe upgrades,
+> The [0.3.8 release notes](docs/RELEASE_NOTES_0.3.8.md) describe upgrades,
 > independent components and owner device trials. Preserve database/key backups;
 > populated history can refuse downgrade, and an older Core pointer alone does
 > not restore the previous database or independent component versions.
@@ -322,6 +320,13 @@ Configuration and can remove every link or delete the last menu. Core and instal
 application routes remain available through Ctrl+K; Settings is also at `/settings`.
 The bootstrap downloads published artifacts; unpublished local changes require
 a separately prepared local package.
+
+For a **Raspberry Pi Zero W Hub**, use the same full-profile bootstrap on
+32-bit Raspberry Pi OS Trixie with Python 3.13 and the distribution's Node.js/npm.
+Starting with 0.3.8, it selects the ARMv6 Hub artifact, installs the host build
+prerequisites for Python packages, and validates the bundled UI compiler before
+switching releases. Choose **Hub** in Setup. This is separate from the minimal
+Node profile below; changing an installed profile in place is not supported.
 
 ### Minimal Node / Raspberry Pi Zero W
 

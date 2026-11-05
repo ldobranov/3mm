@@ -399,6 +399,9 @@ class ApplicationPublicHttpRouteV1(StrictApplicationModel):
         "application/pdf",
     ], ...] = Field(min_length=1, max_length=20)
     max_response_bytes: int = Field(default=256 * 1024, ge=1024, le=PUBLIC_HTTP_MAX_BODY_BYTES)
+    form_operation_id: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN,
+                                           exclude_if=lambda value: value is None)
+    guest_session: Literal[True] | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @field_validator("path")
     @classmethod
@@ -428,6 +431,13 @@ class ApplicationPublicHttpRouteV1(StrictApplicationModel):
             raise ValueError("public HTTP routes require one GET method and unique methods")
         if len(self.content_types) != len(set(self.content_types)):
             raise ValueError("public HTTP route content types must be unique")
+        if self.form_operation_id is not None and (
+                '{' in self.path or self.path == '/api' or self.path.startswith(('/api/', '/__3mm_component__/'))):
+            raise ValueError('Public forms require a literal non-administrative path')
+        if self.guest_session and (self.form_operation_id is None or self.methods != ('GET',)
+                or self.content_types != ('text/html; charset=utf-8',)
+                or re.fullmatch(r'/[A-Za-z0-9_/-]+', self.path) is None):
+            raise ValueError('Guest sessions require an explicit GET/POST HTML form')
         return self
 
 
@@ -838,6 +848,15 @@ class ApplicationExtensionV1(StrictApplicationModel):
                 'output_schema': handler.output_schema})
             if actual.digest() != contract.digest():
                 raise ValueError('Query export schemas must match the handler exactly')
+        form_operations = [route.form_operation_id for route in self.public_http_routes if route.form_operation_id]
+        if form_operations:
+            if len(self.public_http_routes) != 1 or (self.platform_requirements or self.platform_permissions
+                    or self.optional_resources or self.peer_receiver or self.peer_bindings or self.event_subscriptions
+                    or self.connectors or self.jobs or self.tasks or self.checkpoints or self.command_bindings
+                    or self.session_bindings or self.session_providers or self.query_exports or self.query_dependencies
+                    or self.storage.private_files or self.storage.relational
+                    or any(item.emitted_events for item in self.operations)):
+                raise ValueError('Public form profile supports one form and only application-owned SQLite data')
         for route in self.public_http_routes:
             operation = operations.get(route.handler_operation_id)
             if operation is None:
@@ -848,6 +867,15 @@ class ApplicationExtensionV1(StrictApplicationModel):
                 raise ValueError("public HTTP route handler must use the v1 request schema")
             if operation.output_schema != public_http_response_schema_v1():
                 raise ValueError("public HTTP route handler must use the v1 response schema")
+            if route.form_operation_id is not None:
+                from three_mm_protocol.public_forms import public_form_result_schema, validate_form_schema
+                form = operations.get(route.form_operation_id)
+                if (form is None or form.kind != 'command' or form.audiences != ('public',)
+                        or form.required_permission is not None or form.output_schema != public_form_result_schema()):
+                    raise ValueError('Public form requires a dedicated anonymous command and exact result schema')
+                validate_form_schema(form.input_schema)
+                if route.guest_session and self.service.sdk_version != '1.3':
+                    raise ValueError('Guest forms require SDK 1.3')
         if self.peer_receiver:
             if "installation.peers.receive" not in self.platform_permissions:
                 raise ValueError("Peer receiver requires its platform permission")

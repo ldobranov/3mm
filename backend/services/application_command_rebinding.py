@@ -284,8 +284,10 @@ def apply(manager, installation_id, *, actor_token, request_id, preview_id,
         _transition(db, key, row, plan, "applying")
         pending_revision = plan["revision"]
         result.update(preview_id=preview_id, state="applying", revision=pending_revision)
+    from three_mm_runtime.application_startup import application_setup_budget, application_startup_budget
     helper = UpdateHelperClient(get_settings().applications.helper_socket,
-        timeout_seconds=prepared.package.application_extension.service.startup_timeout_seconds + 10)
+        timeout_seconds=application_startup_budget(prepared.package.application_extension.service.startup_timeout_seconds)
+        + application_setup_budget(10))
     try:
         response = helper.activate_application_extension(prepared.pin.sha256, actor[0], configuration, _helper_lifecycle(ticket))
         if (not isinstance(response, dict) or response.get("module_id") != prepared.pin.module_id

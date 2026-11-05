@@ -144,7 +144,7 @@ async function apply() {
   let mutationError: unknown
   try {
     await http.post(base + `/${plan.preview_id}/apply`, { request_id: authorityRequestId(),
-      expected_revision: plan.revision, fingerprint: plan.fingerprint, approve_change: true }, { timeout: 90000 })
+      expected_revision: plan.revision, fingerprint: plan.fingerprint, approve_change: true }, { timeout: 270000 })
   } catch (cause) { mutationError = cause }
   if (current !== generation) return
   try {

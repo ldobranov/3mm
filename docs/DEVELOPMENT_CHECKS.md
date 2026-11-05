@@ -86,6 +86,13 @@ For a verified dev-lab snapshot that will run frontend checks, use
 for Python checks and omits the main frontend. The opt-in still excludes
 node_modules, build/coverage/cache output and private environment/key/data files.
 
+For checks that build an application using an optional shared library, add
+`python tools/dev_lab.py pack --with-libraries`. This includes verified library
+source in the isolated snapshot, not in Core requirements or its installed
+runtime. Default snapshots still omit libraries; private/generated/path guards
+remain enforced. Do not skip consumer checks or install an optional library into
+Core to compensate for a missing snapshot input.
+
 The Python integration group includes optional `libraries/three_mm_ai/tests` and
 `libraries/three_mm_crud/tests`; their source-path setup is test-only and does not
 install either library into Core. CRUD renderer tests use the existing frontend

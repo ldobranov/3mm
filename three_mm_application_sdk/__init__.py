@@ -31,6 +31,7 @@ from three_mm_application_sdk.scoped_files import (
 )
 from three_mm_application_sdk.scoped_media import ApplicationScopedMediaStorage
 from three_mm_protocol.application_requirements import ApplicationPlatformRequirementV1, ApplicationRequirementsRequestV1
+from three_mm_protocol.public_forms import GUEST_TTL_SECONDS, PublicFormGuest
 
 
 REVISION_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$")
@@ -850,6 +851,7 @@ class OperationContext:
     executor: object | None = field(default=None, kw_only=True)
     delegation: object | None = field(default=None, kw_only=True)
     application_caller: object | None = field(default=None, kw_only=True)
+    public_guest: PublicFormGuest | None = field(default=None, kw_only=True)
 
     @property
     def initiator(self) -> OperationActor:
@@ -943,12 +945,20 @@ class OperationContext:
                     or delegation is not None or value.get('idempotency_key') is not None):
                 raise ValueError('Application caller requires a non-delegated internal query')
             caller = ApplicationQueryCallerV1.model_validate(caller)
+        guest = None
+        if 'public_guest' in value:
+            if audience != 'public' or machine is not None or task is not None or caller is not None:
+                raise ValueError('Guest context is reserved for public forms')
+            guest = PublicFormGuest.from_platform(value['public_guest'])
+            now = int(time.time())
+            if not now < guest.expires_at <= now + GUEST_TTL_SECONDS:
+                raise ValueError('Public form guest context is expired or invalid')
         return cls(audience=str(audience), correlation_id=str(value.get("correlation_id", "")),
                    user_id=user_id, subject_id=subject_id, terminal_id=terminal_id, permission_ids=tuple(permissions),
                    platform_administrator=administrator,
                    executor=executor, delegation=delegation,
                    idempotency_key=value.get("idempotency_key") if isinstance(value.get("idempotency_key"), str) else None,
-                   machine=machine, task_execution=task, application_caller=caller)
+                   machine=machine, task_execution=task, application_caller=caller, public_guest=guest)
 
 
 class ApplicationService(Protocol):
@@ -981,6 +991,7 @@ __all__ = [
     "ApplicationStorage",
     "Clock",
     "OperationContext",
+    "PublicFormGuest",
     "OperationActor",
     "InstallationMachineActor",
     "SystemClock",

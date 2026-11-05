@@ -171,7 +171,8 @@ def write_dependencies(path: Path, packages: list[object] | None = None) -> None
     )
 
 
-def build(tmp_path: Path, output_name: str = "output") -> dict[str, object]:
+def build(tmp_path: Path, output_name: str = "output", *,
+          architectures=("aarch64", "x86_64"), armv6_ui_tools=None) -> dict[str, object]:
     source_archive = tmp_path / "source.tar"
     frontend_dist = tmp_path / "dist"
     dependencies_file = tmp_path / "dependencies.json"
@@ -192,8 +193,9 @@ def build(tmp_path: Path, output_name: str = "output") -> dict[str, object]:
         commit=COMMIT,
         branch="main",
         channel="stable",
-        architectures=("aarch64", "x86_64"),
+        architectures=architectures,
         source_date_epoch=EPOCH,
+        armv6_ui_tools=armv6_ui_tools,
     )
 
 
@@ -215,6 +217,34 @@ def test_builder_creates_strict_architecture_specific_manifest(tmp_path: Path) -
         )
         == manifest
     )
+
+
+def test_full_armv6_release_requires_and_only_it_contains_its_toolchain(tmp_path, monkeypatch):
+    from deployment import armv6_ui_tools as tools
+    import hashlib
+
+    with pytest.raises(ReleaseBuildError, match="require separate ARMv6"):
+        build(tmp_path, architectures=("armv6l",))
+    source = tmp_path / "ui-tools"
+    source.mkdir()
+    (source / "esbuild").write_bytes(b"x86")
+    (source / "rollup.tgz").write_bytes(b"fixture")
+    (source / "esbuild-notices.txt").write_bytes(b"fixture notice")
+    with pytest.raises(ReleaseBuildError, match="not a Linux ARM binary"):
+        build(tmp_path, architectures=("armv6l",), armv6_ui_tools=source)
+    (source / "esbuild").write_bytes(b"\x7fELF\x01\x01" + b"\0" * 12 + b"\x28\x00")
+    with pytest.raises(ReleaseBuildError, match="pinned digest"):
+        build(tmp_path, architectures=("armv6l",), armv6_ui_tools=source)
+    monkeypatch.setattr(tools, "ROLLUP_SHA256", hashlib.sha256(b"fixture").hexdigest())
+    manifest = build(tmp_path, architectures=("armv6l", "aarch64"), armv6_ui_tools=source)
+    arm_manifest = json.loads((tmp_path / "output/3mm-armv6-update-manifest.json").read_text())
+    assert [item.architecture for item in UpdateManifest.model_validate(manifest).artifacts] == ["aarch64"]
+    assert [item.architecture for item in UpdateManifest.model_validate(arm_manifest).artifacts] == ["armv6l"]
+    for artifact in manifest["artifacts"] + arm_manifest["artifacts"]:
+        with tarfile.open(tmp_path / "output" / artifact["filename"]) as archive:
+            paths = {name for name in archive.getnames() if name.startswith(tools.TOOLS_PATH + "/")}
+            assert paths == ({f"{tools.TOOLS_PATH}/{name}" for name in tools.FILES}
+                if artifact["architecture"] == "armv6l" else set())
 
 
 def test_release_archives_are_reproducible_and_installer_compatible(

@@ -140,12 +140,27 @@ def prepare_application_invocation(
     required_audience: str,
     before_dispatch=None,
     defer_relational=False,
+    reviewed_public_http=False,
 ) -> PreparedApplicationInvocation:
     if not installation.enabled or installation.status != "active":
         raise ApplicationGatewayError("Application extension is not active")
     validated = load_application_package(package)
     definition = validated.application_extension
     operation = find_operation(definition, operation_id)
+    form_route = next((route for route in definition.public_http_routes if route.form_operation_id is not None
+                       and operation_id in (route.handler_operation_id, route.form_operation_id)), None)
+    is_form = form_route is not None and operation_id == form_route.form_operation_id
+    public_context_fields = {'audience', 'correlation_id'} | ({'idempotency_key'} if is_form else set())
+    if form_route is not None and form_route.guest_session:
+        public_context_fields.add('public_guest')
+    elif 'public_guest' in context:
+        raise ApplicationGatewayError('Public guest context is reserved for reviewed forms',
+                                      phase=DispatchPhase.NOT_DISPATCHED)
+    if reviewed_public_http != (form_route is not None) or (form_route is not None and (
+            required_audience != 'public' or context.get('audience') != 'public'
+            or set(context) != public_context_fields)):
+        raise ApplicationGatewayError('Public form command requires dedicated ingress',
+                                      phase=DispatchPhase.NOT_DISPATCHED)
     if operation.kind == "job":
         raise ApplicationGatewayError("Scheduled application jobs are retired",
                                       phase=DispatchPhase.NOT_DISPATCHED)
@@ -162,12 +177,12 @@ def prepare_application_invocation(
                 phase=DispatchPhase.NOT_DISPATCHED) from None
     elif context.get("task_execution") is not None:
         raise ApplicationGatewayError("Task context is reserved for dedicated handlers", phase=DispatchPhase.NOT_DISPATCHED)
-    if any(
+    if form_route is not None or any(
         route.handler_operation_id == operation_id
         for route in definition.public_http_routes
     ):
-        # Public HTTP has no scoped adapter. Direct gateway callers must obey
-        # its gate too; a cached ORM mode cannot authorize a dispatch.
+        # The reviewed profile has a dedicated ingress. Old public reads keep
+        # the existing compatibility gate; an ORM cache cannot grant access.
         db = object_session(installation)
         mode = (
             db.scalar(
@@ -178,7 +193,7 @@ def prepare_application_invocation(
             if db is not None
             else installation.authority_mode
         )
-        if mode != "compatibility":
+        if mode != ('enforced' if reviewed_public_http else 'compatibility'):
             raise ApplicationGatewayError(
                 "Operation has no supported scoped resource grant",
                 phase=DispatchPhase.NOT_DISPATCHED,

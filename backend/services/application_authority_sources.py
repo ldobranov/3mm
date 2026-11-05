@@ -191,6 +191,21 @@ its live concurrency acceptance is still separate from local SQLite proof.
                 raise
 
 
+def has_inert_registration(db, installation_id, pin):
+    """Presence only; consumers must still authenticate the exact record."""
+    from backend.db.application_authority_grant import ApplicationAuthorityAction
+    from backend.services.application_relational_registration import candidate_registration_id, registration_id
+    from backend.services.application_package_staging import registration_id as package_registration_id
+    from backend.services.application_configuration_provenance import registration_id as connector_registration_id
+
+    return any(db.get(ApplicationAuthorityAction, marker) is not None for marker in (
+        registration_id(db, installation_id),
+        candidate_registration_id(db, installation_id, pin),
+        package_registration_id(db, installation_id, pin.module_package_id, pin.sha256),
+        connector_registration_id(db, installation_id),
+    ))
+
+
 def _package_pin(db, installation_id):
     row = db.execute(select(
         ApplicationExtensionInstallation.module_package_id,
@@ -211,18 +226,9 @@ def _package_pin(db, installation_id):
         # Only explicit inert registration/adoption may have no active version.
         # This preliminary pin is NOT authenticated authority: _resolve requires the
         # exact sealed provenance under the final key/snapshot before composition.
-        from backend.db.application_authority_grant import ApplicationAuthorityAction
-        from backend.services.application_relational_registration import (
-            candidate_registration_id, registration_id,
-        )
-        from backend.services.application_package_staging import registration_id as package_registration_id
-        from backend.services.application_configuration_provenance import registration_id as connector_registration_id
         if (row.active_version is not None or (row.status, row.enabled) != ("disabled", False)
                 or read_application_authority(db, installation_id).mode == "compatibility"
-                or (db.get(ApplicationAuthorityAction, registration_id(db, installation_id)) is None
-                    and db.get(ApplicationAuthorityAction, candidate_registration_id(db, installation_id, row)) is None
-                    and db.get(ApplicationAuthorityAction, package_registration_id(db, installation_id,row.module_package_id,row.sha256)) is None
-                    and db.get(ApplicationAuthorityAction, connector_registration_id(db, installation_id)) is None)):
+                or not has_inert_registration(db, installation_id, row)):
             raise _Unavailable("installation_unavailable")
     return row
 
@@ -586,7 +592,9 @@ def _resolve(db, installation_id, pin, package, *, registration_key=None, propos
                 for operation in declaration.operations())
     emitted = {event for operation in app.operations for event in operation.emitted_events}
     publication_complete = bool(publications) and emitted == {item.declaration.event_type for item in publications}
-    if (app.public_http_routes or app.jobs or set(app.platform_permissions) - {identity_read, status_read} - peer_permissions
+    # Only the bounded form profile has a current-artifact admission adapter.
+    if (any(route.form_operation_id is None for route in app.public_http_routes)
+            or app.jobs or set(app.platform_permissions) - {identity_read, status_read} - peer_permissions
             or {identity_read, status_read} & set(app.platform_permissions) and app.service.sdk_version != "1.3"
             or set(package.manifest.capabilities.provides) - (emitted if publication_complete else set()) - {item.capability_id for item in app.session_providers}
             or (emitted or "events.publish" in package.manifest.permissions) and not publication_complete):

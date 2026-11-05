@@ -6,6 +6,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.8] - 2026-11-05
+
+### Added
+
+- Full-profile Raspberry Pi Zero W (ARMv6, Python 3.13) installer artifacts
+  with the matching Rollup WASM and esbuild ARMv6 compiler tools. The
+  existing Node profile and other architectures keep their release catalogs.
+- CAP21 application starter, source-derived catalog, package review, generated
+  client and disposable migration checks.
+- Opt-in CAP10 Public Web form and temporary guest draft profiles. They use a
+  separate listener and exact application approval; neither is exposed by default.
+
+### Fixed
+
+- On slow ARMv6 hosts, allow bounded additional time for compiler, host
+  initialization and signed application readiness checks.
+- Recovering an interrupted installation can prepare its exact stopped package
+  for a new access review, including installations previously stuck in that
+  state. This does not grant rights, replay activation, or erase application data.
+- Verify the persisted Core encryption key before upgrading restored data;
+  do not overwrite it with a stale legacy copy.
+
 ## [0.3.7] - 2026-11-04
 
 Prepared candidate; publication requires successful main CI followed by the

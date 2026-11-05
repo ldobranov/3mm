@@ -111,6 +111,42 @@ def stage_body(s, **overrides):
         expected_revision=status['grant_record_revision'], configuration={}, **overrides)
 
 
+@pytest.mark.parametrize("initial", ["recovery_required", "disabled"])
+def test_first_activation_recovery_restores_review_not_execution(staged, monkeypatch, initial):
+    s = staged
+    approve(s)  # A previously approved grant must not be revived by recovery.
+    with Session(s.engine) as db, db.begin():
+        app = db.get(Installation, 1)
+        app.status, app.enabled, app.active_version = initial, False, None
+        configuration = dict(app.configuration)
+
+    def recover(_self, instance_id, _actor, context):
+        s.calls.append(('recover', instance_id))
+        return dict(status='disabled', instance_id=instance_id, lifecycle=context, quiescent=True)
+
+    monkeypatch.setattr(routes.UpdateHelperClient, 'recover_application_extension', recover)
+    path = s.base + '/' + s.module_id + '/lifecycle/recover'
+    catalog = s.http.get(s.base, headers=s.headers).json()
+    assert catalog[0]['recovery_preparation_required'] is (initial == 'disabled')
+    post(s, s.access+'/consent/preview', {'request_id': identity()}, status=409)
+    post(s, path, {'confirmed_external_outcome_reviewed': True}, headers={}, status=401)
+    assert not s.calls
+    recovered = post(s, path, {'confirmed_external_outcome_reviewed': True})
+    assert recovered['status'] == 'disabled' and recovered['active_version'] is None
+    with Session(s.engine) as db:
+        assert db.get(Installation, 1).configuration == configuration
+        assert db.get(Action, registration_id(db, 1, 1, s.validated.sha256)) is not None
+    assert not s.http.get(s.base, headers=s.headers).json()[0]['recovery_preparation_required']
+    assert not s.manager.inspect(1)['grant_effective']
+    activation = s.base + '/packages/' + s.validated.sha256 + '/activate'
+    post(s, activation, status=409)
+    post(s, path, {'confirmed_external_outcome_reviewed': True}, status=409)
+    assert [call[0] for call in s.calls] == ['recover']
+    assert approve(s)['artifact_sha256'] == s.validated.sha256
+    assert post(s, activation)['status'] == 'active'
+    assert [call[0] for call in s.calls] == ['recover', 'activate']
+
+
 @pytest.mark.parametrize('approved_device', [False, True])
 def test_complete_inert_device_choice_before_consent(staged, approved_device):
     from backend.services import application_authority_management as authority

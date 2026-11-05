@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -84,6 +85,21 @@ jobs:
           test "$(git rev-list -n 1 "$TAG")" = "$COMMIT"
           echo "source_date_epoch=$(git show -s --format=%ct "$COMMIT")" >> "$GITHUB_OUTPUT"
 
+      - name: Require green main CI for the exact release commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          checked=$(gh api --method GET "repos/$GH_REPO/actions/workflows/ci.yml/runs" \
+            -f head_sha="$COMMIT" -f branch=main -f event=push -F per_page=100 \
+            --jq '.workflow_runs | .[0] | select(.status == "completed" and .conclusion == "success") | .head_sha')
+          if [[ "$checked" != "$COMMIT" ]]; then
+            echo "The tagged commit must have a successful, completed main push CI run." >&2
+            exit 1
+          fi
+
       - name: Install locked frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
@@ -115,6 +131,12 @@ jobs:
           COMMIT: ${{ github.sha }}
         run: git archive --format=tar --output "$RUNNER_TEMP/3mm-source.tar" "$COMMIT"
 
+      - name: Set up Go for the ARMv6 compiler artifact
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.12"
+          cache: false
+
       - name: Build release assets twice
         env:
           VERSION: ${{ steps.release.outputs.version }}
@@ -139,9 +161,12 @@ jobs:
             --architecture aarch64
             --architecture armv7l
             --architecture x86_64
+            --architecture armv6l
           )
-          python deployment/build_release.py "${common_args[@]}" --output-dir "$RUNNER_TEMP/release-a"
-          python deployment/build_release.py "${common_args[@]}" --output-dir "$RUNNER_TEMP/release-b"
+          python deployment/armv6_ui_tools.py prepare "$RUNNER_TEMP/armv6-a"
+          python deployment/armv6_ui_tools.py prepare "$RUNNER_TEMP/armv6-b"
+          python deployment/build_release.py "${common_args[@]}" --armv6-ui-tools "$RUNNER_TEMP/armv6-a" --output-dir "$RUNNER_TEMP/release-a"
+          python deployment/build_release.py "${common_args[@]}" --armv6-ui-tools "$RUNNER_TEMP/armv6-b" --output-dir "$RUNNER_TEMP/release-b"
           diff --recursive --brief "$RUNNER_TEMP/release-a" "$RUNNER_TEMP/release-b"
           python deployment/prepare_node_wheels.py --output "$RUNNER_TEMP/node-wheels"
           node_args=(
@@ -153,7 +178,7 @@ jobs:
           python deployment/build_node_release.py "${node_args[@]}" --output "$RUNNER_TEMP/release-b"
           diff --recursive --brief "$RUNNER_TEMP/release-a" "$RUNNER_TEMP/release-b"
           cd "$RUNNER_TEMP/release-a"
-          sha256sum ./*.tar.gz ./3mm-update-manifest.json ./3mm-node-manifest.json > SHA256SUMS
+          sha256sum ./*.tar.gz ./3mm-update-manifest.json ./3mm-armv6-update-manifest.json ./3mm-node-manifest.json > SHA256SUMS
 
       - name: Confirm checkout remained clean
         run: git diff --exit-code

@@ -25,6 +25,7 @@ from backend.services.application_configuration import (
 from backend.services.application_requirements import (
     ApplicationRequirementsError, require_platform_requirements,
 )
+from three_mm_runtime.application_startup import application_startup_budget
 from three_mm_runtime.application_transport import (
     ApplicationServiceClient,
     ApplicationTransportError,
@@ -367,7 +368,7 @@ def _application_metadata(validated, configuration, instance_id, root):
         "wheel": "service.whl",
         "entrypoint": definition.service.entrypoint,
         "health_operation_id": definition.service.health_operation_id,
-        "startup_timeout_seconds": definition.service.startup_timeout_seconds,
+        "startup_timeout_seconds": application_startup_budget(definition.service.startup_timeout_seconds),
         "shutdown_timeout_seconds": definition.service.shutdown_timeout_seconds,
         "configuration": configuration,
         **({'platform_requirements': [item.model_dump(mode='json') for item in definition.platform_requirements]}

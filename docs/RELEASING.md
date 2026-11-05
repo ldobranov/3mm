@@ -77,12 +77,15 @@ rewriting history.
 For a tag such as `v0.3.0-beta.9`,
 [`.github/workflows/release.yml`](../.github/workflows/release.yml):
 
+The tag workflow also refuses publication unless the exact tagged commit has
+a completed, successful CI run from a push to `main`.
+
 1. verifies the semantic-version tag and exact `VERSION` match;
 2. proves that the tagged commit belongs to `main`;
 3. requires an annotated tag that resolves to the selected commit;
 4. runs all backend and frontend tests, type checking and the production build;
 5. exports the exact Git tree with `git archive`;
-6. builds `aarch64`, `armv7l` and `x86_64` artifacts twice;
+6. builds `aarch64`, `armv7l`, `x86_64` and `armv6l` full-profile artifacts twice;
    also prepares a reviewed ARMv6/CPython 3.13 wheelhouse and builds the minimal
    Node artifact twice from the same tagged checkout and wheelhouse;
 7. rejects the release unless both builds are byte-for-byte identical;
@@ -103,7 +106,9 @@ metadata:
 3mm-<version>-aarch64.tar.gz
 3mm-<version>-armv7l.tar.gz
 3mm-<version>-x86_64.tar.gz
+3mm-<version>-armv6l.tar.gz
 3mm-update-manifest.json
+3mm-armv6-update-manifest.json
 3mm-<version>-node-armv6l.tar.gz
 3mm-node-manifest.json
 SHA256SUMS
@@ -112,6 +117,9 @@ SHA256SUMS
 Every full-profile archive contains the same reviewed source and prebuilt frontend plus
 architecture-specific `.3mm-release.json` metadata. File ordering, ownership,
 permissions and timestamps are normalized using the tagged commit timestamp.
+The ARMv6 full-profile archive additionally carries Rollup WASM with a pinned
+digest and esbuild built twice with `GOOS=linux GOARCH=arm GOARM=6`. Its
+separate catalog avoids adding an architecture unknown to older Core OTA clients.
 The Node archive contains only Agent, shared Setup/protocol/recovery and their
 offline wheelhouse. It has a `node` profile marker and Python/architecture
 metadata. Its separate manifest keeps existing Core OTA clients compatible.
@@ -143,7 +151,7 @@ After the workflow succeeds:
 
 1. confirm the GitHub Release is not a draft;
 2. confirm prerelease state matches the selected channel;
-3. confirm all seven required assets are present for Fleet releases;
+3. confirm all nine required assets are present;
 4. inspect `3mm-update-manifest.json` for version, tag, commit, channel and
    architecture entries;
 5. confirm `SHA256SUMS` covers every archive and the manifest;

@@ -16,7 +16,7 @@ from typing import Callable, Sequence
 
 MINIMUM_PYTHON = (3, 10)
 MINIMUM_NODE_MAJOR = 20
-SUPPORTED_RASPBERRY_ARCHITECTURES = frozenset({"aarch64", "armv7l", "x86_64"})
+SUPPORTED_RASPBERRY_ARCHITECTURES = frozenset({"armv6l", "aarch64", "armv7l", "x86_64"})
 REQUIRED_COMMANDS = (
     "bash",
     "flock",
@@ -125,7 +125,7 @@ def inspect_host(
     checks.append(
         PreflightCheck(
             "runtime.python",
-            resolved_python >= MINIMUM_PYTHON,
+            resolved_python[:2] == (3, 13) if resolved_machine == "armv6l" else resolved_python >= MINIMUM_PYTHON,
             ".".join(str(part) for part in resolved_python),
         )
     )

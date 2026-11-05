@@ -860,6 +860,22 @@ def configured_manager(engine):
 
 
 @contextmanager
+def public_form_authority(db, installation_id):
+    """Current sealed review for the resource-free Public Web form profile only."""
+    if db.new or db.dirty or db.deleted:
+        raise AuthorityManagementError('unsupported_authority')
+    db.rollback()  # End routing read before acquiring the review key.
+    manager = configured_manager(db.get_bind().engine)
+    prepared = manager._prepare(installation_id)
+    routes = prepared.package.application_extension.public_http_routes
+    if len(routes) != 1 or routes[0].form_operation_id is None:
+        raise AuthorityManagementError('unsupported_authority')
+    with manager.keys.read_locked() as key, authority_transaction(db):
+        manager._require_current_grant(db, key, installation_id, prepared)
+        yield prepared.pin
+
+
+@contextmanager
 def effect_admission(db, installation_id, scope):
     """Key/guard stay held through caller's durable admission, never HTTP I/O.
 

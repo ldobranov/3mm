@@ -82,6 +82,29 @@ def make_settings(metadata_file: Path) -> UpdateCatalogSettings:
     return UpdateCatalogSettings(release_metadata_file=metadata_file)
 
 
+def test_armv6_hub_catalog_uses_its_own_manifest(tmp_path, monkeypatch):
+    monkeypatch.setattr("backend.services.system_updates.platform.machine", lambda: "armv6l")
+    metadata = tmp_path / "current.json"
+    write_release_metadata(metadata, version="1.0.0")
+    release, manifest = catalog_payloads()
+    arm_assets = [dict(item, name=item["name"].replace("3mm-update", "3mm-armv6-update").replace("aarch64", "armv6l"),
+                       browser_download_url=item["browser_download_url"].replace("3mm-update", "3mm-armv6-update").replace("aarch64", "armv6l"))
+                  for item in release["assets"]]
+    release["assets"] += arm_assets
+    manifest["artifacts"] = [{**manifest["artifacts"][0], "architecture": "armv6l",
+                             "filename": arm_assets[1]["name"], "download_url": arm_assets[1]["browser_download_url"]}]
+
+    def fetch(url, _timeout):
+        if url.endswith("/latest"):
+            return release
+        assert url == arm_assets[0]["browser_download_url"]
+        return manifest
+
+    result = check_update_catalog(make_settings(metadata), fetch_json=fetch)
+    assert result.status == "update_available"
+    assert result.latest.artifacts[0].architecture == "armv6l"
+
+
 def test_local_status_does_not_call_the_network(tmp_path: Path) -> None:
     metadata_file = tmp_path / ".3mm-release.json"
     write_release_metadata(metadata_file)

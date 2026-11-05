@@ -78,6 +78,9 @@ def test_state_switch_and_rollback_load_their_own_environment(tmp_path, monkeypa
     children = []
     services = []
     failed = False
+    legacy_key = tmp_path / 'ai-settings.key'
+    pre_restore_key = environment.read_text().strip().split('=', 1)[1]
+    legacy_key.write_text(pre_restore_key + '\n')
 
     def run(arguments, *, timeout=180):
         nonlocal failed
@@ -137,6 +140,19 @@ def test_state_switch_and_rollback_load_their_own_environment(tmp_path, monkeypa
         assert children == [("preflight", live_identity), ("migration", archived_identity),
                             ("applications", archived_identity), ("bootstrap", archived_identity)]
         assert (settings.backend.uploads_dir / "logo.png").read_bytes() == b"image"
+        # An upgrade after restore must use the same key as the running Core.
+        # The legacy file deliberately still contains the pre-restore key.
+        selected = identity.select_installer_master_key(database, environment, legacy_key)
+        assert selected != pre_restore_key
+        assert legacy_key.read_text() == pre_restore_key + '\n'
+        with monkeypatch.context() as child:
+            child.setenv('AI_SETTINGS_MASTER_KEY', selected)
+            engine = create_engine(f'sqlite:///{database.as_posix()}')
+            try:
+                with Session(engine) as db:
+                    assert identity.installation_identity(db).identity == archived_identity
+            finally:
+                engine.dispose()
     else:
         with pytest.raises((subprocess.CalledProcessError, RuntimeError)):
             restore.restore_backup(**arguments)
@@ -148,6 +164,37 @@ def test_state_switch_and_rollback_load_their_own_environment(tmp_path, monkeypa
         assert (settings.backend.uploads_dir / "logo.png").read_bytes() == b"current-before-restore"
     assert services[-1] == ("try-restart", "3mm-update-helper.service")
     assert not (settings.backups.storage_dir / f".rollback-{backup.backup_id}").exists()
+
+
+@pytest.mark.parametrize('failure', ['wrong', 'missing', 'duplicate', 'invalid'])
+def test_upgrade_refuses_unverified_identity_key_without_rewriting_any_file(tmp_path, monkeypatch, failure):
+    database, environment, legacy_key = (tmp_path / name for name in ('3mm.db', '3mm.env', 'ai-settings.key'))
+    actual = Fernet.generate_key().decode()
+    initialize_identity(database, actual, monkeypatch)
+    unrelated = Fernet.generate_key().decode()
+    settings = {
+        'wrong': f'AI_SETTINGS_MASTER_KEY={unrelated}\n',
+        'missing': 'UNRELATED=1\n',
+        'duplicate': f'AI_SETTINGS_MASTER_KEY={actual}\nAI_SETTINGS_MASTER_KEY={actual}\n',
+        'invalid': 'AI_SETTINGS_MASTER_KEY=not-a-key\n',
+    }
+    environment.write_text(settings[failure])
+    if failure != 'missing':
+        legacy_key.write_text(actual + '\n')
+    before = database.read_bytes()
+    with pytest.raises(identity.InstallationIdentityError, match='Cannot preserve'):
+        identity.select_installer_master_key(database, environment, legacy_key)
+    assert database.read_bytes() == before and environment.read_text() == settings[failure]
+
+
+def test_installer_accepts_legacy_key_only_without_configured_key_and_generates_on_first_install(tmp_path, monkeypatch):
+    database, environment, legacy_key = (tmp_path / name for name in ('3mm.db', '3mm.env', 'ai-settings.key'))
+    fresh = identity.select_installer_master_key(database, environment, legacy_key)
+    Fernet(fresh.encode('ascii'))
+    assert not any(path.exists() for path in (database, environment, legacy_key))
+    initialize_identity(database, fresh, monkeypatch)
+    legacy_key.write_text(fresh + '\n')
+    assert identity.select_installer_master_key(database, environment, legacy_key) == fresh
 
 
 @pytest.mark.parametrize("failure", ["readonly_journal", "readonly_pointers", "child_environment", "rollback_key"])

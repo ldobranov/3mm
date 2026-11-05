@@ -45,7 +45,7 @@ class UpdateDependencies(BaseModel):
 
 
 class UpdateArtifact(BaseModel):
-    architecture: Literal["aarch64", "armv7l", "x86_64"]
+    architecture: Literal["aarch64", "armv7l", "x86_64", "armv6l"]
     filename: str = Field(pattern=r"^[A-Za-z0-9._-]+\.tar\.gz$")
     download_url: AnyHttpUrl
     sha256: str = Field(pattern=SHA256_PATTERN)
@@ -442,7 +442,10 @@ def check_update_catalog(
         if len(asset_names) != len(set(asset_names)):
             raise UpdateCatalogError("GitHub release contains duplicate asset names")
         assets_by_name = {item["name"]: item for item in named_assets}
-        manifest_asset = assets_by_name.get(settings.manifest_asset_name)
+        manifest_name = settings.manifest_asset_name
+        if manifest_name == "3mm-update-manifest.json" and _current_architecture() == "armv6l":
+            manifest_name = "3mm-armv6-update-manifest.json"
+        manifest_asset = assets_by_name.get(manifest_name)
         if manifest_asset is None:
             return _base_response(
                 settings,

@@ -17,9 +17,14 @@ device_hostname=$(hostname -s)
 identity_source=${4:-}
 expected_archive_sha256=${5:-}
 install_profile=${6:-full}
+architecture=$(uname -m)
 if [[ $install_profile != full && $install_profile != node ]]; then
   echo "Installation profile must be full or node." >&2
   exit 1
+fi
+if [[ $install_profile == full && $architecture == armv6l ]]; then
+  [[ -n $expected_archive_sha256 ]] || { echo "ARMv6 Hub requires a verified release archive." >&2; exit 1; }
+  python3 -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 13) else "ARMv6 Hub requires Python 3.13")'
 fi
 # Node packaging is experimental until clean-install/rollback acceptance.
 if [[ $install_profile == node && -z $expected_archive_sha256 ]]; then
@@ -301,8 +306,9 @@ restore_environment() {
 verify_endpoint() {
   local endpoint=$1
   local ready=0
-  local attempt
-  for attempt in $(seq 1 60); do
+  local attempt attempts=60
+  if [[ $architecture == armv6l && $install_profile == full ]]; then attempts=180; fi
+  for attempt in $(seq 1 "$attempts"); do
     if curl -fsS --max-time 3 "$endpoint" >/dev/null; then
       ready=1
       break
@@ -750,6 +756,18 @@ if [[ ! -d $release_dir/frontend/dist/assets ]] || \
    ! find "$release_dir/frontend/dist/assets" -maxdepth 1 -type f -name '*.js' -print -quit | grep -q .; then
   fail "Frontend artifact is incomplete: dist/assets/*.js is required."
 fi
+if [[ $architecture == armv6l ]]; then
+  python3 - "$release_dir/.3mm-release.json" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as source:
+    metadata = json.load(source)
+if metadata.get("architecture") != "armv6l" or metadata.get("profile", "full") != "full":
+    raise SystemExit("ARMv6 Hub requires its exact full-profile release artifact")
+PY
+  for tool in esbuild rollup.tgz; do
+    [[ -f $release_dir/deployment/armv6-ui/$tool ]] || fail "ARMv6 compiler artifact is missing: $tool"
+  done
+fi
 fi
 # Profile selection belongs to this immutable release, never to mutable env state.
 if [[ $install_profile == node ]]; then
@@ -784,9 +802,14 @@ else
 if ! command -v npm >/dev/null 2>&1; then
   fail "Node.js/npm is required for the compiled UI extension toolchain."
 fi
-HOME="$deploy_home" npm_config_cache="$npm_cache" \
-  npm install --prefix "$release_dir/frontend/compiler" \
-  --ignore-scripts --no-audit --no-fund
+if [[ $architecture == armv6l ]]; then
+  HOME="$deploy_home" npm_config_cache="$npm_cache" \
+    npm ci --prefix "$release_dir/frontend/compiler" --ignore-scripts --no-audit --no-fund
+  python3 "$release_dir/deployment/armv6_ui_tools.py" install "$release_dir"
+else
+  HOME="$deploy_home" npm_config_cache="$npm_cache" \
+    npm install --prefix "$release_dir/frontend/compiler" --ignore-scripts --no-audit --no-fund
+fi
 fi
 
 log "Checking the runtime plan before stopping existing services"
@@ -797,6 +820,21 @@ if [[ $install_profile == full ]]; then
     "$release_dir/deployment/frontend_access.py" \
     --environment "$environment_file" --frontend-origin "$frontend_origin" \
     --hostname "$device_hostname")
+  # A restore replaces Core's environment and database together. The legacy
+  # sidecar may still hold a different key from before that restore.
+  ai_master_key=$(PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" - \
+    "$database" "$environment_file" "$ai_master_key_file" <<'PY'
+import sys
+from pathlib import Path
+from backend.services.installation_identity import InstallationIdentityError, select_installer_master_key
+
+try:
+    key = select_installer_master_key(*map(Path, sys.argv[1:]))
+except InstallationIdentityError as error:
+    raise SystemExit(str(error)) from None
+print(key)
+PY
+  )
 fi
 PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" -m three_mm_runtime.install_bootstrap \
   --profile "$install_profile" --check-only
@@ -912,18 +950,6 @@ upsert_environment THREE_MM_CONNECTOR_WORKER_SOCKET /run/3mm-connectors/worker.s
 upsert_environment THREE_MM_PLATFORM_RUNTIME_USER 3mm-platform
 upsert_environment THREE_MM_PLATFORM_RUNTIME_SOCKET /run/3mm-platform/runtime.sock
 
-if [[ -s $ai_master_key_file ]]; then
-  ai_master_key=$(cat "$ai_master_key_file")
-else
-  ai_master_key=$(awk -F= '$1 == "AI_SETTINGS_MASTER_KEY" {sub(/^[^=]*=/, ""); print; exit}' "$environment_tmp")
-  if [[ -z $ai_master_key ]]; then
-    ai_master_key=$("$release_dir/.venv/bin/python" -c \
-      'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')
-  fi
-  printf '%s\n' "$ai_master_key" > "$ai_master_key_file"
-fi
-chown root:3mm "$ai_master_key_file"
-chmod 0640 "$ai_master_key_file"
 upsert_environment AI_SETTINGS_MASTER_KEY "$ai_master_key"
 install -o root -g 3mm -m 0640 "$environment_tmp" "$environment_file"
 rm -f -- "$environment_tmp"

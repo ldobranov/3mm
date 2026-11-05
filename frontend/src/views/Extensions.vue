@@ -389,6 +389,7 @@ interface Extension {
   can_manage: boolean;
   available_versions: string[];
   package_sha256?: string | null;
+  recovery_preparation_required?: boolean;
   package_sha256_by_version?: Record<string, string>;
   is_installed: boolean;
   is_selected?: boolean;
@@ -426,6 +427,7 @@ interface ApplicationInstallation {
   active_version: string | null;
   status: string;
   enabled: boolean;
+  recovery_preparation_required?: boolean;
 }
 
 interface RetainedApplicationData {
@@ -504,7 +506,7 @@ const extensionSourceLabel = (extension: Extension): string => {
 
 const requiresApplicationRecovery = (extension: Extension): boolean =>
   extension.source === 'application' && extension.is_installed
-  && interruptedLifecycleStatuses.has(extension.status);
+  && (interruptedLifecycleStatuses.has(extension.status) || extension.recovery_preparation_required === true);
 
 const applicationRecovered = async () => {
   const target = recoveryTarget.value;
@@ -515,7 +517,8 @@ const applicationRecovered = async () => {
   window.dispatchEvent(new Event('menu-refresh'));
   if (!await loadExtensions()) return;
   const current = extensions.value.find(item => item.id === target.id);
-  if (current?.status === 'disabled' && !current.is_enabled && current.package_sha256) {
+  if (current?.status === 'disabled' && !current.is_enabled && current.package_sha256
+      && !current.recovery_preparation_required) {
     authorityTarget.value = { moduleId: target.id.replace('application:', ''), name: current.name };
   }
 };
@@ -747,6 +750,7 @@ const buildApplicationExtensions = (
       can_manage: isAdmin.value,
       available_versions: ordered.map(pkg => pkg.version),
       package_sha256: installation?.package_sha256 || selectedPackage?.sha256 || null,
+      recovery_preparation_required: installation?.recovery_preparation_required === true,
       package_sha256_by_version: Object.fromEntries(
         ordered.map(pkg => [pkg.version, pkg.sha256]),
       ),

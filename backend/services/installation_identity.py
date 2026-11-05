@@ -7,6 +7,7 @@ import hashlib
 import os
 import sqlite3
 import uuid
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -159,6 +160,72 @@ def _decode_identity(
     return identity, private
 
 
+def _stored_identity_row(database: Path) -> SimpleNamespace | None:
+    with closing(sqlite3.connect(f"{database.resolve().as_uri()}?mode=ro", uri=True)) as connection:
+        connection.row_factory = sqlite3.Row
+        if not connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='core_installation_identity'"
+        ).fetchone():
+            return None
+        rows = connection.execute(
+            "SELECT singleton_id, installation_id, identity_version, key_generation, key_id, public_key, encrypted_private_key, created_at FROM core_installation_identity"
+        ).fetchmany(2)
+    if not rows:
+        return None
+    if len(rows) != 1 or rows[0]["singleton_id"] != 1:
+        raise ValueError("invalid singleton")
+    return SimpleNamespace(**dict(rows[0]))
+
+
+def _read_key_config(path: Path, max_bytes: int) -> str:
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("invalid key configuration file")
+    with path.open("rb") as source:
+        data = source.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise ValueError("oversized key configuration file")
+    return data.decode("utf-8")
+
+
+def _configured_master_key(host_config: Path) -> str | None:
+    keys = []
+    for line in _read_key_config(host_config, 256 * 1024).splitlines():
+        name, separator, value = line.strip().partition("=")
+        if separator and name == "AI_SETTINGS_MASTER_KEY":
+            # The generated systemd environment uses unquoted values;
+            # matching enclosing quotes are also accepted for edited files.
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            keys.append(value.strip())
+    if len(keys) > 1:
+        raise ValueError("duplicate master key")
+    return keys[0] if keys else None
+
+
+def select_installer_master_key(database: Path, host_config: Path, legacy_file: Path) -> str:
+    """Keep Core's persisted key, including when restore left a stale legacy file."""
+    try:
+        row = _stored_identity_row(database) if database.exists() else None
+        key = (_configured_master_key(host_config)
+               if host_config.exists() or host_config.is_symlink() else None)
+        if key is None and (legacy_file.exists() or legacy_file.is_symlink()):
+            key = _read_key_config(legacy_file, 1024).strip()
+        if key is None:
+            if row is not None:
+                raise ValueError("missing master key for stored identity")
+            return Fernet.generate_key().decode("ascii")
+        if len(key) != 44 or len(base64.b64decode(key, altchars=b"-_", validate=True)) != 32:
+            raise ValueError("invalid master key encoding")
+        cipher = _cipher(key)
+        if row is not None:
+            _decode_identity(row, cipher)
+        return key
+    except (OSError, sqlite3.Error, ValueError, InstallationIdentityError) as exc:
+        raise InstallationIdentityError(
+            "Cannot preserve the existing Core encryption key; verify the installation recovery material"
+        ) from exc
+
+
 def validate_identity_backup(database: Path, host_config: Path) -> None:
     """Read-only preflight: an initialized identity needs its captured master key.
 
@@ -166,41 +233,13 @@ def validate_identity_backup(database: Path, host_config: Path) -> None:
     environment, generate identities or reveal decrypted/private material.
     """
     try:
-        connection = sqlite3.connect(f"{database.resolve().as_uri()}?mode=ro", uri=True)
-        try:
-            connection.row_factory = sqlite3.Row
-            exists = connection.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='core_installation_identity'"
-            ).fetchone()
-            if not exists:
-                return
-            rows = connection.execute(
-                "SELECT singleton_id, installation_id, identity_version, key_generation, key_id, public_key, encrypted_private_key, created_at FROM core_installation_identity"
-            ).fetchall()
-        finally:
-            connection.close()
-        if not rows:
+        row = _stored_identity_row(database)
+        if row is None:
             return
-        if len(rows) != 1 or rows[0]["singleton_id"] != 1:
-            raise ValueError("invalid singleton")
-        if host_config.is_symlink() or not host_config.is_file():
-            raise ValueError("missing host configuration")
-        with host_config.open("rb") as source:
-            data = source.read(256 * 1024 + 1)
-        if len(data) > 256 * 1024:
-            raise ValueError("oversized host configuration")
-        keys = []
-        for line in data.decode("utf-8").splitlines():
-            name, separator, value = line.strip().partition("=")
-            if separator and name == "AI_SETTINGS_MASTER_KEY":
-                # The generated systemd environment uses unquoted values;
-                # matching enclosing quotes are also accepted for edited files.
-                if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-                    value = value[1:-1]
-                keys.append(value)
-        if len(keys) != 1:
-            raise ValueError("missing or duplicate captured master key")
-        _decode_identity(SimpleNamespace(**dict(rows[0])), _cipher(keys[0]))
+        key = _configured_master_key(host_config)
+        if not key:
+            raise ValueError("missing captured master key")
+        _decode_identity(row, _cipher(key))
     except (OSError, sqlite3.Error, ValueError, InstallationIdentityError) as exc:
         raise InstallationIdentityError(
             "Installation identity recovery material is missing or invalid"

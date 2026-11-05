@@ -15,13 +15,15 @@ const reviewed = ref(false)
 const loading = ref(false)
 const saving = ref(false)
 const fresh = ref(false)
-const pending = computed(() => interruptedLifecycleStatuses.has(status.value))
+const preparationRequired = ref(false)
+const pending = computed(() => interruptedLifecycleStatuses.has(status.value)
+  || (status.value === 'disabled' && preparationRequired.value))
 const canRecover = computed(() => fresh.value && pending.value && reviewed.value && !loading.value && !saving.value)
 const close = () => { if (!saving.value) emit('close') }
 
 async function refresh() {
   if (saving.value || loading.value) return
-  loading.value = true; fresh.value = false; reviewed.value = false; error.value = ''
+  loading.value = true; fresh.value = false; preparationRequired.value = false; reviewed.value = false; error.value = ''
   try {
     const { data } = await http.get('/api/v1/application-extensions', { timeout: 12000 })
     if (!Array.isArray(data)) throw new Error('Invalid installation catalog')
@@ -29,6 +31,7 @@ async function refresh() {
     if (!installation) { status.value = ''; lifecycleError.value = ''; error.value = label('missing'); return }
     if (typeof installation.status !== 'string') throw new Error('Invalid lifecycle stage')
     status.value = installation.status
+    preparationRequired.value = installation.recovery_preparation_required === true
     lifecycleError.value = typeof installation.error === 'string' ? installation.error : ''
     fresh.value = true
   } catch { error.value = label('unavailable') }
