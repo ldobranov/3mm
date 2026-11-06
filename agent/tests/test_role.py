@@ -79,13 +79,18 @@ def test_corrupt_provisioning_state_fails_agent_startup(tmp_path):
 
 
 def test_setup_service_role_is_consumed_by_agent(tmp_path):
-    import sqlite3
+    from sqlalchemy import create_engine
+
+    from backend.db.user import User
     from setup_service.config import SetupSettings
+
     provisioning_store = FileProvisioningStore(tmp_path / "setup")
     setup_settings=SetupSettings(data_dir=tmp_path/"setup",core_database_path=tmp_path/"core.db")
-    with sqlite3.connect(setup_settings.core_database_path) as db:
-        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT UNIQUE, email TEXT UNIQUE, "
-            "hashed_password TEXT, role TEXT, is_blocked BOOLEAN DEFAULT 0, token_version INTEGER DEFAULT 0)")
+    engine = create_engine(f"sqlite:///{setup_settings.core_database_path.as_posix()}")
+    try:
+        User.__table__.create(engine)
+    finally:
+        engine.dispose()
     setup_payload = {
         "network_mode":"preserve", "locale":"bg-BG", "device_name":"standalone-device",
         "administrator_name":"admin", "administrator_email":"admin@example.com",
@@ -95,6 +100,7 @@ def test_setup_service_role_is_consumed_by_agent(tmp_path):
     setup_app=create_setup_app(network,provisioning_store,setup_settings,capability_provider=lambda:[])
     with TestClient(setup_app) as setup_client:
         response=setup_client.post("/api/v1/setup/configure",json=setup_payload)
+    assert response.status_code == 200, response.text
     assert network.calls==[]  # Host-managed networking is preserved; no Wi-Fi operation.
 
     settings = AgentSettings(
@@ -105,5 +111,4 @@ def test_setup_service_role_is_consumed_by_agent(tmp_path):
     with TestClient(create_app(settings)) as agent_client:
         hello = agent_client.get("/api/v1/agent/hello").json()
 
-    assert response.status_code == 200
     assert hello["role"] == "standalone"
