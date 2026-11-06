@@ -515,11 +515,19 @@ def test_lost_admission_reply_uses_original_lookup_only(task_state, monkeypatch)
         return original(connection, encoded)
     monkeypatch.setattr(s.server, "_send_encoded", send)
     key = identity()
-    with pytest.raises(ApplicationPlatformError): schedule(s, request_id=key)
+    with pytest.raises(ApplicationPlatformError): schedule(s, request_id=key, delay=0)
     assert dropped and s.task_probe.lookup(key)["status"] == "queued"
     with Session(s.engine) as db: assert db.scalar(select(func.count()).select_from(Run)) == 1
-    s.start_worker()
-    assert wait(s, key)["result"] == {"total": 5050} and attempts(s) == 1
+
+    # Drive one real worker exchange after observing the original queued row.
+    # This scenario tests lost-reply recovery, not cold process startup within
+    # the task deadline. Other cases in this suite exercise the packaged worker.
+    worker = TaskWorker(s.server.socket_path, core_uid=os.geteuid())
+    assert worker.run_once(), "Worker did not claim the original queued task"
+    result = s.task_probe.lookup(key)
+    assert result["status"] == "succeeded", result
+    assert result["result"] == {"total": 5050}
+    assert not worker.run_once() and attempts(s) == 1
 
 
 def test_exact_idempotency_and_queued_cancellation(task_state):
