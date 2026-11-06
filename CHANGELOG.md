@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.9] - 2026-11-06
+
+### Fixed
+
+- First-boot Setup creates the initial administrator with a stable user
+  subject. On clean installations, successful login now also allows session
+  refresh and access to reviewed applications. Existing accounts are unchanged.
+
+### Added
+
+- Read-only reports for effective application-host CPU, memory and task caps.
+  Full-profile Raspberry Pi preflight warns when cgroup v2 memory control
+  cannot be verified; it does not change the boot configuration.
+- A local webhook admission, ingress and delivery pilot. It remains opt-in
+  and does not expose a webhook listener in an installed system.
+
 ## [0.3.8] - 2026-11-05
 
 ### Added
