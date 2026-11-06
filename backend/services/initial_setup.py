@@ -6,6 +6,7 @@ An interrupted setup can prove the already-created account on retry.
 
 import sqlite3
 from pathlib import Path
+from uuid import uuid4
 
 from backend.utils.auth import hash_password, verify_password
 
@@ -32,8 +33,12 @@ def establish_administrator(database: Path, username: str, email: str, password:
                 return
             if connection.execute("SELECT 1 FROM users WHERE username=? OR email=?", (username, email)).fetchone():
                 raise InitialAdministratorError("administrator_account_conflict")
-            connection.execute("INSERT INTO users (username,email,hashed_password,role,is_blocked,token_version) "
-                               "VALUES (?,?,?,'admin',0,0)", (username, email, hash_password(password)))
+            # The ORM's subject default does not run for first-boot SQL.
+            connection.execute(
+                "INSERT INTO users (username,email,hashed_password,role,is_blocked,token_version,subject_id) "
+                "VALUES (?,?,?,'admin',0,0,?)",
+                (username, email, hash_password(password), "usr_" + uuid4().hex),
+            )
     except (sqlite3.Error, TypeError, ValueError) as exc:
         if isinstance(exc, InitialAdministratorError):
             raise

@@ -1,7 +1,11 @@
 from datetime import datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-from fastapi import FastAPI
+from alembic import command
+from alembic.config import Config
+from fastapi import Depends, FastAPI, Header
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -14,6 +18,8 @@ from backend.db.settings import Settings
 from backend.db.user import User
 from backend.routes.auth_refresh import router as refresh_router
 from backend.routes.user import router as user_router
+from backend.services.application_access import resolve_application_principal
+from backend.services.initial_setup import establish_administrator
 from backend.utils import jwt_utils
 from backend.utils.auth import hash_password
 from backend.utils.db_utils import get_db
@@ -63,6 +69,52 @@ def login(client: TestClient, email: str, password: str) -> str:
     )
     assert response.status_code == 200
     return response.json()["token"]
+
+
+def test_fresh_setup_admin_can_open_app_and_refresh_session(tmp_path, monkeypatch):
+    database = tmp_path / "core.db"
+    url = f"sqlite:///{database.as_posix()}"
+    monkeypatch.setattr("backend.config.get_settings", lambda: SimpleNamespace(database_url=url))
+    monkeypatch.setattr("backend.routes.user.token_blacklist", set())
+    migration = Config()
+    migration.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "alembic"))
+    command.upgrade(migration, "head")
+    establish_administrator(database, "owner", "owner@example.com", "test-first-boot-password")
+
+    engine = create_engine(url)
+    app = FastAPI()
+    app.include_router(user_router, prefix="/api/user")
+    app.include_router(refresh_router, prefix="/api")
+
+    def database_session():
+        with Session(engine) as db:
+            yield db
+
+    app.dependency_overrides[get_db] = database_session
+
+    @app.get("/test-application-actor")
+    def application_actor(authorization: str = Header(...), db: Session = Depends(get_db)):
+        actor = resolve_application_principal(authorization, db)
+        return {"kind": actor.kind, "subject": actor.subject_id, "admin": actor.is_admin}
+
+    try:
+        with TestClient(app) as client:
+            token = login(client, "owner@example.com", "test-first-boot-password")
+            headers = {"Authorization": f"Bearer {token}"}
+            first = client.get("/test-application-actor", headers=headers)
+            refreshed = client.post("/api/user/refresh", headers=headers)
+            assert (first.status_code, refreshed.status_code) == (200, 200)
+            actor = first.json()
+            assert actor["kind"] == "user" and actor["admin"] is True
+            refreshed_headers = {"Authorization": "Bearer " + refreshed.json()["token"]}
+            still_authorized = client.get("/test-application-actor", headers=refreshed_headers)
+            assert still_authorized.status_code == 200 and still_authorized.json() == actor
+            logged_out = client.post("/api/user/logout", headers=refreshed_headers)
+            assert logged_out.status_code == 200
+            denied = client.get("/test-application-actor", headers=refreshed_headers)
+            assert denied.status_code == 401
+    finally:
+        engine.dispose()
 
 
 def test_login_uses_configured_session_duration_and_stable_session_id() -> None:

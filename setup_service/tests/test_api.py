@@ -30,7 +30,8 @@ def settings(tmp_path):
     database = tmp_path / "core.db"
     with sqlite3.connect(database) as connection:
         connection.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT UNIQUE, email TEXT UNIQUE, "
-                           "hashed_password TEXT, role TEXT, is_blocked BOOLEAN DEFAULT 0, token_version INTEGER DEFAULT 0)")
+                           "hashed_password TEXT, role TEXT, is_blocked BOOLEAN DEFAULT 0, token_version INTEGER DEFAULT 0, "
+                           "subject_id TEXT UNIQUE)")
     return SetupSettings(data_dir=tmp_path / "provisioning", core_database_path=database)
 
 

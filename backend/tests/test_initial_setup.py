@@ -12,7 +12,8 @@ def database(tmp_path):
     path=tmp_path/'core.db'
     with sqlite3.connect(path) as db:
         db.execute('CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT UNIQUE, email TEXT UNIQUE, '
-                   'hashed_password TEXT, role TEXT, is_blocked BOOLEAN DEFAULT 0, token_version INTEGER DEFAULT 0)')
+                   'hashed_password TEXT, role TEXT, is_blocked BOOLEAN DEFAULT 0, token_version INTEGER DEFAULT 0, '
+                   'subject_id TEXT UNIQUE)')
     return path
 
 
@@ -20,8 +21,11 @@ def test_concurrent_setup_is_idempotent_and_preserves_password(database):
     def create(_): establish_administrator(database,'admin','admin@example.com','admin')
     with ThreadPoolExecutor(max_workers=2) as pool: list(pool.map(create,range(2)))
     with sqlite3.connect(database) as db:
-        users=db.execute('SELECT hashed_password,role FROM users').fetchall()
+        users=db.execute('SELECT hashed_password,role,subject_id FROM users').fetchall()
+        create(None)
+        assert db.execute('SELECT hashed_password,role,subject_id FROM users').fetchall() == users
     assert len(users)==1 and users[0][1]=='admin' and verify_password('admin',users[0][0])
+    assert users[0][2].startswith('usr_')
 
 
 @pytest.mark.parametrize('role,blocked,password',[('admin',0,'wrong'),('admin',1,'original'),('user',0,'original')])
