@@ -15,6 +15,7 @@ from backend.db.module import ApplicationExtensionInstallation
 from backend.services import application_authority_management as management
 from backend.services.application_authority_keys import AuthorityReviewKeyError
 from backend.services.application_policy_reviews import PolicyReviewStoreError, _actor
+from backend.services.application_public_web import ApplicationPublicWebError, require_reviewed_webhook_route
 from backend.services.authority_metadata import (
     AuthorityMetadataError, authority_transaction, read_application_authority, read_authority_guard,
 )
@@ -149,6 +150,16 @@ class ReviewedWebhookAdmission:
         """Authorize through the local inbox commit, release before HTTP output."""
         with self._current():
             yield
+
+    def check_route_ownership(self) -> None:
+        """Pilot startup check; never load other packages under the review-key lease."""
+        try:
+            with Session(self._engine) as db:
+                require_reviewed_webhook_route(db, self._binding.target.installation_id, self.path)
+        except (ApplicationPublicWebError, SQLAlchemyError, OSError):
+            raise WebhookRejected("Reviewed public webhook route is unavailable or overlaps another route") from None
+        with self._current():
+            pass
 
     def _approval(self, db, key):
         row = db.get(ApplicationAuthorityAction, self._head_id)

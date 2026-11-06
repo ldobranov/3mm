@@ -42,6 +42,7 @@ from three_mm_runtime.application_activation import (
 )
 from three_mm_platform_runtime.public_web import PublicWebRuntime
 from three_mm_public_web.server import create_server_from_socket
+from three_mm_public_web.webhook_pilot import WebhookPilotClient
 from tools.build_public_form_reference import build_package, MODULE
 
 
@@ -51,7 +52,7 @@ LINUX_LAB = pytest.mark.skipif(sys.platform != 'linux' or getattr(os, 'geteuid',
 
 
 @contextmanager
-def public_surface(base, keys, *, guest_forms=False):
+def public_surface(base, keys, *, guest_forms=False, webhook_pilot=None):
     from backend.services.application_platform import CoreRuntimeAuthorityServer
 
     with ExitStack() as cleanup:
@@ -66,7 +67,8 @@ def public_surface(base, keys, *, guest_forms=False):
         listener = cleanup.enter_context(socket.socket())
         listener.bind(('127.0.0.1', 0)); listener.listen()
         origin = f'http://127.0.0.1:{listener.getsockname()[1]}'
-        server = create_server_from_socket(base/'public.sock', listener, form_origin=origin, guest_forms=guest_forms)
+        server = create_server_from_socket(base/'public.sock', listener, form_origin=origin,
+                                           guest_forms=guest_forms, webhook_pilot=webhook_pilot)
         http = Thread(target=server.serve_forever, daemon=True)
         http.start()
         cleanup.callback(server.server_close); cleanup.callback(http.join, 3); cleanup.callback(server.shutdown)
@@ -121,7 +123,7 @@ def form_stack(installed, monkeypatch, request):
     Base.metadata.create_all(s.engine)
     s.manager.core_version = core_version()
     profile = getattr(request, 'param', None)
-    build = lambda: build_package(guest=True) if profile else build_package()
+    build = lambda: build_package(guest=True) if profile in {'guest', 'guest-disabled'} else build_package()
     blob = build()
     assert build() == blob
     package = validate_module_package(blob)
@@ -163,7 +165,8 @@ def form_stack(installed, monkeypatch, request):
                     pytest.fail('Packaged form host not ready: '+log.read()[-3000:])
                 time.sleep(.02)
 
-            s.form_url = cleanup.enter_context(public_surface(base, keys, guest_forms=profile == 'guest'))
+            pilot = WebhookPilotClient('/webhooks/pilot', base/'unavailable.sock') if profile == 'webhook-neighbor' else None
+            s.form_url = cleanup.enter_context(public_surface(base, keys, guest_forms=profile == 'guest', webhook_pilot=pilot))
             s.form_db = instance/'data/state.sqlite3'
             s.form_keys = keys
             yield s
@@ -311,6 +314,26 @@ def test_real_form_review_submit_dedupe_and_revocation(form_stack, monkeypatch):
     monkeypatch.setattr(transport, 'finish_public_http', original)
     assert _http(s)[0] == 503 and _http(s, fields=rejected)[0] == 503
     assert _saved(s) == [(key, 'morning'), ('c'*32, 'afternoon')]
+
+
+@LINUX_LAB
+@pytest.mark.parametrize('form_stack', ['webhook-neighbor'], indirect=True)
+def test_real_form_is_independent_of_a_stopped_webhook_pilot(form_stack):
+    s = form_stack
+    assert allow(s, preview(s))['effective'] is True
+    webhook = Request(s.form_url + '/webhooks/pilot', data=b'synthetic', headers={
+        'Content-Type': 'application/octet-stream', 'X-3mm-Webhook-Id': 'test',
+        'X-3mm-Webhook-Timestamp': str(int(time.time())), 'X-3mm-Webhook-Signature': 'v1=' + '0' * 64,
+    })
+    with pytest.raises(HTTPError) as unavailable:
+        urlopen(webhook, timeout=5)
+    with unavailable.value as response:
+        assert (response.code, json.load(response)) == (503, {'status': 'refused'})
+    status, _, page = _http(s)
+    assert status == 200
+    request_id = re.search(r'name="_request_id" value="([0-9a-f]{32})"', page)[1]
+    assert _http(s, fields={'_request_id': request_id, 'choice': 'morning'})[0] == 200
+    assert _saved(s) == [(request_id, 'morning')]
 
 
 @LINUX_LAB

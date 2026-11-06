@@ -25,6 +25,8 @@ from three_mm_protocol.public_forms import (
     FORM_ID, FORM_REQUEST_ID, GUEST_COOKIE, GUEST_PROOF_FIELD, GUEST_TTL_SECONDS,
     MAX_FORM_BYTES, MAX_FORM_FIELDS, guest_cookie_name, public_form_origin_host,
 )
+from three_mm_protocol.public_webhooks import MAX_WEBHOOK_BYTES
+from three_mm_public_web.webhook_pilot import PILOT_SECONDS, SIGNED_HEADERS, WebhookPilotClient, valid_signed_fields
 
 
 PUBLIC_WEB_TRANSPORT_VERSION = 1
@@ -177,6 +179,7 @@ class PublicWebHTTPServer(ThreadingHTTPServer):
         client: PublicWebRuntimeClient,
         form_origin: str | None = None,
         guest_forms: bool = False,
+        webhook_pilot: WebhookPilotClient | None = None,
         bind_and_activate: bool = True,
     ):
         self.client = client
@@ -187,6 +190,10 @@ class PublicWebHTTPServer(ThreadingHTTPServer):
         if guest_forms and form_origin.startswith('http://') and server_address[0] not in {'127.0.0.1', 'localhost'}:
             raise ValueError('HTTP guest forms require a loopback listener')
         self.guest_forms = guest_forms
+        if webhook_pilot is not None and server_address[0] != '127.0.0.1':
+            raise ValueError('Webhook pilot requires an IPv4 loopback listener')
+        self.webhook_pilot = webhook_pilot
+        self.webhook_slot = threading.BoundedSemaphore(1) if webhook_pilot is not None else None
         self.form_slots = threading.BoundedSemaphore(FORM_CONCURRENT)
         self.form_rate_lock = threading.Lock()
         self.form_window = time.monotonic()
@@ -370,13 +377,90 @@ class PublicWebRequestHandler(BaseHTTPRequestHandler):
         self._write_response(response)
 
     def do_GET(self) -> None:
+        if self._webhook_target():
+            return self._write_webhook(404)
         self._handle_public()
 
     def do_HEAD(self) -> None:
-        self._handle_public()
+        self.do_GET()
+
+    def _webhook_target(self) -> bool:
+        pilot = self.public_server.webhook_pilot
+        if pilot is None:
+            return False
+        try:
+            return _decode_path(urlsplit(self.path).path) == pilot.path
+        except ValueError:
+            return False
+
+    def _write_webhook(self, status: int, receipt: str | None = None) -> None:
+        self.close_connection = True
+        payload = {'status': 'accepted', 'receipt_id': receipt} if receipt is not None else {'status': 'refused'}
+        body = json.dumps(payload, separators=(',', ':')).encode('ascii')
+        try:
+            self.connection.settimeout(1)
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('Connection', 'close')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            if self.command != 'HEAD':
+                self.wfile.write(body)
+        except OSError:
+            pass  # A lost HTTP reply cannot undo an admission commit.
+
+    def _post_webhook(self) -> None:
+        server = self.public_server
+        pilot = server.webhook_pilot
+        if pilot is None or self.path != pilot.path or self.requestline.split()[1] != pilot.path:
+            return self._write_webhook(404)
+        if (self.headers.defects or self.headers.get_all('Host', []) != [f'127.0.0.1:{server.server_port}']
+                or any(name in self.headers for name in ('Origin', 'Cookie', 'Authorization',
+                                                         'Transfer-Encoding', 'Content-Encoding'))):
+            return self._write_webhook(400)
+        if 'Expect' in self.headers:
+            return self._write_webhook(417)
+        if self.headers.get_all('Content-Type', []) != ['application/octet-stream']:
+            return self._write_webhook(415)
+        lengths = self.headers.get_all('Content-Length', [])
+        if len(lengths) != 1 or not re.fullmatch(r'[1-9][0-9]{0,9}', lengths[0]):
+            return self._write_webhook(400)
+        length = int(lengths[0])
+        if length > MAX_WEBHOOK_BYTES:
+            return self._write_webhook(413)
+        fields = [self.headers.get_all(name, []) for name in SIGNED_HEADERS]
+        if any(len(values) != 1 for values in fields):
+            return self._write_webhook(400)
+        signed = (fields[0][0], fields[1][0], fields[2][0])
+        if not valid_signed_fields(signed):
+            return self._write_webhook(400)
+        slot = server.webhook_slot
+        if slot is None or not slot.acquire(blocking=False):
+            return self._write_webhook(429)
+        try:
+            deadline = time.monotonic() + PILOT_SECONDS
+            body = bytearray()
+            while len(body) < length:
+                self.connection.settimeout(remaining(deadline))
+                chunk = self.rfile.read1(length - len(body))
+                if not chunk:
+                    return self._write_webhook(400)
+                body.extend(chunk)
+            status, receipt = pilot.submit(signed, bytes(body))
+        except TimeoutError:
+            return self._write_webhook(408)
+        except OSError:
+            return self._write_webhook(400)
+        finally:
+            slot.release()
+        self._write_webhook(status, receipt)
 
     def do_POST(self) -> None:
         self.close_connection = True
+        if self._webhook_target():
+            return self._post_webhook()
         server = self.public_server
         if server.form_origin is None:
             return self._write_error(405)
@@ -428,7 +512,10 @@ class PublicWebRequestHandler(BaseHTTPRequestHandler):
 
     def handle_expect_100(self) -> bool:
         if self.command == 'POST':
-            self._write_error(417)
+            if self._webhook_target():
+                self._write_webhook(417)
+            else:
+                self._write_error(417)
             return False
         return super().handle_expect_100()
 
@@ -453,12 +540,13 @@ def create_server(
     client: PublicWebRuntimeClient | None = None,
     form_origin: str | None = None,
     guest_forms: bool = False,
+    webhook_pilot: WebhookPilotClient | None = None,
 ) -> PublicWebHTTPServer:
     return PublicWebHTTPServer(
         (host, port),
         PublicWebRequestHandler,
         client=client or PublicWebRuntimeClient(runtime_socket),
-        form_origin=form_origin, guest_forms=guest_forms,
+        form_origin=form_origin, guest_forms=guest_forms, webhook_pilot=webhook_pilot,
     )
 
 
@@ -468,12 +556,13 @@ def create_server_from_socket(
     *,
     form_origin: str | None = None,
     guest_forms: bool = False,
+    webhook_pilot: WebhookPilotClient | None = None,
 ) -> PublicWebHTTPServer:
     server = PublicWebHTTPServer(
         listener.getsockname(),
         PublicWebRequestHandler,
         client=PublicWebRuntimeClient(runtime_socket),
-        form_origin=form_origin, guest_forms=guest_forms,
+        form_origin=form_origin, guest_forms=guest_forms, webhook_pilot=webhook_pilot,
         bind_and_activate=False,
     )
     server.socket.close()

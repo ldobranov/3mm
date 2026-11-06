@@ -18,6 +18,7 @@ from three_mm_protocol import (
     public_http_request_schema_v1,
     public_http_response_schema_v1,
 )
+from three_mm_protocol.application_extension import ApplicationPublicWebhookV1
 
 
 # Test composition of the separated route admission and response-validation
@@ -176,6 +177,60 @@ def test_candidate_rejects_cross_application_overlap_but_allows_internal_specifi
     )
     with pytest.raises(ApplicationPublicWebError, match="overlaps"):
         public_web.validate_public_http_candidate(db, package, ambiguous_self)
+
+
+def webhook_definition(current, path="/webhooks/demo"):
+    # This fixture isolates ownership; package validation covers the webhook's handler schema.
+    return current.model_copy(update={"public_http_routes": (), "public_webhook": ApplicationPublicWebhookV1(
+        contract_version=1, webhook_id="receive", path=path, signature_profile="hmac_sha256_v1",
+        handler_operation_id="receive_event",
+    )})
+
+
+def test_webhook_reservations_cover_http_templates_and_competing_webhooks(registry):
+    db, add, definitions = registry
+    first, installed, initial = add("org.3mm.callback-one", "/unrelated", 1)
+    definitions[first.module_id] = webhook_definition(initial)
+    second, competing, template = add("org.3mm.callback-two", "/{area}/{name}", 2, active=False)
+    third, _, unrelated = add("org.3mm.callback-three", "/forms/working/extra", 3)
+
+    for conflicting in (template, definition(second.module_id, "/webhooks/demo"), webhook_definition(template)):
+        with pytest.raises(ApplicationPublicWebError, match="Public webhook route conflict") as conflict:
+            public_web.validate_public_http_candidate(db, second, conflicting)
+        assert conflict.value.status_code == 409
+
+    # A pending reservation blocks another activation, but isn't published as HTTP.
+    competing.status = "activating"
+    db.commit()
+    with pytest.raises(ApplicationPublicWebError, match="Public webhook route conflict"):
+        public_web.validate_public_http_candidate(db, first, definitions[first.module_id])
+    with pytest.raises(ApplicationPublicWebError, match="Public webhook route conflict"):
+        public_web.require_reviewed_webhook_route(db, installed.id, "/webhooks/demo")
+
+    # Legacy conflicts fail only the pilot's startup; unrelated public pages still resolve.
+    competing.status, competing.enabled = "active", True
+    db.commit()
+    with pytest.raises(ApplicationPublicWebError, match="Public webhook route conflict"):
+        public_web.require_reviewed_webhook_route(db, installed.id, "/webhooks/demo")
+    assert public_web.resolve_public_route(db, "GET", unrelated.public_http_routes[0].path)[0].module_id == third.module_id
+    assert all(route.module_id != first.module_id for route in public_web.build_public_route_registry(db))
+
+
+def test_reservation_change_between_package_validation_and_write_is_refused(registry):
+    db, add, definitions = registry
+    first, _, initial = add("org.3mm.callback-one", "/unrelated", 1, active=False)
+    second, competing, template = add("org.3mm.callback-two", "/webhooks/{name}", 2, active=False)
+    candidate = definitions[first.module_id] = webhook_definition(initial)
+    snapshot = public_web.validate_public_http_candidate(db, first, candidate)
+    assert snapshot == ()
+    public_web.require_current_public_route_reservations(db, first.module_id, snapshot)
+    competing.status = "activating"
+    db.commit()
+    with pytest.raises(ApplicationPublicWebError, match="ownership changed") as conflict:
+        public_web.require_current_public_route_reservations(db, first.module_id, snapshot)
+    assert conflict.value.status_code == 409
+    with pytest.raises(ApplicationPublicWebError, match="Public webhook route conflict"):
+        public_web.validate_public_http_candidate(db, first, candidate)
 
 
 def test_dispatch_filters_credentials_and_validates_response(registry, monkeypatch, tmp_path):

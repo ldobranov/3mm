@@ -325,19 +325,54 @@ Local acceptance (POSIX, no installed Core or external service):
 python -m pytest -q tools/tests/test_webhook_lab.py three_mm_protocol/tests/test_public_webhooks.py backend/tests/test_application_webhook_admission.py
 ```
 
-This closes the loopback candidate, not the full public rollout. Before
-enabling deployed ingress, verify explicit route ownership on the isolated
-Public Web listener, operator key provisioning/rotation, supervised consumer
-start/stop and quotas, and restart/revocation on the actual service boundary.
-This candidate adds no Core tables, admin endpoint, public route or installed
-worker, and does not add vendor-specific verification or challenge adapters.
+The local pilot runs the real Public Web adapter on an ephemeral IPv4
+loopback port with an explicit `WebhookPilotClient`. The default adapter and
+the installed CLI/systemd configuration do not enable it. The optional adapter
+accepts only the exact reviewed path, one bounded POST at a time, and forwards
+only the signature fields and raw bytes over a private Unix socket. The
+disposable ingress broker, not Public Web, has the endpoint key and inbox. It
+checks the kernel peer UID, verifies HMAC and current Core review, and commits
+before replying. Stopping the broker fails this route closed without stopping
+ordinary Public Web forms. The disposable Linux split-principal probe checks
+the kernel UID in both directions. Only the broker owns its private key and
+inbox; a pre-provisioned socket directory grants the adapter group traversal,
+not write access. A different UID in that same group is refused. This does
+not install or configure system service accounts.
+
+Rotate the synthetic endpoint signing key by stopping the broker and starting
+it with the replacement key, the same audience, review and inbox. The inbox
+has an exclusive broker lock so both keys cannot serve concurrently. Old-key
+requests are refused; a valid duplicate under the new key returns its
+original receipt without another delivery. This does not rotate the Core
+authority review key or define production key provisioning.
+
+The Public Web pilot and a real neighboring form can be checked with:
+
+```sh
+python -m pytest -q backend/tests/test_application_webhook_admission.py backend/tests/test_application_public_web.py backend/tests/test_application_public_forms.py three_mm_public_web/tests
+```
+
+The split-principal test runs only with a disposable Linux root driver and
+uses existing `www-data` and `nobody` accounts. Do not run it on an installed
+device. The closure snapshot `9e78c49f454b…` passed 260 isolated Linux checks;
+both privileged-only probes passed separately. Do not proxy or expose the pilot.
+Deployed key provisioning, service
+profiles, worker supervision and quotas remain outside this local acceptance.
+The pilot adds no Core tables, admin endpoint, installed route or worker, or
+vendor-specific verification/challenge adapters.
 
 ## Route ownership
 
 Core reconstructs the public route registry from active application packages.
 Within one package duplicate public paths are already invalid. Cross-package
-conflicts are checked before a candidate becomes live. The public listener is a
-separate surface from the administrative SPA, so public paths never shadow Core
+conflicts are checked before a candidate becomes live. A webhook claims its
+literal path for ownership purposes only. It cannot overlap another webhook
+or another package's ordinary public route, including parameterized routes.
+Pending activations reserve paths. Core rechecks the reservation snapshot
+inside the lifecycle write before calling the installer, without reading
+archives under the write lock. A conflicting legacy declaration prevents
+pilot startup but is not added to the ordinary public HTTP route registry.
+The public listener is separate from the administrative SPA, so public paths never shadow Core
 API, settings or recovery routes even when the same path text exists on both
 surfaces.
 

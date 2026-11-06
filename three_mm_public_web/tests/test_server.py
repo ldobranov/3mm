@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from http.client import HTTPConnection
 from pathlib import Path
 import socket
+import sys
 from threading import Thread
 import time
 from urllib.error import HTTPError
@@ -18,6 +19,7 @@ from three_mm_public_web.server import (
     PublicWebRuntimeError,
     create_server,
 )
+from three_mm_public_web.webhook_pilot import WebhookPilotClient
 
 
 class FakeClient:
@@ -161,6 +163,13 @@ def test_guest_forms_on_plain_http_cannot_bind_a_non_loopback_address():
     with pytest.raises(ValueError, match='loopback listener'):
         create_server(Path('unused'), host='0.0.0.0', port=0,
                       form_origin='http://127.0.0.1:8081', guest_forms=True)
+
+
+@pytest.mark.skipif(sys.platform != 'linux', reason='Pilot requires Linux Unix peer credentials')
+def test_webhook_pilot_cannot_enable_a_non_loopback_listener(tmp_path):
+    pilot = WebhookPilotClient('/webhooks/pilot', tmp_path / 'unused.sock')
+    with pytest.raises(ValueError, match='IPv4 loopback'):
+        create_server(Path('unused'), host='0.0.0.0', port=0, client=FakeClient(), webhook_pilot=pilot)
 
 
 def post_form(base, *, body=FORM_BODY, path='/demo-request', **headers):

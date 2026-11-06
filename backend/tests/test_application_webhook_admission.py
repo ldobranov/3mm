@@ -1,20 +1,24 @@
 """Loopback CAP12 admission with real Core seals and disposable state."""
 
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import closing
+from contextlib import closing, contextmanager, ExitStack
 from dataclasses import asdict, replace
 import hashlib
+from http.client import HTTPConnection
 import io
 import json
 import os
 from pathlib import Path
+import re
 import secrets
+import select
 import sqlite3
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+from types import SimpleNamespace
 import zipfile
 
 import pytest
@@ -34,8 +38,8 @@ from backend.tests.test_application_public_forms import launch_host, stop_host
 from three_mm_protocol.public_webhooks import (
     WebhookRejected, webhook_delivery_input_schema, webhook_delivery_result_schema,
 )
-from tools import webhook_delivery_lab as delivery, webhook_lab as lab
-from tools.tests.test_webhook_lab import AUDIENCE, BODY, EVENT, KEY, post, post_at, rows, server
+from tools import webhook_delivery_lab as delivery, webhook_lab as lab, webhook_public_pilot
+from tools.tests.test_webhook_lab import AUDIENCE, BODY, EVENT, KEY, headers, post, post_at, raw_post, rows, server
 from tools.webhook_lab import WebhookInbox, WebhookLabServer
 
 
@@ -536,31 +540,196 @@ print(json.dumps(asdict(delivery.consume_pending(inbox, admission, ApplicationRu
 """
 
 
+def run_consumer_process(state, settings, directory, *, exit_after_reply=False):
+    args = dict(db=str(state.engine.url), uploads=str(state.root), core_version=state.manager.core_version,
+                review_keys=str(state.key_directory), target=asdict(target(state)), audience=AUDIENCE,
+                inbox=str(directory), settings={"root": str(settings.root), "key_root": str(settings.key_root)},
+                exit_after_reply=exit_after_reply)
+    return subprocess.run([sys.executable, "-c", _CONSUMER_CHILD, json.dumps(args)],
+                          cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=20)
+
+
 def test_restarted_consumer_never_replays_after_process_exit(state, receiver, tmp_path):
     settings, database, _ = receiver
     approve(state)
     admission = bind(state)
     decide(admission, state, admission.review_delivery(actor_token=state.token))
-    args = dict(db=str(state.engine.url), uploads=str(state.root), core_version=state.manager.core_version,
-                review_keys=str(state.key_directory), target=asdict(target(state)), audience=AUDIENCE,
-                inbox=str(tmp_path), settings={"root": str(settings.root), "key_root": str(settings.key_root)})
-
-    def run(*, exit_after_reply=False):
-        return subprocess.run([sys.executable, "-c", _CONSUMER_CHILD,
-                               json.dumps(dict(args, exit_after_reply=exit_after_reply))],
-                              cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=20)
-
     with server(tmp_path, admission=admission) as listener:
         first = accepted_receipt(listener)
         second = accepted_receipt(listener, event_id="new-after-restart")
-        exited = run(exit_after_reply=True)
+        exited = run_consumer_process(state, settings, tmp_path, exit_after_reply=True)
         assert exited.returncode == 17, exited.stderr
         assert received(database) == [(first, EVENT, BODY)]
         assert accepted_receipt(listener) == first
-        restarted = run()
+        restarted = run_consumer_process(state, settings, tmp_path)
         assert restarted.returncode == 0, restarted.stderr
         result = json.loads(restarted.stdout)
         assert result["status"] == "drained"
         assert [(a["receipt_id"], a["status"]) for a in result["attempts"]] == [(second, "delivered")]
         assert delivery.deliver_one(listener.inbox, admission, settings, first).status == "unconfirmed"
     assert received(database) == [(first, EVENT, BODY), (second, "new-after-restart", BODY)]
+
+
+_PUBLIC_WEB_CHILD = """
+from pathlib import Path
+import sys
+from three_mm_public_web.server import create_server
+from three_mm_public_web.webhook_pilot import WebhookPilotClient
+
+runtime, route, broker, uid, *private_files = sys.argv[1:]
+for name in private_files:
+    try:
+        with Path(name).open('rb'):
+            raise RuntimeError('Public Web can open broker-private data')
+    except PermissionError:
+        pass
+pilot = WebhookPilotClient(route, Path(broker), int(uid) if uid else None) if broker else None
+with create_server(Path(runtime), port=0, webhook_pilot=pilot) as server:
+    print(f'CAP12 Public Web {server.server_port}', flush=True)
+    server.serve_forever()
+"""
+
+
+@contextmanager
+def public_web_process(runtime_socket, route, pilot=None, *, user=None, group=None, private_files=()):
+    args = [sys.executable, '-c', _PUBLIC_WEB_CHILD, str(runtime_socket), route,
+            str(pilot.socket_path) if pilot is not None else '',
+            str(pilot.broker_uid) if pilot is not None and pilot.broker_uid is not None else '',
+            *(str(path) for path in private_files)]
+    principal = {} if user is None else dict(user=user, group=group, extra_groups=[])
+    with subprocess.Popen(args, cwd=Path(__file__).resolve().parents[2], stdout=subprocess.PIPE,
+                          stderr=subprocess.STDOUT, text=True, **principal) as child:
+        try:
+            ready, _, _ = select.select([child.stdout], [], [], 10)
+            line = child.stdout.readline() if ready else ''
+            match = re.fullmatch(r'CAP12 Public Web ([0-9]+)\n', line)
+            assert match, f'Disposable Public Web did not start: {line}'
+            port = int(match[1])
+            yield SimpleNamespace(server_address=('127.0.0.1', port), authority=f'127.0.0.1:{port}', route=route)
+        finally:
+            if child.poll() is None:
+                stop_host(child)
+
+
+@pytest.mark.skipif(sys.platform != 'linux', reason='Requires Linux Unix peer credentials')
+def test_public_web_pilot_uses_real_http_ingress_and_never_replays(state, receiver, tmp_path):
+    settings, database, _ = receiver
+    approve(state)
+    admission = bind(state)
+    decide(admission, state, admission.review_delivery(actor_token=state.token))
+    key = secrets.token_bytes(32)
+    unused_runtime = settings.root / 'unused-public.sock'
+    with public_web_process(unused_runtime, admission.path) as disabled:
+        with closing(HTTPConnection(*disabled.server_address, timeout=5)) as client:
+            client.request('POST', disabled.route, BODY, headers(BODY, key=key))
+            with client.getresponse() as response:
+                assert response.status == 405  # Default configuration keeps the legacy refusal.
+    assert not (tmp_path / lab.DATABASE).exists()
+    with ExitStack() as stack:
+        with webhook_public_pilot.pilot_ingress(tmp_path, admission, key) as (pilot, inbox):
+            listener = stack.enter_context(public_web_process(unused_runtime, admission.path, pilot))
+            assert post(listener, key=KEY) == (403, {'status': 'refused'})
+            framing = [f'{name}: {value}' for name, value in headers(BODY, key=key).items()]
+            framing.append(f'Content-Length: {len(BODY)}')
+            for path in (listener.route + '?unexpected=1', listener.route.replace('/demo', '/%64emo'),
+                         '/' + listener.route):
+                assert raw_post(listener, framing, body=BODY, path=path)[0] == 404
+            assert raw_post(listener, framing + ['Authorization: not-forwarded'], body=BODY, path=listener.route)[0] == 400
+            assert raw_post(listener, framing + ['X-3mm-Webhook-Id: duplicate'], body=BODY, path=listener.route)[0] == 400
+            assert raw_post(listener, framing[:-1] + ['Content-Length: 65537'], path=listener.route)[0] == 413
+            assert rows(tmp_path) == []
+            first = post(listener, key=key)
+            second = post(listener, key=key, event_id='new-after-restart')
+            assert first[0] == second[0] == 202
+            first_id, second_id = first[1]['receipt_id'], second[1]['receipt_id']
+            assert post(listener, key=key) == first
+            assert post(listener, key=key, body=BODY + b'!')[0] == 409
+            assert received(database) == []  # HTTP acknowledges the inbox, not a service execution.
+            crashed = run_consumer_process(state, settings, tmp_path, exit_after_reply=True)
+            assert crashed.returncode == 17, crashed.stderr
+            assert received(database) == [(first_id, EVENT, BODY)]
+            restarted = run_consumer_process(state, settings, tmp_path)
+            assert restarted.returncode == 0, restarted.stderr
+            assert [(a['receipt_id'], a['status']) for a in json.loads(restarted.stdout)['attempts']] == [
+                (second_id, 'delivered')]
+            assert post(listener, key=key) == first
+            revoke(state)
+            assert post(listener, key=key) == (403, {'status': 'refused'})
+            assert post(listener, key=key, event_id='after-revoke')[0] == 403
+            assert delivery.consume_pending(inbox, admission, settings) == delivery.DeliveryCycle('blocked', ())
+        # Stopping only the broker closes intake even while the HTTP process is alive.
+        assert post(listener, key=key) == (503, {'status': 'refused'})
+    assert received(database) == [(first_id, EVENT, BODY), (second_id, 'new-after-restart', BODY)]
+    assert len(rows(tmp_path)) == 2
+
+
+@pytest.mark.skipif(sys.platform != 'linux', reason='Requires Linux Unix peer credentials')
+def test_public_web_rotates_only_the_endpoint_key_without_rearming_receipts(state, receiver, tmp_path):
+    settings, database, _ = receiver
+    approve(state)
+    admission = bind(state)
+    decide(admission, state, admission.review_delivery(actor_token=state.token))
+    key, replacement = secrets.token_bytes(32), secrets.token_bytes(32)
+    unused_runtime = settings.root / 'unused-public.sock'
+    with webhook_public_pilot.pilot_ingress(tmp_path, admission, key) as (pilot, inbox):
+        with public_web_process(unused_runtime, admission.path, pilot) as listener:
+            first = post(listener, key=key)
+            assert first[0] == 202
+            assert delivery.consume_pending(inbox, admission, settings).attempts[0].status == 'delivered'
+            with pytest.raises(ValueError, match='Stop the active webhook pilot'):
+                with webhook_public_pilot.pilot_ingress(tmp_path, admission, replacement):
+                    pytest.fail('A second broker acquired the same inbox')
+            assert post(listener, key=key) == first
+    with webhook_public_pilot.pilot_ingress(tmp_path, admission, replacement) as (pilot, inbox):
+        with public_web_process(unused_runtime, admission.path, pilot) as listener:
+            for event_id in (EVENT, 'after-rotation'):
+                assert post(listener, key=key, event_id=event_id)[0] == 403
+            assert post(listener, key=replacement) == first
+            assert post(listener, key=replacement, body=BODY + b'!')[0] == 409
+            second = post(listener, key=replacement, event_id='after-rotation')
+            assert second[0] == 202
+            cycle = delivery.consume_pending(inbox, admission, settings)
+            assert [(attempt.receipt_id, attempt.status) for attempt in cycle.attempts] == [
+                (second[1]['receipt_id'], 'delivered')]
+    assert received(database) == [(first[1]['receipt_id'], EVENT, BODY),
+                                  (second[1]['receipt_id'], 'after-rotation', BODY)]
+
+
+@pytest.mark.skipif(sys.platform != 'linux' or getattr(os, 'geteuid', lambda: -1)() != 0,
+                    reason='Disposable Linux root driver for existing, distinct principals')
+def test_public_web_pilot_separates_service_principals(state, tmp_path):
+    import pwd
+
+    public, stranger = pwd.getpwnam('www-data'), pwd.getpwnam('nobody')
+    assert len({os.geteuid(), public.pw_uid, stranger.pw_uid}) == 3
+    approve(state)
+    admission = bind(state)
+    key = secrets.token_bytes(32)
+    key_path = tmp_path / 'test-signing-key'
+    with os.fdopen(os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as stream:
+        stream.write(key)
+    unused_runtime = tmp_path / 'unused-public.sock'
+    private_files = (key_path, tmp_path / lab.DATABASE)
+    with tempfile.TemporaryDirectory(prefix='cap12-peers-', dir='/tmp') as directory:
+        socket_dir = Path(directory)
+        os.chown(socket_dir, os.geteuid(), public.pw_gid)
+        socket_dir.chmod(0o2710)
+        with webhook_public_pilot.pilot_ingress(tmp_path, admission, key_path.read_bytes(),
+                public_uid=public.pw_uid, socket_dir=socket_dir) as (pilot, _inbox):
+            assert pilot.socket_path.stat().st_gid == public.pw_gid
+            # The wrong UID can reach the socket through the same group but
+            # the kernel credential check refuses before intake.
+            with public_web_process(unused_runtime, admission.path, pilot, user=stranger.pw_uid,
+                                    group=public.pw_gid, private_files=private_files) as listener:
+                assert post(listener, key=key)[0] == 503
+            # Public Web authenticates the server's kernel UID in return.
+            with public_web_process(unused_runtime, admission.path, replace(pilot, broker_uid=stranger.pw_uid),
+                                    user=public.pw_uid, group=public.pw_gid, private_files=private_files) as listener:
+                assert post(listener, key=key)[0] == 503
+            assert rows(tmp_path) == []
+            with public_web_process(unused_runtime, admission.path, pilot, user=public.pw_uid,
+                                    group=public.pw_gid, private_files=private_files) as listener:
+                first = post(listener, key=key)
+                assert first[0] == 202 and post(listener, key=key) == first
+            assert len(rows(tmp_path)) == 1
+        assert not (socket_dir / 'ingress.sock').exists()

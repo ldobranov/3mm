@@ -43,6 +43,7 @@ from backend.services.application_extensions import (
 )
 from backend.services.application_public_web import (
     ApplicationPublicWebError,
+    require_current_public_route_reservations,
     validate_public_http_candidate,
 )
 from backend.services.application_configuration import (
@@ -767,7 +768,7 @@ def activate_application_extension(
         + APPLICATION_ACTIVATION_SETUP_BUDGET_SECONDS,
     )
     try:
-        validate_public_http_candidate(db, package, definition)
+        public_route_reservations = validate_public_http_candidate(db, package, definition)
     except ApplicationPublicWebError as exc:
         raise HTTPException(exc.status_code, str(exc)) from exc
     requested_configuration = (request.configuration or {}) if request is not None else {}
@@ -801,6 +802,10 @@ def activate_application_extension(
         package = db.get(ModulePackage, package_id, populate_existing=True)
         if package is None or _package_state(package) != candidate:
             authority.reject()
+        try:
+            require_current_public_route_reservations(db, module_id, public_route_reservations)
+        except ApplicationPublicWebError as exc:
+            raise HTTPException(exc.status_code, str(exc)) from exc
         if expected is None:
             if db.scalar(select(ApplicationExtensionInstallation.id).where(
                 ApplicationExtensionInstallation.module_id == module_id

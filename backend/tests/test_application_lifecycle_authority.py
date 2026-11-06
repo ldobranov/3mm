@@ -467,6 +467,39 @@ def test_pending_candidate_reserves_routes_but_is_not_publicly_dispatched(lifecy
             public_web.validate_public_http_candidate(db, candidate, definition(candidate.module_id, "/site/home"))
 
 
+def test_activation_rechecks_a_concurrent_webhook_reservation_before_helper(lifecycle, monkeypatch):
+    from backend.services import application_public_web as public_web
+    from backend.tests.test_application_public_web import definition, webhook_definition
+
+    s = lifecycle
+    other = "org.example.new-webhook"
+    candidate = definition(s.module_id, "/webhooks/{name}")
+    webhook = webhook_definition(definition(other, "/unused"))
+    monkeypatch.setattr(routes, "_definition", lambda _package: candidate)
+    monkeypatch.setattr(public_web, "load_application_definition", lambda _package: webhook)
+    original_validate = routes.validate_public_http_candidate
+
+    def reserve_after_preflight(db, package, selected):
+        reservations = original_validate(db, package, selected)
+        with Session(s.engine) as concurrent, concurrent.begin():
+            concurrent.add(ModulePackage(id=2, module_id=other, version="1.0.0", manifest={},
+                                        sha256="f" * 64, size_bytes=1, file_path="unused"))
+            concurrent.flush()
+            concurrent.add(ApplicationExtensionInstallation(id=2, module_id=other, module_package_id=2,
+                instance_id="b" * 24, status="activating", enabled=False, socket_path="pending", configuration={}))
+        return reservations
+
+    monkeypatch.setattr(routes, "validate_public_http_candidate", reserve_after_preflight)
+    result = request(s, "activating")
+    assert result.status_code == 409 and "ownership changed" in result.json()["detail"]
+    assert s.calls == []
+    with Session(s.engine) as db:
+        installation = db.get(ApplicationExtensionInstallation, 1)
+        assert installation.enabled and installation.status == "active"
+        assert db.get(ApplicationCommandEpoch, 1).generation == "c" * 32
+        assert db.scalar(select(AuditLog.id)) is None
+
+
 def test_lifecycle_waiter_rejects_changed_guard_after_other_connection_commits(lifecycle):
     s = lifecycle
     attempted, done = threading.Event(), threading.Event()

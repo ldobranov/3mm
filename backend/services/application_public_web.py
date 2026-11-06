@@ -110,39 +110,37 @@ def _binding(
     ]
 
 
-def _active_bindings(
+def _route_installations(
     db: Session,
     *,
     exclude_module_id: str | None = None,
     include_activating: bool = False,
-) -> list[PublicRouteBinding]:
+) -> tuple[tuple, ...]:
     available = (
         ApplicationExtensionInstallation.enabled.is_(True)
         & (ApplicationExtensionInstallation.status == "active")
     )
     if include_activating:
         available = or_(available, ApplicationExtensionInstallation.status == "activating")
-    installations = list(
-        db.scalars(
-            select(ApplicationExtensionInstallation)
-            .where(
-                available,
-            )
-            .order_by(ApplicationExtensionInstallation.module_id)
-        )
+    model = ApplicationExtensionInstallation
+    query = (
+        select(model.id, model.module_id, model.module_package_id, model.status, model.active_version,
+               ModulePackage.sha256, ModulePackage.file_path, ModulePackage.version)
+        .outerjoin(ModulePackage, model.module_package_id == ModulePackage.id)
+        .where(available).order_by(model.module_id)
     )
-    bindings: list[PublicRouteBinding] = []
-    for installation in installations:
-        if installation.module_id == exclude_module_id:
-            continue
-        package = db.get(ModulePackage, installation.module_package_id)
+    if exclude_module_id is not None:
+        query = query.where(model.module_id != exclude_module_id)
+    return tuple(map(tuple, db.execute(query)))
+
+
+def _active_definitions(db: Session, installations):
+    for installation_id, module_id, package_id, status, active_version, *_ in installations:
+        package = db.get(ModulePackage, package_id, populate_existing=True)
         if (
             package is None
-            or package.module_id != installation.module_id
-            or (
-                installation.status == "active"
-                and package.version != installation.active_version
-            )
+            or package.module_id != module_id
+            or (status == "active" and package.version != active_version)
         ):
             raise ApplicationPublicWebError(
                 "Active application package is unavailable or inconsistent"
@@ -151,14 +149,15 @@ def _active_bindings(
             definition = load_application_definition(package)
         except ApplicationGatewayError as exc:
             raise ApplicationPublicWebError(str(exc)) from exc
-        bindings.extend(_binding(definition, package, installation.id))
-    return bindings
+        yield definition, package, installation_id
 
 
 def build_public_route_registry(db: Session) -> tuple[PublicRouteBinding, ...]:
     """Reconstruct public route ownership from validated active application state."""
 
-    bindings = _active_bindings(db)
+    bindings = [binding for definition, package, installation_id in
+                _active_definitions(db, _route_installations(db))
+                for binding in _binding(definition, package, installation_id)]
     _validate_bindings(bindings)
     return tuple(bindings)
 
@@ -167,17 +166,56 @@ def validate_public_http_candidate(
     db: Session,
     package: ModulePackage,
     definition: ApplicationExtensionV1,
-) -> None:
-    """Reject an activation whose public routes overlap another active package."""
+) -> tuple[tuple, ...] | None:
+    """Check public ownership and return the reservation snapshot for activation."""
 
-    if not definition.public_http_routes:
-        return
+    if not definition.public_http_routes and definition.public_webhook is None:
+        return None
     # Pending candidates reserve routes too. They are never publicly dispatched.
-    bindings = _active_bindings(
+    reservations = _route_installations(
         db, exclude_module_id=definition.module_id, include_activating=True
     )
-    bindings.extend(_binding(definition, package, None))
+    bindings = _binding(definition, package, None)
+    for other, other_package, installation_id in _active_definitions(db, reservations):
+        _validate_webhook_routes(definition, other)
+        bindings.extend(_binding(other, other_package, installation_id))
     _validate_bindings(bindings)
+    return reservations
+
+
+def _validate_webhook_routes(candidate: ApplicationExtensionV1, other: ApplicationExtensionV1) -> None:
+    for owner, neighbor in ((candidate, other), (other, candidate)):
+        webhook = owner.public_webhook
+        if webhook is None:
+            continue
+        paths = [route.path for route in neighbor.public_http_routes]
+        if neighbor.public_webhook is not None:
+            paths.append(neighbor.public_webhook.path)
+        for path in paths:
+            if _routes_overlap(webhook.path, path):
+                raise ApplicationPublicWebError(
+                    f"Public webhook route conflict: {owner.module_id} ({webhook.path}) overlaps "
+                    f"{neighbor.module_id} ({path})", status_code=409,
+                )
+
+
+def require_current_public_route_reservations(db: Session, module_id: str, reservations: tuple[tuple, ...] | None):
+    """Recheck DB identities under the lifecycle write fence, with no package I/O."""
+    if reservations is not None and reservations != _route_installations(
+        db, exclude_module_id=module_id, include_activating=True
+    ):
+        raise ApplicationPublicWebError("Public route ownership changed; review activation again", status_code=409)
+
+
+def require_reviewed_webhook_route(db: Session, installation_id: int, path: str) -> None:
+    """Refuse pilot startup when old state predates activation-time checks."""
+    definitions = tuple(_active_definitions(db, _route_installations(db, include_activating=True)))
+    candidate = next((item for item, _, installed_id in definitions if installed_id == installation_id), None)
+    if candidate is None or candidate.public_webhook is None or candidate.public_webhook.path != path:
+        raise ApplicationPublicWebError("Reviewed public webhook route is unavailable")
+    for other, _, installed_id in definitions:
+        if installed_id != installation_id:
+            _validate_webhook_routes(candidate, other)
 
 
 def _normalized_request_path(path: str) -> str:
