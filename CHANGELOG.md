@@ -6,7 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.10] - 2026-11-06
+
+Carries forward all changes prepared for the unpublished 0.3.9 tag.
+
+### Fixed
+
+- Release tests now check the health response deadline at the Runtime
+  transport boundary, independently of the end-to-end HTTP test duration.
+  Application health checks and their production deadlines are unchanged.
+
 ## [0.3.9] - 2026-11-06
+
+Tagged but not published: the release verification gate failed before building
+or publishing artifacts. The tag is retained.
 
 ### Fixed
 

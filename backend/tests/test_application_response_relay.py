@@ -51,17 +51,37 @@ def test_relay_reads_one_original_frame_and_does_not_dispatch(tmp_path):
         waiter.close();wait_empty(server)
 
 
-@pytest.mark.parametrize('failure', ['deadline_exceeded', 'response_unconfirmed'])
-def test_real_runtime_failure_reason_survives_core_decode_without_replay(tmp_path, failure):
+@pytest.mark.parametrize(('mode', 'failure'), [
+    ('silent', 'deadline_exceeded'),
+    ('trickle', 'deadline_exceeded'),
+    ('invalid', 'response_unconfirmed'),
+])
+def test_real_runtime_failure_reason_survives_core_decode_without_replay(tmp_path, mode, failure):
     with relay(tmp_path) as server:
         waiter = ResponseWaiter.reserve(server.path, os.geteuid())
         waiter.timeout_seconds = 1
         origin, peer = socket.socketpair()
+        stop = threading.Event()
+        sender = None
+
+        def trickle():
+            # Never finish a frame or initiate EOF. Activity must not renew
+            # Runtime's read deadline; keep sending until it closes the FD.
+            while not stop.wait(.05):
+                try:
+                    peer.sendall(b'x')
+                except OSError:
+                    return
+
         try:
             waiter.handoff(origin)
             origin.close()
-            if failure == 'response_unconfirmed':
+            if mode == 'invalid':
                 peer.sendall(b'not a JSON response\n')
+            elif mode == 'trickle':
+                peer.sendall(b'{')
+                sender = threading.Thread(target=trickle, daemon=True)
+                sender.start()
             with pytest.raises(ApplicationResponseError) as error:
                 asyncio.run(waiter.receive())
             assert error.value.reason == failure
@@ -69,7 +89,10 @@ def test_real_runtime_failure_reason_survives_core_decode_without_replay(tmp_pat
             peer.settimeout(1)
             assert peer.recv(1024) == b''  # No resend or recovery command.
         finally:
+            stop.set()
             origin.close(); peer.close(); waiter.close()
+            if sender is not None:
+                sender.join(timeout=2)
         wait_empty(server)
 
 

@@ -8,9 +8,9 @@ combines a central Core, a persistent device Agent, provisioning and reviewed
 applications through common capability contracts and SDKs. Builder, dashboards
 and other product features live in optional source packages/libraries.
 
-> **Project status:** Development prototype (pre-1.0). This source prepares **Core 0.3.9**:
+> **Project status:** Development prototype (pre-1.0). This source prepares **Core 0.3.10**:
 > the clean-install administrator fix, read-only application-host resource
-> reporting and a local webhook pilot. The [changelog](CHANGELOG.md#039---2026-11-06)
+> reporting and a local webhook pilot. The [changelog](CHANGELOG.md#0310---2026-11-06)
 > describes the scope. Bulgarian pack 1.0.6 remains unchanged.
 > It builds on the accepted
 > Core stabilization, Standalone/Hub/Node setup and Wi-Fi/AP recovery, bounded
@@ -23,7 +23,7 @@ and other product features live in optional source packages/libraries.
 > Host/root administration, public Cloud, full remote Terminal UI and whole
 > M21/WP5 isolation remain separate work. Terminal 1.0.3 is an independent package.
 > Native application approval permits Linux code execution and is **not a sandbox**.
-> The [0.3.9 release notes](docs/RELEASE_NOTES_0.3.9.md) describe upgrades,
+> The [0.3.10 release notes](docs/RELEASE_NOTES_0.3.10.md) describe upgrades,
 > independent components and owner device trials. Preserve database/key backups;
 > populated history can refuse downgrade, and an older Core pointer alone does
 > not restore the previous database or independent component versions.
