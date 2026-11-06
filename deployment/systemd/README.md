@@ -49,6 +49,29 @@ the previous active version and its SQLite snapshot if the candidate fails.
 Backup quiesces application instances and includes only their mutable `data`;
 restore reactivates them from checksum-addressed reviewed packages.
 
+### Read an application host's current resource limits (CAP20)
+
+From a source checkout on the Linux host, run the read-only report for one
+known application instance, using its 24-character lowercase hex instance ID:
+
+```sh
+python3 -m tools.application_resource_report INSTANCE_ID
+```
+
+The report reads `cpu.max`, `memory.max` and `pids.max` from that active
+service's cgroup v2 directory. It rechecks the unit invocation and cgroup
+identity before returning the sample. `os_enforced` means a finite value was
+read from the kernel. `not_set_here` means the unit has no limit at this level;
+parent cgroups may impose stricter limits. `unavailable` is not evidence of
+either a finite or an unlimited resource. The report distinguishes a controller
+absent at the host root from a missing limit file on the service. See the [Linux cgroup v2
+documentation](https://docs.kernel.org/admin-guide/cgroup-v2.html) for the
+exact controller semantics, including CPU bandwidth and task (thread) counts.
+
+This is an observation of the current unit, not a sizing recommendation or a
+test under load. FD, storage and network limits are not measured by this tool.
+It does not read app data, change limits, invoke applications or restart services.
+
 The setup portal remains unprivileged and talks through a root-owned Unix
 socket to a narrowly scoped NetworkManager helper. The open `3mm Setup XXXX`
 access point exists only in unprovisioned or explicit network-reset mode,

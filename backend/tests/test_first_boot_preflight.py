@@ -4,12 +4,23 @@ import subprocess
 from pathlib import Path
 from typing import Sequence
 
+import pytest
+
+from deployment import first_boot_preflight as preflight
 from deployment.first_boot_preflight import (
     REQUIRED_COMMANDS,
     REQUIRED_RELEASE_FILES,
     _version_numbers,
     run_preflight,
 )
+
+
+@pytest.fixture(autouse=True)
+def cgroup_controllers(tmp_path, monkeypatch):
+    path = tmp_path / 'cgroup.controllers'
+    path.write_bytes(b'cpu memory pids\n')
+    monkeypatch.setattr(preflight, 'CGROUP_CONTROLLERS', path)
+    return path
 
 
 def _complete_release(root: Path) -> None:
@@ -155,3 +166,41 @@ def test_old_node_version_is_rejected() -> None:
     assert (
         next(check for check in checks if check.name == "runtime.node").passed is False
     )
+
+
+@pytest.mark.parametrize(('controllers', 'level', 'detail'), [
+    (b'cpu memory pids\n', 'PASS', 'individual service RAM limits were not verified'),
+    (b'cpu memory_extra pids\n', 'WARN', 'configured service RAM limits are not enforced through cgroup v2'),
+    (None, 'WARN', 'memory availability could not be verified'),
+    (b'cpu memory\x00 pids\n', 'WARN', 'memory availability could not be verified'),
+])
+def test_cli_memory_advice_does_not_change_ready_result(cgroup_controllers, monkeypatch, capsys,
+                                                     controllers, level, detail):
+    if controllers is None:
+        cgroup_controllers.unlink()
+    else:
+        cgroup_controllers.write_bytes(controllers)
+    monkeypatch.setattr(preflight.sys, 'argv', ['first_boot_preflight.py'])
+    monkeypatch.setattr(preflight, 'run_preflight', lambda **options: run_preflight(
+        **options, command_lookup=_lookup, runner=_runner, system_name='Linux',
+        machine='aarch64', python_version=(3, 13, 5), python_executable='/usr/bin/python3',
+    ))
+    assert preflight.main() == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert any(line.startswith(f'{level} resources.cgroup-memory: ') and detail in line for line in lines)
+    assert lines[-1] == 'result=ready failed=0'
+
+
+def test_cli_memory_warning_does_not_hide_required_failure(cgroup_controllers, monkeypatch, capsys):
+    cgroup_controllers.write_bytes(b'cpu pids\n')
+    monkeypatch.setattr(preflight.sys, 'argv', ['first_boot_preflight.py'])
+    monkeypatch.setattr(preflight, 'run_preflight', lambda **options: run_preflight(
+        **options, command_lookup=lambda name: None if name == 'node' else _lookup(name),
+        runner=_runner, system_name='Linux', machine='aarch64',
+        python_version=(3, 13, 5), python_executable='/usr/bin/python3',
+    ))
+    assert preflight.main() == 1
+    lines = capsys.readouterr().out.splitlines()
+    assert any(line.startswith('WARN resources.cgroup-memory: ') for line in lines)
+    assert 'FAIL command.node: missing' in lines
+    assert lines[-1] == 'result=not-ready failed=1'

@@ -16,6 +16,7 @@ from typing import Callable, Sequence
 
 MINIMUM_PYTHON = (3, 10)
 MINIMUM_NODE_MAJOR = 20
+CGROUP_CONTROLLERS = Path('/sys/fs/cgroup/cgroup.controllers')
 SUPPORTED_RASPBERRY_ARCHITECTURES = frozenset({"armv6l", "aarch64", "armv7l", "x86_64"})
 REQUIRED_COMMANDS = (
     "bash",
@@ -58,6 +59,7 @@ class PreflightCheck:
     name: str
     passed: bool
     detail: str
+    required: bool = True
 
 
 CommandLookup = Callable[[str], str | None]
@@ -87,6 +89,29 @@ def _command_output(command: Sequence[str], runner: CommandRunner) -> tuple[bool
         return False, str(exc)
     output = (result.stdout or result.stderr).strip()
     return result.returncode == 0, output
+
+
+def _memory_controller_check() -> PreflightCheck:
+    # The bootstrap extracts this script alone. Keep the kernel probe read-only
+    # and dependency-free; root availability is not a per-service limit proof.
+    name = 'resources.cgroup-memory'
+    try:
+        with CGROUP_CONTROLLERS.open('rb') as stream:
+            raw = stream.read(1025)
+        controllers = raw.decode('ascii').split()
+        if len(raw) > 1024 or any(re.fullmatch(r'[a-z][a-z0-9_]*', item) is None for item in controllers):
+            raise ValueError('Invalid cgroup controller list')
+    except (OSError, ValueError):
+        return PreflightCheck(name, False,
+            'cgroup v2 memory availability could not be verified; do not assume service RAM limits are enforced.',
+            required=False)
+    if 'memory' not in controllers:
+        return PreflightCheck(name, False,
+            'cgroup v2 memory controller is unavailable at the host root; configured service RAM limits are not enforced through cgroup v2.',
+            required=False)
+    return PreflightCheck(name, True,
+        'Memory controller is available at the cgroup v2 root; individual service RAM limits were not verified.',
+        required=False)
 
 
 def inspect_host(
@@ -129,6 +154,8 @@ def inspect_host(
             ".".join(str(part) for part in resolved_python),
         )
     )
+    if resolved_system == 'Linux':
+        checks.append(_memory_controller_check())
 
     commands: dict[str, str | None] = {}
     for command in (*REQUIRED_COMMANDS, *(("nmcli",) if network_backend == "network-manager" else ())):
@@ -273,9 +300,9 @@ def main() -> int:
     arguments = _parser().parse_args()
     checks = run_preflight(release_root=arguments.release_root, network_backend=arguments.network_backend)
     for check in checks:
-        status = "PASS" if check.passed else "FAIL"
+        status = "PASS" if check.passed else ("FAIL" if check.required else "WARN")
         print(f"{status} {check.name}: {check.detail}")
-    failed = sum(not check.passed for check in checks)
+    failed = sum(check.required and not check.passed for check in checks)
     print(f"result={'ready' if failed == 0 else 'not-ready'} failed={failed}")
     return 0 if failed == 0 else 1
 

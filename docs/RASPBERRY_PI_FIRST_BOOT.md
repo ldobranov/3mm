@@ -104,8 +104,12 @@ scp .\deployment\first_boot_preflight.py raspberry@<device-ip>:/tmp/3mm-first-bo
 ssh raspberry@<device-ip> "python3 /tmp/3mm-first-boot-preflight.py"
 ```
 
-Continue only when the last line is `result=ready failed=0`. The checker does
-not install packages, start or stop services, or change NetworkManager.
+Continue only when the last line is `result=ready failed=0`. A
+`WARN resources.cgroup-memory` does not block installation: cgroup v2 could
+not confirm that memory limits can be applied on this host. A `PASS` for the
+controller only confirms availability at the cgroup root, not any individual
+service's limit. The checker does not enable controllers, change boot options,
+install packages, start or stop services, or change NetworkManager.
 
 ### Prepare and install an immutable local update
 
