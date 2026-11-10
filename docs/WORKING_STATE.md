@@ -12,6 +12,21 @@ Updated: 2026-11-10. Start here; follow linked details only as needed.
 
 ## Active task and next result
 
+- **Core 0.3.11 published, 2026-11-10.** Runtime commit
+  `6ec8e87d2c9d07051186be8956bed43caf2a8b89` passed all four main-push CI jobs
+  on the first push: [CI 42773833497](https://github.com/ldobranov/3mm/actions/runs/42773833497).
+  Only after that success was annotated tag `v0.3.11` pushed.
+  [Release 42778364259](https://github.com/ldobranov/3mm/actions/runs/42778364259)
+  succeeded and [0.3.11](https://github.com/ldobranov/3mm/releases/tag/v0.3.11)
+  is public/stable with all nine assets. Published descriptor bytes match GitHub
+  asset digests; SHA256SUMS matches all eight archive/manifest digests. All three
+  catalogs identify the exact runtime commit and the expected five archives.
+  No device deployment, reset, grant change or hardware invocation in this task.
+  Monitor 0.8.3 source/ZIP stay unchanged; its separate repository/publication
+  is explicitly deferred. Accepted 18–27s button latency also remains deferred.
+  Independent `docs/CORE_SIMPLIFICATION_PLAN.md` remains local and uncommitted.
+  Release work is complete; wait for the owner's next bounded task.
+
 - **Core / Monitor release preflight, 2026-11-10.** Owner explicitly accepts
   Crypto Monitor functionality, reports remaining button latency **18–27s**, and
   defers that latency issue. Do not reopen performance work in this release.
