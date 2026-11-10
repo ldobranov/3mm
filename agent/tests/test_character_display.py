@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from zipfile import ZipFile
 
 import pytest
@@ -209,16 +210,23 @@ def test_unknown_driver_failure_is_not_retried_or_reported_as_current(tmp_path, 
     assert runtime.capability_states()[DISPLAY_CAPABILITY]["has_frame"] is False
 
 
-@pytest.mark.parametrize("outcome", ["approved", "denied", "offline", "expired", "invalid_text"])
+@pytest.mark.parametrize("outcome", ["approved", "slow_approved", "late_approval", "short_expiry",
+                                    "wrong_command", "denied", "offline", "expired", "invalid_text"])
 def test_application_command_uses_the_live_permit_deadline_and_normal_agent_path(
         tmp_path, builder, monkeypatch, outcome):
     runtime = installed(tmp_path / "runtime", builder)
     request = command()
     if outcome == "expired":
         request = request.model_copy(update={"expires_at": request.created_at - timedelta(seconds=1)})
+    if outcome == "short_expiry":
+        request = request.model_copy(update={"expires_at": request.created_at + timedelta(seconds=1)})
+    if outcome == "late_approval":
+        request = request.model_copy(update={"expires_at": request.created_at + timedelta(seconds=20)})
     if outcome == "invalid_text":
         request = request.model_copy(update={"payload": {**request.payload, "arguments": arguments(text="ok\n\x1b")}})
     calls, permits, results = [], [], []
+    clock = [0.0]
+    monkeypatch.setattr("agent.core_client.time", SimpleNamespace(monotonic=lambda: clock[0]))
     monkeypatch.setattr("agent.modules.character_display.MockCharacterDisplay.write_frame", lambda *args: calls.append(args))
 
     class Transport:
@@ -227,11 +235,13 @@ def test_application_command_uses_the_live_permit_deadline_and_normal_agent_path
         def receive_command(self, *, timeout_seconds):
             return request
 
-        def authorize_execution(self, command_id):
-            permits.append(command_id)
+        def authorize_execution(self, command_id, *, timeout_seconds):
+            permits.append(timeout_seconds)
             if outcome == "offline":
                 raise ConnectionError("Core unavailable")
-            return {"command_id": command_id, "authorized": outcome != "denied"}
+            clock[0] += {"slow_approved": 3, "late_approval": 10, "short_expiry": 2}.get(outcome, 0)
+            return {"command_id": "different" if outcome == "wrong_command" else command_id,
+                    "authorized": outcome != "denied"}
 
     monkeypatch.setattr(CorePublisher, "_post", lambda *args: None)
     monkeypatch.setattr(CorePublisher, "_submit_result", lambda self, result: results.append(result))
@@ -245,13 +255,17 @@ def test_application_command_uses_the_live_permit_deadline_and_normal_agent_path
     publisher._poll_command()
     publisher._poll_command()  # Same delivery cannot cause another driver attempt/permit.
     assert results[0] == results[1]
-    if outcome == "approved":
+    if outcome in {"approved", "slow_approved"}:
         assert results[0].status == "succeeded" and results[0].output["simulated"] is True
         assert len(calls) == 1
     else:
         assert results[0].output["execution_state"] == "not_executed"
         assert calls == []
     assert len(permits) == (0 if outcome == "expired" else 1)
+    if outcome == "short_expiry":
+        assert 0 < permits[0] <= 1
+    if outcome == "late_approval":
+        assert permits == [10]
     runtime.close()
 
 
@@ -303,6 +317,65 @@ def test_native_is_refused_on_a_mock_agent_even_with_an_approved_profile(tmp_pat
         sha = hashlib.sha256(blob).hexdigest()
         runtime.install(blob, expected_sha256=sha, hardware_profile_approval={
             'device_id': DEVICE_ID, 'package_sha256': sha, 'profile_sha256': profile.digest()})
+
+
+def test_native_activation_prepares_worker_without_sending_a_frame(tmp_path, builder, monkeypatch):
+    from agent.hardware.character_display import NativeCharacterDisplay
+    prepared=[]
+    monkeypatch.setattr(NativeCharacterDisplay,'device_available',lambda _:True)
+    monkeypatch.setattr(NativeCharacterDisplay,'is_available',lambda _:True)
+    monkeypatch.setattr(NativeCharacterDisplay,'prepare',lambda _:prepared.append('code-ready'))
+    monkeypatch.setattr(NativeCharacterDisplay,'write_frame',lambda *a,**kw:pytest.fail('No frame at activation'))
+    profile=CharacterDisplayProfileV1(driver='pcf8574')
+    runtime=installed(tmp_path,builder,profile=profile,approved_profile=profile.digest())
+    assert prepared==['code-ready'] and runtime.capability_healthy(DISPLAY_CAPABILITY)
+    assert runtime.capability_states()[DISPLAY_CAPABILITY]['has_frame'] is False
+    runtime.close()
+
+
+def test_native_fault_recovers_code_only_before_a_fresh_journaled_command(tmp_path, builder, monkeypatch):
+    from agent.hardware.character_display import NativeCharacterDisplay
+    profile = CharacterDisplayProfileV1(driver='pcf8574')
+    prepared, writes = [], []
+    healthy = [True]
+    monkeypatch.setattr(NativeCharacterDisplay, 'device_available', lambda _: True)
+    monkeypatch.setattr(NativeCharacterDisplay, 'prepare', lambda _: prepared.append('ready'))
+    monkeypatch.setattr(NativeCharacterDisplay, 'is_available', lambda _: healthy[0])
+    def maintain(_):
+        prepared.append('replacement-ready')
+        healthy[0] = True
+        return True
+    monkeypatch.setattr(NativeCharacterDisplay, 'maintain', maintain)
+    def write(_driver, lines, backlight, **kwargs):
+        writes.append(list(lines))
+        if len(writes) == 1:
+            healthy[0] = False
+            raise TimeoutError('partial frame')
+    monkeypatch.setattr(NativeCharacterDisplay, 'write_frame', write)
+    runtime = installed(tmp_path/'runtime', builder, profile=profile, approved_profile=profile.digest())
+    journal = PhysicalCommandJournal(tmp_path/'journal')
+    old = command().model_copy(update={'payload': {**command().payload, 'arguments': arguments(profile),
+        'contract_digest': profile.contract().digest()}})
+    def run(args):
+        return runtime.invoke(DISPLAY_CAPABILITY, 'write_frame', args, contract_version='2.0',
+                              contract_digest=profile.contract().digest())
+    failed = journal.execute(old, lambda: run(arguments(profile)))
+    assert failed.output['execution_state'] == 'unknown'
+    assert not runtime.capability_healthy(DISPLAY_CAPABILITY)
+    assert prepared == ['ready']  # A read/probe never prepares or writes.
+    runtime.maintain_services()
+    assert runtime.capability_healthy(DISPLAY_CAPABILITY)
+    assert not runtime.capability_states()[DISPLAY_CAPABILITY]['has_frame']
+    assert writes == [['BTC/USD'.ljust(20), '123.45'.ljust(20)]]
+    fresh = old.model_copy(update={'command_id': 'cmd_'+'e'*32, 'idempotency_key': 'fresh-display-frame',
+        'payload': {**old.payload, 'arguments': arguments(profile, text='NEW\nFRAME')}})
+    assert journal.execute(fresh, lambda: run(arguments(profile, text='NEW\nFRAME'))).status == 'succeeded'
+    assert journal.execute(old, lambda: pytest.fail('Old frame must not be replayed')) == failed
+    assert writes[-1] == ['NEW'.ljust(20), 'FRAME'.ljust(20)] and len(writes) == 2
+    runtime.disable(builder.manifest(profile)['module_id'])
+    runtime.maintain_services()
+    assert prepared == ['ready', 'replacement-ready']
+    runtime.close()
 
 
 def test_authoritative_command_deadline_reaches_native_worker(tmp_path, builder, monkeypatch):

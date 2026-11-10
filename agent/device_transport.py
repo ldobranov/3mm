@@ -39,6 +39,16 @@ class HttpRejected(DeviceTransportError, requests.HTTPError):
     pass
 
 
+EXECUTION_PERMIT_WAIT_SECONDS = 10
+
+
+def _remaining(deadline):
+    seconds = deadline - time.monotonic()
+    if seconds <= 0:
+        raise HttpTransportError("Execution permit deadline expired")
+    return seconds
+
+
 def legacy_outbox_record(report):
     """Keep existing disk records readable by pre-C10 rollback releases."""
     if isinstance(report, AgentHeartbeat):
@@ -101,10 +111,12 @@ class HttpDeviceTransport:
         self._verified_at = 0
         self._authority_lock = threading.RLock()
 
-    def _ensure_authority(self):
+    def _ensure_authority(self, *, deadline=None):
         if self.authority_store is None:
             return False  # Existing embedding adapters retain their old contract.
         with self._authority_lock:
+            if deadline is not None:
+                _remaining(deadline)
             try:
                 binding = self.authority_store.check_current()
                 if self._authority_mode == "legacy" and binding is None:
@@ -122,7 +134,7 @@ class HttpDeviceTransport:
                     self.origin + "/api/v1/pairing/authority-proof",
                     json=request.model_dump(mode="json"),
                     headers={},
-                    timeout=10,
+                    timeout=10 if deadline is None else _remaining(deadline),
                     allow_redirects=False,
                 )
                 if response.status_code in {404, 405} and binding is None:
@@ -145,7 +157,7 @@ class HttpDeviceTransport:
                     "Installation authority could not be verified"
                 ) from exc
 
-    def _exchange(self, operation, *, command_id=None, timeout_seconds=0):
+    def _exchange(self, operation, *, command_id=None, timeout_seconds=0, deadline=None):
         request = challenge(
             self.device_id,
             self.credential.credential_id,
@@ -157,9 +169,8 @@ class HttpDeviceTransport:
             "authority-exchange",
             payload=request.model_dump(mode="json"),
             params={"wait_seconds": timeout_seconds},
-            timeout=(
-                2 if operation == "execution_permit" else max(10, timeout_seconds + 5)
-            ),
+            timeout=max(10, timeout_seconds + 5),
+            deadline=deadline,
         )
         try:
             return self.authority_store.verify(response.json(), request)
@@ -184,9 +195,10 @@ class HttpDeviceTransport:
         params=None,
         legacy_missing=False,
         enrollment=False,
+        deadline=None,
     ):
         if not enrollment:
-            self._ensure_authority()
+            self._ensure_authority(deadline=deadline)
         url = (
             self.origin + "/api/v1/pairing/enroll"
             if enrollment
@@ -194,7 +206,7 @@ class HttpDeviceTransport:
         )
         kwargs = dict(
             headers={} if enrollment else self.headers,
-            timeout=timeout,
+            timeout=timeout if deadline is None else min(timeout, _remaining(deadline)),
             allow_redirects=False,
         )
         if payload is not None:
@@ -319,11 +331,14 @@ class HttpDeviceTransport:
             raise HttpRejected('Provider response identity mismatch')
         return value
 
-    def authorize_execution(self, command_id):
-        if self._ensure_authority():
-            return self._exchange("execution_permit", command_id=command_id)
+    def authorize_execution(self, command_id, *, timeout_seconds):
+        if not 0 < timeout_seconds <= EXECUTION_PERMIT_WAIT_SECONDS:
+            raise ValueError("Execution permit wait is out of bounds")
+        deadline = time.monotonic() + timeout_seconds
+        if self._ensure_authority(deadline=deadline):
+            return self._exchange("execution_permit", command_id=command_id, deadline=deadline)
         return self._request(
-            "post", f"commands/{command_id}/authorize-execution", timeout=2
+            "post", f"commands/{command_id}/authorize-execution", deadline=deadline,
         ).json()
 
     def platform(self):

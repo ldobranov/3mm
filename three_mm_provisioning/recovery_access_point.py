@@ -10,6 +10,7 @@ import ipaddress
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import time
 import uuid
@@ -60,10 +61,12 @@ def read_status(path=STATUS_PATH):
     empty = dict(state='inactive', id=None, interface=None, expires_at=None,
                  network=None, setup_url=None, reason=None)
     path = Path(path)
-    if not path.exists():
-        return empty
     try:
-        if path.is_symlink() or path.stat().st_size > 4096:
+        try:
+            metadata = path.lstat()
+        except FileNotFoundError:
+            return empty
+        if stat.S_ISLNK(metadata.st_mode) or metadata.st_size > 4096:
             raise ValueError('invalid status')
         value = json.loads(path.read_text())
         if (set(value) != set(empty) or value['state'] not in

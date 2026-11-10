@@ -1,3 +1,9 @@
 # Deployment scripts are executed directly on Linux hosts.
 *.sh text eol=lf
 deployment/systemd/*.service text eol=lf
+
+# Immutable releases contain source, not workstation rules or mutable host data.
+/.kilocode export-ignore
+/.vscode export-ignore
+/backend/mega_monitor.db export-ignore
+/uploads export-ignore

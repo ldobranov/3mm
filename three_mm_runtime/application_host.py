@@ -215,6 +215,23 @@ def _operation_failure(error, stage, started):
         return None  # Optional diagnostics cannot replace the negative response.
 
 
+def _reply(connection, request_id, response, secret):
+    """One reply attempt; a disconnected caller cannot terminate this host.
+
+    A handler may already have committed an effect. Losing its reply does not
+    make that work unsent, does not clear replay protection and never retries it.
+    Only socket I/O failures are contained here; signing/encoding bugs retain
+    their existing failure behavior rather than becoming fabricated success.
+    """
+    message = sign_message({"version": 1, "request_id": request_id,
+        "timestamp": int(time.time()), **response}, secret)
+    try:
+        send_message(connection, message)
+    except OSError:
+        return False
+    return True
+
+
 def serve(instance: str, root: Path, key_root: Path, group_id: int | None = None) -> None:
     instance_root = (root / instance).resolve()
     if root.resolve() not in instance_root.parents:
@@ -326,8 +343,7 @@ def _serve_requests(
                             "metadata_sha256": hashlib.sha256(json.dumps(metadata,
                                 sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest(),
                         }}
-                        send_message(connection, sign_message({"version": 1,
-                            "request_id": request_id, "timestamp": int(time.time()), **response}, secret))
+                        _reply(connection, request_id, response, secret)
                         continue
                     if operation_id == "three_mm.platform.status":
                         if raw_context.get("audience") != "internal":
@@ -342,18 +358,7 @@ def _serve_requests(
                                 else relational_runtime.readiness()
                             ),
                         }
-                        send_message(
-                            connection,
-                            sign_message(
-                                {
-                                    "version": 1,
-                                    "request_id": request_id,
-                                    "timestamp": int(time.time()),
-                                    **response,
-                                },
-                                secret,
-                            ),
-                        )
+                        _reply(connection, request_id, response, secret)
                         continue
                     failure_stage = 'application.host_context'
                     operations = metadata.get("operations")
@@ -456,18 +461,7 @@ def _serve_requests(
                     detail = _operation_failure(exc, failure_stage, failure_started)
                     if detail is not None:
                         response['failure'] = detail
-                send_message(
-                    connection,
-                    sign_message(
-                        {
-                            "version": 1,
-                            "request_id": request_id,
-                            "timestamp": int(time.time()),
-                            **response,
-                        },
-                        secret,
-                    ),
-                )
+                _reply(connection, request_id, response, secret)
 
 
 def main() -> None:

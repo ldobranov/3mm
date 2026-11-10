@@ -482,6 +482,14 @@ PY
   fi
   local application_units=()
   mapfile -t application_units <<< "$application_listing"
+  # The administrator-approved release/rollback already starts these exact
+  # DB-selected instances. Clear their counters once. The singleton patterns
+  # match the exact names but make unloaded instances a no-op for reset-failed.
+  local reset_targets=() unit
+  for unit in "${application_units[@]}"; do
+    reset_targets+=("[3]${unit:1}")
+  done
+  systemctl reset-failed --all "${reset_targets[@]}" || return 1
   systemctl start "${application_units[@]}" || return 1
   local service
   for service in "${application_units[@]}"; do

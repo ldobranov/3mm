@@ -36,7 +36,9 @@ from three_mm_protocol.node_features import (
 
 # Deprecated requests alias keeps existing embedding/test seams usable. All
 # actual HTTP I/O and acknowledgement handling is in the reference adapter.
-from agent.device_transport import HttpDeviceTransport, legacy_outbox_record, legacy_outbox_message, requests
+from agent.device_transport import (
+    EXECUTION_PERMIT_WAIT_SECONDS, HttpDeviceTransport, legacy_outbox_record, legacy_outbox_message, requests,
+)
 from three_mm_protocol.transport import DeviceTransport, DeviceTransportError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -49,6 +51,7 @@ from three_mm_protocol import (
 
 logger = logging.getLogger(__name__)
 COMMAND_LONG_POLL_SECONDS = 5.0
+CAPABILITY_PUBLICATION_MIN_SECONDS = 1.0
 
 
 # One canonical model/store; keep the Agent client entry point's public imports.
@@ -235,6 +238,7 @@ class CorePublisher:
     _command_thread: threading.Thread | None = field(init=False, default=None, repr=False)
     _event_queue: queue.Queue[dict] = field(init=False, repr=False)
     _outbox_lock: threading.Lock = field(init=False, repr=False)
+    _capability_wake: threading.Event = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         if (
@@ -249,6 +253,7 @@ class CorePublisher:
         self._command_thread = None
         self._event_queue = queue.Queue(maxsize=500)
         self._outbox_lock = threading.Lock()
+        self._capability_wake = threading.Event()
         if self.transport is None:
             from three_mm_protocol.device_authority import DeviceAuthorityStore
             authority_store = DeviceAuthorityStore(self.command_journal.path.parent,
@@ -281,6 +286,7 @@ class CorePublisher:
 
     def stop(self) -> None:
         self._stop.set()
+        self._capability_wake.set()
         if self._thread is not None:
             self._thread.join(timeout=5)
         if self._event_thread is not None:
@@ -302,6 +308,12 @@ class CorePublisher:
             from three_mm_protocol.hardware_profiles import HARDWARE_PROFILE_FEATURE
             if getattr(self.module_runtime, 'device_id', None) == self.credential.device_id:
                 features.add(HARDWARE_PROFILE_FEATURE)
+                from three_mm_protocol.gpio_input import INPUT_ENTRYPOINT, INPUT_FEATURE
+                if INPUT_ENTRYPOINT in getattr(self.module_runtime, 'runtime_handlers', {}):
+                    features.add(INPUT_FEATURE)
+                from three_mm_protocol.character_display_scene import SCENE_ENTRYPOINT, SCENE_FEATURE
+                if SCENE_ENTRYPOINT in getattr(self.module_runtime, 'runtime_handlers', {}):
+                    features.add(SCENE_FEATURE)
             features.update({"module_lifecycle", "application_execution_permits", CONTRACT_FEATURE})
             features.add("module_uninstall")
             if self.capability_availability:
@@ -388,10 +400,7 @@ class CorePublisher:
 
     def _deliver_event(self, payload: dict) -> None:
         self._send_or_queue(*legacy_outbox_record(DeviceEventV1.model_validate(payload)), f"event:{payload['event_id']}")
-        try:
-            self._publish_capability_states()
-        except (ModuleLifecycleError, ValidationError) as exc:
-            logger.warning("Capability state publish after event failed: %s", exc)
+        self._request_capability_publication()
 
     def _run_event_delivery(self) -> None:
         while not self._stop.is_set() or not self._event_queue.empty():
@@ -422,6 +431,36 @@ class CorePublisher:
                 *legacy_outbox_record(report),
                 f"capability-state:{capability_id}",
             )
+
+    def _request_capability_publication(self) -> None:
+        # Edges and command receipts are durable individual records, not
+        # replaceable telemetry. Never put a full health/state HTTP round trip
+        # between two edges or between a receipt and the next execution permit.
+        self._capability_wake.set()
+
+    def _publish_requested_capabilities(self) -> None:
+        # Clear before reading: a request arriving during a slow snapshot stays
+        # pending. Only the existing publisher thread reads/publishes telemetry.
+        self._capability_wake.clear()
+        try:
+            self._publish_capability_states()
+        except Exception as exc:
+            logger.warning("Core capability state publish failed: %s", type(exc).__name__)
+
+    def _wait_with_capability_updates(self) -> None:
+        # Bursts coalesce into one current snapshot, without another worker or
+        # rerunning inventory, maintenance, outbox flush and heartbeat per edge.
+        deadline = time.monotonic() + self.interval_seconds
+        next_snapshot = time.monotonic() + CAPABILITY_PUBLICATION_MIN_SECONDS
+        while not self._stop.is_set():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not self._capability_wake.wait(remaining):
+                return
+            delay = min(remaining, max(0.0, next_snapshot - time.monotonic()))
+            if self._stop.wait(delay) or time.monotonic() >= deadline:
+                return
+            self._publish_requested_capabilities()
+            next_snapshot = time.monotonic() + CAPABILITY_PUBLICATION_MIN_SECONDS
 
     def _publish_capability_availability(self):
         if (self.module_runtime is None or self._runtime_features is None
@@ -481,9 +520,14 @@ class CorePublisher:
         if command.command_type in {'capability.invoke', 'application.capability.invoke'} and self.module_runtime is not None:
             journal = PhysicalCommandJournal(self.command_journal.path.parent)
             def authorize():
-                started = time.monotonic()
-                body = self.transport.authorize_execution(command.command_id)
-                if body.get('authorized') is not True or body.get('command_id') != command.command_id or time.monotonic() - started > 2:
+                budget = min(EXECUTION_PERMIT_WAIT_SECONDS,
+                             (command.expires_at - datetime.now(UTC)).total_seconds())
+                if budget <= 0:
+                    raise ValueError('Physical command expired before authorization')
+                deadline = time.monotonic() + budget
+                body = self.transport.authorize_execution(command.command_id, timeout_seconds=budget)
+                if (body.get('authorized') is not True or body.get('command_id') != command.command_id
+                        or time.monotonic() >= deadline):
                     raise ValueError('Execution permit was not received promptly')
             def invoke_capability():
                 if (self.capability_availability
@@ -500,7 +544,7 @@ class CorePublisher:
             result = journal.execute(command, invoke_capability,
                 authorize=authorize if command.command_type == 'application.capability.invoke' else None)
             self._submit_result(result)
-            self._publish_capability_states()
+            self._request_capability_publication()
             return
 
         completed_at = datetime.now(UTC)
@@ -650,7 +694,7 @@ class CorePublisher:
         self._submit_result(result)
         if command.command_type in {"module.install", "module.disable", "module.uninstall"} and self.gpio_configuration is not None:
             self._reconcile_state()
-            self._publish_capability_states()
+            self._request_capability_publication()
 
     def _run_commands(self) -> None:
         while not self._stop.is_set():
@@ -764,8 +808,10 @@ class CorePublisher:
                 self._reconcile_state()
             except (DeviceTransportError, ValueError) as exc:
                 logger.warning("Core state reconciliation failed: %s", exc)
-            try:
-                self._publish_capability_states()
-            except (ModuleLifecycleError, ValidationError) as exc:
-                logger.warning("Core capability state publish failed: %s", exc)
-            self._stop.wait(self.interval_seconds)
+            if self.module_runtime is not None:
+                try:
+                    self.module_runtime.maintain_services()
+                except Exception as exc:
+                    logger.warning("Agent module maintenance failed: %s", type(exc).__name__)
+            self._publish_requested_capabilities()
+            self._wait_with_capability_updates()

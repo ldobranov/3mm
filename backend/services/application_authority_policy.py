@@ -53,6 +53,7 @@ from backend.services.application_authority_context import (
     ScopeKey,
     StorageScopeKey,
     _canonical_bytes,
+    _schema_paths,
     _command_schema_data,
     _parse,
     _parse_versioned,
@@ -586,7 +587,8 @@ def _policy_identity(evidence):
     return "policy_" + hashlib.sha256(
         POLICY_DOMAIN
         + _canonical_bytes(
-            {"adapter_revision": _adapter_revision(evidence), "evidence": data}
+            {"adapter_revision": _adapter_revision(evidence), "evidence": data},
+            schema_paths=_schema_paths(type(evidence), data, ('evidence',))
         )
     ).hexdigest()
 
@@ -612,7 +614,7 @@ def evaluate_authority_policy(subject, evidence=None) -> PolicyEvaluation:
         subject = _parse_versioned(PolicySubjectV1, PolicySubjectV2, subject, "subject_version", PolicySubjectV3, PolicySubjectV4, PolicySubjectV5, PolicySubjectV6, PolicySubjectV7, PolicySubjectV8, PolicySubjectV9, PolicySubjectV10, TaskPolicySubjectV11, QueryPolicySubjectV12)
         actual = _scopes(subject.commands, subject.connectors, getattr(subject, "events", ()), getattr(subject, "publications", ()), getattr(subject, "private_files", ()), getattr(subject, "relational", ()), getattr(subject, "checkpoints", ()), getattr(subject, "identities", ()), getattr(subject, "status_projections", ()), getattr(subject, "peer_reads", ()), getattr(subject, "sessions", ()), getattr(subject, "tasks", ()), getattr(subject, 'queries', ()))
         actual_bytes = {
-            key: _canonical_bytes(_scope_data(scope))
+            key: _canonical_bytes(_scope_data(scope), schema_paths=_schema_paths(type(scope), _scope_data(scope)))
             for key, scope in actual.items()
         }
     except failures:
@@ -630,7 +632,7 @@ def evaluate_authority_policy(subject, evidence=None) -> PolicyEvaluation:
                 raise ValueError("Policy versions must match")
             rules = _scopes(evidence.commands, evidence.connectors, getattr(evidence, "events", ()), getattr(evidence, "publications", ()), getattr(evidence, "private_files", ()), getattr(evidence, "relational", ()), getattr(evidence, "checkpoints", ()), getattr(evidence, "identities", ()), getattr(evidence, "status_projections", ()), getattr(evidence, "peer_reads", ()), getattr(evidence, "sessions", ()), getattr(evidence, "tasks", ()), getattr(evidence, 'queries', ()))
             rule_bytes = {
-                key: _canonical_bytes(_scope_data(scope))
+                key: _canonical_bytes(_scope_data(scope), schema_paths=_schema_paths(type(scope), _scope_data(scope)))
                 for key, scope in rules.items()
             }
             identity = _policy_identity(evidence)

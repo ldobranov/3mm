@@ -39,8 +39,11 @@ MAX_BYTES=128*1024*1024
 
 
 def startup_probe_seconds(component):
-    # ARMv6 cold imports need a larger bounded preparation/readiness window.
-    return 90 if component in {'agent','session-node','session-worker'} and platform.machine() == 'armv6l' else 20
+    # Even a healthy Pi 3 Agent needs over 20 seconds for cold native imports.
+    # Preparation and readiness share one bounded budget; execution deadlines
+    # and the independently tuned session/public component budgets do not change.
+    if component == 'agent':return 180 if platform.machine() == 'armv6l' else 60
+    return 90 if component in {'session-node','session-worker'} and platform.machine() == 'armv6l' else 20
 ENTRY=b"""import asyncio,importlib,importlib.util,json,os,sys,zipfile
 from pathlib import Path
 base=Path(sys.argv[0]).resolve().parent
@@ -309,17 +312,24 @@ def health(store,control,identifier):
     if not control.active():raise ValueError('Component listener is unavailable')
     if store.component in {'agent','public-web'}:
         url=('http://127.0.0.1:8890/component-health' if store.component=='agent' else 'http://127.0.0.1:8081/__3mm_component__/health')
-        deadline=time.monotonic()+(startup_probe_seconds(store.component) if platform.machine()=='armv6l' else 15)
+        budget=(startup_probe_seconds(store.component) if store.component=='agent' or platform.machine()=='armv6l' else 15)
+        deadline=time.monotonic()+budget
         while True:
+            remaining=deadline-time.monotonic()
+            if remaining<=0:raise ValueError('Component readiness deadline expired')
             try:
-                result=_http_identity(url)
+                result=_http_identity(url,timeout=min(2,remaining))
+                remaining=deadline-time.monotonic()
+                if remaining<=0:raise ValueError('Component readiness deadline expired')
                 unit='3mm-public-web.service' if store.component=='public-web' else control.unit
-                process=subprocess.run(['/usr/bin/systemctl','show',unit,'--property=MainPID','--value'],capture_output=True,text=True,check=True,timeout=5)
+                process=subprocess.run(['/usr/bin/systemctl','show',unit,'--property=MainPID','--value'],capture_output=True,text=True,check=True,timeout=min(5,remaining))
+                if time.monotonic()>=deadline:raise ValueError('Component readiness deadline expired')
                 if result!={'component':store.component,'build_id':identifier,'pid':int(process.stdout.strip())} or result['pid']<=0:raise ValueError('Loaded component identity changed')
                 break
             except (OSError,ValueError):
-                if time.monotonic()>=deadline:raise
-                time.sleep(.1)
+                remaining=deadline-time.monotonic()
+                if remaining<=0:raise
+                time.sleep(min(.1,remaining))
     if store.component in {'session-node','session-relay'}:
         import pwd
         name=store.component

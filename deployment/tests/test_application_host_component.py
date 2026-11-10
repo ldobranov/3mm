@@ -365,15 +365,17 @@ def test_prepared_start_binds_a_host_before_systemd_and_missing_default_never_st
     monkeypatch.setattr(activation.subprocess,'run',systemctl)
     PreparedServiceSupervisor(host_root=root).start(INSTANCE)
     assert component.store_for(INSTANCE,root=root,state=root/'updates').target('current')==metadata['build_id']
-    assert calls==[['/usr/bin/systemctl','start','3mm-application-extension@'+INSTANCE+'.service']]
+    unit = f'3mm-application-extension@{INSTANCE}.service'
+    reset = ['/usr/bin/systemctl', 'reset-failed', '--all', f'[3]{unit[1:]}']
+    assert calls == [reset, ['/usr/bin/systemctl', 'start', unit]]
     with pytest.raises(ValueError,match='not installed'):
         PreparedServiceSupervisor(host_root=tmp_path/'absent').start(OTHER)
-    assert len(calls)==1
+    assert len(calls) == 2
     control=component.ApplicationControl(INSTANCE)
     assert control.active()  # Active prepared host, deliberately not enabled for boot.
     control.stop();control.start()
-    assert [args[1] for args in calls]==['start','is-active','stop','reset-failed','start']
-    assert calls[-2]==['/usr/bin/systemctl','reset-failed',control.unit]
+    assert [args[1] for args in calls] == ['reset-failed', 'start', 'is-active', 'stop', 'reset-failed', 'start']
+    assert calls[-2] == reset
     assert not any('enable' in args or 'disable' in args for args in calls)
 
 

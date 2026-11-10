@@ -46,8 +46,8 @@ def _candidate(db, binding, device, now):
         blockers.append("contract_version_mismatch")
     elif binding.action not in contract.actions:
         blockers.append("action_missing")
-    elif (_canonical_bytes(_command_schema_data(binding.arguments_schema)) !=
-          _canonical_bytes(_command_schema_data(contract.actions[binding.action].arguments_schema))):
+    elif (_canonical_bytes(_command_schema_data(binding.arguments_schema), schema_paths=((),)) !=
+          _canonical_bytes(_command_schema_data(contract.actions[binding.action].arguments_schema), schema_paths=((),))):
         # Same conservative rule as actual sealed authority: no inferred schema
         # containment, version upgrades or guarantees from matching names alone.
         blockers.append("command_schema_containment_not_evaluated")

@@ -48,25 +48,18 @@ class GpiodDigitalGpioDriver:
 
         self._gpiod = gpiod_module
         self._closed = False
-        self._inputs = {
-            capability_id: _GpiodInput(
-                gpiod_module,
-                chip=chip,
-                capability_id=capability_id,
-                line=line,
-                debounce_seconds=input_debounce_seconds,
-            )
-            for capability_id, line in inputs.items()
-        }
-        self._outputs = {
-            capability_id: _GpiodOutput(
-                gpiod_module,
-                chip=chip,
-                capability_id=capability_id,
-                line=line,
-            )
-            for capability_id, line in output_lines.items()
-        }
+        self._inputs, self._outputs = {}, {}
+        try:
+            for capability_id, line in inputs.items():
+                self._inputs[capability_id] = _GpiodInput(
+                    gpiod_module, chip=chip, capability_id=capability_id,
+                    line=line, debounce_seconds=input_debounce_seconds)
+            for capability_id, line in output_lines.items():
+                self._outputs[capability_id] = _GpiodOutput(
+                    gpiod_module, chip=chip, capability_id=capability_id, line=line)
+        except Exception:
+            self.close()  # A later busy/invalid line must not leak earlier claims.
+            raise
 
     def input(self, capability_id: str) -> "_GpiodInput":
         try:
@@ -113,6 +106,7 @@ class _GpiodInput:
                     bias=gpiod.line.Bias.PULL_UP,
                     active_low=True,
                     edge_detection=gpiod.line.Edge.BOTH,
+                    event_clock=gpiod.line.Clock.MONOTONIC,
                 )
             },
         )
@@ -127,6 +121,9 @@ class _GpiodInput:
         with self._request_lock:
             value = self._request.get_value(self._line)
         return value == self._gpiod.line.Value.ACTIVE
+
+    def is_available(self) -> bool:
+        return not self._stop.is_set() and self._thread is not None and self._thread.is_alive()
 
     def subscribe(self, callback: DigitalInputCallback) -> Callable[[], None]:
         with self._callback_lock:
@@ -158,7 +155,7 @@ class _GpiodInput:
             if not edge_ready:
                 continue
             with self._request_lock:
-                self._request.read_edge_events()
+                edges = self._request.read_edge_events()
             if self._debounce_seconds:
                 debounce_deadline = time.monotonic() + self._debounce_seconds
                 while not self._stop.is_set():
@@ -166,7 +163,7 @@ class _GpiodInput:
                     if remaining <= 0 or not self._request.wait_edge_events(timeout=remaining):
                         break
                     with self._request_lock:
-                        self._request.read_edge_events()
+                        edges = self._request.read_edge_events() or edges
                     debounce_deadline = time.monotonic() + self._debounce_seconds
             with self._request_lock:
                 value = self._request.get_value(self._line)
@@ -175,7 +172,10 @@ class _GpiodInput:
                 continue
             previous = current
             self._sequence += 1
-            event = DigitalInputEvent(self.capability_id, current, self._sequence)
+            # libgpiod's kernel edge clock is independent of callback scheduling.
+            # Retain the last stable edge through software debounce.
+            timestamp = edges[-1].timestamp_ns if edges else None
+            event = DigitalInputEvent(self.capability_id, current, self._sequence, timestamp)
             with self._callback_lock:
                 callbacks = tuple(self._callbacks)
             for callback in callbacks:

@@ -55,9 +55,25 @@ def test_sdk_reason_is_closed_and_its_phase_never_becomes_a_replay_permit(code, 
 
 DRIVER = r'''
 import sys
+import time
 from pathlib import Path
 from three_mm_application_sdk import ApplicationPlatformError
+from three_mm_runtime import application_host as host
 from three_mm_runtime.application_host import _serve_requests
+root = Path(sys.argv[1])
+original_send = host.send_message
+def gated_send(connection, response):
+    # A real disconnected socket, with only scheduling doubled so every reply
+    # branch is tested after the caller has conclusively closed its peer.
+    if response.get('request_id', '').startswith('disconnect-'):
+        (root / 'reply-ready').write_text('ready')
+        deadline = time.monotonic() + 5
+        while not (root / 'release-reply').exists():
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Owned disconnect fixture was not released')
+            time.sleep(.005)
+    return original_send(connection, response)
+host.send_message = gated_send
 class UnprintablePrivateException(Exception):
     def __str__(self):
         raise AssertionError('The host must not format application exceptions')
@@ -88,8 +104,15 @@ def host_socket(tmp_path):
     path = tmp_path / 'run/service.sock'
     try:
         deadline = time.monotonic() + 5
-        while not path.exists():
+        while True:
             assert process.poll() is None, process.communicate(timeout=1)
+            if path.exists():
+                try:
+                    ready = exchange(path, operation_id='three_mm.host.info')
+                    assert ready['ok'] is True and ready['result']['host_contract'] == 1
+                    break
+                except (ConnectionRefusedError, FileNotFoundError):
+                    pass  # bind creates the pathname before listen is ready.
             assert time.monotonic() < deadline, 'Owned host fixture did not create its socket'
             time.sleep(.01)
         yield path, process
@@ -103,7 +126,7 @@ def host_socket(tmp_path):
 
 
 def exchange(path, **changes):
-    identifier = uuid.uuid4().hex
+    identifier = changes.pop('request_id', uuid.uuid4().hex)
     request = {'version': 1, 'timestamp': int(time.time()), 'request_id': identifier,
         'operation_id': 'inspect', 'payload': {}, 'context': {'audience': 'internal'}, **changes}
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
@@ -135,3 +158,52 @@ def test_signed_failure_from_real_host_does_not_replay_or_kill_next_request(host
     ready = exchange(path)
     assert ready['ok'] is True and ready['result'] == {'calls': calls}
     assert 'failure' not in ready and process.poll() is None
+
+
+@pytest.mark.parametrize('changes,handled', [
+    ({}, 1),
+    ({'operation_id': 'three_mm.host.info'}, 0),
+    ({'operation_id': 'three_mm.platform.status'}, 0),
+    ({'payload': []}, 0),
+    ({'payload': {'fault': 'sdk'}}, 1),
+])
+def test_disconnected_reply_keeps_host_alive_without_replaying_handler(host_socket, changes, handled):
+    path, process = host_socket
+    root = path.parent.parent
+    identifier = 'disconnect-' + uuid.uuid4().hex
+    request = {'version': 1, 'timestamp': int(time.time()), 'request_id': identifier,
+        'operation_id': 'inspect', 'payload': {}, 'context': {'audience': 'internal'}, **changes}
+    connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    connection.settimeout(2)
+    try:
+        connection.connect(str(path))
+        send_message(connection, sign_message(request, b's' * 32))
+        deadline = time.monotonic() + 3
+        while not (root / 'reply-ready').exists():
+            assert process.poll() is None, process.communicate(timeout=1)
+            assert time.monotonic() < deadline, 'Owned host did not reach reply boundary'
+            time.sleep(.005)
+    finally:
+        connection.close()
+        (root / 'release-reply').write_text('released')
+    # Lost acknowledgement is not a replay permit. The next distinct request
+    # must succeed in the same process and observe the original effect once.
+    ready = exchange(path)
+    assert ready['ok'] is True and ready['result'] == {'calls': handled + 1}
+    assert process.poll() is None
+    duplicate = exchange(path, request_id=identifier)
+    assert duplicate['ok'] is False
+    assert exchange(path)['result'] == {'calls': handled + 2}
+
+
+def test_disconnected_incomplete_request_does_not_kill_host_or_call_handler(host_socket):
+    path, process = host_socket
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(2)
+        connection.connect(str(path))
+        connection.sendall(b'{"version":')
+    # EOF is a malformed request, never a handler admission. Its negative reply
+    # can no longer reach the peer, but the next client still uses this process.
+    ready = exchange(path)
+    assert ready['ok'] is True and ready['result'] == {'calls': 1}
+    assert process.poll() is None

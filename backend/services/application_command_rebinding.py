@@ -20,7 +20,7 @@ from backend.db.device import Device
 from backend.db.module import ApplicationExtensionInstallation as Installation, ModulePackage
 from backend.services import application_authority_management as authority
 from backend.services import application_authority_sources as sources
-from backend.services.application_authority_context import _canonical_bytes
+from backend.services.application_authority_context import _canonical_bytes, _authority_data_schema_paths
 from backend.services.application_authority_inspection import AuthorityInspectionBaseline, _read_baseline
 from backend.services.application_command_discovery import _binding, _candidate
 from backend.services.application_consent import TTL_MS, _human_grants
@@ -39,7 +39,7 @@ PENDING = {"applying", "recovering", "recovery_required"}
 
 
 def _digest(value):
-    return hashlib.sha256(_canonical_bytes(value)).hexdigest()
+    return hashlib.sha256(_canonical_bytes(value, schema_paths=_authority_data_schema_paths(value))).hexdigest()
 
 
 def _actor_now(db, token):

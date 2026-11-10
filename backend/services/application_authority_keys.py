@@ -11,6 +11,7 @@ an old key unavailable even if its private file was copied back with the DB.
 import base64
 from contextlib import contextmanager, ExitStack
 from dataclasses import dataclass, field
+import errno
 import hashlib
 import hmac
 import json
@@ -24,7 +25,7 @@ import time
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.services.application_authority_context import (
-    AuthorityPrincipal, ConfigurationIdentity, _canonical_bytes, _parse, _bounded_json,
+    AuthorityPrincipal, ConfigurationIdentity, _canonical_bytes, _parse, _bounded_json, _record_schema_paths,
 )
 from backend.services.application_authority_sources import _core_identity, _read_snapshot
 from backend.services.authority_metadata import read_authority_guard
@@ -43,11 +44,17 @@ class AuthorityReviewKeyError(ValueError):
         super().__init__("Authority review key is unavailable or stale")
 
 
+class AuthorityReviewKeyBusy(AuthorityReviewKeyError):
+    """Bounded lease contention, never missing, invalid or unreadable key data."""
+
+
 @contextmanager
 def _key_errors():
     """Redact only work owned by the key adapter, never its lease's caller."""
     try:
         yield
+    except AuthorityReviewKeyBusy:
+        raise  # A caller may defer unadmitted work; no authority was granted.
     except (OSError, ValueError, TypeError, SQLAlchemyError, RuntimeError):
         raise AuthorityReviewKeyError() from None
 
@@ -212,9 +219,11 @@ def _key_lock(directory, *, create=False, wait_seconds=0, shared=False):
             try:
                 fcntl.flock(descriptor, (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | fcntl.LOCK_NB)
                 break
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
+            except OSError as exc:
+                if exc.errno not in {errno.EAGAIN, errno.EWOULDBLOCK}:
                     raise
+                if time.monotonic() >= deadline:
+                    raise AuthorityReviewKeyBusy() from None
                 time.sleep(min(0.01, max(0, deadline - time.monotonic())))
         yield
     finally:
@@ -314,6 +323,8 @@ class CoreReviewKeyStore:
                 if record.identity.binding != binding or self._binding() != binding:
                     raise AuthorityReviewKeyError()
                 return record.identity
+        except AuthorityReviewKeyBusy:
+            raise
         except (OSError, ValueError, TypeError, SQLAlchemyError, RuntimeError):
             raise AuthorityReviewKeyError() from None
 
@@ -508,7 +519,8 @@ class _LockedKey:
             raise AuthorityReviewKeyError()
         key_id = self._record.identity.key_id
         digest = hmac.new(self._record.secret, b"3mm:m20:sealed-authority:v1\x00" +
-            _canonical_bytes({"kind": kind, "key_id": key_id, "payload": payload}), hashlib.sha256).hexdigest()
+            _canonical_bytes({"kind": kind, "key_id": key_id, "payload": payload},
+                schema_paths=_record_schema_paths(kind, payload, ('payload',))), hashlib.sha256).hexdigest()
         return key_id, digest
 
     def verify(self, db, kind, payload, key_id, digest):

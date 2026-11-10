@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.services import application_authority_management as authority
+from backend.services.application_authority_context import _schema_paths
 from backend.services.authority_metadata import authority_transaction
 from three_mm_platform_wire import ENVELOPE_FIELDS, canonical, remaining
 from three_mm_protocol.application_composition import ApplicationQueryRequestV1, ApplicationQueryResultV1
@@ -154,7 +155,10 @@ class QueryBroker:
                 current = authority._subject_scopes(subject)[pending['scope']]
                 consumer = db.get(Installation, pending['installation_id'], populate_existing=True)
                 if (grant['revision'] != pending['grant_revision'] or not consumer.enabled or consumer.status != 'active'
-                        or authority._canonical_bytes(current.model_dump(mode='json')) != authority._canonical_bytes(resource.model_dump(mode='json'))
+                        or authority._canonical_bytes(current.model_dump(mode='json'),
+                            schema_paths=_schema_paths(type(current), current.model_dump(mode='json')))
+                        != authority._canonical_bytes(resource.model_dump(mode='json'),
+                            schema_paths=_schema_paths(type(resource), resource.model_dump(mode='json')))
                         or time.monotonic() >= pending['expires']):
                     raise ValueError('Query authority changed')
                 answer = ApplicationQueryResultV1(binding_id=resource.declaration.binding_id,

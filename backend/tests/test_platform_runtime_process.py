@@ -88,8 +88,12 @@ def _serve_core(state,base,runtime_uid,core_uid,core_gid,pipe):
         # coordinate this child's independent queue and must not fence it.
         event_broker._claim_lock = threading.Lock()
         sender=event_broker._send_event_invocation
-        def send_event(prepared,request_id):
-            origin=sender(prepared,request_id)
+        def send_event(prepared,request_id,**bounds):
+            delay=base/'delay-event-before-send'
+            if delay.exists():
+                delay.unlink()
+                time.sleep(4.5)  # Beyond the old four-second RPC handoff.
+            origin=sender(prepared,request_id,**bounds)
             if (base/'crash-before-handoff').exists():os._exit(17)
             return origin
         event_broker._send_event_invocation=send_event
@@ -125,7 +129,9 @@ def _serve_core(state,base,runtime_uid,core_uid,core_gid,pipe):
             if not worker.is_alive() or time.monotonic()>deadline:raise RuntimeError('Core test process failed startup')
             time.sleep(.02)
         port=server.servers[0].sockets[0].getsockname()[1]
-        pipe.send({'port':port,'pid':os.getpid(),'digest':core_digest()})
+        # Readiness is the running server, not an unused full-tree snapshot.
+        # The explicit fingerprint command still hashes the real source below.
+        pipe.send({'port':port,'pid':os.getpid()})
         while worker.is_alive():
             if not pipe.poll(.1):continue
             action=pipe.recv()

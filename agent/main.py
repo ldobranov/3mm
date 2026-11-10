@@ -25,7 +25,11 @@ from agent.hardware import (
 )
 from agent.modules.gpio import GPIO_ENTRYPOINT
 from agent.modules.character_display import character_display_handler
+from agent.modules.character_display_scene import character_display_scene_handler
+from agent.modules.gpio_input import gpio_input_handler
+from three_mm_protocol.gpio_input import INPUT_ENTRYPOINT
 from three_mm_protocol.character_display import DISPLAY_ENTRYPOINT
+from three_mm_protocol.character_display_scene import SCENE_ENTRYPOINT
 from agent.gpio_configuration import GpioConfigurationManager
 from agent.automation_store import AutomationStore
 from agent.identity import AgentIdentity, AgentIdentityStore
@@ -131,6 +135,13 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
                 DISPLAY_ENTRYPOINT: character_display_handler(
                     native_allowed=resolved_settings.hardware_profile is HardwareProfile.NATIVE,
                     lock_dir=resolved_settings.data_dir / "display-locks"),
+                SCENE_ENTRYPOINT: character_display_scene_handler(
+                    native_allowed=resolved_settings.hardware_profile is HardwareProfile.NATIVE,
+                    lock_dir=resolved_settings.data_dir / "display-locks"),
+                INPUT_ENTRYPOINT: gpio_input_handler(
+                    native_allowed=resolved_settings.hardware_profile is HardwareProfile.NATIVE,
+                    model=app.state.agent_runtime.inventory.model,
+                    event_sink=lambda event: app.state.module_event_sink(event)),
             },
         )
         module_runtime.start_active()

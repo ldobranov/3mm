@@ -85,7 +85,9 @@ def _subject(value):
         subject.connectors, key=lambda scope: scope.declaration.connector_id)]
     data["blockers"].sort()
     encoded = json.dumps(data, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
-    digest = hashlib.sha256(SUBJECT_DOMAIN + _canonical_bytes(data)).hexdigest()
+    from backend.services.application_authority_context import _schema_paths
+    digest = hashlib.sha256(SUBJECT_DOMAIN + _canonical_bytes(data,
+        schema_paths=_schema_paths(type(subject), data))).hexdigest()
     return subject, encoded, digest
 
 

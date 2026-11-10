@@ -13,7 +13,7 @@ BASE = RUNTIME_SERVICES[:2]
 
 
 def systemd(monkeypatch, listing="", *, query_fails=False, stop_fails=False,
-            start_fails=False, inactive_after_start=None):
+            start_fails=False, reset_fails=False, inactive_after_start=None):
     calls = []
     active = {*BASE, APP} if APP in listing else set(BASE)
 
@@ -30,6 +30,9 @@ def systemd(monkeypatch, listing="", *, query_fails=False, stop_fails=False,
             # After stop, inactive instances are unloaded. A subsequent wildcard
             # start cannot rediscover them, even though the API DB says active.
             active.clear()
+        elif action == "reset-failed":
+            if reset_fails:
+                raise subprocess.CalledProcessError(1, command)
         elif action == "start":
             if start_fails:
                 raise subprocess.CalledProcessError(1, command)
@@ -53,7 +56,8 @@ def test_backup_resumes_exact_instances_after_systemd_unloads_them(monkeypatch):
     controller.start(RUNTIME_SERVICES)
     assert active == {*BASE, APP}
     assert [call for call in calls if call[1] == "start"] == [
-        ["/usr/bin/systemctl", "start", *BASE, APP]]
+        ["/usr/bin/systemctl", "start", *BASE], ["/usr/bin/systemctl", "start", APP]]
+    assert [call[2:] for call in calls if call[1] == "reset-failed"] == [["--all", f"[3]{APP[1:]}"]]
 
 
 @pytest.mark.parametrize("state,substate", [("inactive", "dead"), ("failed", "failed"),
@@ -66,15 +70,27 @@ def test_previously_stopped_or_stopping_apps_are_not_started(monkeypatch, state,
     controller.start(RUNTIME_SERVICES)
     assert STOPPED not in active
     assert all(STOPPED not in call[2:] for call in calls if call[1] == "start")
+    assert [call[2:] for call in calls if call[1] == "reset-failed"] == [["--all", f"[3]{APP[1:]}"]]
 
 
 @pytest.mark.parametrize("state", ["activating", "reloading"])
 def test_running_transition_is_remembered(monkeypatch, state):
-    _, active = systemd(monkeypatch, f"{APP} loaded {state} start Test\n")
+    calls, active = systemd(monkeypatch, f"{APP} loaded {state} start Test\n")
     controller = SystemdServiceController()
     controller.stop(RUNTIME_SERVICES)
     controller.start(RUNTIME_SERVICES)
     assert APP in active
+    assert any(call[1] == "reset-failed" for call in calls) == (state == "reloading")
+
+
+def test_backup_keeps_core_and_agent_up_if_app_rearm_fails(monkeypatch):
+    calls, active = systemd(monkeypatch, f"{APP} loaded active running Test\n", reset_fails=True)
+    controller = SystemdServiceController()
+    controller.stop(RUNTIME_SERVICES)
+    with pytest.raises(subprocess.CalledProcessError):
+        controller.start(RUNTIME_SERVICES)
+    assert active == set(BASE)
+    assert [call[2:] for call in calls if call[1] == "start"] == [list(BASE)]
 
 
 def test_no_apps_still_resumes_core_and_agent(monkeypatch):

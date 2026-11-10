@@ -32,7 +32,7 @@ from backend.db.module import (
 )
 from backend.services.application_authority_context import (
     AuthorityArtifact, AuthorityBaseline, AuthorityPrincipal, Digest, ResolvedConnectorScope,
-    ResolvedCredential, ResolvedEventScope, ResolvedPublicationScope, ResolvedPrivateFileScope, ResolvedRelationalScope, ResolvedCheckpointScope, ResolvedIdentityScope, ResolvedStatusScope, ResolvedPeerReadScope, ResolvedSessionScope, StoredConnectorScope, _bounded_json, _canonical_bytes,
+    ResolvedCredential, ResolvedEventScope, ResolvedPublicationScope, ResolvedPrivateFileScope, ResolvedRelationalScope, ResolvedCheckpointScope, ResolvedIdentityScope, ResolvedStatusScope, ResolvedPeerReadScope, ResolvedSessionScope, StoredConnectorScope, _bounded_json, _canonical_bytes, _schema_paths,
 )
 from backend.services.application_authority_inspection import (
     AuthorityInspectionBaseline, _read_baseline,
@@ -45,7 +45,7 @@ from backend.services.authority_metadata import (
 )
 from backend.services.device_capability_registry import registered_capabilities, can_dispatch_capability
 from backend.services.device_runtime_features import read_runtime_features
-from three_mm_protocol.capability_contracts import CONTRACT_FEATURE, registration_contract
+from three_mm_protocol.capability_contracts import CapabilityContractV1, CONTRACT_FEATURE, registration_contract
 from three_mm_protocol.application_sessions import session_contract
 from three_mm_protocol.device_capabilities import ProviderId, ProviderType
 from three_mm_protocol.installation_identity import InstallationIdentityV1
@@ -290,7 +290,11 @@ def _device(db, device_id, scope, *, command_target):
 def _registration(db, device, capability_id, scope):
     # Reuse the ONE effective registry, including its module adapter and conflict
     # rejection. Do not turn inventory offers into selected capabilities.
-    registrations = _bounded_json(registered_capabilities(db, device))
+    registrations = registered_capabilities(db, device)
+    schema_paths = set()
+    for index, item in enumerate(registrations):
+        schema_paths.update(_schema_paths(CapabilityContractV1, item.get('contract'), (index, 'contract')))
+    registrations = _bounded_json(registrations, schema_paths=schema_paths)
     registration = next((item for item in registrations if item["capability_id"] == capability_id), None)
     if registration is None:
         raise _Unavailable("capability_unresolved", scope)
@@ -357,7 +361,7 @@ def _session(db, binding, configuration, principal, artifact_sha256):
         identity = hashlib.sha256(b"3mm:m21:resolved-session-source:v1\x00" + _canonical_bytes({
             "target": target.model_dump(mode="json"), "registration": registration,
             "provider_revision": revision, "module_artifact_sha256": digest,
-        })).hexdigest()
+        }, schema_paths=_schema_paths(CapabilityContractV1, registration.get('contract'), ('registration', 'contract')))).hexdigest()
         return ResolvedSessionScope(declaration=binding, owner=principal,
             package_artifact_sha256=artifact_sha256, target_device_id=target.device_id,
             control_revision=identity, provider_version=registration["provider_version"],
@@ -381,7 +385,7 @@ def _event(db, subscription, definition, configuration):
     identity = "source_" + hashlib.sha256(b"3mm:m20:resolved-event-source:v1\x00" + _canonical_bytes({
         "device": source.model_dump(mode="json"), "registration": registration,
         "provider_revision": revision, "module_artifact_sha256": digest,
-    })).hexdigest()
+    }, schema_paths=_schema_paths(CapabilityContractV1, registration.get('contract'), ('registration', 'contract')))).hexdigest()
     return ResolvedEventScope(declaration=subscription, source_device_id=source.device_id,
         source_revision=identity, handler=handler)
 
@@ -621,7 +625,10 @@ def _resolve(db, installation_id, pin, package, *, registration_key=None, propos
         private_files=private_files, relational=relational, checkpoints=checkpoints,
         identities=identities, status_projections=status_projections, peer_reads=peer_reads,
         sessions=sessions, tasks=tasks, optional_unavailable=tuple(optional_unavailable), issues=tuple(pending))
-    _bounded_json(result.model_dump(mode="json"))  # Total redacted output budget too.
+    data = result.model_dump(mode="json")
+    schema_paths = set(_schema_paths(InstalledAuthoritySources, data))
+    schema_paths.update(('commands', index, 'action_arguments_schema') for index in range(len(result.commands)))
+    _bounded_json(data, schema_paths=schema_paths)  # Total redacted output budget too.
     return result
 
 

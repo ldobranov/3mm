@@ -1,6 +1,7 @@
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import HardwareProfilesPanel from './HardwareProfilesPanel.vue'
+import type { HardwareProviderTemplate } from '@/utils/hardware-profiles'
 import { i18n } from '@/utils/i18n'
 import english from '@/locales/en.json'
 import bulgarian from '../../../modules/language-bg/language-extension.json'
@@ -10,7 +11,7 @@ vi.mock('@/utils/hardware-profiles', async importOriginal => ({
   hardwareProfilesClient: () => ({ inspect, mutate, upload, prepare }), newHardwareRequestId: ids,
 }))
 const DEVICE = 'dev_'+'a'.repeat(32)
-const templates = [{ template_id: 'example.display', name: 'Display driver', simulated: false, fields: [
+const templates: HardwareProviderTemplate[] = [{ template_id: 'example.display', name: 'Display driver', simulated: false, fields: [
   { key: 'columns', label: 'Columns', type: 'number' as const, default: 16, min: 1, max: 40 },
   { key: 'rows', label: 'Rows', type: 'select' as const, default: 2, options: [{ value: '2', label: '2' }, { value: '4', label: '4' }] },
   { key: 'address', label: 'Address', type: 'select' as const, default: 39, options: [{ value: '39', label: '0x27' }] },
@@ -31,6 +32,22 @@ beforeEach(async () => {
   await i18n.setLanguage('en', false)
 })
 describe('reviewed hardware provider installation', () => {
+  it('uses the selected input template fields and safety help without LCD-only instructions', async () => {
+    const data = catalog()
+    data.templates = [{ template_id: 'example.button', name: 'Input-only button', simulated: false,
+      fields: [{ key: 'bcm_pin', label: 'BCM input', type: 'select', default: 17,
+        options: [{ value: '17', label: 'GPIO17 / pin 11' }, { value: '22', label: 'GPIO22 / pin 15' }] }],
+      help: 'Input only: GPIO to GND, pull-up. No AP or reset.' }]
+    inspect.mockResolvedValue(data)
+    const wrapper = panel(); await flushPromises()
+    expect(wrapper.text()).toContain('Input only: GPIO to GND')
+    expect(wrapper.text()).not.toContain('PCF8574T uses HD44780')
+    await wrapper.get('.provider-setup select[id$="-bcm_pin"]').setValue('22')
+    prepare.mockResolvedValue('b'.repeat(64))
+    await wrapper.get('.provider-setup form').trigger('submit'); await flushPromises()
+    expect(prepare).toHaveBeenCalledExactlyOnceWith('example.button', { bcm_pin: 22 })
+    expect(mutate).not.toHaveBeenCalled()
+  })
   it('prepares numeric settings without an upload, approval, installation or request ID', async () => {
     const wrapper = panel(); await flushPromises()
     expect(prepare).not.toHaveBeenCalled()

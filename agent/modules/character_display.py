@@ -36,6 +36,29 @@ class CharacterDisplayService:
         self._failed = False
         self._last: tuple[list[str], bool] | None = None
         self._written_at = ""
+        if profile.driver != 'mock' and self._driver.device_available():
+            # Move Python cold startup outside the ten-second command/permit
+            # path. Preparing the private child never opens the bus or writes.
+            try:
+                self._driver.prepare()
+            except Exception:
+                self._failed = True  # Heartbeat maintenance can prepare code later.
+
+    def maintain(self) -> None:
+        """Warm a replacement worker only; no saved frame or device I/O."""
+        if not self._lock.acquire(blocking=False):
+            return
+        try:
+            if self._closed or self.profile.driver == 'mock':
+                return
+            if self._failed or not self._driver.is_available():
+                self._failed = True
+                self._last = None
+                self._written_at = ""
+                if self._driver.maintain():
+                    self._failed = False
+        finally:
+            self._lock.release()
 
     def validate_invocation(self, action: str, arguments: dict) -> None:
         with self._lock:
@@ -90,22 +113,27 @@ class CharacterDisplayService:
             self._driver.close()
 
 
+def approved_display_profile(manifest, profile_type, *, native_allowed):
+    """Pure exact-profile check shared by static and explicitly leased drivers."""
+    profile = profile_type.model_validate(manifest.configuration_defaults)
+    if profile.driver not in {'mock', 'pcf8574'}:
+        raise ModuleLifecycleError('Display driver is not installed in this Agent')
+    if profile.driver == 'pcf8574' and not native_allowed:
+        raise ModuleLifecycleError('Physical display requires the native Agent hardware profile')
+    registrations = [item for item in manifest.registrations if item.kind == 'capability']
+    if (set(manifest.permissions) != {'hardware.display'} or len(registrations) != 1
+            or registrations[0].registration_id != DISPLAY_CAPABILITY
+            or registrations[0].contract != profile.contract()
+            or registrations[0].metadata.get('profile_sha256') != profile.digest()
+            or registrations[0].metadata.get('simulated') is not (profile.driver == 'mock')):
+        raise ModuleLifecycleError('Display requires its exact profile-bound capability contract')
+    return profile
+
+
 def character_display_handler(*, native_allowed: bool = False, lock_dir: Path):
     """Module runtime admits exact installation consent; never application rights."""
     def activate(manifest, _data_dir):
-        profile = CharacterDisplayProfileV1.model_validate(manifest.configuration_defaults)
-        if profile.driver not in {'mock', 'pcf8574'}:
-            raise ModuleLifecycleError('Display driver is not installed in this Agent')
-        if profile.driver == "pcf8574" and not native_allowed:
-            raise ModuleLifecycleError("Physical display requires the native Agent hardware profile")
-        registrations = [item for item in manifest.registrations if item.kind == "capability"]
-        if (set(manifest.permissions) != {"hardware.display"}
-                or len(registrations) != 1
-                or registrations[0].registration_id != DISPLAY_CAPABILITY
-                or registrations[0].contract != profile.contract()
-                or registrations[0].metadata.get('profile_sha256') != profile.digest()
-                or registrations[0].metadata.get('simulated') is not (profile.driver == 'mock')):
-            raise ModuleLifecycleError("Display requires its exact profile-bound capability contract")
+        profile = approved_display_profile(manifest, CharacterDisplayProfileV1, native_allowed=native_allowed)
         return {DISPLAY_CAPABILITY: CharacterDisplayService(profile, lock_dir=lock_dir)}
 
     return activate

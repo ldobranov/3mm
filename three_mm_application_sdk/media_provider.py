@@ -3,6 +3,7 @@
 Pillow is optional in the application-host environment; it is never imported by
 Core or the file executor. An absent/broken provider leaves ordinary files usable.
 """
+import importlib.util
 import json
 import os
 import subprocess
@@ -12,6 +13,15 @@ from pathlib import Path
 
 def probe_provider():
     """No image/file input: bounded in-memory provider conformance in a child."""
+    try:
+        # A top-level spec lookup does not import PIL or load image codecs.
+        # An absent optional package needs no conformance child to prove absence.
+        if importlib.util.find_spec('PIL') is None:
+            return 'unavailable'
+    except Exception:
+        # A broken/uncertain finder is not evidence of absence. Keep the bounded
+        # child probe and its existing unknown result for inconclusive failures.
+        pass
     roots = dict.fromkeys([str(Path(__file__).parent.parent.resolve()), *(p for p in sys.path if p)])
     environment = {'PATH':os.defpath, 'PYTHONPATH':os.pathsep.join(roots),
         'PYTHONDONTWRITEBYTECODE':'1'}

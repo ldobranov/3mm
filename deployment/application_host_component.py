@@ -325,14 +325,26 @@ def publish_default(blob, sha256, *, root=ROOT, state=STATE):
         return {'build_id':candidate,'previous':previous,'status':'published_for_new_instances'}
 
 
+def reset_application_start_budget(*instances):
+    """Rearm only reviewed start targets; an unloaded unit has no counter."""
+    if not instances:
+        return  # Bare reset-failed would reset every unit on the system.
+    # A singleton pattern lets systemd skip unloaded units without matching
+    # anything except the validated instance (literal "3" followed by its name).
+    targets = [f'[3]mm-application-extension@{instance_id(value)}.service' for value in instances]
+    subprocess.run(['/usr/bin/systemctl', 'reset-failed', '--all', *targets], check=True, timeout=5)
+
+
 class ApplicationControl:
-    def __init__(self,instance): self.unit='3mm-application-extension@'+instance_id(instance)+'.service'
+    def __init__(self,instance):
+        self.instance = instance_id(instance)
+        self.unit = f'3mm-application-extension@{self.instance}.service'
     def active(self):
         # Prepared applications may be running with boot deliberately disabled.
         return subprocess.run(['/usr/bin/systemctl','is-active','--quiet',self.unit],timeout=5).returncode==0
     def stop(self): subprocess.run(['/usr/bin/systemctl','stop',self.unit],check=True,timeout=35)
     def start(self):
-        subprocess.run(['/usr/bin/systemctl','reset-failed',self.unit],check=True,timeout=5)
+        reset_application_start_budget(self.instance)
         subprocess.run(['/usr/bin/systemctl','start',self.unit],check=True,timeout=35)
 
 

@@ -150,7 +150,7 @@ def broker_db(monkeypatch, tmp_path):
         application_extension=application_definition(),compiled_ui=None))
     state=SimpleNamespace(db=db,device=device,installation=installation,package=package,
         settings=ApplicationRuntimeSettings(key_root=key_root),calls=[],mode='valid')
-    def send(prepared,request_id):
+    def send(prepared,request_id,**_bounds):
         assert not db.in_transaction()
         with Session(engine) as observer:
             current=observer.scalar(select(ApplicationEventDelivery).where(
@@ -167,6 +167,64 @@ def broker_db(monkeypatch, tmp_path):
     yield state
     db.close()
     engine.dispose()
+
+
+@pytest.mark.parametrize('lost_at', ['before_claim', 'after_preparation', 'after_admission'])
+def test_expired_event_claim_never_sends_to_the_handler(broker_db, monkeypatch, lost_at):
+    from backend.services import application_events as broker
+    s=broker_db;event=add_event(s.db,s.device,'expired-claim')
+    enqueue_application_event(s.db,event,s.settings)
+    clock=[100.0]
+    monkeypatch.setattr(broker,'time',SimpleNamespace(monotonic=lambda:clock[0],time=time.time))
+    if lost_at=='before_claim':
+        clock[0]=111
+    elif lost_at=='after_preparation':
+        prepare=broker.prepare_application_invocation
+        def expire(*args,**kwargs):
+            result=prepare(*args,**kwargs);clock[0]=111;return result
+        monkeypatch.setattr(broker,'prepare_application_invocation',expire)
+    else:
+        admit=broker._admit_event_attempt
+        def expire(*args,**kwargs):
+            admit(*args,**kwargs);clock[0]=111
+        monkeypatch.setattr(broker,'_admit_event_attempt',expire)
+    result,origin=broker.claim_event_delivery(s.db,s.settings,runtime_generation='deadline-test',deadline=110)
+    assert result['idle'] and origin is None and not s.calls
+    current=s.db.scalar(select(ApplicationEventDelivery))
+    assert current.status=='pending'
+    assert current.attempts==(1 if lost_at=='after_admission' else 0)
+    if lost_at=='after_admission':assert current.last_error=='dispatch_not_sent'
+
+
+def test_disconnected_event_claim_is_not_a_new_application_dispatch(broker_db,monkeypatch):
+    from backend.services import application_events as broker
+    s=broker_db;event=add_event(s.db,s.device,'disconnected')
+    enqueue_application_event(s.db,event,s.settings)
+    live=[True];prepare=broker.prepare_application_invocation
+    def disconnect(*args,**kwargs):
+        result=prepare(*args,**kwargs);live[0]=False;return result
+    monkeypatch.setattr(broker,'prepare_application_invocation',disconnect)
+    result,origin=broker.claim_event_delivery(s.db,s.settings,runtime_generation='deadline-test',
+        deadline=time.monotonic()+10,caller_current=lambda:live[0])
+    assert result['idle'] and origin is None and not s.calls
+    current=s.db.scalar(select(ApplicationEventDelivery))
+    assert current.status=='pending' and current.attempts==0 and current.dispatch_id is None
+
+
+def test_previous_runtime_claim_stays_healthy_idle_without_dispatch(broker_db,monkeypatch):
+    import backend.database as database
+    from backend.services import application_events as broker
+    from three_mm_platform_wire import receive_authority_frame
+    s=broker_db
+    monkeypatch.setattr(database,'SessionLocal',lambda:Session(s.db.get_bind()))
+    monkeypatch.setattr(broker,'claim_event_delivery',lambda *_a,**_kw:pytest.fail('Deadline-less claim dispatched'))
+    left,right=socket.socketpair()
+    try:
+        broker.handle_event_delivery(left,{'event_delivery_contract':1,'claim':True},
+            key_root=s.settings.key_root,runtime_generation='old-worker')
+        result,origin=receive_authority_frame(right,time.monotonic()+1)
+        assert result=={'event_delivery_contract':1,'ok':True,'idle':True} and origin is None
+    finally:left.close();right.close()
 
 
 def add_event(db: Session, device: Device, suffix: str) -> DeviceEvent:

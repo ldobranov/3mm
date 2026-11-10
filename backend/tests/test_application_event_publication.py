@@ -345,6 +345,8 @@ def test_concurrent_same_id_has_one_record_and_never_a_foreign_content_receipt(p
     def send(value):
         try:
             return publish(s, {**body, 'payload': {'value': value}})
+        except authority.AuthorityAdmissionUnavailable as error:
+            return ('busy', error.reason)
         except ValueError as error:
             return ('conflict', str(error))
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -354,12 +356,17 @@ def test_concurrent_same_id_has_one_record_and_never_a_foreign_content_receipt(p
     committed = [result for result in receipts if isinstance(result, dict)]
     assert committed and all(result == committed[0] for result in committed)
     if changed_content:
-        assert sum(isinstance(result, tuple) and result[0] == 'conflict' for result in receipts) == 1
+        # Before the winner commits there is no historical receipt to compare;
+        # a bounded busy refusal is still not a receipt for foreign content.
+        rejected = [result for result in receipts if not isinstance(result, dict)]
+        assert len(rejected) == 1
+        assert rejected[0] == ('conflict', 'Publication event identity has different owner or content') or rejected[0] in {
+            ('busy', 'key_busy'), ('busy', 'database_busy')}
     else:
         # Nonblocking key contention can fail closed while the first admission
         # is still in flight. It must not mint an ACK or retry publication.
-        assert all(isinstance(result, dict) or result == (
-            'conflict', 'Application resource grant is unavailable or stale') for result in receipts)
+        assert all(isinstance(result, dict) or result in {
+            ('busy', 'key_busy'), ('busy', 'database_busy')} for result in receipts)
     with Session(s.engine) as db:
         payload = db.scalar(select(DeviceEvent.payload))
     assert publish(s, {**body, 'payload': payload}) == committed[0]

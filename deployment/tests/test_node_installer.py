@@ -546,7 +546,7 @@ false
     assert f'selected={executable.as_posix()}' in result.stdout
 
 
-@pytest.mark.parametrize('query', ['one', 'none', 'failed', 'start-failed', 'inactive-first'])
+@pytest.mark.parametrize('query', ['one', 'none', 'failed', 'reset-failed', 'start-failed', 'inactive-first'])
 def test_active_application_resume_inside_error_trap(tmp_path, query):
     database = tmp_path / 'fixture.db'
     database.touch()
@@ -567,7 +567,7 @@ fail() { echo "$*" >&2; return 1; }
 test_query() {
   cat >/dev/null
   case "$test_query_result" in
-    one|start-failed) echo 3mm-application-extension@0123456789abcdef01234567.service ;;
+    one|reset-failed|start-failed) echo 3mm-application-extension@0123456789abcdef01234567.service ;;
     inactive-first)
       echo 3mm-application-extension@0123456789abcdef01234567.service
       echo 3mm-application-extension@abcdef0123456789abcdef01.service
@@ -579,6 +579,7 @@ test_query() {
 systemctl() {
   printf 'systemctl %s\\n' "$*"
   if [[ $1 == start && $test_query_result == start-failed ]]; then return 1; fi
+  if [[ $1 == reset-failed && $test_query_result == reset-failed ]]; then return 1; fi
   if [[ $1 == is-active && $test_query_result == inactive-first &&
         $3 == 3mm-application-extension@0123456789abcdef01234567.service ]]; then
     return 3
@@ -600,11 +601,13 @@ trap rollback_test ERR
 false
 ''')
     assert result.returncode == 1, result.stderr
-    if query in ('failed', 'start-failed', 'inactive-first'):
+    if query in ('failed', 'reset-failed', 'start-failed', 'inactive-first'):
         assert 'resumed=1' in result.stdout
         if query == 'failed':
             assert 'unreadable-database' in result.stderr
             assert 'systemctl ' not in result.stdout
+        elif query == 'reset-failed':
+            assert 'systemctl start' not in result.stdout
         elif query == 'start-failed':
             assert 'systemctl is-active' not in result.stdout
         else:
@@ -614,6 +617,10 @@ false
         assert 'resumed=0' in result.stdout, result.stdout + result.stderr
         assert ('systemctl start 3mm-application-extension@0123456789abcdef01234567.service'
                 in result.stdout) == (query == 'one')
+    if query not in ('none', 'failed'):
+        assert 'systemctl reset-failed --all [3]mm-application-extension@0123456789abcdef01234567.service' in result.stdout
+    else:
+        assert 'systemctl reset-failed' not in result.stdout
 
 
 def test_agent_environment_filters_core_secrets_and_keeps_host_settings(tmp_path):

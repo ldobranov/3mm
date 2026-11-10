@@ -80,6 +80,9 @@ class SystemdApplicationSupervisor:
             bind_instance(instance_id, root=self.host_root)
         unit = f"3mm-application-extension@{instance_id}.service"
         try:
+            if arguments and arguments[0] in {"start", "restart"}:
+                from deployment.application_host_component import reset_application_start_budget
+                reset_application_start_budget(instance_id)
             subprocess.run(
                 ["/usr/bin/systemctl", *arguments, unit],
                 check=True,

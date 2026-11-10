@@ -487,7 +487,8 @@ def hardware_profiles(device_id: str, response: Response, _admin: User = Depends
         raise HTTPException(404, 'Device was not found')
     support = read_runtime_features(db, device)
     items = []
-    for package in db.scalars(select(ModulePackage).order_by(ModulePackage.module_id, ModulePackage.version)):
+    packages = list(db.scalars(select(ModulePackage).order_by(ModulePackage.module_id, ModulePackage.version)))
+    for package in packages:
         item = PackageResponse.model_validate(package)
         profile = item.hardware_profile
         if profile is None:
@@ -509,7 +510,7 @@ def hardware_profiles(device_id: str, response: Response, _admin: User = Depends
             'installed_exact': installed is not None and installed.module_package_id == package.id})
     return {'device_id': device_id,
         'approval_supported': support is not None and HARDWARE_PROFILE_FEATURE in support.declaration['features'],
-        'items': items, 'templates': provider_templates()}
+        'items': items, 'templates': provider_templates(support.declaration['features'] if support else (), packages=packages)}
 
 
 class HardwareProviderPreparation(BaseModel):
@@ -529,7 +530,10 @@ def prepare_hardware_provider(device_id: str, body: HardwareProviderPreparation,
     if device.approved_at is None or device.revoked_at is not None:
         raise HTTPException(409, 'Device is not currently approved')
     try:
-        blob = prepare_provider(body.template_id, body.configuration)
+        support = read_runtime_features(db, device)
+        blob = prepare_provider(body.template_id, body.configuration,
+            features=support.declaration['features'] if support else (),
+            packages=list(db.scalars(select(ModulePackage).order_by(ModulePackage.module_id, ModulePackage.version))))
         validated = validate_module_package(blob)
     except ValueError as exc:
         raise HTTPException(422, 'Invalid provider configuration: ' + str(exc)[:1000]) from exc

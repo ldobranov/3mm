@@ -159,7 +159,7 @@ def test_health_requires_each_selected_service(tmp_path, monkeypatch):
         activation.check_active(tmp_path)
 
 
-@pytest.mark.parametrize('failure', [None, 'activation', 'readiness'])
+@pytest.mark.parametrize('failure', [None, 'activation', 'readiness', 'active'])
 def test_setup_attempt_is_acknowledged_only_after_runtime_readiness(tmp_path, monkeypatch, failure):
     from three_mm_provisioning.setup_journal import SetupJournal, SetupActivationJournal
     store = FileProvisioningStore(tmp_path)
@@ -181,7 +181,10 @@ def test_setup_attempt_is_acknowledged_only_after_runtime_readiness(tmp_path, mo
         if failure == 'readiness':raise RuntimeError('injected readiness failure')
     monkeypatch.setattr(activation, '_activate', apply)
     monkeypatch.setattr(activation, '_wait_setup_ready', ready)
-    monkeypatch.setattr(activation, 'check_active', lambda *_: calls.append('active'))
+    def active(*args):
+        calls.append('active')
+        if failure == 'active':raise RuntimeError('injected unit failure')
+    monkeypatch.setattr(activation, 'check_active', active)
     if failure:
         with pytest.raises(RuntimeError):activation.activate(tmp_path)
         assert journal.load()['committed'] is True
@@ -189,3 +192,108 @@ def test_setup_attempt_is_acknowledged_only_after_runtime_readiness(tmp_path, mo
         activation.activate(tmp_path)
         assert journal.load() is None and calls == ['activate', 'ready', 'active']
     assert store.load() == snapshot
+
+
+@pytest.fixture
+def readiness_clock(monkeypatch):
+    from types import SimpleNamespace
+    clock = SimpleNamespace(now=0.0, sleeps=[])
+    def sleep(seconds):
+        clock.sleeps.append(seconds)
+        clock.now += seconds
+    monkeypatch.setattr(activation, 'time', SimpleNamespace(monotonic=lambda: clock.now, sleep=sleep))
+    monkeypatch.setattr(activation.platform, 'machine', lambda: 'aarch64')
+    return clock
+
+
+def provision_role(path, role=AgentRole.STANDALONE):
+    FileProvisioningStore(path).save(ProvisioningSnapshot(
+        state=ProvisioningState.PROVISIONED, role=role, locale='en',
+        device_name='test', administrator_name='owner'))
+
+
+def test_armv6_cold_start_and_slow_http_finish_the_real_setup_handoff(tmp_path, monkeypatch, readiness_clock):
+    from three_mm_provisioning.setup_journal import SetupJournal, SetupActivationJournal
+    import deployment.service_component as component
+    provision_role(tmp_path)
+    pending = SetupJournal(tmp_path)
+    pending.begin('b' * 32, None, wifi=False)
+    pending.commit()
+    journal = SetupActivationJournal(tmp_path)
+    journal.handoff(pending)
+    monkeypatch.setattr(activation.platform, 'machine', lambda: 'armv6l')
+    monkeypatch.setattr(activation, '_activate', lambda *a, **kw: None)
+    monkeypatch.setattr(activation, 'check_active', lambda *a: None)
+    calls = []
+    def probe(url, *, timeout):
+        calls.append((url, timeout))
+        if readiness_clock.now < 218:
+            raise ConnectionRefusedError
+        readiness_clock.now += 1.2
+        assert timeout >= 1.2
+        return {'status': 'ready'} if url.endswith('/ready') else {'role': 'standalone'}
+    monkeypatch.setattr(component, '_http_identity', probe)
+    activation.activate(tmp_path)
+    assert journal.load() is None
+    assert 220 < readiness_clock.now < 300
+    assert all(url.endswith('/ready') or url.endswith('/hello') for url, _ in calls)
+    assert len(calls) < 225  # One-second backoff, no hot startup polling.
+
+
+@pytest.mark.parametrize('role', list(AgentRole))
+def test_setup_readiness_checks_only_selected_role(tmp_path, monkeypatch, readiness_clock, role):
+    import deployment.service_component as component
+    provision_role(tmp_path, role)
+    urls = []
+    def probe(url, *, timeout):
+        urls.append(url)
+        return {'status': 'ready'} if url.endswith('/ready') else {'role': role.value}
+    monkeypatch.setattr(component, '_http_identity', probe)
+    activation._wait_setup_ready(tmp_path)
+    assert urls[-1].endswith('/hello')
+    assert len(urls) == (1 if role is AgentRole.NODE else 2)
+
+
+@pytest.mark.parametrize('machine,budget', [('armv6l', 300), ('aarch64', 90)])
+@pytest.mark.parametrize('fault', ['timeout', 'wrong_role', 'not_ready', 'invalid_body', 'late_success'])
+def test_setup_readiness_is_bounded_and_refuses_false_success(
+        tmp_path, monkeypatch, readiness_clock, machine, budget, fault):
+    import deployment.service_component as component
+    provision_role(tmp_path)
+    monkeypatch.setattr(activation.platform, 'machine', lambda: machine)
+    calls = []
+    def probe(url, *, timeout):
+        calls.append(timeout)
+        assert 0 < timeout <= min(5, budget - readiness_clock.now)
+        if fault == 'timeout':
+            readiness_clock.now += timeout
+            raise TimeoutError
+        if fault == 'late_success':
+            readiness_clock.now = budget
+            return {'status': 'ready'}
+        if fault == 'invalid_body':return []
+        if url.endswith('/ready'):
+            return {'status': 'ok' if fault == 'not_ready' else 'ready'}
+        return {'role': 'node'}
+    monkeypatch.setattr(component, '_http_identity', probe)
+    with pytest.raises(RuntimeError, match=r'readiness deadline exceeded \((core|agent)\)'):
+        activation._wait_setup_ready(tmp_path)
+    assert readiness_clock.now == budget
+    assert calls and max(calls) <= 5
+
+
+def test_setup_handoff_changed_during_readiness_is_not_erased(tmp_path, monkeypatch, readiness_clock):
+    from three_mm_provisioning.setup_journal import SetupJournal, SetupActivationJournal, atomic_json
+    provision_role(tmp_path)
+    pending = SetupJournal(tmp_path)
+    pending.begin('c' * 32, None, wifi=False)
+    pending.commit()
+    journal = SetupActivationJournal(tmp_path)
+    journal.handoff(pending)
+    replacement = {**journal.load(), 'id': 'd' * 32}
+    monkeypatch.setattr(activation, '_activate', lambda *a, **kw: None)
+    monkeypatch.setattr(activation, '_wait_setup_ready', lambda *_: atomic_json(journal.path, replacement))
+    monkeypatch.setattr(activation, 'check_active', lambda *a: None)
+    with pytest.raises(RuntimeError, match='transaction changed'):
+        activation.activate(tmp_path)
+    assert journal.load() == replacement

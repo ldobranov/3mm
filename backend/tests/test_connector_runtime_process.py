@@ -254,9 +254,12 @@ def test_bad_worker_candidate_rolls_back_only_network_process(network_stack):
 def test_dns_hang_is_killed_outside_core_at_absolute_deadline(network_stack):
     from deployment.platform_runtime_component import build_component
     s=network_stack;s.artifact('dns-stall')
-    path=s.base/'source-dns-stall/three_mm_platform_runtime/connector_worker.py'
-    text=path.read_text().replace('    parsed = urlsplit(plan["url"])', '    socket.getaddrinfo=lambda *a,**k: time.sleep(60)\n    parsed = urlsplit(plan["url"])')
-    path.write_text(text);s.network.activate(build_component(s.base/'source-dns-stall'))
+    path=s.base/'source-dns-stall/three_mm_platform_runtime/connector_execute.py'
+    source=path.read_text(); marker='    parsed = urlsplit(plan["url"])'
+    assert source.count(marker)==1
+    path.write_text(source.replace(marker, '    import socket, time\n'
+        '    socket.getaddrinfo=lambda *a,**k: time.sleep(60)\n'+marker))
+    s.network.activate(build_component(s.base/'source-dns-stall'))
     start=time.monotonic();result=s.call_connector()
     assert result['outcome']=='ambiguous' and result['error_category']=='response_timeout'
     assert time.monotonic()-start<4 and s.seen==[] and s.http()[0]==200

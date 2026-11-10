@@ -307,9 +307,7 @@ def record_command_result(
     db: Session, *, device: Device, result: AgentCommandResult, credential_id=None,
 ) -> DeviceCommand:
     with device_authority_write(db, device, credential_id=credential_id) as (mutation, current):
-        command, expired = _record_command_result(db, device=current, result=result, mutation=mutation)
-    if expired:
-        raise DeviceCommandError("Command has expired")
+        command = _record_command_result(db, device=current, result=result, mutation=mutation)
     db.refresh(command)
     return command
 
@@ -336,16 +334,25 @@ def _record_command_result(db, *, device, result, mutation):
         # Repair only the old two-commit gap from the persisted first receipt;
         # conflicting retries cannot change it or a newer installation episode.
         _update_module_receipt(db, device, command, mutation, source="agent_result")
-        return command, False
-    if command.status != "delivered":
+        return command
+    # Expiry stops dispatch, not reception of an already delivered attempt's
+    # durable receipt. Acknowledge the first late receipt without promoting it
+    # to success or changing module/control authority.
+    if command.status == "expired" and command.completed_at is not None:
+        return command
+    if command.status != "delivered" and not (
+            command.status == "expired" and command.delivered_at is not None
+            and command.delivery_attempts):
         raise DeviceCommandError("Command has not been delivered")
     if command.command_type == "module.uninstall" and result.status == "succeeded":
         if (result.output.get("module_id") != command.payload.get("module_id")
                 or result.output.get("status") != "uninstalled"):
             raise DeviceCommandError("Module removal receipt is invalid")
-    if _utc(command.expires_at) <= _utc(result.completed_at):
+    if command.status == "expired" or _utc(command.expires_at) <= _utc(result.completed_at):
         command.status = "expired"
-        return command, True
+        command.result = {**(command.result or {}), "late_completion": result.model_dump(mode="json")}
+        command.completed_at = result.completed_at
+        return command
     command.status = result.status
     if command.command_type == "agent.update.apply":
         # Handoff acknowledgement is not installation completion. Independent
@@ -356,4 +363,4 @@ def _record_command_result(db, *, device, result, mutation):
     command.error = result.error
     command.completed_at = result.completed_at
     _update_module_receipt(db, device, command, mutation, source="agent_result")
-    return command, False
+    return command

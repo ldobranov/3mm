@@ -50,6 +50,7 @@ class ServiceController(Protocol):
 class SystemdServiceController:
     def __init__(self) -> None:
         self._resume_services: tuple[str, ...] | None = None
+        self._resume_active_instances: tuple[str, ...] = ()
 
     def _run(self, action: str, services: Sequence[str]) -> None:
         subprocess.run(
@@ -74,13 +75,13 @@ class SystemdServiceController:
         )
         units: set[str] = set()
         running: set[str] = set()
+        active: set[str] = set()
         for line in listing.stdout.splitlines():
             if not line.strip():
                 continue
             fields = line.split(maxsplit=4)
-            if (len(fields) < 4 or re.fullmatch(
-                r"3mm-application-extension@[0-9a-f]{24}\.service", fields[0]
-            ) is None or fields[2] not in {
+            match = re.fullmatch(r"3mm-application-extension@([0-9a-f]{24})\.service", fields[0])
+            if (len(fields) < 4 or match is None or fields[2] not in {
                 "active", "activating", "reloading", "inactive", "failed", "deactivating"
             }):
                 raise ValueError("Backup application service inventory is invalid")
@@ -90,18 +91,32 @@ class SystemdServiceController:
             units.add(unit)
             if state in {"active", "activating", "reloading"}:
                 running.add(unit)
+            if state in {"active", "reloading"}:
+                active.add(match[1])
         self._run("stop", (*RUNTIME_SERVICES[:2], *sorted(units)))
         self._resume_services = (*RUNTIME_SERVICES[:2], *sorted(running))
+        self._resume_active_instances = tuple(sorted(active))
 
     def start(self, services: Sequence[str]) -> None:
         if tuple(services) != RUNTIME_SERVICES or self._resume_services is None:
             raise ValueError("Backup runtime snapshot is unavailable; resume refused")
-        self._run("start", self._resume_services)
-        # systemctl is-active with several names succeeds if ANY is active.
-        # Verify each one so healthy Core cannot hide a stopped application.
-        for unit in self._resume_services:
+        # Resume Core and Agent even if a separate application has exhausted
+        # its budget, or the manager cannot reset an application's counter.
+        self._run("start", RUNTIME_SERVICES[:2])
+        for unit in RUNTIME_SERVICES[:2]:
             self._run("is-active", (unit,))
+        if self._resume_active_instances:
+            from deployment.application_host_component import reset_application_start_budget
+            # Do not rearm failed units or those already in an automatic retry.
+            reset_application_start_budget(*self._resume_active_instances)
+        applications = self._resume_services[2:]
+        if applications:
+            self._run("start", applications)
+            # systemctl is-active with several names succeeds if ANY is active.
+            for unit in applications:
+                self._run("is-active", (unit,))
         self._resume_services = None
+        self._resume_active_instances = ()
 
 
 class EncryptingWriter:

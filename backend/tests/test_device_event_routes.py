@@ -29,7 +29,6 @@ def test_authenticated_event_is_persisted_once_when_replayed(monkeypatch):
     device=Device(device_id=DEVICE_ID,display_name="test",role="node",protocol_version="1.0",approved_at=datetime.now(timezone.utc)); db.add(device); db.commit()
     db.add(admin); db.commit()
     db.add(DeviceCredential(device_id=device.id,credential_id="cred_0123456789abcdef0123456789abcdef",secret_hash=credential_secret_hash("x"*32))); db.commit()
-    monkeypatch.setattr("backend.routes.device_events.process_application_event", lambda *_args: None)
     app=FastAPI(); app.include_router(router); app.dependency_overrides[get_db]=lambda:db; client=TestClient(app)
     headers={"Authorization":"Device cred_0123456789abcdef0123456789abcdef:"+"x"*32}
     payload={"event_id":"evt_0123456789abcdef0123456789abcdef","device_id":DEVICE_ID,"event_type":"gpio.input.changed","payload":{"value":True},"occurred_at":datetime.now(timezone.utc).isoformat()}
@@ -48,7 +47,6 @@ def test_identifier_scan_event_uses_strict_protocol_validation(monkeypatch):
     engine=create_engine("sqlite://",connect_args={"check_same_thread":False},poolclass=StaticPool); Base.metadata.create_all(engine); db=Session(engine)
     device=Device(device_id=DEVICE_ID,display_name="test",role="node",protocol_version="1.0",approved_at=datetime.now(timezone.utc)); db.add(device); db.commit()
     db.add(DeviceCredential(device_id=device.id,credential_id="cred_0123456789abcdef0123456789abcdef",secret_hash=credential_secret_hash("x"*32))); db.commit()
-    monkeypatch.setattr("backend.routes.device_events.process_application_event", lambda *_args: None)
     app=FastAPI(); app.include_router(router); app.dependency_overrides[get_db]=lambda:db; client=TestClient(app)
     headers={"Authorization":"Device cred_0123456789abcdef0123456789abcdef:"+"x"*32}
     payload={"event_id":"evt_1123456789abcdef0123456789abcdef","device_id":DEVICE_ID,"event_type":"identifier.scan.v1","payload":{"capability_id":"identifier.scan.v1","opaque_identifier":" TAG ","reader_id":"reader.mock.1","adapter_kind":"mock","sequence":1},"occurred_at":datetime.now(timezone.utc).isoformat()}

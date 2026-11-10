@@ -59,10 +59,6 @@ def test_linux_node_protocol_survives_module_install_and_reconnect(
 ):
     monkeypatch.setattr(jwt_utils, "SECRET_KEY", "c0-test-only-key-at-least-32-bytes")
     monkeypatch.setattr("agent.inventory._network_manager_active", lambda: None)
-    # Business-extension delivery is tested separately, not part of C0.
-    monkeypatch.setattr(
-        "backend.routes.device_events.process_application_event", lambda *_args: None
-    )
     client, db, admin_token, _ = make_client()
     engine = db.get_bind()
     for module in (
@@ -246,6 +242,11 @@ def test_linux_node_protocol_survives_module_install_and_reconnect(
         assert invoked.status_code == 200
         node._poll_command()
         assert gpio.output("gpio.output.1").read() is True
+        # The deterministic driver also advances the real queued telemetry lane;
+        # command receipt delivery no longer publishes replaceable state inline.
+        assert node._capability_wake.is_set()
+        node._publish_requested_capabilities()
+        assert not node._capability_wake.is_set()
         history = client.get(f"{prefix}/commands", headers=admin_headers).json()[
             "items"
         ]

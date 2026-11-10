@@ -105,7 +105,7 @@ class MemoryTransport:
     def report_features(self, report):
         return self.operations().features(report)
 
-    def authorize_execution(self, command_id):
+    def authorize_execution(self, command_id, *, timeout_seconds):
         return self.operations().authorize_execution(command_id)
 
 

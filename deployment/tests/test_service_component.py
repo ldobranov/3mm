@@ -305,3 +305,111 @@ def test_session_component_health_refuses_untrusted_identity_without_polling(ses
     with pytest.raises((ValueError,OSError)):
         s.check('session-node')
     assert s.clock[0]==0 and not s.sleeps
+
+
+@pytest.mark.parametrize('machine,agent,session',[('aarch64',60,20),('x86_64',60,20),('armv6l',180,90)])
+def test_agent_cold_start_budget_does_not_expand_other_component_budgets(monkeypatch,machine,agent,session):
+    monkeypatch.setattr(component.platform,'machine',lambda:machine)
+    assert component.startup_probe_seconds('agent')==agent
+    assert component.startup_probe_seconds('session-node')==session
+    assert component.startup_probe_seconds('session-worker')==session
+    assert component.startup_probe_seconds('session-relay')==20
+    assert component.startup_probe_seconds('public-web')==20
+
+
+@pytest.mark.parametrize('machine,seconds',[('aarch64',21),('armv6l',95)])
+def test_healthy_agent_import_can_exceed_old_budget_without_publishing_current(tmp_path,monkeypatch,machine,seconds):
+    from types import SimpleNamespace
+    a,b=artifacts('agent');store=component.ServiceStore('agent',tmp_path/'component',tmp_path/'journal')
+    old=store.bootstrap(a[0],digest(a[0]));target=component.target_identity()
+    # Architecture only selects the startup budget. Artifact target validation
+    # still compares the original, real build identity in this timing double.
+    monkeypatch.setattr(component.platform,'machine',lambda:machine)
+    monkeypatch.setattr(component,'target_identity',lambda:target)
+    original_run=component.subprocess.run;seen=[]
+    def cold_import(command,**kwargs):
+        if command[-1]!='--component-info':return original_run(command,**kwargs)
+        seen.append(kwargs['timeout'])
+        if seconds>=kwargs['timeout']:raise subprocess.TimeoutExpired(command,kwargs['timeout'])
+        assert kwargs['env']=={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'} and '-I' in command
+        return SimpleNamespace(returncode=0,stdout=json.dumps({'build_id':b[1]['build_id']}),stderr='')
+    monkeypatch.setattr(component.subprocess,'run',cold_import)
+    assert store.stage(b[0],digest(b[0]))==b[1]['build_id']
+    assert seen==[180 if machine=='armv6l' else 60]
+    assert store.target('current')==old and store.target('previous') is None and store.pending() is None
+
+
+@pytest.mark.parametrize('machine,budget',[('aarch64',60),('armv6l',180)])
+def test_agent_import_timeout_never_publishes_candidate_or_changes_pointers(tmp_path,monkeypatch,machine,budget):
+    a,b=artifacts('agent');store=component.ServiceStore('agent',tmp_path/'component',tmp_path/'journal')
+    old=store.bootstrap(a[0],digest(a[0]));target=component.target_identity()
+    monkeypatch.setattr(component.platform,'machine',lambda:machine)
+    monkeypatch.setattr(component,'target_identity',lambda:target)
+    original_run=component.subprocess.run
+    def expires(command,**kwargs):
+        if command[-1]!='--component-info':return original_run(command,**kwargs)
+        assert kwargs['timeout']==budget
+        raise subprocess.TimeoutExpired(command,budget)
+    monkeypatch.setattr(component.subprocess,'run',expires)
+    with pytest.raises(subprocess.TimeoutExpired):store.stage(b[0],digest(b[0]))
+    assert store.target('current')==old and store.target('previous') is None and store.pending() is None
+    assert not (store.releases/b[1]['build_id']).exists()
+    assert not list(store.releases.glob('.stage-*'))
+
+
+@pytest.fixture
+def http_readiness(monkeypatch):
+    from types import SimpleNamespace
+    clock=[0.0];sleeps=[]
+    monkeypatch.setattr(component.time,'monotonic',lambda:clock[0])
+    monkeypatch.setattr(component.time,'sleep',lambda delay:(sleeps.append(delay),clock.__setitem__(0,clock[0]+delay)))
+    monkeypatch.setattr(component,'fingerprint',lambda:{'pid':17,'generation':{'core':'unchanged'}})
+    monkeypatch.setattr(component.subprocess,'run',lambda *args,**kwargs:SimpleNamespace(stdout='123\n'))
+    class Control:
+        unit='owned-component.service'
+        def active(self):return True
+    def check(role='agent'):
+        store=SimpleNamespace(component=role,metadata=lambda build:{'build_id':build})
+        return component.health(store,Control(),'b'*64)
+    return SimpleNamespace(clock=clock,sleeps=sleeps,check=check)
+
+
+@pytest.mark.parametrize('machine,ready_after',[('aarch64',25),('armv6l',95)])
+def test_agent_health_accepts_healthy_cold_start_beyond_old_budget(http_readiness,monkeypatch,machine,ready_after):
+    s=http_readiness;monkeypatch.setattr(component.platform,'machine',lambda:machine)
+    def identity(url,*,timeout):
+        assert 0<timeout<=2
+        if s.clock[0]<ready_after:raise OSError('Not listening during cold imports')
+        return {'component':'agent','build_id':'b'*64,'pid':123}
+    monkeypatch.setattr(component,'_http_identity',identity)
+    assert s.check()=={'build_id':'b'*64,'core_pid':17,'core_process_generation':{'core':'unchanged'}}
+    assert ready_after<=s.clock[0]<ready_after+.2 and s.sleeps
+
+
+@pytest.mark.parametrize('machine,budget',[('aarch64',60),('armv6l',180)])
+@pytest.mark.parametrize('wrong',[{'build_id':'a'*64},{'pid':122},{'component':'public-web'}])
+def test_agent_health_budget_never_accepts_foreign_identity(http_readiness,monkeypatch,machine,budget,wrong):
+    s=http_readiness;monkeypatch.setattr(component.platform,'machine',lambda:machine)
+    monkeypatch.setattr(component,'_http_identity',lambda *args,**kwargs:{'component':'agent','build_id':'b'*64,'pid':123,**wrong})
+    with pytest.raises(ValueError):s.check()
+    assert s.clock[0]==pytest.approx(budget) and max(s.sleeps)<=.1
+
+
+@pytest.mark.parametrize('machine,budget',[('aarch64',60),('armv6l',180)])
+def test_agent_health_refuses_even_correct_identity_after_final_deadline(http_readiness,monkeypatch,machine,budget):
+    s=http_readiness;monkeypatch.setattr(component.platform,'machine',lambda:machine)
+    def late_identity(url,*,timeout):
+        s.clock[0]=budget+.01
+        return {'component':'agent','build_id':'b'*64,'pid':123}
+    monkeypatch.setattr(component,'_http_identity',late_identity)
+    with pytest.raises(ValueError,match='readiness deadline'):s.check()
+    assert not s.sleeps
+
+
+@pytest.mark.parametrize('machine,budget',[('aarch64',15),('armv6l',20)])
+def test_public_web_health_retains_its_existing_budget(http_readiness,monkeypatch,machine,budget):
+    s=http_readiness;monkeypatch.setattr(component.platform,'machine',lambda:machine)
+    def unavailable(url,*,timeout):raise OSError('Still unavailable')
+    monkeypatch.setattr(component,'_http_identity',unavailable)
+    with pytest.raises((OSError,ValueError)):s.check('public-web')
+    assert s.clock[0]==pytest.approx(budget) and max(s.sleeps)<=.1

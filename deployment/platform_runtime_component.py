@@ -32,9 +32,11 @@ ROOT=Path("/opt/3mm-platform-runtime")
 STATE=Path("/var/lib/3mm-platform-updates")
 SOCKET=Path("/run/3mm-platform/runtime.sock")
 MAX_ARTIFACT=2*1024*1024
-INPUTS=("three_mm_platform_wire/__init__.py","three_mm_platform_wire/task_time.py","three_mm_platform_runtime/__init__.py",
+INPUTS=("three_mm_platform_wire/__init__.py","three_mm_platform_wire/task_time.py",
+        "three_mm_platform_wire/event_delivery.py","three_mm_platform_runtime/__init__.py",
         "three_mm_platform_runtime/__main__.py","three_mm_platform_runtime/server.py",
-        "three_mm_platform_runtime/public_web.py","three_mm_platform_runtime/events.py","three_mm_platform_runtime/connector_worker.py","three_mm_platform_runtime/responses.py","three_mm_platform_runtime/tasks.py")
+        "three_mm_platform_runtime/public_web.py","three_mm_platform_runtime/events.py","three_mm_platform_runtime/connector_worker.py",
+        "three_mm_platform_runtime/connector_execute.py","three_mm_platform_runtime/responses.py","three_mm_platform_runtime/tasks.py")
 
 
 def _json(value):return json.dumps(value,sort_keys=True,separators=(",", ":"),allow_nan=False).encode()
@@ -49,7 +51,7 @@ def build_component(source):
         if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(source):
             raise ValueError("Runtime source must be a regular repository file")
         files[name]=path.read_bytes().replace(b"\r\n",b"\n")
-    files["__main__.py"]=b"from three_mm_platform_runtime.server import main\nraise SystemExit(main())\n"
+    files["__main__.py"]=files["three_mm_platform_runtime/__main__.py"]
     build_id=_digest(_json({k:_digest(v) for k,v in files.items()}))
     files["runtime-build.json"]=_json({"build_id":build_id,"authority_contract":AUTHORITY_CONTRACT})
     output=io.BytesIO()

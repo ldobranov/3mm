@@ -1,0 +1,237 @@
+{
+  "health": "Inert profile package; not hardware readiness.\n",
+  "manifest": {
+    "capabilities": {
+      "consumes": [],
+      "provides": [
+        "gpio.digital.input"
+      ]
+    },
+    "compatibility": {
+      "agent": ">=0.1.0",
+      "architectures": [
+        "armv6l",
+        "aarch64",
+        "x86_64"
+      ],
+      "core": ">=0.1.0",
+      "protocol": "1.0"
+    },
+    "configuration_defaults": {
+      "active_low": true,
+      "debounce_ms": 20,
+      "driver": "gpiod",
+      "inputs": {
+        "gpio.input.1": 17
+      },
+      "pull_up": true,
+      "schema_version": 1
+    },
+    "configuration_schema": {},
+    "conflicts": [],
+    "dependencies": {},
+    "description": "An exact, separately approved hardware profile.",
+    "entrypoints": {
+      "agent": "builtin:gpio.input.v1"
+    },
+    "health_check": {
+      "path": "health/ready",
+      "type": "file_exists"
+    },
+    "manifest_version": 2,
+    "module_id": "org.3mm.gpio-input.profile.c943f92e6cb7d40f8ade57ce70fa00d83d02e8b908935f5ca1711ec58c1544f3",
+    "name": "Digital inputs (gpiod)",
+    "permissions": [
+      "hardware.gpio",
+      "events.publish"
+    ],
+    "registrations": [
+      {
+        "contract": {
+          "actions": {},
+          "capability_id": "gpio.digital.input",
+          "contract_version": "2.0",
+          "events": {
+            "gpio.input.changed": {
+              "additionalProperties": false,
+              "properties": {
+                "bcm_pin": {
+                  "maximum": 27,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "capability_id": {
+                  "enum": [
+                    "gpio.digital.input"
+                  ],
+                  "maxLength": 160,
+                  "type": "string"
+                },
+                "channel": {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "monotonic_ns": {
+                  "maximum": 9223372036854775807,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "profile_sha256": {
+                  "maxLength": 64,
+                  "minLength": 64,
+                  "type": "string"
+                },
+                "sequence": {
+                  "maximum": 2147483647,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "simulated": {
+                  "type": "boolean"
+                },
+                "stream_id": {
+                  "maxLength": 32,
+                  "minLength": 32,
+                  "type": "string"
+                },
+                "value": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "capability_id",
+                "profile_sha256",
+                "channel",
+                "bcm_pin",
+                "value",
+                "sequence",
+                "stream_id",
+                "monotonic_ns",
+                "simulated"
+              ],
+              "type": "object"
+            }
+          },
+          "schema_version": 1,
+          "state_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "inputs": {
+                "additionalProperties": false,
+                "properties": {
+                  "gpio.input.1": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "gpio.input.1"
+                ],
+                "type": "object"
+              },
+              "profile_sha256": {
+                "enum": [
+                  "c943f92e6cb7d40f8ade57ce70fa00d83d02e8b908935f5ca1711ec58c1544f3"
+                ],
+                "maxLength": 64,
+                "type": "string"
+              },
+              "simulated": {
+                "enum": [
+                  false
+                ],
+                "type": "boolean"
+              },
+              "stream_id": {
+                "maxLength": 32,
+                "minLength": 32,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_sha256",
+              "stream_id",
+              "inputs",
+              "simulated"
+            ],
+            "type": "object"
+          }
+        },
+        "kind": "capability",
+        "metadata": {
+          "profile_sha256": "c943f92e6cb7d40f8ade57ce70fa00d83d02e8b908935f5ca1711ec58c1544f3",
+          "profile_template": true,
+          "simulated": false
+        },
+        "registration_id": "gpio.digital.input"
+      }
+    ],
+    "runtimes": [
+      "agent"
+    ],
+    "version": "1.0.0"
+  },
+  "template": {
+    "bindings": {
+      "bcm_pin": [
+        "/configuration_defaults/inputs/gpio.input.1"
+      ],
+      "debounce_ms": [
+        "/configuration_defaults/debounce_ms"
+      ]
+    },
+    "fields": [
+      {
+        "default": 17,
+        "key": "bcm_pin",
+        "label": "Input GPIO (BCM numbering)",
+        "options": [
+          {
+            "label": "GPIO17 / physical pin 11",
+            "value": "17"
+          },
+          {
+            "label": "GPIO18 / physical pin 12",
+            "value": "18"
+          },
+          {
+            "label": "GPIO22 / physical pin 15",
+            "value": "22"
+          },
+          {
+            "label": "GPIO23 / physical pin 16",
+            "value": "23"
+          },
+          {
+            "label": "GPIO24 / physical pin 18",
+            "value": "24"
+          },
+          {
+            "label": "GPIO25 / physical pin 22",
+            "value": "25"
+          },
+          {
+            "label": "GPIO27 / physical pin 13",
+            "value": "27"
+          }
+        ],
+        "type": "select"
+      },
+      {
+        "default": 20,
+        "key": "debounce_ms",
+        "label": "Debounce (milliseconds)",
+        "max": 1000,
+        "min": 0,
+        "type": "number"
+      }
+    ],
+    "hardware_template_version": 1,
+    "help": "Input only: connect GPIO to GND, never an external voltage. Pull-up and active-low; applications interpret edges. Disable the old input provider before changing its profile. Preparation does not install it or grant application event access.",
+    "name": "GPIO digital input \u00b7 contact to GND",
+    "required_features": [
+      "gpio_input_profiles.v1"
+    ],
+    "template_id": "gpio-input.gpiod"
+  }
+}

@@ -33,7 +33,7 @@ def _authority_reason(error):
     """Classify before public redaction, without SQL/exception message text."""
     from fastapi import HTTPException
     from sqlalchemy.exc import SQLAlchemyError
-    from backend.services.application_authority_keys import AuthorityReviewKeyError
+    from backend.services.application_authority_keys import AuthorityReviewKeyBusy, AuthorityReviewKeyError
     from backend.services.application_authority_management import AuthorityManagementError
     from backend.services.compiled_ui import CompiledUiBuildError
     from backend.services.application_extensions import ApplicationGatewayError
@@ -48,7 +48,7 @@ def _authority_reason(error):
         if type(code) is int and (code & 0xff) in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}:
             return 'authority_database_busy'
         return 'authority_database_unavailable'
-    if isinstance(error, BlockingIOError):
+    if isinstance(error, (BlockingIOError, AuthorityReviewKeyBusy)):
         return 'review_key_busy'
     if isinstance(error, AuthorityReviewKeyError):
         return 'review_key_unavailable'

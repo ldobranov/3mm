@@ -17,7 +17,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from backend.db.application_authority_grant import ApplicationAuthorityAction as Action
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.services import application_authority_management as authority
-from backend.services.application_authority_context import _canonical_bytes
+from backend.services.application_authority_context import _canonical_bytes, _subject_schema_paths
 from backend.services.application_authority_keys import AuthorityReviewKeyError
 from backend.services.application_authority_sources import _configuration, _package_pin
 from backend.services.application_files import _clean_session, _principal, _runtime
@@ -217,7 +217,7 @@ def prepare_host_invocation(
                             canonical(hello["lifecycle"])
                         ).hexdigest(),
                         "binding_sha256": hashlib.sha256(
-                            _canonical_bytes(grant["data"]["subject"])
+                            _canonical_bytes(grant["data"]["subject"], schema_paths=_subject_schema_paths(grant['data']['subject']))
                         ).hexdigest(),
                         "authority_epoch": current.epoch,
                         "recovery_generation": mutation.guard.generation,
@@ -274,7 +274,7 @@ def admit_host_transaction(
                             canonical(hello["lifecycle"])
                         ).hexdigest(),
                         "binding_sha256": hashlib.sha256(
-                            _canonical_bytes(grant["data"]["subject"])
+                            _canonical_bytes(grant["data"]["subject"], schema_paths=_subject_schema_paths(grant['data']['subject']))
                         ).hexdigest(),
                         "authority_epoch": read_application_authority(
                             db, installation_id
@@ -458,7 +458,7 @@ def admit_transaction(
                         "recovery_generation": mutation.guard.generation,
                         "grant_revision": grant["data"]["grant_revision"],
                         "binding_sha256": hashlib.sha256(
-                            _canonical_bytes(grant["data"]["subject"])
+                            _canonical_bytes(grant["data"]["subject"], schema_paths=_subject_schema_paths(grant['data']['subject']))
                         ).hexdigest(),
                         "profile_sha256": profile_digest(
                             declaration, definition.storage.schema_revision

@@ -4,8 +4,9 @@ import threading
 import time
 
 from three_mm_platform_wire import (
-    AUTHORITY_CALL_SECONDS, read_frame, receive_authority_frame, remaining, send_authority_frame,
+    read_frame, receive_authority_frame, remaining, send_authority_frame,
 )
+from three_mm_platform_wire.event_delivery import CLAIM_SECONDS, COMPLETION_SECONDS, lease_remaining
 from three_mm_platform_runtime.server import _core_connection
 
 
@@ -43,9 +44,12 @@ class EventDeliveryWorker:
             with self.lock:self.connections.discard(upstream)
 
     def step(self):
-        deadline=time.monotonic()+35
-        result,origin=self._authority({"event_delivery_contract":1,"claim":True},
-            min(deadline,time.monotonic()+AUTHORITY_CALL_SECONDS+1))
+        # Admission can include immutable-code verification and current seals.
+        # Its finite deadline is shared with Core: an expired/disconnected
+        # caller cannot silently create another service dispatch.
+        claim_deadline=time.monotonic()+CLAIM_SECONDS
+        result,origin=self._authority({"event_delivery_contract":1,"claim":True,
+            "claim_deadline_ms":int(claim_deadline*1000)},claim_deadline)
         try:
             if self.stop_event.is_set():return True
             if result.get("event_delivery_contract")!=1 or result.get("ok") is not True:
@@ -60,10 +64,19 @@ class EventDeliveryWorker:
             if origin is None or type(timeout) not in {int,float} or not 0<timeout<=30:
                 raise ValueError("Invalid event handoff")
             receipt=result["receipt"]
+            # Start the declared handler wait after the actual FD handoff,
+            # never charge Core's preparation against it. Reserve completion
+            # time inside the authoritative durable lease, including suspend.
+            def lease():
+                return lease_remaining(result.get('lease_boot_id'),result.get('lease_deadline_ms'))
+            read_seconds=min(timeout,lease()-COMPLETION_SECONDS)
+            if read_seconds<=0:
+                raise ValueError('Event handoff has no result budget')
+            response_deadline=time.monotonic()+read_seconds
             with self.lock:self.connections.add(origin)
             try:
                 try:
-                    response=read_frame(origin,min(deadline,time.monotonic()+timeout),max_bytes=1024*1024)
+                    response=read_frame(origin,response_deadline,max_bytes=1024*1024)
                     completion={"response":response}
                 except TimeoutError:completion={"failure":"deadline_exceeded"}
                 except OSError:completion={"failure":"handler_unavailable"}
@@ -72,8 +85,9 @@ class EventDeliveryWorker:
                 with self.lock:self.connections.discard(origin)
                 origin.close();origin=None
             if self.stop_event.is_set():return True
+            completion_deadline=time.monotonic()+min(COMPLETION_SECONDS,lease())
             result,extra=self._authority({"event_delivery_contract":1,"receipt":receipt,**completion},
-                min(deadline,time.monotonic()+AUTHORITY_CALL_SECONDS+1))
+                completion_deadline)
             if extra is not None:
                 extra.close();raise ValueError("Unexpected event result connection")
             if result.get("event_delivery_contract")!=1 or result.get("ok") is not True:

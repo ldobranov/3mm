@@ -1,68 +1,21 @@
 """Network-only connector executor. No Core imports, DB, keys or replay queue."""
-import base64
 import hashlib
 import hmac
-import http.client
 import json
 import os
 from pathlib import Path
 import signal
 import socket
-import ssl
 import subprocess
 import sys
 import threading
 import time
-from urllib.parse import urlsplit
 
-from three_mm_platform_wire import canonical, peer_identity, process_generation, read_frame, remaining
+from three_mm_platform_wire import canonical, peer_identity, read_frame
+from three_mm_platform_runtime.connector_execute import failure
 from three_mm_platform_runtime.server import PlatformRuntime, _frame, build_identity
 
 CONTRACT = 1
-MAX_BODY = 4 * 1024 * 1024
-
-
-def failure(method, category):
-    return {"outcome": "ambiguous" if method in {"POST", "PUT", "PATCH", "DELETE"} else "retryable",
-        "http_status": None, "error_category": category, "body_base64": "", "headers": {}}
-
-
-def execute(plan):
-    """One HTTP attempt; child process is killed on DNS/TLS/read/trickle deadline."""
-    parsed = urlsplit(plan["url"])
-    if parsed.scheme not in {"http", "https"} or parsed.username or parsed.password or parsed.fragment:
-        raise ValueError("Invalid connector destination")
-    options = {"timeout": plan["timeout_seconds"]}
-    if parsed.scheme == "https": options["context"] = ssl.create_default_context()
-    connection = (http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection)(
-        parsed.hostname, parsed.port, **options)
-    try:
-        connection.request(plan["method"], parsed.path or "/", body=base64.b64decode(plan["body_base64"], validate=True) or None,
-            headers=plan["headers"])
-        response = connection.getresponse()
-        body = response.read(min(plan["max_response_bytes"], MAX_BODY) + 1)
-        if len(body) > min(plan["max_response_bytes"], MAX_BODY):
-            return {**failure(plan["method"], "response_limit"), "outcome": "failed"}
-        status = response.status
-        headers = {}
-        content_type = response.getheader("Content-Type")
-        if content_type is not None: headers["Content-Type"] = content_type[:256]
-        return {"outcome": "succeeded" if 200 <= status < 300 else "rejected" if 400 <= status < 500 else "retryable",
-            "http_status": status, "error_category": None,
-            "body_base64": base64.b64encode(body).decode("ascii"), "headers": headers}
-    except (TimeoutError, OSError, ValueError, http.client.HTTPException):
-        return failure(plan["method"], "connection_lost")
-    finally: connection.close()
-
-
-def execute_child():
-    # Only anonymous pipes carry a selected target credential. Never argv/env/logs.
-    try:
-        plan = json.loads(sys.stdin.buffer.read(6 * 1024 * 1024 + 1))
-        result = execute(plan)
-    except Exception:
-        return 1
-    sys.stdout.buffer.write(_frame(result)); return 0
 
 
 class ConnectorWorker(PlatformRuntime):
@@ -96,7 +49,7 @@ class ConnectorWorker(PlatformRuntime):
                     plan = request["plan"]
                     key = bytes.fromhex(request["result_key"])
                     if len(key) != 32 or not 0 < plan["timeout_seconds"] <= 30: return
-                    command = [sys.executable, "-I", str(Path(sys.argv[0]).absolute()), "--connector-execute"]
+                    command = [sys.executable, "-I", "-S", str(Path(sys.argv[0]).absolute()), "--connector-execute"]
                     child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                         stderr=subprocess.DEVNULL, env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}, close_fds=True)
                     with self.lock:

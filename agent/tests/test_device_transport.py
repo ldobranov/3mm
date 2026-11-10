@@ -1,11 +1,12 @@
 """C10 HTTP boundary tests; never contact a live Core."""
 
 import hashlib
+from types import SimpleNamespace
 
 import pytest
 
 from agent.core_client import DeviceCredential
-from agent.device_transport import HttpDeviceTransport, HttpRejected
+from agent.device_transport import HttpDeviceTransport, HttpRejected, HttpTransportError
 from three_mm_protocol.fleet_pairing import NodeEnrollmentRequest
 
 
@@ -62,6 +63,61 @@ def test_wrong_enrollment_principal_is_rejected_before_delivery(monkeypatch):
     request = request.model_copy(update={"device_id": "dev_" + "d" * 32})
     with pytest.raises(ValueError, match="identity mismatch"):
         transport.enroll(request)
+
+
+@pytest.mark.parametrize("signed", [False, True])
+def test_execution_permit_uses_remaining_budget_and_verifies_signed_response(monkeypatch, signed):
+    transport, _ = enrollment()
+    clock = [0.0]
+    monkeypatch.setattr("agent.device_transport.time", SimpleNamespace(monotonic=lambda: clock[0]))
+    command_id = "cmd_" + "c" * 32
+    permit = {"command_id": command_id, "authorized": True}
+    calls = []
+
+    class Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return permit
+
+    def verify(payload, request, *, bootstrap=False):
+        calls.append((request.operation, bootstrap))
+        return payload
+
+    def post(url, *, timeout, **kwargs):
+        calls.append((url.rsplit("/", 1)[-1], timeout))
+        if url.endswith("authority-proof"):
+            clock[0] += 3
+        return Response()
+
+    if signed:
+        transport.authority_store = SimpleNamespace(check_current=lambda: True, verify=verify)
+    monkeypatch.setattr("agent.device_transport.requests.post", post)
+    assert transport.authorize_execution(command_id, timeout_seconds=8) == permit
+    if signed:
+        assert calls == [("authority-proof", 8), ("identity", True),
+                         ("authority-exchange", 5), ("execution_permit", False)]
+    else:
+        assert calls == [("authorize-execution", 8)]
+
+
+def test_expired_execution_budget_does_not_dispatch_after_proving_authority(monkeypatch):
+    transport, _ = enrollment()
+    clock = [0.0]
+    monkeypatch.setattr("agent.device_transport.time", SimpleNamespace(monotonic=lambda: clock[0]))
+    transport.authority_store = SimpleNamespace(check_current=lambda: True, verify=lambda *a, **k: None)
+
+    def post(url, **kwargs):
+        assert url.endswith("authority-proof")
+        clock[0] += 3
+        return SimpleNamespace(status_code=200, json=dict)
+
+    monkeypatch.setattr("agent.device_transport.requests.post", post)
+    with pytest.raises(HttpTransportError, match="deadline expired"):
+        transport.authorize_execution("cmd_" + "c" * 32, timeout_seconds=2)
 
 
 @pytest.mark.parametrize('field', ['device_id','provider_type','provider_id'])

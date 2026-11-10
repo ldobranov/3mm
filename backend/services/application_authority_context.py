@@ -12,7 +12,7 @@ import hashlib
 import json
 import math
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -955,8 +955,217 @@ class AuthorityContextReview(ContextModel):
     )
 
 
-def _bounded_json(value, depth=0, budget=None):
-    """Copy plain JSON only, before model parsing or canonicalization."""
+MAX_SCHEMA_INTEGER = 2**63 - 1
+MIN_SCHEMA_INTEGER = -(2**63)
+
+
+def _schema_paths(model, value, prefix=()):
+    """Locate schema fields through trusted model annotations, not JSON key names.
+
+    In particular a configuration/options dictionary containing ``input_schema``
+    is ordinary operational data. Only explicit protocol schema owners below
+    introduce schema slots. Unknown fields are still rejected by model parsing.
+    """
+    from three_mm_protocol.capability_contracts import CapabilityActionV1, CapabilityContractV1
+    from three_mm_protocol.application_composition import ApplicationQueryContractV1
+
+    slots = {
+        ApplicationOperationV1: {'input_schema', 'output_schema'},
+        ApplicationCommandBindingV1: {'arguments_schema'},
+        CapabilityActionV1: {'arguments_schema', 'result_schema'},
+        ApplicationQueryContractV1: {'input_schema', 'output_schema'},
+        CapabilityContractV1: {'state_schema'},
+    }
+    found = set()
+    remaining = MAX_JSON_NODES
+
+    def visit(annotation, item, path, depth):
+        nonlocal remaining
+        remaining -= 1
+        if remaining < 0 or depth > MAX_JSON_DEPTH:
+            raise ValueError('Context structure exceeds limits')
+        origin, arguments = get_origin(annotation), get_args(annotation)
+        if origin is Annotated:
+            visit(arguments[0], item, path, depth)
+        elif isinstance(annotation, type) and issubclass(annotation, BaseModel) and type(item) is dict:
+            for name, field in annotation.model_fields.items():
+                if name not in item:
+                    continue
+                if name in slots.get(annotation, ()):
+                    if item[name] is not None:
+                        found.add(path + (name,))
+                elif annotation is CapabilityContractV1 and name == 'events' and type(item[name]) is dict:
+                    remaining -= len(item[name])
+                    if remaining < 0:
+                        raise ValueError('Context structure exceeds limits')
+                    found.update(path + (name, event) for event in item[name])
+                else:
+                    visit(field.annotation, item[name], path + (name,), depth + 1)
+        elif origin in (list, tuple) and type(item) in (list, tuple) and arguments:
+            if len(item) > remaining:
+                raise ValueError('Context structure exceeds limits')
+            for index, child in enumerate(item):
+                visit(arguments[0], child, path + (index,), depth + 1)
+        elif origin is dict and type(item) is dict and len(arguments) == 2:
+            if len(item) > remaining:
+                raise ValueError('Context structure exceeds limits')
+            for name, child in item.items():
+                visit(arguments[1], child, path + (name,), depth + 1)
+        elif arguments and origin is not Literal:
+            # A union of typed resources is validated by the selected model at
+            # the parse boundary. Plain dict/object alternatives add no slots.
+            for alternative in arguments:
+                visit(alternative, item, path, depth + 1)
+
+    visit(model, value, tuple(prefix), 0)
+    return frozenset(found)
+
+
+def _schema_integer_paths(schema, prefix):
+    """Exact signed-64 integer literals only inside explicit numeric schemas.
+
+    Bounds and enum values describe a contract; they are not timestamps,
+    revisions or request values. Floats keep the existing safe-number ceiling.
+    This does not replace the protocol's schema validator.
+    """
+    found = set()
+    remaining = MAX_JSON_NODES
+
+    def visit(node, path, depth):
+        nonlocal remaining
+        remaining -= 1
+        if remaining < 0 or depth > MAX_JSON_DEPTH:
+            raise ValueError('Context structure exceeds limits')
+        if type(node) is not dict:
+            return
+        if type(node.get('type')) is str and node['type'] in {'integer', 'number'}:
+            for name in ('minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'):
+                if type(node.get(name)) is int:
+                    found.add(path + (name,))
+            if type(node.get('enum')) in (list, tuple):
+                remaining -= len(node['enum'])
+                if remaining < 0:
+                    raise ValueError('Context structure exceeds limits')
+                found.update(path + ('enum', index) for index, item in enumerate(node['enum'])
+                    if type(item) is int)
+        for name in ('properties', 'patternProperties', '$defs', 'definitions'):
+            children = node.get(name)
+            if type(children) is dict:
+                for key, child in children.items():
+                    visit(child, path + (name, key), depth + 1)
+        for name in ('items', 'additionalProperties', 'contains', 'not', 'if', 'then', 'else'):
+            if type(node.get(name)) is dict:
+                visit(node[name], path + (name,), depth + 1)
+        for name in ('allOf', 'anyOf', 'oneOf', 'prefixItems'):
+            if type(node.get(name)) in (list, tuple):
+                for index, child in enumerate(node[name]):
+                    visit(child, path + (name, index), depth + 1)
+
+    visit(schema, tuple(prefix), 0)
+    return found
+
+
+def _subject_schema_paths(value, prefix=()):
+    """Known authority subject slot; never called for raw configuration."""
+    if type(value) is not dict or type(value.get('subject_version')) is not int:
+        return frozenset()
+    version = value['subject_version']
+    if 1 <= version <= 10:
+        from backend.services import application_authority_policy as policy
+        model = getattr(policy, 'PolicySubjectV' + str(version))
+    elif version == 11:
+        from backend.services.application_task_authority import TaskPolicySubjectV11 as model
+    elif version == 12:
+        from backend.services.application_composition_authority import QueryPolicySubjectV12 as model
+    else:
+        return frozenset()
+    return _schema_paths(model, value, prefix)
+
+
+def _authority_data_schema_paths(value, prefix=()):
+    """Explicit review/consent/rebinding data, excluding all request/config data."""
+    if type(value) is not dict:
+        return frozenset()
+    paths = set()
+    for name in ('subject', 'before', 'after'):
+        paths.update(_subject_schema_paths(value.get(name), tuple(prefix) + (name,)))
+    context = value.get('context')
+    if type(context) is dict and type(context.get('context_version')) is int:
+        version = context['context_version']
+        model = globals().get('AuthorityReviewContextV' + str(version))
+        if version == 11:
+            from backend.services.application_task_authority import TaskReviewContextV11 as model
+        elif version == 12:
+            from backend.services.application_composition_authority import QueryReviewContextV12 as model
+        if model is not None:
+            paths.update(_schema_paths(model, context, tuple(prefix) + ('context',)))
+    return frozenset(paths)
+
+
+def _resource_schema_paths(value, prefix=()):
+    if type(value) is not dict:
+        return frozenset()
+    from backend.services.application_task_authority import ResolvedTaskScope
+    from backend.services.application_composition_authority import ResolvedQueryScope
+    models = {'commands': ResolvedCommandScope, 'events': ResolvedEventScope,
+              'publications': ResolvedPublicationScope, 'tasks': ResolvedTaskScope,
+              'queries': ResolvedQueryScope}
+    paths = set()
+    for name, model in models.items():
+        rows = value.get(name)
+        if type(rows) in (list, tuple):
+            if len(rows) > MAX_JSON_NODES:
+                raise ValueError('Context structure exceeds limits')
+            for index, row in enumerate(rows):
+                paths.update(_schema_paths(model, row, tuple(prefix) + (name, index)))
+    return frozenset(paths)
+
+
+def _record_schema_paths(kind, value, prefix=()):
+    """Only the Core's known sealed review records have schema-bearing slots.
+
+    Matching JSON names elsewhere (notably configuration/options/request) confer
+    no exception. Signature verification still authenticates the entire record.
+    """
+    if (type(value) is not dict or value.get('kind') != kind
+            or type(value.get('version')) is not int or value['version'] != 1
+            or type(value.get('data')) is not dict):
+        return frozenset()
+    data = value['data']
+    base = tuple(prefix) + ('data',)
+    if kind in {'plan', 'grant'}:
+        return _authority_data_schema_paths(data, base)
+    if kind != 'action' or data.get('operation') not in {'consent_preview', 'review', 'command_rebind_preview'}:
+        return frozenset()
+    result = data.get('result')
+    if type(result) is not dict:
+        return frozenset()
+    paths = set(_resource_schema_paths(result.get('resources'), base + ('result', 'resources')))
+    if data['operation'] == 'command_rebind_preview':
+        for name in ('before', 'after'):
+            paths.update(_schema_paths(ResolvedCommandScope, result.get(name), base + ('result', name)))
+    return frozenset(paths)
+
+
+def _bounded_json(value, depth=0, budget=None, *, schema_paths=()):
+    """Copy bounded JSON; schema exceptions require explicit trusted slots."""
+    wide = set()
+    for index, path in enumerate(schema_paths):
+        if index >= MAX_JSON_NODES or len(path) > MAX_JSON_DEPTH:
+            raise ValueError('Context structure exceeds limits')
+        node = value
+        try:
+            for part in path:
+                node = node[part]
+        except (KeyError, IndexError, TypeError):
+            raise ValueError('Invalid schema metadata path') from None
+        wide.update(_schema_integer_paths(node, path))
+        if len(wide) > MAX_JSON_NODES:
+            raise ValueError('Context structure exceeds limits')
+    return _copy_bounded_json(value, depth, budget, wide, ())
+
+
+def _copy_bounded_json(value, depth, budget, wide, path):
     if budget is None:
         budget = [MAX_JSON_NODES, MAX_CONTEXT_BYTES]
     budget[0] -= 1
@@ -969,19 +1178,22 @@ def _bounded_json(value, depth=0, budget=None):
         if budget[1] < 0:
             raise ValueError("Context exceeds limits")
         if type(value) is not dict:
-            return [_bounded_json(v, depth + 1, budget) for v in value]
+            return [_copy_bounded_json(v, depth + 1, budget, wide, path + (index,))
+                    for index, v in enumerate(value)]
         result = {}
         for key, item in value.items():
             if type(key) is not str:
                 raise ValueError("Context keys must be strings")
-            result[_bounded_json(key, depth + 1, budget)] = _bounded_json(
-                item, depth + 1, budget
+            result[_copy_bounded_json(key, depth + 1, budget, (), ())] = _copy_bounded_json(
+                item, depth + 1, budget, wide, path + (key,)
             )
         return result
     if value is None or type(value) is bool:
         pass
     elif type(value) in (int, float):
-        if abs(value) > MAX_INTEGER or (
+        outside = (not MIN_SCHEMA_INTEGER <= value <= MAX_SCHEMA_INTEGER
+            if type(value) is int and path in wide else abs(value) > MAX_INTEGER)
+        if outside or (
             type(value) is float and not math.isfinite(value)
         ):
             raise ValueError("Context number exceeds limits or is not finite")
@@ -1041,7 +1253,7 @@ def _parse(model, value):
         if len(value.encode("utf-8")) > MAX_CONTEXT_BYTES:
             raise ValueError("Context exceeds limits")
         value = json.loads(value, object_pairs_hook=_unique_object)
-    value = _bounded_json(value)
+    value = _bounded_json(value, schema_paths=_schema_paths(model, value))
     encoded = json.dumps(value, ensure_ascii=True, separators=(",", ":"))
     if len(encoded.encode("ascii")) > MAX_CONTEXT_BYTES:
         raise ValueError("Context exceeds limits")
@@ -1049,14 +1261,14 @@ def _parse(model, value):
     return model.model_validate_json(encoded, strict=True)
 
 
-def _canonical_bytes(value) -> bytes:
+def _canonical_bytes(value, *, schema_paths=()) -> bytes:
     """Internal v1 typed encoding; not RFC 8785 or a public signing format.
 
     Object keys sort by Unicode code point. Arrays retain order. Integers use
     decimal text; floats use exact Python binary64 hex (including signed zero).
     Type tags avoid int/float/bool/string collisions. Unicode is not normalized.
     """
-    value = _bounded_json(value)
+    value = _bounded_json(value, schema_paths=schema_paths)
 
     def tagged(item):
         if item is None:
@@ -1085,14 +1297,16 @@ def _command_schema_data(schema):
     Keep scalar types and exact bounds; this is never a containment proof.
     Contexts, policy rules and provider comparisons share these semantics.
     """
-    data = _bounded_json(schema)
+    data = _bounded_json(schema, schema_paths=((),))
     data["required"] = sorted(data.get("required", []))
     for prop in data["properties"].values():
         if "enum" in prop:
-            encoded = [_canonical_bytes(value) for value in prop["enum"]]
+            def enum_key(value):
+                return _canonical_bytes({'type': prop['type'], 'enum': [value]}, schema_paths=((),))
+            encoded = [enum_key(value) for value in prop["enum"]]
             if len(encoded) != len(set(encoded)):
                 raise ValueError("Duplicate command enum value")
-            prop["enum"].sort(key=_canonical_bytes)
+            prop["enum"].sort(key=enum_key)
     return data
 
 
@@ -1105,7 +1319,8 @@ def _parse_versioned(v1, v2, value, field, v3=None, v4=None, v5=None, v6=None, v
         if len(value.encode("utf-8")) > MAX_CONTEXT_BYTES:
             raise ValueError("Context exceeds limits")
         value = json.loads(value, object_pairs_hook=_unique_object)
-    value = _bounded_json(value)
+    # Select the model before applying its explicit schema slots. A version
+    # field does not turn arbitrary configuration dictionaries into metadata.
     version = value.get(field) if type(value) is dict else None
     models = {1: v1, 2: v2}
     if v3 is not None:
@@ -1172,7 +1387,7 @@ def _context_fingerprint(context, selection):
         {
             "context": data,
             "selection": {"selection_version": selection.selection_version, "scopes": sorted(selection.scopes)},
-        }
+        }, schema_paths=_schema_paths(type(context), data, ('context',))
     )
     return hashlib.sha256(FINGERPRINT_DOMAIN + encoded).hexdigest()
 

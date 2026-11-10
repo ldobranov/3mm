@@ -118,13 +118,16 @@ class AgentModuleRuntime:
         handler = self.runtime_handlers.get(entrypoint)
         if handler is None:
             raise ModuleLifecycleError("unsupported Agent runtime entrypoint")
+        declared = {item.registration_id for item in manifest.registrations if item.kind in {"capability", "service"}}
+        if any(capability_id in self._services and self._owners.get(capability_id) != manifest.module_id
+               for capability_id in declared):
+            raise ModuleLifecycleError("Capability or service is already owned by another module")
         try:
             services = handler(manifest, data_dir) or {}
         except ModuleLifecycleError:
             raise
         except Exception as exc:
             raise ModuleLifecycleError("module activation failed") from exc
-        declared = {item.registration_id for item in manifest.registrations if item.kind in {"capability", "service"}}
         if not set(services).issubset(declared):
             raise ModuleLifecycleError("runtime exposed an undeclared capability")
         withdrawn = {capability_id for capability_id, owner in self._owners.items()
@@ -223,6 +226,21 @@ class AgentModuleRuntime:
         except Exception:
             return False
 
+    def maintain_services(self):
+        """Trusted provider maintenance, separate from non-mutating probes.
+
+        Called by the heartbeat, never by validation/invocation or read APIs.
+        Each active service is visited once; optional failures cannot stop the
+        other providers or Core administration. Closed services stay closed.
+        """
+        services = {id(service): service for service in list(self._services.values())}
+        for service in services.values():
+            if hasattr(service, 'maintain'):
+                try:
+                    service.maintain()
+                except Exception:
+                    continue
+
     def availability_reports(self, device_id):
         observed = datetime.now(UTC)
         for path in (self.root / "state").glob("*.json"):
@@ -239,7 +257,8 @@ class AgentModuleRuntime:
                 provider_version=state["active_version"], observed_at=observed,
                 declaration_digest=declaration_digest("agent_module", path.stem, state["active_version"], declarations),
                 capabilities=tuple({"capability_id": item["capability_id"],
-                                    "healthy": self.capability_healthy(item["capability_id"])} for item in declarations))
+                                    "healthy": self._owners.get(item["capability_id"]) == path.stem
+                                    and self.capability_healthy(item["capability_id"])} for item in declarations))
 
     def activate_automation(self, automation_id: str, definition) -> None:
         trigger_service = self._services.get(definition.trigger.capability_id)
@@ -284,10 +303,11 @@ class AgentModuleRuntime:
         state = self.state(module_id)
         if not state.get("active_version"): raise ModuleLifecycleError("module is not installed")
         state["enabled"] = False; self._save_state(module_id, state)
-        for registration in state.get("registrations", []):
-            service = self._services.pop(registration.get("registration_id"), None)
-            self._contracts.pop(registration.get("registration_id"), None)
-            self._owners.pop(registration.get("registration_id"), None)
+        owned = [capability_id for capability_id, owner in self._owners.items() if owner == module_id]
+        for capability_id in owned:
+            service = self._services.pop(capability_id, None)
+            self._contracts.pop(capability_id, None)
+            self._owners.pop(capability_id, None)
             if service is not None and hasattr(service, "close"):
                 service.close()
         return ModuleRuntimeResult(module_id, state["active_version"], "disabled")

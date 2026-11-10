@@ -66,6 +66,7 @@ REQUIRED_SOURCE_FILES = {
     'three_mm_platform_runtime/events.py': b"# component fixture\n",
     'three_mm_platform_runtime/responses.py': b"# component fixture\n",
     'three_mm_platform_runtime/connector_worker.py': b"# component fixture\n",
+    'three_mm_platform_runtime/connector_execute.py': b"# component fixture\n",
     'deployment/systemd/3mm-connector-worker.service': b"# component fixture\n",
     "frontend/dist/stale.js": b"must not survive\n",
 }

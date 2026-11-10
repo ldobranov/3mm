@@ -195,6 +195,23 @@ def validate_module_package(package: bytes, *, architecture: str | None = None, 
         hardware_profile(manifest)
     except ValueError as exc:
         raise ModulePackageError(str(exc)) from exc
+    from three_mm_protocol.hardware_templates import TEMPLATE_FILENAME, MAX_TEMPLATE_BYTES, validate_template
+    template_marked = any(item.metadata.get('profile_template') is True for item in manifest.registrations)
+    template_present = TEMPLATE_FILENAME in seen_paths
+    if template_marked or template_present:
+        try:
+            health = manifest.health_check
+            if (not template_marked or not template_present or health.type != 'file_exists'
+                    or health.path in {'manifest.json', TEMPLATE_FILENAME}
+                    or seen_paths != {'manifest.json', TEMPLATE_FILENAME, health.path}
+                    or archive.getinfo(TEMPLATE_FILENAME).file_size > MAX_TEMPLATE_BYTES
+                    or archive.getinfo(health.path).file_size > 4096):
+                raise ValueError('Hardware template requires only manifest, descriptor and health marker')
+            validate_template(manifest, json.loads(archive.read(TEMPLATE_FILENAME)))
+            archive.read(health.path)  # Validate the inert marker's ZIP integrity too.
+        except (ValueError, KeyError, UnicodeError, RecursionError, zipfile.BadZipFile,
+                zlib.error, RuntimeError, NotImplementedError) as exc:
+            raise ModulePackageError('Invalid inert hardware template: '+str(exc)) from exc
     unsupported = sorted(set(manifest.permissions) - ALLOWED_PERMISSIONS)
     if unsupported:
         raise ModulePackageError(f"unsupported permissions: {', '.join(unsupported)}")

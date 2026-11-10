@@ -1,13 +1,1701 @@
 # Current working state
 
-Updated: 2026-11-04. Start here; follow linked details only as needed.
+Updated: 2026-11-10. Start here; follow linked details only as needed.
+
+## Product direction: extension marketplace
+
+- Owner requirement, 2026-10-29: create a separate extension-store application
+  with server and client parts. Developers can sell their own applications and
+  3mm earns a commission. This is distinct from 3mm Store, the e-commerce
+  application. Pricing, payments, review, licensing and delivery remain to be
+  designed; this product direction does not authorize implementation now.
 
 ## Active task and next result
 
+- **Core / Monitor release preflight, 2026-11-10.** Owner explicitly accepts
+  Crypto Monitor functionality, reports remaining button latency **18–27s**, and
+  defers that latency issue. Do not reopen performance work in this release.
+  Prepare Core **0.3.11** and preserve accepted Monitor **0.8.3** ZIP bytes. Owner
+  asks to find/fix local CI failures before push, then use green exact-commit CI
+  before an annotated tag/release. **Local preflight is complete; next is the
+  reviewed commit/push, then exact-commit green CI before any tag/release.**
+  The index contains 128 verified Core files, not the independent simplification
+  document. No commit, push, tag or publication at this preflight checkpoint. Frozen
+  candidate `9234a9b1422d…` contains full public source (including docs, workflows,
+  frontend and optional libraries), excluding private/legacy DB files. Separate
+  disposable Linux lanes use Python **3.13.18**, Node **22.22.1**, pnpm **10.13.1**;
+  test requirements/constraints and pip check passed. Evidence/logs live under
+  `.runtime/release-0311/`. Frontend gate passed: **879 main + 19 CAP21 UI tests**,
+  both strict type checks and production build, no frozen-source drift. Tooling
+  (including real generated-client acceptance) initially found one unit test
+  reading the installed Ubuntu Agent journal. Its paths now use disposable data;
+  no production/permission change. Changed `tools/tests/test_deploy.py`: **43
+  passed** on `eb15b05fcfd8…`; **293** unchanged outside-file successes reused
+  from the initial run, covering all **336** tooling cases. Deployment/SDK full
+  lane: **765 passed, 1 failed, 8 existing root/optional-profile skipped**. The
+  failure was the absent image-provider native-host probe; exact original child
+  timing/exit category is unreconstructed. SDK now returns unavailable on a
+  definite top-level PIL metadata absence without starting a child or importing
+  codecs. Uncertain/present metadata keeps the existing bounded child and 2s
+  timeout. Final probe tests **8 passed, 1 optional-profile skipped**; unchanged
+  packaged-host assertion **1 passed**, media/resource/revocation consumers
+  **105 passed, 1 optional-profile skipped**, no source drift. Original Python
+  full lane finished: **7,066 passed, 612 existing skipped, 21 failed, 13 errors**;
+  it is not a green gate. Two failures (signed
+  publication lost-ACK and signed checkpoint CAS) are reproduced as **AF_UNIX
+  path too long before dispatch**: default nested pytest paths make 109/115-byte
+  socket names. Same cases pass with short basetemp, including full 7,712-item
+  module collection (2 passed, 7,710 deselected). Controlled original-length
+  reproduction failed both at server.bind; no Core/auth/deadline defect inferred.
+  Task-local runner now sets a short explicit basetemp for future commands.
+  Do not claim the original run used the corrected harness. Evidence:
+  `runs/platform-long-path-`
+  `9e719fae4a874a39b70d8a428352893c/` and `runs/platform-full-collection-`
+  `a702a53537b14cb78e93b467c868a4e1/`.
+  Three further original-run failures in UI diagnostics were reproduced with
+  short paths: typed `AuthorityReviewKeyBusy` was classified as its generic base
+  error. The classifier now preserves `review_key_busy`; public 409, current
+  rights, dispatch denial and deadlines are unchanged. Existing assertions were
+  not edited. Full affected diagnostics/key/privacy group **170 passed, 2
+  existing platform/root-only skipped**, no source drift; evidence
+  `runs/key-classification-28eba79251a44f4dbdf40e6259e74c0b/`.
+  Fifteen further state-publication failures came from manual integration test
+  drivers omitting the accepted independent Agent telemetry cycle. Two test
+  files now assert the publication wake, drive the real queued publisher and
+  retain their original receipt/state/role/revocation assertions. Full affected
+  Node/Agent group **45 passed, no skips**, snapshot `ad0ae16b8647…`;
+  `runs/node-drivers-9840a50ef8db4f46b22d43f5e29202cc/`. No production Agent
+  telemetry reversal. Twelve host setup errors also had overlong Unix socket
+  paths; the entire host-failure file plus both signed cases then **33 passed,
+  no skips** on short ext4 paths, unchanged production;
+  `runs/host-short-3ac811e3ca6e47948b3638128c8d9141/`.
+  One optional AP-status permission failure exposed a real unguarded stat.
+  Absent stays inactive; inaccessible now reports safe unavailable status without
+  breaking admin recovery. Route fixtures use only disposable paths. Provisioning,
+  setup, helper and route consumers **219 passed, no skips**, snapshot
+  `1ba5ed57fd69…`; `runs/ap-status-c9dea7c3fefb4426b7d44dfd61cb110b/`.
+  A shared RAM-backed /tmp capacity incident caused one DB setup error and could
+  affect apparent passes. Build scratch moved recoverably to owned ext4 storage;
+  no user/installed data changed. All **132 whole test files / 1,516 original
+  cases** in the generous incident band were rerun, not just failed cases;
+  `runs/capacity-band-0dc10a8541fb4f9381aea1b247195009/`: **1,491 passed, 9
+  unchanged root-boundary skipped, 16 known old-snapshot Node/AP failures**.
+  Those 16 cases pass in the current 45-case Node and 219-case AP groups above;
+  no new failure/error or newly skipped former pass. The original disk-full case
+  passed. Machine mapping resolves all **34** original failures/setup errors to
+  explicit successful follow-ups. This is combined unchanged-input/retest
+  evidence, not a new single green 7,712-case run. Original failed logs remain.
+  Candidate `f9455dd0b078…` contained the initial scoped fixes. Nonpublishing packaging
+  rehearsal passed: both ARMv6 compiler builds, all four Full architectures and
+  ARMv6 Node built twice identically; actual manifest models, archive metadata,
+  URLs, size/hash checks, checksums and source/dist drift checks passed. Evidence:
+  `runs/packaging-db711ea2838347db917c2f893135f4d6/`. Subsequent `c043545d358c…`
+  packaging also passed on ext4 after the RAM-capacity failure;
+  `runs/packaging-4e603618898e43d299b3271ff62c7295/`. Final planned Git-export
+  candidate `c6179ecb6eb1…`, including AP hardening, also passed the complete
+  double-build/manifest rehearsal; `runs/packaging-e041e6c856f9491a82380e05129f73ff/`.
+  Frontend reuse compares all
+  275 audited build/test inputs. Rehearsal artifacts use old HEAD metadata and
+  must not be published. Git export exclusions now omit root editor rules,
+  the historical tracked DB and uploaded settings images without deleting local
+  data. Canonical staged export has all **1,841** checked public paths and no
+  extra data files. Runtime/test bytes match the rehearsal; only root-anchored
+  export attributes and this handoff changed afterwards (HEAD document line
+  endings are compared canonically). Actual committed-export verification and
+  exact-commit hosted CI remain mandatory before tag/release.
+  All new scene/GPIO/template/connector source files must enter the reviewed Git
+  snapshot; a local dev-lab pass does not prove `git archive` completeness.
+  Preserve independent `docs/CORE_SIMPLIFICATION_PLAN.md` work. Monitor source is
+  a separate local directory without Git metadata; it is not in the Core release.
+  Owner confirmed `C:\Users\LAZ-DELL\Desktop\3mm-crypto-monitor` as the source;
+  all 15 packaged inputs match accepted 0.8.3. The exact accepted ZIP is also now
+  in that project's `dist/`, with SHA-256 unchanged. No source move was needed.
+  Owner chose a separate Monitor GitHub repository **later**: do not initialize
+  or publish Monitor now. Current active release work is Core 0.3.11 only;
+  preserve the accepted Monitor source/ZIP unchanged. No device changes here.
+
+- **Button latency fix deployed; functionality accepted, 2026-11-10.**
+  Owner timed the accepted button/LCD/seconds scenario at 20–30s. Read-only Pi3
+  metadata identified accumulated edge telemetry, repeated immutable package
+  verification in Core, and up to 10s old-scene gating in Monitor. Agent now
+  coalesces optional telemetry on its existing publisher, outside the event and
+  physical-command queues. Core reuses immutable verification within one event
+  RPC only, never caching current rights. Monitor 0.8.3 atomically supersedes
+  older desired scenes with higher sequences and retains uncertain history;
+  generation-fenced timer reservation/backoff prevents stale work restoring the
+  10s delay. Fresh grant admission, Stop, event ordering/deduplication, finite
+  leases and local seconds remain intact; no per-second Core polling was added.
+  Focused real Core scope checks: **5 passed**, including revocation and three
+  immutable-file drift denials. Initial integration: **153 passed, 1 failed,
+  1 root-only skipped**. The failed synthetic restart was reproduced: fixture
+  readiness waited on an unused full-tree digest beyond the paused handler's
+  declared 10s budget. Removed only that unused startup digest, preserving real
+  explicit fingerprint assertions and all timeouts; event-process plus direct
+  Runtime consumers then **18 passed, 2 existing root-only skipped**. Evidence:
+  `.runtime/cap14-clock-recovery/runs/restart-diagnostic-260db74a528c41bcb72b8669115ba095/`.
+  Production Core bytes remain the checked `a47332801052…` snapshot. Exact Agent
+  closure `dd192933fd9c…`: **413 passed, no skips**, preserving absence of an
+  unrelated new wire module. Monitor final backend **119 passed**; unchanged UI,
+  strict types and build evidence (**80 UI tests**) reused after input comparison;
+  exact new ZIP passed actual Core validation, reproducibility and UI compilation.
+  Final package: `.runtime/cap14-clock-recovery/packages/latency-final/3mm-crypto-monitor-0.8.3.zip`,
+  SHA-256 `68f74cac6f0770919350cf050f9afde3b6fe7d1f8eeac352d694f9d3a5236917`.
+  Owner explicitly authorized Core/Agent deployment and catalog upload only,
+  reserving activation. Catalog upload succeeded through the normal admin API;
+  owner then independently activated 0.8.3 during preparation and confirmed it.
+  First safe preflight refused that concurrent change; refreshed reviewed
+  baseline preserves the owner's exact package/config/grant transition.
+  Pinned Pi3 immutable Core `local-pi3-gpio-5c301dab2291b4c74141` is installed,
+  ready and exact-file verified (only `application_events.py` payload delta).
+  Independent Agent `ce5529f2b427453155631a4844b479f37bf484dfbf26361893b7fce63386193a`
+  is ready through standard offline activation/health/rollback (only
+  `agent/core_client.py` delta), preserving dependencies/vendor/providers,
+  Runtime, other/default hosts and application settings/rights. Core PID 147233
+  stayed unchanged during Agent activation. Automatic installer rollback
+  preimage only: no separate backup, device reboot, reset, Start/Send, grant
+  change or Git action by the agent. Final read-only acceptance
+  `acceptance-1794287137289.json` records enabled/running scene sequence 3885,
+  no pending frame, three successive successful scene renewals, four active
+  services with zero restarts and zero sampled current-invocation traceback,
+  BrokenPipe, DB-lock or event-authority/result-error categories. This is not
+  optical or button latency acceptance. Owner subsequently measured **18–27s**,
+  explicitly deferred that remaining latency and accepted Crypto Monitor's
+  functionality for release; no claim of immediate screen switching.
+
+- **Combined Pi3 LCD / local seconds / GPIO17 recovery, 2026-11-09.** Owner
+  requires the three functions accepted together, not another one-frame fix.
+  Confirmed native button edges/current event rights; the selected Monitor host
+  died on a reply to a disconnected caller, delaying queued button events beyond
+  Monitor's freshness budget. Candidate contains socket reply failures without
+  rerunning handlers or clearing replay protection. Event handoff now has an
+  explicit finite claim deadline/caller-liveness fence and a fresh handler wait
+  after FD transfer, bounded by the original boot-clock lease with completion
+  reserve. Expired/disconnected unsent claims cannot silently start dispatch;
+  lost sent outcomes remain durable. Previous Runtime remains healthy-idle
+  during the Core-first transition, never dispatching deadline-less requests.
+  Exact ext4 snapshot `e97a6e519986…`: event/process/authority group **138 passed,
+  1 separate-root case skipped**; native host/Runtime/rollback consumers **109
+  passed, 2 optional-image/separate-root cases skipped**. Durable evidence:
+  `.runtime/cap14-clock-recovery/runs/`. Three combined Monitor/native-policy
+  regressions also passed: blocked scene/quote SDK I/O does not block button
+  selection or Agent local ticks; duplicate input does not switch twice. No
+  Monitor production change. Existing Agent clock evidence remains applicable.
+  Scoped immutable Core `local-pi3-gpio-1752ddcd45fd15848265` installed and exact
+  files/readiness verified on pinned `rasp-3mm`. Selected host + Runtime rollout
+  completed through standard independent controllers: host `5435cca48972…`,
+  Runtime `e7b9617c8ad2…`, unchanged Core PID 54111 during both independent
+  updates. Agent artifact, Monitor
+  0.8.2 package/config/grants, providers, other hosts/default/connector pins and
+  old terminal event receipts are fenced unchanged. Automatic installer rollback
+  preimage only, no separate backup, reboot, explicit Start/Send, grant change
+  or event replay. Live read-only acceptance `acceptance-1794248706808.json`
+  under the task folder records real GPIO17 screen advances, new events
+  acknowledged on their first attempt, continuing successful scene renewals,
+  all four services active with zero restarts, and zero current-invocation
+  traceback/BrokenPipe/database-lock error categories. Initial interruption
+  during the Runtime switch recovered automatically under existing LCD consent;
+  no manual Start, hidden frame replay or consent cleanup. Old event failures
+  remain retained. Owner asked for two physical presses and visible seconds;
+  Six screen advances are now observed; final `acceptance-1794248802744.json`
+  confirms every new input settled on attempt 1, no new host/Core/Runtime/Agent
+  restart or recorded traceback/BrokenPipe/DB-lock category, and scene sequence
+  215 with continuing successful renewals. One unconfirmed scene was skipped
+  without stopping enabled output; subsequent fresh scenes succeeded. No claim
+  that all command outcomes were confirmed or that a brief sample proves
+  indefinite reliability. Owner subsequently confirms visible local seconds and
+  physical button screen switching, but reports 5–10s response delay. This accepts
+  combined functionality, not latency. Read-only timing probe
+  `.runtime/cap14-clock-recovery/inspect-latency.py` separates the remaining path:
+  latest press reaches Core in about 44ms, its release waits about 8.4s before
+  Core ingestion; isolated earlier release samples wait about 4.4–5.8s. Core
+  then takes several seconds through admitted dispatch/completion; boot-clock
+  lease-to-wall mapping is approximate and receipt timestamps have 1s precision.
+  Agent currently serializes full capability health/state publications between
+  individual edges. Monitor also independently reproduces up to 10s pending-scene
+  expiry gating after a button selection: wake/reset already occurs, but a queued
+  or unconfirmed previous scene blocks the newer desired content. Next bounded
+  candidates: decouple/coalesce telemetry outside the edge queue; let an atomic
+  desired-content generation supersede only an older set_scene, preserving its
+  receipt/history and using a new higher sequence with fresh admission. Stop,
+  revocation, lease expiry and unknown original outcomes remain fenced. The
+  Core claim path also repeats immutable package/build verification without the
+  existing request-local `code_verification_scope` used by invocation relay;
+  bounded same-request immutable verification reuse is a third candidate, not
+  permission caching or removal of final admission checks. No new
+  production change, deployment, rights change or Git action in this latency
+  diagnosis; do not promise subsecond latency without remeasuring Core stages.
+
+- **Pi3 Agent-only clock rollout completed, 2026-11-09.** Owner authorized only
+  Agent on pinned `rasp-3mm` and catalog upload of the new provider; approvals,
+  provider replacement and Monitor activation remain owner actions. Offline
+  immutable update `0d28d8097c78…` completed through the installed standard
+  controller with health/rollback: Agent `37324174b1b8…` -> `96a787155b45…`.
+  Exact nine changed Agent/protocol sources match the checked closure; target,
+  dependencies and vendor bytes match the previous Agent. Core PID 36819,
+  Core/Runtime/connector/host pins, app/config/grant and device-provider install
+  metadata remained unchanged; no reboot or explicit hardware command.
+  Monitor 0.8.2 was already active at preflight and was left untouched.
+  Reused the clock evidence below; 24 additional Agent controller/rollback/
+  release-lock checks passed (32 unrelated cases deselected), durable evidence
+  `.runtime/cap14-clock/runs/controller-dc351c24d7904baba33b3271f7509d06/`.
+  New exact provider SHA `8af876cf4a2f…` uploaded via normal admin API and verified
+  visible in Devices: **Character display with local clock (pcf8574)**,
+  schema 3, 16x2, profile `00da8fe24bed…`; approval supported, not installed.
+  Existing providers are not disabled or deleted. Next owner step: replace the
+  old static display provider, approve Monitor scene/Stop bindings, enable LCD
+  and inspect visible seconds. No device optical acceptance or Git action claimed.
+  Follow-up read-only inspection: the old static `ac1937994d21…` is still the
+  enabled/succeeded Agent owner of `display.character`; no new disable command
+  was submitted. New clock `00da8fe24bed…` and another static template instance
+  both failed on that ownership conflict, with no installed version or saved
+  active Agent state. UI `failed · Enabled` reflects desired enabled state, not
+  successful activation. Agent remains active with zero automatic restarts.
+  Owner must disable the actual old owner and wait for confirmed completion,
+  then review/install the new clock provider; no automatic disable/retry/removal.
+  Subsequent owner report: button does not switch. Read-only Pi3 trace proves
+  GPIO17/channel `gpio.input.1` edges reach Core (native provider healthy),
+  Monitor has two screens and current claimed deliveries pass `event:button`
+  admission. Not an Agent input/configuration gap. App host `9900483793e5…`
+  restarted six times with uncaught BrokenPipeError at application_host.py:459
+  -> application_transport.send_message:110 (reply to disconnected caller).
+  Core/Agent/Runtime have zero restarts. Button head deliveries show
+  `delivery_unconfirmed`, retrying behind 40s claims; later edges queue and
+  eventually exceed Monitor's 30s freshness filter. Queue still advances at
+  retry exhaustion, not a permanently stuck database row. Installed host and
+  Runtime event-worker source hashes match local source. Runtime's 4s Core
+  claim/completion handoff budget is a suspected contributing boundary, not
+  yet a proven original timeout cause. Next: owner-authorized host disconnect
+  containment and event handoff timing reproduction; no code/device fix,
+  rights change, event replay or hardware command performed in this diagnosis.
+
+- **Local seconds / Monitor 0.8.2 prepared, 2026-11-09.** Owner selected a
+  maximum 30-second local LCD lease, renewed every 10 seconds; package version
+  0.8.2 (not 0.9.0). No deployment/upload/activation, rights change, physical
+  command, reboot or Git action in this step. Monitor source is updated in the
+  sibling `3mm-crypto-monitor`; the isolated working copy/evidence is under
+  `.runtime/cap14-clock/`. Other existing source work remains untouched.
+  Browser preview now uses coherent UTC/monotonic anchors and explicit clock
+  cells, with local aligned second ticks, IANA/DST formatting and separate
+  visibility-aware data polling. Neither slow polls nor locale/theme changes
+  stop local seconds; draft epochs prevent an old response restoring a preview.
+  New generic Agent provider entrypoint `builtin:display.character.scene.v1`
+  implements `display.character` 3.0/profile 3. It runs finite scenes locally;
+  normal SDK/M20 admission renews them every 10 seconds. Stop and manual-frame
+  actions remain independent. Absolute and monotonic deadlines bound ticks;
+  disable, failure or Agent restart never restores a scene. Strict scene IDs,
+  increasing sequences and bounded Stop tombstones fence delayed commands.
+  Unknown original commands are retained, not replayed or called successful;
+  higher-sequence desired scenes require fresh access. No Core runtime change
+  or per-second Core/SDK/market call was introduced. Compact clock-cell data
+  stays within the existing 512-byte scalar contract budget. Native writes
+  use acknowledged-frame dirty spans; identical frames do no I2C access.
+  Migration 0010 preserves settings, quotes, input/command journals and resets
+  old frame-only consent: autonomous scenes need explicit new profile/access
+  review. Existing LCD content interval stays separate (effective minimum 10s);
+  seconds tick locally between renewals. Current static 2.0 provider stays a
+  distinct frame-only option; old immutable ZIPs are not overwritten.
+  **Checks:** Linux snapshot `1dd76aa91bc7…`: 553 passed, no skips, including
+  all Agent tests, native transport/syscall doubles, profile/package/authority
+  consumers and Agent native artifact. Production inputs are unchanged since
+  that run. Final scene timer/close test added afterwards: 8 Linux scene checks
+  passed (7 overlap the previous run). Monitor final source: 103 backend checks
+  passed; unchanged final UI/compiler inputs reuse 80 UI checks plus strict
+  TypeScript and production build. The final ZIP also passed the real Core UI
+  compiler locally (`built_ui_sha256=7c6350995e2b…`), with no installation.
+  Local preview fixture was adapted to the
+  new plan and syntax checked; no new optical/device or browser-layout acceptance
+  is claimed. Durable logs/input lists are under the task run folders.
+  **Final Monitor ZIP:** `.runtime/cap14-clock/packages/3mm-crypto-monitor-0.8.2.zip`,
+  SHA256 `5d14c02d9fb50fb186359a8ea773e97ec16f14a01d4bc8b93a8c44d10f0cf777`.
+  Exact 16x2 PCF8574/I2C-1/0x27 inert provider:
+  `.runtime/cap14-clock/character-display-clock-16x2.zip`, SHA256 `8af876cf4a2f…`.
+  Separate data-only admin template: `character-display-clock-template.zip`,
+  SHA256 `eb9d8ac187d9…`. The earlier ZIP in the task root is only a superseded
+  local candidate; use the final `packages/` ZIP. Next, only on owner request:
+  update the chosen Agent, disable/review-replace the static provider, review
+  Monitor 0.8.2 scene/Stop rights, then owner enables and checks visible seconds.
+  A standalone Monitor activation against the old 2.0 provider cannot run scenes.
+
+- **Core 0.3.9 tagged, not published; 0.3.10 published, 2026-11-06.**
+  CI `42173867312` passed for `92dab4846afc`; the latest published release
+  was `v0.3.8`. Prepared only VERSION, README, changelog and release notes
+  in `70ba0e53b0f9`, pushed to `main`. Release/bootstrap/contract/tooling
+  checks: 174 passed on exact prepared Linux snapshot `6806b5410492…`.
+  Exact main CI `42178909304` passed and annotated `v0.3.9` was pushed.
+  Release `42182885219` failed before building assets: a real signed
+  negative health result was refused, but the end-to-end HTTP test took
+  2.80 seconds against an unrelated two-second wall-clock assertion.
+  Public release lookup returned 404; leave the immutable tag untouched.
+  Owner requested a working release before CAP20 device work. The fix keeps
+  the HTTP denial/no-replay/no-stamp checks and verifies the actual Runtime
+  deadline with a continuously trickling peer; no production deadline changes.
+  Exact 0.3.10 source scope passed 213 Linux checks; 1 separate-root test
+  skipped. All six staged blobs matched the tested source. Commit
+  `8f9693cc9077` pushed to main; exact CI `42185027896` passed.
+  The watcher pushed annotated `v0.3.10`; the remote peeled tag is the same
+  exact commit. Release run `42189083611` passed; the watcher confirmed
+  publication and all nine expected assets, including full ARMv6 and Node.
+
+- **Zero W clean-install follow-up, 2026-11-06.** Owner installed published
+  `0.3.10` and Crypto Monitor `0.7.0`; read-only device checks confirmed the
+  active services and enabled 16×2 provider installation. The owner has not
+  accepted price updates or LCD output. Repeated Coinbase connector attempts
+  hit the worker's five-second child budget without an HTTP result; one
+  anonymous direct request from the Zero W as the worker user returned HTTP
+  200 in 0.81 s outside the service sandbox. The installed one-shot executor
+  spent 2.75 s starting with no request outside the worker quota; the live
+  worker has a 50% CPU quota and recorded throttling. For the existing LCD
+  command, Core consumed the one-use permit, but Agent recorded `not_executed`
+  at authorization; command completion was 3.28 s after delivery, against a
+  two-second Agent authorization wait. I²C adapter, device node and Agent
+  group were present. Investigate the startup overhead and the distinct live
+  permit deadline; retain revocation, expiry, and no-replay guarantees. No
+  device changes, new LCD command, rights change, restart or deployment.
+  **Candidate prepared and tested.** Agent uses one permit budget of up to
+  10 seconds in both HTTP paths, shortened to the remaining command lifetime.
+  Late/mismatched replies, denial, and duplicate delivery still cannot reach
+  the driver. Connector subprocesses use a stdlib-only entrypoint without
+  loading Runtime or Python site; worker identity, five-second deadline, TLS,
+  result signing and no-retry behavior are unchanged. WSL: 417 Agent and
+  authority regressions passed (`104144ed9b51…`, inputs unchanged), and 152
+  connector/release checks passed (`41664e3686a3…`, plus the distinct-UID case
+  passed under the isolated root test driver). On Zero W, two disposable user
+  scopes enforced 50% CPU with the same five-second execution budget: the
+  installed executor timed out; the candidate (`eb592ca9f346…`) returned
+  HTTP 200 in 4.12 s.
+  **Independent updates and one-frame acceptance, 2026-11-07.** With owner
+  approval, verified the pinned Zero W and exact installed baseline, then used
+  the existing immutable update/health/rollback controllers. Connector is
+  `eb592ca9f346eda9f1db042d4cb7416f60795b36fd7c6f6543359bd6133b354b`;
+  Agent is `84fe74adc3cf2ce0db5d4d46c4cb57d2707271ec36a5273f1f85bebdf72b7d00`,
+  built offline on-device from tested sources and unchanged locked vendor
+  dependencies. Core 0.3.10 PID 825, application 0.7.0/package/configuration,
+  grant revision/payload, SDK Runtime and host pins were unchanged. Normal
+  administrator API reads reported a fresh quote (45–58 seconds old), no
+  source error and the reviewed 16×2 display ready. Submitted exactly one new
+  saved-screen frame, request `afd3ba482d806a4c153ab1f240d16df2`, command
+  `cmd_fcf9f58e8c75404ebbe37456926069bc`; read the same command through
+  queued/delivered to `succeeded`, `executed=true`. No replay, settings/grant
+  change or live-loop start. Software execution is confirmed; owner optical
+  confirmation remains separate. The test request evidence is retained on the
+  device; persistent live output remains stopped. No commit, push or release.
+  Final read-only follow-up: application active with zero restarts; the new
+  LCD command remains succeeded and the old failure remains retained. Quotes
+  now arrive (four HTTP-200 results among the latest eight attempts), but the
+  latest connector attempt again hit its unchanged five-second deadline and
+  the app retained its cached quote. Do not claim sustained quote stability:
+  residual connector deadline pressure on the Zero W remains to address.
+  **Owner reports later crash/reboot/login failure, 2026-11-07.** Owner
+  confirmed the visible LCD frame, then reported a later crash and manually
+  restarted Zero W. Pinned read-only checks on boot `2c4ecc45…` found Core
+  enabled but inactive/dead, PID 0, no failed systemd units and no Core start
+  record in the current journal; web, Agent, Runtime and connector are active.
+  Core loopback port 8887 refuses connections, so login currently cannot reach
+  authentication. Core/app SQLite quick checks both passed. Available memory
+  was about 204 MiB with unused swap; no OOM/SD error was recorded in this boot.
+  Only the current boot journal is retained, so the preceding crash cause is
+  not established. Monitor is active without restarts; LCD is blocked with
+  `restart_pending`, enabled false and an unresolved frame. No reset, password,
+  grant, service-start or frame-replay action. Asked owner approval to start
+  only Core and then test normal login; do not clear the pending LCD outcome.
+  **Access restored after explicit approval.** Issued one nonblocking start
+  of Core on the same boot; no Raspberry reboot. Cold startup exceeded the
+  probe's 120-second readiness window, but a subsequent read returned HTTP
+  200 `/ready`, PID 1309, active/running and zero restarts. Agent, connector,
+  SDK Runtime and Monitor service invocations were unchanged. Frontend runtime
+  configuration points to Core port 8887; ordinary administrator login and
+  authenticated profile reads passed through that API, then only the probe's
+  session was logged out successfully. No password, grant, configuration,
+  LCD action or pending-frame cleanup. Access recovery is confirmed, not the
+  cause of the preceding crash or missing boot start; those remain unresolved.
+  **Blocked live frame diagnosed read-only.** For the screenshot's exact
+  `cmd_35f916f4ba7548d6a1efe9c47199d708`, the application-owned pending
+  request was read from its DB and its hash matched Core's immutable
+  idempotency identity (not a manually copied screenshot ID). Core reports
+  expired/claimed with no result or completion time. The same Agent journal
+  identity has a completed failed/unknown driver receipt at
+  `2026-11-07T04:24:05.038105Z`, 26 ms after the command deadline; that result
+  remains in the one-entry outbox. Monitor is blocked/outcome_unconfirmed,
+  enabled false, retaining the same request/command. Current Core receipt code
+  discards a delivered command's late completion, then rejects later receipts
+  once expired; application lookup consequently remains unknown. This explains
+  the recovery dead end, not the underlying driver failure or previous crash.
+  No command replay, state cleanup, app invocation, service restart, grant
+  change or deployment. Next bounded fix needs late-result evidence retention
+  separate from execution permission, plus explicit recovery for an unknown
+  LCD frame without silently treating it as successful or retrying that ID.
+  **Owner-approved recovery fix prepared locally.** Core acknowledges and
+  retains the first late Agent result under `result.late_completion` for an
+  already delivered attempt, even after poll expiry. Status remains expired;
+  deadlines, one-use permits, module/control authority and the original receipt
+  are not renewed/overwritten. Undelivered and foreign-device reports remain
+  refused; application lookup also exposes the stored completion timestamp.
+  Monitor's new `display_live_release` is an administrator/monitor_display
+  control with exact run/request identity and fresh original-command lookup.
+  It requires a completed Agent receipt and elapsed deadline, never mere
+  absence/expiry or a lifecycle invalidation without completion. Explicit
+  review retains the old intent/result in the existing control journal and
+  stops durable output; it neither submits a frame nor resumes output. A fresh
+  enable separately checks current access/profile and uses a new live run.
+  No table/column change, manual journal cleanup, version bump or device action.
+  Linux snapshot `10f6a407778a…`: 149 command/device/authority/SDK recovery,
+  rebinding/provider, module-lifecycle and task-time checks passed. Final
+  `13509e674582…` adds one real HTTP receipt acknowledgement check, passed;
+  production inputs are unchanged, so the previous 149 are reused. Monitor:
+  105 backend checks passed on frozen copy `3mm-crypto-display-d5e8af1…`
+  (input-list SHA256 `8535f8031c6fa119adf17038c0daa3fa49f19c62fd269497ef43844e31bd7600`);
+  48 UI checks, strict types and isolated build passed on `cf5fe0be…`, whose
+  UI/tool/test inputs remain unchanged. The refusal tests caught and fixed
+  old handling that could clear a synthetic failed/unknown lifecycle fence.
+  Initial Windows checks stopped after 10 passes at a protected pytest temp
+  parent; this is not a Windows acceptance claim. Browser visual inspection
+  could not run because local browser use is disabled; the disposable fixture
+  server was stopped. No live recovery, LCD write, deployment, commit or Git
+  publication. Optional Monitor 0.7.1 proposal awaits the owner's choice;
+  current source/package version is still 0.7.0 and no old ZIP was overwritten.
+  **Owner requested deploy + Monitor 0.7.1, then prohibited backup.** Changed
+  only the app's version declaration/header and regenerated its three package
+  descriptors. Both exact-version package/schema/reproducibility consumer
+  checks passed on frozen copy `3mm-crypto-display-7755a4c…`; the previously
+  passed 105 backend and 48 UI checks are reused for unchanged behavioral
+  inputs. New ZIP is `.runtime/cap14-crypto/3mm-crypto-monitor-0.7.1.zip`,
+  SHA256 `9c66701550d7e86d691e861c7aaacaba81c01ee300bd65cbe70eaba3452d901b`.
+  Pinned read-only Zero W preflight still shows Core v0.3.10 and app 0.7.0,
+  active but LCD blocked/enabled false. The two Core baseline hashes and
+  independent Agent/connector/Runtime/host pins were observed; no device
+  mutation, code export, backup, application upload or restart was performed.
+  The standard immutable Core installer always creates a local DB/environment
+  rollback preimage and has no skip-backup option. Stopped before deployment
+  rather than altering/bypassing this boundary; asked whether the owner allows
+  only that automatic rollback copy or wants Core deploy left stopped. Do not
+  treat the earlier deploy request as permission overriding the later no-backup
+  instruction. No commit, push, Core version change or release publication.
+  **Owner approved only the automatic installer rollback copy.** No separate
+  backup/export of device data or installed code was made. Downloaded and
+  verified published ARMv6 0.3.10 (`413e5d62088a…`) and replaced only the two
+  tested Core service files; all other payload bytes, including the frontend,
+  dependencies and installer, remain from that published artifact. Candidate
+  `local-lcd-review-6a9286750d90ff9555cb` archive SHA256 `7d32ac4b6ff0…`.
+  Pinned preflight compared every published file to the installed release,
+  verified disabled LCD output and the exact pending identity, then launched
+  unchanged `install-systemd.sh` under `3mm-lcd-review-6a9286750d90.service`.
+  The launch client timed out waiting for the oneshot start; a separate status
+  confirmed the installer still running, preparing its release-specific Python
+  environment. Do not repeat Deploy. Monitor 0.7.1 ZIP is transferred only;
+  API upload/activation and final Core/receipt acceptance are still pending.
+  Asked whether to approve the new package with the same scopes/human rights
+  or leave activation to the owner. No grant change or LCD Start/Send/replay.
+  **First deployment rolled back; launcher mistake isolated.** The task-local
+  systemd launcher set `UMask=0077`, incompatible with the unchanged installer's
+  `tar --no-same-permissions` extraction/venv creation. The service-user migration
+  failed with Python `Permission denied` (126), before candidate activation.
+  The normal installer restored 0.3.10/data and fenced stale recovery authority;
+  do not silently renew the old grants or erase that fence. All six services
+  are active with zero restarts, Core/Agent readiness 200, DB quick check `ok`;
+  administrator login/profile/logout also passed. Existing device identity and
+  credential remain active. No hardware frame or manual DB repair was sent.
+  Corrected the local launcher to normal `0022` and nonblocking systemd-run.
+  A disposable Linux extraction check reproduced refusal with 0077 and verified
+  access with 0022. The same two tested production files are unchanged. Retry
+  identity is `local-lcd-review-6a9286750d90ff9555cb-r2`, archive SHA256
+  `d97b77cafdb0…`; transfer/API package upload are in progress, not yet a
+  successful second Core deployment. Only normal automatic rollback copies are
+  in scope. New native package/same-rights approval question remains unanswered.
+  Ordinary administrator API upload/compilation of Monitor 0.7.1 has now passed;
+  its exact SHA256 is in the catalog while 0.7.0 remains active. No activation,
+  native consent, human permission mutation or LCD action was requested by that
+  upload. The corrected r2 Core installer was launched once with normal 0022;
+  final activation/health/late-receipt acceptance still awaits completion.
+  **R2 reached activation, then standard rollback again.** Actual `3mm`
+  read/execute checks passed throughout; the permission defect is fixed. The
+  target was selected, but `three_mm_runtime.activate._wait_setup_ready` raised
+  `Setup runtime readiness deadline exceeded`. That published path waits only
+  90 seconds when a committed setup-activation journal remains. The installer
+  returned to 0.3.10 and fenced recovery authority normally. Do not claim the
+  late-receipt Core fix deployed, do not retry a third time, and do not delete
+  the setup journal or renew grants to force success. New bounded blocker is
+  setup/runtime readiness on Zero W; inspect the committed handoff and restore
+  administrator readiness before requesting further implementation scope.
+  Monitor 0.7.1 remains uploaded/compiled, not activated. No new LCD command,
+  manual Core/Agent journal edits, separate backup, commit, push or release.
+  **Safe handoff after R2 rollback.** The r2 unit finished failed/exit 1;
+  `/opt/3mm/current` is again `/opt/3mm/releases/v0.3.10`. Old Core/Agent,
+  SDK Runtime, connector and Web processes restarted with zero restarts; Agent
+  readiness was 200, then Core readiness became 200. Ordinary administrator
+  login, authenticated profile and logout all passed after that final rollback.
+  Core/app DB status checks passed; no device credential was revoked. The
+  application remained desired active at 0.7.0, but current resource/code
+  approvals need fresh review after recovery fencing; do not claim effective
+  access restored or activate 0.7.1 automatically. The earlier native-approval
+  question is deferred until the Core readiness blocker is fixed. No third
+  deployment attempt, new LCD command or security/journal bypass. Next result
+  requires owner scope for the setup/runtime readiness correction and checks.
+  **Owner decision: upload only, owner activates.** The delayed consent reply
+  explicitly chose no agent-side activation of Monitor 0.7.1. Its normal API
+  upload/compilation is already complete; leave its code/resource/human approval
+  and activation to the owner. The Core late-receipt fix is still not deployed,
+  so do not present 0.7.1 as ready for full recovery acceptance on this device.
+  No further deployment, permission or LCD action is authorized by this reply.
+  **Owner reports disabled LCD checkbox after activation.** Pinned read-only
+  inspection now confirms Monitor 0.7.1 active/enabled/enforced (owner activation,
+  not ours), while Core is still published v0.3.10 without `late_completion`
+  handling. The exact original command `cmd_35f916f4ba7548d6a1efe9c47199d708`
+  remains expired/claimed, one delivery, no completion or late receipt in Core.
+  The app retains pending=true, enabled=false, blocked/outcome_unconfirmed;
+  last check is invalidated after lifecycle changes. The UI's canEnable requires
+  no pending frame, so this is the unresolved Core recovery blocker, not a new
+  checkbox layout defect. No app invocation, grant change, frame, restart or
+  deployment in this diagnosis. Core setup/readiness correction remains next;
+  do not force-clear the app/Agent journal or silently repeat that command.
+
+  **Owner-authorized Zero W activation correction, 2026-11-07.** Read-only
+  inspection confirmed a committed setup-activation handoff with no pending
+  setup transaction. R2's Core process was stopped before completing startup;
+  the rollback Core needed about 218 seconds from systemd start to HTTP startup.
+  A healthy Core health request also took 1.155 seconds, above the old one-second
+  probe cap. Setup now permits a finite 300-second ARMv6 startup (90 elsewhere),
+  probes Core's database-backed `/ready`, keeps the exact Agent role check, and
+  caps each loopback probe at five seconds or the remaining shared budget.
+  One-second backoff reduces startup polling; late replies cannot acknowledge
+  the handoff. Failures and concurrent journal changes keep the durable intent.
+  Frozen Linux source `46d1e6cd2d0a…`: 397 activation/planner/setup/provisioning/
+  profile/bootstrap/recovery/installer/service-component checks passed, no skips.
+  The two late-receipt production files match the previous 150-check candidate;
+  that evidence is reused. No main frontend or Monitor changes were needed.
+  Candidate `local-zero-ready-3678081b1256cd4d272f` replaces only those two Core
+  files and `three_mm_runtime/activate.py` in the verified published ARMv6 artifact;
+  archive SHA256 `46d5ef09a7eb…`. Started the unchanged standard installer once
+  under `3mm-zero-ready-3678081b1256.service`, with normal 0022 permissions and
+  only its approved automatic rollback copy. **Deployment completed successfully,
+  exit 0, no rollback.** Core PID 31223 and all six checked services are active,
+  with zero restarts; Core/Agent `/ready` both return 200. Ordinary administrator
+  login/profile/logout passed, SQLite quick check is `ok`, and device control is
+  still bound/active with its credential intact. All three exact code hashes and
+  independent Agent/connector/Runtime/application-host pins were verified. The
+  normal activation acknowledged the committed setup handoff; no manual journal
+  deletion or security bypass. The original expired/claimed LCD command now has
+  its first late failed Agent receipt and completion timestamp; it exactly matches
+  the Agent journal, remains at one delivery and is no longer in the Agent outbox.
+  This is completion evidence, not confirmation of physical execution. Monitor
+  0.7.1 is active/enforced, still enabled=false with the original pending frame.
+  Owner next: refresh `/monitor`, read the original outcome, explicitly acknowledge
+  the uncertain completed attempt with output off, then separately enable a new
+  live run. No grant approval/change, new LCD command, forced pending cleanup,
+  separate backup/export, Git action, Core version bump or release publication.
+
+  **Owner reports blank LCD after enabling, 2026-11-08 — diagnosis only.**
+  Monitor 0.7.1 is active with zero service restarts, live enabled=true but
+  blocked/outcome_unconfirmed on sequence 1. The new original command is
+  `cmd_95b09af4cb104935939456514106b6d6`: 10-second TTL, one delivery after
+  1.108 s, claimed, failed/unknown Agent completion 8.941 s after delivery
+  (49 ms after expiry). Core correctly retains its late receipt; this is not
+  the previously fixed receipt-loss defect. The installed 16x2 PCF8574 profile
+  is I2C-1/0x27 with the expected pin map; adapter, node and running Agent group
+  access are present. Module remains installed/enabled without a saved startup
+  error; the native driver latches unavailable after an invocation exception.
+  Basic Agent hello inventory is not the module capability catalog. Agent is PID
+  31222, NRestarts=0; cgroup contains only the main process, no stuck LCD child.
+  The physical journal intentionally replaced the concrete exception with
+  `Driver outcome is unknown; automatic retry refused`, so worker deadline vs
+  device I/O failure is not established. The failure's deadline proximity is
+  evidence for investigation, not proof of a specific kernel/transport error.
+  Import-only probes as the service user passed: normal isolated startup 1.230 s;
+  no-site 1.652 s. These ran outside the service cgroup and did not open I2C or
+  call write_once; they are not a timing/physical acceptance of a full frame.
+  Two diagnostic helpers initially hit missing command/proc-children paths;
+  corrected with an absolute runuser path and cgroup process metadata. Neither
+  error reached hardware or changed services. Next bounded work is safe driver
+  phase/reason evidence and an evidence-based Zero W execution budget/recovery
+  fix, not blindly replaying this frame or treating expiry as non-execution.
+  No production/app edits, grant change, journal cleanup, LCD write, service
+  restart, deployment, backup, commit or publication in this diagnosis.
+
+  **Prepared LCD worker fix and Agent-only update, 2026-11-08.** Compared the
+  working receipt/Agent baseline: Python worker startup consumed part of every
+  frame's bounded budget. Native activation now prepares one private idle child,
+  without opening I2C; authorized writes reuse it. Three-second I/O and absolute
+  command deadlines, one-use permits, failure fencing and no replay are unchanged.
+  Frozen Linux snapshot `366cfc4870ed…`: 474 checks passed, no skips (Agent,
+  display/profile, device/authority/commands and immutable component delivery).
+  Windows targeted checks: 94 passed, 13 Linux-specific skips. Evidence is in
+  `.runtime/cap14-crypto/prepared-worker-evidence`; behavior inputs unchanged.
+  Owner approved only Agent, reserving the display action. Pinned Zero W update
+  used the standard immutable controller, offline locked dependencies and exactly
+  three Agent production files. Loaded build `ed039b24c1ced6be068e4e69f148018bde324c4d4f5219bf170574de3798f621`,
+  PID 1116, active/ready, zero restarts; Core remains PID 31223. App/package/data,
+  grants and connector/Runtime/default/application-host pins were unchanged.
+  Read-only module health is fresh/healthy=true; the prepared child is sleeping
+  with no I2C FD open. Original `cmd_95b09…` remains expired, one delivery and
+  completed receipt; it is still the latest frame. No Start/Send, pending cleanup,
+  grant change, Core update or new frame. Owner next: refresh Monitor, explicitly
+  finish review of that completed uncertain attempt with output off, then enable
+  a new live run. Visible output and sustained operation await the owner's test;
+  the precise old driver exception was not retained, so do not claim it proved.
+
+  **Owner sees clock frozen at 16:24; read-only diagnosis, 2026-11-08.** Current
+  run reached sequence 24, with several successful frames, not one frame only.
+  Last success `cmd_2802f027…` was admitted at 16:24:17 Sofia, completed in
+  6.122 s. Next `cmd_b393fb5f…`, admitted 16:25:05, was delivered after 0.171 s;
+  its one-use Core permit was claimed, but Agent's authorization wait failed.
+  Agent's completed receipt explicitly says failed/not_executed (no driver call),
+  received 0.263 s after the ten-second deadline. Core retained that late receipt.
+  Monitor remains enabled=true but blocked/outcome_unconfirmed/review_required.
+  `LiveDisplay._review_receipt` maps every matching late success/failure to unknown,
+  ignoring the explicit not_executed output; `_check_pending` consequently fences
+  this skipped frame. A local pure-method fixture reproduced that exact projection
+  without creating an app or accessing hardware. This explains why automatic
+  updates stopped; the reason for the slow permit response still needs profiling.
+  After the owner's reboot, Agent still loads `ed039b24…`, PID 823; its private
+  worker is sleeping without I2C open, module health fresh/healthy. Core PID 825
+  and Monitor PID 828 are active, zero restarts. No new production edit, app call,
+  command replay, frame, grant change, service action or deployment. Next proposed
+  scope: distinguish an exact completed not-executed receipt from unknown output,
+  retain original evidence and current-rights checks, and allow a later fresh
+  frame with bounded backoff instead of permanently stopping durable output.
+
+  **Monitor skip correction implemented at owner request, 2026-11-08.** The
+  application now recognizes an exact completed failed/not_executed Agent report,
+  including Core's matching late receipt; aware completion/deadline timestamps,
+  command/device identities and consistent output are required. It clears only
+  its resolved pending intent, retaining the original Core/Agent records and the
+  last confirmed LCD content/time/digest. Five-second monotonic backoff makes no
+  SDK calls; the next tick rechecks access, readiness and the same profile, then
+  renders current saved content under a new sequence/request. No original replay,
+  catch-up queue, authority bypass or change to TTL. Stop wins during lookup;
+  retired grants, malformed/missing receipts and unknown execution stay fenced.
+  Added EN/BG skipped-frame feedback and backend/UI regressions. Before the fix,
+  the regression reproduced blocked instead of running; final isolated Windows
+  run `3mm-crypto-display-4d24bb0…`: all 112 backend checks passed, including real
+  Core package validation/reproducibility. UI copy `aa603cef…`: 49 UI checks,
+  strict types and Vite build passed. The first Vitest start hit sandbox temp
+  ancestry access denial; reran only Vitest on the unchanged copy with permission.
+  Published exactly five checked files to `../3mm-crypto-monitor` after original
+  hash/concurrent-edit and complete executed-input checks; evidence/input lists
+  and copy guard live under `.runtime/cap14-crypto`. Core/Agent production source,
+  manifests, schema and version remain unchanged. No ZIP build/upload, deploy,
+  service action, LCD frame, commit or release; installed Monitor remains 0.7.1
+  without this correction until a separately scoped new package/activation.
+
+  **Owner requested Monitor 0.7.2, upload only, 2026-11-08.** Set the builder
+  version/README to 0.7.2 and regenerated the three package descriptors. Package
+  review caught the missing `last_check.status=not_executed` declaration; added
+  it and a real Core validator regression for each live-operation nested status
+  and get_state. Exact isolated run `3mm-crypto-display-bfd1bb15…`: all 113 backend
+  checks passed. The 49 UI/type/build checks are reused for identical UI inputs,
+  verified byte-for-byte; no service behavior changed after those passed checks.
+  Exact ZIP passed Core package validation, repeat-build equality and wheel/UI
+  source checks. SHA256 `1cf489da09882d86ee20b2a7ff231bca6c402f595b90ae98e7ef5d110fd06106`,
+  46,260 bytes; saved in `.runtime/cap14-crypto/3mm-crypto-monitor-0.7.2.zip` and
+  `../3mm-crypto-monitor/dist/3mm-crypto-monitor-0.7.2.zip`. Guarded publishing
+  preserved other source and older ZIPs. Pinned Zero W transfer and normal admin
+  upload/compilation succeeded with that exact hash/version. Installation remained
+  active at 0.7.1, unchanged; probe session logout confirmed. No activation,
+  consent/grant change, app invocation, LCD frame, Core/Agent update or Git action.
+  Owner next: select/approve/activate 0.7.2 in Extensions and test LCD updates.
+
+  **Monitor-only continuous output / load reduction, 2026-11-08.** Owner
+  confirmed 0.7.2 displays correctly, then reported high Zero W CPU and another
+  missing/unconfirmed live admission. Requested configurable intervals and no
+  permanent stream stop for an uncertain LCD frame. Only the independent
+  `../3mm-crypto-monitor` source was changed (plus this handoff); Core/Agent,
+  rights and the installed device are untouched. New saved LCD/web intervals
+  are 1–300 seconds, default 10; price requests retain their separate period.
+  Browser polling is sequential, suspended when hidden, with immediate manual
+  controls. Unchanged LCD content is checked locally before any SDK discovery;
+  the worker no longer polls twice per second. Each new live intent commits an
+  absolute SDK `not_after` of 10 seconds before dispatch. After an uncertain
+  deadline, retain the original intent/outcome in bounded own history (last
+  200), wait at least five seconds and respect the configured LCD cadence,
+  then render a fresh state update under a new ID. This explicitly replaces
+  the old permanent-unknown fence for this replaceable LCD stream only; it is
+  not a generic retry policy or proof that a missed frame did not execute.
+  Core/Agent journals and last confirmed content remain unchanged. Each later
+  admission requires fresh rights/readiness and the originally approved
+  target/profile. Access/provider faults wait and recheck without submitting;
+  restored current authority can resume, never by trusting a retired receipt.
+  Stop wins during SDK calls and after restart. Additive migration `0008`
+  preserves settings, quotes, consent and receipts; an older pending intent
+  without an absolute deadline is retained in history, never replayed, before
+  the newly deadline-bound stream resumes if its checkbox was already enabled.
+  Windows frozen run `3mm-crypto-display-14c55915…`: 125 behavior checks passed;
+  three package consumers found an overlong permission description. Only that
+  text was shortened; all three real package/schema/reproducibility cases then
+  passed (`4dd41afd…` plus the live status-schema case). UI run `f673b09e…`:
+  53 passed, strict types and Vite build passed. Earlier UI fixture errors were
+  repaired, not ignored. Local browser mock checked dark/light and 390px layout
+  with no horizontal overflow; preview server/tab were closed. Guarded copy
+  verified executed input hashes and unchanged original source before publishing
+  exactly 14 files. No version change, distributable ZIP, upload, activation,
+  device frame, service change, commit or push. CPU benefit is not measured on
+  Zero yet. Optional owner choice pending: prepare Monitor 0.7.3 next; do not
+  overwrite the existing 0.7.2 ZIP with the changed schema/code.
+
+  **Monitor 0.7.3 package prepared, owner approved, 2026-11-08.** Changed only
+  the version/README and regenerated the three descriptors for schema `0008`.
+  Exact package run `3mm-crypto-display-e6345bc0…`: both real Core validator and
+  reproducibility checks passed. Reused the 125 behavior cases, live output-
+  schema check, 53 UI cases, strict types/build and local visual review above:
+  every service/UI/test/tool input is byte-identical, and the builder differs
+  from the final checked candidate only at `VERSION = '0.7.3'`. Exact ZIP was
+  rebuilt byte-identically, validated by Core, and its wheel/source/descriptors
+  verified against those inputs. SHA256
+  `cac05a293140a2a12c9455248e75d92f4d6c3ed89a0ad8cede09afbfcddecc4d`,
+  48,099 bytes. Saved `.runtime/cap14-crypto/3mm-crypto-monitor-0.7.3.zip` and
+  `../3mm-crypto-monitor/dist/3mm-crypto-monitor-0.7.3.zip`; guarded source copy
+  updated the five version/metadata files and preserved the existing 0.7.2 ZIP.
+  No upload, activation, LCD action, service restart, Core/Agent change, commit,
+  push or release. Owner can upload/review/activate 0.7.3 separately; actual
+  Zero W CPU and continuous-output acceptance remain to be measured there.
+
+  **Monitor 0.7.4 — simple default / Debug-only tools, 2026-11-08.** Owner
+  reports 0.7.3 currently working and is leaving it running for observation.
+  Requested minimal normal controls and technical settings/one-frame tools
+  only in Debug. Changed only the separate Monitor frontend, related UI tests,
+  local fixture, README and version/package metadata. Normal mode now has the
+  preview, one persistent LCD switch with short status, content presets,
+  currencies, LCD cadence and rotation when multiple screens exist. Debug is
+  local page state, off on opening; it reveals original status/IDs/receipts,
+  recovery and one-frame controls, source/precision/row/timezone/other advanced
+  settings. It does not weaken checks, change saved preferences, start/stop or
+  send a frame. Hidden custom arrangements are preserved; draft preview can
+  return to the saved view without discarding edits. The normal cold page
+  performs one read-only display discovery when geometry is absent, rather
+  than depending on mounting the Debug-only one-frame component.
+  Frozen UI run `3mm-crypto-display-e7d0228d…`: 61 passed, strict types and
+  Vite build passed. Exact-version package run `def02cc4…`: 2 real Core
+  package/schema/reproducibility cases passed. Reused 125 backend behavior
+  cases and the live status-schema check for byte-identical Python inputs;
+  builder differs from checked 0.7.3 only in version. Schema remains `0008`.
+  Local mock visual review covered normal/Debug, light/dark, desktop and
+  390px width; no physical device/API was used and preview server was stopped.
+  Guarded publication copied exactly 11 files after concurrent-edit/input
+  checks. Deterministic ZIP/wheel/UI/descriptors passed exact-byte validation:
+  `.runtime/cap14-crypto/3mm-crypto-monitor-0.7.4.zip` and
+  `../3mm-crypto-monitor/dist/3mm-crypto-monitor-0.7.4.zip`, 50,039 bytes,
+  SHA256 `f0bbab612f35cf9b02bc6dd3caee17301842efd28e7a38a16d367630eb5b505d`.
+  Older ZIPs are unchanged. No upload, activation, LCD write, Core/Agent change,
+  device/service action or Git publication. Owner's ongoing stability/CPU
+  observation is not replaced by these local checks.
+
+  **LCD stops again on Monitor 0.7.4 — Agent recovery, 2026-11-08.** Pinned
+  read-only Zero W checks found Core/Monitor active without restarts, working
+  price requests, present I2C and unchanged effective grants. Persistent output
+  was enabled but waiting for the provider; Agent reported display unavailable
+  and had no private LCD child. A failed/unknown write permanently latched both
+  the display service and native transport closed. The old generic journal
+  does not establish the original driver exception or an electrical cause.
+  Only four Agent sources changed: separate recoverable worker retirement from
+  permanent close; trusted heartbeat maintenance prepares code after a 10-second
+  backoff, never from readiness/readback; do not replace an unreaped worker.
+  Preparation sends no frame and does not open I2C. Only a newly authorized
+  command can write, with full LCD initialization after replacement. Original
+  unknown receipts and duplicate-delivery fences remain unchanged; disable wins.
+  Windows targeted checks: 116 passed, 15 Linux-only skips. Isolated Linux
+  snapshot `4d0fcd05f9f2…`: 462 Agent/protocol/authority/command/release checks
+  passed, no skips. Its complete Agent delivery inputs exactly match the built
+  candidate. Final snapshot `230dee8deceb…`: 6 worker-recovery checks passed,
+  including three real private-child timeout/replacement cycles and 60 fresh
+  successful frames, without physical I2C. No dependency or deadline changes.
+  Owner explicitly approved Agent-only deployment and possible resumption from
+  existing LCD consent. Standard immutable update/health/rollback completed:
+  `ed039b24…` -> `fda365a79ede2593bda5741c952f75ad647f492042448a6e4ce0f7f278fc5b79`,
+  artifact SHA256 `5a1dc892dd092582f367f5013cef7746da731ca1b8a4167da1d4b7c9a0ad3a1c`.
+  Agent PID 4362 is active, no pending update journal. Core PID 825 and Monitor
+  PID 827 stayed unchanged, as did package/configuration, grants, consent, other
+  component pins and the original expired receipt. No Start/Send, replay, Pi
+  reboot, reset, Core/Monitor update or Git action. Automatic output resumed.
+  Bounded observation through 19:48:15 UTC: sequence 9 -> 22, nine fresh
+  executed successes and four expired commands; later successes followed the
+  earlier expiries without manually restarting output. Provider stayed healthy;
+  final mode is running/frame_unconfirmed_skipped, enabled true, no pending
+  frame. Last confirmed write advanced to 19:47:51 UTC. Core/Monitor kept their
+  PIDs and all three services had zero restarts. Thus missed deadlines remain,
+  but did not permanently stop this observed stream. No real hardware fault
+  was injected; repeated worker recovery is covered by the isolated tests.
+  This is software evidence, not optical readback or long-duration uptime.
+  Separate deferred
+  finding: Core command lookup scans existing history (313 records observed);
+  do not broaden this Agent repair into a Core performance change.
+
+  **Owner confirms LCD continues; physical-button gap, 2026-11-09.** Owner
+  reports occasional errors but working display. Local Monitor 0.7.4 inspection
+  confirms `button_gpio` is saved and the pure `Button.edge` policy is tested,
+  but the service never instantiates it and declares no event subscriptions.
+  README explicitly marks GPIO/AP/reset as unconnected. Existing generic Agent
+  GPIO input event support is separate from this missing Monitor integration.
+  Suggested next slice: approved input binding and short-press next-screen
+  behavior; AP/reset remain separate authority and acceptance. No live pin read,
+  hardware action, service change, implementation, tests or deployment here.
+
+  **Button slice prepared, 2026-11-09 (superseded by the general slice below).** Owner confirmed GPIO17 / physical
+  pin 11 to GND and approved Monitor 0.8.0 preparation, not activation or rights
+  changes. Added a generic input-only `gpio.button` Agent provider and inert
+  admin-panel templates, advertised only by Agents with its trusted handler.
+  Exact device/package/profile approval precedes opening GPIO; no direct app pin
+  access or polling. Pull-up/active-low, debounced release after 30 ms to under
+  8 seconds; native duration uses monotonic kernel edge timestamps. Held-at-boot
+  and long holds produce no action; no AP/reset. Generic Agent ownership checks
+  refuse cross-module capability takeover before opening a new driver; disabling
+  an obsolete module cannot close another owner's service or borrow its health.
+  Monitor declares optional `event:button`/`BUTTON_DEVICE_ID` and an internal-only
+  event handler. Migration 0009 atomically stores selection and bounded event
+  deduplication; retry/restart cannot advance the same press twice. It wakes the
+  existing LCD worker only after commit and never enables stopped output. LCD
+  contracts/consent/receipts, prices and existing settings are preserved.
+  Final isolated Linux snapshot `9c66abcd9836…`, lab `3mm-lab-ghre19lf`: 469
+  Agent/profile/event/denial/revocation/optional-resource/native-artifact checks
+  passed, no skips. Monitor frozen source `3mm-crypto-display-0a52128b…`: 138
+  backend tests passed; unchanged exact source/UI inputs verified against that
+  run and `6a43be17589b…` (61 UI, strict TypeScript and build passed). Final
+  mock-Agent-to-Monitor/dedup group rerun: 11 passed. Main provider form: 20
+  targeted UI checks, type-check and build passed; no new browser visual
+  acceptance. Reproducible, Core-validated ZIP `3mm-crypto-monitor/dist/
+  3mm-crypto-monitor-0.8.0.zip`, SHA256
+  `588a794bbe64bd6f630fb9760cae3492f73614f59a4a5bf4a4881ab932a77a7b`.
+  Guarded source publication verified every original baseline file before
+  copying only the 14 scoped files; old ZIPs untouched. Next requires reviewed
+  Core/Agent update for the new provider/template, then owner install/resource
+  approval and physical button acceptance. No device action, upload, activation,
+  grants, Git mutation, Core version change or release in this slice.
+
+  **General CAP14 input/provider slice prepared, 2026-11-09.** Owner rejected
+  repeating Core changes for individual peripherals and approved Monitor 0.8.1,
+  preserving the earlier 0.8.0 ZIP. Replaced the unshipped button-specific
+  handler/contracts with profile-configured `gpio.digital.input` 2.0 and generic
+  `gpio.input.changed` edges. One approved profile maps 1–7 logical inputs to
+  distinct supported BCM pins, with configurable debounce. Native edges retain
+  kernel monotonic timestamps, per-channel sequence and activation stream ID.
+  Exact profile/ownership/board checks precede opening GPIO; partial construction
+  releases claimed lines. There is no application GPIO polling or AP/reset logic.
+  Monitor owns short-press interpretation, current device/channel/pin filtering,
+  gap/reorder/duplicate rejection and atomic migration 0009 state. Restart
+  disarms an unfinished press. Existing LCD consent, receipts and output remain
+  separate; a button never starts stopped output.
+  Core now reads inert package-supplied form definitions, not a Python registry
+  of drivers. Five public starter resources live in `backend/provider_templates`;
+  an uploaded third template with a different logical channel works through the
+  same admin catalog/preparation path without Core/Agent source changes. Bounded
+  typed scalar bindings cannot change privileges, entrypoints or contract shape.
+  Exact source-ZIP SHA pins selection; a distinct derived instance namespace
+  avoids immutable-ID conflicts even for default settings. Corrupt descriptors
+  and health-marker CRCs are refused as validation failures; a broken optional
+  source cannot take down the catalog and remains visible for removal. Preparing
+  bytes does not install, approve, open GPIO or queue a command. The authoring
+  generator is not imported at runtime; release/deploy inclusion was inspected.
+  Final Linux template/package-consumer group: 65 passed, no skips, snapshot
+  `bc5cd108dabc6c68cb4080b6f4409ffac30e62f92105b325a510c6f7fdab1753`;
+  evidence `.runtime/cap14-gpio/runs/cap14-generic-templates-731a6113f0024113822318f954ec3922`.
+  Final broader Agent/profile/event/authority/artifact integration: 552 passed,
+  no skips, 142.09 s on the same source/dependency environment. Evidence:
+  `.runtime/cap14-gpio/runs/cap14-generic-input-c3ba8c3e1fbb4c35b333e0e031854833`.
+  The initial integration failed because private-data snapshot filtering also
+  omitted starters placed under `backend/data`; moving public assets to
+  `backend/provider_templates` fixed delivery without weakening that filter.
+  Main provider UI: 20 targeted checks, type-check and build passed; no new
+  browser visual acceptance. Monitor frozen checks: 143 backend and 61 UI plus
+  strict TypeScript/build passed. Exact input comparison permits their reuse
+  after the version-only 0.8.1 edits; 2 exact-version package checks also passed.
+  Deterministic ZIP validated twice with current Core:
+  `../3mm-crypto-monitor/dist/3mm-crypto-monitor-0.8.1.zip`, SHA256
+  `9a26530280730ef99ae6bcfd3a1c4c7acd56bc9be0e3264cc34699554c31cd96`.
+  Guarded publication verified sibling baseline hashes and copied only 9 scoped
+  source/descriptor files plus the new ZIP; old 0.8.0 ZIP remains unchanged.
+  Limits: arbitrary new native driver loading is not implemented; current
+  primitives still need one reviewed foundation rollout. Older GPIO event
+  sources lack the new timestamp/stream guarantees; general event-schema
+  compatibility preview remains a separate discovery gap, not physical input
+  acceptance. Next: separately approved Core/Agent rollout, then owner provider
+  installation/event approval and GPIO17 physical trial. No device action,
+  upload, activation, rights change, Git mutation, Core bump or release here.
+
+  **Owner-approved dual-device rollout completed, 2026-11-09.** Pinned SSH
+  identities verified separately for Zero W (`rasp-3mmw`, ARMv6) and Pi 3
+  (`rasp-3mm`, aarch64); no state/rights migration between devices. Standard
+  immutable Core deployments succeeded as `local-zero-gpio-191d694d32e8aa0eb73b`
+  and `local-pi3-gpio-570e061c22d437f8202b`. Exact inventories, readiness,
+  independent pins and existing app/configuration/grant digests were verified.
+  Owner independently activated Monitor 0.8.1 on Pi 3 during preparation;
+  preflight caught the changed baseline and the fresh plan preserves that
+  choice and all three installations. Zero retains active 0.7.4. No app
+  activation or grant change was performed here.
+  Agent updates stopped in isolated staging imports, before publication,
+  pointer changes or update journals; old Agents remain healthy. Measured old
+  and candidate Pi 3 imports both succeed in about 20.4 s against a 20 s stage
+  limit; Zero's healthy old import succeeds in 90.63 s against 90 s. This is a
+  demonstrated controller deadline defect, not failed GPIO startup. Agent
+  stage/readiness now allow bounded 60 s (180 s ARMv6), retaining exact build/
+  PID checks, final deadlines, rollback and unchanged other-component budgets.
+  Linux checks: 101 unchanged successes reused from source `29a0033a8cd0…`,
+  plus two corrected Public Web budget assertions passed on `2f4194831e98…`;
+  only that test file changed, all production/dependency inputs identical.
+  Includes real artifact/update/rollback consumers, timeout no-publication,
+  wrong identity and late correct-identity refusal. Second immutable Core
+  candidates change only `deployment/service_component.py`; no installed
+  controller patch/bypass. Pi 3 second Core deployment and Agent continuation
+  succeeded: Core `local-pi3-gpio-87b412bd29235429867c`, PID 7569, ready;
+  Agent `37324174b1b8bb12492163ac3dc6e6d05fd516e3a72e4337f6e2bf135c612aca`,
+  PID 8168, running with zero restarts. Final independent inventory/source/
+  dependency/app/grant/pin proof is `.runtime/cap14-gpio/pi3-final.json`.
+  Monitor 0.8.1 remains owner-selected and active; all three installations are
+  unchanged. Zero second Core installer also succeeded as
+  `local-zero-gpio-72faf364491568e394d0`; full inventory, ready response and
+  unchanged Monitor 0.7.4 settings/grants/pins were verified before starting
+  its standard Agent continuation. One three-second cold-start HTTP probe
+  timed out, then the installer completed successfully without rollback.
+  Zero Agent continuation succeeded with build
+  `a4f3044711536ab66ac362407e90fe6f3958f66269fbd79e0870508f27b8ac80`,
+  artifact SHA256 `390b0fb7ad3330db5ff6e19a7275b33185350fb5faed4e78f8686fd0b77a6cb1`;
+  Core PID 27499 stayed unchanged during Agent activation. Final read-only
+  rollout verification passed for exact Core files, native source/dependency
+  binding, readiness, original app/settings/grants and other component pins.
+  Monitor 0.8.1 ZIP above was uploaded/compiled through the normal Zero Core
+  catalog API, not activated. A follow-up template check initially used the
+  wrong read-only route and returned 404; inspection at the correct route
+  confirmed the exact package already present, so no second upload occurred.
+  The normal admin API reports five templates including native GPIO input;
+  the probe session was logged out. Zero still runs 0.7.4 for owner activation.
+  Owner next: install/review the GPIO input profile in Devices (GPIO17 / pin
+  11 to GND), activate Monitor 0.8.1, select the optional input resource and
+  approve its event access, then test short presses with multiple saved screens.
+  No provider installation, event approval or explicit hardware command was
+  performed; existing persistent LCD consent could resume after service starts.
+  Only automatic installer rollback preimages, no separate backup, device
+  reboot, state migration, Core version bump, commit, push or publication.
+
+  **Pi 3 reactivation failure diagnosed read-only, 2026-11-09.** Owner later
+  reported Monitor cannot activate. Fresh pinned snapshot still has the exact
+  Core/Agent deployment and Monitor 0.8.1 ZIP/configuration digest, but Monitor
+  is now disabled, `authority_mode=review_required`, with no grant; Core/Agent/
+  Runtime are healthy and the stopped app has no crash/error record. Package
+  preparation, compiled UI files and review-key read lease pass. The current
+  authority status itself raises ValueError, so fresh consent cannot proceed.
+  Strict read-only composition and safe stack/schema metadata identify the
+  exact defect: `_registration()` bounds the ENTIRE effective device capability
+  registry before selecting `display.character`. Installed `gpio.digital.input`
+  declares public schema `monotonic_ns.maximum=9223372036854775807`; the generic
+  authority-context JSON copier rejects numbers over `2**53-1`, including that
+  unrelated schema bound. Thus a GPIO provider prevents even LCD review, not
+  merely the optional button scope. Missing optional providers alone are already
+  omitted correctly. Do not remove the provider, weaken grants or blindly retry
+  activation. Next bounded correction needs distinct bounded contract-schema
+  handling and real combined GPIO/LCD fresh-consent coverage; ordinary authority
+  values must retain their safe-integer/size/depth limits. No production code,
+  rights, app activation, service, package or hardware changes in this diagnosis.
+
+  **Owner-approved Core schema-metadata correction, 2026-11-09.** Explicit
+  schema slots come from trusted protocol/model annotations, never arbitrary
+  configuration key names. Only integer numeric bounds/enums in those slots
+  accept signed-64 values; ordinary JSON, configuration, request values,
+  revisions and clocks retain `2**53-1`. Finite-float, byte/node/depth limits,
+  typed canonical encoding and old fingerprint vectors remain unchanged.
+  Registry resolution, source/control identities, consent/subject/policy
+  comparisons, sealed plan/grant/action roundtrips and direct query/relational
+  consumers share this rule. No protocol, SDK, Agent, API or DB migration.
+  Real Linux fresh-consent coverage uses validated LCD/GPIO Agent packages,
+  optional absent/unhealthy input, real protected seals/native admission,
+  non-administrator refusal, revocation and another application's isolation.
+  The LCD-only test with the exact old 13 Core files reproduces the refusal at
+  preview; the same test passes with the fix. No provider removal workaround.
+  Final focus snapshot `207d3bd0d0c7…`: 26 passed. Authority, contexts and
+  consumers: 539/402/397 passed on `bcbf3897df6d…`; only the new focus fixture
+  changed between these snapshots, verified before reuse. Final query/relational
+  group: 184 passed. Across overlaps: **1405 distinct passed, 30 skipped**
+  (separate-root/foreign-UID or non-POSIX boundaries, not executed acceptance).
+  Python 3.14.4/Linux, dependency digest `f91ccaad806c…`; retained JSON/XML/logs
+  and the expected old-Core negative result under `.runtime/cap14-schema/`.
+  Exact scoped diff/whitespace reviewed; no main frontend changes/build.
+  Pinned Pi3 preflight matched all files, component pins, three apps' package/
+  configuration/grant digests and both provider installation records. Prepared
+  only these 13 tested Core files over the exact installed immutable archive;
+  unchanged Core runtime dependencies match the test source. New archive
+  SHA256 `96187ba822c1d9efb201982f8e8ebb79bd2e9c8cdeac6645c819d060a5b3d422`,
+  release `local-pi3-gpio-a77670c29bf2fb7306a9`. Normal installer
+  `3mm-pi3-gpio-a77670c29bf2.service` succeeded; exact installed Core files,
+  `/ready`, all independent pins, three apps' package/configuration/grants and
+  both provider installation records passed post-deploy verification.
+  Read-only current Core inspection now reports Monitor `review_available=true`,
+  no review blockers, and all four scopes (LCD, two connectors, button event).
+  Monitor remains disabled on exact 0.8.1 ZIP, no grant or access saved: the
+  missing UI trust record is expected until owner approval, not a new refusal.
+  Only standard automatic rollback preimages; no separate backup, reboot,
+  Agent/Runtime/host update, app activation/approval, hardware command or Git.
+  Owner next: reopen Application access, approve the exact selected resources
+  and separately activate Monitor. Live LCD/button acceptance remains theirs.
+
+  **GPIO17 no-visible-response follow-up, read-only, 2026-11-09.** Owner has
+  now approved/activated exact Monitor 0.8.1. Current signed grant is valid and
+  includes `event:button`; selected device/channel match native GPIO17 and
+  the app has two saved screens. Core, Agent, Runtime and Monitor have zero
+  restarts. Enabled native GPIO provider is healthy without a runtime error.
+  Core contains eight real `gpio.input.changed` edges, contiguous source
+  sequence 1–8. Four deliveries were acknowledged (one app result `advanced`,
+  three `ignored`); three deliveries became `dead_letter` with zero attempts
+  and generic event-authority refusal; one edge has no delivery row. Missing
+  press/release halves explain the app's later ignored pairs. This is evidence
+  of successful capture/transport, not a broken pin or missing owner approval.
+  Source audit: `effect_admission()` uses a shared verification key lease for
+  command/connector only, unnecessarily exclusive for events. Its broad catch
+  erases transient key/DB errors into ValueError. `_event_granted()` converts
+  that to false: enqueue silently omits the event, while claim/final admission
+  permanently dead-letters it. A disposable Linux test on unchanged deployed
+  production code reproduced this with a real independent shared key reader:
+  valid grant succeeds before/after, fails only while the reader holds the
+  lease, and enqueue retains no delivery. The one passing diagnostic case
+  proves the bug, NOT a repaired implementation. Original WSL temporary
+  evidence disappeared before durable copy; retain the returned tool-output
+  only, explicitly marked recovered (no claimed original XML), under ignored
+  `.runtime/cap14-gpio/button-lease-diagnosis/`. No live event replay or state
+  mutation. Next bounded fix: general event verification should not conflict
+  with unrelated readers; distinguish temporary admission unavailability from
+  real revocation/binding change and retain bounded pending unsent work without
+  invoking a handler before fresh admission. Keep real denials fail-closed and
+  old terminal evidence intact. No production edit/deploy/permission change in
+  this diagnostic follow-up; request owner scope before the next Core rollout.
+
+  **Owner-approved Core-only event delivery fix, 2026-11-09.** Event grant
+  verification now shares the read-only key lease used by commands/connectors.
+  Only actual flock contention and SQLite BUSY/LOCKED are typed temporary
+  admission failures; missing/corrupt keys, revoked rights, epoch/artifact changes
+  and missing authority storage remain real refusals. Unsent pending heads keep
+  their original ID/epoch, FIFO position and attempt count, with a one-second
+  admission backoff. Runtime still admits freshly before a durable claim/send.
+  HTTP captures each NEW device event and its initial declaration/epoch matches
+  in one transaction before 202, without key admission or handler execution in
+  that transaction. Contention rolls both back and returns 503 for the Agent's
+  existing same-ID outbox retry. Exact duplicates never rematch historical events
+  under later rights. No migration, historical sweep or terminal replay.
+  Final isolated Linux groups: **774 passed, 4 skipped**. Snapshot
+  `1756b0775c6a…` includes the final 17 real-lock/SQLite/HTTP regressions and
+  onboarding with two adapters/apps. Authority/effects/UI results on
+  `4b60f98995f8…` are reused: the only subsequent source difference is the
+  standalone onboarding test's bounded second Runtime poll, not production.
+  Skips: distinct-UID/root boundaries, non-POSIX-only refusal and the optional
+  browser decoder's absent Node/esbuild toolchain. No frontend code/build change
+  or full hosted CI claim. Exact XML/log/input hashes are in the ignored
+  `.runtime/cap14-events/runs/` and deployment plan.
+  Prepared five-file delta over the exact installed Core archive, preserving all
+  other payload bytes. Candidate `local-pi3-gpio-da5bc57e32111fb7dbd4`, archive
+  SHA256 `d0edec1f59ebb8bea643c3c7e0ce24c295f167029e0903c24e3c88d40ba87109`.
+  Pinned Pi3 preflight and standard immutable installation completed successfully:
+  `3mm-pi3-gpio-da5bc57e3211.service`, Result=success, exit 0, SubState=exited.
+  Exact installed payload/metadata checks and Core `/ready` passed (PID 36819).
+  Core, Agent, Runtime, connector and both enabled app hosts are active/running,
+  each with NRestarts=0. Standard installer service restarts occurred, but all
+  independent component pins, three application packages/configurations/grants
+  and two native provider installations are unchanged. Monitor remains 0.8.1;
+  Agent remains `37324174b1b8…`. All seven old terminal deliveries were compared
+  exactly and retained, not replayed. Final read-only snapshots are ignored
+  `cap14-schema/event-final.json` and `cap14-events/final-extra.json`.
+  Automatic rollback preimage only; no separate backup, Agent/Monitor update,
+  rights change, explicit hardware command, reboot, Zero W action or Git action.
+  Owner's physical short-press GPIO17 acceptance remains separate; do not claim
+  a new hardware edge or visible screen switch from the software checks alone.
+
+  **Queued next, owner request: smooth clock with seconds.** Separate the clock
+  from data/status polling: local web ticking and occasional time synchronization;
+  physical LCD ticking must be local to its provider, with I²C writes but no
+  per-second Core/internet request. Current Monitor source is under the sibling
+  `3mm-crypto-monitor/source/frontend` and `service/crypto_monitor` directories.
+  Read-only design audit only so far; no clock code, contract, package/version,
+  provider authority or device change is included in this Core-only rollout.
+
+- **CAP20 — read-only application-host resource report, 2026-11-06.**
+  `tools.application_resource_report` reports the current unit's CPU, memory
+  and task caps from Linux cgroup v2. It distinguishes a finite kernel cap, a
+  cap not set at this cgroup level and an unavailable observation. Changed
+  unit/cgroup identity discards the sample. No new service, admin endpoint or
+  isolation claim. Final Linux snapshot `020453279ae7…`: 11 report checks
+  passed; same 11 passed on Windows. The unchanged systemd templates passed
+  26 regression checks in the preceding Linux run (`54cd31949f04…`). Exact
+  final report was run read-only over pinned SSH on `rasp-3mm`: one active
+  application host showed one CPU-equivalent bandwidth and 64 tasks. systemd
+  reported MemoryMax=256 MiB, but the memory controller is absent at the root
+  and the running kernel command line contains `cgroup_disable=memory`; the
+  tool reports the memory limit as unavailable, not enforced. No boot change,
+  restart, load test, deployment, commit or push; owner runs Zero W acceptance
+  separately. Suggested next CAP20 slice: surface missing controllers before
+  an operator relies on a configured cap; live memory enablement is separate.
+  **Preflight warning added locally.** The standalone full-profile bootstrap
+  preflight reports unavailable/unverifiable cgroup v2 memory as `WARN`, not a
+  required failure; available at the root is not proof of per-unit enforcement.
+  The last-line format and required failure exit remain unchanged. Exact Linux
+  snapshot `b517b4dd6c03…`: 186 preflight/bootstrap/packaging/report checks;
+  Windows: 23 checks. Exact standalone checker on `rasp-3mm` over pinned SSH
+  reported `WARN resources.cgroup-memory` and `result=ready failed=0` with exit
+  zero. No boot, network, service, Node profile, deployment or Git change.
+  **On-device memory cap accepted on rasp-3mm.** With explicit owner approval,
+  verified the mounted Pi 3B+ boot partition and saved the original as
+  `/boot/firmware/cmdline.3mm-cap20.bak`. The default `cgroup_disable=memory`
+  was present only in the live boot arguments; appended one
+  `cgroup_enable=memory` to `/boot/firmware/cmdline.txt`, preserving the rest
+  and verifying both checksums. Issued one restart and confirmed a new boot ID,
+  unchanged Core release, Core `/ready` and active Core, Runtime, Agent and
+  the same application. Its signed health/Core-Runtime probe passed; the
+  kernel now exposes memory at the cgroup v2 root and application
+  `memory.max=268435456` (256 MiB). The exact preflight changed from WARN to
+  PASS, still `result=ready failed=0`; CPU and tasks caps are unchanged.
+  No stress/OOM trial, installer change, Zero W action, commit or push in this
+  device acceptance. Restore the saved cmdline and restart only if rollback
+  is separately requested; the original remains on the boot partition.
+  **Report and preflight pushed.** Commit `b54f27451c50` on `main`; CI run
+  `42163321645` was in progress at handoff. Reused the 186 Linux and 23 Windows
+  checks for the exact code/test inputs. The mixed work log and simplification
+  plan remain local. The ignored `.runtime/cap20-memory-boundary/` probe and
+  runbook are prepared: 32 MiB, no swap, one transient unit, Core readiness and
+  unchanged service invocations. The dry plan and simulated limit, outcome and
+  cleanup checks passed. **Live memory-boundary trial accepted on `rasp-3mm`.**
+  With owner approval, ran the reviewed probe once over pinned SSH. The
+  temporary unit verified its own kernel limits and ended with `Result=oom-kill`;
+  cleanup verified inactive. Core `/ready` passed before and after and at all
+  10 active-probe samples. Boot ID and all five service invocations (Core,
+  Runtime, Agent and two application hosts) were unchanged. This checks process
+  continuity, not application requests under sustained load. No deploy, reboot,
+  release or Zero W action. CAP20 CI `42163321645` later failed on the lost
+  task-admission reply test; see the scoped follow-up below.
+  **Supervision reporting added locally.** The same read-only command now
+  distinguishes stopped, starting/stopping, automatically restarting and failed
+  hosts. It reports the bounded systemd result and restart counter separately
+  from live kernel limits, and discards both observations if the unit changes
+  during the sample. Linux snapshot `7eb4c5be74b9…`: 47 report/template checks
+  passed; Windows: 21 report checks passed. Also checked the property format
+  of a stopped and an active standard service in WSL, read-only. No Raspberry
+  Pi acceptance, service policy change, deploy, commit, push or release change.
+  **Application restart budget added locally.** Each app unit keeps a 3-second
+  retry delay and allows five starts per 60-second systemd interval; exceeding
+  the limit stops automatic restarts for that unit without a host/Core action.
+  Reviewed activation and rollback rearm only their selected units before start;
+  no new API or authority path. Backup resumes Core/Agent first and does not
+  rearm failed/auto-retrying instances. Linux snapshot `889b0a7317c9…`: 400
+  checks passed, 43 skipped for separate root/optional image profiles; installer
+  syntax passed. A disposable WSL systemd fixture confirmed exhaustion via the
+  manager journal (unit result retained `exit-code`), refusal before rearm,
+  and successful start after an exact-unit reset. Fixture stopped and removed.
+  No Raspberry Pi acceptance, deployment, commit, push or release change.
+
+- **Zero W clean-install login loop, 2026-11-06 — diagnosed read-only.**
+  Owner reported two successful clean installs, then repeated logout after
+  Crypto Monitor activation. On the current `rasp-3mmw` card, pinned SSH
+  confirmed v0.3.8 and Crypto Monitor 0.7.0 active. In the retained boot,
+  Core and the application had no restarts, Core `/ready` returned 200 and
+  there was no kernel OOM record. At 06:55 EET two successful logins were each
+  followed within a second by HTTP 401, including `/api/user/refresh`.
+  The active SQLite DB (`b096b7e82f86`) contains one unblocked administrator
+  with NULL `subject_id`; the recent sessions are active and unexpired.
+  Installed first-boot SQL omits `subject_id` when creating the administrator
+  after migration, while both application access and token refresh require
+  it. The application exposes the provisioning defect; it did not crash Core.
+  Owner requested the clean-install fix only. `065b528b6c3e` assigns a fresh
+  subject in the first-boot insert. No backfill, migration, or change to existing
+  identities, permissions, or login checks. The regression reproduced 401 after
+  login on a fresh database migrated to head; final test verifies application
+  access, refresh preserving the subject, and denial after logout.
+  CI `42163321645` failed separately in `test_lost_admission_reply_uses_original_lookup_only`.
+  `99925678529d` removes the test's dependence on cold worker process startup
+  and result polling: the real worker claims once through Core's socket and
+  the original lookup verifies success, no second execution. No production
+  task changes or widened deadlines. Linux snapshot `e92a1346808e…`: 193
+  checks passed, one superseded assertion in the new first-boot test; final
+  snapshot `f02b2ac09210…` passed the corrected first-boot test and three
+  lost-reply runs. The corrected first-boot test also passed on Windows.
+  Both commits pushed to `main`. CI `42168210102` advanced past the Core
+  suite, then failed `agent/tests/test_role.py::test_setup_service_role_is_consumed_by_agent`:
+  the copied test table omitted `subject_id`, so setup correctly returned 409.
+  `92dab4846afc` uses Core's current user-table definition in this integration
+  test; production code and checks are unchanged. Exact Linux snapshot
+  `6b8dff552982…`: 2,865 passed, 11 skipped (root/systemd/optional media)
+  across the Agent and remaining Python suites plus first-boot/session tests.
+  Windows Agent-role and Setup API: 53 passed. Follow-up pushed to `main`;
+  CI `42173867312` in progress. No device changes, restore, restart, reinstall,
+  deployment, tag or release. Physical clean-card acceptance awaits the next
+  published artifact.
+
+- **Zero W upgrade to published v0.3.8, 2026-11-05.** At the owner's request,
+  upgraded the existing full-profile `rasp-3mmw` using the published v0.3.8
+  ARMv6 release and tagged bootstrap. The archive checksum and preflight passed;
+  the detached installer reported deployment succeeded. Core, Agent and Platform
+  Runtime are active, Core `/ready` and the frontend returned HTTP 200. Current
+  points to `v0.3.8`; previous remains `experimental-037-armv6-r6`. The existing
+  Crypto Monitor installation row remains disabled and requires access review;
+  no recovery, access approval or activation was performed in this upgrade.
+  This is an upgrade on existing media, not clean-install acceptance or proof of
+  Crypto Monitor activation on the published release.
+
+- **Core 0.3.8 candidate — ARMv6 Hub and stopped-package recovery, 2026-11-05.**
+  Owner requested installer fixes, deploy to `rasp-3mm`, then commit/push and
+  an immutable release only after green CI. The bounded CAP10 guest draft is accepted separately.
+  The new ARMv6 Hub archive includes pinned Rollup WASM 4.65.1 and esbuild
+  0.25.12 built with Go 1.24.12 and GOARM=6. Bootstrap selects the separate
+  full-profile ARMv6 catalog, keeps the OS network by default, and installs
+  ARMv6-only Python build prerequisites. The compiler is exercised before
+  switching services. Python 3.13 is required; Node and other Hub architectures
+  retain their previous artifact selection. Coordinated ARMv6 time budgets
+  preserve actual health checks. The new exact release still needs hardware
+  clean-install acceptance on Zero W; earlier r4/r6 trials are not that proof.
+  Explicit recovery can return a verified stopped ordinary package to access
+  review, including the previously recovered disabled state without inert
+  provenance. It does not replay activation, approve access or erase data.
+  Rechecked the real sealed lifecycle, prior-grant fencing and explicit
+  reapproval before activation. First Linux snapshot `92c5a6323a44…` passed
+  388 focused cases; Windows UI 24 and TypeScript passed. Final checked
+  aarch64 deployment kit `720cd778e409cf15f3579200…` passed 219 Linux checks
+  and reused the exact-input frontend build and 876 frontend tests. Independent
+  builds of the four Core archives matched byte-for-byte; only the ARMv6
+  archive contains the compiler bundle, and only its catalog offers ARMv6.
+  Owner independently confirmed the new SSH fingerprint. The first aarch64
+  rollout returned to healthy v0.3.7: after a prior restore, the installer had
+  preferred a stale sidecar key over the Core environment that matches the
+  restored database. Read-only checks confirmed the environment key unlocks
+  the identity and the sidecar does not. The installer now validates the
+  preserved key before downtime and leaves the legacy file unchanged. No key,
+  grant or identity was changed manually. Corrected kit `d307005fd76990d0…`
+  passed 322 Linux checks and reused the same 876-test frontend build. The
+  `rasp-3mm` rollout ended `succeeded`; Core, Runtime and Agent were active and
+  `/ready` responded. The restored key still verified the database identity.
+  Commit `a7caecc4f833…` is on `main`; CI run `42024060565` failed on CAP10
+  checking a public form route before refusing a retired job. The follow-up
+  restores the early denial and passed 199 focused checks, with one distinct
+  OS-principal test skipped locally. Kit `f57ea2449db6253a…` deployed and
+  reached `ready` with Core, Runtime and Agent active. Follow-up commit
+  `05c818eee995…` is on `main`; CI run `42027324166` must pass before tagging
+  `v0.3.8`. Stopped the local publisher on the owner's new Crypto Monitor
+  report; left CI running and confirmed no remote tag. On `rasp-3mm`, Crypto
+  Monitor 0.7.0 is stopped with its verified package and saved configuration.
+  The review key is readable and belongs to this installation, but it does
+  not match the current authority generation, which exactly matches the first
+  deployment rollback. This blocks approval/activation independently of the
+  installer encryption-key fix or LCD. Three installed applications use scoped
+  access. Owner explicitly approved recovering the review key. Ran the
+  authenticated/audited `recover-key` once as the Core service account with the
+  expected old key and installer mutation lock; confirmed the new key is bound
+  to the current generation and closed the temporary login session. Installed
+  package pins, configuration and application states were unchanged. Crypto
+  Monitor remains disabled; its review is available and its old grant is not
+  effective. No new grant, activation, device command or deployment occurred.
+  Next: owner reviews access in Extensions and separately chooses activation;
+  keep release paused until application acceptance and owner direction.
+
+  Follow-up: Extensions now offers explicit admin recovery for a readable,
+  stale review key belonging to this Core. Confirmation is bound to the key
+  ID and current recovery generation; the existing grants remain invalid,
+  application state/data are untouched, and nothing is started or replayed.
+  CI run `42027324166` failed only the Linux job `127244787537`: the first
+  event dispatch was never attempted (`pending`, attempts 0). An isolated
+  baseline did not reproduce the intermittent timeout. The process fixture
+  no longer shares pooled SQLite handles across fork and has a regression
+  check for ownership; startup failures now reap their own child. The
+  production event code and test deadlines are unchanged. Final Linux snapshot
+  `7cbc790dcbe5…`: 181 passed, 4 platform/privilege checks skipped. Extensions
+  and authority UI: 84 tests, TypeScript and production build passed. A fresh
+  remote CI result is required before release. With owner approval, pushed
+  only the two fixes and their documentation to `main` in `997cdc5e337e…`;
+  CI run `42066690157`: the first Linux suite passed (6717 passed,
+  611 skipped), including the event regression. The deployment/SDK suite
+  stopped at the CORS environment test, which referenced the removed
+  master-key sidecar branch. The test now supplies a synthetic preflight
+  value and checks the staged environment before the live write. The exact
+  corrected Linux snapshot `65e990c2e89e…` passed the entire deployment/SDK
+  group: 745 passed, 8 optional or privileged checks skipped. No installer
+  behavior changed. Owner requested push and CAP12 work while CI runs.
+  Pushed only the test fix to `main` as `9e1f02b5f05a…`;
+  Exact main push CI `42075813285` completed successfully. Owner requested
+  release; annotated `v0.3.8` pushed at `9e1f02b5f05a…`, starting Release
+  `42080617487`. Publication not yet confirmed; no CAP12 or device deployment.
+
+- **CAP12 — signed callback verifier, 2026-11-05.** First local slice:
+  fixed HMAC-SHA256 profile binds the exact bounded body, trusted endpoint
+  audience, event ID and timestamp. The first verifier-only slice did not
+  change CAP10. See the
+  [Public Web contract](PUBLIC_WEB_EXTENSION_PLAN.md#cap12--signed-callback-verifier-local-contract-only).
+  Windows: 29 verifier cases passed. Exact Linux snapshot
+  `fadfa5c589a9…`: 894 protocol and Public Web tests passed, no skips
+  (includes the verifier cases). CAP12 changes stay local.
+  Follow-up: `tools.webhook_lab` serves one literal loopback-only POST with a
+  read deadline, strict framing and a versioned, separate SQLite inbox.
+  `202` follows commit; fresh signed retries get the original receipt, changed
+  bytes conflict, and a failed commit or full inbox never returns success.
+  Real HTTP tests cover lost acknowledgement, key replacement, malformed
+  framing, and stopping/reopening in a separate process without a second row.
+  Windows: 50 focused tests passed. Exact Linux snapshot `1173ef95e22d…`:
+  915 lab/protocol/Public Web tests passed, no skips. Tests used synthetic
+  data and terminated the local listeners. No Core migration, installed route,
+  application dispatch, deploy, commit, push or release for CAP12.
+  Reviewed-lab follow-up: explicit exact instance/package binding, pinned to
+  Core generation, incarnation, epoch and grant record revision. Current sealed
+  approval and active state are checked for each valid signed request under the
+  existing authority fence through the local inbox commit; no app invocation.
+  Disable, revoke, package drift and revoke-before-admission deny without
+  exposing receipts. Fresh consent cannot reopen the old inbox. Version-2
+  disposable inbox uses a fresh directory; old files are not migrated or reset.
+  Windows: 51 focused checks. Linux snapshot `923dc554f106…`: 178 CAP12,
+  authority/consent, lock-order, CAP10 and Public Web tests passed, no skips.
+  Declaration/delivery follow-up: the opt-in SDK 1.3 package profile declares
+  one literal `/webhooks/` path and an exact redacted internal handler.
+  The reviewed lab accepts only that path; the generic gateway refuses the
+  dedicated handler. A current admin separately reviews, confirms and can
+  revoke delivery for the exact binding. The current decision and historical
+  receipt use the existing sealed journal; replay, stale approval, a changed
+  grant/audience and corrupt seals do not authorize delivery. Revoking delivery
+  does not delete receipts or stop ingress for a still-reviewed installation.
+  Windows UTF-8: 120 focused tests passed. Exact Linux snapshot
+  `918f876c006b…`: 1133 passed, 2 environment-specific key tests skipped.
+  This declaration/approval slice did not invoke an application.
+  One-shot delivery follow-up: a separate local caller claims one exact
+  reviewed receipt in the v3 lab inbox, releases the Core authority fence,
+  then sends one bounded signed invocation to the pinned disposable host.
+  The receiver writes exact bytes to its own SQLite data. Signed matched
+  results are persisted; lost or mismatched replies keep the durable attempt
+  unconfirmed. Reopening, repeating or racing the caller cannot resend it;
+  revocation while waiting prevents a new claim. Matching v2 inboxes upgrade
+  in place without replacing receipts. Windows: 105 focused passes. Linux
+  snapshot `e9dfdcaf7f28…`: 1012 passed, 3 failed in an old dispatch test
+  double missing the optional declaration. After correcting only that double,
+  snapshot `4ba252fb4d77…`: 21 dispatch and CAP12 integration tests passed.
+  Retention follow-up: the v4 lab caps bodies at 128 and metadata at 4096.
+  It clears raw bodies on terminal outcomes or after the one-hour window
+  without reusing receipt IDs or losing unconfirmed attempts. New signed
+  copies never rearm an expired receipt. Matching v2/v3 inboxes upgrade in
+  one transaction; v1 stays untouched. Windows: 107 passes. Isolated Linux
+  snapshot `777523a605c0…`: 76 passed, including actual host non-delivery
+  after expiry, preserved unknown outcomes, and v2/v3 upgrades.
+  **Loopback candidate ready to close:** `consume_pending` picks eligible
+  receipts without caller-supplied IDs, at most four per explicit cycle,
+  rechecking the current review on each claim. An absent host does not take
+  new work; revocation blocks the next claim. In the process-boundary test,
+  the first consumer exited after the real receiver committed but before the
+  acknowledgement was persisted. A fresh process sent only the next receipt;
+  the first remained unconfirmed. Windows: 107 passes. Broader Linux snapshot
+  `8870b42d3172…`: 1020 passed, one restart fixture lacked Core ORM relationship
+  imports. Corrected fixture only; final snapshot `957a35f745e3…`: all 19
+  CAP12 Core integration tests passed, including the restart. No Core migration,
+  installed public route or worker, or deployment. On owner request, the scoped
+  checkpoint `e683045` was pushed to `origin/main` and the remote ref was
+  verified. No tag, release or deployment. Public route ownership, key
+  provisioning/rotation and supervised deployed operation are a separate
+  acceptance gate. Proposed next: one isolated Public Web pilot with synthetic
+  events, explicit opt-in and a tested stop path; no live exposure by default.
+  **Public Web pilot passed locally.** An independent Public Web process ran
+  on an ephemeral IPv4 loopback port, off by default. The private Unix ingress
+  broker owns the synthetic key and durable inbox; Public Web owns neither.
+  The real HTTP/host test confirmed dedupe, malformed/unsigned refusal,
+  process exit after receiver commit without replay, and new-claim denial
+  after revoke. Stopping only the broker closed webhook intake; a real CAP10
+  form on a pilot-configured listener still submitted through Runtime/Core.
+  Windows: 82 passed, one Linux-only test skipped. Isolated Linux snapshot
+  `6de2d8b10f92…`: 152 passed (including service packaging), one pilot test
+  used the standalone lab URL for refusal cases. Corrected the test URL only;
+  snapshot `605ee3ed8b08…`: both pilot integration checks passed.
+  **Local closure gates:** activation reserves webhook and HTTP paths,
+  rechecks concurrent ownership under the lifecycle fence before helper I/O,
+  and leaves ordinary forms working when a legacy conflict blocks pilot startup.
+  A replacement synthetic key refuses old signatures without changing receipt
+  identity or replaying delivery. The split-principal Linux probe uses existing
+  test UIDs: Public Web cannot open the broker's key or inbox, and the socket
+  refuses the wrong UID even within the authorized group. Final isolated
+  snapshot `9e78c49f454b…`: 260 passed; the two privileged-only cases skipped
+  in that run both passed separately with the disposable Linux root driver.
+  This is loopback acceptance only; no external listener, installed service
+  or device change. On owner request, committed and pushed only the CAP12
+  pilot and its scoped plan as `f56e72f53c6e…`; verified `origin/main` at that
+  commit. CI `42159045386` was in progress at handoff. No tag, release or
+  deployment. Proposed next: clean-install acceptance of published `v0.3.8`
+  on a spare Zero W card, keeping the working card intact. Real key
+  provisioning, service units, worker supervision and public exposure
+  remain separate CAP12 deployment scope.
+
+- **Zero W Crypto post-recovery access deadlock, 2026-11-05 — diagnosed.**
+  Owner reported no observed LCD/output during failed first activation and
+  explicitly completed UI recovery. Core journal confirms recovery HTTP200;
+  later consent preview/authority and activation requests returned409, connector
+  settings returned403. No new application service start was recorded. Read-only
+  DB shows exact Crypto0.7.0 installation disabled, active_version NULL,
+  review_required, no active.json, no rollback directories. The actual installed
+  Core `_package_pin` refused this state; read-only probes confirmed all four
+  accepted sealed registration markers absent. Thus the recovered first-ever
+  activation has neither an active version nor registered inert provenance, so
+  access preview cannot prepare a review and normal activation requires one.
+  This is a product lifecycle/recovery deadlock, not proof of a missing user
+  permission or a failed ARMv6 compiler. Configuration has three existing keys;
+  no application permission grants, connector bindings or secret-reference rows
+  and no files in its data directory at inspection; do not expose values.
+  Uninstall UI path is documented to preserve data/uploaded package but removes
+  the installation/configuration and associated app grants; not performed and
+  no assumption it will meet 10s helper deadline on Zero. No manual metadata,
+  security bypass, grants, device action or reactivation performed. Owner-facing
+  409 says exact package access required; 403 connector settings is separate and
+  unproven. Current r6 remains active. Any generic recovery-provenance repair is
+  an auth/lifecycle change and needs explicit scope, denial/revocation/isolation
+  tests and recovery acceptance; do not fabricate sealed registration or mutate
+  the DB. Ask owner before removing the existing application/configuration.
+
+- **Zero W Crypto slow-start correction, 2026-11-05 — owner recovery pending.**
+  Following the owner's successful upload and failed activation, non-activating
+  `--component-info` as 3mm-app/PrivateNetwork took 33.483s. A separate fake
+  instance using exact Crypto0.7.0 ZIP, disposable data/key, no platform socket,
+  PrivateNetwork/PrivateDevices and no real Core/hardware access exposed its
+  socket at 34s and returned signed health `ready`; fake process then stopped.
+  Real package's default health deadline is 30s. This demonstrates a slow-start
+  cause and a healthy isolated start, not a successful real activation or proof
+  of no external effects from the original attempt.
+  Experimental local r6 archive SHA 4f86981d144c9143446ef13b2bd207bb26e0861a06b36c1c48fae2767dcc2aa8
+  adds a shared startup budget: on ARMv6 at least 120s, elsewhere unchanged;
+  both activation and its Core helper callers use coordinated budgets, retaining
+  health/denial/no-replay behavior. On Zero four focused tests passed (real ZIP
+  metadata, slow-ready, denial and synchronized caller budgets), plus four
+  original v0.3.7 activation/deadline/failure tests passed (15 deselected;
+  one unrelated pytest-asyncio marker warning). Exact source/archive diffs checked.
+  Applied r6 via standard immutable installer/backup, success; current r6,
+  previous r4, Core/Agent ready HTTP200 and Runtime active. Real Crypto remains
+  recovery_required/disabled and its service inactive; no permission approval,
+  retry, recovery, output, reset or tracked product change by assistant. Owner
+  was asked to review any external effects then explicitly use existing UI
+  Recover application once and report the result, without reactivating yet.
+  UI recovery confirms an operator-reviewed outcome and only reconciles to a
+  verified stopped state; no automatic confirmation. If result is uncertain,
+  refresh status; do not repeat recovery/activation. The 90s frontend command-
+  rebinding request limit was not modified and can still be insufficient on slow
+  ARMv6 for that later separate operation. No end-to-end real activation or
+  physical LCD success claimed. Device artifacts are experimental/local only.
+
+- **Zero W Crypto activation failure, 2026-11-05 — diagnosis, no replay.**
+  Owner screenshot confirms Crypto0.7.0 upload succeeded on experimental r4,
+  then activation failed and UI shows Recovery Required. Helper journal at
+  09:19 shows signed health transport could not find the application socket;
+  health deadline expired and helper reported previous version restored. Unit
+  3mm-application-extension@46e92c9bdffd26e204800468 started 09:18:06 and
+  stopped 09:18:59, no app exception/OOM in inspected journal. Read-only DB:
+  status recovery_required, enabled false, error outcome unconfirmed; no
+  active.json or rollback directory, stale run/service.sock exists and service
+  is stopped. No conclusion about hardware effects from socket or status alone.
+  Crypto package omits startup_timeout_seconds; protocol default is 30s. A
+  separate non-activating same-host `--component-info` run as 3mm-app under
+  PrivateNetwork/CPUQuota measured 33.483s and passed; host import alone can
+  exceed the declared health budget. This supports slow-start as likely, not a
+  proof that longer time alone makes the full service healthy. Core and Agent
+  remain active; no user access/grants, recovery, re-upload, application start or
+  output action. The lifecycle explicitly requires reviewed operator recovery;
+  do not replay activation, erase retained state or treat stale socket as live.
+  Any ARMv6 timing fix must coordinate the actual health wait, Core-to-helper
+  deadline and command-rebinding/other consumers; preserve health, deadline and
+  no-replay guards. Reconcile to verified stopped state through existing UI only
+  with owner review, then perform a distinct explicit activation acceptance.
+
+- **Zero W ARMv6 Crypto compiler trial, 2026-11-05 — installed, owner upload
+  pending.** Owner requested the trial directly on Zero. Installed Go 1.24 there
+  and built esbuild 0.25.12 locally with GOARM=6, single-worker/low-priority;
+  resulting executable SHA 7a3c7be6d75f14d9eeb48a0b815d70ca5f5d6935c3e4022bba6290b269118c2a
+  reports 0.25.12. Downloaded Rollup wasm-node 4.65.1 directly to Zero, npm
+  SHA-512 verified, tar SHA 8fd2e64dfeaa6334a683ce198e4b6487df44c63f02f3b7843339300b3e5f459a.
+  Exact Crypto0.7.0 ZIP SHA 6c919b56f1e1e4316c5865fa0d0d04625594625ea914fc686da7013d2a082891;
+  actual isolated UI build passed in 92.894s, real Core compiler under 3mm UID
+  using isolated toolchain passed in 93.64s. First experimental r3 deployment
+  timed out at setup readiness during slow Core cold start; normal rollback
+  restored r2, fenced recovered authority (applications0/connectors0/devices1),
+  and eventually Core/Agent readiness and authority exchanges returned 200.
+  Experimental r4 archive SHA 4901c140f23b88a195bac14d5608ed031f96043c99d7edbdf702a131281b2d94
+  retains exact verified tool bytes, sets ARMv6 compiler timeout300s and increases
+  ARMv6 activation/installer readiness waits without bypassing health checks.
+  Installed via immutable installer with backup, host network preserved; r4 unit
+  success, `/opt/3mm/current` r4, `/opt/3mm/previous` r2. Core/Agent ready200,
+  Core/Agent/Runtime active; swap73 MiB and available174 MiB in post-check.
+  Actual installed Core `compile_ui_package` under 3mm UID, normal installed
+  compiler and default timeout300, passed same ZIP in 123.25s into an isolated
+  artifact root; this is not an HTTP upload/activation or physical display test.
+  Owner asked to retry ZIP once via UI and allow 3–5min; no auto-install, grants,
+  commands or display output by assistant. Rollback authority fencing can require
+  owner review of access: do not silently regrant. Archives, scripts and evidence
+  on Zero in `~/3mm-zero-hub-trial/compiler-test`; this is an experimental local
+  deployment, not a published release or general ARMv6 support. No tracked code
+  changes, commits, tags or pushes. Future updates must carry the toolchain rather
+  than assume standard published ARMv6 support.
+
+- **CAP10 — bounded public form, 2026-11-05.** Owner approved the first
+  anonymous form slice locally. One explicitly declared literal POST route on
+  the separate Public Web listener, off by default; exact Host/Origin, bounded
+  form fields and admission, no forwarded credentials or platform resources.
+  Exact reviewed package checked before dispatch and before confirming the
+  response. The reference `/demo-request` stores only a preset choice and an
+  idempotency key in its own SQLite; no Core DB migration or automatic replay.
+  Reproducible local ZIP `.runtime/cap10/public-form-reference-1.0.0.zip`, SHA-256
+  `5241bf7299ad2b1624427c019a5c36b1a69cded6da942c2082ac3ad37660afcb`.
+  [Contract](PUBLIC_WEB_EXTENSION_PLAN.md#cap10--bounded-anonymous-form) and
+  [reference build and checks](../modules/public-form-reference/README.md).
+  Verified Linux-native snapshot `0314f2e7b52d…`: 317 targeted contract,
+  consent, form, packaging and release-builder tests passed; 29 existing
+  Public Web process checks passed, 1 separate-OS-principal test skipped.
+  The form test uses actual HTTP, Unix socket handoff, signed packaged host and
+  disposable SQLite, including no grant, duplicate, cap and in-flight revoke.
+  Direct execution from the Windows-mounted source hit old fixture startup
+  deadlines; the same source passed on the native Linux disk. XML evidence is
+  saved under `.runtime/cap10/` as `checks-linux.xml` and
+  `public-web-regression-linux.xml`.
+  Owner requested a local browser trial: the exact ZIP on a temporary loopback
+  listener refused before lab approval, served the form after approval, and
+  returned 404 for the admin API path. One browser submission returned
+  `Form received.` and the disposable database contained exactly one record.
+  Owner then completed the browser trial; the disposable database reported
+  two records total. The local form slice passed acceptance. The temporary
+  listener auto-stops after 30 min.
+  Follow-up lifecycle acceptance: real Core upload/activation/consent/disable/
+  reactivation/uninstall routes, real signed host and Public Web on loopback.
+  Only privileged helper IPC and systemd were doubled. Upload alone left no
+  route, unapproved requests did not write, a non-admin could not upload or
+  review, and disable/uninstall hid the route. Reactivation of the same package
+  kept the original submission without duplicating it; uninstall removed the
+  runtime and transport key while preserving SQLite. CAP10 HTTP/form suite:
+  35 passed, no skips; `.runtime/cap10/lifecycle-linux-f0da6d1a6b9045c5ad6a9204c68d0cf7.xml`.
+  Test and documentation changes only in this follow-up; the demo ZIP is unchanged.
+  No device changes, public exposure, live grants, commit, push, version or release.
+
+- **CAP10 — opt-in guest draft, accepted 2026-11-05.** Added a 15-minute anonymous guest session
+  scoped to the exact reviewed package, installation, authority epoch, form and
+  origin. The browser cookie stays at the trusted edge/Core boundary; the SDK
+  receives only the guest ID and expiry. The example saves one draft per guest
+  in its own SQLite database. Expired, replaced or revoked sessions cannot save;
+  a different browser session cannot read the draft. Existing anonymous forms
+  and their reference ZIP are unchanged. Guest mode requires explicit
+  `--guest-forms` and `--form-origin` on the separate Public Web listener.
+  Built `.runtime/cap10/public-guest-reference-1.0.0.zip`, SHA-256
+  `abf954f67f5a51c40178e2ce1d8a3049e2dfb1a6996e4cc7733302315d005a60`.
+  Linux: 131 targeted and 66 regression/packaging checks passed, no skips;
+  two independent HTTP cookie jars verified guest isolation. Evidence:
+  `.runtime/cap10/guest-0779af5afc26464195fcc28d92c9ea66.xml` and
+  `/tmp/3mm-cap10-bidt1m7_/results.xml`. Browser acceptance on loopback with the
+  exact ZIP: the in-app browser saved `Morning` and showed it on reopening;
+  a separate Chrome incognito session at the same URL showed `No saved draft`.
+  Browser control stopped before testing an expired form submission. The owner
+  accepted the bounded slice using the passing HTTP expiry regression for this
+  case; no expired browser submission was exercised.
+  No device install, public ingress, live grants, Git publication or release.
+  Customer accounts and a deployed HTTPS ingress remain separate work.
+
+- **CAP21 Git integration, 2026-11-05.** Owner closed the bounded authoring
+  profile and requested commit/push. Exact 26-file scope (including two
+  selected documentation hunks) committed and pushed to main as
+  `d205b9cc7e1919eab17a5c8871b5029125e47700`. Previous exact-base CI
+  41911873152 completed successfully; new push CI 41974902960 is in progress
+  for this commit. Reused the local evidence below for unchanged sources;
+  staged and committed blob identities and whitespace were verified. No tag,
+  release, version or device change. The mixed working diary and independent
+  plan/check-policy/dev-lab edits remain local. Suggested next bounded work:
+  CAP10 one declared, bounded public form on the separate Public Web surface,
+  with schema/abuse/replay checks and app-owned data. Design only at this point;
+  no authorization for implementation, public exposure or live deployment.
+
+- **CAP21 → CAP03 local package review, 2026-11-05.** Added
+  `tools.extension_dev compare OLD_ZIP NEW_ZIP [--json]` after the authoring
+  workflow. Both bounded archives use the same current Core package validator.
+  The result identifies exact ZIP/wheel hashes and data revisions, lists changed
+  declaration fields and named permission/operation/resource differences, and
+  does not emit configuration values or schema contents. Unrelated apps,
+  invalid packages and same-version/different-byte replacements refuse. This
+  static comparison neither runs code/migrations nor decides upgrade order,
+  live rights or installability. Windows targeted reviewer and CLI checks:
+  24 passed; final 8 reviewer cases rerun after wording-only change. Real CLI
+  on two synthetic 1.0.0/1.1.0 ZIPs showed permission replacement, operation
+  checks, resource TTL and data revision change. Evidence under `.runtime/cap21/`
+  `package-compare-tests-final.xml` and `package-compare-recheck.xml`. No Core,
+  SDK, version, device, or Git changes; independent Zero W work is separate.
+
+- **Zero W Crypto UI compiler diagnosis, 2026-11-05.** Owner completed Hub
+  setup, enabled I2C and rebooted; Crypto Monitor 0.7.0 upload displayed
+  `compiled UI build failed: compiler failed`. Read-only live observation:
+  experimental-037-armv6-r2 selected, Core/Agent/Runtime active; 426 MiB total,
+  ~122–140 MiB available during checks, no swap in use. On actual ARMv6 Zero,
+  isolated `require('rollup')`, Vite import and installed esbuild `--version`
+  all terminate with illegal instruction / exit132. Rollup native ELF attributes
+  explicitly specify ARMv7-A / VFPv3-D16; package installation succeeded but the
+  installed compiler binaries cannot run on this CPU. Core falls back to generic
+  `compiler failed` when a failed compiler has empty stdout/stderr. This directly
+  explains the observed message; no claim that fixing only Rollup is sufficient,
+  since esbuild also fails. User-supplied operation-records (6) has one session
+  header and zero events, so adds no failure details. No application re-upload,
+  permission changes, device modification or product source change during this
+  diagnosis. Next scoped fix would need ARMv6-compatible Rollup AND esbuild and
+  an actual Crypto UI compile/install check under Zero's RAM/time limits.
+
+- **CAP21 authoring profile v1 — local completion, 2026-11-04.** Owner requested
+  finishing CAP21 locally and deferring all Git work. Complete current profile is
+  Manifest v2/public SDK1.3/Python service/own SQLite/Vue UI:
+  init → catalog → preview → generate-client → check, with explicit previous-ZIP
+  upgrade verification. No Core/SDK/version change, staged changes, commit, push,
+  tag, release, deployment, installed DB, grant or device action in this turn.
+  Preserve independent dev-lab/simplification/M21/Zero W work and historical notes.
+  Generated UI methods derive from actual validated operations, schemas and
+  idempotency; internal-only operations are excluded, commands need the original
+  caller key and invoke exactly once. No retry, authority claim or runtime-schema
+  replacement. Unsupported type constructs refuse instead of widening to any.
+  Optional development.json generated_client/type_tests/upgrade_fixture are used
+  by the common runner: stale/missing generated source refuses before execution;
+  strict positive/expected-negative type cases execute with current host types.
+  Scaffold regenerates the copied client for each new module identity. Starter
+  Notes.vue actually uses it; standalone fixture verifies note/actor receipts.
+  Explicit client replacement retains displaced source in project-local ignored
+  .runtime/client-recovery and publishes exclusively; concurrent edits are not
+  overwritten. A brief absent target and recoverable backup are documented.
+  --previous-archive pins actual old/new ZIP+wheel/fixture hashes and runs old
+  seed and candidate verification in separate -I processes with disposable data.
+  Checks same identity/newer version, revision prefix, new-migration interruption,
+  immutable domain verification, integrity and reopen. Fixture-specific, not
+  arbitrary historic-data proof, installed config/provider proof or hostile-code
+  isolation; same-schema rollback is explicitly not_applicable. No previous ZIP
+  reports not_requested. Failure gates exclusive ZIP publication and retains logs.
+  Current source hashes: client15a2bfd1c6a7..., upgrade918927d875ee...,
+  controller119190190cb5..., CLIccafb2592c05.... Linux targeted tooling184 passed,
+  upgrade23 passed, check/release/frontend-access contracts65 passed, actual
+  Core/SDK permission/revoke/provider-loss/own-data integration1 passed, all with
+  zero skips. XML evidence under .runtime/cap21/: finish-tools-linux.xml,
+  upgrade-final-linux.xml, finish-gates-linux.xml, core-final-native-linux.xml.
+  That Core integration doubles external service launch/response transport;
+  compiler is exact copied current script with existing Linux Vite6.4.3 deps.
+  Windows controller100 passed3 symlink skips replaced by POSIX coverage; Windows
+  Git Bash timeout replaced by65-case Linux pass. No test weakening. Windows real
+  starter UI19/type checks passed; generic real TS/one-dispatch2 prior unchanged
+  render checks reused; filesystem/race fixes have separate passing evidence.
+  Actual generated org.example.cap21-upgrade-trial1.0.0→1.1.0 common workflow
+  passed each Python6/UI19/strict types/real UI compiler. Old ZIP58f521aa519e...,
+  candidate4e9120498f6a..., candidate source1ac3a9b90d3e...; schema0001→0002,
+  old note/original actor receipt/new column retained, reopen/integrity and new
+  migration rollback probe passed. Reports: .runtime/cap21/finish/trial-v1-3.report.json
+  and trial-v2.report.json; these are local synthetic artifacts, not install requests.
+  Integration caught a repository-relative CI tsconfig copied into new projects;
+  moved it to frontend/tsconfig.cap21.json, outside template. CI frontend gates
+  now run actual starter/client types+UI with existing dependencies; Release also
+  opts into real generator TS cases. Workflow files are only prepared locally,
+  not remotely executed; all prior release gates remain. Guides/check policy/CAP21
+  plan updated. Native/scoped-relational adapters and universal capability
+  templates remain explicitly outside this completed authoring profile. Next:
+  owner review, then only explicitly requested Git integration/release gates.
+
+- **CAP21 source-derived authoring catalog, 2026-11-04 — local ready.** Owner
+  approved the migration commit/push and continued catalog work. Added local
+  `python -m tools.extension_dev catalog [PROJECT]`: actual public model schemas,
+  model-validator references (not an exhaustive duplicate policy), SDK/UI error
+  literals, transport and migration limits, raw source-file hashes. A project
+  freezes source, builds its exact wheel/ZIP and runs actual package semantics
+  against the explicit current Core version; returns full declarations, lifecycle,
+  permissions/resources and exact identities. No app import, tests, migrations,
+  compiler, credentials, network, grants or installation. Scoped relational is
+  explicitly outside this migration-check profile; other module types refuse.
+  Inspection is not a check pass, native-code isolation or installed readiness.
+  New Windows CLI/preview/remote-command boundary run28 passed; helper19 passed,
+  then the final nonapplication refusal regression1 passed. Linux combined
+  catalog/CLI/scaffold/preview/remote-command run67 passed/0 skips before that
+  final refusal guard; final helper20 passed/0 skips replaces its19-case evidence,
+  unchanged48 consumer cases reused. Evidence: .runtime/cap21/catalog-final-linux.xml
+  and catalog-helper-final-linux.xml. Helper SHA317e64e14f91..., CLI SHAa117d2115907....
+  Actual global/project CLI inspection and nonzero JSON refusal checked. Starter
+  sourcebe01a408... changed only in its guide; actual packageb40dd42f... unchanged,
+  so prior service/UI/compiler/migration evidence reused; no main frontend build.
+  Guide/check policy/generated-project guide updated. Catalog remains local,
+  uncommitted/unpushed. No tag, version, release or device action. Next bounded
+  candidate: typed operation client generation; real v1-to-v2 upgrade later.
+
 - **CAP21 packaged migration checks, 2026-11-04.** The prior authoring commit
   9290426db8e8b09551162405bc2d1eedb340b1b2 passed full CI41903345802. Owner
-  approves a separate migration-check commit/push, then continued bounded catalog
-  work. check now tests the exact packaged wheel via public SDK ApplicationStorage
+  approved a separate migration-check commit/push:2a031ce017878f1d5a65bbb7f2f776c60d72d088
+  is pushed and exact remote ref verified. CI41911873152: selection/frontend/tooling
+  passed; Python remains in progress. Continued bounded catalog work locally.
+  check now tests the exact packaged wheel via public SDK ApplicationStorage
   on disposable SQLite before artifact publication: clean/final-target/stable
   revision plan, current-prefix upgrade, reopen, integrity/FK and per-revision
   rollback after injected failure. No service factory, installed data or authority
@@ -19,6 +1707,60 @@ Updated: 2026-11-04. Start here; follow linked details only as needed.
   source8cc2e256... passed Python6/UI15/types/real compiler plus migration checks;
   packageb40dd42f... unchanged. No version/tag/release/deployment. Preserve unrelated
   dev-lab, simplification, device experiments and mixed historical notes.
+
+- **Experimental Zero W Hub feasibility, 2026-11-04 — setup pending.** Owner
+  requested direct installation on a newly prepared Zero W system; new SSH key
+  was owner-confirmed and old Node card preserved. Official 0.3.7 ARMv7 archive
+  SHA a54bc696d402c8c0084832680b421c7f2e8c0cde53020a42e8b357d36c074000
+  matched GitHub metadata. Locally derived experimental full ARMv6 r2 archive
+  SHA 80d5e06f0e6f443830a1ae51e52f26c8508153ce91037eded8ff7c264b3cc4ea;
+  explicit experimental metadata, preflight architecture addition, and only
+  ARMv6 application-host component-info timeout 15->120s differ from original.
+  Other archive files verified unchanged. First attempt needed gcc/Python headers
+  for psutil; second timed out on host component-info after 15s; both installers
+  rolled back Core and inactive services. Added build-essential/python3-dev,
+  then r2 passed actual package install, psutil native build, npm package install,
+  application-host preparation and DB migration; installer finished successfully
+  with host networking preserved. `/opt/3mm/current` points to
+  experimental-037-armv6-r2. Setup service is ready; LAN `/setup` returned HTTP200.
+  Core/Agent are inactive before role provisioning, not claimed healthy. Owner
+  asked to complete Hub setup at 192.168.1.81:8895/setup; next verify real Core
+  health, RAM and crypto-monitor on that system. No reboot, full runtime/UI
+  compiler execution, crypto-monitor installation, release support or benchmark
+  is claimed. Experimental script/archive are ignored in `.runtime/zero-hub-experiment`.
+
+- **CAP21 pushed / migration verification follow-up, 2026-11-04.** User explicitly
+  requested commit/push and continued work while CI runs. Scoped28-file commit
+  9290426db8e8b09551162405bc2d1eedb340b1b2 is pushed to remote main, exact ref verified.
+  Included only CAP21 source/tests/guides and selected check-policy/current-state
+  hunks; independent dev-lab/simplification and historical diary remain local.
+  Previous installer99de0b7 CI41890096828 verified success. New CI41903345802 has
+  selection/tooling/frontend successful; Python still in progress at handoff.
+  No tag/release/version or device action. Fresh-checkout audit caught one missing
+  .runtime parent prerequisite in a real nested-pytest test; fixed and that Linux
+  regression passed before committing. Existing unchanged89-pass authoring and
+  Python6/UI15/types/real-compiler/authority-denial evidence reused.
+  Continued one bounded local CAP21 result: check now runs the exact packaged
+  migration factory using public SDK ApplicationStorage on disposable SQLite,
+  before project tests/artifact publication. Clean creation, final-target and
+  stable revision sequence, each prefix upgrade, reopen without changed logical
+  state/history, integrity/FK and injected per-revision rollback are checked.
+  Premature commit/executescript partial persistence fails. No service factory,
+  Core/SDK/runtime/auth changes or installed database access. Explicit local
+  SQLite profile only; scoped relational refuses.32 revisions,16MiB per database,
+  60-second direct worker; not hostile/process-tree isolation or historical-data
+  upgrade certification. Reports contain counts/flags, not database row contents.
+  Windows helper20 passed, controller/CLI/scaffold88 passed3 environment symlink
+  skips. Linux five suites111 passed0 skips before final plan-coherence fix;
+  final helper21 passed0 skips replaces its pre-fix evidence, unchanged consumers
+  reused. Final actual common command passed Python6/UI15/strict types/compiler
+  and migration clean/reopen/rollback for source8cc2e256...; ZIPb40dd42f... unchanged.
+  Evidence: .runtime/cap21/migration-authoring-linux.xml,
+  migration-plan-coherence-linux.xml, migrations-final-2.report.json. No broad
+  Core rerun for this developer-tool-only follow-up; previous real authority
+  boundary evidence reused unchanged. This follow-up and its guide remain
+  committed/pushed as2a031ce after the owner's approval; see current CI note above. Existing
+  installed starter1.0.0 and its immutable artifact are not replaced by local ZIPs.
 
 - **CAP21 local authoring cycle accepted, 2026-11-04.** Official source-only
   application-starter demonstrates UI, own SQLite data/revisions/receipts and an
@@ -38,6 +1780,2967 @@ Updated: 2026-11-04. Start here; follow linked details only as needed.
   CI runs. Reuse unchanged evidence, retain full CI/release gates; no tag, version
   bump, release or device deployment requested. Preserve independent dev-lab,
   simplification and mixed historical notes outside this commit.
+
+- **CAP21 complete local authoring cycle, 2026-11-04 — ready for owner review.**
+  Owner requested a more finished CAP21, with no further publication/device action.
+  Added `tools.extension_dev init` (new identity/route/source, real package rules,
+  atomic no-clobber destination), `preview` (explicit loopback Vite, project mock,
+  EN/BG/light/dark/narrow UI) and `schemas` (existing public structural catalog).
+  Preview demonstrates six states including opened-editor revocation, missing
+  resource approval/provider, revision conflict and completed-but-unconfirmed save;
+  it is disposable memory, not a Core/permission/provider/physical proof. No token
+  or Core URL, automatic install, grants or replay. Check reports now include actual
+  validated operations/permissions/idempotency/resource/storage/compatibility details;
+  exact failure phases and clean nonempty executed JUnit are required. Evidence is
+  prepared before exclusive ZIP publication; late output failures retain truthful
+  published/unconfirmed identity, never overwrite/delete another output. Existing
+  dependencies only; Windows/Linux init and hard-link-supporting output filesystem.
+  Real nested-snapshot regression exposed inherited repository pytest root; fixed
+  explicit snapshot root, not application tests or authority checks. Final Linux
+  controller/scaffold/preview/CLI89 passed/0 skipped (existing WSL3.14.4), evidence
+  .runtime/cap21/authoring-linux-final.xml. Windows preview/CLI22 passed. Actual common
+  workflow passed separately for official starter and CLI-generated org.example.owner-note:
+  each Python6/UI15, strict Vue types including mock and actual package UI compiler,
+  Windows3.13.15/Node24.19/Vite6.4.3. Official checked source454d2e67..., unchanged
+  ZIPb40dd42f...; generated ZIPc80da37e... and reports under .runtime/cap21. Local
+  artifacts only, not replacements for installed immutable starter1.0.0. Reused
+  unchanged service/contracts/Core/SDK real authority-denial integration evidence;
+  no new live acceptance. Browser review confirmed light EN, dark BG/narrow390,
+  draft retention on revocation and editable own data on provider loss, no console
+  errors; owned temporary tab/server stopped. Guide and check policy updated.
+  Acceptance: a separate new source project can be created, simulated, checked and
+  reviewed before optional manual installation. Native dependencies, hostile-code
+  isolation and universal capability conformance remain outside this pure-Python
+  profile. No Core/SDK/package version, commit, push, tag, release or deployment;
+  independent simplification/dev-lab/M21 work preserved. Next: owner previews this
+  local cycle; integration/versioning only when explicitly requested.
+
+- **CAP21 bounded acceptance closed, 2026-11-04.** Owner confirms /starter-note
+  edits/saves correctly after restoring note_write, while Command resources
+  shows no currently compatible/available GPIO target. The disabled control
+  was the separate resource-rebinding dialog, not the note editor. Own data
+  remains usable without that optional resource; no additional application,
+  provider, deployment, upload or permission change performed by the assistant.
+  Together with the accepted common command, actual Core/SDK software denial
+  checks and owner install/persistence/edit-revocation trial, this closes the
+  agreed minimal CAP21 authoring slice. Do not claim a live healthy-provider
+  disconnection test: no such provider or exact observed-resource state was
+  established. No new tests for this evidence-only handoff. Retain local CAP21
+  sources and wording fix for the next expressly requested integration, with
+  no wording-only version, commit/push, release or new test request now.
+
+- **Fresh-SD installer correction / accepted trials, 2026-11-04.** Owner's
+  explicit Stable0.3.7 install and restore from a file on a new card succeeded.
+  LCD start then failed because I2C was disabled on the new host; owner enabled
+  it through Settings and confirms the display now works. Close those owner
+  trials as successful, not as an unresolved Core409 regression. Export
+  recent-http-failures(7) contains prior host_value_error/command-result409;
+  owner supplied the missing-host-interface cause and successful recovery.
+  No new LCD/restore fix, automatic host-interface restoration or device command.
+  The plain public installer previously defaulted to Beta and chose beta.57.
+  Corrected install.sh only: Stable/latest default, inferred exact-tag channel
+  unless explicit, no fallback or weakened manifest/size/SHA checks; fresh
+  default host networking preserves current LAN, -ap/--ap explicitly selects
+  managed initial AP setup. Saved backend/role/data survive upgrades; -ap is
+  not a reset or forced AP on a provisioned device. Worker receives the resolved
+  backend even when installing an older immutable release. README and current
+  Raspberry/Node guides updated. Final bounded Linux checks154 passed/0 skipped
+  in13.85s on existing WSL3.14.4: real shell/Python selection and immutable
+  consumer sections with disposable files/command doubles; no APT/systemd/
+  network or clean-card acceptance of these new defaults. Evidence:
+  .runtime/bootstrap-defaults/checks-final.xml. No new release/version needed.
+  Committed/pushed installer/docs-only99de0b7e4c9a43890ae8c110e2920513735eed44;
+  remote main verified exact. Excluded all CAP21/dev-lab/simplification/M21
+  and this mixed diary. Owner then clarified no further publication/deployment
+  until the next release and chose to keep this already-pushed commit. No tag,
+  release, live reset/restore/deployment or further upload here; do not repeat.
+  Core0.3.7 release run41868681396 is now confirmed completed/success for
+  5f91cb43...; published non-draft stable assets include all full architectures
+  and Node, manifests and checksums. CAP03 remote Node acceptance stays deferred.
+  CAP21 minimal profile: local common command plus owner install/persistence/
+  edit-revocation checks accepted. Manual selected-provider outage not performed;
+  software Core/SDK coverage already passed. Owner resumes CAP21 selected-resource
+  review: current Command resources screenshot shows configured device currently
+  unavailable/incompatible with gpio.digital.control1.0/set_output, not the LCD
+  contract. No compatible live provider or exact cause established by screenshot.
+  Owner now confirms own-note editing works independently in this state. Do not
+  install another provider, stop LCD or treat unconfigured/unapproved access as a
+  proven provider outage. Wording correction stays for a future combined example
+  package, per owner; no wording-only1.0.1 and no source deletion.
+
+- **CAP21 owner denial acceptance / starter feedback, 2026-11-04.** Owner's
+  common command passed with canonical ZIPc3e77d22..., then manual install,
+  note persistence and removal of only human note_write correctly blocked a
+  new save while preserving the previous note. After reload the editor is
+  correctly read-only through retained note_read. Owner found the starter's
+  catch incorrectly called this explicit access refusal an unconfirmed save.
+  Fixed only the example UI: public ApplicationHostError/access_denied gives
+  clear EN/BG editing-access refusal, retains the draft and turns editing off;
+  all other failures retain the unknown-outcome fence. Explicit permission/
+  saved-note reload can restore editing, never replay a save. Added EN/BG
+  stale-permission and typed-unconfirmed regressions; guide updated. Final
+  common pipeline passed Python6/UI8, strict types and actual compiler on
+  Windows3.13.15/Node24.19; report note-denial-local-2 under .runtime/cap21.
+  Initial limited execution could not read the Windows temporary directory;
+  normal-access rerun passed, no product workaround. Core/SDK/service and
+  existing installed ZIP are unchanged; prior real Core permission/data
+  evidence reused for unchanged behavior. Versions unchanged, local output
+  is a check artifact only, not an immutable replacement for installed1.0.0.
+  No commit, deploy, approval change or live device action. Owner declined a
+  wording-only version; retain for a future combined example package. The
+  bounded note/persistence/edit-permission owner trial is closed as accepted;
+  no manual provider-outage acceptance is claimed. Independent source preserved.
+
+- **CAP21 minimal authoring cycle, 2026-11-04 — implemented locally.** Owner
+  requested one official UI/own-data/selectable-resource example and a common
+  check/build command with denial/revocation/unavailable-provider scenarios.
+  New source-only modules/application-starter is a shared demonstration note:
+  public SDK1.3, own SQLite migration/revision/actor-scoped receipts, public
+  themed EN/BG UI, optional command:resource binding configured through existing
+  administration. It observes availability only; no command-submit operation,
+  hardware writes, polling, auto-grants or app-specific Core runtime branches.
+  Explicit saves use current human permission and optimistic revision; lost
+  acknowledgement retains the draft and requires an explicit saved-state read.
+  tools.extension_dev check now freezes a pure-Python project, builds a canonical
+  wheel/ZIP, uses actual package semantics, checks executed/no-skip denial cases,
+  UI tests/strict vue-tsc and actual install-time compiler, then exclusively
+  creates ZIP/report/local log. No downloads, dependency installation, API login,
+  upload, activation or deployment. Unknown outcomes are not retried. Human
+  summary and --json distinguish local project tests from live conformance.
+  Guard tests22 passed/0 skipped, Windows Python3.13.15; actual common workflow
+  passed project Python6/UI5 plus strict types/compilation with existing Node24.19,
+  Vite6.4.3/plugin5.2.4. UI/service/package inputs unchanged since that real run;
+  final controller diagnostics covered by22. Real POSIX packaged-service/Core/
+  sealed-consent/signed-Runtime regression1 passed on WSL3.14.4/Node22.22.1:
+  human permission denial, resource health loss and grant revocation with own
+  data intact and zero DeviceCommand rows. External launch/response transport
+  doubled, no actual systemd/device acceptance. Linux compiler used exact current
+  script0a46e94a... with isolated cached locked dependencies, not mixed Windows
+  node_modules or a changed production compiler. Synthetic browser review passed
+  light EN1280 and dark BG390, including provider-unavailable state; temporary
+  browser/server closed. Canonical example ZIPc3e77d22... is
+  .runtime/cap21/note-verified.zip; reports/XML nearby. Guide in the example README.
+  No new framework, Core/SDK version change, commit, push, release or device action.
+  Independent simplification/dev-lab/M21 edits preserved; owner continues CAP03
+  device review separately. This closes only the agreed minimal CAP21 profile,
+  not a universal semantic catalog, dependency/native-wheel builder, hostile-code
+  isolation or every capability's conformance. Owner has now repeated the single
+  command, installed the example, confirmed note persistence and write denial
+  with saved text intact. This bounded trial is closed, with the feedback-only
+  correction retained for a future package and no manual provider outage claim.
+
+- **Core0.3.7 release published, 2026-11-04.** Owner explicitly requested release
+  after successful CI. Verified run41860057684 completed/success with all four
+  jobs successful for exact current remote main5f91cb43ee13f3987a5f03b0d3d2f1ce24b95e0a.
+  Only then created/pushed annotated v0.3.7 (tag object89bedb56ef268e97d5572cda1de27e3e2d2328e2);
+  remote peeled tag matches that commit. Release run41868681396 completed/
+  success; stable v0.3.7 publication/assets confirmed through GitHub. Existing
+  full release gates remain unchanged; publication alone is not device acceptance.
+  Reused green CI; no new tests/build, source commit, device command or deploy.
+  Independent dirty dev-lab/simplification/checks/M21 work is not in the tag.
+  Owner subsequently accepted a fresh-card install and portable restore.
+  Remote Node acceptance remains deferred; release publication trial is closed.
+
+- **CAP03 / CAP14 release preparation, 2026-11-04.** Owner approved scoped
+  commit/push, then green main CI before any tag/release; CAP21 follows closure.
+  Committed c79fd00 (provider administration), 402133e (independent component
+  updates) and a9bc0b4 (Core0.3.7 + distinct BG1.0.6 and release notes). Pushed
+  main at a9bc0b48cf8e511fc3de504448bb2896739da3f1. CI run41853809476 had successful
+  selection/frontend/tooling jobs but Python stopped at the obsolete Unix-only
+  expectation in test_systemd_templates.py (6485 passed,611 skipped,1 failed).
+  Updated only that test to require AF_UNIX/AF_INET plus IPAddressDeny=any and
+  IPAddressAllow=localhost; other service isolation assertions remain unchanged.
+  Affected systemd templates/component-helper checks33 passed/0 skipped in8.91s
+  on existing WSL3.14.4; no production/dependency/version change or new build.
+  Evidence: .runtime/release-037/systemd-policy-fix.xml. Committed and pushed
+  5f91cb43ee13f3987a5f03b0d3d2f1ce24b95e0a; new CI run41860057684 is in progress.
+  No v0.3.7 tag or publication yet. Final release/language/delivery checks121
+  passed/0 skipped on existing WSL3.14.4; prior unchanged provider/UI/native/
+  denial/rollback evidence reused by exact content. All45 scoped committed blobs
+  match .runtime/release-037/review.json. Canonical BG ZIP844942f5... matches the
+  already accepted Raspberry package. Existing local Agent/selected-host real
+  update/rollback and root/systemd network acceptance remain valid; remote Node
+  device acceptance is explicitly deferred. No further device action, hardware
+  output, rights change or reset. Mixed working diary, simplification/checks and
+  dev-lab edits remain uncommitted and preserved; no M21 changes included.
+  Next: verify all applicable CI jobs for exact pushed SHA; only then create
+  annotated v0.3.7 and push that tag, retaining full release gates. Do not infer
+  publication from a successful push or from targeted local checks.
+
+- **CAP03 / CAP14 trial rollout and local component acceptance, 2026-11-04.**
+  Owner approved the next rollout step. Prepared and selected distinct BG1.0.6,
+  retaining published1.0.5 bytes. Canonical LF/Linux bundled ZIP SHA844942f5...
+  matches the package actually staged and enabled on Raspberry. Core version
+  remains0.3.6; this is an unpublished local working-tree rollout, not a release.
+  Final immutable Core is local-7aa54654d91f53f30677dc1b; normal installer backup
+  exists, Core/Agent/Web/Runtime/helper are active. Core PID61551 stayed unchanged
+  during the subsequent component tests. Checked prebuilt frontend is delivered
+  byte-for-byte and new component/provider BG messages are available.
+  Real acceptance found the helper's Unix-only address-family restriction blocked
+  Agent's fixed loopback identity endpoint. Corrected only its network allowance:
+  AF_UNIX/AF_INET with IPAddressDeny=any and IPAddressAllow=localhost. A permanent
+  opt-in root/systemd regression test passed on Raspberry (three subtests: original
+  refusal, local readiness, nonlocal denial); ordinary Windows run skips it,
+  not counted as a pass. Added bounded request/component/phase/type/function/line
+  failure logging, never exception text, artifact bytes, app responses or keys.
+  New affected source checks: language13, helper/unit consumers8, workflow34
+  passed/0 skipped. Earlier unchanged UI47/types/build, provider and native-builder
+  evidence reused by content; .runtime/component-updates contains exact proofs.
+  Actual web-API preparation/update/manual rollback succeeded for selected host
+  46e92c9b... (5319e993... ->3e0cc7ba... ->5319e993...) and local Agent
+  (dfc8fcad... ->015e76c4... ->dfc8fcad...). Both current builds were deliberately
+  returned to the inspected working originals after acceptance. Runtime/default
+  host/Child Center host pointers and both application active-metadata hashes
+  are unchanged; no app package/data/rights change or Start/Send command.
+  An initial host update under the first trial Core3c510961... failed and safely
+  restored the old healthy build with no pending transaction; its original cause
+  was not retained, so do not claim it conclusively diagnosed or silently retry
+  it. A newly prepared exact request under the final Core succeeded; new bounded
+  failure locations are available if it recurs. Both initial and final Core
+  deployments used normal backup/health/rollback; no device reboot or live restore.
+  Anonymous new-control reads correctly return401. No registered remote Node is
+  present; known Zero W192.168.1.81 timed out. Remote signed OTA implementation
+  is therefore NOT target-device accepted yet; do not enroll/reset/repin a device
+  or publish a package implicitly. Next bounded result: owner UI review and a
+  reachable enrolled supported Node for explicit remote update acceptance.
+  No commit, push, tag or publication. Independent dev-lab/simplification/M21
+  source preserved. Evidence: deployment-result.json, postflight.json and exact
+  operation receipts in .runtime/component-updates; no credentials/tokens recorded.
+
+- **CAP03 independent component web management, 2026-11-04 — local implementation.**
+  Owner requested application hosts and Agent alongside the accepted Runtime
+  control, then explicitly included remote Node Agents. System Updates now has
+  a selected local Agent/application-instance control and a separate per-Node
+  signed OTA control. No default-host publication or update-all action.
+  Local preparation uses immutable installed Core sources and the selected
+  component's validated native interpreter/vendor; no dependency installation
+  into Core or downloads. Exact candidate/build/target confirmation, previous-
+  build rollback and explicit interrupted-transaction recovery reuse existing
+  component stores and health/rollback paths. Current committed admin revision,
+  app incarnation/epoch/package/enablement and Core generation are rechecked;
+  APIs are current-admin only and helper observes the kernel Core UID. Status
+  opens stores read-only, with no bootstrap directories or application invocation.
+  Unknown accepted results retain their identity across remount, bounded status
+  reads never replay mutations. Proven pre-acceptance refusal is distinguished
+  from uncertain persistence/scheduling; only the former releases the UI fence.
+  Local updates preserve Core/Runtime, default/other-host pins, app metadata,
+  data and rights. Saved app hardware consent may resume output on reconnect.
+  Remote management reuses the existing signed, exact-device ARMv6 Node package
+  and installer (Agent plus Node service files, not arbitrary native architectures).
+  Catalog checks/download/preparation/install are explicit; no network catalog
+  request or update on page load. Latest durable per-device operation is readable;
+  only verified installation outcome, never command acceptance, indicates success.
+  Existing trust/bootstrap, freshness, revocation, conflicting-command and rollback
+  guards remain. Added maintenance-window approval and no-store status responses.
+  No schema/auth model/SDK change, version bump, live service action or deployment.
+  Final targeted boundary64 passed/0 skipped; helper7 passed/0 skipped, with
+  separate actual-systemd acceptance1 skipped (not a pass). Node/catalog/API/
+  release-contract groups passed (75 before final no-store change; final affected
+  group82 passed/0 skipped). Runtime consumers/helper109 passed/0 skipped reused
+  for unchanged Runtime behavior. Native host/Agent/Runtime process, artifact and
+  rollback checks80 passed; optional-image and distinct-root-principal2 skipped.
+  Initial NTFS fixture startup failure was resolved by running a verified Linux
+  source snapshot ace2d4d0...; native checks then passed. Its one required-file
+  ordering failure was fixed and the final14 contract cases passed in group82.
+  Final real selected-interpreter/vendor preparation and helper13 passed/0 skipped;
+  worker/builder disable bytecode writes, preserving existing immutable artifacts.
+  Final frontend47 distinct cases passed across six affected suites, reusing
+  unaffected cases and rerunning the final local-control12; types/build pass.
+  Actual local synthetic UI reviewed EN/light1280 and BG/dark390, including exact
+  unchecked confirmations and no horizontal overflow. No live device data used.
+  Evidence and preview helpers: .runtime/component-updates; independent CAP14,
+  simplification/dev-lab and M21 work preserved. Remaining acceptance: explicitly
+  authorized rollout, actual root/systemd boundary and target-device update/
+  rollback tests. Changed local dependency locks require separately verified
+  component dependency delivery; unsupported Node architectures stay refused.
+  EN/BG source labels added without republishing BG1.0.5: a distinct language
+  version is required before rollout. No commit, push, tag or release this task.
+
+- **CAP14 admin provider setup, 2026-11-04 — local implementation completed.**
+  Owner authorized the proposed bounded result. Devices -> Hardware providers
+  now renders an allowlisted template form using existing UiForm/UiField controls:
+  installed PCF8574T/HD44780 driver or simulation, display ID, geometry, bus,
+  hexadecimal address and backlight polarity. Prepare adds only an immutable
+  catalog package; it does not install, approve, enable an interface, reboot,
+  grant app rights, scan a bus or send a frame. Existing exact device/package/
+  profile review and module lifecycle remain the separate installation step.
+  Existing ZIP upload is retained under a collapsed Advanced disclosure.
+  The CLI and admin path share a pure protocol package builder with no Agent/
+  Core import or I/O. Existing 16x2 package SHA edaaef54... is unchanged. Driver
+  geometry remains parameterized, not an application/16-versus20 Core branch.
+  Invalid/extra/executable settings, unknown templates and revoked devices are
+  refused. Repeat preparation is deterministic; immutable version conflicts are
+  refused. Pending installation identities still fence new mutations; no retry,
+  silent replacement or new application consent is introduced.
+  Linux3.14.4 targeted checks118 passed/0 skipped in48.56s; catalog/upload/
+  lifecycle/removal/authority/transport consumers114 passed/0 skipped in43.64s;
+  final immutable-conflict case1 passed in16.30s. Independent suites total233
+  cases, not repeated attempts. XML in .runtime/provider-setup. Final Windows
+  frontend targeted cases36 passed, Extensions/inventory54 passed; type-check
+  and production build passed after final client changes. Actual components
+  visually reviewed using synthetic local data: light/dark, EN/BG, 1280px and
+  390px; no horizontal overflow at390px, explicit confirmation remains unchecked.
+  Preview: .runtime/provider-setup/preview-dark-bg.png. EN/BG source labels and
+  provider README updated; no language/Core version bump or ZIP publication.
+  Before a rollout, new BG content needs a distinct bundled language version,
+  not replacement bytes under published1.0.5. No deployment, hardware acceptance,
+  live installation/disable/removal, rights change, commit or push this task.
+  Independent simplification/dev-lab changes are preserved. Next: owner review
+  and an explicitly authorized test rollout; installed Agent contract is unchanged.
+  Separately, release run41804579423 completed/success. GitHub confirms published
+  v0.3.6, draft=false, published_at2026-11-04T09:41:39Z, seven assets. That release
+  is commit3867dee and does NOT contain this later local provider-setup work.
+
+- **Core0.3.6 release start / plan review, 2026-11-04.**
+  Owner authorized publication after successful main CI and reports Crypto Monitor
+  and Child Center installed and working. Verified all four CI jobs in
+  run41799731475 completed/success for exact main commit
+  3867deeabc2b0075265cdefa427c0722d6eb2838. Only then created and pushed annotated
+  v0.3.6 (tag object efe72c44b02d3359aa69f43b154ef5562a212ff4); remote peeled
+  tag matches that commit. Release run41804579423 is in_progress; publication
+  is NOT yet confirmed. Normal frontend/Python/deployment/artifact gates remain
+  enabled. No new source changes, tests, device commands or second deployment.
+  Reviewed CORE_SIMPLIFICATION_PLAN against newer acceptance records: old
+  local-only/pending-deployment notes do not invalidate later CAP03 Runtime web,
+  CAP09 UI, CAP13 local query or CAP14 I2C/LCD acceptance. The two real consumers
+  validate their supported profiles, not every CAP or hostile-code isolation.
+  Main remaining directions: easier independent component lifecycle in the admin
+  UI (CAP03); supported hardware-provider configuration without locally generated
+  ZIPs (CAP14); composition effects/events beyond local read queries (CAP13);
+  public forms/session ingress and inbound webhooks (CAP10/12); explicit device
+  budgets and a consistent public SDK authoring/conformance workflow (CAP20/21).
+  CAP11 target-device acceptance and additional CAP09 helpers remain scoped to
+  actual consumers; CAP17/18 notifications/search/documents are optional later.
+  Proposed next bounded result: configure an existing supported display-provider
+  profile through administration using the existing review/install lifecycle,
+  keeping host-interface setup, app rights and physical writes separate. This is
+  a recommendation, NOT authorization to implement. Independent plan/dev-lab
+  changes and this mixed log remain unstaged; no new commit/push requested.
+
+- **Core0.3.6 commit/push, 2026-11-04 — completed.**
+  Owner explicitly authorized commit and push. Commit3867deeabc2b0075265cdefa427c0722d6eb2838
+  contains exactly27 reviewed paths (1574 insertions/28 deletions); staged Git
+  blobs matched the frozen review and whitespace checks passed. Reused unchanged
+  targeted UI, Agent, restore and release evidence; no redundant tests/build.
+  Standard non-force push to origin/main succeeded; remote main matches exactly.
+  CI run41799731475 is in_progress for that exact SHA; no green result claimed.
+  No tag/release publication. Independent docs/CORE_SIMPLIFICATION_PLAN.md,
+  docs/DEVELOPMENT_CHECKS.md, tools/dev_lab.py, tools/tests/test_dev_lab.py and
+  this mixed working log remain unstaged/local. Next: green exact-commit CI,
+  then owner-authorized release tag. No additional device action.
+
+- **Extensions rollout / Core0.3.6 release preparation, 2026-11-04 — completed.**
+  Owner authorized deployment and release PREPARATION, not commit/push/tag.
+  Guarded normal immutable Core rollout local-eb89bbefce8be4d6802e926a succeeded
+  on rasp-3mm (189.384s install,0.883s extract). Reused the checked frontend;
+  HTTP-served Extensions-CGQBcNTw.js matches local SHA5821c13a... exactly.
+  Live release smoke passes: Core/Agent/Web ready; five main services active,
+  NRestarts0; same device identity. Agent dfc8fcad..., Runtime3af4df43... and
+  default host666ec3da... retained; no host/Agent update, reboot, restore,
+  approval, removal or LCD command. The UI candidate reports Core0.3.6.
+  Public preparation: VERSION0.3.6, changelog, release notes, and BG1.0.5.
+  Local rollout reserved BG1.0.4 with raw Windows-checkout JSON bytes; public
+  BG1.0.5 uses separate canonical Git/LF archive bytes to avoid an immutable
+  language version collision. Same translation dictionary apart from version.
+  Existing language selection is NOT changed automatically; no manual ZIP install
+  is needed for the bundled package. Source release/language checks118 passed,
+  16 warnings in42.44s (WSL3.14.4). After final BG metadata bump its actual bundled
+  staging/selection case passed again:1 pass/7 warnings in10.29s; not119 unique
+  tests. Canonical final BG archive validates through actual package validator,
+  SHA4494cf64...; reused UI54, type-check/build/visual and prior Agent/restore
+  evidence for unchanged code. Full main CI has not run for this dirty candidate.
+  Reviewed27 intended paths are frozen in .runtime/release-036/exact-scope.json
+  and commit-paths.txt. Excluded independent simplification/dev-lab documents and
+  tools; WORKING_STATE has substantial unrelated history and is excluded too.
+  No branch, staging, commit, push, tag or publication. Order remains authorized
+  commit/push -> green main CI for exact commit -> separately authorized tag and
+  release gates. v0.3.6 does not exist remotely; v0.3.5 publication was verified.
+  Next: owner Ctrl+F5 in Extensions and authorize the scoped commit/push when ready.
+
+- **Extensions inventory layout, 2026-11-04 — local UI completed.**
+  Owner requested applications first, with Agent modules/providers below in a
+  compact, initially collapsed disclosure with count. Each package now has a
+  name/device/status summary and separately expandable Details for identifiers,
+  installed/requested versions, command/error information and removal controls.
+  Original confirmation, acknowledgement, pending/unsupported-Agent guards and
+  original-outcome lookup are unchanged. Unresolved removal or load failure
+  opens the inventory automatically; stale loaded rows remain visible.
+  New EN/BG Details label in source only; no language/version/publication change.
+  Targeted Extensions49 checks passed; after the disclosure correction its final
+  inventory5 checks passed (54 applicable cases, not overlapping rerun totals).
+  Type-check and production build passed using existing Windows dependencies.
+  Browser review used actual Vue components and theme tokens with synthetic,
+  read-only local fixtures: light/dark, BG, collapsed/expanded and390px layout;
+  long IDs wrap with no horizontal overflow. Local screenshot:
+  .runtime/agent-inventory/layout-dark.png. No Raspberry/network API actions,
+  ZIP installer redesign, removal, rights change, deployment, commit or push.
+  Deployed by the later authorized rollout above; unrelated source preserved.
+
+- **Raspberry deployment / real restore trial, 2026-11-04 — completed.**
+  Owner approved Core + Agent rollout and chose a NEW backup, not the historical
+  failed archive. Standard immutable rollout local-3d54a71ccbc5cb746d9e6fad
+  succeeded (Core198.14s, Agent build5.23s/update45.90s). Agent pin is now
+  dfc8fcadd37b98b8d7e17d754b599d77253c1e5f60f16d99bdc2ff011623f81c;
+  Runtime3af4df43... and default host666ec3da... preserved. Bundled BG remains
+  byte-identical611876b4... (new Agent labels fall back to EN until a language
+  version update). Reused owner169 backend/53 UI and228 restore checks and
+  owner-built Extensions-qfIM-maE.js; added Agent artifact test1 passed/6 warnings
+  in17.27s. No duplicate frontend build or broad test run.
+  Before trial /ready was ready, all observed Core/Agent/Runtime/helper services
+  active with NRestarts0. Admin Agent catalog:1 package/1 installation, uninstall
+  support confirmed; NO removal command sent. Fresh encrypted backup
+  bkp_20261104T061429Z_da1e843d completed. One restore was dispatched through
+  normal API with exact archive confirmation, not replayed. Both restored and
+  rollback runtime activation completed, but the stale release_smoke requirement
+  /access made BOTH completion checks fail; status restore_rollback_failed.
+  Previous files were returned and Core/Agent are active/ready. Refreshed only
+  update-helper after diagnosing that false health failure. Retained first
+  operation status/recovery evidence; do not call the first restore successful.
+  Proven blocker fix: require current /api/v1/devices instead of removed /access.
+  Real current Core OpenAPI now exercises restore completion (not mocked health),
+  with missing-required-API and mismatched-Agent denials retained. Targeted
+  smoke/restore/backup checks30 passed/0 skipped,5 warnings in38.77s (WSL3.14.4),
+  .runtime/restore-recovery/smoke-fix-results.xml. Scope adds no retired API adapter.
+  One-file Core follow-up local-1a9d35add659ab46cb798217 succeeded (189.16s);
+  no additional Agent/frontend/Runtime/host update. Actual live release smoke
+  passed before the next trial. One first cold OpenAPI GET exceeded5s; a later
+  read returned HTTP200/365215 bytes in0.051s and the15s-budget smoke passed.
+  Owner explicitly approved a NEW backup and second restore AFTER the fix.
+  Fresh bkp_20261104T063625Z_e4e97f8a completed; its one restore request ran
+  06:38:10.826566Z–06:39:07.056450Z and returned completed/error_code null.
+  Receipt comparison confirms this is the new restore, not its backup result.
+  Final live smoke: Core/Agent/Web ready, same dev_c35c582dbdc544f0a44263c065993623,
+  aarch64. Core, Agent, Web, Runtime and update-helper active/NRestarts0.
+  Admin catalog still1 package/1 installation/uninstall_supported1. Agent pin
+  dfc8fcad..., Runtime3af4df43... and default host666ec3da... unchanged by restore.
+  This proves the real systemd write/environment boundary and successful
+  restore completion on this device, not just doubled-systemd tests. Standard
+  recovery authority fences remain; no app rights were automatically approved.
+  Next: owner Ctrl+F5 and inspect Extensions/provider inventory; any destructive
+  removal trial or new app approval is separate. Private receipts/prepared kits:
+  .runtime/restore-recovery/device-trial.json and /tmp/3mm-restore-trial.oVOEouFW.
+  No factory reset, device reboot, rights approval, LCD command, commit or push.
+
+- **Restore recovery follow-up — owner source checks passed; deployed in trial above.**
+  The failed Raspberry restore first hit EROFS creating an application-host
+  update.lock: its transient service allowed /var/lib/3mm but not the separate
+  host journals or per-instance pointers. Files rolled back, but reactivation
+  then lacked AI_SETTINGS_MASTER_KEY because restore children did not load
+  /etc/3mm/3mm.env. Previous state was manually reactivated; the selected backup
+  was NOT successfully applied. These are separate from deferred LCD409 work.
+  Local fix: shared restore/child systemd hardening permits only mutable host
+  journals and instance pointers, leaving host releases/default read-only.
+  Each migration/activation child gets the CURRENT EnvironmentFile via PID1,
+  including after rollback; no shell parser, secret argv or cached parent key.
+  Before stopping services, validate current rollback identity/key, probe both
+  host write roots, and prove child namespace/environment startup. Preserve
+  health verification, authority fences and failed-rollback evidence/status.
+  Added real encrypted archive/switch/identity regressions with a doubled
+  systemd manager for success, migration/app/bootstrap/health failure, current
+  key mismatch, read-only mount, child startup failure and failed rollback.
+  Owner runner: .runtime/restore-recovery/test.ps1 (default all), retaining
+  JUnit/logs and relevant before/after source hashes under its runs directory.
+  Python AST, PowerShell parsing and scoped whitespace checks passed. Owner
+  completed all-f9d97ab01fbb4d11aba9fdc710a9d3d4 on WSL Python3.14.4:
+  228 passed, 0 skipped/failed, 10 warnings, 85.06s. Inspected saved evidence
+  and JUnit: 228 cases, exit0, no relevant changes during the run; all21 recorded
+  source/test hashes still match. Reuse this result; no tests rerun by agent.
+  These were source checks, not original hardware acceptance. The authorized
+  deployment, real restore acceptance and completion-check fix are above.
+  Version/commit/push unchanged; no automatic factory reset.
+
+- **Agent inventory and complete removal — owner checks passed; deployed above.**
+  Owner deferred LCD 409 work and requested that installed providers never be
+  hidden and that complete removal be available. Extensions now has a separate
+  Agent catalog showing uploaded versions and per-device installations,
+  including missing-package records, installed/requested versions and errors.
+  New explicit module_uninstall feature/command: exact administrator request,
+  original-outcome lookup, stop/purge only the selected Agent module's versions,
+  state and data, then confirm a tombstone in Core. Core refuses stale requests,
+  unresolved lifecycle deliveries and package retirement while any device still
+  references that module. Package retirement also removes archived install bytes
+  from terminal command payloads, retaining receipts/audit. Older Agents require
+  update; they are never assumed to support deletion. No schema migration,
+  version bump, commit, push, deployment, device removal or LCD write requested.
+  EN/BG labels added without changing package versions. Python/runner syntax,
+  language key parity, frontend type-check and diff checks passed. Owner ran
+  .runtime/agent-inventory/test.ps1: backend 169 passed (332 warnings, 86.24s),
+  frontend 53 passed (49 Extensions + 4 inventory), type-check/build passed.
+  Reuse those unchanged Agent/UI checks; do not repeat for this restore-only
+  follow-up. Core + Agent rollout and read-only catalog verification are above.
+  This does not fix backup/restore or the remaining Agent execution-permit 409.
+
+- **v0.3.5 release gate.** v0.3.4 was tagged but not published; leave its
+  tag unchanged. Corrected the revoked device-source authority error and
+  included the missing hardware/HTTP diagnostics labels as BG 1.0.3.
+  Commit b2887a6 passed frontend but failed Linux CI on the administrator
+  module action for a revoked device. Follow-up d7d4160 returns a controlled
+  denial before queuing any command. CI run 41595822796 reached 1161 passes
+  then failed the health pool drain at a 2 s per-future watchdog. Follow-up
+  4694586 aligns only the test drain with its HTTP watchdog, retaining
+  the live latency bounds and eight required successes. Local WSL hit the
+  fixture startup timeout before exercising the test. CI run 41598356557
+  passed the health test but failed missing peer schema handling after
+  1177 passes. Follow-up b7ab609 refuses the entire status authority decision
+  if its SQL snapshot cannot be read; 16 identity-authority tests passed in WSL.
+  All four main CI jobs passed in run 41600344781 for b7ab609.
+  Only then was annotated v0.3.5 pushed; verified it resolves to b7ab609.
+  Release run 41609122055 subsequently published v0.3.5; verified via the repository
+  release API on2026-11-04 (published2026-11-03T09:36:57Z).
+  Staged diff and BG manifest/key parity checks passed locally.
+  No device deployment was performed.
+
+- **Post-install 409 follow-up.** Owner confirmed Monitor installation succeeded.
+  Export (6): 11 of 15 retained failures report review_key_busy; one of those
+  is execution_unconfirmed, not safe to replay. Three older authority requests
+  and one UI access request are unclassified. Export does not identify the
+  exclusive lock holder. Local Core change: command and connector admissions
+  verify under a shared key lease, keeping the same SQLite write fence and
+  cleanup-before-key-release order. Key/authority changes and signing still
+  use exclusive leases. Extended real-lock tests for both admissions and
+  overlapping UI trust. Owner Linux checks: 122 passed, no skips/failures.
+  Core-only rollout local-151177dd48645dcbe4e5e87c on rasp-3mm succeeded;
+  Core active and /ready ready. Payload diff against local-b0582a77f...
+  contains only application_authority_management.py plus release metadata;
+  frontend bytes and independent component pins preserved. No operation
+  replays or LCD commands issued by the rollout. Next: observe normal Monitor
+  use and compare a fresh export; production 409 improvement not yet measured.
+
+- **Crypto Monitor reinstall: separate missing device selection from activation.**
+  Read-only Raspberry diagnostics confirmed the 0.7.0 first-registration seal
+  and configuration match, but the sealed configuration lacks the required
+  DISPLAY_DEVICE_ID. Consent preview stops at required-field validation; this
+  is separate from the historical LCD-operation 409. Implemented local Core/UI
+  changes: Extensions saves only missing required device choices for the exact
+  disabled, not-yet-active package through the staging API, which authenticates
+  the original connector registration, validates approved devices, and leaves
+  the app stopped and in review_required. Access review and activation remain
+  separate. Owner checks: 23 Linux backend and 49 frontend tests passed.
+  Frontend type-check and production build passed. Deployed the two scoped
+  Core files and rebuilt UI from the last deployed baseline to rasp-3mm:
+  local-b0582a77f169372c65d2b3a1, installer succeeded, Core active, /ready ready.
+  Independent component pins and bundled BG preserved. Next: owner saves
+  the device, reviews access and explicitly activates; no approval, activation
+  or LCD commands were issued during this rollout.
+
+- **Owner requests direct diagnosis after Crypto Monitor reinstall, 2026-11-02.**
+  Owner accepts spontaneous Core409 improvement; remaining issue is display
+  start/locked one-frame test, and now an unsuccessful app reinstall. Basic
+  read-only SSH confirms rasp-3mm, Core local-b4a50dca..., Core PID686634 and
+  update-helper active with NRestarts0. Newer SSH host key matches the owner's
+  earlier device-console confirmation; no SSH trust settings changed. A proposed
+  broad privileged diagnostic export was
+  rejected by review; it did NOT run. Owner was asked separately to authorize
+  ONLY selected app installation/version/error categories, migration revision
+  and outstanding LCD command statuses returned to this chat, excluding process
+  environment, settings, prices, screen text, secrets and general logs. Owner
+  explicitly approved that limited read/export. Executed ignored
+  inspect-monitor-status.py with fixed DB path, SQLite mode=ro/query_only and
+  selected columns only; no product imports or actions. Two bounded observations
+  confirm installation11/instance46e92c9bdffd26e204800468: selected package0.7.0,
+  active_version NULL, disabled/enabled0, error NULL, mode review_required.
+  Uploaded packages0.6.0 and0.7.0 exist. No retained-data registration, instance
+  directory, active.json or own state.sqlite3 found; no associated LCD command
+  records remain in the scoped join. Thus the current block is an inert candidate
+  requiring fresh exact-package consent before activation: native_activation()
+  with active_version None requires a current grant, whose mode must be enforced.
+  Not evidence of a failing migration/host startup or an outstanding physical
+  command in this current installation. Historical checkbox409 host ValueError
+  remains undiagnosed; prior app DB/receipt state is unavailable, so do not claim
+  that an old guard is proven or fixed. Next: owner authorizes reinstall/activation
+  of0.7.0 and explicitly reviews rights, without Start/Send, then inspect/reproduce
+  the LCD control path in a bounded way. No install, grant, service, data, LCD or
+  tracked product-code changes; no tests/builds were run.
+
+- **Latest409 after enabling persistent LCD, read-only diagnosis 2026-11-02.**
+  Owner reports no spontaneous409s in this observation, but a failure on checking
+  persistent enable. Export(5) contains one POST409, no drops: trace
+  invoke_4993cfb5d87141a698ba9bcde9a5d6a4,1696.588ms,
+  application.host_handler/host_value_error then response_check/ui_policy/
+  completion operation_failed, execution_unconfirmed, retryable false. New host
+  detail is observed working; this is a caught ValueError within handler execution,
+  not an initial Core key/trust denial. Underlying SDK denial is not excluded:
+  Crypto's observe() catches SDK errors and start converts unavailable observation
+  to ValueError. Inspected current sibling source read-only: actor/request-key,
+  payload/geometry/access, settings-revision, live-run/mode/pending and unresolved
+  manual-receipt guards can all raise ValueError along this start path. Cannot
+  identify the actual guard from the coarse exception family alone. Need failed
+  display_live_start payload and only revision/display_geometry/live_display
+  from current get_state response; no headers, tokens, full settings or business
+  data. Do not retry Start, erase journals or weaken guards. No code/device changes,
+  tests or further deployment performed; app fix is not yet identified.
+
+- **Safe host-failure detail, owner authorized 2026-11-02; owner checks passed.**
+  Bounded follow-up to exports(4)/(5), NOT a claim that the underlying application
+  failure is fixed. Native host negative replies carry only version, fixed
+  host_request/context/storage/handler/result stage, closed built-in/SQLite/SDK
+  category and host elapsed milliseconds; generic error replaces raw exception
+  text. No arbitrary class names, traceback, path, payload, actor or SDK phase
+  is exported. SDK's nested refusal/not_dispatched never proves the outer call
+  had no effects. Core accepts detail only after current completion policy and
+  signed request/response checks; adds one failure-only observation to existing
+  Core diagnostic records and recent-HTTP ring, using the SAME trace/instance.
+  Missing/malformed/unknown details and collector errors do not change success,
+  the generic409, phase, policy, rights or no-replay behavior. No healthy-call
+  host record, new recorder, frontend, app-specific Core branch or dependency.
+  Prepared real Unix-host socket tests (including handler effect before failure,
+  unprintable exceptions and subsequent healthy call), strict metadata/export
+  validation, real UI/key/HTTP tests for correlation, inactive/broken recorder,
+  forged signature/request, revoked rights and positive/malformed responses.
+  Native packaged-host check exercises SDK classifier without checkout/Core.
+  Owner runner groups: host-failure then host-failure-consumers; permanent reports
+  and existing300s limit retained. Owner completed both groups on SAME source
+  c7e7eaf68d166fd1cb686bb148f1e210d30ac4231f9502ee7afe6ec27bb60cd8:
+  host-failure169 passed in40.07s (run3af79f679cce4edc9ed876f6c8a51c68),
+  consumers134 passed in19.42s (run387ca143999643d58ad7afc075894882).
+  Total303 passed,0 skipped/failed; Python3.14.4, unchanged dependency fingerprint
+  f91ccaad806c25f0057f8f802db6ed3ad6733a89fd44d3bd934d14d1b8c8c5f7.
+  Agent verified both saved evidence/JUnit sets,303 distinct case identities,
+  and all1295 frozen source hashes still match current files. No checks rerun.
+  Static Python AST for8 files, runner PowerShell syntax and scoped whitespace
+  passed; no product imports, tests, build, device changes, commit or publication.
+  Prepared ignored prepare-host-failure-deploy.py, deploy-host-failure.ps1 and
+  update-host-failure.py. Prepare defaults to local-only; reuses both pinned
+  reports and the existing immutable Core builder with exactly3 delivered source
+  changes, existing frontend and deferred BG preserved. Expected baseline
+  key6694a92de7c2d6185f0cbd8cef32731035115a0c9d2234cf0e9c53302d0152a9
+  is a local candidate, NOT independent device attestation; remote preflight
+  must confirm it, app0.7.0/package6c919b56..., instance46e92c9bdffd26e204800468
+  and previous host666ec3da... before Core deployment. Deploy requires current
+  backup confirmation DEPLOY CORE AND CRYPTO HOST. First standard guarded Core
+  update preserves all component pins; only after success, verify delivered source
+  hashes and build native host from installed Core/existing locked dependencies
+  without pip/download, under the shared release lock. Existing exact-instance
+  host controller owns health/journal/rollback. No default-host publication,
+  Agent/Runtime/other-host update, app upgrade, grants or Start/Send invocation.
+  Existing persistent LCD consent may resume output on restart. Two phases have
+  independent rollback; if the host phase stops, inspect rather than repeat Core.
+  CoreStatus/CoreLogs/HostInspect are observations; HostUpdate is separately
+  confirmed continuation after inspection, with exact new-Core/old-host guards.
+  Private transfer directory, explicit SSH host-key checks, hash-verified root
+  loader/plan, all delivered source/closure hashes and unchanged-other-pins checks
+  are retained. Helper Python/embedded-loader AST, PowerShell parser and static
+  baseline/delta review only; operator scripts not executed by agent. No new kit
+  built, native compilation, test repeat, SSH/device action or deployment here.
+  Latest next owner action: observe /monitor and export a fresh failure if409
+  recurs; do NOT repeat Deploy/HostUpdate. See completed owner update below.
+  Owner attempted Deploy: prepared key
+  b4a50dcad60a99164e468a1f30faef721ecaed49488191cea329335e5e39c0bd.
+  Remote read-only preflight CONFIRMED baseline6694a92d..., exact app/package,
+  old host666ec3da..., active service and no pending host journal. Subsequent
+  Core-kit SCP failed at hostname resolution for rasp-3mm.local (exit255).
+  Inspected deploy.ps1 throws immediately after that SCP, BEFORE its SSH
+  controller-start command; this attempt did not launch installer or host update.
+  Local attempted receipt exists; it is NOT proof that a remote job started.
+  Only diagnostic helper/plan transfer preceded the failure. Reuse exact prepared
+  bundle/checks, restore hostname reachability then retry this guarded Deploy;
+  this is a confirmed pre-dispatch transport failure, not an uncertain installer
+  acknowledgement or permission to replay any application operation. No product
+  code, network/SSH configuration, device or tests changed by agent for diagnosis.
+  NEWER owner retry inspection now reports Core b4a50dca... already selected,
+  exact Crypto0.7.0/package unchanged, old host666ec3da... active, no host journal.
+  This supersedes the earlier device-state conclusion; provided logs do not show
+  which intervening attempt selected Core. Preflight correctly refuses the old
+  baseline rather than reinstall Core. Saved local plan/helper hashes verified;
+  HostUpdate explicitly expects this exact new Core and previous host, verifies
+  all delivered bytes, then uses normal native-host health/rollback. No guard
+  bypass or source edit needed; no agent test/build/device action performed.
+  Owner subsequently completed HostUpdate: status ready, Core keyb4a50dca...,
+  selected native host5319e9936cece808c1b1827e6b1962562aaa08bce15922b078b963904e3ab524,
+  artifact SHA201e56e46f73de8ede0bde20386083eecc76235cc4d54cd5f8bdacb09eb883ba.
+  Core PID686634 retained during the host phase; application_metadata_unchanged
+  and other_component_pins_unchanged both true, automatic_retry false. Device now
+  has both diagnostic halves. This confirms rollout, NOT resolution of the
+  original409 or physical LCD acceptance. Next: hard-refresh /monitor, observe
+  the prior spontaneous-failure window, export fresh recent HTTP failures if
+  needed; do not blindly repeat an unconfirmed Start. No agent runtime checks,
+  device actions or further deploy requested. Crypto0.7.0 package/rights unchanged.
+
+- **Post-fix Core409 exports(4)/(5), read-only diagnosis 2026-11-02.**
+  Recent HTTP failures(4): two409s at10:56:04/10:56:46UTC, both
+  response_check -> ui_policy -> completion retain operation_failed rather than
+  being masked as authority_unavailable. This confirms the observed error-path
+  correction, not an independent attestation of the device's deployment key.
+  Operation records(5) cover10:57:31-10:58:03UTC:27 invocations,26 completions OK,
+  one operation_failed, no diagnostic drops. Failing trace
+  invoke_2ea0f7b3c07b4d6cb3e0125896ae24a7 identifies Crypto Monitor instance
+  46e92c9bdffd26e204800468. The two exports have NO common trace ID/time window;
+  do not attribute the earlier generic HTTP rows to this instance by proximity.
+  Inspected relay identifies a verified signed response with ok!=true, not
+  response timeout/signature failure or a refusal at the initial Core policy
+  checks. Final policy recheck/commit are not reached. Native host catches both
+  pre-handler validation and handler/SDK exceptions into that negative response;
+  it does not itself log the caught exception. The actual operation ID and safe
+  host-side failure category are still missing, so exact root cause is unproven.
+  Nearby command.discover/core.request OK is not proof of granted access or a
+  causal link to this invocation. Do not change rights, replay Start/Send, erase
+  receipts, or claim physical non-execution from these records. Next bounded
+  diagnosis needs the host-side failure stage/category correlated to invocation,
+  without exposing raw exception text/payloads. Only exports and relevant source
+  read this turn; no tests, imports, application/device actions or code changes.
+
+- **Core409 key-error masking fix, owner authorized 2026-11-02; prepared.**
+  Scope: preserve errors from code running under a key lease rather than turn
+  RuntimeError-derived gateway/transport failures into AuthorityReviewKeyError.
+  Only production edit is application_authority_keys.py. Acquisition and cleanup
+  own an ExitStack; only their actual adapter operations are normalized. The
+  yielded caller is outside that error adapter. Identity/fingerprint/rotation,
+  record reads and locked-key checks/signatures retain private fail-closed key
+  errors; no file mode/path checks, lock mode/timeouts, trust/grant decisions or
+  key provisioning/recovery semantics are weakened. Caller cleanup still ends
+  DB transactions before releasing the key. Actual cleanup failure remains a
+  denial and adapter.active becomes false on every yielded-key exit.
+  Prepared new real-POSIX tests for caller error identity (including gateway,
+  transport, SQL, OS, runtime and cancellation), missing keys, partial acquisition
+  and cleanup failures. Real HTTP/UI negative signed response, bad signature and
+  malformed result retain operation_failed/response_invalid through completion,
+  with one dispatch and no key/trust misclassification or private text export.
+  These tests work with active/inactive opt-in diagnostics. Existing deliberately
+  unexpected RuntimeError fixtures now expect original error/HTTP500 rather than
+  the incorrect key-trust409; declared policy refusals stay redacted at their
+  actual resource boundary. Existing rollback-failure tests still assert physical
+  key/DB cleanup and rolled-back own data. No other failure was relabelled a pass.
+  Owner runner adds key-errors then deduplicated key-errors-consumers, covering
+  the shared key's read/write authority, session/UI, SDK effects and RPC consumers.
+  No frontend build or entire Python suite requested. Previous166 passes precede
+  this production edit and are NOT claimed to test it. Agent static review passed:
+  Python AST/whitespace for five Python files, PowerShell runner parsing and
+  tracked diff whitespace; no product imports/tests/builds. Crypto0.7.0 source, Agent,
+  Runtime/host code, VERSION and grants unchanged; no commit or device actions.
+  Owner key-errors run passed130, skipped2, no failures in42.23s. Source
+  6ae482f42cb6f47ed6d8d8ffeb30929216a35a000ddcfdd80d4bc2e118fb682b;
+  permanent run key-errors-41ac7ab6af794261bbb21253572f0f25. Python3.14.4,
+  unchanged dependency fingerprintf91ccaad... . Skips are root/foreign-UID
+  acceptance and the non-POSIX-only refusal, NOT passes. Agent verified saved
+  JUnit132 cases/2 skips/0 failures and all1293 frozen source hashes still match
+  current source. These130 successful checks are reused without repetition.
+  Combined key-errors-consumers run da7c298c6a99447b9a8e8e7a77a09cc9 stopped
+  at run_lab's300s subprocess timeout (exit2), not a recorded test assertion.
+  It retained only tests.log through66% progress, no JUnit/evidence.json; no
+  individual completed module identities, so none of those dots certify a pass.
+  This does not distinguish a slow full selection from a waiting specific test.
+  Fixed only ignored runner selection/reporting: six disjoint consumer groups
+  (policy/effects/callbacks/public/events/ui), exact same28 modules, none from
+  successful key-errors. Per-run300s bound unchanged, verbose node IDs/slowest8
+  durations retained and missing-JUnit failures include the bounded log tail.
+  Static AST selection review confirmed exact coverage/no duplicates. No product
+  source, test behavior, dependencies or application installation changed after
+  the successful130-case run. Owner subsequently completed all six groups on
+  SAME source6ae482f4... /Python3.14.4 /dependency fingerprintf91ccaad...:
+  policy210, effects97, callbacks127, public29+1skip, events63, UI108+13skips.
+  Together with key-errors130+2skips:764 passed,16 skipped,0 failed; seven saved
+  JUnit/evidence/log sets verified, no duplicate case identities, all1293 frozen
+  source hashes still match current source. The timed-out combined run is NOT
+  reused. Skips remain unproven root-boundary/non-POSIX cases, not passes.
+  Evidence pinned in ignored prepare-key-errors-deploy.py; no checks repeated.
+  Prepared deploy-key-errors.ps1 (default Prepare; explicit Deploy plus backup
+  confirmation DEPLOY CORE KEY FIX), reusing existing generic guarded builder.
+  Expected baseline key4e9f2bc0cba1690ee1a0a76dd362bc6a778125cd5ca7f7c55b70f9fe907f8d52
+  under completion-detail-deploy. A local baseline candidate exists; this is not
+  independent confirmation of the device's selected key, so remote guard must
+  verify it before installation. Exactly one delivered source file changes:
+  application_authority_keys.py; archive comparison confirmed it plus deferred BG
+  source drift, which stays out. Existing prebuilt frontend is unchanged, as are
+  independent Agent/Runtime/host pins and grants. Standard immutable installer,
+  backups/rollback and no-replay guards retained; Core/related services restart,
+  no reboot. Existing saved application consent may resume output; launcher never
+  invokes Start/Send or approves rights. Static Python AST/report-hash/unchanged
+  frontend/runner-guard review and PowerShell parser passed. Agent did not build
+  a kit, import product code, run tests, deploy, restart or invoke app/hardware.
+  Next owner action: deploy-key-errors.ps1 -Action Deploy; then observe /monitor
+  and send the actual Response/new recent-failure export if409 recurs. Do not
+  repeat an unconfirmed Start. Host-side ok:false remains a
+  separate unresolved failure; fixing its misleading label does not make that
+  negative response a successful command or permit automatic replay.
+
+- **Core409 export(3), read-only diagnosis 2026-11-02.** Owner supplied
+  Downloads/3mm-recent-http-failures (3).json. Two retained failures; all drop
+  counters zero. New fine stages are present, but export alone does not attest
+  the exact installed deployment key. Trace invoke_a97e35c90d6c48d0a59e652209fb2c59
+  at06:13:47.384UTC /08:13:47 Sofia: application.response_check/operation_failed,
+  execution_unconfirmed,1617.740ms; then ui_policy/operation_failed, outer
+  completion/authority_unavailable. In inspected relay this identifies the
+  verified response's ok!=true branch: signature/request validation passed,
+  initial completion policy/binding passed; final policy recheck/commit were
+  not reached. NOT proof of physical non-execution or missing Core rights.
+  Generic native host catches both pre-handler validation and handler/SDK
+  exceptions into signed ok:false plus bounded raw error text; exact exception
+  and operation/module identity are intentionally absent from this HTTP export.
+  Cannot assign this trace to Crypto solely from route template; correlate the
+  browser x-3mm-trace-id before attributing it. Native host catch does not itself
+  log this exception, so ordinary journal output cannot be assumed to retain it.
+  Confirmed Core masking defect: ApplicationGatewayError subclasses RuntimeError;
+  CoreReviewKeyStore._access catches RuntimeError across its yielded caller body,
+  converts response failure into AuthorityReviewKeyError, route boundary converts
+  that to generic UI-trust409, then completion labels authority_unavailable.
+  This explains the misleading outer diagnosis, NOT the host's negative result.
+  Separate trace invoke_e551e874cddf4026a50e2ad7ac2a0cc3 at06:08:33.429UTC /
+  08:08:33 Sofia: application.dispatch/transport_unavailable,not_dispatched,
+  1155.865ms. Failure before first send; no evidence of an LCD write, key busy
+  or M20 refusal in this record. Transport reason alone does not identify whether
+  socket connect/peer I/O failed. Both retryable=false; no automatic replay.
+  Next bounded proposed work: preserve caller exceptions through the key lease,
+  with actual-key failures still denied and DB-before-key cleanup preserved;
+  obtain a safe classified host-side negative cause, not another broad timeout/
+  rights change. This turn is diagnosis only: no executable changes, tests,
+  deployment, restart, grants or app/LCD invocation. Root host failure unresolved.
+
+- **Active Core409 investigation: owner explicitly requested the permissions
+  path, 2026-11-02.** Read-only audit: the observed administrator operations
+  endpoint requires a current admin principal; ordinary user/route denials are
+  classified401/403, whereas UI trust/current-authority errors can become409.
+  Missing a named application permission alone is not proof of this admin-path
+  failure; service M20 authority and human access remain separate. No root cause
+  claimed from the supplied generic completion response. Extended the existing
+  ignored .runtime/cap14-crypto/inspect-ui-trust.{py,ps1} with optional -Access
+  and -UserId. It runs only in a short-lived process as the actual non-root Core
+  UID/environment, using installed code and SQLite mode=ro/query_only. A local
+  SQLite audit hook refuses any unexpected writable/default connection. Reads
+  bounded administrator-role/operation/route permissions and active-unexpired
+  login counts without fetching tokens, tests current same-Session UI proof
+  across expire_all, and validates current M20/declared command grants through
+  their real read-only evaluators. It does not validate the browser JWT, execute
+  the HTTP write fence, call application handlers/SDK effects, grant/recover
+  authority, restart services or touch I2C. Thus a clean sample cannot exclude
+  an intermittent completion failure. Python AST / PowerShell parsing passed;
+  probe not executed by agent. Owner then ran -Access: exact installed0.7.0
+  package SHA6c919b56f1e1e4316c5865fa0d0d04625594625ea914fc686da7013d2a082891
+  matches the local built ZIP; UI digestc4bc8a153cc40bcf5b3d95ff78b947727e1f2e14e1753b3a5152a228309f09c3.
+  Core PID407716. All code/build/key/trust/same-Session proof stages passed.
+  Candidate admin1 is present, unblocked, with subject identity and current
+  monitor_configure/display/privacy access; monitor route and live operations
+  allowed. Internal health is not administrator-callable by design. Twelve
+  active-unexpired login records do NOT identify or validate the browser JWT.
+  Current M20 scopes connector:coinbase/coingecko and command:display_frame
+  passed both current-grant and exact command-grant evaluators. No missing
+  permission demonstrated; this sample does not exercise the HTTP write fence,
+  concurrent completion or the browser token. Do not change/reapprove rights.
+  Next bounded result: Core-only diagnostic deployment below, executed by owner.
+
+- **Core409 completion diagnostic gap, prepared 2026-11-02.** Existing exports
+  cannot locate four broad ui_policy/authority_unavailable completion failures.
+  Added failure-only fixed stages for initial/final completion policy checks,
+  binding/preparation, response validation and commit; UI preflight/client
+  binding/artifact/Session-proof failures are retained BEFORE existing redaction.
+  Gateway allowlisted reasons and invalid response signatures retain their safe
+  category. Public HTTP errors, auth/grant evaluations, check order, lock mode/
+  timeout, transaction lifetime and no-replay behavior are unchanged. Ring stays
+  memory-only100/15min with six fixed metadata details and existing caps. Healthy
+  calls produce no additional events. No bodies/exception messages/tokens,
+  concrete module/operation identifiers or filesystem paths are added.
+  Prepared regression coverage for current permission/session revocation after
+  dispatch, stale browser bindings, expired/switched Session proof, transport-key
+  changes, response failures and commit SQLITE_BUSY, with and without opt-in.
+  Each already-dispatched failure remains execution_unconfirmed and sends once;
+  this is diagnostic preparation, NOT a confirmed fix of the installed cause.
+  Owner command: .runtime/core-ui-concurrency/test.ps1 -Group completion-detail
+  -StopOnFirstFailure. Uses existing isolated runner/environment and permanent
+  evidence; no installed Core, app invocation, grants or LCD writes. Agent runs
+  only syntax/whitespace review: Python AST passed for all eight changed Python
+  files, PowerShell runner parsed, tracked diff whitespace passed. This is NOT
+  runtime evidence; no product imports/tests/builds. No app0.7.0
+  source, VERSION, deployment, service action or commit. Device acceptance pending.
+  Owner completion-detail run passed166, no skips/failures, 55.70s, source
+  30e164f82ed9e7070a8620a96ed729f0fda4796418bd3afdd92616c82553ae79,
+  Python3.14.4 with unchanged dependency fingerprintf91ccaad... . Permanent
+  evidence: .runtime/core-ui-concurrency/runs/completion-detail-6f3c156469904fc288c285888b382174.
+  Agent read-only verification: all1292 frozen source files/hash values still
+  match current source; JUnit/evidence/log hashes pinned in the owner preparer.
+  No checks repeated. Prepared deploy-completion.ps1 (default Prepare, explicit
+  Deploy plus backup confirmation) and prepare-completion-deploy.py, reusing
+  the existing guarded Core-only builder with explicit evidence/baseline inputs.
+  Expected installed deployment91c92deb18eb043de2249fac3772837f518ac4d775aec64de93392532ab5bc04.
+  Exactly five delivered source changes: application_extensions route,
+  application_invocation_relay, compiled_ui, operation_diagnostics and protocol
+  diagnostics. Frozen payload comparison confirms that delta; unrelated changed
+  bundled BG remains deferred/preserved. Frontend is reused byte-for-byte;
+  independent Agent/Runtime/application-host pins and grants stay unchanged.
+  Standard immutable installer/backups/rollback and no-replay guards retained.
+  Normal Core/related-service restarts may pause/resume app output according to
+  existing saved app consent, but launcher never calls Start/Send/reviews rights.
+  No kit builder, tests, imports of product code, deployment or device actions
+  executed by agent. Next owner action: deploy-completion.ps1 -Action Deploy;
+  after readiness use status reads / monitor opening and export a fresh409
+  within15min. Do not repeat an unconfirmed Start, reapprove rights or clear IDs.
+
+- **Active app-only follow-up: Crypto Monitor 0.7.0, owner approved 2026-11-01.**
+  Owner requested visible original-frame recovery plus a durable enable checkbox
+  that works without the browser and across service/device restart; Core VERSION
+  remains unchanged. Source prepared in sibling 3mm-crypto-monitor: migration
+  0007 conservatively requires new persistence consent after 0.6.0, preserving
+  pending intent, sequence, settings, cached prices and all existing journals.
+  Enabled healthy output resumes with fresh M20/target/profile checks and new
+  sequence IDs; delayed startup readiness is observed without submission.
+  Normal revocation/profile drift, failed/retired authority and unknown outcomes
+  remain fenced. Disable persists even while blocked/pending/dirty; an admitted
+  in-flight frame may finish. Original-ID Check now returns bounded last-check
+  status/time and the UI displays its response immediately, including busy,
+  not_found, denied/unavailable, identity mismatch and confirmed completion.
+  Separate explicit recover command can continue a missing original admission
+  ONCE, only after fresh exact Core not_found, no known command ID and same
+  current reviewed target/geometry. It retains original args/SDK ID, commits
+  its attempt and control receipt before SDK work, and checks Stop generation;
+  no SQL transaction spans lookup/submission. Late original replies are observed,
+  never assigned a replacement effect ID. Lost recovery acknowledgement stays
+  pending/read-only. New backend/UI checks prepared for these cases, migration,
+  restart persistence, stop races and denial; no agent-run tests/build/imports,
+  no new package built, no deployment/service action, rights approval or LCD write.
+  Owner checks supplied 2026-11-02: backend 99 passed / 25.368s, snapshot
+  54cf4b286114463eadef05fee3afa046; frontend Vite build, Vue type-check and
+  46 UI tests / 3 files passed, snapshot da10d25d96b343c6aabfa3044110fd56.
+  Both existing Windows snapshots under AppData/Local/Temp/3mm-crypto-display-<id>
+  have inputs.json: all 21 source SHA-256 values in EACH match current app source,
+  with no missing or unrepresented source inputs (read-only comparison by agent).
+  No checks repeated. Package build was pending at that verification handoff;
+  the subsequently observed owner artifact is recorded below.
+  Next: owner builds the 0.7.0 ZIP, then separately reviews/activates that exact
+  package and tests original-frame recovery plus enabled/browser-closed/restart/
+  disable behavior. Physical acceptance remains outstanding. These app results
+  do not certify the independent dirty Core changes or authorize a commit yet.
+  Static preparation passed: Python AST syntax for 12 files, Vue script/template
+  syntax for 4 components and TS syntax for 3 UI test files; this is not type-check,
+  build or runtime evidence. Owner runner itself is unchanged and installs nothing.
+  This app work does not resolve or reopen the remaining Core409 lock-holder
+  diagnosis recorded below. Preserve independent dirty Core/Agent/M21 work.
+  Owner browser screenshot 2026-11-02 ~06:09 shows new persistent checkbox
+  visually checked BUT mode stopped/original_outcome_read (output disabled),
+  no pending frame, old confirmed text20:22:48 and last check05:48:51. A control
+  request07c42680bd9a819f7e73eab8f70855db is retained with generic unconfirmed
+  control error. Network filter shows get_state200 only; it hides the actual
+  start operation, so these reads do not prove successful activation or closure
+  of409s. Possible rejected async checkbox DOM/model drift is a UI candidate,
+  NOT a confirmed installed cause. Next read-only evidence: existing last
+  display_live_start HTTP status/Response and latest get_state.live_display;
+  do not toggle/replay/reset or blame LCD/I2C from this screenshot. Local owner
+  ZIP now exists at sibling dist/3mm-crypto-monitor-0.7.0.zip,43884bytes, built
+  2026-11-02 05:46:28 local. Exact installed bytes not independently checked.
+  No executable source changes, test/build repetition or device action by agent.
+  Owner then supplied start-response detail: "Application result is unconfirmed;
+  do not replay". This does not establish whether Start committed its enabled
+  flag. The relay can redact completion policy failures AFTER app dispatch to
+  this message; never infer non-execution or resend from it. Still need latest
+  successful get_state.live_display (enabled/mode/reason/pending/run_id), not
+  another Start attempt. UI catch preserves control ID and emits a status read;
+  checked DOM alone is not durable service-state evidence. No fix implemented
+  from this incomplete observation.
+  Owner confirms the checkbox disappears after page reload and Start still
+  returns409: latest observed service state is disabled, not successful enabled
+  acceptance. This does not prove the original call never executed or authorize
+  replay. Static audit traced remaining redaction: _ui_route masks build/proof
+  errors; invocation_transaction labels its entire yielded body ui_policy;
+  finish_invocation also maps current-policy HTTP refusals to the generic
+  unconfirmed response. No finer final sub-check exists in the supplied ring.
+  Checked principal/permission readers are read-only; no evidence of a login
+  validator commit invalidating the snapshot was found. Do not assert a root
+  cause. Proposed next Core-only diagnostic slice separates final policy read,
+  immutable binding/preparation, UI proof, response validation and commit,
+  preserving all checks/locks/no-replay. That slice is now prepared above;
+  Crypto0.7.0 tested files remain unchanged, and owner checks are pending.
+
+- **Core409 evidence update, read-only audit 2026-11-02.** Owner supplied
+  Downloads/3mm-recent-http-failures (2).json (2753 bytes). Five retained POST
+  operations-route409s at 05:48:53.967-05:50:45.936 Europe/Sofia: ONE
+  authority.key_acquire/review_key_busy at admission, not_dispatched; FOUR
+  authority.ui_policy/authority_unavailable with application.completion,
+  execution_unconfirmed. All retryable=false. The latter four reached the
+  acquired invocation lease's caller body, NOT the key-acquisition failure
+  boundary; its broad span can cover admit/UI-policy validation, preparation,
+  completion identity checks and commit. No exact failing sub-check or lock
+  holder is identified. Do not claim SQLite busy, missing trust, LCD/host crash,
+  actual non-execution, or that all records belong to Crypto Monitor: module and
+  operation IDs are intentionally absent. HTTP totals970.186-1701.179ms are not
+  lock-hold durations. Ring expired151 older records, with rate/busy/invalid/
+  evicted all zero; these five are NOT a complete failure history or comparable
+  error-rate window against export(1)'s single retained key-busy completion.
+  Next proposed bounded investigation: distinguish completion sub-boundaries
+  before redaction using fixed safe metadata, separately from remaining EX
+  writer contention; preserve current revalidation and no automatic replay.
+  No production/test changes, reruns, login, deployment, grants or LCD writes.
+
+- **CAP14 live LCD output: 0.6.0 software checks green; physical live-mode incident under diagnosis, 2026-11-01.**
+  Owner explicitly approved version 0.6.0 and application-owned Start/Stop for
+  saved clock/currency layouts and rotation without an open browser. Existing
+  CAP08 task restrictions/intervals were inspected: do not expand Core tasks for
+  this app. The original app-only slice uses the existing reviewed-native
+  service, native ApplicationStorage and public M20 display_frame commands.
+  The owner subsequently approved a separate generic Core UI concurrency fix
+  below; no SDK/Agent/runtime dependency, direct I2C access or VERSION change.
+  New sibling service live_display.py keeps one durable singleton, unique run
+  IDs, monotonic per-run effect IDs, one committed-before-submit pending intent
+  and last confirmed frame. Migration 0006 is additive and leaves settings,
+  samples, manual journals and receipts unchanged. The bounded worker renders
+  every 0.5s, coalesces unchanged frames and waits for original native execution
+  evidence before a later frame; no backlog or submit retry. Existing separate
+  quote polling keeps its >=30s bound. Settings saves affect future frames only
+  after explicit Start. Preview/mount/install do not start output. Stop prevents
+  later intents; an already-journalled in-flight effect may finish. Unknown/lost
+  receipts pause, original-ID Check only observes; restart leaves output stopped
+  or pending for inspection. Revocation/profile drift pauses without automatic
+  resume; retired-grant completion cannot revive the run. Start uses revision,
+  exact geometry, prior-run CAS and explicit acknowledgement; controls require
+  the current administrator/monitor_display. Background effects use current app
+  M20 authority, not continuing human delegation. Pending manual frames must be
+  reconciled before Start; new manual frames are blocked while live/pending.
+  LiveDisplay.vue separates live controls from the preserved one-frame recovery
+  UI, displays pending identity and allows Stop even with a dirty draft. New
+  backend and UI checks cover lifecycle, lost acknowledgement, no-replay,
+  stop/admission interleaving, migration, clock/cache/rotation and revocation.
+  Owner backend ran 83 checks in 17.616s: 81 passed, two package consumer errors
+  from the SAME overlong monitor_display description (>160 characters). All
+  live/migration/legacy behavior checks passed. Owner snapshot
+  C:/Users/LAZ-DELL/AppData/Local/Temp/3mm-crypto-display-1600a158c8074cdf923557080396a489:
+  all 21 captured inputs matched current source before the metadata-only fix.
+  Shortened the permission description without changing authority or runtime
+  behavior. Owner package group passed both failed real Core package consumers,
+  exit_code=0, snapshot 656b7028ca614ff294efaaeae834ca81. Owner frontend group
+  passed Vite build, Vue type-check and 37 UI tests / 3 files, exit_code=0,
+  snapshot f9ad165f81fa421f9671d547ec0519aa. Both snapshots live under
+  C:/Users/LAZ-DELL/AppData/Local/Temp/3mm-crypto-display-<id>; all 21 captured
+  inputs in EACH match current sources (read-only SHA-256 comparison).
+  Reuse the 81 unchanged passed behavior checks plus the two corrected package
+  consumer passes; do not describe this as a new full-backend run.
+  No tests repeated/executed by the agent; old 0.5.2 results below are not evidence
+  for later source. Owner subsequently built/activated and started live output;
+  local dist/3mm-crypto-monitor-0.6.0.zip is 39853 bytes, SHA-256
+  6193e380c9f00feec354d2b41ed70e04dfeb346dfd867cf1195cdd3179806b6c.
+  Exact installed bytes have not been separately captured. No installation,
+  deployment, approval, service/device action or physical write by the agent.
+  Static preparation passed: AST for seven Python files, Vue script/template and
+  TS syntax for three components/three UI test files, working-state whitespace.
+  This is not type-check/build or test execution. SHA-256 of the accepted 0.5.2
+  ZIP remains 2834a84f925bfa9f8840049be11a602045221e9eab0c5f096c56d0dd441152e7.
+  Service restart auto-resume is deliberately outside this bounded acceptance.
+  Do not close live operation until owner tests and browser-independent physical
+  clock/price/rotation/Stop acceptance succeed. Preserve accepted transport.
+  NEW owner incident: after Start, extension features/menus temporarily vanish,
+  others return but Crypto remains unavailable. Screenshot first shows Running /
+  Agent confirmed last frame plus repeated get_state HTTP 409; a fresh page
+  stays Loading / operation failed. This does NOT yet prove a Core crash,
+  extension deletion, SQLite failure or OOM. No physical reproduction/restart,
+  grant changes, speculative code patch, new version or tests performed.
+  Owner read-only unit evidence: Core PID90155 active since 2026-10-31 22:04:47
+  EET, Runtime PID90172 since 22:04:48; Crypto PID244724 active since 2026-11-01
+  08:55:32. All three Result=success, NRestarts=0, ExecMainStatus=0. No process
+  restart is evidenced; active alone does not prove request responsiveness.
+  Journal command failed before reading logs: Windows SSH split the quoted
+  "1 hour ago" argument (timestamp parsed as 1). Owner then supplied the last
+  200 boot journal entries, attachment 3a277d72-1b0c-4c17-9c0c-b12622d669a2.
+  They cover 09:08:04-09:08:52 EET, not the original ~08:57 event, and show two
+  DISTINCT cases: client 192.168.1.62 repeatedly GETs ui-host with obsolete
+  0.5.2 SHA2834a84f... and gets409; client 192.168.1.59 GETs current 0.6.0
+  SHA6193e380... / built UI1ac6f631... at09:08:30 and gets200, then POSTs
+  operations/get_state at09:08:31 and gets409. Do NOT dismiss the latter as
+  stale-cache-only. Agent state/authority calls continue200/202; a device
+  command result is accepted200 at09:08:41 (not proof of its execution status).
+  This excerpt contains no traceback or process exit. Owner then supplied CURRENT
+  get_state409 detail: "Application UI build is unavailable; reload the interface"
+  and confirms the physical clock keeps changing. The refusal maps to Core
+  application_extensions._ui_route (before app get_state dispatch), covering
+  package/build verification OR current native UI code-trust failure. It is not
+  evidence that the LCD worker stopped. Do not infer a missing build, lost grant
+  or key-lock contention from this deliberately generic error alone.
+  Owner ran .runtime/cap14-crypto/inspect-ui-trust.ps1. Its stdin-only probe
+  inherits the existing Core environment, drops to its existing UID/groups and
+  reads installed package/build/key read-lease/code-trust stages. SQLite mode=ro
+  AND query_only prevent writes. No native app invocation, resource approval,
+  frame, service restart, remote file, key recovery or diagnostic hook in the
+  running Core. It reports only identifiers, bounded reason codes/error types
+  and durations, not environment/keys/tokens or exception text. Python/PowerShell
+  syntax checked only; no probe/test/device execution by the agent. No product
+  source or version changed. No more broad logs or physical replays. Preserve the
+  original live intent; do not repeatedly Start or resubmit its physical command.
+  First owner probe stopped with InvalidRequestError before emitting installed
+  metadata: no UI trust result was obtained. Probe imported backend.db.User but
+  omitted its UserSession/AuditLog/Permission/Role/Group relationship registration.
+  Added those four existing model modules and explicit configure_mappers before
+  the first query, without importing backend.database or creating a writable
+  engine. Added safe stage codes to unexpected probe failures. This repairs
+  diagnostic setup only, NOT the underlying UI incident.
+  Corrected owner probe PASSED: CorePID90155; installation11 active/enabled,
+  authority_mode=enforced, active/package_version0.6.0, exact artifactSHA6193e380...
+  installed_code_prepare147ms; compiled_ui_files13ms; exact UI1ac6f631...;
+  review_key_read_lease2ms; current_ui_code_trust133ms. changed=false,
+  application_invoked=false, physical_write=false. This rules out a persistent
+  missing/mismatched local build or invalid current UI review at probe time;
+  it does NOT reproduce the failing HTTP request or prove concurrent-key/SQLite
+  contention. No trust recovery/reapproval/reinstall is indicated by this evidence.
+  Source comparison shows normal HTTP UI operations call separate trust snapshot
+  readers during admission/completion, whereas M21's existing snapshot path
+  carries one exact shared-session proof. Owner explicitly approved reviewing
+  and fixing this general Core authorization-flow discrepancy before release.
+  Prepared change: ordinary HTTP operation admission and completion now acquire
+  the code-review SH key lease before one caller-owned DB transaction, carry
+  only an exact Session/transaction/installation/package/build code proof and
+  expire it before releasing the lease. SQLite initial reads explicitly BEGIN;
+  final admission/completion obtain the existing lifecycle write fence BEFORE
+  policy reads, rather than upgrading a reader behind a pending SDK writer.
+  Native UI review, human/session/route access and lifecycle remain fresh at
+  each boundary. No stored grant cache, global serialization, journal-mode
+  change, module-specific rule, permission weakening or effect retry was added.
+  Relational metadata preparation is separated from code preparation so all
+  metadata IPC, reservation, dispatch and response waits remain outside the
+  caller DB/key leases. Tickets retain their independent current resource
+  checks. Completion failures still mean unconfirmed, never not-dispatched.
+  Existing M21 snapshot/session-worker source is unchanged.
+  New test_application_ui_concurrency.py exercises ordinary HTTP with real
+  protected native review and actor policy, actual pending SQLite DELETE/WAL
+  writers, proof expiry/foreign Session/transaction/build/source rejection, and
+  human/native/recovery/lifecycle/build/package drift across metadata/response
+  boundaries. Only the response transport is doubled: no physical device I/O.
+  Relay tests additionally cover metadata ticket handoff and honest completion
+  phases. Owner's isolated repro group PASSED (exit_code=0), 29.37s test
+  process, 2.16s preparation; snapshot c6fc6af9d3311dc98d7b8168eb252ac94067ae4e842dbdb0452bd709896e2940,
+  HEAD061e7ebe76c325c5203708b03550dba2e1b611f1 plus dirty source, Ubuntu/WSL
+  Python3.14.4, reused dependency environment f91ccaad806c25f0057f8f802db6ed3ad6733a89fd44d3bd934d14d1b8c8c5f7.
+  Evidence: /tmp/3mm-lab-17f427yf/{evidence.json,results.xml,tests.log}; selected
+  test_application_ui_concurrency.py and test_application_invocation_relay.py.
+  Owner supplied exit status/provenance, not test/skip totals. This validates
+  the prepared synthetic interleavings, not a failing pre-fix baseline or the
+  installed Raspberry incident. No implementation/test edits or agent reruns
+  followed this result; only the handoff was updated.
+  Owner then completed both remaining groups on the SAME source/dependency
+  digests above: ui 127 passed / 13 skipped, 72.05s pytest (77.92s process),
+  evidence /tmp/3mm-lab-s68f2s42; consumers 211 passed / 1 skipped, 222.49s
+  pytest (228.94s process), evidence /tmp/3mm-lab-3tttrp6j. Both exit_code=0.
+  The 13 relational-runtime skips require the real root helper boundary;
+  the public-web skip requires distinct OS principals under a root driver.
+  These 14 cases are NOT passes; their privileged isolated acceptance remains
+  separate. Reuse these successful unchanged-source groups, not another full
+  run. Agent read the owner log and updated this handoff only.
+  Owner runner: .runtime/core-ui-concurrency/test.ps1, groups repro / ui /
+  consumers, using isolated verified dev-lab snapshots with optional libraries.
+  Static preparation passed: AST parsing of eight Python files, PowerShell
+  parser, selected test-path existence and scoped git diff --check. These are
+  syntax/input checks only, not an executed concurrency/security regression.
+  Owner runs tests; no tests/build/dependency installation, SSH/device changes,
+  grants/recovery, frame replay, commit/push/release or version change by agent.
+  Owner requested comparison with a 30-Oct audit (two supplied points, despite
+  its introduction saying three). READ-ONLY product review confirms the HTTP
+  boundary fix is narrower than a universal lock-order repair: relay callers
+  without boundary (delegations / installation-peer callbacks) still take the
+  DB write fence before callbacks/preparation that may acquire a review key.
+  effect_admission takes key -> guard on admission, but its ExitStack releases
+  the key before the outer except rolls back a failed DB transaction. Neither
+  uncovered interleaving is proved safe by the existing green consumer tests.
+  Diagnostics gap also confirmed: Runtime responses.py sends failure codes
+  deadline_exceeded / response_unconfirmed; Core ResponseWaiter.receive accepts
+  only the success response envelope and reduces both failures to ValueError.
+  The application.response span also includes completion authorization and uses
+  the default operation_failed reason, so wait failure and final policy denial
+  cannot be reliably separated. Existing bounded opt-in recorder already has
+  duration/trace IDs; a fixed reason mapping and separate completion stage would
+  suffice, retaining generic public errors and honest no-replay dispatch phases.
+  Owner subsequently explicitly approved fixing both supplied audit points;
+  the omitted third point is out of scope. Prepared follow-up: generalized the
+  short code lease to invocation_transaction, retaining exact UI proof when a
+  package has compiled UI. Delegations use its live read-only key for their
+  existing current-grant/actor checks, without nested EX acquisition. Peer
+  callbacks enter an explicit boundary too; existing unsupported scoped peer
+  declarations remain denied (no peer feature/rights expansion). Enforced
+  relay calls without a boundary now fail before preparation/dispatch.
+  SDK effect_admission closes the clean routing reader before code/key work;
+  its ExitStack now closes the DB before the key on every exit, including
+  explicit release and unexpected caller errors. Failed rollback invalidates
+  the connection while the key is still held. No timeout increase or effect retry.
+  Core now decodes exact Runtime failure envelopes to a closed safe reason,
+  rejecting unknown/extra/foreign-nonce frames. Opt-in bounded diagnostics have
+  separate admission / dispatch / response / completion spans, one trace ID,
+  durations and fixed reason categories. Public unknown outcomes stay generic;
+  known not-dispatched versus execution-unconfirmed and retryable=false remain.
+  No bodies, tokens, keys, exception text, new spool or diagnostic auto-start.
+  New targeted tests cover actual delegation/peer fence ordering, SDK rollback/
+  release/failure cleanup (including failed driver rollback), real Runtime
+  deadline/invalid-frame replies, safe diagnostics and no-resend phases.
+  Static preparation PASSED: AST for 14 Python files, PowerShell parser, all
+  selected test paths and scoped diff whitespace. No tests/imports/build were
+  executed by the agent. No installed services, grants, device/LCD actions,
+  version, commit or publication changed. Previous green c6fc6af9... groups
+  describe the PRIOR candidate, not these later code changes.
+  Owner audit run FAILED (exit_code=1), source
+  f165cbe4f9af88348218a063cd9751c06524df1cebf42f17e13966b2dd593144,
+  same HEAD061e7ebe... and dependency digest f91ccaad...; Python3.14.4,
+  2.64s preparation / 40.97s test process. Evidence path supplied:
+  /tmp/3mm-lab-21tmr2ru. The owner pasted provenance only, with no failing test,
+  traceback or pass/skip counts. Owner confirmed tests.log is absent; agent's
+  read-only check also found the whole named lab directory, results.xml and
+  evidence.json absent. The original source-f165cbe4...tar remains on Windows,
+  but no saved failure report was found. No runtime cause is inferred from
+  exit_code alone. Prepared only the ignored owner runner to retain console,
+  tests.log, JUnit, evidence and extracted failure text under
+  .runtime/core-ui-concurrency/runs/<group>-<unique-id> on Windows. Fixtures and
+  permission/locking checks remain in Linux /tmp. Runner receipts include its
+  own hash; successful exit now requires retained test reports. Optional
+  StopOnFirstFailure requests --maxfail=1 and a long traceback. Product source
+  was not changed for this evidence-recovery step. Static Python AST, selected
+  path existence, PowerShell syntax and handoff whitespace checked only;
+  no tests were executed by the agent.
+  Owner repeated audit with stop-first on the SAME f165cbe4... source/dependencies:
+  1 failed / 2 passed, 7.57s pytest, 9.4s process. Reports are now retained in
+  .runtime/core-ui-concurrency/runs/audit-e2e5c246fee348e280812b5bbf882bd1.
+  Exact failure: test_sdk_transaction_ends_before_key_even_on_failure[unexpected]
+  expected RuntimeError, but the EXISTING CoreReviewKeyStore._access redacts
+  caller RuntimeError to AuthorityReviewKeyError; effect_admission then emits
+  its generic ValueError. This is a wrong new-test expectation, not evidence
+  to change the key/error contract. Corrected only that test: expect the exact
+  generic denial for injected caller/driver failures, and observe the ORIGINAL
+  injected exception reaching the real key context before redaction. Existing
+  key-first, DB-ended-before-key-release, independent writer commit, rollback/
+  invalidation and committed-state assertions remain. No production change.
+  Owner rerun on source4a94ab9f78c56d9c7b464fdbea327a13058e8cc584be88ac5f30e47b92df2e2b,
+  same HEAD/dependencies, passed ALL nine lock-order cases (seven SDK exits,
+  delegation and peer callback), then failed first diagnostic actor case:
+  9 passed / 1 failed, 14.22s pytest, 16.27s process. Retained reports:
+  .runtime/core-ui-concurrency/runs/audit-14abfee9d7e4442591fbc4b8ee23f41a.
+  Diagnostic fixture inherited single-thread-only sqlite://; real worker
+  rollback raised sqlite3.ProgrammingError before the actor callback, so its
+  safe category was authority_unavailable rather than authentication_failed.
+  Prepared a LOCAL file-backed diagnostic DB with check_same_thread=False,
+  matching Core configuration and retaining real async/worker execution;
+  the Session is used sequentially. No inline-worker double, shared-fixture
+  change, weakened category assertion or production code change. Actor case
+  now also requires the denial callback actually to have run. Read-only source
+  manifest comparison confirms only this diagnostic test file differs from
+  the retained 4a94ab9f... snapshot; reuse the nine unchanged passing cases.
+  Added explicit owner group audit-remaining (all seven remaining audit files),
+  keeping full audit unchanged. Static Python AST, PowerShell syntax and
+  handoff whitespace checked only; no tests executed by agent.
+  Owner audit-remaining PASSED: 124 passed, no skips, 337 warnings, 28.87s
+  pytest / 31.98s process, 2.37s preparation, source
+  627ca004cfb23b20d33a9687d889730cce9bd325f0a1e8b671fb99ce1413602d,
+  same HEAD/Python/dependencies. Reports retained in
+  .runtime/core-ui-concurrency/runs/audit-remaining-92e00567be3b435bb9a34cd9015ba6b8.
+  Agent read the retained JUnit/evidence and compared current captured source
+  hashes: all match. Reuse the nine unchanged passing lock-order cases above;
+  the complete targeted audit now has 133 distinct passes across TWO runs,
+  not a new single full audit/CI run. No implementation edits or agent test
+  execution followed this pass. The live Raspberry incident is not yet
+  rechecked with the prepared Core; no device action is authorized by a pass.
+  Owner effects group PASSED: 132 passed, no skips, 1208 warnings, 53.63s
+  pytest / 57.43s process, 5.84s preparation; SAME source627ca004..., HEAD,
+  Python3.14.4 and dependency digest f91ccaad.... Retained evidence:
+  .runtime/core-ui-concurrency/runs/effects-eb09cb2c37794a22ae7b5bb2bf9af1d9.
+  Agent read the saved provenance only and updated this handoff; no code edits,
+  tests or device actions. Reuse this SDK effect-admission coverage.
+  Owner ui group PASSED: 127 passed / 13 skipped, 1384 warnings, 77.41s
+  pytest / 83.17s process, 1.99s preparation; SAME source627ca004..., HEAD,
+  Python3.14.4 and dependency digest f91ccaad.... Retained evidence:
+  .runtime/core-ui-concurrency/runs/ui-cd88404f98a44d8085bd95c3289645c7.
+  All 13 relational-runtime skips require the actual root helper boundary;
+  they are NOT passes and remain separate privileged isolated acceptance.
+  Agent read the saved provenance and updated this handoff only.
+  Owner consumers group PASSED: 219 passed / 1 skipped, 1092 warnings,
+  231.47s pytest / 238.21s process, 2.53s preparation; SAME source627ca004...,
+  HEAD, Python and dependencies. Retained evidence:
+  .runtime/core-ui-concurrency/runs/consumers-ba00d7dd177847a69edacd6dc2340d28.
+  The public-web skip needs the root driver and distinct actual OS principals;
+  combined with ui's 13 skips, 14 privileged cases remain NOT passed.
+  All agreed unprivileged groups are now green; reuse their evidence. No code
+  edits/tests/service or device actions by agent followed these results.
+  Owner approved preparation of the Core-only Raspberry deployment command.
+  Prepared ignored .runtime/core-ui-concurrency/deploy.ps1 and prepare-deploy.py:
+  reuse the last accepted 3abf44a5... kit (SHAa838903e...) and its exact prebuilt
+  frontend, replace ONLY the nine reviewed Core/protocol implementation files,
+  and retain owner XML/log/provenance hashes without rerunning tests/builds.
+  Read-only baseline comparison found exactly those nine production changes;
+  other differences are tests/handoff. Builder requires current source627ca004...
+  and the five retained owner runs; the nine lock-order passes are separately
+  reused from4a94ab9f..., not the later failing actor-fixture case in that run.
+  Normal deploy.ps1 immutable installer/backup/rollback remains in use. This
+  kit's controller adds preflight guards for the inspected base/host and existing
+  independent pins, refuses any host build/publication, sets agent=null and
+  checks unchanged component/instance-host pins after install. No version bump,
+  app replacement, permission approval or automatic Start/frame replay. Default
+  action only prepares; -Action Deploy requires explicit DEPLOY CORE ONLY plus
+  the owner's current-backup acknowledgement. The normal installer WILL restart
+  Core/related services; pin preservation is NOT process continuity. Live output
+  may pause and must be inspected before any later explicit Start.
+  Static Python AST, guarded-controller splice/AST and PowerShell syntax passed;
+  agent did not build the kit, run tests, connect to Raspberry or deploy.
+  Owner deployed successfully on rasp-3mm, 2026-11-01 14:18:20 host log:
+  key40240df179fa2e00bafeff031730b8e0c96eb13d82b22bb34689f780a0eb570b,
+  release local-40240df179fa2e00bafeff03, state=succeeded / phase=ready,
+  install Core190.926s, validate/extract0.96s. No native-host/Agent update phases.
+  Local kit evidence confirms base3abf44a5... and checked source627ca004....
+  The controller's success includes its unchanged independent/instance-host pin
+  checks and Core readiness; it does NOT prove browser/LCD concurrency acceptance.
+  New Core PID was not supplied (installer/helper PIDs are not Core identity).
+  Agent did not connect to or mutate the device; owner executed deployment.
+  Owner screenshot after deployment shows /monitor loaded (preview14:24:27,
+  live frame14:24:21), menus present, status Running / Waiting for the original
+  command, with existing command cmd_cd34fb3efec8483697eeccda349e2ca2 and seven
+  409 entries (GET and POST) in the browser console. It does not show their
+  complete URLs/responses or prove when each console entry occurred, physical
+  execution, a permanent stuck frame or an owner Start action. Browser loading
+  is an improvement, NOT successful concurrency acceptance. Do not declare the
+  original incident fixed or infer a new lock failure from this image alone.
+  Owner supplied fresh detail "Application UI code trust is temporarily
+  unavailable" and clarified that merely leaving /monitor (and other extensions)
+  open produces errors after 10-20s, before Start. A later Start can start output
+  while a page update fails. Treat this as a general Core UI incident, not proof
+  of a physical-display failure or of a full browser navigation/reload.
+  Read-only source review maps this exact detail to the ordinary HTTP operation
+  authority boundary. Completion converts such refusals to the separate generic
+  unconfirmed result; the supplied detail is therefore an admission refusal.
+  It does NOT distinguish key acquisition, current-code policy or a DB failure:
+  CoreReviewKeyStore._access also redacts exceptions thrown INSIDE its lease.
+  Monitor's mounted timer reads get_state every second; each host.invoke first
+  performs fresh ui-host discovery, even when live output is stopped. GET
+  ui-host still uses independent trust validation, unlike the operation proof.
+  This identifies remaining paths/load, not a demonstrated lock-contention cause.
+  No speculative SH/EX change, timeout increase, trust cache, polling suppression,
+  frontend/library update or retry was made. Existing passed tests remain prior
+  evidence; no tests/builds/imports, SSH or device actions by the agent.
+  NEXT: use the ALREADY deployed Settings / Diagnostics operation recorder for
+  60s, all supported operations, no instance filter. In a separate tab leave
+  /monitor open without Start/Send; after the first fresh failure stop recording
+  and export safe records BEFORE expiry clears them. Supply the failed Network
+  entry's pathname/operation and Response too, without headers/tokens/HAR or
+  resending it. This separates admission/response/completion timing and observes
+  concurrent SDK stages without another deployment. Preserve the existing pending
+  identity; do not repeat Start, reapprove rights or replay a physical command.
+  No further product patch is justified solely by the generic detail.
+  Owner supplied Downloads/3mm-operation-records (2).ndjson: session61b2197b...
+  contains only its header, accepted151 / records0 / buffer_bytes0, inactive
+  with remaining_seconds0 and no dropped events. The recording expired before
+  export; existing _expire clears records even after Stop. No failure span or
+  cause can be inferred from this empty export. Revised capture: choose 5min,
+  reproduce by leaving the page open 20-30s WITHOUT Start/Send, export while the
+  recorder is still active, then Stop. No code/tests/device changes for this step.
+  Owner objects to repeating the manual capture after two unsuccessful attempts.
+  Confirmed diagnostic COVERAGE gap separately from the expired export: GET
+  ui-host runs outside invocation recording, and key _access redacts original
+  DB/caller exceptions before the relay sees them. Prepared a bounded diagnostic
+  correction, NOT a claimed fix of the installed 409: discovery has its own
+  application.ui.discover trace; request-local ContextVar metadata joins failure
+  detail to the existing invocation trace. Failure-only code preparation / key
+  acquisition / DB snapshot / UI trust / policy records are emitted BEFORE
+  redaction. Fixed closed reasons distinguish key contention, unavailable key,
+  SQLite BUSY/LOCKED (numeric driver code only), other DB failure and unavailable
+  code. The acquired callback prevents caller errors being mislabelled as failed
+  key acquisition. Existing public errors, key/DB ordering, timeouts, permissions,
+  recorder TTL/budgets, dispatch phases and no-replay behavior remain unchanged.
+  No logging of SQL, exceptions, tokens, bodies or new persistent spool. GET
+  catalogue snapshot behavior itself is unchanged; no contention cause is proved.
+  Added real protected-key GET/POST denial and original DB-cause regressions,
+  caller-versus-acquisition distinction and inactive/broken recorder checks.
+  Owner runner adds diagnostic-gaps with direct key/UI/recorder consumers.
+  Ignored capture.py logs in only to diagnostics, starts one 300s session and
+  automatically saves exports at15/30/45s before stopping its inspected session;
+  no app invocation, Start/frame, trust/grant or service operation. Existing
+  active recording is not replaced. Credentials are prompted, kept in memory,
+  not saved; redirects/proxies and mutation retries are disabled. Saved files
+  remain under .runtime/core-ui-concurrency/captures/<unique-id>.
+  Static AST for10 files, PowerShell parser and scoped diff whitespace passed.
+  No imports/test/build, API login, SSH, deployment or device operation by agent.
+  Owner must run diagnostic-gaps before any deployment of these NEW changes;
+  source627ca004... results do not test this diagnostic correction. The timed
+  capture can run against the current installed Core, but that Core will still
+  lack the newly prepared GET/detail records until explicitly deployed later.
+  Owner now requests a review/design for more useful general 409 diagnostics.
+  Read-only audit: backend.main has no common 409-to-record boundary or returned
+  trace ID; handled HTTPException responses do not reach its generic exception
+  catch. Application host intentionally reduces failed POSTs to unconfirmed,
+  while the diagnostics UI shows opt-in spans without an HTTP-request link.
+  The same 409 also represents expected revision/lifecycle/idempotency conflicts;
+  do not classify every conflict as a crash, a lost grant or a retry instruction.
+  PROPOSED next bounded slice (not implemented): server-generated HTTP trace
+  header, shared with policy/relay diagnostics; a small administrator-only
+  recent-failure view with route TEMPLATE, method/status, fixed reason/stage,
+  elapsed time and honest dispatch phase, no URL query/body/actor credentials;
+  retain the existing detail/public access boundary. Catch final response status
+  at the common HTTP boundary, while retaining original typed causes at their
+  source. Detailed tracing remains explicit and bounded; Stop/expiry UX must
+  distinguish recording lifetime from short export retention or export before
+  expiry. No automatic retry, rights change or effect replay from error UI.
+  Asked owner whether minimal recent failures may be always-on in memory,
+  proposed <=100 records / <=15min, coalescing/rate/byte bounds, no disk or remote
+  collector. This changes the previously opt-in-only diagnostic posture and
+  remains a design choice, not authorization to deploy or silently enable it.
+  Reuse existing diagnostics/settings/admin controls, not a new diagnostics
+  service. First scope should be HTTP409 and server failures plus UI/authority
+  cause correlation; extending all SDK/Agent/session errors is separate work.
+  No new implementation, tests/build or device action during this design audit.
+  Owner explicitly APPROVED the limited always-on in-memory register. Prepared
+  implementation (not deployed): HttpFailureMiddleware observes handled HTTP409
+  and 5xx responses and generates X-3mm-Trace-Id, ignoring incoming IDs. Core
+  CORS exposes this opaque reference. Relay and pre-relay UI discovery now share
+  that HTTP trace; wire request/idempotency identities remain independent.
+  Original closed authority causes feed request-local metadata before masking,
+  even with detailed recording disabled. Dispatch observation advances only:
+  unknown -> not_dispatched -> execution_unconfirmed -> completed. The real
+  send marks uncertainty BEFORE its first write; a later refusal cannot undo it.
+  Generic endpoints remain unknown, not falsely unsent. No resend/permission
+  decision comes from metadata. Existing public error bodies are unchanged.
+  RecentHttpFailures stores <=100 entries / <=128KiB serialized metadata / <=900s
+  logical retention, max10 writes/s, max6 closed cause details/request. Locks are
+  nonblocking; overload/expiry/eviction are explicit counters. No disk, DB writes,
+  worker/helper probe, background service, bodies, query strings, raw URLs,
+  exception/SQL text, credentials or actor identity. Only router-owned templates
+  are accepted; unmatched routes use a fixed placeholder. Memory clears on Core
+  restart. This is bounded process-local history, not a complete audit/uptime claim.
+  Existing admin dependency protects GET diagnostics/failures and failures/export;
+  stale/revoked/non-admin access stays denied. Busy export returns503 instead of
+  a misleading empty success. New Settings component loads this view without
+  starting debug, groups repeats while preserving every retained trace, displays
+  unknown/unconfirmed phases and exports the bounded snapshot. It does not poll
+  continuously or offer a business retry. Expired opt-in sessions cannot erase
+  the separate recent ring. EN/BG15 new keys match; no language-package/version
+  bump/build/activation was requested or performed (new BG source keys only).
+  Prepared tests cover bounds/expiry/pressure/privacy, real handled status and
+  server-generated header, cross-thread original cause, actual relay first-write
+  uncertainty, admin denial/revocation, inactive diagnostic capture and UI
+  grouping/filter/export/stale/unmount behavior. diagnostic-gaps now selects10
+  files including Core startup; new frontend unit checks are separate. Static
+  Python AST10 files, SFC/TS syntax4 files, JSON/key parity and PowerShell parser
+  passed. These are NOT test/type-check/build or browser visual evidence.
+  Agent did not execute tests, import product modules, log in, deploy or touch
+  device state; no commit/push/version/publication. Owner next runs the updated
+  backend group and the two frontend component tests, type-check and build.
+  No claim that the underlying installed409 is fixed. The previous Core-only
+  deploy wrapper pins source627ca004... and must NOT be reused for this new
+  backend/frontend candidate. A new reviewed deployment follows fresh evidence
+  and separate owner instruction, preserving independent work/component pins.
+  Owner checks PASSED, 2026-11-01: diagnostic-gaps205 passed /2 skipped,
+  821 warnings, 53.17s pytest /58.98s process, preparation2.37s. Source
+  8f5703619460dd05cfb5b3a923ef6747c0d237c0ab9e9f7cce2652ca71b7572e,
+  HEAD061e7ebe..., LinuxPython3.14.4, dependency f91ccaad... reused.
+  Retained run: .runtime/core-ui-concurrency/runs/
+  diagnostic-gaps-0e0117bd20784e89ad802d5fc2d4752f. Agent read JUnit:
+  207 cases,205 passes,2 skips, no failures. Read-only archive manifest/hash
+  comparison: all1291 captured inputs still match current files (0 mismatches)
+  before this handoff-only update. Reuse this result; no repeated test run.
+  Skips are NOT passes: foreign-UID check needs disposable root POSIX acceptance;
+  non-POSIX-refusal case is inapplicable in this Linux run. Earlier privileged
+  release obligations are not closed by this targeted group.
+  Owner frontend:12 tests /2 files passed (Workspace6 +RecentHttpFailures6),
+  12.51s, Vitest3.2.4; Vue type-check and Vite6.4.1 build passed. Supplied local
+  log starts19:28:42. Existing dist index/assets match reported main-CUqh5PR2.js
+  and Settings-DCNZ8AdH.js. Python snapshot intentionally contains no main
+  frontend sources; do not claim it fingerprints the frontend run. No agent
+  implementation edits followed the owner checks, only this handoff.
+  Owner subsequently explicitly requested deployment. Prepared ignored owner
+  launcher .runtime/core-ui-concurrency/deploy-failures.ps1 (Prepare default;
+  Deploy / Status / Logs explicit) and prepare-failures-deploy.py. No rollout
+  was executed by the agent. The builder reuses the exact205/2 backend evidence,
+  checks all1291 frozen inputs, and binds249 current frontend inputs plus35
+  owner-built outputs. Frontend evidence is honestly owner-reported plus a
+  POST-success capture, not a fabricated pre-run/machine test receipt. Source
+  identity2b12f596... and output identity7d3f2b0d... are pinned; any drift stops.
+  Incremental payload: eight existing Core/protocol diagnostic files, the new
+  http_failures module and prebuilt frontend. Other payload bytes are retained
+  from the accepted local40240df1... kit. Its existing immutable installer,
+  backup/rollback and component-pin guards are reused; only the required baseline
+  deployment key changes. Agent/Runtime/native/application hosts are not updated.
+  Bundled BG1.0.2 bytes stay unchanged: new BG translations await a separately
+  versioned language package; EN fallback remains available. No version bump,
+  grant change, application Start/frame, device reboot or publication. Deployment
+  DOES restart Core/related services and may pause the live LCD. The launcher
+  asks for a current backup and DEPLOY DIAGNOSTICS before transfer; an uncertain
+  rollout must be observed through Status/Logs, not replayed. Static Python AST,
+  guarded-controller AST, PowerShell parser, frozen source/frontend/base hash
+  comparisons passed. No tests/builds/product imports or device actions by agent.
+  Owner supplied Downloads/3mm-operation-records (4).ndjson (401 bytes): only
+  session5c952bcb... header, active=false, remaining_seconds=0, records=0,
+  accepted184, no drops. No failure span/cause is present. This is the OLD opt-in
+  session export, not the independent recent-HTTP-failures snapshot. Its empty
+  expired buffer does not prove whether the new ring contains409s or whether
+  deployment completed. Request Settings/Diagnostics/Recent HTTP failures ->
+  Refresh failures -> Export recent failures (3mm-recent-http-failures.json);
+  no new debug session, application Start or frame replay. No tests/device action.
+  Owner then supplied Downloads/3mm-recent-http-failures.json (5691 bytes).
+  The new ring is ready with11 HTTP409 records and zero drops/expiry/evictions:
+  TEN review_key_busy at authority.key_acquire (eight operation admissions,
+  one ui-host discovery, one operation completion), plus one earlier
+  application.dispatch/transport_unavailable. Key-contention burst spans
+  17:58:54-17:59:21 UTC; total HTTP durations464.715-1081.483ms are NOT measured
+  lock-hold times. Ten records are not_dispatched; the completion record
+  invoke_294fb268267545aaa03aa6be47534db1 is execution_unconfirmed and MUST NOT
+  be replayed. Earlier transport refusal is17:51:33 UTC and is a distinct cause.
+  This proves the observed refusal boundary is review-key contention, not a
+  missing-review inference. It does not identify which owner/process holds the
+  lock or exclude a slow DB inside that owner's lease. Read-only source audit:
+  ordinary HTTP UI boundaries already use SH; several DB-enforced read-only
+  consumers still use EX (manager._inspect_reviewable, command discovery and
+  resource discovery). SDK effect admission also uses EX for durable writes.
+  Those are concrete contention candidates, NOT proof of the captured holder.
+  Next proposed scoped fix: review shared verification versus exclusive key
+  replacement and lease duration/transaction ownership, with deterministic
+  real-lock concurrent reader/writer/revocation regressions. Do not merely
+  raise250ms, cache authority, weaken checks or add effect retries. No code,
+  tests, installed services/grants or physical output changed by this audit.
+  Owner explicitly approved the next lock correction ("хайде"). Prepared a
+  bounded read-only slice: manager._inspect_reviewable, selected-command
+  discovery and BOTH pre-/post-provider resource snapshots now use the existing
+  read_locked SH adapter instead of locked EX. The adapter forbids new seals/
+  encrypted receipts and the DB remains query_only. No key-store primitive,
+  timeout, SDK effect admission, mutation/rotation/recovery/revocation lock,
+  policy, transport or frontend behavior was changed. Provider IPC remains
+  outside key/DB leases; completion uses a NEW current snapshot, not cached rights.
+  Added test_application_authority_read_leases.py:22 prepared parameter cases,
+  actual POSIX locks and file-backed SQLite, one current compiled-UI/native
+  snapshot held while another thread completes each read view, no DB/key/command
+  writes, EX exclusion, fresh grant/native/key/recovery refusal, and independent
+  EX/SQL availability plus revocation during provider observation. Only provider
+  readiness is doubled; no Runtime/device/physical effect. These checks have
+  NOT been executed or claimed as a pre-fix failure/post-fix pass by the agent.
+  Owner runner adds key-readers (new file) and key-readers-consumers (10 direct
+  key/status/discovery/optional/composition/session/UI/ordering consumers), with
+  durable console/JUnit/evidence and stop-first support. First run key-readers;
+  only on success run key-readers-consumers. No frontend test/build is needed
+  for this Python-only slice. AST5files, PowerShell parser, selected paths and
+  scoped whitespace passed; exact diff against owner-tested8f570361... shows
+  ONLY four EX->SH substitutions plus comments in three production files.
+  Previous green reports are baseline evidence, not tests of these later edits.
+  No agent test/build/import, SSH, service/device/grant/frame, deployment,
+  commit, version or publication action. The old deployment builders pin prior
+  content and must not be reused for this candidate. This removes demonstrated
+  unnecessary reader exclusion, NOT proof of the installed lock holder or a fix
+  of the separate transport_unavailable. Genuine writes still require EX and
+  can deny concurrent reads; physical acceptance of the409 incident remains
+  pending after owner checks and a separately requested reviewed deployment.
+  Owner key-readers stopped at its FIRST case (status):1 failed,19warnings,
+  7.96s pytest /10.5s process, prep6.08s; source12d805cdc62bf8c511c8d48cd547bca14d64396910e08f0c01b22c7637d00e7a,
+  same HEAD/dependencies/LinuxPython3.14.4. Saved run key-readers-
+  05f25cb48b9a4623ad6ab4b65e1b2b06. Consumers did NOT run. Exact assertion
+  error is in the NEW test, not proof of an absent real snapshot: the DB-enforced
+  _read_snapshot starts BEGIN on its Connection before yielding a lazily joined
+  ORM Session; Session.in_transaction() is still false before its first query.
+  Corrected only that test to assert the bound SQLAlchemy Connection AND native
+  sqlite3 transaction plus query_only=ON before composition, and the ORM
+  transaction after actual composition. Existing SH overlap, EX refusal,
+  no-writes, key-byte and current-authority checks stay intact. Three production
+  files are unchanged. Agent AST/whitespace only; owner repeats key-readers then
+  consumers on success. No test execution or device/deployment action by agent.
+  Owner rerun: key-readers22 PASSED (300warnings,21.74s pytest /23.7s process,
+  prep1.82s), retained key-readers-69eccfca0f6b4e62979852e9ff184d9b. Consumers
+  then stopped:102 passed /2 skipped /1 failed (540warnings,28.98s pytest /
+  31.99s process,prep0.92s), retained key-readers-consumers-
+  b59683688b7d40dfa1a08df9a62b2ae2. SAME source7a98a6f754e490e746583a5d515ee6706f64e0ceb6fbc78f438603d20c969e2f,
+  HEAD/dependencies/LinuxPython unchanged. Agent read JUnit: keys52pass/2skip,
+  management35pass, command discovery15pass. Skips remain the real foreign-UID
+  root boundary and inapplicable non-POSIX refusal; neither is a pass.
+  Failure is the EXISTING resource-discovery test assuming unknown connector
+  readiness while probing host-default /run/3mm-connectors/worker.sock and
+  account3mm-connectors. A missing account maps to unknown; an existing account
+  with a missing worker maps correctly to unavailable. Its actual result was
+  unavailable; changing read leases must not force unknown or accept either.
+  Fixed ONLY that test: explicit absent socket in its disposable fixture dir,
+  actual current UID account, exact unavailable/provider_unavailable assertion.
+  Other access/read-only/revocation assertions and signed SDK/Runtime are intact.
+  Full consumer group now also includes existing real provider-probe tests
+  (trusted/mismatched connector principal, event/task metadata without work).
+  Added owner key-readers-remaining: corrected resource test/module + those
+  provider checks + untouched later consumers,8 files. Reuse22 +102 earlier
+  passes; no repeated first three modules. Read-only SHA comparison against all
+  captured7a98a6f7... files shows ONLY test_application_resource_discovery.py
+  changed; production/new22case test and earlier fixtures are unchanged.
+  Static AST2files, selected paths, PowerShell parser and whitespace passed;
+  no agent tests/imports/deployment. Owner next runs key-readers-remaining.
+  Owner key-readers-remaining PASSED:147passed /0skipped,1761warnings,
+  96.31s pytest /102.88s process,prep4.4s; retained key-readers-remaining-
+  a642d772d1854362a52620c196c84113. Source
+  c9f42527e812428fbf217c8ec9fae2fcbeeb9d9492eb46f59e19a52bbe88a814,
+  same HEAD061e7ebe..., LinuxPython3.14.4 and dependencyf91ccaad.... Agent
+  verified all three saved JUnit/provenance files and1292 snapshot file hashes:
+  current source matches exactly. Comparing7a98a6f7... to c9f42527... changes
+  ONLY the corrected resource-discovery test; production, new22case test and
+  earlier successful fixtures are unchanged. Composite targeted evidence is
+  22 +102 +147 passed, with2 prior skips NOT passed; the old fixture failure
+  is superseded by its fresh147-case group, not counted as a success itself.
+  No tests repeated, product imports, source implementation edits or device
+  actions by agent after these owner results; only this handoff changed.
+  Next, if owner requests deployment: prepare a NEW evidence-bound Core-only
+  candidate for the three production files/four EX->SH sites, preserving the
+  already deployed diagnostic frontend and independent Agent/Runtime/hosts/
+  grants. Do not reuse source-pinned older deploy wrappers. No authorization
+  for another rollout was given with this test result; no deployment/commit/
+  publication performed. Then observe the409 incident without Start/frame replay;
+  green local checks are not installed Raspberry acceptance or full release CI.
+  Owner then explicitly requested the next step ("хайде"). Prepared ignored
+  prepare-key-readers-deploy.py and deploy-key-readers.ps1, Prepare default /
+  Deploy explicit / Status / Logs, for owner-run Raspberry rollout. The target
+  receipt points to diagnostic kit3960d7d00ad42a3d726485381379c9e79deb243c258eb9897e480945c7d675ef;
+  a receipt is an ATTEMPT, not proof of installed success. The reused guarded
+  controller requires that actual installed base (or this exact candidate)
+  before dispatch and before installation, preserving independent component pins.
+  Builder pins c9f42527... all1292 files and the three hashed owner reports;
+  reuses only completed102 cases/2skips from the earlier stopped run, verifies
+  the sole snapshot difference is the corrected resource test and records the
+  superseded failure honestly. No tests/builds are run. Only the three reviewed
+  Core files replace baseline payload bytes; diagnostic frontend, Agent,
+  Runtime, connector/public/session/instance hosts, dependencies and bundled
+  BG1.0.2 remain baseline bytes/pins. Unversioned BG source is still deferred.
+  Normal immutable installer/backups/rollback are reused. Core/related services
+  restart and live LCD may pause; no device reboot, rights approval or frame
+  replay. Wrapper asks for current backup and DEPLOY CORE READERS before transfer;
+  inspect Status/Logs instead of repeating an uncertain rollout. Static builder
+  and guarded-controller AST, PowerShell parser, baseline file/kit hashes and
+  checked-source/three-file delta passed. Agent did NOT run the builder/tests,
+  import product modules, transfer, log in or act on the device. No commit,
+  version or publication change. Owner receives the new explicit Deploy command.
+  Owner reports409s now occur much less often and supplied Downloads/
+  3mm-recent-http-failures (1).json (744bytes). New snapshot has ONE HTTP409,
+  zero drops/eviction/expiry: invoke_50a5c1977b7341e7b62753d5428edd1d,
+  2026-11-01T19:33:15.042927Z, POST operations route template,
+  authority.key_acquire/review_key_busy with application.completion/
+  authority_unavailable, phase execution_unconfirmed, retryable=false.
+  Total HTTP878.46ms is not measured lock-hold time. No admission or ui-host
+  refusal is retained in this snapshot; no equal observation window/request
+  denominator exists to calculate a reduction rate versus the previous11.
+  This supports owner-reported improvement, NOT closure: application execution
+  may have occurred before final authority validation failed, so do not replay.
+  Remaining known EX users include durable SDK effect admission; the record
+  does NOT identify the holder or prove that a particular SDK write caused it.
+  Next proposed bounded audit is writer lease duration / SQL ownership versus
+  HTTP completion, preserving revocation and unknown-outcome safety. No timeout
+  increase, write-lock weakening, auto-retry, production/test change or device
+  action performed in response to this result. Final rollout JSON was not
+  supplied here; do not claim its exact installed key from the HTTP export alone.
+  Owner asks why live Start is disabled; screenshot shows blocked/
+  outcome_unconfirmed with an original pending frame (20:22:45), and reviewed
+  display ready. Read-only sibling-source check: LiveDisplay.canStart requires
+  !state.pending, so this old durable intent disables BOTH acknowledgement and
+  Start even with no console errors. Core deployment does not clear app journals.
+  LiveDisplay.check invokes display_live_check without a new effect identity;
+  service LiveDisplay.check/_check_pending performs ONLY original command_lookup,
+  never submit. Proven succeeded/failed/never-claimed-expired completion clears
+  pending; blocked mode becomes stopped (failed stays blocked). Unknown/not_found
+  remains fenced; no replay or blind journal reset is authorized. Next owner
+  clicks Read current frame outcome; if still blocked, inspect that operation's
+  response. No claim this old pending frame caused the later19:33 HTTP409.
+  No sibling edits, tests, installed/device/physical actions by agent.
+  Owner clicked Read current frame outcome and reports no visible change.
+  Further sibling READ-ONLY audit confirms a recovery/feedback gap, not a new
+  proven Core error: check() returns unchanged status when step_lock is busy;
+  not_found/nonterminal/mismatched lookup and ANY caught exception collapse to
+  the same blocked/outcome_unconfirmed. LiveDisplay.vue awaits host.invoke but
+  discards its result and only requests a state refresh. Thus a successful
+  check can look like a no-op; the supplied symptom alone does not distinguish
+  not_found, denied/failed lookup, a busy check, or another HTTP refusal.
+  Do not claim a specific actual response or clear the old pending intent on
+  this evidence. Proposed next app scope is visible safe lookup/check feedback
+  and a verified original-outcome recovery path, no blind Start/replay/delete.
+  No sibling write/version/package change is authorized by this symptom report
+  and none performed; no installed/API login/device action or tests.
+  Actual browser visual and installed409 root-cause acceptance remain pending.
+  No full CI or release claim.
+  Privileged isolated checks plus normal integration/
+  release gates remain before publication; targeted passes are not full CI.
+  No claim that the separate UI catalog/menu read path is fully resolved.
+
+- **Accepted transport/orphan recovery baseline: 0.5.2, not live-mode proof.**
+  Owner corrected premature stage closure: one static frame is not the desired
+  continuously configured display. The following notes describe 0.5.2 only.
+  Owner approved that app-only fix and version 0.5.2. Six sibling application
+  files changed: display service, DisplayOutput.vue, builder, backend/frontend
+  display tests and README. No Core/SDK/runtime/Agent change or new migration;
+  schema remains 0005 and Core VERSION remains 0.3.3. On an absent local row,
+  display_lookup now checks Core with the original actor-scoped SDK request ID.
+  Only an exact Core not_found sets optional recovery_allowed=true. Denial,
+  malformed/unknown/lost lookup and found-without-local-frame evidence keep
+  recovery blocked; a found command's identity is retained without claiming
+  physical execution. Existing local uncertain rows remain lookup-only.
+  UI recovery is two explicit steps: Prepare original request (same ID), then
+  re-acknowledge and Continue original request once. It retains browser storage
+  and the ORIGINAL idempotency key, never unlocks/generates a replacement ID.
+  Existing send() rechecks Core/journal before submit; late original invocations
+  therefore meet the same durable deduplication identity. No cancel tombstone,
+  global privacy fence or erasure change was added. Optional result flag allows
+  old receipts to remain unchanged. Same-valued geometry object refresh no
+  longer clears the checkbox; real revision/screen/profile changes still do.
+  New checks cover negative/unknown/revoked Core lookup, actor scoping, no SQL
+  transaction over lookup, original local/Core arrival races, no auto resend,
+  same-ID recovery, fresh acknowledgement, stale lookup evidence and geometry/
+  permission changes. Owner retest exit_code=0, snapshot
+  C:/Users/LAZ-DELL/AppData/Local/Temp/3mm-crypto-display-524a38160b964476b336b25789e9eae3;
+  no backend test total supplied. The existing runner also checks the actual
+  Core package consumer. Owner frontend exit_code=0, 29 tests / 2 files,
+  snapshot C:/Users/LAZ-DELL/AppData/Local/Temp/3mm-crypto-display-8e1a4c3bdcce471cb75411aba4a42080;
+  existing frontend runner completed Vite build, Vue type-check and UI tests.
+  Agent read-only SHA-256 comparison confirms all 17 captured source inputs in
+  EACH owner snapshot match current application files, with zero mismatches.
+  No tests were repeated. Owner then reports succeeded/executed=true for the
+  ORIGINAL request 1aa7e8408c754c6fc3c0fb77783eed9f, command
+  cmd_fbbd1a726661435180b19cf09f25d5fe, exact device
+  dev_65dba727720a40539c7d68cb70fef671, backlight=true, lines
+  "01.11.2026 07:50" and "BTC 69,692.04   " (both 16 characters).
+  Owner explicitly confirms both rows are visible on the real LCD ("виждат се").
+  This closes the bounded 16x2 delivery/orphan-request recovery acceptance:
+  software checks green, Agent execution confirmed and human visual confirmation.
+  It does not claim automated optical readback, physical acceptance of other
+  geometries/controllers or an automatic refresh/rotation loop on the LCD.
+  Transport acceptance is retained, not reopened. Owner explicitly says the
+  overall stage is not complete because the configured clock/currency is not
+  being continuously presented; next scope is recorded above. Do not repeat
+  the accepted one-frame test or unchanged checks as proof of live operation.
+  Read-only local inspection now finds owner-built dist/3mm-crypto-monitor-0.5.2.zip,
+  32157 bytes, SHA-256 2834a84f925bfa9f8840049be11a602045221e9eab0c5f096c56d0dd441152e7.
+  Exact installed package/UI/grant has not been separately supplied; do not infer
+  it solely from command success. Do not replay frame, repeat unchanged Core
+  checks/deployment, reinstall or overwrite the old 0.5.1 ZIP.
+  Agent performed only AST, Vue/script/template and TS syntax preparation; no
+  tests, type-check, package/frontend build, login, deployment, grants, physical
+  writes, commit or push. Original notes/evidence follow.
+
+  Owner approved replacing the undeployed fixed 16/20 variant with a common
+  contract, not another per-size Core/app patch. `display.character` 2.0 has ONE
+  scalar frame schema: display_id, profile_sha256, newline-delimited text,
+  backlight. All profiles share it. Exact geometry is singleton provider data in
+  state_schema; complete contract/package/profile identities still change and
+  M20 still requires fresh approval. No schema-containment shortcut was added.
+  Existing generic command discovery now projects the bounded selected contract
+  through SDK; denied/revoked observations still expose no resource candidates.
+  This is declaration data, not device state/I2C probing or an execution permit.
+  Generic profile helper has wire budgets 80 columns / 4 rows, no 16/20 list.
+  Native topology checks live in the HD44780 driver: standard two-row banks up
+  to 40 columns, or split-bank four-row panels up to 20; unknown drivers/mappings
+  fail before I/O. Native/frame service handles variable row lists. New profile
+  schema 2 and contract 2.0 require new packages; old reviewed ZIPs remain inert.
+  Crypto Monitor stays 0.5.1 (Core VERSION unchanged), ONE display_frame binding,
+  no controller/address/profile-hash/size catalog in the application frame path. SDK
+  discovery supplies physical geometry; send compares a fresh observation to the
+  user's expected_geometry after committing its original-request journal. Old
+  outcomes remain historical, never reformatted/resubmitted. Migration 0005 adds
+  preview_columns/preview_rows only and preserves settings/quotes/receipts.
+  Physical sizing is NOT changed by preview fields. The old inert address field
+  is hidden (stored configuration remains untouched). Saved physical preview
+  adapts after access refresh; two-currency cells handle odd widths too. Current
+  saved screens retain two templates; additional physical rows are blank and a
+  one-row preview warns about omitted content (future layout work is app-only).
+  No tests/build/install/deploy/SSH/I2C/consent/Git mutation was run by the agent.
+  Earlier 142-pass and owner-reported app/frontend passes tested the SUPERSEDED
+  fixed-size candidate, not these changes. Updated .runtime/cap14-geometry/test.ps1
+  core selection covers protocol, Agent, sealed M20 profile-change denial,
+  SDK/wire discovery/revocation/rebinding/recovery and Agent/native-host artifact
+  consumers. Owner core run passed: 276 tests, 614 warnings in 55.39s, isolated
+  Linux Python 3.14.4, /tmp/3mm-lab-eg52mln4/results.xml, source SHA-256
+  e3248cc957db9c9ce415100e883ccb215fc0b238ca61e786b066bd8263bf395f,
+  dependency SHA-256 f91ccaad806c25f0057f8f802db6ed3ad6733a89fd44d3bd934d14d1b8c8c5f7.
+  Owner frontend result exit_code=0, snapshot
+  C:/Users/LAZ-DELL/AppData/Local/Temp/3mm-crypto-display-1f95db8459944552bac10de905c6f1d4;
+  no test totals supplied. Deployment/physical_write not_requested. Owner then
+  explicitly confirms ALL groups passed, including application; application totals
+  and snapshot ID were not supplied. No source change since that confirmation.
+  Owner built two inert packages with existing builders: native PCF8574T
+  16x2 / I2C-1 / 0x27 profile schema 2 / command contract 2.0 at
+  .runtime/cap14-geometry/character-display-pcf8574-v2-16x2.zip and Crypto Monitor
+  .runtime/cap14-geometry/3mm-crypto-monitor-0.5.1.zip. Both builders refuse to
+  replace different existing bytes. Read-only inspection confirmed owner hashes,
+  16x2 / bus1 / address39 / profile schema2 and both command contracts=2.0:
+  provider ZIP 6637 bytes, SHA-256
+  edaaef545e5efeca9ff9a841f9f3c4f9b0140362704055d16b126cad0849b28d;
+  profile SHA-256 ac1937994d21ac34d749794d2b2e05e72e3f7ab6b2143d1b76a58906e13504ac;
+  provider module org.3mm.character-display.ac1937994d21ac34d749794d2b2e05e72e3f7ab6b2143d1b76a58906e13504ac.
+  Crypto ZIP 31222 bytes, SHA-256
+  6dfe8552241da559c44d0450844159f7b48c187b26dfe84661b113107c4d7e1c,
+  one display_frame binding / 2.0. No package activated or device accessed.
+  Owner platform deployment succeeded on rasp-3mm:
+  key 3abf44a55c12c52b777c5af213bc33b3d5088b40b2b52535a957149bcc678a40,
+  release local-3abf44a55c12c52b777c5af2; state=succeeded, phase=ready;
+  Agent build 6b63b8272aac54be0b01ad106acd9f2a6991eeb6aeb399fdbfef4b6ddc0499b7,
+  ready response core_pid=90155. Log includes native-host preparation/default
+  publication and explicit Agent update. This does not prove existing Crypto
+  host pin moved or new display/app ZIPs were installed. Owner read-only inspection
+  confirms Crypto instance 46e92c9bdffd26e204800468, app version 0.5.0,
+  current host 584e849cf07e7087c5794db46de95b32b761a09b0949b5da4ab19d167176fd9e,
+  new default 666ec3dacc28a56161a469a14d0190a27fdd22dd77c43739f1bb6c1ca2b01ef9.
+  Owner operates from Windows PowerShell/phone: use a single PowerShell wrapper,
+  not Bash heredocs requiring manual SSH-shell switching. Prepared
+  .runtime/cap14-geometry/update-crypto-host.ps1 (default Inspect, explicit Update
+  with typed confirmation). Before existing component CLI update it checks exact
+  Core release, module/instance/version, old/new/default host pins, immutable
+  artifact/build and absence of pending host journal. Computes SHA-256 and lets
+  the existing artifact validator/transactional updater check it. Only selected
+  host restarts; Core/platform continuity and host health use existing updater.
+  Already-selected candidate only probes, never repeats update. Unknown result:
+  Inspect, not blind retry. PS/embedded-Python syntax checked, not executed; no
+  runtime test/device mutation performed by agent. Owner then ran -Action Update:
+  status=ready, instance 46e92c9bdffd26e204800468 now selects host
+  666ec3dacc28a56161a469a14d0190a27fdd22dd77c43739f1bb6c1ca2b01ef9;
+  application_metadata_unchanged=true, new_host_selected=true, core_pid=90155.
+  Application remains 0.5.0. Owner screenshot 2026-11-01 confirms new provider
+  profile ac193799... and package edaaef54... with 16 columns / 2 rows,
+  schema_version=2, bus1/address39 and reported installation=succeeded/Enabled.
+  This confirms installation, not a physical frame or capability availability.
+  Keep old declared-20x2 provider disabled. Owner reports app activation and a
+  frame attempt ending with HTTP 409. Screenshot shows new provider/16x2
+  discovery, retained browser request ID, no outcome, and a generic error in
+  the settings editor. Exact activated version/authority and failing operation
+  response have not been supplied. Do not assume 409 means missing rights:
+  Core maps application gateway failures to 409 too, and the editor error is
+  separate from the display panel's error. NEXT: inspect the existing failing
+  request URL/operation and Response JSON; if absent, use display_lookup only
+  for the retained ID. Never clear pending identity, resend, replay a command,
+  reapprove rights or change device state merely to diagnose this response.
+  Owner identifies failing operation as display_observe, response HTTP 409:
+  {"detail":"Application result is unconfirmed; do not replay"}. Local source
+  maps several relay/handoff/response/completion-fence failures to this same
+  message; it does NOT establish an M20 refusal, a timeout or LCD execution.
+  Owner exported diagnostics. First file has zero events; second Downloads/
+  3mm-operation-records (1).ndjson (10738 bytes), session e44eaa48... has 31 events,
+  dropped counters all zero: ten complete ok admission/dispatch/response traces
+  and one admission-only failure, trace invoke_968ee2e60b424e2ea4d2a3185dfb8162,
+  duration 487.152 ms, timestamp 1793508950.505101 = 2026-11-01 04:55:50.505 UTC
+  (06:55:50.505 Sofia). It records generic reason operation_failed, not an
+  exception type or concrete operation ID, so cannot yet correlate this failure
+  conclusively with display_observe/its earlier HTTP text. Successful responses
+  take 251-1289 ms; this recording contains no failed response span. Read-only
+  inspection of the exact deployed local-3abf44... core.tar.gz confirms relay
+  source matches the inspected stage structure. Owner journal for that window
+  now correlates the admission failure with get_state HTTP 409 at 04:55:50;
+  display_observe from the same current client returns HTTP 200 at 04:55:51.
+  Current client 192.168.1.59 uses exact 0.5.1 artifact 6dfe8552... / built UI
+  64b72a2b... and receives ui-host/access 200. A different client 192.168.1.62
+  repeatedly polls ui-host for old 0.5.0 artifact 8fb6acc7... / built UI ae66620f...;
+  those stale-UI 409s are separate, expected package fences, not display denial.
+  No underlying exception appears in journal. Read-only inspection of the exact
+  0.5.1 ZIP confirms Monitor.vue polls get_state every 1000 ms; its reading flag
+  only guards other read() calls. DisplayOutput.vue independently dispatches
+  observe/send/lookup under its own busy flag, so they can overlap polling.
+  Host metadata exposes one active relational invocation and Core explicitly
+  refuses preparing another while it is active (application_relational.py).
+  Potential UI admission contention was identified statically, but the underlying
+  exception and causal link were not proved. Owner then reports Ctrl+F5 on
+  /monitor resolves the problem. Treat this incident as resolved by page refresh;
+  do NOT implement the proposed invocation gate, bump versions, redeploy or
+  reopen the incident without recurrence/new evidence. Hard refresh resolving
+  it does not prove which cache/state mechanism caused every observed 409.
+  NEXT: confirm original frame outcome and visible physical 16x2 output before
+  accepting new-profile/app physical delivery. Preserve any pending display
+  request and resolve its original lookup; do not create a replacement send.
+  Owner clarifies nothing new appears physically and checkbox/Send are disabled.
+  Screenshot shows Reviewed display is ready, native profile ac193799..., 16x2,
+  and retained request ID 1aa7e8408c754c6fc3c0fb77783eed9f without an outcome.
+  DisplayOutput.vue explicitly disables checkbox/send while requestId exists;
+  this is the known duplicate-prevention gate, not evidence of hardware failure.
+  Owner Read existing outcome returns not_found, command_id/target_device_id=null,
+  lines=[], backlight=false, executed=false for that exact retained request ID.
+  Source confirms DisplayOutput.lookup returns this immediately when the current
+  actor's display_requests row is absent; NO SDK command_lookup occurs on that
+  branch. Therefore this is missing app-local evidence, NOT verified Core absence
+  or permission to replay. UI canStartAnother excludes not_found, so the browser
+  request ID locks checkbox/send indefinitely: a diagnosed app recovery UX gap.
+  Owner approved preparing 0.5.2. The implemented plan above keeps the ORIGINAL
+  request ID rather than cancelling/clearing it and releasing a replacement ID;
+  a negative lookup alone never permits two independent physical requests.
+  No device/grant change, restart, frame or cleared request identity occurred.
+  Do not repeat the host update/Core rollout, approve grants or send a frame.
+  No physical acceptance follows from these checks. Do not repeat unchanged green
+  core/frontend groups, build/deploy or write a frame on the owner's behalf.
+  Static preparation passed: Python AST (25 files), Vue/TS syntax (2 components
+  and 2 test sources), PowerShell parser, scoped git diff --check. This is NOT
+  runtime/type-check/build evidence. Packages were built by owner, not approved.
+  Before device delivery, account for independently pinned Runtime/application
+  host/Agent artifacts; a Core-only update does not update those consumers.
+  Standard local deploy publishes the native host DEFAULT for new instances and
+  updates Agent only with explicit WithAgent. The separately inspected Crypto
+  instance has now been explicitly updated; other application pins are unchanged
+  by this operation. Provider/profile consent,
+  app package trust and M20 resource review remain separate owner actions. No
+  enablement/reboot/scan or physical write is needed for these inert builds.
+
+- **CAP14 geometry architecture review; do not deploy the fixed-size candidate,
+  2026-10-31.** Owner reports application and frontend groups also passed (no
+  detailed totals/source evidence supplied). Then questions requiring another
+  Core update for future LCD sizes: wants profile-driven selection usable from
+  the application, not an expanding list of sizes in Core. Read-only review
+  confirms the current candidate still enumerates 16/20 in shared profile and
+  native worker, and duplicates exact bindings/profile hashes in Crypto.
+  Proposed next design: generic bounded display capability, provider-owned
+  geometry/controller limits, application discovery/layout and explicit hardware
+  configuration approval. Supported geometry changes should need no Core or
+  application source edits; a new controller may need a provider/driver update.
+  Preserve exact device/profile M20 binding, explicit reapproval after hardware
+  changes and original-request lookup/no replay. This generalization is NOT
+  implemented or accepted by existing fixed-size software checks. No deployment
+  wrapper, device mutation or additional runtime test was performed in review.
+
+  Previous fixed-size candidate/evidence (retained, not the deployment plan):
+  Owner confirms Crypto Monitor 0.5.0 displays real values, then corrects the
+  actual LCD to 16x2. The earlier successful short two-line frame did NOT prove
+  20 physical columns. Owner explicitly approved general Core/Agent geometry
+  support and Crypto Monitor 0.5.1; Core VERSION remains unchanged.
+  General CharacterDisplayProfileV1 accepts only strict integer columns 16/20,
+  keeps rows=2, and binds each width into profile/package/contract identities.
+  Per-profile argument limits/padding, blank state and native child/encoder
+  geometry are exact; no truncation in Agent, new drivers or bus probing.
+  Builder gains --columns; existing 20-column profile data remains unchanged.
+  Crypto 0.5.1 adds explicit display_columns selection and migration 0005:
+  old settings adopt 20 until owner chooses 16, revision advances, screens,
+  quotes and receipts are preserved. Render uses 8+8 columns on 16x2, 10+10 on
+  20x2, retaining dual-asset layout, independent overflow/OLD markers and clock.
+  No new M20 authorization DSL: existing optional_resources handles TWO exact
+  bindings, command:display16_frame and the prior command:display_frame (20x2).
+  Same configured device, independently selected/reviewed matching resource;
+  neither grant covers the other profile. Discovery takes selected columns,
+  changed size clears UI acknowledgement/readiness, and stored request arguments
+  choose their ORIGINAL binding during lookup/replay, not new settings.
+  Added protocol/Agent transport/approval and real sealed optional-resource
+  geometry-switch checks; application geometry/render/migration/binding/UI cases.
+  Static preparation checks: Python AST parsed (20 files), Vue/TypeScript syntax
+  parsed (2 components + 2 test sources), PowerShell runner parsed and scoped
+  git diff --check passed. These are NOT runtime tests or type-check/build.
+  Tests/builds are owner-run only. Prior 0.5.0 green evidence is a baseline, not
+  verification of the changed geometry code. Native/provider replacement,
+  frame writes, Core/Agent deployment, release and Git mutations NOT performed.
+  Owner core geometry run passed: 142 tests, 79 warnings in 14.51s; isolated
+  Linux Python 3.14.4, /tmp/3mm-lab-ke2ybky0/results.xml, profile
+  cap14-display-geometry, source SHA-256
+  8c83e93c60459fa5d11dc15612488306b2d20e14fc560870d04f38248017029d.
+  Includes native Agent artifact and sealed M20 denial/profile-change checks;
+  no physical 16x2 acceptance or deployment follows from this software evidence.
+  Superseded delivery plan after checks: Core+Agent delivery, a NEW 16x2 provider
+  ZIP and Crypto 0.5.1 ZIP. Hold delivery pending architecture decision; do
+  not overwrite published 0.5.0 or relabel the current approved 20x2 provider.
+  Installation later requires explicit old-provider disable/new-profile review
+  and new M20 grant. No automatic physical rotation/refresh or GPIO/AP/reset work.
+
+- **CAP14 Crypto Monitor 0.5.0 ZIP built; owner upload/approval next,
+  2026-10-31.** Owner requested integration after the accepted native LCD frame
+  and explicitly approved Crypto Monitor 0.5.0 (no Core version change). Work is
+  in the separate C:/Users/LAZ-DELL/Desktop/3mm-crypto-monitor source directory,
+  which has no .git directory; preserve the existing independently developed
+  0.4.0 editor/clock/connector logic. No extension-specific Core mechanism added.
+  First bounded slice is an explicit single saved frame, not automatic physical
+  polling/rotation. Added public SDK discovery/submit/lookup against command
+  binding display_frame, display.character / 1.0 / write_frame, max TTL 10s.
+  DISPLAY_DEVICE_ID is selected through ordinary configuration; argument schema
+  exactly matches the accepted PCF8574T profile (digest f7960ad8...4bd5b7f),
+  with no application-selected bus/address/provider fallback or admin token.
+  New administrator operations require monitor_display separately from the
+  existing monitor_configure and service M20 command:display_frame grant.
+  Server prepares the saved revision/screen only, commits an actor-scoped
+  request journal before SDK I/O and never resubmits the same request after a
+  lost reply/restart. Migration 0004 only adds display_requests; preserves
+  settings/samples/old receipts. Bounded 500-record journal stores user IDs, so
+  storage metadata now declares personal data. UI persists request identity
+  before its one invocation; unchecked acknowledgement, dirty-preview guards,
+  explicit read-only recovery, and native matching receipt required for executed.
+  Existing preview/settings/connector refresh/rotation never send a frame.
+  Added backend exact-provider/Core-package validation, migration, denial,
+  lost-ack, restart and actor separation checks plus frontend no-auto-send,
+  storage failure, lost-reply/remount and permission checks. Agent performed only
+  Python AST, Vue/TS syntax parsing and PowerShell parsing, not runtime tests,
+  type-check, build, dependency install, API login or hardware access.
+  Owner ran backend: 41 tests, errors=11, 5.206s; retained snapshot
+  3mm-crypto-display-6275afba73aa45f5a20254c0eb90c04f. Identified a raw sqlite3
+  context manager in the NEW test fixture (commits but never closes), causing
+  Windows cleanup failures/resource warnings; fixture's second-actor write also
+  inspected the first journal row rather than its own current request, raising
+  an assertion swallowed by the deliberate unconfirmed-effect boundary. Fixed
+  explicit connection closing and exact actor/request-row inspection, without
+  weakening that boundary. Actual Core package validation correctly rejected
+  contains_personal_data=true with no retention/export/erasure contract.
+  Added real bounded actor-own display_export/display_erase administrator
+  commands with separate monitor_privacy permission and explicit-erasure
+  retention. Exports paginate at 20; erasure requires typed acknowledgement,
+  refuses pending/unconfirmed work and never deletes another actor's journal,
+  settings or Core/Agent receipts. A proposed GLOBAL output fence on erasure
+  was rejected by automated review and was NOT applied; no safety table/global
+  output block exists. Safer implementation consults the original SDK/Core key
+  before any new submit when a local record is absent, including after explicit
+  erasure; failed/unknown lookup cannot fall through to submit. Added scope,
+  pagination, erasure/unknown refusal and original-receipt replay checks.
+  No tests/build run by agent for the repairs; only static parsing/diff checks.
+  Owner retest passed: all 18 affected display tests in 4.028s, plus the formerly
+  failing existing package reproducibility/actual-Core validation consumer in
+  0.186s; exit_code 0, retained snapshot
+  3mm-crypto-display-486eece5d6e84f3294248d7bae0c6370. No cleanup errors reported.
+  Reuse this evidence and unrelated successful original domain/monitor cases;
+  do not rerun backend or claim an additional full-suite run.
+  Owner frontend group passed: 2 files / 22 tests (13 existing monitor, 9 display),
+  18.30s, Vite 6.4.1 build 10 modules in 847ms, vue-tsc type-check succeeded
+  before Vitest; exit_code 0, retained snapshot
+  3mm-crypto-display-007a9a6b0044496d9f6beda389aeeb74. Read-only hash comparison
+  of all 16 allowlisted current application inputs with BOTH successful backend
+  and frontend inputs.json manifests finds zero mismatches. Reuse these checks;
+  no new tests/build run by agent. Owner built the distinct package with the
+  existing build_package.py and Core Windows .venv Python:
+  C:/Users/LAZ-DELL/Desktop/3mm-crypto-monitor/dist/3mm-crypto-monitor-0.5.0.zip,
+  SHA-256 8fb6acc71cba89cd8711fcdd3b2dd9c71330a95fb84f318b1d6622ab5b27e48e.
+  Agent's read-only Get-FileHash agrees. NEXT: owner uploads 0.5.0 on rasp-3mm
+  via ordinary Extensions upgrade, preserves existing data, sets DISPLAY_DEVICE_ID
+  to dev_65dba727720a40539c7d68cb70fef671, retains the two declared HTTPS
+  connector URLs and separately reviews/approves exact new code/resource grants
+  including command:display_frame plus user monitor_configure/monitor_display.
+  Do not send a frame or invoke journal erasure/export as part of installation.
+  No Core redeploy/rebuild or repeated software checks for this packaging step;
+  runner copies allowlisted application source to a retained isolated temp folder
+  and reuses the existing Windows Core dependencies. Source descriptors remain
+  generated by the owner-run builder, not hand-edited with an invalid wheel hash.
+  After software checks, owner builds the distinct 0.5.0 ZIP, then separately
+  reviews/approves its exact native code, resources and user permissions before
+  live application acceptance. No commit, publication, deployment, grant approval
+  or physical Crypto Monitor frame has been performed or claimed.
+
+- **CAP14 native 20x2 display: first-frame physical acceptance passed,
+  2026-10-31.** Owner
+  requests the next bounded step after I2C-ready acceptance. Read the existing
+  character-display builder/profile, Agent activation guard and driver, Devices
+  capability panel and the hardware-interface scope. The provider is an Agent
+  module, not a Core-hosted application. Existing immutable native package
+  builder supports bus 1 / address 0x27 / 20x2 / PCF8574T + HD44780, explicit
+  profile digest and fixed rs0_rw1_e2_bl3_d4_7 mapping. Construction/install/probe
+  must not send a frame; M20 consumer rights remain separate. Before this slice
+  Agent activation required a local environment opt-in. This slice replaces it
+  with explicit exact-installation consent, not a bypass or manual environment
+  edits. Owner built the inert native ZIP (6299 bytes),
+  .runtime/cap14-display/character-display-pcf8574-1.0.0.zip; package SHA-256
+  66a0a140a9f92f5a38a81c534126fc9d50662307e3ac8782f0bb62624c4d9468,
+  profile SHA-256 f7960ad8593131012af227d4f55ea14706ddce5f9c30e803f6ea13f4a4bd5b7f,
+  module_id org.3mm.character-display.f7960ad8593131012af227d4f55ea14706ddce5f9c30e803f6ea13f4a4bd5b7f,
+  driver pcf8574, activation not_requested. Local read-only archive hash agrees
+  with owner evidence. Owner asks to stop handing back blocked installation
+  steps and prepare the missing software. Prepared a general protocol descriptor
+  and explicit approval body bound to exact device/package/profile; Core and
+  Agent both validate before queueing/extraction/activation. No concrete module
+  names in the Core mechanism. Native install requires the independent Agent's
+  advertised module_hardware_profiles.v1 feature, not a guessed Core version.
+  Devices gains Hardware providers: inert ZIP upload/catalog, exact configuration
+  review, unchecked acknowledgment and explicit normal module installation.
+  Approval is submitted with that install request, not a free-standing global
+  grant. Existing Disable has a separate confirmation; disabled state cannot
+  silently reapprove a later install. Preserve request ID across reload/lost
+  acknowledgment and reconcile through a read-only installation receipt; no
+  automatic retry. Reported installation status is not optical/live readiness.
+  Agent persists device/package/manifest/profile consent with module state and
+  rechecks it at startup. Native provider still requires native hardware mode;
+  metadata deletion/simulation spoof must not bypass its trusted handler.
+  Removed obsolete display environment flags from settings/CLI/installer; they
+  cannot create consent. Profile/package bytes remain unchanged. Added EN/BG
+  source labels (no language version bump or republishing modified BG 1.0.2).
+  Added protocol/Agent/Core/UI denial, mismatch, restore/disable, idempotency,
+  unadvertised support and lost-ack checks; updated prior display/CLI/environment
+  tests to the current consent contract. Existing broad Agent/lifecycle/registry/
+  startup/packaging consumers are in cap14-profile-approval owner profile.
+  Static Python AST, JSON/key parity, profile paths, sorted deployment contract,
+  Vue/TS syntax, PowerShell parser and diff checks only; no test/type-check/build
+  run by agent. Owner then ran the backend profile: 367 passed, 2 failed,
+  58 warnings in 27.45s, /tmp/3mm-lab-6eiqctz5; source SHA-256
+  846218d8093975fb6837d5535de541fc8581a48e6d9ce0b73245d060d65f3d1e,
+  unchanged a12c96a1 Python 3.14.4 dependency environment reused. Failures:
+  old provider-specific error regex versus the new earlier generic digest gate;
+  Contacts package consumer lacks optional three_mm_crud source in its snapshot.
+  Corrected the exact expected denial and asserted rejection before extraction.
+  Added explicit dev-lab pack --with-libraries opt-in (private/generated/path,
+  symlink, digest/budget guards remain; no optional dependency installed in Core).
+  Added source-roundtrip and exclusion regressions. Owner profile helper now
+  supplies library sources and has -Group retest for the two failures plus
+  tools/tests/test_dev_lab.py, independent of temporary prior-run files.
+  Read-only comparison with the owner's original Windows archive confirms the
+  only changed existing snapshot inputs are agent/tests/test_character_display.py,
+  tools/dev_lab.py and tools/tests/test_dev_lab.py; no production-code change for
+  these repairs. Reuse the 367 unchanged successes, not as a fresh full run or
+  coverage of the newly included optional library. Owner instead reran the full
+  selected backend profile: 369 passed, 58 warnings in 32.94s, exit 0,
+  /tmp/3mm-lab-lhqs1_vc; source SHA-256
+  e8aad2718ef727af79cb945e0162f6292aa56cea2213cd86182e7f05dd7d9986,
+  same a12c96a1 environment/dependency hash reused. Both failures are resolved;
+  no further backend or two-case retest is needed. New dev-lab self-tests were
+  not part of that 369-case selection: included tools/tests/test_dev_lab.py in
+  the existing deploy helper's complementary pre-transfer delivery checks.
+  They must pass before delivery; do not claim they already ran. Owner then
+  reports frontend group green: 4 files / 30 tests, 28.13s; vue-tsc type-check
+  passed; Vite 6.4.1 build passed, 948 modules, 8.31s (main-p9CKmSE0.js).
+  Reuse these unchanged backend/UI results; no repetition or new implementation
+  at this handoff. Owner then reports successful Core + Agent deployment at
+  2026-10-31 15:05:44, phase ready/state succeeded; key
+  f1f5647955865f520a1285d41399a3dfdaf73108e90d28fb12127b616e2dcd76,
+  release local-f1f5647955865f520a1285d4. Local prepared.json matches that key;
+  preparation was not reused (266.422s). Reported stages: Core install 185.999s,
+  Agent prepare 4.253s, native host prepare/publish 32.04/38.529s, Agent update
+  39.879s, validate/extract 1.004s. This is owner deployment evidence, not a
+  provider installation or physical frame result. Owner subsequently supplied
+  /devices Hardware providers screenshots: exact native package/profile on
+  dev_65dba727720a40539c7d68cb70fef671 changed queued/Enabled -> succeeded/Enabled;
+  installation request 23d91d88cb9e12daf3af64b01f99c7b6. Treat installation as
+  passed, not evidence of capability health or a visible physical frame.
+  Existing helper updates Core AND independent Agent (full/aarch64/Python3.13),
+  with normal pre-transfer delivery/rollback checks. Services may restart;
+  provider approval/install, I2C activation/reboot, bus scans, frames and M20
+  grants are not requested. Prepared ignored owner helper
+  .runtime/cap14-display/probe.py: status reads exact package installation and
+  discovery v3; send-one requires separate SEND ONE FRAME confirmation and
+  first-frame-request.json exclusive durable identity before its only POST;
+  outcome reads that idempotency key in recent command history and reported
+  state, never resubmits. Existing admin command queue performs the shared
+  invocation checks; the helper pins native profile/contract and uses a 30s TTL.
+  This is administrator acceptance, not an M20 consumer grant or Crypto Monitor
+  integration. Owner status now confirms standalone/online, exact native
+  installation cmd_e2aa241e23404862a88c00e6cdd08801 succeeded/Enabled, installed_exact,
+  display.character registered/available with no unavailable reason and
+  ready_for_one_frame true. This is not optical verification. Helper reported
+  logout unconfirmed; its cause is not diagnosed and does not negate the
+  completed read-only status response. That status command submitted no frame.
+  Owner then explicitly sent and read one physical frame: request
+  c6f815570621d5feba62c28d5b27b424, command cmd_99b046ef24c04593b4c4a04fa3bb96c9,
+  succeeded, delivery_attempts 1, execution_state executed, simulated false,
+  error null; completed 2026-10-31T13:57:14.868102. Receipt and later reported
+  state agree on the exact profile and space-padded 20-column lines
+  "3mm CAP14" / "Display test OK", backlight true, has_frame true. Owner confirms
+  both lines are visibly correct. Accept this bounded real PCF8574T/HD44780
+  bus 1 / 0x27 / 20x2 test through Core -> Agent -> display, not just queueing
+  or simulated state. Keep its local record; no repeat frame is needed.
+  NEXT proposed integration: Crypto Monitor consumes the existing display
+  capability through SDK with an exact M20 command binding; separate application
+  permission review remains required. This does not authorize implementation,
+  an automatic refresh loop, commit or release in this handoff.
+  No new tests/build or live API access by agent; static syntax/diff checks only.
+  Reuse unchanged owner 369 backend / 30 frontend checks and deployment evidence.
+  Capability readiness and first-frame acceptance are now owner-confirmed.
+  Broader lifecycle/failure/recovery or Crypto Monitor acceptance is not claimed.
+  No photo request, new bus
+  activation/reboot, raw bus tool, automatic frame or M20 grant.
+  On dispatch/connection uncertainty use Status/Logs, not another Deploy.
+  No deployment or live UI/physical acceptance by agent; no release claim.
+  Owner explicitly declines a board photo; do not ask for it again or make an
+  image a prerequisite for software work. Continue with the declared fixed
+  PCF8574T/HD44780 profile; owner visual confirmation validates this frame on
+  this mapping, not an independent electrical/voltage certification. Any further physical
+  frame remains separately explicit and limited to that supported profile,
+  without scans, arbitrary mapping guesses or automatic retries. No tests/build,
+  dependency install, deployment, service/host change, activation, hardware I/O,
+  version change or Git mutation by agent. No standalone test application or
+  frame submitted by agent; the ignored helper was executed by the owner.
+  Keep the accepted host-interface stage closed; no repeated bus enablement/reboot.
+
+- **CAP14 local web I2C enable/reboot/readiness stage passed on device,
+  2026-10-31.** Owner's read-only Raspberry evidence: class/i2c-adapter/i2c-1
+  absent, bus/i2c/devices/i2c-1 present as a kernel symlink to
+  devices/platform/soc/3f804000.i2c/i2c-1; name bcm2835 (i2c@7e804000), of_node
+  resolves to firmware/devicetree/base/soc/i2c@7e804000. Clock bytes 00 01 86 a0
+  decode to 100000 Hz. Together with the prior device-node/Agent-access UI,
+  this confirms a wrong sysfs lookup in our verifier, not a need to enable or
+  reboot again. Changed live() to the documented /sys/bus/i2c/devices/i2c-1;
+  no legacy-class fallback, API/auth/permissions, activation or reboot changes.
+  Reworked metadata doubles to match kernel adapter/of_node symlinks without
+  any i2c-adapter class. Added post-reboot verification preserving original
+  enable/restart IDs, journal and all three config files, plus missing/malformed/
+  conflicting clock denial. Static AST and whitespace review only by agent.
+  Owner then ran -Group boot: 72 passed, 8 warnings, exit 0 (5.47s pytest),
+  /tmp/3mm-lab-jcm7afkn, source SHA-256
+  e455b4702797565fcebd66ca9af6fe035f368fe7274b088113e7e9701f151a4b;
+  existing a12c96a1 Python 3.14.4 dependency environment reused. The repeated
+  deployment result 8f90fab3... is the prior release, not delivery of this fix.
+  Owner's subsequent screenshot (12:52) now reports I2C ready, Live adapter
+  Present, Device node Present, Running Agent access Verified for the same local
+  device, retaining both enable/restart request IDs. This meets the current
+  local host-interface web enablement, separate reboot and post-boot readiness
+  acceptance point. No fresh deployment key was supplied; do not reuse the old
+  8f90... receipt as evidence of the latest delivery. No further activation or
+  Raspberry reboot is needed. Unchanged frontend evidence remains reusable;
+  no additional tests/build/remote actions/Git mutation at this handoff.
+  NEXT bounded stage: inspect/configure the existing 20x2 PCF8574T display
+  provider and arrange an explicitly approved one-frame acceptance through the
+  platform, then integrate Crypto Monitor through its approved binding. Do not
+  scan/open/write the bus merely to inspect status; physical display mapping,
+  visible frame and complete CAP14 acceptance are still pending.
+
+- **CAP14 web enablement and separate reboot exercised; live adapter check not
+  accepted yet, 2026-10-31.** Owner reports Core-only deployment succeeded at
+  12:02:06, key 8f90fab3ecc343e202f03a9765a92d946d81ce5239db51251ad68854aaac5599,
+  release local-8f90fab3ecc343e202f03a97. Screenshots for the same local device
+  show not_configured -> configured/pending_reboot -> reboot detected, with
+  device node Present and running Agent access Verified, but adapter Absent.
+  Enable request a818e7a4694cf388d707dc7b5e016b5b; separate restart request
+  0d554b19e6581874d1eaf07408686996. Owner confirms both actions already performed;
+  do not repeat either or clear/replay their journal. This proves the reported
+  web workflow reached post-reboot inspection, not full I2C/display acceptance.
+  Source live() only checks /sys/class/i2c-adapter/i2c-1; kernel documentation
+  describes /sys/bus/i2c/devices/i2c-1. Suspect a verification-path defect, not
+  missing activation, but target metadata is still needed to confirm it.
+  NEXT: owner supplies read-only sysfs adapter name/link and clock property.
+  No bus scan/open/write, further reboot, hardware change or new deployment;
+  no production-code change or repeated tests/build in this diagnostic handoff.
+
+- **CAP14 stock model-filter false positive repaired in source, 2026-10-31.**
+  Owner supplied active boot directives: ordinary common graphics/audio setup,
+  [cm4] otg_mode, [cm5] dwc2, [pi5] dtoverlay=nospi10, then [all] enable_uart.
+  The actual device is Raspberry Pi 3B+ Rev 1.4. Confirmed cause in our parser:
+  overlay validation ignored firmware model-filter applicability, so a Pi5-only
+  line blocked the Pi3 web workflow. No evidence of a real local I²C pin conflict
+  in those supplied directives. Primary reference:
+  https://www.raspberrypi.com/documentation/computers/config_txt.html#conditional-filters
+  Prepared bounded correction in hardware_interfaces.py: exact supported-board
+  model-filter membership (3B+ reads pi3 and pi3+; Zero W reads pi0 and pi0w),
+  known foreign model sections skipped, model filters replace only the model
+  condition, [all] resets uncertainty. Unknown/malformed/case-unverified headers
+  remain fenced for hardware directives until [all]; unknown other filter
+  classes are not assumed active/false or cleared by a model switch. Includes
+  remain refused even under foreign model sections. Did NOT whitelist nospi10
+  globally: it still blocks in an applicable section, including a real Pi5.
+  Existing active unknown overlays, explicit I²C disable/speed and GPIO conflicts
+  stay denied. A known matching model's I²C declarations are now interpreted
+  rather than blanket-refused as conditional. Added exact owner-config regression
+  through prepare/pending-reboot with full byte/preimage preservation, model
+  aliases/foreign CM filters, unknown-condition/reset and active-denial coverage.
+  One old negative case (foreign pi4 I²C on a Pi3) is now correctly a positive
+  case; matching-pi3 disable remains a negative. No RPC/schema/auth/UI/permission/
+  reboot behavior changed, and no device config was edited. Owner helper gains
+  -Group boot (fresh isolated cap14-i2c-boot profile: hardware workflow + admin
+  route cases, no old temporary JUnit dependency). Agent runs static AST/profile
+  paths/PowerShell/diff checks only, no tests/build/install/SSH/deploy/hardware or
+  Git changes. Prior 30 UI/type/build and unrelated successful backend evidence
+  remain reusable, but do not claim they cover this new parser. Owner completed
+  -Group boot: 68 passed, 8 warnings, exit 0 (5.45s pytest), isolated run
+  /tmp/3mm-lab-n6tdfl2f; source SHA-256
+  bc49e092cd0d994986d8f7cce7f84859bbeb95141368cdbbc13a4543143d19fa.
+  Existing a12c96a1 Python 3.14.4 dependency environment reused; this is source
+  test evidence, not installed-device or physical acceptance. NEXT: owner deploys
+  via the existing .runtime/cap14-i2c/deploy.ps1 Core-only helper, then repeats
+  read-only web inspection. No activation/reboot/frame or full CAP14 acceptance
+  yet; do not repeat unchanged frontend checks solely for this parser fix.
+
+- **CAP14 first live web inspection is fenced by an unidentified overlay,
+  2026-10-31.** Owner screenshot shows the deployed Devices/Hardware interfaces
+  panel for online standalone rasp-3mm, device dev_65dba727720a40539c7d68cb70fef671,
+  inventory Raspberry Pi 3 Model B Plus Rev 1.4. The API/UI reports
+  unverified_overlay_conflict and offers no enablement. This confirms the panel
+  loads and the host-config guard refuses an overlay outside its initial allowlist;
+  it does not identify which overlay, prove a real pin conflict or establish a
+  defect in the board itself. No confirmation, bus activation or reboot reported.
+  Current config() admits only empty scope reset, vc4-kms-v3d and dwc2 overlays;
+  do not broaden this blindly or tell the owner to delete an OS overlay. NEXT:
+  owner supplies a read-only view of active /boot/firmware/config.txt directives
+  (comments/blank lines omitted, section context retained). Inspect the exact
+  overlay/parameters and supported-board effects before deciding whether to
+  extend the profile or report a genuine conflict. Diagnostics are not a return
+  to manual raspi-config activation; the product workflow remains web-managed.
+  Prior 244 backend + 30 UI/type/build evidence remains unchanged; no code edits,
+  new tests/build, remote/device action or Git mutation in this handoff.
+
+- **CAP14 Core-only device deployment succeeded; begin read-only web acceptance,
+  2026-10-31.** Owner reports rasp-3mm deployment key
+  894bbe6f99a251d71a8118da8610fd32b7db8f1a87833bc2ece7b905a826d4f5,
+  release local-894bbe6f99a251d71a8118da, state=succeeded, phase=ready,
+  unit 3mm-deploy-894bbe6f99a251d71a8118da.service. Installer completed
+  2026-10-31 10:46:26; install Core 190.773s, validate/extract 1.029s.
+  This is owner-reported deployment evidence, not an agent remote inspection,
+  physical interface enablement or reboot acceptance. No replay/update is needed.
+  Reuse the accepted 244 backend + 30 frontend/type-check/build results; no source
+  code changes or new tests/build were made for this handoff. NEXT: owner opens
+  http://rasp-3mm.local/devices as admin, hard-refreshes, selects the local rasp-3mm
+  device's Hardware interfaces panel (last known device identity
+  dev_65dba727720a40539c7d68cb70fef671), and sends current status/screenshot before
+  any confirmation. Last observed bus was disabled/absent; do not assume that
+  deployment activated it. Unsupported/conflict/unavailable results must be
+  inspected, not bypassed with manual raspi-config. Only after a valid review,
+  proceed with explicit web enablement, pending reboot, separate device restart
+  confirmation, then live readiness verification. No display frame/provider/app
+  approval, release/commit or physical acceptance inferred from deployment.
+
+- **CAP14 selected frontend gates passed; Core-only deployment handoff prepared,
+  2026-10-31.** Owner restored Windows frontend dependencies with npm ci from
+  the checked-in lock; no package/lock source change. All 4 selected files passed:
+  Device capabilities 13, Hardware interfaces 5, hardware transport 7 and system
+  control 5 = 30 tests in 19.80s. vue-tsc type-check and Vite 6.4.1 build (944
+  modules, 10.99s) also passed under the restored npm environment (Vitest 3.2.4).
+  Do not relabel the earlier pnpm-tree versions as this environment. npm reported
+  deprecated packages and an esbuild allow-scripts notice; neither blocked these
+  gates. No script approval policy or dependency version was changed by agent.
+  Reuse the owner's 244 passing Linux backend checks (source 6edcec34..., run
+  /tmp/3mm-lab-i1z7ovsi) for unchanged backend behavior; no backend/frontend source
+  changes made after this evidence. This is not a full release gate or physical
+  I²C/reboot/visual acceptance.
+  Prepared ignored .runtime/cap14-i2c/deploy.ps1 for owner execution: normal
+  immutable Core deployment to the existing full/aarch64/Python 3.13 target,
+  requires explicit current BACKUP confirmation, uses Ubuntu only as a build
+  environment, preserves independent Agent selection (no --with-agent), and
+  validates a Core-only kit before invoking the standard deploy.ps1. Additional
+  checks select the deployment controller and full-release-contract consumers;
+  standard Linux frontend preparation retains its own checks rather than faking
+  reuse of Windows build evidence. Observation actions do not prepare/dispatch.
+  Deploying these files does NOT enable I²C, start a display provider, issue a
+  frame, approve an app or reboot the machine. Service restarts are normal
+  installer behavior. Existing BG 1.0.2 stays selected/immutable; new source
+  labels may fall back to English until a separately versioned BG update is
+  prepared/selected at the later release gate. No version bump or language
+  activation inferred here. Agent ran only PowerShell syntax/diff checks, no
+  tests/build/install/SSH/deploy/hardware/Git mutation. NEXT: owner confirms backup
+  and deploys; after the successful result, walk through the real web interface
+  preparation and separate reboot, checking readiness rather than assuming it.
+
+- **CAP14 backend accepted; Windows frontend dependency installation missing,
+  2026-10-31.** Owner reran the bounded backend profile successfully: 244 passed,
+  10 warnings, 13.48s, /tmp/3mm-lab-i1z7ovsi, source
+  6edcec34aaaa99c06701c7836cb45b891e3d6fea7e21b48ceffef506b8961776,
+  Python 3.14.4, same reused a12c96a1 environment/dependency digest
+  f91ccaad806c25f0057f8f802db6ed3ad6733a89fd44d3bd934d14d1b8c8c5f7,
+  exit_code=0. This confirms the repaired contract and the selected backend
+  behavior/consumers, not a full release or real reboot acceptance. Do not rerun
+  backend for an unchanged frontend environment repair.
+  Owner's frontend run: transport 7 + system-control 5 passed; Hardware interfaces
+  and Device capabilities suites failed during import, before their assertions:
+  reka-ui cannot be resolved from UiRecordPicker.vue through the public UI barrel.
+  Read-only inspection confirms reka-ui 2.11.0 is declared in package.json and
+  both lock files, while frontend/node_modules/reka-ui is absent and an older
+  .pnpm tree exists. No dependency/version/source fix is required or made.
+  NEXT: owner restores frontend dependencies with npm ci using the checked-in
+  package-lock, then repeats only -Group frontend (4 selected files + type-check
+  and build). A changed installed dependency environment needs that new UI
+  evidence; do not relabel the earlier 12 passes as testing it. No tests, installs,
+  builds, deployment, hardware action or Git mutations by the agent. Live UI
+  light/dark/mobile, device setup and separate reboot remain gated and pending.
+
+- **CAP14 previous temporary JUnit unavailable; use a fresh bounded backend run,
+  2026-10-31.** Owner's -Group retest stopped before any tests because the prior
+  /tmp/3mm-lab-mbblhywe evidence could not be read. This is not a new I²C failure
+  and does not verify the contract-order repair. Do not depend on restoring an
+  ephemeral /tmp report, invent per-case successes, or silently narrow the missing
+  failed-case list. NEXT: owner runs the existing self-contained -Group backend
+  profile against a fresh snapshot (previous selected run: 244 cases, about 20s;
+  not the full project suite). It covers the unknown prior failures and repaired
+  contract guard without relying on old JUnit. Then pending -Group frontend.
+  Updated the ignored retest helper's missing-evidence message to give this
+  actionable path instead of requesting an unavailable original log. No new
+  production edits, tests/build, device/deploy/reboot or Git mutation. Static
+  helper syntax and diff checks only; deployment remains gated on owner results.
+
+- **CAP14 I²C backend owner run failed; contract ordering repaired, 2026-10-31.**
+  Owner evidence: /tmp/3mm-lab-mbblhywe, profile cap14-i2c-web, source
+  12893b6146d93872eceb4f528a57d028c4ffb29658d89bad87c52d8b5446b22a,
+  Python 3.14.4, reused a12c96a1 environment, dependency digest
+  f91ccaad806c25f0057f8f802db6ed3ad6733a89fd44d3bd934d14d1b8c8c5f7.
+  Result: 71 failed, 173 passed, 10 warnings in 16.91s; no deployment.
+  Visible tail contains packaging failures; it is not evidence that all other
+  individual checks passed. Static inspection found a deterministic error in
+  this change: hardware_interfaces.py was inserted after platform_runtime_updates
+  in deployment-contract.json, violating validate_deployment_contract's mandatory
+  sorted/unique required_files rule. Moved it to its proper position. No helper,
+  I²C transaction, API or UI production behavior changed in this repair. Strengthened
+  the new release guard to validate the complete baseline first and require the
+  expected incomplete-archive error for each removed file; malformed baselines
+  must not satisfy its denial assertions for the wrong reason.
+  Ignored owner helper now supports -Group retest: reads the previous JUnit,
+  maps EVERY failed/error case to the fresh snapshot without silently dropping
+  unknown cases, then adds the strengthened guard and direct deployment-contract
+  consumer checks. Old logs are retained; unchanged successful cases need no
+  repeat. Missing/mismatched prior evidence stops before tests. The full old
+  log was not available through local read-only WSL inspection; do not claim its
+  unshown failures were individually diagnosed. Static JSON order/uniqueness,
+  Python AST, PowerShell parsing and diff checks passed; agent ran no tests or
+  build, no device changes, deploy or Git mutations. NEXT: owner runs -Group retest;
+  if green, run the pending frontend group. Real reboot/visual acceptance remains
+  pending; no release/deploy authorization is inferred from this test result.
+
+- **CAP14 local I²C web + separately confirmed reboot prepared, 2026-10-31.**
+  Owner authorized the next implementation slice. Added a device-selected
+  Hardware interfaces panel, administrator-only API and a fixed privileged
+  worker through the existing update-helper boundary. No remote Node fallback:
+  the selected identity must match the real local Agent identity. Initial
+  supported profile is modern Raspberry Pi OS bookworm/trixie, canonical mounted
+  /boot/firmware, named 40-pin Pi profiles, I²C-1 GPIO2/3 at explicit 100 kHz.
+  Unknown includes/overlays/HATs, conflicting pins, explicit host disable or other
+  speeds are refused, not overwritten. Inspection performs no bus scan/open/write.
+  The worker journals pre/postimages of exactly boot config, a modules-load file
+  and an Agent-only supplementary-i2c systemd drop-in. It does not change the
+  shared 3mm account, load modules live, start providers, grant M20 rights or
+  reboot on apply. Pending state survives Core/browser restart; only a changed
+  kernel boot ID plus adapter/node/clock/running-Agent permissions can verify
+  activation. Extended ACLs remain unverified rather than guessed. Reboot has a
+  second device/revision/operation-bound confirmation and reuses the existing
+  system-action scheduler, never factory reset. Request IDs reconcile without
+  rescheduling; partial/lost workers are fenced, not automatically resumed.
+  Common release-mutation locking is released before starting the worker to
+  avoid racing its non-blocking admission. Failures restore only unchanged
+  owned postimages; foreign edits and uncertain restoration remain fenced with
+  durable evidence. API audit plus root journal retain the operation identity.
+  Added isolated runtime/auth/rollback/socket/packaging and UI/transport/i18n
+  tests; owner runner .runtime/cap14-i2c/test.ps1 exposes backend/frontend groups.
+  tools/dev_lab.py profile cap14-i2c-web runs a fresh isolated snapshot; frontend
+  group uses existing npm environment and includes affected Device capabilities
+  and system-control consumers, type-check/build. No new dependencies or schema.
+  English and BG message source updated; no version changed. Before publishing
+  another BG archive, allocate a fresh language-package version; published BG
+  1.0.2 must not be replaced. This is prepared source, NOT passing-test or physical
+  acceptance evidence. Static Python AST/JSON/PowerShell and TypeScript/Vue syntax
+  parsing plus diff checks
+  only; no pytest/Vitest/type-check/build/install, SSH/deploy, service changes,
+  reboot, Git mutation or display operation by the agent. Prior display 374+1
+  evidence applies only to that unchanged display behavior, not these new paths.
+  NEXT: owner runs backend then frontend commands; inspect any failure before
+  deployment. Visual light/dark/mobile and real reboot acceptance remain pending.
+  Do not reopen accepted CAP03/CAP09/M20 WP4 or independent M21 work.
+
+- **CAP14 interface catalogue and I²C-only execution scope recorded,
+  2026-10-31.** Owner asks to examine other useful hardware settings and save
+  them in the plan before implementation, then implement only I²C + reboot.
+  Extended the existing CAP14 section of docs/CORE_SIMPLIFICATION_PLAN.md, not
+  another report: separates OS interfaces, provider profiles and M20 app rights;
+  future catalogue covers SPI, UART/serial, 1-Wire, GPIO reservations, PWM,
+  USB/serial/HID, camera/audio and approved HAT profiles. Future rows are not
+  blanket implementation approval or claims of support. Network/AP/roles/reset,
+  bootloader/overclock and business display content stay outside this editor.
+  Shared admin/helper, revision/identity/audit, pin conflicts, truthful readiness
+  and pending/reboot behavior are specified. The next bounded implementation is
+  only local supported Raspberry I²C-1 web inspection/enablement, Agent-specific
+  access, persisted pending-reboot state, a separately confirmed existing restart
+  operation and real post-boot verification. No disable/other buses, driver wizard,
+  native profile/app grant, frame or Crypto Monitor integration in that slice.
+  Device hostname is an acceptance target, not a Core branch. Current handoff is
+  documentation-only: no production/UI edits, tests/build/deploy/commit or device
+  action; prior accepted behavior evidence is not rerun or relabelled. NEXT:
+  implement only the I²C + reboot slice described in that canonical CAP14 plan;
+  owner runs the new affected checks. The manual raspi-config handoff stays retired.
+
+- **CAP14 direction corrected: hardware setup belongs in the platform UI,
+  2026-10-31.** Owner rejects manual raspi-config/SSH as the product workflow and
+  requires Core-managed device interface settings, shown for supported Raspberry
+  hardware. Owner also specifies reboot is needed for I2C activation on this
+  target. Stop the earlier manual-enable handoff; it was not accepted/executed
+  as a platform solution. Last observed I2C state remains disabled/unavailable.
+  Proposed bounded next slice: device interface inspection + explicit admin
+  preparation of I2C/Agent-only access through a narrow privileged helper;
+  distinguish configured/pending reboot from live ready. Reuse the existing
+  admin-confirmed/audited system-control restart path for this local target;
+  no automatic reboot, reset, arbitrary root shell or raw I2C application API.
+  After reboot verify live adapter, device node and effective Agent access,
+  rather than treating a saved setting as successful activation. Device/provider
+  profile setup must also be web-managed; app M20 grants remain a separate step
+  and are never approved by OS configuration. No Crypto Monitor special case,
+  new framework or reopening accepted M20/WP4/CAP09 work. Current investigation
+  confirms generic Agent/device command infrastructure and Core admin/helper
+  restart already exist; exact new helper/API/UI implementation is the next
+  task, not already delivered. Owner still runs tests/deploy; agent prepares
+  source/commands only. This turn records the corrected direction, with no
+  production/UI edits, tests/builds, reboot, OS enablement or remote action.
+
+- **CAP14 Core + Agent deployment succeeded (owner evidence), 2026-10-31.**
+  Owner confirms the physical display is on rasp-3mm.local, the same full/aarch64
+  target as this deployment, not the separate Pi Zero/rasp-3mmw Node. Owner's
+  final record: key 82d67dc1f6c703ffa8bd037ec8cadc711a98f0de324dc0c49642dbe0bbf44de9,
+  release local-82d67dc1f6c703ffa8bd037e, state=succeeded/phase=ready.
+  Core install, native-host preparation/publication and independent Agent
+  preparation/update all completed. Reported ready build
+  c9884507e69613fb03a2b70bdf7ea5c929f046930f94ede8002b90f5ce04b68b,
+  Core PID 1369057. This is owner-reported deployment evidence, not an agent SSH
+  inspection or a display write/physical acceptance. No provider ZIP/local
+  native approval/application grant or Crypto Monitor binding was requested by
+  the deployment. Owner's read-only preflight confirms Core ready, Agent role
+  standalone, device_id dev_65dba727720a40539c7d68cb70fef671. /dev/i2c-1 is absent;
+  user 3mm is not in i2c and service supplementary group is gpio; the user write
+  check is no. Further owner output: /sys/class/i2c-adapter and
+  /sys/module/i2c_dev absent, /usr/bin/raspi-config available, i2c group gid988
+  contains raspberry only. Owner explicitly confirms I2C was never enabled in
+  raspi-config; only the hardware was connected. This establishes an OS setup
+  prerequisite, not an observed LCD failure. Historical manual raspi-config
+  enable instruction is superseded by the owner's web-management requirement
+  above; do not continue it as the accepted product workflow.
+  Later device access should be Agent-service-specific, not blanket membership
+  for the shared 3mm account. No bus scan, device open/write, group/service/
+  environment change or frame yet. Actual
+  LCD/backpack mapping and electrical compatibility still need confirmation.
+  Agent only records evidence and provides commands; no repeated test/build or
+  remote action. Previous 374+1 selected checks remain the behavior evidence.
+
+- **CAP14 selected owner checks accepted: 374 + 1 passed, 2026-10-31.**
+  Owner ran cap14-display on Linux/Python 3.14.4, source
+  9640c711829a1e3736e611c66defed931ab90d8207e7767018d5b48bf5dde944;
+  logs/JUnit/evidence retained in /tmp/3mm-lab-ekg4kv4l. One lifecycle test
+  expected CapabilityContractError after disabling the provider, but invoke()
+  correctly raises ModuleLifecycleError("capability is unavailable") before any
+  driver call. Changed only that test's exact exception/message expectation;
+  production code, dependencies, contracts and safeguards are unchanged. Reuse
+  the 374 passing cases only for those unchanged inputs. Owner's single-case
+  retest now passed, including the previously unreached restart assertions:
+  source e2c37cc8ddf180c507912f8a11358826e59dfcbce5cf282d23ce842d9892015c,
+  /tmp/3mm-lab-3fwspbo8, 1 passed in 1.25s, exit_code=0. Same Python 3.14.4
+  environment was reused; dependency digest remained
+  f91ccaad806c25f0057f8f802db6ed3ad6733a89fd44d3bd934d14d1b8c8c5f7.
+  This is 375 distinct selected checks across two runs, not a new full-suite
+  run or a replacement for release gates. No production change since that run.
+  Ignored owner helper now supports -OnlyFailed: fresh source snapshot, same
+  tested a12c96a1 Linux environment, single affected case, separate evidence;
+  original failed evidence is preserved. Agent runs static syntax/diff checks
+  only, no tests/build/install/deploy/Git/hardware action. NEXT: prepare an
+  explicitly requested Core + independent Agent deployment for owner execution,
+  preserving the disabled display default. Then separately verify board mapping,
+  electrical/device access and accept an explicit physical frame. Crypto Monitor
+  binding, sustained update cadence/retention and full CAP14 remain unaccepted.
+  Owner now requests this deployment step. Prepared ignored
+  .runtime/cap14-display/deploy.ps1: defaults to full/aarch64/Python3.13 target
+  raspberry@rasp-3mm.local, Ubuntu only as a build/check lab, existing a12c96a1
+  Python environment. It requires owner BACKUP confirmation, prepares an exact
+  --with-agent/--without-images kit via tools/deploy.py, then calls the standard
+  deploy.ps1 with -Bundle/-WithAgent. Reuses 374+1 behavior evidence; only the
+  complementary deployment-controller and Agent delivery/rollback/locking gates
+  are selected during preparation. Existing content-bound frontend/check caches
+  remain authoritative; no gate/hook bypass or fabricated cache evidence. No
+  display ZIP installation, driver/approval/grant changes, bus/GPIO/network setup
+  or I2C frame is requested. Status/Logs are observation-only. This is the Core
+  target, not an implicit ARMv6 Node/Pi Zero rollout; physical display host asked
+  separately. Agent only prepared/parses the helper, no tests/build/SSH/deploy.
+  NEXT: owner run helper with current target backup and send final status JSON;
+  after uncertainty inspect Status/Logs rather than blind replay.
+
+- **CAP14 character-display slice prepared; owner checks pending, 2026-10-31.**
+  Owner resumes the 20x2 I2C display after 0.3.3 publication. Confirmed PCF8574T,
+  address 0x27, I2C-1, SDA GPIO2/pin3 and SCL GPIO3/pin5. Owner says appropriate
+  voltage; actual pull-up/level-shifting arrangement and LCD/backpack mapping
+  are not yet physically verified. Supplied marketplace page was inaccessible.
+  Prepared a general display.character/1.0 write_frame provider on the existing
+  Agent module, command, M20 and SDK path, with two bounded printable-ASCII rows,
+  explicit backlight and exact immutable profile/contract digests. Profile-bound
+  module IDs avoid reusing one immutable module/version for different hardware.
+  Local driver defaults disabled; mock and PCF8574 profiles are distinct. Native
+  additionally requires the native hardware profile and exact local approval
+  digest, separate from application resource consent. CLI and filtered Agent
+  environment preserve only these two non-secret settings. Generic Agent service
+  invocation now carries the authoritative command deadline; both current trusted
+  services were updated together. Provider-side preflight validation occurs before
+  I/O. Native HD44780/PCF8574 driver uses one fixed pin map and an isolated stdlib
+  child, no bus scan/FORCE/raw application I2C, a <=3s deadline with per-byte checks
+  and a resource lock, bounded kill/reap, no fallback or unknown-outcome replay.
+  Activation/restart/readiness never write a frame; availability is only local
+  path/permission readiness, not LCD detection. State distinguishes mock/native,
+  has_frame and last_write_at; heartbeat does not refresh frame age. LCD content
+  may remain after link/service loss; physical updates are not atomic/readback.
+  Prepared contract/Agent/transport/CLI/filter tests and owner-run dev-lab profile
+  cap14-display (whole Agent suite, generic M20 command regressions and Agent
+  artifact). Agent performs only static syntax/diff review, no tests, dependency
+  installs, frontend build, deployment, Git mutation, bus or hardware action.
+  NEXT: owner run that profile from a fresh source snapshot; then separately
+  deploy Core + independent Agent, confirm wiring/3.3V-safe signal levels and OS
+  device permissions, and accept one explicit native frame. No extra mock device
+  deployment is required. Crypto Monitor SDK consumption remains a separate
+  sibling-app change; no sibling source was edited. Button, AP/Wi-Fi/app reset,
+  other controllers and full CAP14 completion are outside this bounded result.
+  Static evidence: all 18 affected Python files parsed without project imports;
+  the ignored owner helper's PowerShell syntax parsed and git diff --check passed.
+  No runtime pass is claimed. Owner command:
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .runtime/cap14-display/test.ps1.
+  API/build/hardware limits live in modules/character-display/README.md. Preserve
+  this already mixed dirty diary outside any later exact implementation commit.
+
+- **Core 0.3.3 published and publication metadata verified, 2026-10-30.**
+  Owner screenshot shows Latest 0.3.3 and green preparation commit. Read-only
+  public GitHub API confirms stable v0.3.3 is visible (draft=false,
+  prerelease=false), annotated tag and both manifests resolve to
+  061e7ebe76c325c5203708b03550dba2e1b611f1. Same-commit CI run 41038223241
+  and Release run 41042773754 completed successfully. All seven required
+  assets are present: three full architecture archives, ARMv6 Node archive,
+  Core/Node manifests and SHA256SUMS. Manifest sizes/hashes and all six checksum
+  entries agree with GitHub asset digest metadata; no large archives downloaded
+  or independent local archive-byte verification claimed. Local HEAD/tag match;
+  only this preserved mixed diary remains dirty. No agent tests/build, Git
+  mutation, publication or device action. Do not recreate/move the published
+  tag. NEXT: owner update the Raspberry through the Stable channel to the
+  published 0.3.3 artifact, explicitly enable BG 1.0.2 and verify readiness,
+  identity and the accepted UI. Published-artifact device acceptance is separate
+  from the earlier local d33f409c deployment. Resume the agreed CAP14/I2C display
+  direction afterward; existing CAP09/theme and M20/WP4 acceptance stay closed.
+
+- **Core 0.3.3 + BG 1.0.2 release preparation authorized, 2026-10-30.** Owner
+  confirms these independent versions after the green main screenshot. Public
+  API and job summaries confirm CI run 41031237540 for full commit
+  e615d727840e17e9c7bdb54e8ec8476b67d5d2f4 succeeded: Linux Python selected
+  suites and compiled-UI integration, frontend 81 files / 812 tests plus types/
+  build, tooling and selection. No repeated checks by agent. Published latest
+  stable remains v0.3.2; the new preparation is not a publication or deployment.
+  Updated VERSION, README, CHANGELOG and 0.3.3 release notes; BG changes only the
+  matching manifest/definition version to 1.0.2. Translations/code/dependencies
+  from the green commit are unchanged. The earlier generated BG 1.0.1 ZIP is
+  preserved, not overwritten. Bundled-language lifecycle stages a new version
+  without changing an existing selected/disabled package; enable BG 1.0.2
+  explicitly after an upgrade. No resource/key/schema/SDK/Agent/Terminal change.
+  Owner's final metadata/package run succeeded: 98 passed, 12 warnings, 17.34 s
+  on Ubuntu/Python 3.14.4, source
+  d0961c44b79c98620b1a4a143f8693899dade447ec46a77717c5215f8f0e0e9f;
+  log/JUnit at /tmp/3mm-release-033-pz6hn0cs. BG 1.0.2 standalone ZIP validated:
+  .runtime/release-033/packages/language-bg-1.0.2.zip, 126234 bytes, SHA-256
+  77804ed3b31a6a3b2948607a1a26a4ba04d8104e3892341b24d09ccece134218,
+  activation=not_requested. Agent verified the ZIP hash matches. Final static
+  packaging review found 1571 CRLF line endings in the Windows dictionary while
+  the Git/Linux bundled release uses LF. Corrected ONLY the ignored package
+  helper to normalize CRLF -> LF and write packages/canonical/language-bg-1.0.2.zip;
+  preserve the raw unactivated ZIP above. Dictionary meanings and tracked source
+  are unchanged; no need to repeat the 98 checks. Owner must rerun only the
+  inert validated ZIP builder before using the portable artifact. Only release
+  prose records this result afterward. This mixed diary remains excluded from
+  the six-file release commit.
+  NEXT: owner review/commit/push the six files and use a clean exact-commit
+  publication checkout for the new annotated tag after required gates.
+  Preserve this dirty diary; do not stash/reset it implicitly.
+  Ignored release-033/release.ps1 supplies Verify, CommitPush and Tag actions
+  against six frozen Git blob IDs and base e615d72. CommitPush rebuilds/validates
+  only the canonical BG ZIP, reviews exact staging, asks COMMIT and pushes only
+  that exact preparation commit. Tag requires green CI for the same six-file
+  commit, remote-main containment, an unused tag and explicit RELEASE 0.3.3;
+  it publishes from a new clean detached worktree, preserving original notes
+  and retaining the clean temporary checkout. No branches/history rewrites,
+  test reruns, hook bypass, forced tags or automatic publication retries.
+  Release retains all full canonical/reproducible-build gates. No agent tests,
+  install, build, commit, push, tag or publication is performed.
+
+- **Fork isolation comparison passed locally; CI confirmation pending,
+  2026-10-30.** Owner committed/pushed diagnostic test as 78eaf1e.
+  New same-case first_dispatch failure shows all three processes alive, empty
+  child logs, seen_count=0 and one pending delivery with attempts=0/error=null.
+  Handler response timeout/signature processing has not started. A concrete
+  test-harness defect is possible at the multiprocessing fork boundary:
+  application_events._claim_lock is a process-local threading.Lock, but the
+  test Core inherits the multithreaded pytest parent's copy. A held inherited
+  lock makes claim_event_delivery return idle forever, without claiming a row;
+  metadata/HTTP can remain healthy. Installed Core starts a fresh interpreter.
+  Test-only _serve_core now initializes its own claim lock before its threads
+  start. New real-process regression deliberately keeps the parent's lock held
+  across the whole test, then requires exactly one acknowledged delivery and
+  unchanged Core fingerprint/admin HTTP, with the parent lock still held.
+  No production/admission/lease/handler budget, retry or skip change. The CI
+  snapshot did not measure the inherited lock, so this is a concrete mechanism
+  to validate, not yet proof of the original CI root cause. Agent syntax/diff
+  checks only. Owner ran the fresh dev-lab pack and ignored event-runtime-ci/check.py
+  --compare-fork on Ubuntu/Python 3.14.4, snapshot
+  7ff4900d2c05a5944c60eb46d6076636fd818349160e09d90c01a56ca3e85ac9.
+  Pre-fix copy: one expected regression failure, 19 warnings, 15.03 s; exact
+  three-live/pending/zero-attempt/no-receive state confirmed. Fixed copy:
+  **5 passed**, 71 warnings, 58.02 s, exit_code=0/baseline_reproduced=true.
+  Log/JUnit retained at /tmp/3mm-event-ci-vt4fat0z. This proves the controlled
+  inherited-lock defect and its test-fixture fix, not a measured parent-lock
+  snapshot from the original CI or a canonical Python 3.13 full-suite pass.
+  No relevant edits followed this run; reuse it without repeating local checks.
+  NEXT: owner-only two-file test commit (test_platform_runtime_process.py and
+  test_event_runtime_process.py), then push and normal CI. Keep this mixed diary
+  out of the commit; no production/frontend/device/version/release change.
+
+- **CI event-process failure: first-dispatch diagnosis prepared, 2026-10-30.**
+  Main de5f6ce7e9f96f5a632106fd41e8213715fd146b CI run 41021773133 failed
+  in Python job 123950562514: 3249 passed, 598 skipped, one failure after
+  1233.75 s. Frontend/tooling/selection succeeded. Owner traceback and fetched
+  job log agree: event_runtime_process.py:108 timed out waiting for the FIRST
+  handler receive, before the hang-response/admission assertions. This does not
+  establish a Runtime timeout defect or a harmless scheduler flake. The fixture
+  discarded peer stderr and removed runtime.log on teardown, hiding causal
+  evidence. Added test-only phase/process/durable-delivery diagnostics and owned
+  peer log capture. Existing five-second waits, delivery/attempt assertions and
+  production code are unchanged; no retry/skip/deadline relaxation. Agent source
+  review/static syntax/whitespace only, no tests or environment install.
+  Owner completed the fresh minimal pack and .runtime/event-runtime-ci/check.py
+  on cached unprivileged Ubuntu/Python 3.14.4: all four signature/request_id/
+  trickle/hang cases passed, 58 warnings, 36.36 s, exit_code=0. Snapshot
+  77f2bd2697700f0e245811d06389391b8ad215fe1cda5789f250562e14162a47;
+  log/JUnit retained at /tmp/3mm-event-ci-pefsonws. No relevant source changes
+  followed. This is non-reproduction, NOT a root-cause/fix claim, full-suite
+  result or canonical Python 3.13.17 CI pass. NEXT: owner-only one-file test
+  diagnostics commit, then push and normal CI; retain the same five-second
+  assertion and all delivery/attempt checks. If CI fails again, inspect the new
+  Event process wait failed state before choosing a fix. Keep this mixed working
+  diary out of that commit. No agent commit/push/rerun/release/device mutation.
+  Theme acceptance remains closed and is not reopened by this independent gate.
+
+- **Two reviewed source commits completed by owner, 2026-10-30.** Owner asks
+  to commit after successful checks; no agent test/build or Git mutation.
+  Reviewed base is 65e27112fbcb6797fbedf2b04c89ef032ee8a3f8. Connector proof
+  priority and its regressions form an independent four-file fix. Unified theme,
+  menu placement/sticky and Header/Menu editors share Settings/labels and form
+  one coherent 38-path UI commit, including two retired component deletions.
+  Ignored .runtime/theme-workspace/commit.ps1 supplies Connector/Theme scopes,
+  frozen content digests, exact staging review and explicit COMMIT prompts;
+  it preserves hooks and refuses changed content, foreign staging or index.lock.
+  This working diary remains outside both commits because its dirty content
+  also includes independent notes. No generated/private artifacts, app/language
+  ZIP, version, branch, push, tag or release is included. BG changes are source
+  labels, not a newly published language package. Existing successful owner
+  checks are reused. Latest preparation now records key
+  d33f409c6c3daeb4579383557d63e31b2036aa7ac6f2152688c88b6d29efc0a9,
+  release local-d33f409c6c3daeb457938355, 308.21 s. Its checks.json matches the
+  ready receipt hash: all 40 existing intended files match source_inputs and
+  both intended deleted paths are absent. Standard preparation records the
+  targeted 13-file Python group (72.719 s), full frontend test command
+  (131.96 s) and build command (30.254 s); no new case totals are inferred.
+  Owner now supplies final same-key Raspberry result at 09:21:32:
+  phase=ready/state=succeeded, unit 3mm-deploy-d33f409c6c3daeb457938355.service,
+  install Core 191.74 s and validate/extract 0.984 s. Owner also reports device
+  checks completed and explicitly closes the theme work. This is owner-supplied
+  live acceptance, not additional agent browser inspection. Do not reopen the
+  earlier pending theme gates below. Commit helpers passed read-only scope/hash
+  verification (4 and 38 paths); index remains empty, HEAD remains 65e2711.
+  Owner executed both scopes with explicit COMMIT confirmation: 4e5007f
+  (connector, 4 files, +165/-9) and de5f6ce (theme/Header/Menu, 38 paths,
+  +1766/-2185). Local log matches; index is empty and only this working diary
+  remains dirty. LF/CRLF notices did not prevent either commit. No source edits
+  or repeated tests followed. NEXT: owner push of main, then hosted CI results
+  and separate release preparation; do not create a tag before release review.
+  No agent push/tag/release is performed here. Theme work remains accepted.
+
+- **Header Customization + Menu Configuration selected checks passed, 2026-10-30; live acceptance pending.**
+  Owner explicitly starts this slice while testing the menu/sticky deployment.
+  Agent waited with read-only inspection while that kit was preparing. Owner
+  then reports Raspberry success at 08:22:17, key
+  0a5021372e6318fe619c1b9fc3c921375563a6fa4ca3470c77b7de1291c58ff1,
+  release local-0a5021372e6318fe619c1b9f, phase=ready/state=succeeded;
+  validate/extract 0.989 s, install Core 182.378 s. Prepared/attempt metadata
+  locally matches the key. This is owner deployment evidence, not agent device
+  inspection or visual acceptance. Only after freeze/dispatch did source edits
+  begin; the following Header/Menu work is NOT in that deployed kit.
+  Header now uses shared form/fields/buttons and an isolated branding preview.
+  Text drafts remain per language; the shared logo is now a local copy, not a
+  live-store mutation. Save writes only site_name/header_message for the chosen
+  language and global logo_url; colors remain Theme-owned. Existing settings
+  API is NOT transactional; any uncertain/partial save requires explicit reads
+  before another save. Failed reads preserve drafts. The current asset upload
+  endpoint already generates unique file names, so cropping need not modify the
+  common ImageEditorModal or overwrite the saved asset; uploaded-but-discarded
+  assets are preserved, not deleted. Header errors/locale changes are guarded.
+  Menu contents use shared UiEditorForm/UiField/UiCollectionEditor; keyboard
+  reorder, duplicate and reversible draft removal replace drag-only controls.
+  Stable row keys are client-only; existing localized labels, audiences, custom
+  internal routes and API payloads remain. Separate menu drafts survive menu/
+  locale/section switches. Create/rename/delete use shared dialogs, not browser
+  prompt/confirm; deletion keeps an explicit confirmation. Existing activation
+  stays the automatic default, distinct from Theme placements/sticky. Lost CRUD
+  or save replies fence further writes until explicit read; no replay/CAS claim.
+  No backend/auth/schema/dependency/SDK/version change, Git action or new deploy.
+  New source EN/BG labels only, no new language ZIP/version. Prior passing tests
+  do not test these new inputs. Agent source/consumer review and static syntax/
+  JSON/whitespace only; no tests, type-check/build, install or browser/device work.
+  NEXT: owner --with-frontend pack, then .runtime/theme-workspace/check.py
+  --group header-menu: Node 22/pnpm 10.13.1 frozen install, type-check, eight
+  targeted Header/Menu/Settings/helper/asset/navigation files, build. Backend and
+  unchanged shared primitive checks are reused, not rerun. Real light/dark,
+  narrow/keyboard, logo cancel/save, locales and uncertain-result recovery remain
+  a separately authorized rollout/visual gate. User is testing the previous kit.
+  Owner's first header-menu run /tmp/3mm-theme-workspace-v_vqgsfe completes
+  locked dependency installation, then type-check stops before tests/build on
+  two NEW MenuEditor.test.ts typing errors. Mixed fixture objects inferred an
+  optional undefined bg value incompatible with Record<string, string>; the
+  generic collection component lookup selected VTU's DOMWrapper overload, which
+  has no vm. Corrected ONLY the test: explicit string-map fixture annotation,
+  and disabled Add checked/clicked through its actual DOM button rather than
+  manually emitting a component event. No cast, compiler weakening or production
+  edit. Source syntax/diff checked only by agent; tests/type-check/build remain
+  owner-run. NEXT: fresh --with-frontend pack and the same --group header-menu;
+  there are no completed tests/build from this failed run to reuse or omit.
+  Owner's corrected header-menu run /tmp/3mm-theme-workspace-9h1rbyro now
+  returns exit_code=0, deployment=not_requested. Vite 6.4.3 production build
+  passed, 943 modules, 7.90 s. The runner's preceding fail-fast type-check and
+  eight selected test files therefore passed. Supplied excerpt has no test
+  total/source SHA, so none is invented. No production edits followed the
+  test-only correction. This is targeted verification, not full frontend/CI
+  or device acceptance. NEXT: separately authorized owner-run Raspberry
+  deployment, then light/dark/narrow/keyboard and draft/save/discard/reload
+  checks for both screens. No tests/build/deployment/Git action by agent.
+  Owner now authorizes the Header/Menu Raspberry rollout. Reuse the existing
+  ignored .runtime/theme-workspace/deploy.ps1 wrapper: it prepares CURRENT
+  source before dispatch, not the older 0a502137 kit, using the standard own
+  npm/check cache and explicit thirteen-file Python selection. Same target
+  raspberry@rasp-3mm.local, full/aarch64/Python 3.13/without-images; no Agent,
+  app ZIP, language ZIP, Ubuntu installation, version or Git/publication action.
+  Owner runs it via process-only powershell.exe ExecutionPolicy Bypass with a
+  current backup; uncertain dispatch requires saved-key Status/Logs, not replay.
+  No helper/runtime changes or agent preparation/check/deployment in this
+  handoff. New prepared identity and final device result remain pending owner.
+
+- **Theme menu positions + sticky zones frontend gates completed, 2026-10-30; live acceptance pending.**
+  Owner requests multiple configured menus in distinct locations and sticky
+  controls in Theme settings. Added bounded optional menu_layout preferences:
+  up to 16 unique existing IDs in primary/header/sidebar/footer; omitted
+  placements follow the active menu, explicit [] hides all. Separate sticky
+  flags for header/sidebar/footer; no DB migration, menu-content/activation
+  write, package edit or new dependency. Existing admin/exact-theme save and
+  2048-character read/write budget remain; missing current IDs return 409.
+  The appearance editor uses shared selects/checkboxes, an isolated position
+  diagram and the existing Save/discard/unconfirmed/conflict flow. Failed menu
+  reads never clear saved placements; deleted IDs remain visible for cleanup.
+  Menu.vue filters every region through the existing live route/audience/kiosk
+  rules. Shared MenuGroups renders the groups; the shell's main slot stays at
+  one stable parent across placement, navigation and recovery changes. Mobile
+  merges header/sidebar into one drawer; footer remains separate. Public/auth
+  has no sidebar; kiosk/display get no configured groups. Sticky zones are
+  height-bounded/scrollable; existing auth/language/Command Palette actions stay.
+  Source EN/BG labels included, no language version/ZIP. Prior owner theme and
+  connector results do NOT prove these new inputs. Agent performed source review
+  plus Vue/TypeScript/Python syntax, JSON and whitespace checks only; no tests,
+  type-check/build, dependency install, browser/device action, Git or release.
+  NEXT: owner repacks --with-frontend and uses .runtime/theme-workspace/check.py
+  backend (five theme modules plus test_menu_items) then frontend (Node 22,
+  pnpm 10.13.1 frozen install, type-check, full frontend tests, production build).
+  After success: separately authorized rollout and light/dark/390px/keyboard/
+  long-page sticky and role-filtered region review. Independent connector fix
+  and all prior theme source changes preserved; no new deployment is performed.
+  Owner frontend run /tmp/3mm-theme-workspace-qwbcboti now reports **799 passed /
+  1 failed** in 79 files, 153.94 s, start 07:51:15. The preceding fail-fast
+  type-check step succeeded; production build did not run. Sole failure is
+  extension-ui/v1.test.ts: its historical Menu mock renders only <div /> and
+  swallows the newly named content slot, so the draft input is absent. Updated
+  ONLY that mock to forward the content slot; kept every draft identity/value/
+  mount-count assertion and all production inputs unchanged. Real Menu/shell
+  integration tests are among the passing files, not replaced by this mock.
+  Owner's UiPreview RouterLink warning is separate; that file passed and is
+  untouched. Agent runs no tests/type-check/build. Reuse the other 799 passes
+  and unchanged backend evidence; the supplied frontend excerpt has no archive
+  SHA or backend count, so neither is invented. NEXT: fresh --with-frontend pack
+  and --group frontend-finish in the existing owner runner: clean locked install,
+  type-check, only extension-ui/v1.test.ts, then the still-pending build. This is
+  supplemental evidence, not a new full-800-test claim or a device rollout.
+  Owner now supplies completed frontend-finish result from
+  /tmp/3mm-theme-workspace-d1huc1o2: exit_code=0, deployment=not_requested.
+  Vite 6.4.3 build passed, 947 modules, 7.79 s. Type-check and the corrected
+  public-UI test file are earlier fail-fast steps, so both completed before
+  this final result. The excerpt contains no test count or source SHA; neither
+  is invented. Reuse the other 799 passing tests above; production inputs have
+  not changed in the test-mock correction. Missing isolated-copy config.json
+  is expected: default build config succeeded, no private device config is
+  needed. This closes the supplemental frontend gate, not device/visual
+  acceptance, canonical release CI or publication. NEXT: separately authorized
+  owner-run Raspberry deployment of the new menu/sticky slice, followed by
+  actual positions, sticky scrolling, mobile and role-filtered navigation checks.
+  No code changes or agent tests/build/deployment/commit in this handoff.
+  Owner explicitly authorizes Raspberry deployment, 2026-10-30. Prepared the
+  ignored .runtime/theme-workspace/deploy.ps1 owner wrapper: cached unprivileged
+  Ubuntu Python, standard tools/deploy.py preparation, explicit six theme/menu
+  plus seven connector checks, full/aarch64/Python 3.13/without-images, then the
+  unchanged root deploy.ps1 with the returned Bundle. Run the wrapper using a
+  child powershell.exe with process-only ExecutionPolicy Bypass, matching the
+  prior policy workaround. Require a current backup; no Agent/app/language ZIP,
+  Ubuntu installation, version/Git/publication change. Standard npm preparation
+  owns its own exact-input cache; no invented reuse of pnpm results. On dispatch
+  failure or lost SSH, use root deploy.ps1 Status/Logs for the saved key instead
+  of rerunning preparation/installation. Helper syntax only checked by agent;
+  no preparation, test/build, transfer or device job run. Prepared key and live
+  result remain pending owner output; do not reuse the older 902300d6 kit.
+
+- **Joint theme + connector rollout succeeded; browser acceptance pending, 2026-10-30.** Owner explicitly
+  includes both scopes in one local Raspberry deployment. Agent prepares the
+  command; owner runs the standard preparation/checks and authenticated dispatch.
+  Target raspberry@rasp-3mm.local, full/aarch64/Python 3.13, without-images as in
+  the last accepted kit; no independent Agent rollout, app ZIP, version, Git or
+  publication change. Ubuntu is build/test-only, never an installation target.
+  Use the existing cached unprivileged Ubuntu Python for tools/deploy.py prepare,
+  explicit union of five theme and seven connector registration/consent/staging
+  files, then deploy.ps1 -Action Deploy -Bundle with the returned checked folder.
+  The standard npm deployment build/cache has its own proof; do not fabricate
+  cache reuse from the separately passed pnpm run. No --skip checks or profile
+  override. Owner must have a current backup; on lost/failing dispatch retain
+  the exact key and use Status/Logs rather than replay. This handoff creates no
+  kit or remote job. Owner's preparation now succeeded, reusing exact checked
+  inputs 700ba58852ed and frontend build ec4d4e804fcc, 150.473 s:
+  key 902300d6231fa079c360351850017bf8f88cd10149218c4a0ca81ae77815aded,
+  release local-902300d6231fa079c3603518. Local prepared/ready metadata matches
+  that identity. PowerShell execution policy initially blocked deploy.ps1 before
+  dispatch. Owner then ran the existing Bundle in a child powershell.exe process
+  with process-only ExecutionPolicy Bypass; no persistent policy change or
+  preparation/check rerun. Owner returned the final same-key result at Raspberry
+  log time 2026-10-30 07:17:23: state=succeeded, phase=ready, release_id as above,
+  unit=3mm-deploy-902300d6231fa079c3603518.service. Installer reports update
+  succeeded; validate/extract 1.054 s, install Core 195.996 s. This is owner-supplied
+  deployment evidence, not an independent agent device inspection. NEXT: hard
+  refresh Settings, inspect saved theme and the new editor, then real light/dark,
+  draft/discard/save/reload, narrow/keyboard and preserved connector consent/
+  settings acceptance. Installed theme packages and app configuration remain in
+  scope to preserve, not erase/reinstall. No new agent tests/build/deployment,
+  version, Git mutation or publication.
+
+- **Theme workspace selected checks passed; visual acceptance pending, 2026-10-30.**
+  Owner switches scope from the accepted CAP09 slice to one built-in default
+  theme (always light/dark) and a single Settings editor using current controls.
+  Local CAP09 commits are 824e2ea and 65e2711; no new commit/push is authorized.
+  Canonical built-in/fallback/recovery palette is theme_design_defaults.json,
+  with theme-owned header by default. Retired light_*/dark_* DB color records
+  remain untouched but no longer form a second live default. Removed their
+  duplicate Settings editor/read/save paths; explicit installed theme packages,
+  branding, personal mode, role-filtered navigation and recovery are retained.
+  Built-in palette overrides now use the same bounded v2 color/contrast checks
+  and existing admin/exact-selection customization endpoint as theme packages;
+  no schema change, DB reset, automatic migration or device/settings write.
+  Settings uses UiEditorForm/UiField/UiButton; sample preview also exercises the
+  public record/collection editors. Draft palette/variants are preview-pane-only,
+  not global shell changes. Editing light/dark is separate from personal mode;
+  defaults/discard are local intents until explicit Save. Lost save/read replies
+  preserve the draft and block replay until explicit reload; fresh conflicting
+  saved values fence a dirty draft. Existing route, auth and theme asset limits
+  are unchanged. EN fallback and BG source labels added, no language version/ZIP.
+  Agent performed source/consumer review and syntax/JSON/diff checks only;
+  no test/type-check/build, dependency install, browser/device deployment or Git
+  mutation. Prior CAP09 tests do NOT cover these changed inputs. Owner runner:
+  .runtime/theme-workspace/check.py with --group backend/frontend, verified
+  --with-frontend dev-lab source copy, existing unprivileged Ubuntu Python and
+  Node 22. Shared store/shell require full frontend tests + type-check/build;
+  theme customization/options/preview/selection/v2 are the selected Python group.
+  NEXT: owner checks, then separately authorized deployment + Settings real
+  light/dark/390px/keyboard review before visual acceptance. Single-picker UX,
+  business app migration, CAP14, publication and unrelated independent authority
+  source/configuration-provenance edits remain outside this slice.
+  Owner returned 2026-10-30 evidence on verified source
+  3669f7dc7ff17ca3a53bd247346b2cd42170436093845856f2a0296e6e093f46:
+  selected backend **75 passed**, 85 warnings, 12.97 s, cached unprivileged
+  Ubuntu/Python 3.14.4, /tmp/3mm-theme-workspace-x8364ooi/results.xml.
+  Frontend /tmp/3mm-theme-workspace-ky6a8sen completed pnpm 10.13.1 frozen
+  install, then type-check failed on five new TEST-source typing errors:
+  get() omits exists(), and optional preview props were dereferenced directly.
+  Changed only the affected assertions (declared option count and structural
+  prop matches), without non-null casts, weaker compiler flags or production
+  edits. Reuse the unchanged backend result; owner must repack and run only
+  --group frontend. Frontend tests/build have NOT run yet. Agent runs no tests,
+  type-check/build, install, Git mutation or deployment in this correction.
+  Owner's subsequent frontend run /tmp/3mm-theme-workspace-vcgvmviv returns
+  exit_code 0: full frontend **77 files / 778 tests passed**, 197.32 s,
+  start 06:26:39; production Vite build passed, 940 modules, 10.10 s.
+  Type-check is the preceding fail-fast runner step and therefore passed before
+  this completed run. Evidence is the supplied final output; the excerpt omits
+  the new snapshot hash. Direct read of WSL logs was denied by this agent's
+  environment; do not claim an independent full source/hash comparison.
+  Missing config.json in the isolated source is expected (live configuration
+  excluded); normal build defaults succeeded, no config/secret copy is needed.
+  Reuse the unchanged 75-case backend result above. No runtime/source changes
+  or repeated checks in this handoff. NEXT: separately authorized Raspberry
+  rollout and actual Settings light/dark/keyboard/narrow visual acceptance,
+  including draft-only preview vs saved shell, discard/save/reload and one
+  built-in default. No deployment, commit or publication has been performed.
+
+- **Crypto Monitor connector upgrade blocker, 2026-10-29: local Core fix prepared.**
+  Owner reports 409 unavailable in connector settings and consent after app upgrade;
+  clean installation works. Found and reproduced a shared Core selection bug:
+  historical connector-first registration (installation/incarnation key) shadows
+  the exact staged-package proof. `_resolve_code_identity` and
+  `current_registration` now select the current package-specific staging proof
+  first and still require its original sealed verification; invalid current proof
+  never falls back to historical consent. No data, grants, keys, app package,
+  Core version, commit or device change. Preserve unrelated theme work.
+  Six pure routing regressions: before fix 2 passed / 2 failed / 2 errors;
+  after fix 6 passed. Python syntax and scoped whitespace checks passed.
+  Added a POSIX integration regression with real first registration, immutable
+  staging, connector reconfiguration overlay and fresh consent. User continued
+  the work; selected Linux verification is now complete. The first run stopped
+  in the NEW test's setup: the shared helper defaulted to creating credentials
+  although this case declares authentication=none. Fixed that fixture input only
+  (create_credential=False, credential=None). On verified source archive
+  ccef0ecf43f81992a517922da85d52cb0267d9daa3313b7c661f60487f602e92,
+  existing unprivileged Ubuntu cached Python 3.14.4: new integration 1 passed,
+  4.23 s, /tmp/3mm-connector-upgrade-w0burby3; regression group 153 passed,
+  75.97 s, /tmp/3mm-connector-upgrade-03sws9gw. Real seals/SQLite, no skips;
+  logs/JUnit remain in those private runs. Reuse the 6 passing pure routing
+  regressions above. No single-run 160-test claim. No dependency installation,
+  Core build/version/commit, production DB access or deployment was performed.
+  Owner-run `.runtime/crypto-connector-upgrade/check.py` uses a verified dev-lab
+  source archive and existing unprivileged Linux Python, private /tmp state,
+  --group new then --group regression. No dependency install or deployment.
+  Live Raspberry failure is not independently inspected: user supplied generic
+  connector response {detail:{code:unavailable}}. Treat the local reproduction as
+  a concrete matching code defect, not completed device acceptance. Next:
+  standard reviewed Core rollout; retry existing
+  app consent/settings without uninstall or deleting preserved data.
+  Follow-up, 2026-10-30: owner supplied current Crypto Monitor catalog row:
+  disabled, enabled=false, active_version=null, error=null, candidate SHA
+  62736c2021d0ea601ed1ac881870614d808c21a239c68cfd3686a261ef86e1c8 (0.4.0).
+  Owner challenges attributing this to Core; direct real-artifact comparison now
+  reproduces both consent preview and connector-save failure, using unchanged
+  app ZIPs 0.2.0 -> 0.4.0 in disposable Linux state. Both connector origins,
+  enabled flags, binding revisions and complete saved configuration remain
+  identical after staging: transfer succeeds. Original HEAD source for the two
+  changed services fails BOTH paths with registration_unavailable; the same test
+  with the local fix passes BOTH. Exact case SHA:
+  6a4e70069a09f743116079c5b1995a3c33d00cdb0740896ac1c346f709c87398.
+  Source archive remains ccef0ecf43f81992a517922da85d52cb0267d9daa3313b7c661f60487f602e92.
+  Baseline 2 expected failures, 5.28 s, /tmp/3mm-real-crypto-upgrade-orbw4qat;
+  fixed 2 passed, 6.26 s, /tmp/3mm-real-crypto-upgrade-t9ecl13g. Real DB/seals/login,
+  mocked UI compiler output only (no UI rendering/native service/device claim).
+  First test-helper attempts stopped at hardcoded reference entrypoint IDs and
+  then at a reused settings snapshot after a successful save; those fixtures
+  were corrected before the final identical-case comparison. No production
+  changes followed the previously checked two-service fix. Current app archive
+  is not modified for this diagnosis; no direct Core-private data workaround,
+  package-specific Core branch, rights bypass or Raspberry deployment.
 
 - **CAP09 shared editing slice accepted on Raspberry, 2026-10-29.** Owner completed
   the agreed checkpoint: Core/CAP03 `722c287`, deploy-profile fix `988f9e3`, BG
@@ -223,6 +4926,35 @@ Updated: 2026-11-04. Start here; follow linked details only as needed.
   history. No new tests are needed for unchanged checked inputs. NEXT: canonical
   CI and any push/publication only when separately authorized; no tag, version
   change or further deployment. Business-app adaptation and CAP14 remain separate.
+
+- **Approved direction, 2026-10-29: CAP09 editing, then CAP14 display.**
+  Read-only review of the Barsy/Crypto screenshots, current sibling UI sources,
+  public @3mm/ui/v1 components and the explicitly referenced `3mm-crypto-monitor`
+  chat. Existing fields/forms/tables are accepted; do not reopen that result.
+  Recommend a shared editor shell (draft/save/cancel/conflict states), searchable
+  record selection and repeatable/reorderable collections, retaining custom
+  app-owned previews and business operations. First acceptance should use the
+  two real editing scenarios, not a generic Core CMS/business CRUD engine.
+  Owner now explicitly approves Reka UI as the internal accessible Vue primitive
+  foundation behind the public 3mm UI contract. TanStack Table remains only a
+  later candidate, not an approved dependency. First provide owner-run CAP03,
+  deploy-fix and BG 1.0.1 commit commands; start CAP09 only after that checkpoint.
+  Agent prepares files, owner runs checks. No dependency installation, framework
+  replacement or sibling edits performed in this commit-command handoff.
+  Barsy's current local source differs from the deployed screenshot, so agree
+  the exact app versions before adapting either independently developed app.
+  Crypto hardware is explicitly pending: Pi Zero W, 20x2 character display,
+  owner-specified I2C address 0x27, selectable button GPIO. Follow-up belongs to
+  CAP14 device/provider contracts, with bounded display frames and exact hardware
+  binding, mock first; no raw application I2C/device access. Confirm controller,
+  bus and electrical compatibility before real execution. Short press changes
+  screen; 8..15 s selects AP and >=15 s app+Wi-Fi reset on release, not a Core
+  factory reset. AP/reset need separate explicit recovery authority and acceptance;
+  a display grant must not confer them. No hardware/network/reset action performed.
+  Reka-based CAP09 direction is approved; exact implementation slice follows the
+  commit checkpoint. Hardware/reset follow-ups remain separate. This note stays
+  outside the existing CAP03 commit fragment. Agent ran no tests, builds,
+  deployment or Git mutations.
 
 - **CAP03 Platform Runtime web update: selected checks + owner live switch passed, 2026-10-29.**
   Exact commit-scope review (read-only Git, no staging/commit/push): initially 22 dirty/new
@@ -480,6 +5212,87 @@ Updated: 2026-11-04. Start here; follow linked details only as needed.
   no new agent-run tests/build/device action, commit or push.
   Preserve the accepted CAP13 device profile below.
   The only pre-existing dirty file was this handoff.
+
+- **0.3.2 owner-run CAP13 device smoke PASS, 2026-10-29.** The agreed manual
+  local/read-only/one-hop profile has completed successfully on `rasp-3mm`.
+  This is owner-returned installed-device smoke evidence, not whole CAP13,
+  WP5/native-code isolation, remote composition or independent Ubuntu acceptance.
+  Owner reports green
+  Release and is testing `rasp-3mm`, not the still-older Ubuntu VM. Current Core
+  0.3.2 and all five checked services are active/ready. Initial independent
+  Runtime `3400e4bd...` did not advertise queries. With owner-confirmed backup,
+  owner built from the installed release and independently activated Runtime
+  `3af4df434255fa2700f21ffc9b4510382bb5f55d28bc4b248ffc271fd3429e80`.
+  Returned probe confirms `query_execution_contract: 1`, readiness and unchanged
+  Core PID. Native aarch64/CPython 3.13 application host
+  `584e849cf07e7087c5794db46de95b32b761a09b0949b5da4ab19d167176fd9e`
+  was built and published for NEW instances only; existing application pins stay
+  unchanged. These are owner-returned command outputs, not agent-run remote checks.
+
+  Prepared ignored `.runtime/cap13-acceptance/{prepare,probe,check_pair}.py` and
+  two pure-Python manifest-v2 fixture ZIPs under its `packages/` directory.
+  Provider SHA-256 `7f4b1ed406988bd4a4e69b962a4c66dde4afae2ce07d606669852d35f6b81f5e`;
+  consumer SHA-256 `86f069b586b5a245aec991fb52b7a64cdb8904bf46521bcd82f7080df009ed18`.
+  They use synthetic data only, no hardware/external network, no UI compiler;
+  host-owned bootstrap storage has no business tables. Consumer has one admin
+  test query and one exact `directory` dependency. Health does not execute it.
+  Windows project Python 3.13.15: actual Core ZIP validation/determinism, matching
+  contract, packaged wheel import, Unicode/application caller, unattributed-caller
+  refusal, deliberately invalid output and one-call/no-retry refusal checks pass.
+  These bounded fixture checks are NOT actual device timeout/transport/isolation
+  acceptance; prior unchanged release evidence is reused, not rerun.
+  Owner uploaded, approved and activated provider installation 7, instance
+  `2aa790360ad8655de00819d0`. Returned status verifies the exact provider ZIP,
+  active/enabled/enforced, active effective grant revision 1, no review blockers;
+  empty scopes are expected. Signed host/health check confirms the exact new
+  host build above and ready Core with unchanged PID/process generation.
+  SSH transfer initially detected a changed key. Owner independently confirmed
+  hostname/IP and the new device-console ED25519 fingerprint before updating the
+  one hostname's known-host record; no SSH verification bypass was requested.
+  Consumer installation 8, instance `13642b0f10fe9217fccb93fa`, is now owner-
+  confirmed active/enabled/enforced on the exact consumer ZIP and expected host.
+  Initial consent intentionally leaves query unselected. One owner-run alpha
+  request returned `refused_or_unconfirmed`, `operation_failed`,
+  `execution_unconfirmed`, retryable false, no provider output. This alone does
+  NOT prove the permission-specific cause: status lists declared scopes, and a
+  general admission exception is redacted. After explicitly approving consumer's
+  `query:directory:read` for the same provider, owner-run alpha returned query v1,
+  binding directory, exact provider instance, contract digest
+  `187075c507c734a026dc0d2880a3d0cbb01b0fb6e724faa3fe207a4b432aee2f`,
+  expected Unicode label and application caller instance/module matching consumer,
+  with human_delegated false. This is the first successful installed-device CAP13
+  vertical, not whole CAP13/isolation acceptance. Owner-run `bad-output` and
+  `slow` (six-second handler/five-second contract) each returned operation_denied,
+  execution_unconfirmed, retryable false, no output; Core /ready stayed ready.
+  No precise wall-time or live provider dispatch-count measurement is claimed.
+  Owner then revoked ONLY consumer rights: still active/enabled, review_required,
+  grant revision 2, record `933729675b55002392b6d3b08b9239b0`, state revoked,
+  effective/access_saved false. One alpha query was refused without output.
+  `query_runtime_not_connected` in this revoked status is not proof of a Runtime
+  process outage; the reader also emits it when the selected grant is ineffective.
+  Fresh explicit consumer approval now verified: enforced/active/effective,
+  grant revision 3, record `dec917487367a090a57b2c2316e71390`; one alpha returned
+  the same provider/contract/caller and expected Unicode output. No restart,
+  key recovery or provider approval renewal was needed. Owner stopped only the
+  exact provider test unit and confirmed inactive before one alpha call. That
+  call was refused without output; Core /ready stayed ready. The same unit was
+  restored, and its signed health probe confirmed unchanged Core PID/process
+  generation. One final separately requested alpha returned the same exact
+  provider/contract/caller and expected Unicode output, without any new approval.
+
+  Acceptance point reached: selected explicit binding, initial no-right refusal,
+  successful query/application attribution, malformed output refusal, timeout
+  profile refusal, effective consumer revocation, fresh-consent recovery and
+  stopped-provider refusal/recovery. No new broad suite/build was run; unchanged
+  release evidence is reused. Live dispatch-count/precise timing, in-flight
+  revocation/drift, upgrades and reboot/fleet acceptance are not newly claimed.
+  Test applications remain active with provider grant 1 and consumer grant 3;
+  no cleanup, grant revocation or extra device operation has been requested.
+  Runtime/default host now use the independently selected builds above; existing
+  unrelated application pins and Terminal are untouched. Only this working-state
+  handoff is tracked; fixture ZIPs/helpers remain ignored under `.runtime`.
+  No commit or push. NEXT: owner chooses the next bounded development task or
+  explicit test-fixture cleanup; do not extend this completed smoke on our own.
 
 - **0.3.2 CI regression repair, 2026-10-28.** Owner reported failed main CI and
   explicitly authorized fixing, committing and pushing the correction. Run

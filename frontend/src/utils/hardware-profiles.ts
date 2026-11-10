@@ -19,7 +19,7 @@ export interface HardwareProviderField {
   options?: { value: string; label: string }[]
 }
 export interface HardwareProviderTemplate {
-  template_id: string; name: string; simulated: boolean; fields: HardwareProviderField[]
+  template_id: string; name: string; simulated: boolean; fields: HardwareProviderField[]; help?: string
 }
 export class HardwareProfileError extends Error {}
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
@@ -31,6 +31,7 @@ function readTemplates(value: unknown): HardwareProviderTemplate[] {
     if (!object(v) || typeof v.template_id !== 'string' || !/^[a-z0-9.-]{1,80}$/.test(v.template_id)
         || typeof v.name !== 'string' || typeof v.simulated !== 'boolean'
         || !Array.isArray(v.fields) || !v.fields.length || v.fields.length > 16) fail()
+    if (v.help !== undefined && (typeof v.help !== 'string' || !v.help.length || v.help.length > 1000)) fail()
     const fields = v.fields.map((f: unknown): HardwareProviderField => {
       if (!object(f) || typeof f.key !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(f.key)
           || typeof f.label !== 'string' || !['text', 'number', 'select', 'checkbox'].includes(String(f.type))
@@ -45,7 +46,8 @@ function readTemplates(value: unknown): HardwareProviderTemplate[] {
       return f as unknown as HardwareProviderField
     })
     if (new Set(fields.map(f => f.key)).size !== fields.length) fail()
-    return { template_id: v.template_id, name: v.name, simulated: v.simulated, fields }
+    return { template_id: v.template_id, name: v.name, simulated: v.simulated, fields,
+      ...(typeof v.help === 'string' ? { help: v.help } : {}) }
   })
 }
 export function readHardwareProfiles(value: unknown, deviceId: string): HardwareProfileCatalog {

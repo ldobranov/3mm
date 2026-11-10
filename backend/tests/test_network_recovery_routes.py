@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -14,10 +15,12 @@ from backend.db.base import Base
 from backend.db.user import User
 from backend.routes import network_recovery
 from backend.routes.network_recovery import router
+from backend.services import network_recovery as recovery_service
 from backend.utils import jwt_utils
 from backend.utils.auth import hash_password
 from backend.utils.db_utils import get_db
 from backend.utils.jwt_utils import create_access_token
+from three_mm_provisioning.recovery_access_point import read_status
 
 
 @pytest.fixture(autouse=True)
@@ -58,6 +61,8 @@ def make_client(tmp_path, monkeypatch):
         "get_settings",
         lambda: SimpleNamespace(network_recovery=settings),
     )
+    monkeypatch.setattr(recovery_service, 'read_ap_status',
+        lambda: read_status(tmp_path / 'access-point.json'))
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_db] = lambda: db
@@ -101,6 +106,27 @@ def test_status_and_policy_are_admin_only_and_default_to_enabled(
         assert changed.json()["automatic_setup_enabled"] is False
         audit = db.execute(select(AuditLog)).scalar_one()
         assert audit.action == "NETWORK_RECOVERY_POLICY_CHANGED"
+    finally:
+        db.close()
+
+
+def test_unreadable_optional_ap_status_does_not_break_admin_status(tmp_path, monkeypatch):
+    client, db, admin_token, _ = make_client(tmp_path, monkeypatch)
+    status_path = tmp_path / 'access-point.json'
+    original_lstat = Path.lstat
+    def denied(path):
+        if path == status_path:
+            raise PermissionError('private host status path')
+        return original_lstat(path)
+    monkeypatch.setattr(Path, 'lstat', denied)
+    try:
+        response = client.get('/api/v1/network-recovery/status',
+            headers={'Authorization': f'Bearer {admin_token}'})
+        assert response.status_code == 200
+        assert response.json()['access_point']['state'] == 'unavailable'
+        assert response.json()['access_point']['reason'] == 'status_unavailable'
+        assert 'private host status path' not in response.text
+        assert not status_path.exists()
     finally:
         db.close()
 

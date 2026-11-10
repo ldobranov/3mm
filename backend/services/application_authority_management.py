@@ -20,6 +20,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sqlite3
 import time
 
 from sqlalchemy import func, select, update
@@ -44,8 +45,11 @@ from backend.services.application_authority_context import (
     AuthorityReviewContextV9, AuthoritySelectionV9,
     AuthorityReviewContextV10, AuthoritySelectionV10,
     MAX_INTEGER, _bounded_json, _canonical_bytes, _parse, _parse_versioned, review_authority_context,
+    _schema_paths, _subject_schema_paths, _record_schema_paths,
 )
-from backend.services.application_authority_keys import CoreReviewKeyStore, AuthorityReviewKeyError
+from backend.services.application_authority_keys import (
+    CoreReviewKeyStore, AuthorityReviewKeyError, AuthorityReviewKeyBusy,
+)
 from backend.services.operation_diagnostics import authority_failure_span
 from backend.services.application_authority_policy import (
     CorePolicyEvidenceV1, CorePolicyEvidenceV2, PolicySubjectV1, PolicySubjectV2,
@@ -78,6 +82,28 @@ class AuthorityManagementError(Exception):
     def __init__(self, reason="authority_unavailable"):
         self.reason = reason
         super().__init__("Application authority unavailable: " + reason)
+
+
+class AuthorityAdmissionUnavailable(ValueError):
+    """No admission decision: a bounded local lock must become available first."""
+
+    def __init__(self, reason):
+        if reason not in {'key_busy', 'database_busy'}:
+            raise ValueError('Invalid temporary authority admission reason')
+        self.reason = reason
+        super().__init__('Application authority admission is temporarily unavailable')
+
+
+def _admission_busy_reason(error):
+    if isinstance(error, AuthorityReviewKeyBusy):
+        return 'key_busy'
+    if isinstance(error, SQLAlchemyError):
+        original = getattr(error, 'orig', None)
+        code = getattr(original, 'sqlite_errorcode', None)
+        if (isinstance(original, sqlite3.OperationalError) and type(code) is int
+                and (code & 0xff) in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}):
+            return 'database_busy'
+    return None
 
 
 def _rollback_before_key_release(db):
@@ -113,7 +139,7 @@ def _clock():
 
 
 def _save(db, key, kind, row, data):
-    value = _bounded_json(data)
+    value = _bounded_json(data, schema_paths=_record_schema_paths(kind, data))
     row.payload = json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
     row.key_id, row.seal = key.seal(db, kind, value)
     db.add(row)
@@ -128,7 +154,8 @@ def _load(db, key, kind, row, record_id):
     from backend.services.application_authority_context import _unique_object
     if type(row.payload) is not str or len(row.payload) > 131072:
         raise AuthorityManagementError("record_unavailable")
-    value = _bounded_json(json.loads(row.payload, object_pairs_hook=_unique_object))
+    value = json.loads(row.payload, object_pairs_hook=_unique_object)
+    value = _bounded_json(value, schema_paths=_record_schema_paths(kind, value))
     key.verify(db, kind, value, row.key_id, row.seal)
     if (set(value) != {"version", "kind", "record_id", "installation_id", "revision", "state", "data"}
             or type(value["version"]) is not int or value["version"] != 1 or value["kind"] != kind
@@ -151,6 +178,7 @@ def _native_binding(subject):
 
 def _resource_identity(subject, *, required_only=False):
     value = subject.model_dump(mode="json")
+    schema_paths = set(_schema_paths(type(subject), value))
     # Active grant records the reviewed OLD baseline and a separate resulting
     # epoch/revision. Never rewrite the approved review context to fake freshness.
     value["binding"].pop("baseline")
@@ -162,7 +190,11 @@ def _resource_identity(subject, *, required_only=False):
         value['resources'] = {scope: resource.model_dump(mode='json')
             for scope, resource in _subject_scopes(subject).items()
             if scope not in subject.optional_resources}
-    return _canonical_bytes(value)
+        schema_paths = {path for path in schema_paths if path[0] not in _resources(subject)}
+        for scope, resource in _subject_scopes(subject).items():
+            if scope not in subject.optional_resources:
+                schema_paths.update(_schema_paths(type(resource), value['resources'][scope], ('resources', scope)))
+    return _canonical_bytes(value, schema_paths=schema_paths)
 
 
 def _resources(subject):
@@ -581,7 +613,9 @@ class ApplicationAuthorityManager:
         if plan["installation_id"] != installation_id or plan["revision"] != _identifier(expected_revision):
             raise AuthorityManagementError("stale_review")
         subject = self._subject(db, key, installation_id, prepared)
-        if _canonical_bytes(plan["data"]["subject"]) != _canonical_bytes(subject.model_dump(mode="json")):
+        if (_canonical_bytes(plan["data"]["subject"], schema_paths=_subject_schema_paths(plan['data']['subject']))
+                != _canonical_bytes(subject.model_dump(mode="json"),
+                    schema_paths=_schema_paths(type(subject), subject.model_dump(mode='json')))):
             raise AuthorityManagementError("stale_review")
         native, policy = self._policy(db, key, subject, plan["data"]["native_review_id"])
         context = _parse_versioned(AuthorityReviewContextV1, AuthorityReviewContextV2, plan["data"]["context"], 'context_version', AuthorityReviewContextV3, AuthorityReviewContextV4, AuthorityReviewContextV5, AuthorityReviewContextV6, AuthorityReviewContextV7, AuthorityReviewContextV8, AuthorityReviewContextV9, AuthorityReviewContextV10, AuthorityReviewContextV11, AuthorityReviewContextV12)
@@ -908,8 +942,15 @@ def effect_admission(db, installation_id, scope):
         # These grants are review metadata until the bounded transaction/lifecycle
         # adapter exists. Never issue a compatibility or generic effect lease.
         raise ValueError('Relational storage runtime is not implemented')
-    with db.no_autoflush:
-        mode = db.scalar(select(ApplicationExtensionInstallation.authority_mode).where(ApplicationExtensionInstallation.id == installation_id))
+    try:
+        with db.no_autoflush:
+            mode = db.scalar(select(ApplicationExtensionInstallation.authority_mode).where(ApplicationExtensionInstallation.id == installation_id))
+    except SQLAlchemyError as error:
+        reason = _admission_busy_reason(error)
+        if reason is None:
+            raise
+        db.rollback()
+        raise AuthorityAdmissionUnavailable(reason) from None
     if mode == "compatibility":
         def release():
             pass
@@ -929,11 +970,11 @@ def effect_admission(db, installation_id, scope):
         manager = configured_manager(db.get_bind().engine)
         prepared = manager._prepare(installation_id)  # ZIP outside key/guard.
         with ExitStack() as lease:
-            # Command/connector admission verifies seals but never signs one.
+            # Command/connector/event admission verifies seals but never signs.
             # Its DB write fence still serializes durable admission. A shared
             # key lease excludes rotation and grant changes without also
             # blocking unrelated UI readers during this admission.
-            verify_only = isinstance(scope, str) and scope.startswith(('command:', 'connector:'))
+            verify_only = isinstance(scope, str) and scope.startswith(('command:', 'connector:', 'event:'))
             key = lease.enter_context(manager.keys.read_locked() if verify_only else manager.keys.locked())
             # LIFO: finish/roll back this caller's transaction BEFORE the key,
             # including policy/caller exceptions and early explicit release.
@@ -1000,10 +1041,13 @@ def effect_admission(db, installation_id, scope):
 
                 release.record_checkpoint_write = record_checkpoint_write
             yield release
-    except (AuthorityManagementError, AuthorityReviewKeyError, SQLAlchemyError, ValueError, OSError):
+    except (AuthorityManagementError, AuthorityReviewKeyError, SQLAlchemyError, ValueError, OSError) as error:
         if released:
             raise
         db.rollback()
+        reason = _admission_busy_reason(error)
+        if reason is not None:
+            raise AuthorityAdmissionUnavailable(reason) from None
         raise ValueError("Application resource grant is unavailable or stale") from None
 
 

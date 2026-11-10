@@ -83,7 +83,7 @@ def events(core_installed, tmp_path, monkeypatch):
             return {}
 
     monkeypatch.setattr(gateway, 'ApplicationServiceClient', Client)
-    def send(prepared,request_id):
+    def send(prepared,request_id,**_bounds):
         from three_mm_runtime.application_transport import sign_message,send_message
         left,right=socket.socketpair()
         try:

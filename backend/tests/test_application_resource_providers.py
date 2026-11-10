@@ -2,6 +2,7 @@
 import os
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 pwd = pytest.importorskip('pwd')
@@ -27,7 +28,8 @@ def test_connector_resource_uses_real_worker_without_contacting_destination(vert
     current = pwd.getpwuid(os.geteuid()).pw_name
     monkeypatch.setattr(config,'get_settings',lambda:settings.model_copy(update={'applications':
         settings.applications.model_copy(update={'connector_worker_socket':path,'connector_worker_user':current})}))
-    monkeypatch.setattr(connector,'execute',lambda *_:pytest.fail('Readiness sent a business HTTP request'))
+    monkeypatch.setattr(connector,'subprocess',SimpleNamespace(
+        Popen=lambda *_a, **_k: pytest.fail('Readiness launched a business HTTP executor')))
     allow(s,preview(s))
     worker = ConnectorWorker(path,core_uid=os.geteuid())
     worker.start(); thread = threading.Thread(target=worker.serve_forever,daemon=True); thread.start()

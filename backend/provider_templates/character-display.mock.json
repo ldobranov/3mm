@@ -1,0 +1,381 @@
+{
+  "health": "Inert profile package; not hardware readiness.\n",
+  "manifest": {
+    "capabilities": {
+      "consumes": [],
+      "provides": [
+        "display.character"
+      ]
+    },
+    "compatibility": {
+      "agent": ">=0.1.0",
+      "architectures": [
+        "armv6l",
+        "aarch64",
+        "x86_64"
+      ],
+      "core": ">=0.1.0",
+      "protocol": "1.0"
+    },
+    "configuration_defaults": {
+      "address": 39,
+      "backlight_active_high": true,
+      "bus": 1,
+      "columns": 16,
+      "controller": "hd44780",
+      "display_id": "display.main",
+      "driver": "mock",
+      "pin_map": "rs0_rw1_e2_bl3_d4_7",
+      "rows": 2,
+      "schema_version": 2
+    },
+    "configuration_schema": {},
+    "conflicts": [],
+    "dependencies": {},
+    "description": "An exact, separately approved hardware profile.",
+    "entrypoints": {
+      "agent": "builtin:display.character.v1"
+    },
+    "health_check": {
+      "path": "health/ready",
+      "type": "file_exists"
+    },
+    "manifest_version": 2,
+    "module_id": "org.3mm.character-display.profile.574e3626299362d4c517d858b03ae79ba02abcaf4e9865dc428202e0d3398943",
+    "name": "Character display (mock)",
+    "permissions": [
+      "hardware.display"
+    ],
+    "registrations": [
+      {
+        "contract": {
+          "actions": {
+            "write_frame": {
+              "arguments_schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "backlight": {
+                    "type": "boolean"
+                  },
+                  "display_id": {
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "profile_sha256": {
+                    "maxLength": 64,
+                    "minLength": 64,
+                    "type": "string"
+                  },
+                  "text": {
+                    "maxLength": 512,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "display_id",
+                  "profile_sha256",
+                  "text",
+                  "backlight"
+                ],
+                "type": "object"
+              },
+              "result_schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "backlight": {
+                    "type": "boolean"
+                  },
+                  "columns": {
+                    "enum": [
+                      16
+                    ],
+                    "maximum": 80,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "display_id": {
+                    "enum": [
+                      "display.main"
+                    ],
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "has_frame": {
+                    "enum": [
+                      true
+                    ],
+                    "type": "boolean"
+                  },
+                  "last_write_at": {
+                    "maxLength": 40,
+                    "type": "string"
+                  },
+                  "profile_sha256": {
+                    "enum": [
+                      "574e3626299362d4c517d858b03ae79ba02abcaf4e9865dc428202e0d3398943"
+                    ],
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "rows": {
+                    "enum": [
+                      2
+                    ],
+                    "maximum": 4,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "simulated": {
+                    "enum": [
+                      true
+                    ],
+                    "type": "boolean"
+                  },
+                  "text": {
+                    "maxLength": 512,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "display_id",
+                  "profile_sha256",
+                  "text",
+                  "backlight",
+                  "columns",
+                  "rows",
+                  "has_frame",
+                  "last_write_at",
+                  "simulated"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "capability_id": "display.character",
+          "contract_version": "2.0",
+          "events": {},
+          "schema_version": 1,
+          "state_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "backlight": {
+                "type": "boolean"
+              },
+              "columns": {
+                "enum": [
+                  16
+                ],
+                "maximum": 80,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "display_id": {
+                "enum": [
+                  "display.main"
+                ],
+                "maxLength": 64,
+                "type": "string"
+              },
+              "has_frame": {
+                "type": "boolean"
+              },
+              "last_write_at": {
+                "maxLength": 40,
+                "type": "string"
+              },
+              "profile_sha256": {
+                "enum": [
+                  "574e3626299362d4c517d858b03ae79ba02abcaf4e9865dc428202e0d3398943"
+                ],
+                "maxLength": 64,
+                "type": "string"
+              },
+              "rows": {
+                "enum": [
+                  2
+                ],
+                "maximum": 4,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "simulated": {
+                "enum": [
+                  true
+                ],
+                "type": "boolean"
+              },
+              "text": {
+                "maxLength": 512,
+                "type": "string"
+              }
+            },
+            "required": [
+              "display_id",
+              "profile_sha256",
+              "text",
+              "backlight",
+              "columns",
+              "rows",
+              "has_frame",
+              "last_write_at",
+              "simulated"
+            ],
+            "type": "object"
+          }
+        },
+        "kind": "capability",
+        "metadata": {
+          "address": 39,
+          "backlight_active_high": true,
+          "bus": 1,
+          "columns": 16,
+          "controller": "hd44780",
+          "driver": "mock",
+          "pin_map": "rs0_rw1_e2_bl3_d4_7",
+          "profile_sha256": "574e3626299362d4c517d858b03ae79ba02abcaf4e9865dc428202e0d3398943",
+          "profile_template": true,
+          "rows": 2,
+          "simulated": true
+        },
+        "registration_id": "display.character"
+      }
+    ],
+    "runtimes": [
+      "agent"
+    ],
+    "version": "1.0.0"
+  },
+  "template": {
+    "bindings": {
+      "address": [
+        "/configuration_defaults/address",
+        "/registrations/0/metadata/address"
+      ],
+      "backlight_active_high": [
+        "/configuration_defaults/backlight_active_high",
+        "/registrations/0/metadata/backlight_active_high"
+      ],
+      "bus": [
+        "/configuration_defaults/bus",
+        "/registrations/0/metadata/bus"
+      ],
+      "columns": [
+        "/configuration_defaults/columns",
+        "/registrations/0/metadata/columns",
+        "/registrations/0/contract/state_schema/properties/columns/enum/0",
+        "/registrations/0/contract/actions/write_frame/result_schema/properties/columns/enum/0"
+      ],
+      "display_id": [
+        "/configuration_defaults/display_id",
+        "/registrations/0/contract/state_schema/properties/display_id/enum/0",
+        "/registrations/0/contract/actions/write_frame/result_schema/properties/display_id/enum/0"
+      ],
+      "rows": [
+        "/configuration_defaults/rows",
+        "/registrations/0/metadata/rows",
+        "/registrations/0/contract/state_schema/properties/rows/enum/0",
+        "/registrations/0/contract/actions/write_frame/result_schema/properties/rows/enum/0"
+      ]
+    },
+    "fields": [
+      {
+        "default": "display.main",
+        "key": "display_id",
+        "label": "Display ID",
+        "maxlength": 64,
+        "pattern": "^[a-z][a-z0-9_.-]{0,63}$",
+        "type": "text"
+      },
+      {
+        "default": 16,
+        "key": "columns",
+        "label": "Columns",
+        "max": 80,
+        "min": 1,
+        "type": "number"
+      },
+      {
+        "default": 1,
+        "key": "bus",
+        "label": "I\u00b2C bus",
+        "max": 255,
+        "min": 0,
+        "type": "number"
+      },
+      {
+        "default": 39,
+        "key": "address",
+        "label": "I\u00b2C address",
+        "options": [
+          {
+            "label": "0x20",
+            "value": "32"
+          },
+          {
+            "label": "0x21",
+            "value": "33"
+          },
+          {
+            "label": "0x22",
+            "value": "34"
+          },
+          {
+            "label": "0x23",
+            "value": "35"
+          },
+          {
+            "label": "0x24",
+            "value": "36"
+          },
+          {
+            "label": "0x25",
+            "value": "37"
+          },
+          {
+            "label": "0x26",
+            "value": "38"
+          },
+          {
+            "label": "0x27",
+            "value": "39"
+          }
+        ],
+        "type": "select"
+      },
+      {
+        "default": true,
+        "key": "backlight_active_high",
+        "label": "Backlight active high",
+        "type": "checkbox"
+      },
+      {
+        "default": 2,
+        "key": "rows",
+        "label": "Rows",
+        "options": [
+          {
+            "label": "1",
+            "value": "1"
+          },
+          {
+            "label": "2",
+            "value": "2"
+          },
+          {
+            "label": "3",
+            "value": "3"
+          },
+          {
+            "label": "4",
+            "value": "4"
+          }
+        ],
+        "type": "select"
+      }
+    ],
+    "hardware_template_version": 1,
+    "help": "Prepare an immutable profile, then review installation separately. Disable the old provider before replacing it. Wiring and electrical levels are not verified by software.",
+    "name": "Character display (simulation)",
+    "template_id": "character-display.mock"
+  }
+}

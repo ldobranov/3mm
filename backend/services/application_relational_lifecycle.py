@@ -15,7 +15,7 @@ from backend.db.application_authority_grant import ApplicationAuthorityAction as
 from backend.db.audit_log import AuditLog
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.services import application_authority_management as authority
-from backend.services.application_authority_context import _canonical_bytes
+from backend.services.application_authority_context import _canonical_bytes, _subject_schema_paths
 from backend.services.application_authority_sources import _configuration
 from backend.services.application_files import _principal
 from backend.services.application_requirements import require_platform_requirements
@@ -121,7 +121,7 @@ def _bindings(db, installation_id, prepared, grant, definition, generation):
         "schema_revision": definition.storage.schema_revision,
         "grant_record_revision": grant["revision"],
         "binding_sha256": hashlib.sha256(
-            _canonical_bytes(grant["data"]["subject"])
+            _canonical_bytes(grant["data"]["subject"], schema_paths=_subject_schema_paths(grant['data']['subject']))
         ).hexdigest(),
         "authority_epoch": read_application_authority(db, installation_id).epoch,
         "recovery_generation": generation,

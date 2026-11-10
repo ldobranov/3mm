@@ -10,6 +10,13 @@ const item = (): HardwareProfilePackage => ({ module_id: 'org.example.hardware',
     configuration: { bus: 1, address: 39 } }, installed_exact: false, installation: null, request_id: null })
 beforeEach(() => { request.mockReset(); backend.mockResolvedValue('http://core.test') })
 describe('generic hardware-profile administration transport', () => {
+  it('preserves bounded plain-text instructions for a non-display template', () => {
+    const template = { template_id: 'example.button', name: 'Button', simulated: false,
+      fields: [{ key: 'pin', label: 'Pin', type: 'number', default: 17 }], help: 'Contact to GND only.' }
+    const catalog = { device_id: DEVICE, approval_supported: true, items: [], templates: [template] }
+    expect(readHardwareProfiles(catalog, DEVICE).templates[0]?.help).toBe(template.help)
+    expect(() => readHardwareProfiles({ ...catalog, templates: [{ ...template, help: '<x>'.repeat(400) }] }, DEVICE)).toThrow()
+  })
   it('prepares only settings through the inert endpoint and validates its identity', async () => {
     request.mockResolvedValueOnce({ data: { device_id: DEVICE, package_sha256: 'b'.repeat(64),
       profile_sha256: 'c'.repeat(64), activation: 'not_requested' } })

@@ -105,6 +105,7 @@ class _FakeLineRequest:
         }
         self.released = False
         self.edge_ready = threading.Event()
+        self.edge_timestamp_ns = 100_000_000_000
 
     def get_value(self, line):
         return self.values[line]
@@ -123,7 +124,7 @@ class _FakeLineRequest:
         return ready
 
     def read_edge_events(self):
-        return [object()]
+        return [SimpleNamespace(timestamp_ns=self.edge_timestamp_ns)]
 
     def release(self):
         self.released = True
@@ -141,6 +142,7 @@ class _FakeGpiod:
             Direction=SimpleNamespace(INPUT="input", OUTPUT="output"),
             Bias=SimpleNamespace(PULL_UP="pull-up"),
             Edge=SimpleNamespace(BOTH="both"),
+            Clock=SimpleNamespace(MONOTONIC="monotonic"),
             Value=SimpleNamespace(ACTIVE="active", INACTIVE="inactive"),
         )
         self.LineSettings = _FakeLineSettings
@@ -167,6 +169,7 @@ def test_gpiod_driver_maps_active_low_input_and_output_then_releases_lines():
     assert input_settings.bias == "pull-up"
     assert input_settings.active_low is True
     assert input_settings.edge_detection == "both"
+    assert input_settings.event_clock == "monotonic"
 
     gpio.output("gpio.output.1").write(True)
     assert gpio.output("gpio.output.1").read() is True
@@ -192,6 +195,7 @@ def test_gpiod_input_delivers_edge_without_polling_delay():
 
     assert callback_ready.wait(0.5)
     assert [(event.value, event.sequence) for event in events] == [(True, 1)]
+    assert events[0].monotonic_ns == fake.requests[0].edge_timestamp_ns
     gpio.close()
 
 
@@ -218,3 +222,18 @@ def test_gpiod_driver_rejects_overlapping_line_mappings():
             outputs={"gpio.output.1": 17},
             gpiod_module=_FakeGpiod(),
         )
+
+
+@pytest.mark.parametrize('failing_line', [22, 27])
+def test_gpiod_partial_constructor_failure_releases_earlier_claims(failing_line):
+    fake = _FakeGpiod()
+    request_lines = fake.request_lines
+    def claim(chip, *, consumer, config):
+        if failing_line in config:
+            raise OSError('line already claimed')
+        return request_lines(chip, consumer=consumer, config=config)
+    fake.request_lines = claim
+    with pytest.raises(OSError, match='already claimed'):
+        GpiodDigitalGpioDriver(chip='/dev/gpiochip0', inputs={'input.one':17, 'input.two':22},
+            outputs={'output.one':27}, gpiod_module=fake)
+    assert fake.requests and all(request.released for request in fake.requests)

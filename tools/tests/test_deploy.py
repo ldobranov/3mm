@@ -325,6 +325,13 @@ def test_installed_core_does_not_hide_stale_or_unhealthy_selected_agent(tmp_path
 
 def test_agent_ready_requires_matching_bytes_and_real_process_probe(tmp_path, monkeypatch):
     _, value, _ = kit(tmp_path, with_agent=True); calls = []
+    # Keep the real journal existence check inside disposable test state, not
+    # an unrelated installed Agent's protected update directory on this host.
+    journal = tmp_path / 'agent-updates' / 'transaction.json'
+    monkeypatch.setattr(remote, 'Path', lambda name: journal
+        if name == '/var/lib/3mm-agent-updates/transaction.json' else Path(name))
+    monkeypatch.setattr(remote, 'AGENT_CURRENT', tmp_path / 'agent' / 'current')
+    monkeypatch.setattr(remote, 'CURRENT', tmp_path / 'core' / 'current')
     monkeypatch.setattr(remote, 'host_matches', lambda *a, **k: False)
     monkeypatch.setattr(remote, 'command', lambda *a, **k: calls.append(a))
     assert not remote.agent_ready(value['agent']) and not calls

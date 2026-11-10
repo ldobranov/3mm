@@ -16,6 +16,52 @@ tests use memory/syscall/process doubles without hardware.
 
 ## Contract
 
+### Optional local-clock scenes (contract 3.0, profile 3)
+
+`builtin:display.character.scene.v1` is a separately reviewed Agent provider, not
+an upgrade of static-frame consent. It keeps `write_frame` and adds `set_scene`
+and `stop_scene` on the existing generic command path. No Core runtime change,
+application-specific route, schema-dialect expansion or per-second RPC is used.
+
+A scene carries exact ASCII base rows, profile identity, IANA timezone, scene ID,
+strictly increasing sequence and an absolute `valid_until_ms` no more than 30
+seconds ahead. `clock_fields` is a bounded JSON scalar (512 bytes, at most 32
+tuples `[row,column,format_index,offset,length]`; formats 0=HH:MM, 1=HH:MM:SS,
+2=DD.MM.YYYY). Only those nonoverlapping visible cell spans may change; the
+application retains all template, market, clipping and OLD-marker logic.
+
+After normal admission, Agent projects OS UTC into the selected zone locally,
+aligned to seconds with no catch-up queue. The lease is also capped monotonically
+so a wall-clock adjustment cannot lengthen it. Fresh normal authorization renews
+the scene; a duplicate receipt never renews it. A higher scene sequence supersedes
+an uncertain older desired state without replaying its original command. Stop
+records a bounded tombstone against delayed older sequences and cancels ticks.
+Disable, worker failure, replacement and Agent restart do not restore a scene.
+Without renewal local ticking ends within 30 seconds; existing LCD text remains.
+Accepted scene/last-write state is not optical readback of every future tick.
+
+The native writer uses only its last acknowledged frame to update contiguous
+dirty DDRAM spans. Identical frames do not open I²C; backlight-only changes write
+one control byte. Failure invalidates that cache; recovery only prepares code.
+Every byte retains the finite I/O and monotonic scene deadlines.
+
+Build a distinct inert package with `--local-clock`, for example:
+
+```powershell
+& .\.venv\Scripts\python.exe modules/character-display/build_package.py `
+  --local-clock --driver pcf8574 --columns 16 --rows 2 --bus 1 --address 0x27 `
+  --output .runtime/cap14-clock/character-display-clock-16x2.zip
+```
+
+`tools.hardware_template_catalog.clock_documents()` supplies separate inert
+admin-form templates gated by `display.character.scenes.v1`. Their data can be
+uploaded through the existing template system; current Core need not interpret
+clock fields or import a new driver. Disable the static provider before installing
+its separately approved replacement. Application scene, Stop and manual-frame
+rights are separate; packaging does not approve or activate any of them.
+
+### Static-frame provider (contract 2.0)
+
 - Capability `display.character`, version `2.0`, action `write_frame`.
 - One fixed input schema for every geometry: display_id, profile_sha256, text,
   backlight. Text has newline-delimited printable-ASCII rows and a 512-character
@@ -50,6 +96,20 @@ tests use memory/syscall/process doubles without hardware.
   can remain after service/link loss; it has no automatic freshness guarantee.
 - A new Agent starts without a frame; install, health/readiness, discovery,
   enable and restart do not restore a previously displayed frame.
+  A native provider with an accessible bus preloads one private Agent worker
+  during activation, without opening I2C. Subsequent authorized frames reuse
+  that process so Python cold startup does not consume each command's lifetime.
+  The worker is idle between frames; it has no saved-frame queue or automatic
+  replay. Each write retains the original absolute command deadline and the
+  bounded I/O budget. A failed write retires/fences that worker and leaves the
+  original result unknown. After a ten-second minimum backoff and proof that
+  the old child has exited, explicit Agent heartbeat maintenance may prepare a
+  replacement process. Preparation never sends a frame or opens I2C; probes
+  and validation remain non-mutating. No replacement is started over an
+  unreaped/uninterruptible child. The next separately journaled and authorized
+  command initializes the complete LCD with its new frame; the original failed
+  command is never replayed. Missing hardware/rights still prevent execution.
+  Close/disable is permanent for that service instance, unlike a worker fault.
 - Driver errors invalidate local frame certainty. The existing physical-command
   journal returns `unknown` without automatic replay, including after a crash.
   A successful repeated request returns its historical result, not a new write
@@ -204,7 +264,7 @@ not the Agent HTTP diagnostics API. Declare a `command_bindings` item with:
 binding_id: display
 target_device_config_key: DISPLAY_DEVICE_ID
 capability_id: display.character
-contract_version: 1.0
+contract_version: 2.0
 action: write_frame
 arguments_schema: the exact write_frame arguments_schema in the provider contract
 max_ttl_seconds: 10
@@ -225,7 +285,7 @@ context.platform.submit_command(
     "display", request_id=original_request_id, ttl_seconds=5,
     arguments={"display_id": reviewed_display_id,
                "profile_sha256": reviewed_profile_sha256,
-               "line1": "BTC/USD", "line2": "123.45", "backlight": True},
+               "text": "BTC/USD\n123.45", "backlight": True},
 )
 context.platform.command_lookup(binding_id="display", request_id=original_request_id)
 ```

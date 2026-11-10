@@ -19,6 +19,7 @@ def setup_profile(tmp_path, builder, monkeypatch):
     monkeypatch.setattr('agent.hardware.character_display.NativeCharacterDisplay.write_frame',
                         lambda *args, **kw: calls.append(args))
     monkeypatch.setattr('agent.hardware.character_display.NativeCharacterDisplay.is_available', lambda _: True)
+    monkeypatch.setattr('agent.hardware.character_display.NativeCharacterDisplay.prepare', lambda _: None)
     def runtime(device=DEVICE_ID):
         return AgentModuleRuntime(tmp_path, architecture='armv6l', device_id=device,
             runtime_handlers={DISPLAY_ENTRYPOINT: character_display_handler(

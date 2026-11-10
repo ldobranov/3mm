@@ -56,8 +56,7 @@ function prepare() {
             :min="field.min" :max="field.max" :maxlength="field.maxlength" :step="1" :options="field.options"
             :required="field.type !== 'checkbox'" :disabled="disabled" />
         </div>
-        <p>{{ label('setupLimits', 'PCF8574T uses HD44780 with the reviewed backpack pin mapping. Two rows support up to 40 columns; four rows up to 20. The address is not detected automatically. Check wiring and voltage separately.') }}</p>
-        <p>{{ label('replacementHelp', "Changing the settings creates a different provider. Disable the previous provider before installing its replacement, then review the application's display binding separately.") }}</p>
+        <p v-if="template.help">{{ template.help }}</p>
         <p v-if="invalid" role="alert">{{ label('invalidConfiguration', 'Check the profile settings before preparation.') }}</p>
         <UiButton type="submit" class="prepare-provider" :disabled="disabled || busy">{{ label('prepare', 'Prepare provider') }}</UiButton>
       </template>

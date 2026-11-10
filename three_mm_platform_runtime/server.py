@@ -255,9 +255,6 @@ def probe_runtime(path,*,expected_uid,expected_build=None,require_public_web=Fal
 
 def main(argv=None):
     if argv is None: argv=sys.argv[1:]
-    if argv == ["--connector-execute"]:
-        from three_mm_platform_runtime.connector_worker import execute_child
-        return execute_child()
     if argv and argv[0] == "--connector-worker":
         from three_mm_platform_runtime.connector_worker import main as worker_main
         return worker_main(argv[1:])

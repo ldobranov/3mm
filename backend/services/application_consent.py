@@ -16,7 +16,7 @@ from backend.db.application_authority_grant import (
 from backend.db.audit_log import AuditLog
 from backend.db.module import ApplicationExtensionInstallation, ApplicationPermissionGrant
 from backend.services import application_authority_management as authority
-from backend.services.application_authority_context import _canonical_bytes
+from backend.services.application_authority_context import _canonical_bytes, _authority_data_schema_paths, _schema_paths, _subject_schema_paths
 from backend.services.application_authority_keys import AuthorityReviewKeyError
 from backend.services.application_policy_reviews import _actor, PolicyReviewStoreError
 from backend.services.authority_metadata import authority_transaction, read_application_authority
@@ -77,7 +77,8 @@ def _saved_selection(manager, db, key, installation_id, subject):
 
 
 def _fingerprint(data):
-    return hashlib.sha256(b"3mm:administrator-package-consent:v1\x00" + _canonical_bytes(data)).hexdigest()
+    return hashlib.sha256(b"3mm:administrator-package-consent:v1\x00"
+        + _canonical_bytes(data, schema_paths=_authority_data_schema_paths(data))).hexdigest()
 
 
 def preview(manager, installation_id, *, actor_token, request_id):
@@ -167,7 +168,9 @@ def allow(manager, installation_id, *, actor_token, request_id, preview_id,
             raise authority.AuthorityManagementError("stale_review")
         subject = manager._subject(db, key, installation_id, prepared)
         permissions = _permissions(prepared)
-        if (_canonical_bytes(data["subject"]) != _canonical_bytes(subject.model_dump(mode="json"))
+        if (_canonical_bytes(data["subject"], schema_paths=_subject_schema_paths(data['subject']))
+                != _canonical_bytes(subject.model_dump(mode="json"),
+                    schema_paths=_schema_paths(type(subject), subject.model_dump(mode='json')))
                 or data["user_permissions"] != permissions
                 or data["current_user_grants"] != _human_grants(db, installation_id, actor[0])):
             raise authority.AuthorityManagementError("stale_review")

@@ -5,6 +5,7 @@ from functools import partial
 import json
 import os
 import sqlite3
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -146,6 +147,29 @@ def test_systemd_recovery_requires_positive_quiescence_evidence(monkeypatch, lin
         SimpleNamespace(stdout="\n".join(f"{key}={value}" for key, value in good.items())))
     with pytest.raises(application_activation.ApplicationActivationError):
         application_activation.SystemdApplicationSupervisor().recover_disabled("b" * 24)
+
+
+@pytest.mark.parametrize("reset_fails", [False, True])
+def test_reviewed_restart_rearms_only_its_own_start_budget(monkeypatch, reset_fails):
+    from deployment import application_host_component
+
+    instance = "b" * 24
+    unit = f"3mm-application-extension@{instance}.service"
+    calls = []
+    monkeypatch.setattr(application_host_component, "bind_instance", lambda target, **kw: None)
+
+    def run(args, **kwargs):
+        calls.append(args[1:])
+        if args[1] == "reset-failed" and reset_fails:
+            raise subprocess.CalledProcessError(1, args)
+
+    monkeypatch.setattr(application_activation.subprocess, "run", run)
+    supervisor = application_activation.SystemdApplicationSupervisor()
+    with pytest.raises(application_activation.ApplicationActivationError) if reset_fails else nullcontext():
+        supervisor.restart(instance)
+    assert calls == [["enable", unit], ["reset-failed", "--all", f"[3]{unit[1:]}"]] + (
+        [] if reset_fails else [["restart", unit]]
+    )
 
 
 def test_missing_database_is_not_created(runtime):

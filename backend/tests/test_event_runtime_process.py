@@ -145,6 +145,20 @@ def test_real_worker_acknowledges_durable_event_and_preserves_core(event_stack):
     with Session(s.event_engine) as db:assert db.scalar(select(Cursor)).acknowledged_count==1
 
 
+def test_slow_core_claim_hands_off_once_without_closing_the_host_response(event_stack):
+    s=event_stack;before=s.command('fingerprint')
+    (s.base/'delay-event-before-send').write_text('bounded owned Core delay')
+    s.enqueue('slow')
+    # Core is deliberately still preparing/sending after the previous Runtime
+    # four-second call budget. The declared two-second handler wait starts only
+    # after handoff, not at the beginning of Core preparation.
+    wait_for_event(s,lambda:s.deliveries() and s.deliveries()[0]['status']=='acknowledged',
+                   phase='slow_handoff',seconds=9)
+    assert s.deliveries()[0]['attempts']==1 and len(s.seen())==1
+    assert s.event_peer.poll() is None and s.command('fingerprint')==before
+    assert s.http('/settings/read')[0]==200
+
+
 @pytest.mark.parametrize('mode',['signature','request_id','trickle','hang'])
 def test_bad_or_blocked_handler_is_bounded_and_core_stays_administrable(event_stack,mode):
     s=event_stack;before=s.command('fingerprint');(s.event_root/'mode').write_text(mode)
@@ -196,7 +210,7 @@ def test_core_restart_keeps_same_runtime_claim_and_records_original_response(eve
     s.restart_core();assert s.core.pid!=old and s.http()[0]==200
     assert s.control.process.pid==runtime and s.event_peer.pid==peer
     (s.event_root/'mode').write_text('valid')
-    wait_for(lambda:s.deliveries()[0]['status']=='acknowledged')
+    wait_for_event(s,lambda:s.deliveries()[0]['status']=='acknowledged',phase='restart_original_response')
     assert s.deliveries()[0]['dispatch_id']==first['dispatch_id'] and s.deliveries()[0]['attempts']==1
     assert len(s.seen())==1
 

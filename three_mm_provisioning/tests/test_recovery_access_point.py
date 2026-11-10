@@ -14,6 +14,22 @@ PREVIOUS = '11111111-1111-4111-8111-111111111111'
 NEW = '22222222-2222-4222-8222-222222222222'
 SESSION = 'a' * 32
 
+
+def test_unreadable_status_is_unavailable_without_creating_state(tmp_path, monkeypatch):
+    status = tmp_path / 'access-point.json'
+    original_lstat = Path.lstat
+    def denied(path):
+        if path == status:
+            raise PermissionError('private status path must not escape')
+        return original_lstat(path)
+    monkeypatch.setattr(Path, 'lstat', denied)
+    result = read_status(status)
+    assert result['state'] == 'unavailable'
+    assert result['reason'] == 'status_unavailable'
+    assert result['id'] is None and result['network'] is None
+    assert list(tmp_path.iterdir()) == []
+
+
 class Boundary:
     def __init__(self):
         self.current = PREVIOUS

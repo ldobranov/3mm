@@ -4,8 +4,10 @@ from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
 from agent.hardware import MockDigitalGpioDriver
 from agent.modules.gpio import GPIO_ENTRYPOINT, gpio_runtime_handler
 
-def package(version="1.0.0", healthy=True):
-    manifest = {"manifest_version":2,"module_id":"org.3mm.demo","name":"Demo","version":version,"runtimes":["agent"],"compatibility":{"protocol":"1.0","architectures":["aarch64"]},"permissions":["data.write"],"capabilities":{"provides":["demo.ready"]},"health_check":{"type":"file_exists","path":"health/ready"},"registrations":[{"kind":"capability","registration_id":"demo.ready"}]}
+def package(version="1.0.0", healthy=True, *, module_id="org.3mm.demo", entrypoint=None, registration_kind="capability"):
+    manifest = {"manifest_version":2,"module_id":module_id,"name":"Demo","version":version,"runtimes":["agent"],"compatibility":{"protocol":"1.0","architectures":["aarch64"]},"permissions":["data.write"],"capabilities":{"provides":["demo.ready"]},"health_check":{"type":"file_exists","path":"health/ready"},"registrations":[{"kind":registration_kind,"registration_id":"demo.ready"}]}
+    if entrypoint:
+        manifest["entrypoints"] = {"agent": entrypoint}
     out=io.BytesIO()
     with zipfile.ZipFile(out,"w") as z:
         z.writestr("manifest.json",json.dumps(manifest))
@@ -31,6 +33,91 @@ def test_integrity_and_architecture_fail_closed(tmp_path):
     runtime=AgentModuleRuntime(tmp_path,architecture="x86_64"); blob=package()
     with pytest.raises(ModuleLifecycleError,match="integrity"): runtime.install(blob,expected_sha256="0"*64)
     with pytest.raises(ModuleLifecycleError,match="architecture"): install(runtime,blob)
+
+
+class OwnershipService:
+    def __init__(self): self.closed = False
+    def state(self): return {"ready": True}
+    def is_available(self): return not self.closed
+    def close(self): self.closed = True
+
+
+@pytest.mark.parametrize("registration_kind", ["capability", "service"])
+def test_another_module_cannot_claim_an_active_registration_before_handler_runs(tmp_path, registration_kind):
+    activated = []
+    def handler(manifest, _data_dir):
+        activated.append(manifest.module_id)
+        return {"demo.ready": OwnershipService()}
+    runtime = AgentModuleRuntime(tmp_path, architecture="aarch64", runtime_handlers={"builtin:test": handler})
+    install(runtime, package(entrypoint="builtin:test", registration_kind=registration_kind))
+    original = runtime._services["demo.ready"]
+    with pytest.raises(ModuleLifecycleError, match="owned by another module"):
+        install(runtime, package(module_id="org.3mm.other", entrypoint="builtin:test", registration_kind=registration_kind))
+    assert activated == ["org.3mm.demo"]
+    assert runtime._services["demo.ready"] is original and not original.closed
+    assert runtime._owners["demo.ready"] == "org.3mm.demo"
+    assert runtime.state("org.3mm.other") == {}
+    runtime.close()
+
+
+def test_same_module_can_replace_its_own_service(tmp_path):
+    activated = []
+    def handler(_manifest, _data_dir):
+        activated.append(OwnershipService())
+        return {"demo.ready": activated[-1]}
+    runtime = AgentModuleRuntime(tmp_path, architecture="aarch64", runtime_handlers={"builtin:test": handler})
+    install(runtime, package(entrypoint="builtin:test"))
+    install(runtime, package("2.0.0", entrypoint="builtin:test"))
+    assert len(activated) == 2 and activated[0].closed and not activated[1].closed
+    assert runtime._services["demo.ready"] is activated[1]
+    assert runtime._owners["demo.ready"] == "org.3mm.demo"
+    assert runtime.state("org.3mm.demo")["active_version"] == "2.0.0"
+    runtime.close()
+
+
+def test_legacy_duplicate_state_neither_reports_another_owners_health_nor_disables_it(tmp_path):
+    service = OwnershipService()
+    runtime = AgentModuleRuntime(tmp_path, architecture="aarch64", runtime_handlers={
+        "builtin:test": lambda *_: {"demo.ready": service}})
+    install(runtime, package(entrypoint="builtin:test"))
+    # Older runtimes could leave two enabled profiles for the same capability.
+    runtime._save_state("org.3mm.previous", runtime.state("org.3mm.demo"))
+    reports = {report.provider_id: report for report in runtime.availability_reports("dev_" + "a" * 32)}
+    assert reports["org.3mm.demo"].capabilities[0].healthy is True
+    assert reports["org.3mm.previous"].capabilities[0].healthy is False
+    runtime.disable("org.3mm.previous")
+    assert not service.closed and runtime.capability_healthy("demo.ready")
+    assert runtime._owners["demo.ready"] == "org.3mm.demo"
+    assert "demo.ready" in runtime._contracts
+    assert runtime.state("org.3mm.demo")["enabled"] is True
+    assert runtime.state("org.3mm.previous")["enabled"] is False
+    runtime.disable("org.3mm.demo")
+    assert service.closed and not runtime.capability_healthy("demo.ready")
+
+
+def test_startup_of_legacy_duplicate_profiles_keeps_only_one_runtime_owner(tmp_path):
+    activated = []
+    def handler(manifest, _data_dir):
+        activated.append(manifest.module_id)
+        return {"demo.ready": OwnershipService()}
+    handlers = {"builtin:test": handler}
+    first = AgentModuleRuntime(tmp_path, architecture="aarch64", runtime_handlers=handlers)
+    install(first, package(entrypoint="builtin:test")); first.close()
+    # Seed a second persisted enabled profile without restoring the first one.
+    second = AgentModuleRuntime(tmp_path, architecture="aarch64", runtime_handlers=handlers)
+    install(second, package(module_id="org.3mm.other", entrypoint="builtin:test")); second.close()
+    activated.clear()
+    restarted = AgentModuleRuntime(tmp_path, architecture="aarch64", runtime_handlers=handlers)
+    restarted.start_active()
+    assert len(activated) == 1
+    owner = activated[0]
+    other = "org.3mm.other" if owner == "org.3mm.demo" else "org.3mm.demo"
+    assert restarted._owners["demo.ready"] == owner
+    assert "owned by another module" in restarted.state(other)["runtime_error"]
+    assert restarted.state(owner)["enabled"] and restarted.state(other)["enabled"]
+    reports = {report.provider_id: report for report in restarted.availability_reports("dev_" + "a" * 32)}
+    assert reports[owner].capabilities[0].healthy is True and reports[other].capabilities[0].healthy is False
+    restarted.close()
 
 
 def test_uninstall_erases_all_versions_profile_and_data_but_not_other_modules(tmp_path):

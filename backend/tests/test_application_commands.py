@@ -121,6 +121,28 @@ def test_broker_to_durable_agent_and_correlated_sensor(setup, tmp_path):
     assert not passage_delivery_allowed(s.db, s.app, stored_event)
 
 
+def test_late_agent_completion_is_visible_by_original_lookup_without_reauthorizing(setup):
+    from backend.services.application_commands import command_lookup
+    from backend.services.device_commands import record_command_result
+    from three_mm_protocol import AgentCommandResult
+    s = setup
+    submitted = submit_command(s.db, s.app, payload())
+    command = deliver_next_command(s.db, device=s.devices[0])
+    authorize_execution(s.db, s.devices[0], command.command_id)
+    command.expires_at = datetime.now(UTC) - timedelta(seconds=1); s.db.commit()
+    receipt = AgentCommandResult(command_id=command.command_id, device_id=s.devices[0].device_id,
+                                status='failed', completed_at=datetime.now(UTC),
+                                output={'execution_state':'unknown'})
+    record_command_result(s.db, device=s.devices[0], result=receipt)
+    found = command_lookup(s.db, s.app, {'binding_id':'gate','request_id':'request-1'})['command']
+    assert found['status'] == 'unknown' and found['execution_status'] == 'expired'
+    assert found['completed_at'] and found['result']['late_completion'] == receipt.model_dump(mode='json')
+    with pytest.raises(ValueError):
+        authorize_execution(s.db, s.devices[0], command.command_id)
+    s.db.rollback()
+    assert submit_command(s.db, s.app, payload())['command_id'] == submitted['command_id']
+
+
 @pytest.mark.parametrize('change', ['direction', 'generation', 'sensor', 'late', 'degraded', 'unclaimed'])
 def test_invalid_passage_cannot_confirm(setup, change):
     s = setup

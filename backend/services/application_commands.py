@@ -145,6 +145,7 @@ def _command_snapshot(db, installation, record):
     return {'command_id': command_id, 'status': state, 'claimed': record.claimed,
         'target_device_id': db.scalar(select(Device.device_id).where(Device.id == command.device_id)),
         'execution_status': command.status,
+        'completed_at': _utc(command.completed_at).isoformat() if command.completed_at else None,
         'generation': record.generation, 'expires_at': _utc(command.expires_at).isoformat(),
         'result': command.result, 'error': command.error, 'passage_event_id': record.passage_event_id}
 

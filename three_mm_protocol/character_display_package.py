@@ -54,8 +54,28 @@ def manifest(profile: CharacterDisplayProfileV1) -> dict:
 def build_package(profile: CharacterDisplayProfileV1 | None = None) -> bytes:
     profile = profile or CharacterDisplayProfileV1()
     validate_builtin_profile(profile)
+    return _package(manifest(profile))
+
+
+def scene_manifest(profile) -> dict:
+    from three_mm_protocol.character_display_scene import CharacterDisplaySceneProfileV1, SCENE_ENTRYPOINT
+    if not isinstance(profile, CharacterDisplaySceneProfileV1):
+        raise ValueError('A separately reviewed scene profile is required')
+    value = manifest(profile)
+    value['entrypoints']['agent'] = SCENE_ENTRYPOINT
+    value['name'] = 'Character display with local clock (' + profile.driver + ')'
+    value['description'] = 'Exact display profile with explicitly renewed local scenes; maximum lease 30 seconds.'
+    return ModuleManifestV2.model_validate(value).model_dump(exclude_defaults=False)
+
+
+def build_scene_package(profile) -> bytes:
+    validate_builtin_profile(profile)
+    return _package(scene_manifest(profile))
+
+
+def _package(value) -> bytes:
     output = io.BytesIO()
-    payloads = {'manifest.json': (json.dumps(manifest(profile), sort_keys=True, indent=2) + '\n').encode(),
+    payloads = {'manifest.json': (json.dumps(value, sort_keys=True, indent=2) + '\n').encode(),
                 'health/ready': b'provider package; not a hardware health proof\n'}
     with ZipFile(output, 'w', compression=ZIP_STORED) as archive:
         for name, data in sorted(payloads.items()):

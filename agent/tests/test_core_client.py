@@ -256,6 +256,28 @@ def test_command_worker_is_independent_from_heartbeat_loop(monkeypatch, tmp_path
     assert received.is_set()
 
 
+def test_heartbeat_maintains_providers_outside_command_and_probe_paths(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    calls = []
+    credential = DeviceCredential(device_id='dev_'+'a'*32, credential_id='cred_'+'b'*32, credential_secret='s'*43)
+    publisher = CorePublisher(core_url='http://core', credential=credential, inventory_provider=lambda: None,
+        command_journal=CommandJournal(tmp_path), reconciliation_store=ReconciliationStore(tmp_path),
+        outbox=OutboxStore(tmp_path), started_monotonic=0,
+        module_runtime=SimpleNamespace(maintain_services=lambda: calls.append('maintenance')))
+    monkeypatch.setattr(CorePublisher, '_negotiated_inventory_version', lambda _: 1)
+    monkeypatch.setattr(CorePublisher, '_flush_outbox', lambda _: None)
+    monkeypatch.setattr(CorePublisher, '_node_execution', lambda _: None)
+    monkeypatch.setattr(CorePublisher, '_publish_inventory', lambda _: None)
+    monkeypatch.setattr(CorePublisher, '_send_or_queue', lambda *a: calls.append('heartbeat'))
+    monkeypatch.setattr(CorePublisher, '_reconcile_state', lambda _: calls.append('reconcile'))
+    def state(_):
+        calls.append('read-state')
+        publisher._stop.set()
+    monkeypatch.setattr(CorePublisher, '_publish_capability_states', state)
+    publisher._run()
+    assert calls == ['heartbeat', 'reconcile', 'maintenance', 'read-state']
+
+
 def test_node_update_prepare_command_uses_transport(
     monkeypatch,
     tmp_path,

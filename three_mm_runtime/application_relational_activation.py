@@ -3,7 +3,7 @@
 No preparation, migration, key generation, data rollback or grant restoration.
 Unknown outcomes retain a protected witness and are never restarted/replayed.
 Only explicit local administration through the Core-UID helper boundary, not a
-public/SDK writer. The existing systemd unit's restart policy is not changed;
+public/SDK writer. A freshly authorized start can rearm its unit's budget;
 this coordinator never retries a start and does not enable boot autostart.
 """
 

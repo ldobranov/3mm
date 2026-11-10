@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 import argparse
 import os
+import platform
+import time
 
 from three_mm_provisioning import FileNetworkRecoveryMarker, FileProvisioningStore
 from three_mm_runtime.services import DeviceRuntimePlanner, RuntimeService, SetupAccess
@@ -116,24 +118,37 @@ def _activate(data_dir: Path, *, bootstrap_agent: bool = True) -> None:
 
 
 def _wait_setup_ready(data_dir: Path) -> None:
-    import time
     from deployment.service_component import _http_identity
 
     plan = DeviceRuntimePlanner(FileProvisioningStore(data_dir)).resolve()
-    deadline = time.monotonic() + 90
+    # A supported ARMv6 full install cold-starts Core in over three minutes.
+    # Keep a finite handoff budget; systemd's active state is not HTTP readiness.
+    deadline = time.monotonic() + (300 if platform.machine() == 'armv6l' else 90)
+    probes = []
+    if plan.includes(RuntimeService.CORE):
+        probes.append(('core', 'http://127.0.0.1:8887/ready', 'status', 'ready'))
+    if plan.includes(RuntimeService.AGENT):
+        probes.append(('agent', 'http://127.0.0.1:8890/api/v1/agent/hello', 'role', plan.role.value))
+    stage = 'runtime'
     while True:
         try:
-            if plan.includes(RuntimeService.CORE):
-                if _http_identity('http://127.0.0.1:8887/health', timeout=min(1, max(.01, deadline-time.monotonic()))).get('status') != 'ok':
-                    raise ValueError('Core is not ready')
-            if plan.includes(RuntimeService.AGENT):
-                if _http_identity('http://127.0.0.1:8890/api/v1/agent/hello', timeout=min(1, max(.01, deadline-time.monotonic()))).get('role') != plan.role.value:
-                    raise ValueError('Agent role is not ready')
+            for stage, url, field, expected in probes:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError
+                # Slow loopback scheduling must not cause a false failure on
+                # Zero W. The HTTP reader still enforces one absolute deadline.
+                result = _http_identity(url, timeout=min(5, remaining))
+                if not isinstance(result, dict) or result.get(field) != expected:
+                    raise ValueError('Runtime identity is not ready')
+            if time.monotonic() >= deadline:
+                raise TimeoutError
             return
         except (OSError, ValueError):
-            if time.monotonic() >= deadline:
-                raise RuntimeError('Setup runtime readiness deadline exceeded') from None
-            time.sleep(.2)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError(f'Setup runtime readiness deadline exceeded ({stage})') from None
+            time.sleep(min(1, remaining))
 
 
 def activate(data_dir: Path = Path('/var/lib/3mm/provisioning'), *, bootstrap_agent: bool = True) -> None:

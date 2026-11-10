@@ -107,10 +107,6 @@ def http_agent(s, monkeypatch):
     def database():
         with Session(s.engine) as db: yield db
     app.dependency_overrides[get_db] = database
-    def enqueue(identifier, *_args):
-        with Session(s.engine) as db:
-            broker.enqueue_application_event(db, db.get(DeviceEvent, identifier), s.settings)
-    monkeypatch.setattr('backend.routes.device_events.process_application_event', enqueue)
     with TestClient(app) as client:
         def bridge(method):
             def request(url, **kwargs):
@@ -202,7 +198,15 @@ def test_real_onboarding_two_apps_and_adapters_need_no_core_special_case(events,
                 monkeypatch.setattr(gateway,'ApplicationServiceClient',ApplicationServiceClient)
                 monkeypatch.setattr(broker,'_send_event_invocation',s.event_sender)
                 fresh=emit()
-                with Session(s.engine) as db: pump(db,s.settings)
+                with Session(s.engine) as db:
+                    pump(db,s.settings)
+                    old_deliveries=list(db.scalars(select(Delivery).join(DeviceEvent,
+                        DeviceEvent.id==Delivery.device_event_id).where(DeviceEvent.event_id==old['event_id'])))
+                    assert len(old_deliveries)==len(definition_scopes())
+                    assert all(row.status=='dead_letter' and row.attempts==0 for row in old_deliveries)
+                    # The helper stops on idle after rejecting old epoch heads;
+                    # the real Runtime continues polling for the fresh heads.
+                    pump(db,s.settings)
                 with sqlite3.connect(root/'data/state.sqlite3') as db:
                     assert db.execute('SELECT event_id FROM receipts').fetchall() == [(fresh['event_id'],)]
                 assert old['event_id'] != fresh['event_id']

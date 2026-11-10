@@ -201,6 +201,7 @@ def read_source_payload(source_archive: Path) -> list[PayloadFile]:
         'three_mm_platform_runtime/events.py',
         'three_mm_platform_runtime/responses.py',
         'three_mm_platform_runtime/connector_worker.py',
+        'three_mm_platform_runtime/connector_execute.py',
         'deployment/systemd/3mm-connector-worker.service',
     }
     missing = sorted(required - names)

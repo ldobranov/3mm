@@ -175,6 +175,22 @@ def test_legacy_two_commit_gap_reconciles_once_from_the_original_receipt(lifecyc
     assert authority(ctx) == (after, advanced)
 
 
+def test_expired_module_receipt_is_evidence_not_installation_or_control_authority(lifecycle):
+    ctx = lifecycle
+    command_id = _request(ctx, ctx.install)['command_id']
+    command = deliver_next_command(ctx.db, device=ctx.device)
+    command.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    ctx.db.commit()
+    before = authority(ctx)
+    installation_before = tuple(ctx.db.execute(select(ModuleInstallation.status,
+        ModuleInstallation.enabled, ModuleInstallation.installed_version)).one())
+    saved = record_command_result(ctx.db, device=ctx.device, result=report(command_id))
+    assert saved.status == 'expired' and saved.result['late_completion']['status'] == 'succeeded'
+    assert authority(ctx) == before
+    assert tuple(ctx.db.execute(select(ModuleInstallation.status,
+        ModuleInstallation.enabled, ModuleInstallation.installed_version)).one()) == installation_before
+
+
 @pytest.mark.parametrize("operation", ["withdrawn", "invalid"])
 def test_proven_pre_dispatch_failure_commits_once_without_a_delivery_attempt(lifecycle, operation):
     ctx = lifecycle
@@ -251,6 +267,27 @@ def test_http_result_rechecks_exact_authenticated_key_after_revocation(lifecycle
     with pytest.raises(DeviceProtocolError) as error:
         DeviceOperations(ctx.db, ctx.device).command_result(report(command_id))
     assert error.value.kind == "unauthorized"
+
+
+def test_http_acknowledges_expired_delivered_receipt_without_activating_module(lifecycle):
+    ctx = lifecycle
+    command_id = _request(ctx, ctx.install)['command_id']
+    command = deliver_next_command(ctx.db, device=ctx.device)
+    command.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    ctx.db.commit()
+    assert deliver_next_command(ctx.db, device=ctx.device) is None
+    before = authority(ctx)
+    app = FastAPI()
+    app.include_router(command_router)
+    app.dependency_overrides[get_db] = lambda: ctx.db
+    payload = report(command_id, status='failed').model_dump(mode='json')
+    with TestClient(app) as client:
+        response = client.post(f'/api/v1/devices/{DEVICE_ID}/commands/{command_id}/result',
+            json=payload, headers={'Authorization':'Device cred_lifecycle:test-secret'})
+    assert response.status_code == 200, response.text
+    assert response.json()['status'] == 'expired'
+    assert response.json()['result']['late_completion'] == payload
+    assert authority(ctx) == before
 
 
 @pytest.mark.parametrize("operation", ["install", "disable"])

@@ -11,6 +11,7 @@ class DigitalInputEvent:
     capability_id: str
     value: bool
     sequence: int
+    monotonic_ns: int | None = None
 
 
 DigitalInputCallback = Callable[[DigitalInputEvent], None]

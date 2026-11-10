@@ -149,7 +149,7 @@ def test_network_executor_rejects_an_untrusted_tls_certificate_before_http(tmp_p
     from cryptography.x509.oid import NameOID
     from cryptography.hazmat.primitives import hashes,serialization
     from cryptography.hazmat.primitives.asymmetric import ec
-    from three_mm_platform_runtime.connector_worker import execute
+    from three_mm_platform_runtime.connector_execute import execute
     key=ec.generate_private_key(ec.SECP256R1());name=x509.Name([x509.NameAttribute(NameOID.COMMON_NAME,'localhost')])
     now=datetime.now(UTC)
     certificate=(x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())

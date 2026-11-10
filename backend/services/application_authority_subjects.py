@@ -19,7 +19,7 @@ from backend.services.application_task_authority import TaskPolicySubjectV11
 from backend.services.application_composition_authority import QueryPolicySubjectV12
 from backend.services.application_authority_context import (
     ContextModel, ResolvedCommandScope, _bounded_json, _canonical_bytes,
-    _command_schema_data, _parse,
+    _command_schema_data, _parse, _schema_paths,
 )
 from backend.services.application_authority_keys import AuthorityReviewKeyError, CoreReviewKeyStore
 from backend.services.application_authority_policy import PolicyBinding, PolicySubjectV1, PolicySubjectV2, PolicySubjectV3, PolicySubjectV4, PolicySubjectV5, PolicySubjectV6, PolicySubjectV7, PolicySubjectV8, PolicySubjectV9, PolicySubjectV10
@@ -57,8 +57,8 @@ def _commands(package, resolved, diagnostics):
         if scope not in by_scope and scope in package.application_extension.optional_resources:
             continue
         source = by_scope[scope]
-        declared = _canonical_bytes(_command_schema_data(binding.arguments_schema))
-        provided = _canonical_bytes(_command_schema_data(source.action_arguments_schema))
+        declared = _canonical_bytes(_command_schema_data(binding.arguments_schema), schema_paths=((),))
+        provided = _canonical_bytes(_command_schema_data(source.action_arguments_schema), schema_paths=((),))
         if declared != provided:
             if scope in package.application_extension.optional_resources:
                 diagnostics.append(sources.SourceIssue(scope=scope, reason='command_schema_containment_not_evaluated'))
@@ -71,7 +71,8 @@ def _commands(package, resolved, diagnostics):
         # Bind every actual provider/module/contract/runtime/credential/control
         # pin, not just a reusable device ID or an unverified declaration.
         identity = "control_" + hashlib.sha256(
-            CONTROL_DOMAIN + _canonical_bytes(source.model_dump(mode="json"))).hexdigest()
+            CONTROL_DOMAIN + _canonical_bytes(source.model_dump(mode="json"),
+                schema_paths=(('action_arguments_schema',),))).hexdigest()
         commands.append(ResolvedCommandScope(declaration=binding,
             target_device_id=source.target.device_id, control_revision=identity))
     if len(commands) + omitted != len(by_scope):
@@ -157,7 +158,8 @@ def resolve_installed_policy_subject(engine: Engine, installation_id: int, *,
             key = leases.enter_context(keys.locked()) if pin.active_version is None else keys
             db = leases.enter_context(sources._read_snapshot(engine))
             result = _compose(db, installation_id, pin, package, key)
-            _bounded_json(result.model_dump(mode="json"))
+            data = result.model_dump(mode="json")
+            _bounded_json(data, schema_paths=_schema_paths(InstalledPolicySubject, data))
             return result
     except AuthorityReviewKeyError:
         return InstalledPolicySubject(issues=(sources.SourceIssue(reason="configuration_key_unavailable"),))

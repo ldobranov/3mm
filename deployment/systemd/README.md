@@ -49,7 +49,26 @@ the previous active version and its SQLite snapshot if the candidate fails.
 Backup quiesces application instances and includes only their mutable `data`;
 restore reactivates them from checksum-addressed reviewed packages.
 
-### Read an application host's current resource limits (CAP20)
+### Application crash-loop recovery (CAP20)
+
+Each application unit waits three seconds after a failure and allows up to
+five starts (including the first start) per 60-second systemd rate-limit
+interval. If another start would exceed the budget, automatic restarts stop;
+there is no Core restart or device action. This is a runtime stop, not a
+persistent disable or revocation. The unit may retain its original result
+(e.g. `exit-code`) instead of `start-limit-hit`. To confirm rate limiting,
+look for `Start request repeated too quickly` in the manager's journal for
+the exact unit: `journalctl -b -n 20 --no-pager _PID=1 UNIT=UNIT_NAME`.
+
+After correcting the cause, use Extensions to disable the affected application
+without deleting its data, then activate the reviewed version. An authorized
+start or rollback rearms only the selected unit once before attempting to start it. It does
+not bypass package, authority, health or unfinished-transaction checks. The
+approved Core release installer also rearms only its DB-selected start targets.
+Backup resumes Core and Agent first, does not rearm an app that was retrying,
+and does not restart an app that was already stopped or failed.
+
+### Read an application host's supervision and resource limits (CAP20)
 
 From a source checkout on the Linux host, run the read-only report for one
 known application instance, using its 24-character lowercase hex instance ID:
@@ -67,6 +86,15 @@ either a finite or an unlimited resource. The report distinguishes a controller
 absent at the host root from a missing limit file on the service. See the [Linux cgroup v2
 documentation](https://docs.kernel.org/admin-guide/cgroup-v2.html) for the
 exact controller semantics, including CPU bandwidth and task (thread) counts.
+
+For a stable, loaded unit, `supervision` also distinguishes an active or stopped
+service, a start/stop in progress, an automatic restart and a failure. The result
+can show `oom-kill` or `start-limit-hit`; the latter means systemd refused another
+start under its [start-rate limit](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html#StartLimitIntervalSec=interval,%20StartLimitBurst=burst).
+The restart count is systemd's current counter, not a history of restarts, and
+missing values are reported as `null`. This is process supervision, not proof
+that an application is healthy. The exit status still describes the cgroup
+sample: a stopped or failed host has supervision data but no live limits.
 
 This is an observation of the current unit, not a sizing recommendation or a
 test under load. FD, storage and network limits are not measured by this tool.

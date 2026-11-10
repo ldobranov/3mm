@@ -1,12 +1,13 @@
 from datetime import datetime
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from backend.db.device import Device, DeviceEvent
 from backend.db.user import User
 from backend.config import get_settings
-from backend.services.application_events import process_application_event
+from backend.services.application_events import enqueue_application_event, event_matching, EventMatchingBusy
 from backend.utils.auth_dep import require_admin
 from backend.utils.db_utils import get_db
 from backend.utils.device_auth import require_device
@@ -41,14 +42,28 @@ class DeviceEventResponse(BaseModel):
 
 
 @router.post("/{device_id}/events",status_code=status.HTTP_202_ACCEPTED)
-def ingest_event(device_id:str,payload:DeviceEventPayload,background_tasks:BackgroundTasks,device:Device=Depends(require_device),db:Session=Depends(get_db)):
+def ingest_event(device_id:str,payload:DeviceEventPayload,device:Device=Depends(require_device),db:Session=Depends(get_db)):
     if device.device_id!=device_id or payload.device_id!=device_id: raise HTTPException(403,"Device identity mismatch")
-    event_id, duplicate = call(DeviceOperations(db, device).event, payload)
-    background_tasks.add_task(
-        process_application_event,
-        event_id,
-        get_settings().applications,
-    )
+    try:
+        db.rollback()  # Do not retain the authentication reader while waiting.
+        # Capture the NEW source event and initial subscription epochs atomically.
+        # A duplicate acknowledges that exact history; it never rematches it to
+        # applications/rights installed or approved afterward. No key/handler I/O
+        # occurs under the write transaction. Runtime admits pending work later.
+        with event_matching():
+            event_id, duplicate = call(DeviceOperations(db, device).event, payload,
+                before_commit=lambda event: enqueue_application_event(
+                    db, event, get_settings().applications, capture_only=True, commit=False))
+        db.rollback()  # End the post-commit refresh reader.
+    except EventMatchingBusy:
+        db.rollback()
+        raise HTTPException(503, detail={"code": "event_matching_busy"}, headers={"Retry-After": "1"}) from None
+    except SQLAlchemyError as error:
+        db.rollback()
+        from backend.services.application_authority_management import _admission_busy_reason
+        if _admission_busy_reason(error) != 'database_busy':
+            raise
+        raise HTTPException(503, detail={"code": "event_matching_busy"}, headers={"Retry-After": "1"}) from None
     return {"status":"accepted","duplicate":duplicate}
 
 

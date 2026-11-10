@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import UTC, datetime
 import threading
 import re
@@ -27,6 +28,8 @@ from backend.services.application_extensions import (
     load_application_definition,
 )
 from backend.services.passage import passage_delivery_allowed
+from backend.services.application_code_scope import code_verification_scope
+from three_mm_platform_wire.event_delivery import CLAIM_SECONDS, DISPATCH_SECONDS, LEASE_MS
 
 
 MAX_DELIVERY_ATTEMPTS = 5
@@ -35,8 +38,51 @@ MAX_STORED_DEAD_LETTERS = 1000
 _worker_lock = threading.Lock()
 _claim_lock = threading.Lock()
 EVENT_DELIVERY_CONTRACT = 1
-CLAIM_LEASE_MS = 40_000
+CLAIM_LEASE_MS = LEASE_MS
 RETRY_DELAY_MS = 30_000
+AUTHORITY_ADMISSION_RETRY_MS = 1000
+MATCH_LOCK_WAIT_SECONDS = 1
+
+
+class EventMatchingBusy(ValueError):
+    """A matching worker owns the bounded local pre-acknowledgement section."""
+
+
+class EventClaimExpired(RuntimeError):
+    """The result owner is gone; no new application dispatch is permitted."""
+
+
+def _claim_current(deadline, caller_current=None):
+    if (time.monotonic() >= deadline
+            or (caller_current is not None and not caller_current())):
+        raise EventClaimExpired('Event claim caller is unavailable or expired')
+
+
+def _connected_caller(connection):
+    timeout=connection.gettimeout()
+    try:
+        # MSG_DONTWAIT alone does not bypass Python's positive socket-timeout
+        # readiness wait. This thread owns the claim connection exclusively.
+        connection.setblocking(False)
+        return connection.recv(1, socket.MSG_PEEK | socket.MSG_DONTWAIT) != b''
+    except BlockingIOError:
+        return True
+    except OSError:
+        return False
+    finally:
+        try:connection.settimeout(timeout)
+        except OSError:pass
+
+
+@contextmanager
+def event_matching():
+    """Bound local match serialization before an adapter inserts a new event."""
+    if not _worker_lock.acquire(timeout=MATCH_LOCK_WAIT_SECONDS):
+        raise EventMatchingBusy('Event matching is temporarily unavailable')
+    try:
+        yield
+    finally:
+        _worker_lock.release()
 
 
 def _clock():
@@ -85,7 +131,7 @@ def _granted_definition(subscription, admission):
 def _event_granted(db, installation, subscription):
     if installation.authority_mode == "compatibility":
         return True
-    from backend.services.application_authority_management import effect_admission
+    from backend.services.application_authority_management import effect_admission, AuthorityAdmissionUnavailable
     try:
         with effect_admission(db, installation.id, f"event:{subscription.subscription_id}") as admission:
             if admission.compatibility:
@@ -94,6 +140,9 @@ def _event_granted(db, installation, subscription):
             db.commit()
             admission()
         return True
+    except AuthorityAdmissionUnavailable:
+        db.rollback()
+        raise  # Busy is not evidence of a revoked/changed resource grant.
     except ValueError:
         db.rollback()
         return False
@@ -191,8 +240,19 @@ def enqueue_application_event(
     db: Session,
     event: DeviceEvent,
     settings: ApplicationRuntimeSettings,
+    *,
+    capture_only=False,
+    commit=True,
 ) -> None:
-    """Match/persist only. The independent Runtime pulls admitted deliveries."""
+    """Match/persist only. The independent Runtime pulls admitted deliveries.
+
+    HTTP's NEW-event callback uses capture_only/commit=False under the source
+    event's existing write transaction. Capture records declarations and their
+    epoch, NOT a grant decision; it must never acquire a key or roll back that
+    transaction. Runtime rechecks all current authority before dispatch.
+    """
+    if not commit and not capture_only:
+        raise ValueError('Transactional event capture cannot perform grant admission')
     # V1 subscriptions select managed devices, never an application's stream.
     if event.producer_kind != "device":
         return
@@ -221,8 +281,20 @@ def enqueue_application_event(
         except ApplicationGatewayError:
             continue
         for subscription in definition.event_subscriptions:
-            if (not _subscription_allowed(installation, package, subscription, event, device)
-                    or not _event_granted(db, installation, subscription)):
+            if not _subscription_allowed(installation, package, subscription, event, device):
+                continue
+            # Capture this matching episode before admission can roll back its
+            # reader. Temporary unavailability never adopts a later grant epoch.
+            epoch = installation.authority_epoch if installation.authority_mode == 'enforced' else None
+            from backend.services.application_authority_management import AuthorityAdmissionUnavailable
+            busy_reason = None
+            if not capture_only:
+                try:
+                    if not _event_granted(db, installation, subscription):
+                        continue
+                except AuthorityAdmissionUnavailable as error:
+                    busy_reason = error.reason
+            if not _subscription_allowed(installation, package, subscription, event, device):
                 continue
             delivery = db.scalar(
                 select(ApplicationEventDelivery).where(
@@ -254,7 +326,7 @@ def enqueue_application_event(
                     application_installation_id=installation.id,
                     subscription_id=subscription.subscription_id,
                     device_event_id=event.id,
-                    authority_epoch=installation.authority_epoch if installation.authority_mode == "enforced" else None,
+                    authority_epoch=epoch,
                     status=(
                         "dead_letter"
                         if backlog >= subscription.max_backlog
@@ -263,9 +335,13 @@ def enqueue_application_event(
                     last_error=(
                         "Subscription backlog limit was reached"
                         if backlog >= subscription.max_backlog
-                        else None
+                        else 'authority_admission_unavailable:' + busy_reason if busy_reason is not None else None
                     ),
                 )
+                if busy_reason is not None and delivery.status == 'pending':
+                    boot, now = _clock()
+                    delivery.retry_boot_id = boot
+                    delivery.retry_not_before_ms = now + AUTHORITY_ADMISSION_RETRY_MS
                 db.add(delivery)
                 if delivery.status == "dead_letter":
                     _record_terminal_delivery(cursor, event, acknowledged=False)
@@ -275,7 +351,10 @@ def enqueue_application_event(
                         subscription.subscription_id,
                         cursor,
                     )
-                db.commit()
+                if commit:
+                    db.commit()
+                else:
+                    db.flush()  # Source event + all initial matches commit together.
 
 
 def request_application_event_retry(db):
@@ -291,10 +370,12 @@ def process_application_event(
     event_id: int,
     settings: ApplicationRuntimeSettings,
 ) -> None:
-    """Run durable broker matching outside the Agent ingestion request."""
+    """Run internal durable broker matching; never invoke an application handler."""
     from backend.database import SessionLocal
 
-    with _worker_lock:
+    # Internal callers use the same bounded serialization. HTTP instead captures
+    # only NEW events inside DeviceOperations.event's own commit transaction.
+    with event_matching():
         db = SessionLocal()
         try:
             event = db.get(DeviceEvent, event_id)
@@ -399,17 +480,20 @@ def _settle(db, delivery, event, *, error=None, delay_ms=RETRY_DELAY_MS):
     return True
 
 
-def _send_event_invocation(prepared, request_id):
+def _send_event_invocation(prepared, request_id, *, deadline=None, caller_current=None):
     from three_mm_runtime.application_transport import sign_message, send_message
     from three_mm_platform_wire import remaining
     message = sign_message({"version": 1, "request_id": request_id, "timestamp": int(time.time()),
         "operation_id": prepared.operation_id, "payload": prepared.payload, "context": prepared.context,
         **({"relational_invocation": prepared.relational_invocation}
            if prepared.relational_invocation is not None else {})}, prepared.secret)
+    deadline = min(deadline if deadline is not None else float('inf'),
+                   time.monotonic()+DISPATCH_SECONDS)
+    _claim_current(deadline, caller_current)
     connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
-        deadline = time.monotonic()+3
         connection.settimeout(remaining(deadline)); connection.connect(str(prepared.socket_path))
+        _claim_current(deadline, caller_current)
         connection.settimeout(remaining(deadline)); send_message(connection, message)
         return connection  # Never read a service response inside Core.
     except BaseException:
@@ -423,8 +507,24 @@ def _current_event(db, installation, package, subscription, delivery, event, dev
         and passage_delivery_allowed(db, installation, event))
 
 
+def _defer_admission(db, delivery_id, attempts, *, reason):
+    """Keep an unsent head pending; this consumes no attempt or dispatch ID."""
+    if reason not in {'key_busy', 'database_busy'}:
+        raise ValueError('Invalid temporary event admission reason')
+    db.rollback()
+    boot, now = _clock()
+    db.execute(update(ApplicationEventDelivery).where(
+        ApplicationEventDelivery.id == delivery_id,
+        ApplicationEventDelivery.status == 'pending',
+        ApplicationEventDelivery.attempts == attempts)
+        .values(last_error='authority_admission_unavailable:' + reason, retry_boot_id=boot,
+            retry_not_before_ms=now + AUTHORITY_ADMISSION_RETRY_MS)
+        .execution_options(synchronize_session=False))
+    db.commit()
+
+
 def _admit_event_attempt(db, delivery, installation, package, subscription, event, device,
-                         prepared, metadata, dispatch_id, snapshot):
+                         prepared, metadata, dispatch_id, snapshot, deadline, caller_current):
     from backend.services.application_authority_management import effect_admission, lock_compatibility_admission
     with effect_admission(db, installation.id, f"event:{subscription.subscription_id}") as admission, db.no_autoflush:
         if admission.compatibility:
@@ -439,6 +539,7 @@ def _admit_event_attempt(db, delivery, installation, package, subscription, even
         if snapshot != (package.sha256, installation.authority_mode, installation.authority_epoch,
                         installation.instance_id, installation.socket_path, _event_payload(event, device)):
             raise ValueError("Event dispatch target changed")
+        _claim_current(deadline, caller_current)
         changed = db.execute(update(ApplicationEventDelivery).where(
             ApplicationEventDelivery.id == delivery.id,
             ApplicationEventDelivery.status == "pending",
@@ -454,13 +555,18 @@ def _admit_event_attempt(db, delivery, installation, package, subscription, even
     db.rollback()  # The refresh read must not span service I/O either.
 
 
-def claim_event_delivery(db, settings, *, runtime_generation):
+def claim_event_delivery(db, settings, *, runtime_generation, deadline=None, caller_current=None):
     """Return at most one already-sent service connection and result-only receipt."""
+    from backend.services.application_authority_management import AuthorityAdmissionUnavailable
     idle = {"event_delivery_contract": EVENT_DELIVERY_CONTRACT, "ok": True, "idle": True}
+    deadline=time.monotonic()+CLAIM_SECONDS if deadline is None else deadline
     if not _claim_lock.acquire(blocking=False): return idle, None
     try:
         boot, now = _clock()
         for delivery in _heads(db):
+            try:_claim_current(deadline,caller_current)
+            except EventClaimExpired:
+                db.rollback();return idle,None
             event = db.get(DeviceEvent, delivery.device_event_id)
             if delivery.status == "delivering":
                 metadata = delivery.dispatch_metadata or {}
@@ -470,6 +576,7 @@ def claim_event_delivery(db, settings, *, runtime_generation):
                 if delivery.status != "pending": continue
             if delivery.retry_boot_id == boot and (delivery.retry_not_before_ms or 0) > now:
                 continue
+            delivery_id, attempts = delivery.id, delivery.attempts
             installation = db.get(ApplicationExtensionInstallation, delivery.application_installation_id,
                                   populate_existing=True)
             # A disabled installation pauses pending work, as before. A new
@@ -487,12 +594,19 @@ def claim_event_delivery(db, settings, *, runtime_generation):
             except ApplicationGatewayError:
                 subscription = None
             if (event is None or device is None or subscription is None
-                    or not _current_event(db, installation, package, subscription, delivery, event, device)
-                    or not _event_granted(db, installation, subscription)):
+                    or not _current_event(db, installation, package, subscription, delivery, event, device)):
                 if event is not None:
                     _deny_delivery(db, installation, delivery, event)
                 else:
                     delivery.status="dead_letter";delivery.last_error="Device event is unavailable";db.commit()
+                continue
+            try:
+                granted = _event_granted(db, installation, subscription)
+            except AuthorityAdmissionUnavailable as error:
+                _defer_admission(db, delivery_id, attempts, reason=error.reason)
+                continue
+            if not granted:
+                _deny_delivery(db, installation, delivery, event)
                 continue
             snapshot = (package.sha256, installation.authority_mode, installation.authority_epoch,
                         installation.instance_id, installation.socket_path, _event_payload(event, device))
@@ -503,8 +617,14 @@ def claim_event_delivery(db, settings, *, runtime_generation):
                     required_audience="internal")
             except ApplicationGatewayError:
                 db.rollback()
-                if (not _current_event(db, installation, package, subscription, delivery, event, device)
-                        or not _event_granted(db, installation, subscription)):
+                if not _current_event(db, installation, package, subscription, delivery, event, device):
+                    _deny_delivery(db, installation, delivery, event); continue
+                try:
+                    granted = _event_granted(db, installation, subscription)
+                except AuthorityAdmissionUnavailable as error:
+                    _defer_admission(db, delivery_id, attempts, reason=error.reason)
+                    continue
+                if not granted:
                     _deny_delivery(db, installation, delivery, event); continue
                 # Count bounded pre-dispatch failures too; an unavailable key or
                 # malformed service descriptor cannot spin the broker forever.
@@ -521,18 +641,28 @@ def claim_event_delivery(db, settings, *, runtime_generation):
                 "package_sha256":package.sha256, "operation_id":prepared.operation_id, "finished":False}
             try:
                 _admit_event_attempt(db, delivery, installation, package, subscription, event, device,
-                                     prepared, metadata, dispatch_id, snapshot)
+                                     prepared, metadata, dispatch_id, snapshot, deadline, caller_current)
+            except AuthorityAdmissionUnavailable as error:
+                _defer_admission(db, delivery_id, attempts, reason=error.reason)
+                continue
+            except EventClaimExpired:
+                db.rollback();return idle,None
             except ValueError:
                 db.rollback();db.refresh(delivery)
                 if delivery.status=="pending":_deny_delivery(db, installation, delivery, event)
                 continue
             try:
-                origin = _send_event_invocation(prepared, request_id)
+                _claim_current(deadline,caller_current)
+                origin = _send_event_invocation(prepared, request_id,deadline=deadline,caller_current=caller_current)
+            except EventClaimExpired:
+                _settle(db,delivery,event,error='dispatch_not_sent',delay_ms=0)
+                return idle,None
             except (OSError, ValueError, RuntimeError):
                 _settle(db, delivery, event, error="dispatch_unconfirmed");continue
             return {"event_delivery_contract":EVENT_DELIVERY_CONTRACT,"ok":True,"idle":False,
                     "receipt":{"delivery_id":delivery.id,"dispatch_id":dispatch_id},
-                    "timeout_seconds":prepared.timeout_seconds}, origin
+                    "timeout_seconds":prepared.timeout_seconds,"lease_boot_id":metadata['boot_id'],
+                    "lease_deadline_ms":metadata['deadline_ms']}, origin
         db.rollback()
         return idle, None
     finally:
@@ -586,10 +716,19 @@ def handle_event_delivery(connection, request, *, key_root, runtime_generation):
     from three_mm_platform_wire import send_authority_frame
     origin=None
     try:
-        with SessionLocal() as db:
+        with code_verification_scope(), SessionLocal() as db:
             settings=ApplicationRuntimeSettings(key_root=key_root)
             if set(request)=={"event_delivery_contract","claim"} and request["claim"] is True:
-                result,origin=claim_event_delivery(db,settings,runtime_generation=runtime_generation)
+                # Core activates before the independent Runtime. The previous
+                # worker may negotiate readiness/rollback, but must not start
+                # an unbounded, deadline-less service handoff during that gap.
+                result={"event_delivery_contract":EVENT_DELIVERY_CONTRACT,"ok":True,"idle":True}
+            elif set(request)=={"event_delivery_contract","claim","claim_deadline_ms"} and request["claim"] is True:
+                deadline=request['claim_deadline_ms']
+                if type(deadline) is not int or not 0<deadline-time.monotonic()*1000<=CLAIM_SECONDS*1000:
+                    raise EventClaimExpired('Invalid or expired event claim deadline')
+                result,origin=claim_event_delivery(db,settings,runtime_generation=runtime_generation,
+                    deadline=deadline/1000,caller_current=lambda:_connected_caller(connection))
             elif set(request)=={"event_delivery_contract","receipt","response"}:
                 result=complete_event_delivery(db,settings,request["receipt"],response=request["response"],
                                                runtime_generation=runtime_generation)

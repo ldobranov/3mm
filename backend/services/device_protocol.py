@@ -294,7 +294,12 @@ class DeviceOperations:
         self.db.refresh(row)
         return capability_snapshot(self.device, row)
 
-    def event(self, report):
+    def event(self, report, *, before_commit=None):
+        """Persist one source event; an adapter may atomically capture its matches.
+
+        The internal callback is NEW-event-only. A duplicate is historical
+        acknowledgement, never permission to match an old event to a new grant.
+        """
         self.own(report.device_id)
         if report.event_type in CORE_DEVICE_AUDIT_EVENTS:
             raise DeviceProtocolError(
@@ -335,6 +340,9 @@ class DeviceOperations:
         )
         if existing is None:
             self.db.add(event)
+            self.db.flush()
+            if before_commit is not None:
+                before_commit(event)
             self.db.commit()
             self.db.refresh(event)
         return event.id, existing is not None

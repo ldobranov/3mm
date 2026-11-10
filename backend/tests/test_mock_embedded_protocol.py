@@ -110,9 +110,6 @@ class CoreTransport:
 def core(monkeypatch):
     monkeypatch.setattr(jwt_utils, "SECRET_KEY", "c3-test-only-key-at-least-32-bytes")
     monkeypatch.setattr("agent.inventory._network_manager_active", lambda: None)
-    monkeypatch.setattr(
-        "backend.routes.device_events.process_application_event", lambda *_: None
-    )
     client, db, admin, viewer = make_client()
     for module in (
         device_ingest,
@@ -304,6 +301,12 @@ def signed_application_acceptance(core, monkeypatch, tmp_path, publisher, gpio, 
             "provider_type" not in stored.payload and "module_id" not in stored.payload
         )
         execute()
+        if device_id == publisher.credential.device_id:
+            # Drive the separate telemetry lane after the command receipt;
+            # command polling must only request, not block on, state publication.
+            assert publisher._capability_wake.is_set()
+            publisher._publish_requested_capabilities()
+            assert not publisher._capability_wake.is_set()
         node.flush()
         db.refresh(stored)
         assert (
@@ -692,6 +695,9 @@ def test_linux_local_agent_and_embedded_node_share_core_without_fleet(
             )
             invoke(client, admin, target)
         publisher._poll_command()
+        assert publisher._capability_wake.is_set()
+        publisher._publish_requested_capabilities()
+        assert not publisher._capability_wake.is_set()
         assert node.poll().status == "succeeded"
         node.flush()
         assert gpio.output(CHANNEL).read() is True and node.output is True

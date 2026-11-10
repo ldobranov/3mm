@@ -68,6 +68,7 @@ def test_component_is_deterministic_stdlib_only_and_has_no_core_payload():
     with zipfile.ZipFile(io.BytesIO(code)) as archive:
         assert not any(n.startswith(('backend/','three_mm_application_sdk/','three_mm_runtime/')) for n in archive.namelist())
         assert set(archive.namelist())==set(INPUTS)|{'__main__.py','runtime-build.json'}
+        assert 'three_mm_platform_wire/event_delivery.py' in archive.namelist()
 
 
 @pytest.mark.skipif(os.name!='posix',reason='Target-owned Unix environment')

@@ -1,6 +1,10 @@
 [Unit]
 Description=3mm supervised application extension %i
 After=3mm-core.service
+# Bound rapid crashes per instance; exhaustion must not affect the host or Core.
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+StartLimitAction=none
 
 [Service]
 OOMScoreAdjust=300
