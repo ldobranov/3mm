@@ -4,14 +4,14 @@ import copy
 
 import pytest
 
-from backend.services.application_authority_context import (
+from backend.applications.authority.context import (
     AuthorityReviewContextV6,
     AuthoritySelectionV5,
     AuthoritySelectionV6,
     _parse,
     review_authority_context,
 )
-from backend.services.application_authority_policy import evaluate_authority_policy
+from backend.applications.authority.policy import evaluate_authority_policy
 from backend.tests.test_application_authority_context import context, replace_path
 from backend.tests.test_application_authority_policy import inputs as command_inputs
 from backend.tests.test_application_relational_authority_context import inputs as relational_inputs

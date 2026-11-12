@@ -53,14 +53,14 @@ def write_json(path, value):
 
 
 def inventory(repo):
-    from tools.dev_lab import SOURCE_ROOTS, ROOT_FILES, EXCLUDED_PARTS, EXCLUDED_SUFFIXES
+    from tools.dev_lab import source_location, EXCLUDED_PARTS, EXCLUDED_SUFFIXES
     names = subprocess.check_output(['git', 'ls-files', '-co', '--exclude-standard', '-z'], cwd=repo).decode().split('\0')
     result = {}
     root = repo.resolve(); parents = {}
     for name in sorted(set(names)):
         path = repo / name
         parts = Path(name).parts
-        if (not parts or name not in ROOT_FILES and parts[0] not in SOURCE_ROOTS | {'frontend', 'libraries', 'docs'}
+        if (not parts or not source_location(name) and parts[0] not in {'frontend', 'libraries', 'docs'}
                 or (EXCLUDED | EXCLUDED_PARTS).intersection(parts)
                 or any(p.lower().startswith('.env') for p in parts)
                 or path.suffix.lower() in EXCLUDED_SUFFIXES or not path.exists()):
@@ -222,7 +222,11 @@ def node_dependencies(source, relative, cache):
 def frontend(source, inputs, cache):
     dependency = node_dependencies(source, 'frontend', cache)
     node_dependencies(source, 'frontend/compiler', cache)
-    key = identity({'inputs': {n: sha for n, sha in inputs.items() if n.startswith('frontend/')}, 'dependencies': dependency})
+    key = identity({'inputs': {n: sha for n, sha in inputs.items()
+        if n.startswith('frontend/') or n in {
+            'config_templates/development.json', 'config_templates/product.json',
+            'components/setup/static/setup.html', 'packages/protocol/theme_design_defaults.json'}},
+        'dependencies': dependency})
     target = cache / 'frontend' / key
     marker = target / 'ready.json'
     if marker.exists():

@@ -12,9 +12,9 @@ from sqlalchemy import create_engine, inspect, select, func
 from sqlalchemy.orm import Session
 
 from backend.db.installation_identity import CoreInstallationIdentity
-from backend.services import installation_identity as service
-from three_mm_protocol.installation_identity import verify_installation_proof
-from three_mm_protocol.tests.test_installation_identity import NOW, proof_request
+from backend.installation import identity as service
+from packages.protocol.installation_identity import verify_installation_proof
+from packages.protocol.tests.test_installation_identity import NOW, proof_request
 
 
 @pytest.fixture

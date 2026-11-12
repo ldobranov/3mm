@@ -16,18 +16,18 @@ from backend.db.application_authority_grant import ApplicationAuthorityGrant as 
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation, ModulePackage
 from backend.db.session import UserSession
-from backend.routes.application_authority import router
-from backend.services import application_authority_management as management
-from backend.services.application_authority_sources import _read_snapshot
-from backend.services.module_packages import validate_module_package
+from backend.applications.management.access_api import router
+from backend.applications.authority import management
+from backend.applications.authority.sources import _read_snapshot
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_authority_management import identity, native, decide
 from backend.tests.test_application_authority_management import installed as managed_installed
 from backend.tests.test_application_authority_sources import PRIVATE
 from backend.tests.test_application_authority_subjects import installed as source_subject
 from backend.tests.test_application_authority_subjects import source_installed
-from backend.utils.db_utils import get_db
-from three_mm_protocol.tests.test_application_private_files import file_request
-from three_mm_protocol.tests.test_application_relational_storage import relational_request
+from backend.storage.sessions import get_db
+from packages.protocol.tests.test_application_private_files import file_request
+from packages.protocol.tests.test_application_relational_storage import relational_request
 
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Real POSIX Core key ownership and locking")
@@ -224,7 +224,7 @@ def test_audit_rollback_duplicate_and_full_journal_never_prune_existing_evidence
 
 
 def test_full_audit_journal_rolls_back_actual_checkpoint_mutation_and_preserves_data(checkpoint_app, monkeypatch):
-    from backend.services.application_checkpoints import execute_checkpoint
+    from backend.applications.checkpoints import execute_checkpoint
 
     state = checkpoint_app
     activate_checkpoint_grant(state)

@@ -9,8 +9,8 @@ import sqlite3
 import sys
 import zipfile
 
-from backend.services.module_packages import validate_module_package
-from three_mm_application_sdk import (
+from backend.artifacts.packages import validate_module_package
+from packages.application_sdk import (
     ApplicationContext,
     ApplicationStorage,
     OperationContext,

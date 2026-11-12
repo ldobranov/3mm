@@ -4,8 +4,8 @@ import sqlite3
 import time
 from uuid import uuid4
 
-from three_mm_application_sdk import ApplicationMigration
-from three_mm_protocol.public_forms import FORM_ID, FORM_REQUEST_ID, GUEST_PROOF_FIELD
+from packages.application_sdk import ApplicationMigration
+from packages.protocol.public_forms import FORM_ID, FORM_REQUEST_ID, GUEST_PROOF_FIELD
 
 
 CHOICES = ('morning', 'afternoon')

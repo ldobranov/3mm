@@ -8,7 +8,7 @@ from zipfile import ZipFile
 from agent.hardware import MockDigitalGpioDriver
 from agent.module_runtime import AgentModuleRuntime
 from agent.modules.gpio import GPIO_ENTRYPOINT, gpio_runtime_handler
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 
 
 SOURCE = Path(__file__).resolve().parents[2] / "modules/mock-gpio"

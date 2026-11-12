@@ -2,7 +2,7 @@
 
 from base64 import b64decode
 
-from three_mm_application_sdk import ApplicationMigration
+from packages.application_sdk import ApplicationMigration
 
 
 def _migration(db):

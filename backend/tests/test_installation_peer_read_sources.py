@@ -19,11 +19,11 @@ from backend.db.module import (
     ApplicationExtensionInstallation as Installation,
     ModulePackage,
 )
-from backend.services import installation_identity as identity_service
-from backend.services import installation_peers as peers
-from backend.services.installation_peer_read_sources import read_configured_peer_sources
-from backend.services.application_authority_sources import _read_snapshot
-from backend.services.module_packages import validate_module_package
+from backend.installation import identity as identity_service
+from backend.installation import peers
+from backend.installation.peer_read_sources import read_configured_peer_sources
+from backend.applications.authority.sources import _read_snapshot
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_authority_review import CONFIG
 from backend.tests.test_installation_peer_approval_binding import (
     pair_v2,
@@ -31,7 +31,7 @@ from backend.tests.test_installation_peer_approval_binding import (
 )
 from backend.tests.test_installation_peers import pair, activate_pair
 from backend.tests.test_module_packages import application_package
-from three_mm_protocol.tests.test_application_peer_bindings import peer_request
+from packages.protocol.tests.test_application_peer_bindings import peer_request
 
 
 PRIVATE = "PRIVATE_MUST_NOT_APPEAR"
@@ -634,7 +634,7 @@ def test_bounded_sql_inputs_and_missing_identity_never_initialize_or_return_part
 def test_complete_32_binding_set_is_sorted_and_total_budget_never_silently_truncates(
     current_peers, large
 ):
-    from three_mm_protocol.installation_peer_v2 import enrollment_metadata
+    from packages.protocol.installation_peer_v2 import enrollment_metadata
 
     core = current_peers.sender
     requests = [peer_request(operations=["read"])]

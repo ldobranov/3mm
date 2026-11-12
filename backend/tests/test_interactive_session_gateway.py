@@ -8,13 +8,13 @@ from fastapi import FastAPI
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from backend.routes.interactive_sessions import router as interactive_sessions_router
-from backend.services import interactive_session_gateway as gateway_module
-from backend.services.interactive_session_gateway import (
+from backend.sessions.api import router as interactive_sessions_router
+from backend.sessions import gateway as gateway_module
+from backend.sessions.gateway import (
     SessionGateway,
     SessionGatewayError,
 )
-from three_mm_protocol.interactive_session import (
+from packages.protocol.interactive_session import (
     decode_session_frame,
     encode_session_frame,
 )

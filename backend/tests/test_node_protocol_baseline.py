@@ -33,20 +33,18 @@ from agent.modules.gpio import GPIO_ENTRYPOINT, gpio_runtime_handler
 from agent.tests.test_module_runtime import gpio_package
 from backend.db.device import Device, DeviceEvent
 from backend.db.module import ModuleInstallation, ModulePackage
-from backend.routes import (
-    device_capabilities,
-    device_capability_state,
-    device_commands,
-    device_events,
-    device_ingest,
-    device_registry,
-    device_runtime_features,
-    device_state,
-)
+from backend.devices.registry import api as device_registry
+from backend.devices.features import api as device_runtime_features
+from backend.devices.capabilities import api as device_capabilities
+from backend.devices.capabilities import state_api as device_capability_state
+from backend.devices.commands import api as device_commands
+from backend.devices.telemetry import events_api as device_events
+from backend.devices.telemetry import ingest_api as device_ingest
+from backend.devices.telemetry import state_api as device_state
 from backend.tests.test_device_pairing_routes import make_client
-from backend.utils import jwt_utils
-from three_mm_protocol import AgentHeartbeat
-from three_mm_protocol.device_inventory import inventory_value
+from backend.accounts import tokens as jwt_utils
+from packages.protocol import AgentHeartbeat
+from packages.protocol.device_inventory import inventory_value
 
 
 @pytest.mark.parametrize(

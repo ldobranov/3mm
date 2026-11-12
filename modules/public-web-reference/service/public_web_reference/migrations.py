@@ -1,6 +1,6 @@
 """Minimal forward-only storage migration for the public-web reference."""
 
-from three_mm_application_sdk import ApplicationMigration
+from packages.application_sdk import ApplicationMigration
 
 
 def _revision_0001(connection):

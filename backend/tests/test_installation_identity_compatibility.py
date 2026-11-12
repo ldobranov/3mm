@@ -1,12 +1,12 @@
 import pytest
 from fastapi import HTTPException
 
-from backend.services import module_packages
-from backend.services.application_extensions import (
+from backend.artifacts import packages as module_packages
+from backend.applications.runtime.gateway import (
     ApplicationGatewayError,
     load_application_definition,
 )
-from backend.services.module_packages import ModulePackageError, validate_module_package
+from backend.artifacts.packages import ModulePackageError, validate_module_package
 from backend.tests.test_module_packages import (
     application_definition,
     application_manifest,
@@ -84,7 +84,7 @@ def test_identity_permissions_must_match_both_manifests():
 async def test_upload_and_reload_preserve_exact_compatibility_rejection(
     monkeypatch, tmp_path
 ):
-    from backend.routes import modules
+    from backend.artifacts import api as modules
 
     blob = identity_package()
     monkeypatch.setattr(module_packages, "actual_core_version", lambda: "0.2.0")

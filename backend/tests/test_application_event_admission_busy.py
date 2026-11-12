@@ -14,8 +14,9 @@ from backend.db.authority import CoreAuthorityGuard
 from backend.db.device import DeviceCredential, DeviceEvent
 from backend.db.module import ApplicationEventCursor, ApplicationEventDelivery
 from backend.db.module import ApplicationExtensionInstallation as Installation, ModulePackage
-from backend.services import application_events as broker, application_extensions as gateway
-from backend.services import application_authority_management as authority
+from backend.applications.events import broker
+from backend.applications.runtime import gateway
+from backend.applications.authority import management as authority
 from backend.tests.test_application_event_authority import (
     events as sealed_events, core_installed, source_subject, source_installed, activate, event, identity,
 )
@@ -251,7 +252,7 @@ def test_sqlite_writer_busy_is_transient_not_an_invalid_grant(events):
 
 @pytest.mark.parametrize('damage', ['missing', 'corrupt'])
 def test_missing_or_corrupt_review_key_is_denied_not_transient(events, damage):
-    from backend.services.application_authority_keys import KEY_NAME
+    from backend.applications.authority.keys import KEY_NAME
     s = events
     activate(s)
     enqueue(s, event(s))
@@ -293,9 +294,9 @@ def test_missing_sqlite_authority_table_is_not_classified_as_retryable_busy(even
 def event_api(events, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
-    from backend.routes import device_events as route
-    from backend.services.device_pairing import credential_secret_hash
-    from backend.utils.db_utils import get_db
+    from backend.devices.telemetry import events_api as route
+    from backend.devices.pairing.service import credential_secret_hash
+    from backend.storage.sessions import get_db
     s = events
     secret = 'event-route-fixture-only-secret'
     with s.engine.begin() as db:

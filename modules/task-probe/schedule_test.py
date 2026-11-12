@@ -27,7 +27,7 @@ def run(args,client,state,parser):
     now=datetime.now(UTC);start=now+timedelta(seconds=args.delay)
     if args.calendar:
         from zoneinfo import ZoneInfo
-        from three_mm_platform_wire.task_time import next_occurrence
+        from packages.platform_wire.task_time import next_occurrence
         local=now.astimezone(ZoneInfo(args.timezone))+timedelta(minutes=1)
         rule={"kind":"calendar","timezone":args.timezone,"hour":local.hour,"minute":local.minute}
         start=now;count=1
@@ -45,7 +45,7 @@ def run(args,client,state,parser):
     try:os.fsync(descriptor)
     finally:os.close(descriptor)
     print("Schedule request:",saved["request_id"],flush=True)
-    from three_mm_application_sdk import ApplicationPlatformError
+    from packages.application_sdk import ApplicationPlatformError
     try:
         result=client.create_task_schedule("calculate",request_id=saved["request_id"],
             payload={"upper":args.upper,"pause_ms":800},rule=rule,start_at=start,end_at=end,max_occurrences=count)

@@ -20,7 +20,7 @@ from backend.tests.test_platform_runtime_process import (
     core_stack, activate, identity_app, managed_installed, source_subject, source_installed, checkpoint_app, activate_identity_grant,
 )
 from backend.tests.test_application_public_web_transport import SERVICE,wait_for
-from three_mm_platform_runtime.server import probe_runtime
+from components.platform_runtime.server import probe_runtime
 
 pytestmark=pytest.mark.skipif(os.name!='posix',reason='Actual Linux peers, FD transfer and processes')
 SOURCE=Path(__file__).resolve().parents[2]
@@ -31,7 +31,8 @@ SERVICE=SERVICE.replace("if mode=='size':result['body']='x'*4097", "if mode=='si
 
 @pytest.fixture
 def status_core(identity_app,monkeypatch,request):
-    from backend.services.application_response_relay import ResponseWaiter
+    from backend.applications import operations_api
+    from backend.applications.runtime.responses import ResponseWaiter
     state=identity_app;activate_identity_grant(state)
     Base.metadata.create_all(state.engine)
     state.response_relay=True
@@ -39,6 +40,28 @@ def status_core(identity_app,monkeypatch,request):
     def short_reserve(cls,*args,**kwargs):
         waiter=reserve(*args,**kwargs);waiter.timeout_seconds=getattr(request,'param',1);return waiter
     monkeypatch.setattr(ResponseWaiter,'reserve',classmethod(short_reserve))
+    def phase(name, **values):
+        path = Path(state.engine.url.database).parent/'status-phases.log'
+        with path.open('a') as stream:
+            stream.write(json.dumps({'phase': name, 'time': time.monotonic(), **values})+'\n')
+    def traced(name, callback):
+        def call(*args, **kwargs):
+            phase(name+'.enter')
+            try:
+                return callback(*args, **kwargs)
+            finally:
+                phase(name+'.exit')
+        return call
+    for name in ('_begin_operational_status', '_finish_operational_status'):
+        monkeypatch.setattr(operations_api, name, traced(name, getattr(operations_api, name)))
+    receive = ResponseWaiter.receive
+    async def traced_receive(self):
+        phase('receive.enter', timeout_seconds=self.timeout_seconds)
+        try:
+            return await receive(self)
+        finally:
+            phase('receive.exit')
+    monkeypatch.setattr(ResponseWaiter, 'receive', traced_receive)
     with core_stack(state,monkeypatch) as s:yield s
 
 

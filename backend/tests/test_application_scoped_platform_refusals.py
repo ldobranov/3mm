@@ -1,5 +1,5 @@
 """Actual signed IPC cannot revive legacy peer/proof operations in scoped mode."""
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 import os
 from pathlib import Path
@@ -9,15 +9,16 @@ import pytest
 from sqlalchemy.orm import sessionmaker
 
 import backend.database
-from backend.services import installation_identity, installation_peers
-from backend.services.application_platform import ApplicationPlatformServer
+from backend.installation import identity as installation_identity
+from backend.installation import peers as installation_peers
+from backend.applications.runtime.platform import ApplicationPlatformServer
 from backend.tests.test_application_authority_management import (
     installed as managed_installed,
     source_subject,
     source_installed,
     activate_grant,
 )
-from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+from packages.application_sdk import ApplicationPlatformClient, ApplicationPlatformError
 
 
 pytestmark = pytest.mark.skipif(

@@ -15,9 +15,10 @@ from sqlalchemy.pool import StaticPool
 
 from backend.db.base import Base
 from backend.db.user import User
-from backend.routes import user as routes
-from backend.utils import auth_dep, jwt_utils
-from backend.utils.db_utils import get_db
+from backend.accounts import users_api as routes
+from backend.accounts import dependencies as auth_dep
+from backend.accounts import tokens as jwt_utils
+from backend.storage.sessions import get_db
 
 PASSWORD = "fixture-only-password-do-not-log"
 WRONG_PASSWORD = "fixture-only-wrong-password-do-not-log"

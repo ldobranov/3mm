@@ -8,12 +8,12 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import update
 from backend.db.module import ApplicationExtensionInstallation as Installation, ModulePackage
-from backend.services import application_health_probe as health
-from backend.services.application_extensions import ApplicationGatewayError
+from backend.applications.runtime import health
+from backend.applications.runtime.gateway import ApplicationGatewayError
 from backend.tests.test_application_connectors import connector_db
 from backend.tests.test_module_packages import application_package, application_definition
-from backend.services.module_packages import validate_module_package
-from three_mm_runtime.application_transport import sign_message, verify_message, ApplicationTransportError
+from backend.artifacts.packages import validate_module_package
+from components.system_runtime.application_transport import sign_message, verify_message, ApplicationTransportError
 
 pytestmark=pytest.mark.skipif(os.name!='posix',reason='Linux Runtime account admission')
 
@@ -124,8 +124,8 @@ def test_current_valid_health_commits_timestamp_without_changing_epoch(health_db
 
 @pytest.mark.parametrize('point',['initial','reserved','finish'])
 def test_health_preserves_current_native_ui_trust_gate(health_db,monkeypatch,point):
-    import backend.services.application_extensions as gateway
-    from backend.services.compiled_ui import CompiledUiBuildError
+    import backend.applications.runtime.gateway as gateway
+    from backend.artifacts.compiled_ui import CompiledUiBuildError
     db,app,package,settings=health_db;app.authority_mode='enforced';db.commit()
     validated=gateway.load_application_package(package)
     monkeypatch.setattr(gateway,'load_application_package',lambda p:SimpleNamespace(application_extension=validated.application_extension,compiled_ui=object()))
@@ -133,7 +133,7 @@ def test_health_preserves_current_native_ui_trust_gate(health_db,monkeypatch,poi
     def ui(*args):
         calls.append(True)
         if point!='reserved' or len(calls)>1:raise CompiledUiBuildError('Application UI code trust is unavailable')
-    monkeypatch.setattr('backend.services.compiled_ui.application_ui_artifact',ui)
+    monkeypatch.setattr('backend.artifacts.compiled_ui.application_ui_artifact',ui)
     waiter=SimpleNamespace(handoff_deadline=time.monotonic()+2,close=lambda:closed.append(True))
     monkeypatch.setattr(health.ResponseWaiter,'reserve',classmethod(lambda *args:waiter))
     with pytest.raises(ApplicationGatewayError,match='trust'):
@@ -145,13 +145,13 @@ def test_health_preserves_current_native_ui_trust_gate(health_db,monkeypatch,poi
 
 
 def test_relational_health_cannot_request_host_metadata_or_sql_ticket(health_db,monkeypatch):
-    from three_mm_protocol.tests.test_application_relational_storage import relational_request
+    from packages.protocol.tests.test_application_relational_storage import relational_request
     db,app,package,settings=health_db
     definition=application_definition();definition['service']['sdk_version']='1.3'
     definition['storage']['relational']=relational_request()
     blob=application_package(definition=definition);Path(package.file_path).write_bytes(blob)
     package.sha256=validate_module_package(blob).sha256;db.commit()
-    monkeypatch.setattr('backend.services.application_relational.prepare_host_invocation',lambda *a,**k:pytest.fail('Health performed host metadata IPC'))
+    monkeypatch.setattr('backend.applications.relational.authority.prepare_host_invocation',lambda *a,**k:pytest.fail('Health performed host metadata IPC'))
     prepared=health._prepare(app,package,settings,'health','r'*32)
     assert prepared.relational_invocation is None and prepared.context['audience']=='internal'
     probe=probe_for(app,package)

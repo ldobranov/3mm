@@ -3,8 +3,8 @@ from datetime import UTC, datetime
 import pytest
 from agent.capability_providers import AdapterProvider, AgentProviderRegistry
 from agent.hardware.identifier import MockIdentifierAdapter
-from three_mm_protocol.device_capabilities import CapabilityAdvertisementV1, CapabilityProviderSnapshotV2
-from three_mm_protocol.capability_availability import CapabilityHealthV1
+from packages.protocol.device_capabilities import CapabilityAdvertisementV1, CapabilityProviderSnapshotV2
+from packages.protocol.capability_availability import CapabilityHealthV1
 
 DEVICE = 'dev_' + 'a' * 32
 
@@ -36,7 +36,7 @@ class Transport:
         self.rows[(row.provider_type, row.provider_id)] = row; self.writes += 1
         if self.lost_ack:
             self.lost_ack = False
-            from three_mm_protocol.transport import DeviceTransportError
+            from packages.protocol.transport import DeviceTransportError
             raise DeviceTransportError('Acknowledgement lost')
         return row
 
@@ -61,7 +61,7 @@ def test_same_path_registers_unrelated_adapters_without_selecting_or_enabling(tm
 def test_lost_ack_restart_and_removed_adapter_are_reconciled_without_replay_or_adoption(tmp_path):
     transport = Transport(); transport.lost_ack = True
     registry = AgentProviderRegistry(tmp_path, DEVICE, (OtherAdapter(),))
-    from three_mm_protocol.transport import DeviceTransportError
+    from packages.protocol.transport import DeviceTransportError
     with pytest.raises(DeviceTransportError): registry.synchronize(transport, availability=True)
     registry.synchronize(transport, availability=True)
     assert transport.writes == 1

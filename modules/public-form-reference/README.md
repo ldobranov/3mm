@@ -26,7 +26,7 @@ Run from the repository in a non-root Linux development environment with test
 dependencies already available:
 
 ```sh
-python -m pytest -q three_mm_public_web/tests/test_server.py backend/tests/test_application_public_forms.py
+python -m pytest -q components/public_web/tests/test_server.py backend/tests/test_application_public_forms.py
 ```
 
 In an explicitly approved disposable integration setup, Public Web's

@@ -7,8 +7,8 @@ from backend.db.user import User
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
 from backend.db.device import Device, DeviceCommand
 from backend.tests.test_system_update_routes import make_client, use_test_jwt_secret  # noqa: F401
-from three_mm_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError, ComponentUpdateNotAccepted
-from three_mm_runtime.component_updates import confirmation
+from components.system_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError, ComponentUpdateNotAccepted
+from components.system_runtime.component_updates import confirmation
 
 BASE = '/api/v1/system-updates/components'
 HOST = 'c'*24
@@ -33,7 +33,7 @@ def api(monkeypatch):
     monkeypatch.setattr(UpdateHelperClient, 'component_status', lambda _self, c, t, u: status(c, t))
     def operation(_self, payload): calls.append(payload); return payload['request_id']
     monkeypatch.setattr(UpdateHelperClient, 'component_operation', operation)
-    monkeypatch.setattr('backend.routes.component_updates.ensure_apply_is_allowed', lambda *a, **k: None)
+    monkeypatch.setattr('backend.system.updates.components_api.ensure_apply_is_allowed', lambda *a, **k: None)
     try: yield client, db, {'Authorization': 'Bearer '+admin}, {'Authorization': 'Bearer '+viewer}, calls
     finally: client.close(); db.close()
 
@@ -82,9 +82,9 @@ def test_exact_confirmation_and_maintenance_policy_are_not_bypassed(api, monkeyp
     payload = dict(request_id='a'*32, expected_operation_id=None, build_id='b'*64, confirmation='anything')
     assert client.post(BASE+'/agent/local/rollback', headers=admin,json=payload).status_code == 422
     payload['confirmation'] = confirmation('rollback','agent','local','b'*64)
-    from backend.services.update_policy import UpdatePolicyError
+    from backend.system.updates.policy import UpdatePolicyError
     def denied(*a, **k): raise UpdatePolicyError('Outside maintenance window')
-    monkeypatch.setattr('backend.routes.component_updates.ensure_apply_is_allowed', denied)
+    monkeypatch.setattr('backend.system.updates.components_api.ensure_apply_is_allowed', denied)
     assert client.post(BASE+'/agent/local/rollback', headers=admin,json=payload).status_code == 409
     assert not calls
 

@@ -13,14 +13,14 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from agent.identity import AgentIdentity
 from backend.database import SessionLocal
-from backend.services.installation_identity import InstallationIdentityError, installation_identity
-from three_mm_provisioning import FileProvisioningStore, ProvisioningState
+from backend.installation.identity import InstallationIdentityError, installation_identity
+from packages.provisioning import FileProvisioningStore, ProvisioningState
 from deployment.local_agent_pairing import (
     LocalAgentPairingError,
     ensure_automatic_local_agent_pairing,
     ensure_local_agent_pairing,
 )
-from three_mm_protocol import AgentRole
+from packages.protocol import AgentRole
 
 
 def parse_args() -> argparse.Namespace:

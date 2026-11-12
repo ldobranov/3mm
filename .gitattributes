@@ -3,7 +3,8 @@
 deployment/systemd/*.service text eol=lf
 
 # Immutable releases contain source, not workstation rules or mutable host data.
-/.kilocode export-ignore
 /.vscode export-ignore
 /backend/mega_monitor.db export-ignore
+/backend/prices.json export-ignore
+/backend/output.json export-ignore
 /uploads export-ignore

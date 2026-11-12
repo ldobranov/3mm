@@ -11,11 +11,11 @@ from backend.db.authority import CoreAuthorityGuard
 from backend.db.base import Base
 from backend.db.device import DeviceCredential, DevicePairingRequest
 from backend.db.user import User
-from backend.routes.device_pairing import router
-from backend.utils.auth import hash_password
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
-from backend.utils import jwt_utils
+from backend.devices.pairing.api import router
+from backend.accounts.passwords import hash_password
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
+from backend.accounts import tokens as jwt_utils
 
 
 @pytest.fixture(autouse=True)

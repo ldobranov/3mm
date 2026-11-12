@@ -10,7 +10,7 @@ import re
 import stat
 import tempfile
 
-from three_mm_protocol.application_extension import ApplicationExtensionV1
+from packages.protocol.application_extension import ApplicationExtensionV1
 from tools import application_project
 from tools.application_project import ProjectCheckError
 
@@ -138,7 +138,7 @@ def render_client(definition) -> str:
         '// Compile-time structural types only. Runtime validation remains authoritative for bounds,',
         '// integerness, patterns, counts and exact JSON values. No code trust or access is granted.',
         '// Commands require the original caller-owned key. One invoke, no retry or generated IDs.',
-        f"import type {{ {imports} }} from '@3mm/application-ui/v1'", '',
+        f"import type {{ {imports} }} from '@platform/application-ui/v1'", '',
         f'export const APPLICATION_CLIENT_CONTRACT_SHA256 = {_literal(digest)} as const', '',
         *declarations, "export function createApplicationClient(host: Pick<ApplicationHost, 'invoke'>) {", '  return {',
         *methods, '  }', '}', ''])
@@ -219,7 +219,7 @@ def _replace_recoverably(project, target, staged, old):
 
 def generate_client(project: Path, output: Path, *, replace: bool = False) -> dict:
     """Publish new source explicitly; never run app code/checks or overwrite edits."""
-    from backend.services.module_packages import validate_module_package
+    from backend.artifacts.packages import validate_module_package
 
     project = Path(os.path.abspath(project))
     if project.is_symlink() or not project.is_dir():

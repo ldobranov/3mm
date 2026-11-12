@@ -2,7 +2,7 @@
 
 The streaming profile is `storage.private_files.file_contract_version: 2` in a
 manifest-v2 application using service SDK 1.3. Browser host version 1 exposes
-`useApplicationHost().files` from `@3mm/application-ui/v1`. Version axes are
+`useApplicationHost().files` from `@platform/application-ui/v1`. Version axes are
 independent. Core admits operations; the application's separate `files.sock`
 worker owns bytes, metadata, uploads and image jobs. Core never accepts a host
 filesystem path. Existing small, native SDK file-contract-v1 access remains a

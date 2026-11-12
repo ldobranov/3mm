@@ -12,7 +12,7 @@ from agent.core_client import (
     OutboxStore,
 )
 from agent.tests.test_runtime_features import publisher
-from three_mm_protocol import AgentCommand, AgentCommandResult
+from packages.protocol import AgentCommand, AgentCommandResult
 
 
 def command(**changes):

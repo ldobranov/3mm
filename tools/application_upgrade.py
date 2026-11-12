@@ -96,13 +96,13 @@ def _json(value):
 
 
 def _context(request, storage):
-    from three_mm_application_sdk import ApplicationContext
+    from packages.application_sdk import ApplicationContext
     return ApplicationContext(request['module_id'], request['version'], storage.data_dir,
                               request['configuration'], storage)
 
 
 def _copy_database(source, destination):
-    from three_mm_application_sdk import ApplicationStorage
+    from packages.application_sdk import ApplicationStorage
     copy = ApplicationStorage(destination)
     destination.mkdir()
     # SQLite backup includes committed WAL content; never copy an arbitrary
@@ -113,7 +113,7 @@ def _copy_database(source, destination):
 
 
 def _seed(request):
-    from three_mm_application_sdk import ApplicationStorage
+    from packages.application_sdk import ApplicationStorage
     factory = _load_exact(Path(request['wheel']), request['entrypoint'])
     migrations = _plan(factory)
     revisions = [item.revision for item in migrations]
@@ -131,7 +131,7 @@ def _seed(request):
 
 
 def _upgrade(request):
-    from three_mm_application_sdk import ApplicationMigration, ApplicationStorage
+    from packages.application_sdk import ApplicationMigration, ApplicationStorage
     seeded = json.loads(Path(request['seeded']).read_text(encoding='utf-8'))
     old_revisions = seeded['revisions']
     expectation = _json(seeded['expectation'])
@@ -199,7 +199,7 @@ def _main(arguments):
 
 
 def _wheel(blob, validated):
-    from backend.services.module_packages import MAX_PACKAGE_BYTES
+    from backend.artifacts.packages import MAX_PACKAGE_BYTES
     definition = validated.application_extension
     if definition is None or definition.storage.relational is not None:
         raise ProjectCheckError('upgrade', 'Previous-package upgrade checks require public-SDK SQLite applications.')

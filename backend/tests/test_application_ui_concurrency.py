@@ -21,13 +21,15 @@ from backend.config import ApplicationRuntimeSettings
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation, ApplicationPermissionGrant, ModulePackage
 from backend.db.session import UserSession
-from backend.routes import application_extensions as routes
-from backend.services import application_authority_management as authority, application_invocation_relay as relay, compiled_ui
+from backend.applications.management import api as routes
+from backend.applications.authority import management as authority
+from backend.applications.runtime import invocations as relay
+from backend.artifacts import compiled_ui
 from backend.tests.test_application_ui_authority import (
     ui_app, managed_installed, source_subject, source_installed, adopt, identity,
 )
-from backend.utils.db_utils import get_db
-from three_mm_runtime.application_transport import sign_message
+from backend.storage.sessions import get_db
+from components.system_runtime.application_transport import sign_message
 
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Real POSIX key leases and file-backed SQLite')
@@ -96,7 +98,7 @@ def ui_http(ui_app, tmp_path, monkeypatch):
     monkeypatch.setattr(relay, '_send', send)
 
     app = FastAPI()
-    from backend.services.http_failures import HttpFailureMiddleware, RecentHttpFailures
+    from backend.system.diagnostics.failures import HttpFailureMiddleware, RecentHttpFailures
     s.failures = RecentHttpFailures()
     app.add_middleware(HttpFailureMiddleware, store=s.failures)
     app.include_router(routes.router)

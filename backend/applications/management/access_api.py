@@ -1,0 +1,235 @@
+"""Admin-only installed-artifact permission review. No native-proof upload API."""
+
+from typing import Annotated, Literal
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+
+from backend.db.module import ApplicationExtensionInstallation
+from backend.applications.authority.keys import AuthorityReviewKeyError
+from backend.applications.authority import management as authority
+from backend.applications.authority.management import AuthorityManagementError
+from backend.accounts.dependencies import require_admin
+from backend.storage.sessions import get_db
+
+
+router = APIRouter(prefix='/api/v1/application-extensions', tags=['application-authority'])
+Identifier = Annotated[str, Field(pattern=r'^[0-9a-f]{32}$')]
+Digest = Annotated[str, Field(pattern=r'^[0-9a-f]{64}$')]
+Scope = Annotated[str, Field(pattern=r'^(?:(?:command|connector|event|publication|task):[a-z][a-z0-9_]{0,95}|storage:(?:private_files_(?:read|write|publish|transform)|relational_(?:read|write))|checkpoint:[a-z][a-z0-9_]{0,95}:(?:read|write)|platform:installation\.identity\.read|status:peer_[0-9a-f]{32}:read|(?:peer|query):[a-z][a-z0-9_]{0,95}:read|session:[a-z][a-z0-9_]{0,95}:open)$')]
+
+
+class ReviewRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    request_id: Identifier
+    native_review_id: Identifier
+    scopes: list[Scope] = Field(max_length=295)
+
+    @model_validator(mode='after')
+    def legacy_scope_limit(self):
+        if any(scope.startswith('session:') for scope in self.scopes):
+            return self
+        if len(self.scopes) > 261:
+            raise ValueError('Legacy scope count exceeds limits')
+        if not any(scope.startswith('peer:') for scope in self.scopes):
+            if len(self.scopes) > 229 or len(self.scopes) > 197 and not any(scope.startswith('status:') for scope in self.scopes):
+                raise ValueError('Legacy scope count exceeds limits')
+        return self
+
+
+class DecisionRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    request_id: Identifier
+    expected_revision: Identifier
+    fingerprint: Digest
+
+
+class ConsentPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    request_id: Identifier
+
+
+class ConsentAllowRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    request_id: Identifier
+    preview_id: Identifier
+    expected_revision: Identifier
+    fingerprint: Digest
+    scopes: list[Scope] = Field(max_length=295)
+    user_permissions: list[Annotated[str, Field(pattern=r'^[a-z][a-z0-9_]{0,95}$')]] = Field(max_length=96)
+    accept_native_code: Literal[True]
+
+
+class RevokeRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    request_id: Identifier
+    expected_revision: Identifier
+
+
+class LocalReviewKeyRecoveryRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    expected_key_id: Annotated[str, Field(pattern=r'^review_[0-9a-f]{32}$')]
+    expected_generation: Identifier
+    confirm_recovery_without_permissions: Literal[True]
+
+    @field_validator('confirm_recovery_without_permissions', mode='before')
+    @classmethod
+    def require_explicit_confirmation(cls, value):
+        if value is not True:
+            raise ValueError('Explicit recovery confirmation is required')
+        return value
+
+
+class CommandRebindPreviewRequest(ConsentPreviewRequest):
+    binding_id: Annotated[str, Field(pattern=r'^[a-z][a-z0-9_]{0,95}$')]
+    device_id: Annotated[str, Field(pattern=r'^dev_[0-9a-f]{32}$')]
+
+
+class CommandRebindApplyRequest(DecisionRequest):
+    approve_change: Literal[True]
+
+
+class CommandRebindRecoveryRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    expected_revision: Identifier
+    confirmed_external_outcome_reviewed: Literal[True]
+
+
+def _target(db, module_id):
+    identifier = db.scalar(select(ApplicationExtensionInstallation.id).where(
+        ApplicationExtensionInstallation.module_id == module_id))
+    if identifier is None:
+        raise HTTPException(404, 'Application extension was not found')
+    return identifier
+
+
+def _token(authorization):
+    if not authorization or not authorization.lower().startswith('bearer '):
+        raise HTTPException(401, 'A current administrator login is required')
+    return authorization.split(' ', 1)[1].strip()
+
+
+def _call(db, response, operation):
+    response.headers['Cache-Control'] = 'no-store'
+    try:
+        return operation(authority.configured_manager(db.get_bind().engine))
+    except AuthorityManagementError as exc:
+        raise HTTPException(403 if exc.reason == 'actor_unavailable' else 409,
+            {'code': exc.reason}) from None
+    except (AuthorityReviewKeyError, SQLAlchemyError, OSError, ValueError, TypeError, KeyError, AttributeError):
+        raise HTTPException(409, {'code': 'authority_unavailable'}) from None
+
+
+@router.get('/authority/review-key-recovery', dependencies=[Depends(require_admin)])
+def review_key_recovery_status(response: Response, db: Session = Depends(get_db)):
+    return _call(db, response, lambda manager: manager.keys.local_recovery_status())
+
+
+@router.post('/authority/review-key-recovery', dependencies=[Depends(require_admin)])
+def recover_review_key(request: LocalReviewKeyRecoveryRequest, response: Response,
+        authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
+    token = _token(authorization)
+    return _call(db, response, lambda manager: manager.recover_local_review_key(actor_token=token,
+        expected_key_id=request.expected_key_id, expected_generation=request.expected_generation))
+
+
+@router.get('/{module_id}/authority', dependencies=[Depends(require_admin)])
+def authority_status(module_id: str, response: Response, db: Session = Depends(get_db)):
+    identifier = _target(db, module_id)
+    return _call(db, response, lambda manager: manager.inspect(identifier))
+
+
+@router.post('/{module_id}/authority/reviews', dependencies=[Depends(require_admin)])
+def create_review(module_id: str, request: ReviewRequest, response: Response,
+        authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
+    identifier, token = _target(db, module_id), _token(authorization)
+    return _call(db, response, lambda manager: manager.create_review(identifier,
+        actor_token=token, **request.model_dump()))
+
+
+@router.post('/{module_id}/authority/reviews/{plan_id}/{decision}', dependencies=[Depends(require_admin)])
+def decide_review(module_id: str, plan_id: Identifier, decision: Literal['approve', 'deny', 'apply'],
+        request: DecisionRequest, response: Response, authorization: str | None = Header(default=None),
+        db: Session = Depends(get_db)):
+    identifier, token = _target(db, module_id), _token(authorization)
+    return _call(db, response, lambda manager: manager.decide(identifier, actor_token=token,
+        plan_id=plan_id, decision=decision, **request.model_dump()))
+
+
+@router.post('/{module_id}/authority/revoke', dependencies=[Depends(require_admin)])
+def revoke_grant(module_id: str, request: RevokeRequest, response: Response,
+        authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
+    identifier, token = _target(db, module_id), _token(authorization)
+    return _call(db, response, lambda manager: manager.revoke(identifier,
+        actor_token=token, **request.model_dump()))
+
+
+@router.post('/{module_id}/authority/consent/preview', dependencies=[Depends(require_admin)])
+def preview_package_consent(module_id: str, request: ConsentPreviewRequest, response: Response,
+        authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
+    from backend.applications.management.consent import preview
+    identifier, token = _target(db, module_id), _token(authorization)
+
+    def prepare(manager):
+        try:
+            return preview(manager, identifier, actor_token=token, **request.model_dump())
+        except AuthorityReviewKeyError:
+            if manager.keys.local_recovery_status()['state'] == 'recovery_required':
+                raise AuthorityManagementError('review_key_recovery_required') from None
+            raise
+
+    return _call(db, response, prepare)
+
+
+@router.post('/{module_id}/authority/consent/allow', dependencies=[Depends(require_admin)])
+def allow_package_consent(module_id: str, request: ConsentAllowRequest, response: Response,
+        authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
+    from backend.applications.management.consent import allow
+    identifier, token = _target(db, module_id), _token(authorization)
+    return _call(db, response, lambda manager: allow(manager, identifier,
+        actor_token=token, **request.model_dump()))
+
+
+@router.get('/{module_id}/authority/command-rebindings', dependencies=[Depends(require_admin)])
+def pending_command_rebinding(module_id: str, response: Response, db: Session = Depends(get_db)):
+    from backend.applications.commands.rebinding import pending
+    identifier = _target(db, module_id)
+    return _call(db, response, lambda manager: pending(manager, identifier))
+
+
+@router.post('/{module_id}/authority/command-rebindings', dependencies=[Depends(require_admin)])
+def preview_command_rebinding(module_id: str, request: CommandRebindPreviewRequest, response: Response,
+        authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
+    from backend.applications.commands.rebinding import preview
+    identifier, token = _target(db, module_id), _token(authorization)
+    return _call(db, response, lambda manager: preview(manager, identifier,
+        actor_token=token, **request.model_dump()))
+
+
+@router.get('/{module_id}/authority/command-rebindings/{preview_id}', dependencies=[Depends(require_admin)])
+def command_rebinding_status(module_id: str, preview_id: Identifier, response: Response,
+        db: Session = Depends(get_db)):
+    from backend.applications.commands.rebinding import status
+    identifier = _target(db, module_id)
+    return _call(db, response, lambda manager: status(manager, identifier, plan_id=preview_id))
+
+
+@router.post('/{module_id}/authority/command-rebindings/{preview_id}/apply', dependencies=[Depends(require_admin)])
+def apply_command_rebinding(module_id: str, preview_id: Identifier, request: CommandRebindApplyRequest,
+        response: Response, authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
+    from backend.applications.commands.rebinding import apply
+    identifier, token = _target(db, module_id), _token(authorization)
+    return _call(db, response, lambda manager: apply(manager, identifier,
+        actor_token=token, preview_id=preview_id, **request.model_dump()))
+
+
+@router.post('/{module_id}/authority/command-rebindings/{preview_id}/recover', dependencies=[Depends(require_admin)])
+def recover_command_rebinding(module_id: str, preview_id: Identifier, request: CommandRebindRecoveryRequest,
+        response: Response, authorization: str | None = Header(default=None), db: Session = Depends(get_db)):
+    from backend.applications.commands.rebinding import recover
+    identifier, token = _target(db, module_id), _token(authorization)
+    return _call(db, response, lambda manager: recover(manager, identifier,
+        actor_token=token, preview_id=preview_id, **request.model_dump()))

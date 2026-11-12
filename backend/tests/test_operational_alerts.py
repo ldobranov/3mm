@@ -3,9 +3,9 @@
 from datetime import UTC, datetime
 
 from backend.config import AppSettings, BackupSettings
-from backend.services.backups import BackupOperationStatus
-from backend.services.diagnostics import DiagnosticBundle, DiagnosticCheck
-from backend.services.operational_alerts import (
+from backend.system.backups.service import BackupOperationStatus
+from backend.system.diagnostics.bundle import DiagnosticBundle, DiagnosticCheck
+from backend.system.diagnostics.alerts import (
     OperationalAlertSummary,
     build_operational_alert_summary,
 )

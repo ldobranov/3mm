@@ -16,13 +16,13 @@ from agent.core_client import (
 from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
 from agent.modules.character_display import character_display_handler
 from agent.physical_command_journal import PhysicalCommandJournal
-from backend.services.module_packages import validate_module_package
-from three_mm_protocol import AgentCommand
-from three_mm_protocol.capability_contracts import CapabilityContractError
-from three_mm_protocol.character_display import (
+from backend.artifacts.packages import validate_module_package
+from packages.protocol import AgentCommand
+from packages.protocol.capability_contracts import CapabilityContractError
+from packages.protocol.character_display import (
     CharacterDisplayProfileV1, DISPLAY_CAPABILITY, DISPLAY_ENTRYPOINT,
 )
-from three_mm_protocol.hardware_profiles import AgentHardwareApprovalV1
+from packages.protocol.hardware_profiles import AgentHardwareApprovalV1
 
 DEVICE_ID = 'dev_' + 'a' * 32
 

@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from agent.core_client import DeviceCredential, DeviceCredentialStore
 from agent.hub_connection import normalize_hub_endpoint
-from three_mm_protocol.fleet_pairing import NodeEnrollmentRequest, NodeEnrollmentResponse
+from packages.protocol.fleet_pairing import NodeEnrollmentRequest, NodeEnrollmentResponse
 
 
 class EnrollmentState(BaseModel):

@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from backend.services.theme_assets import _woff2
+from backend.appearance.assets import _woff2
 
 
 def container(stream_length, padding=b""):

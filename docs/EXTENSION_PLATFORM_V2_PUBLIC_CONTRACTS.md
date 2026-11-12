@@ -12,7 +12,7 @@ personal-data retention choice, mutually exclusive with a retention handler;
 administrator export/erasure operations remain required. It issues no grant,
 timer or task, and does not broaden the CAP08 task+storage execution profile.
 Historical data remains in explicit recovery archives; no old authority is
-automatically transferred. See [shared CRUD](../libraries/three_mm_crud/README.md).
+automatically transferred. See [shared CRUD](../libraries/crud/README.md).
 
 ## Adapter providers and unavailable optional resources (CAP01/CAP07, 2026-10-28)
 
@@ -99,8 +99,8 @@ SDK/VM acceptance, retained-data upgrade and restart/revocation checks.
 It does not enable the retired job/schedule contract. Host support uses the separate
 `three_mm.task.info` contract; existing `three_mm.host.info` metadata is unchanged.
 
-The local SDK/Core share the discovery model in `three_mm_protocol.platform_transport`.
-Framing and limits live in stdlib-only `three_mm_platform_wire`, also used by the
+The local SDK/Core share the discovery model in `packages.protocol.platform_transport`.
+Framing and limits live in stdlib-only `packages.platform_wire`, also used by the
 independent Runtime; Runtime imports no Core, SDK or Pydantic.
 `PlatformDiscoveryV1` describes transport contract **1**, separately from SDK
 **1.3**, manifest v2 and the descriptor versions below. This transport result is
@@ -894,7 +894,26 @@ I/O. The offline command imports no backend/SQLAlchemy and controls no services.
 
 ## One source of truth
 
-Public entry point: `three_mm_protocol.extension_schemas.extension_schema_catalog()`.
+The shared Python contracts live in `packages/protocol/`, with the Core-free
+transport helpers in `packages/platform_wire/`. The administrative static Web
+component has its own entry point, `python -m components.admin_web`; it is not
+part of the shared contract package. These source names describe responsibility,
+not the product brand. Native artifacts include their explicit required files,
+not every sibling below `packages/` or `components/`.
+
+The setup/recovery portal is `components/setup/` with entry point
+`python -m components.setup`. Its static page and dependency lock stay with the
+component. A minimal Node includes this exact component and the inert parent,
+not the administrative Web, Public Web or Platform Runtime components. Setup's
+role, host-network choice and recovery state remain separate decisions.
+
+The neutral Python namespace changes `source_model` provenance and source-tree
+imports. It does not rename contract IDs, schema URNs, signed domains, module IDs,
+service names or installation paths. There is no old Python import alias; use the
+current source paths when rebuilding a current consumer. Public JavaScript import
+IDs such as `@platform/ui/v1` are a separate contract, not an implicit part of this move.
+
+Public entry point: `packages.protocol.extension_schemas.extension_schema_catalog()`.
 It exports JSON Schema Draft 2020-12, in **validation** mode, directly from the
 existing Pydantic models. There are no duplicated manifest definitions, new
 package formats, Core imports, publisher assumptions or SDK version changes.
@@ -902,7 +921,7 @@ package formats, Core imports, publisher assumptions or SDK version changes.
 Developer command (from a checkout with the existing Python dependencies):
 
 ```text
-python -m three_mm_protocol.extension_schemas
+python -m packages.protocol.extension_schemas
 ```
 
 The command emits one JSON document to stdout; it does not inspect/import package
@@ -944,7 +963,7 @@ The descriptor does not replace that envelope or the whole-package validator.
 | Agent module / `module-manifest.v2` | Manifest v2; no new Agent descriptor | Agent runtime; architecture, Agent version, permissions and lifecycle remain enforced by the existing Agent |
 | Application / `application-extension.v1` | `application-extension.json`, version 1 | Supervised service; SDK 1.0–1.3 remains supported; optional UI also requires compiled-ui v1 and matching access policies |
 | Application publication / `application-event-publications.v1` | Optional `application-event-publications.json`, version 1 | Installed reviewed-native publication through SDK 1.3's additive signed call and exact applied grants; no inferred device identity or cross-application consumer access |
-| Declarative CRUD | Optional `libraries/three_mm_crud` inside an ordinary application package | Old `runtime-extension.v1` Core endpoints/schema export are retired; records belong to the application's scoped relational storage and UI uses the public host |
+| Declarative CRUD | Optional `libraries/crud` inside an ordinary application package | Old `runtime-extension.v1` Core endpoints/schema export are retired; records belong to the application's scoped relational storage and UI uses the public host |
 | Compiled UI / `compiled-ui.v1` | `compiled-ui.json`, version 1 | Existing source/build/host contract; reviewed native integration, not an untrusted frontend sandbox |
 | Theme / `theme-extension.v1` | `theme-extension.json`, version 1; design API 1 | Declarative, UI-only; existing token/manifest restrictions |
 | Theme / `theme-extension.v2` | `theme-extension.json`, version 2; design API 2 | Declarative, UI-only; existing design, contrast, customization and asset validators |
@@ -1032,12 +1051,12 @@ reset or device deployment implicit in this result. See the complete
 
 Compiled **application routes** can import `useApplicationHost`,
 `ApplicationHostError` and the public TypeScript types from
-`@3mm/application-ui/v1`. The build emits a versioned import-map entry. The
+`@platform/application-ui/v1`. The build emits a versioned import-map entry. The
 install-time compiler allows this exact import, not its private subpaths.
-Existing `@3mm/ui/v1` presentation exports and SDK 1.0–1.3 are unchanged.
+Existing `@platform/ui/v1` presentation exports and SDK 1.0–1.3 are unchanged.
 
 ```typescript
-import { useApplicationHost } from '@3mm/application-ui/v1'
+import { useApplicationHost } from '@platform/application-ui/v1'
 const host = useApplicationHost() // during the route component's setup
 const access = await host.getInfo()
 const record = await host.invoke('get_record', { record_id: selectedId })
@@ -1053,7 +1072,7 @@ effective Core locale changes. Application roots also receive the same reactive
 `locale` prop. Locale updates patch the mounted component without remounting;
 Core disposes remaining subscriptions and invalidates retained handles on unmount.
 The public feature advertisement includes `presentation_version: 1`. Theme tokens
-remain owned by `@3mm/ui/v1`; no theme/language setter or credentials are exposed.
+remain owned by `@platform/ui/v1`; no theme/language setter or credentials are exposed.
 See [presentation and application catalogue rules](EXTENSION_UI_V1.md).
 No caller-selected module, audience, URL, headers, token, HTTP client, router or
 Core store is exposed. The dynamic route loader binds module, package SHA-256,
@@ -1300,8 +1319,8 @@ immutable; replacing it requires new explicit trust and resource review.
 Local Core administration, using the normal service account/environment:
 
 ```text
-python -m backend.services.application_authority_admin inspect-ui-build --installation-id <id>
-python -m backend.services.application_authority_admin native-review --installation-id <id> --artifact-sha256 <source-sha> --built-ui-sha256 <build-sha> --review-document <review.md> --code-review-completed --accept-native-host-risk --accept-same-origin-ui-risk
+python -m backend.applications.authority.admin inspect-ui-build --installation-id <id>
+python -m backend.applications.authority.admin native-review --installation-id <id> --artifact-sha256 <source-sha> --built-ui-sha256 <build-sha> --review-document <review.md> --code-review-completed --accept-native-host-risk --accept-same-origin-ui-risk
 ```
 
 Tokens are still prompted hidden, not passed on the command line. The reviewer

@@ -22,12 +22,12 @@ from backend.db.device import Device, DeviceCommand
 from backend.db.module import ModulePackage, ThemeExtensionInstallation
 from backend.db.settings import Settings
 from backend.db.user import User
-from backend.routes import modules
-from backend.services import theme_extensions
+from backend.artifacts import api as modules
+from backend.appearance import packages as theme_extensions
 from backend.tests.test_theme_extension_packages import definition, manifest, package
-from backend.utils import jwt_utils
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
+from backend.accounts import tokens as jwt_utils
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
 
 
 BASE = "/api/v1/modules/themes"

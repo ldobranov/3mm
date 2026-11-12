@@ -19,8 +19,8 @@ SCOPED_VERSION = "1.1.0"
 
 def scoped_declarations(manifest, definition, device_id, command_spec):
     """Use an explicit public contract, never guess a provider's action/schema."""
-    from three_mm_protocol.application_extension import ApplicationCommandBindingV1
-    from three_mm_protocol.capability_contracts import validate_schema, validate_value
+    from packages.protocol.application_extension import ApplicationCommandBindingV1
+    from packages.protocol.capability_contracts import validate_schema, validate_value
 
     if type(command_spec) is not dict or set(command_spec) != {"capability_id", "contract_version", "action", "arguments_schema", "arguments"}:
         raise ValueError("A scoped probe requires one exact versioned command specification")

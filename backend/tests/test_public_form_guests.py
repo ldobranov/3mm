@@ -5,9 +5,9 @@ import time
 
 import pytest
 
-from backend.services import public_form_guests
-from three_mm_application_sdk import OperationContext
-from three_mm_protocol.public_forms import GUEST_TTL_SECONDS
+from backend.applications.public_web import guests as public_form_guests
+from packages.application_sdk import OperationContext
+from packages.protocol.public_forms import GUEST_TTL_SECONDS
 
 
 SCOPE = ('core', 'instance', 'incarnation', 'epoch', 'artifact', 'form', '/guest', 'https://forms.example')

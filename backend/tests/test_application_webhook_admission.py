@@ -28,14 +28,14 @@ from sqlalchemy.orm import Session
 from backend.config import ApplicationRuntimeSettings
 from backend.db.application_authority_grant import ApplicationAuthorityAction
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
-from backend.services.application_extensions import ApplicationGatewayError, prepare_application_invocation
-from backend.services.application_webhook_admission import ReviewedWebhookAdmission, ReviewedWebhookTarget
-from backend.services.authority_metadata import authority_transaction, read_application_authority
-from backend.services.module_packages import ModulePackageError, validate_module_package
+from backend.applications.runtime.gateway import ApplicationGatewayError, prepare_application_invocation
+from backend.applications.public_web.webhook_admission import ReviewedWebhookAdmission, ReviewedWebhookTarget
+from backend.applications.authority.metadata import authority_transaction, read_application_authority
+from backend.artifacts.packages import ModulePackageError, validate_module_package
 from backend.tests.test_application_authority_management import identity, installed, source_subject, source_installed
 from backend.tests.test_application_consent import allow, preview, state as core_state
 from backend.tests.test_application_public_forms import launch_host, stop_host
-from three_mm_protocol.public_webhooks import (
+from packages.protocol.public_webhooks import (
     WebhookRejected, webhook_delivery_input_schema, webhook_delivery_result_schema,
 )
 from tools import webhook_delivery_lab as delivery, webhook_lab as lab, webhook_public_pilot
@@ -518,8 +518,8 @@ from sqlalchemy import create_engine
 from backend.config import ApplicationRuntimeSettings
 import backend.db.permission  # Register the User mapper's relationship targets.
 import backend.db.role
-from backend.services import application_authority_management as management
-from backend.services.application_webhook_admission import ReviewedWebhookAdmission, ReviewedWebhookTarget
+from backend.applications.authority import management
+from backend.applications.public_web.webhook_admission import ReviewedWebhookAdmission, ReviewedWebhookTarget
 from tools import webhook_delivery_lab as delivery
 from tools.webhook_lab import WebhookInbox
 
@@ -573,8 +573,8 @@ def test_restarted_consumer_never_replays_after_process_exit(state, receiver, tm
 _PUBLIC_WEB_CHILD = """
 from pathlib import Path
 import sys
-from three_mm_public_web.server import create_server
-from three_mm_public_web.webhook_pilot import WebhookPilotClient
+from components.public_web.server import create_server
+from components.public_web.webhook_pilot import WebhookPilotClient
 
 runtime, route, broker, uid, *private_files = sys.argv[1:]
 for name in private_files:

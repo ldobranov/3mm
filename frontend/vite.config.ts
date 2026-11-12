@@ -6,14 +6,15 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 import vueDevTools from 'vite-plugin-vue-devtools'
+import { renderProductHead } from './src/utils/product'
 
-// Load config from root config.json
-const configPath = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'config.json')
+// Shared, non-secret development defaults; deployment uses explicit environment settings.
+const configPath = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'config_templates', 'development.json')
 let config
 try {
   config = JSON.parse(readFileSync(configPath, 'utf-8'))
 } catch (error) {
-  console.warn('Could not load config.json, using defaults:', error)
+  console.warn('Could not load development defaults, using built-in defaults:', error)
   config = {
     frontend: {
       backend_url: 'http://localhost:8887',
@@ -40,6 +41,7 @@ const defineConstants = {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
+    { name: 'product-presentation', transformIndexHtml: html => renderProductHead(html) },
     vue(),
     vueJsx(),
     vueDevTools(),

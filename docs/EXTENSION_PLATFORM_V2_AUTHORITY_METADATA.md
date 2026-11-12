@@ -3,7 +3,7 @@
 Date: 2026-10-08. Status: **implemented and tested locally, not runtime enforcement**.
 This is the first persistence/transaction slice of the
 [trusted resolver design](EXTENSION_PLATFORM_V2_RESOLVER_DESIGN.md), within
-[WP4](../EXTENSION_PLATFORM_V2_CORE_PLAN.md#wp4--public-platform-api-sdk-and-authorization).
+[WP4](EXTENSION_PLATFORM_V2_CORE_PLAN.md#wp4--public-platform-api-sdk-and-authorization).
 It is common Core infrastructure, not Fleet-specific. SDK 1.3, public contracts
 and current application/device authorization behavior remain unchanged.
 Subsequent [connector/credential writer integration](EXTENSION_PLATFORM_V2_AUTHORITY_WRITERS.md)

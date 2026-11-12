@@ -20,11 +20,11 @@ from backend.db.application_authority_grant import ApplicationAuthorityGrant as 
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.session import UserSession
-from backend.services import application_authority_management as authority
-from backend.services import application_relational_boot as coordinator
-from backend.services.application_authority_keys import AuthorityReviewKeyError
-from backend.services.application_extensions import ApplicationGatewayError
-from backend.services.application_policy_reviews import PolicyReviewStoreError
+from backend.applications.authority import management as authority
+from backend.applications.relational import boot as coordinator
+from backend.applications.authority.keys import AuthorityReviewKeyError
+from backend.applications.runtime.gateway import ApplicationGatewayError
+from backend.applications.authority.policy_reviews import PolicyReviewStoreError
 from backend.tests.test_application_relational_activation import (
     checkpoint as start_checkpoint,
 )
@@ -70,8 +70,8 @@ from backend.tests.test_application_relational_reactivation import (
     stopped_again,
 )
 from backend.tests.test_application_relational_runtime import invoke
-from three_mm_application_sdk import ApplicationStorage
-from three_mm_application_sdk.relational_wire import (
+from packages.application_sdk import ApplicationStorage
+from packages.application_sdk.relational_wire import (
     _activation_recovery_ticket,
     _activation_ticket,
     _preparation_ticket,
@@ -80,9 +80,9 @@ from three_mm_application_sdk.relational_wire import (
     canonical,
     sign_metadata,
 )
-from three_mm_runtime import application_relational_activation as start_helper
-from three_mm_runtime import application_relational_boot as helper
-from three_mm_runtime.application_activation import ApplicationActivationError
+from components.system_runtime import application_relational_activation as start_helper
+from components.system_runtime import application_relational_boot as helper
+from components.system_runtime.application_activation import ApplicationActivationError
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Actual POSIX clock/keys")
 

@@ -734,7 +734,7 @@ Status: **in progress**, approved on 2026-10-07, with bounded deliveries through
 [final WP4 acceptance record](EXTENSION_PLATFORM_V2_WP4_FINAL_ACCEPTANCE.md) for
 Hub/Standalone, recovery, publication evidence and retained limits. This does not
 close the other work packages or Milestone 20 as a whole. See
-[EXTENSION_PLATFORM_V2_CORE_PLAN.md](../EXTENSION_PLATFORM_V2_CORE_PLAN.md).
+[EXTENSION_PLATFORM_V2_CORE_PLAN.md](EXTENSION_PLATFORM_V2_CORE_PLAN.md).
 
 Goal: evolve the existing extension platform into a stable, secure distribution
 and lifecycle contract without creating a parallel extension/device subsystem.

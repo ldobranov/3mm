@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.services.backups import (
+from backend.system.backups.service import (
     BACKUP_ID_PATTERN,
     BackupCatalogItem,
     checksum_file,

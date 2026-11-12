@@ -8,11 +8,11 @@ from sqlalchemy import select
 from backend.db.device import DeviceCommand, DeviceCredential, DeviceRuntimeFeatures
 from backend.db.module import ModuleInstallation
 from backend.tests.test_module_lifecycle_idempotency import lifecycle, DEVICE_ID  # noqa: F401
-from backend.utils.auth_dep import require_admin
-from three_mm_protocol.node_features import MANDATORY_NODE_FEATURES
-from three_mm_protocol.hardware_profiles import HARDWARE_PROFILE_FEATURE
+from backend.accounts.dependencies import require_admin
+from packages.protocol.node_features import MANDATORY_NODE_FEATURES
+from packages.protocol.hardware_profiles import HARDWARE_PROFILE_FEATURE
 from agent.tests.test_character_display import builder  # noqa: F401
-from three_mm_protocol.character_display import CharacterDisplayProfileV1
+from packages.protocol.character_display import CharacterDisplayProfileV1
 
 
 @pytest.fixture

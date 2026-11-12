@@ -28,7 +28,7 @@ pytestmark=pytest.mark.skipif(not ENABLED,reason='Explicit owned transient syste
 ROOT=Path(__file__).resolve().parents[2]
 
 PROVIDER="""import json,os,socket
-from three_mm_runtime.component_identity import component_health
+from components.system_runtime.component_identity import component_health
 class Provider:
  provider_id='org.3mm.p4-neutral'
  contract_version='1.0'

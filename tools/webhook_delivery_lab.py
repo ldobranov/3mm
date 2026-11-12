@@ -10,12 +10,12 @@ import sqlite3
 import time
 
 from backend.config import ApplicationRuntimeSettings
-from backend.services.application_webhook_admission import ReviewedWebhookAdmission, WebhookHostTarget
-from three_mm_platform_wire import read_frame, remaining
-from three_mm_protocol.application_delegation import OperationExecutorV1
-from three_mm_protocol.diagnostic_snapshot import read_regular
-from three_mm_protocol.public_webhooks import WebhookRejected
-from three_mm_runtime.application_transport import (
+from backend.applications.public_web.webhook_admission import ReviewedWebhookAdmission, WebhookHostTarget
+from packages.platform_wire import read_frame, remaining
+from packages.protocol.application_delegation import OperationExecutorV1
+from packages.protocol.diagnostic_snapshot import read_regular
+from packages.protocol.public_webhooks import WebhookRejected
+from components.system_runtime.application_transport import (
     TRANSPORT_VERSION, ApplicationTransportError, send_message, sign_message, verify_message,
 )
 from tools.webhook_lab import DeliveryAttempt, WebhookInbox

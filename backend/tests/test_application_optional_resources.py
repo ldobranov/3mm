@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from backend.db.module import ApplicationConnectorBinding, ApplicationExtensionInstallation as Installation
 from backend.db.device import DeviceCapabilityProvider
-from backend.services import application_authority_management as authority
-from backend.services.application_resource_discovery import discover_resources
+from backend.applications.authority import management as authority
+from backend.applications.resources.discovery import discover_resources
 from backend.tests.test_application_authority_management import installed, source_subject, source_installed
 from backend.tests.test_application_consent import state, preview, allow
 from backend.tests.test_application_checkpoint_authority import store_checkpoint_package
@@ -77,7 +77,7 @@ def test_required_resource_loss_and_revocation_still_deny(optional):
 
 
 def test_optional_command_can_be_unconfigured_without_waiving_author_schema_requirements(state):
-    from backend.services.application_configuration import resolve_application_configuration, ApplicationConfigurationError
+    from backend.applications.management.configuration import resolve_application_configuration, ApplicationConfigurationError
     s = state
     definition = s.validated.application_extension.model_dump(mode='json')
     definition.update(optional_resources=['command:pulse'])
@@ -148,7 +148,7 @@ def test_optional_command_schema_mismatch_has_a_redacted_diagnostic(state):
 
 def test_generic_command_shape_does_not_allow_reusing_a_grant_after_geometry_changes(state):
     from copy import deepcopy
-    from three_mm_protocol.character_display import CharacterDisplayProfileV1
+    from packages.protocol.character_display import CharacterDisplayProfileV1
     s=state
     definition=s.validated.application_extension.model_dump(mode='json')
     base=definition['command_bindings'][0]

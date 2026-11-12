@@ -13,8 +13,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from backend.services import application_authority_management as authority
-from backend.services.application_relational_admin_worker import dispatch
+from backend.applications.authority import management as authority
+from backend.applications.relational.admin_worker import dispatch
 from backend.tests.test_application_relational_activation import ProcessSupervisor
 from backend.tests.test_application_relational_activation_control import (
     catalog,
@@ -45,10 +45,10 @@ from backend.tests.test_application_relational_recovery_control import (
 from backend.tests.test_application_relational_recovery_control import (
     snapshot,
 )
-from three_mm_application_sdk.relational_wire import canonical
-from three_mm_runtime import update_helper
-from three_mm_runtime.application_relational_control import reactivation_request
-from three_mm_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
+from packages.application_sdk.relational_wire import canonical
+from components.system_runtime import update_helper
+from components.system_runtime.application_relational_control import reactivation_request
+from components.system_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Actual Core/OS peer")
 
@@ -76,7 +76,7 @@ def review(state):
     script = """
 import json, sys, uuid
 from backend.database import engine
-from backend.services.application_authority_management import configured_manager
+from backend.applications.authority.management import configured_manager
 manager = configured_manager(engine)
 token = sys.stdin.buffer.readline().decode().strip()
 status = manager.inspect(1)
@@ -350,7 +350,7 @@ def test_bad_current_actor_grant_source_cas_and_layout_refuse_before_key(
     before = snapshot(state)
     with monkeypatch.context() as patch:
         patch.setattr(
-            "three_mm_runtime.application_relational_preparation._key",
+            "components.system_runtime.application_relational_preparation._key",
             lambda *a: pytest.fail("Invalid snapshot read key"),
         )
         for changes in (
@@ -571,7 +571,7 @@ def test_duplicate_new_action_frame_refuses_before_peer_or_dispatch(monkeypatch)
 
 
 def test_new_action_client_rejects_duplicate_response_without_retry(monkeypatch):
-    from three_mm_runtime import update_helper_client as client_module
+    from components.system_runtime import update_helper_client as client_module
 
     calls = []
 

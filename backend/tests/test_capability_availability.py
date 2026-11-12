@@ -23,23 +23,23 @@ from backend.db.device import (
     DeviceHeartbeat,
     DeviceCommand,
 )
-from backend.services.device_capability_registry import (
+from backend.devices.capabilities.registry import (
     registered_capabilities,
     has_registered_capability,
     capability_catalog,
 )
-from backend.services.device_commands import (
+from backend.devices.commands.queue import (
     queue_command,
     deliver_next_command,
     DeviceCommandError,
 )
-from backend.services.application_commands import submit_command, authorize_execution
-from backend.services.device_protocol import DeviceOperations, authenticate_device
+from backend.applications.commands.broker import submit_command, authorize_execution
+from backend.devices.operations import DeviceOperations, authenticate_device
 from examples.mock_embedded.client import MockEmbeddedClient, CAPABILITY, PROVIDER
 from examples.mock_embedded.contracts import control_contract
 from backend.tests.test_mock_embedded_protocol import approve, ORIGIN
-from three_mm_protocol import AgentHeartbeat
-from three_mm_protocol.capability_availability import CapabilityAvailabilityReportV1
+from packages.protocol import AgentHeartbeat
+from packages.protocol.capability_availability import CapabilityAvailabilityReportV1
 
 
 def snapshot(client, admin, prefix):
@@ -295,7 +295,7 @@ def test_inventory_spoof_firmware_addition_and_no_device_configuration_authority
     ] == [CAPABILITY]
     # Core-owned mode also survives withdrawal of the runtime feature and a
     # new provider identity; old wire format cannot activate fresh offers.
-    from backend.services.device_runtime_features import read_runtime_features
+    from backend.devices.features.service import read_runtime_features
 
     runtime = read_runtime_features(db, firmware)
     runtime.declaration = {

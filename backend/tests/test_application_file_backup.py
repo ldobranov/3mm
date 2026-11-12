@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.services.backups import (
+from backend.system.backups.service import (
     build_backup_preview,
     read_backup_operation_status,
     validate_application_backup_inventory,
@@ -21,13 +21,13 @@ from deployment import restore_application_extensions as reconstruction
 from deployment import restore_backup as recovery
 from deployment.create_backup import create_backup, encrypt_file
 from deployment.portable_backup import create_portable_export, import_portable_backup
-from three_mm_application_sdk import ApplicationFileLimits, ApplicationFileStorage
-from three_mm_protocol import BackupEntryV1, BackupManifestV1
-from three_mm_runtime.application_activation import (
+from packages.application_sdk import ApplicationFileLimits, ApplicationFileStorage
+from packages.protocol import BackupEntryV1, BackupManifestV1
+from components.system_runtime.application_activation import (
     activate_application_package,
     application_instance_id,
 )
-from three_mm_runtime.tests.test_application_activation import (
+from components.system_runtime.tests.test_application_activation import (
     ReadyClient,
     Supervisor,
     service_package,

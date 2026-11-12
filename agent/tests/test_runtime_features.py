@@ -10,7 +10,7 @@ from agent.core_client import (
     ReconciliationStore,
 )
 from agent.runtime_features import RuntimeFeaturePublisher
-from three_mm_protocol.node_features import CoreNodeProtocolV1
+from packages.protocol.node_features import CoreNodeProtocolV1
 
 
 def publisher(tmp_path, **kwargs):
@@ -39,7 +39,7 @@ def response(status, body=None):
 
 def test_hardware_profile_support_requires_the_current_module_runtime_identity(tmp_path):
     from agent.module_runtime import AgentModuleRuntime
-    from three_mm_protocol.hardware_profiles import HARDWARE_PROFILE_FEATURE
+    from packages.protocol.hardware_profiles import HARDWARE_PROFILE_FEATURE
     node = publisher(tmp_path)
     node.module_runtime = AgentModuleRuntime(tmp_path, architecture='aarch64')
     assert HARDWARE_PROFILE_FEATURE not in node._runtime_declaration()['features']

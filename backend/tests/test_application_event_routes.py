@@ -7,11 +7,11 @@ from sqlalchemy.pool import StaticPool
 
 from backend.db.base import Base
 from backend.db.user import User
-from backend.routes.application_events import router
-from backend.utils import jwt_utils
-from backend.utils.auth import hash_password
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
+from backend.applications.events.api import router
+from backend.accounts import tokens as jwt_utils
+from backend.accounts.passwords import hash_password
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
 
 
 def test_event_broker_observability_is_admin_only(monkeypatch):

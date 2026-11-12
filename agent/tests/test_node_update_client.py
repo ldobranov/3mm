@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from agent.node_update_client import NodeUpdateClient, NodeUpdateHelperError
-from three_mm_protocol.node_updates import NodeUpdateApplyRequest, NodeUpdateAuthorization, NodeUpdateOperation
+from packages.protocol.node_updates import NodeUpdateApplyRequest, NodeUpdateAuthorization, NodeUpdateOperation
 
 
 def test_node_update_client_does_not_call_installer_and_checks_identity(monkeypatch):
@@ -50,7 +50,7 @@ def test_status_selects_exact_operation_and_rejects_wrong_identity(monkeypatch):
 def test_prepare_checks_root_prepared_identity(monkeypatch):
     now = datetime.now(UTC)
 
-    from three_mm_protocol.node_updates import (
+    from packages.protocol.node_updates import (
         NodeUpdatePrepareRequest,
         NodeUpdatePreparedArtifact,
     )

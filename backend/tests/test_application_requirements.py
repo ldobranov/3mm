@@ -9,13 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.db.module import ModulePackage, ApplicationExtensionInstallation
-from backend.services.module_packages import validate_module_package
-from backend.services.application_requirements import inspect_platform_requirements
+from backend.artifacts.packages import validate_module_package
+from backend.applications.management.requirements import inspect_platform_requirements
 from backend.tests.test_application_lifecycle_authority import lifecycle, snapshot, request
-from backend.utils.jwt_utils import create_access_token
-from backend.services.application_requirements import ApplicationRequirementsError
-from three_mm_protocol import ApplicationExtensionV1
-from three_mm_protocol.tests.test_application_extension import definition
+from backend.accounts.tokens import create_access_token
+from backend.applications.management.requirements import ApplicationRequirementsError
+from packages.protocol import ApplicationExtensionV1
+from packages.protocol.tests.test_application_extension import definition
 
 
 def candidate(s, requirements, *, fresh=False):
@@ -121,9 +121,9 @@ def test_unsupported_installed_app_stays_administrable(lifecycle, operation):
 @pytest.mark.parametrize('operation', ['prepare', 'migrate', 'activate', 'upgrade'])
 def test_prepared_profiles_refuse_before_issuing_any_durable_permission(operation):
     from types import SimpleNamespace
-    from backend.services.application_relational_lifecycle import issue_existing_schema_preparation, issue_migrated_schema_preparation
-    from backend.services.application_relational_activation import issue_prepared_activation
-    from backend.services.application_relational_upgrade import issue_prepared_database_upgrade
+    from backend.applications.relational.lifecycle import issue_existing_schema_preparation, issue_migrated_schema_preparation
+    from backend.applications.relational.activation import issue_prepared_activation
+    from backend.applications.relational.upgrade import issue_prepared_database_upgrade
     value = definition(); value['service']['sdk_version'] = '1.3'; value['platform_requirements'] = [need()]
     app = ApplicationExtensionV1.model_validate(value)
     def forbidden(*args, **kwargs): pytest.fail('Unsupported requirement reached the authority writer')

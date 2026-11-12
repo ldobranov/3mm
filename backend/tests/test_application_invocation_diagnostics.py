@@ -18,14 +18,15 @@ from sqlalchemy.orm import Session
 from backend.db.base import Base
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation, ModulePackage
-from backend.services import application_invocation_relay as relay, operation_diagnostics as diagnostics
-from backend.services.application_extensions import ApplicationGatewayError
-from backend.services.application_response_relay import ApplicationResponseError
-from backend.services.module_packages import validate_module_package
+from backend.applications.runtime import invocations as relay
+from backend.system.diagnostics import operations as diagnostics
+from backend.applications.runtime.gateway import ApplicationGatewayError
+from backend.applications.runtime.responses import ApplicationResponseError
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_invocation_relay import spec_for
 from backend.tests.test_module_packages import application_package
-from three_mm_protocol.diagnostics import DiagnosticSession
-from three_mm_runtime.application_transport import DispatchPhase, sign_message
+from packages.protocol.diagnostics import DiagnosticSession
+from components.system_runtime.application_transport import DispatchPhase, sign_message
 
 PRIVATE = 'Bearer PRIVATE_TOKEN business payload and native exception details'
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Linux Runtime account admission')

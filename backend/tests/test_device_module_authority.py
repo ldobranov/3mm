@@ -16,20 +16,20 @@ from backend.db.authority import CoreAuthorityGuard
 from backend.db.base import Base
 from backend.db.device import Device, DeviceCommand, DeviceCredential, DeviceEvent, DevicePlatformState
 from backend.db.module import ModuleInstallation
-from backend.routes.device_commands import router as command_router
-from backend.routes import modules
-from backend.services.authority_metadata import AuthorityMetadataError, read_authority_guard, read_device_control
-from backend.services.device_commands import DeviceCommandError, deliver_next_command, record_command_result
-from backend.services.device_command_notifier import device_command_notifier
-from backend.services.device_capability_registry import registered_capabilities
-from backend.services.device_pairing import credential_secret_hash
-from backend.services.device_protocol import DeviceOperations
-from backend.services.device_runtime_features import replace_runtime_features
+from backend.devices.commands.api import router as command_router
+from backend.artifacts import api as modules
+from backend.applications.authority.metadata import AuthorityMetadataError, read_authority_guard, read_device_control
+from backend.devices.commands.queue import DeviceCommandError, deliver_next_command, record_command_result
+from backend.devices.commands.notifier import device_command_notifier
+from backend.devices.capabilities.registry import registered_capabilities
+from backend.devices.pairing.service import credential_secret_hash
+from backend.devices.operations import DeviceOperations
+from backend.devices.features.service import replace_runtime_features
 from backend.tests.test_module_lifecycle_idempotency import lifecycle, _request, DEVICE_ID, MODULE_ID  # noqa: F401
-from backend.utils.db_utils import get_db
-from three_mm_protocol import AgentCommandResult, DeviceEventV1
-from three_mm_protocol.node_features import DeviceRuntimeFeaturesReportV1, MANDATORY_NODE_FEATURES
-from three_mm_protocol.transport import DeviceProtocolError
+from backend.storage.sessions import get_db
+from packages.protocol import AgentCommandResult, DeviceEventV1
+from packages.protocol.node_features import DeviceRuntimeFeaturesReportV1, MANDATORY_NODE_FEATURES
+from packages.protocol.transport import DeviceProtocolError
 
 
 def authority(ctx):

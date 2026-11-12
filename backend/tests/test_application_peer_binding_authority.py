@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.application_authority_grant import ApplicationAuthorityGrant as Grant
 from backend.db.module import ApplicationExtensionInstallation as Installation
-from backend.services import application_authority_management as authority
+from backend.applications.authority import management as authority
 from backend.tests.test_application_authority_management import (
     installed as managed_state,
     native,
@@ -21,7 +21,7 @@ from backend.tests.test_application_authority_subjects import (
     source_installed,
 )
 from backend.tests.test_application_checkpoint_authority import store_checkpoint_package
-from three_mm_protocol.tests.test_application_peer_bindings import peer_request
+from packages.protocol.tests.test_application_peer_bindings import peer_request
 
 
 pytestmark = pytest.mark.skipif(

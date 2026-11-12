@@ -1,6 +1,6 @@
 """M21 local acceptance harness tests (WP5)."""
 
-from backend.services.interactive_session_acceptance import (
+from backend.sessions.acceptance import (
     AcceptanceReport,
     CounterSessionProvider,
     run_local_session_acceptance,

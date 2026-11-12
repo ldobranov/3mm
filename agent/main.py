@@ -27,9 +27,9 @@ from agent.modules.gpio import GPIO_ENTRYPOINT
 from agent.modules.character_display import character_display_handler
 from agent.modules.character_display_scene import character_display_scene_handler
 from agent.modules.gpio_input import gpio_input_handler
-from three_mm_protocol.gpio_input import INPUT_ENTRYPOINT
-from three_mm_protocol.character_display import DISPLAY_ENTRYPOINT
-from three_mm_protocol.character_display_scene import SCENE_ENTRYPOINT
+from packages.protocol.gpio_input import INPUT_ENTRYPOINT
+from packages.protocol.character_display import DISPLAY_ENTRYPOINT
+from packages.protocol.character_display_scene import SCENE_ENTRYPOINT
 from agent.gpio_configuration import GpioConfigurationManager
 from agent.automation_store import AutomationStore
 from agent.identity import AgentIdentity, AgentIdentityStore
@@ -39,10 +39,10 @@ from agent.inventory import collect_inventory, platform_neutral_inventory
 from agent.module_runtime import AgentModuleRuntime
 from agent.role import AgentRoleResolver
 from agent.node_update_transport import NodeUpdateTransport
-from three_mm_protocol import (
+from packages.protocol import (
     AgentHealth, AgentHello, AgentInventory, AgentRole, DeviceInventoryV2,
 )
-from three_mm_provisioning import FileProvisioningStore
+from packages.provisioning import FileProvisioningStore
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,7 +247,7 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
     @app.get("/component-health", tags=["system"])
     def component_health(request: Request):
         _runtime(request)
-        from three_mm_runtime.component_identity import component_health as identity
+        from components.system_runtime.component_identity import component_health as identity
         result=identity()
         if result is None:raise HTTPException(404,"Independent component identity is unavailable")
         return result

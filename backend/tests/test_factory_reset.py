@@ -113,7 +113,7 @@ def test_reset_fences_fresh_database_before_any_activation(tmp_path, monkeypatch
             calls.append("migrate")
         elif "backend.scripts.bootstrap_admin" in arguments:
             calls.append("bootstrap")
-        elif "three_mm_runtime.activate" in arguments:
+        elif "components.system_runtime.activate" in arguments:
             calls.append("activate")
         else:
             calls.append("refresh-helper")

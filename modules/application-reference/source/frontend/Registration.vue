@@ -13,7 +13,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ApplicationHostError, useApplicationHost } from '@3mm/application-ui/v1'
+import { ApplicationHostError, useApplicationHost } from '@platform/application-ui/v1'
 
 const host = useApplicationHost()
 const unconfirmed = ref(false)

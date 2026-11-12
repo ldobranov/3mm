@@ -9,8 +9,8 @@ from sqlalchemy import select
 from backend.db.audit_log import AuditLog
 from backend.db.module import ModulePackage, ThemeExtensionInstallation
 from backend.db.settings import Settings
-from backend.routes import modules
-from backend.services.module_packages import validate_module_package
+from backend.artifacts import api as modules
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_theme_extension_packages import package
 from backend.tests.test_theme_extension_lifecycle import BASE, runtime, upload
 

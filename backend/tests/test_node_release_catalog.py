@@ -3,7 +3,7 @@ import pytest
 from backend.config import (
     UpdateCatalogSettings,
 )
-from backend.services.node_release_catalog import (
+from backend.devices.updates.catalog import (
     NodeReleaseCatalogError,
     find_published_node_release,
 )
@@ -286,7 +286,7 @@ def test_node_archive_download_verifies_body(
 ):
     import hashlib
 
-    from backend.services.node_release_catalog import (
+    from backend.devices.updates.catalog import (
         PublishedNodeRelease,
         NodeReleaseManifest,
         download_published_node_archive,
@@ -363,7 +363,7 @@ def test_node_archive_download_rejects_untrusted_redirect(
 ):
     import hashlib
 
-    from backend.services.node_release_catalog import (
+    from backend.devices.updates.catalog import (
         PublishedNodeRelease,
         NodeReleaseManifest,
         download_published_node_archive,
@@ -425,7 +425,7 @@ def test_node_archive_download_rejects_untrusted_redirect(
 def test_node_archive_download_rejects_wrong_checksum(
     tmp_path,
 ):
-    from backend.services.node_release_catalog import (
+    from backend.devices.updates.catalog import (
         PublishedNodeRelease,
         NodeReleaseManifest,
         download_published_node_archive,

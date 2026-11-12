@@ -25,9 +25,9 @@ from backend.tests.test_application_relational_preparation import (
     source_subject,
     stopped,
 )
-from three_mm_runtime import application_relational_control as installed_control
-from three_mm_runtime import update_helper
-from three_mm_runtime.application_relational_control import CoreMetadataClient
+from components.system_runtime import application_relational_control as installed_control
+from components.system_runtime import update_helper
+from components.system_runtime.application_relational_control import CoreMetadataClient
 
 pytestmark = [
     ROOT_ONLY,
@@ -95,7 +95,7 @@ def test_actual_admin_flow(upgradable, monkeypatch, tmp_path, kind):
             [
                 sys.executable,
                 "-m",
-                "backend.services.application_relational_admin_worker",
+                "backend.applications.relational.admin_worker",
                 "--core-uid",
                 "1202",
                 "--database",
@@ -111,7 +111,7 @@ def test_actual_admin_flow(upgradable, monkeypatch, tmp_path, kind):
         )
 
     metadata = CoreMetadataClient(core_uid=1202, database=core_db, runner=runner)
-    from three_mm_runtime import (
+    from components.system_runtime import (
         application_relational_upgrade_control as upgrade_control,
     )
 
@@ -142,7 +142,7 @@ def test_actual_admin_flow(upgradable, monkeypatch, tmp_path, kind):
         "_service_ids",
         lambda user, group: (1200, 1201) if user == "3mm-app" else (1202, 1203),
     )
-    from three_mm_runtime.application_activation import SystemdApplicationSupervisor
+    from components.system_runtime.application_activation import SystemdApplicationSupervisor
 
     monkeypatch.setattr(
         SystemdApplicationSupervisor,
@@ -175,7 +175,7 @@ def test_actual_admin_flow(upgradable, monkeypatch, tmp_path, kind):
             [
                 sys.executable,
                 "-m",
-                "backend.services.application_authority_admin",
+                "backend.applications.authority.admin",
                 *args,
             ],
             input=state.token.encode() + b"\n",

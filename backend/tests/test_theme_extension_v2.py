@@ -12,10 +12,10 @@ import pytest
 from sqlalchemy import select
 
 from backend.db.module import ModulePackage
-from backend.services.module_packages import ModulePackageError, validate_module_package
+from backend.artifacts.packages import ModulePackageError, validate_module_package
 from backend.tests.test_theme_extension_packages import manifest, package
 from backend.tests.test_theme_extension_lifecycle import BASE, runtime, upload  # noqa: F401
-from three_mm_protocol.theme_extension_v2 import DESIGN_DEFAULTS
+from packages.protocol.theme_extension_v2 import DESIGN_DEFAULTS
 
 
 def png(width=1, height=1, pixels=None):
@@ -186,7 +186,7 @@ def test_portable_restore_preserves_v2_selection_and_asset_zip(tmp_path, monkeyp
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
     from backend.db.module import ThemeExtensionInstallation
-    from backend.services import theme_extensions
+    from backend.appearance import packages as theme_extensions
     from backend.tests.test_backup_preview import _settings
     from deployment.create_backup import create_backup
     from deployment.portable_backup import create_portable_export, import_portable_backup

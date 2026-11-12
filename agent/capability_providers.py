@@ -6,10 +6,10 @@ from pathlib import Path
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
-from three_mm_protocol.device_capabilities import (
+from packages.protocol.device_capabilities import (
     CapabilityAdvertisementV1, CapabilityProviderReportV2, ProviderId, ProviderType,
 )
-from three_mm_protocol.capability_availability import (
+from packages.protocol.capability_availability import (
     CapabilityAvailabilityReportV1, CapabilityHealthV1, declaration_digest,
 )
 

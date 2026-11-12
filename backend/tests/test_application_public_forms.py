@@ -30,19 +30,19 @@ from backend import database
 from backend.config import ApplicationRuntimeSettings
 from backend.db.base import Base
 from backend.db.module import ApplicationExtensionInstallation as Installation, ApplicationRetainedData, ModulePackage
-from backend.services import application_public_web_transport as transport
-from backend.services import public_form_guests
-from backend.services.application_extensions import ApplicationGatewayError, prepare_application_invocation
-from backend.services.module_packages import ModulePackageError, validate_module_package
+from backend.applications.public_web import transport
+from backend.applications.public_web import guests as public_form_guests
+from backend.applications.runtime.gateway import ApplicationGatewayError, prepare_application_invocation
+from backend.artifacts.packages import ModulePackageError, validate_module_package
 from backend.tests.test_application_authority_management import installed, source_installed, source_subject, identity
 from backend.tests.test_application_consent import allow, preview
 from backend.version import core_version
-from three_mm_runtime.application_activation import (
+from components.system_runtime.application_activation import (
     activate_application_package, application_instance_id, uninstall_application_instance,
 )
-from three_mm_platform_runtime.public_web import PublicWebRuntime
-from three_mm_public_web.server import create_server_from_socket
-from three_mm_public_web.webhook_pilot import WebhookPilotClient
+from components.platform_runtime.public_web import PublicWebRuntime
+from components.public_web.server import create_server_from_socket
+from components.public_web.webhook_pilot import WebhookPilotClient
 from tools.build_public_form_reference import build_package, MODULE
 
 
@@ -53,7 +53,7 @@ LINUX_LAB = pytest.mark.skipif(sys.platform != 'linux' or getattr(os, 'geteuid',
 
 @contextmanager
 def public_surface(base, keys, *, guest_forms=False, webhook_pilot=None):
-    from backend.services.application_platform import CoreRuntimeAuthorityServer
+    from backend.applications.runtime.platform import CoreRuntimeAuthorityServer
 
     with ExitStack() as cleanup:
         uid = os.geteuid()
@@ -76,7 +76,7 @@ def public_surface(base, keys, *, guest_forms=False, webhook_pilot=None):
 
 
 def launch_host(instance_id, root, keys, log):
-    return subprocess.Popen([sys.executable, '-c', 'from three_mm_runtime.application_host import serve; '
+    return subprocess.Popen([sys.executable, '-c', 'from components.system_runtime.application_host import serve; '
         'from pathlib import Path; import sys; serve(sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3]))',
         instance_id, str(root), str(keys)], cwd=SOURCE, stdout=log, stderr=subprocess.STDOUT)
 
@@ -339,8 +339,10 @@ def test_real_form_is_independent_of_a_stopped_webhook_pilot(form_stack):
 @LINUX_LAB
 def test_form_lifecycle_uses_admin_routes_and_preserves_data(installed, monkeypatch):
     """Only the privileged IPC and systemd boundaries are doubled."""
-    from backend.routes import application_authority, application_extensions, modules
-    from backend.utils.db_utils import get_db
+    from backend.applications.management import access_api as application_authority
+    from backend.applications.management import api as application_extensions
+    from backend.artifacts import api as modules
+    from backend.storage.sessions import get_db
 
     s = installed
     Base.metadata.create_all(s.engine)

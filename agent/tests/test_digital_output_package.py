@@ -12,8 +12,8 @@ from agent.gpio_configuration import GpioConfigurationManager
 from agent.hardware import HardwareProfile, MockDigitalGpioDriver
 from agent.module_runtime import AgentModuleRuntime
 from agent.modules.gpio import GPIO_ENTRYPOINT, gpio_runtime_handler
-from backend.services.module_packages import validate_module_package
-from three_mm_protocol.capability_contracts import CapabilityContractError
+from backend.artifacts.packages import validate_module_package
+from packages.protocol.capability_contracts import CapabilityContractError
 
 
 def test_digital_output_package_does_not_request_an_input(tmp_path):

@@ -20,11 +20,11 @@ compiled UI and the supported native scoped relational profile. Nothing is
 installed, migrated, enabled or granted merely by running the builder.
 
 Original manifest/definition and Core implementation are preserved under
-`libraries/three_mm_crud/source/legacy`. Core retirement archives preserve all
+`libraries/crud/source/legacy`. Core retirement archives preserve all
 historical rows. Import is explicit and administrator-only, uses current field
 validation, preserves identity/provenance and refuses conflicts. No old access
 grant is transferred. Tests use disposable own-data directories; they are not a
 claim of owner-VM installation or fresh hardware/systemd acceptance.
 
-See [shared CRUD](../../libraries/three_mm_crud/README.md) for limits, command
+See [shared CRUD](../../libraries/crud/README.md) for limits, command
 outcomes, retention/export/erasure and recovery behavior.

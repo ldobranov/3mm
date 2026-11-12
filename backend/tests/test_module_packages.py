@@ -2,7 +2,7 @@ import hashlib, io, json, zipfile
 from pathlib import Path
 import pytest
 from fastapi import HTTPException
-from backend.services.module_packages import ModulePackageError, validate_module_package
+from backend.artifacts.packages import ModulePackageError, validate_module_package
 
 def manifest(**changes):
     value = {"manifest_version": 2, "module_id": "org.3mm.demo", "name": "Demo", "version": "1.0.0", "runtimes": ["agent"], "entrypoints": {}, "compatibility": {"protocol": "1.0", "architectures": ["aarch64"]}, "capabilities": {"provides": ["demo.ready"], "consumes": []}, "permissions": ["data.write"], "health_check": {"type": "file_exists", "path": "health/ready"}, "registrations": [{"kind": "capability", "registration_id": "demo.ready"}]}
@@ -480,7 +480,7 @@ def test_application_package_requires_declared_secret_safe_configuration():
 
 @pytest.mark.asyncio
 async def test_application_package_upload_is_staged_without_automatic_activation(monkeypatch, tmp_path):
-    from backend.routes import modules
+    from backend.artifacts import api as modules
 
     class Upload:
         async def read(self, _limit):

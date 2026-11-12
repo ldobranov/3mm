@@ -1,0 +1,17 @@
+[Unit]
+Description=3mm local host-account session admission socket
+PartOf=3mm-core.service
+Before=3mm-core.service
+
+[Socket]
+ListenStream=/run/3mm-sessions/host-provider.sock
+SocketUser=root
+SocketGroup=3mm
+SocketMode=0660
+DirectoryMode=0755
+Accept=yes
+MaxConnections=4
+RemoveOnStop=yes
+
+[Install]
+WantedBy=3mm-core.service

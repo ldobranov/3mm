@@ -1,4 +1,4 @@
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 import asyncio
 from types import SimpleNamespace
 
@@ -252,7 +252,7 @@ def test_core_http_remains_available_when_sdk_connections_are_full(core,monkeypa
     import socket
     import time
     from backend.services.application_platform import CoreRuntimeAuthorityServer
-    from three_mm_platform_wire import AUTHORITY_CONNECTIONS as MAX_CONNECTIONS
+    from packages.platform_wire import AUTHORITY_CONNECTIONS as MAX_CONNECTIONS
     import os
     server=CoreRuntimeAuthorityServer(core.settings.applications.authority_socket,
         core.settings.applications.key_root,runtime_uid=os.getuid(),group="missing-test-group")

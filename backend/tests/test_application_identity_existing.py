@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
-from backend.services import installation_identity as service
+from backend.installation import identity as service
 
 
 PUBLIC_KEY = base64.b64encode(b"p" * 32).decode("ascii")

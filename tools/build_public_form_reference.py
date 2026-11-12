@@ -6,9 +6,9 @@ import json
 from pathlib import Path
 import zipfile
 
-from backend.services.module_packages import validate_module_package
-from three_mm_protocol import public_http_request_schema_v1, public_http_response_schema_v1
-from three_mm_protocol.public_forms import public_form_result_schema
+from backend.artifacts.packages import validate_module_package
+from packages.protocol import public_http_request_schema_v1, public_http_response_schema_v1
+from packages.protocol.public_forms import public_form_result_schema
 from tools.application_project import REPOSITORY, write_member
 
 MODULE = 'org.3mm.public-form-reference'

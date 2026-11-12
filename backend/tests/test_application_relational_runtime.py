@@ -3,7 +3,7 @@
 Disposable Linux fixtures only. Re-enable is explicit fixture state, NOT proof
 of a production first-install/upgrade coordinator or human route acceptance.
 """
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 import hashlib
 import io
@@ -26,13 +26,13 @@ from backend.config import ApplicationRuntimeSettings
 from backend.db.application_authority_grant import ApplicationAuthorityAction as Action
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.module import ModulePackage
-from backend.services import application_authority_management as authority
-from backend.services.application_extensions import (
+from backend.applications.authority import management as authority
+from backend.applications.runtime.gateway import (
     ApplicationGatewayError,
     invoke_application,
 )
-from backend.services.application_platform import ApplicationPlatformServer
-from backend.services.module_packages import validate_module_package
+from backend.applications.runtime.platform import ApplicationPlatformServer
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_relational_migrations import (
     migratable,
     migration_ticket,
@@ -50,10 +50,10 @@ from backend.tests.test_application_relational_preparation import (
     source_subject,
     stopped,
 )
-from three_mm_application_sdk import ApplicationPlatformClient
-from three_mm_runtime.application_host import _load_service
-from three_mm_runtime.application_relational_runtime import PreparedRelationalRuntime
-from three_mm_runtime.application_transport import (
+from packages.application_sdk import ApplicationPlatformClient
+from components.system_runtime.application_host import _load_service
+from components.system_runtime.application_relational_runtime import PreparedRelationalRuntime
+from components.system_runtime.application_transport import (
     ApplicationServiceClient,
     ApplicationTransportError,
 )
@@ -74,8 +74,8 @@ def tmp_path():
 
 SERVICE = """import json, os
 from pathlib import Path
-from three_mm_application_sdk.scoped_relational import ApplicationRelationalStorageError
-from three_mm_application_sdk import ApplicationFileStorageError
+from packages.application_sdk.scoped_relational import ApplicationRelationalStorageError
+from packages.application_sdk import ApplicationFileStorageError
 class Service:
     def __init__(self, ctx):
         self.ctx = ctx
@@ -122,7 +122,7 @@ def package(state, mode):
             module + "/migrations.py",
             """import os
 from pathlib import Path
-from three_mm_application_sdk import ApplicationMigration
+from packages.application_sdk import ApplicationMigration
 Path('migration-imported').write_text(str(os.getpid()))
 def first(db):
     raise RuntimeError('Existing schema must not be replayed')
@@ -237,7 +237,7 @@ def running(migratable, monkeypatch, request):
     sdk_root = Path(__file__).resolve().parents[2]
     launch = (
         "import sys; sys.path.insert(0, " + repr(str(sdk_root)) + "); "
-        "from three_mm_runtime.application_host import serve; "
+        "from components.system_runtime.application_host import serve; "
         "from pathlib import Path; serve("
         + repr(state.instance.name)
         + ", Path("
@@ -549,7 +549,7 @@ def test_admin_health_response_relay_after_resource_revoke_never_requests_sql(ru
     channel=state.root/"health-channel";channel.mkdir(mode=0o2750);os.chown(channel,65534,1000);channel.chmod(0o2750)
     path=channel/"runtime.sock";source=Path(__file__).resolve().parents[2]
     bootstrap="import sys;sys.path.insert(0,"+repr(str(source))+");"
-    runtime_code=bootstrap+"from pathlib import Path;from three_mm_platform_runtime.responses import ApplicationResponses;r=ApplicationResponses(Path(sys.argv[1]),Path(sys.argv[1]+'.unused'),core_uid=1000);r.start();r.serve_forever()"
+    runtime_code=bootstrap+"from pathlib import Path;from components.platform_runtime.responses import ApplicationResponses;r=ApplicationResponses(Path(sys.argv[1]),Path(sys.argv[1]+'.unused'),core_uid=1000);r.start();r.serve_forever()"
     runtime=subprocess.Popen([sys.executable,"-I","-c",runtime_code,str(path)],user=65534,group=65534,extra_groups=[],
         env={"PATH":"/usr/bin:/bin","LANG":"C.UTF-8"},stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     try:
@@ -566,8 +566,8 @@ from sqlalchemy.orm import Session
 import backend.database
 from backend.config import ApplicationRuntimeSettings
 from backend.db.module import ApplicationExtensionInstallation as Installation,ModulePackage
-from backend.services.application_health_probe import begin_health_probe,finish_health_probe
-import backend.services.application_relational as relational
+from backend.applications.runtime.health import begin_health_probe,finish_health_probe
+import backend.applications.relational.authority as relational
 def refused(*a,**k):raise AssertionError('Health requested host metadata/SQL authority')
 relational.prepare_host_invocation=refused
 settings=ApplicationRuntimeSettings(key_root=Path(sys.argv[2]),application_response_socket=Path(sys.argv[3]),runtime_user=pwd.getpwuid(65534).pw_name)

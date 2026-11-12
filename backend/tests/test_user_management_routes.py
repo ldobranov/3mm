@@ -8,11 +8,11 @@ from sqlalchemy.pool import StaticPool
 import backend.database  # noqa: F401
 from backend.db.base import Base
 from backend.db.user import User
-from backend.routes.user import router
-from backend.utils import jwt_utils
-from backend.utils.auth import hash_password, verify_password
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
+from backend.accounts.users_api import router
+from backend.accounts import tokens as jwt_utils
+from backend.accounts.passwords import hash_password, verify_password
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
 
 
 @pytest.fixture(autouse=True)

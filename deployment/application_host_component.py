@@ -28,10 +28,10 @@ import zipfile
 from deployment.platform_runtime_component import (
     RuntimeStore, _digest, _fsync, _id, _json, _write, core_fingerprint,
 )
-from three_mm_platform_wire import AUTHORITY_CONTRACT, peer_identity, read_frame, remaining
-from three_mm_platform_runtime.server import probe_runtime
-from three_mm_runtime.application_host_identity import HOST_CONTRACT
-from three_mm_runtime.application_transport import (
+from packages.platform_wire import AUTHORITY_CONTRACT, peer_identity, read_frame, remaining
+from components.platform_runtime.server import probe_runtime
+from components.system_runtime.application_host_identity import HOST_CONTRACT
+from components.system_runtime.application_transport import (
     ApplicationServiceClient, read_message, send_message, sign_message, verify_message,
 )
 
@@ -41,6 +41,7 @@ APPLICATIONS = Path("/var/lib/3mm/application-extensions")
 KEYS = Path("/etc/3mm/application-extensions")
 MAX_BYTES = 64 * 1024 * 1024
 HOST_PROBE_SECONDS = 2
+PROTOCOL_ASSET = "packages/protocol/theme_design_defaults.json"
 RUNTIME_FILES = (
     "__init__.py", "application_host.py", "application_host_identity.py",
     "application_transport.py", "application_file_executor.py",
@@ -52,11 +53,11 @@ ENTRY = b"""import importlib.util,json,os,sys,zipfile
 from pathlib import Path
 base=Path(sys.argv[0]).resolve().parent
 sys.path.insert(0,str(base/'vendor'))
-from three_mm_runtime.application_host import main
+from components.system_runtime.application_host import main
 if sys.argv[1:]==['--component-info']:
     import _cffi_backend
     import cryptography.hazmat.bindings._rust
-    import three_mm_runtime.application_relational_boot_policy
+    import components.system_runtime.application_relational_boot_policy
     if any(importlib.util.find_spec(n) is not None for n in ('backend','sqlalchemy','fastapi')):
         raise RuntimeError('Core dependencies are visible to the application host')
     with zipfile.ZipFile(sys.argv[0]) as z: print(z.read('host-build.json').decode())
@@ -90,16 +91,19 @@ def target_identity():
 
 def inputs(source):
     source = Path(source)
-    names = ["three_mm_runtime/" + name for name in RUNTIME_FILES]
-    for package in ("three_mm_protocol", "three_mm_application_sdk", "three_mm_platform_wire"):
+    names = ["components/__init__.py", "packages/__init__.py", PROTOCOL_ASSET,
+             *("components/system_runtime/" + name for name in RUNTIME_FILES)]
+    for package in ("packages/protocol", "packages/application_sdk", "packages/platform_wire"):
         names.extend(p.relative_to(source).as_posix() for p in (source / package).glob("*.py"))
     return sorted(names)
 
 
 def _source_name(name):
-    return (name == "__main__.py" or name in {"three_mm_runtime/" + n for n in RUNTIME_FILES}
-        or (len(PurePosixPath(name).parts) == 2 and name.endswith(".py")
-            and name.split('/')[0] in {"three_mm_protocol", "three_mm_application_sdk", "three_mm_platform_wire"}))
+    return (name in {"__main__.py", "components/__init__.py", "packages/__init__.py", PROTOCOL_ASSET} or name in {"components/system_runtime/" + n for n in RUNTIME_FILES}
+        or (PurePosixPath(name).parent in {PurePosixPath("packages/platform_wire"), PurePosixPath("packages/protocol")}
+            and name.endswith(".py"))
+        or (PurePosixPath(name).parent == PurePosixPath("packages/application_sdk")
+            and name.endswith(".py")))
 
 
 def _name(name):
@@ -194,7 +198,11 @@ def validate_artifact(blob, expected):
             or set(files)!={'host.pyz',*binding['vendor']}
             or any(not n.startswith('vendor/') for n in binding['vendor'])
             or binding['vendor']!={n:_digest(files[n]) for n in binding['vendor']}
-            or not binding['sources'] or any(not _source_name(n) for n in binding['sources'])):
+            or not {"components/__init__.py", "components/system_runtime/__init__.py",
+                    "packages/__init__.py", "packages/platform_wire/__init__.py",
+                    "packages/protocol/__init__.py", "packages/application_sdk/__init__.py",
+                    PROTOCOL_ASSET} <= binding['sources'].keys()
+            or any(not _source_name(n) for n in binding['sources'])):
         raise ValueError("Host artifact contract/target/payload is unsupported")
     with zipfile.ZipFile(io.BytesIO(files['host.pyz'])) as bundle:
         names=bundle.namelist()
@@ -438,7 +446,7 @@ def main():
         if store.target('current') is None:
             blob,_=build_component(args.source);store.bootstrap(blob,_digest(blob))
         return
-    from three_mm_runtime.application_lifecycle import _release_lock
+    from components.system_runtime.application_lifecycle import _release_lock
     with _release_lock():
         instance=instance_id(args.instance);store=store_for(instance);control=ApplicationControl(instance)
         callbacks=dict(control=control,health=lambda build:health(instance,build),fingerprint=lambda:fingerprint(instance))

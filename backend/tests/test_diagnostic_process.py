@@ -16,16 +16,16 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 from backend.db.base import Base
 from backend.db.module import ModulePackage, ApplicationExtensionInstallation as Installation
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_platform_runtime_process import (
     identity_app,managed_installed,source_subject,source_installed,checkpoint_app,
     core_stack,activate,activate_identity_grant,
 )
 from deployment import application_host_component as host
-from three_mm_application_sdk import ApplicationPlatformError, SDK_VERSION
-from three_mm_protocol.diagnostics import DiagnosticSession
-from three_mm_protocol.diagnostic_snapshot import read_export, timeline
-from three_mm_runtime.application_activation import activate_application_package, ApplicationActivationError
+from packages.application_sdk import ApplicationPlatformError, SDK_VERSION
+from packages.protocol.diagnostics import DiagnosticSession
+from packages.protocol.diagnostic_snapshot import read_export, timeline
+from components.system_runtime.application_activation import activate_application_package, ApplicationActivationError
 from tools.extension_dev import DevelopmentClient, inspect_package
 
 pytestmark=pytest.mark.skipif(os.name!='posix' or os.geteuid()==0,reason='Owned unprivileged Linux functional dev lab; OS isolation has separate P4 root evidence')
@@ -103,7 +103,7 @@ def test_two_packages_install_trace_update_rollback_and_permission_denial_preser
         sdk=DiagnosticSession('sdk',SDK_VERSION);sdk.start(60);s.client.diagnostics=sdk
         assert s.client.get_installation_identity()['sdk_version']=='1.3'
         from backend.db.module import ApplicationKioskTerminal
-        from backend.utils.jwt_utils import create_access_token
+        from backend.accounts.tokens import create_access_token
         terminal='b'*32
         with Session(s.state.engine) as db:
             row=db.query(Installation).filter_by(module_id=av.manifest.module_id).one()
@@ -122,7 +122,7 @@ def test_two_packages_install_trace_update_rollback_and_permission_denial_preser
         assert supervisor.processes[other.instance_id].pid==other_pid
         # A helper failure restores/stops/restarts but does not assert readiness.
         # Observe a fresh read-only health query before explicit outcome review.
-        from three_mm_runtime.application_transport import ApplicationServiceClient,ApplicationTransportError
+        from components.system_runtime.application_transport import ApplicationServiceClient,ApplicationTransportError
         deadline=time.monotonic()+5
         while True:
             try:

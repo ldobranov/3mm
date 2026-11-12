@@ -1,0 +1,418 @@
+"""Generic public-web route registry and supervised application dispatcher."""
+
+from __future__ import annotations
+
+import base64
+import re
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+
+from pydantic import ValidationError
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session
+
+from backend.config import ApplicationRuntimeSettings
+from backend.db.module import ApplicationExtensionInstallation, ModulePackage
+from backend.applications.runtime.gateway import (
+    ApplicationGatewayError,
+    load_application_definition,
+)
+from packages.protocol import (
+    ApplicationExtensionV1,
+    ApplicationPublicHttpRequestV1,
+    ApplicationPublicHttpResponseV1,
+    ApplicationPublicHttpRouteV1,
+)
+
+
+_FORWARDED_REQUEST_HEADERS = frozenset(
+    {"accept", "accept-language", "if-none-match", "if-modified-since"}
+)
+_PARAMETER_SEGMENT = re.compile(r"^\{([a-z][a-z0-9_]{0,63})\}$")
+
+
+class ApplicationPublicWebError(RuntimeError):
+    """Fail-closed public-web error with an HTTP status for the future adapter."""
+
+    def __init__(self, message: str, *, status_code: int = 503) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+@dataclass(frozen=True)
+class PublicRouteBinding:
+    module_id: str
+    package_id: int
+    installation_id: int | None
+    route: ApplicationPublicHttpRouteV1
+
+
+def _template_segments(path: str) -> tuple[str, ...]:
+    if path == "/":
+        return ()
+    return tuple(path.removeprefix("/").split("/"))
+
+
+def _route_specificity(path: str) -> int:
+    return sum(
+        1
+        for segment in _template_segments(path)
+        if _PARAMETER_SEGMENT.fullmatch(segment) is None
+    )
+
+
+def _routes_overlap(left: str, right: str) -> bool:
+    left_segments = _template_segments(left)
+    right_segments = _template_segments(right)
+    if len(left_segments) != len(right_segments):
+        return False
+    for left_segment, right_segment in zip(left_segments, right_segments):
+        left_parameter = _PARAMETER_SEGMENT.fullmatch(left_segment) is not None
+        right_parameter = _PARAMETER_SEGMENT.fullmatch(right_segment) is not None
+        if not left_parameter and not right_parameter and left_segment != right_segment:
+            return False
+    return True
+
+
+def _validate_bindings(bindings: Sequence[PublicRouteBinding]) -> None:
+    for index, left in enumerate(bindings):
+        for right in bindings[index + 1 :]:
+            if not _routes_overlap(left.route.path, right.route.path):
+                continue
+            cross_application = left.module_id != right.module_id
+            ambiguous_same_application = (
+                left.route.path == right.route.path
+                or _route_specificity(left.route.path)
+                == _route_specificity(right.route.path)
+            )
+            if cross_application or ambiguous_same_application:
+                raise ApplicationPublicWebError(
+                    "Public HTTP route conflict: "
+                    f"{left.module_id}:{left.route.route_id} ({left.route.path}) overlaps "
+                    f"{right.module_id}:{right.route.route_id} ({right.route.path})",
+                    status_code=409,
+                )
+
+
+def _binding(
+    definition: ApplicationExtensionV1,
+    package: ModulePackage,
+    installation_id: int | None,
+) -> list[PublicRouteBinding]:
+    return [
+        PublicRouteBinding(
+            module_id=definition.module_id,
+            package_id=package.id,
+            installation_id=installation_id,
+            route=route,
+        )
+        for route in definition.public_http_routes
+    ]
+
+
+def _route_installations(
+    db: Session,
+    *,
+    exclude_module_id: str | None = None,
+    include_activating: bool = False,
+) -> tuple[tuple, ...]:
+    available = (
+        ApplicationExtensionInstallation.enabled.is_(True)
+        & (ApplicationExtensionInstallation.status == "active")
+    )
+    if include_activating:
+        available = or_(available, ApplicationExtensionInstallation.status == "activating")
+    model = ApplicationExtensionInstallation
+    query = (
+        select(model.id, model.module_id, model.module_package_id, model.status, model.active_version,
+               ModulePackage.sha256, ModulePackage.file_path, ModulePackage.version)
+        .outerjoin(ModulePackage, model.module_package_id == ModulePackage.id)
+        .where(available).order_by(model.module_id)
+    )
+    if exclude_module_id is not None:
+        query = query.where(model.module_id != exclude_module_id)
+    return tuple(map(tuple, db.execute(query)))
+
+
+def _active_definitions(db: Session, installations):
+    for installation_id, module_id, package_id, status, active_version, *_ in installations:
+        package = db.get(ModulePackage, package_id, populate_existing=True)
+        if (
+            package is None
+            or package.module_id != module_id
+            or (status == "active" and package.version != active_version)
+        ):
+            raise ApplicationPublicWebError(
+                "Active application package is unavailable or inconsistent"
+            )
+        try:
+            definition = load_application_definition(package)
+        except ApplicationGatewayError as exc:
+            raise ApplicationPublicWebError(str(exc)) from exc
+        yield definition, package, installation_id
+
+
+def build_public_route_registry(db: Session) -> tuple[PublicRouteBinding, ...]:
+    """Reconstruct public route ownership from validated active application state."""
+
+    bindings = [binding for definition, package, installation_id in
+                _active_definitions(db, _route_installations(db))
+                for binding in _binding(definition, package, installation_id)]
+    _validate_bindings(bindings)
+    return tuple(bindings)
+
+
+def validate_public_http_candidate(
+    db: Session,
+    package: ModulePackage,
+    definition: ApplicationExtensionV1,
+) -> tuple[tuple, ...] | None:
+    """Check public ownership and return the reservation snapshot for activation."""
+
+    if not definition.public_http_routes and definition.public_webhook is None:
+        return None
+    # Pending candidates reserve routes too. They are never publicly dispatched.
+    reservations = _route_installations(
+        db, exclude_module_id=definition.module_id, include_activating=True
+    )
+    bindings = _binding(definition, package, None)
+    for other, other_package, installation_id in _active_definitions(db, reservations):
+        _validate_webhook_routes(definition, other)
+        bindings.extend(_binding(other, other_package, installation_id))
+    _validate_bindings(bindings)
+    return reservations
+
+
+def _validate_webhook_routes(candidate: ApplicationExtensionV1, other: ApplicationExtensionV1) -> None:
+    for owner, neighbor in ((candidate, other), (other, candidate)):
+        webhook = owner.public_webhook
+        if webhook is None:
+            continue
+        paths = [route.path for route in neighbor.public_http_routes]
+        if neighbor.public_webhook is not None:
+            paths.append(neighbor.public_webhook.path)
+        for path in paths:
+            if _routes_overlap(webhook.path, path):
+                raise ApplicationPublicWebError(
+                    f"Public webhook route conflict: {owner.module_id} ({webhook.path}) overlaps "
+                    f"{neighbor.module_id} ({path})", status_code=409,
+                )
+
+
+def require_current_public_route_reservations(db: Session, module_id: str, reservations: tuple[tuple, ...] | None):
+    """Recheck DB identities under the lifecycle write fence, with no package I/O."""
+    if reservations is not None and reservations != _route_installations(
+        db, exclude_module_id=module_id, include_activating=True
+    ):
+        raise ApplicationPublicWebError("Public route ownership changed; review activation again", status_code=409)
+
+
+def require_reviewed_webhook_route(db: Session, installation_id: int, path: str) -> None:
+    """Refuse pilot startup when old state predates activation-time checks."""
+    definitions = tuple(_active_definitions(db, _route_installations(db, include_activating=True)))
+    candidate = next((item for item, _, installed_id in definitions if installed_id == installation_id), None)
+    if candidate is None or candidate.public_webhook is None or candidate.public_webhook.path != path:
+        raise ApplicationPublicWebError("Reviewed public webhook route is unavailable")
+    for other, _, installed_id in definitions:
+        if installed_id != installation_id:
+            _validate_webhook_routes(candidate, other)
+
+
+def _normalized_request_path(path: str) -> str:
+    if (
+        not path.startswith("/")
+        or "?" in path
+        or "#" in path
+        or "%" in path
+        or "\\" in path
+        or "\x00" in path
+        or "\r" in path
+        or "\n" in path
+    ):
+        raise ApplicationPublicWebError("Public HTTP request path is invalid", status_code=400)
+    if path != "/" and (
+        path.endswith("/")
+        or "//" in path
+        or any(segment in {".", ".."} for segment in path.split("/")[1:])
+    ):
+        raise ApplicationPublicWebError("Public HTTP request path is invalid", status_code=400)
+    return path
+
+
+def _match_template(template: str, path: str) -> dict[str, str] | None:
+    template_segments = _template_segments(template)
+    path_segments = _template_segments(path)
+    if len(template_segments) != len(path_segments):
+        return None
+    parameters: dict[str, str] = {}
+    for expected, actual in zip(template_segments, path_segments):
+        parameter = _PARAMETER_SEGMENT.fullmatch(expected)
+        if parameter is not None:
+            if not actual:
+                return None
+            parameters[parameter.group(1)] = actual
+        elif expected != actual:
+            return None
+    return parameters
+
+
+def resolve_public_route(
+    db: Session,
+    method: str,
+    path: str,
+) -> tuple[PublicRouteBinding, dict[str, str]]:
+    normalized_method = method.upper()
+    if normalized_method not in {"GET", "HEAD", "POST"}:
+        raise ApplicationPublicWebError("Public HTTP method is not allowed", status_code=405)
+    normalized_path = _normalized_request_path(path)
+    path_match: tuple[PublicRouteBinding, dict[str, str]] | None = None
+    registry = sorted(
+        build_public_route_registry(db),
+        key=lambda item: (
+            -_route_specificity(item.route.path),
+            item.route.path,
+            item.module_id,
+        ),
+    )
+    for binding in registry:
+        parameters = _match_template(binding.route.path, normalized_path)
+        if parameters is None:
+            continue
+        path_match = (binding, parameters)
+        break
+    if path_match is None:
+        raise ApplicationPublicWebError("Public HTTP route was not found", status_code=404)
+    binding, parameters = path_match
+    if (binding.route.form_operation_id is None if normalized_method == 'POST'
+            else normalized_method not in binding.route.methods):
+        raise ApplicationPublicWebError("Public HTTP method is not allowed", status_code=405)
+    return binding, parameters
+
+
+def _normalize_query(
+    query: Mapping[str, str | Sequence[str]],
+) -> dict[str, tuple[str, ...]]:
+    result: dict[str, tuple[str, ...]] = {}
+    for name, value in query.items():
+        if isinstance(value, str):
+            values = (value,)
+        else:
+            values = tuple(value)
+        if not all(isinstance(item, str) for item in values):
+            raise ApplicationPublicWebError("Public HTTP query is invalid", status_code=400)
+        result[str(name)] = values
+    return result
+
+
+def _forwarded_headers(headers: Mapping[str, str]) -> dict[str, str]:
+    forwarded: dict[str, str] = {}
+    for name, value in headers.items():
+        normalized = name.lower()
+        if normalized not in _FORWARDED_REQUEST_HEADERS:
+            continue
+        if normalized in forwarded and forwarded[normalized] != value:
+            raise ApplicationPublicWebError(
+                "Public HTTP request contains duplicate forwarded headers",
+                status_code=400,
+            )
+        forwarded[normalized] = value
+    return forwarded
+
+
+def _active_public_installation(db, binding):
+    if binding.installation_id is None:
+        raise ApplicationPublicWebError("Public HTTP route is not active")
+    installation = db.get(
+        ApplicationExtensionInstallation, binding.installation_id, populate_existing=True
+    )
+    package = db.get(ModulePackage, binding.package_id)
+    if (
+        installation is None
+        or package is None
+        or not installation.enabled
+        or installation.status != "active"
+        or installation.module_package_id != package.id
+        or installation.module_id != package.module_id
+        or installation.active_version != package.version
+    ):
+        raise ApplicationPublicWebError("Public HTTP application is unavailable")
+    expected_mode = 'enforced' if binding.route.form_operation_id is not None else 'compatibility'
+    if installation.authority_mode != expected_mode:
+        # Registry ownership is not a scoped execution grant. Keep the route
+        # reserved (and other applications usable), but never invoke its code.
+        raise ApplicationPublicWebError("Public HTTP has no supported scoped resource grant")
+    return installation, package
+
+
+def prepare_public_http(
+    db: Session,
+    settings: ApplicationRuntimeSettings,
+    *,
+    method: str,
+    path: str,
+    query: Mapping[str, str | Sequence[str]] | None = None,
+    headers: Mapping[str, str] | None = None,
+    _resolved: tuple[PublicRouteBinding, dict[str, str]] | None = None,
+):
+    """Resolve current public read authority without waiting for application code."""
+    binding, path_params = _resolved if _resolved is not None else resolve_public_route(db, method, path)
+    installation, package = _active_public_installation(db, binding)
+
+    try:
+        request = ApplicationPublicHttpRequestV1.model_validate(
+            {
+                "method": method.upper(),
+                "path": _normalized_request_path(path),
+                "path_params": path_params,
+                "query": _normalize_query(query or {}),
+                "headers": _forwarded_headers(headers or {}),
+            }
+        )
+    except ValidationError as exc:
+        raise ApplicationPublicWebError(
+            "Public HTTP request is invalid", status_code=400
+        ) from exc
+
+    return binding, installation, package, request
+
+
+def prepare_public_form(db, path, fields):
+    from backend.applications.runtime.gateway import find_operation
+    from packages.protocol.public_forms import GUEST_PROOF_FIELD, public_form_payload
+
+    binding, _ = resolve_public_route(db, 'POST', path)
+    installation, package = _active_public_installation(db, binding)
+    operation = find_operation(load_application_definition(package), binding.route.form_operation_id)
+    if binding.route.guest_session:
+        fields = {name: value for name, value in fields.items() if name != GUEST_PROOF_FIELD}
+    try:
+        request_id, payload = public_form_payload(fields, operation.input_schema)
+    except ValueError as exc:
+        raise ApplicationPublicWebError('Public form is invalid', status_code=400) from exc
+    return binding, installation, package, request_id, payload
+
+
+def validate_public_http_response(binding, result):
+    try:
+        response = ApplicationPublicHttpResponseV1.model_validate(result)
+    except ValidationError as exc:
+        raise ApplicationPublicWebError(
+            "Public HTTP application returned an invalid response"
+        ) from exc
+
+    if (
+        response.content_type is not None
+        and response.content_type not in binding.route.content_types
+    ):
+        raise ApplicationPublicWebError(
+            "Public HTTP application returned an undeclared content type"
+        )
+    if response.body is not None:
+        response_bytes = len(response.body.encode("utf-8"))
+    elif response.body_base64 is not None:
+        response_bytes = len(base64.b64decode(response.body_base64, validate=True))
+    else:
+        response_bytes = 0
+    if response_bytes > binding.route.max_response_bytes:
+        raise ApplicationPublicWebError("Public HTTP application response is too large")
+    return response

@@ -20,10 +20,10 @@ from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.module import ModulePackage
 from backend.db.session import UserSession
-from backend.routes.application_authority import router
-from backend.services import application_authority_management as management
-from backend.services.application_authority_sources import _read_snapshot
-from backend.services.module_packages import validate_module_package
+from backend.applications.management.access_api import router
+from backend.applications.authority import management
+from backend.applications.authority.sources import _read_snapshot
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_authority_management import (
     identity,
 )
@@ -36,10 +36,10 @@ from backend.tests.test_application_authority_subjects import (
     installed as source_subject,
 )
 from backend.tests.test_application_authority_subjects import source_installed
-from backend.utils.db_utils import get_db
-from three_mm_application_sdk import ApplicationStorage
-from three_mm_protocol.tests.test_application_private_files import file_request
-from three_mm_protocol.tests.test_application_relational_storage import (
+from backend.storage.sessions import get_db
+from packages.application_sdk import ApplicationStorage
+from packages.protocol.tests.test_application_private_files import file_request
+from packages.protocol.tests.test_application_relational_storage import (
     relational_request,
 )
 

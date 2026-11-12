@@ -1,6 +1,6 @@
 """Explicit owned migration only; importing this module performs no work."""
 
-from three_mm_application_sdk import ApplicationMigration
+from packages.application_sdk import ApplicationMigration
 
 
 def first(connection):

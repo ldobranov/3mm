@@ -93,10 +93,10 @@ runtime. Default snapshots still omit libraries; private/generated/path guards
 remain enforced. Do not skip consumer checks or install an optional library into
 Core to compensate for a missing snapshot input.
 
-The Python integration group includes optional `libraries/three_mm_ai/tests` and
-`libraries/three_mm_crud/tests`; their source-path setup is test-only and does not
+The Python integration group includes optional `libraries/ai_clients/tests` and
+`libraries/crud/tests`; their source-path setup is test-only and does not
 install either library into Core. CRUD renderer tests use the existing frontend
-toolchain with `vitest run --config libraries/three_mm_crud/tests/vitest.config.mjs`.
+toolchain with `vitest run --config libraries/crud/tests/vitest.config.mjs`.
 Empty `.3mm-source-only` markers in individual `modules/<name>` or
 `libraries/<name>` directories exclude preserved product/optional source from
 release payloads. Runtime dependencies cannot use a marker to evade required-file
@@ -105,7 +105,8 @@ outside live Core ORM ownership; never use autogenerate to erase that evidence.
 
 ## Requested commits and reuse
 
-For the bounded CAP21 pure-Python application profile, use
+Start application authoring with [Building applications](APPLICATION_DEVELOPMENT.md)
+and the project's own `AGENTS.md`. For the bounded CAP21 pure-Python application profile, use
 `python -m tools.extension_dev init NEW_DIRECTORY --module-id org.example.app --name "Example" --route /example`,
 then `preview NEW_DIRECTORY` and `check NEW_DIRECTORY --output OUTPUT_OUTSIDE_PROJECT/app.zip`
 through that same module. These are local authoring actions, not upload or grant

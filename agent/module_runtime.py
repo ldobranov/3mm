@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 from pydantic import ValidationError
-from three_mm_protocol import ModuleManifestV2, meets_minimum_version
-from three_mm_protocol.capability_contracts import CapabilityContractError, validate_value
-from three_mm_protocol.capability_availability import CapabilityAvailabilityReportV1, declaration_digest
+from packages.protocol import ModuleManifestV2, meets_minimum_version
+from packages.protocol.capability_contracts import CapabilityContractError, validate_value
+from packages.protocol.capability_availability import CapabilityAvailabilityReportV1, declaration_digest
 from datetime import UTC, datetime
 from agent import __version__
-from three_mm_protocol.hardware_profiles import validate_hardware_approval, hardware_profile
-from three_mm_protocol.module_manifest import MODULE_ID_PATTERN
+from packages.protocol.hardware_profiles import validate_hardware_approval, hardware_profile
+from packages.protocol.module_manifest import MODULE_ID_PATTERN
 
 AGENT_ALLOWED_PERMISSIONS = {"data.read", "data.write", "events.publish", "network.outbound", "process.spawn", "hardware.inventory", "hardware.gpio", "hardware.display"}
 

@@ -21,25 +21,27 @@ import time
 
 
 SOURCE_ROOTS = frozenset({
-    "backend", "agent", "setup_service", "three_mm_protocol",
-    "three_mm_provisioning", "three_mm_runtime", "three_mm_web",
-    "three_mm_public_web", "three_mm_application_sdk", "deployment",
+    "backend", "agent", "components/setup", "packages/protocol",
+    "packages/provisioning", "components/system_runtime", "components/admin_web",
+    "components/public_web", "packages/application_sdk", "deployment",
     "examples", "modules", "config_templates", "tools",
-    "three_mm_platform_wire", "three_mm_platform_runtime",
+    "packages/platform_wire", "components/platform_runtime",
 })
-ROOT_FILES = frozenset({"alembic.ini", "frontend/compiler/compile-ui-extension.mjs", "VERSION", "pytest.ini", "pyproject.toml", "install.sh",
+ROOT_FILES = frozenset({"alembic.ini", "components/__init__.py", "packages/__init__.py", "frontend/compiler/compile-ui-extension.mjs", "VERSION", "pytest.ini", "pyproject.toml", "install.sh",
                         "deploy.ps1", ".github/workflows/release.yml"})
 EXCLUDED_PARTS = frozenset({
     ".git", ".runtime", ".venv", "node_modules", "__pycache__", "data",
     ".pytest_cache", ".mypy_cache", "uploads",
 })
 EXCLUDED_SUFFIXES = frozenset({".env", ".key", ".pem", ".pfx", ".db", ".sqlite", ".sqlite3", ".log", ".pyc"})
+# Retained local experiment data, not application or release inputs.
+LOCAL_DATA_FILES = frozenset({"backend/prices.json", "backend/output.json"})
 MANIFEST = ".dev-lab-manifest.json"
 MAX_SOURCE_BYTES = 128 * 1024 * 1024
 PROFILES = {
     "cap14-display-geometry": (
-        "three_mm_protocol/tests/test_character_display.py",
-        "three_mm_protocol/tests/test_hardware_profiles.py",
+        "packages/protocol/tests/test_character_display.py",
+        "packages/protocol/tests/test_hardware_profiles.py",
         "agent/tests/test_character_display.py",
         "agent/tests/test_character_display_transport.py",
         "agent/tests/test_hardware_profile_approval.py",
@@ -49,15 +51,15 @@ PROFILES = {
         "backend/tests/test_application_command_providers.py",
         "backend/tests/test_application_command_rebinding.py",
         "backend/tests/test_application_command_recovery.py",
-        "three_mm_application_sdk/tests/test_command_discovery.py",
-        "three_mm_application_sdk/tests/test_requirement_discovery.py",
+        "packages/application_sdk/tests/test_command_discovery.py",
+        "packages/application_sdk/tests/test_requirement_discovery.py",
         "deployment/tests/test_application_host_component.py::test_native_artifact_is_reproducible_minimal_and_core_free",
         "deployment/tests/test_service_component.py::test_native_service_is_reproducible_and_contains_no_core[agent]",
         "tools/tests/test_dev_lab.py",
     ),
     "cap14-profile-approval": (
-        "three_mm_protocol/tests/test_hardware_profiles.py",
-        "three_mm_protocol/tests/test_node_features.py",
+        "packages/protocol/tests/test_hardware_profiles.py",
+        "packages/protocol/tests/test_node_features.py",
         "agent/tests",
         "backend/tests/test_hardware_profile_installation.py",
         "backend/tests/test_module_packages.py",
@@ -76,13 +78,13 @@ PROFILES = {
         "tools/tests/test_dev_lab.py",
     ),
     "cap14-i2c-boot": (
-        "three_mm_runtime/tests/test_hardware_interfaces.py",
+        "components/system_runtime/tests/test_hardware_interfaces.py",
         "backend/tests/test_hardware_interface_routes.py",
     ),
     "cap14-i2c-web": (
-        "three_mm_runtime/tests/test_hardware_interfaces.py",
-        "three_mm_runtime/tests/test_update_helper.py",
-        "three_mm_runtime/tests/test_systemd_templates.py",
+        "components/system_runtime/tests/test_hardware_interfaces.py",
+        "components/system_runtime/tests/test_update_helper.py",
+        "components/system_runtime/tests/test_systemd_templates.py",
         "backend/tests/test_hardware_interface_routes.py",
         "backend/tests/test_system_control_routes.py",
         "backend/tests/test_device_registry_routes.py",
@@ -91,7 +93,7 @@ PROFILES = {
         "tools/tests/test_dev_lab.py",
     ),
     "cap14-display": (
-        "three_mm_protocol/tests/test_character_display.py",
+        "packages/protocol/tests/test_character_display.py",
         "agent/tests",
         "backend/tests/test_capability_contracts.py",
         "backend/tests/test_application_authority_sources.py",
@@ -103,10 +105,10 @@ PROFILES = {
         "deployment/tests/test_service_component.py::test_native_service_is_reproducible_and_contains_no_core[agent]",
     ),
     "p5-process": ("backend/tests/test_diagnostic_process.py",),
-    "p5-packaging": ("backend/tests/test_release_builder.py", "deployment/tests/test_node_release.py", "deployment/tests/test_application_host_component.py::test_native_artifact_is_reproducible_minimal_and_core_free", "deployment/tests/test_service_component.py::test_native_service_is_reproducible_and_contains_no_core", "setup_service/tests/test_api.py::test_diagnostics_are_opt_in_bounded_metadata", "backend/tests/test_language_extensions.py"),
-    "p5-core": ("three_mm_protocol/tests/test_diagnostics.py", "three_mm_protocol/tests/test_diagnostic_snapshot.py", "three_mm_application_sdk/tests/test_platform_diagnostics.py", "backend/tests/test_diagnostics.py", "backend/tests/test_diagnostic_workspace.py", "tools/tests/test_extension_dev.py"),
+    "p5-packaging": ("backend/tests/test_release_builder.py", "deployment/tests/test_node_release.py", "deployment/tests/test_application_host_component.py::test_native_artifact_is_reproducible_minimal_and_core_free", "deployment/tests/test_service_component.py::test_native_service_is_reproducible_and_contains_no_core", "components/setup/tests/test_api.py::test_diagnostics_are_opt_in_bounded_metadata", "backend/tests/test_language_extensions.py"),
+    "p5-core": ("packages/protocol/tests/test_diagnostics.py", "packages/protocol/tests/test_diagnostic_snapshot.py", "packages/application_sdk/tests/test_platform_diagnostics.py", "backend/tests/test_diagnostics.py", "backend/tests/test_diagnostic_workspace.py", "tools/tests/test_extension_dev.py"),
     "p5-boundaries": ("backend/tests/test_platform_transport_contract.py", "backend/tests/test_application_invocation_process.py", "backend/tests/test_application_ui_authority.py", "backend/tests/test_core_startup.py", "backend/tests/test_release_builder.py", "deployment/tests/test_node_release.py"),
-    "p4-end-recovery-controls": ("deployment/tests/test_service_component.py::test_component_recovery_resets_only_its_systemd_failure_counter", "deployment/tests/test_service_component.py::test_core_is_favored_over_optional_workers_under_global_oom", "three_mm_runtime/tests/test_systemd_templates.py", "deployment/tests/test_session_worker_deployment.py"),
+    "p4-end-recovery-controls": ("deployment/tests/test_service_component.py::test_component_recovery_resets_only_its_systemd_failure_counter", "deployment/tests/test_service_component.py::test_core_is_favored_over_optional_workers_under_global_oom", "components/system_runtime/tests/test_systemd_templates.py", "deployment/tests/test_session_worker_deployment.py"),
     "p4-end-transactions": ("deployment/tests/test_service_component.py::test_component_update_does_not_enable_a_service_stopped_during_staging", "deployment/tests/test_service_component.py::test_component_release_lock_conflicts_with_installer_and_rejects_symlinks", "deployment/tests/test_platform_runtime_component.py"),
     "p4-end-probes": ("deployment/tests/test_service_component.py::test_component_probe_trickle_cannot_hold_update_or_prevent_rollback", "deployment/tests/test_service_component.py::test_service_contract_versions_reject_boolean_and_float_aliases"),
     "p4-end-service-final": ("deployment/tests/test_service_component.py::test_independent_component_update_rollback_and_bad_candidate_preserve_core[agent]", "deployment/tests/test_service_component.py::test_independent_component_update_rollback_and_bad_candidate_preserve_core[public-web]"),
@@ -118,10 +120,10 @@ PROFILES = {
     "p4-end-human-final": ("backend/tests/test_application_invocation_process.py::test_admin_operator_and_kiosk_contexts_use_original_signed_replies", "backend/tests/test_application_invocation_process.py::test_waiting_operator_result_is_not_disclosed_after_revocation"),
     "p4-end-agent-final": ("deployment/tests/test_service_component.py::test_independent_component_update_rollback_and_bad_candidate_preserve_core[agent]",),
     "p4-end-components": ("deployment/tests/test_service_component.py", "deployment/tests/test_platform_runtime_component.py", "deployment/tests/test_application_host_component.py"),
-    "p4-end-packaging": ("backend/tests/test_release_builder.py", "deployment/tests/test_node_release.py", "deployment/tests/test_node_installer.py", "deployment/tests/test_session_worker_deployment.py", "three_mm_runtime/tests/test_systemd_templates.py", "tools/tests/test_dev_lab.py"),
-    "p4-end-agent": ("agent/tests", "three_mm_public_web/tests", "three_mm_runtime/tests/test_session_worker.py"),
-    "p4-end-peers": ("backend/tests/test_installation_peers.py", "backend/tests/test_installation_peer_approval_binding.py", "backend/tests/test_application_peer_binding_denial.py", "backend/tests/test_installation_peer_read_sources.py", "three_mm_runtime/tests/test_application_relational_session.py"),
-    "p4-end-metadata": ("three_mm_runtime/tests/test_application_relational_session.py", "backend/tests/test_application_relational_runtime.py"),
+    "p4-end-packaging": ("backend/tests/test_release_builder.py", "deployment/tests/test_node_release.py", "deployment/tests/test_node_installer.py", "deployment/tests/test_session_worker_deployment.py", "components/system_runtime/tests/test_systemd_templates.py", "tools/tests/test_dev_lab.py"),
+    "p4-end-agent": ("agent/tests", "components/public_web/tests", "components/system_runtime/tests/test_session_worker.py"),
+    "p4-end-peers": ("backend/tests/test_installation_peers.py", "backend/tests/test_installation_peer_approval_binding.py", "backend/tests/test_application_peer_binding_denial.py", "backend/tests/test_installation_peer_read_sources.py", "components/system_runtime/tests/test_application_relational_session.py"),
+    "p4-end-metadata": ("components/system_runtime/tests/test_application_relational_session.py", "backend/tests/test_application_relational_runtime.py"),
     "p4-end-http": ("backend/tests/test_application_access.py", "backend/tests/test_application_ui_host.py", "backend/tests/test_application_ui_authority.py", "backend/tests/test_application_reference_scoped.py", "backend/tests/test_application_health_probe.py", "backend/tests/test_application_response_relay.py", "backend/tests/test_application_extensions.py"),
     "p4-end-process": ("backend/tests/test_application_invocation_process.py",),
     "p4d5-packaging": ("backend/tests/test_release_builder.py", "deployment/tests/test_node_release.py"),
@@ -140,7 +142,7 @@ PROFILES = {
         "backend/tests/test_runtime_transport.py", "backend/tests/test_platform_runtime_process.py",
         "backend/tests/test_application_public_web_transport.py", "backend/tests/test_event_runtime_process.py",
         "backend/tests/test_connector_runtime_process.py", "deployment/tests/test_platform_runtime_component.py",
-        "backend/tests/test_release_builder.py", "three_mm_runtime/tests/test_systemd_templates.py",
+        "backend/tests/test_release_builder.py", "components/system_runtime/tests/test_systemd_templates.py",
         "deployment/tests/test_node_installer.py", "deployment/tests/test_node_release.py", "tools/tests/test_dev_lab.py"),
 
     "p4d3-core": ("backend/tests/test_application_connector_transport.py", "backend/tests/test_application_connectors.py", "backend/tests/test_application_authority_management.py",
@@ -150,7 +152,7 @@ PROFILES = {
         "backend/tests/test_platform_runtime_process.py", "backend/tests/test_event_runtime_process.py",
         "backend/tests/test_application_public_web_transport.py", "backend/tests/test_application_platform.py",
         "deployment/tests/test_platform_runtime_component.py", "backend/tests/test_release_builder.py",
-        "three_mm_runtime/tests/test_systemd_templates.py", "three_mm_runtime/tests/test_activate.py",
+        "components/system_runtime/tests/test_systemd_templates.py", "components/system_runtime/tests/test_activate.py",
         "deployment/tests/test_node_installer.py", "deployment/tests/test_node_release.py", "tools/tests/test_dev_lab.py"),
     "p4d3-admin": ("backend/tests/test_connector_runtime_process.py::test_saturated_network_worker_leaves_short_core_admission_and_admin_available",),
     "p4d3-last": (
@@ -163,7 +165,7 @@ PROFILES = {
         "backend/tests/test_connector_runtime_process.py::test_dns_hang_is_killed_outside_core_at_absolute_deadline",
         "backend/tests/test_connector_runtime_process.py::test_bad_worker_candidate_rolls_back_only_network_process",
         "backend/tests/test_application_connector_transport.py",
-        "three_mm_protocol/tests/test_application_extension.py"),
+        "packages/protocol/tests/test_application_extension.py"),
     "p4d3-process": ("backend/tests/test_connector_runtime_process.py",),
 
     "p4d2-process": ("backend/tests/test_event_runtime_process.py",),
@@ -181,7 +183,7 @@ PROFILES = {
         "backend/tests/test_application_public_web_transport.py",
         "deployment/tests/test_platform_runtime_component.py",
         "backend/tests/test_release_builder.py",
-        "three_mm_runtime/tests/test_systemd_templates.py",
+        "components/system_runtime/tests/test_systemd_templates.py",
         "deployment/tests/test_node_installer.py",
         "deployment/tests/test_node_release.py",
         "tools/tests/test_dev_lab.py",
@@ -209,13 +211,13 @@ PROFILES = {
         "backend/tests/test_application_scoped_runtime_gates.py",
         "backend/tests/test_application_events.py",
         "backend/tests/test_application_event_authority.py",
-        "three_mm_public_web/tests",
+        "components/public_web/tests",
         "backend/tests/test_local_listener_lifecycle.py",
         "backend/tests/test_core_startup.py",
         "backend/tests/test_runtime_transport.py",
         "backend/tests/test_platform_runtime_process.py",
         "deployment/tests/test_platform_runtime_component.py",
-        "three_mm_runtime/tests/test_systemd_templates.py",
+        "components/system_runtime/tests/test_systemd_templates.py",
         "backend/tests/test_release_builder.py",
         "backend/tests/test_first_boot_preflight.py",
         "deployment/tests/test_node_installer.py",
@@ -224,13 +226,13 @@ PROFILES = {
     ),
     "p4c": (
         "deployment/tests/test_application_host_component.py",
-        "three_mm_runtime/tests/test_application_host.py",
-        "three_mm_runtime/tests/test_application_activation.py",
-        "three_mm_runtime/tests/test_application_file_host.py",
-        "three_mm_runtime/tests/test_application_lifecycle.py",
-        "three_mm_runtime/tests/test_application_relational_session.py",
-        "three_mm_runtime/tests/test_systemd_templates.py",
-        "three_mm_runtime/tests/test_services.py",
+        "components/system_runtime/tests/test_application_host.py",
+        "components/system_runtime/tests/test_application_activation.py",
+        "components/system_runtime/tests/test_application_file_host.py",
+        "components/system_runtime/tests/test_application_lifecycle.py",
+        "components/system_runtime/tests/test_application_relational_session.py",
+        "components/system_runtime/tests/test_systemd_templates.py",
+        "components/system_runtime/tests/test_services.py",
         "backend/tests/test_release_builder.py",
         "deployment/tests/test_node_installer.py",
         "deployment/tests/test_node_release.py",
@@ -239,11 +241,11 @@ PROFILES = {
     "p4b": (
         "backend/tests/test_runtime_transport.py",
         "backend/tests/test_platform_runtime_process.py::test_real_checkpoint_mutation_replay_and_revocation_share_the_only_runtime_path",
-        "three_mm_runtime/tests/test_application_activation.py",
-        "three_mm_runtime/tests/test_application_host.py",
-        "three_mm_runtime/tests/test_application_transport.py",
-        "three_mm_runtime/tests/test_application_lifecycle.py",
-        "three_mm_runtime/tests/test_application_relational_session.py",
+        "components/system_runtime/tests/test_application_activation.py",
+        "components/system_runtime/tests/test_application_host.py",
+        "components/system_runtime/tests/test_application_transport.py",
+        "components/system_runtime/tests/test_application_lifecycle.py",
+        "components/system_runtime/tests/test_application_relational_session.py",
     ),
     "p4": (
         "deployment/tests/test_platform_runtime_component.py",
@@ -251,14 +253,14 @@ PROFILES = {
         "backend/tests/test_platform_runtime_process.py::test_revoke_recovery_and_authority_loss_cannot_fall_back_or_cache_rights",
         "backend/tests/test_platform_runtime_process.py::test_runtime_identity_never_uses_compatibility_identity_initialization",
         "backend/tests/test_core_startup.py",
-        "three_mm_runtime/tests/test_activate.py",
-        "three_mm_runtime/tests/test_services.py",
-        "three_mm_runtime/tests/test_systemd_templates.py",
-        "three_mm_runtime/tests/test_application_file_host.py",
+        "components/system_runtime/tests/test_activate.py",
+        "components/system_runtime/tests/test_services.py",
+        "components/system_runtime/tests/test_systemd_templates.py",
+        "components/system_runtime/tests/test_application_file_host.py",
         "backend/tests/test_release_builder.py",
         "deployment/tests/test_node_installer.py",
         "deployment/tests/test_node_release.py",
-        "three_mm_protocol/tests/test_platform_transport.py",
+        "packages/protocol/tests/test_platform_transport.py",
         "tools/tests/test_dev_lab.py",
     ),
     "p3": (
@@ -306,24 +308,24 @@ PROFILES = {
         "backend/tests/test_application_reference_scoped.py",
         "backend/tests/test_application_lifecycle_recovery.py",
         "backend/tests/test_application_lifecycle_authority.py",
-        "three_mm_protocol/tests/test_platform_transport.py",
-        "three_mm_application_sdk/tests",
-        "three_mm_runtime/tests/test_application_dispatch.py",
+        "packages/protocol/tests/test_platform_transport.py",
+        "packages/application_sdk/tests",
+        "components/system_runtime/tests/test_application_dispatch.py",
         "backend/tests/test_update_policy.py",
     ),
     "p2": (
-        "three_mm_runtime/tests/test_services.py",
-        "three_mm_runtime/tests/test_activate.py",
-        "three_mm_runtime/tests/test_install_profile.py",
-        "three_mm_runtime/tests/test_install_bootstrap.py",
-        "three_mm_runtime/tests/test_node_recovery.py",
-        "three_mm_runtime/tests/test_network_recovery.py",
-        "three_mm_runtime/tests/test_systemd_templates.py",
-        "three_mm_runtime/tests/test_update_helper.py",
-        "setup_service/tests",
-        "three_mm_provisioning/tests",
-        "three_mm_protocol/tests/test_diagnostics.py",
-        "three_mm_application_sdk/tests/test_platform_diagnostics.py",
+        "components/system_runtime/tests/test_services.py",
+        "components/system_runtime/tests/test_activate.py",
+        "components/system_runtime/tests/test_install_profile.py",
+        "components/system_runtime/tests/test_install_bootstrap.py",
+        "components/system_runtime/tests/test_node_recovery.py",
+        "components/system_runtime/tests/test_network_recovery.py",
+        "components/system_runtime/tests/test_systemd_templates.py",
+        "components/system_runtime/tests/test_update_helper.py",
+        "components/setup/tests",
+        "packages/provisioning/tests",
+        "packages/protocol/tests/test_diagnostics.py",
+        "packages/application_sdk/tests/test_platform_diagnostics.py",
         "backend/tests/test_first_boot_preflight.py",
         "backend/tests/test_network_recovery_routes.py",
         "backend/tests/test_initial_setup.py",
@@ -333,27 +335,27 @@ PROFILES = {
         "deployment/tests/test_node_release.py",
         "agent/tests/test_hub_connection.py",
     ),
-    "sdk": ("three_mm_application_sdk/tests",),
+    "sdk": ("packages/application_sdk/tests",),
     "p1": (
-        "three_mm_protocol/tests/test_diagnostics.py",
-        "three_mm_application_sdk/tests/test_identity_and_compatibility.py",
-        "three_mm_application_sdk/tests/test_platform_diagnostics.py",
+        "packages/protocol/tests/test_diagnostics.py",
+        "packages/application_sdk/tests/test_identity_and_compatibility.py",
+        "packages/application_sdk/tests/test_platform_diagnostics.py",
         "backend/tests/test_application_identity_read.py",
         "backend/tests/test_application_platform_authority.py",
         "backend/tests/test_diagnostics.py",
     ),
     "smoke": (
         "backend/tests/test_application_identity_read.py::test_real_signed_sdk_read_has_no_private_key_dependency_or_implicit_retry",
-        "three_mm_runtime/tests/test_services.py",
+        "components/system_runtime/tests/test_services.py",
         "backend/tests/test_diagnostics.py",
     ),
     "p0": (
         "backend/tests/test_application_identity_read.py",
         "backend/tests/test_application_platform_authority.py",
         "backend/tests/test_diagnostics.py",
-        "setup_service/tests/test_api.py",
-        "three_mm_runtime/tests/test_services.py",
-        "three_mm_runtime/tests/test_install_bootstrap.py",
+        "components/setup/tests/test_api.py",
+        "components/system_runtime/tests/test_services.py",
+        "components/system_runtime/tests/test_install_bootstrap.py",
     ),
 }
 
@@ -362,13 +364,22 @@ def digest(blob: bytes) -> str:
     return hashlib.sha256(blob).hexdigest()
 
 
+def source_location(name: str) -> bool:
+    """Match explicit source directories, not an entire future components tree."""
+    if name in LOCAL_DATA_FILES:
+        return False
+    return name in ROOT_FILES or any(
+        name.startswith(root + "/") for root in SOURCE_ROOTS
+    )
+
+
 def source_path(name: str, *, with_frontend: bool = False, with_libraries: bool = False) -> bool:
     path = PurePosixPath(name)
     parts = path.parts
     if (not parts or path.is_absolute() or ".." in parts or "\\" in name
             or ":" in name or name != path.as_posix()):
         return False
-    if (name not in ROOT_FILES and parts[0] not in SOURCE_ROOTS
+    if (not source_location(name)
             and not (with_frontend and parts[0] == "frontend")
             and not (with_libraries and parts[0] == "libraries")):
         return False

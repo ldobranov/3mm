@@ -7,7 +7,7 @@ import pytest
 from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
 from agent.tests.test_character_display import builder, DEVICE_ID  # noqa: F401
 from agent.modules.character_display import character_display_handler
-from three_mm_protocol.character_display import CharacterDisplayProfileV1, DISPLAY_ENTRYPOINT, DISPLAY_CAPABILITY
+from packages.protocol.character_display import CharacterDisplayProfileV1, DISPLAY_ENTRYPOINT, DISPLAY_CAPABILITY
 
 
 @pytest.fixture

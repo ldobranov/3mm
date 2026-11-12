@@ -18,13 +18,13 @@ from backend.db.module import (
     ApplicationExtensionInstallation,
     ModulePackage,
 )
-from backend.services.application_events import (
+from backend.applications.events.broker import (
     application_event_status,
     enqueue_application_event,
     claim_event_delivery, complete_event_delivery, request_application_event_retry,
 )
-from backend.services.application_extensions import ApplicationGatewayError
-from three_mm_protocol import ApplicationExtensionV1
+from backend.applications.runtime.gateway import ApplicationGatewayError
+from packages.protocol import ApplicationExtensionV1
 
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux boot clock and durable FD claims")
@@ -140,10 +140,11 @@ def broker_db(monkeypatch, tmp_path):
     db.add(installation)
     db.commit()
     monkeypatch.setattr(
-        "backend.services.application_events.load_application_definition",
+        "backend.applications.events.broker.load_application_definition",
         lambda _package: application_definition(),
     )
-    from backend.services import application_extensions as gateway, application_events as broker
+    from backend.applications.runtime import gateway
+    from backend.applications.events import broker
     key_root=tmp_path/'keys';key_root.mkdir()
     (key_root/(installation.instance_id+'.key')).write_bytes(b's'*32)
     monkeypatch.setattr(gateway,'load_application_package',lambda p:SimpleNamespace(
@@ -158,7 +159,7 @@ def broker_db(monkeypatch, tmp_path):
             assert current.attempts>=1
         state.calls.append((prepared.operation_id,prepared.payload,prepared.context))
         if state.mode=='send_error':raise OSError('test service unavailable')
-        from three_mm_runtime.application_transport import sign_message,send_message
+        from components.system_runtime.application_transport import sign_message,send_message
         left,right=socket.socketpair()
         with right:send_message(right,sign_message({'version':1,'request_id':request_id,
             'timestamp':int(time.time()),'ok':True,'result':{}},prepared.secret))
@@ -171,7 +172,7 @@ def broker_db(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize('lost_at', ['before_claim', 'after_preparation', 'after_admission'])
 def test_expired_event_claim_never_sends_to_the_handler(broker_db, monkeypatch, lost_at):
-    from backend.services import application_events as broker
+    from backend.applications.events import broker
     s=broker_db;event=add_event(s.db,s.device,'expired-claim')
     enqueue_application_event(s.db,event,s.settings)
     clock=[100.0]
@@ -197,7 +198,7 @@ def test_expired_event_claim_never_sends_to_the_handler(broker_db, monkeypatch, 
 
 
 def test_disconnected_event_claim_is_not_a_new_application_dispatch(broker_db,monkeypatch):
-    from backend.services import application_events as broker
+    from backend.applications.events import broker
     s=broker_db;event=add_event(s.db,s.device,'disconnected')
     enqueue_application_event(s.db,event,s.settings)
     live=[True];prepare=broker.prepare_application_invocation
@@ -213,8 +214,8 @@ def test_disconnected_event_claim_is_not_a_new_application_dispatch(broker_db,mo
 
 def test_previous_runtime_claim_stays_healthy_idle_without_dispatch(broker_db,monkeypatch):
     import backend.database as database
-    from backend.services import application_events as broker
-    from three_mm_platform_wire import receive_authority_frame
+    from backend.applications.events import broker
+    from packages.platform_wire import receive_authority_frame
     s=broker_db
     monkeypatch.setattr(database,'SessionLocal',lambda:Session(s.db.get_bind()))
     monkeypatch.setattr(broker,'claim_event_delivery',lambda *_a,**_kw:pytest.fail('Deadline-less claim dispatched'))
@@ -251,7 +252,7 @@ def add_event(db: Session, device: Device, suffix: str) -> DeviceEvent:
 
 
 def pump(db,settings,*,force=False,generation='test-runtime'):
-    from three_mm_platform_wire import read_frame
+    from packages.platform_wire import read_frame
     if force:request_application_event_retry(db)
     for _ in range(100):
         begin,origin=claim_event_delivery(db,settings,runtime_generation=generation)
@@ -276,7 +277,7 @@ def test_enqueue_only_persists_and_completion_is_idempotent(broker_db):
     assert row(s).status=='pending' and row(s).attempts==0 and not s.calls
     begin,origin=claim_event_delivery(s.db,s.settings,runtime_generation='owner')
     assert row(s).status=='delivering' and row(s).attempts==1
-    from three_mm_platform_wire import read_frame
+    from packages.platform_wire import read_frame
     with origin:response=read_frame(origin,time.monotonic()+1)
     for _ in range(2):complete_event_delivery(s.db,s.settings,begin['receipt'],runtime_generation='owner',response=response)
     pump(s.db,s.settings)
@@ -343,7 +344,7 @@ def test_retry_rechecks_current_authority_without_replaying_denied_data(broker_d
 
 @pytest.mark.parametrize('change',['enforced','review_required','disable','epoch','configuration','device_revoke'])
 def test_change_after_preflight_denies_before_attempt_or_service_io(broker_db,monkeypatch,change):
-    from backend.services import application_extensions as gateway
+    from backend.applications.runtime import gateway
     s=broker_db;event=add_event(s.db,s.device,'race')
     enqueue_application_event(s.db,event,s.settings)
     def preflight(_package):
@@ -369,7 +370,7 @@ def test_fifo_backlog_and_admin_retry_do_not_steal_inflight_claim(broker_db):
     request_application_event_retry(s.db)
     assert claim_event_delivery(s.db,s.settings,runtime_generation='other')[0]['idle']
     assert row(s).dispatch_id==original and application_event_status(s.db)[0]['backlog']==2
-    from three_mm_platform_wire import read_frame
+    from packages.platform_wire import read_frame
     with origin:response=read_frame(origin,time.monotonic()+1)
     complete_event_delivery(s.db,s.settings,begin['receipt'],runtime_generation='owner',response=response)
     pump(s.db,s.settings)
@@ -380,7 +381,7 @@ def test_fifo_backlog_and_admin_retry_do_not_steal_inflight_claim(broker_db):
 
 @pytest.mark.parametrize('change',['expiry','reboot'])
 def test_lost_response_has_one_durable_attempt_and_fresh_claim_after_expiry(broker_db,monkeypatch,change):
-    from backend.services import application_events as broker
+    from backend.applications.events import broker
     s=broker_db;clock=['a'*36,1000];monkeypatch.setattr(broker,'_clock',lambda:tuple(clock))
     event=add_event(s.db,s.device,'lost');enqueue_application_event(s.db,event,s.settings)
     first,origin=claim_event_delivery(s.db,s.settings,runtime_generation='old');origin.close()
@@ -390,7 +391,7 @@ def test_lost_response_has_one_durable_attempt_and_fresh_claim_after_expiry(brok
     second,origin=claim_event_delivery(s.db,s.settings,runtime_generation='new')
     assert row(s).attempts==2 and second['receipt']!=first['receipt']
     with pytest.raises(ValueError):complete_event_delivery(s.db,s.settings,first['receipt'],runtime_generation='old',failure='handler_unavailable')
-    from three_mm_platform_wire import read_frame
+    from packages.platform_wire import read_frame
     with origin:response=read_frame(origin,time.monotonic()+1)
     complete_event_delivery(s.db,s.settings,second['receipt'],runtime_generation='new',response=response)
     assert row(s).status=='acknowledged' and s.calls[0][2]['idempotency_key']==s.calls[1][2]['idempotency_key']
@@ -398,8 +399,8 @@ def test_lost_response_has_one_durable_attempt_and_fresh_claim_after_expiry(brok
 
 @pytest.mark.parametrize('damage',['owner','receipt','response','expired'])
 def test_result_cannot_complete_foreign_forged_or_expired_attempt(broker_db,monkeypatch,damage):
-    from backend.services import application_events as broker
-    from three_mm_platform_wire import read_frame
+    from backend.applications.events import broker
+    from packages.platform_wire import read_frame
     s=broker_db;clock=['a'*36,1000];monkeypatch.setattr(broker,'_clock',lambda:tuple(clock))
     enqueue_application_event(s.db,add_event(s.db,s.device,'result'),s.settings)
     begin,origin=claim_event_delivery(s.db,s.settings,runtime_generation='owner')
@@ -419,7 +420,7 @@ def test_result_cannot_complete_foreign_forged_or_expired_attempt(broker_db,monk
 
 
 def test_already_admitted_success_is_accounted_after_disable(broker_db):
-    from three_mm_platform_wire import read_frame
+    from packages.platform_wire import read_frame
     s=broker_db;enqueue_application_event(s.db,add_event(s.db,s.device,'admitted'),s.settings)
     begin,origin=claim_event_delivery(s.db,s.settings,runtime_generation='owner')
     with origin:response=read_frame(origin,time.monotonic()+1)
@@ -429,7 +430,7 @@ def test_already_admitted_success_is_accounted_after_disable(broker_db):
 
 
 def test_old_terminal_attempt_can_be_pruned_without_losing_outcome_counter(broker_db,monkeypatch):
-    from backend.services import application_events as broker
+    from backend.applications.events import broker
     s=broker_db;monkeypatch.setattr(broker,'MAX_STORED_DEAD_LETTERS',1)
     event=add_event(s.db,s.device,'old');enqueue_application_event(s.db,event,s.settings)
     # A newer terminal row precedes this older attempt's fifth failed outcome.
@@ -450,7 +451,7 @@ def test_preexisting_exhausted_pending_attempt_is_not_dispatched_a_sixth_time(br
 
 
 def test_paused_subscription_cannot_starve_an_active_head_at_batch_limit(broker_db,monkeypatch):
-    from backend.services import application_events as broker
+    from backend.applications.events import broker
     s=broker_db;monkeypatch.setattr(broker,'MAX_DRAIN_BATCH',1)
     package=ModulePackage(module_id='org.example.paused',version='1.0.0',manifest={},sha256='c'*64,
         size_bytes=1,file_path='unused',registrations=[])

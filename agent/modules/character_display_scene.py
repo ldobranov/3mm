@@ -9,10 +9,10 @@ import threading
 import time
 
 from agent.modules.character_display import CharacterDisplayService, approved_display_profile
-from three_mm_protocol.character_display import DISPLAY_CAPABILITY
-from three_mm_protocol.character_clock import render_clock_fields
-from three_mm_protocol.character_display_scene import CharacterDisplaySceneProfileV1, MAX_SCENE_LEASE_SECONDS
-from three_mm_protocol.capability_contracts import CapabilityContractError
+from packages.protocol.character_display import DISPLAY_CAPABILITY
+from packages.protocol.character_clock import render_clock_fields
+from packages.protocol.character_display_scene import CharacterDisplaySceneProfileV1, MAX_SCENE_LEASE_SECONDS
+from packages.protocol.capability_contracts import CapabilityContractError
 
 MAX_SCENE_IDENTITIES = 64
 IDENTITY_RETENTION_SECONDS = 2 * MAX_SCENE_LEASE_SECONDS

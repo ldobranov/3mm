@@ -1,5 +1,5 @@
 """Real scoped identity reads, exact public pin and authenticated SDK transport."""
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 import json
 import os
@@ -16,9 +16,9 @@ from backend.db.application_authority_grant import ApplicationAuthorityAction as
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.installation_identity import CoreInstallationIdentity as CoreIdentity
 from backend.db.module import ApplicationExtensionInstallation as Installation
-from backend.services import installation_identity as identity_service
-from backend.services.application_identity_read import read_application_identity
-from backend.services.application_platform import ApplicationPlatformServer
+from backend.installation import identity as identity_service
+from backend.applications.runtime.identity import read_application_identity
+from backend.applications.runtime.platform import ApplicationPlatformServer
 from backend.tests.test_application_authority_management import (
     identity, installed as managed_installed,
 )
@@ -28,8 +28,8 @@ from backend.tests.test_application_checkpoint_authority import checkpoint_app
 from backend.tests.test_application_identity_authority import (
     identity_app, activate_identity_grant,
 )
-from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
-from three_mm_protocol.diagnostics import DiagnosticSession
+from packages.application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+from packages.protocol.diagnostics import DiagnosticSession
 
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Real POSIX review key/guard")

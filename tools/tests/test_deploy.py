@@ -52,11 +52,38 @@ def test_snapshot_reuses_frozen_bytes_and_refuses_edits(tmp_path):
 
 def test_inventory_excludes_live_state_credentials_and_preserves_current_source(tmp_path, monkeypatch):
     names = ['backend/main.py', 'backend/private.env', 'backend/data/live.db', 'private-deploy.ps1',
-        '.runtime/private.py', 'frontend/src/main.ts', 'libraries/example/.3mm-source-only', 'deploy.ps1']
+        'backend/prices.json', 'backend/output.json',
+        '.runtime/private.py', 'frontend/src/main.ts', 'libraries/example/.3mm-source-only', 'deploy.ps1',
+        'components/__init__.py', 'components/admin_web/server.py',
+        'components/admin_web/tests/test_server.py', 'components/admin_web/private.env',
+        'components/public_web/server.py', 'components/public_web/webhook_pilot.py',
+        'components/public_web/tests/test_server.py', 'components/public_web/.env.local',
+        'components/platform_runtime/__init__.py', 'components/platform_runtime/server.py',
+        'components/platform_runtime/tasks.py', 'components/platform_runtime/data/live.db',
+        'components/platform_runtime/.env.local', 'components/platform_runtime_other/server.py',
+        'three_mm_platform_runtime/server.py',
+        'packages/__init__.py', 'packages/platform_wire/__init__.py',
+        'packages/platform_wire/task_time.py', 'packages/future/module.py',
+        'packages/provisioning/__init__.py', 'packages/provisioning/network_recovery.py',
+        'packages/provisioning/tests/test_persistence.py', 'packages/provisioning/.env.local',
+        'packages/provisioning/data/live.db', 'packages/provisioning_other/models.py',
+        'three_mm_provisioning/__init__.py',
+        'packages/platform_wire_other/module.py', 'packages/platform_wire/.env.local',
+        'components/future/service.py', 'components/admin_web_other/server.py', 'three_mm_web/server.py',
+        'components/public_web_other/server.py', 'three_mm_public_web/server.py']
     for name in names:
         path = tmp_path / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text('source')
     monkeypatch.setattr(local.subprocess, 'check_output', lambda *a, **kw: '\0'.join(names).encode())
-    assert set(local.inventory(tmp_path)) == {'backend/main.py', 'frontend/src/main.ts', 'libraries/example/.3mm-source-only', 'deploy.ps1'}
+    assert set(local.inventory(tmp_path)) == {'backend/main.py', 'frontend/src/main.ts',
+        'libraries/example/.3mm-source-only', 'deploy.ps1', 'components/__init__.py',
+        'components/admin_web/server.py', 'components/admin_web/tests/test_server.py',
+        'components/public_web/server.py', 'components/public_web/webhook_pilot.py',
+        'components/public_web/tests/test_server.py',
+        'components/platform_runtime/__init__.py', 'components/platform_runtime/server.py',
+        'components/platform_runtime/tasks.py',
+        'packages/__init__.py', 'packages/platform_wire/__init__.py', 'packages/platform_wire/task_time.py',
+        'packages/provisioning/__init__.py', 'packages/provisioning/network_recovery.py',
+        'packages/provisioning/tests/test_persistence.py'}
 
 
 def test_dependency_cache_ignores_only_tool_generated_root_directories(tmp_path):
@@ -67,6 +94,35 @@ def test_dependency_cache_ignores_only_tool_generated_root_directories(tmp_path)
     assert local.tree_inventory(tmp_path, local.NODE_BUILD_OUTPUTS) == expected
     (tmp_path / 'library/code.js').write_text('modified dependency')
     assert local.tree_inventory(tmp_path, local.NODE_BUILD_OUTPUTS) != expected
+
+
+@pytest.mark.parametrize('shared_input', [
+    'config_templates/development.json', 'config_templates/product.json',
+    'components/setup/static/setup.html',
+    'packages/protocol/theme_design_defaults.json',
+])
+def test_shared_frontend_defaults_invalidate_checked_build_cache(tmp_path, monkeypatch, shared_input):
+    source = tmp_path / 'source'
+    dist = source / 'frontend/dist'
+    dist.mkdir(parents=True)
+    (dist / 'index.html').write_text('built frontend')
+    calls = []
+    monkeypatch.setattr(local, 'node_dependencies', lambda *args: 'checked-dependencies')
+
+    def run(command, cwd, log):
+        log.write_bytes(b'passed')
+        calls.append(command)
+        return {'command': list(command), 'log_sha256': local.digest(b'passed')}
+
+    monkeypatch.setattr(local, 'run', run)
+    inputs = {'frontend/src/main.ts': 'same-ui', shared_input: 'original-defaults'}
+    first = local.frontend(source, inputs, tmp_path / 'cache')
+    assert len(calls) == 2
+    assert local.frontend(source, {**inputs, 'backend/main.py': 'unrelated'}, tmp_path / 'cache') == first
+    assert len(calls) == 2
+    second = local.frontend(source, {**inputs, shared_input: 'rebranded'}, tmp_path / 'cache')
+    assert second[1] != first[1]
+    assert len(calls) == 4
 
 
 def test_cached_python_evidence_invalidated_by_code_and_dependencies(tmp_path, monkeypatch):

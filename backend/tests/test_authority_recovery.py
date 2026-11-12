@@ -184,7 +184,7 @@ def test_frozen_legacy_revision_allowlist_matches_actual_pre_authority_graph():
 
 @pytest.mark.parametrize("rollback_corrupt", [False, True])
 def test_corrupt_restored_authority_is_never_activated_and_rollback_is_fenced(tmp_path, rollback_corrupt):
-    from backend.services.backups import read_backup_operation_status
+    from backend.system.backups.service import read_backup_operation_status
     from backend.tests.test_backup_preview import _settings
     from deployment.create_backup import create_backup
     from deployment.restore_backup import restore_backup

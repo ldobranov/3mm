@@ -13,11 +13,11 @@ from sqlalchemy.orm import Session
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.session import UserSession
-from backend.services import application_authority_management as authority
-from backend.services import application_relational as transactions
-from backend.services import application_relational_recovery as coordinator
-from backend.services.application_authority_keys import AuthorityReviewKeyError
-from backend.services.application_policy_reviews import PolicyReviewStoreError
+from backend.applications.authority import management as authority
+from backend.applications.relational import authority as transactions
+from backend.applications.relational import recovery as coordinator
+from backend.applications.authority.keys import AuthorityReviewKeyError
+from backend.applications.authority.policy_reviews import PolicyReviewStoreError
 from backend.tests.test_application_authority_management import (
     identity,
 )
@@ -59,21 +59,21 @@ from backend.tests.test_application_relational_preparation import run as prepare
 from backend.tests.test_application_relational_preparation import (
     stopped,
 )
-from three_mm_application_sdk.relational_receipts import _RelationalReceiptStore
-from three_mm_application_sdk.relational_wire import (
+from packages.application_sdk.relational_receipts import _RelationalReceiptStore
+from packages.application_sdk.relational_wire import (
     _RelationalBootEnableTicket,
     _RelationalRecoveryTicket,
     canonical,
     recovered_lifecycle,
     sign_metadata,
 )
-from three_mm_runtime import application_relational_recovery as helper
-from three_mm_runtime.application_relational_boot_policy import (
+from components.system_runtime import application_relational_recovery as helper
+from components.system_runtime.application_relational_boot_policy import (
     confirm_boot_policy,
     publish_pending_boot,
     read_boot_policy,
 )
-from three_mm_runtime.application_relational_session import _prepared
+from components.system_runtime.application_relational_session import _prepared
 
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="Actual POSIX Core keys/clock"),

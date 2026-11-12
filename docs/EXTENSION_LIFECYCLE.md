@@ -50,7 +50,7 @@ their security or lifecycle behavior.
 ### Declarative runtime
 
 The old Core-owned `runtime-extension v1` CRUD format is retired. Declarative
-records/forms/tables use the optional `libraries/three_mm_crud` dependency in an
+records/forms/tables use the optional `libraries/crud` dependency in an
 ordinary supervised application with compiled UI. Records and migrations belong
 to its own SDK-managed database; Core retains current admission and permissions.
 

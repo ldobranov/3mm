@@ -1,5 +1,5 @@
 from agent.inventory import _network_manager_active
-from three_mm_provisioning import (
+from packages.provisioning import (
     NetworkInspectionError,
     NetworkManagerStatus,
 )

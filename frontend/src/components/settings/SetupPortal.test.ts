@@ -2,9 +2,12 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { JSDOM } from 'jsdom'
 import { describe, expect, it } from 'vitest'
+import { product } from '@/utils/product'
 
-const html = readFileSync(resolve(process.cwd(), '../setup_service/static/setup.html'), 'utf8')
-const script = html.split('<script>')[1].split('</script>')[0].replace('__READ_ONLY__', 'false')
+const html = readFileSync(resolve(process.cwd(), '../components/setup/static/setup.html'), 'utf8')
+const script = html.split('<script>')[1].split('</script>')[0]
+  .replace('__READ_ONLY__', 'false')
+  .replace('__PRODUCT_LABELS__', () => JSON.stringify(product.setup.labels))
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setTimeout(resolve, 0)) }
 
 async function portal(options: { recovery?: boolean; wifi?: boolean; fail?: boolean; inactive?: boolean; language?: string; saved?: Record<string, string> } = {}) {

@@ -53,7 +53,7 @@
           <span>
             <strong>{{ t('networkRecovery.automaticTitle', 'Open local recovery after 5 minutes without a network link') }}</strong>
             <small>
-              {{ t('networkRecovery.automaticHelp', 'Available when 3mm manages networking. The timer checks local links, not Internet access. Host-managed networking remains under OS control.') }}
+              {{ t('networkRecovery.automaticHelp', 'Available when the application manages networking. The timer checks local links, not Internet access. Host-managed networking remains under OS control.') }}
             </small>
           </span>
         </label>

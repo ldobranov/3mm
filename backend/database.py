@@ -1,14 +1,8 @@
-import os
-import sys
 from pathlib import Path
-
-# Add the backend directory to the system path for resolving imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from backend.db.base import Base
-from typing import Generator
 import json
 from backend.config import get_settings
 

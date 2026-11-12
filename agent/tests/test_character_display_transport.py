@@ -14,7 +14,7 @@ import pytest
 
 from agent.character_display_worker import Pcf8574Lcd, write_once, hd44780_rows, serve
 from agent.hardware.character_display import NativeCharacterDisplay
-from three_mm_protocol.character_display import CharacterDisplayProfileV1
+from packages.protocol.character_display import CharacterDisplayProfileV1
 
 
 def decode(raw):

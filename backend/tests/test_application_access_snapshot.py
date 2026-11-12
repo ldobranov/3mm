@@ -4,7 +4,7 @@ import pytest
 
 from backend.db.session import UserSession
 from backend.tests.test_application_access import environment, headers
-from backend.utils.jwt_utils import create_access_token
+from backend.accounts.tokens import create_access_token
 
 
 @pytest.fixture

@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from backend.services.application_relational_admin_worker import dispatch
+from backend.applications.relational.admin_worker import dispatch
 from backend.tests.test_application_relational_activation_control import (
     catalog,
     deployed,
@@ -32,11 +32,11 @@ from backend.tests.test_application_relational_activation_control import (
     tmp_path,
 )
 from backend.tests.test_application_relational_preparation import ROOT_ONLY, identity
-from three_mm_application_sdk.relational_wire import canonical
-from three_mm_runtime import application_relational_activation_recovery as helper
-from three_mm_runtime import update_helper
-from three_mm_runtime.application_relational_control import activation_recovery_request
-from three_mm_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
+from packages.application_sdk.relational_wire import canonical
+from components.system_runtime import application_relational_activation_recovery as helper
+from components.system_runtime import update_helper
+from components.system_runtime.application_relational_control import activation_recovery_request
+from components.system_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix", reason="Actual Core/principals/Unix peer"
@@ -52,7 +52,7 @@ def cli(state, arguments, *, token=None, **environment):
         [
             sys.executable,
             "-m",
-            "backend.services.application_authority_admin",
+            "backend.applications.authority.admin",
             *arguments,
         ],
         input=(state.token if token is None else token).encode() + b"\n",

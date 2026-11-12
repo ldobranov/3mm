@@ -17,15 +17,15 @@ from backend.db.device import (
     DeviceState, DeviceCapabilityProvider, DeviceCommand, DeviceEvent,
 )
 from backend.db.user import User
-from backend.services.authority_metadata import AuthorityMetadataError, read_device_control
-from backend.services.device_pairing import (
+from backend.applications.authority.metadata import AuthorityMetadataError, read_device_control
+from backend.devices.pairing.service import (
     PairingCompletionError, DeviceCredentialRevocationError,
     approve_pairing_request, claim_pairing_code, complete_pairing_request,
     issue_pairing_code, issue_replacement_device_credential,
     revoke_device_credential, recover_device_credential,
 )
-from backend.services.node_enrollment import enroll_node
-from three_mm_protocol.fleet_pairing import NodeEnrollmentRequest
+from backend.devices.pairing.enrollment import enroll_node
+from packages.protocol.fleet_pairing import NodeEnrollmentRequest
 
 
 DEVICE_ID = "dev_" + "a" * 32

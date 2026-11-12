@@ -10,10 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 
 SOURCE = Path(__file__).resolve().parents[2] / "modules/wp4-relational-test"
-ORIGINAL_SHA256 = "e3afeeba492b1eb30351ebbf8229c27fa1337ccd940f575bba9b96f2f09157d0"
+CURRENT_BASELINE_SHA256 = "261434b328129b82742971434c3cdae3f5f925c41984763d37ac9d9d0797fb0b"
+HISTORICAL_LIVE_SHA256 = "e3afeeba492b1eb30351ebbf8229c27fa1337ccd940f575bba9b96f2f09157d0"
 
 
 def builder():
@@ -25,11 +26,44 @@ def builder():
     return module
 
 
-def test_original_live_package_remains_byte_identical():
+def test_current_baseline_is_pinned_and_candidate_build_does_not_mutate_it():
     module = builder()
-    assert hashlib.sha256(module.build_package()).hexdigest() == ORIGINAL_SHA256
+    assert hashlib.sha256(module.build_package()).hexdigest() == CURRENT_BASELINE_SHA256
     module.build_package(upgrade_candidate=True)
-    assert hashlib.sha256(module.build_package()).hexdigest() == ORIGINAL_SHA256
+    assert hashlib.sha256(module.build_package()).hexdigest() == CURRENT_BASELINE_SHA256
+
+
+def test_historical_sdk_spelling_alone_reproduces_accepted_zip(tmp_path, monkeypatch):
+    """Recreate inert historical inputs; never import or install their service."""
+    historical = tmp_path / "historical-inputs"
+    replacements = {
+        "service/wp4_relational_test/service.py": (
+            b"from packages.application_sdk.scoped_relational import (",
+            b"from three_mm_application_sdk.scoped_relational import (",
+        ),
+        "service/wp4_relational_test/migrations.py": (
+            b"from packages.application_sdk import ApplicationMigration",
+            b"from three_mm_application_sdk import ApplicationMigration",
+        ),
+    }
+    names = (
+        "manifest.json",
+        "application-extension.json",
+        "service/wp4_relational_test/__init__.py",
+        *replacements,
+    )
+    for name in names:
+        contents = (SOURCE / name).read_bytes()
+        if name in replacements:
+            current, previous = replacements[name]
+            assert contents.count(current) == 1
+            contents = contents.replace(current, previous, 1)
+        destination = historical / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(contents)
+    module = builder()
+    monkeypatch.setattr(module, "ROOT", historical)
+    assert hashlib.sha256(module.build_package()).hexdigest() == HISTORICAL_LIVE_SHA256
 
 
 @pytest.mark.parametrize("candidate", [False, True])
@@ -46,9 +80,9 @@ def test_both_variants_are_valid_deterministic_and_have_correct_wheel_records(
     )
     assert package.application_extension.service.sdk_version == "1.3"
     assert (
-        package.sha256 != ORIGINAL_SHA256
+        package.sha256 != CURRENT_BASELINE_SHA256
         if candidate
-        else package.sha256 == ORIGINAL_SHA256
+        else package.sha256 == CURRENT_BASELINE_SHA256
     )
     with zipfile.ZipFile(io.BytesIO(blob)) as archive:
         wheel_bytes = archive.read(package.application_extension.service.artifact)

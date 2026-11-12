@@ -11,8 +11,8 @@ from deployment.create_backup import create_backup
 from deployment.portable_backup import create_portable_export, import_portable_backup
 from deployment.prepare_backup_storage import prepare_backup_storage
 from deployment.restore_backup import _decrypt_archive_with_key, _validate_and_stage
-from three_mm_runtime import update_helper
-from three_mm_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
+from components.system_runtime import update_helper
+from components.system_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
 
 
 def test_clean_install_key_survives_repreparation_and_import(tmp_path, monkeypatch):
@@ -112,7 +112,7 @@ def test_client_reports_known_errors_without_exposing_arbitrary_details(monkeypa
         def recv(self, size):
             return json.dumps({"ok": False, "error": code}).encode() + b"\n"
 
-    monkeypatch.setattr("three_mm_runtime.update_helper_client.socket.socket", lambda *args: Socket())
-    monkeypatch.setattr("three_mm_runtime.update_helper_client.socket.AF_UNIX", 1, raising=False)
+    monkeypatch.setattr("components.system_runtime.update_helper_client.socket.socket", lambda *args: Socket())
+    monkeypatch.setattr("components.system_runtime.update_helper_client.socket.AF_UNIX", 1, raising=False)
     with pytest.raises(UpdateHelperError, match=message):
         UpdateHelperClient(Path("unused")).request_portable_restore("a" * 32, "test-password", 1)

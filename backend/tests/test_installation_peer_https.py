@@ -6,7 +6,7 @@ The private test CA is trusted only inside the fixture worker processes.
 """
 
 from __future__ import annotations
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 import base64
 from contextlib import contextmanager
@@ -36,7 +36,7 @@ REPO = Path(__file__).resolve().parents[2]
 
 SERVICE = """
 import json
-from three_mm_application_sdk import ApplicationMigration
+from packages.application_sdk import ApplicationMigration
 
 def get_migrations():
     def create(connection):
@@ -142,7 +142,7 @@ def create_test_certificate(root):
 
 def fixture_package(root):
     from backend.tests.test_installation_peers import peer_package
-    from backend.services.module_packages import validate_module_package
+    from backend.artifacts.packages import validate_module_package
 
     original, definition, manifest = peer_package()
     wheel_buffer = io.BytesIO()
@@ -199,8 +199,8 @@ def prepare_database(root, origin):
     from backend.db.device import Device, DeviceHeartbeat, DeviceInventorySnapshot
     from backend.db.module import ModulePackage, ApplicationExtensionInstallation
     from backend.db.user import User
-    from backend.services.installation_identity import installation_identity
-    from backend.services.installation_peers import configure_origin
+    from backend.installation.identity import installation_identity
+    from backend.installation.peers import configure_origin
 
     if (root / "core.db").is_file():
         return
@@ -316,9 +316,9 @@ def core_worker(root, port):
     from contextlib import asynccontextmanager
     from fastapi import FastAPI
     import uvicorn
-    from backend.routes.installation_peers import router
-    from backend.services.application_platform import ApplicationPlatformServer
-    from backend.services import installation_peers as peers
+    from backend.installation.api import router
+    from backend.applications.runtime.platform import ApplicationPlatformServer
+    from backend.installation import peers
 
     class FixtureClock(datetime):
         @classmethod
@@ -427,7 +427,7 @@ class CoreFixture:
         )
         self.host = self.spawn(
             [
-                "three_mm_runtime.application_host",
+                "components.system_runtime.application_host",
                 "--instance",
                 INSTANCE,
                 "--root",
@@ -440,7 +440,7 @@ class CoreFixture:
         self.wait(
             lambda: (self.root / "apps" / INSTANCE / "run" / "service.sock").is_socket()
         )
-        from three_mm_application_sdk import ApplicationPlatformClient
+        from packages.application_sdk import ApplicationPlatformClient
 
         self.sdk = ApplicationPlatformClient(
             self.root / "platform.sock",
@@ -542,7 +542,7 @@ class CoreFixture:
     ["org.3mm.workflow-reference", "org.3mm.cloud-manager", "com.example.9device"],
 )
 def test_local_consent_accepts_manifest_module_ids(module_id):
-    from backend.routes.installation_peers import OutboundConsentRequest
+    from backend.installation.api import OutboundConsentRequest
 
     public = bytes(32)
     value = {
@@ -566,7 +566,7 @@ def signed_request(sender, row, path, payload, *, expired=False):
     """Fixture signing only: reconstruct the isolated Core's encrypted test key."""
     from cryptography.fernet import Fernet
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    from three_mm_protocol.installation_peer import PeerRequestV1, request_bytes
+    from packages.protocol.installation_peer import PeerRequestV1, request_bytes
 
     with sender.database() as connection:
         encrypted = connection.execute(
@@ -601,8 +601,8 @@ def signed_request(sender, row, path, payload, *, expired=False):
 def test_two_cores_verified_https_and_real_application_sockets(tmp_path):
     import httpx
     from cryptography.fernet import Fernet
-    from three_mm_application_sdk import ApplicationPlatformError
-    from three_mm_protocol.installation_peer import PEER_PREFIX
+    from packages.application_sdk import ApplicationPlatformError
+    from packages.protocol.installation_peer import PEER_PREFIX
 
     # Unix socket names have a short Linux limit; pytest's default deep tmp_path
     # may be too long. Keep every fixture under an independent /tmp directory.
@@ -830,7 +830,7 @@ if __name__ == "__main__":
     if len(sys.argv) == 4 and sys.argv[1] == "--worker":
         core_worker(Path(sys.argv[2]), int(sys.argv[3]))
     elif len(sys.argv) == 3 and sys.argv[1] == "--runtime-worker":
-        from three_mm_platform_runtime.responses import ApplicationResponses
+        from components.platform_runtime.responses import ApplicationResponses
 
         root = Path(sys.argv[2])
         runtime = ApplicationResponses(root / "responses.sock", root / "unused-admission.sock", core_uid=os.getuid())

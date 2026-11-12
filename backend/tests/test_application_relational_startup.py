@@ -21,9 +21,9 @@ from backend.db.application_authority_grant import ApplicationAuthorityAction as
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.user import User
-from backend.services import application_authority_management as authority
-from backend.services import application_relational_startup as core
-from backend.services.application_extensions import ApplicationGatewayError
+from backend.applications.authority import management as authority
+from backend.applications.relational import startup as core
+from backend.applications.runtime.gateway import ApplicationGatewayError
 from backend.tests import test_application_relational_runtime as reference
 from backend.tests.test_application_relational_activation import (
     ProcessSupervisor,
@@ -60,17 +60,17 @@ from backend.tests.test_application_relational_reactivation import (
     issue as issue_restart,
 )
 from backend.tests.test_application_relational_runtime import invoke
-from three_mm_application_sdk import ApplicationPlatformClient
-from three_mm_application_sdk.relational_wire import (
+from packages.application_sdk import ApplicationPlatformClient
+from packages.application_sdk.relational_wire import (
     _activation_ticket,
     _preparation_ticket,
     _RelationalBootStartupPermit,
     canonical,
     sign_metadata,
 )
-from three_mm_runtime import application_relational_boot as boot_helper
-from three_mm_runtime import application_relational_boot_policy as policy_helper
-from three_mm_runtime import application_relational_preparation as preparation_helper
+from components.system_runtime import application_relational_boot as boot_helper
+from components.system_runtime import application_relational_boot_policy as policy_helper
+from components.system_runtime import application_relational_preparation as preparation_helper
 
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="Actual POSIX host/peer"),
@@ -401,7 +401,7 @@ def test_required_marker_precedes_partial_publication_and_any_enable(
 ):
     state = marked
     ticket = issue_boot(state)
-    from three_mm_runtime import application_relational_namespace as namespace_helper
+    from components.system_runtime import application_relational_namespace as namespace_helper
 
     original = namespace_helper._exclusive_file
 
@@ -494,7 +494,7 @@ def test_real_kernel_peer_not_json_or_core_group_is_required(bootable, uid):
         "import sys;sys.path.insert(0,"
         + repr(str(Path(__file__).resolve().parents[2]))
         + ");"
-        "from pathlib import Path;from three_mm_application_sdk import ApplicationPlatformClient;"
+        "from pathlib import Path;from packages.application_sdk import ApplicationPlatformClient;"
         "ApplicationPlatformClient(Path("
         + repr(str(state.server.socket_path))
         + "),"
@@ -529,7 +529,7 @@ def test_source_process_peer_must_match_metadata_socket_not_another_same_uid_chi
     script = (
         "import sys;sys.path.insert(0,"
         + repr(str(Path(__file__).resolve().parents[2]))
-        + ");from pathlib import Path;from three_mm_application_sdk import ApplicationPlatformClient;ApplicationPlatformClient(Path("
+        + ");from pathlib import Path;from packages.application_sdk import ApplicationPlatformClient;ApplicationPlatformClient(Path("
         + repr(str(state.server.socket_path))
         + "),"
         + repr(state.instance.name)
@@ -666,9 +666,9 @@ def test_actual_nonroot_core_server_admits_actual_nonroot_host_without_root_fall
             "import os,sys,time;sys.path.insert(0," + repr(str(source)) + ");"
             "assert os.geteuid()==1202 and os.getegid()==1203;"
             # Publish readiness after the Core admission imports finish.
-            "from backend.services import application_relational_startup;"
-            "from backend.services.application_connector_transport import ConnectorDispatch;"
-            "from pathlib import Path;from backend.services.application_platform import ApplicationPlatformServer;"
+            "from backend.applications.relational import startup as application_relational_startup;"
+            "from backend.applications.connectors.transport import ConnectorDispatch;"
+            "from pathlib import Path;from backend.applications.runtime.platform import ApplicationPlatformServer;"
             "server=ApplicationPlatformServer(Path("
             + repr(str(state.server.socket_path))
             + "),Path("

@@ -16,7 +16,7 @@ import time
 from types import SimpleNamespace
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, event, select, update
 from sqlalchemy.orm import Session
@@ -29,15 +29,15 @@ from backend.db.module import (
     ModulePackage,
 )
 from backend.db.session import UserSession
-from backend.routes.application_extensions import ApplicationUiBinding
-from backend.routes.application_sessions import application_session_router
-from backend.services import compiled_ui
-from backend.services.application_browser_sessions import (
+from backend.applications.management.api import ApplicationUiBinding
+from backend.applications.sessions.api import application_session_router
+from backend.artifacts import compiled_ui
+from backend.applications.sessions.browser import (
     ApplicationBrowserSessions,
 )
-from backend.services.application_session_runtimes import ReviewedSessionRuntime
-from backend.services.application_authority_management import _UI_TRUST_SNAPSHOT
-from backend.services.module_packages import validate_module_package
+from backend.applications.sessions.runtimes import ReviewedSessionRuntime
+from backend.applications.authority.management import _UI_TRUST_SNAPSHOT
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_access import fake_compiler
 from backend.tests.test_application_authority_management import decide, identity
 from backend.tests.test_application_session_authority import (
@@ -52,7 +52,7 @@ from backend.tests.test_application_session_authority import (
 )
 from backend.tests.test_application_ui_authority import native
 from backend.tests.test_module_packages import application_package
-from three_mm_protocol.interactive_session import (
+from packages.protocol.interactive_session import (
     decode_session_frame,
     encode_session_frame,
 )
@@ -197,6 +197,54 @@ def issue(s, **changes):
 
 def connect(s, ticket):
     return s.client.websocket_connect(s.base + "/ws", headers={"origin": ORIGIN})
+
+
+def test_discovery_stays_available_during_another_real_authority_read(browser_app):
+    from concurrent.futures import ThreadPoolExecutor
+    from backend.applications.authority.sources import _read_snapshot
+    s = browser_app
+    params = s.ui.model_dump(exclude={"host_version", "entrypoint_id"})
+    # Hold a genuine verified SH lease on a separate descriptor/snapshot while
+    # HTTP discovery checks UI trust AND both session-resource admission reads.
+    # An accidental EX reader deterministically omits the target under this load.
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with s.manager.keys.read_locked() as key, _read_snapshot(s.engine) as db:
+            s.manager._require_grant(db, key, 1, s.manager._prepare(1), SCOPE)
+            future = pool.submit(s.client.get, s.base, params=params, headers=s.auth)
+            response = future.result(timeout=8)
+            assert response.status_code == 200
+            targets = response.json()['targets']
+            assert len(targets) == 1 and targets[0]['bindingId'] == 'console'
+            assert targets[0]['available'] is True
+    with s.manager.keys.locked():
+        pass  # Discovery released every reader, not just its DB connection.
+    assert not s.provider.opened and not s.browser.tickets
+
+
+def test_real_revoked_discovery_retains_cause_but_not_the_undisclosed_target(browser_app):
+    from backend.system.diagnostics.failures import HttpFailureMiddleware, RecentHttpFailures
+    s = browser_app
+    store = RecentHttpFailures()
+    app = FastAPI()
+    app.add_middleware(HttpFailureMiddleware, store=store)
+    app.include_router(application_session_router(s.browser))
+    params = s.ui.model_dump(exclude={"host_version", "entrypoint_id"})
+    with TestClient(app) as http:
+        assert len(http.get(s.base, params=params, headers=s.auth).json()['targets']) == 1
+        s.browser.runtimes = ()
+        available = http.get(s.base, params=params, headers=s.auth)
+        assert available.json()['targets'][0]['available'] is False
+        assert store.snapshot()['records'] == []  # Missing runtime does not silently remove a target.
+        s.manager.revoke(1, actor_token=s.token, request_id=identity(),
+                         expected_revision=s.grant_record_revision)
+        denied = http.get(s.base, params=params, headers=s.auth)
+        assert denied.status_code == 200 and denied.json()['targets'] == []
+        row = store.snapshot()['records'][0]
+        assert row['trace_id'] == denied.headers['x-3mm-trace-id']
+        assert row['handled_refusal'] is True and row['phase'] == 'not_dispatched'
+        assert row['reason'] == 'grant_not_current'
+        assert s.request.device_id not in denied.text and s.request.device_id not in json.dumps(row)
+        assert not s.browser.tickets and not s.provider.opened
 
 
 def test_real_ui_ticket_binary_stream_input_control_and_owned_cleanup(browser_app):
@@ -812,4 +860,343 @@ def test_pending_startup_deadline_cancels_and_joins_before_cleanup(browser_app):
         with pytest.raises(WebSocketDisconnect):
             ws.receive_json()
     assert cancelled.is_set() and len(s.provider.closed) == 1
+    assert not s.browser.owned and not s.browser.leases
+
+
+def test_real_reviewed_request_mismatch_is_correlated_before_public_redaction(browser_app, monkeypatch):
+    from backend.system.diagnostics import failures, operations
+    from packages.protocol.diagnostics import DiagnosticSession
+    s = browser_app
+    store = failures.RecentHttpFailures()
+    recorder = DiagnosticSession('core', '0.3.11'); recorder.start(60)
+    monkeypatch.setattr(operations, 'core_diagnostics', recorder)
+    app = FastAPI(); app.add_middleware(failures.HttpFailureMiddleware, store=store)
+    app.include_router(application_session_router(s.browser))
+    changed = s.request.model_dump(mode='json')
+    changed['options'] = {'cols': 81, 'rows': 24}
+    with TestClient(app) as http:
+        response = http.post(s.base + '/ticket', headers=s.auth,
+            json={'binding_id': 'console', 'ui_context': s.ui.model_dump(), 'request': changed})
+    assert response.status_code == 403 and response.json()['detail'] == 'Current session access is unavailable'
+    row = store.snapshot()['records'][0]
+    assert row['trace_id'] == response.headers['x-3mm-trace-id']
+    assert row['instance_id'] is not None and row['reason'] == 'session_request_mismatch'
+    assert row['stage'] == 'session.authority' and row['phase'] == 'not_dispatched'
+    assert not s.provider.opened and not s.browser.tickets
+
+
+def test_executor_failure_has_a_websocket_case_linked_to_its_original_ticket(browser_app, monkeypatch):
+    from backend.system.diagnostics import failures
+    from backend.applications.sessions import browser
+    s = browser_app
+    store = failures.RecentHttpFailures()
+    monkeypatch.setattr(browser, 'recent_http_failures', store)
+    async def bad_open(_context):
+        raise RuntimeError('PRIVATE_TERMINAL_OR_PROVIDER_CONTENT')
+    s.provider.open = bad_open
+    app = FastAPI(); app.add_middleware(failures.HttpFailureMiddleware, store=store)
+    app.include_router(application_session_router(s.browser))
+    with TestClient(app) as http:
+        response = http.post(s.base + '/ticket', headers=s.auth,
+            json={'binding_id': 'console', 'ui_context': s.ui.model_dump(), 'request': s.request.model_dump(mode='json')})
+        assert response.status_code == 200
+        with http.websocket_connect(s.base + '/ws', headers={'origin': ORIGIN}) as ws:
+            ws.send_json({'op': 'authenticate', 'ticket': response.json()['ticket']})
+            with pytest.raises(WebSocketDisconnect):
+                ws.receive_json()
+    row = store.snapshot()['records'][0]
+    assert row['transport'] == 'websocket' and row['status'] is None
+    assert row['trace_id'] == response.headers['x-3mm-trace-id']
+    assert row['stage'] == 'session.opening.total' and row['phase'] == 'execution_unconfirmed'
+    assert row['reason'] == 'session_runtime_failed'
+    assert 'PRIVATE_TERMINAL_OR_PROVIDER_CONTENT' not in json.dumps(store.snapshot())
+    assert not s.browser.diagnostic_traces and not s.browser.leases
+
+
+@pytest.mark.parametrize('stage', ['authority_initial', 'authority_recheck', 'provider_open'])
+def test_startup_failure_preserves_exact_stage_without_debug_or_secret_text(browser_app, monkeypatch, stage):
+    from backend.system.diagnostics import failures
+    from backend.applications.sessions import browser
+    from components.system_runtime.session_worker import SessionStartupError
+    s = browser_app
+    store = failures.RecentHttpFailures()
+    monkeypatch.setattr(browser, 'recent_http_failures', store)
+    checks = []
+    original = s.browser._check_current
+    def authorize(*args, **kwargs):
+        checks.append(1)
+        if stage == 'authority_initial' or stage == 'authority_recheck' and len(checks) > 1:
+            raise TimeoutError('PRIVATE_AUTHORITY_TEXT')
+        return original(*args, **kwargs)
+    monkeypatch.setattr(s.browser, '_check_current', authorize)
+    async def opening(_context):
+        if stage == 'provider_open':
+            raise SessionStartupError('session.opening.provider_open', 'deadline_exceeded', 123)
+        await asyncio.Event().wait()
+    s.provider.open = opening
+    s.browser.startup_check_interval = 0.01
+    ticket = issue(s).json()
+    # Ticket issuance has its own authority checks; only WS startup is injected.
+    with connect(s, ticket) as ws:
+        ws.send_json({'op': 'authenticate', 'ticket': ticket['ticket']})
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_json()
+    row = store.snapshot()['records'][0]
+    assert row['stage'] == 'session.opening.'+stage
+    assert row['reason'] == 'deadline_exceeded'
+    assert row['phase'] == ('not_dispatched' if stage == 'authority_initial' else 'execution_unconfirmed')
+    assert 'PRIVATE' not in json.dumps(store.snapshot())
+    assert not s.browser.leases and not s.browser.owned
+
+
+def test_completed_worker_failure_is_not_masked_by_a_later_authority_failure():
+    from backend.applications.sessions.browser import ApplicationBrowserSessions
+    from components.system_runtime.session_worker import SessionStartupError
+    async def run():
+        value = object.__new__(ApplicationBrowserSessions)
+        value.startup_check_interval = 0.01
+        value.startup_timeout = 1
+        value.startup_authorization_timeout = 0.1
+        checked = []
+        async def denied():
+            checked.append(1)
+            raise TimeoutError('PRIVATE')
+        async def failed():
+            raise SessionStartupError('session.opening.provider_load', 'session_runtime_failed', 2)
+        with pytest.raises(SessionStartupError) as result:
+            await value._open_with_authority(failed(), denied)
+        assert result.value.diagnostic_stage == 'session.opening.provider_load'
+        assert not checked
+    asyncio.run(run())
+
+
+def test_input_timings_separate_queue_authority_provider_and_ack_without_payload(browser_app, monkeypatch):
+    from backend.applications.sessions import browser
+    from backend.system.diagnostics import operations
+    s = browser_app
+    observations = []
+    recorder = SimpleNamespace(record=lambda **value: observations.append(value))
+    monkeypatch.setattr(browser, 'core_diagnostics', recorder)
+    monkeypatch.setattr(operations, 'core_diagnostics', recorder)
+    ticket = issue(s).json()
+    with connect(s, ticket) as ws:
+        ws.send_json({'op': 'authenticate', 'ticket': ticket['ticket']})
+        sid = ws.receive_json()['acceptance']['session_id']
+        ws.receive_bytes()
+        observations.clear()
+        ws.send_bytes(encode_session_frame(op='data', seq=1, session_id=sid,
+            payload=b'PRIVATE_KEYBOARD_BYTES', payload_kind='binary'))
+        ws.receive_bytes()
+        assert ws.receive_json()['op'] == 'input_ack'
+        ws.send_json({'op': 'close', 'session_id': sid})
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_json()
+    measured = {row['stage'] for row in observations}
+    assert {
+        'session.input.before', 'session.input.provider', 'session.input.after',
+        'session.input.ack', 'session.authority.queue', 'session.authority.thread_queue',
+        'session.authority.lock_queue', 'session.authority.current', 'session.output.send',
+    } <= measured
+    assert all(row['duration_ms'] >= 0 for row in observations)
+    encoded = json.dumps(observations)
+    assert 'PRIVATE_KEYBOARD_BYTES' not in encoded and s.user_token not in encoded
+    assert not s.browser.owned and not s.browser.leases
+
+
+def test_input_provider_failure_keeps_exact_stage_without_debug(browser_app, monkeypatch):
+    from backend.applications.sessions import browser
+    from backend.system.diagnostics.failures import RecentHttpFailures
+    s = browser_app
+    store = RecentHttpFailures()
+    monkeypatch.setattr(browser, 'recent_http_failures', store)
+    async def failed(_sid, _payload):
+        raise RuntimeError('PRIVATE_PROVIDER_COMMAND_TEXT')
+    s.provider.receive = failed
+    ticket = issue(s).json()
+    with connect(s, ticket) as ws:
+        ws.send_json({'op': 'authenticate', 'ticket': ticket['ticket']})
+        sid = ws.receive_json()['acceptance']['session_id']
+        ws.receive_bytes()
+        ws.send_bytes(encode_session_frame(op='data', seq=1, session_id=sid,
+            payload=b'PRIVATE_INPUT', payload_kind='binary'))
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_json()
+    row = store.snapshot()['records'][0]
+    assert row['stage'] == 'session.input.provider'
+    assert row['reason'] == 'session_runtime_failed'
+    assert row['phase'] == 'execution_unconfirmed'
+    assert 'PRIVATE' not in json.dumps(store.snapshot())
+    assert not s.browser.owned and not s.browser.leases
+
+
+def test_code_reuse_ends_before_the_next_current_authority_check(browser_app, monkeypatch):
+    from backend.artifacts import packages
+    s = browser_app
+    binding = s.session_authority.admit(installation_id=1, binding_id='console',
+        session_id='ses_'+'e'*32, authorization='Bearer '+s.user_token, request=s.request)
+    original, loads = packages.validate_module_package, []
+    def load(*args, **kwargs):
+        loads.append(kwargs.get('core_version'))
+        return original(*args, **kwargs)
+    monkeypatch.setattr(packages, 'validate_module_package', load)
+    def check():
+        return s.browser._check_current(s.validated.manifest.module_id, s.ui,
+            'Bearer '+s.user_token, binding, s.request, 'input', None)
+    check()
+    # This fixture's manager and installed UI adapter can use distinct trusted
+    # Core versions. Reuse is per version, never across a different constraint.
+    first = list(loads)
+    assert len(first) == len(set(first))
+    check()
+    assert loads == first + first  # The next input starts a fresh code scope.
+    with s.engine.begin() as db:
+        db.execute(delete(ApplicationPermissionGrant))
+    with pytest.raises(HTTPException) as denied:
+        check()
+    assert denied.value.status_code == 403
+    assert len(loads) > 2*len(first)  # No prior descriptor/grant permits input.
+
+
+async def _quiet_input_fixture(*_args, **_kwargs):
+    # Isolate the input boundary from periodic idle/output checks for exact
+    # admission counts. Other tests above exercise the real revocation pump.
+    await asyncio.Event().wait()
+
+
+def test_empty_provider_result_acks_with_two_fresh_input_checks(browser_app, monkeypatch):
+    from backend.applications.sessions import browser
+    s = browser_app
+    monkeypatch.setattr(browser, 'pump_session_output', _quiet_input_fixture)
+    checks = []
+    original = s.browser._check_current
+
+    def current(*args, **kwargs):
+        checks.append((args[5], len(s.provider.inputs)))
+        return original(*args, **kwargs)
+
+    async def empty(session_id, data):
+        s.provider.inputs.append((session_id, data))
+        return b''
+
+    monkeypatch.setattr(s.browser, '_check_current', current)
+    s.provider.receive = empty
+    ticket = issue(s).json()
+    with connect(s, ticket) as ws:
+        ws.send_json({'op': 'authenticate', 'ticket': ticket['ticket']})
+        sid = ws.receive_json()['acceptance']['session_id']
+        checks.clear()
+        for seq in (1, 2):
+            ws.send_bytes(encode_session_frame(op='data', seq=seq, session_id=sid,
+                payload=b' ', payload_kind='binary'))
+            assert ws.receive_json() == {'op': 'input_ack', 'session_id': sid, 'seq': seq}
+        assert checks == [('input', 0), ('input', 1), ('input', 1), ('input', 2)]
+        ws.send_json({'op': 'close', 'session_id': sid})
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_json()
+    assert len(s.provider.inputs) == 2 and len(s.provider.closed) == 1
+    assert not s.browser.owned and not s.browser.leases
+
+
+@pytest.mark.parametrize('fault', ['human', 'service'])
+def test_empty_result_ack_rechecks_revocation_during_provider_work(browser_app, monkeypatch, fault):
+    from backend.applications.sessions import browser
+    s = browser_app
+    monkeypatch.setattr(browser, 'pump_session_output', _quiet_input_fixture)
+    entered = threading.Event()
+    gate = {}
+
+    async def empty_after_wait(session_id, data):
+        s.provider.inputs.append((session_id, data))
+        gate['release'] = asyncio.Event()
+        entered.set()
+        await gate['release'].wait()
+        return b''
+
+    s.provider.receive = empty_after_wait
+    ticket = issue(s).json()
+    with connect(s, ticket) as ws:
+        ws.send_json({'op': 'authenticate', 'ticket': ticket['ticket']})
+        sid = ws.receive_json()['acceptance']['session_id']
+        ws.send_bytes(encode_session_frame(op='data', seq=1, session_id=sid,
+            payload=b' ', payload_kind='binary'))
+        assert entered.wait(5)
+        try:
+            if fault == 'human':
+                with s.engine.begin() as db:
+                    db.execute(delete(ApplicationPermissionGrant))
+            else:
+                with s.browser.authority_lock:
+                    s.manager.revoke(1, actor_token=s.token, request_id=identity(),
+                                     expected_revision=s.grant_record_revision)
+        finally:
+            s.client.portal.call(gate['release'].set)
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_json()  # No ACK for input whose post-effect access was revoked.
+    assert len(s.provider.inputs) == 1 and len(s.provider.closed) == 1
+    assert not s.browser.owned and not s.browser.leases
+
+
+def test_empty_result_ack_checks_after_waiting_for_the_send_lock(browser_app, monkeypatch):
+    from backend.applications.sessions import browser
+    from starlette.websockets import WebSocket
+    s = browser_app
+    blocked, received, released, checked = (threading.Event() for _ in range(4))
+    gate = {}
+    send_bytes = WebSocket.send_bytes
+    original = s.browser._check_current
+
+    async def controlled_output(provider, sid, send, **_kwargs):
+        # One fixture output path, then idle. Browser send_output still owns the
+        # real send lock and full current-authority check for every frame.
+        seq = 0
+        while True:
+            data = await provider.read_output(sid)
+            seq += 1
+            await send(encode_session_frame(op='data', seq=seq, session_id=sid,
+                payload=data, payload_kind='binary'))
+
+    async def send_when_released(socket, data):
+        if decode_session_frame(data)[1] == b'fixture_output':
+            gate['release'] = asyncio.Event()
+            blocked.set()
+            await gate['release'].wait()
+        return await send_bytes(socket, data)
+
+    async def empty(session_id, data):
+        s.provider.inputs.append((session_id, data))
+        received.set()
+        return b''
+
+    def current(*args, **kwargs):
+        if args[5] == 'input' and received.is_set():
+            assert released.is_set(), 'Post-input admission ran before acquiring the send lock'
+            checked.set()
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(browser, 'pump_session_output', controlled_output)
+    monkeypatch.setattr(WebSocket, 'send_bytes', send_when_released)
+    monkeypatch.setattr(s.browser, '_check_current', current)
+    s.provider.receive = empty
+    ticket = issue(s).json()
+    with connect(s, ticket) as ws:
+        ws.send_json({'op': 'authenticate', 'ticket': ticket['ticket']})
+        sid = ws.receive_json()['acceptance']['session_id']
+        assert decode_session_frame(ws.receive_bytes())[1] == b'ready\r\n'
+        s.client.portal.call(s.provider.queue.put_nowait, b'fixture_output')
+        assert blocked.wait(5)
+        try:
+            ws.send_bytes(encode_session_frame(op='data', seq=1, session_id=sid,
+                payload=b' ', payload_kind='binary'))
+            assert received.wait(5)
+            with s.engine.begin() as db:
+                db.execute(delete(ApplicationPermissionGrant))
+        finally:
+            released.set()
+            s.client.portal.call(gate['release'].set)
+        # This output was admitted before revocation and was already in send.
+        assert decode_session_frame(ws.receive_bytes())[1] == b'fixture_output'
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_json()  # A queued ACK must read the newly revoked authority.
+    assert checked.is_set()
+    assert len(s.provider.inputs) == 1 and len(s.provider.closed) == 1
     assert not s.browser.owned and not s.browser.leases

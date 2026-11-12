@@ -11,11 +11,11 @@ from backend.tests.test_application_authority_management import (
     installed, source_subject, source_installed, native, activate_grant, command, identity,
 )
 from backend.db.module import ApplicationExtensionInstallation as Installation
-from backend.services.application_commands import submit_command
+from backend.applications.commands.broker import submit_command
 from backend.db.authority import CoreAuthorityGuard
-from backend.services.application_authority_keys import KEY_NAME, AuthorityReviewKeyError
-from backend.services.application_authority_management import ApplicationAuthorityManager, AuthorityManagementError
-from backend.services.authority_metadata import AuthorityMetadataError
+from backend.applications.authority.keys import KEY_NAME, AuthorityReviewKeyError
+from backend.applications.authority.management import ApplicationAuthorityManager, AuthorityManagementError
+from backend.applications.authority.metadata import AuthorityMetadataError
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Requires real POSIX Core key ownership')
 
@@ -121,8 +121,8 @@ def test_status_only_still_refuses_invalid_artifact_and_missing_recovery_metadat
 def test_status_only_api_still_requires_real_administrator_and_never_enables_mutations(installed):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
-    from backend.routes.application_authority import router
-    from backend.utils.db_utils import get_db
+    from backend.applications.management.access_api import router
+    from backend.storage.sessions import get_db
     s = installed
     (s.key_directory / KEY_NAME).unlink()
     app = FastAPI()

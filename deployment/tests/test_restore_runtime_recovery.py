@@ -16,8 +16,8 @@ from sqlalchemy.orm import Session
 
 import backend.database  # noqa: F401 - register relationship targets
 from backend.db.installation_identity import CoreInstallationIdentity
-from backend.services import installation_identity as identity
-from backend.services.backups import read_backup_operation_status
+from backend.installation import identity
+from backend.system.backups.service import read_backup_operation_status
 from backend.tests.test_backup_preview import _settings
 from deployment import restore_backup as restore
 from deployment.create_backup import create_backup
@@ -114,7 +114,7 @@ def test_state_switch_and_rollback_load_their_own_environment(tmp_path, monkeypa
         elif arguments[-1].endswith("/restore_application_extensions.py"):
             stage = "applications"
         else:
-            assert arguments[-2:] == ("-m", "three_mm_runtime.activate")
+            assert arguments[-2:] == ("-m", "components.system_runtime.activate")
             stage = "bootstrap"
         children.append((stage, observed))
         if failure == stage and not failed:
@@ -238,7 +238,7 @@ def test_failed_rollback_activation_preserves_recovery_status_and_evidence(tmp_p
     # Environment loading works; both initial activation and rollback activation
     # fail independently. Restoring files alone must NEVER report rolled_back.
     def run(arguments, **_kwargs):
-        if arguments[-2:] == ("-m", "three_mm_runtime.activate"):
+        if arguments[-2:] == ("-m", "components.system_runtime.activate"):
             raise subprocess.CalledProcessError(1, arguments)
 
     monkeypatch.setattr(runtime, "_run", run)

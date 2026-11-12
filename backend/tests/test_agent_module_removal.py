@@ -7,10 +7,10 @@ from sqlalchemy import select
 
 from backend.db.device import DeviceCommand, DeviceRuntimeFeatures
 from backend.db.module import ModuleInstallation
-from backend.routes import modules
-from backend.routes.device_commands import submit_command_result
+from backend.artifacts import api as modules
+from backend.devices.commands.api import submit_command_result
 from backend.tests.test_module_lifecycle_idempotency import lifecycle, DEVICE_ID, MODULE_ID, _request
-from three_mm_protocol import AgentCommandResult
+from packages.protocol import AgentCommandResult
 
 
 def installed(s):
@@ -123,7 +123,7 @@ def test_unknown_prior_delivery_blocks_removal_without_hiding_installation(lifec
 
 def test_inventory_removal_and_package_delete_require_administrator(lifecycle):
     from fastapi import HTTPException
-    from backend.utils.auth_dep import require_admin
+    from backend.accounts.dependencies import require_admin
     s = lifecycle
     def denied():
         raise HTTPException(403, "Administrator required")

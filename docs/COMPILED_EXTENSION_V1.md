@@ -1,12 +1,14 @@
 # Compiled UI Extension v1
 
-Status: Stage 3 generic browser loader; Milestone 8
+Current source uses neutral `@platform/*` public imports. For a service plus UI
+application, start with [Building applications](APPLICATION_DEVELOPMENT.md).
 
 ## Purpose
 
 Compiled UI extensions contain reviewed Vue source that is converted once during installation into immutable browser-ready JavaScript and CSS. They support widgets, routes, editors and reusable components through one data-driven contract. They do not require a Vite development server and do not modify the prebuilt Core frontend.
 
-This format is separate from declarative runtime extensions. Runtime extensions remain the preferred no-code path. Compiled UI extensions cross an executable-code trust boundary and require administrator review and isolated compilation.
+Compiled UI crosses an executable-code trust boundary and requires administrator
+review and protected compilation. It is not a hostile-code browser sandbox.
 
 ## Source package
 
@@ -17,7 +19,11 @@ A source package contains:
 - declared `.vue` entrypoints under `source/frontend/`;
 - optional supporting TypeScript, JavaScript, CSS and JSON under `source/frontend/`.
 
-Stage 1 rejects backend source and files outside this boundary. The package declares `entrypoints.ui` as `compiled-ui.json` and targets only the `ui` runtime.
+A UI-only package declares `entrypoints.ui` as `compiled-ui.json`. A current
+application may combine this UI with a separately packaged, checksum-bound service
+wheel through `application-extension.json` and the `core` runtime. Backend source
+is not part of the UI compiler's input boundary; see the application guide rather
+than the historical UI-only Stage 1 restriction for that combined format.
 
 ## UI entrypoint kinds
 
@@ -46,13 +52,14 @@ The compiler runs in a temporary workspace, resolves only bundled build dependen
 
 Compiled source may import only the stable Extension Host SDK and an allowlisted set of frontend dependencies. Imports from arbitrary Core source paths are rejected. Backend Python, shell commands, package-manager hooks and runtime dependency downloads are outside compiled-UI v1.
 
-The implemented bare-import allowlist is `vue` and, on V7-enabled builds,
-`@3mm/ui/v1`. The latter is a separately versioned **presentation-only** browser
-contract: Surface/Button/Dialog, scoped native classes and read-only tokens.
-It exposes no Core stores, router, credentials or application API client. The
-host import map resolves it to a hashed module in the prebuilt frontend; the
-installer does not bundle another Vue or download dependencies. Existing
-Vue-only packages remain unchanged. See [Public Extension UI v1](EXTENSION_UI_V1.md)
+The current bare-import allowlist is `vue`, `@platform/ui/v1` and
+`@platform/application-ui/v1`. The UI entry is a separately versioned
+**presentation-only** contract; the application entry supplies reviewed host
+operations and presentation access. Neither exposes private Core stores, router
+or credentials. The host import map resolves these entries to hashed modules in
+the prebuilt frontend; the installer does not bundle another Vue or download
+dependencies. Hosts must supply the actual current import entries; there is no
+old-name alias. See [Public Extension UI v1](EXTENSION_UI_V1.md)
 and the [neutral UI reference](../modules/ui-reference/README.md).
 
 This is reviewed executable code, not a browser security sandbox. The public

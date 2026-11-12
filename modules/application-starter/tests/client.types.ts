@@ -1,5 +1,5 @@
 // Compile-only regression: common check runs these against the actual public host.
-import type { ApplicationHost } from '@3mm/application-ui/v1'
+import type { ApplicationHost } from '@platform/application-ui/v1'
 import { createApplicationClient } from '../source/frontend/client.generated'
 
 export function checkClientTypes(host: Pick<ApplicationHost, 'invoke'>) {

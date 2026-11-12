@@ -5,7 +5,7 @@ import pytest
 import sqlalchemy as sa
 from backend.tests.test_migration_history import _alembic
 from backend.tests.test_core_product_extraction import seed,table
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 
 ROOT=Path(__file__).parents[2]
 
@@ -54,14 +54,16 @@ import importlib.abc,json,sys
 from pathlib import Path
 class NoCore(importlib.abc.MetaPathFinder):
     def find_spec(self,fullname,path=None,target=None):
-        if fullname.split('.')[0] in {'backend','agent','three_mm_runtime'}:raise AssertionError('Private import: '+fullname)
+        if (fullname.split('.')[0] in {'backend','agent','three_mm_runtime'}
+                or fullname=='components.system_runtime' or fullname.startswith('components.system_runtime.')):
+            raise AssertionError('Private import: '+fullname)
 sys.meta_path.insert(0,NoCore());sys.path.insert(0,sys.argv[1])
 from contacts_app.service import create_service
-from three_mm_crud.migrations import get_migrations
-from three_mm_crud.descriptors import storage_declaration
-from three_mm_application_sdk import ApplicationStorage,ApplicationContext,OperationContext
-from three_mm_application_sdk.scoped_relational import ApplicationScopedStorage,_TransactionAdmission
-from three_mm_protocol.application_extension import ApplicationRelationalStorageV1
+from application_crud.migrations import get_migrations
+from application_crud.descriptors import storage_declaration
+from packages.application_sdk import ApplicationStorage,ApplicationContext,OperationContext
+from packages.application_sdk.scoped_relational import ApplicationScopedStorage,_TransactionAdmission
+from packages.protocol.application_extension import ApplicationRelationalStorageV1
 data=Path(sys.argv[2]);ApplicationStorage(data).migrate(get_migrations(),'0001')
 storage=ApplicationScopedStorage(data,declaration=ApplicationRelationalStorageV1.model_validate(storage_declaration()['relational']),schema_revision='0001',admit=lambda tid,mode,profile,deadline:_TransactionAdmission(tid,mode,profile,deadline))
 service=create_service(ApplicationContext('org.3mm.contacts','1.0.0',data,{},storage))
@@ -76,7 +78,7 @@ print(json.dumps({'own_data_import':True,'core_imports':False,'public_sdk_only':
     assert json.loads(result.stdout)=={'own_data_import':True,'core_imports':False,'public_sdk_only':True}
 
 def test_personal_data_policy_is_explicit_and_preserves_export_erasure_requirements():
-    from three_mm_protocol.application_extension import ApplicationExtensionV1
+    from packages.protocol.application_extension import ApplicationExtensionV1
     _,application,_=builder().descriptors()
     assert ApplicationExtensionV1.model_validate(application).storage.retention_policy=='until_explicit_erasure'
     for key in ('export_operation_id','erasure_operation_id','retention_policy'):

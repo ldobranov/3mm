@@ -8,10 +8,10 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from backend.services import application_authority_sources as sources
-from backend.services import application_configuration_provenance as provenance
-from backend.services import application_package_staging as staging
-from backend.services.application_authority_management import AuthorityManagementError
+from backend.applications.authority import sources
+from backend.applications.management import provenance
+from backend.applications.management import staging
+from backend.applications.authority.management import AuthorityManagementError
 
 
 class RegistrationPriorityTests(unittest.TestCase):
@@ -22,18 +22,18 @@ class RegistrationPriorityTests(unittest.TestCase):
         self.pin=SimpleNamespace(active_version=None,module_package_id=3,sha256='b'*64)
         self.package=object();self.key=object()
         def replace(target,**kwargs):return stack.enter_context(patch(target,**kwargs))
-        replace('backend.services.application_authority_sources._package_pin',return_value=self.pin)
-        replace('backend.services.application_authority_sources.read_authority_guard',return_value=object())
-        replace('backend.services.application_authority_sources._core_identity',return_value='inst_'+'1'*32)
-        replace('backend.services.application_authority_sources.read_application_authority',return_value=SimpleNamespace(
+        replace('backend.applications.authority.sources._package_pin',return_value=self.pin)
+        replace('backend.applications.authority.sources.read_authority_guard',return_value=object())
+        replace('backend.applications.authority.sources._core_identity',return_value='inst_'+'1'*32)
+        replace('backend.applications.authority.sources.read_application_authority',return_value=SimpleNamespace(
             incarnation='2'*32,module_id='org.example.monitor'))
-        replace('backend.services.application_configuration_provenance.registration_id',return_value='initial')
-        replace('backend.services.application_package_staging.registration_id',return_value='candidate')
-        self.initial_verify=replace('backend.services.application_configuration_provenance.verify_registration')
-        self.candidate_verify=replace('backend.services.application_package_staging.verify_registration')
-        self.load=replace('backend.services.application_authority_management._load',return_value={'revision':'3'*32})
-        self.initial_binding=replace('backend.services.application_configuration_provenance._binding',return_value='initial-binding')
-        self.candidate_binding=replace('backend.services.application_package_staging._binding',return_value='candidate-binding')
+        replace('backend.applications.management.provenance.registration_id',return_value='initial')
+        replace('backend.applications.management.staging.registration_id',return_value='candidate')
+        self.initial_verify=replace('backend.applications.management.provenance.verify_registration')
+        self.candidate_verify=replace('backend.applications.management.staging.verify_registration')
+        self.load=replace('backend.applications.authority.management._load',return_value={'revision':'3'*32})
+        self.initial_binding=replace('backend.applications.management.provenance._binding',return_value='initial-binding')
+        self.candidate_binding=replace('backend.applications.management.staging._binding',return_value='candidate-binding')
 
     def code_identity(self):
         return sources._resolve_code_identity(self.db,1,self.pin,self.package,registration_key=self.key)

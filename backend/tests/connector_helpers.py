@@ -2,8 +2,8 @@
 import base64
 import requests
 from backend.db.module import ApplicationConnectorAttempt
-from backend.services.application_connectors import prepare_connector_request, record_connector_outcome
-from backend.services.application_connector_transport import failure
+from backend.applications.connectors.broker import prepare_connector_request, record_connector_outcome
+from backend.applications.connectors.transport import failure
 
 
 def execute_connector_request(db, installation, *, transport, **arguments):

@@ -6,21 +6,21 @@ from datetime import datetime, timedelta, timezone
 from fastapi import Response
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
-from three_mm_protocol import AgentCommand, AgentCommandResult
+from packages.protocol import AgentCommand, AgentCommandResult
 
 import backend.database  # noqa: F401
 from backend.db.base import Base
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.device import Device, DeviceCommand, DevicePlatformState
-from backend.routes.device_commands import next_command
-from backend.services.device_commands import (
+from backend.devices.commands.api import next_command
+from backend.devices.commands.queue import (
     command_envelope,
     commit_queued_command,
     deliver_next_command,
     queue_command,
     record_command_result,
 )
-from backend.services.device_command_notifier import (
+from backend.devices.commands.notifier import (
     DeviceCommandNotifier,
     device_command_notifier,
 )

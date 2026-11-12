@@ -15,9 +15,9 @@ from pathlib import Path
 NODE_COMMANDS = ("bash", "python3", "systemctl", "tar", "flock", "curl", "openssl")
 NODE_IMPORTS = (
     "requests", "pydantic", "fastapi", "uvicorn", "gpiod",
-    "agent.main", "setup_service.main", "three_mm_provisioning.network_helper",
-    "three_mm_runtime.activate", "three_mm_runtime.network_recovery",
-    "three_mm_runtime.node_recovery", "three_mm_runtime.node_update_helper", "three_mm_runtime.node_update_trust",
+    "agent.main", "components.setup.main", "packages.provisioning.network_helper",
+    "components.system_runtime.activate", "components.system_runtime.network_recovery",
+    "components.system_runtime.node_recovery", "components.system_runtime.node_update_helper", "components.system_runtime.node_update_trust",
 )
 
 

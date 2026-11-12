@@ -8,8 +8,8 @@ from agent.core_client import DeviceCredential, DeviceCredentialStore
 from agent.hub_connection import normalize_hub_endpoint, resolve_hub_connection
 from agent.identity import AgentIdentityStore
 from agent.main import create_app
-from three_mm_protocol import AgentRole
-from three_mm_provisioning import FileProvisioningStore, ProvisioningSnapshot, ProvisioningState
+from packages.protocol import AgentRole
+from packages.provisioning import FileProvisioningStore, ProvisioningSnapshot, ProvisioningState
 
 
 def snapshot(endpoint="http://hub.local"):

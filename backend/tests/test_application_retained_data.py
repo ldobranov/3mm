@@ -13,12 +13,12 @@ from backend.db.authority import CoreAuthorityGuard
 from backend.db.audit_log import AuditLog
 from backend.db.module import ApplicationExtensionInstallation, ApplicationRetainedData, ModulePackage
 from backend.db.user import User
-from backend.routes import application_extensions as routes
-from backend.services.authority_metadata import read_authority_guard
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
-from three_mm_runtime.application_activation import application_instance_id
-from three_mm_runtime.update_helper_client import UpdateHelperError
+from backend.applications.management import api as routes
+from backend.applications.authority.metadata import read_authority_guard
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
+from components.system_runtime.application_activation import application_instance_id
+from components.system_runtime.update_helper_client import UpdateHelperError
 
 BASE='/api/v1/application-extensions'
 MODULE='org.example.retained'
@@ -156,7 +156,7 @@ def test_fresh_activation_cannot_replace_preserved_runtime_identity(retained):
     package(s)
     helper_calls = []
     from backend.tests.test_module_packages import application_definition
-    from three_mm_protocol import ApplicationExtensionV1
+    from packages.protocol import ApplicationExtensionV1
     definition = ApplicationExtensionV1.model_validate(application_definition(
         module_id=MODULE, event_subscriptions=[], connectors=[]))
     s.monkeypatch.setattr(routes, '_definition', lambda _package: definition)

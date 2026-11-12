@@ -8,7 +8,7 @@ import json
 from datetime import timedelta
 import uuid
 
-from three_mm_application_sdk import ApplicationContext, OperationContext
+from packages.application_sdk import ApplicationContext, OperationContext
 
 
 def _canonical(value: dict[str, object]) -> str:

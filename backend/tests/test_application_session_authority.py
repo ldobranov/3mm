@@ -3,12 +3,14 @@
 import asyncio
 import json
 import os
+import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from backend.db.application_authority_grant import ApplicationAuthorityGrant as Grant
@@ -29,16 +31,16 @@ from backend.db.module import ApplicationPermissionGrant
 from backend.db.role import Role
 from backend.db.session import UserSession
 from backend.db.user import User
-from backend.routes.application_authority import router
-from backend.services.application_authority_management import (
+from backend.applications.management.access_api import router
+from backend.applications.authority.management import (
     AuthorityManagementError,
     effect_admission,
 )
-from backend.services.application_session_authority import (
+from backend.applications.sessions.authority import (
     M20SessionAuthority,
     SessionAuthorityError,
 )
-from backend.services.device_capability_registry import capability_catalog
+from backend.devices.capabilities.registry import capability_catalog
 from backend.tests.test_application_authority_management import (
     decide,
     identity,
@@ -60,10 +62,10 @@ from backend.tests.test_application_checkpoint_authority import (
     checkpoint_app,
     store_checkpoint_package,
 )
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
-from three_mm_protocol.interactive_session import SessionOpenRequestV1
-from three_mm_runtime.session_output import SessionOutputError, pump_session_output
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
+from packages.protocol.interactive_session import SessionOpenRequestV1
+from components.system_runtime.session_output import SessionOutputError, pump_session_output
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix", reason="Real POSIX Core review keys"
@@ -223,6 +225,47 @@ def check(state, bound, **changes):
     )
 
 
+@pytest.mark.parametrize(
+    ("fault", "reason"),
+    [
+        ("key_busy", "review_key_busy"),
+        ("database_busy", "authority_database_busy"),
+        ("stale_grant", "grant_not_current"),
+    ],
+)
+def test_session_prepare_failure_keeps_its_closed_reason_without_granting_access(
+    session_app, monkeypatch, fault, reason
+):
+    from backend.applications.authority.keys import AuthorityReviewKeyBusy
+    from backend.applications.sessions import authority as session_authority
+
+    state = session_app
+    failures = []
+
+    def fail_prepare(*_args, **_kwargs):
+        if fault == "key_busy":
+            raise AuthorityReviewKeyBusy()
+        if fault == "database_busy":
+            original = sqlite3.OperationalError("private database exception detail")
+            original.sqlite_errorcode = sqlite3.SQLITE_BUSY
+            raise OperationalError("private statement", {"private": "parameter"}, original)
+        raise AuthorityManagementError("stale_grant")
+
+    monkeypatch.setattr(state.manager, "_prepare", fail_prepare)
+    monkeypatch.setattr(
+        session_authority, "note_failure", lambda stage, value: failures.append((stage, value))
+    )
+    with Session(state.engine) as db:
+        assert db.get(Grant, 1) is None
+    with pytest.raises(SessionAuthorityError) as refused:
+        admit(state)
+    assert refused.value.diagnostic_reason == reason
+    assert str(refused.value) == "Session authority is unavailable or changed"
+    assert failures == [("session.authority", reason)]
+    with Session(state.engine) as db:
+        assert db.get(Grant, 1) is None
+
+
 def test_real_review_is_explicit_and_neither_native_nor_approve_grants_a_session(
     session_app,
 ):
@@ -268,6 +311,37 @@ def test_compatibility_and_empty_selection_never_allow_a_session(session_app):
     activate(session_app, scopes=[])
     with pytest.raises(SessionAuthorityError):
         admit(session_app)
+
+
+def test_session_admission_and_rechecks_share_reads_but_never_overlap_a_key_writer(session_app):
+    from backend.applications.authority.keys import AuthorityReviewKeyBusy
+    from backend.applications.authority.sources import _read_snapshot
+    s = session_app
+    activate(s)
+    prepared = s.manager._prepare(1)
+    with s.manager.keys.read_locked() as key, _read_snapshot(s.engine) as db:
+        s.manager._require_grant(db, key, 1, prepared, SCOPE)
+        bound = admit(s)
+        for operation in ('output', 'status', 'input'):
+            assert check(s, bound, operation=operation) is None
+        assert check(s, bound, operation='control', control_action='resize') is None
+        with pytest.raises(AuthorityReviewKeyBusy):
+            with s.manager.keys.locked():
+                pytest.fail('Exclusive key writer overlapped session verification')
+    with s.manager.keys.locked():
+        # All session reads have ended, so maintenance can acquire EX. Neither
+        # a new admission nor a previously admitted binding may bypass it.
+        with pytest.raises(SessionAuthorityError):
+            admit(s)
+        with pytest.raises(SessionAuthorityError):
+            check(s, bound)
+    assert check(s, bound) is None
+    with s.engine.begin() as db:
+        db.execute(delete(ApplicationPermissionGrant))
+    with pytest.raises(SessionAuthorityError):
+        check(s, bound)  # Shared verification never caches the old human grant.
+    with s.manager.keys.locked():
+        pass  # Failure cleanup also releases every lease.
 
 
 @pytest.mark.parametrize(

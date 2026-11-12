@@ -17,15 +17,15 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from backend.db.module import ApplicationConnectorAttempt as Attempt, ApplicationConnectorBinding as Binding, ApplicationExtensionInstallation as Installation
-from backend.services.application_connectors import prepare_application_connector_binding, bind_application_connector
-from backend.services.authority_metadata import authority_transaction
+from backend.applications.connectors.broker import prepare_application_connector_binding, bind_application_connector
+from backend.applications.authority.metadata import authority_transaction
 from backend.tests.test_application_authority_management import installed as connector_installed, source_subject, source_installed, activate_grant, identity
 from backend.tests.test_application_event_authority import replace_package
 from backend.tests.test_platform_runtime_process import core_stack, activate
 from backend.tests.test_application_public_web_transport import wait_for
 from deployment.platform_runtime_component import RuntimeStore
-from three_mm_application_sdk import ApplicationPlatformError
-from three_mm_platform_runtime.connector_worker import probe_worker
+from packages.application_sdk import ApplicationPlatformError
+from components.platform_runtime.connector_worker import probe_worker
 
 pytestmark=pytest.mark.skipif(os.name!='posix',reason='Actual Linux processes/SCM_RIGHTS')
 
@@ -242,7 +242,7 @@ def test_bad_worker_candidate_rolls_back_only_network_process(network_stack):
     s=network_stack;before=s.command('fingerprint');runtime_pid=s.control.process.pid
     a=s.network.store.target('current')
     s.artifact('bad-worker')
-    path=s.base/'source-bad-worker/three_mm_platform_runtime/connector_worker.py'
+    path=s.base/'source-bad-worker/components/platform_runtime/connector_worker.py'
     path.write_text(path.read_text().replace('    worker = ConnectorWorker(', '    raise RuntimeError("injected bad worker")\n    worker = ConnectorWorker('))
     bad=build_component(s.base/'source-bad-worker')
     with pytest.raises((OSError,ValueError)):s.network.activate(bad)
@@ -254,7 +254,7 @@ def test_bad_worker_candidate_rolls_back_only_network_process(network_stack):
 def test_dns_hang_is_killed_outside_core_at_absolute_deadline(network_stack):
     from deployment.platform_runtime_component import build_component
     s=network_stack;s.artifact('dns-stall')
-    path=s.base/'source-dns-stall/three_mm_platform_runtime/connector_execute.py'
+    path=s.base/'source-dns-stall/components/platform_runtime/connector_execute.py'
     source=path.read_text(); marker='    parsed = urlsplit(plan["url"])'
     assert source.count(marker)==1
     path.write_text(source.replace(marker, '    import socket, time\n'

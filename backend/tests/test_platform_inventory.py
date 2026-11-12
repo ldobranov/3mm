@@ -8,10 +8,11 @@ from sqlalchemy.orm import Session
 
 from backend.db.device import Device, DeviceCredential, DeviceInventorySnapshot
 from backend.db.module import ApplicationExtensionInstallation
-from backend.routes import device_capabilities, device_ingest
-from backend.services.device_module_management import _device_architecture
-from backend.services.device_pairing import credential_secret_hash
-from backend.services.installation_projection import installation_projection
+from backend.devices.capabilities import api as device_capabilities
+from backend.devices.telemetry import ingest_api as device_ingest
+from backend.devices.modules.lifecycle import _device_architecture
+from backend.devices.pairing.service import credential_secret_hash
+from backend.installation.projection import installation_projection
 from backend.tests.test_device_ingest_routes import (
     DEVICE_ID,
     CREDENTIAL_ID,
@@ -24,10 +25,10 @@ from backend.tests.test_installation_peers import (
     NODE,
     pair,
 )  # noqa: F401 - shared fixture
-from backend.utils import jwt_utils
-from three_mm_protocol import AgentInventory
-from three_mm_protocol.device_inventory import upgrade_agent_inventory
-from three_mm_protocol.tests.test_device_inventory import embedded_inventory
+from backend.accounts import tokens as jwt_utils
+from packages.protocol import AgentInventory
+from packages.protocol.device_inventory import upgrade_agent_inventory
+from packages.protocol.tests.test_device_inventory import embedded_inventory
 
 
 @pytest.fixture(params=["standalone", "hub", "node"])

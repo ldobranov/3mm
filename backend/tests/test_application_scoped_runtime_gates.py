@@ -7,14 +7,14 @@ from backend.config import ApplicationRuntimeSettings
 from backend.db.module import (
     ApplicationExtensionInstallation as Installation,
 )
-from backend.services import application_extensions as gateway
-from backend.services import application_public_web as public_web
-from backend.services.application_extensions import ApplicationGatewayError
+from backend.applications.runtime import gateway
+from backend.applications.public_web import routes as public_web
+from backend.applications.runtime.gateway import ApplicationGatewayError
 from backend.tests.test_application_access import environment as access_environment
 from backend.tests.test_application_public_web import registry
 from backend.tests.test_module_packages import application_package
 from backend.tests.test_application_public_web import definition as public_definition
-from three_mm_runtime.application_transport import DispatchPhase
+from components.system_runtime.application_transport import DispatchPhase
 
 
 @pytest.mark.parametrize("mode", ["enforced", "review_required"])

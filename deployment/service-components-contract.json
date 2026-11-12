@@ -10,6 +10,9 @@
     "session-worker": {
       "session_profile": "isolated_session_v1"
     },
+    "host-session-worker": {
+      "session_profile": "host_account_session_v1"
+    },
     "session-node": {
       "session_link_contract": 1
     },

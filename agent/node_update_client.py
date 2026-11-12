@@ -5,7 +5,7 @@ import re
 import socket
 from pathlib import Path
 
-from three_mm_protocol.node_updates import (
+from packages.protocol.node_updates import (
     NodeUpdateAuthorization,
     NodeUpdateOperation,
     NodeUpdatePrepareRequest,

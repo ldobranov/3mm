@@ -14,8 +14,8 @@ import pytest
 from sqlalchemy.orm import Session
 
 from backend.db.module import ModulePackage
-from backend.services import application_authority_management as authority
-from backend.services.module_packages import validate_module_package
+from backend.applications.authority import management as authority
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_relational_activation import (
     checkpoint as start_checkpoint,
 )
@@ -53,8 +53,8 @@ from backend.tests.test_application_relational_reactivation import (
 from backend.tests.test_application_relational_runtime import invoke
 from backend.tests.test_application_relational_upgrade import issue as issue_upgrade
 from backend.tests.test_application_relational_upgrade import run as run_upgrade
-from three_mm_application_sdk.relational_wire import canonical, sign_metadata
-from three_mm_runtime import application_relational_activation_recovery as recovery
+from packages.application_sdk.relational_wire import canonical, sign_metadata
+from components.system_runtime import application_relational_activation_recovery as recovery
 
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="Actual protected POSIX evidence"),
@@ -81,7 +81,7 @@ def upload_startable_upgrade(state):
             payload = source.read(name)
             if name == migration_path:
                 payload = b"""import os
-from three_mm_application_sdk import ApplicationMigration
+from packages.application_sdk import ApplicationMigration
 def applied(db):
     raise RuntimeError('Applied migration replayed')
 def third(db):

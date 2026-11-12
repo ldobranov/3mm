@@ -105,20 +105,20 @@ def test_core_boot_and_admin_without_product_or_ai_modules(tmp_path):
 import importlib.abc,sys,json
 class NoProductImports(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname.startswith(('three_mm_ai', 'backend.utils.ai_extension_builder',
+        if fullname.startswith(('application_ai', 'backend.utils.ai_extension_builder',
                 'backend.routes.ai_', 'backend.routes.extension_projects',
                 'backend.db.automation', 'backend.db.extension_project',
                 'backend.services.ai_', 'backend.services.automation_',
                 'backend.schemas.ai_extension_builder', 'backend.schemas.extension_project',
                 'backend.db.page', 'backend.db.extension', 'backend.db.universal_translation', 'backend.db.language_pack', 'backend.routes.page_routes', 'backend.routes.universal_translations', 'backend.utils.universal_translation_engine', 'backend.utils.extension_table_creator',
-                'three_mm_crud', 'backend.db.runtime_extension', 'backend.routes.runtime_extensions', 'backend.services.runtime_extensions', 'three_mm_protocol.runtime_extension',
+                'application_crud', 'backend.db.runtime_extension', 'backend.routes.runtime_extensions', 'backend.services.runtime_extensions', 'packages.protocol.runtime_extension',
                 'backend.db.display', 'backend.db.widget', 'backend.routes.display_routes', 'backend.schemas.display')):
             raise AssertionError('Core imported product code: '+fullname)
 sys.meta_path.insert(0,NoProductImports())
 from backend import main
 from backend.database import Base,SessionLocal
 from backend.db.user import User
-from backend.utils.auth import hash_password
+from backend.accounts.passwords import hash_password
 from fastapi.testclient import TestClient
 def unavailable(): raise RuntimeError('optional service absent')
 main._runtime_authority=unavailable

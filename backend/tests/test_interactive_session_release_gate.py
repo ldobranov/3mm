@@ -35,8 +35,8 @@ def test_production_websocket_does_not_expose_prototype(path):
 
 
 def test_m20_exports_and_sdk_version_survive_additive_m21_imports():
-    from three_mm_application_sdk import SDK_VERSION
-    from three_mm_protocol import (
+    from packages.application_sdk import SDK_VERSION
+    from packages.protocol import (
         ApplicationCheckpointV1, ApplicationPeerBindingV1,
         SESSION_CONTRACT, SESSION_PROTOCOL_VERSION, SessionOpenRequestV1,
     )

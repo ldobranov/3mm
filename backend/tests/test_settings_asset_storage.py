@@ -15,17 +15,17 @@ from sqlalchemy.pool import StaticPool
 from backend.config import AppSettings, BackendSettings
 from backend.db.base import Base
 from backend.db.user import User
-from backend.routes import settings as routes
-from backend.services import asset_storage
-from backend.services.asset_storage import (
+from backend.settings import api as routes
+from backend.storage import public_assets as asset_storage
+from backend.storage.public_assets import (
     AssetPathError,
     AssetStorage,
     get_asset_storage,
 )
-from backend.services.backups import build_backup_preview
+from backend.system.backups.service import build_backup_preview
 from backend.tests.test_backup_preview import _settings
-from backend.utils import jwt_utils
-from backend.utils.db_utils import get_db
+from backend.accounts import tokens as jwt_utils
+from backend.storage.sessions import get_db
 from deployment.create_backup import create_backup
 from deployment.portable_backup import create_portable_export, import_portable_backup
 from deployment.restore_backup import restore_backup
@@ -83,7 +83,7 @@ def test_upload_uses_persistent_storage_independent_of_release(
     release = tmp_path / "releases/beta.38"
     release.mkdir(parents=True)
     monkeypatch.chdir(release)
-    monkeypatch.setattr(routes, "__file__", str(release / "backend/routes/settings.py"))
+    monkeypatch.setattr(routes, "__file__", str(release / "backend/settings/api.py"))
     response = upload(client, headers)
     assert response.status_code == 200
     asset = response.json()
@@ -101,7 +101,7 @@ def test_upload_uses_persistent_storage_independent_of_release(
     next_release.mkdir()
     monkeypatch.chdir(next_release)
     monkeypatch.setattr(
-        routes, "__file__", str(next_release / "backend/routes/settings.py")
+        routes, "__file__", str(next_release / "backend/settings/api.py")
     )
     assert client.get(asset["url"]).content == b"image-data"
     assert not list(release.iterdir())

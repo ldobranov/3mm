@@ -15,6 +15,7 @@ import { consentPreview, consentResult } from './application-consent.fixtures'
 import { readConsentPreview } from './application-consent'
 import taskResponses from './authority-task-responses.fixture.json'
 import { queryPreview } from './authority-queries.fixtures'
+import { hostSessionAccount, sessionResource, sessionScope } from './authority-sessions.fixtures'
 
 const base = '/api/v1/application-extensions/org.example.reference/authority'
 const identity = (n: string) => n.repeat(32)
@@ -117,6 +118,40 @@ function button(wrapper: VueWrapper, text: string) {
   return found
 }
 describe('single explicit application consent', () => {
+  it('shows the reviewed host account and risk outside collapsed details before explicit approval', async () => {
+    const resource = { ...sessionResource(), host_account: hostSessionAccount() }
+    resource.owner.module_id = 'org.example.reference'
+    resource.declaration.provider_id = 'org.example.reference'
+    const current = consentPreview({ ...status(), scopes: [sessionScope] }, { commands: [], connectors: [], sessions: [resource] })
+    http.post.mockImplementation(async (url: string) => ({ data: url.endsWith('/consent/allow') ? consentResult(current) : current }))
+    const wrapper = await open()
+    const warning = wrapper.get('.authority-host')
+    expect(warning.element.closest('details')).toBeNull()
+    for (const text of ['System terminal access', '3mm-terminal', 'UID 993 / GID 993', '/var/lib/3mm-terminal',
+      'real system files', 'not an isolated workspace', 'share this account', 'Root and sudo rights are not granted']) {
+      expect(warning.text()).toContain(text)
+    }
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    expect(http.post).toHaveBeenCalledTimes(1)
+    await wrapper.get(`.authority-scope-choice input[value="${sessionScope}"]`).setValue(false)
+    expect(wrapper.find('.authority-host').exists()).toBe(true)
+    expect(http.post).toHaveBeenCalledTimes(1)
+    await button(wrapper, 'Allow access').trigger('click'); await flushPromises()
+    const calls = http.post.mock.calls.filter(([url]) => url.endsWith('/consent/allow'))
+    expect(calls).toHaveLength(1)
+    expect(calls[0]![1]).toMatchObject({ scopes: [], accept_native_code: true })
+    expect(calls[0]![1]).not.toHaveProperty('host_account')
+    expect(calls[0]![1]).not.toHaveProperty('uid')
+  })
+  it('does not display a host-access warning for an ordinary isolated session', async () => {
+    const resource = sessionResource()
+    resource.owner.module_id = 'org.example.reference'
+    const current = consentPreview({ ...status(), scopes: [sessionScope] }, { commands: [], connectors: [], sessions: [resource] })
+    http.post.mockResolvedValue({ data: current })
+    const wrapper = await open()
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    expect(wrapper.find('.authority-host').exists()).toBe(false)
+  })
   it.each(['en', 'bg'])('shows query provider and bounds visibly, sends only explicit read selection (%s)', async language => {
     locale.language = language
     const current = queryPreview()

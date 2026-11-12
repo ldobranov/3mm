@@ -1,5 +1,5 @@
 """Sealed installed v9 peer review; dedicated reader is tested separately."""
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 import base64
 import copy
@@ -32,14 +32,14 @@ from backend.db.installation_peer import InstallationPeerOutbound as Peer
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.session import UserSession
 from backend.db.user import User
-from backend.services import application_authority_management as authority
-from backend.services import application_authority_subjects as subjects
-from backend.services import application_authority_sources as sources
-from backend.services import installation_identity as identity_service
-from backend.services.application_platform import ApplicationPlatformServer
-from backend.services.application_authority_sources import _read_snapshot
-from backend.routes.application_authority import router
-from backend.utils.db_utils import get_db
+from backend.applications.authority import management as authority
+from backend.applications.authority import subjects
+from backend.applications.authority import sources
+from backend.installation import identity as identity_service
+from backend.applications.runtime.platform import ApplicationPlatformServer
+from backend.applications.authority.sources import _read_snapshot
+from backend.applications.management.access_api import router
+from backend.storage.sessions import get_db
 from backend.tests.test_application_authority_management import identity, native, decide
 from backend.tests.test_application_authority_management import (
     installed as managed_installed,
@@ -55,19 +55,19 @@ from backend.tests.test_application_checkpoint_authority import (
 from backend.tests.test_application_status_authority_context import (
     inputs as status_inputs,
 )
-from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
-from three_mm_protocol.installation_identity import (
+from packages.application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+from packages.protocol.installation_identity import (
     InstallationIdentityV1,
     InstallationProofRequestV1,
 )
-from three_mm_protocol.installation_peer import (
+from packages.protocol.installation_peer import (
     PEER_SCOPE,
     PeerEnrollmentStartV1,
     enrollment_resource,
     enrollment_start_bytes,
 )
-from three_mm_protocol.installation_peer_v2 import enrollment_metadata, peer_model
-from three_mm_protocol.tests.test_application_relational_storage import (
+from packages.protocol.installation_peer_v2 import enrollment_metadata, peer_model
+from packages.protocol.tests.test_application_relational_storage import (
     relational_request,
 )
 

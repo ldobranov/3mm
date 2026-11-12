@@ -17,9 +17,9 @@ from pydantic import ValidationError
 from sqlalchemy import update
 
 from backend.db.module import ModulePackage
-from backend.services import application_authority_management as authority
-from backend.services import application_relational_lifecycle as coordinator
-from backend.services.module_packages import validate_module_package
+from backend.applications.authority import management as authority
+from backend.applications.relational import lifecycle as coordinator
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_relational_preparation import (
     ROOT_ONLY,
     SECRET,
@@ -35,19 +35,19 @@ from backend.tests.test_application_relational_preparation import (
     source_subject,
     stopped,
 )
-from three_mm_application_sdk.files import ApplicationFileStorage
-from three_mm_application_sdk.relational_wire import (
+from packages.application_sdk.files import ApplicationFileStorage
+from packages.application_sdk.relational_wire import (
     _RelationalMigrationPreparationTicket,
     _RelationalPreparationTicket,
     prepared_lifecycle,
     sign_metadata,
 )
-from three_mm_protocol.tests.test_application_relational_storage import (
+from packages.protocol.tests.test_application_relational_storage import (
     relational_request,
 )
-from three_mm_runtime import application_relational_migrations as worker
-from three_mm_runtime import application_relational_preparation as helper
-from three_mm_runtime.application_relational_session import _prepared
+from components.system_runtime import application_relational_migrations as worker
+from components.system_runtime import application_relational_preparation as helper
+from components.system_runtime.application_relational_session import _prepared
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix", reason="Real POSIX authority/worker"
@@ -122,7 +122,7 @@ def script(
     import_code="",
 ):
     return f"""import os
-from three_mm_application_sdk import ApplicationMigration
+from packages.application_sdk import ApplicationMigration
 {import_code}
 def first(db):
     db.execute("CREATE TABLE business(value TEXT)")
@@ -371,7 +371,7 @@ def test_real_intermediate_commit_is_observed_before_coherent_rollback(
         state,
         """import json, os, sqlite3
 from pathlib import Path
-from three_mm_application_sdk import ApplicationMigration
+from packages.application_sdk import ApplicationMigration
 def first(db):
     raise RuntimeError('Existing prefix must never run')
 def second(db):

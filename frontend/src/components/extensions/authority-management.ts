@@ -121,6 +121,10 @@ export interface AuthoritySessionResource {
   control_revision: string
   provider_version: string
   contract: { contract_version: 1; access_modes: Array<'read' | 'write'>; control_actions: string[] }
+  host_account?: {
+    resource_profile: 'host_account_session_v1'; account: '3mm-terminal'; uid: number; gid: number
+    home: '/var/lib/3mm-terminal'; policy_sha256: string
+  } | null
 }
 const id = (value: unknown): value is string => typeof value === 'string' && value.length === 32 && /^[0-9a-f]{32}$/.test(value)
 const digest = (value: unknown): value is string => typeof value === 'string' && value.length === 64 && /^[0-9a-f]{64}$/.test(value)
@@ -475,12 +479,21 @@ function sessionResourcesMatch(resources: Record<string, unknown>, status: Autho
     && value.every(item => typeof item === 'string' && item.length <= 64 && /^[a-z][a-z0-9_.-]{0,63}$/.test(item))
     && new Set(value).size === value.length
   for (const item of sessions) {
-    if (!object(item) || !exact(item, ['declaration', 'owner', 'package_artifact_sha256', 'target_device_id', 'control_revision', 'provider_version', 'contract'])
+    if (!object(item) || !exact(item, ['declaration', 'owner', 'package_artifact_sha256', 'target_device_id', 'control_revision', 'provider_version', 'contract',
+      ...('host_account' in item ? ['host_account'] : [])])
       || !object(item.owner) || !ownerMatches(item.owner, status, moduleId) || !id(item.owner.incarnation)
       || item.package_artifact_sha256 !== status.artifact_sha256 || !digest(item.control_revision)
       || typeof item.target_device_id !== 'string' || item.target_device_id.length !== 36 || !/^dev_[a-f0-9]{32}$/.test(item.target_device_id)
       || typeof item.provider_version !== 'string' || !item.provider_version.length || item.provider_version.length > 64
       || !object(item.declaration) || !object(item.contract)) return false
+    if (item.host_account !== undefined && item.host_account !== null) {
+      const account = item.host_account
+      if (!object(account) || !exact(account, ['resource_profile', 'account', 'uid', 'gid', 'home', 'policy_sha256'])
+        || account.resource_profile !== 'host_account_session_v1' || account.account !== '3mm-terminal'
+        || account.home !== '/var/lib/3mm-terminal' || !digest(account.policy_sha256)
+        || !bounded(account.uid, 4294967294) || !bounded(account.gid, 4294967294)
+        || item.declaration.provider_id !== item.owner.module_id) return false
+    }
     const declaration = item.declaration, contract = item.contract
     if (!exact(declaration, ['contract_version', 'binding_id', 'target_device_config_key', 'provider_id', 'capability_id', 'access_mode', 'control_actions', 'required_permission', 'options'])
       || declaration.contract_version !== 1 || typeof declaration.binding_id !== 'string' || !/^[a-z][a-z0-9_]{0,95}$/.test(declaration.binding_id)

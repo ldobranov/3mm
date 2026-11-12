@@ -1,8 +1,8 @@
 """Real IANA clock transitions, strict schedule contracts and bounded arithmetic."""
 from datetime import UTC, datetime, timedelta
 import pytest
-from three_mm_platform_wire.task_time import latest_occurrence, next_occurrence, occurrence_count
-from three_mm_protocol.application_tasks import TaskScheduleCreateV1
+from packages.platform_wire.task_time import latest_occurrence, next_occurrence, occurrence_count
+from packages.protocol.application_tasks import TaskScheduleCreateV1
 
 
 def calendar(**changes):

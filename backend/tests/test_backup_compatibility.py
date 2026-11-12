@@ -66,7 +66,7 @@ def test_older_portable_archive_restores_and_migrates_real_database(tmp_path, mo
     monkeypatch.setattr("backend.config.get_settings", lambda: settings)
     config = Config(str(ROOT / "alembic.ini"))
     command.upgrade(config, REVISION)
-    monkeypatch.setattr("backend.services.backups._read_application_version", lambda: "0.3.0-beta.9")
+    monkeypatch.setattr("backend.system.backups.service._read_application_version", lambda: "0.3.0-beta.9")
     application_file = settings.backups.application_extensions_dir / ("a" * 24) / "data/example.txt"
     application_file.parent.mkdir(parents=True)
     application_file.write_text("archived application data")

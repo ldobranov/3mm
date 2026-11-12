@@ -1,7 +1,7 @@
 """No background work, direct files, device commands, network or auto-grants."""
-from three_mm_application_sdk import ApplicationPlatformError
-from three_mm_application_sdk.files import ApplicationFileStorageError
-from three_mm_application_sdk.scoped_files import (
+from packages.application_sdk import ApplicationPlatformError
+from packages.application_sdk.files import ApplicationFileStorageError
+from packages.application_sdk.scoped_files import (
     ApplicationScopedFileStorage, ApplicationFileExecutionUnconfirmed,
 )
 

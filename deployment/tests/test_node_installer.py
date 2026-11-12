@@ -115,6 +115,145 @@ def test_shell_syntax():
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.parametrize('missing', [None,
+    'components/__init__.py', 'components/admin_web/__init__.py',
+    'components/admin_web/__main__.py', 'components/admin_web/server.py',
+    'components/public_web/__init__.py', 'components/public_web/__main__.py',
+    'components/public_web/server.py', 'components/public_web/webhook_pilot.py',
+    *('components/platform_runtime/' + name + '.py' for name in
+      ('__init__', '__main__', 'server', 'public_web', 'events', 'responses', 'connector_worker', 'connector_execute', 'tasks')),
+    *('components/setup/' + name + '.py' for name in
+      ('__init__', '__main__', 'captive_portal', 'cli', 'config', 'main', 'product', 'provision', 'schemas')),
+    'config_templates/product.json', 'components/setup/requirements.txt', 'components/setup/static/setup.html',
+    'backend/devices/__init__.py', 'backend/devices/hardware_interfaces.py',
+    *('backend/artifacts/' + name + '.py' for name in
+      ('__init__', 'api', 'packages', 'inspection', 'code_scope', 'compiled_ui', 'provenance')),
+    *('backend/appearance/' + name + '.py' for name in ('__init__', 'api', 'packages', 'customization', 'assets')),
+    'backend/accounts/__init__.py',
+    *('backend/applications/runtime/' + name + '.py' for name in
+      ('__init__', 'gateway', 'platform', 'invocations', 'responses', 'health', 'identity', 'status', 'peers', 'status_probe')),
+    *('backend/applications/resources/' + name + '.py' for name in ('__init__', 'discovery', 'providers')),
+    *('backend/applications/commands/' + name + '.py' for name in ('__init__', 'broker', 'discovery', 'rebinding', 'passage')),
+    *('backend/applications/connectors/' + name + '.py' for name in ('__init__', 'broker', 'transport', 'secrets')),
+    *('backend/applications/events/' + name + '.py' for name in ('__init__', 'broker', 'publication', 'api')),
+    *('backend/applications/tasks/' + name + '.py' for name in ('__init__', 'broker', 'schedules', 'api')),
+    'backend/applications/operations_api.py',
+    *('backend/sessions/' + name + '.py' for name in ('__init__', 'broker', 'transport', 'gateway', 'agent', 'discovery', 'acceptance', 'api')),
+    *('backend/applications/sessions/' + name + '.py' for name in ('__init__', 'browser', 'local', 'remote', 'authority', 'runtimes', 'api')),
+    *('backend/applications/files/' + name + '.py' for name in ('__init__', 'authority', 'transfers', 'api')),
+    *('backend/applications/public_web/' + name + '.py' for name in ('__init__', 'routes', 'transport', 'guests', 'webhook_admission')),
+    *('backend/applications/delegations/' + name + '.py' for name in ('__init__', 'service', 'api')),
+    *('backend/applications/kiosks/' + name + '.py' for name in ('__init__', 'service', 'api')),
+    *('backend/applications/queries/' + name + '.py' for name in ('__init__', 'configuration', 'transport')),
+    'backend/applications/checkpoints.py',
+    *('backend/applications/relational/' + name + '.py' for name in
+      ('__init__', 'authority', 'lifecycle', 'registration', 'candidate', 'activation', 'activation_recovery',
+       'reactivation', 'boot', 'startup', 'admin_worker', 'upgrade', 'upgrade_confirmation', 'upgrade_rollback',
+       'upgrade_admin', 'upgrade_cli', 'recovery', 'recovery_confirmation', 'namespace_recovery', 'preparation_recovery')),
+    *('backend/devices/pairing/' + name + '.py' for name in ('__init__', 'api', 'service', 'enrollment')),
+    *('backend/devices/platform/' + name + '.py' for name in ('__init__', 'api', 'service')),
+    *('backend/devices/updates/' + name + '.py' for name in
+      ('__init__', 'api', 'delivery_api', 'catalog', 'approval', 'delivery', 'execution')),
+    *('backend/settings/' + name + '.py' for name in ('__init__', 'api', 'crud')),
+    *('backend/system/audit/' + name + '.py' for name in ('__init__', 'api', 'retention')),
+    *('backend/storage/' + name + '.py' for name in ('__init__', 'engine', 'sessions', 'public_assets')),
+    'backend/system/components.py', 'backend/accounts/bootstrap.py', 'backend/localization/service.py',
+    *('backend/applications/authority/' + name + '.py' for name in
+      ('__init__', 'access', 'context', 'policy', 'subjects', 'keys', 'review', 'sources',
+       'management', 'inspection', 'admin', 'metadata', 'policy_reviews', 'tasks', 'composition')),
+    *('backend/installation/' + name + '.py' for name in
+      ('__init__', 'identity', 'session_tls', 'status_binding', 'projection', 'peer_read_sources',
+       'peer_listing', 'peers', 'api')),
+    *('backend/devices/telemetry/' + name + '.py' for name in ('__init__', 'ingest_api', 'events_api', 'state_api')),
+    'backend/devices/modules/templates.py',
+    *('backend/devices/modules/template_data/' + name + '.json' for name in
+      ('character-display.mock', 'character-display.pcf8574-2row', 'character-display.pcf8574-4row',
+       'gpio-input.gpiod', 'gpio-input.mock')),
+    *('backend/accounts/' + name + '.py' for name in ('passwords', 'tokens', 'dependencies', 'users_api')),
+    *('backend/accounts/access/' + name + '.py' for name in
+      ('__init__', 'api', 'sources', 'groups_api', 'roles_api', 'permissions_api')),
+    *('backend/accounts/sessions/' + name + '.py' for name in ('__init__', 'api', 'refresh', 'policy')),
+    *('backend/devices/features/' + name + '.py' for name in ('__init__', 'api', 'service')),
+    *('backend/devices/modules/' + name + '.py' for name in ('__init__', 'lifecycle', 'authority')),
+    *('backend/devices/registry/' + name + '.py' for name in ('__init__', 'api', 'read', 'online')),
+    *('backend/devices/' + name + '.py' for name in ('operations', 'authority', 'auth', 'http', 'body_limit')),
+    *('backend/devices/commands/' + name + '.py' for name in ('__init__', 'api', 'queue', 'notifier')),
+    *('backend/devices/capabilities/' + name + '.py' for name in ('__init__', 'api', 'state_api', 'registry')),
+    *('backend/localization/' + name + '.py' for name in ('__init__', 'api', 'packages')),
+    'backend/applications/__init__.py',
+    *('backend/applications/management/' + name + '.py' for name in
+      ('__init__', 'configuration', 'requirements', 'staging', 'provenance',
+       'api', 'access_api', 'connector_api', 'ui_admin_api', 'lifecycle', 'consent',
+       'lifecycle_consent', 'connector_settings')),
+    'components/system_runtime/__init__.py',
+    *('components/system_runtime/' + name + '.py' for name in ('activate', 'services', 'install_profile')),
+    'deployment/component_transition.py',
+    'packages/__init__.py', 'packages/platform_wire/__init__.py',
+    'packages/platform_wire/event_delivery.py', 'packages/platform_wire/task_time.py',
+    'packages/protocol/__init__.py', 'packages/protocol/theme_design_defaults.json',
+    'packages/application_sdk/__init__.py',
+    'packages/provisioning/__init__.py', 'packages/provisioning/network_recovery.py',
+    'packages/provisioning/network_helper.py', 'packages/provisioning/setup_access_point.py',
+    'backend/system/__init__.py', 'backend/system/control.py', 'backend/system/network_recovery/__init__.py',
+    'backend/system/network_recovery/api.py', 'backend/system/network_recovery/service.py',
+    *('backend/system/backups/' + name + '.py' for name in ('__init__', 'api', 'service')),
+    *('backend/system/updates/' + name + '.py' for name in
+      ('__init__', 'api', 'releases', 'policy', 'staging', 'platform_runtime', 'components_api', 'components')),
+    *('backend/system/diagnostics/' + name + '.py' for name in
+      ('__init__', 'api', 'failures', 'operations', 'workspace', 'bundle', 'alerts'))])
+def test_full_installer_requires_domain_and_web_files_before_starting_services(tmp_path, missing):
+    declaration = section('required_files=(', 'for required_file in "${required_files[@]}"; do')
+    listed = run('install_profile=full\n' + declaration + '\nprintf "%s\\n" "${required_files[@]}"\n')
+    assert listed.returncode == 0, listed.stderr
+    for name in listed.stdout.splitlines():
+        if name != missing:
+            path = tmp_path / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.touch()
+    result = run(
+        f'release_dir={shlex.quote(str(tmp_path))}\ninstall_profile=full\n'
+        'fail() { echo "$*" >&2; exit 1; }\n'
+        + declaration
+        + section('for required_file in "${required_files[@]}"; do',
+                  'if [[ $install_profile == full ]]; then\nif [[ ! -d $release_dir/frontend/dist/assets ]]')
+        + '\nprintf "validated\\n"\n'
+    )
+    assert (result.returncode == 0) == (missing is None), result.stderr
+    if missing is not None:
+        assert f'{missing} is required' in result.stderr
+        assert 'validated' not in result.stdout
+
+
+@pytest.mark.parametrize('missing',[None,'packages/__init__.py','packages/protocol/__init__.py',
+                                    'deployment/component_transition.py',
+                                    'components/system_runtime/__init__.py',
+                                    *('components/system_runtime/' + name + '.py' for name in
+                                      ('activate','services','install_profile')),
+                                    'packages/protocol/node_updates.py','packages/protocol/theme_design_defaults.json',
+                                    'packages/provisioning/__init__.py','packages/provisioning/network_recovery.py',
+                                    'packages/provisioning/network_helper.py','packages/provisioning/setup_access_point.py',
+                                    'components/__init__.py',
+                                    *('components/setup/'+name+'.py' for name in
+                                      ('__init__','__main__','captive_portal','cli','config','main','product','provision','schemas')),
+                                    'components/setup/requirements.txt','components/setup/static/setup.html'])
+def test_node_installer_requires_neutral_protocol_closure_before_starting_services(tmp_path,missing):
+    declaration=section('required_files=(', 'for required_file in "${required_files[@]}"; do')
+    listed=run('install_profile=node\ninstalled_units=()\n'+declaration+'\nprintf "%s\\n" "${required_files[@]}"\n')
+    assert listed.returncode==0,listed.stderr
+    for name in listed.stdout.splitlines():
+        if name!=missing:
+            path=tmp_path/name;path.parent.mkdir(parents=True,exist_ok=True);path.touch()
+    result=run(f'release_dir={shlex.quote(str(tmp_path))}\ninstall_profile=node\ninstalled_units=()\n'
+        'fail() { echo "$*" >&2; exit 1; }\n'+declaration
+        +section('for required_file in "${required_files[@]}"; do',
+                 'if [[ $install_profile == full ]]; then\nif [[ ! -d $release_dir/frontend/dist/assets ]]')
+        +'\nprintf "validated\\n"\n')
+    assert (result.returncode==0)==(missing is None),result.stderr
+    if missing is not None:
+        assert f'{missing} is required' in result.stderr
+        assert 'validated' not in result.stdout
+
+
 @pytest.mark.parametrize('profile', ['full', 'node'])
 @pytest.mark.parametrize('backend', ['host', 'network-manager'])
 def test_bootstrap_installs_network_packages_only_for_explicit_management(profile, backend):
@@ -219,9 +358,11 @@ log() { :; }
 python3() { printf 'python3 %s\\n' "$*"; }
 test_python() { printf 'python %s\\n' "$*"; }
 npm() { printf 'npm %s\\n' "$*"; }
+component_transition() { printf 'transition %s\\n' "$*"; }
 fail() { return 1; }
 ''' + source)
     assert result.returncode == 0, result.stderr
+    assert result.stdout.index('--check-only') < result.stdout.index('transition prepare')
     if profile == 'node':
         assert '--only-binary=:all:' in result.stdout
         assert 'node-requirements.txt' in result.stdout
@@ -259,7 +400,7 @@ test_python() {
 ''' + source + '\necho must-not-continue\n')
     assert result.returncode != 0
     assert 'unverifiable key' in result.stderr
-    assert 'three_mm_runtime.install_bootstrap' not in result.stdout
+    assert 'components.system_runtime.install_bootstrap' not in result.stdout
     assert 'must-not-continue' not in result.stdout
 
 
@@ -307,6 +448,108 @@ exit $?
     assert result.returncode == 1
 
 
+@pytest.mark.parametrize('namespace', ['components/system_runtime', 'three_mm_runtime'])
+def test_activation_uses_selected_immutable_releases_own_launcher(tmp_path, namespace):
+    selected = tmp_path / 'previous'
+    launcher = selected / namespace / 'activate.py'
+    launcher.parent.mkdir(parents=True)
+    launcher.write_text('# selected release launcher\n')
+    result = run(
+        f'previous_release={shlex.quote(selected.as_posix())}\n'
+        'release_dir=/different-candidate\n'
+        'release_python() { printf selected_python; }\n'
+        'verify_runtime() { printf "health %s\\n" "$1"; }\n'
+        f'expected_source={shlex.quote(selected.as_posix())}\n'
+        f'expected_launcher={shlex.quote(launcher.as_posix())}\n'
+        + '''
+fail() { printf '%s\\n' "$*" >&2; return 1; }
+selected_python() {
+  [[ $PYTHONPATH == "$expected_source" && $1 == "$expected_launcher" ]] || return 17
+  printf 'selected-launcher %s\\n' "$*"
+}
+''' + section('activate_runtime() {', 'restore_runtime_units() {')
+        + '\nactivate_runtime "$previous_release"\n'
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        f'selected-launcher {launcher.as_posix()}',
+        f'selected-launcher {launcher.as_posix()} --check-active',
+        f'health {selected.as_posix()}',
+    ]
+
+
+def test_rollback_runtime_health_uses_previous_release_probe(tmp_path):
+    selected = tmp_path / 'previous'
+    candidate = tmp_path / 'candidate'
+    result = run(
+        f'previous_release={shlex.quote(selected.as_posix())}\n'
+        f'release_dir={shlex.quote(candidate.as_posix())}\n'
+        f'expected_source={shlex.quote(selected.as_posix())}\n'
+        'install_profile=full\n'
+        + '''
+systemctl() { [[ "$*" == 'is-active --quiet 3mm-core.service' || "$*" == 'is-active --quiet 3mm-platform-runtime.service' ]]; }
+verify_endpoint() { :; }
+fail() { printf '%s\\n' "$*" >&2; return 1; }
+release_python() {
+  [[ $1 == "$expected_source" ]] || return 18
+  printf selected_python
+}
+selected_python() {
+  [[ $PYTHONPATH == "$expected_source" && $1 == "$expected_source/deployment/platform_runtime_component.py" && $2 == probe ]] || return 19
+  printf 'previous-probe\\n'
+}
+''' + section('verify_runtime() {', 'activate_runtime() {')
+        + '\nverify_runtime "$previous_release"\n'
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == 'previous-probe'
+
+
+def test_missing_previous_activation_launcher_does_not_use_candidate(tmp_path):
+    selected = tmp_path / 'previous'
+    selected.mkdir()
+    result = run(
+        f'previous_release={shlex.quote(selected.as_posix())}\n'
+        'release_dir=/different-candidate\n'
+        'release_python() { printf selected_python; }\n'
+        'verify_runtime() { echo forbidden-health; }\n'
+        + '''
+fail() { printf '%s\\n' "$*" >&2; return 1; }
+selected_python() { echo forbidden-candidate-or-module; }
+''' + section('activate_runtime() {', 'restore_runtime_units() {')
+        + '\nactivate_runtime "$previous_release"\n'
+    )
+    assert result.returncode != 0
+    assert 'forbidden-' not in result.stdout
+
+
+def test_component_transition_preflight_and_journal_precede_stops_and_rollback_services():
+    assert SCRIPT.index('component_transition prepare\n') < SCRIPT.index('log "Stopping services and backing up persistent state"')
+    assert SCRIPT.index('component_transition switch\n') < SCRIPT.index('log "Preparing the independent Agent environment"')
+    assert SCRIPT.index('component_transition verify\n') < SCRIPT.index('component_transition commit\n')
+    rollback = section('rollback() {', 'trap rollback ERR')
+    assert rollback.index('component_transition restore') < rollback.index('ln -sfnT "$previous_release" "$current_link"')
+    assert rollback.index('component_transition restore') < rollback.index('install_units "$previous_release" 0')
+    assert rollback.index('start_active_application_services "$previous_release"') < rollback.index('component_transition resume')
+    assert 'if [[ -z $previous_release && ${component_transition_prepared:-0} -eq 1 ]]' in rollback
+
+
+@pytest.mark.parametrize('action,opt_in,expected', [
+    ('prepare', '0', False), ('prepare', '1', True), ('restore', '1', False), ('resume', '0', False),
+])
+def test_installer_transition_retry_is_explicit_and_prepare_only(action, opt_in, expected):
+    function = section('component_transition() {', 'rollback() {')
+    function = function.replace('"$release_dir/.venv/bin/python"', 'test_python')
+    result = run(f'release_dir=/immutable/candidate\nprevious_release=/immutable/previous\ninstall_profile=full\n'
+        f'THREE_MM_RETRY_ROLLED_BACK_TRANSITION={opt_in}\n'
+        'test_python() { printf "%s\\n" "$@"; }\n' + function + f'\ncomponent_transition {action}\n')
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert lines[:2] == ['/immutable/candidate/deployment/component_transition.py', action]
+    assert '--previous-source' in lines and '/immutable/previous' in lines
+    assert ('--retry-rolled-back' in lines) == expected
+
+
 def test_backup_preparation_still_precedes_full_unit_installation():
     assert SCRIPT.index('-m deployment.prepare_backup_storage') < SCRIPT.index('install_units "$release_dir"')
 
@@ -344,6 +587,7 @@ def test_rollback_restores_actual_previous_units_without_replanning_setup():
 runtime_services=(3mm-core.service 3mm-web.service 3mm-agent.service 3mm-setup.service)
 previous_enabled_units=(3mm-core.service 3mm-agent.service)
 previous_active_units=(3mm-core.service 3mm-web.service 3mm-agent.service)
+previous_release=/fixture-previous-release
 systemctl() { printf '%s\\n' "$*"; }
 activate_runtime() { echo forbidden-planner; return 1; }
 verify_runtime() { echo health-verified; }
@@ -358,7 +602,7 @@ verify_runtime() { echo health-verified; }
 
 def test_node_environment_does_not_overwrite_hub_or_hardware_on_upgrade():
     source = section('if [[ $install_profile == full ]]; then\nupsert_environment DATABASE_URL',
-                     'log "Preparing the independent Agent environment"')
+                     'log "Switching the reviewed component pointer set while services are stopped"')
     result = run('''
 install_profile=node
 environment_backup_created=1
@@ -649,7 +893,10 @@ install() {
 
 
 @pytest.mark.parametrize('master_key', ['', 'environment-only-test-key'])
-def test_runtime_activation_gets_local_identity_key_without_argument_disclosure(master_key):
+def test_runtime_activation_gets_local_identity_key_without_argument_disclosure(tmp_path, master_key):
+    launcher = tmp_path / 'components/system_runtime/activate.py'
+    launcher.parent.mkdir(parents=True)
+    launcher.touch()
     result = run(
         'release_python() { printf checked_python; }\n'
         'verify_runtime() { :; }\n'
@@ -664,6 +911,6 @@ checked_python() {
 }
 """
         + section('activate_runtime() {', 'restore_runtime_units() {')
-        + '\nactivate_runtime /fixture-release\n'
+        + f'\nactivate_runtime {shlex.quote(tmp_path.as_posix())}\n'
     )
     assert result.returncode == 0, result.stderr

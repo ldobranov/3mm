@@ -139,27 +139,27 @@
     },
     {
       "from": "backend/utils/ai_extension_builder/groq_client.py",
-      "to": "libraries/three_mm_ai/three_mm_ai/groq_client.py",
+      "to": "libraries/ai_clients/application_ai/groq_client.py",
       "original_sha256": "4f479b2f84a98a5f6103664a939467f6948007a14614ebfac1523e2aab11b8c5"
     },
     {
       "from": "backend/utils/ai_extension_builder/openrouter_client.py",
-      "to": "libraries/three_mm_ai/three_mm_ai/openrouter_client.py",
+      "to": "libraries/ai_clients/application_ai/openrouter_client.py",
       "original_sha256": "07553f173110a6901251d6cc5413483ec4db81b31288aad091eed0aec24d626e"
     },
     {
       "from": "backend/utils/ai_extension_builder/free_provider_client.py",
-      "to": "libraries/three_mm_ai/three_mm_ai/free_provider_client.py",
+      "to": "libraries/ai_clients/application_ai/free_provider_client.py",
       "original_sha256": "eb23554c4abd5f66530c82d30af1fe0c7abd0abdd82b68581f3d8fe9e96aa32b"
     },
     {
       "from": "backend/services/ai_gateway.py",
-      "to": "libraries/three_mm_ai/three_mm_ai/gateway.py",
+      "to": "libraries/ai_clients/application_ai/gateway.py",
       "original_sha256": "3cd4579d6b209d6ae3543c2fdd8419b70a8f6a2307f795675b7156cf5b816835"
     },
     {
       "from": "backend/tests/test_free_provider_client.py",
-      "to": "libraries/three_mm_ai/tests/test_free_provider_client.py",
+      "to": "libraries/ai_clients/tests/test_free_provider_client.py",
       "original_sha256": "9b14cd8b52a10a12a09f30890f359a16a38e76db96f77cdaed588ae47b7a7d01"
     },
     {
@@ -264,62 +264,62 @@
     },
     {
       "from": "backend/db/runtime_extension.py",
-      "to": "libraries/three_mm_crud/source/legacy/backend/db/runtime_extension.py",
+      "to": "libraries/crud/source/legacy/backend/db/runtime_extension.py",
       "original_sha256": "131453a7e4682a4562a14c5bab2c9976448fbc2e2aa16877a0cb82de95bcaf46"
     },
     {
       "from": "backend/routes/runtime_extensions.py",
-      "to": "libraries/three_mm_crud/source/legacy/backend/routes/runtime_extensions.py",
+      "to": "libraries/crud/source/legacy/backend/routes/runtime_extensions.py",
       "original_sha256": "e1370d6671ac1953f2972b3d6da44141ae9ae03dd51b914bb29b14f1e94fc190"
     },
     {
       "from": "backend/services/runtime_extensions.py",
-      "to": "libraries/three_mm_crud/source/legacy/backend/services/runtime_extensions.py",
+      "to": "libraries/crud/source/legacy/backend/services/runtime_extensions.py",
       "original_sha256": "74b5879efaaae0a177301bdddbb91fb21f821ad892d4e104921a7119e88304fb"
     },
     {
       "from": "backend/tests/test_runtime_extension_routes.py",
-      "to": "libraries/three_mm_crud/source/legacy/backend/tests/test_runtime_extension_routes.py",
+      "to": "libraries/crud/source/legacy/backend/tests/test_runtime_extension_routes.py",
       "original_sha256": "e64650ef23eb37052b1d8da4cfd0bc737059bb7415b2c93869967f79e38cf746"
     },
     {
       "from": "backend/tests/test_runtime_extension_models.py",
-      "to": "libraries/three_mm_crud/source/legacy/backend/tests/test_runtime_extension_models.py",
+      "to": "libraries/crud/source/legacy/backend/tests/test_runtime_extension_models.py",
       "original_sha256": "72fb74b8bbcb99669fcea75152155f0f19fed21798bb625ed4be23b551690293"
     },
     {
       "from": "frontend/src/views/RuntimeExtensionPage.vue",
-      "to": "libraries/three_mm_crud/source/legacy/frontend/src/views/RuntimeExtensionPage.vue",
+      "to": "libraries/crud/source/legacy/frontend/src/views/RuntimeExtensionPage.vue",
       "original_sha256": "dc18c6401be6a7ab3db906da29a6540c83ad6ab505c314ab11055c2ef9f4df59"
     },
     {
       "from": "frontend/src/utils/runtime-extensions.ts",
-      "to": "libraries/three_mm_crud/source/legacy/frontend/src/utils/runtime-extensions.ts",
+      "to": "libraries/crud/source/legacy/frontend/src/utils/runtime-extensions.ts",
       "original_sha256": "8fb842583e54b71b452d96a105a8aa832c94a997e04f346c938e26e77db561d0"
     },
     {
       "from": "frontend/src/utils/runtime-extensions.test.ts",
-      "to": "libraries/three_mm_crud/source/legacy/frontend/src/utils/runtime-extensions.test.ts",
+      "to": "libraries/crud/source/legacy/frontend/src/utils/runtime-extensions.test.ts",
       "original_sha256": "fe79cd0215e8cd5926c1636c67430b0629501e22cc4c25b9938366e723a31afd"
     },
     {
       "from": "three_mm_protocol/runtime_extension.py",
-      "to": "libraries/three_mm_crud/source/legacy/three_mm_protocol/runtime_extension.py",
+      "to": "libraries/crud/source/legacy/three_mm_protocol/runtime_extension.py",
       "original_sha256": "809a6281fe3f0186a9e004bbf14e4a95e91694c4d7ffac992d591d44481ffe84"
     },
     {
       "from": "three_mm_protocol/tests/test_runtime_extension.py",
-      "to": "libraries/three_mm_crud/source/legacy/three_mm_protocol/tests/test_runtime_extension.py",
+      "to": "libraries/crud/source/legacy/three_mm_protocol/tests/test_runtime_extension.py",
       "original_sha256": "1eb66dabe8d76dd8b573288372556acc488d83f149a79818b5ea0453a1bc7bdf"
     },
     {
       "from": "modules/runtime-contacts/manifest.json",
-      "to": "libraries/three_mm_crud/source/legacy/modules/runtime-contacts/manifest.json",
+      "to": "libraries/crud/source/legacy/modules/runtime-contacts/manifest.json",
       "original_sha256": "fa447fcb293a6873eda9cbc03b2eed863b0aa580314afee86ff097d9713e5762"
     },
     {
       "from": "modules/runtime-contacts/runtime-extension.json",
-      "to": "libraries/three_mm_crud/source/legacy/modules/runtime-contacts/runtime-extension.json",
+      "to": "libraries/crud/source/legacy/modules/runtime-contacts/runtime-extension.json",
       "original_sha256": "b1299a828367f88afc344380872040865fcfea81753d9f3b2e65fd9fbfd20279"
     },
     {

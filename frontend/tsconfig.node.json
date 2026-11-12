@@ -1,6 +1,6 @@
 {
   "extends": "./node_modules/@vue/tsconfig/tsconfig.dom.json",
-  "include": ["env.d.ts", "vite.config.ts", "vitest.config.ts"],
+  "include": ["env.d.ts", "vite.config.ts", "vitest.config.ts", "src/utils/product.ts", "../config_templates/product.json"],
   "exclude": [],
   "compilerOptions": {
     "composite": true,

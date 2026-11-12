@@ -9,7 +9,7 @@ import time
 import threading
 import subprocess
 
-from three_mm_protocol import (
+from packages.protocol import (
     AgentCommand,
     AgentCommandResult,
     AgentHeartbeat,
@@ -23,12 +23,12 @@ from three_mm_protocol import (
     CoreNodeProtocolV1,
     DeviceRuntimeFeaturesSnapshotV1,
 )
-from three_mm_protocol.fleet_pairing import NodeEnrollmentResponse
-from three_mm_protocol.node_updates import NodeUpdateOperation
-from three_mm_protocol.transport import DeviceTransportError
-from three_mm_protocol.device_platform import challenge, DevicePlatformSnapshotV1
-from three_mm_protocol.capability_availability import CapabilityAvailabilityReportV1
-from three_mm_protocol.device_capabilities import CapabilityProviderSnapshotV2
+from packages.protocol.fleet_pairing import NodeEnrollmentResponse
+from packages.protocol.node_updates import NodeUpdateOperation
+from packages.protocol.transport import DeviceTransportError
+from packages.protocol.device_platform import challenge, DevicePlatformSnapshotV1
+from packages.protocol.capability_availability import CapabilityAvailabilityReportV1
+from packages.protocol.device_capabilities import CapabilityProviderSnapshotV2
 
 
 class HttpTransportError(DeviceTransportError, requests.RequestException):
@@ -311,7 +311,7 @@ class HttpDeviceTransport:
     def provider(self, provider_type, provider_id):
         # Protocol identifiers are validated before they become path segments.
         from pydantic import TypeAdapter
-        from three_mm_protocol.device_capabilities import ProviderId, ProviderType
+        from packages.protocol.device_capabilities import ProviderId, ProviderType
         TypeAdapter(ProviderType).validate_python(provider_type)
         TypeAdapter(ProviderId).validate_python(provider_id)
         response = self._request('get', f'capability-providers/{provider_type}/{provider_id}', legacy_missing=True)

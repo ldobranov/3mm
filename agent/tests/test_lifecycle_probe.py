@@ -9,7 +9,7 @@ from zipfile import ZipFile
 import pytest
 
 from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 
 
 BUILDER = Path(__file__).resolve().parents[2] / "modules/agent-probe/build_package.py"

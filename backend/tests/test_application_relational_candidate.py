@@ -25,12 +25,12 @@ from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.module import ModulePackage
 from backend.db.session import UserSession
-from backend.services import application_authority_management as authority
-from backend.services import application_relational_candidate as coordinator
-from backend.services.application_authority_sources import (
+from backend.applications.authority import management as authority
+from backend.applications.relational import candidate as coordinator
+from backend.applications.authority.sources import (
     resolve_installed_authority_sources,
 )
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_relational_activation import (
     checkpoint as start_checkpoint,
 )
@@ -533,7 +533,7 @@ def test_cli_adopts_without_helper_and_does_not_log_token(candidate):
         [
             sys.executable,
             "-m",
-            "backend.services.application_authority_admin",
+            "backend.applications.authority.admin",
             "adopt-relational-version",
             "--installation-id",
             "1",
@@ -603,7 +603,7 @@ def test_real_nonroot_start_stop_adoption_review_and_upgrade_without_binding_see
         state,
         revision="0003",
         code="""import os
-from three_mm_application_sdk import ApplicationMigration
+from packages.application_sdk import ApplicationMigration
 def applied(db):
     raise RuntimeError('Applied prefix replayed')
 def third(db):

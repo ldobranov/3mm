@@ -22,13 +22,13 @@ from backend.db.module import ApplicationConnectorBinding
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.module import ApplicationSecretReference, ModulePackage
 from backend.db.session import UserSession
-from backend.services import application_authority_management as authority
-from backend.services import application_relational_registration as registration
-from backend.services.application_authority_keys import AuthorityReviewKeyError
-from backend.services.application_authority_sources import (
+from backend.applications.authority import management as authority
+from backend.applications.relational import registration
+from backend.applications.authority.keys import AuthorityReviewKeyError
+from backend.applications.authority.sources import (
     resolve_installed_authority_sources,
 )
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_relational_installation import ROOT_ONLY, identity
 from backend.tests.test_application_relational_migrations import script
 from backend.tests.test_application_relational_preparation import (
@@ -37,12 +37,12 @@ from backend.tests.test_application_relational_preparation import (
     source_subject,
 )
 from backend.tests.test_application_relational_production import production, request
-from three_mm_application_sdk import ApplicationStorage
-from three_mm_protocol.tests.test_application_relational_storage import (
+from packages.application_sdk import ApplicationStorage
+from packages.protocol.tests.test_application_relational_storage import (
     relational_request,
 )
-from three_mm_runtime import application_lifecycle as locks
-from three_mm_runtime import update_helper
+from components.system_runtime import application_lifecycle as locks
+from components.system_runtime import update_helper
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Real Core-owned keys")
 
@@ -329,7 +329,7 @@ def test_missing_or_changed_trusted_sources_never_create_provenance(fresh, probl
         fresh.archive.rename(saved)
         fresh.archive.symlink_to(saved)
     else:
-        from backend.services.application_authority_keys import KEY_NAME
+        from backend.applications.authority.keys import KEY_NAME
 
         (fresh.key_directory / KEY_NAME).rename(fresh.key_directory / "saved-key")
     with pytest.raises(authority.AuthorityManagementError):
@@ -418,7 +418,7 @@ def test_readonly_source_adapter_without_key_cannot_promote_registration(fresh):
 
 
 def test_keyed_readonly_subject_accepts_exact_registration_without_approving(fresh):
-    from backend.services.application_authority_subjects import (
+    from backend.applications.authority.subjects import (
         resolve_installed_policy_subject,
     )
 
@@ -447,7 +447,7 @@ def test_local_admin_cli_registers_without_helper_or_runtime(fresh):
         [
             sys.executable,
             "-m",
-            "backend.services.application_authority_admin",
+            "backend.applications.authority.admin",
             "register-relational",
             "--package-id",
             "1",

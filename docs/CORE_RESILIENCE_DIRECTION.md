@@ -101,7 +101,7 @@ recovery do not acquire a dependency on the component being repaired.
 
 Historical setup coupling observed before P2:
 
-- `setup_service/static/setup.html` and `SetupConfiguration` already offer the
+- `components/setup/static/setup.html` and `SetupConfiguration` already offer the
   three roles. The minimal Node package intentionally removes Hub/Standalone
   choices; API validation also refuses roles whose components are not installed.
 - Both HTTP configuration and `ProvisioningRequest` require Wi-Fi credentials;
@@ -310,14 +310,14 @@ Acceptance for the resulting boundaries:
 
 ## References
 
-- Existing source: `backend/main.py`, `backend/utils/extension_manager.py`,
-  `backend/services/application_platform.py`, `deployment/systemd/`,
+- Existing source: `backend/main.py`,
+  `backend/applications/runtime/platform.py`, `deployment/systemd/`,
   `deployment/install-systemd.sh`, `.github/workflows/release.yml`,
-  `setup_service/{main,schemas}.py`, `setup_service/static/setup.html`,
-  `three_mm_provisioning/{models,state_machine}.py`,
-  `three_mm_runtime/{services,activate,install_bootstrap,network_recovery}.py`.
-- Existing diagnostics: [scope](DIAGNOSTICS.md), `backend/services/diagnostics.py`,
-  `backend/routes/diagnostics.py`, `frontend/src/components/settings/DiagnosticsSection.vue`.
+  `components/setup/{main,schemas}.py`, `components/setup/static/setup.html`,
+  `packages/provisioning/{models,state_machine}.py`,
+  `components/system_runtime/{services,activate,install_bootstrap,network_recovery}.py`.
+- Existing diagnostics: [scope](DIAGNOSTICS.md), `backend/system/diagnostics/bundle.py`,
+  `backend/system/diagnostics/api.py`, `frontend/src/components/settings/DiagnosticsSection.vue`.
 - [NetworkManager checkpoint rollback](https://networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.html#gdbus-org.freedesktop.NetworkManager.CheckpointCreate).
 - [systemd watchdog and restart semantics](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html).
 - [systemd resource controls](https://www.freedesktop.org/software/systemd/man/latest/systemd.resource-control.html).

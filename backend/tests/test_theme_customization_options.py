@@ -7,8 +7,8 @@ from sqlalchemy import select
 
 from backend.db.audit_log import AuditLog
 from backend.db.settings import Settings
-from backend.services.module_packages import ModulePackageError, validate_module_package
-from backend.services.theme_customization import customization_key
+from backend.artifacts.packages import ModulePackageError, validate_module_package
+from backend.appearance.customization import customization_key
 from backend.tests.test_theme_extension_lifecycle import BASE, runtime  # noqa: F401
 from backend.tests.test_theme_extension_v2 import definition_v2, install_v2, v2_package
 

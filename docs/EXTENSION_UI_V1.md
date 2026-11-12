@@ -1,5 +1,10 @@
 # Public Extension UI v1
 
+Текуща разработка: [Building applications](APPLICATION_DEVELOPMENT.md).
+Публичните imports в новата структура са `@platform/ui/v1` и
+`@platform/application-ui/v1`; старите `@3mm/*` имена нямат forwarding aliases.
+Използвайте host build, който действително публикува тези входове.
+
 Статус: V7 основа с първа CAP09 част от 2026-10-26, доставена на Raspberry.
 Собственикът потвърди успешните ръчни проби с `org.3mm.cap09-ui-check` 1.0.0:
 общи полета/форми, таблица и UI състояния. Това затваря избрания ограничен
@@ -83,7 +88,7 @@ Core store или езиков selector. Промените patch-ват същ�
 
 ```typescript
 import { onBeforeUnmount, ref } from 'vue'
-import { useApplicationHost } from '@3mm/application-ui/v1'
+import { useApplicationHost } from '@platform/application-ui/v1'
 
 const { presentation } = useApplicationHost()
 const locale = ref(presentation.getInfo().locale) // синхронно, без HTTP
@@ -102,7 +107,7 @@ UI contract v1 и native SDK 1.3 запазват независимите си 
 Темата продължава да идва от `UiSurface`, публичните `--ui-*` tokens и Core-owned
 component variants. Приложението не избира втори theme и не следи OS dark mode.
 Core има една вградена `3mm Default` тема със светла и тъмна палитра от
-`three_mm_protocol/theme_design_defaults.json`; същата основа се използва при
+`packages/protocol/theme_design_defaults.json`; същата основа се използва при
 fallback и recovery. Старите `light_*`/`dark_*` цветови настройки са извън
 активната проекция и не се изтриват/импортират автоматично. В Settings има един
 редактор за вградената или избраната пакетна тема, със същата сървърна проверка
@@ -183,7 +188,7 @@ Reviewed compiled UI source използва:
 
 ```vue
 <script setup>
-import { UiSurface, UiButton, UiDialog, UI_CONTRACT_VERSION } from '@3mm/ui/v1'
+import { UiSurface, UiButton, UiDialog, UI_CONTRACT_VERSION } from '@platform/ui/v1'
 </script>
 
 <template>
@@ -200,9 +205,9 @@ import { UiSurface, UiButton, UiDialog, UI_CONTRACT_VERSION } from '@3mm/ui/v1'
 библиотеката. Реален самостоятелен пример: [UI Reference](../modules/ui-reference/README.md).
 
 Core frontend build публикува versioned module и hashed chunks. Host import map
-свързва `@3mm/ui/v1` с точния hashed ESM asset от този build.
+свързва `@platform/ui/v1` с точния hashed ESM asset от този build.
 Не записвайте физическия URL/hash в extension source. Installer compiler оставя
-`vue` и `@3mm/ui/v1` external; browser зарежда същия host Vue runtime. Няма втори
+`vue` и `@platform/ui/v1` external; browser зарежда същия host Vue runtime. Няма втори
 Vue, Pinia, theme store, CSS framework, CDN или runtime dependency download.
 
 Публичните exports са **само** `UI_CONTRACT_VERSION = 1`, `UiSurface`, `UiButton`,
@@ -212,8 +217,9 @@ Vue, Pinia, theme store, CSS framework, CDN или runtime dependency download.
 публикува. Не са обещание, че стар UI-v1 host съдържа новите компоненти.
 Вътрешни source paths, stores, router, theme loader, injection key,
 HTTP clients и permission helpers **не са публичен API**. Не импортвайте
-`@/components/...`, `@/stores/...`, `@3mm/ui/v1/context` или package subpaths.
-Compiler allowlist допуска точно `@3mm/ui/v1`, не произволен `@3mm/*` namespace.
+`@/components/...`, `@/stores/...`, `@platform/ui/v1/context` или package subpaths.
+Compiler allowlist допуска точно `vue`, `@platform/ui/v1` и
+`@platform/application-ui/v1`, не произволен `@platform/*` namespace.
 
 Използвайте този договор върху Core build, който действително го публикува.
 Старите releases без него не могат да заредят новите imports; няма автоматична
@@ -268,7 +274,7 @@ HTML. Директният ESM import не минава през Vite dynamic-im
 Четирите нови компонента са presentation код с текущите публични CSS tokens,
 без нова библиотека, Core store, credentials или скрита HTTP операция.
 
-Първи текущ потребител е optional `libraries/three_mm_crud/frontend/CrudPage.vue`.
+Първи текущ потребител е optional `libraries/crud/frontend/CrudPage.vue`.
 Той запазва собствения SDK invoke, permission/result/pending правила и вече
 работи без `crypto.randomUUID` на HTTP LAN. Това не променя готовите immutable
 Contacts пакети и не публикува нова версия на приложение. Upload, task monitor,
@@ -407,7 +413,7 @@ Import allowlist и този supported styling contract не могат да н�
 
 ## Проверки и следващ gate
 
-CAP11 добавя `useApplicationHost().files` в `@3mm/application-ui/v1`: bounded
+CAP11 добавя `useApplicationHost().files` в `@platform/application-ui/v1`: bounded
 raw upload chunks, resume/status/finalize, metadata, проверено streaming download,
 временни връзки и optional image jobs. Browser route трябва изрично да декларира
 човешките файлови права; това не предоставя service authority. UI/presentation

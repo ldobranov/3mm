@@ -7,10 +7,10 @@ from threading import RLock
 
 from agent.module_runtime import ModuleLifecycleError
 from agent.hardware.character_display import NativeCharacterDisplay
-from three_mm_protocol.character_display import (
+from packages.protocol.character_display import (
     CharacterDisplayProfileV1, DISPLAY_CAPABILITY,
 )
-from three_mm_protocol.capability_contracts import CapabilityContractError
+from packages.protocol.capability_contracts import CapabilityContractError
 
 
 class MockCharacterDisplay:

@@ -15,14 +15,14 @@ from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation, ApplicationPermissionGrant
 from backend.db.session import UserSession
 from backend.db.user import User
-from backend.routes.application_authority import router
-from backend.services import application_consent as consent
-from backend.services.application_authority_keys import KEY_NAME, AuthorityReviewKeyError
-from backend.services.application_authority_management import AuthorityManagementError, _load
+from backend.applications.management.access_api import router
+from backend.applications.management import consent
+from backend.applications.authority.keys import KEY_NAME, AuthorityReviewKeyError
+from backend.applications.authority.management import AuthorityManagementError, _load
 from backend.tests.test_application_authority_management import identity, installed, source_subject, source_installed
 from backend.tests.test_application_ui_authority import ui_app, managed_installed
 from backend.tests.test_application_relational_review_api import db_app, READ, WRITE
-from backend.utils.db_utils import get_db
+from backend.storage.sessions import get_db
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Real Core-owned key files/flock and SQLite authority transactions")
 
@@ -122,8 +122,8 @@ def test_empty_selection_is_saved_code_consent_and_does_not_default_back_to_all(
 
 def test_web_lifecycle_recovery_requires_fresh_consent_without_losing_choices(state, monkeypatch, tmp_path):
     from types import SimpleNamespace
-    from backend.routes import application_extensions as lifecycle_routes
-    from backend.services.application_package_staging import stage_application_package
+    from backend.applications.management import api as lifecycle_routes
+    from backend.applications.management.staging import stage_application_package
     s = state
     # Current packages have sealed inert provenance before their first start.
     # The older adoption fixture must pass through that real preparation path.

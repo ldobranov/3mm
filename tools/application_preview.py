@@ -12,7 +12,7 @@ ASSETS = Path(__file__).with_suffix('')
 
 
 def preview_settings(project, *, frontend=None, port=5178):
-    from backend.services.module_packages import validate_module_package
+    from backend.artifacts.packages import validate_module_package
 
     if type(port) is not int or not 1024 <= port <= 65535:
         raise ProjectCheckError('preview', 'Choose a local port between 1024 and 65535.')

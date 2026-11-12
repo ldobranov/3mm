@@ -1,5 +1,9 @@
 # Next-release local Terminal acceptance
 
+For the new, not-yet-installed host-account profile use
+[Local host-account sessions](HOST_ACCOUNT_SESSIONS.md). The accepted restricted
+Terminal trials below do not prove that profile or expose host files.
+
 The separate [common platform continuation](#common-platform-continuation--2026-10-25)
 now passes the selected physical Node/local-relay gate with an independent SDK
 probe. The accepted local Terminal baseline below is unchanged.

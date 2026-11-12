@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from three_mm_protocol.application_extension import ApplicationExtensionV1, parse_application_extension
+from packages.protocol.application_extension import ApplicationExtensionV1, parse_application_extension
 from tools import application_client as client
 from tools import application_project
 from tools.application_project import ProjectCheckError, REPOSITORY
@@ -53,7 +53,7 @@ def test_render_is_stable_pinned_and_excludes_internal_operations(definition):
     assert client.contract_digest(definition) in rendered
     assert client._owned(rendered.encode(), definition.module_id)
     assert not client._owned((rendered + '// user edit').encode(), definition.module_id)
-    assert "from '@3mm/application-ui/v1'" in rendered
+    assert "from '@platform/application-ui/v1'" in rendered
     assert 'export function createApplicationClient' in rendered
     assert '"health"(' not in rendered
     assert 'export type ReadNoteInput = Record<string, never>' in rendered
@@ -297,7 +297,7 @@ def accept_real_typescript_enforces_nullable_nested_arrays_enums_maps_and_origin
     modified = query_schema(definition, object_schema({'filters': filters}, ['filters']))
     (tmp_path / 'client.ts').write_text(client.render_client(modified), encoding='utf-8')
     (tmp_path / 'usage.ts').write_text('''import { createApplicationClient } from './client'
-import type { ApplicationHost } from '@3mm/application-ui/v1'
+import type { ApplicationHost } from '@platform/application-ui/v1'
 declare const host: Pick<ApplicationHost, 'invoke'>
 const client = createApplicationClient(host)
 const filters = { category: 'one' as const, entries: [{ id: 1 }], free: { arbitrary: [true, null] }, index: { x: 'yes' } }
@@ -334,7 +334,7 @@ void lookup
     config = {'compilerOptions': {'strict': True, 'exactOptionalPropertyTypes': True, 'noEmit': True,
         'skipLibCheck': True, 'target': 'ES2022', 'module': 'ESNext', 'moduleResolution': 'Bundler',
         'lib': ['ES2022', 'DOM', 'DOM.Iterable'], 'baseUrl': str(tmp_path), 'paths': {
-            '@3mm/application-ui/v1': [str(frontend / 'src/extension-ui/application-v1.ts')],
+            '@platform/application-ui/v1': [str(frontend / 'src/extension-ui/application-v1.ts')],
             'vue': [str(frontend / 'node_modules/vue')]}}, 'include': [str(tmp_path / '*.ts')]}
     (tmp_path / 'tsconfig.json').write_text(json.dumps(config), encoding='utf-8')
     result = subprocess.run([node, str(frontend / 'node_modules/typescript/bin/tsc'), '--project', str(tmp_path / 'tsconfig.json')],

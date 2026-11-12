@@ -10,24 +10,24 @@ WP4 gates are recorded below; no deployment or WP5 isolation is claimed.
 The approved next task was scoped publication through existing SDK/broker paths.
 The initial source audit, before these deliveries, found that this path did not exist:
 
-- [Application SDK 1.3](../three_mm_application_sdk/__init__.py) has a private
+- [Application SDK 1.3](../packages/application_sdk/__init__.py) has a private
   transactional outbox, but no Core event-publication client method. Outbox event
   labels also describe extension-owned external work; draining the whole outbox
   into Core would change existing application behavior.
-- [Application operations](../three_mm_protocol/application_extension.py) declare
+- [Application operations](../packages/protocol/application_extension.py) declare
   `emitted_events` as event-type strings. They declare neither publication payload
   schemas nor producer scopes. An operation's output schema is not its event schema.
-- [Package validation](../backend/services/module_packages.py) checks provided
+- [Package validation](../backend/artifacts/packages.py) checks provided
   capabilities and `events.publish` against those declarations. This is declaration
   consistency, not implementation of publishing, payload validation or grants.
-- [Platform socket](../backend/services/application_platform.py) dispatches
+- [Platform socket](../backend/applications/runtime/platform.py) dispatches
   commands/connectors/checkpoints/identity/peers, not publication. Enforced mode
   currently refuses unsupported actions.
-- [Device ingestion](../backend/routes/device_events.py) authenticates the device
+- [Device ingestion](../backend/devices/telemetry/events_api.py) authenticates the device
   credential and requires its real device identity. The
-  [event envelope](../three_mm_protocol/device_event.py),
+  [event envelope](../packages/protocol/device_event.py),
   [persistent event](../backend/db/device.py) and
-  [application broker](../backend/services/application_events.py) require a device
+  [application broker](../backend/applications/events/broker.py) require a device
   producer; subscription scope is a configured device.
 
 Do not create a fake Device/credential/provider for an application, attach its
@@ -79,7 +79,7 @@ one implementation. Retain denial for unsupported families and WP5 isolation gat
 
 ## First implemented slice — contracts, not runtime admission
 
-[Shared authoritative models](../three_mm_protocol/application_event_publication.py)
+[Shared authoritative models](../packages/protocol/application_event_publication.py)
 now define independently versioned, closed declarations, requests, typed producers,
 an internal envelope candidate and historical receipts. No Core/Agent/SDK/runtime
 imports, new dependency, DB writes, authorization grants or transport calls are

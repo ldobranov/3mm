@@ -29,8 +29,8 @@ REQUIRED_COMMANDS = (
 )
 REQUIRED_RELEASE_FILES = (
     "backend/requirements.txt",
-    "backend/services/application_public_web.py",
-    "backend/services/application_public_web_transport.py",
+    "backend/applications/public_web/routes.py",
+    "backend/applications/public_web/transport.py",
     "deployment/bootstrap-local-agent.py",
     "deployment/install-systemd.sh",
     "deployment/local_agent_pairing.py",
@@ -48,9 +48,16 @@ REQUIRED_RELEASE_FILES = (
     "deployment/update-dependency-allowlist.json",
     "frontend/compiler/package.json",
     "frontend/dist/index.html",
-    "three_mm_public_web/__init__.py",
-    "three_mm_public_web/__main__.py",
-    "three_mm_public_web/server.py",
+    "components/__init__.py",
+    "components/public_web/__init__.py",
+    "components/public_web/__main__.py",
+    "components/public_web/server.py",
+    "components/public_web/webhook_pilot.py",
+    "packages/__init__.py",
+    "packages/provisioning/__init__.py",
+    "packages/provisioning/network_recovery.py",
+    "packages/provisioning/network_helper.py",
+    "packages/provisioning/setup_access_point.py",
 )
 
 

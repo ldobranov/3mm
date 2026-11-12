@@ -107,6 +107,26 @@ def test_baseline_host_and_complete_release_are_ready(tmp_path: Path) -> None:
     assert all(check.passed for check in checks)
 
 
+@pytest.mark.parametrize("missing", (
+    "components/__init__.py", "components/public_web/__init__.py",
+    "components/public_web/__main__.py", "components/public_web/server.py",
+    "components/public_web/webhook_pilot.py",
+    "packages/__init__.py", "packages/provisioning/__init__.py",
+    "packages/provisioning/network_recovery.py", "packages/provisioning/network_helper.py",
+    "packages/provisioning/setup_access_point.py",
+))
+def test_incomplete_relocated_package_release_is_not_ready(tmp_path, missing):
+    _complete_release(tmp_path)
+    (tmp_path / missing).unlink()
+    checks = run_preflight(
+        release_root=tmp_path, command_lookup=_lookup, runner=_runner,
+        system_name="Linux", machine="aarch64", python_version=(3, 13, 5),
+        python_executable="/usr/bin/python3",
+    )
+    failures = [check for check in checks if not check.passed]
+    assert len(failures) == 1 and failures[0].name == "release.file." + missing
+
+
 def test_wired_only_host_allowed_but_missing_frontend_asset_reported(tmp_path: Path) -> None:
     _complete_release(tmp_path)
     (tmp_path / "frontend" / "dist" / "assets" / "app.js").unlink()

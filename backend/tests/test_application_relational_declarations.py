@@ -17,9 +17,9 @@ from backend.db.audit_log import AuditLog
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.module import ModulePackage
-from backend.services import application_authority_sources as sources
-from backend.services.application_authority_management import AuthorityManagementError
-from backend.services.module_packages import ModulePackageError, validate_module_package
+from backend.applications.authority import sources
+from backend.applications.authority.management import AuthorityManagementError
+from backend.artifacts.packages import ModulePackageError, validate_module_package
 from backend.tests.test_application_authority_management import (
     identity,
 )
@@ -38,7 +38,7 @@ from backend.tests.test_module_packages import (
     application_definition,
     application_package,
 )
-from three_mm_protocol.tests.test_application_relational_storage import (
+from packages.protocol.tests.test_application_relational_storage import (
     relational_request,
 )
 

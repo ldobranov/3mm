@@ -11,8 +11,8 @@ import pytest
 from sqlalchemy import event, select
 
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
-from backend.routes import modules
-from backend.services import application_authority_inspection as authority
+from backend.artifacts import api as modules
+from backend.applications.authority import inspection as authority
 from backend.tests.test_application_authority_review import CONFIG
 from backend.tests.test_module_inspection import (
     api,
@@ -22,8 +22,8 @@ from backend.tests.test_module_packages import (
     application_definition,
     package,
 )
-from backend.services.module_packages import MAX_PACKAGE_BYTES, validate_module_package
-from backend.utils.auth_dep import require_admin
+from backend.artifacts.packages import MAX_PACKAGE_BYTES, validate_module_package
+from backend.accounts.dependencies import require_admin
 
 
 URL = "/api/v1/modules/packages/inspect?include_authority_review=true"

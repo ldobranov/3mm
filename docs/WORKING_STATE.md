@@ -1,6 +1,6 @@
 # Current working state
 
-Updated: 2026-11-10. Start here; follow linked details only as needed.
+Updated: 2026-11-12. Start here; follow linked details only as needed.
 
 ## Product direction: extension marketplace
 
@@ -11,6 +11,955 @@ Updated: 2026-11-10. Start here; follow linked details only as needed.
   designed; this product direction does not authorize implementation now.
 
 ## Active task and next result
+
+- **Neutral Core integration checkpoint, 2026-11-12, local checks complete.**
+  Owner requests installer/updater audit, managed component transition, reviewed
+  commit and push. Terminal latency particulars are set aside. No release/tag,
+  version bump, deployment, reset or application/rights change is authorized.
+  Keep independent `docs/CORE_SIMPLIFICATION_PLAN.md` edits outside this commit.
+  Scope includes the neutral `backend/`, `components/`, `packages/` organization,
+  cleanup and subsequent Core/session/diagnostic fixes already accepted below.
+  Installer rollback now uses the selected immutable release's own interpreter,
+  activation file and probe. Full/Node builders and installer require the complete
+  activation/planner/helper closure; no runtime old-import adapters were added.
+  A protected installer-only component journal covers fixed services, both Runtime
+  stores and default/all instance hosts. Prove historical artifacts through the
+  previous immutable release, stage neutral candidates, preserve compatible pins,
+  data, scopes and disabled hosts. Stop all changed live components before restoring
+  exact old pairs; resume original active roles only. Optional native host vendor
+  reuse requires matching validated metadata, dependency locks and Python/platform
+  identity. Completed rollback retry is explicitly requested with bootstrap
+  `--retry-rolled-back`; it reaches the detached installer, retains bounded attempt
+  evidence and cannot clear an interrupted transition. Existing published 0.3.11
+  web/Node validators safely refuse this source-layout boundary: after publication
+  use the one-time verified console bootstrap, not a forced old web/OTA operation.
+  Application wheels with old SDK imports require separate adaptation; an active
+  incompatible app causes global rollback, never silent app/grant rewriting.
+
+  Checks use disposable Linux source/data, CPython 3.13.18, Node 22.22.1,
+  pnpm 10.13.1 and dependency digest
+  `66358e23c75f2c6e25d0349c2b6cbbd5b02fc7a792a131d87a80413858d6377b`.
+  Frontend 946, starter 19, CRUD 8, strict types and build passed on original seal
+  `6a64e0b1456b419e8941a373304d92ae1b1cef5570d3bdf30cca8844ebe51812`;
+  all relevant inputs remain identical after CRLF normalization, so reuse them.
+  Compiled UI integration 5 and direct process consumers 36/4 skipped also passed.
+  Full default Python on exact-index seal
+  `2731b7e9ef6f45eb5b63f750d3fddc5dced1cab8b81617a1710543f94c6fc8d2`
+  completed with 7622 passed/612 skipped/3 failed/1 setup error, 2958.12s. Failures were
+  a stale activation-path assertion, a test's 3s HTTP watchdog versus its intentional
+  5s Runtime budget, and an inherited FastAPI route-cache mutex in forked fixtures.
+  Deterministic held-parent-lock red/green proves the latter. Rebuild derived
+  wrappers only in the test child; preserve endpoints, overrides and parent state.
+  Use the shared 10s outer test transport watchdog, retaining explicit latency
+  assertions and bounded owned thread/startup evidence. No production timeout or
+  authority relaxation. Earlier incomplete/interrupted runs are not passed gates.
+
+  Final installer/SDK/builders/tooling group: **2020 passed/8 skipped**, 448.15s,
+  seal `91225cca1bced3a6e32b4b02f93544b59114b0493b7d5e4cefd004317c6af89e`,
+  evidence `ci13-transition-gates-07b2924920364a009b684c7e5c8c0c43`.
+  This includes the 440-pass transition/installer precheck; do not add overlapping
+  totals. Actual old/current builders and validators passed for seven existing
+  b134 component stores with exact pointer restoration, no services/app execution.
+  Final process consumers, systemd templates, Node installer and bootstrap options:
+  **580 passed/6 skipped**, 406.53s, 1724-input exact-index seal
+  `063e351037d0e9c720bbb38982957c351cdc0bc777000aac543131a3121ccae9`, evidence
+  `ci13-fixture-consumers-62c472dd8cf44ac2b16ab435f9c7a06d`. All four earlier
+  failing scenarios now pass. This seal differs from 91225 only in bootstrap retry
+  forwarding/tests. Both final groups report no source drift. Root/systemd and
+  optional image-provider skips are explicit limits, not physical acceptance.
+  The full default group was not rerun after these test-only fixture corrections;
+  reuse its unchanged passing coverage plus all affected final consumers.
+  Independent review found no remaining transition blocker. Staged Git archive
+  passes actual Full builder/408-file contract closure (1720 payload files),
+  with no old source roots or mutable DB/prices/output/uploads/IDE contents;
+  dev launchers retain 100755. Only handoff/installation documentation changed
+  after checks. Git execution and exact CI run are reported in this chat.
+  Next: exact-commit main CI, then a separately agreed release/C5 installation.
+  Never create a tag before green CI. No release artifact or device action here.
+
+- **Interactive latency, 2026-11-12, bounded fix deployed; residual latency remains.**
+  Owner explicitly authorizes measurement, Core fix/tests and rasp-3mm deployment;
+  Terminal source/package and all rights remain unchanged. Pre-fix approved live
+  probe opened in14.576s; two spaces without Enter/command got ACK in2.793s/7.912s.
+  Independent read-only profiling measured current input authority563/1397/949ms;
+  profiled957ms includes grant469ms, bounded JSON325ms and UI269ms (nested, not
+  additive). These observations do not establish every earlier20-30s report.
+  Deterministic async regressions reproduced device management/signing/direct
+  polling blocking unrelated event-loop work plus a DB transaction retained
+  while waiting: initial5failed/2passed. Core now runs complete sequential DB
+  phases off-loop, captures plain IDs and ends snapshots before notification
+  waits, then rechecks after waiting. Cancellation joins the original worker
+  before dependency DB cleanup; it never repeats work. New device regression
+  group11passed on Linux, including repeated cancellation and revocation.
+  Per-check immutable code reuse does not cache authority across inputs; closed
+  stream timing stages distinguish input/provider/ACK, queues and fresh authority.
+  Inner key/SQLite/grant failures are preserved without payload/exception text.
+  Existing revocation checks/timeouts/cleanup/admission remain. Frozen Linux
+  integration:966passed/no skips; unchanged frontend proof reused. Core rollout
+  `07a36470d0276a24b6035d3d9b43cf96ebe26fe669374c20c90c135e533daec8`
+  succeeded; independent pins, four app hosts/packages and rights hashes preserved.
+  However post-rollout probe opened13.986s, firstspaceACK6.753s/provider12.961ms,
+  before620ms/after1089ms/ACKphase5021ms. ConcurrentCorehealth66ms; then stream
+  closed before secondspace (retainedstream/deadline_exceeded25922ms). Separate
+  read-only status confirms no retained session/recovery reservation. This is NOT
+  accepted as fixed latency. Freshcheckprofiling964ms:47boundedJSONcopies337ms,
+  4617recursiveleaves/59557Unicodegeneratorcalls. Next bounded optimization uses
+  identical C JSON ASCII encoding/Unicode checks instead of per-leaf Python
+  encoder/generator overhead, not cached authority. Local pure/boundary vectors
+  159passed. Same actual read-only authority adapter with only that pure function
+  replaced in its isolated process measured437/425/430/423ms, not an installed
+  performance claim. Empty provider responses now combine the fresh post-input
+  check with ACK admission after acquiring the send lock; no intervening I/O and
+  no second identical check. Nonempty output retains pre-output and fresh ACK
+  checks. Current runtime/UI/login/grant/human/resource checks still run before
+  every input and at the post-effect boundary. New regressions cover next-input
+  revalidation, revocation during provider work and revocation while ACK queues
+  behind a send. Final frozen Linux/Python3.14: **1978passed,3skipped**,704.66s;
+  skips are foreign-UID/root and non-POSIX refusal harnesses, not session tests.
+  Focused159pure/4ACK passes overlap this run and are not added to it. Unchanged
+  frontend tests/type/build proof reused; no new frontend build. Checked all1886
+  frozen inputs: exactly6 source/test/docs files differ from the first latency
+  rollout (context/browser, their tests, diagnostics/diary). Default host inputs
+  and every independent component input remain identical to that first rollout.
+  Standard immutable Core deployment **succeeded** on owner-pinned192.168.1.88,
+  key `9ee7efe7f62b298c4c9c64dc0637ccca7d86e19e15242573a1c530ecea86443d`,
+  release `local-9ee7efe7f62b298c4c9c64dc`, install199.875s. Six base/four app
+  services active, zero restarts; Core/Agent/Web smoke ready. Agent/Runtime,
+  active/inactive executor pins, four app-host pins/active metadata, host policy,
+  local-session flag and native/service/human rights hashes match preflight.
+  Terminal1.0.5 package and its host are unchanged; no app/permission approval.
+  Final approved probe opened13.080s and ACKed two spaces in**965.90/3609.67ms**;
+  input-provider9.599/6.592ms, concurrent readiness27.75/58.93ms. Both inputs
+  succeeded, normal close completed, read-only recovery confirmed no owned lease,
+  own diagnostic recording stopped and own login logged out (exit0). No Enter
+  or command executed. Output timing is not correlated echo; it does not prove
+  end-user visible per-character latency. Recorder dropped9/1rate-limited spans,
+  so phase evidence is partial and nested/concurrent spans are not additive.
+  Improvement is measured, not proof of instantaneous typing or that every
+  earlier20-30s spike is eliminated. Residual per-check/current-authority cost
+  and queueing remain; do not hide it by disabling checks/increasing timeouts.
+  Next: owner practical typing/connection acceptance; further optimization must
+  preserve fresh UI/login/human/M20/resource/runtime checks. No Terminal source,
+  Agent/executor update, rights, reboot/reset, separate backup or Git/version
+  action. Only normal automatic installer rollback copies. Evidence/helpers are
+  `.runtime/diagnostic-cases/input{,-fast}-{prepared,baseline,dispatch}.json`,
+  checked bundles, `review-input{,-fast}.py`, `accept-input.ps1` and the bounded
+  read-side/live latency probes. Only this handoff documentation changed after
+  final checks/input review; no later production code is claimed as tested.
+
+- **Terminal connected, slow input inspection, 2026-11-12, read-only.** Owner
+  confirms a successful connection and command, but reports 20-30 seconds per
+  character and several attempts to connect. `diagnostic-cases (4).json` retains
+  two post-opening failures: `session.input/session_runtime_failed` and
+  `session.input/session_authority_unavailable`. Their40s/144s durations cover
+  the session attempt, not measured individual keystrokes. No retained opening
+  failure in this export does not disprove the owner's failed attempts. Concurrent
+  Agent authority exchanges include409 and500; three500s took about5057ms, one
+  provider read also500/about5057ms. The export does not establish SQLite lock
+  contention or revoked rights; detailed recording was inactive, no dropped cases.
+  Pinned-device read-only inspection: Core/Agent/Runtime active, zero restarts;
+  ten-second sample Core85.8%of one CPU, Agent2.1%, Runtime0.6%. This is total
+  process load, not proof that Terminal alone caused it. Bounded retained-journal
+  filtering yielded no allowlisted exception/stack evidence for that interval.
+  Source has at least three current-authority checks per input plus independent
+  output checks, serialized by the session service's authority lock. Each check
+  verifies UI and current M20 authority; the stream does not use existing
+  operation-local immutable-code reuse. Separately, async device exchange still
+  does synchronous DB/signing work on its event loop. Neither finding alone
+  demonstrates the reported20-30s delay. A separate low-priority read-only
+  process, using Core's actual unprivileged UID, measured warm package/UI
+  verification at about26ms versus3.5-4ms for same-operation reuse (first cold
+  package120ms). This improvement cannot explain the whole delay. Earlier helper
+  setup/ownership refusals occurred only in standalone diagnostics; they are not
+  installed Core failures and produced no valid latency measurement.
+  No production code, Terminal package, grants, session, service or deployment
+  changed; no tests run for this inspection. Owner's live command acceptance is
+  distinct from agent-driven verification. Helpers are ignored
+  `.runtime/diagnostic-cases/{inspect-terminal-latency,profile-terminal-code}.py`.
+  Next bounded proposal: Core per-input queue/current-authority/provider/ack and
+  output timing plus preserved closed inner authority-failure categories, then
+  fix the demonstrated bottleneck. Keep fresh revocation/login/resource checks;
+  no cached grants, blind timeout increase or claimed root cause yet.
+
+- **Session executor early ownership, 2026-11-12, deployed.**
+  Owner requested Core/executor startup diagnostics, tests and rasp-3mm deployment;
+  Terminal package/source and all rights remain out of scope. Private worker IPC2
+  separates trusted session/profile/cgroup ownership from final provider readiness.
+  Core retains ownership before transferring/loading the reviewed wheel; this
+  permits existing OS cleanup proof after pre-ready cancellation, never session
+  I/O or admission. Closed startup categories distinguish initial/repeated current
+  authorization, connection/bootstrap/ownership, artifact verification, provider
+  import/open and ready. Preserve original failure before later checks/cleanup;
+  no exception messages, terminal text or tokens cross the diagnostic channel.
+  Existing authority, startup deadlines, policy pins, immutable component delivery
+  and OS cleanup fences stay in place. This supersedes the check-only scope of
+  the immediately preceding inspection below, not its observed evidence.
+  Frozen Linux/Python3.14 source checks: **505 passed, 2 skipped**, 260.21s;
+  skips require the separate disposable root/systemd acceptance harness. These
+  include real stream cancellation before ready, exact identity/policy rejection,
+  first-failure redaction, current permission/revocation, recovery, remote stream
+  consumers and immutable component packaging/control. OS cleanup observations
+  in the new stream fixture are explicit doubles, not physical systemd proof.
+  Earlier102/15/4 targeted passes overlap this run and are not added to it.
+  Unchanged checked frontend/type/build proof reused; no new frontend build.
+  Reviewed all1884 frozen inputs against the immediately installed bundle:
+  exactly11 scoped source/test/diary files differ. No Agent update selected;
+  the default-host source delta is solely the diagnostic vocabulary, not app code.
+  Only handoff documentation changed after these checks and exact-input review.
+  Normal immutable Core deployment **succeeded** on owner-pinned192.168.1.88,
+  key `1f4fd8de12ff772ec6fd5276afe894458deda627710cad8a23b86d2712c9030a`,
+  release `local-1f4fd8de12ff772ec6fd5276` (Core install200.819s).
+  Then the active host-account executor updated through its standard journal/
+  health/rollback controller from `f03e538bb87de50255aeb56fd3fd267682373104f4f830cbed951e61bc967fb6`
+  to `aec51dd4a0d27d5009fa3ebac8529d600dadd2ce833e2821abf19178ed8166e9`.
+  Core PID134674/generation stayed unchanged across this independent update.
+  All six base/four app services active, zero restarts; release smoke ready.
+  Agent/Runtime pins, four existing application-host pins, active app metadata,
+  enabled host policy and local-session flag match immediate preflight. The normal
+  rollout published default template `16bd387a2963db4d38d93a1cd8ecbb6f009e930094b9b111bbc427b3a8b2d94f`
+  for new instances only (catalog-only source delta); Terminal's own host and
+  package1.0.5 were not updated. Inactive isolated executor remains inactive and
+  pinned to its old artifact; rebuild/update it before separately enabling that
+  profile with the new private IPC. No enabling of unused components is implied.
+  Fresh read-only authenticated Terminal discovery: HTTP200, one available
+  target, trace `invoke_9c24f8303b2e4fc2ad46b797dbc9c3b5`, no retained Core refusal;
+  own diagnostic logout succeeded. No ticket/session, Terminal source/package,
+  permission or grant action, timeout increase, reboot, reset or Git/version action.
+  Only normal installer rollback copy; no separate backup. Two helper transport/
+  import refusals preceded any executor mutation; read-only inspection confirmed
+  old pin/no pending transaction before the successful standard update.
+  Evidence is `.runtime/diagnostic-cases/startup-{prepared,baseline,dispatch,plan}.json`,
+  bundle checks, `review-startup.py` and `startup-executor.ps1`. Next: owner opens
+  Terminal again and tries Connect once; retain a fresh diagnostic case if refused.
+  Live PTY execution and resolution of the earlier unknown inner timeout are not
+  claimed by metadata readiness or discovery alone.
+
+- **Opening/cleanup inspection, 2026-11-12, read-only owner request.** Bounded
+  retained Core journal inspection returned only closed allowlisted labels:
+  `opening/timeout` at08:07:28.194983UTC and
+  `provider_cleanup_unconfirmed` at08:07:28.214203UTC. The latter is provider
+  close/proof failure, not the distinct cleanup-audit failure branch. The same
+  attempt's host worker is failed/exit1/MainPID0 with no retained cgroup identity;
+  no Connect, cleanup confirmation, service action or rights change was performed.
+  Source establishes a recoverability gap: `SessionChannelProvider.open()` stores
+  `self.cgroup` only after the final ready response, which the worker sends only
+  after `provider.open()`. A timeout/cancellation before that response leaves no
+  trusted worker identity. `_wait_empty()` and later `confirm_cleanup()` correctly
+  refuse when it is absent; they cannot resolve that missing evidence merely
+  because a worker has exited. Existing private-fixture cases reproduce this
+  fence: **4 passed**, Windows, 0.16s; not Linux/systemd acceptance or a new
+  production fix. This does not directly inspect the retained Core object's
+  cgroup or establish which inner deadline caused the first opening failure.
+  Per-startup authorization and executor substeps are merged as `opening`, while
+  worker exceptions/stdio are discarded. No exact root-cause claim beyond these
+  observations is justified by the retained evidence. Proposed scoped follow-up:
+  trusted pre-ready worker ownership evidence and closed startup failure phases,
+  preserving admission, cancellation and OS cleanup proof. No implementation or
+  deployment authorized by this check-only turn. Helper is
+  `.runtime/diagnostic-cases/inspect-opening.py`; no separate tracked report.
+
+- **Terminal startup after reader fix, owner export10:08 EET, 2026-11-12.**
+  `Downloads/diagnostic-cases (3).json` has no retained key-busy/empty-target
+  refusal: the owner now reaches a redeemed WebSocket attempt. Trace
+  `invoke_617565e4a9ca4e3f89df55736bba1515` records `session.opening /
+  deadline_exceeded` at17655.346ms, then `session.cleanup /
+  session_cleanup_unconfirmed` at17673.053ms. The later ticket403 under
+  `invoke_2a621713f8964f48870aea2c8eef5700` is `session_binding_busy`,
+  not evidence of human permission denial. It is the subsequent reservation fence,
+  not the first startup failure. All probed Core/Agent/Runtime/Public Web were
+  ready; detailed recording inactive and no dropped cases.
+  Read-only installed inspection confirmed one `console` recovery entry
+  `ses_761def5fa72cfdcb8045a6e1e0c3a41d`, `cleanup_required`. A host worker was
+  active10:07:13→10:07:29 and ended with exit1, MainPID0; two older failed units
+  are historical, not new failures. This does not prove whether a PTY ever
+  started or authorize removing the reservation. No cleanup/retry/Connect,
+  restart, rights/application/source behavior change; own inspection login closed.
+  Existing worker deliberately discards all exception detail/stdio, and Core's
+  opening category covers initial authorization, periodic authorization and
+  executor startup. Neither the export nor status alone identifies which inner
+  deadline/worker stage failed; do not assume slow startup, permission denial,
+  Terminal code or increase timeouts blindly. Next bounded proposal: instrument
+  and reproduce the host-session startup/authorization/cleanup boundary with
+  closed safe categories, then fix the demonstrated failure. A worker-component
+  change/deploy is separate from the completed Core reader-only rollout below.
+  Inspection helper: `.runtime/diagnostic-cases/inspect-session-recovery.py`.
+
+- **Session verification readers, 2026-11-12, deployed.** Owner
+  approved the bounded Core fix and deployment to rasp-3mm. Genuine POSIX shared
+  key leases reproduced both failures before the fix: HTTP discovery omitted its
+  target and M20 admission refused another reader. Both now pass after changing
+  only session browser `_resource` and authority `_resolve` to `read_locked()`.
+  Fresh key-before-DB snapshots, current grants/login/package checks, exclusive
+  writers and no provider work under a lease remain unchanged. New regressions
+  also cover writer exclusion, post-reader cleanup and human permission removal.
+  Frozen-source session/keys/revocation/diagnostics checks: **247 passed, 2
+  skipped**, 291.38s. The skips are the separately root-run foreign-UID case and
+  the non-POSIX-only refusal; actual Linux shared-reader/exclusive-writer,
+  rotation and denial/revocation checks passed. The two initial red/green
+  regressions are included, not added again. Identical frontend proof reused:
+  946 tests, type-check and production build; no frontend inputs changed.
+  All1883 frozen inputs reviewed against the immediately installed bundle:
+  exactly the two production readers, their two test files and this diary differ.
+  Native-host inputs identical; no Agent update selected. Only this handoff
+  documentation changed after the frozen checks/delta review.
+  Normal immutable Core-only deployment **succeeded** on owner-pinned
+  192.168.1.88, key
+  `3d679e1b5fd0cc87b2584c0c0beaa030bfd462ab294bccf41d849c2d2c41eca7`, release
+  `local-3d679e1b5fd0cc87b2584c0c` (install201.537s). Core PID121842; six base and
+  four application services active, zero restarts; release health smoke passed.
+  Agent/Runtime/app-host/default-host pins, active app metadata, enabled host
+  session policy/flag all match immediate preflight. One authenticated installed
+  Terminal1.0.5 discovery read returned HTTP200, one target, one available, no
+  Core refusal for trace `invoke_f871b5b039034f98b9ba08db4006b77e`; own login
+  closed successfully. No ticket/terminal session/app invocation, grant change,
+  Terminal source/package edit, timeout increase, reboot or Git/version action.
+  Only the normal automatic installer rollback copy; no separate backup.
+  Evidence: `.runtime/diagnostic-cases/session-readers-{prepared,baseline,dispatch}.json`,
+  immutable checks and `review-session-readers.py`. Next: owner reloads Terminal
+  and tries Connect once; if a different boundary fails, retain the fresh case
+  before hard reload/logout. Live terminal execution has not been claimed.
+
+- **Terminal contention identified, 2026-11-12 09:39 EET export.** Read-only
+  analysis of `Downloads/diagnostic-cases (2).json` now correlates browser
+  `session.resolve / targets_empty` and Core `authority.key_acquire /
+  review_key_busy` under `invoke_b466d85a493f4725b30a99d45af6faf0`. Two discovery
+  refusals coalesced, latest HTTP200 duration2517.131ms, `handled_refusal=true`,
+  phase `not_dispatched`; no detailed recording or loss counters. The specific
+  refusal is key-lock contention, not an observed human-permission denial or a
+  started/failed Linux terminal. Inspection found exclusive `keys.locked()` in
+  the read-only browser `_resource` and M20 session authority `_resolve` paths,
+  whereas the existing key adapter already supports verification-only shared
+  `read_locked()` leases and enforces no sealing on them. The export does not
+  identify the competing lease holder; do not claim an exact writer or a proven
+  deadlock. Proposed bounded next fix: audit these read consumers and use shared
+  verification leases where no write occurs, retaining fresh snapshots, key→DB
+  order, revocation/current-package checks and exclusive writers. Check real
+  concurrent shared-reader/writer exclusion and session denial/revocation before
+  rollout; do not merely increase timeouts or change rights. Core/Agent/Runtime
+  probes were ready. Public Web probe was unavailable, a separate observation
+  not established as Terminal's cause. Offline CLI explanation passed; no source
+  behavior, device, rights or Terminal application change in this analysis turn.
+
+- **Handled discovery refusals, 2026-11-12, deployed.** Owner requested
+  implementation and deployment after the Terminal export triage. Core now
+  explicitly retains a handled discovery-resource refusal in the existing bounded
+  admin ring even when its public response is HTTP200; it preserves the original
+  closed reason/stage and response trace, marks `handled_refusal`, and does not
+  expose the rejected target. Ordinary successful reads remain unrecorded.
+  Browser `targets_empty` now differs from a nonempty-list ID mismatch; Settings
+  and the offline CLI distinguish HTTP success from resource admission. No access
+  check, public target schema, ticket behavior, timeout or replay fence changed.
+  Frozen final preparation passed **946 frontend tests**, type-check/production
+  build and **345 targeted Linux diagnostics/session authority/CLI/deployment
+  checks**, no skips. This includes real sealed-grant revocation with no provider
+  start. Earlier targeted46/47 runs are not added again; Windows-only temp/
+  permission issues were superseded by the Linux run, not counted as acceptance.
+  Compared all1883 inputs against the prior accepted bundle: exactly the agreed
+  15 files differ; native-host inputs identical and no Agent update selected.
+  Normal immutable deployment **succeeded** on owner-pinned192.168.1.88, key
+  `34dd1d41ad3fd7c7ac1942d3842fcacd654cc9ee043885a2b36c45c0957a12b1`, release
+  `local-34dd1d41ad3fd7c7ac1942d3` (Core install209.474s). Core PID107056, all six
+  base/four app services active, zero restarts; release health smoke passed.
+  Agent/Runtime/app-host/default-host pins, active application metadata and
+  enabled host-session policy/flag match immediate preflight. Actually served
+  browser assets match the exact checked hashes and contain `targets_empty`.
+  One normal authenticated read of installed Terminal1.0.5 discovery returned
+  HTTP200, one target, one available; no retained Core refusal for trace
+  `invoke_4ed8f0853b324270a446f56d4686b0ec`. This does not prove the browser caller
+  selected the right ID or exclude a transient earlier refusal. Own diagnostic
+  login was closed; no ticket, terminal connection, app invocation or grant
+  action. Evidence: `.runtime/diagnostic-cases/discovery-prepared.json`,
+  `discovery-baseline.json`, `discovery-dispatch.json`, immutable bundle checks
+  and `review-discovery.py`. Normal automatic rollback copy only; no separate
+  backup, reboot, Terminal edit, Git or version action. Next: owner hard-reloads
+  Terminal once, attempts Connect once and collects within the same page without
+  another hard reload/logout if it fails. Underlying Terminal cause remains open.
+
+- **Browser-local diagnostic gaps, 2026-11-12, deployed follow-up.** Owner approved
+  capturing the generic Core browser adapter's missing boundaries; no Terminal
+  source, rights or session invocation is in scope. Local refusals now retain
+  closed first-failed stage/cause, optional last-passed stage and whether an HTTP
+  response was observed. This covers missing injected host/build, host identity/
+  feature/operation validation, target decoding/duplicates/resolution, exact
+  request mismatch, ticket validation, socket setup and stream/callback failures.
+  Each successful response keeps its own validated Core trace; concurrent reads
+  do not share a last-response identifier. Wrapped errors preserve the first
+  diagnostic observation without duplicate causes. Public errors, validation,
+  access checks, existing timeouts and no-replay fences remain unchanged. Browser
+  history stays bounded to100 entries/15min, page-local, with no background upload,
+  payloads, addresses, target options, terminal text or exception messages.
+  Settings displays these checks separately from authenticated Core outcomes;
+  its JSON and offline CLI expose safe browser observations without trusting
+  imported descriptions or claimed execution. CLI checks reject unknown labels.
+  **225 targeted frontend tests across14 files +10 CLI tests passed**; final92
+  changed-boundary tests, type-check and production build also passed after the
+  last label-validation hardening (not counted twice; unchanged133 consumer tests
+  reused). Built public entry reexports exactly the same four runtime symbols;
+  host/Settings share one emitted browser diagnostic module. Earlier backend/
+  device evidence is not relabelled as testing this frontend follow-up. Actual
+  card layout checked in light desktop/dark390px with fixed local data, including
+  trace filtering and long IDs; preview stopped and temporary tab closed.
+  Owner then explicitly requested deployment. Normal frozen-source preparation
+  passed **944 frontend tests**, type-check/build and **61 targeted Python/CLI/
+  deployment checks**, no skips. Compared all1883 source inputs against the prior
+  bundle: only the agreed13 diagnostic frontend/CLI/test/doc files differ; native
+  host inputs remain identical and no Agent update is selected. Immutable deploy
+  **succeeded** on the same owner-pinned192.168.1.88, key
+  `e2c066b779884dcf7dfd36654b2ec29494d163920d9f255ea9a8b816d296e24b`, release
+  `local-e2c066b779884dcf7dfd3665` (Core install201.400s). Core PID100528, six base
+  services and four application services active with zero restarts. Read-only
+  release smoke passed. Agent/Runtime, existing app-hosts/default host, active
+  application metadata, enabled host policy and local-session flag all match
+  immediate preflight. Served index/public entry/shared diagnostic assets match
+  the exact checked build hashes; new browser cause/stage labels are present.
+  Only normal automatic installer rollback copy; no separate backup or reboot.
+  Evidence/dispatch: `.runtime/diagnostic-cases/browser-prepared.json`,
+  `browser-baseline.json`, `browser-dispatch.json` and immutable bundle checks.
+  No application source/package, approval, session opening, Git or version action.
+  The follow-up export below captures the failed browser boundary; the underlying
+  reason for the absent target remains unproven. The source's empty-backend socket
+  refusal is distinguishable but intentionally not changed or assumed to be the
+  installed failure.
+
+- **Terminal export triage, 2026-11-12 07:51 EET.** Read-only analysis of
+  `Downloads/diagnostic-cases (1).json` and the current adapter/server consumers:
+  browser trace `invoke_96276153b3c640808d0f9b1f72a5312b` records
+  `session.resolve / target_not_found`, last passed `session.targets.response`,
+  response observed. The adapter received a schema-valid target response but
+  found zero matching binding/device IDs; it failed before ticket dispatch or
+  WebSocket setup. This client observation does not establish whether the list
+  was empty or the caller supplied a different ID. Server `targets()` silently
+  omits resources when current grant/human permission/device admission fails,
+  so HTTP200 does not exclude an authority failure. Runtime absence alone instead
+  marks a returned target unavailable. Detailed recording was inactive; no Core
+  failure for this trace is retained because the endpoint can return HTTP200
+  after handling a per-resource refusal. The separate backup-preview503 belongs
+  to another trace and is not evidence about Terminal. Next bounded result:
+  retain closed per-resource discovery refusal categories/correlation without
+  exposing undisclosed targets, and distinguish an empty response from a caller
+  ID mismatch. Do not assume a socket, Linux-account or Terminal-source defect.
+  No code/device/rights change or runtime test; offline CLI explanation passed.
+
+- **Owner diagnostic export, 2026-11-12 06:57 EET.** Read-only review of
+  `Downloads/diagnostic-cases.json`: no Core cases, detailed records or browser
+  observations; recording has no session identity and is inactive. Two failure
+  groups expired under15min retention. Core history identity matches the installed
+  acceptance export from00:21 EET, so the current empty ring is not explained by
+  a different history instance. Ready probes do not prove Terminal execution.
+  This export contains no new ticket403 or evidence establishing its cause.
+  Source inspection found an actual remaining coverage gap: local target-response
+  validation and `resolveTarget` refusals occur outside the HTTP request catch and
+  `open` catch; successful HTTP followed by UI-contract refusal can therefore be
+  absent from both rings. This is not proof that this exact Terminal failure took
+  that path. Next proposed result: capture those generic Core browser-adapter
+  boundaries with closed stage/cause labels and original validated trace when
+  available; no Terminal edits, authority bypass or repeat/open action. Only
+  analysis performed in this turn; no runtime change or deployment.
+
+- **Shared diagnostic cases, 2026-11-12.** Owner approved implementation and
+  deployment to the verified `rasp-3mm`, without Terminal application edits,
+  approval changes or opening a session. Extended the existing bounded failure
+  ring/recorder/workspace, not a second service. HTTP4xx/5xx (including403) and
+  session target/ticket/WebSocket refusals now retain closed stage/cause labels,
+  correlated server identifiers and explicit dispatch uncertainty. Repetitions
+  coalesce for30s, retain a count/latest8 identifiers; bounds remain100 groups,
+  128KiB,15min with loss counters. No bodies, terminal text, credentials or
+  arbitrary exception messages. Browser metadata is separately marked untrusted,
+  page-local and bounded; network absence is not labelled DNS/non-execution.
+  Admin-only `/api/v1/diagnostics/cases` and `/cases/export`, the Settings case
+  cards and read-only `python -m tools.diagnostics collect/explain` share the
+  versioned evidence/catalog. Detailed next-user-attempt recording expires after
+  two minutes; collection never invokes an app, replays or changes rights.
+  Missing/partial observations and uncollected remote producers are explicit.
+  Linux Python3.14 frozen source `ec6f0ffdba8e…`: **156 diagnostics/CLI +124
+  session authority/browser/runtime +108 consumers =388 passed, no skips**.
+  Final preparation passed **921 frontend tests**, type-check/production build
+  and **51 targeted case/failure-ring/deployment checks**. Compared all1233
+  Python files shared by the frozen lab and prepared source: hashes match;
+  the388 Linux checks are reused on unchanged Python, not relabelled as full CI.
+  Light desktop/dark390px layout, long route/IDs and empty filtering were
+  visually checked. Windows-only fixture/permission limitations were superseded
+  by the successful Linux runs, not counted as acceptance. The normal immutable
+  deployment **succeeded** on pinned192.168.1.88: bundle
+  `32179317806fb5b18a04a47b372f5a041a1d50f7827a2867b7ce45a90e09a6fb`,
+  release `local-32179317806fb5b18a04a47b` (Core install243.960s, host prepare
+  31.676s/default publication40.814s). Core PID40288, all six base services
+  active with zero restarts; all four existing application services are active
+  with zero restarts, and read-only release smoke passed. Agent/Runtime and
+  all four existing app-host pins, active.json hashes, enabled host policy and
+  running local-session flag match the immediate preflight. Normal publication
+  created default host `93f515a26831cedd2800fda144ba0207b7961b769a0fd99ae9eae4c484636096`
+  for future instances; existing application hosts were not switched. Only the
+  normal automatic installer rollback copy; no separate backup or device reboot.
+  Installed admin-only case read/export and a controlled invalid read (422)
+  passed; the same exported evidence was explained by the local CLI. Temporary
+  admin login was closed; no app/session/LCD invocation or approval was performed.
+  Local dispatch/evidence: `.runtime/diagnostic-cases/` (`prepared.json`, checked
+  bundle, `baseline.json`, `installed-case.json`). Lab temporary XML files were
+  cleaned with their disposable runs; the runner results above are observed
+  stdout evidence, not claimed permanent XML. The original Terminal refusal is
+  not claimed fixed: a fresh owner attempt will supply its new case. No Git or
+  version action. No background browser preview remains running.
+
+- **Terminal connection triage, 2026-11-11, Core-only scope.** Owner installed
+  Terminal1.0.5 and reports `Application host: unavailable`; do not edit that
+  separately maintained application or change its approvals. Read-only checks
+  on the verified `rasp-3mm` found current Core PID24496 and all four application
+  services active with zero restarts; host socket is listening. Running Core's
+  local-session flag and root host policy are now enabled by the owner (this
+  supersedes the deployment-time disabled state below). Last30min bounded Core
+  initial access metadata showed session-target GETs returning200, no ticket POST
+  in that initial window, and no active host workers; later checks below found
+  three ticket403 refusals. Neither observation proves a host crash. Owner supplied a valid200
+  target response (`console`, available=true, reviewed80x24). Current Core adapter
+  plus the separate app's read-only transport reproduced that response through
+  the mocked ticket POST; **18 session-browser adapter tests passed**, including
+  a new named-binding/open regression. The served Core main asset also contains
+  the expected binding-or-device lookup. Owner's hard reload still fails with
+  `main-DQXtKx1d.js`; served code's decoder/open matcher matches source. Installed
+  Terminal source matches the local1.0.5 ZIP; public build
+  `9671c09f99bfaf5b97482f56122498e2680e623a37c2f39493ca64618e2b33a4`
+  entry `terminal-BybsgaMv.mjs` also matches the relevant transport logic.
+  Frontend type-check passed; prior18 adapter checks reused unchanged. Owner's
+  temporary DevTools breakpoint captured the actual rejection in the Core HTTP
+  wrapper (`request -> targets -> resolveTarget`), not target decoding. Read-only
+  browser Console inspection confirmed `ERR_NAME_NOT_RESOLVED` for the session
+  GET, appearance and login refresh at `rasp-3mm.local`. DNS currently resolves
+  to the pinned192.168.1.88 again; name resolution is intermittent. Three earlier
+  ticket POSTs also returned403 (confirmed in bounded server access metadata),
+  but their original response bodies are unavailable in the current Network log.
+  Both IP80 and hostname80 are already in running Core's exact allowed origins;
+  FRONTEND_URL is http://192.168.1.88. Owner confirms the same failure through IP,
+  so intermittent DNS is incidental, not the explanation for the terminal refusal.
+  Owner export `3mm-operation-records (7).ndjson` covers23:15:14-23:15:52 EET:
+  all22 records are successful Crypto Monitor operations (one invocation's four
+  spans,7 discoveries,8 lookups,3 submissions); none is a Terminal/session record,
+  and no records were dropped. The session target/ticket handlers currently do
+  not emit operation diagnostics, while the recent-HTTP ring records409/5xx,
+  not403. Thus this export cannot identify the observed ticket403's underlying
+  cause. Next: inspect a fresh ticket403 response/payload without headers/tokens;
+  distinguish UI binding, current authority/runtime, and reservation refusal.
+  No production
+  fix is demonstrated yet; do not bypass admission or treat DNS as the403 cause.
+  A separate same-origin empty-backend WebSocket guard issue was noted, but it
+  occurs after ticket issuance and is not treated as this pre-ticket refusal.
+  No session opened, app invocation, rights change, restart or Terminal edit.
+
+- **Host-profile platform deployment authorized, 2026-11-11.** Owner asked to
+  deploy to `rasp-3mm` while the separate chat adapts Terminal. This is a bounded
+  **CAP15 (sessions/streams) + CAP20 (execution/resource profile)** result;
+  historical **M21** is the interactive-session mechanism, not CAP21 authoring.
+  Target identity was verified against the owner's fresh host pin. Existing
+  Core0.3.11 `local-134d26bd7c708fbbbf40a4a5` was ready, all observed base services
+  active and no conflicting rollout was present. Normal checked bundle:
+  `5c9767f037a3450644d1090ab94c94cf6a99aafd7ff965fb2b03d99f9ee099f0`,
+  candidate `local-5c9767f037a3450644d1090a`. Fresh preparation passed **916
+  frontend tests**, type-check/build and **63 deployment/provisioning checks**;
+  source evidence from the preceding bounded work is retained, not relabelled
+  as a full CI/release gate. The standard detached immutable deployment
+  **succeeded** (345.478s Core install,31.713s host preparation,30.047s default
+  publication). Installed read-only acceptance passed: Core PID19625, Core/
+  Agent/Web ready, six base services active with zero restarts. Agent/Runtime
+  and all three pre-existing application-host pins match the baseline. Default
+  host `4dae3b8d9e0f961e95f0d992bf8c9598fed424d77a0098b2b4d36e031139ed68`
+  has the exact current SDK guard and checked host spec. Separate worker
+  `f03e538bb87de50255aeb56fd3fd267682373104f4f830cbed951e61bc967fb6`
+  imported successfully as the fixed password-locked account UID993/GID980,
+  without loading a provider or opening a session. Root policy, running/disk
+  local-session flag and host socket are all disabled; no host worker runs.
+  No Terminal activation, grants, separate backup,
+  device reboot, Git action or version change; only the normal automatic
+  installer rollback copy. PiWheels had intermittent verified-HTTPS disconnects
+  during dependency installation; standard retries completed, no TLS bypass or
+  second deployment was used. All SSH/log observers are closed. The host memory
+  controller is still absent: installed RAM-limit enforcement is not proven;
+  actual systemd/PTY/file/revocation acceptance remains separate after Terminal
+  adaptation and explicit host opt-in. Evidence/dispatch receipt and
+  `installed-acceptance.json`: `.runtime/host-session-deployment/`.
+
+- **Local host-account session profile implemented locally, 2026-11-11.** Owner
+  confirmed a separate unprivileged account, not raspberry/root. The generic
+  `host_account_session_v1` profile now resolves one fixed `3mm-terminal` account,
+  private persistent home and root policy generation into exact M20 review.
+  A separate immutable executor/socket and SDK process guard retain current
+  package/resource/human admission, bounded streams, lease/policy checks and
+  cgroup cleanup. Changed policy/account invalidates the old grant; remote
+  executors explicitly refuse host identity. Isolated resources retain their
+  previous wire shape and executor, with no automatic fallback. No browser
+  account/shell/environment selection, root, sudo, IP networking or device access.
+  Installer preparation is disabled by default and preserves prior root policy
+  decisions. UI approval shows real-file/native-code access and shared account
+  warning outside collapsed details. Canonical scope/opt-in/acceptance guide:
+  `docs/HOST_ACCOUNT_SESSIONS.md`.
+
+  Linux source evidence: protocol/local authority group **42 passed**, then an
+  existing cold mounted-source router subprocess hit its unchanged30s budget;
+  that exact router **passed alone** without a timeout change. Channel/browser/
+  session admission group **128 passed**; context/source/recovery/catalog group
+  **178 passed**; remote guard **7 passed**. Worker/SDK/isolated stream group
+  **84 passed**, then **23 focused cases passed** including the final shared-UID
+  alias refusal (overlapping coverage, not additive totals). Deployment evidence:
+  **391 release/provisioning**, **16 final host profile**, **18 native artifact/
+  rollback** checks passed; original390-case group retains unchanged full Node
+  installer evidence. The **18 native artifact cases passed again** after the
+  final UID check (`artifact-final.xml`), no skips. Evidence folders: `.runtime/host-session-profile/`,
+  `.runtime/host-session/`, `.runtime/host-session-deployment/`. Frontend **91
+  targeted tests**, TypeScript and production build passed with existing
+  dependencies. Responsive/theme/source review only, no browser visual trial.
+
+  These are source/transport/artifact tests with OS identity and systemd doubled,
+  not installed Linux/shell acceptance. Reviewed native code shares one home
+  across users/apps and is not hostile-code isolation; a blocked provider may
+  last until the OS900s limit. Cleanup remains fenced without exact OS evidence.
+  Persistent home is not part of Core/application backups. External Terminal
+  still needs its declaration/SDK guard adapted separately. Fresh ordinary
+  SDK-storage session apps use service activation then consent; generic inactive
+  staging for session-provider upgrades/configuration and required relational+
+  self-session first registration remain unsupported. Do not silently weaken
+  inert provenance to bypass these limits. No commit, deployment, live account,
+  service/grant change, shell or external Terminal/Monitor source edit this slice.
+
+- **Optional resource preparation fixed locally, 2026-11-11.** Owner authorized
+  the generic fix after confirming Child Center0.7.23 activates without readers.
+  Changed optional device/query selections on the same stopped package now go
+  through `/stage` and fresh consent, not direct `/activate`. The Core preserves
+  the exact configuration/approval fence, original signed registration, previous
+  package pointer, instance identity and own data. Configuration-only transitions
+  authenticate existing provenance before mutation and never repair corrupt or
+  missing inert proof. Active/stale/unauthorized requests are refused; uncertain
+  UI replies do not trigger automatic activation or repeated preparation.
+  Dedicated relational/session-provider preparation remains separate.
+  Relevant UI checks: **58 passed**, TypeScript and production build passed on
+  the existing Node24.19/Vite6.4.3 toolchain, no dependency changes. Existing
+  responsive dialog/theme classes and new EN/BG text were reviewed; no browser
+  visual trial was performed. Linux targeted
+  staging checks: **37 unchanged cases reused + 4 current first-registration
+  cases passed** (both inert/previously active and staged/connector provenance).
+  Adjacent authority/configuration/activation consumers: **168 passed**, no
+  skips. These are source tests with real seals/HTTP/database and doubled runtime
+  helper/compiler, not a physical installation trial. Evidence folder:
+  `.runtime/optional-device-configuration/`. No commit, deployment, new package,
+  live grant/activation, SSH or Child Center/Monitor source edits.
+
+  Diagnosis preceding the fix: exact local Child Center ZIP validates with current
+  rules: `3e879053bbc1e805e31e16c4712017313ed04f4a20bb69d27914e4ca5c5dfb23`.
+  Both reader event resources and Barsy are optional. The common UI prepared
+  missing REQUIRED choices, but optional reader changes went to `/activate`.
+  `native_activation` correctly rejects a proposed configuration different from
+  the saved/approved one (`staged_authority_not_supported`), then the route hides
+  that cause behind the generic exact-package access409. Thus adding optional
+  readers falls into a prepare/review gap; do not weaken the fingerprint fence.
+  Supplied recent-failure JSON also contains earlier consent preview/allow409s,
+  but no classified causes; this diagnosis does not explain every recorded409.
+  A physical Child Center activation trial of the new source has not been run.
+
+- **Application authoring instructions aligned, 2026-11-11.** Owner requested
+  the application-building guidance after the successful clean Note data trial.
+  `docs/APPLICATION_DEVELOPMENT.md` is the canonical current workflow: neutral
+  public imports, app-owned service/data/UI, declarations/generated client,
+  permissions versus resource/code approval, migrations/receipts, shared themed
+  controls, preview/check/upgrade and separate admin acceptance. The official
+  starter now carries `AGENTS.md`; normal `init` copies it with the source and
+  points its generated README to it. Existing projects are not rewritten.
+  Root instructions/README/check guidance link the entry point. Corrected stale
+  public imports in current UI/file/diagnostics guides and the obsolete claim
+  that application uploads remain unavailable. Note optional-resource setup and
+  candidate configuration instructions match the actual bounded lifecycle,
+  rather than promise a universal inactive configuration-save shortcut.
+  No Core/Agent/SDK/runtime or service/UI behavior change, external Monitor edit,
+  installed-device action, dependency install, version, Git write or publication.
+  Targeted scaffold/CLI/project checks: **87 passed + 3 Windows symlink skips**
+  (Python3.13.15); those exact three cases **passed on Linux/Python3.13.18** using
+  the existing environment. First Windows attempt could not use the shared Temp
+  directory; successful evidence uses a dedicated local test directory. XMLs:
+  `.runtime/application-authoring-instructions/{targeted-results,linux-symlinks}.xml`.
+  Regression confirms instructions reach a newly generated project but not its
+  installable ZIP. Real deterministic Note build/validator still yields exact
+  `bb600d57e2561de13d79a62f40175603dee60469a3030ce81f68eda4c841b4ef`;
+  the preceding live data proof remains evidence for unchanged application bytes,
+  not a new runtime trial. Fourteen guide/Note links and whitespace passed;
+  independent simplification-plan diff remains139/1. Full runtime/frontend gates
+  were not repeated for documentation/template guidance. Next: owner review/use
+  of this workflow; new application scope, restart trials and Git remain separate.
+
+- **Clean physical neutral-layout trial: installed and Note round-trip passed, 2026-11-11.** Owner supplied a
+  newly installed Linux target and its new host fingerprint after asking for a
+  pre-commit installation trial. Identity was verified with a separate local
+  known-hosts file; no global SSH trust or Git history/index changes. This new
+  scope authorizes installation on that clean target, not publication or Monitor
+  changes. Host is Debian13/aarch64/Python3.13.5; current LAN is preserved.
+  Built `local-134d26bd7c708fbbbf40a4a5` from exact checked36ef source and its
+  passed frontend build, reusing all four content-bound local gates. No new
+  version. Archive SHA256 `169895d3951dcfe13afd190d197f4d59d1e82e50754fac72e7c37e3a51d4bec5`;
+  752 delivered files, no old package roots or workstation data. Normal immutable
+  installer is used directly: deploy.ps1's dispatcher is update-only and requires
+  an installed baseline. Explicit host networking, no AP, reboot or reset.
+  Host prerequisites installed through the normal reviewed APT set. First
+  attempt failed on the OS's PiWheels SSL connection; normal rollback removed
+  its release and left no current pointer. Repeated only after inspecting that
+  result, with the SAME checked archive and official PyPI in the transient
+  installer's environment; no SSL bypass or permanent pip configuration edit.
+  The second install succeeded and selected the exact immutable local release;
+  target metadata confirms checked36ef source, unchanged0.3.11 version and
+  published=false. Initial LAN Setup `/ready` and `/setup` both returned200;
+  Core/Agent initially waited for protected owner setup, not failed. The owner
+  subsequently completed Standalone setup. Core, Agent, Platform Runtime,
+  connector-worker, Web and update-helper were active with zero restarts;
+  Core `/ready` passed, and authenticated Devices showed the local device online
+  and synchronized. A mistaken read-only probe of port8891 failed; that is NOT
+  Agent's actual loopback port8890 or an Agent failure. No direct Agent HTTP
+  readiness proof is claimed from that mistaken probe. The installer log observer was closed only after systemd reported
+  successful deactivation; closing that observer is not another install failure.
+  Read-only preflight passed with one existing
+  warning: host cgroup-v2 memory controller absent; no RAM-limit enforcement or
+  boot-configuration fix is claimed. Local trial artifacts/evidence are under
+  `.runtime/core-domain/fresh-install-908e83909bc2491f8dde8097e442f6be/`.
+  The neutral Note starter common check passed on protected Linux storage:
+  Python6/UI19/types/real compiler/packaged migration reopen+rollback; ZIP SHA256
+  `bb600d57e2561de13d79a62f40175603dee60469a3030ce81f68eda4c841b4ef`.
+  Earlier output on the Windows mount correctly failed protected-build checks;
+  no ownership rule was weakened. The owner explicitly chose to upload, approve
+  and activate Note personally, then requested its live data checks. Active1.0.0
+  was observed in Extensions. Through the real reviewed operator UI, two distinct
+  synthetic notes (Cyrillic and newline) each returned Saved; each exact value
+  survived a separate full browser reload. Original note was empty; the second
+  synthetic note remains visible for owner review. Optional resource was not
+  selected and required separate approval, without blocking note editing. No
+  direct SQL, permission changes, hardware command or blind write retry.
+  Screenshot: `fresh-install-908e83909bc2491f8dde8097e442f6be/note-roundtrip.jpg`.
+  An old cached HTML entry at the reused address referenced missing old JS;
+  fresh query navigation loaded the exact current build. Cache policy was not
+  changed; this remains a separate pre-commit browser-cache finding.
+  Next: owner review and any separately requested service/device-restart trial;
+  persistence across such a restart has NOT yet been tested on this image.
+  No Monitor, device reboot, Git write, version bump or publication. Do not repeat
+  installation; continue from the installed working system.
+
+- **Product layout/cleanup completed locally, 2026-11-11.**
+  Owner requests the whole cleanup in small checked steps without another "go".
+  Source moves, consumer/package updates, audited cleanup and final gates passed.
+  **No commit, push, branch, version, release, deployment or device action.**
+  - Neutral sources: `components/{admin_web,public_web,platform_runtime,setup,
+    system_runtime}`; `packages/{protocol,platform_wire,provisioning,application_sdk}`;
+    optional `libraries/{ai_clients,crud}` expose `application_ai/application_crud`.
+    No old-name forwarding imports. Public UI IDs are `@platform/ui/v1` and
+    `@platform/application-ui/v1`; operational cross-bundle symbols are unchanged.
+  - Core is organized under accounts, applications, appearance, artifacts,
+    devices, installation, localization, sessions, settings, storage and system.
+    The former flat routes/services/utils sources and parents are gone.
+    Per-family captured bodies match after namespace-only substitutions; lazy
+    imports, locks/ContextVars, key-before-database fencing and optional session
+    mounting are preserved. ORM registration and persisted identities stay central.
+    The unused database sys.path append outside the workspace was removed.
+  - Full has **399 strictly sorted, unique required paths**, with builder,
+    installer, omission and three real extracted-release import/API/CLI proofs.
+    Public bootstrap/guest/kiosk endpoints retain their intentional boundaries.
+    Independently minimal Host, Agent, Runtime, Public Web, Node/session/relay
+    inventories remain different and Backend-free; parents are inert.
+  - Cosmetic defaults come from `config_templates/product.json`, with bounded
+    validated text/assets and safe HTML/script encoding. Saved localized branding,
+    logos and theme settings retain precedence. Five remaining fixed-brand UI
+    messages are neutralized in English/BG source. This is not an instruction to
+    rename SQL, service/path IDs, provider IDs, signing domains, Setup SSID or
+    update trust. BG source is a draft: use a new version at a future explicitly
+    requested publication, not a previously published ZIP.
+  - Root launchers are `tools/dev/{start,agents}.sh`; preserve their original
+    executable mode at any later requested commit. Development defaults are
+    `config_templates/development.json`. Current guides/links are updated;
+    obsolete docs/scripts are marked under `docs/archive/legacy/`.
+    Audited obsolete launchers, duplicate instructions and uncollected invalid
+    early tests were removed (Git-recoverable). No current acceptance was removed.
+    Old bytecode/build caches and the old BG ZIP are retained under
+    `.runtime/cleanup-retained/` and earlier layout-retention folders. The final
+    664 Backend bytecode files are in `backend-obsolete-source-caches-7520bb515c634b59b6cd2d9519a88b91`.
+    Existing `backend/{mega_monitor.db,prices.json,output.json}` remain unchanged;
+    these data are excluded from future source/deployment archives. User uploads,
+    environments, IDE settings and independently preserved product history remain.
+  - **External Monitor stays unchanged**, per the owner's explicit answer. No
+    sibling source edits, version, package build, upload or activation. It needs
+    separate import adaptation/rebuild/review before any future coordinated deploy.
+    The independent simplification-plan diff remains **139 additions / 1 deletion**.
+  - Final candidate: **`36ef13611e423bac057648c904e6f33229257fa7f52e755ad2128c1a37ff2d11`**,
+    1,701 verified files, 14,599,947 bytes, based on HEAD `b134338a...`.
+    Actual schema comparison permits only source-module/public-import renames;
+    six schema/contract payloads and theme JSON are otherwise unchanged.
+  - Earlier scoped evidence is retained, not relabelled as final-source testing:
+    `990685ce...` packaging **750 + 2 existing skips**, plain SDK **426 + 2
+    optional-image skips**, artifacts245, appearance146, accounts47,
+    Core/compiler114 +13 root skips, authoring241 and actual starter common check
+    (Python6/UI19/types/compiler/packaged migrations). `eb5cd392...` accounts47,
+    devices150, management279. `7accc2da...` packaging312, authority559 +3,
+    installation655 +1, storage/telemetry/templates146, source drift empty.
+    Earlier Runtime/Setup/provisioning/Agent group:1,353 +3 root-only skips.
+    Raw permanent evidence is under `.runtime/core-domain/runs/`.
+  - Intermediate `eb10d019...`: packaging332 passed plus one outer30s extracted
+    child timeout; that unchanged case passed alone in16s. Relational677 passed,
+    595 existing root skips and2 strict old-ZIP fixture failures. Later phases of
+    those stopped serial runs did not execute; these are not green whole runs.
+    The fixture now pins current namespace bytes AND independently reproduces
+    historical bytes by reversing only two exact import statements in disposable
+    test inputs. No service execution or compatibility shim. **7 focused cases
+    passed** on final36ef, `neutral-wp4-fixture-223efb02...`.
+  - **Final Python3.13.18 local CI gates PASSED** on36ef:
+    `ci13-series-5a7543da54244d5fbec7212c8189bcda`. Groups are tooling, whole
+    frontend/types/examples/build, deployment+SDK, then compiled-UI preflight and
+    whole default Python suites. Exact four dependency inputs/freeze are verified;
+    existing environment/pip check passed without dependency installation.
+    Completed on this exact snapshot: tooling **347 passed**; frontend **891**,
+    starter UI/client **19**, CRUD UI **8**, both type checks and build passed;
+    source drift empty. Deployment/SDK **1,159 passed + 8 existing opt-in/root/
+    optional-image skips**; real compiled-UI integration **5 passed**. Whole
+    default Python suites: **7,426 passed, 612 skipped, no failures**, 46m03s.
+    The skips retain the existing separate root/systemd/distinct-principal,
+    platform and opt-in acceptance boundaries; they are not conformance passes.
+    All four controller groups exited zero; source drift is empty. Permanent
+    broad Python log/XML/evidence: `ci13-python-84a59ee456ea43fd98e474231b5a5cfa`.
+    A final live-source repack still matches36ef (1,701 files); whitespace passed.
+    Final read-only package/workflow/entrypoint review found no blockers.
+    This is not actual four-architecture Release/wheelhouse reproduction or
+    root/systemd/hardware acceptance. No device or Git write is claimed.
+    Next: owner review of the organized source. Commit/deploy need a separate
+    request; any future deployment also needs external application import
+    adaptation, rebuild and exact-code review. Monitor remains untouched.
+  - Unrelated findings remain OUT OF SCOPE: entity-history audit lacks the listing
+    endpoint's own-user/admin filter; compiled UI cache is not automatically
+    revalidated against a changed compiler/import policy. Do not silently alter
+    auth, purge trust caches or transfer approvals to different code.
+
+- **Device hardware layout completed locally, 2026-11-11.** Owner requests
+  continued domain-by-domain Core organization, not a mass rewrite. Keep each
+  coherent slice behavior-preserving: audit consumers, move current ownership,
+  update imports/registration/package closure, verify affected behavior and
+  extracted release before the next slice. No commit or deployment authorized.
+  Moved the unchanged hardware-interface admin API from
+  `backend/routes/hardware_interfaces.py` to
+  `backend/devices/hardware_interfaces.py`, with an inert parent initializer.
+  Runtime worker, device/SQL identities, HTTP paths, admin rights, confirmations,
+  request IDs and lost-ACK/no-resend behavior are unchanged. No obsolete alias.
+  Full builder, target contract and direct installer require both new files;
+  Node remains Core-free. Added current-admin revocation coverage on all three
+  endpoints, helper-loss coverage for restart and extracted-release import/
+  OpenAPI/401/omission checks. Existing optional-failure startup checks also
+  verify the real router's 401/403 boundaries. Frozen source
+  `f8095d4b7991d42160e02062f3e0809a4631dec147d7af8d7e2f762368179278`
+  passed **347 tests, no skips**, in reused unprivileged WSL Python 3.14.4:
+  hardware routes, Runtime hardware doubles, system control, Core startup,
+  release/staging/smoke, doubled installer, minimal Node and deployment contract.
+  Permanent XML/log/command evidence:
+  `.runtime/core-domain/runs/core-device-hardware-layout-9868bb665b04408ea4f76ac3d59dd5a1/`.
+  Independent review found no blockers. Earlier pilots and independent
+  simplification-plan edits are preserved. Next candidates are a cohesive
+  diagnostics slice, then bounded system/update and device registry areas;
+  identity/application authority need separate broader consumer audits.
+  No frontend build, dependency install, live I2C/reboot/service/device action,
+  Git write or version change. This slice is complete; do not treat it as
+  completion of the entire Core reorganization.
+
+- **System control layout completed locally, 2026-11-11.** Owner requested the
+  next bounded area; no commit or deployment remains authorized. Moved the
+  unchanged 112-line restart/factory-reset API from
+  `backend/routes/system_control.py` to `backend/system/control.py`. This small
+  domain stays one file rather than gaining empty layers. Updated Core router
+  composition and direct test imports; no obsolete import alias remains.
+  API paths/methods, current-admin authorization, exact confirmations, audit,
+  helper protocol and state/SQL identities are unchanged. Full builder, target
+  contract and direct installer now require this module. Added regression cases
+  for demoted/blocked/token-version-revoked admins and helper refusal without a
+  successful audit; extracted release proof checks both current system domains.
+  Frozen source `bba8980e7f87bc29829e075f1173d3074e4db697f1a70f19c40f40d3049de3ca`
+  passed **268 tests, no skips**, using reused unprivileged WSL Python 3.14.4.
+  Scope: control/network routes, real Core startup, release build/repro/extracted
+  imports/omission checks, staging/smoke, doubled installer, minimal Node,
+  deployment contract and fixed Runtime system-action request/command doubles.
+  Permanent XML/log/commands:
+  `.runtime/core-domain/runs/core-system-control-layout-15659bc8451d4713ae0b11cd37f72ce2/`.
+  Independent review found no blockers; source comparison confirmed no control
+  logic change. Earlier Web/network work and independent simplification-plan
+  changes are preserved. Only README/this handoff followed the checked snapshot.
+  No frontend build, dependency installation, real reset/restart, helper/device
+  invocation, Git write, version change or deployment. This area is complete.
+
+- **First Core domain layout completed locally, 2026-11-11.** Owner authorized
+  one small area, imports and checks, again without commit or deployment. Chose
+  network recovery: moved `backend/routes/network_recovery.py` and
+  `backend/services/network_recovery.py` to
+  `backend/system/network_recovery/{api,service}.py`, with inert package
+  initializers. Updated main composition and the existing route-test imports;
+  no compatibility shim or obsolete production imports remain. Exact comparison
+  with the former sources shows identical service code and only the API's
+  relative service import changed. All five API paths/methods, current-admin
+  checks, confirmations, audit behavior, state paths and shared provisioning/
+  Runtime helpers are unchanged. No model move or database migration is needed.
+  Full builder, deployment contract and direct full installer require the four
+  domain files; minimal Node/native closures stay Core-free. Earlier Web pilot
+  and independent `CORE_SIMPLIFICATION_PLAN.md` changes are preserved.
+  Frozen source `b587c658d1efb6a3b097ab929e1c26a9a9f20630063a9fc44079c30f5514f8e0`
+  passed **280 tests, no skips**, in reused unprivileged WSL Python 3.14.4:
+  network-recovery routes, Core startup/denial under optional failure, real
+  extracted-release domain import/OpenAPI/401, builder/repro/omission checks,
+  staging/smoke, doubled installer, minimal Node, deployment contract and shared
+  provisioning/AP/Runtime recovery. Permanent XML, logs and exact commands are
+  in `.runtime/core-domain/runs/network-recovery-6b076bfd8ab74f7ab98c65e4e71d9309/`.
+  Final test-harness-only refinement prunes local environments/data/symlinks
+  while collecting its extracted-release source fixture. That single changed
+  test passed again against snapshot
+  `26dc7b1ea35e6417ebb4025dc9bfe857fe2f38abf6c61b23987b63f1ec282688`;
+  evidence `.runtime/core-domain/runs/network-recovery-343269e36ecf4597ac00c4fa231c74f7/`.
+  The other unchanged cases reuse the 280-test result, not a claimed full rerun.
+  Only explanatory docs followed these runs. No frontend build, dependency
+  installation, live network/AP/setup/device/systemd action, Git write, version
+  change or deployment. This small domain is complete; further areas are separate.
+
+- **Administrative Web layout pilot completed locally, 2026-11-11.** Owner
+  authorized this component only, including imports, packaging and checks;
+  explicitly no commit or deployment. Moved `three_mm_web` source/tests to
+  `components/admin_web`, with an inert regular-package parent and entrypoint
+  `python -m components.admin_web`. No historical import alias remains. Unit
+  `3mm-web.service`, immutable paths, ports, frontend build, uploads and AP
+  redirect behavior remain unchanged. Full builder, target contract and direct
+  installer require the four package files plus existing setup/captive helper;
+  Node artifacts remain separate/minimal. Snapshot/deploy inventory explicitly
+  includes only this nested component and its parent initializer. Default pytest
+  and conservative CI selection use the moved tests; unknown components still
+  expand to full checks. Updated current service/security/entrypoint guidance.
+  Frozen source `62a8c65f53bd876b304bed32b9362c81f189d281646e7e4739db7b777cd33407`
+  (base `b134338a`) passed **390 tests, no skips**, in unprivileged Ubuntu WSL
+  with reused Python 3.14.4 environment/dependency digest
+  `f91ccaad806c25f0057f8f802db6ed3ad6733a89fd44d3bd934d14d1b8c8c5f7`.
+  Scope: moved HTTP/denial cases, setup captive portal, release build/repro/
+  omission refusal and clean extracted-release subprocess HTTP launch, staging,
+  smoke, frontend-origin policy, doubled installer, minimal Node, deployment
+  contract, systemd templates and tooling snapshot/selector/deploy checks.
+  Captured result: `.runtime/admin-web/check-result.json`; local runner
+  `.runtime/admin-web/check.py` and frozen source archive retain inputs. The
+  transient WSL run `/tmp/3mm-lab-yl90rl1k` disappeared before copying its raw
+  XML/log, so the saved summary explicitly records stdout provenance instead.
+  Checked executable drift was empty. Only explanatory docs followed
+  the checked executable snapshot. No frontend rebuild, real systemd/device
+  acceptance, dependency install, Git write, version change or deployment.
+  Independent `CORE_SIMPLIFICATION_PLAN.md` changes are preserved. This pilot
+  is the bounded result; other component moves and branding remain future work.
+
+- **Brand-independent layout review, 2026-11-11.** Owner preserves released
+  0.3.11, dislikes `three_mm_*`, rejects proposed CONERAX/KORENOS naming and
+  defers choosing a product brand while requesting structural cleanup. Do not
+  introduce `conerax.*` or another tentative brand as the new import namespace.
+  Latest "Планирай опростяването на ядрото" proposals provide components/packages
+  and domain-oriented Core ownership, not authorization for a mass move.
+  Proposed source names describe responsibilities (e.g. `admin_web`,
+  `application_sdk`, `platform_wire`), independent of public product branding.
+  Central product metadata should supply default names/logo/title to build and
+  setup consumers while preserving explicit localized site/header settings.
+  Current branding is dispersed: header defaults/store, `frontend/index.html`
+  ("Vite App"), setup HTML/API and installer messages. Brand data must remain
+  separate from repository/update trust, module IDs, wire/cryptographic domains,
+  SQL names, service IDs and installation paths; these are not display labels.
+  Next bounded implementation candidate is static admin-web (3 source files,
+  2 test files), including all entrypoint/build/import consumers and checks;
+  Core domain grouping and mixed Runtime ownership follow as separate steps.
+  No source move, SDK/API, identity, device, Git or release change in this review.
+  Independent `CORE_SIMPLIFICATION_PLAN.md` work is preserved. Documentation
+  handoff only; no runtime tests or frontend build were needed.
 
 - **Core 0.3.11 published, 2026-11-10.** Runtime commit
   `6ec8e87d2c9d07051186be8956bed43caf2a8b89` passed all four main-push CI jobs

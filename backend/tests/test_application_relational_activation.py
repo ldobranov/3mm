@@ -1,5 +1,5 @@
 """Exact Core start consent + actual non-root prepared host, no live services."""
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 import hashlib
 import io
@@ -26,13 +26,13 @@ from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.module import ModulePackage
 from backend.db.session import UserSession
-from backend.services import application_authority_management as authority
-from backend.services import application_relational_activation as coordinator
-from backend.services.application_authority_keys import AuthorityReviewKeyError
-from backend.services.application_extensions import ApplicationGatewayError
-from backend.services.application_platform import ApplicationPlatformServer
-from backend.services.application_policy_reviews import PolicyReviewStoreError
-from backend.services.module_packages import validate_module_package
+from backend.applications.authority import management as authority
+from backend.applications.relational import activation as coordinator
+from backend.applications.authority.keys import AuthorityReviewKeyError
+from backend.applications.runtime.gateway import ApplicationGatewayError
+from backend.applications.runtime.platform import ApplicationPlatformServer
+from backend.applications.authority.policy_reviews import PolicyReviewStoreError
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_relational_migrations import (
     migratable,
     migration_ticket,
@@ -70,8 +70,8 @@ from backend.tests.test_application_relational_registration import (
     register,
 )
 from backend.tests.test_application_relational_runtime import SERVICE, invoke, package
-from three_mm_application_sdk import ApplicationStorage
-from three_mm_application_sdk.relational_wire import (
+from packages.application_sdk import ApplicationStorage
+from packages.application_sdk.relational_wire import (
     _preparation_ticket,
     _RelationalActivationResult,
     _RelationalActivationTicket,
@@ -79,10 +79,10 @@ from three_mm_application_sdk.relational_wire import (
     prepared_lifecycle,
     sign_metadata,
 )
-from three_mm_runtime import application_lifecycle as locks
-from three_mm_runtime import application_relational_activation as helper
-from three_mm_runtime.application_activation import activate_application_package
-from three_mm_runtime.application_relational_installation import (
+from components.system_runtime import application_lifecycle as locks
+from components.system_runtime import application_relational_activation as helper
+from components.system_runtime.application_activation import activate_application_package
+from components.system_runtime.application_relational_installation import (
     prepare_fresh_relational_installation,
 )
 
@@ -246,7 +246,7 @@ def checkpoint_prepared(stopped, request):
     from dataclasses import replace
 
     from backend.tests.test_application_relational_review_api import store_package
-    from three_mm_protocol.tests.test_application_checkpoints import checkpoint_request
+    from packages.protocol.tests.test_application_checkpoints import checkpoint_request
 
     state = stopped
     definition = state.validated.application_extension.model_dump(mode="json")
@@ -684,7 +684,7 @@ class ProcessSupervisor:
         sdk_root = Path(__file__).resolve().parents[2]
         launch = (
             "import sys; sys.path.insert(0," + repr(str(sdk_root)) + "); "
-            "from pathlib import Path; from three_mm_runtime.application_host import serve; "
+            "from pathlib import Path; from components.system_runtime.application_host import serve; "
             "serve("
             + repr(instance)
             + ",Path("
@@ -888,7 +888,7 @@ def test_root_refuses_changed_preparation_before_any_start_or_epoch_change(
 
 @ROOT_ONLY
 def test_generic_activation_stays_denied_even_for_a_prepared_database(physical):
-    from three_mm_runtime.application_activation import ApplicationActivationError
+    from components.system_runtime.application_activation import ApplicationActivationError
 
     with pytest.raises(ApplicationActivationError, match="relational"):
         activate_application_package(
@@ -1020,7 +1020,7 @@ def test_real_from_absence_registration_preparation_activation_without_sql_enabl
     expected = state.manager.inspect(1)["grant_record_revision"]
 
     def issue_namespace(**kw):
-        from backend.services.application_relational_lifecycle import (
+        from backend.applications.relational.lifecycle import (
             issue_namespace_preparation,
         )
 
@@ -1037,7 +1037,7 @@ def test_real_from_absence_registration_preparation_activation_without_sql_enabl
         )
 
     def issue_migration(**kw):
-        from backend.services.application_relational_lifecycle import (
+        from backend.applications.relational.lifecycle import (
             issue_migrated_schema_preparation,
         )
 
@@ -1052,7 +1052,7 @@ def test_real_from_absence_registration_preparation_activation_without_sql_enabl
         return state.source
 
     def prepared_checkpoint(ticket, phase, **kw):
-        from backend.services.application_relational_lifecycle import (
+        from backend.applications.relational.lifecycle import (
             preparation_checkpoint,
         )
 

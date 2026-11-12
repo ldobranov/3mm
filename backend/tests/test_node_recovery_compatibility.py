@@ -20,11 +20,11 @@ from agent.core_client import (
 )
 from backend.db.device import Device, DeviceCredential, DeviceState
 from backend.db.module import ModuleInstallation, ModulePackage
-from backend.services.backups import build_backup_preview, read_backup_operation_status
-from backend.services.device_capability_registry import (
+from backend.system.backups.service import build_backup_preview, read_backup_operation_status
+from backend.devices.capabilities.registry import (
     registered_capabilities,
 )
-from backend.services.device_runtime_features import (
+from backend.devices.features.service import (
     runtime_features_snapshot,
 )
 from backend.tests.test_backup_preview import DEVICE_ID, _settings
@@ -36,11 +36,11 @@ from deployment.backup_compatibility import (
 from deployment.create_backup import create_backup
 from deployment.portable_backup import create_portable_export, import_portable_backup
 from deployment.restore_backup import restore_backup
-from three_mm_protocol import (
+from packages.protocol import (
     AgentCommandResult,
     DeviceRuntimeFeaturesReportV1,
 )
-from three_mm_protocol.node_features import MANDATORY_NODE_FEATURES
+from packages.protocol.node_features import MANDATORY_NODE_FEATURES
 
 from pathlib import Path
 

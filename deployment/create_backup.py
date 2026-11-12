@@ -17,7 +17,7 @@ from typing import Protocol, Sequence
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from backend.config import AppSettings, BackendSettings, BackupSettings
-from backend.services.backups import (
+from backend.system.backups.service import (
     BackupCatalogItem,
     BackupOperationStatus,
     build_backup_preview,

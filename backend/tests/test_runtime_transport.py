@@ -15,15 +15,15 @@ import pytest
 from sqlalchemy.orm import sessionmaker
 
 import backend.database
-from backend.services.application_platform import CoreRuntimeAuthorityServer
+from backend.applications.runtime.platform import CoreRuntimeAuthorityServer
 from backend.tests.test_application_identity_read import (
     identity_app, activate_identity_grant, managed_installed, source_subject,
     source_installed, checkpoint_app, identity,
 )
 from deployment.platform_runtime_component import build_component, validate_artifact
-from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
-from three_mm_platform_runtime.server import probe_runtime
-from three_mm_platform_wire import (
+from packages.application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+from components.platform_runtime.server import probe_runtime
+from packages.platform_wire import (
     AUTHORITY_CONTRACT, RUNTIME_ACTIONS, peer_identity, receive_authority_frame,
     send_authority_frame,
 )
@@ -101,7 +101,7 @@ def test_every_current_family_uses_original_signed_request_and_current_core_admi
 
 def test_original_kernel_peer_survives_runtime_relay_and_signed_success_is_unchanged(relay, monkeypatch):
     gate, client, process, observed = relay
-    import backend.services.application_relational_startup as startup
+    import backend.applications.relational.startup as startup
     calls = []
     def admit(db, installation_id, nonce, *, transport_secret, runtime_root, peer_credentials):
         assert peer_credentials == (os.getpid(), os.geteuid(), os.getegid())
@@ -198,7 +198,7 @@ def test_received_original_socket_is_close_on_exec_and_caller_owned():
 
 def test_runtime_refuses_old_abi2_core_without_connector_feature(tmp_path):
     import threading
-    from three_mm_platform_runtime.server import probe_core
+    from components.platform_runtime.server import probe_core
     path=tmp_path/'old-core.sock'
     listener=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);listener.bind(str(path));listener.listen(1)
     def old_core():

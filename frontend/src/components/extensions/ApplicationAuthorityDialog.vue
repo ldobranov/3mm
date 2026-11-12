@@ -34,6 +34,7 @@ const canRevoke = computed(() => status.value?.grant_state === 'active' && !!sta
 const savedLabel = computed(() => !preview.value?.access_saved ? 'consentNeeded'
   : !preview.value.installation_enabled ? 'inactive' : 'consentSaved')
 const runtimeUnavailable = computed(() => preview.value?.access_saved && !!status.value?.runtime_blockers?.length)
+const hostSessions = computed(() => preview.value?.resources.sessions?.filter(item => item.host_account) || [])
 const kinds = ['commands', 'connectors', 'events', 'publications', 'private_files', 'relational', 'checkpoints', 'identities', 'status_projections', 'peer_reads', 'sessions', 'tasks'] as const
 const kindLabels = { commands: 'commands', connectors: 'connectors', events: 'events', publications: 'publications',
   private_files: 'privateFiles', relational: 'relational', checkpoints: 'checkpoints', identities: 'identities',
@@ -158,6 +159,19 @@ onMounted(refresh)
       <template v-if="preview">
         <p class="authority-status" role="status">{{ label(savedLabel) }}</p>
         <p v-if="runtimeUnavailable" class="ui-help authority-runtime">{{ label('consentRuntime') }}</p>
+        <section v-if="hostSessions.length" class="ui-section ui-stack authority-host" role="note">
+          <h4>{{ label('hostSessionTitle') }}</h4>
+          <p>{{ label('hostSessionRisk') }}</p>
+          <article v-for="session in hostSessions" :key="session.declaration.binding_id" class="ui-stack">
+            <strong>{{ session.declaration.binding_id }}</strong>
+            <dl>
+              <dt>{{ label('sessionDevice') }}</dt><dd><code>{{ session.target_device_id }}</code></dd>
+              <dt>{{ label('hostSessionAccount') }}</dt><dd>{{ session.host_account!.account }} · UID {{ session.host_account!.uid }} / GID {{ session.host_account!.gid }}</dd>
+              <dt>{{ label('hostSessionHome') }}</dt><dd><code>{{ session.host_account!.home }}</code></dd>
+            </dl>
+          </article>
+          <p class="ui-help">{{ label('hostSessionBoundary') }}</p>
+        </section>
         <section v-if="preview.unavailable_resources.length" class="ui-section ui-stack authority-unavailable" role="status">
           <h4>{{ label('optionalUnavailable') }}</h4>
           <p class="ui-help">{{ label('optionalUnavailableHelp') }}</p>
@@ -246,12 +260,13 @@ h4 { font-size: .95em; }
 .authority-choices, .authority-resources { margin-top: calc(var(--ui-space) * 4); }
 .authority-scope-choice, .authority-user-choice { align-items: flex-start; overflow-wrap: anywhere; }
 .authority-unavailable { overflow-wrap: anywhere; }
+.authority-host { min-width: 0; overflow-wrap: anywhere; border-left: 3px solid var(--ui-warning, var(--ui-danger)); padding: calc(var(--ui-space) * 3); }
 .authority-query { min-width: 0; padding: calc(var(--ui-space) * 3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); overflow-wrap: anywhere; }
-.authority-query dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: .5rem 1rem; margin: 0; font-size: .9em; }
-.authority-query dd { margin: 0; min-width: 0; }
+.authority-query dl, .authority-host dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: .5rem 1rem; margin: 0; font-size: .9em; }
+.authority-query dd, .authority-host dd { margin: 0; min-width: 0; }
 .authority-query summary { cursor: pointer; font-size: .9em; }
 .authority-resources pre, .authority-query pre { background: var(--ui-surface-alt); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); padding: calc(var(--ui-space) * 3); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; font-size: .8em; }
-@media (max-width: 480px) { .authority-query dl { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 480px) { .authority-query dl, .authority-host dl { grid-template-columns: minmax(0, 1fr); } }
 .authority-artifact { margin-top: calc(var(--ui-space) * 4); overflow-wrap: anywhere; }
 .authority-revoke { border-top: 1px solid var(--ui-danger); padding-top: calc(var(--ui-space) * 4); }
 </style>

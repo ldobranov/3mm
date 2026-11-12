@@ -1,7 +1,6 @@
 # Backend virtual environment
 backend/venv/
 backend/venv3/
-backend/venv/
 backend/.venv/
 backend/env/
 
@@ -11,10 +10,9 @@ __pycache__/
 *$py.class
 *.so
 .Python
-*.pyc
-*.pyo
-*.pyd
-.Python
+.venv/
+.mypy_cache/
+.pytest_cache/
 env/
 venv/
 ENV/
@@ -30,6 +28,7 @@ node_modules/
 # Build outputs
 frontend/dist/
 frontend/dist-ssr/
+/dist/
 *.local
 
 # IDE and editor files

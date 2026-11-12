@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, provide, ref, watchEffect } from 'vue'
-import { applicationHostKey } from '@3mm/application-ui/v1'
+import { applicationHostKey } from '@platform/application-ui/v1'
 import App from '@preview-app'
 import { createPreview } from '@preview-host'
 import info from '@preview-info'

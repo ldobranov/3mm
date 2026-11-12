@@ -9,8 +9,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from three_mm_protocol import AgentRole
-from three_mm_provisioning import ProvisioningSnapshot, ProvisioningState
+from packages.protocol import AgentRole
+from packages.provisioning import ProvisioningSnapshot, ProvisioningState
 
 
 class HubConnectionStatus(BaseModel):

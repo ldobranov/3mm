@@ -16,18 +16,19 @@ from sqlalchemy.orm import Session
 from backend.config import ApplicationRuntimeSettings
 from backend.db.device import Device, DeviceCapabilityHealth, DeviceCapabilityProvider, DeviceCommand
 from backend.db.module import ApplicationExtensionInstallation as Installation, ApplicationPermissionGrant, ModulePackage
-from backend.routes import application_extensions as routes
-from backend.services import compiled_ui, application_extensions as gateway
-from backend.services.device_capability_registry import capability_catalog
-from backend.services.module_packages import validate_module_package
+from backend.applications.management import api as routes
+from backend.artifacts import compiled_ui
+from backend.applications.runtime import gateway
+from backend.devices.capabilities.registry import capability_catalog
+from backend.artifacts.packages import validate_module_package
 from backend.version import core_version
 from backend.tests.test_application_command_discovery import installed, source_subject, source_installed, vertical, identity
 from backend.tests.test_application_consent import allow, preview
 from backend.tests.test_command_probe_application import builder
 from backend.tests.response_helpers import install_response_transport
-from three_mm_application_sdk import OperationContext, ApplicationPlatformError
-from three_mm_runtime.application_host import _load_service
-from three_mm_runtime.application_transport import ApplicationTransportError
+from packages.application_sdk import OperationContext, ApplicationPlatformError
+from components.system_runtime.application_host import _load_service
+from components.system_runtime.application_transport import ApplicationTransportError
 from tools.application_project import build_package
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Actual POSIX native trust and signed SDK Runtime')

@@ -4,14 +4,14 @@ from types import SimpleNamespace
 import pytest
 
 from backend.config import UpdateCatalogSettings
-from backend.routes.node_update_delivery import (
+from backend.devices.updates.delivery_api import (
     download_node_update_archive,
     router,
 )
-from backend.services.node_update_delivery import (
+from backend.devices.updates.delivery import (
     stage_node_delivery,
 )
-from backend.utils.device_auth import require_device
+from backend.devices.auth import require_device
 
 
 DEVICE_A = "dev_" + "a" * 32

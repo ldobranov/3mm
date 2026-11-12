@@ -90,7 +90,7 @@ def main():
         help="Build separate 1.1.0/schema 0002 candidate; leaves the original 1.0.0 unchanged",
     )
     args = parser.parse_args()
-    from backend.services.module_packages import validate_module_package
+    from backend.artifacts.packages import validate_module_package
 
     payload = build_package(upgrade_candidate=args.upgrade_candidate)
     validate_module_package(payload)

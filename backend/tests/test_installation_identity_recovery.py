@@ -8,19 +8,19 @@ from sqlalchemy.orm import Session
 
 import backend.database  # noqa: F401 - register existing ORM relationship targets
 from backend.db.installation_identity import CoreInstallationIdentity
-from backend.services.installation_identity import (
+from backend.installation.identity import (
     InstallationIdentityError,
     installation_identity,
     prove_installation_identity,
     validate_identity_backup,
 )
-from backend.services.backups import build_backup_preview
+from backend.system.backups.service import build_backup_preview
 from backend.tests.test_backup_preview import _settings
 from deployment.create_backup import create_backup
 from deployment.portable_backup import create_portable_export, import_portable_backup
 from deployment.restore_backup import restore_backup
-from three_mm_protocol.installation_identity import verify_installation_proof
-from three_mm_protocol.tests.test_installation_identity import proof_request
+from packages.protocol.installation_identity import verify_installation_proof
+from packages.protocol.tests.test_installation_identity import proof_request
 
 
 @pytest.mark.parametrize("fail_migration", [False, True])

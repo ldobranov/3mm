@@ -7,15 +7,15 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from backend.db.module import ApplicationExtensionInstallation as Installation
-from backend.services.application_configuration import resolve_device_selection, ApplicationConfigurationError
+from backend.applications.management.configuration import resolve_device_selection, ApplicationConfigurationError
 from backend.tests.test_application_composition_authority import pair, installed, source_subject, source_installed
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Real M20 package/key fixture')
 
 
 def test_configuration_route_offers_exact_matching_export_without_selecting_or_approving_it(pair):
-    from backend.routes.application_extensions import router
-    from backend.utils.db_utils import get_db
+    from backend.applications.management.api import router
+    from backend.storage.sessions import get_db
     app = FastAPI(); app.include_router(router)
     def database():
         with Session(pair.engine) as db: yield db
@@ -43,7 +43,7 @@ def test_query_configuration_requires_both_explicit_fields_preserves_saved_selec
     for bad in ({}, {'DIRECTORY_INSTANCE': 'a'*24}, selection | {'ARBITRARY': 'value'}):
         with pytest.raises(ApplicationConfigurationError): resolve_device_selection(schema, defaults, definition, selection=bad)
     # Catalog disappearance cannot select a replacement or mutate saved config.
-    from backend.services.application_query_configuration import configuration_fields
+    from backend.applications.queries.configuration import configuration_fields
     with Session(pair.engine) as db, db.begin():
         db.execute(update(Installation).where(Installation.id == 1).values(enabled=False))
     field, = configuration_fields(pair.engine, definition, selection)
@@ -52,16 +52,16 @@ def test_query_configuration_requires_both_explicit_fields_preserves_saved_selec
 
 def test_scoped_sql_provider_is_explicitly_outside_first_query_execution_profile(pair):
     from backend.tests.test_application_checkpoint_authority import store_checkpoint_package
-    from three_mm_protocol.tests.test_application_relational_storage import relational_request
+    from packages.protocol.tests.test_application_relational_storage import relational_request
     from backend.tests.test_application_composition_authority import preview
-    from backend.services.application_authority_management import AuthorityManagementError
+    from backend.applications.authority.management import AuthorityManagementError
     app = pair.provider.application_extension.model_dump(mode='json')
     app['storage']['relational'] = relational_request()
     # Replace only the provider's real test ZIP, not an invented DTO.
     pair.archive = pair.root/'modules'/(pair.provider.sha256+'.zip')
     store_checkpoint_package(pair, app, pair.provider.manifest.model_dump(mode='json'))
     with pytest.raises(AuthorityManagementError, match='unsupported_authority'): preview(pair)
-    from backend.services.application_composition_authority import resolve_queries
+    from backend.applications.authority.composition import resolve_queries
     prepared = pair.manager._prepare(2)
     with pair.manager.keys.locked() as key, Session(pair.engine) as db, db.begin():
         with pytest.raises(AuthorityManagementError, match='query_profile_unsupported'):

@@ -13,13 +13,13 @@ import backend.database  # noqa: F401
 from backend.db.audit_log import AuditLog
 from backend.db.base import Base
 from backend.db.user import User
-from backend.routes import audit_routes
-from backend.routes.audit_routes import router
-from backend.services import audit_retention
-from backend.utils import jwt_utils
-from backend.utils.auth import hash_password
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
+from backend.system.audit import api as audit_routes
+from backend.system.audit.api import router
+from backend.system.audit import retention as audit_retention
+from backend.accounts import tokens as jwt_utils
+from backend.accounts.passwords import hash_password
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
 
 
 @pytest.fixture(autouse=True)

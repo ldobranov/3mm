@@ -13,9 +13,9 @@ import tempfile
 from threading import Thread
 import time
 
-from three_mm_platform_wire import peer_identity, read_frame, remaining, socket_identity, unlink_owned_socket
-from three_mm_protocol.public_webhooks import MAX_WEBHOOK_BYTES, WebhookRejected, validate_webhook_endpoint, verify_webhook
-from three_mm_public_web.webhook_pilot import (
+from packages.platform_wire import peer_identity, read_frame, remaining, socket_identity, unlink_owned_socket
+from packages.protocol.public_webhooks import MAX_WEBHOOK_BYTES, WebhookRejected, validate_webhook_endpoint, verify_webhook
+from components.public_web.webhook_pilot import (
     PILOT_FRAME_BYTES, PILOT_ID, PILOT_SECONDS, PILOT_VERSION, WebhookPilotClient, valid_signed_fields,
 )
 from tools.webhook_delivery_lab import _private_root

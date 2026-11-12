@@ -32,28 +32,28 @@ from backend.db.device import (
 )
 from backend.db.module import ApplicationExtensionInstallation as Installation, ModulePackage
 from backend.db.application_authority_grant import ApplicationAuthorityGrant as Grant
-from backend.routes.application_extensions import router
-from backend.services.application_command_discovery import discover_candidates
-from backend.services.application_commands import authorize_execution
-from backend.services import application_consent
-from backend.services.module_packages import validate_module_package
-from backend.services.application_authority_keys import KEY_NAME
-from backend.services.application_platform import CoreRuntimeAuthorityServer
-from backend.services.device_commands import command_envelope, deliver_next_command, record_command_result
-from backend.services.device_capability_registry import capability_catalog, replace_provider
-from backend.services.application_authority_sources import _read_snapshot
+from backend.applications.management.api import router
+from backend.applications.commands.discovery import discover_candidates
+from backend.applications.commands.broker import authorize_execution
+from backend.applications.management import consent as application_consent
+from backend.artifacts.packages import validate_module_package
+from backend.applications.authority.keys import KEY_NAME
+from backend.applications.runtime.platform import CoreRuntimeAuthorityServer
+from backend.devices.commands.queue import command_envelope, deliver_next_command, record_command_result
+from backend.devices.capabilities.registry import capability_catalog, replace_provider
+from backend.applications.authority.sources import _read_snapshot
 from backend.tests.test_application_authority_management import (
     installed, source_subject, source_installed, identity,
 )
 from backend.tests.test_application_consent import allow, preview
-from backend.utils.db_utils import get_db
+from backend.storage.sessions import get_db
 from examples.command_probe import CommandProbe
-from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
-from three_mm_protocol import CapabilityProviderReportV1
-from three_mm_runtime.application_activation import application_instance_id
-from three_mm_runtime.update_helper_client import UpdateHelperClient
+from packages.application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+from packages.protocol import CapabilityProviderReportV1
+from components.system_runtime.application_activation import application_instance_id
+from components.system_runtime.update_helper_client import UpdateHelperClient
 from deployment.platform_runtime_component import build_component, validate_artifact
-from three_mm_platform_runtime.server import probe_runtime
+from components.platform_runtime.server import probe_runtime
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Real POSIX sealed grants and Unix sockets")
 
@@ -65,7 +65,7 @@ def vertical(installed, monkeypatch):
     monkeypatch.setattr(backend.database, "SessionLocal", sessionmaker(bind=s.engine))
     app = FastAPI()
     app.include_router(router)
-    from backend.routes.application_authority import router as authority_router
+    from backend.applications.management.access_api import router as authority_router
     app.include_router(authority_router)
 
     def database():

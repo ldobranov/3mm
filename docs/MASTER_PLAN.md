@@ -122,7 +122,7 @@ TLS, отделни credentials и проверка на клиентската 
 ### Следващ Core milestone — Extension Platform v2
 
 Одобрен на 2026-10-07 като [Milestone 20](ROADMAP.md#milestone-20--extension-platform-v2).
-Подробният [Core план](../EXTENSION_PLATFORM_V2_CORE_PLAN.md) развива наличната
+Подробният [Core план](EXTENSION_PLATFORM_V2_CORE_PLAN.md) развива наличната
 платформа, без втори extension/device subsystem. Обхватът е общ за Standalone,
 Hub/Fleet, local Agent и application extensions; Fleet/облакът не са условие.
 
@@ -310,7 +310,7 @@ milestone за този чат е Extension Platform v2, започващ с WP0
 - [Технически Roadmap](ROADMAP.md) и [Fleet delivery](FLEET_PLAN.md).
 - [Локален продуктов план](FLEET_BUSINESS_PLAN.md) и [Node OTA](FLEET_NODE_OTA.md).
 - [Application extensions](APPLICATION_EXTENSION_V1_PLAN.md).
-- [Следващ Milestone 20 — Extension Platform v2](../EXTENSION_PLATFORM_V2_CORE_PLAN.md).
+- [Следващ Milestone 20 — Extension Platform v2](EXTENSION_PLATFORM_V2_CORE_PLAN.md).
 - [Installation identity](INSTALLATION_IDENTITY_V1.md) и [peers](INSTALLATION_PEER_V1.md).
 - [Theme Platform](THEME_EXTENSION_PLAN.md) и [theme package contract](THEME_EXTENSION_V1.md).
 - [Theme Platform v2 — цялостни визуални теми](THEME_PLATFORM_V2_PLAN.md).

@@ -7,8 +7,8 @@ import requests
 
 from backend.tests.test_device_pairing_routes import make_client, use_test_jwt_secret
 from backend.db.device import Device, DeviceCredential, DevicePairingRequest
-from backend.services.node_enrollment import enroll_node
-from three_mm_protocol.fleet_pairing import NodeEnrollmentRequest
+from backend.devices.pairing.enrollment import enroll_node
+from packages.protocol.fleet_pairing import NodeEnrollmentRequest
 from agent.enrollment import NodeEnrollmentWorker
 from agent.core_client import DeviceCredentialStore
 
@@ -84,7 +84,7 @@ def test_pending_enrollment_expires_without_renewal():
 
 def test_node_worker_recovers_lost_reply_and_restart_through_real_core_routes(tmp_path):
     client, db, admin, _ = make_client()
-    from backend.routes.device_ingest import router as ingest_router
+    from backend.devices.telemetry.ingest_api import router as ingest_router
     from backend.tests.test_device_ingest_routes import heartbeat_payload
     client.app.include_router(ingest_router)
     approved, statuses = [], []

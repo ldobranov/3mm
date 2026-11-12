@@ -36,8 +36,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { UiSurface } from '@3mm/ui/v1'
-import { useApplicationHost, type ApplicationPayload } from '@3mm/application-ui/v1'
+import { UiSurface } from '@platform/ui/v1'
+import { useApplicationHost, type ApplicationPayload } from '@platform/application-ui/v1'
 
 const host = useApplicationHost()
 const messages = {

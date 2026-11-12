@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from three_mm_protocol import AgentRole
-from three_mm_provisioning import ProvisioningState, ProvisioningStore
+from packages.protocol import AgentRole
+from packages.provisioning import ProvisioningState, ProvisioningStore
 
 
 class AgentRoleResolver:

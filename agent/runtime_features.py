@@ -5,12 +5,12 @@ import time
 
 from agent.device_transport import HttpDeviceTransport, requests  # legacy test/embedding alias
 
-from three_mm_protocol.node_features import (
+from packages.protocol.node_features import (
     CoreNodeProtocolV1,
     DeviceRuntimeFeaturesReportV1,
     DeviceRuntimeFeaturesSnapshotV1,
 )
-from three_mm_protocol.capability_availability import AVAILABILITY_FEATURE
+from packages.protocol.capability_availability import AVAILABILITY_FEATURE
 
 
 class RuntimeFeaturePublisher:

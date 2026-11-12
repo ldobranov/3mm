@@ -12,15 +12,15 @@ from sqlalchemy.orm import Session
 from backend.db.device import DeviceHeartbeat
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.session import UserSession
-from backend.routes.application_extensions import router
-from backend.services import application_resource_discovery as discovery
-from backend.services.application_authority_management import AuthorityManagementError
+from backend.applications.management.api import router
+from backend.applications.resources import discovery
+from backend.applications.authority.management import AuthorityManagementError
 from backend.tests.test_application_command_discovery import vertical, add_provider
 from backend.tests.test_application_authority_management import installed, source_subject, source_installed, identity
 from backend.tests.test_application_consent import allow, preview
 from backend.tests.test_application_ui_authority import ui_app, adopt, managed_installed
-from backend.utils.db_utils import get_db
-from three_mm_application_sdk import ApplicationPlatformError
+from backend.storage.sessions import get_db
+from packages.application_sdk import ApplicationPlatformError
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Actual sealed authority and Unix transport')
 

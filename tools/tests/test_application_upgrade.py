@@ -7,12 +7,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 from tools import application_project as project
 from tools import application_upgrade as upgrade
 
 STARTER = Path(__file__).resolve().parents[2] / 'modules/application-starter'
-FIXTURE = '''from three_mm_application_sdk import OperationContext
+FIXTURE = '''from packages.application_sdk import OperationContext
 from starter_app.service import create_service
 
 def actor(*permissions, key=None):

@@ -76,6 +76,7 @@ def selection(tmp_path, arguments=(), *, channel='', network='', stored=None,
         + paths+choose
         + '\nprintf "selected=%s channel=%s backend=%s profile=%s\\n" "$selected_tag" "$channel" "$network_backend" "$install_profile"\n'
         + 'printf "packages=%s\\n" "${THREE_MM_BOOTSTRAP_PACKAGES[*]}"\n'
+        + 'printf "transition-retry=%s\\n" "$retry_rolled_back"\n'
     )
 
 
@@ -198,17 +199,27 @@ def test_invalid_manifest_stops_before_installation(tmp_path, changes):
     assert 'selected=' not in result.stdout and 'forbidden-' not in result.stdout
 
 
+@pytest.mark.parametrize('enabled', [False, True])
+def test_completed_rollback_retry_is_an_explicit_option_not_an_install_default(tmp_path, enabled):
+    result = selection(tmp_path, ['--retry-rolled-back'] if enabled else [])
+    assert result.returncode == 0, result.stderr
+    assert 'transition-retry='+str(int(enabled))+'\n' in result.stdout
+    assert 'forbidden-' not in result.stdout
+
+
+@pytest.mark.parametrize('retry', [0, 1])
 @pytest.mark.parametrize('backend', ['host', 'network-manager'])
 @pytest.mark.parametrize('profile', ['full', 'node'])
-def test_detached_worker_receives_resolved_network_choice_without_starting_real_job(tmp_path, backend, profile):
+def test_detached_worker_receives_resolved_network_choice_without_starting_real_job(tmp_path, backend, profile, retry):
     source = BOOTSTRAP[BOOTSTRAP.index('unit_suffix=$(basename "$stage"'):]
-    result = run(f'stage={shlex.quote(tmp_path.as_posix())}\nnetwork_backend={backend}\n'
+    result = run(f'stage={shlex.quote(tmp_path.as_posix())}\nnetwork_backend={backend}\nretry_rolled_back={retry}\n'
         f'install_profile={profile}\nrelease_id=v0.3.7\nfrontend_origin=http://192.0.2.1\n'
         'worker=/unused/worker\ninstaller=/unused/installer\narchive=/unused/archive\n'
         'artifact_sha256='+'b'*64+'\n'
         'systemd-run() { printf "job-argument=%s\\n" "$@"; }\n'+source)
     assert result.returncode == 0, result.stderr
     assert 'job-argument=--setenv=THREE_MM_NETWORK_BACKEND='+backend in result.stdout
+    assert 'job-argument=--setenv=THREE_MM_RETRY_ROLLED_BACK_TRANSITION='+str(retry) in result.stdout
     assert 'job-argument=--no-block' in result.stdout and 'job-argument='+profile in result.stdout
     assert ('Host networking is preserved.' in result.stdout) == (backend == 'host')
     assert ('On fresh media, Wi-Fi SSH may close' in result.stdout) == (backend == 'network-manager')

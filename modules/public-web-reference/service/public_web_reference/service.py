@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from html import escape
 
-from three_mm_application_sdk import ApplicationContext, OperationContext
+from packages.application_sdk import ApplicationContext, OperationContext
 
 
 class PublicWebReferenceService:

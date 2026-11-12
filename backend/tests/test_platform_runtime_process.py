@@ -1,7 +1,10 @@
 """Actual Core HTTP/admission process + independently updated Runtime processes."""
 from contextlib import contextmanager
+import faulthandler
 import hashlib
+import io
 import json
+import logging
 import multiprocessing
 import os
 from pathlib import Path
@@ -10,9 +13,11 @@ import signal
 import socket
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import threading
 import time
+import traceback
 import urllib.request
 
 import pytest
@@ -25,11 +30,11 @@ from backend.tests.test_application_identity_read import (
 )
 from backend.db.module import ModulePackage,ApplicationSyncCheckpoint,ApplicationExtensionInstallation
 from backend.db.authority import CoreAuthorityGuard
-from backend.services.application_platform import ApplicationPlatformServer,CoreRuntimeAuthorityServer
-from backend.utils.jwt_utils import create_access_token
-from three_mm_application_sdk import ApplicationPlatformClient,ApplicationPlatformError
-from three_mm_platform_wire import process_generation
-from three_mm_platform_runtime.server import probe_runtime
+from backend.applications.runtime.platform import ApplicationPlatformServer,CoreRuntimeAuthorityServer
+from backend.accounts.tokens import create_access_token
+from packages.application_sdk import ApplicationPlatformClient,ApplicationPlatformError
+from packages.platform_wire import process_generation
+from components.platform_runtime.server import probe_runtime
 from deployment.platform_runtime_component import RuntimeStore,build_component,INPUTS
 
 pytestmark=pytest.mark.skipif(os.name!='posix',reason='Real Linux processes, Unix credentials and immutable Runtime artifacts')
@@ -39,14 +44,44 @@ SOURCE=Path(__file__).resolve().parents[2]
 def digest(value):return hashlib.sha256(value).hexdigest()
 
 def core_digest():
-    files={}
-    for package in ('backend','three_mm_protocol','three_mm_application_sdk','three_mm_platform_wire'):
+    files={'packages/__init__.py':digest((SOURCE/'packages/__init__.py').read_bytes())}
+    for package in ('backend','packages/protocol','packages/application_sdk','packages/platform_wire'):
         for path in (SOURCE/package).rglob('*.py'):
             if not {'tests','__pycache__'}&set(path.parts):files[path.relative_to(SOURCE).as_posix()]=digest(path.read_bytes())
     return digest(json.dumps(files,sort_keys=True).encode())
 
 
+def _prepare_forked_app_routes(app):
+    """Keep routes/overrides, but not a vanished parent thread's cache mutex.
+
+    Installed Core starts a fresh interpreter. This test fixture instead forks
+    pytest after other threaded clients may have used FastAPI's lazy routers.
+    Recreate only their derived wrappers in the child, never the app/endpoints.
+    """
+    from fastapi.routing import _IncludedRouter
+
+    visited = set()
+
+    def prepare(router):
+        if id(router) in visited:
+            return
+        visited.add(id(router))
+        for index, route in enumerate(router.routes):
+            if isinstance(route, _IncludedRouter):
+                prepare(route.original_router)
+                router.routes[index] = _IncludedRouter(
+                    original_router=route.original_router,
+                    include_context=route.include_context,
+                )
+
+    prepare(app.router)
+
+
 def _serve_core(state,base,runtime_uid,core_uid,core_gid,pipe):
+    # The controller may request evidence after its outer HTTP watchdog. Keep
+    # this file within the disposable fixture and never signal another process.
+    trace_file = (base/'core-threads.log').open('w')
+    faulthandler.register(signal.SIGUSR2, file=trace_file, all_threads=True)
     try:
         # The test forks a parent with a populated SQLite pool. The installed
         # Core starts fresh; sharing parent DBAPI handles here can leave the
@@ -56,10 +91,11 @@ def _serve_core(state,base,runtime_uid,core_uid,core_gid,pipe):
         if os.geteuid()==0:
             os.setgroups([runtime_uid]);os.setgid(core_gid);os.setuid(core_uid)
         import backend.main as main
+        _prepare_forked_app_routes(main.app)
         import backend.database as database
-        from backend.utils.db_utils import get_db
-        from backend.services.application_authority_management import ApplicationAuthorityManager
-        from backend.services.application_authority_keys import CoreReviewKeyStore
+        from backend.storage.sessions import get_db
+        from backend.applications.authority.management import ApplicationAuthorityManager
+        from backend.applications.authority.keys import CoreReviewKeyStore
         import uvicorn
         settings=main.app_settings.model_copy(deep=True)
         settings.backend.uploads_dir=base/'core/uploads'
@@ -82,7 +118,7 @@ def _serve_core(state,base,runtime_uid,core_uid,core_gid,pipe):
             async def stop(self):pass
         main.system_update_check_manager=Idle()
         # Fault only this owned test Core, after durable send and before FD handoff.
-        from backend.services import application_events as event_broker
+        from backend.applications.events import broker as event_broker
         # This fixture forks the multithreaded pytest process, unlike the
         # installed Core's fresh interpreter. A parent-owned claim lock cannot
         # coordinate this child's independent queue and must not fence it.
@@ -106,7 +142,7 @@ def _serve_core(state,base,runtime_uid,core_uid,core_gid,pipe):
             # Same-user functional lab is supplemented by the separate-user root proof.
             gate=CoreRuntimeAuthorityServer(settings.applications.authority_socket,settings.applications.key_root,
                 runtime_uid=runtime_uid,group=group)
-        from backend.services import application_connector_transport as connector_broker
+        from backend.applications.connectors import transport as connector_broker
         connector_sender=connector_broker.begin_connector
         def begin_connector(*args,**kwargs):
             result=connector_sender(*args,**kwargs)
@@ -117,16 +153,30 @@ def _serve_core(state,base,runtime_uid,core_uid,core_gid,pipe):
             gate.connector_worker_uid=state.connector_worker_uid
             gate.connector_worker_path=base/'connectors/worker.sock'
         if getattr(state,'response_relay',False):
-            from backend.routes import application_operations, application_extensions
+            from backend.applications import operations_api as application_operations
+            from backend.applications.management import api as application_extensions
             settings.applications.runtime_user=__import__('pwd').getpwuid(runtime_uid).pw_name
             application_operations.get_settings=lambda:settings
             application_extensions.get_settings=lambda:settings
         main._runtime_authority=lambda:gate
         server=uvicorn.Server(uvicorn.Config(main.app,host='127.0.0.1',port=0,log_level='error',access_log=False))
+        # A forked suite must retain the startup cause before the parent tears
+        # down its disposable directory. This is owned test-process evidence,
+        # not production diagnostics or an expanded readiness timeout.
+        startup_log = io.StringIO()
+        logging.getLogger('uvicorn.error').addHandler(logging.StreamHandler(startup_log))
         worker=threading.Thread(target=server.run,daemon=True);worker.start()
         deadline=time.monotonic()+15
         while not server.started:
-            if not worker.is_alive() or time.monotonic()>deadline:raise RuntimeError('Core test process failed startup')
+            if not worker.is_alive() or time.monotonic()>deadline:
+                frames = sys._current_frames()
+                details = {
+                    'server_thread_alive': worker.is_alive(),
+                    'startup_log': startup_log.getvalue()[-4096:],
+                    'threads': {str(thread.ident): ''.join(traceback.format_stack(frames[thread.ident], limit=12))
+                                for thread in threading.enumerate() if thread.ident in frames},
+                }
+                raise RuntimeError('Core test process failed startup: '+json.dumps(details, sort_keys=True))
             time.sleep(.02)
         port=server.servers[0].sockets[0].getsockname()[1]
         # Readiness is the running server, not an unused full-tree snapshot.
@@ -147,7 +197,7 @@ def _serve_core(state,base,runtime_uid,core_uid,core_gid,pipe):
             elif action=='authority_start':gate.start()
             elif action=='event_enqueue':
                 from backend.db.device import DeviceEvent
-                from backend.services.application_events import enqueue_application_event
+                from backend.applications.events.broker import enqueue_application_event
                 with database.SessionLocal() as db:
                     event=db.scalar(select(DeviceEvent).order_by(DeviceEvent.id.desc()).limit(1))
                     enqueue_application_event(db,event,settings.applications)
@@ -158,7 +208,7 @@ def _serve_core(state,base,runtime_uid,core_uid,core_gid,pipe):
                         delivery.dispatch_metadata={**delivery.dispatch_metadata,'deadline_ms':0}
                     db.commit()
             elif action=='event_retry':
-                from backend.services.application_events import request_application_event_retry
+                from backend.applications.events.broker import request_application_event_retry
                 with database.SessionLocal() as db:request_application_event_retry(db)
             elif action=='threadpool_tokens':
                 import asyncio,anyio
@@ -174,7 +224,10 @@ def _serve_core(state,base,runtime_uid,core_uid,core_gid,pipe):
         try:pipe.send({'error':repr(error)})
         except OSError:pass
         raise
-    finally:pipe.close()
+    finally:
+        faulthandler.unregister(signal.SIGUSR2)
+        trace_file.close()
+        pipe.close()
 
 
 class RuntimeProcesses:
@@ -268,7 +321,8 @@ def core_stack(state,monkeypatch):
                 child.close()
                 assert connection.poll(20), 'Core did not start'
                 started = connection.recv()
-                assert 'error' not in started, started
+                if 'error' in started:
+                    raise AssertionError(started['error'])
                 return worker, connection, started
             except BaseException:
                 connection.close()
@@ -287,17 +341,27 @@ def core_stack(state,monkeypatch):
             parent.send(action);assert parent.poll(10),'Core control timeout'
             value=parent.recv();assert not isinstance(value,dict) or 'error' not in value,value
             return value
-        def http(path='/ready',headers=None):
-            request=urllib.request.Request(f'http://127.0.0.1:{ready["port"]}'+path,headers=headers or {})
+        def http(path='/ready',headers=None,*,data=None):
+            request=urllib.request.Request(f'http://127.0.0.1:{ready["port"]}'+path,headers=headers or {},data=data)
             # Transport watchdog must outlive the Runtime's 5 s response budget
             # plus relay/admission. Tests assert their own tighter latency bounds.
-            with urllib.request.urlopen(request,timeout=10) as response:return response.status,json.load(response)
+            try:
+                with urllib.request.urlopen(request,timeout=10) as response:return response.status,json.load(response)
+            except TimeoutError as error:
+                if process.is_alive():
+                    os.kill(process.pid, signal.SIGUSR2)
+                    # Only collect failure evidence; do not retry the request.
+                    time.sleep(.05)
+                trace = (base/'core-threads.log').read_text(errors='replace')[-24576:]
+                phases = base/'core/status-phases.log'
+                details = phases.read_text()[-4096:] if phases.is_file() else 'No status phases recorded'
+                raise AssertionError('Owned Core HTTP watchdog expired; phases:\n'+details+'\nthread evidence:\n'+trace) from error
         client=ApplicationPlatformClient(base/'runtime/runtime.sock','a'*24,b's'*32)
         def artifact(name,broken=False):
             source=base/('source-'+name)
             for item in INPUTS:
                 target=source/item;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(SOURCE/item,target)
-            path=source/'three_mm_platform_runtime/server.py'
+            path=source/'components/platform_runtime/server.py'
             text=path.read_text()+'\n# '+name+'\n'
             if broken:text=text.replace('try:runtime.start();runtime.serve_forever()','try:raise RuntimeError("injected bad artifact")')
             path.write_text(text)
@@ -354,7 +418,7 @@ def test_independent_update_rollback_kill_and_hang_preserve_real_core(stack,monk
     with pytest.raises(ApplicationPlatformError):s.client.get_installation_identity()
     activate(s,b)
     os.kill(s.control.process.pid,signal.SIGSTOP)
-    monkeypatch.setattr('three_mm_application_sdk.REQUEST_TIMEOUT_SECONDS',.15)
+    monkeypatch.setattr('packages.application_sdk.REQUEST_TIMEOUT_SECONDS',.15)
     with pytest.raises(ApplicationPlatformError) as error:s.client.get_installation_identity()
     assert error.value.reason=='deadline_exceeded' and s.http()[0]==200
     activate(s,a);assert s.command('fingerprint')==before
@@ -400,7 +464,7 @@ def test_distinct_principals_cannot_read_core_data_or_bypass_private_admission(s
     request={'version':1,'request_id':'platform_'+identity(),'timestamp':int(time.time()),
         'instance_id':'a'*24,'action':'checkpoint.put','checkpoint_id':'forbidden',
         'expected_revision':0,'value':{}}
-    from three_mm_platform_wire import canonical
+    from packages.platform_wire import canonical
     request['signature']=hmac.new(b's'*32,canonical(request),hashlib.sha256).hexdigest()
     encoded=json.dumps(request).encode()+b'\n'
     script=('import socket; s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);s.settimeout(2);'

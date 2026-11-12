@@ -3,7 +3,7 @@
 No Fleet extension is loaded. In-process HTTP and mock hardware are deliberate;
 this is not a live deployment or actual embedded firmware.
 """
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 import base64
 import hashlib
@@ -50,26 +50,24 @@ from backend.db.module import (
     ModulePackage,
 )
 from backend.db.application_command import ApplicationCommandRequest
-from backend.routes import (
-    device_capabilities,
-    device_capability_state,
-    device_commands,
-    device_events,
-    device_ingest,
-    device_registry,
-    device_runtime_features,
-    device_state,
-)
+from backend.devices.registry import api as device_registry
+from backend.devices.features import api as device_runtime_features
+from backend.devices.capabilities import api as device_capabilities
+from backend.devices.capabilities import state_api as device_capability_state
+from backend.devices.commands import api as device_commands
+from backend.devices.telemetry import events_api as device_events
+from backend.devices.telemetry import ingest_api as device_ingest
+from backend.devices.telemetry import state_api as device_state
 from backend.tests.test_device_pairing_routes import make_client
 from backend.tests.test_module_packages import (
     application_definition,
     application_manifest,
     application_package,
 )
-from backend.services.application_platform import ApplicationPlatformServer
-from backend.services.device_commands import command_envelope
-from backend.services.module_packages import validate_module_package
-from backend.utils import jwt_utils
+from backend.applications.runtime.platform import ApplicationPlatformServer
+from backend.devices.commands.queue import command_envelope
+from backend.artifacts.packages import validate_module_package
+from backend.accounts import tokens as jwt_utils
 from examples.mock_embedded.client import (
     CAPABILITY,
     CHANNEL,
@@ -77,7 +75,7 @@ from examples.mock_embedded.client import (
     MockEmbeddedClient,
     ProtocolRejected,
 )
-from three_mm_protocol import AgentHeartbeat
+from packages.protocol import AgentHeartbeat
 
 ORIGIN = "http://core.test:8887"
 
@@ -342,7 +340,7 @@ def signed_application_acceptance(core, monkeypatch, tmp_path, publisher, gpio, 
     command = node._body(node._request("GET", node.prefix + "/commands/next"))
     application.enabled = False
     db.commit()
-    from three_mm_protocol import AgentCommand
+    from packages.protocol import AgentCommand
 
     executions = node.executions
     result = node.execute(AgentCommand.model_validate(command))

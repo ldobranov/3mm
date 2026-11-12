@@ -28,14 +28,19 @@ import zipfile
 
 from deployment.component_store import ComponentStore,release_mutation_lock,_digest,_id,_json,_write,_fsync
 
-CONTRACTS={"agent":{"device_contract":1},"public-web":{"public_web_contract":1},"session-worker":{"session_profile":"isolated_session_v1"},"session-node":{"session_link_contract":1},"session-relay":{"session_relay_contract":1}}
+CONTRACTS={"agent":{"device_contract":1},"public-web":{"public_web_contract":1},"session-worker":{"session_profile":"isolated_session_v1"},"host-session-worker":{"session_profile":"host_account_session_v1"},"session-node":{"session_link_contract":1},"session-relay":{"session_relay_contract":1}}
 CONTRACT_FILE="deployment/service-components-contract.json"
 ROLES={"agent":("agent.cli","3mm-agent.service","3mm"),
-    "public-web":("three_mm_public_web.server","3mm-public-web.socket","3mm-public"),
-    "session-worker":("three_mm_runtime.session_worker","3mm-session-worker.socket","3mm-app"),
-    "session-node":("three_mm_runtime.session_node","3mm-session-node.service","3mm"),
-    "session-relay":("three_mm_runtime.session_relay","3mm-session-relay.service","3mm-relay")}
+    "public-web":("components.public_web.server","3mm-public-web.socket","3mm-public"),
+    "session-worker":("components.system_runtime.session_worker","3mm-session-worker.socket","3mm-app"),
+    "host-session-worker":("components.system_runtime.host_session_worker","3mm-host-session-worker.socket","3mm-terminal"),
+    "session-node":("components.system_runtime.session_node","3mm-session-node.service","3mm"),
+    "session-relay":("components.system_runtime.session_relay","3mm-session-relay.service","3mm-relay")}
 MAX_BYTES=128*1024*1024
+PROTOCOL_ASSET='packages/protocol/theme_design_defaults.json'
+PUBLIC_WEB_SOURCES=frozenset({'components/__init__.py',
+    'components/public_web/__init__.py','components/public_web/__main__.py',
+    'components/public_web/server.py','components/public_web/webhook_pilot.py'})
 
 
 def startup_probe_seconds(component):
@@ -43,26 +48,26 @@ def startup_probe_seconds(component):
     # Preparation and readiness share one bounded budget; execution deadlines
     # and the independently tuned session/public component budgets do not change.
     if component == 'agent':return 180 if platform.machine() == 'armv6l' else 60
-    return 90 if component in {'session-node','session-worker'} and platform.machine() == 'armv6l' else 20
+    return 90 if component in {'session-node','session-worker','host-session-worker'} and platform.machine() == 'armv6l' else 20
 ENTRY=b"""import asyncio,importlib,importlib.util,json,os,sys,zipfile
 from pathlib import Path
 base=Path(sys.argv[0]).resolve().parent
 sys.dont_write_bytecode=True
 sys.path.insert(0,str(base/'vendor'))
 with zipfile.ZipFile(sys.argv[0]) as z:identity=json.loads(z.read('component-build.json'))
-from three_mm_runtime.component_identity import set_component_identity
+from components.system_runtime.component_identity import set_component_identity
 set_component_identity(identity['component'],identity['build_id'])
-modules={'agent':'agent.cli','public-web':'three_mm_public_web.server','session-worker':'three_mm_runtime.session_worker','session-node':'three_mm_runtime.session_node','session-relay':'three_mm_runtime.session_relay'}
+modules={'agent':'agent.cli','public-web':'components.public_web.server','session-worker':'components.system_runtime.session_worker','host-session-worker':'components.system_runtime.host_session_worker','session-node':'components.system_runtime.session_node','session-relay':'components.system_runtime.session_relay'}
 module=importlib.import_module(modules[identity['component']])
 if sys.argv[1:]==['--component-info']:
     if identity['component']=='agent':importlib.import_module('gpiod')
-    if identity['component']=='session-worker':importlib.import_module('three_mm_application_sdk.session')
+    if identity['component'] in {'session-worker','host-session-worker'}:importlib.import_module('packages.application_sdk.session')
     if any(importlib.util.find_spec(n) is not None for n in ('backend','sqlalchemy')):
         raise RuntimeError('Core code/dependencies are visible')
     print(json.dumps(identity,sort_keys=True))
 else:
     if os.geteuid()==0:raise RuntimeError('Service component requires a non-root principal')
-    if identity['component']=='session-worker':asyncio.run(module.main())
+    if identity['component'] in {'session-worker','host-session-worker'}:asyncio.run(module.main())
     else:module.main()
 """
 
@@ -88,27 +93,35 @@ def _name(name):
 
 def _source_name(name,component):
     p=PurePosixPath(name)
-    if component!='session-relay' and len(p.parts)==2 and p.suffix=='.py' and p.parts[0] in {'three_mm_protocol','three_mm_platform_wire'}:return True
-    if name in {'three_mm_runtime/__init__.py','three_mm_runtime/component_identity.py'}:return True
-    if component=='session-relay':return name=='three_mm_runtime/session_relay.py'
+    if name=='components/__init__.py':return True
+    if component!='session-relay' and (name in {'packages/__init__.py',PROTOCOL_ASSET}
+            or p.parent in {PurePosixPath('packages/platform_wire'),PurePosixPath('packages/protocol')}
+            and p.suffix=='.py'):return True
+    if name in {'components/system_runtime/__init__.py','components/system_runtime/component_identity.py'}:return True
+    if component=='session-relay':return name=='components/system_runtime/session_relay.py'
     if component=='agent':
         return ((p.parts[0]=='agent' and p.suffix=='.py' and not {'tests','__pycache__'}&set(p.parts))
-            or (len(p.parts)==2 and p.parts[0]=='three_mm_provisioning' and p.suffix=='.py')
-            or name=='three_mm_runtime/session_output.py')
-    if component=='public-web':return len(p.parts)==2 and p.parts[0]=='three_mm_public_web' and p.suffix=='.py'
+            or (p.parent==PurePosixPath('packages/provisioning') and p.suffix=='.py')
+            or name=='components/system_runtime/session_output.py')
+    if component=='public-web':return name in PUBLIC_WEB_SOURCES
     if component=='session-node':
-        return ((len(p.parts)==2 and p.parts[0]=='three_mm_application_sdk' and p.suffix=='.py')
+        return ((p.parent==PurePosixPath('packages/application_sdk') and p.suffix=='.py')
             or name in {'agent/__init__.py','agent/device_transport.py','agent/credentials.py'}
-            or name in {'three_mm_runtime/session_worker.py','three_mm_runtime/session_worker_client.py',
-                'three_mm_runtime/session_node.py','three_mm_runtime/session_link.py','three_mm_runtime/session_link_config.py'})
-    return ((len(p.parts)==2 and p.parts[0]=='three_mm_application_sdk' and p.suffix=='.py')
-        or name=='three_mm_runtime/session_worker.py')
+            or name in {'components/system_runtime/session_worker.py','components/system_runtime/session_worker_client.py',
+                'components/system_runtime/session_node.py','components/system_runtime/session_link.py','components/system_runtime/session_link_config.py'})
+    if component=='host-session-worker':
+        return ((p.parent==PurePosixPath('packages/application_sdk') and p.suffix=='.py')
+            or name in {'components/system_runtime/session_worker.py',
+                'components/system_runtime/host_session_worker.py','components/system_runtime/host_session_policy.py'})
+    return ((p.parent==PurePosixPath('packages/application_sdk') and p.suffix=='.py')
+        or name=='components/system_runtime/session_worker.py')
 
 
 def inputs(source,component):
     if component not in ROLES:raise ValueError("Unknown service component")
-    names=[]
-    for folder in ('agent','three_mm_runtime','three_mm_provisioning','three_mm_protocol','three_mm_application_sdk','three_mm_platform_wire','three_mm_public_web'):
+    names=['components/__init__.py']
+    if component!='session-relay':names.extend(['packages/__init__.py',PROTOCOL_ASSET])
+    for folder in ('agent','components/system_runtime','packages/provisioning','packages/protocol','packages/application_sdk','packages/platform_wire','components/public_web'):
         for path in (Path(source)/folder).rglob('*.py'):
             name=path.relative_to(source).as_posix()
             if _source_name(name,component):names.append(name)
@@ -135,7 +148,7 @@ def build_component(source,component):
     lock=('deployment/service-agent-requirements.txt' if component=='agent' else
           'deployment/session-node-requirements.txt' if component=='session-node' else
           'deployment/session-relay-requirements.txt' if component=='session-relay' else
-          'deployment/session-worker-requirements.txt' if component=='session-worker' else
+          'deployment/session-worker-requirements.txt' if component in {'session-worker','host-session-worker'} else
           'deployment/application-host-requirements.txt')
     vendor={};dependencies={}
     for line in (source/lock).read_text().splitlines():
@@ -191,6 +204,16 @@ def validate_artifact(blob,expected,component):
         names=bundle.namelist();expected_names=set(binding['sources'])|{'component-build.json'}
         if set(names)!=expected_names or len(names)!=len(expected_names):raise ValueError('Service executable inventory changed')
         if (any(not _source_name(n,component) and n!='__main__.py' for n in binding['sources'])
+            or not {'components/__init__.py','components/system_runtime/__init__.py',
+                    'components/system_runtime/component_identity.py'} <= binding['sources'].keys()
+            or component!='session-relay' and not {'packages/__init__.py','packages/platform_wire/__init__.py',
+                'packages/protocol/__init__.py',PROTOCOL_ASSET} <= binding['sources'].keys()
+            or component=='public-web' and not PUBLIC_WEB_SOURCES <= binding['sources'].keys()
+            or component=='agent' and 'packages/provisioning/__init__.py' not in binding['sources']
+            or component in {'session-worker','host-session-worker','session-node'} and 'packages/application_sdk/__init__.py' not in binding['sources']
+            or component=='host-session-worker' and not {
+                'components/system_runtime/session_worker.py','components/system_runtime/host_session_worker.py',
+                'components/system_runtime/host_session_policy.py'} <= binding['sources'].keys()
             or any(not _id(h) or _digest(bundle.read(n))!=h for n,h in binding['sources'].items())
             or sum(i.file_size for i in bundle.infolist())>MAX_BYTES
             or json.loads(bundle.read('component-build.json'))!={'component':component,'build_id':metadata['build_id'],'contracts':CONTRACTS[component]}):
@@ -228,7 +251,9 @@ class ServiceStore(ComponentStore):
             if os.geteuid()==0:
                 import pwd
                 try:user=pwd.getpwnam(ROLES[self.component][2])
-                except KeyError:user=pwd.getpwnam('3mm')
+                except KeyError:
+                    if self.component=='host-session-worker':raise ValueError('Dedicated host session account is unavailable') from None
+                    user=pwd.getpwnam('3mm')
                 credentials={'user':user.pw_uid,'group':user.pw_gid,'extra_groups':[]}
             result=subprocess.run([str(temporary/'.venv/bin/python'),'-I',str(temporary/'service.pyz'),'--component-info'],
                 cwd=temporary,env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'},capture_output=True,text=True,timeout=startup_probe_seconds(self.component),**credentials)
@@ -254,8 +279,9 @@ class ServiceControl:
         return result.returncode==0
     def stop(self):
         subprocess.run(['/usr/bin/systemctl','stop',self.unit],check=True,timeout=25)
-        if self.component in {'public-web','session-worker','session-node'}:
+        if self.component in {'public-web','session-worker','host-session-worker','session-node'}:
             name=('3mm-public-web.service' if self.component=='public-web' else
+                  '3mm-host-session-worker@*.service' if self.component=='host-session-worker' else
                   '3mm-session-worker-node@*.service' if self.component=='session-node' else '3mm-session-worker@*.service')
             subprocess.run(['/usr/bin/systemctl','stop',name],check=True,timeout=25)
     def start(self):

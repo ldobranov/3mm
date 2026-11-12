@@ -12,12 +12,12 @@ from sqlalchemy.orm import Session
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.session import UserSession
 from backend.db.user import User
-from backend.routes.application_extensions import router
-from backend.services import device_registry_read
+from backend.applications.management.api import router
+from backend.devices.registry import read as device_registry_read
 from backend.tests.test_application_ui_authority import ui_app, adopt
 from backend.tests.test_application_authority_management import installed as managed_installed
 from backend.tests.test_application_authority_subjects import installed as source_subject, source_installed
-from backend.utils.db_utils import get_db
+from backend.storage.sessions import get_db
 
 
 @pytest.fixture

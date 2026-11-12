@@ -18,10 +18,10 @@ from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.module import ModulePackage
 from backend.db.session import UserSession
-from backend.services import application_authority_management as authority
-from backend.services import application_relational_activation_recovery as coordinator
-from backend.services.application_authority_keys import AuthorityReviewKeyError
-from backend.services.application_policy_reviews import PolicyReviewStoreError
+from backend.applications.authority import management as authority
+from backend.applications.relational import activation_recovery as coordinator
+from backend.applications.authority.keys import AuthorityReviewKeyError
+from backend.applications.authority.policy_reviews import PolicyReviewStoreError
 from backend.tests.test_application_relational_activation import (
     checkpoint as start_checkpoint,
 )
@@ -51,8 +51,8 @@ from backend.tests.test_application_relational_preparation import (
     source_subject,
     stopped,
 )
-from three_mm_application_sdk import ApplicationStorage
-from three_mm_application_sdk.relational_wire import (
+from packages.application_sdk import ApplicationStorage
+from packages.application_sdk.relational_wire import (
     _preparation_ticket,
     _RelationalActivationRecoveryResult,
     _RelationalActivationRecoveryTicket,
@@ -60,8 +60,8 @@ from three_mm_application_sdk.relational_wire import (
     canonical,
     sign_metadata,
 )
-from three_mm_runtime import application_relational_activation as start_helper
-from three_mm_runtime import application_relational_activation_recovery as helper
+from components.system_runtime import application_relational_activation as start_helper
+from components.system_runtime import application_relational_activation_recovery as helper
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix", reason="Actual POSIX clock/principals"

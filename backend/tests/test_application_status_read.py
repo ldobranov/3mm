@@ -1,5 +1,5 @@
 """Real installed v8 grant/SDK reads, never enrollment or remote reporting."""
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 import copy
 import json
@@ -24,11 +24,11 @@ from backend.db.device import Device
 from backend.db.installation_identity import CoreInstallationIdentity
 from backend.db.installation_peer import InstallationPeerOutbound as Peer
 from backend.db.module import ApplicationExtensionInstallation as Installation
-from backend.routes.application_authority import router
-from backend.services import application_status_read as service
-from backend.services import installation_identity as identity_service
-from backend.services.application_platform import ApplicationPlatformServer
-from backend.services.application_authority_sources import _read_snapshot
+from backend.applications.management.access_api import router
+from backend.applications.runtime import status as service
+from backend.installation import identity as identity_service
+from backend.applications.runtime.platform import ApplicationPlatformServer
+from backend.applications.authority.sources import _read_snapshot
 from backend.tests.test_application_authority_management import identity, native, decide
 from backend.tests.test_application_authority_management import (
     installed as managed_installed,
@@ -48,10 +48,10 @@ from backend.tests.test_application_identity_authority import (
     identity_review as status_review,
 )
 from backend.tests.test_application_status_authority_context import inputs
-from backend.utils.db_utils import get_db
-from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
-from three_mm_protocol.tests.test_application_private_files import file_request
-from three_mm_protocol.tests.test_application_relational_storage import (
+from backend.storage.sessions import get_db
+from packages.application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+from packages.protocol.tests.test_application_private_files import file_request
+from packages.protocol.tests.test_application_relational_storage import (
     relational_request,
 )
 
@@ -129,7 +129,7 @@ def status_app(checkpoint_app, request):
 
 
 def test_resource_view_observes_local_status_without_remote_reporting(status_app):
-    from backend.services.application_resource_discovery import discover_resources
+    from backend.applications.resources.discovery import discover_resources
     s = status_app
     activate_status_grant(s)
     row = discover_resources(s.engine,1,'a'*24,[f'status:{LINK}:read'])['resources'][0]
@@ -547,8 +547,8 @@ def test_legacy_sdk_status_is_compatible_but_cannot_opt_in_to_v8_implicitly(stat
 def test_mixed_v8_start_consent_and_other_read_adapters_keep_separate_boundaries(
     status_app,
 ):
-    from backend.services.application_identity_read import read_application_identity
-    from backend.services.application_relational_activation import _start_consent
+    from backend.applications.runtime.identity import read_application_identity
+    from backend.applications.relational.activation import _start_consent
 
     state = status_app
     activate_status_grant(state)

@@ -24,15 +24,15 @@ from backend.db.device import (
 )
 from backend.db.module import ModuleInstallation, ModulePackage
 from backend.db.user import User
-from backend.routes.device_capabilities import router
-from backend.routes.device_capability_state import router as state_router
-from backend.routes.device_commands import router as commands_router
-from backend.services.device_capability_registry import registered_capabilities
-from backend.services.device_pairing import credential_secret_hash
-from backend.utils import jwt_utils
-from backend.utils.auth import hash_password
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
+from backend.devices.capabilities.api import router
+from backend.devices.capabilities.state_api import router as state_router
+from backend.devices.commands.api import router as commands_router
+from backend.devices.capabilities.registry import registered_capabilities
+from backend.devices.pairing.service import credential_secret_hash
+from backend.accounts import tokens as jwt_utils
+from backend.accounts.passwords import hash_password
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
 
 
 @pytest.fixture

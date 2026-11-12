@@ -489,6 +489,102 @@ describe('Extensions management workflow', () => {
     expect(http.post).toHaveBeenCalledWith(`/api/v1/application-extensions/packages/${sha}/activate`,{configuration:{}})
   })
 
+  it.each([
+    { name: 'adds', original: null, selected: 'dev_' + '1'.repeat(32), prepares: true },
+    { name: 'changes', original: 'dev_' + '1'.repeat(32), selected: 'dev_' + '2'.repeat(32), prepares: true },
+    { name: 'clears', original: 'dev_' + '1'.repeat(32), selected: '', prepares: true },
+    { name: 'keeps', original: 'dev_' + '1'.repeat(32), selected: 'dev_' + '1'.repeat(32), prepares: false },
+  ])('$name an optional reader on the same package through separate preparation and consent', async ({ original, selected, prepares }) => {
+    const moduleId = 'org.example.optional-reader', sha = '8'.repeat(64)
+    const status = { installation_id: 7, mode: 'enforced', installation_status: 'disabled', installation_enabled: false,
+      artifact_sha256: sha, scopes: [], native_reviews: [], grant_state: 'active', grant_record_revision: '3'.repeat(32),
+      grant_effective: false, isolation_proven: false, access_saved: true }
+    http.get.mockImplementation((url: string) => Promise.resolve({ data:
+      url === '/api/v1/modules/packages' ? [{ module_id: moduleId, version: '1.0.0', sha256: sha,
+        manifest: { name: 'Optional reader', entrypoints: { core: 'application-extension.json' } } }]
+      : url === '/api/v1/application-extensions' ? [{ module_id: moduleId, package_sha256: sha,
+        active_version: '1.0.0', status: 'disabled', enabled: false }]
+      : url.endsWith('/authority') ? status
+      : url.endsWith('/configuration') ? { fields: [{ key: 'READER_DEVICE_ID', kind: 'device', label: 'Reader', required: false, value: original }],
+        devices: ['1', '2'].map(value => ({ device_id: 'dev_' + value.repeat(32), display_name: 'Reader ' + value, role: 'node' })) } : [] }))
+    http.post.mockImplementation((url: string) => Promise.resolve({ data: url.endsWith('/consent/preview')
+      ? consentPreview(status, { commands: [], connectors: [] }, moduleId) : {} }))
+    const wrapper = await mountView()
+    await wrapper.get('.extension-card .version-btn').trigger('click'); await flushPromises()
+    await wrapper.get('#application-config-READER_DEVICE_ID').setValue(selected)
+    const confirm = wrapper.get('.ui-dialog-actions .version-btn')
+    expect(confirm.text()).toBe(prepares ? 'Save resource selection' : 'Install and activate')
+    await confirm.trigger('click'); await flushPromises()
+    const configuration = selected ? { READER_DEVICE_ID: selected } : {}
+    if (prepares) {
+      expect(http.post).toHaveBeenCalledWith(`/api/v1/application-extensions/packages/${sha}/stage`, {
+        request_id: expect.stringMatching(/^[0-9a-f]{32}$/), expected_artifact_sha256: sha,
+        expected_revision: '3'.repeat(32), configuration,
+      }, { timeout: 12000 })
+      expect(http.post.mock.calls.some(([url]) => url.endsWith('/activate') || url.endsWith('/consent/allow'))).toBe(false)
+      expect(wrapper.find('.authority-dialog').exists()).toBe(true)
+    } else {
+      expect(http.post).toHaveBeenCalledWith(`/api/v1/application-extensions/packages/${sha}/activate`, { configuration })
+      expect(http.post.mock.calls.some(([url]) => url.endsWith('/stage'))).toBe(false)
+    }
+  })
+
+  it('prepares both query-selection keys when only the export changes on the same stopped package', async () => {
+    const moduleId = 'org.example.query-consumer', sha = '8'.repeat(64), instance = '9'.repeat(24)
+    const status = { installation_id: 7, mode: 'enforced', installation_status: 'disabled', installation_enabled: false,
+      artifact_sha256: sha, scopes: [], native_reviews: [], grant_state: 'active', grant_record_revision: '3'.repeat(32),
+      grant_effective: false, isolation_proven: false }
+    http.get.mockImplementation((url: string) => Promise.resolve({ data:
+      url === '/api/v1/modules/packages' ? [{ module_id: moduleId, version: '1.0.0', sha256: sha,
+        manifest: { name: 'Query consumer', entrypoints: { core: 'application-extension.json' } } }]
+      : url === '/api/v1/application-extensions' ? [{ module_id: moduleId, package_sha256: sha,
+        active_version: '1.0.0', status: 'disabled', enabled: false }]
+      : url.endsWith('/authority') ? status
+      : url.endsWith('/configuration') ? { fields: [{ key: 'DIRECTORY_INSTANCE', export_key: 'DIRECTORY_EXPORT',
+        kind: 'application_query', label: 'Directory', required: true, value: instance, export_value: 'lookup',
+        choices: ['lookup', 'lookup_v2'].map(export_id => ({ instance_id: instance, export_id,
+          module_id: 'org.example.directory', version: '1.0.0', artifact_sha256: '7'.repeat(64) })) }], devices: [] } : [] }))
+    http.post.mockImplementation((url: string) => Promise.resolve({ data: url.endsWith('/consent/preview')
+      ? consentPreview(status, { commands: [], connectors: [] }, moduleId) : {} }))
+    const wrapper = await mountView()
+    await wrapper.get('.extension-card .version-btn').trigger('click'); await flushPromises()
+    await wrapper.get('#application-config-DIRECTORY_INSTANCE').setValue(instance + '/lookup_v2')
+    await wrapper.get('.ui-dialog-actions .version-btn').trigger('click'); await flushPromises()
+    expect(http.post).toHaveBeenCalledWith(`/api/v1/application-extensions/packages/${sha}/stage`, {
+      request_id: expect.any(String), expected_artifact_sha256: sha, expected_revision: '3'.repeat(32),
+      configuration: { DIRECTORY_INSTANCE: instance, DIRECTORY_EXPORT: 'lookup_v2' },
+    }, { timeout: 12000 })
+    expect(http.post.mock.calls.some(([url]) => url.endsWith('/activate') || url.endsWith('/consent/allow'))).toBe(false)
+  })
+
+  it.each(['stale', 'active', 'timeout'])('does not activate or repeat same-package configuration preparation after %s', async fault => {
+    const moduleId = 'org.example.optional-reader', sha = '8'.repeat(64), device = 'dev_' + '1'.repeat(32)
+    http.get.mockImplementation((url: string) => Promise.resolve({ data:
+      url === '/api/v1/modules/packages' ? [{ module_id: moduleId, version: '1.0.0', sha256: sha,
+        manifest: { name: 'Optional reader', entrypoints: { core: 'application-extension.json' } } }]
+      : url === '/api/v1/application-extensions' ? [{ module_id: moduleId, package_sha256: sha,
+        active_version: '1.0.0', status: 'disabled', enabled: false }]
+      : url.endsWith('/authority') ? { installation_id: 7, mode: 'enforced', installation_status: fault === 'active' ? 'active' : 'disabled',
+        installation_enabled: fault === 'active', artifact_sha256: fault === 'stale' ? 'f'.repeat(64) : sha,
+        scopes: [], native_reviews: [], grant_state: 'active', grant_record_revision: '3'.repeat(32),
+        grant_effective: false, isolation_proven: false }
+      : url.endsWith('/configuration') ? { fields: [{ key: 'READER_DEVICE_ID', kind: 'device', label: 'Reader', required: false, value: null }],
+        devices: [{ device_id: device, display_name: 'Reader', role: 'node' }] } : [] }))
+    http.post.mockRejectedValue(new Error('Preparation outcome is unconfirmed'))
+    const wrapper = await mountView()
+    await wrapper.get('.extension-card .version-btn').trigger('click'); await flushPromises()
+    await wrapper.get('#application-config-READER_DEVICE_ID').setValue(device)
+    const confirm = wrapper.get('.ui-dialog-actions .version-btn')
+    await confirm.trigger('click'); await flushPromises()
+    expect(http.post.mock.calls.filter(([url]) => url.endsWith('/stage'))).toHaveLength(fault === 'timeout' ? 1 : 0)
+    expect(http.post.mock.calls.some(([url]) => url.endsWith('/activate') || url.endsWith('/consent/allow'))).toBe(false)
+    expect(wrapper.find('.authority-dialog').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Close and reopen configuration')
+    expect(confirm.attributes('disabled')).toBeDefined()
+    await confirm.trigger('click'); await flushPromises()
+    expect(http.post.mock.calls.filter(([url]) => url.endsWith('/stage'))).toHaveLength(fault === 'timeout' ? 1 : 0)
+  })
+
   it.each(['admin','user'])('derives kiosk management from the installed artifact and admin (%s)',async role=>{
     localStorage.setItem('role',role)
     const current='6'.repeat(64),candidate='7'.repeat(64)

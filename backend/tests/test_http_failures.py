@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 import pytest
 from starlette.concurrency import run_in_threadpool
 
-from backend.services import http_failures as failures
+from backend.system.diagnostics import failures
 from backend.tests.test_diagnostics import _client, use_test_jwt_secret
 
 
@@ -25,6 +25,7 @@ def event(index=0, **changes):
 def test_ring_is_count_byte_rate_and_time_bounded_and_returns_detached_metadata():
     now = [1.0]
     store = failures.RecentHttpFailures(clock=lambda: now[0], wall=lambda: now[0] + 1000)
+    store.COALESCE_SECONDS = 0  # Exercise distinct retained events, not grouping.
     for index in range(130):
         now[0] += 1
         store.record(**event(index))
@@ -60,6 +61,50 @@ def test_lock_contention_drops_optional_metadata_without_waiting():
         store.record(**event())
         assert store.snapshot()['status'] == 'busy'
     assert store.snapshot()['records'] == [] and store.snapshot()['dropped']['busy'] == 1
+
+
+@pytest.mark.parametrize('changes', [
+    {'handled_refusal': 'true'}, {'details': []}, {'phase': 'unknown'},
+    {'phase': 'execution_unconfirmed'}, {'method': 'POST'}, {'status': 201},
+    {'status': 403}, {'details': [('session.resource', PRIVATE)]},
+    {'transport': 'websocket', 'status': None},
+])
+def test_handled_success_marker_is_only_valid_for_explicit_unsent_read_refusals(changes):
+    store = failures.RecentHttpFailures()
+    values = event()
+    values.update(method='GET', status=200, phase='not_dispatched', handled_refusal=True,
+                  details=[('session.resource', 'session_permission_denied')])
+    values.update(changes)
+    store.record(**values)
+    assert store.snapshot()['records'] == []
+
+
+def test_only_explicit_handled_read_refusals_survive_http200_without_changing_the_response():
+    store = failures.RecentHttpFailures()
+    app = FastAPI()
+    app.add_middleware(failures.HttpFailureMiddleware, store=store)
+    @app.get('/discovery/{name}')
+    def discover(name: str):
+        failures.note_dispatch('not_dispatched')
+        if name == 'marked':
+            failures.note_failure('session.authority', 'review_key_busy')
+            failures.note_handled_refusal('session.resource', 'authority_unavailable')
+        elif name == 'invalid':
+            failures.note_handled_refusal('session.resource', PRIVATE)
+        else:
+            failures.note_failure('session.resource', 'session_permission_denied')
+        return {'targets': []}
+    with TestClient(app) as http:
+        for name in ('plain', 'invalid', 'marked'):
+            response = http.get('/discovery/' + name, headers={'X-3mm-Trace-Id': PRIVATE})
+            assert response.status_code == 200 and response.json() == {'targets': []}
+        row = store.snapshot()['records'][0]
+        assert len(store.snapshot()['records']) == 1
+        assert row['trace_id'] == response.headers['x-3mm-trace-id']
+        assert row['status'] == 200 and row['handled_refusal'] is True
+        assert row['stage'] == 'session.authority' and row['reason'] == 'review_key_busy'
+        assert row['phase'] == 'not_dispatched' and row['retryable'] is False
+        assert PRIVATE not in json.dumps(row)
 
 
 def application(store):
@@ -121,8 +166,8 @@ def test_real_relay_send_marks_uncertainty_before_a_failed_first_write(monkeypat
     import tempfile
     import time
     from pathlib import Path
-    from backend.services import application_invocation_relay as relay
-    from backend.services.application_extensions import ApplicationGatewayError
+    from backend.applications.runtime import invocations as relay
+    from backend.applications.runtime.gateway import ApplicationGatewayError
     store = failures.RecentHttpFailures()
     app = FastAPI()
     app.add_middleware(failures.HttpFailureMiddleware, store=store)
@@ -155,7 +200,7 @@ def test_real_relay_send_marks_uncertainty_before_a_failed_first_write(monkeypat
 def test_recent_metadata_and_export_need_current_admin_and_survive_opt_in_expiry(monkeypatch):
     store = failures.RecentHttpFailures()
     store.record(**event())
-    monkeypatch.setattr('backend.routes.diagnostics.recent_http_failures', store)
+    monkeypatch.setattr('backend.system.diagnostics.api.recent_http_failures', store)
     client, db, admin, viewer = _client()
     try:
         for suffix in ('/failures', '/failures/export'):
@@ -165,7 +210,7 @@ def test_recent_metadata_and_export_need_current_admin_and_survive_opt_in_expiry
             response = client.get(path, headers={'Authorization': 'Bearer ' + admin})
             assert response.status_code == 200 and response.headers['cache-control'] == 'no-store'
             assert len(response.json()['records']) == 1 and PRIVATE not in response.text
-        from three_mm_protocol.diagnostics import DiagnosticSession
+        from packages.protocol.diagnostics import DiagnosticSession
         session = DiagnosticSession('core', '1.0')
         session.start(1); session.stop(); session._expire(float('inf'))
         assert session.snapshot()['records'] == [] and len(store.snapshot()['records']) == 1

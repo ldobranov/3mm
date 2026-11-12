@@ -57,7 +57,7 @@ def main():
         parser.error("Invalid instance")
     host = Path("/opt/3mm-application-hosts/instances") / args.instance / "current"
     sys.path[:0] = [str(host / "vendor"), str(host / "host.pyz")]
-    from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+    from packages.application_sdk import ApplicationPlatformClient, ApplicationPlatformError
     metadata = json.loads((ROOT / args.instance / "active.json").read_text())
     assert metadata["module_id"] == "org.3mm.task-probe" and metadata["instance_id"] == args.instance
     secret = (Path("/etc/3mm/application-extensions") / (args.instance + ".key")).read_bytes()

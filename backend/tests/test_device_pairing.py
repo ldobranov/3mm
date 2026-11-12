@@ -6,7 +6,7 @@ from backend.db.base import Base
 from backend.db.device import Device, DeviceCredential, DevicePairingRequest, DevicePlatformState
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.user import User
-from backend.services.device_pairing import (
+from backend.devices.pairing.service import (
     PairingApprovalError,
     PairingCodeUnavailableError,
     PairingCompletionError,

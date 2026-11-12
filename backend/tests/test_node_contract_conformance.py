@@ -7,7 +7,7 @@ import pytest
 
 from backend.db.device import DeviceCredential, DeviceEvent
 from backend.db.module import ModuleInstallation, ModulePackage
-from backend.routes.device_events import DeviceEventPayload
+from backend.devices.telemetry.events_api import DeviceEventPayload
 from backend.tests.test_mock_embedded_protocol import (
     CAPABILITY,
     CHANNEL,
@@ -16,7 +16,7 @@ from backend.tests.test_mock_embedded_protocol import (
     approve,
     core,
 )  # noqa: F401 - common Core-only fixture
-from three_mm_protocol import (
+from packages.protocol import (
     AgentCommandResult,
     AgentHeartbeat,
     AgentReportedState,
@@ -25,7 +25,7 @@ from three_mm_protocol import (
     DeviceEventV1,
     DeviceRuntimeFeaturesReportV1,
 )
-from three_mm_protocol.node_features import MANDATORY_NODE_FEATURES
+from packages.protocol.node_features import MANDATORY_NODE_FEATURES
 
 
 def test_required_device_boundaries_share_auth_identity_and_revocation(core, tmp_path):

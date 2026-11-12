@@ -1,0 +1,1208 @@
+"""Root-only immutable update scheduler exposed through a local Unix socket."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import os
+import socket
+import sqlite3
+import subprocess
+from contextlib import contextmanager
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Protocol, Sequence
+
+from backend.system.updates.staging import (
+    UpdateOperationStatus,
+    UpdateStagingError,
+    validate_staged_payload,
+    write_operation_status,
+)
+from backend.system.backups.service import build_backup_preview
+from deployment.create_backup import production_settings
+from deployment.backup_compatibility import BackupCompatibilityError
+from deployment.portable_backup import (
+    create_portable_export,
+    import_portable_backup,
+)
+from packages.provisioning import (
+    FileNetworkRecoveryMarker,
+    FileNetworkRecoveryPolicyStore,
+    FileProvisioningStore,
+    NetworkManagerReadOnlyAdapter,
+    ProvisioningState,
+)
+from packages.provisioning.network_recovery import RecoveryTrigger
+from components.system_runtime.network_recovery import NetworkRecoveryMonitor
+from components.system_runtime.application_activation import (
+    activate_application_package,
+    erase_application_instance_data,
+    SystemdApplicationSupervisor,
+    uninstall_application_instance,
+)
+from components.system_runtime.application_lifecycle import application_lifecycle_operation
+from components.system_runtime.application_relational_upgrade_control import ACTIONS as UPGRADE_ACTIONS
+
+MAX_REQUEST_BYTES = 64 * 1024
+MAX_RESPONSE_BYTES = 1024 * 1024
+MAX_PORTABLE_ARCHIVE_BYTES = 512 * 1024 * 1024
+LOGGER = logging.getLogger(__name__)
+
+
+def _service_ids(user_name: str, group_name: str) -> tuple[int, int]:
+    import grp
+    import pwd
+
+    return pwd.getpwnam(user_name).pw_uid, grp.getgrnam(group_name).gr_gid
+
+
+def _retained_erase_identity(payload):
+    import re
+    if (type(payload) is not dict or set(payload) != {
+            "action", "instance_id", "module_id", "requested_by_user_id", "guard_generation", "guard_revision"}
+            or payload["action"] != "erase_application_extension_data"
+            or type(payload["module_id"]) is not str or not 1 <= len(payload["module_id"]) <= 255
+            or type(payload["instance_id"]) is not str or re.fullmatch(r"[0-9a-f]{24}", payload["instance_id"]) is None
+            or type(payload["requested_by_user_id"]) is not int or payload["requested_by_user_id"] <= 0
+            or type(payload["guard_generation"]) is not str or re.fullmatch(r"[0-9a-f]{32}", payload["guard_generation"]) is None
+            or type(payload["guard_revision"]) is not int or not 1 <= payload["guard_revision"] <= 2**53 - 1):
+        raise ValueError("Invalid retained data erase identity")
+    return payload["module_id"], payload["instance_id"]
+
+
+@contextmanager
+def _retained_data_erase_operation(payload, *, database, state_root, enforce_permissions=True):
+    """Serialize erasure against activation/restore and reject stale queued work.
+
+    Core holds its authority writer through this call, preventing a new install
+    between this fresh committed read and erasure. The revision is the committed
+    pre-write value, not Core's uncommitted guard advancement.
+    """
+    import sqlite3
+    from components.system_runtime.application_lifecycle import _release_lock, _runtime_lock, ApplicationLifecycleError
+    module_id, instance_id = _retained_erase_identity(payload)
+    with _release_lock(enforce_permissions=enforce_permissions), _runtime_lock(
+            state_root, enforce_permissions=enforce_permissions):
+        try:
+            db = sqlite3.connect(Path(database).absolute().as_uri() + "?mode=ro", uri=True)
+            try:
+                db.execute("BEGIN")
+                guard = db.execute("SELECT generation, revision FROM core_authority_guard WHERE singleton_id=1").fetchone()
+                if (guard is None or guard != (payload["guard_generation"], payload["guard_revision"])
+                        or type(guard[1]) is not int):
+                    raise ApplicationLifecycleError()
+                retained = db.execute(
+                    "SELECT module_id, instance_id FROM application_retained_data WHERE module_id=? OR instance_id=?",
+                    (module_id, instance_id),
+                ).fetchall()
+                if retained != [(module_id, instance_id)] or db.execute(
+                        "SELECT 1 FROM application_extension_installations WHERE module_id=? OR instance_id=? LIMIT 1",
+                        (module_id, instance_id)).fetchone() is not None:
+                    raise ApplicationLifecycleError()
+            finally:
+                db.close()
+        except (sqlite3.Error, ValueError, TypeError) as exc:
+            raise ApplicationLifecycleError() from exc
+        yield
+
+
+class UpdateCommandRunner(Protocol):
+    def run(self, arguments: Sequence[str]) -> int: ...  # noqa: E704
+
+
+class SubprocessUpdateCommandRunner:
+    def run(self, arguments: Sequence[str]) -> int:
+        try:
+            result = subprocess.run(
+                list(arguments),
+                check=False,
+                # Keep systemd scheduling diagnostics in the helper journal.
+                timeout=30,
+                env={**os.environ, "LC_ALL": "C"},
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            LOGGER.exception("Update worker scheduling command did not complete")
+            raise UpdateStagingError("Update worker could not be scheduled") from exc
+        if result.returncode != 0:
+            LOGGER.error("Update scheduling command exited with code %s", result.returncode)
+        return result.returncode
+
+
+class UpdateMutationBoundary:
+    """Schedule fixed reviewed workers; never accept commands or package names."""
+
+    def __init__(
+        self,
+        *,
+        systemd_run: str = "/usr/bin/systemd-run",
+        systemctl: str = "/usr/bin/systemctl",
+        python: str = "/opt/3mm/current/.venv/bin/python",
+        worker: str = "/opt/3mm/current/deployment/apply_staged_update.py",
+        repository: str = "ldobranov/3mm",
+        manifest_asset_name: str = "3mm-update-manifest.json",
+        runner: UpdateCommandRunner | None = None,
+    ) -> None:
+        self._systemd_run = systemd_run
+        self._systemctl = systemctl
+        self._python = python
+        self._worker = worker
+        self._repository = repository
+        self._manifest_asset_name = manifest_asset_name
+        self._runner = runner or SubprocessUpdateCommandRunner()
+
+    def schedule_platform_runtime(self, identifier: str) -> None:
+        import re
+        if type(identifier) is not str or re.fullmatch(r'[0-9a-f]{32}', identifier) is None:
+            raise ValueError('Invalid Runtime operation identity')
+        arguments = [self._systemd_run, '--unit=3mm-platform-runtime-update-' + identifier,
+            '--collect', '--property=Type=exec', '--property=RuntimeMaxSec=120s',
+            '--property=TimeoutStartSec=120s', '--property=NoNewPrivileges=true',
+            '--property=MemoryMax=128M', '--property=TasksMax=32',
+            '--property=PrivateTmp=true', '--property=ProtectHome=true',
+            '--property=ProtectSystem=strict',
+            '--property=ReadWritePaths=/opt/3mm-platform-runtime /var/lib/3mm-platform-updates /run/lock',
+            '--property=RestrictAddressFamilies=AF_UNIX',
+            '/usr/bin/env', 'PYTHONPATH=/opt/3mm/current', self._python,
+            '-m', 'components.system_runtime.platform_runtime_updates', '--job-id', identifier]
+        if self._runner.run(arguments) != 0:
+            raise RuntimeError('Runtime worker scheduling is unconfirmed')
+
+    def schedule_component_update(self, identifier: str) -> None:
+        from components.system_runtime.platform_runtime_updates import HEX32
+        if type(identifier) is not str or not HEX32.fullmatch(identifier):
+            raise ValueError('Invalid component operation identity')
+        arguments = [self._systemd_run, '--unit=3mm-component-update-' + identifier,
+            '--collect', '--property=Type=exec', '--property=RuntimeMaxSec=300s',
+            '--property=TimeoutStopSec=5s', '--property=NoNewPrivileges=true',
+            '--property=MemoryMax=384M', '--property=TasksMax=32',
+            '--property=PrivateTmp=true', '--property=ProtectHome=true', '--property=ProtectSystem=strict',
+            '--property=ReadWritePaths=-/opt/3mm-agent -/var/lib/3mm-agent-updates -/opt/3mm-application-hosts -/var/lib/3mm-application-host-updates /var/lib/3mm-component-updates /run/lock',
+            '--property=RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6',
+            '/usr/bin/env', 'PYTHONPATH=/opt/3mm/current', self._python, '-B',
+            '-m', 'components.system_runtime.component_updates', '--job-id', identifier]
+        if self._runner.run(arguments) != 0:
+            raise RuntimeError('Component worker scheduling is unconfirmed')
+
+    def component_update_worker_active(self, identifier: str) -> bool:
+        from components.system_runtime.platform_runtime_updates import HEX32
+        if type(identifier) is not str or not HEX32.fullmatch(identifier): raise ValueError('Invalid component worker')
+        result = subprocess.run([self._systemctl, 'show', '3mm-component-update-' + identifier + '.service',
+            '--property=ActiveState', '--value'], capture_output=True, text=True, timeout=2, check=False)
+        return result.returncode == 0 and result.stdout.strip() in {'active', 'activating', 'deactivating'}
+
+    def schedule_hardware_interfaces(self, identifier: str) -> None:
+        from components.system_runtime.hardware_interfaces import HEX32
+        if type(identifier) is not str or not HEX32.fullmatch(identifier):
+            raise ValueError('Invalid hardware operation identity')
+        arguments = [self._systemd_run, '--unit=3mm-hardware-interfaces-' + identifier,
+            '--collect', '--property=Type=exec', '--property=RuntimeMaxSec=30s',
+            '--property=TimeoutStopSec=3s', '--property=NoNewPrivileges=true',
+            '--property=MemoryMax=96M', '--property=TasksMax=16',
+            '--property=PrivateTmp=true', '--property=ProtectHome=true',
+            '--property=ProtectSystem=strict', '--property=ProtectKernelModules=true',
+            '--property=ConfigurationDirectory=systemd/system/3mm-agent.service.d',
+            '--property=ReadWritePaths=/boot/firmware /etc/modules-load.d /etc/systemd/system/3mm-agent.service.d /var/lib/3mm-hardware-interfaces /run/lock',
+            '--property=RestrictAddressFamilies=AF_UNIX',
+            '/usr/bin/env', 'PYTHONPATH=/opt/3mm/current', self._python,
+            '-m', 'components.system_runtime.hardware_interfaces', '--request-id', identifier]
+        if self._runner.run(arguments) != 0:
+            raise RuntimeError('Hardware worker scheduling is unconfirmed')
+
+    def hardware_interfaces_worker_active(self, identifier: str) -> bool:
+        from components.system_runtime.hardware_interfaces import HEX32
+        if type(identifier) is not str or not HEX32.fullmatch(identifier):
+            raise ValueError('Invalid hardware operation identity')
+        result = subprocess.run([self._systemctl, 'show',
+            '3mm-hardware-interfaces-' + identifier + '.service', '--property=ActiveState', '--value'],
+            capture_output=True, text=True, timeout=2, check=False)
+        return result.returncode == 0 and result.stdout.strip() in {'active', 'activating', 'deactivating'}
+
+    def platform_runtime_worker_active(self, identifier: str) -> bool:
+        import re
+        if type(identifier) is not str or re.fullmatch(r'[0-9a-f]{32}', identifier) is None:
+            raise ValueError('Invalid Runtime operation identity')
+        result = subprocess.run([self._systemctl, 'show',
+            '3mm-platform-runtime-update-' + identifier + '.service',
+            '--property=ActiveState', '--value'], capture_output=True, text=True, timeout=3)
+        return result.returncode == 0 and result.stdout.strip() in {'active', 'activating', 'reloading', 'deactivating'}
+
+    def schedule(
+        self,
+        *,
+        stage_root: Path,
+        state_root: Path,
+        allowlist: Path,
+        release_id: str,
+        approval_nonce: str,
+        requested_by_user_id: int,
+    ) -> None:
+        arguments = (
+            self._systemd_run,
+            "--unit=3mm-update-apply",
+            "--collect",
+            "--property=Type=exec",
+            "--property=TimeoutStartSec=45min",
+            "--property=PrivateTmp=true",
+            "--property=ProtectHome=true",
+            "/usr/bin/env",
+            "PYTHONPATH=/opt/3mm/current",
+            self._python,
+            self._worker,
+            "--stage-root",
+            str(stage_root),
+            "--state-root",
+            str(state_root),
+            "--allowlist",
+            str(allowlist),
+            "--release-id",
+            release_id,
+            "--approval-nonce",
+            approval_nonce,
+            "--requested-by-user-id",
+            str(requested_by_user_id),
+            "--repository",
+            self._repository,
+            "--manifest-asset",
+            self._manifest_asset_name,
+        )
+        if self._runner.run(arguments) != 0:
+            raise UpdateStagingError("Update worker could not be scheduled")
+
+    def schedule_access_point(self, action, identifier, *, interface=None, duration=300):
+        from packages.provisioning.network_capabilities import INTERFACE
+        from packages.provisioning.network_transaction import IDENTIFIER
+        if action not in {"start", "stop"} or not isinstance(identifier, str) or not IDENTIFIER.fullmatch(identifier):
+            raise ValueError("Invalid AP action")
+        arguments = [self._systemd_run, "--unit=3mm-access-point-" + action + "-" + identifier,
+                     "--collect", "--on-active=3s", "--property=Type=exec",
+                     "--property=TimeoutStartSec=2min", "--property=RuntimeMaxSec=2min",
+                     "--property=EnvironmentFile=-/etc/3mm/3mm.env", "/usr/bin/env",
+                     "PYTHONPATH=/opt/3mm/current", self._python, "-m",
+                     "packages.provisioning.recovery_access_point", action, "--id", identifier]
+        if action == "start":
+            if (not isinstance(interface, str) or not INTERFACE.fullmatch(interface)
+                    or type(duration) is not int or not 60 <= duration <= 900):
+                raise ValueError("Invalid AP options")
+            arguments += ["--interface", interface, "--duration", str(duration)]
+        from packages.provisioning.recovery_access_point import read_status, publish_status, AP_URL
+        if action == "start":
+            from packages.provisioning.setup_access_point import setup_ssid
+            publish_status(dict(state="starting", id=identifier, interface=interface,
+                                expires_at=__import__("time").time() + duration,
+                                network=setup_ssid(Path("/etc/machine-id")), setup_url=AP_URL, reason=None))
+        else:
+            # Cancel only this request while it is still queued/starting.
+            current = read_status()
+            if current["id"] == identifier and current["state"] == "starting":
+                self._runner.run((self._systemctl, "stop", "3mm-access-point-start-" + identifier + ".timer",
+                                  "3mm-access-point-start-" + identifier + ".service"))
+        if self._runner.run(tuple(arguments)) != 0:
+            current = read_status()
+            if action == "start" and current["id"] == identifier:
+                publish_status({**current, "state": "failed", "reason": "schedule_failed"})
+            raise RuntimeError("Access point worker could not be scheduled")
+
+    def schedule_network_setup(
+        self,
+        trigger: RecoveryTrigger,
+        *,
+        data_dir: Path = Path("/var/lib/3mm/provisioning"),
+        service_user: str = "3mm",
+        service_group: str = "3mm",
+    ) -> None:
+        if trigger not in {"manual", "automatic"}:
+            raise ValueError("Network recovery trigger is invalid")
+        arguments = (
+            self._systemd_run,
+            "--unit=3mm-network-recovery",
+            "--collect",
+            "--on-active=2s",
+            "--property=EnvironmentFile=-/etc/3mm/3mm.env",
+            "--property=Type=exec",
+            "--property=TimeoutStartSec=2min",
+            "--property=PrivateTmp=true",
+            "--property=ProtectSystem=strict",
+            f"--property=ReadWritePaths={data_dir.as_posix()}",
+            "--property=ReadWritePaths=/run/lock",
+            "--property=ProtectHome=true",
+            "/usr/bin/env",
+            "PYTHONPATH=/opt/3mm/current",
+            self._python,
+            "-m",
+            "components.system_runtime.network_recovery",
+            "--data-dir",
+            data_dir.as_posix(),
+            "--trigger",
+            trigger,
+            "--user",
+            service_user,
+            "--group",
+            service_group,
+        )
+        if self._runner.run(arguments) != 0:
+            raise RuntimeError("Network setup worker could not be scheduled")
+
+    def schedule_system_action(self, action: str) -> None:
+        if action == "restart_device":
+            unit = "3mm-system-restart"
+            worker = ("/usr/bin/systemctl", "reboot")
+            timeout = "2min"
+            protection = ()
+        elif action == "factory_reset":
+            unit = "3mm-factory-reset"
+            worker = (
+                "/usr/bin/env",
+                "PYTHONPATH=/opt/3mm/current",
+                self._python,
+                "/opt/3mm/current/deployment/factory_reset.py",
+            )
+            timeout = "5min"
+            protection = (
+                "--property=ProtectSystem=strict",
+                "--property=ReadWritePaths=/var/lib/3mm",
+                "--property=ReadWritePaths=/etc/3mm",
+                "--property=ReadWritePaths=/run/lock",
+                "--property=NoNewPrivileges=true",
+            )
+        else:
+            raise ValueError("System action is invalid")
+
+        arguments = (
+            self._systemd_run,
+            f"--unit={unit}",
+            "--collect",
+            "--on-active=2s",
+            "--property=Type=exec",
+            f"--property=TimeoutStartSec={timeout}",
+            "--property=PrivateTmp=true",
+            "--property=ProtectHome=true",
+            *protection,
+            *worker,
+        )
+        if self._runner.run(arguments) != 0:
+            raise RuntimeError("System action could not be scheduled")
+
+    def schedule_backup(self, *, backup_root: Path, requested_by_user_id: int) -> None:
+        arguments = (
+            self._systemd_run,
+            "--unit=3mm-backup-create",
+            "--collect",
+            "--property=Type=exec",
+            "--property=TimeoutStartSec=15min",
+            "--property=PrivateTmp=true",
+            "--property=ProtectSystem=strict",
+            f"--property=ReadWritePaths={backup_root.as_posix()}",
+            "--property=ReadWritePaths=/etc/3mm",
+            "--property=ReadWritePaths=/run/lock",
+            "--property=ProtectHome=true",
+            "/usr/bin/env",
+            "PYTHONPATH=/opt/3mm/current",
+            self._python,
+            "/opt/3mm/current/deployment/create_backup.py",
+            "--backup-root",
+            backup_root.as_posix(),
+            "--key-file",
+            "/etc/3mm/backup.key",
+            "--requested-by-user-id",
+            str(requested_by_user_id),
+        )
+        if self._runner.run(arguments) != 0:
+            raise RuntimeError("Backup worker could not be scheduled")
+
+    def schedule_restore(
+        self,
+        *,
+        backup_root: Path,
+        backup_id: str,
+        requested_by_user_id: int,
+    ) -> None:
+        from deployment.restore_backup import RESTORE_SANDBOX_PROPERTIES
+
+        arguments = (
+            self._systemd_run,
+            "--unit=3mm-backup-restore",
+            "--collect",
+            "--property=Type=exec",
+            "--property=TimeoutStartSec=20min",
+            *(f"--property={value}" for value in RESTORE_SANDBOX_PROPERTIES),
+            "/usr/bin/env",
+            "PYTHONPATH=/opt/3mm/current",
+            self._python,
+            "/opt/3mm/current/deployment/restore_backup.py",
+            "--backup-root",
+            backup_root.as_posix(),
+            "--key-file",
+            "/etc/3mm/backup.key",
+            "--backup-id",
+            backup_id,
+            "--requested-by-user-id",
+            str(requested_by_user_id),
+        )
+        if self._runner.run(arguments) != 0:
+            raise RuntimeError("Restore worker could not be scheduled")
+
+    def stop_application_extension(self, instance_id: str) -> None:
+        SystemdApplicationSupervisor().stop(instance_id)
+
+    def recover_application_extension(self, instance_id: str) -> None:
+        SystemdApplicationSupervisor().recover_disabled(instance_id)
+
+    def uninstall_application_extension(
+        self,
+        instance_id: str,
+        *,
+        root: Path,
+        key_root: Path,
+    ) -> None:
+        uninstall_application_instance(
+            instance_id,
+            root=root,
+            key_root=key_root,
+        )
+
+    def erase_application_extension_data(
+        self,
+        instance_id: str,
+        *,
+        root: Path,
+    ) -> None:
+        erase_application_instance_data(instance_id, root=root)
+
+
+def _handle_request(
+    payload: object,
+    *,
+    stage_root: Path,
+    state_root: Path,
+    allowlist: Path,
+    status_file: Path,
+    service_user: str = "3mm",
+    service_group: str = "3mm",
+    boundary: UpdateMutationBoundary | None = None,
+    provisioning_data_dir: Path = Path("/var/lib/3mm/provisioning"),
+    backup_root: Path = Path("/var/lib/3mm/backups"),
+    application_upload_root: Path = Path("/var/lib/3mm/core/uploads/modules"),
+    application_root: Path = Path("/var/lib/3mm/application-extensions"),
+    application_key_root: Path = Path("/etc/3mm/application-extensions"),
+    application_user: str = "3mm-app",
+    application_group: str = "3mm-app",
+    application_database: Path = Path("/var/lib/3mm/core/3mm.db"),
+    relational_peer_uid: int | None = None,
+) -> dict[str, object]:
+    # The socket accepts JSON objects with a string action. Reject malformed
+    # values before any dispatch branch can hash an array/object as an action.
+    if type(payload) is not dict or type(payload.get("action")) is not str:
+        return {"ok": False, "error": "invalid_request"}
+    from components.system_runtime.component_updates import ACTIONS as COMPONENT_UPDATE_ACTIONS
+    if payload['action'] in COMPONENT_UPDATE_ACTIONS:
+        from components.system_runtime.component_updates import ComponentUpdates, ComponentNotAccepted, validate_request
+        try:
+            validate_request(payload)
+            core_uid, _ = _service_ids(service_user, service_group)
+            if type(relational_peer_uid) is not int or relational_peer_uid != core_uid:
+                raise ValueError('Real Core peer required')
+            from components.system_runtime.hardware_interfaces import admin_revision
+            admin_revision(application_database, payload['requested_by_user_id'])
+            selected = boundary or UpdateMutationBoundary()
+            workflow = ComponentUpdates(database=application_database,
+                worker_active=selected.component_update_worker_active)
+            if payload['action'] == 'component_status':
+                return {'ok': True, 'status': 'inspected', 'component': workflow.status(payload['component'], payload['target_id'])}
+            result = workflow.queue(payload, selected.schedule_component_update)
+            return {'ok': True, 'status': 'queued', 'request_id': result['request_id']}
+        except ComponentNotAccepted:
+            return {'ok': False, 'error': 'component_update_not_accepted'}
+        except (OSError, ValueError, KeyError, RuntimeError, TypeError, OverflowError, sqlite3.Error, subprocess.SubprocessError):
+            return {'ok': False, 'error': 'component_update_unavailable'}
+    from components.system_runtime.hardware_interfaces import ACTIONS as HARDWARE_ACTIONS
+    if payload['action'] in HARDWARE_ACTIONS:
+        from components.system_runtime.hardware_interfaces import HardwareInterfaces, admin_revision, validate_request
+        try:
+            validate_request(payload)
+            core_uid, _ = _service_ids(service_user, service_group)
+            if type(relational_peer_uid) is not int or relational_peer_uid != core_uid:
+                raise ValueError('Real Core peer required')
+            admin_revision(application_database, payload['requested_by_user_id'])
+            selected = boundary or UpdateMutationBoundary()
+            workflow = HardwareInterfaces(database=application_database,
+                worker_active=selected.hardware_interfaces_worker_active)
+            if payload['action'] == 'hardware_interfaces_status':
+                return {'ok': True, 'status': 'inspected', 'interfaces': workflow.inspect(payload['device_id'])}
+            identifier = (workflow.restart(payload, selected.schedule_system_action)
+                if payload['action'] == 'hardware_interfaces_restart'
+                else workflow.queue(payload, selected.schedule_hardware_interfaces))
+            return {'ok': True, 'status': 'queued', 'request_id': identifier}
+        except (OSError, ValueError, KeyError, RuntimeError, TypeError, sqlite3.Error, subprocess.SubprocessError):
+            return {'ok': False, 'error': 'hardware_interfaces_unavailable'}
+    from components.system_runtime.platform_runtime_updates import ACTIONS as RUNTIME_UPDATE_ACTIONS
+    if payload['action'] in RUNTIME_UPDATE_ACTIONS:
+        from components.system_runtime.platform_runtime_updates import RuntimeUpdates, validate_request
+        try:
+            validate_request(payload)
+            core_uid, _ = _service_ids(service_user, service_group)
+            if type(relational_peer_uid) is not int or relational_peer_uid != core_uid:
+                raise ValueError('Runtime administration requires the real Core peer')
+            selected = boundary or UpdateMutationBoundary()
+            workflow = RuntimeUpdates(worker_active=selected.platform_runtime_worker_active)
+            if payload['action'] == 'platform_runtime_status':
+                return {'ok': True, 'status': 'inspected', 'runtime': workflow.status()}
+            operation = workflow.queue(payload, selected.schedule_platform_runtime)
+            return {'ok': True, 'status': 'queued', 'request_id': operation['request_id']}
+        except (OSError, ValueError, KeyError, RuntimeError, TypeError, OverflowError, subprocess.SubprocessError):
+            return {'ok': False, 'error': 'runtime_update_unavailable'}
+    if (type(payload) is dict and type(payload.get("action")) is str
+        and payload["action"] in UPGRADE_ACTIONS):
+        from components.system_runtime.application_relational_control import CoreMetadataClient
+        from components.system_runtime.application_relational_upgrade_control import (
+            installed_upgrade, response_status, upgrade_request,
+        )
+        try:
+            upgrade_request(payload)
+        except (ValueError, TypeError):
+            return {"ok": False, "error": "invalid_request"}
+        try:
+            core_uid, _ = _service_ids(service_user, service_group)
+            if type(relational_peer_uid) is not int or relational_peer_uid != core_uid:
+                return {"ok": False, "error": "invalid_request"}
+            service_uid, service_gid = _service_ids(application_user, application_group)
+            result = installed_upgrade(payload,
+                metadata=CoreMetadataClient(core_uid=core_uid, core_user=service_user,
+                    core_group=service_group, database=application_database, application_root=application_root),
+                upload_root=application_upload_root, root=application_root,
+                key_root=application_key_root, state_root=state_root,
+                service_uid=service_uid, service_gid=service_gid, coordinator_uid=core_uid)
+            return {"ok": True, "status": response_status(payload["action"]), "upgrade": result}
+        except Exception:
+            LOGGER.warning("Relational upgrade/reconciliation unconfirmed; retain evidence for local review")
+            return {"ok": False, "error": "relational_upgrade_unconfirmed"}
+    if isinstance(payload, dict) and payload.get("action") in ("prepare_application_relational", "activate_application_relational", "recover_application_relational_start", "reactivate_application_relational", "enable_application_relational_boot", "recover_application_relational_preparation", "resume_application_relational_preparation"):
+        from components.system_runtime.application_relational_control import (
+            CoreMetadataClient, preparation_request, prepare_installed_application,
+            activation_request, activate_installed_application,
+            activation_recovery_request, recover_installed_application_start,
+            reactivation_request, reactivate_installed_application,
+            boot_enable_request, enable_installed_application_boot,
+        )
+        activating = payload["action"] == "activate_application_relational"
+        recovering = payload["action"] == "recover_application_relational_start"
+        reactivating = payload["action"] == "reactivate_application_relational"
+        enabling_boot = payload["action"] == "enable_application_relational_boot"
+        recovering_preparation = payload["action"] in {"recover_application_relational_preparation", "resume_application_relational_preparation"}
+        resuming_preparation = payload["action"] == "resume_application_relational_preparation"
+        validator = boot_enable_request if enabling_boot else reactivation_request if reactivating else activation_recovery_request if recovering else activation_request if activating else preparation_request
+        operation = enable_installed_application_boot if enabling_boot else reactivate_installed_application if reactivating else recover_installed_application_start if recovering else activate_installed_application if activating else prepare_installed_application
+        if recovering_preparation:
+            from components.system_runtime.application_relational_preparation_recovery_control import preparation_recovery_request, recover_installed_preparation
+            validator, operation = preparation_recovery_request, recover_installed_preparation
+        try:
+            validator(payload)
+        except (ValueError, TypeError):
+            return {"ok": False, "error": "invalid_request"}
+        try:
+            core_uid, _core_gid = _service_ids(service_user, service_group)
+            if type(relational_peer_uid) is not int or relational_peer_uid != core_uid:
+                return {"ok": False, "error": "invalid_request"}
+            service_uid, service_gid = _service_ids(application_user, application_group)
+            result = operation(payload,
+                metadata=CoreMetadataClient(core_uid=core_uid, core_user=service_user,
+                    core_group=service_group, database=application_database, application_root=application_root),
+                upload_root=application_upload_root, root=application_root,
+                key_root=application_key_root, state_root=state_root,
+                service_uid=service_uid, service_gid=service_gid, coordinator_uid=core_uid)
+            if recovering_preparation:
+                return {"ok": True, "status": "prepared_not_started" if resuming_preparation else "restored_empty_not_started",
+                    "preparation" if resuming_preparation else "recovery": result}
+            return {"ok": True, "status": "boot_enabled_not_started" if enabling_boot else "stopped_review_required" if recovering else "active_review_required" if (activating or reactivating) else "prepared_not_started",
+                "boot" if enabling_boot else "reactivation" if reactivating else "recovery" if recovering else "activation" if activating else "preparation": result}
+        except Exception:
+            # Deliberately no traceback: this private request contains a human token.
+            LOGGER.warning("Relational local lifecycle unconfirmed; explicit review required")
+            if recovering_preparation:
+                return {"ok": False, "error": "relational_empty_preparation_unconfirmed"}
+            return {"ok": False, "error": "relational_boot_enable_unconfirmed" if enabling_boot else "relational_reactivation_unconfirmed" if reactivating else "relational_start_recovery_unconfirmed" if recovering else "relational_activation_unconfirmed" if activating else "relational_preparation_unconfirmed"}
+    if isinstance(payload, dict) and payload.get("action") == "erase_application_extension_data":
+        try:
+            _retained_erase_identity(payload)
+        except ValueError:
+            return {"ok": False, "error": "invalid_request"}
+        try:
+            with _retained_data_erase_operation(payload, database=application_database, state_root=state_root):
+                (boundary or UpdateMutationBoundary()).erase_application_extension_data(
+                    payload["instance_id"], root=application_root)
+        except Exception:
+            LOGGER.warning("Application retained data erasure unconfirmed")
+            return {"ok": False, "error": "application_data_erase_failed"}
+        return {"ok": True, "status": "erased"}
+
+    if isinstance(payload, dict) and set(payload) in (
+        {"action", "sha256", "requested_by_user_id", "lifecycle"},
+        {"action", "sha256", "requested_by_user_id", "configuration", "lifecycle"},
+    ):
+        sha256 = payload.get("sha256")
+        user_id = payload.get("requested_by_user_id")
+        configuration = payload.get("configuration", {})
+        if (
+            payload.get("action") != "activate_application_extension"
+            or not isinstance(sha256, str)
+            or not __import__("re").fullmatch(r"[0-9a-f]{64}", sha256)
+            or not isinstance(user_id, int)
+            or isinstance(user_id, bool)
+            or user_id <= 0
+            or not isinstance(configuration, dict)
+        ):
+            return {"ok": False, "error": "invalid_request"}
+        try:
+            service_uid, service_gid = _service_ids(
+                application_user, application_group
+            )
+            with application_lifecycle_operation(
+                payload, database=application_database, state_root=state_root
+            ):
+                activated = activate_application_package(
+                    application_upload_root / f"{sha256}.zip",
+                    sha256,
+                    configuration=configuration,
+                    root=application_root,
+                    key_root=application_key_root,
+                    service_uid=service_uid,
+                    service_gid=service_gid,
+                )
+        except Exception:
+            LOGGER.exception("Application extension activation failed")
+            return {"ok": False, "error": "application_activation_failed"}
+        return {
+            "ok": True,
+            "status": "active",
+            "module_id": activated.module_id,
+            "version": activated.version,
+            "sha256": activated.sha256,
+            "instance_id": activated.instance_id,
+            "socket_path": str(activated.socket_path),
+        }
+
+    if isinstance(payload, dict) and set(payload) in (
+        {"action", "instance_id", "requested_by_user_id"},
+        {"action", "instance_id", "requested_by_user_id", "lifecycle"},
+    ):
+        instance_id = payload.get("instance_id")
+        user_id = payload.get("requested_by_user_id")
+        action = payload.get("action")
+        if (
+            not isinstance(action, str)
+            or action not in {
+                "disable_application_extension",
+                "uninstall_application_extension",
+                "recover_application_extension",
+            }
+            or "lifecycle" not in payload
+            or not isinstance(instance_id, str)
+            or not __import__("re").fullmatch(r"[0-9a-f]{24}", instance_id)
+            or not isinstance(user_id, int)
+            or isinstance(user_id, bool)
+            or user_id <= 0
+        ):
+            return {"ok": False, "error": "invalid_request"}
+        try:
+            selected_boundary = boundary or UpdateMutationBoundary()
+            scope = application_lifecycle_operation(
+                payload, database=application_database, state_root=state_root,
+            )
+            with scope:
+                if action == "uninstall_application_extension":
+                    selected_boundary.uninstall_application_extension(
+                        instance_id, root=application_root, key_root=application_key_root,
+                    )
+                elif action == "recover_application_extension":
+                    selected_boundary.recover_application_extension(instance_id)
+                else:
+                    selected_boundary.stop_application_extension(instance_id)
+        except Exception:
+            LOGGER.exception("Application extension lifecycle failed: %s", action)
+            error = {
+                "uninstall_application_extension": "application_uninstall_failed",
+                "recover_application_extension": "application_recovery_failed",
+            }.get(action, "application_disable_failed")
+            return {"ok": False, "error": error}
+        response = {
+            "ok": True,
+            "status": {
+                "uninstall_application_extension": "uninstalled",
+            }.get(action, "disabled"),
+        }
+        if action == "recover_application_extension":
+            response.update(instance_id=instance_id, lifecycle=payload["lifecycle"], quiescent=True)
+        return response
+
+    if isinstance(payload, dict) and set(payload) == {
+        "action",
+        "backup_id",
+        "passphrase",
+        "requested_by_user_id",
+    }:
+        backup_id = payload.get("backup_id")
+        passphrase = payload.get("passphrase")
+        user_id = payload.get("requested_by_user_id")
+        if (
+            payload.get("action") != "export_backup"
+            or not isinstance(backup_id, str)
+            or not __import__("re").fullmatch(
+                r"bkp_\d{8}T\d{6}Z_[0-9a-f]{8}", backup_id
+            )
+            or not isinstance(passphrase, str)
+            or not isinstance(user_id, int)
+            or isinstance(user_id, bool)
+            or user_id <= 0
+        ):
+            return {"ok": False, "error": "invalid_request"}
+        try:
+            _service_uid, service_gid = _service_ids(service_user, service_group)
+            exported = create_portable_export(
+                backup_root,
+                Path("/etc/3mm/backup.key"),
+                backup_id,
+                passphrase,
+                owner=(0, service_gid),
+            )
+        except Exception:
+            return {"ok": False, "error": "backup_export_failed"}
+        return {
+            "ok": True,
+            "status": "ready",
+            "export_id": exported.export_id,
+            "backup_id": exported.backup_id,
+            "filename": exported.filename,
+        }
+
+    if isinstance(payload, dict) and set(payload) == {
+        "action",
+        "upload_id",
+        "passphrase",
+        "requested_by_user_id",
+    }:
+        upload_id = payload.get("upload_id")
+        passphrase = payload.get("passphrase")
+        user_id = payload.get("requested_by_user_id")
+        if (
+            payload.get("action") != "restore_portable_backup"
+            or not isinstance(upload_id, str)
+            or not __import__("re").fullmatch(r"[0-9a-f]{32}", upload_id)
+            or not isinstance(passphrase, str)
+            or not isinstance(user_id, int)
+            or isinstance(user_id, bool)
+            or user_id <= 0
+        ):
+            return {"ok": False, "error": "invalid_request"}
+        upload = backup_root.parent / "core/backup-imports" / (
+            f"{upload_id}.3mmrecovery"
+        )
+        try:
+            _service_uid, service_gid = _service_ids(service_user, service_group)
+            backup_id = import_portable_backup(
+                upload,
+                backup_root,
+                Path("/etc/3mm/backup.key"),
+                passphrase,
+                max_archive_bytes=MAX_PORTABLE_ARCHIVE_BYTES,
+                owner=(0, service_gid),
+            )
+            (boundary or UpdateMutationBoundary()).schedule_restore(
+                backup_root=backup_root,
+                backup_id=backup_id,
+                requested_by_user_id=user_id,
+            )
+        except Exception as exc:
+            LOGGER.exception("Portable recovery import or scheduling failed")
+            try:
+                upload.unlink(missing_ok=True)
+            except OSError:
+                LOGGER.exception("Portable recovery upload cleanup failed")
+            error = "portable_restore_failed"
+            if isinstance(exc, BackupCompatibilityError):
+                return {"ok": False, "error": "portable_restore_incompatible", "message": str(exc)}
+            if isinstance(exc, OSError):
+                error = "portable_restore_storage_failed"
+            elif isinstance(exc, ValueError):
+                error = "portable_restore_validation_failed"
+            return {"ok": False, "error": error}
+        return {
+            "ok": True,
+            "status": "queued",
+            "backup_id": backup_id,
+        }
+
+    if isinstance(payload, dict) and set(payload) == {
+        "action",
+        "backup_id",
+        "requested_by_user_id",
+    }:
+        backup_id = payload.get("backup_id")
+        user_id = payload.get("requested_by_user_id")
+        if (
+            payload.get("action") != "restore_backup"
+            or not isinstance(backup_id, str)
+            or not __import__("re").fullmatch(
+                r"bkp_\d{8}T\d{6}Z_[0-9a-f]{8}", backup_id
+            )
+            or not isinstance(user_id, int)
+            or isinstance(user_id, bool)
+            or user_id <= 0
+        ):
+            return {"ok": False, "error": "invalid_request"}
+        try:
+            (boundary or UpdateMutationBoundary()).schedule_restore(
+                backup_root=backup_root,
+                backup_id=backup_id,
+                requested_by_user_id=user_id,
+            )
+        except Exception:
+            return {"ok": False, "error": "restore_schedule_failed"}
+        return {"ok": True, "status": "queued"}
+
+    if isinstance(payload, dict) and payload.get("action") in {"start_access_point", "stop_access_point"}:
+        from packages.provisioning.network_capabilities import INTERFACE
+        from packages.provisioning.network_transaction import IDENTIFIER
+        starting = payload["action"] == "start_access_point"
+        fields = {"action", "requested_by_user_id", "id"} | ({"interface", "duration"} if starting else set())
+        user_id, identifier = payload.get("requested_by_user_id"), payload.get("id")
+        if (set(payload) != fields or type(user_id) is not int or user_id <= 0
+                or not isinstance(identifier, str) or not IDENTIFIER.fullmatch(identifier)
+                or (starting and (not isinstance(payload["interface"], str)
+                    or not INTERFACE.fullmatch(payload["interface"])
+                    or type(payload["duration"]) is not int or not 60 <= payload["duration"] <= 900))):
+            return {"ok": False, "error": "invalid_request"}
+        try:
+            (boundary or UpdateMutationBoundary()).schedule_access_point(
+                "start" if starting else "stop", identifier,
+                **({"interface": payload["interface"], "duration": payload["duration"]} if starting else {}))
+        except Exception:
+            return {"ok": False, "error": "access_point_schedule_failed"}
+        return {"ok": True, "status": "queued"}
+
+    if isinstance(payload, dict) and set(payload) == {
+        "action",
+        "requested_by_user_id",
+    }:
+        user_id = payload.get("requested_by_user_id")
+        action = payload.get("action")
+        if (
+            action
+            not in {
+                "preview_backup",
+                "start_network_setup",
+                "restart_device",
+                "factory_reset",
+                "create_backup",
+            }
+            or not isinstance(user_id, int)
+            or isinstance(user_id, bool)
+            or user_id <= 0
+        ):
+            return {"ok": False, "error": "invalid_request"}
+
+        if action == "preview_backup":
+            try:
+                preview = build_backup_preview(production_settings(backup_root))
+            except Exception:
+                LOGGER.exception("Backup preview failed")
+                return {"ok": False, "error": "backup_preview_failed"}
+            return {
+                "ok": True,
+                "status": "inspected",
+                "preview": preview.model_dump(mode="json"),
+            }
+
+        if action == "create_backup":
+            try:
+                (boundary or UpdateMutationBoundary()).schedule_backup(
+                    backup_root=backup_root,
+                    requested_by_user_id=user_id,
+                )
+            except Exception:
+                return {"ok": False, "error": "backup_schedule_failed"}
+            return {"ok": True, "status": "queued"}
+
+        if action in {"restart_device", "factory_reset"}:
+            try:
+                (boundary or UpdateMutationBoundary()).schedule_system_action(action)
+            except Exception:
+                return {"ok": False, "error": "system_action_schedule_failed"}
+            return {"ok": True, "status": "queued"}
+
+        marker = FileNetworkRecoveryMarker(
+            provisioning_data_dir / "network-recovery.json"
+        )
+        try:
+            snapshot = FileProvisioningStore(provisioning_data_dir).load()
+            if marker.is_active():
+                return {"ok": True, "status": "queued"}
+            if snapshot is None or snapshot.state is not ProvisioningState.PROVISIONED:
+                return {"ok": False, "error": "setup_not_available"}
+            (boundary or UpdateMutationBoundary()).schedule_network_setup(
+                "manual",
+                data_dir=provisioning_data_dir,
+                service_user=service_user,
+                service_group=service_group,
+            )
+        except Exception:
+            return {"ok": False, "error": "network_setup_schedule_failed"}
+        return {"ok": True, "status": "queued"}
+
+    if not isinstance(payload, dict) or set(payload) != {
+        "action",
+        "release_id",
+        "approval_nonce",
+        "requested_by_user_id",
+    }:
+        return {"ok": False, "error": "invalid_request"}
+    release_id = payload.get("release_id")
+    approval_nonce = payload.get("approval_nonce")
+    user_id = payload.get("requested_by_user_id")
+    if (
+        payload.get("action") != "apply"
+        or not isinstance(release_id, str)
+        or not 1 <= len(release_id) <= 160
+        or any(
+            character
+            not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+            for character in release_id
+        )
+        or not isinstance(approval_nonce, str)
+        or len(approval_nonce) != 64
+        or any(character not in "0123456789abcdef" for character in approval_nonce)
+        or not isinstance(user_id, int)
+        or isinstance(user_id, bool)
+        or user_id <= 0
+    ):
+        return {"ok": False, "error": "invalid_request"}
+
+    service_gid: int | None = None
+    staged = None
+    try:
+        service_uid, service_gid = _service_ids(service_user, service_group)
+        if status_file.is_file():
+            operation = UpdateOperationStatus.model_validate_json(
+                status_file.read_text(encoding="utf-8")
+            )
+            if operation.state in {"queued", "applying"}:
+                return {"ok": False, "error": "update_busy"}
+        staged = validate_staged_payload(
+            stage_root,
+            allowlist,
+            release_id=release_id,
+            approval_nonce=approval_nonce,
+            expected_owner_uid=service_uid,
+        )
+        queued = UpdateOperationStatus(
+            state="queued",
+            message="The verified update is queued for installation",
+            release_id=staged.release_id,
+            version=staged.version,
+            commit=staged.commit,
+            requested_by_user_id=user_id,
+            started_at=datetime.now(UTC),
+        )
+        write_operation_status(status_file, queued, owner=(0, service_gid))
+        (boundary or UpdateMutationBoundary()).schedule(
+            stage_root=stage_root,
+            state_root=state_root,
+            allowlist=allowlist,
+            release_id=release_id,
+            approval_nonce=approval_nonce,
+            requested_by_user_id=user_id,
+        )
+    except Exception:
+        LOGGER.exception("Verified update could not be scheduled")
+        if service_gid is not None:
+            try:
+                write_operation_status(
+                    status_file,
+                    UpdateOperationStatus(
+                        state="failed",
+                        message="The verified update could not be scheduled",
+                        release_id=staged.release_id if staged else release_id,
+                        version=staged.version if staged else None,
+                        commit=staged.commit if staged else None,
+                        requested_by_user_id=user_id,
+                        started_at=datetime.now(UTC),
+                        completed_at=datetime.now(UTC),
+                        error_code="schedule_failed",
+                    ),
+                    owner=(0, service_gid),
+                )
+            except Exception:
+                pass
+        return {"ok": False, "error": "update_schedule_failed"}
+    return {"ok": True, "status": "queued"}
+
+
+def _serve_connection(connection, **request_arguments):
+    """A lost caller/partial request must not kill the privileged helper."""
+    connection.settimeout(10.0)
+    try:
+        request = b""
+        while len(request) <= MAX_REQUEST_BYTES:
+            chunk = connection.recv(1024)
+            if not chunk:
+                break
+            request += chunk
+            if b"\n" in request:
+                break
+        if len(request) > MAX_REQUEST_BYTES:
+            raise ValueError("request_too_large")
+        from backend.applications.authority.context import _unique_object
+        payload = json.loads(request.split(b"\n", 1)[0], object_pairs_hook=_unique_object)
+        from components.system_runtime.platform_runtime_updates import ACTIONS as RUNTIME_UPDATE_ACTIONS
+        from components.system_runtime.component_updates import ACTIONS as COMPONENT_UPDATE_ACTIONS
+        from components.system_runtime.hardware_interfaces import ACTIONS as HARDWARE_ACTIONS
+        if isinstance(payload, dict) and type(payload.get('action')) is str and (payload['action'] in RUNTIME_UPDATE_ACTIONS | COMPONENT_UPDATE_ACTIONS | HARDWARE_ACTIONS or payload.get("action") in ("prepare_application_relational", "activate_application_relational", "recover_application_relational_start", "reactivate_application_relational", "enable_application_relational_boot", "recover_application_relational_preparation", "resume_application_relational_preparation") or payload["action"] in UPGRADE_ACTIONS):
+            if os.name != "posix" or not hasattr(socket, "SO_PEERCRED"):
+                raise ValueError("Local Core peer credentials required")
+            import struct
+            credentials = connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
+            request_arguments["relational_peer_uid"] = struct.unpack("3i", credentials)[1]
+        response = _handle_request(payload, **request_arguments)
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError, RecursionError):
+        response = {"ok": False, "error": "invalid_request"}
+    encoded = json.dumps(response, separators=(",", ":")).encode("utf-8") + b"\n"
+    if len(encoded) > MAX_RESPONSE_BYTES:
+        encoded = b'{"ok":false,"error":"response_too_large"}\n'
+    try:
+        connection.sendall(encoded)
+    except OSError:
+        # The action may have completed. No replay; Core must reconcile it.
+        LOGGER.warning("Helper caller disconnected before receiving its response")
+
+
+def serve(
+    socket_path: Path,
+    *,
+    stage_root: Path,
+    state_root: Path,
+    allowlist: Path,
+    repository: str,
+    manifest_asset_name: str,
+    group_name: str = "3mm",
+    network_recovery_policy: Path = Path(
+        "/var/lib/3mm/core/network-recovery-policy.json"
+    ),
+    provisioning_data_dir: Path = Path("/var/lib/3mm/provisioning"),
+    backup_root: Path = Path("/var/lib/3mm/backups"),
+    application_upload_root: Path = Path("/var/lib/3mm/core/uploads/modules"),
+    application_root: Path = Path("/var/lib/3mm/application-extensions"),
+    application_key_root: Path = Path("/etc/3mm/application-extensions"),
+) -> None:
+    import grp
+
+    group_id = grp.getgrnam(group_name).gr_gid
+    boundary = UpdateMutationBoundary(
+        repository=repository,
+        manifest_asset_name=manifest_asset_name,
+    )
+    from components.system_runtime.install_profile import NetworkBackend, read_network_backend
+
+    recovery_monitor = None
+    if read_network_backend() is NetworkBackend.NETWORK_MANAGER:
+        recovery_monitor = NetworkRecoveryMonitor(
+            policy_store=FileNetworkRecoveryPolicyStore(network_recovery_policy),
+            marker=FileNetworkRecoveryMarker(
+                provisioning_data_dir / "network-recovery.json"
+            ),
+            provisioning_store=FileProvisioningStore(provisioning_data_dir),
+            inspector=NetworkManagerReadOnlyAdapter.from_system(),
+            scheduler=boundary,
+        )
+    socket_path.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
+    os.chown(socket_path.parent, 0, group_id)
+    os.chmod(socket_path.parent, 0o750)
+    socket_path.unlink(missing_ok=True)
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+        server.bind(str(socket_path))
+        os.chown(socket_path, 0, group_id)
+        os.chmod(socket_path, 0o660)
+        server.listen(4)
+        server.settimeout(5.0)
+        while True:
+            try:
+                connection, _ = server.accept()
+            except socket.timeout:
+                if recovery_monitor is not None:
+                    recovery_monitor.poll()
+                continue
+            with connection:
+                _serve_connection(
+                    connection,
+                    stage_root=stage_root,
+                    state_root=state_root,
+                    allowlist=allowlist,
+                    status_file=state_root / "status.json",
+                    service_group=group_name,
+                    boundary=boundary,
+                    provisioning_data_dir=provisioning_data_dir,
+                    backup_root=backup_root,
+                    application_upload_root=application_upload_root,
+                    application_root=application_root,
+                    application_key_root=application_key_root,
+                )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--socket", type=Path, required=True)
+    parser.add_argument("--stage-root", type=Path, required=True)
+    parser.add_argument("--state-root", type=Path, required=True)
+    parser.add_argument("--allowlist", type=Path, required=True)
+    parser.add_argument("--repository", required=True)
+    parser.add_argument("--manifest-asset", required=True)
+    parser.add_argument("--group", default="3mm")
+    parser.add_argument(
+        "--network-recovery-policy",
+        type=Path,
+        default=Path("/var/lib/3mm/core/network-recovery-policy.json"),
+    )
+    parser.add_argument(
+        "--provisioning-data-dir",
+        type=Path,
+        default=Path("/var/lib/3mm/provisioning"),
+    )
+    parser.add_argument(
+        "--backup-root",
+        type=Path,
+        default=Path("/var/lib/3mm/backups"),
+    )
+    parser.add_argument(
+        "--application-upload-root",
+        type=Path,
+        default=Path("/var/lib/3mm/core/uploads/modules"),
+    )
+    parser.add_argument(
+        "--application-root",
+        type=Path,
+        default=Path("/var/lib/3mm/application-extensions"),
+    )
+    parser.add_argument(
+        "--application-key-root",
+        type=Path,
+        default=Path("/etc/3mm/application-extensions"),
+    )
+    arguments = parser.parse_args()
+    serve(
+        arguments.socket,
+        stage_root=arguments.stage_root,
+        state_root=arguments.state_root,
+        allowlist=arguments.allowlist,
+        repository=arguments.repository,
+        manifest_asset_name=arguments.manifest_asset,
+        group_name=arguments.group,
+        network_recovery_policy=arguments.network_recovery_policy,
+        provisioning_data_dir=arguments.provisioning_data_dir,
+        backup_root=arguments.backup_root,
+        application_upload_root=arguments.application_upload_root,
+        application_root=arguments.application_root,
+        application_key_root=arguments.application_key_root,
+    )
+
+
+if __name__ == "__main__":
+    main()

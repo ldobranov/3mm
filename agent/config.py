@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agent.hardware import HardwareProfile
-from three_mm_protocol import AgentRole
-from three_mm_provisioning import default_provisioning_data_dir
+from packages.protocol import AgentRole
+from packages.provisioning import default_provisioning_data_dir
 
 
 def default_data_dir() -> Path:

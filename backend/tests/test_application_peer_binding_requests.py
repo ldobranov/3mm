@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from backend.services.application_authority_review import review_application_authority
-from backend.services.module_packages import ModulePackageError, validate_module_package
+from backend.applications.authority.review import review_application_authority
+from backend.artifacts.packages import ModulePackageError, validate_module_package
 from backend.tests.test_application_authority_review import CONFIG
 from backend.tests.test_application_authority_sources import (
     installed as source_state,
@@ -14,7 +14,7 @@ from backend.tests.test_application_authority_sources import (
 )
 from backend.tests.test_installation_peers import peer_package
 from backend.tests.test_module_packages import application_package
-from three_mm_protocol.tests.test_application_peer_bindings import peer_request
+from packages.protocol.tests.test_application_peer_bindings import peer_request
 
 
 LINK = "peer_" + "a" * 32

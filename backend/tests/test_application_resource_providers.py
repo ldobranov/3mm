@@ -8,20 +8,20 @@ import pytest
 pwd = pytest.importorskip('pwd')
 
 from backend.config import ApplicationRuntimeSettings
-from backend.services.application_resource_providers import observe
+from backend.applications.resources.providers import observe
 from backend.tests.test_application_command_discovery import vertical, installed, source_subject, source_installed
 from backend.tests.test_application_consent import preview, allow
-from three_mm_platform_runtime.connector_worker import ConnectorWorker
-from three_mm_platform_runtime.server import PlatformRuntime
-from three_mm_platform_runtime.events import EventDeliveryWorker
-from three_mm_platform_runtime.tasks import TaskWorker
+from components.platform_runtime.connector_worker import ConnectorWorker
+from components.platform_runtime.server import PlatformRuntime
+from components.platform_runtime.events import EventDeliveryWorker
+from components.platform_runtime.tasks import TaskWorker
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Actual Unix principals and local workers')
 
 
 def test_connector_resource_uses_real_worker_without_contacting_destination(vertical, monkeypatch):
     import backend.config as config
-    import three_mm_platform_runtime.connector_worker as connector
+    import components.platform_runtime.connector_worker as connector
     s = vertical
     settings = config.get_settings()
     path = s.runtime_socket.with_name('connector.sock')

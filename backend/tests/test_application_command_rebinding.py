@@ -19,21 +19,21 @@ from backend.db.device import Device, DeviceCommand, DeviceCapabilityProvider
 from backend.db.module import ApplicationExtensionInstallation as Installation, ModulePackage
 from backend.db.session import UserSession
 from backend.db.user import User
-from backend.routes.application_authority import router
-from backend.services import application_command_rebinding as rebind
-from backend.services import application_commands as commands
-from backend.services.application_authority_management import AuthorityManagementError
-from backend.services.device_commands import deliver_next_command, record_command_result
-from backend.services.module_packages import validate_module_package
+from backend.applications.management.access_api import router
+from backend.applications.commands import rebinding as rebind
+from backend.applications.commands import broker as commands
+from backend.applications.authority.management import AuthorityManagementError
+from backend.devices.commands.queue import deliver_next_command, record_command_result
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_command_discovery import (
     installed, source_subject, source_installed, identity, vertical, add_provider, execute,
 )
 from backend.tests.test_application_consent import preview as consent_preview, allow, read
-from backend.utils.db_utils import get_db
-from three_mm_application_sdk import ApplicationPlatformError
-from three_mm_protocol import AgentCommandResult
-from three_mm_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
-from three_mm_runtime import application_lifecycle as helper_fencing
+from backend.storage.sessions import get_db
+from packages.application_sdk import ApplicationPlatformError
+from packages.protocol import AgentCommandResult
+from components.system_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
+from components.system_runtime import application_lifecycle as helper_fencing
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Real sealed POSIX authority")
 
@@ -264,7 +264,7 @@ def test_crash_requires_explicit_quiescence_then_fresh_consent(state, monkeypatc
                 pytest.fail("Delayed activation passed the recovery fence")
     # Resume using the existing ordinary activation path and its consent lease.
     activation(s, monkeypatch)
-    from backend.routes.application_extensions import activate_application_extension
+    from backend.applications.management.api import activate_application_extension
     with Session(s.engine) as db:
         result = activate_application_extension(s.validated.sha256, admin=db.get(User, 1), db=db)
     assert result.enabled and s.manager.inspect(1)["grant_effective"]

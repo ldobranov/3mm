@@ -1,6 +1,7 @@
 // Public, credential-free contract. The host is provided only to an application
 // route. Same-origin reviewed code is NOT a browser sandbox (see WP5).
 import { inject, type InjectionKey } from 'vue'
+import { recordBrowserFailure } from '../utils/diagnostic-client'
 
 export const APPLICATION_HOST_VERSION = 1 as const
 export type ApplicationAudience = 'public' | 'kiosk' | 'operator' | 'administrator'
@@ -237,6 +238,10 @@ export class ApplicationHostError extends Error {
 export const applicationHostKey = Symbol.for('3mm.application-host.v1') as InjectionKey<ApplicationHost>
 export function useApplicationHost(): ApplicationHost {
   const host = inject(applicationHostKey, undefined)
-  if (!host) throw new ApplicationHostError('unavailable')
+  if (!host) {
+    const error = new ApplicationHostError('unavailable')
+    recordBrowserFailure(error, 'application.request', { stage: 'host.context', cause: 'host_context_missing' })
+    throw error
+  }
   return host
 }

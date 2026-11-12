@@ -10,14 +10,15 @@ from sqlalchemy.orm import Session
 
 from backend.db.module import ApplicationPermissionGrant
 from backend.db.session import UserSession
-from backend.services import application_authority_management as authority
-from backend.services import application_invocation_relay as relay, operation_diagnostics as diagnostics
+from backend.applications.authority import management as authority
+from backend.applications.runtime import invocations as relay
+from backend.system.diagnostics import operations as diagnostics
 from backend.tests.test_application_ui_concurrency import (
     ui_http, ui_app, managed_installed, source_subject, source_installed,
 )
-from three_mm_protocol.diagnostic_snapshot import validate_record
-from three_mm_protocol.diagnostics import DiagnosticSession
-from three_mm_runtime.application_transport import sign_message
+from packages.protocol.diagnostic_snapshot import validate_record
+from packages.protocol.diagnostics import DiagnosticSession
+from components.system_runtime.application_transport import sign_message
 
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Real protected key/flock UI denial')
@@ -101,7 +102,7 @@ def test_database_failure_survives_key_and_http_error_redaction(ui_http, recorde
 
 
 def test_error_inside_acquired_lease_is_not_reported_as_key_acquisition_failure(ui_http, recorder, monkeypatch):
-    from backend.routes import application_extensions as routes
+    from backend.applications.management import api as routes
     def fail_policy(*args, **kwargs):
         raise RuntimeError(PRIVATE)
     monkeypatch.setattr(routes, '_ui_route', fail_policy)

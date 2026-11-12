@@ -2,7 +2,7 @@
 
 import pytest
 
-from backend.routes.application_authority import ReviewRequest
+from backend.applications.management.access_api import ReviewRequest
 
 
 def request(scopes, **extra):

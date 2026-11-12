@@ -9,7 +9,10 @@ from cryptography.fernet import Fernet
 from sqlalchemy import select
 
 from backend.tests.test_device_pairing_routes import make_client
-from backend.routes import device_platform, device_commands, device_state, device_ingest
+from backend.devices.platform import api as device_platform
+from backend.devices.commands import api as device_commands
+from backend.devices.telemetry import state_api as device_state
+from backend.devices.telemetry import ingest_api as device_ingest
 from backend.db.device import (
     Device,
     DeviceCredential,
@@ -17,22 +20,22 @@ from backend.db.device import (
     DevicePairingRequest,
     DeviceEvent,
 )
-from backend.services.device_commands import (
+from backend.devices.commands.queue import (
     queue_command,
     deliver_next_command,
     DeviceCommandError,
 )
-from backend.services.device_platform import platform_snapshot
-from backend.utils import jwt_utils
+from backend.devices.platform.service import platform_snapshot
+from backend.accounts import tokens as jwt_utils
 from agent.core_client import DeviceCredential as ClientCredential
 from agent.device_transport import HttpDeviceTransport, HttpRejected
-from three_mm_protocol.device_platform import (
+from packages.protocol.device_platform import (
     challenge,
     AuthorityProofV1,
     verify_authority,
     LifecycleReportV1,
 )
-from three_mm_protocol.device_authority import DeviceAuthorityStore
+from packages.protocol.device_authority import DeviceAuthorityStore
 from examples.mock_embedded.client import MockEmbeddedClient
 
 

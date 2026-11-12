@@ -192,7 +192,7 @@ def perform_factory_reset(
             f"PYTHONPATH={release}",
             str(python),
             "-m",
-            "three_mm_runtime.activate",
+            "components.system_runtime.activate",
         )
     )
     command_runner.run(

@@ -23,8 +23,8 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from agent.identity import AgentIdentity
 from backend.config import AppSettings
-from backend.services.installation_identity import validate_identity_backup
-from backend.services.backups import (
+from backend.installation.identity import validate_identity_backup
+from backend.system.backups.service import (
     BackupOperationStatus,
     validate_application_backup_inventory,
     validate_application_backup_state,
@@ -41,8 +41,8 @@ from deployment.release_smoke import ReleaseEndpoints, SmokeFailure, verify_rele
 from deployment.backup_compatibility import validate_release_path
 from deployment.installation_peer_recovery import quarantine_restored_installation_peers
 from deployment.authority_recovery import fence_recovered_authority
-from three_mm_protocol import PROTOCOL_VERSION, BackupManifestV1
-from three_mm_provisioning import ProvisioningSnapshot, ProvisioningState
+from packages.protocol import PROTOCOL_VERSION, BackupManifestV1
+from packages.provisioning import ProvisioningSnapshot, ProvisioningState
 
 
 RUNTIME_SERVICES = (
@@ -159,7 +159,7 @@ class SystemRestoreRuntime:
                 f"PYTHONPATH={release}",
                 str(release / ".venv/bin/python"),
                 "-m",
-                "three_mm_runtime.activate",
+                "components.system_runtime.activate",
             )
         )
         last_error: Exception | None = None

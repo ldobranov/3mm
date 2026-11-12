@@ -28,19 +28,26 @@ def build(root, wheels, output, *, version, commit, repository, epoch,
         raise ValueError('Invalid release identity')
     if (root / 'VERSION').read_text().strip() != version:
         raise ValueError('VERSION does not match')
-    names = {'VERSION', 'deployment/install-systemd.sh', 'deployment/node-requirements.txt',
+    names = {'VERSION', 'config_templates/product.json', 'components/__init__.py', 'packages/__init__.py',
+             'packages/protocol/theme_design_defaults.json',
+             'packages/provisioning/__init__.py', 'packages/provisioning/network_recovery.py',
+             'packages/provisioning/network_helper.py', 'packages/provisioning/setup_access_point.py',
+             'deployment/install-systemd.sh', 'deployment/node-requirements.txt',
              'deployment/node_preflight.py', 'deployment/apply_node_update.py',
              'deployment/trust_node_update_hub.py', 'deployment/component_store.py',
+             'deployment/component_transition.py',
              'deployment/service_component.py', 'deployment/service-components-contract.json',
              'deployment/service-agent-requirements.txt', 'deployment/application-host-requirements.txt'}
-    names.update('three_mm_runtime/' + name for name in RUNTIME_FILES)
+    names.update('components/system_runtime/' + name for name in RUNTIME_FILES)
     names.update('deployment/systemd/' + name for name in UNITS)
-    for package in ('agent', 'setup_service', 'three_mm_protocol', 'three_mm_provisioning', 'three_mm_platform_wire'):
+    for package in ('agent', 'components/setup'):
         for path in (root / package).rglob('*'):
             relative = path.relative_to(root)
             if (path.is_file() and not {'tests', '__pycache__'} & set(relative.parts)
                     and path.suffix in {'.py', '.html', '.txt'}):
                 names.add(relative.as_posix())
+    for package in ('packages/protocol', 'packages/platform_wire', 'packages/provisioning'):
+        names.update(path.relative_to(root).as_posix() for path in (root / package).glob('*.py'))
     payload = []
     for name in sorted(names):
         path = root / name

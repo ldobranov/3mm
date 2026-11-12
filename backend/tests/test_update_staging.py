@@ -13,14 +13,14 @@ from types import SimpleNamespace
 import pytest
 
 from backend.config import BackendSettings, FrontendSettings, UpdateCatalogSettings
-from backend.services.system_updates import (
+from backend.system.updates.releases import (
     CurrentRelease,
     LatestRelease,
     UpdateArtifact,
     UpdateCheckResponse,
     UpdateDependencies,
 )
-from backend.services.update_staging import (
+from backend.system.updates.staging import (
     REQUIRED_RELEASE_FILES,
     StagedUpdate,
     UpdateApplyRequest,
@@ -160,7 +160,7 @@ def stage(
     update_settings = settings(tmp_path)
     catalog = catalog_for(source, packages)
     monkeypatch.setattr(
-        "backend.services.update_staging.platform.machine", lambda: "aarch64"
+        "backend.system.updates.staging.platform.machine", lambda: "aarch64"
     )
 
     def copy_artifact(_artifact, destination, _settings) -> None:
@@ -209,7 +209,7 @@ def test_stage_rejects_dependency_outside_installed_allowlist_before_download(
     update_settings = settings(tmp_path)
     catalog = catalog_for(source, ["curl"])
     monkeypatch.setattr(
-        "backend.services.update_staging.platform.machine", lambda: "aarch64"
+        "backend.system.updates.staging.platform.machine", lambda: "aarch64"
     )
     downloaded = False
 
@@ -458,6 +458,43 @@ def test_target_contract_accepts_future_unit_without_installed_release_knowledge
         },
     )
     assert verify_test_archive(archive).schema_version == 2
+
+
+def test_neutral_target_requires_one_time_upgrade_from_published_0311_reader(
+    tmp_path, monkeypatch
+):
+    # The published 0.3.11 reader uses this fixed minimum. Its validator body is
+    # otherwise unchanged; this fixture must not depend on Git history in CI.
+    published_minimum = frozenset({
+        ".3mm-release.json", "backend/requirements.txt",
+        "backend/services/update_staging.py", "deployment/apply_staged_update.py",
+        "deployment/install-systemd.sh", "deployment/migrate_database.py",
+        "deployment/release-dependencies.json",
+        "deployment/update-dependency-allowlist.json",
+        "deployment/systemd/3mm-agent.service", "deployment/systemd/3mm-core.service",
+        "deployment/systemd/3mm-update-helper.service", "deployment/systemd/3mm-web.service",
+        "frontend/dist/index.html", "three_mm_runtime/update_helper.py",
+    })
+    contract_data = (Path(__file__).resolve().parents[2] / CONTRACT_PATH).read_bytes()
+    contract = json.loads(contract_data)
+    required = set(contract["required_files"])
+    assert {"backend/system/updates/staging.py",
+            "components/system_runtime/update_helper.py"} <= required
+    assert not {"backend/services/update_staging.py",
+                "three_mm_runtime/update_helper.py"} & required
+    archive = tmp_path / "neutral-target.tar.gz"
+    write_release_archive(archive, extra_entries={
+        **{name: b"placeholder\n" for name in required - REQUIRED_RELEASE_FILES},
+        CONTRACT_PATH: contract_data,
+    })
+    assert verify_test_archive(archive).schema_version == 2
+
+    # Simulate only the published reader's frozen minimum, never execute its
+    # obsolete modules or weaken the target's current archive validation.
+    monkeypatch.setattr("deployment.deployment_contract.LEGACY_REQUIRED_FILES",
+                        published_minimum)
+    with pytest.raises(UpdateStagingError, match="required files are invalid"):
+        verify_test_archive(archive)
 
 
 @pytest.mark.parametrize(

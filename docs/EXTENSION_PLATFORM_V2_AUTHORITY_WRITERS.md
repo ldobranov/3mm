@@ -7,7 +7,7 @@ This does not complete WP4, add approved grants or enable effect enforcement.
 
 ## Integrated entry points
 
-The existing admin-only [management endpoints](../backend/routes/application_operations.py)
+The existing admin-only [management endpoints](../backend/applications/operations_api.py)
 retain their URLs, request/response fields, credential encryption and ownership
 rules. Internal helpers require the owning `AuthorityMutation` and no longer
 commit independently. All repository callers were adapted.

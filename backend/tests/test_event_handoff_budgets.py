@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from three_mm_platform_runtime import events
-from three_mm_platform_wire import event_delivery
+from components.platform_runtime import events
+from packages.platform_wire import event_delivery
 
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Unix event FD handoff')
@@ -128,7 +128,7 @@ def test_authoritative_lease_accounts_for_suspend_without_extending(monkeypatch)
 
 
 def test_claim_caller_peek_is_nonblocking_and_restores_its_timeout():
-    from backend.services.application_events import _connected_caller
+    from backend.applications.events.broker import _connected_caller
     left,right=socket.socketpair()
     left.settimeout(2)
     try:

@@ -14,8 +14,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from backend.services import application_authority_management as authority
-from backend.services.application_relational_admin_worker import dispatch
+from backend.applications.authority import management as authority
+from backend.applications.relational.admin_worker import dispatch
 from backend.tests.test_application_relational_activation import ProcessSupervisor
 from backend.tests.test_application_relational_activation_control import (
     catalog,
@@ -44,12 +44,12 @@ from backend.tests.test_application_relational_recovery_control import (
 from backend.tests.test_application_relational_recovery_control import (
     request as stop_request,
 )
-from three_mm_application_sdk.relational_wire import canonical, sign_metadata
-from three_mm_runtime import application_relational_activation_recovery as stop_helper
-from three_mm_runtime import application_relational_boot as boot_helper
-from three_mm_runtime import update_helper
-from three_mm_runtime.application_relational_control import boot_enable_request
-from three_mm_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
+from packages.application_sdk.relational_wire import canonical, sign_metadata
+from components.system_runtime import application_relational_activation_recovery as stop_helper
+from components.system_runtime import application_relational_boot as boot_helper
+from components.system_runtime import update_helper
+from components.system_runtime.application_relational_control import boot_enable_request
+from components.system_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Actual Core/Unix peer")
 
@@ -248,7 +248,7 @@ def test_no_runtime_review_refuses_before_existing_key_or_process_effect(
     state = started
     before, rows = files(state), metadata_rows(state)
     monkeypatch.setattr(
-        "three_mm_runtime.application_relational_preparation._key",
+        "components.system_runtime.application_relational_preparation._key",
         lambda *a: pytest.fail("Read key before current authority"),
     )
     assert handle(state)["error"] == "relational_boot_enable_unconfirmed"
@@ -329,7 +329,7 @@ def test_current_actor_source_grant_and_installed_layout_are_checked_before_key(
         state.worker_root = state.runtime / "foreign"
     before, rows = files(state), metadata_rows(state)
     monkeypatch.setattr(
-        "three_mm_runtime.application_relational_preparation._key",
+        "components.system_runtime.application_relational_preparation._key",
         lambda *a: pytest.fail("Read key before current snapshot"),
     )
     assert handle(state, value)["error"] == "relational_boot_enable_unconfirmed"
@@ -590,7 +590,7 @@ def test_duplicate_boot_helper_frame_is_refused_before_dispatch(tmp_path, monkey
 
 
 def test_duplicate_boot_client_response_is_unconfirmed_without_retry(monkeypatch):
-    from three_mm_runtime import update_helper_client
+    from components.system_runtime import update_helper_client
 
     calls = []
 

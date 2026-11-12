@@ -21,9 +21,9 @@ from backend.db.module import (
     ApplicationExtensionInstallation as Installation,
     ModulePackage,
 )
-from backend.services import application_authority_sources as sources
-from backend.services.application_authority_management import AuthorityManagementError
-from backend.services.module_packages import ModulePackageError, validate_module_package
+from backend.applications.authority import sources
+from backend.applications.authority.management import AuthorityManagementError
+from backend.artifacts.packages import ModulePackageError, validate_module_package
 from backend.tests.test_application_authority_management import (
     identity,
     installed as managed_installed,
@@ -43,7 +43,7 @@ from backend.tests.test_module_packages import (
     application_definition,
     application_package,
 )
-from three_mm_protocol.tests.test_application_private_files import file_request
+from packages.protocol.tests.test_application_private_files import file_request
 
 
 def package(**bounds):

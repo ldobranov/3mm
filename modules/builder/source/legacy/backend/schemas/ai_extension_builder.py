@@ -28,7 +28,7 @@ class ContentEmbedderConfig(BaseModel):
 
 
 class ProvidesConfig(BaseModel):
-    # Mirrors the manifest structure described in EXTENSION_DEVELOPMENT_GUIDE.md
+    # Historical schema: docs/archive/legacy/EXTENSION_DEVELOPMENT_GUIDE.md.
     content_embedders: Optional[Dict[str, ContentEmbedderConfig]] = None
 
 

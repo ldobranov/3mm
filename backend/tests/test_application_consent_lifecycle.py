@@ -15,9 +15,9 @@ from backend.db.application_authority_grant import ApplicationAuthorityGrant as 
 from backend.db.audit_log import AuditLog
 from backend.db.device import DeviceCapabilityProvider
 from backend.db.module import ApplicationExtensionInstallation as Installation, ApplicationPermissionGrant, ApplicationSecretReference
-from backend.routes.application_extensions import router
-from backend.services import application_authority_management as management
-from backend.services.application_commands import submit_command, command_lookup
+from backend.applications.management.api import router
+from backend.applications.authority import management
+from backend.applications.commands.broker import submit_command, command_lookup
 from backend.tests.test_application_authority_management import (
     installed as managed_installed, source_subject, source_installed,
     activate_grant, command, identity,
@@ -26,8 +26,8 @@ from backend.tests.test_application_session_authority import (
     session_app, checkpoint_app, activate as activate_session, admit, check,
     SessionAuthorityError,
 )
-from backend.utils.db_utils import get_db
-from three_mm_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
+from backend.storage.sessions import get_db
+from components.system_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
 
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Real POSIX sealed consent and key leases")

@@ -6,8 +6,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends
 from fastapi.routing import iter_route_contexts
-from backend.utils.auth_dep import guard_user_session
-from backend.utils.device_body_limit import DeviceBodyLimitMiddleware
+from backend.accounts.dependencies import guard_user_session
+from backend.devices.body_limit import DeviceBodyLimitMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -20,48 +20,48 @@ import backend.db.audit_log  # noqa: F401
 import backend.db.role  # noqa: F401 - Import to ensure tables are created
 import backend.db.user  # noqa: F401
 from backend.config import get_settings
-from backend.services.asset_storage import get_asset_storage
+from backend.storage.public_assets import get_asset_storage
 
 # Import database and models first
 from backend.database import get_db, init_db
-from backend.routes.application_extensions import router as application_extensions_router
-from backend.routes.application_authority import router as application_authority_router
-from backend.routes.application_events import router as application_events_router
-from backend.routes.application_operations import router as application_operations_router
-from backend.routes.installation_peers import router as installation_peers_router
-from backend.routes.backups import router as backups_router
-from backend.routes.diagnostics import router as diagnostics_router
-from backend.routes.audit_routes import router as audit_router
-from backend.routes.auth_refresh import router as refresh_router
-from backend.routes.device_pairing import router as device_pairing_router
-from backend.routes.device_platform import router as device_platform_router
-from backend.routes.device_ingest import router as device_ingest_router
-from backend.routes.device_registry import router as device_registry_router
-from backend.routes.device_commands import router as device_commands_router
-from backend.routes.device_state import router as device_state_router
-from backend.routes.device_capabilities import router as device_capabilities_router
-from backend.routes.device_runtime_features import router as device_runtime_features_router
-from backend.routes.device_capability_state import router as device_capability_state_router
-from backend.routes.device_events import router as device_events_router
-from backend.routes.node_update_delivery import router as node_update_delivery_router
-from backend.routes.group_routes import router as group_router
-from backend.routes.language_routes import router as language_router
-from backend.routes.modules import router as modules_router
-from backend.routes.permission_routes import router as permission_router
-from backend.routes.role_routes import router as role_router
-from backend.routes.session_routes import router as session_router
-from backend.routes.system_updates import router as system_updates_router
-from backend.routes.system_control import router as system_control_router
-from backend.routes.hardware_interfaces import router as hardware_interfaces_router
-from backend.routes.network_recovery import router as network_recovery_router
-from backend.routes.node_updates import router as node_updates_router
-from backend.services.update_policy import system_update_check_manager
-from backend.services.core_components import CoreComponents
-from backend.services.http_failures import HttpFailureMiddleware
+from backend.applications.management.api import router as application_extensions_router
+from backend.applications.management.access_api import router as application_authority_router
+from backend.applications.events.api import router as application_events_router
+from backend.applications.operations_api import router as application_operations_router
+from backend.installation.api import router as installation_peers_router
+from backend.system.backups.api import router as backups_router
+from backend.system.diagnostics.api import router as diagnostics_router
+from backend.system.audit.api import router as audit_router
+from backend.accounts.sessions.refresh import router as refresh_router
+from backend.devices.pairing.api import router as device_pairing_router
+from backend.devices.platform.api import router as device_platform_router
+from backend.devices.telemetry.ingest_api import router as device_ingest_router
+from backend.devices.registry.api import router as device_registry_router
+from backend.devices.commands.api import router as device_commands_router
+from backend.devices.telemetry.state_api import router as device_state_router
+from backend.devices.capabilities.api import router as device_capabilities_router
+from backend.devices.features.api import router as device_runtime_features_router
+from backend.devices.capabilities.state_api import router as device_capability_state_router
+from backend.devices.telemetry.events_api import router as device_events_router
+from backend.devices.updates.delivery_api import router as node_update_delivery_router
+from backend.accounts.access.groups_api import router as group_router
+from backend.localization.api import router as language_router
+from backend.artifacts.api import router as modules_router
+from backend.accounts.access.permissions_api import router as permission_router
+from backend.accounts.access.roles_api import router as role_router
+from backend.accounts.sessions.api import router as session_router
+from backend.system.updates.api import router as system_updates_router
+from backend.system.control import router as system_control_router
+from backend.devices.hardware_interfaces import router as hardware_interfaces_router
+from backend.system.network_recovery.api import router as network_recovery_router
+from backend.devices.updates.api import router as node_updates_router
+from backend.system.updates.policy import system_update_check_manager
+from backend.system.components import CoreComponents
+from backend.system.diagnostics.failures import HttpFailureMiddleware
 
 # Import all route routers
-from backend.routes.settings import router as settings_router
-from backend.routes.user import router as user_router
+from backend.settings.api import router as settings_router
+from backend.accounts.users_api import router as user_router
 
 
 
@@ -91,13 +91,13 @@ class UnicodeJSONResponse(JSONResponse):
 
 
 def _language_packages():
-    from backend.services.language_extensions import BundledLanguagePackages
+    from backend.localization.packages import BundledLanguagePackages
     return BundledLanguagePackages(get_db, app_settings)
 
 
 def _runtime_authority():
     import pwd,grp
-    from backend.services.application_platform import CoreRuntimeAuthorityServer
+    from backend.applications.runtime.platform import CoreRuntimeAuthorityServer
     runtime=pwd.getpwnam(app_settings.applications.runtime_user)
     if runtime.pw_uid==os.geteuid():
         raise ValueError("Core and Runtime require distinct OS principals")
@@ -216,8 +216,8 @@ if os.getenv("THREE_MM_LOCAL_SESSIONS") == "1" or os.getenv("THREE_MM_SESSION_LI
     # Never mount the old user-id-only prototype. Both M20 and human authority
     # are checked continuously by this exact UI-bound isolated-worker connector.
     from backend.database import engine
-    from backend.routes.application_sessions import application_session_router
-    from backend.services.application_session_runtimes import configured_browser_service
+    from backend.applications.sessions.api import application_session_router
+    from backend.applications.sessions.runtimes import configured_browser_service
     app.include_router(application_session_router(configured_browser_service(engine)))
 app.include_router(application_events_router)
 app.include_router(application_operations_router)

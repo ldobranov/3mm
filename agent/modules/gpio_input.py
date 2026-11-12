@@ -6,7 +6,7 @@ import time
 from agent.hardware.gpio import MockDigitalGpioDriver
 from agent.hardware.gpiod import GpiodDigitalGpioDriver
 from agent.module_runtime import ModuleLifecycleError
-from three_mm_protocol.gpio_input import (
+from packages.protocol.gpio_input import (
     GpioInputProfileV1, INPUT_CAPABILITY, INPUT_EVENT, MAX_SEQUENCE, MAX_MONOTONIC_NS,
 )
 

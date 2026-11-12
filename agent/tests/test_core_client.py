@@ -9,9 +9,9 @@ from agent.core_client import (
     CommandJournal, CorePublisher, DeviceCredential, DeviceCredentialStore,
     OutboxEntry, OutboxStore, ReconciliationState, ReconciliationStore,
 )
-from three_mm_protocol.node_updates import  NodeUpdatePreparedArtifact
-from three_mm_protocol import AgentCommandResult
-from three_mm_protocol.transport import DeviceTransportError
+from packages.protocol.node_updates import  NodeUpdatePreparedArtifact
+from packages.protocol import AgentCommandResult
+from packages.protocol.transport import DeviceTransportError
 
 def assert_private_file(path: Path) -> None:
     if os.name == "posix":

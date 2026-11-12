@@ -11,7 +11,7 @@ import uvicorn
 from agent.config import AgentSettings
 from agent.hardware import HardwareProfile
 from agent.main import create_app
-from three_mm_protocol import AgentRole
+from packages.protocol import AgentRole
 
 
 def build_parser() -> argparse.ArgumentParser:

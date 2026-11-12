@@ -4,7 +4,7 @@ from backend.tests.test_application_access import kiosk_enrollment,kiosk_claim
 import pytest
 
 from backend.db.module import ApplicationPermissionGrant
-from backend.services import application_extensions as gateway
+from backend.applications.runtime import gateway
 from backend.tests.test_application_access import environment, headers
 from backend.tests.test_module_packages import (
     application_definition,

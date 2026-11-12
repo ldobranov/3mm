@@ -15,17 +15,18 @@ from sqlalchemy.orm import Session
 from backend.db.base import Base
 from backend.db.device import Device, DeviceCredential, DeviceEvent, DeviceCapabilityProvider, DeviceRuntimeFeatures
 from backend.db.module import ApplicationEventCursor, ApplicationEventDelivery, ApplicationExtensionInstallation as Installation, ModulePackage, ModuleInstallation
-from backend.services import application_events as broker, application_extensions as gateway
-from backend.services import application_authority_management as authority
-from backend.services.application_authority_context import AuthoritySelectionV1, review_authority_context
-from backend.services.module_packages import validate_module_package
+from backend.applications.events import broker
+from backend.applications.runtime import gateway
+from backend.applications.authority import management as authority
+from backend.applications.authority.context import AuthoritySelectionV1, review_authority_context
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_authority_management import (
     installed as core_installed, source_subject, source_installed, native, decide, identity,
 )
 from backend.tests.test_application_authority_sources import DEVICE, PRIVATE
 from backend.tests.test_application_events import application_definition
 from backend.config import ApplicationRuntimeSettings
-from three_mm_runtime.application_transport import ApplicationTransportError
+from components.system_runtime.application_transport import ApplicationTransportError
 
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Real POSIX review key ownership/locking required')
@@ -84,7 +85,7 @@ def events(core_installed, tmp_path, monkeypatch):
 
     monkeypatch.setattr(gateway, 'ApplicationServiceClient', Client)
     def send(prepared,request_id,**_bounds):
-        from three_mm_runtime.application_transport import sign_message,send_message
+        from components.system_runtime.application_transport import sign_message,send_message
         left,right=socket.socketpair()
         try:
             result=gateway.ApplicationServiceClient(prepared.socket_path,prepared.secret,prepared.timeout_seconds).invoke(
@@ -157,8 +158,8 @@ def test_event_review_is_exact_redacted_and_approval_is_not_apply(events):
 def test_event_scope_admin_api_requires_real_admin_and_separate_apply(events):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
-    from backend.routes.application_authority import router
-    from backend.utils.db_utils import get_db
+    from backend.applications.management.access_api import router
+    from backend.storage.sessions import get_db
     s = events
     app = FastAPI()
     app.include_router(router)
@@ -222,8 +223,8 @@ def test_applied_event_grant_delivers_once_via_real_gateway_for_generic_provider
         else:
             db.execute(update(DeviceCapabilityProvider).values(provider_type=provider))
             # Changing provider identity invalidates its previous health digest.
-            from backend.services.device_capability_registry import capability_catalog, report_availability
-            from three_mm_protocol.capability_availability import CapabilityAvailabilityReportV1, CapabilityHealthV1
+            from backend.devices.capabilities.registry import capability_catalog, report_availability
+            from packages.protocol.capability_availability import CapabilityAvailabilityReportV1, CapabilityHealthV1
             offer = capability_catalog(db, db.get(Device, 1))[0]
             report_availability(db, db.get(Device, 1), CapabilityAvailabilityReportV1(
                 device_id=DEVICE, provider_type=offer.provider_type, provider_id=offer.provider_id,

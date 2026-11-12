@@ -151,7 +151,7 @@ WP5 OS/browser isolation gates are not completed by this read operation.
 
 Related evidence:
 
-- [WP4 scope and closure checklist](../EXTENSION_PLATFORM_V2_CORE_PLAN.md#wp4--public-platform-api-sdk-and-authorization)
+- [WP4 scope and closure checklist](EXTENSION_PLATFORM_V2_CORE_PLAN.md#wp4--public-platform-api-sdk-and-authorization)
 - [Current closure audit](EXTENSION_PLATFORM_V2_WP4_CLOSURE_AUDIT.md)
 - [Authority administration and admission](EXTENSION_PLATFORM_V2_AUTHORITY_APPLY.md)
 - [Existing identity/proof compatibility contract](INSTALLATION_IDENTITY_V1.md)

@@ -11,15 +11,15 @@ from fastapi import FastAPI
 from starlette.testclient import TestClient
 
 from agent.session_transport import AgentSessionHost
-from backend.routes import interactive_sessions as routes
-from backend.services import interactive_session_gateway as gateway_module
-from backend.services.interactive_session_acceptance import CounterSessionProvider
-from backend.services.interactive_session_agent import (
+from backend.sessions import api as routes
+from backend.sessions import gateway as gateway_module
+from backend.sessions.acceptance import CounterSessionProvider
+from backend.sessions.agent import (
     AgentSessionError, DeviceTicketStore, MAX_PENDING_DEVICE_TICKETS,
 )
-from backend.services.interactive_session_gateway import SessionGateway
-from backend.utils.device_auth import require_device
-from three_mm_protocol.interactive_session import (
+from backend.sessions.gateway import SessionGateway
+from backend.devices.auth import require_device
+from packages.protocol.interactive_session import (
     MAX_SESSION_PAYLOAD_BYTES, SessionOpenRequestV1,
     decode_session_frame, encode_session_frame,
 )

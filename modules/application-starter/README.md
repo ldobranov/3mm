@@ -2,9 +2,15 @@
 
 This is the bounded CAP21 authoring profile: a Manifest-v2 application with
 one operator UI, an application-owned SQLite note and an optional selected
-resource. It uses the current public Python SDK and `@3mm/ui/v1` /
-`@3mm/application-ui/v1`. No Core or Agent runtime change is needed to install it.
+resource. It uses the current public Python SDK and `@platform/ui/v1` /
+`@platform/application-ui/v1`. No Core or Agent runtime change is needed to install it
+on a host that supplies these current contracts.
 This source example is excluded from the installed Core runtime payload.
+
+Start with the platform [application development guide](../../docs/APPLICATION_DEVELOPMENT.md)
+and this project's [development instructions](AGENTS.md). `init` copies the
+instructions into new projects; existing projects are not rewritten automatically.
+This README details the Note example and the bounded authoring tools.
 
 ## Create a separate application
 
@@ -303,12 +309,18 @@ a hardware command. Resource failure or revocation cannot corrupt the note.
 
 If you explicitly choose to try the package on a device:
 
-1. Upload the generated ZIP through Extensions and prepare its configuration.
-2. Select the target in the ordinary application configuration, review the exact
-   package/native-code trust and optional resource, and separately approve them.
+1. Upload the checked ZIP through Extensions and review the stopped candidate.
+   Leave the optional device empty for the ordinary note-only trial. A generated
+   application with missing required device choices first completes the offered
+   configuration step; Note does not require that step.
+2. Review and approve the exact package/native-code access before activation.
+   If trying the optional resource, select it in application configuration and
+   separately review its current access. Configuration is not permission.
 3. Assign `note_read` to users who can view it and `note_write` to users who can
    edit it. A platform administrator flag is not substituted for app permission.
-4. Open `/starter-note`. No route load, note save or resource observation writes
-   to hardware. Disable/revoke and removal use the ordinary lifecycle controls.
+4. Activate and open the declared route: `/starter-note` for this official example,
+   or the route chosen with `init` for your separate project. No route load, note
+   save or resource observation writes to hardware. Disable/revoke and removal
+   use the ordinary lifecycle controls.
 
 These are optional manual acceptance steps, not actions performed by `check`.

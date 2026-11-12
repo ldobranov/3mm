@@ -12,11 +12,11 @@ from types import SimpleNamespace
 import uuid
 
 import pytest
-from backend.services.application_response_relay import ResponseWaiter, ApplicationResponseError
-from backend.services.application_status_probe import StatusProbe,snapshot,finish_status_probe
-from three_mm_platform_runtime.responses import ApplicationResponses
-from three_mm_platform_wire import send_authority_frame,read_frame
-from three_mm_runtime.application_transport import sign_message
+from backend.applications.runtime.responses import ResponseWaiter, ApplicationResponseError
+from backend.applications.runtime.status_probe import StatusProbe,snapshot,finish_status_probe
+from components.platform_runtime.responses import ApplicationResponses
+from packages.platform_wire import send_authority_frame,read_frame
+from components.system_runtime.application_transport import sign_message
 
 pytestmark=pytest.mark.skipif(os.name!='posix' or os.geteuid()==0,reason='Unprivileged Linux functional lab; distinct-UID proof is separate')
 
@@ -222,7 +222,7 @@ def test_status_admission_rechecks_after_reservation_before_any_app_send(connect
     import pwd
     from sqlalchemy import update
     from backend.db.module import ApplicationExtensionInstallation as Installation,ModulePackage
-    from backend.services.application_status_probe import begin_status_probe
+    from backend.applications.runtime.status_probe import begin_status_probe
     db,app=connector_db;package=db.get(ModulePackage,app.module_package_id)
     (tmp_path/(app.instance_id+'.key')).write_bytes(b's'*32)
     settings=SimpleNamespace(key_root=tmp_path,runtime_user=pwd.getpwuid(os.geteuid()).pw_name,
@@ -244,8 +244,8 @@ from backend.tests.test_application_connectors import connector_db
 
 
 def test_enabled_response_channel_refuses_core_without_current_feature(tmp_path):
-    from three_mm_platform_runtime.server import probe_core
-    from three_mm_platform_wire import receive_authority_frame
+    from components.platform_runtime.server import probe_core
+    from packages.platform_wire import receive_authority_frame
     path=tmp_path/'old-core.sock';listener=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);listener.bind(str(path));listener.listen(1)
     def old_core():
         connection,_=listener.accept()

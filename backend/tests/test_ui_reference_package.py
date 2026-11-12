@@ -1,7 +1,7 @@
 import runpy
 from pathlib import Path
 
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 
 
 ROOT = Path(__file__).resolve().parents[2] / "modules" / "ui-reference"

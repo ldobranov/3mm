@@ -21,6 +21,22 @@ The shared runtime planner determines which units an installer enables:
 | Node | `3mm-agent.service` |
 | Hub or Standalone | `3mm-core.service`, `3mm-web.service`, `3mm-agent.service`, `3mm-public-web.socket` |
 
+The administrative web unit starts `python -m components.admin_web` from the
+immutable release root. Its Python source and tests live in
+`components/admin_web/`; `components/__init__.py` does not load other components.
+The Vue source/build remains in `frontend/`, and the unit still serves
+`frontend/dist/` on ports 8080 and 80. The full release builder, target contract
+and installer require the new package and its existing captive-portal helper.
+Minimal Node artifacts do not include the administrative web package.
+
+For a local prebuilt artifact, from the repository root:
+
+```sh
+python -m components.admin_web --host 127.0.0.1 --port 8080 --directory frontend/dist
+```
+
+This listener does not build the frontend or proxy the Core API.
+
 The public-web socket listens only on loopback port 8081. It starts the
 unprivileged `3mm-public-web.service` only when a request arrives; the process
 exits again after an idle window. Core exposes only the bounded public gateway
@@ -197,6 +213,12 @@ python3 /opt/3mm/current/deployment/release_smoke.py
 ```
 
 ## First administrator
+
+The optional host-account terminal worker has a separate immutable artifact,
+fixed unprivileged account, private persistent home and disabled root policy.
+Installation does not enable its socket or approve access. Follow the
+[local host-account session guide](../../docs/HOST_ACCOUNT_SESSIONS.md) before
+opting in; the existing isolated worker is unchanged.
 
 On the first deployment of a brand-new empty database, the Beta/test installer
 creates `admin@example.com` with password `admin`. It does this only when the

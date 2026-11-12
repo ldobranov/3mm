@@ -1,5 +1,5 @@
 """New exact declarations cannot inherit legacy peers/signing at either Core."""
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 import copy
 import os
@@ -18,10 +18,10 @@ from backend.db.module import (
     ApplicationExtensionInstallation as Installation,
     ModulePackage,
 )
-from backend.services import installation_peers as peers
-from backend.services import installation_identity as identities
-from backend.services.application_platform import ApplicationPlatformServer
-from backend.services.module_packages import validate_module_package
+from backend.installation import peers
+from backend.installation import identity as identities
+from backend.applications.runtime.platform import ApplicationPlatformServer
+from backend.artifacts.packages import validate_module_package
 import backend.database
 from backend.tests.test_installation_peers import (
     pair,
@@ -30,8 +30,8 @@ from backend.tests.test_installation_peers import (
     ORIGIN,
 )
 from backend.tests.test_module_packages import application_package
-from three_mm_protocol.tests.test_application_peer_bindings import peer_request
-from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+from packages.protocol.tests.test_application_peer_bindings import peer_request
+from packages.application_sdk import ApplicationPlatformClient, ApplicationPlatformError
 
 
 def opt_in(pair):

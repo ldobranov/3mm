@@ -11,8 +11,8 @@ import pytest
 import requests
 from sqlalchemy.orm import Session
 
-from backend.services.application_authority_review import review_application_authority
-from backend.services.module_packages import validate_module_package
+from backend.applications.authority.review import review_application_authority
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_module_packages import (
     APPLICATION_WHEEL,
     application_definition,

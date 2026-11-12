@@ -9,20 +9,22 @@ from deployment.deployment_contract import DeploymentContractError, validate_dep
 
 
 WP4_FILES = (
-    'backend/services/application_checkpoints.py',
-    'backend/services/application_identity_read.py',
-    'backend/services/application_peer_read.py',
-    'backend/services/application_status_read.py',
-    'backend/services/compiled_ui.py',
-    'backend/services/compiled_ui_provenance.py',
-    'backend/services/installation_peer_listing.py',
-    'backend/services/installation_peer_read_sources.py',
-    'backend/services/installation_status_binding.py',
+    'backend/applications/checkpoints.py',
+    'backend/applications/runtime/identity.py',
+    'backend/applications/runtime/peers.py',
+    'backend/applications/runtime/status.py',
+    'backend/artifacts/compiled_ui.py',
+    'backend/artifacts/provenance.py',
+    'backend/installation/peer_listing.py',
+    'backend/installation/peer_read_sources.py',
+    'backend/installation/status_binding.py',
     'frontend/compiler/compile-ui-extension.mjs',
-    'three_mm_protocol/application_peer_read.py',
-    'backend/routes/component_updates.py',
-    'backend/services/component_updates.py',
-    'three_mm_runtime/component_updates.py',
+    'packages/protocol/application_peer_read.py',
+    'packages/protocol/__init__.py',
+    'packages/protocol/theme_design_defaults.json',
+    'backend/system/updates/components_api.py',
+    'backend/system/updates/components.py',
+    'components/system_runtime/component_updates.py',
 )
 
 

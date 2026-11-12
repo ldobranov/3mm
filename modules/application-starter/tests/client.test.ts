@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ApplicationHostError } from '@3mm/application-ui/v1'
+import { ApplicationHostError } from '@platform/application-ui/v1'
 import { createApplicationClient } from '../source/frontend/client.generated'
 
 describe('generated public-host client', () => {

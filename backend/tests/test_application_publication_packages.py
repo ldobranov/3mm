@@ -6,9 +6,9 @@ import zipfile
 
 import pytest
 
-from backend.services.module_packages import validate_module_package, ModulePackageError
+from backend.artifacts.packages import validate_module_package, ModulePackageError
 from backend.tests.test_module_packages import application_package
-from three_mm_protocol.application_event_publication import parse_application_publications
+from packages.protocol.application_event_publication import parse_application_publications
 
 
 def contract():
@@ -67,7 +67,7 @@ def test_declaration_raw_parser_rejects_ambiguous_oversize_or_invalid_json(data)
 
 
 def test_sidecar_reports_all_authority_changes_not_just_permissions():
-    from backend.services.application_authority_review import review_application_authority
+    from backend.applications.authority.review import review_application_authority
     old = validate_module_package(application_package())
     new = validate_module_package(packaged(json.dumps(contract())))
     review = review_application_authority(new, previous=old)

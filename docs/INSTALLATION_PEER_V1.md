@@ -16,7 +16,7 @@ Core-Agent protocol remains 1.0. No Node pairing, Hub address, Agent token,
 GPIO command authority or business IAM changes are included.
 
 G1 identity/proof rules are in [INSTALLATION_IDENTITY_V1.md](INSTALLATION_IDENTITY_V1.md).
-The exact peer schemas/encoders are in `three_mm_protocol/installation_peer.py`.
+The exact peer schemas/encoders are in `packages/protocol/installation_peer.py`.
 The Core owns the wire protocol and private signing keys; extensions must not
 construct an alternative transport or use a human/kiosk/Agent token for it.
 

@@ -6,10 +6,10 @@ from sqlalchemy import delete
 from backend.db.module import ApplicationPermissionGrant
 from backend.db.association_tables import user_roles, user_groups, group_roles, role_application_grants
 from backend.db.role import Role, Group
-from backend.services import application_extensions as gateway
+from backend.applications.runtime import gateway
 from backend.tests.test_application_access import environment, headers
 from backend.tests.test_module_packages import application_definition, application_package
-from three_mm_application_sdk import OperationContext
+from packages.application_sdk import OperationContext
 
 
 @pytest.fixture

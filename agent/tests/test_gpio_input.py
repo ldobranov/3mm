@@ -8,13 +8,13 @@ from pydantic import ValidationError
 from agent.hardware.gpio import MockDigitalGpioDriver, DigitalInputEvent
 from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
 from agent.modules.gpio_input import GpioInputService, gpio_input_handler
-from three_mm_protocol.gpio_input import (
+from packages.protocol.gpio_input import (
     GpioInputProfileV1, INPUT_CAPABILITY, INPUT_ENTRYPOINT, INPUT_EVENT, INPUT_FEATURE,
 )
-from three_mm_protocol.gpio_input_package import build_package
-from three_mm_protocol.hardware_profiles import hardware_profile
-from three_mm_protocol.capability_contracts import validate_value
-from backend.services.module_packages import validate_module_package
+from packages.protocol.gpio_input_package import build_package
+from packages.protocol.hardware_profiles import hardware_profile
+from packages.protocol.capability_contracts import validate_value
+from backend.artifacts.packages import validate_module_package
 
 DEVICE = 'dev_' + 'b'*32
 

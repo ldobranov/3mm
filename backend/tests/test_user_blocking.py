@@ -1,7 +1,7 @@
 from fastapi import Depends
 from backend.tests.test_session_lifecycle import make_client, login, use_test_jwt_secret
-from backend.utils.auth_dep import guard_user_session
-from backend.utils.jwt_utils import create_access_token
+from backend.accounts.dependencies import guard_user_session
+from backend.accounts.tokens import create_access_token
 from backend.db.session import UserSession
 from backend.db.audit_log import AuditLog
 

@@ -10,14 +10,14 @@ from sqlalchemy import select
 
 from backend.db.device import DeviceCommand
 from backend.db.module import ModuleInstallation, ModulePackage
-from backend.routes import modules
+from backend.artifacts import api as modules
 from backend.tests.test_hardware_profile_installation import native  # noqa: F401
 from backend.tests.test_module_lifecycle_idempotency import lifecycle, DEVICE_ID  # noqa: F401
 from agent.tests.test_character_display import builder  # noqa: F401
-from backend.services.hardware_provider_templates import prepare_provider, provider_templates, sources
-from backend.services.module_packages import validate_module_package
-from backend.utils.auth_dep import require_admin
-from three_mm_protocol.character_display import CharacterDisplayProfileV1
+from backend.devices.modules.templates import prepare_provider, provider_templates, sources
+from backend.artifacts.packages import validate_module_package
+from backend.accounts.dependencies import require_admin
+from packages.protocol.character_display import CharacterDisplayProfileV1
 
 PATH = f'/api/v1/modules/devices/{DEVICE_ID}/hardware-profiles'
 TEMPLATE = 'character-display.pcf8574-2row'

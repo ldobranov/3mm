@@ -28,20 +28,21 @@ from agent.tests.test_capability_providers import OtherAdapter
 from backend.db.base import Base
 from backend.db.device import Device, DeviceCredential, DeviceEvent, DeviceCapabilityProvider, DeviceCapabilityHealth
 from backend.db.module import ApplicationExtensionInstallation as Installation, ApplicationEventDelivery as Delivery, ModulePackage
-from backend.routes.device_capabilities import router as providers
-from backend.routes.device_events import router as event_router
-from backend.services.device_pairing import credential_secret_hash
-from backend.services import application_events as broker, application_extensions as gateway
-from backend.services import application_authority_management as authority
-from backend.services.application_authority_keys import AuthorityReviewKeyError
+from backend.devices.capabilities.api import router as providers
+from backend.devices.telemetry.events_api import router as event_router
+from backend.devices.pairing.service import credential_secret_hash
+from backend.applications.events import broker
+from backend.applications.runtime import gateway
+from backend.applications.authority import management as authority
+from backend.applications.authority.keys import AuthorityReviewKeyError
 from backend.tests.test_application_event_authority import events, core_installed, source_subject, source_installed, replace_package
 from backend.tests.test_application_consent import preview, allow
 from backend.tests.test_application_authority_sources import DEVICE, CREDENTIAL
 from backend.tests.test_application_events import pump
 from backend.tests.test_application_public_web_transport import SERVICE, wait_for
-from backend.utils.db_utils import get_db
+from backend.storage.sessions import get_db
 from agent.credentials import DeviceCredential as AgentCredential
-from three_mm_runtime.application_transport import ApplicationServiceClient
+from components.system_runtime.application_transport import ApplicationServiceClient
 
 pytestmark = pytest.mark.skipif(sys.platform != 'linux', reason='Signed native Unix service and Core authority keys')
 AGENT_SECRET = 'a' * 43
@@ -188,7 +189,7 @@ def test_real_onboarding_two_apps_and_adapters_need_no_core_special_case(events,
         with tempfile.TemporaryDirectory(prefix='provider-peer-',dir='/tmp') as location:
             root=Path(location); (root/'mode').write_text('valid')
             service = SERVICE.replace("result={'status':200,'content_type':'text/html; charset=utf-8','headers':{},'body':'<h1>Public</h1>'}", "result={}")
-            service = service.replace('def handle(connection):', "from three_mm_application_sdk import ApplicationStorage,ApplicationMigration\nstore=ApplicationStorage(root/'data')\nstore.migrate([ApplicationMigration('0001',lambda db:db.execute('CREATE TABLE receipts(event_id TEXT PRIMARY KEY)'))],'0001')\ndef handle(connection):")
+            service = service.replace('def handle(connection):', "from packages.application_sdk import ApplicationStorage,ApplicationMigration\nstore=ApplicationStorage(root/'data')\nstore.migrate([ApplicationMigration('0001',lambda db:db.execute('CREATE TABLE receipts(event_id TEXT PRIMARY KEY)'))],'0001')\ndef handle(connection):")
             service = service.replace("mode=(root/'mode').read_text()", "with store.transaction() as db:db.execute('INSERT OR IGNORE INTO receipts VALUES (?)',(request['payload']['event_id'],))\n        mode=(root/'mode').read_text()", 1)
             peer=subprocess.Popen([sys.executable,'-c',service,str(root),(b's'*32).hex()],cwd=Path(__file__).resolve().parents[2],
                 stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
@@ -232,7 +233,7 @@ def test_actual_agent_factory_onboards_and_withdraws_its_configured_adapter(even
     from agent.identity import AgentIdentityStore, AgentIdentity
     from agent.credentials import DeviceCredentialStore
     from agent.hardware import HardwareProfile
-    from three_mm_protocol import AgentRole
+    from packages.protocol import AgentRole
     s=events;prepare_application(s,'org.example.factory','identifier.scan.v1')
     captured=[]
     monkeypatch.setattr(CorePublisher,'start',lambda publisher:captured.append(publisher))

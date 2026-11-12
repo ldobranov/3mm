@@ -3,7 +3,7 @@
 import hashlib
 import re
 
-from three_mm_application_sdk.scoped_relational import (
+from packages.application_sdk.scoped_relational import (
     ApplicationRelationalExecutionUnconfirmed,
     ApplicationRelationalStorageError,
     ApplicationScopedStorage,

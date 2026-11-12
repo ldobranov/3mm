@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from deployment import apply_node_update as module
-from three_mm_protocol.node_updates import NodeUpdateApplyRequest, NodeUpdateAuthorization, NodeUpdateOperation
-from three_mm_runtime.node_update_helper import NodeUpdateStore, request_digest
+from packages.protocol.node_updates import NodeUpdateApplyRequest, NodeUpdateAuthorization, NodeUpdateOperation
+from components.system_runtime.node_update_helper import NodeUpdateStore, request_digest
 
 
 class CurrentRelease:

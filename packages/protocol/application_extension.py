@@ -1,0 +1,1092 @@
+"""Strict contract for supervised business application extensions."""
+
+import base64
+import json
+import math
+import re
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from packages.protocol.module_manifest import MODULE_ID_PATTERN, SEMVER_PATTERN
+from packages.protocol.ui_metadata import IDENTIFIER_PATTERN, LocalizedTextV1
+from packages.protocol.application_commands import ApplicationCommandBindingV1
+from packages.protocol.application_tasks import ApplicationTaskV1
+from packages.protocol.application_requirements import ApplicationPlatformRequirementV1
+from packages.protocol.application_resources import ResourceScope
+from packages.protocol.application_sessions import ApplicationSessionBindingV1, ApplicationSessionProviderV1
+from packages.protocol.application_composition import ApplicationQueryDependencyV1, ApplicationQueryExportV1
+
+
+APPLICATION_EVENT_PATTERN = (
+    r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$"
+)
+SHA256_PATTERN = r"^[0-9a-f]{64}$"
+CONFIG_KEY_PATTERN = r"^[A-Z][A-Z0-9_]{1,63}$"
+SERVICE_ENTRYPOINT_PATTERN = (
+    r"^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*$"
+)
+
+ApplicationAudience = Literal[
+    "public",
+    "kiosk",
+    "operator",
+    "administrator",
+    "internal",
+    "installation_bootstrap",
+    "installation_peer",
+]
+
+
+class StrictApplicationModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+def _empty_object_schema() -> dict:
+    return {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": False,
+    }
+
+
+def _validate_object_schema(schema: dict, label: str) -> None:
+    if len(json.dumps(schema, sort_keys=True)) > 64 * 1024:
+        raise ValueError(f"{label} schema is too large")
+    if schema.get("type") != "object":
+        raise ValueError(f"{label} schema root must be an object")
+    if schema.get("additionalProperties") is not False:
+        raise ValueError(f"{label} schema must forbid additional properties")
+    properties = schema.get("properties")
+    required = schema.get("required", [])
+    if not isinstance(properties, dict) or not isinstance(required, list):
+        raise ValueError(f"{label} schema properties or required list is invalid")
+    if len(required) != len(set(required)) or set(required) - set(properties):
+        raise ValueError(f"{label} schema required fields are invalid")
+
+
+class ApplicationServiceV1(StrictApplicationModel):
+    artifact: str = Field(min_length=1, max_length=240)
+    artifact_sha256: str = Field(pattern=SHA256_PATTERN)
+    entrypoint: str = Field(pattern=SERVICE_ENTRYPOINT_PATTERN, max_length=240)
+    sdk_version: Literal["1.0", "1.1", "1.2", "1.3"] = "1.0"
+    health_operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    startup_timeout_seconds: int = Field(default=30, ge=1, le=120)
+    shutdown_timeout_seconds: int = Field(default=15, ge=1, le=60)
+
+    @model_validator(mode="after")
+    def validate_artifact_path(self):
+        normalized = self.artifact.replace("\\", "/")
+        parts = normalized.split("/")
+        if (
+            normalized.startswith("/")
+            or ".." in parts
+            or not normalized.startswith("service/")
+            or not normalized.endswith(".whl")
+        ):
+            raise ValueError(
+                "application service artifact must be a safe wheel under service/"
+            )
+        return self
+
+
+class ApplicationPermissionV1(StrictApplicationModel):
+    permission_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    label: LocalizedTextV1
+    description: LocalizedTextV1
+
+
+class ApplicationOperationV1(StrictApplicationModel):
+    operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    kind: Literal["query", "command", "job", "task"]
+    audiences: tuple[ApplicationAudience, ...] = Field(min_length=1, max_length=7)
+    required_permission: str | None = Field(
+        default=None,
+        pattern=IDENTIFIER_PATTERN,
+    )
+    idempotency: Literal["forbidden", "required"]
+    input_schema: dict = Field(default_factory=_empty_object_schema)
+    output_schema: dict = Field(default_factory=_empty_object_schema)
+    timeout_seconds: int = Field(default=10, ge=1, le=30)
+    audit: Literal["metadata", "redacted"] = "metadata"
+    emitted_events: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_operation_semantics(self):
+        if {"installation_bootstrap", "installation_peer"} & set(self.audiences):
+            if len(self.audiences) != 1 or self.kind != "command" or self.required_permission is not None or self.emitted_events:
+                raise ValueError("Peer operations must be isolated commands without human permissions or events")
+        if len(self.audiences) != len(set(self.audiences)):
+            raise ValueError("operation audiences must be unique")
+        if "internal" in self.audiences and len(self.audiences) != 1:
+            raise ValueError("internal operations cannot have another audience")
+        if self.kind == "query" and self.idempotency != "forbidden":
+            raise ValueError("query operations forbid idempotency keys")
+        if self.kind in {"command", "job", "task"} and self.idempotency != "required":
+            raise ValueError("command and job operations require idempotency keys")
+        if self.kind == "job" and self.audiences != ("internal",):
+            raise ValueError("job operations must be internal")
+        if self.kind == "task" and self.audiences != ("internal",):
+            raise ValueError("task operations must be internal")
+        if "operator" in self.audiences and self.required_permission is None:
+            raise ValueError("operator operations require an extension permission")
+        if len(self.emitted_events) != len(set(self.emitted_events)):
+            raise ValueError("emitted event types must be unique")
+        _validate_object_schema(self.input_schema, "operation input")
+        _validate_object_schema(self.output_schema, "operation output")
+        for event_type in self.emitted_events:
+            if not re.fullmatch(APPLICATION_EVENT_PATTERN, event_type):
+                raise ValueError("emitted event type is invalid")
+        return self
+
+
+class ApplicationUiFilesV1(StrictApplicationModel):
+    contract_version: Literal[1]
+    read_permission: str = Field(pattern=IDENTIFIER_PATTERN)
+    write_permission: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
+    publish_permission: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
+    transform_permission: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
+
+    @field_validator('contract_version', mode='before')
+    @classmethod
+    def exact_version(cls, value):
+        if type(value) is not int or value != 1:
+            raise ValueError('Unsupported browser file contract')
+        return value
+
+
+class ApplicationRouteV1(StrictApplicationModel):
+    route_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    entrypoint_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    audience: Literal["public", "kiosk", "operator", "administrator"]
+    required_permissions: tuple[str, ...] = ()
+    delegated_operations: tuple[str, ...] = Field(default=(), max_length=16)
+    private_files: ApplicationUiFilesV1 | None = None
+    # Human administrator reads, separate from the service's resource authority.
+    administration_reads: tuple[Literal["devices.list", "devices.detail", "modules.list", "capabilities.list", "capabilities.state", "commands.get", "resources.inspect"], ...] = Field(default=(), max_length=7)
+    administration_actions: tuple[Literal["modules.install", "modules.disable", "capabilities.invoke"], ...] = Field(default=(), max_length=3)
+    layout: Literal["application", "kiosk"] = "application"
+    navigation: bool = True
+    order: int = Field(default=100, ge=0, le=10_000)
+
+    @model_validator(mode="after")
+    def validate_route_semantics(self):
+        if (len(set(self.delegated_operations)) != len(self.delegated_operations)
+                or any(re.fullmatch(IDENTIFIER_PATTERN, item) is None for item in self.delegated_operations)
+                or self.delegated_operations and self.audience != "operator"):
+            raise ValueError("Delegated operations require unique IDs on an operator route")
+        if self.private_files is not None and self.audience not in {"operator", "administrator"}:
+            raise ValueError("Private browser files require a normal user route")
+        if (self.administration_reads or self.administration_actions) and self.audience != "administrator":
+            raise ValueError("administration reads require an administrator route")
+        if len(self.administration_reads) != len(set(self.administration_reads)):
+            raise ValueError("administration reads must be unique")
+        if len(self.administration_actions) != len(set(self.administration_actions)):
+            raise ValueError("administration actions must be unique")
+        if len(self.required_permissions) != len(set(self.required_permissions)):
+            raise ValueError("route permissions must be unique")
+        if (self.layout == "kiosk") != (self.audience == "kiosk"):
+            raise ValueError("kiosk layout is reserved for kiosk routes")
+        if self.audience == "operator" and not self.required_permissions:
+            raise ValueError("operator routes require an extension permission")
+        return self
+
+
+
+PUBLIC_HTTP_TEXT_CONTENT_TYPES = (
+    "text/html; charset=utf-8",
+    "text/plain; charset=utf-8",
+    "text/css; charset=utf-8",
+    "application/javascript; charset=utf-8",
+    "application/json",
+    "application/manifest+json",
+    "application/xml",
+    "text/xml; charset=utf-8",
+    "application/rss+xml",
+    "application/atom+xml",
+)
+PUBLIC_HTTP_BINARY_CONTENT_TYPES = (
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/avif",
+    "image/gif",
+    "image/svg+xml",
+    "image/x-icon",
+    "font/woff",
+    "font/woff2",
+    "application/pdf",
+)
+PUBLIC_HTTP_CONTENT_TYPES = PUBLIC_HTTP_TEXT_CONTENT_TYPES + PUBLIC_HTTP_BINARY_CONTENT_TYPES
+PUBLIC_HTTP_MAX_BODY_BYTES = 512 * 1024
+PUBLIC_HTTP_RESPONSE_HEADERS = frozenset({
+    "cache-control",
+    "content-language",
+    "etag",
+    "last-modified",
+    "link",
+    "vary",
+})
+
+
+def public_http_request_schema_v1() -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "method": {"type": "string", "enum": ["GET", "HEAD"]},
+            "path": {"type": "string"},
+            "path_params": {"type": "object"},
+            "query": {"type": "object"},
+            "headers": {"type": "object"},
+        },
+        "required": ["method", "path", "path_params", "query", "headers"],
+        "additionalProperties": False,
+    }
+
+
+def public_http_response_schema_v1() -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "status": {
+                "type": "integer",
+                "enum": [200, 204, 304, 301, 302, 307, 308, 400, 403, 404, 405, 410, 429, 500, 503],
+            },
+            "content_type": {"type": "string", "enum": list(PUBLIC_HTTP_CONTENT_TYPES)},
+            "headers": {"type": "object"},
+            "body": {"type": "string"},
+            "body_base64": {"type": "string"},
+            "location": {"type": "string"},
+        },
+        "required": ["status", "headers"],
+        "additionalProperties": False,
+    }
+
+
+class ApplicationPublicHttpRequestV1(StrictApplicationModel):
+    method: Literal["GET", "HEAD"]
+    path: str = Field(min_length=1, max_length=2048)
+    path_params: dict[str, str] = Field(default_factory=dict, max_length=32)
+    query: dict[str, tuple[str, ...]] = Field(default_factory=dict, max_length=64)
+    headers: dict[str, str] = Field(default_factory=dict, max_length=8)
+
+    @model_validator(mode="after")
+    def validate_request_bounds(self):
+        if not self.path.startswith("/") or any(char in self.path for char in ("\r", "\n", "\x00")):
+            raise ValueError("public HTTP request path is invalid")
+        for name, value in self.path_params.items():
+            if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", name) or len(value) > 2048:
+                raise ValueError("public HTTP path parameter is invalid")
+        for name, values in self.query.items():
+            if not name or len(name) > 128 or len(values) > 32:
+                raise ValueError("public HTTP query is too large")
+            if any(len(value) > 4096 for value in values):
+                raise ValueError("public HTTP query value is too large")
+        allowed_headers = {"accept", "accept-language", "if-none-match", "if-modified-since"}
+        if set(self.headers) - allowed_headers:
+            raise ValueError("public HTTP request contains an undeclared forwarded header")
+        if any(len(value) > 4096 or "\r" in value or "\n" in value for value in self.headers.values()):
+            raise ValueError("public HTTP request header is invalid")
+        return self
+
+
+class ApplicationPublicHttpResponseV1(StrictApplicationModel):
+    status: Literal[200, 204, 304, 301, 302, 307, 308, 400, 403, 404, 405, 410, 429, 500, 503]
+    content_type: Literal[
+        "text/html; charset=utf-8",
+        "text/plain; charset=utf-8",
+        "text/css; charset=utf-8",
+        "application/javascript; charset=utf-8",
+        "application/json",
+        "application/manifest+json",
+        "application/xml",
+        "text/xml; charset=utf-8",
+        "application/rss+xml",
+        "application/atom+xml",
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "image/avif",
+        "image/gif",
+        "image/svg+xml",
+        "image/x-icon",
+        "font/woff",
+        "font/woff2",
+        "application/pdf",
+    ] | None = None
+    headers: dict[str, str] = Field(default_factory=dict, max_length=16)
+    body: str | None = Field(default=None, max_length=PUBLIC_HTTP_MAX_BODY_BYTES)
+    body_base64: str | None = Field(default=None, max_length=700 * 1024)
+    location: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("headers")
+    @classmethod
+    def validate_headers(cls, value):
+        normalized: dict[str, str] = {}
+        for name, item in value.items():
+            key = name.lower()
+            if key not in PUBLIC_HTTP_RESPONSE_HEADERS:
+                raise ValueError("public HTTP response header is not allowed")
+            if len(item) > 4096 or "\r" in item or "\n" in item:
+                raise ValueError("public HTTP response header is invalid")
+            if key in normalized:
+                raise ValueError("public HTTP response headers must be unique")
+            normalized[key] = item
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_response_semantics(self):
+        redirects = {301, 302, 307, 308}
+        payload_count = int(self.body is not None) + int(self.body_base64 is not None)
+        if self.status in redirects:
+            if self.location is None or payload_count or self.content_type is not None:
+                raise ValueError("public HTTP redirects require only a location")
+        elif self.location is not None:
+            raise ValueError("public HTTP location is reserved for redirects")
+        if self.status in {204, 304} and (payload_count or self.content_type is not None):
+            raise ValueError("public HTTP no-body responses cannot contain content")
+        if payload_count > 1:
+            raise ValueError("public HTTP response must use one body encoding")
+        if payload_count == 0 and self.content_type is not None:
+            raise ValueError("public HTTP content type requires a body")
+        if payload_count == 1 and self.content_type is None:
+            raise ValueError("public HTTP body requires a content type")
+        if self.body is not None:
+            if self.content_type not in PUBLIC_HTTP_TEXT_CONTENT_TYPES:
+                raise ValueError("public HTTP text body requires a text content type")
+            if len(self.body.encode("utf-8")) > PUBLIC_HTTP_MAX_BODY_BYTES:
+                raise ValueError("public HTTP response body is too large")
+        if self.body_base64 is not None:
+            if self.content_type not in PUBLIC_HTTP_BINARY_CONTENT_TYPES:
+                raise ValueError("public HTTP binary body requires a binary content type")
+            try:
+                decoded = base64.b64decode(self.body_base64, validate=True)
+            except (ValueError, TypeError) as exc:
+                raise ValueError("public HTTP binary body is invalid") from exc
+            if len(decoded) > PUBLIC_HTTP_MAX_BODY_BYTES:
+                raise ValueError("public HTTP response body is too large")
+        if self.location is not None and ("\r" in self.location or "\n" in self.location):
+            raise ValueError("public HTTP redirect location is invalid")
+        return self
+
+
+class ApplicationPublicHttpRouteV1(StrictApplicationModel):
+    route_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    path: str = Field(min_length=1, max_length=240)
+    methods: tuple[Literal["GET", "HEAD"], ...] = ("GET", "HEAD")
+    handler_operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    content_types: tuple[Literal[
+        "text/html; charset=utf-8",
+        "text/plain; charset=utf-8",
+        "text/css; charset=utf-8",
+        "application/javascript; charset=utf-8",
+        "application/json",
+        "application/manifest+json",
+        "application/xml",
+        "text/xml; charset=utf-8",
+        "application/rss+xml",
+        "application/atom+xml",
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "image/avif",
+        "image/gif",
+        "image/svg+xml",
+        "image/x-icon",
+        "font/woff",
+        "font/woff2",
+        "application/pdf",
+    ], ...] = Field(min_length=1, max_length=20)
+    max_response_bytes: int = Field(default=256 * 1024, ge=1024, le=PUBLIC_HTTP_MAX_BODY_BYTES)
+    form_operation_id: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN,
+                                           exclude_if=lambda value: value is None)
+    guest_session: Literal[True] | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    @field_validator("path")
+    @classmethod
+    def validate_path_template(cls, value):
+        if not value.startswith("/") or "//" in value or "\\" in value or "%" in value or "?" in value or "#" in value:
+            raise ValueError("public HTTP route path is invalid")
+        if value == "/":
+            return value
+        if value.endswith("/"):
+            raise ValueError("public HTTP route path cannot end with a slash")
+        parameters: list[str] = []
+        for segment in value.split("/")[1:]:
+            if segment in {"", ".", ".."}:
+                raise ValueError("public HTTP route path contains an invalid segment")
+            match = re.fullmatch(r"\{([a-z][a-z0-9_]{0,63})\}", segment)
+            if match:
+                parameters.append(match.group(1))
+            elif "{" in segment or "}" in segment or any(ord(char) < 32 or char.isspace() for char in segment):
+                raise ValueError("public HTTP route path contains an invalid segment")
+        if len(parameters) != len(set(parameters)):
+            raise ValueError("public HTTP route parameters must be unique")
+        return value
+
+    @model_validator(mode="after")
+    def validate_route_semantics(self):
+        if not self.methods or "GET" not in self.methods or len(self.methods) != len(set(self.methods)):
+            raise ValueError("public HTTP routes require one GET method and unique methods")
+        if len(self.content_types) != len(set(self.content_types)):
+            raise ValueError("public HTTP route content types must be unique")
+        if self.form_operation_id is not None and (
+                '{' in self.path or self.path == '/api' or self.path.startswith(('/api/', '/__3mm_component__/'))):
+            raise ValueError('Public forms require a literal non-administrative path')
+        if self.guest_session and (self.form_operation_id is None or self.methods != ('GET',)
+                or self.content_types != ('text/html; charset=utf-8',)
+                or re.fullmatch(r'/[A-Za-z0-9_/-]+', self.path) is None):
+            raise ValueError('Guest sessions require an explicit GET/POST HTML form')
+        return self
+
+
+class ApplicationPublicWebhookV1(StrictApplicationModel):
+    contract_version: Literal[1]
+    webhook_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    path: str = Field(max_length=160, pattern=r"^/webhooks/[a-z0-9_-]+(?:/[a-z0-9_-]+)*$")
+    signature_profile: Literal["hmac_sha256_v1"]
+    handler_operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
+
+    @field_validator("contract_version", mode="before")
+    @classmethod
+    def integer_contract_version(cls, value):
+        if type(value) is not int:
+            raise ValueError("Webhook contract version must be an integer")
+        return value
+
+
+class ApplicationEventSubscriptionV1(StrictApplicationModel):
+    subscription_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    event_type: str = Field(pattern=APPLICATION_EVENT_PATTERN, max_length=160)
+    capability_id: str = Field(pattern=APPLICATION_EVENT_PATTERN, max_length=160)
+    handler_operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    device_scope_config_key: str = Field(pattern=CONFIG_KEY_PATTERN)
+    acknowledgement: Literal["after_commit"] = "after_commit"
+    max_backlog: int = Field(default=1000, ge=1, le=100_000)
+
+
+class ApplicationConnectorV1(StrictApplicationModel):
+    connector_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    destination_config_key: str = Field(pattern=CONFIG_KEY_PATTERN)
+    allowed_schemes: tuple[Literal["http", "https"], ...] = ("https",)
+    path_prefix: str = Field(default="/", pattern=r"^/", max_length=160)
+    authentication: Literal["none", "basic", "bearer", "api_key"] = "none"
+    credential_ref_config_key: str | None = Field(
+        default=None,
+        pattern=CONFIG_KEY_PATTERN,
+    )
+    supports_mutations: bool = False
+    timeout_seconds: int = Field(default=10, ge=1, le=30)
+    max_request_bytes: int = Field(default=256 * 1024, ge=1024, le=4 * 1024 * 1024)
+    max_response_bytes: int = Field(default=1024 * 1024, ge=1024, le=4 * 1024 * 1024)
+
+    @model_validator(mode="after")
+    def validate_connector_semantics(self):
+        if len(self.allowed_schemes) != len(set(self.allowed_schemes)):
+            raise ValueError("connector schemes must be unique")
+        has_secret = self.credential_ref_config_key is not None
+        if (self.authentication == "none") == has_secret:
+            raise ValueError(
+                "connector credentials are required exactly when authentication is enabled"
+            )
+        return self
+
+
+class ApplicationJobV1(StrictApplicationModel):
+    job_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    handler_operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    interval_seconds: int = Field(ge=5, le=31_536_000)
+    catch_up: Literal["skip", "once"] = "once"
+    singleton: Literal[True] = True
+
+
+class ApplicationCheckpointV1(StrictApplicationModel):
+    """One requested own checkpoint, never a grant or a caller-selected owner.
+
+    The value is bounded JSON progress/state, not a database backup. Read and
+    write authority are reviewed separately against this exact declaration.
+    """
+
+    contract_version: Literal[1]
+    checkpoint_id: str = Field(pattern=r"^[a-z][a-z0-9_]{0,95}$", max_length=96)
+    mode: Literal["read", "read_write"]
+    max_value_bytes: int = Field(strict=True, ge=1, le=256 * 1024)
+
+    @field_validator("contract_version", mode="before")
+    @classmethod
+    def integer_contract_version(cls, value):
+        if type(value) is not int:
+            raise ValueError("Checkpoint contract version must be an integer")
+        return value
+
+
+class ApplicationPrivateFilesV1(StrictApplicationModel):
+    """Requested SDK-file bounds, never a host path, grant or OS disk quota.
+
+    The sole logical namespace belongs to the installation resolved by Core.
+    Classification and lifecycle requirements come from its enclosing storage.
+    All limits/mode are explicit; omission must not mean unlimited authority.
+    """
+
+    file_contract_version: Literal[1]
+    namespace: Literal["private_files"] = "private_files"
+    mode: Literal["read", "read_write"]
+    max_file_bytes: int = Field(strict=True, ge=1, le=16 * 1024 * 1024)
+    max_total_bytes: int = Field(strict=True, ge=1, le=64 * 1024 * 1024)
+    max_files: int = Field(strict=True, ge=1, le=1024)
+
+    @field_validator("file_contract_version", mode="before")
+    @classmethod
+    def integer_contract_version(cls, value):
+        if type(value) is not int:
+            raise ValueError("Private file contract version must be an integer")
+        return value
+
+    @model_validator(mode="after")
+    def coherent_limits(self):
+        if self.max_file_bytes > self.max_total_bytes:
+            raise ValueError("Private file limits are inconsistent")
+        return self
+
+    def operations(self):
+        return ('read', 'write') if self.mode == 'read_write' else ('read',)
+
+
+class ApplicationPrivateFilesV2(ApplicationPrivateFilesV1):
+    """Streaming file/media profile; independent committed and staging budgets."""
+    file_contract_version: Literal[2]
+    max_file_bytes: int = Field(strict=True, ge=1, le=1024 * 1024 * 1024)
+    max_total_bytes: int = Field(strict=True, ge=1, le=4 * 1024 * 1024 * 1024)
+    max_files: int = Field(strict=True, ge=1, le=4096)
+    max_uploads: int = Field(strict=True, ge=1, le=16)
+    max_staging_bytes: int = Field(strict=True, ge=1, le=2 * 1024 * 1024 * 1024)
+    upload_ttl_seconds: int = Field(strict=True, ge=60, le=86400)
+    public_links: bool = Field(strict=True)
+    media_transforms: bool = Field(strict=True)
+
+    @model_validator(mode='after')
+    def streaming_limits(self):
+        if self.max_file_bytes > self.max_staging_bytes:
+            raise ValueError('Staging budget must hold one maximum file')
+        if self.mode == 'read' and (self.public_links or self.media_transforms):
+            raise ValueError('Publishing and transforms require a writable profile')
+        return self
+
+    def operations(self):
+        return super().operations() + (('publish',) if self.public_links else ()) + (('transform',) if self.media_transforms else ())
+
+
+class ApplicationRelationalStorageV1(StrictApplicationModel):
+    """Requested own-SQLite access and cooperative bounds, never a grant.
+
+    Structural support is deliberately separate from runtime/admission support.
+    No path, owner, approved policy or lifecycle credential is author supplied.
+    """
+
+    contract_version: Literal[1]
+    mode: Literal["read", "read_write"]
+    limit_class: Literal["cooperative_v1"]
+    max_database_bytes: int = Field(strict=True, ge=64 * 1024, le=256 * 1024 * 1024)
+    auxiliary_pause_bytes: int = Field(strict=True, ge=64 * 1024, le=64 * 1024 * 1024)
+    max_statement_bytes: int = Field(strict=True, ge=1, le=64 * 1024)
+    max_value_bytes: int = Field(strict=True, ge=1, le=1024 * 1024)
+    max_result_bytes: int = Field(strict=True, ge=1, le=1024 * 1024)
+    max_result_rows: int = Field(strict=True, ge=1, le=1000)
+    max_transaction_ms: int = Field(strict=True, ge=100, le=30000)
+    max_busy_ms: int = Field(strict=True, ge=0, le=5000)
+
+    @field_validator("contract_version", mode="before")
+    @classmethod
+    def integer_contract_version(cls, value):
+        if type(value) is not int:
+            raise ValueError("Relational storage contract version must be an integer")
+        return value
+
+    @model_validator(mode="after")
+    def coherent_limits(self):
+        if (
+            self.max_value_bytes > self.max_result_bytes
+            or self.max_value_bytes > self.max_database_bytes
+            or self.max_busy_ms > self.max_transaction_ms
+        ):
+            raise ValueError("Relational storage limits are inconsistent")
+        return self
+
+
+class ApplicationStorageV1(StrictApplicationModel):
+    engine: Literal["sqlite"] = "sqlite"
+    schema_revision: str = Field(pattern=r"^[a-z0-9][a-z0-9_.-]{0,63}$")
+    migration_entrypoint: str = Field(pattern=SERVICE_ENTRYPOINT_PATTERN, max_length=240)
+    classifications: tuple[Literal["private", "secret"], ...] = ("private",)
+    contains_personal_data: bool = False
+    retention_operation_id: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
+    retention_policy: Literal["until_explicit_erasure"] | None = None
+    export_operation_id: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
+    erasure_operation_id: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
+    backup_required: Literal[True] = True
+    private_files: ApplicationPrivateFilesV1 | ApplicationPrivateFilesV2 | None = None
+    relational: ApplicationRelationalStorageV1 | None = None
+
+    @model_validator(mode="after")
+    def validate_data_lifecycle(self):
+        if len(self.classifications) != len(set(self.classifications)):
+            raise ValueError("storage classifications must be unique")
+        lifecycle = (
+            self.retention_operation_id,
+            self.export_operation_id,
+            self.erasure_operation_id,
+        )
+        if self.retention_policy is not None and self.retention_operation_id is not None:
+            raise ValueError("Choose explicit erasure retention or a retention handler")
+        if self.contains_personal_data and (
+            self.export_operation_id is None or self.erasure_operation_id is None
+            or (self.retention_policy is None and self.retention_operation_id is None)
+        ):
+            raise ValueError(
+                "personal data requires retention, export and erasure operations"
+            )
+        return self
+
+
+class ApplicationLifecycleV1(StrictApplicationModel):
+    disable_preserves_data: Literal[True] = True
+    uninstall_requires_data_confirmation: Literal[True] = True
+    rollback: Literal["transactional"] = "transactional"
+
+
+class ApplicationPeerBindingV1(StrictApplicationModel):
+    """An exact existing-peer action request, never consent or a live grant.
+
+    Core resolves the saved configuration reference, owner and public peer pins.
+    Inbox discovery, link creation and arbitrary signing are not this contract.
+    Runtime support is deliberately separate from structural package support.
+    """
+
+    contract_version: Literal[1]
+    binding_id: str = Field(pattern=r"^[a-z][a-z0-9_]{0,95}$", max_length=96)
+    direction: Literal["inbound", "outbound"]
+    peer_id_config_key: str = Field(pattern=CONFIG_KEY_PATTERN, max_length=64)
+    operations: tuple[Literal["read", "enroll", "rotate", "report", "approve", "revoke"], ...] = Field(
+        min_length=1, max_length=5,
+    )
+
+    @field_validator("contract_version", mode="before")
+    @classmethod
+    def integer_contract_version(cls, value):
+        if type(value) is not int:
+            raise ValueError("Peer binding contract version must be an integer")
+        return value
+
+    @model_validator(mode="after")
+    def validate_direction_operations(self):
+        allowed = (
+            {"read", "approve", "revoke"} if self.direction == "inbound"
+            else {"read", "enroll", "rotate", "report", "revoke"}
+        )
+        if len(self.operations) != len(set(self.operations)):
+            raise ValueError("Peer binding operations must be unique")
+        if set(self.operations) - allowed:
+            raise ValueError("Peer binding operations do not match their direction")
+        return self
+
+    def required_platform_permissions(self) -> frozenset[str]:
+        # Existing coarse groups remain package requests, not executable rights.
+        permissions = {"installation.peers.receive" if self.direction == "inbound"
+            else "installation.peers.enroll"}
+        if "report" in self.operations:
+            permissions.update({"installation.peers.report", "installation.status.read"})
+        return frozenset(permissions)
+
+
+class ApplicationPeerReceiverV1(StrictApplicationModel):
+    peer_version: Literal[1, 2] = 1
+    bootstrap_operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    report_operation_id: str = Field(pattern=IDENTIFIER_PATTERN)
+
+    @field_validator("peer_version", mode="before")
+    @classmethod
+    def integer_peer_version(cls, value):
+        if type(value) is not int:
+            raise ValueError("Peer version must be an integer")
+        return value
+
+
+class ApplicationExtensionV1(StrictApplicationModel):
+    application_extension_version: Literal[1]
+    module_id: str = Field(pattern=MODULE_ID_PATTERN)
+    version: str = Field(pattern=SEMVER_PATTERN)
+    service: ApplicationServiceV1
+    platform_requirements: tuple[ApplicationPlatformRequirementV1, ...] = Field(default=(), max_length=16)
+    optional_resources: tuple[ResourceScope, ...] = Field(default=(), max_length=16)
+    platform_permissions: tuple[Literal[
+        "installation.identity.read", "installation.identity.prove",
+        "installation.peers.enroll", "installation.peers.receive",
+        "installation.peers.report", "installation.status.read",
+    ], ...] = Field(default=(), max_length=6)
+    peer_receiver: ApplicationPeerReceiverV1 | None = None
+    peer_bindings: tuple[ApplicationPeerBindingV1, ...] = Field(default=(), max_length=32)
+    permissions: tuple[ApplicationPermissionV1, ...] = Field(
+        default=(),
+        max_length=128,
+    )
+    operations: tuple[ApplicationOperationV1, ...] = Field(
+        min_length=1,
+        max_length=128,
+    )
+    routes: tuple[ApplicationRouteV1, ...] = Field(default=(), max_length=64)
+    public_http_routes: tuple[ApplicationPublicHttpRouteV1, ...] = Field(default=(), max_length=64)
+    public_webhook: ApplicationPublicWebhookV1 | None = Field(default=None, exclude_if=lambda value: value is None)
+    event_subscriptions: tuple[ApplicationEventSubscriptionV1, ...] = Field(
+        default=(),
+        max_length=64,
+    )
+    connectors: tuple[ApplicationConnectorV1, ...] = Field(
+        default=(),
+        max_length=32,
+    )
+    jobs: tuple[ApplicationJobV1, ...] = Field(default=(), max_length=64)
+    tasks: tuple[ApplicationTaskV1, ...] = Field(default=(), max_length=8)
+    checkpoints: tuple[ApplicationCheckpointV1, ...] = Field(default=(), max_length=32)
+    command_bindings: tuple[ApplicationCommandBindingV1, ...] = Field(default=(), max_length=64)
+    session_bindings: tuple[ApplicationSessionBindingV1, ...] = Field(default=(), max_length=32)
+    session_providers: tuple[ApplicationSessionProviderV1, ...] = Field(default=(), max_length=8)
+    # Omit absent declarations: an unused optional interface must not change the
+    # canonical definition used by existing reviews and package tooling.
+    query_exports: tuple[ApplicationQueryExportV1, ...] = Field(
+        default=(), max_length=16, exclude_if=lambda value: not value)
+    query_dependencies: tuple[ApplicationQueryDependencyV1, ...] = Field(
+        default=(), max_length=16, exclude_if=lambda value: not value)
+    storage: ApplicationStorageV1
+    lifecycle: ApplicationLifecycleV1 = Field(default_factory=ApplicationLifecycleV1)
+
+    @model_validator(mode="after")
+    def validate_references(self):
+        optional = set(self.optional_resources)
+        supported = ({f'command:{item.binding_id}' for item in self.command_bindings}
+            | {f'connector:{item.connector_id}' for item in self.connectors}
+            | {f'event:{item.subscription_id}' for item in self.event_subscriptions}
+            | {f'session:{item.binding_id}:open' for item in self.session_bindings})
+        if (optional and self.service.sdk_version != '1.3'
+                or len(optional) != len(self.optional_resources) or optional - supported):
+            raise ValueError('Optional resources require unique exact SDK 1.3 command/connector/event/session declarations')
+        if any(f'command:{item.binding_id}' in optional and item.sensor_device_config_key is not None for item in self.command_bindings):
+            raise ValueError('Optional commands do not support unresolved sensor contracts')
+        if self.platform_requirements and self.service.sdk_version != '1.3':
+            raise ValueError('Platform requirements require SDK 1.3')
+        if len({item.requirement_id for item in self.platform_requirements}) != len(self.platform_requirements):
+            raise ValueError('Platform requirement identifiers must be unique')
+        if self.session_bindings and self.service.sdk_version != "1.3":
+            raise ValueError("Session bindings require SDK 1.3")
+        if self.session_providers and self.service.sdk_version != "1.3":
+            raise ValueError("Session providers require SDK 1.3")
+        if (self.query_exports or self.query_dependencies) and self.service.sdk_version != '1.3':
+            raise ValueError('Application query declarations require SDK 1.3')
+        if self.query_dependencies and (self.query_exports or self.command_bindings or self.connectors
+                or self.event_subscriptions or self.session_bindings or self.session_providers or self.jobs
+                or self.tasks or self.checkpoints or self.platform_permissions or self.peer_bindings
+                or self.peer_receiver or self.storage.private_files or self.storage.relational
+                or self.public_http_routes or any(op.emitted_events for op in self.operations)):
+            raise ValueError('Query consumers require the one-hop query-only resource profile')
+        if self.peer_bindings and self.service.sdk_version != "1.3":
+            raise ValueError("Peer binding declarations require SDK 1.3")
+        for binding in self.peer_bindings:
+            if binding.required_platform_permissions() - set(self.platform_permissions):
+                raise ValueError("Peer binding requires its exact platform permission groups")
+            if "approve" in binding.operations and self.peer_receiver is None:
+                raise ValueError("Peer approval bindings require a receiver declaration")
+        if len({(item.direction, item.peer_id_config_key) for item in self.peer_bindings}) != len(self.peer_bindings):
+            raise ValueError("Peer binding configuration references must be unique per direction")
+        if self.checkpoints and self.service.sdk_version != "1.3":
+            raise ValueError("Checkpoint declarations require SDK 1.3")
+        if self.storage.private_files is not None and self.service.sdk_version != "1.3":
+            raise ValueError("Private file declarations require SDK 1.3")
+        if self.storage.relational is not None and self.service.sdk_version != "1.3":
+            raise ValueError("Relational storage declarations require SDK 1.3")
+        if len(self.platform_permissions) != len(set(self.platform_permissions)):
+            raise ValueError("platform permissions must be unique")
+        if self.platform_permissions and self.service.sdk_version == "1.0":
+            raise ValueError("installation identity permissions require SDK 1.1")
+        peer_permissions = set(self.platform_permissions) - {"installation.identity.read", "installation.identity.prove"}
+        peer_operations = [item for item in self.operations if {"installation_bootstrap", "installation_peer"} & set(item.audiences)]
+        if (peer_permissions or self.peer_receiver or peer_operations) and self.service.sdk_version not in ("1.2", "1.3"):
+            raise ValueError("Installation peer and projection contracts require SDK 1.2 or later")
+        if self.peer_receiver and self.peer_receiver.peer_version == 2 and self.service.sdk_version != "1.3":
+            raise ValueError("Proof-bound enrollment metadata requires SDK 1.3")
+        permission_ids = [item.permission_id for item in self.permissions]
+        operation_ids = [item.operation_id for item in self.operations]
+        route_ids = [item.route_id for item in self.routes]
+        public_http_route_ids = [item.route_id for item in self.public_http_routes]
+        public_http_paths = [item.path for item in self.public_http_routes]
+        route_entrypoints = [item.entrypoint_id for item in self.routes]
+        subscription_ids = [item.subscription_id for item in self.event_subscriptions]
+        connector_ids = [item.connector_id for item in self.connectors]
+        job_ids = [item.job_id for item in self.jobs]
+        for label, values in (
+            ("permission IDs", permission_ids),
+            ("operation IDs", operation_ids),
+            ("route IDs", route_ids + public_http_route_ids),
+            ("public HTTP paths", public_http_paths),
+            ("route entrypoints", route_entrypoints),
+            ("subscription IDs", subscription_ids),
+            ("connector IDs", connector_ids),
+            ("job IDs", job_ids),
+            ("checkpoint IDs", [item.checkpoint_id for item in self.checkpoints]),
+            ("peer binding IDs", [item.binding_id for item in self.peer_bindings]),
+            ("command bindings", [item.binding_id for item in self.command_bindings]),
+            ("session bindings", [item.binding_id for item in self.session_bindings]),
+            ("session provider capabilities", [item.capability_id for item in self.session_providers]),
+            ("query exports", [item.export_id for item in self.query_exports]),
+            ("query handlers", [item.handler_operation_id for item in self.query_exports]),
+            ("query dependencies", [item.binding_id for item in self.query_dependencies]),
+        ):
+            if len(values) != len(set(values)):
+                raise ValueError(f"{label} must be unique")
+
+        known_permissions = set(permission_ids)
+        for binding in self.session_bindings:
+            if binding.required_permission not in known_permissions:
+                raise ValueError("Session binding references an unknown human permission")
+        operations = {item.operation_id: item for item in self.operations}
+        for export in self.query_exports:
+            handler = operations.get(export.handler_operation_id)
+            contract = export.contract
+            if (handler is None or handler.kind != 'query'
+                    or handler.audiences != ('internal',) or handler.required_permission is not None
+                    or handler.idempotency != 'forbidden' or handler.emitted_events
+                    or handler.operation_id == self.service.health_operation_id
+                    or handler.timeout_seconds != contract.timeout_seconds):
+                raise ValueError('Query exports require a dedicated internal query handler')
+            # No projection, coercion or inferred compatibility with private APIs.
+            from packages.protocol.application_composition import ApplicationQueryContractV1
+            actual = ApplicationQueryContractV1(**{
+                **contract.model_dump(mode='python'), 'input_schema': handler.input_schema,
+                'output_schema': handler.output_schema})
+            if actual.digest() != contract.digest():
+                raise ValueError('Query export schemas must match the handler exactly')
+        form_operations = [route.form_operation_id for route in self.public_http_routes if route.form_operation_id]
+        if form_operations or self.public_webhook is not None:
+            if (self.platform_requirements or self.platform_permissions
+                    or self.optional_resources or self.peer_receiver or self.peer_bindings or self.event_subscriptions
+                    or self.connectors or self.jobs or self.tasks or self.checkpoints or self.command_bindings
+                    or self.session_bindings or self.session_providers or self.query_exports or self.query_dependencies
+                    or self.storage.private_files or self.storage.relational
+                    or any(item.emitted_events for item in self.operations)):
+                if self.public_webhook is not None:
+                    raise ValueError('Public webhook profile supports only application-owned SQLite data')
+                raise ValueError('Public form profile supports one form and only application-owned SQLite data')
+        if form_operations and len(self.public_http_routes) != 1:
+            raise ValueError('Public form profile supports one form and only application-owned SQLite data')
+        if self.public_webhook is not None:
+            from packages.protocol.public_webhooks import webhook_delivery_input_schema, webhook_delivery_result_schema
+            handler = operations.get(self.public_webhook.handler_operation_id)
+            if self.service.sdk_version != '1.3' or self.routes or self.public_http_routes:
+                raise ValueError('Public webhook requires a dedicated SDK 1.3 package without browser routes')
+            if (handler is None or handler.operation_id == self.service.health_operation_id
+                    or handler.kind != 'command' or handler.audiences != ('internal',)
+                    or handler.required_permission is not None or handler.audit != 'redacted'
+                    or handler.input_schema != webhook_delivery_input_schema()
+                    or handler.output_schema != webhook_delivery_result_schema()):
+                raise ValueError('Public webhook requires its exact dedicated, redacted internal command')
+        for route in self.public_http_routes:
+            operation = operations.get(route.handler_operation_id)
+            if operation is None:
+                raise ValueError("public HTTP route references an unknown operation")
+            if operation.kind != "query" or operation.audiences != ("public",) or operation.idempotency != "forbidden":
+                raise ValueError("public HTTP route handlers must be isolated public queries")
+            if operation.input_schema != public_http_request_schema_v1():
+                raise ValueError("public HTTP route handler must use the v1 request schema")
+            if operation.output_schema != public_http_response_schema_v1():
+                raise ValueError("public HTTP route handler must use the v1 response schema")
+            if route.form_operation_id is not None:
+                from packages.protocol.public_forms import public_form_result_schema, validate_form_schema
+                form = operations.get(route.form_operation_id)
+                if (form is None or form.kind != 'command' or form.audiences != ('public',)
+                        or form.required_permission is not None or form.output_schema != public_form_result_schema()):
+                    raise ValueError('Public form requires a dedicated anonymous command and exact result schema')
+                validate_form_schema(form.input_schema)
+                if route.guest_session and self.service.sdk_version != '1.3':
+                    raise ValueError('Guest forms require SDK 1.3')
+        if self.peer_receiver:
+            if "installation.peers.receive" not in self.platform_permissions:
+                raise ValueError("Peer receiver requires its platform permission")
+            for operation_id, audience in (
+                (self.peer_receiver.bootstrap_operation_id, "installation_bootstrap"),
+                (self.peer_receiver.report_operation_id, "installation_peer"),
+            ):
+                operation = operations.get(operation_id)
+                if operation is None or operation.audiences != (audience,):
+                    raise ValueError("Peer receiver operations must declare their exact audience")
+            if {item.operation_id for item in peer_operations} != {self.peer_receiver.bootstrap_operation_id, self.peer_receiver.report_operation_id}:
+                raise ValueError("Only the two declared peer receiver operations are allowed")
+            if self.peer_receiver.peer_version == 2:
+                schema = operations[self.peer_receiver.bootstrap_operation_id].input_schema
+                fields = {
+                    "binding_id": "string", "installation_identity": "object",
+                    "requested_scopes": "array", "enrollment_metadata": "object",
+                }
+                if (
+                    not set(fields) <= set(schema.get("required", []))
+                    or any(schema.get("properties", {}).get(name, {}).get("type") != kind
+                           for name, kind in fields.items())
+                ):
+                    raise ValueError("Peer v2 bootstrap must declare verified enrollment metadata")
+        elif peer_operations:
+            raise ValueError("Peer operations require a receiver declaration")
+        for operation in self.operations:
+            if (
+                operation.required_permission is not None
+                and operation.required_permission not in known_permissions
+            ):
+                raise ValueError("operation references an unknown permission")
+        for route in self.routes:
+            if set(route.required_permissions) - known_permissions:
+                raise ValueError("route references an unknown permission")
+            for operation_id in route.delegated_operations:
+                operation = operations.get(operation_id)
+                if (self.service.sdk_version != "1.3" or operation is None
+                        or operation.kind not in {"query", "command"} or "operator" not in operation.audiences
+                        or operation.timeout_seconds > 10 or self.storage.relational is not None):
+                    raise ValueError("Delegation requires SDK 1.3 ordinary operator operations with a bounded timeout")
+            if route.private_files is not None:
+                access = route.private_files
+                declaration = self.storage.private_files
+                if (declaration is None or declaration.file_contract_version != 2 or self.service.sdk_version != "1.3"
+                        or access.read_permission not in known_permissions
+                        or access.write_permission is not None and (
+                            access.write_permission not in known_permissions or declaration.mode != "read_write")):
+                    raise ValueError("Browser files require declared storage and exact human permissions")
+                for permission, feature in ((access.publish_permission, 'public_links'),
+                        (access.transform_permission, 'media_transforms')):
+                    if permission is not None and (permission not in known_permissions
+                            or not getattr(declaration, feature, False)):
+                        raise ValueError('Browser media permissions require their explicit storage feature')
+
+        health = operations.get(self.service.health_operation_id)
+        if health is None or health.kind != "query" or health.audiences != ("internal",):
+            raise ValueError("service health operation must be an internal query")
+        health_status = health.output_schema.get("properties", {}).get("status")
+        health_values = (
+            set(health_status.get("enum", []))
+            if isinstance(health_status, dict)
+            else set()
+        )
+        if (
+            "status" not in health.output_schema.get("required", [])
+            or not health_values
+            or not health_values <= {"ok", "ready"}
+        ):
+            raise ValueError(
+                "service health output must declare status enum 'ok' or 'ready'"
+            )
+
+        for subscription in self.event_subscriptions:
+            handler = operations.get(subscription.handler_operation_id)
+            if (
+                handler is None
+                or handler.kind != "command"
+                or handler.audiences != ("internal",)
+            ):
+                raise ValueError(
+                    "event subscription handler must be an internal command"
+                )
+
+        for job in self.jobs:
+            handler = operations.get(job.handler_operation_id)
+            if handler is None or handler.kind != "job":
+                raise ValueError("scheduled job handler must reference a job operation")
+
+        task_handlers = {item.handler_operation_id for item in self.tasks}
+        if (len({item.task_id for item in self.tasks}) != len(self.tasks)
+                or len(task_handlers) != len(self.tasks)
+                or {item.operation_id for item in self.operations if item.kind == "task"} != task_handlers):
+            raise ValueError("Task declarations and dedicated handlers must match exactly")
+        if self.tasks:
+            if self.command_bindings and any(task.profile != "bounded_task_v1" for task in self.tasks):
+                raise ValueError("Result-only task declarations cannot request command effects")
+            if (self.connectors or self.event_subscriptions
+                    or self.session_bindings or self.session_providers or self.jobs
+                    or self.checkpoints or self.platform_permissions or self.peer_bindings
+                    or self.peer_receiver or self.storage.private_files or self.storage.relational
+                    or self.query_exports or self.query_dependencies
+                    or self.public_http_routes or any(item.emitted_events for item in self.operations)):
+                raise ValueError("Bounded tasks support only their exact command effect adapter")
+            from packages.protocol.application_commands import validate_argument_schema
+            for task in self.tasks:
+                handler = operations.get(task.handler_operation_id)
+                if (handler is None or handler.kind != "task" or handler.audiences != ("internal",)
+                        or handler.required_permission is not None or handler.timeout_seconds != task.max_runtime_seconds):
+                    raise ValueError("Task requires its exact internal bounded handler")
+                for schema in (handler.input_schema, handler.output_schema):
+                    validate_argument_schema(schema)
+                    if len(schema["properties"]) > 8 or any(len(name) > 128 for name in schema["properties"]):
+                        raise ValueError("Task data is limited to eight bounded scalar fields")
+
+        for operation_id in (
+            self.storage.retention_operation_id,
+            self.storage.export_operation_id,
+            self.storage.erasure_operation_id,
+        ):
+            if operation_id is not None and operation_id not in operations:
+                raise ValueError("storage lifecycle references an unknown operation")
+
+        for operation_id in (
+            self.storage.export_operation_id,
+            self.storage.erasure_operation_id,
+        ):
+            if operation_id is None:
+                continue
+            operation = operations[operation_id]
+            if operation.kind != "command" or "administrator" not in operation.audiences:
+                raise ValueError(
+                    "data export and erasure must be administrator commands"
+                )
+        if self.storage.retention_operation_id is not None:
+            retention = operations[self.storage.retention_operation_id]
+            if retention.kind != "job" or retention.audiences != ("internal",):
+                raise ValueError("data retention must be an internal job")
+        return self
+
+
+def parse_application_extension(raw: bytes | str) -> ApplicationExtensionV1:
+    """Authoritative raw descriptor parsing, including duplicate-key refusal.
+
+    Typed dict validation cannot recover keys already discarded by a JSON
+    decoder. Package validation must use this entrypoint, not structural schemas
+    or BaseModel.model_validate_json alone. The byte ceiling matches the existing
+    package expanded-data ceiling; valid legacy declarations remain supported.
+    """
+    if isinstance(raw, bytes):
+        if len(raw) > 40 * 1024 * 1024:
+            raise ValueError("Application declaration exceeds its size limit")
+        raw = raw.decode("utf-8")
+    elif not isinstance(raw, str):
+        raise ValueError("Application declaration must be UTF-8 JSON")
+    if len(raw.encode("utf-8")) > 40 * 1024 * 1024:
+        raise ValueError("Application declaration exceeds its size limit")
+
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Application declaration contains duplicate JSON keys")
+            result[key] = value
+        return result
+
+    def finite_constant(_value):
+        raise ValueError("Application declaration contains non-finite JSON values")
+
+    def finite_float(value):
+        parsed = float(value)
+        if not math.isfinite(parsed):
+            finite_constant(value)
+        return parsed
+
+    return ApplicationExtensionV1.model_validate(
+        json.loads(
+            raw,
+            object_pairs_hook=unique_object,
+            parse_constant=finite_constant,
+            parse_float=finite_float,
+        )
+    )

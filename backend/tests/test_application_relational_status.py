@@ -17,8 +17,8 @@ from backend.db.audit_log import AuditLog
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.module import ModulePackage
-from backend.routes.application_authority import router
-from backend.services import application_relational as core
+from backend.applications.management.access_api import router
+from backend.applications.relational import authority as core
 from backend.tests.test_application_authority_management import (
     identity, installed as managed_installed,
 )
@@ -27,8 +27,8 @@ from backend.tests.test_application_authority_subjects import (
 )
 from backend.tests.test_application_relational_admission import SECRET, admitted
 from backend.tests.test_application_relational_host import host_state
-from backend.utils.db_utils import get_db
-from three_mm_application_sdk.relational_wire import sign_metadata
+from backend.storage.sessions import get_db
+from packages.application_sdk.relational_wire import sign_metadata
 
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Real POSIX keys/Unix IPC")
@@ -69,7 +69,7 @@ def test_real_prepared_host_and_current_grants_report_effective(ready):
 
 @pytest.mark.parametrize('running', [True, False])
 def test_resource_view_uses_real_prepared_host_without_business_writes(ready, running):
-    from backend.services.application_resource_discovery import discover_resources
+    from backend.applications.resources.discovery import discover_resources
     if not running: ready.host.path.unlink()
     database = ready.host_root / 'data/state.sqlite3'
     before = database.read_bytes()

@@ -25,31 +25,31 @@ from backend.db.module import (
     ModulePackage,
 )
 from backend.db.user import User
-from backend.routes.application_operations import router, _authority_write
-from backend.services.application_connectors import (
+from backend.applications.operations_api import router, _authority_write
+from backend.applications.connectors.broker import (
     bind_application_connector,
     prepare_application_connector_binding,
 )
-from backend.services.application_secrets import (
+from backend.applications.connectors.secrets import (
     read_secret_authority,
     rotate_secret_reference,
 )
-from backend.services.authority_metadata import (
+from backend.applications.authority.metadata import (
     AuthorityMetadataError,
     authority_transaction,
     read_application_authority,
     read_authority_guard,
 )
 from backend.tests.test_application_connectors import definition
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
 
 
 @pytest.fixture
 def writers(tmp_path, monkeypatch):
     monkeypatch.setenv("AI_SETTINGS_MASTER_KEY", Fernet.generate_key().decode())
     monkeypatch.setattr(
-        "backend.services.application_connectors.load_application_definition",
+        "backend.applications.connectors.broker.load_application_definition",
         lambda _package: definition(),
     )
     engine = create_engine(
@@ -500,7 +500,7 @@ def test_package_io_finishes_before_first_write_and_telemetry_is_not_authority(
 
     event.listen(engine, "before_cursor_execute", capture)
     monkeypatch.setattr(
-        "backend.services.application_connectors.load_application_definition", load
+        "backend.applications.connectors.broker.load_application_definition", load
     )
     try:
         assert bind(client, secret_ref).status_code == 200
@@ -508,7 +508,7 @@ def test_package_io_finishes_before_first_write_and_telemetry_is_not_authority(
         event.remove(engine, "before_cursor_execute", capture)
     assert loaded == [True] and seen[0].startswith("UPDATE core_authority_guard")
     monkeypatch.setattr(
-        "backend.services.application_connectors.load_application_definition",
+        "backend.applications.connectors.broker.load_application_definition",
         lambda _package: definition(),
     )
     before = state(engine)

@@ -3,7 +3,7 @@
 from pathlib import Path
 import re
 
-from three_mm_protocol.module_manifest import SEMVER_PATTERN
+from packages.protocol.module_manifest import SEMVER_PATTERN
 
 VERSION_FILE = Path(__file__).resolve().parents[1] / "VERSION"
 

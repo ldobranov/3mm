@@ -18,10 +18,10 @@ from backend.db.application_authority_grant import ApplicationAuthorityAction as
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.session import UserSession
-from backend.services import application_authority_management as authority
-from backend.services import application_relational_lifecycle as coordinator
-from backend.services.application_authority_keys import AuthorityReviewKeyError
-from backend.services.application_policy_reviews import PolicyReviewStoreError
+from backend.applications.authority import management as authority
+from backend.applications.relational import lifecycle as coordinator
+from backend.applications.authority.keys import AuthorityReviewKeyError
+from backend.applications.authority.policy_reviews import PolicyReviewStoreError
 from backend.tests.test_application_relational_preparation import (
     ROOT_ONLY,
     SECRET,
@@ -34,7 +34,7 @@ from backend.tests.test_application_relational_preparation import (
     source_subject,
     stopped,
 )
-from three_mm_application_sdk.relational_wire import (
+from packages.application_sdk.relational_wire import (
     _RelationalMigrationPreparationTicket,
     _RelationalNamespacePreparationTicket,
     _RelationalPreparationTicket,
@@ -42,9 +42,9 @@ from three_mm_application_sdk.relational_wire import (
     prepared_lifecycle,
     sign_metadata,
 )
-from three_mm_runtime import application_lifecycle as locks
-from three_mm_runtime import application_relational_namespace as helper
-from three_mm_runtime.application_activation import (
+from components.system_runtime import application_lifecycle as locks
+from components.system_runtime import application_relational_namespace as helper
+from components.system_runtime.application_activation import (
     ApplicationActivationError,
     _require_no_pending_rollback,
     application_instance_id,
@@ -601,10 +601,10 @@ def test_namespace_feeds_existing_real_nonroot_migration_worker(absent_paths, tm
         migration_ticket,
         script,
     )
-    from three_mm_runtime.application_relational_preparation import (
+    from components.system_runtime.application_relational_preparation import (
         prepare_migrated_relational_database,
     )
-    from three_mm_runtime.application_relational_session import _prepared
+    from components.system_runtime.application_relational_session import _prepared
 
     state = absent_paths
     for directory in (tmp_path, tmp_path.parent, tmp_path.parent.parent):

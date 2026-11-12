@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "name": "3mm",
+  "display_name": "Mega Monitor",
+  "welcome_message": "Welcome to Mega Monitor",
+  "description": "A local-first platform for applications, devices and their administration.",
+  "default_logo_url": "",
+  "favicon_url": "/favicon.ico",
+  "setup": {
+    "page_title": "3mm device setup",
+    "header": "Mega Monitor · 3mm",
+    "labels": {
+      "en": {
+        "title": "Set up this 3mm device",
+        "wifi": "Let 3mm manage a Wi-Fi connection",
+        "networkHelp": "Keeping the connection does not give 3mm control of it. Local operation is available for Standalone.",
+        "success": "Setup saved. Reopen Mega Monitor at the device’s current address."
+      },
+      "bg": {
+        "title": "Настройка на това 3mm устройство",
+        "wifi": "3mm да управлява Wi-Fi връзката",
+        "networkHelp": "Запазването на връзката не дава контрол на 3mm върху нея. Локална работа е възможна за Standalone.",
+        "success": "Настройката е запазена. Отвори Mega Monitor на текущия адрес на устройството."
+      }
+    }
+  }
+}

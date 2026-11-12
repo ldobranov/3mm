@@ -24,8 +24,8 @@ from sqlalchemy.orm import Session
 
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.module import ModulePackage
-from backend.services.application_relational_admin_worker import dispatch
-from backend.services.module_packages import validate_module_package
+from backend.applications.relational.admin_worker import dispatch
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_relational_activation import ProcessSupervisor
 from backend.tests.test_application_relational_preparation import (
     ROOT_ONLY,
@@ -48,15 +48,15 @@ from backend.tests.test_application_relational_registration import (
     register,
 )
 from backend.tests.test_application_relational_runtime import SERVICE
-from three_mm_application_sdk.relational_wire import canonical
-from three_mm_runtime import application_lifecycle as locks
-from three_mm_runtime import application_relational_activation as activation_helper
-from three_mm_runtime import update_helper
-from three_mm_runtime.application_relational_control import (
+from packages.application_sdk.relational_wire import canonical
+from components.system_runtime import application_lifecycle as locks
+from components.system_runtime import application_relational_activation as activation_helper
+from components.system_runtime import update_helper
+from components.system_runtime.application_relational_control import (
     CoreMetadataClient,
     activation_request,
 )
-from three_mm_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
+from components.system_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Actual Core OS peer/worker")
 
@@ -148,7 +148,7 @@ def deployed(original_production, monkeypatch):
             [
                 sys.executable,
                 "-m",
-                "backend.services.application_relational_admin_worker",
+                "backend.applications.relational.admin_worker",
                 "--core-uid",
                 "1202",
                 "--database",
@@ -487,7 +487,7 @@ def test_cli_actual_nonroot_core_peer_worker_and_application_host(prepared):
             [
                 sys.executable,
                 "-m",
-                "backend.services.application_authority_admin",
+                "backend.applications.authority.admin",
                 "activate-relational",
                 "--installation-id",
                 "1",

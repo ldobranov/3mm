@@ -4,14 +4,14 @@ import pytest
 from sqlalchemy import select
 
 from backend.db.module import ModuleInstallation
-from backend.services.application_commands import authorize_execution, submit_command
-from backend.services.device_capability_registry import (
+from backend.applications.commands.broker import authorize_execution, submit_command
+from backend.devices.capabilities.registry import (
     replace_provider,
     set_provider_enabled,
 )
-from backend.services.device_commands import deliver_next_command
+from backend.devices.commands.queue import deliver_next_command
 from backend.tests.test_application_commands import setup, payload  # noqa: F401
-from three_mm_protocol import CapabilityProviderReportV1
+from packages.protocol import CapabilityProviderReportV1
 
 
 @pytest.mark.parametrize(

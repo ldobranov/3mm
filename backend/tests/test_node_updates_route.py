@@ -24,18 +24,18 @@ from backend.db.device import (
     DeviceCommand,
 )
 from backend.db.user import User
-from backend.routes.node_updates import (
+from backend.devices.updates.api import (
     _current_node_release_id,
     router,
 )
-from backend.services.node_release_catalog import (
+from backend.devices.updates.catalog import (
     NodeReleaseManifest,
     PublishedNodeRelease,
 )
-from backend.utils import jwt_utils
-from backend.utils.auth import hash_password
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import (
+from backend.accounts import tokens as jwt_utils
+from backend.accounts.passwords import hash_password
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import (
     create_access_token,
 )
 
@@ -262,13 +262,13 @@ def make_client(
     )
 
     monkeypatch.setattr(
-        "backend.routes.node_updates.get_settings",
+        "backend.devices.updates.api.get_settings",
         lambda: settings,
     )
 
     monkeypatch.setattr(
         (
-            "backend.routes.node_updates."
+            "backend.devices.updates.api."
             "find_published_node_release"
         ),
         lambda *_args, **_kwargs:
@@ -288,7 +288,7 @@ def make_client(
 
     monkeypatch.setattr(
         (
-            "backend.routes.node_updates."
+            "backend.devices.updates.api."
             "download_published_node_archive"
         ),
         download,
@@ -924,7 +924,7 @@ def test_prepare_rejects_release_already_running(
 
         monkeypatch.setattr(
             (
-                "backend.routes.node_updates."
+                "backend.devices.updates.api."
                 "download_published_node_archive"
             ),
             lambda *_args, **_kwargs:

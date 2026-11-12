@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
-import { useApplicationHost } from '@3mm/application-ui/v1'
+import { useApplicationHost } from '@platform/application-ui/v1'
 const sessions=useApplicationHost().sessions
 const state=ref('Not connected'), output=ref(''), target=ref<any>(null)
 let sid='', remove=()=>{}

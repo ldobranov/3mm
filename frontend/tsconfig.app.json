@@ -1,6 +1,6 @@
 {
   "extends": "./node_modules/@vue/tsconfig/tsconfig.dom.json",
-  "include": ["env.d.ts", "src/**/*"],
+  "include": ["env.d.ts", "src/**/*", "../config_templates/product.json"],
   "exclude": ["src/**/__tests__/*"],
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
@@ -9,8 +9,8 @@
       "@/*": ["./src/*"],
       "@/extensions/*": ["src/extensions/*"],
       "vue": ["./node_modules/vue/dist/vue.d.ts"],
-      "@3mm/application-ui/v1": ["./src/extension-ui/application-v1.ts"],
-      "@3mm/ui/v1": ["./src/extension-ui/v1.ts"]
+      "@platform/application-ui/v1": ["./src/extension-ui/application-v1.ts"],
+      "@platform/ui/v1": ["./src/extension-ui/v1.ts"]
     },
     "typeRoots": ["./node_modules/@types", "./src/extensions"]
   }

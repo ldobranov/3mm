@@ -8,6 +8,7 @@ import { getBackendUrl } from './runtime-config'
 import { getToken } from './auth'
 import type { CompiledUiPackage, CompiledUiEntrypoint } from './compiled-ui'
 import { i18n } from './i18n'
+import { browserDiagnosticSnapshot, clearBrowserDiagnostics } from './diagnostic-client'
 
 vi.mock('./runtime-config', () => ({ getBackendUrl: vi.fn(async () => 'https://api.test') }))
 vi.mock('./kiosk-session', () => ({ getKioskTokenFor: vi.fn(async () => 'kiosk-secret') }))
@@ -29,6 +30,7 @@ function info(audience: publicHost.ApplicationAudience = 'operator') {
 }
 let send: MockInstance<typeof axios.request>
 beforeEach(async () => {
+  clearBrowserDiagnostics()
   await i18n.setLanguage('en', false)
   vi.mocked(getBackendUrl).mockResolvedValue('https://api.test')
   vi.mocked(getToken).mockReturnValue('core-secret')
@@ -37,6 +39,53 @@ beforeEach(async () => {
 afterEach(() => { vi.restoreAllMocks(); localStorage.clear() })
 
 describe('public module-bound application host', () => {
+  it.each(['backend_unset', 'ticket_denied'])('retains the first %s boundary across the real HTTP/session wrappers, with no duplicate or retry', async fault => {
+    if (fault === 'backend_unset') vi.mocked(getBackendUrl).mockResolvedValue('')
+    const device = 'dev_' + 'a'.repeat(32), trace = 'invoke_' + 'b'.repeat(32)
+    const selected = { bindingId: 'console', deviceId: device, providerId: 'org.example.provider',
+      capabilityIds: ['example.console'], available: true, accessMode: 'write', controlActions: ['resize'], options: { cols: 80, rows: 24 } }
+    send.mockImplementation(async config => {
+      if (config.method === 'GET') return { data: { session_host_version: 1, targets: [selected] }, headers: { 'x-3mm-trace-id': 'invoke_' + 'c'.repeat(32) } }
+      if (fault === 'ticket_denied') throw Object.assign(new Error('SECRET'), { isAxiosError: true,
+        response: { status: 403, data: 'SECRET', headers: { 'x-3mm-trace-id': trace } } })
+      return { data: { session_host_version: 1, request_id: 'open_1', session_id: 'ses_' + 'd'.repeat(32),
+        ticket: 't'.repeat(43), expires_in_seconds: 15 }, headers: { 'x-3mm-trace-id': trace } }
+    })
+    const { host, dispose } = createApplicationHost({ ...pkg, built_ui_sha256: 'e'.repeat(64) }, entry())
+    await expect(host.sessions!.open({ session_request_version: 1, request_id: 'open_1', device_id: device,
+      provider_id: selected.providerId, capability_id: 'example.console', access_mode: 'write', options: selected.options }))
+      .rejects.toMatchObject({ code: 'access_denied' })
+    const rows = browserDiagnosticSnapshot().records
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ trace_id: trace, execution: 'unknown', occurrences: 1,
+      stage: fault === 'backend_unset' ? 'session.socket' : 'session.ticket.request',
+      cause: fault === 'backend_unset' ? 'socket_backend_unset' : null })
+    expect(JSON.stringify(rows)).not.toContain('SECRET')
+    expect(send).toHaveBeenCalledTimes(2); dispose()
+  })
+  it('records missing injected host context without changing the public error or exporting private diagnostics', () => {
+    let caught: unknown
+    const wrapper = mount(defineComponent({ setup() {
+      try { publicHost.useApplicationHost() } catch (error) { caught = error }
+      return () => h('span')
+    } }))
+    expect(caught).toMatchObject({ code: 'unavailable' })
+    expect(browserDiagnosticSnapshot().records[0]).toMatchObject({ stage: 'host.context', cause: 'host_context_missing', response_observed: false })
+    expect(send).not.toHaveBeenCalled(); wrapper.unmount()
+  })
+  it.each([
+    ['host_response_mismatch', 'host.response', { module_id: 'SECRET' }],
+    ['host_features_invalid', 'host.features', { features: { operations: false, private: 'SECRET' } }],
+    ['host_operations_invalid', 'host.operations', { operations: [{ operation_id: 'SECRET' }] }],
+  ])('records %s after successful discovery, with its own Core reference and no payload', async (cause, stage, change) => {
+    const trace = 'invoke_' + 'f'.repeat(32)
+    send.mockResolvedValue({ data: { ...info(), ...change }, headers: { 'x-3mm-trace-id': trace } })
+    await expect(createApplicationHost(pkg, entry()).host.getInfo()).rejects.toMatchObject({ code: 'unavailable' })
+    expect(browserDiagnosticSnapshot().records).toHaveLength(1)
+    expect(browserDiagnosticSnapshot().records[0]).toMatchObject({ cause, stage, trace_id: trace, response_observed: true, execution: 'unknown' })
+    expect(JSON.stringify(browserDiagnosticSnapshot())).not.toContain('SECRET')
+    expect(send).toHaveBeenCalledTimes(1)
+  })
   it('exports no HTTP client, stores, router, credentials or host factory', () => {
     expect(Object.keys(publicHost).sort()).toEqual(['APPLICATION_HOST_VERSION', 'ApplicationHostError', 'applicationHostKey', 'useApplicationHost'])
     expect(Object.keys(createApplicationHost(pkg, entry()).host)).toEqual(['access', 'delegations', 'presentation', 'getInfo', 'sessions', 'administration', 'files', 'invoke'])
@@ -99,6 +148,21 @@ describe('public module-bound application host', () => {
     })
     await expect(createApplicationHost(pkg, entry()).host.invoke('write', {}, { idempotencyKey: 'request-1' }))
       .rejects.toMatchObject({ code: status === 401 || status === 403 ? 'access_denied' : 'unconfirmed' })
+    expect(send).toHaveBeenCalledTimes(2)
+  })
+  it('preserves only a validated Core trace on a denied request without replaying or exposing its body', async () => {
+    const trace = 'invoke_' + 'a'.repeat(32)
+    send.mockImplementation(async config => {
+      if (config.method === 'POST') throw Object.assign(new Error('private response'), {
+        isAxiosError: true, response: { status: 403, headers: { 'x-3mm-trace-id': trace },
+          data: { detail: 'private body' } },
+      })
+      return { data: info() }
+    })
+    const { host } = createApplicationHost(pkg, entry())
+    const error = await host.invoke('write', {}, { idempotencyKey: 'trace-test' }).catch(value => value)
+    expect(error).toMatchObject({ code: 'access_denied', requestId: trace })
+    expect(String(error)).not.toMatch(/private/)
     expect(send).toHaveBeenCalledTimes(2)
   })
   it('refreshes access on every call and does not use a previous allowed snapshot', async () => {

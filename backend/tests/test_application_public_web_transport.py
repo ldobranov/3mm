@@ -20,15 +20,15 @@ from sqlalchemy import create_engine, update
 from sqlalchemy.orm import Session
 
 from backend.db.module import ApplicationExtensionInstallation as Installation, ModulePackage
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_module_packages import application_package
 from backend.tests.test_application_public_web import definition
 from backend.tests.test_platform_runtime_process import (
     stack, identity_app, managed_installed, source_subject, source_installed,
     checkpoint_app, activate_identity_grant, identity, activate,
 )
-from three_mm_platform_wire import send_authority_frame, receive_authority_frame, peer_identity
-from three_mm_public_web.server import PublicWebRuntimeClient, PublicWebRuntimeError, create_server
+from packages.platform_wire import send_authority_frame, receive_authority_frame, peer_identity
+from components.public_web.server import PublicWebRuntimeClient, PublicWebRuntimeError, create_server
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Real Linux processes/SCM_RIGHTS")
 SOURCE = Path(__file__).resolve().parents[2]
@@ -40,7 +40,7 @@ SECRET = b"p" * 32
 SERVICE = r"""
 import json,os,socket,sys,threading,time
 from pathlib import Path
-from three_mm_runtime.application_transport import read_message,verify_message,sign_message,send_message
+from components.system_runtime.application_transport import read_message,verify_message,sign_message,send_message
 root=Path(sys.argv[1]);secret=bytes.fromhex(sys.argv[2]);lock=threading.Lock()
 def handle(connection):
     with connection:
@@ -218,7 +218,7 @@ def test_saturated_public_waits_and_runtime_kill_leave_core_handlers_available(p
             for _ in range(4):assert s.http('/settings/read')[0]==200
             assert time.monotonic()-start<2
             assert s.client.get_installation_identity()['sdk_version']=='1.3'
-            from three_mm_platform_runtime.server import probe_runtime
+            from components.platform_runtime.server import probe_runtime
             assert probe_runtime(s.base/'runtime/runtime.sock',expected_uid=s.runtime_uid,require_public_web=True)['ready']
             assert all(not future.done() for future in futures)
             # Overflow must be refused promptly, not dispatched and timed out.
@@ -266,9 +266,9 @@ def test_invalid_public_requests_do_not_dispatch(public,change):
 @pytest.mark.parametrize('damage',['signature','route','instance','expired','core','runtime','extra','response'])
 def test_result_receipt_is_bound_and_cannot_authorize_another_dispatch(public,damage):
     from backend.config import ApplicationRuntimeSettings
-    from backend.services.application_public_web_transport import begin_public_http,finish_public_http
-    from three_mm_platform_wire import read_frame
-    from three_mm_runtime.application_transport import sign_message
+    from backend.applications.public_web.transport import begin_public_http,finish_public_http
+    from packages.platform_wire import read_frame
+    from components.system_runtime.application_transport import sign_message
     s=public;settings=ApplicationRuntimeSettings(key_root=s.base/'core/transport')
     request={'version':1,'request_id':identity(),'method':'GET','path':'/public/hello','query':{},'headers':{}}
     with Session(s.public_engine) as db:
@@ -315,7 +315,7 @@ def test_distinct_principals_pass_fd_without_core_key_or_database_access(public)
 
 
 def test_public_feature_probe_rejects_an_abi2_core_without_public_support(tmp_path):
-    from three_mm_platform_runtime.server import probe_core
+    from components.platform_runtime.server import probe_core
     path=tmp_path/'old-core.sock';observed=[]
     with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as listener:
         listener.bind(str(path));listener.listen(1)

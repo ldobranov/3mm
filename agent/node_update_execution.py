@@ -13,8 +13,8 @@ from typing import Callable
 from pydantic import BaseModel, ConfigDict
 
 from agent.node_update_client import NodeUpdateClient, NodeUpdateHelperError
-from three_mm_protocol import AgentCommand
-from three_mm_protocol.node_updates import NodeUpdateAuthorization, NodeUpdateOperation
+from packages.protocol import AgentCommand
+from packages.protocol.node_updates import NodeUpdateAuthorization, NodeUpdateOperation
 
 TERMINAL_STATES = {"succeeded", "rolled_back", "failed"}
 

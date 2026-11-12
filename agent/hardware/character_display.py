@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 
-from three_mm_protocol.character_display import CharacterDisplayProfileV1
+from packages.protocol.character_display import CharacterDisplayProfileV1
 from agent.character_display_worker import hd44780_rows, validate_frame
 
 WRITE_TIMEOUT_SECONDS = 3

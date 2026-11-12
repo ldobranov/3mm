@@ -13,13 +13,13 @@ Core domain logic does not learn concrete hardware or extension names.
 
 | Current boundary | Source / actual limit |
 | --- | --- |
-| Signed instance transport | [Platform broker](../backend/services/application_platform.py) authenticates the instance key and timestamp, then resolves the installation; this is not publisher trust or human authorization |
+| Signed instance transport | [Platform broker](../backend/applications/runtime/platform.py) authenticates the instance key and timestamp, then resolves the installation; this is not publisher trust or human authorization |
 | Own checkpoint state | Broker selects by installation ID + checkpoint ID and uses expected revision; it is not a general RPC replay ledger |
-| Human access | [Application access](../backend/services/application_access.py) and gateways enforce route/operation audiences and application-scoped human permissions; a service credential is not a user session |
-| Device authority | [Command broker](../backend/services/application_commands.py) resolves a declared binding to configured device/capability/action/argument bounds/TTL; execution rechecks authority and consumes a permit, not caller-selected arbitrary devices |
-| Network and secrets | [Connector broker](../backend/services/application_connectors.py) checks the installation's connector/binding/credential, origin, path, methods and limits; redirects are disabled and secret values are injected by the broker |
+| Human access | [Application access](../backend/applications/authority/access.py) and gateways enforce route/operation audiences and application-scoped human permissions; a service credential is not a user session |
+| Device authority | [Command broker](../backend/applications/commands/broker.py) resolves a declared binding to configured device/capability/action/argument bounds/TTL; execution rechecks authority and consumes a permit, not caller-selected arbitrary devices |
+| Network and secrets | [Connector broker](../backend/applications/connectors/broker.py) checks the installation's connector/binding/credential, origin, path, methods and limits; redirects are disabled and secret values are injected by the broker |
 | Supervised process | [Unit](../deployment/systemd/3mm-application-extension@.service) has read-only code, private network/devices and restricted writes, but all application instances currently use `3mm-app` |
-| Files and credentials | [Activation](../three_mm_runtime/application_activation.py) prepares directories `0750`, transport keys/metadata `0640`; the [host](../three_mm_runtime/application_host.py) creates service sockets `0660`, with the common service group; foreign readability/impersonation must be tested, not assumed prevented |
+| Files and credentials | [Activation](../components/system_runtime/application_activation.py) prepares directories `0750`, transport keys/metadata `0640`; the [host](../components/system_runtime/application_host.py) creates service sockets `0660`, with the common service group; foreign readability/impersonation must be tested, not assumed prevented |
 | Browser integration | Existing compiled UI shares Core's origin/runtime; it is reviewed native integration, not an isolated untrusted frontend |
 
 The service unit has no explicit per-instance MemoryMax/CPUQuota/TasksMax policy.

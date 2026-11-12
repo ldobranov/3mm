@@ -1,5 +1,5 @@
 """Real signatures, durable SQLite, API and SDK envelopes; no live peers."""
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 import copy
 import json
@@ -18,28 +18,28 @@ from backend.db.installation_peer import (
     InstallationPeerOutbound,
 )
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
-from backend.routes.installation_peers import router
-from backend.services import installation_peers as peers
-from backend.services.application_platform import ApplicationPlatformServer
-from backend.services.module_packages import validate_module_package, ModulePackageError
+from backend.installation.api import router
+from backend.installation import peers
+from backend.applications.runtime.platform import ApplicationPlatformServer
+from backend.artifacts.packages import validate_module_package, ModulePackageError
 from backend.tests import test_installation_peers as legacy
 from backend.tests.test_installation_peers import pair, sender_call, MODULE, ORIGIN
 from backend.tests.test_module_packages import application_package
 from backend.tests.test_installation_identity_platform import MemoryConnection
-from backend.utils.auth_dep import require_admin
-from backend.utils.db_utils import get_db
+from backend.accounts.dependencies import require_admin
+from backend.storage.sessions import get_db
 from deployment.installation_peer_recovery import quarantine_restored_installation_peers
-from three_mm_application_sdk import (
+from packages.application_sdk import (
     ApplicationPlatformClient,
     ApplicationPlatformError,
     OperationContext,
 )
-from three_mm_protocol.installation_peer import (
+from packages.protocol.installation_peer import (
     PeerEnrollmentStartV1,
     PeerCredentialV1,
     PEER_PREFIX,
 )
-from three_mm_protocol.installation_peer_v2 import (
+from packages.protocol.installation_peer_v2 import (
     PEER_V2_PREFIX,
     PeerEnrollmentMetadataV2,
     PeerInboundStatusV2,
@@ -601,9 +601,9 @@ def test_signed_sdk_reads_review_and_approval_via_owned_platform_boundary(
             return result
 
     monkeypatch.setattr(
-        "three_mm_application_sdk.socket.socket", lambda *_args: ClientSocket()
+        "packages.application_sdk.socket.socket", lambda *_args: ClientSocket()
     )
-    monkeypatch.setattr("three_mm_application_sdk.socket.AF_UNIX", 1, raising=False)
+    monkeypatch.setattr("packages.application_sdk.socket.AF_UNIX", 1, raising=False)
     client = ApplicationPlatformClient(server.socket_path, instance, secret)
     assert client.get_installation_peer_capabilities()["approval_binding_version"] == 2
     review = client.list_installation_peers()["inbound"][0]

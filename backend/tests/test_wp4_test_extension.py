@@ -1,5 +1,5 @@
 """Delivered neutral ZIP, real reviewed file grants and signed SDK transport."""
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 import hashlib
 import importlib
 import importlib.util
@@ -13,9 +13,9 @@ import pytest
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from backend.services.module_packages import validate_module_package
-from three_mm_application_sdk import ApplicationContext, ApplicationStorage, OperationContext
-from three_mm_application_sdk import ApplicationFileLimits, ApplicationPlatformClient, ApplicationScopedFileStorage
+from backend.artifacts.packages import validate_module_package
+from packages.application_sdk import ApplicationContext, ApplicationStorage, OperationContext
+from packages.application_sdk import ApplicationFileLimits, ApplicationPlatformClient, ApplicationScopedFileStorage
 from backend.tests.test_application_file_execution import (
     file_app, managed_installed, source_subject, source_installed, grant, revoke, identity,
 )
@@ -109,8 +109,8 @@ def test_declared_files_without_platform_authority_do_not_write(delivered, tmp_p
 def test_exact_delivered_zip_real_grants_sdk_file_receipts_and_revocation(delivered, file_app, monkeypatch):
     import backend.database
     from backend.db.module import ModulePackage, ApplicationExtensionInstallation as Installation
-    from backend.services.application_platform import ApplicationPlatformServer
-    from three_mm_runtime.application_file_executor import ApplicationFileExecutor
+    from backend.applications.runtime.platform import ApplicationPlatformServer
+    from components.system_runtime.application_file_executor import ApplicationFileExecutor
     payload, package, module, _ = delivered
     s = file_app
     s.validated = package

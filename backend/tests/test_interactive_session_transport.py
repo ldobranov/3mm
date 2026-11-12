@@ -4,13 +4,13 @@ import asyncio
 
 import pytest
 
-from backend.services.interactive_session_transport import (
+from backend.sessions.transport import (
     LoopbackSessionTransport,
     RemoteDeviceSession,
     RemoteSessionError,
     RemoteSessionRouter,
 )
-from three_mm_protocol.interactive_session import SessionOpenRequestV1
+from packages.protocol.interactive_session import SessionOpenRequestV1
 
 DEVICE_A = "dev_" + "a" * 32
 DEVICE_B = "dev_" + "b" * 32

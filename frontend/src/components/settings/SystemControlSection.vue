@@ -1,7 +1,7 @@
 <template>
   <SettingsSection :title="t('systemControl.title', 'Device control')">
     <p class="section-intro">
-      {{ t('systemControl.description', 'Restart this Raspberry Pi or erase all persistent 3mm data and return it to first-boot setup.') }}
+      {{ t('systemControl.description', 'Restart this Raspberry Pi or erase all persistent application data and return it to first-boot setup.') }}
     </p>
 
     <div class="control-grid">
@@ -73,7 +73,7 @@ async function restartDevice() {
 async function factoryReset() {
   const phrase = 'FACTORY RESET'
   const entered = prompt(
-    t('systemControl.factoryConfirm', `This permanently deletes all 3mm data. Type ${phrase} to continue.`),
+    t('systemControl.factoryConfirm', `This permanently deletes all application data. Type ${phrase} to continue.`),
     '',
   )
   if (entered !== phrase) return

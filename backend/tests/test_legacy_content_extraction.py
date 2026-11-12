@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session
 from backend.tests.test_migration_history import _alembic
 from backend.tests.test_core_product_extraction import seed,table
 from backend.tests.test_language_extensions import package as language_blob
-from backend.services.module_packages import validate_module_package
-from backend.routes import settings,language_routes
-from backend.utils.db_utils import get_db
+from backend.artifacts.packages import validate_module_package
+from backend.settings import api as settings
+from backend.localization import api as language_routes
+from backend.storage.sessions import get_db
 
 CONTENT=('extensions','pages','extension_tables','extension_fields','table_translations','migration_history','setting_translations','language_packs')
 

@@ -7,9 +7,9 @@ from sqlalchemy import select
 
 from backend.db.device import Device, DeviceCommand, DeviceEvent
 from backend.db.application_command import ApplicationCommandRequest
-from backend.services.device_commands import node_update_is_terminal, DeviceCommandError
-from backend.services.device_runtime_features import replace_runtime_features
-from backend.services.application_commands import authorize_execution, submit_command
+from backend.devices.commands.queue import node_update_is_terminal, DeviceCommandError
+from backend.devices.features.service import replace_runtime_features
+from backend.applications.commands.broker import authorize_execution, submit_command
 from backend.tests.test_application_commands import setup, payload  # noqa: F401
 from backend.tests.test_mock_embedded_protocol import (
     core,
@@ -17,7 +17,7 @@ from backend.tests.test_mock_embedded_protocol import (
     MockEmbeddedClient,
     ORIGIN,  # noqa: F401
 )
-from three_mm_protocol.node_features import (
+from packages.protocol.node_features import (
     DeviceRuntimeFeaturesReportV1,
     MANDATORY_NODE_FEATURES,
 )
@@ -212,7 +212,7 @@ def test_signed_application_permit_support_cannot_be_inferred_from_gpio_capabili
     s.db.rollback()
     report(1, True)
     submitted = submit_command(s.db, s.app, payload())
-    from backend.services.device_commands import deliver_next_command
+    from backend.devices.commands.queue import deliver_next_command
 
     command = deliver_next_command(s.db, device=device)
     assert command.command_id == submitted["command_id"]

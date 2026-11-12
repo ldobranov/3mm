@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { applicationHostKey } from '@3mm/application-ui/v1'
+import { applicationHostKey } from '@platform/application-ui/v1'
 import Button from '../source/frontend/Button.vue'
 
 const resource = { access: 'granted', readiness: 'ready', target_device_id: 'dev_' + '3'.repeat(32), provider_id: 'org.example.first' }

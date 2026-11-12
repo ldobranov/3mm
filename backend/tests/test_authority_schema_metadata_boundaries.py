@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-from backend.services import application_authority_context as context
+from backend.applications.authority import context
 from backend.tests.test_application_authority_context import context as baseline, selection
-from three_mm_protocol.application_extension import ApplicationOperationV1
+from packages.protocol.application_extension import ApplicationOperationV1
 
 
 BIG = 2**63 - 1
@@ -127,7 +127,7 @@ def test_schema_signed_integer_lower_endpoint_is_metadata_not_an_operational_val
 
 
 def test_schema_path_collection_cannot_allocate_unbounded_event_or_enum_paths(monkeypatch):
-    from three_mm_protocol.capability_contracts import CapabilityContractV1
+    from packages.protocol.capability_contracts import CapabilityContractV1
     monkeypatch.setattr(context, 'MAX_JSON_NODES', 12)
     with pytest.raises(ValueError):
         context._schema_paths(CapabilityContractV1, {'events':{

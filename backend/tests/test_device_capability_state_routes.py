@@ -12,12 +12,12 @@ from backend.db.base import Base
 from backend.db.device import Device, DeviceCapabilityState, DeviceCredential
 from backend.db.module import ModuleInstallation, ModulePackage
 from backend.db.user import User
-from backend.routes.device_capability_state import router
-from backend.services.device_pairing import credential_secret_hash
-from backend.utils import jwt_utils
-from backend.utils.auth import hash_password
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
+from backend.devices.capabilities.state_api import router
+from backend.devices.pairing.service import credential_secret_hash
+from backend.accounts import tokens as jwt_utils
+from backend.accounts.passwords import hash_password
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
 
 
 DEVICE_ID = "dev_0123456789abcdef0123456789abcdef"

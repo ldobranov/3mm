@@ -1,5 +1,5 @@
 """Neutral CAP11 consumer; health is independent of files/media providers."""
-from three_mm_application_sdk import ApplicationMigration
+from packages.application_sdk import ApplicationMigration
 
 
 def get_migrations():

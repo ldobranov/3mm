@@ -10,8 +10,8 @@ import re
 import sys
 import tempfile
 
-from three_mm_protocol.module_manifest import MODULE_ID_PATTERN
-from three_mm_protocol.ui_metadata import ROUTE_PATTERN
+from packages.protocol.module_manifest import MODULE_ID_PATTERN
+from packages.protocol.ui_metadata import ROUTE_PATTERN
 from tools.application_project import ProjectCheckError, build_package, configuration, fingerprint, inputs, local_path
 
 TEMPLATE = Path(__file__).resolve().parents[1]/'modules/application-starter'
@@ -69,10 +69,14 @@ def _guide(name: str, module_id: str, route: str) -> bytes:
 
 New application source project generated from the official minimal Note template.
 
+Read `AGENTS.md` before editing. It carries the application development rules
+with this project; the platform checkout's `docs/APPLICATION_DEVELOPMENT.md`
+is the main workflow guide. Existing projects are not updated automatically.
+
 - Module ID: `{module_id}`
 - Initial package version: `{INITIAL_VERSION}`
 - Operator route: `{route}`
-- Public application SDK: `1.3`; UI modules: `@3mm/ui/v1` and `@3mm/application-ui/v1`.
+- Public application SDK: `1.3`; UI modules: `@platform/ui/v1` and `@platform/application-ui/v1`.
 - Own SQLite migration `0001`; human permissions `note_read` and `note_write`.
 - Optional resource `command:resource`, configured by `RESOURCE_DEVICE_ID`.
 
@@ -246,7 +250,7 @@ def create_project(destination, *, module_id, name, route):
                 target = staged/filename
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(data)
-            from backend.services.module_packages import validate_module_package
+            from backend.artifacts.packages import validate_module_package
             checked = validate_module_package(build_package(staged))
             generated = configuration(staged).get('generated_client')
             if generated:

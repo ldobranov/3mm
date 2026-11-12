@@ -45,7 +45,7 @@ const en = {
   color_danger: 'Danger button / status', color_danger_text: 'Danger button text', color_success: 'Success status', color_warning: 'Warning status', color_focus: 'Focus indicator',
   themeColorSettings: 'Theme colors can be customized below. The original package and your built-in colors remain unchanged.',
   brandingHelp: 'Site name and header message are translated per language. Your logo applies to every language. Visual settings are in Theme Customization.',
-  defaultTheme: '3mm Default · Light / Dark', installedAppearance: 'Saved installation theme',
+  defaultTheme: 'Default · Light / Dark', installedAppearance: 'Saved installation theme',
   personalMode: 'Your light / dark mode', appearanceClean: 'No unsaved appearance changes.',
   appearanceDraftHelp: 'One editor for this theme. Changes affect only the sample preview until Save appearance. Both palettes are saved together.',
   palettePreviewHelp: 'Choose the palette to edit and preview. This does not change your personal mode.',

@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Protocol, Sequence
 
-from backend.services.update_staging import (
+from backend.system.updates.staging import (
     UpdateOperationStatus,
     StagedUpdate,
     UpdateStagingError,

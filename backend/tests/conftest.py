@@ -18,7 +18,7 @@ def clear_settings_cache():
 
 
 def pytest_sessionfinish(session, exitstatus):
-    for module_name in ("backend.database", "backend.utils.db_engine"):
+    for module_name in ("backend.database", "backend.storage.engine"):
         module = sys.modules.get(module_name)
         engine = getattr(module, "engine", None)
         if engine is not None:

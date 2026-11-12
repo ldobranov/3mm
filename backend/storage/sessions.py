@@ -1,0 +1,15 @@
+from sqlalchemy.orm import sessionmaker
+from backend.storage.engine import engine
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def get_db_session():
+    """Get a database session (synchronous)"""
+    return SessionLocal()

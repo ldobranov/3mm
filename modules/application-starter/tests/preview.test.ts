@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { applicationHostKey, type ApplicationHostInfo } from '@3mm/application-ui/v1'
+import { applicationHostKey, type ApplicationHostInfo } from '@platform/application-ui/v1'
 import { createPreview } from '../preview/host'
 import Notes from '../source/frontend/Notes.vue'
 

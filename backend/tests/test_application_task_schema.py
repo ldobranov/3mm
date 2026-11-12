@@ -7,14 +7,14 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 import pytest
 
-from backend.services.module_packages import validate_module_package, ModulePackageError
+from backend.artifacts.packages import validate_module_package, ModulePackageError
 from backend.tests.test_module_packages import application_package
 from backend.tests.test_application_tasks import load_builder
-from three_mm_protocol.application_tasks import TaskSubmitV1, TaskStatusV1
+from packages.protocol.application_tasks import TaskSubmitV1, TaskStatusV1
 
 
 def test_task_consent_is_admitted_by_the_public_api_request_contract():
-    from backend.routes.application_authority import ConsentAllowRequest, ReviewRequest
+    from backend.applications.management.access_api import ConsentAllowRequest, ReviewRequest
     body = {"request_id": "a" * 32, "preview_id": "b" * 32,
         "expected_revision": "c" * 32, "fingerprint": "d" * 64,
         "scopes": ["task:calculate"], "user_permissions": [], "accept_native_code": True}

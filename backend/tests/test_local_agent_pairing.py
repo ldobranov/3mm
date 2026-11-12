@@ -15,8 +15,8 @@ from deployment.local_agent_pairing import (
 )
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
-from three_mm_protocol import AgentRole
-from three_mm_provisioning import (
+from packages.protocol import AgentRole
+from packages.provisioning import (
     FileProvisioningStore,
     NetworkCredentials,
     ProvisioningRequest,

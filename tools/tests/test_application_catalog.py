@@ -7,11 +7,11 @@ import sys
 
 import pytest
 
-from backend.services.module_packages import validate_module_package
-from three_mm_application_sdk import SDK_VERSION
-from three_mm_protocol.application_extension import ApplicationLifecycleV1, ApplicationOperationV1
-from three_mm_protocol.extension_schemas import extension_schema_catalog
-import three_mm_platform_wire as wire
+from backend.artifacts.packages import validate_module_package
+from packages.application_sdk import SDK_VERSION
+from packages.protocol.application_extension import ApplicationLifecycleV1, ApplicationOperationV1
+from packages.protocol.extension_schemas import extension_schema_catalog
+import packages.platform_wire as wire
 from tools import application_catalog as catalog
 from tools import application_migrations, application_project
 
@@ -62,16 +62,17 @@ def test_all_source_hashes_identify_exact_read_sources_without_personal_paths():
     paths = [item['path'] for item in result['sources']]
     assert paths == sorted(set(paths))
     assert 'frontend/src/extension-ui/application-v1.ts' in paths
-    assert 'three_mm_protocol/application_extension.py' in paths
-    assert 'three_mm_protocol/application_commands.py' in paths
+    assert 'packages/protocol/application_extension.py' in paths
+    assert 'packages/protocol/application_commands.py' in paths
     assert 'tools/application_migrations.py' in paths
+    assert 'packages/platform_wire/__init__.py' in paths
     assert 'VERSION' in paths and 'backend/version.py' in paths
     for item in result['sources']:
         assert not Path(item['path']).is_absolute()
         assert item['sha256'] == hashlib.sha256(catalog._read_source(item['path'])).hexdigest()
     assert str(catalog.REPOSITORY) not in json.dumps(result)
-    assert 'three_mm_protocol.application_extension.ApplicationOperationV1.validate_operation_semantics' in result['validation']['semantic_validator_sources']
-    assert 'three_mm_protocol.application_extension.ApplicationPrivateFilesV1.coherent_limits' in result['validation']['semantic_validator_sources']
+    assert 'packages.protocol.application_extension.ApplicationOperationV1.validate_operation_semantics' in result['validation']['semantic_validator_sources']
+    assert 'packages.protocol.application_extension.ApplicationPrivateFilesV1.coherent_limits' in result['validation']['semantic_validator_sources']
 
 
 def test_project_catalog_uses_real_semantic_validator_and_exact_full_declarations(source):

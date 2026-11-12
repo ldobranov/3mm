@@ -9,11 +9,11 @@ import uuid
 import pytest
 from sqlalchemy import select
 from backend.db.module import ApplicationConnectorAttempt as Attempt
-from backend.services.application_connector_transport import (
+from backend.applications.connectors.transport import (
     ConnectorDispatch, begin_connector, finish_connector, sign, result_key, expire_connector_attempts,
 )
 from backend.tests.test_application_connectors import connector_db, create_credential, bind_connector
-from three_mm_platform_wire import read_frame
+from packages.platform_wire import read_frame
 
 pytestmark=pytest.mark.skipif(os.name!='posix',reason='Actual Unix peer/boot identity')
 
@@ -95,7 +95,7 @@ def test_foreign_runtime_generation_cannot_finish_original_attempt(admitted):
 
 
 def test_expired_or_rebooted_attempt_becomes_unknown_without_resending(admitted,monkeypatch):
-    from backend.services import application_connector_transport as transport
+    from backend.applications.connectors import transport
     db,app,receipt,response,root,plan,request=admitted
     monkeypatch.setattr(transport,'clock',lambda:('different-boot',0))
     expire_connector_attempts(db,app.id)
@@ -128,7 +128,7 @@ def test_wrong_kernel_worker_identity_receives_no_target_credential(connector_db
 
 
 def test_expired_duplicate_is_reconciled_even_behind_full_unexpired_status_batch(connector_db,tmp_path):
-    from backend.services.application_connector_transport import clock
+    from backend.applications.connectors.transport import clock
     db,app=connector_db;boot,now=clock()
     for index in range(101):
         db.add(Attempt(request_id='connector_'+f'{index:032x}',application_installation_id=app.id,
@@ -149,7 +149,7 @@ def test_network_executor_rejects_an_untrusted_tls_certificate_before_http(tmp_p
     from cryptography.x509.oid import NameOID
     from cryptography.hazmat.primitives import hashes,serialization
     from cryptography.hazmat.primitives.asymmetric import ec
-    from three_mm_platform_runtime.connector_execute import execute
+    from components.platform_runtime.connector_execute import execute
     key=ec.generate_private_key(ec.SECP256R1());name=x509.Name([x509.NameAttribute(NameOID.COMMON_NAME,'localhost')])
     now=datetime.now(UTC)
     certificate=(x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())

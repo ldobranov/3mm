@@ -22,15 +22,15 @@ from agent.physical_command_journal import PhysicalCommandFailure, PhysicalComma
 from agent.node_update_transport import NodeUpdateTransport, NodeUpdateTransportError
 from agent.node_update_client import NodeUpdateHelperError
 from agent.node_update_execution import NodeUpdateExecution
-from three_mm_protocol.node_updates import NodeUpdatePrepareRequest
-from three_mm_protocol.passage import PassageEventV1
-from three_mm_protocol.capability_contracts import CONTRACT_FEATURE, CapabilityContractError
-from three_mm_protocol.capability_availability import AVAILABILITY_FEATURE
+from packages.protocol.node_updates import NodeUpdatePrepareRequest
+from packages.protocol.passage import PassageEventV1
+from packages.protocol.capability_contracts import CONTRACT_FEATURE, CapabilityContractError
+from packages.protocol.capability_availability import AVAILABILITY_FEATURE
 from agent.inventory import platform_neutral_inventory
 from agent import __version__
 from agent.runtime_features import RuntimeFeaturePublisher
 from agent.capability_providers import AgentProviderRegistry
-from three_mm_protocol.node_features import (
+from packages.protocol.node_features import (
     DeviceRuntimeFeaturesV1, FEATURE_COMMANDS, MANDATORY_NODE_FEATURES,
 )
 
@@ -39,10 +39,10 @@ from three_mm_protocol.node_features import (
 from agent.device_transport import (
     EXECUTION_PERMIT_WAIT_SECONDS, HttpDeviceTransport, legacy_outbox_record, legacy_outbox_message, requests,
 )
-from three_mm_protocol.transport import DeviceTransport, DeviceTransportError
+from packages.protocol.transport import DeviceTransport, DeviceTransportError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from three_mm_protocol import (
+from packages.protocol import (
     AgentCommand, AgentCommandResult, AgentHeartbeat, AgentInventory,
     AgentReportedState, CapabilityStateReportV1, DeviceDesiredState, DeviceInventoryV2,
     IdentifierScanEventV1,
@@ -255,7 +255,7 @@ class CorePublisher:
         self._outbox_lock = threading.Lock()
         self._capability_wake = threading.Event()
         if self.transport is None:
-            from three_mm_protocol.device_authority import DeviceAuthorityStore
+            from packages.protocol.device_authority import DeviceAuthorityStore
             authority_store = DeviceAuthorityStore(self.command_journal.path.parent,
                 self.credential.device_id, self.credential.credential_id) if self.authority_verification else None
             self.transport = HttpDeviceTransport(self.core_url, self.credential, authority_store=authority_store)
@@ -305,13 +305,13 @@ class CorePublisher:
         if session_link_available(self.credential.device_id):
             features.add("interactive_sessions.v1")
         if self.module_runtime is not None:
-            from three_mm_protocol.hardware_profiles import HARDWARE_PROFILE_FEATURE
+            from packages.protocol.hardware_profiles import HARDWARE_PROFILE_FEATURE
             if getattr(self.module_runtime, 'device_id', None) == self.credential.device_id:
                 features.add(HARDWARE_PROFILE_FEATURE)
-                from three_mm_protocol.gpio_input import INPUT_ENTRYPOINT, INPUT_FEATURE
+                from packages.protocol.gpio_input import INPUT_ENTRYPOINT, INPUT_FEATURE
                 if INPUT_ENTRYPOINT in getattr(self.module_runtime, 'runtime_handlers', {}):
                     features.add(INPUT_FEATURE)
-                from three_mm_protocol.character_display_scene import SCENE_ENTRYPOINT, SCENE_FEATURE
+                from packages.protocol.character_display_scene import SCENE_ENTRYPOINT, SCENE_FEATURE
                 if SCENE_ENTRYPOINT in getattr(self.module_runtime, 'runtime_handlers', {}):
                     features.add(SCENE_FEATURE)
             features.update({"module_lifecycle", "application_execution_permits", CONTRACT_FEATURE})

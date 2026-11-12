@@ -19,20 +19,22 @@ from backend.db.device import Device, DeviceCapabilityHealth, DeviceCapabilityPr
 from backend.db.module import ApplicationExtensionInstallation as Installation, ApplicationPermissionGrant, ModulePackage
 from backend.db.session import UserSession
 from backend.config import ApplicationRuntimeSettings
-from backend.routes import application_extensions as routes
-from backend.services.application_commands import authorize_execution
-from backend.services import compiled_ui, application_extensions as gateway, application_command_rebinding as rebind
-from backend.services.device_capability_registry import capability_catalog
-from backend.services.device_commands import command_envelope, deliver_next_command, record_command_result
-from backend.services.module_packages import validate_module_package
+from backend.applications.management import api as routes
+from backend.applications.commands.broker import authorize_execution
+from backend.artifacts import compiled_ui
+from backend.applications.runtime import gateway
+from backend.applications.commands import rebinding as rebind
+from backend.devices.capabilities.registry import capability_catalog
+from backend.devices.commands.queue import command_envelope, deliver_next_command, record_command_result
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_command_discovery import installed, source_subject, source_installed, vertical, add_provider, identity
 from backend.tests.test_application_consent import allow, preview
 from backend.tests.response_helpers import install_response_transport
-from three_mm_application_sdk import OperationContext, ApplicationPlatformError
-from three_mm_runtime.application_transport import ApplicationTransportError
-from three_mm_runtime.application_host import _load_service
-from three_mm_runtime.update_helper_client import UpdateHelperClient
-from three_mm_runtime import application_lifecycle as helper_fencing
+from packages.application_sdk import OperationContext, ApplicationPlatformError
+from components.system_runtime.application_transport import ApplicationTransportError
+from components.system_runtime.application_host import _load_service
+from components.system_runtime.update_helper_client import UpdateHelperClient
+from components.system_runtime import application_lifecycle as helper_fencing
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Real POSIX native approval and signed Runtime sockets")
 

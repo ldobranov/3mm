@@ -1,5 +1,5 @@
 """Sealed current grants + actual target-owned POSIX worker; no live devices."""
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 import base64
 import hashlib
@@ -21,10 +21,10 @@ from backend.db.module import (
     ApplicationExtensionInstallation as Installation,
     ModulePackage,
 )
-from backend.services import application_files as service
-from backend.services import application_authority_management as authority
-from backend.services.application_platform import ApplicationPlatformServer
-from backend.services.module_packages import validate_module_package
+from backend.applications.files import authority as service
+from backend.applications.authority import management as authority
+from backend.applications.runtime.platform import ApplicationPlatformServer
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_authority_management import (
     installed as managed_installed,
     source_subject,
@@ -33,7 +33,7 @@ from backend.tests.test_application_authority_management import (
     decide,
     identity,
 )
-from three_mm_application_sdk import (
+from packages.application_sdk import (
     ApplicationFileExecutionUnconfirmed,
     ApplicationFileLimits,
     ApplicationFileStorage,
@@ -41,12 +41,12 @@ from three_mm_application_sdk import (
     ApplicationPlatformClient,
     ApplicationScopedFileStorage,
 )
-from three_mm_protocol.tests.test_application_private_files import file_request
-from three_mm_runtime.application_file_executor import (
+from packages.protocol.tests.test_application_private_files import file_request
+from components.system_runtime.application_file_executor import (
     ApplicationFileExecutor,
     call_file_executor,
 )
-from three_mm_runtime.application_transport import ApplicationTransportError
+from components.system_runtime.application_transport import ApplicationTransportError
 
 
 pytestmark = pytest.mark.skipif(

@@ -327,7 +327,7 @@
         </button>
         <span class="confirm-icon"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i></span>
         <h2 id="update-confirm-title">{{ t('systemUpdates.confirmTitle', 'Install system update?') }}</h2>
-        <p>{{ t('systemUpdates.confirmText', '3mm will install the reviewed release and restart its services. Do not remove power during the update.') }}</p>
+        <p>{{ t('systemUpdates.confirmText', 'The reviewed release will be installed and its services restarted. Do not remove power during the update.') }}</p>
         <dl class="confirm-summary">
           <div><dt>{{ t('systemUpdates.currentVersion', 'Current version') }}</dt><dd>{{ status?.current.version || status?.current.release_id || t('systemUpdates.statusCurrentUnknown', 'Current version unknown') }}</dd></div>
           <div><dt>{{ t('systemUpdates.targetVersion', 'Version to install') }}</dt><dd>{{ staged.version }}</dd></div>

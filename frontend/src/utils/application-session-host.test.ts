@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createApplicationSessions } from './application-session-host'
 import type { ApplicationSessionOpen } from '../extension-ui/application-v1'
 import { ApplicationHostError } from '../extension-ui/application-v1'
+import { browserDiagnosticSnapshot, clearBrowserDiagnostics } from './diagnostic-client'
 const DEVICE = 'dev_' + 'a'.repeat(32), SESSION = 'ses_' + 'b'.repeat(32)
 const target = { bindingId: 'console', deviceId: DEVICE, providerId: 'org.example.provider', capabilityIds: ['example.console'], accessMode: 'write', controlActions: ['resize'], options: { cols: 80, rows: 24 }, available: true }
 const request: ApplicationSessionOpen = { session_request_version: 1, request_id: 'console_1', provider_id: target.providerId, device_id: DEVICE, capability_id: target.capabilityIds[0]!, access_mode: 'write', options: { cols: 80, rows: 24 } }
@@ -23,7 +24,11 @@ class Socket {
 const send = vi.fn()
 let live = true
 const make = () => createApplicationSessions({ ui, live() { if (!live) throw new Error('disposed') }, request: send, socketUrl: path => 'wss://core.example' + path })
+const trace = 'invoke_' + 'e'.repeat(32)
+const diagnosed = (extra = {}) => createApplicationSessions({ ui, live() {}, request: send,
+  socketUrl: path => 'wss://core.example' + path, traceId: () => trace, ...extra })
 beforeEach(() => {
+  clearBrowserDiagnostics()
   live = true; Socket.instances = []; vi.stubGlobal('WebSocket', Socket)
   send.mockReset().mockImplementation(async (path: string) => path.endsWith('/ticket')
     ? { session_host_version: 1, session_id: SESSION, request_id: request.request_id, ticket: 't'.repeat(43), expires_in_seconds: 15 }
@@ -55,7 +60,120 @@ it('binds the exact UI and target, exposes no ticket/socket/credential to the ex
   expect(socket.sent[0]).toBe(JSON.stringify({ op: 'authenticate', ticket: 't'.repeat(43) }))
   expect(JSON.stringify(accepted)).not.toContain('ticket')
   expect(Object.keys(accepted).sort()).toEqual(['request_id', 'session_id', 'state', 'device_id', 'provider_id', 'capability_id'].sort())
+  expect(browserDiagnosticSnapshot().records).toHaveLength(0)
   dispose()
+})
+it('records a missing build before HTTP without inferring any physical execution outcome', async () => {
+  const host = diagnosed({ ui: { ...ui, built_ui_sha256: undefined } })
+  await expect(host.sessions.targets()).rejects.toMatchObject({ code: 'unavailable' })
+  expect(send).not.toHaveBeenCalled()
+  expect(browserDiagnosticSnapshot().records[0]).toMatchObject({ stage: 'session.ui', cause: 'ui_build_missing', response_observed: false, execution: 'unknown' })
+})
+it.each([
+  ['targets_response_invalid', { session_host_version: 2, targets: [] }],
+  ['target_schema_invalid', { session_host_version: 1, targets: [{ ...target, options: { secret: Infinity } }] }],
+  ['target_binding_duplicate', { session_host_version: 1, targets: [target, target] }],
+])('records %s after HTTP success outside open, without target contents', async (cause, value) => {
+  send.mockResolvedValue(value)
+  await expect(diagnosed().sessions.targets()).rejects.toBeInstanceOf(ApplicationHostError)
+  expect(browserDiagnosticSnapshot().records).toHaveLength(1)
+  expect(browserDiagnosticSnapshot().records[0]).toMatchObject({ stage: 'session.targets.response', cause,
+    last_passed_stage: 'session.targets.request', trace_id: trace, response_observed: true })
+  expect(JSON.stringify(browserDiagnosticSnapshot())).not.toMatch(/secret|example.provider|cols|capabilityIds/)
+  expect(send).toHaveBeenCalledTimes(1); expect(Socket.instances).toHaveLength(0)
+})
+it.each([false, true])('records a missing/ambiguous resolved target (ambiguous=%s), never dispatching a ticket', async ambiguous => {
+  send.mockResolvedValue({ session_host_version: 1, targets: ambiguous ? [target, { ...target, bindingId: 'other' }] : [] })
+  await expect(diagnosed().sessions.resolveTarget(DEVICE)).rejects.toMatchObject({ code: 'unavailable' })
+  expect(browserDiagnosticSnapshot().records[0]).toMatchObject({ stage: 'session.resolve', cause: ambiguous ? 'target_ambiguous' : 'targets_empty',
+    last_passed_stage: 'session.targets.response', trace_id: trace, response_observed: true })
+  expect(send).toHaveBeenCalledTimes(1); expect(Socket.instances).toHaveLength(0)
+})
+it('distinguishes a caller ID mismatch from an empty target list, without collecting either identity', async () => {
+  await expect(diagnosed().sessions.resolveTarget('SECRET_mismatched_id')).rejects.toMatchObject({ code: 'unavailable' })
+  expect(browserDiagnosticSnapshot().records[0]).toMatchObject({ stage: 'session.resolve', cause: 'target_not_found',
+    last_passed_stage: 'session.targets.response', trace_id: trace, response_observed: true })
+  expect(JSON.stringify(browserDiagnosticSnapshot())).not.toMatch(/SECRET|console|example.provider|dev_/)
+  expect(send).toHaveBeenCalledTimes(1); expect(Socket.instances).toHaveLength(0)
+})
+it('records exact-request refusal once, before ticket dispatch, without consuming a replacement request', async () => {
+  await expect(diagnosed().sessions.open({ ...request, options: { cols: 99, rows: 24 } })).rejects.toMatchObject({ code: 'unavailable' })
+  expect(browserDiagnosticSnapshot().records).toHaveLength(1)
+  expect(browserDiagnosticSnapshot().records[0]).toMatchObject({ stage: 'session.request', cause: 'session_request_mismatch', trace_id: trace })
+  expect(send).toHaveBeenCalledTimes(1); expect(Socket.instances).toHaveLength(0)
+})
+it('records invalid request before transport, keeping the original public error', async () => {
+  await expect(diagnosed().sessions.open({ ...request, request_id: '../SECRET' })).rejects.toMatchObject({ code: 'invalid_request' })
+  expect(send).not.toHaveBeenCalled()
+  expect(browserDiagnosticSnapshot().records[0]).toMatchObject({ stage: 'session.request', cause: 'session_request_invalid', response_observed: false })
+  expect(JSON.stringify(browserDiagnosticSnapshot())).not.toContain('SECRET')
+})
+it('captures a malformed non-object request without replacing its existing exception or dispatching', async () => {
+  await expect(diagnosed().sessions.open(null as any)).rejects.toBeInstanceOf(TypeError)
+  expect(send).not.toHaveBeenCalled()
+  expect(browserDiagnosticSnapshot().records[0]).toMatchObject({ stage: 'session.request', cause: 'session_request_invalid' })
+})
+it.each(['protocol', 'callback'])('distinguishes %s failure during streaming without recording data or replaying', async kind => {
+  const host = await opened()
+  if (kind === 'callback') {
+    host.sessions.observe(SESSION, { onData() { throw new Error('SECRET') }, onClosed() {} })
+    host.socket.receive(frame(1))
+  } else host.socket.receive('SECRET malformed message')
+  const rows = browserDiagnosticSnapshot().records
+  expect(rows).toHaveLength(1)
+  expect(rows[0]).toMatchObject({ stage: 'session.stream', last_passed_stage: 'session.opening',
+    cause: kind === 'protocol' ? 'session_protocol_invalid' : 'session_callback_failed', execution: 'unknown' })
+  expect(JSON.stringify(rows)).not.toContain('SECRET')
+  expect(Socket.instances).toHaveLength(1); host.dispose()
+})
+it('records a malformed ticket once and keeps the uncertainty fence without replay', async () => {
+  send.mockImplementation(async path => path.endsWith('/ticket') ? { ticket: 'SECRET' } : { session_host_version: 1, targets: [target] })
+  const host = diagnosed()
+  await expect(host.sessions.open(request)).rejects.toMatchObject({ code: 'unconfirmed' })
+  expect(browserDiagnosticSnapshot().records).toHaveLength(1)
+  expect(browserDiagnosticSnapshot().records[0]).toMatchObject({ stage: 'session.ticket.response', cause: 'ticket_response_invalid', trace_id: trace })
+  await expect(host.sessions.open({ ...request, request_id: 'replacement' })).rejects.toMatchObject({ code: 'unconfirmed' })
+  expect(send).toHaveBeenCalledTimes(2); expect(Socket.instances).toHaveLength(0)
+  expect(JSON.stringify(browserDiagnosticSnapshot())).not.toContain('SECRET')
+})
+it('captures a socket constructor failure without swallowing or retrying it, correlated with the ticket response', async () => {
+  const error = new Error('SECRET url and ticket')
+  vi.stubGlobal('WebSocket', class { constructor() { throw error } })
+  await expect(diagnosed().sessions.open(request)).rejects.toBe(error)
+  expect(browserDiagnosticSnapshot().records).toHaveLength(1)
+  expect(browserDiagnosticSnapshot().records[0]).toMatchObject({ stage: 'session.socket', cause: 'socket_construction_failed',
+    last_passed_stage: 'session.ticket.response', trace_id: trace, response_observed: true, execution: 'unknown' })
+  expect(send).toHaveBeenCalledTimes(2)
+  expect(JSON.stringify(browserDiagnosticSnapshot())).not.toContain('SECRET')
+})
+it('keeps each concurrent validation failure tied to its own successful response', async () => {
+  const a = { session_host_version: 1, targets: [] }, b = { session_host_version: 0, targets: [] }
+  let resolve!: (value: unknown) => void
+  send.mockImplementationOnce(() => new Promise(done => { resolve = done })).mockResolvedValueOnce(b)
+  const host = diagnosed({ traceId: (value: unknown) => value === a ? 'invoke_' + 'a'.repeat(32) : 'invoke_' + 'b'.repeat(32) })
+  const first = host.sessions.resolveTarget('missing').catch(error => error)
+  await expect(host.sessions.targets()).rejects.toMatchObject({ code: 'unavailable' })
+  resolve(a); await first
+  const rows = browserDiagnosticSnapshot().records
+  expect(rows).toHaveLength(2)
+  expect(rows[0]).toMatchObject({ cause: 'targets_response_invalid', trace_id: 'invoke_' + 'b'.repeat(32) })
+  expect(rows[1]).toMatchObject({ cause: 'targets_empty', trace_id: 'invoke_' + 'a'.repeat(32) })
+})
+it('resolves the reviewed binding before opening its exact terminal options', async () => {
+  const host = make()
+  const selected = await host.sessions.resolveTarget('console')
+  expect(selected).toEqual(target)
+  const task = host.sessions.open({ ...request, device_id: selected.deviceId,
+    provider_id: selected.providerId, capability_id: selected.capabilityIds[0]!,
+    access_mode: selected.accessMode, options: { cols: selected.options.cols, rows: selected.options.rows } })
+  await vi.waitFor(() => expect(Socket.instances).toHaveLength(1))
+  expect(send.mock.calls.map(([path]) => String(path).split('?')[0]))
+    .toEqual(['/session-host/operations', '/session-host/operations', '/session-host/operations/ticket'])
+  const socket = Socket.instances[0]!
+  socket.onopen?.()
+  socket.receive(JSON.stringify({ op: 'opened', acceptance: { ...request, session_id: SESSION, state: 'active' } }))
+  expect((await task).session_id).toBe(SESSION)
+  host.dispose()
 })
 it('buffers bounded early output and waits for an input acknowledgment before the next frame', async () => {
   const { sessions, socket, dispose } = await opened()

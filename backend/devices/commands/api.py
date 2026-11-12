@@ -1,0 +1,153 @@
+"""Core command queue endpoints for administrators and paired Agents."""
+
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from backend.db.device import Device, DeviceCommand
+from backend.db.user import User
+from backend.devices.commands.queue import (
+    DeviceCommandError,
+    commit_queued_command,
+    queue_command,
+)
+from backend.devices.commands.notifier import device_command_notifier
+from backend.accounts.dependencies import require_admin
+from backend.storage.sessions import get_db
+from backend.devices.auth import require_device
+from packages.protocol import AgentCommand, AgentCommandResult
+from backend.devices.operations import DeviceOperations
+from backend.devices.http import call, database_phase
+
+router = APIRouter(prefix="/api/v1/devices", tags=["device-commands"])
+
+
+class QueueCommandRequest(BaseModel):
+    command_type: str = Field(min_length=1, max_length=100)
+    payload: dict = Field(default_factory=dict)
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    ttl_seconds: int = Field(default=300, ge=5, le=86400)
+    model_config = ConfigDict(extra="forbid")
+
+
+class CommandStatusResponse(BaseModel):
+    command_id: str
+    status: str
+    created_at: datetime
+    expires_at: datetime
+    delivery_attempts: int
+    command_type: str
+    idempotency_key: str
+    delivered_at: datetime | None
+    completed_at: datetime | None
+    result: dict | None
+    error: str | None
+    model_config = ConfigDict(extra="forbid")
+
+
+class CommandHistoryResponse(BaseModel):
+    items: list[CommandStatusResponse]
+    total: int
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.post("/{device_id}/commands", response_model=CommandStatusResponse)
+def create_command(
+    device_id: str,
+    payload: QueueCommandRequest,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> CommandStatusResponse:
+    device = db.scalar(select(Device).where(Device.device_id == device_id))
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device was not found")
+    try:
+        command = queue_command(db, device=device, **payload.model_dump())
+        commit_queued_command(db, device=device, command=command)
+    except DeviceCommandError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return CommandStatusResponse.model_validate(command, from_attributes=True)
+
+
+@router.get("/{device_id}/commands", response_model=CommandHistoryResponse)
+def list_commands(
+    device_id: str,
+    limit: int = 50,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> CommandHistoryResponse:
+    device = db.scalar(select(Device).where(Device.device_id == device_id))
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device was not found")
+    bounded_limit = max(1, min(limit, 200))
+    commands = list(
+        db.scalars(
+            select(DeviceCommand)
+            .where(DeviceCommand.device_id == device.id)
+            .order_by(DeviceCommand.created_at.desc())
+            .limit(bounded_limit)
+        )
+    )
+    return CommandHistoryResponse(
+        items=[CommandStatusResponse.model_validate(item, from_attributes=True) for item in commands],
+        total=len(commands),
+    )
+
+
+@router.get("/{device_id}/commands/next", response_model=AgentCommand)
+async def next_command(
+    device_id: str,
+    response: Response,
+    wait_seconds: float = Query(default=0.0, ge=0.0, le=20.0),
+    device: Device = Depends(require_device),
+    db: Session = Depends(get_db),
+) -> AgentCommand | Response:
+    def poll(*, after_wait=False):
+        if after_wait:
+            db.rollback()
+            db.refresh(device)
+        if device.device_id != device_id:
+            raise HTTPException(status_code=403, detail="Device identity mismatch")
+        device_pk = device.id
+        revision = device_command_notifier.revision(device_pk)
+        command = call(DeviceOperations(db, device).next_command)
+        if command is None:
+            db.rollback()  # No expired ORM access or DB transaction in the wait.
+        return device_pk, revision, command
+
+    device_pk, revision, command = await database_phase(poll)
+    if command is None and wait_seconds > 0:
+        await device_command_notifier.wait(device_pk, after=revision, timeout=wait_seconds)
+        _, _, command = await database_phase(poll, after_wait=True)
+    if command is None:
+        response.status_code = status.HTTP_204_NO_CONTENT
+        return response
+    return command
+
+
+@router.post("/{device_id}/commands/{command_id}/result", response_model=CommandStatusResponse)
+def submit_command_result(
+    device_id: str,
+    command_id: str,
+    payload: AgentCommandResult,
+    device: Device = Depends(require_device),
+    db: Session = Depends(get_db),
+    authorization: str | None = Header(default=None),
+) -> CommandStatusResponse:
+    if device.device_id != device_id or payload.command_id != command_id:
+        raise HTTPException(status_code=403, detail="Command identity mismatch")
+    # require_device validated this exact header; never choose another active key.
+    credential_id = authorization.removeprefix("Device ").strip().partition(":")[0] if isinstance(authorization, str) else None
+    command = call(DeviceOperations(db, device, credential_id=credential_id).command_result, payload)
+    return CommandStatusResponse.model_validate(command, from_attributes=True)
+
+
+@router.post('/{device_id}/commands/{command_id}/authorize-execution')
+def authorize_physical_execution(device_id: str, command_id: str,
+        device: Device = Depends(require_device), db: Session = Depends(get_db)):
+    if device.device_id != device_id:
+        raise HTTPException(403, 'Device identity mismatch')
+    return call(DeviceOperations(db, device).authorize_execution, command_id)

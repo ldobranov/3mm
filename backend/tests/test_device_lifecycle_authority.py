@@ -14,17 +14,17 @@ from backend.db.device import (
     Device, DeviceCommand, DeviceCredential, DeviceEvent, DevicePairingRequest,
     DevicePlatformState, DeviceState,
 )
-from backend.services.authority_metadata import AuthorityMetadataError, read_device_control
-from backend.services import device_platform
-from backend.services.device_pairing import (
+from backend.applications.authority.metadata import AuthorityMetadataError, read_device_control
+from backend.devices.platform import service as device_platform
+from backend.devices.pairing.service import (
     issue_replacement_device_credential, revoke_device_credential,
 )
-from backend.services.device_protocol import authenticate_device
-from backend.services.installation_identity import installation_identity
+from backend.devices.operations import authenticate_device
+from backend.installation.identity import installation_identity
 from backend.tests.test_device_pairing_authority import db, paired, DEVICE_ID  # noqa: F401
 from backend.tests.test_device_platform import core, paired as http_paired  # noqa: F401
-from three_mm_protocol.device_platform import LifecycleReportV1
-from three_mm_protocol.transport import DeviceProtocolError
+from packages.protocol.device_platform import LifecycleReportV1
+from packages.protocol.transport import DeviceProtocolError
 
 
 @pytest.fixture
@@ -194,7 +194,7 @@ def test_authenticated_principal_cannot_report_after_its_key_is_revoked(db, node
 
 
 def test_http_lifecycle_rechecks_presented_key_after_authentication(core, monkeypatch):
-    from backend.routes import device_platform as routes
+    from backend.devices.platform import api as routes
 
     credential, device, _ = http_paired(core)
     client, db, _, viewer = core

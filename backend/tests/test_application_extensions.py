@@ -5,12 +5,12 @@ import pytest
 import backend.database  # Register all ORM relationships for standalone runs.
 from backend.config import ApplicationRuntimeSettings
 from backend.db.module import ApplicationExtensionInstallation
-from backend.services import application_extensions
-from backend.services.application_extensions import (
+from backend.applications.runtime import gateway as application_extensions
+from backend.applications.runtime.gateway import (
     ApplicationGatewayError,
     invoke_application,
 )
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_module_packages import application_package
 
 
@@ -121,9 +121,9 @@ def test_gateway_enforces_idempotency_and_strict_input_schema(tmp_path):
 
 def test_public_relational_descriptor_is_denied_before_host_metadata_io(monkeypatch,tmp_path):
     from backend.tests.test_application_public_web import definition
-    from three_mm_protocol.tests.test_application_relational_storage import relational_request
-    from three_mm_runtime.application_transport import DispatchPhase
-    import backend.services.application_relational as relational
+    from packages.protocol.tests.test_application_relational_storage import relational_request
+    from components.system_runtime.application_transport import DispatchPhase
+    import backend.applications.relational.authority as relational
     installation,package,settings=records(tmp_path)
     value=definition(package.module_id,'/public').model_dump(mode='json')
     value['service']['sdk_version']='1.3'

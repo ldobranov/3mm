@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation, ModulePackage
-from backend.services import application_authority_management as authority, installation_peers
-from backend.services.application_authority_keys import AuthorityReviewKeyError
+from backend.applications.authority import management as authority
+from backend.installation import peers as installation_peers
+from backend.applications.authority.keys import AuthorityReviewKeyError
 from backend.tests.test_application_ui_concurrency import (
     ui_http, ui_app, managed_installed, source_subject, source_installed, adopt,
 )
@@ -154,7 +155,7 @@ def test_peer_callback_has_key_before_both_relay_fences(ui_http, monkeypatch):
     s = ui_http
     observed = track_fences(s, monkeypatch)
     # Exercise the real internal peer callback entry, not the HTTP boundary.
-    from backend.routes.application_extensions import get_settings
+    from backend.applications.management.api import get_settings
     with Session(s.engine) as db:
         s.sessions.append(db)
         app, package = db.get(Installation, 1), db.get(ModulePackage, 1)

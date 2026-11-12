@@ -15,11 +15,11 @@ from backend.db.application_authority_grant import ApplicationAuthorityAction as
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.session import UserSession
-from backend.services import application_authority_management as authority
-from backend.services import application_relational_activation as activation
-from backend.services import application_relational_upgrade_confirmation as coordinator
-from backend.services.application_authority_keys import AuthorityReviewKeyError
-from backend.services.application_policy_reviews import PolicyReviewStoreError
+from backend.applications.authority import management as authority
+from backend.applications.relational import activation
+from backend.applications.relational import upgrade_confirmation as coordinator
+from backend.applications.authority.keys import AuthorityReviewKeyError
+from backend.applications.authority.policy_reviews import PolicyReviewStoreError
 from backend.tests.test_application_relational_migrations import candidate, script
 from backend.tests.test_application_relational_preparation import (
     ROOT_ONLY,
@@ -44,15 +44,15 @@ from backend.tests.test_application_relational_upgrade import run as upgrade
 from backend.tests.test_application_relational_upgrade import (
     upgradable,
 )
-from three_mm_application_sdk.relational_upgrade_wire import (
+from packages.application_sdk.relational_upgrade_wire import (
     _RelationalUpgradeConfirmationTicket,
     _RelationalUpgradeTicket,
     upgraded_lifecycle,
 )
-from three_mm_application_sdk.relational_wire import canonical, sign_metadata
-from three_mm_runtime import application_relational_upgrade as upgrade_helper
-from three_mm_runtime import application_relational_upgrade_confirmation as helper
-from three_mm_runtime.application_relational_session import _prepared
+from packages.application_sdk.relational_wire import canonical, sign_metadata
+from components.system_runtime import application_relational_upgrade as upgrade_helper
+from components.system_runtime import application_relational_upgrade_confirmation as helper
+from components.system_runtime.application_relational_session import _prepared
 
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="Actual POSIX authority/worker"),
@@ -516,7 +516,7 @@ def test_boot_evidence_is_never_cleared_by_upgrade_confirmation(interrupted):
 def test_expired_upgrade_is_historical_evidence_not_renewed_worker_permission(
     interrupted, monkeypatch
 ):
-    from three_mm_runtime import (
+    from components.system_runtime import (
         application_relational_preparation as preparation_helper,
     )
 
@@ -702,7 +702,7 @@ def test_confirmed_upgrade_can_be_the_source_of_the_next_real_forward_upgrade(
     state.source_archive = state.archive
     candidate(
         state,
-        """from three_mm_application_sdk import ApplicationMigration
+        """from packages.application_sdk import ApplicationMigration
 
 def applied(db):
     raise RuntimeError('Applied migration must not run')

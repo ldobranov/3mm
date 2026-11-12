@@ -13,8 +13,8 @@ import sqlite3
 import time
 import uuid
 
-from three_mm_platform_wire import remaining
-from three_mm_protocol.public_webhooks import (
+from packages.platform_wire import remaining
+from packages.protocol.public_webhooks import (
     MAX_WEBHOOK_BYTES, WebhookRejected, valid_webhook_event_id, validate_webhook_endpoint, verify_webhook,
 )
 

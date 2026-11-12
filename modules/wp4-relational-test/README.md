@@ -45,6 +45,12 @@ The builder validates the final ZIP with Core's existing validator and prints
 its **ZIP SHA-256**. The wheel has a separate digest, included in the definition.
 The delivered ZIP normalizes line endings, timestamps and wheel RECORD hashes.
 
+The current source-layout cleanup uses the neutral `packages.application_sdk`
+imports. Its rebuilt 1.0.0 baseline has ZIP SHA-256
+`261434b328129b82742971434c3cdae3f5f925c41984763d37ac9d9d0797fb0b`.
+This is different package code and needs its own exact review; the historical
+accepted ZIP/hash recorded below is not silently replaced or reapproved.
+
 Preflight reads version, service state, existing `3mm` / `3mm-app` UID/GID and
 the test instance's systemd template principal/state. It creates no account,
 namespace, key, grant or service. `ready_for_catalog_only` is **not** authority,
@@ -104,7 +110,7 @@ with closing(sqlite3.connect(
         "WHERE module_id=? AND sha256=? LIMIT 2",
         (
             "org.3mm.wp4-relational-test",
-            "e3afeeba492b1eb30351ebbf8229c27fa1337ccd940f575bba9b96f2f09157d0",
+            "261434b328129b82742971434c3cdae3f5f925c41984763d37ac9d9d0797fb0b",
         ),
     ).fetchall()
     if len(rows) != 1 or rows[0][1] != "1.0.0":

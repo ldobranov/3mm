@@ -5,9 +5,9 @@ import os
 
 import pytest
 
-from backend.services.application_code_scope import code_verification_scope, load_verified_package
-from backend.services import compiled_ui
-from backend.services.module_packages import ModulePackageError
+from backend.artifacts.code_scope import code_verification_scope, load_verified_package
+from backend.artifacts import compiled_ui
+from backend.artifacts.packages import ModulePackageError
 from backend.tests.test_compiled_ui_provenance import built
 from backend.tests.test_module_packages import application_package
 
@@ -29,7 +29,7 @@ def test_scope_crosses_worker_phases_but_expires_in_copied_context(built, tmp_pa
 
 @pytest.mark.parametrize('policy', ['explicit', 'current'])
 def test_reuse_cannot_bypass_a_different_core_compatibility_policy(tmp_path, monkeypatch, policy):
-    from backend.services import module_packages
+    from backend.artifacts import packages as module_packages
     path = tmp_path / 'application.zip'
     path.write_bytes(application_package())
     with code_verification_scope():

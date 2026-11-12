@@ -26,7 +26,7 @@ from sqlalchemy import update
 
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.module import ModulePackage
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_relational_activation_control import (
     catalog,
     deployed,
@@ -45,18 +45,18 @@ from backend.tests.test_application_relational_activation_control import (
 from backend.tests.test_application_relational_preparation import ROOT_ONLY, identity
 from backend.tests.test_application_relational_reactivation_control import review
 from backend.tests.test_application_relational_registration import approve, register
-from three_mm_application_sdk import (
+from packages.application_sdk import (
     ApplicationContext,
     ApplicationStorage,
     OperationContext,
 )
-from three_mm_application_sdk.scoped_relational import (
+from packages.application_sdk.scoped_relational import (
     ApplicationRelationalExecutionUnconfirmed,
     ApplicationScopedStorage,
     _TransactionAdmission,
 )
-from three_mm_runtime import application_lifecycle as locks
-from three_mm_runtime import update_helper
+from components.system_runtime import application_lifecycle as locks
+from components.system_runtime import update_helper
 
 ROOT = Path(__file__).parents[2] / "modules/wp4-relational-test"
 
@@ -364,7 +364,7 @@ def test_probe_sends_only_one_operation_and_never_prints_credentials(
 
 
 def test_confirmed_upload_only_uses_catalog_endpoint(tmp_path, monkeypatch, capsys):
-    from backend.routes.modules import PackageResponse
+    from backend.artifacts.api import PackageResponse
 
     probe = load("wp4r_probe", "probe.py")
     archive = tmp_path / "test.zip"
@@ -420,7 +420,7 @@ def test_confirmed_upload_only_uses_catalog_endpoint(tmp_path, monkeypatch, caps
 def test_catalog_accepts_public_package_response_without_internal_id(
     monkeypatch, capsys
 ):
-    from backend.routes.modules import PackageResponse
+    from backend.artifacts.api import PackageResponse
 
     probe = load("wp4r_probe", "probe.py")
     calls = []
@@ -757,7 +757,7 @@ def core_status(state):
             sys.executable,
             "-c",
             "import json; from backend.database import engine; "
-            "from backend.services.application_authority_management import configured_manager; "
+            "from backend.applications.authority.management import configured_manager; "
             "print(json.dumps(configured_manager(engine).inspect(1)))",
         ],
         capture_output=True,
@@ -782,7 +782,7 @@ from sqlalchemy.orm import Session
 from backend.database import engine
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
 from backend.config import get_settings
-from backend.services.application_extensions import invoke_application, ApplicationGatewayError
+from backend.applications.runtime.gateway import invoke_application, ApplicationGatewayError
 frame = json.load(sys.stdin)
 context = {'audience': 'administrator', 'correlation_id': uuid.uuid4().hex, 'user_id': 1}
 if frame['request_id'] is not None:
@@ -838,8 +838,8 @@ def test_exact_zip_core_uid_signed_sdk_sql_deduplication_and_revocation(prepared
     server_script = """
 import sys
 from pathlib import Path
-from backend.services.application_platform import ApplicationPlatformServer
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from backend.applications.runtime.platform import ApplicationPlatformServer
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 server = ApplicationPlatformServer(Path(sys.argv[1]), Path(sys.argv[2]), group='', allowed_actions=COMPATIBILITY_ACTIONS)
 server.start()
 try:
@@ -912,7 +912,7 @@ finally:
         revoke_script = """
 import sys, uuid
 from backend.database import engine
-from backend.services.application_authority_management import configured_manager
+from backend.applications.authority.management import configured_manager
 manager = configured_manager(engine)
 manager.revoke(1, actor_token=sys.stdin.buffer.readline().decode().strip(),
     request_id=uuid.uuid4().hex, expected_revision=manager.inspect(1)['grant_record_revision'])

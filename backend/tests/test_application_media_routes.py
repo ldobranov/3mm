@@ -12,13 +12,14 @@ from sqlalchemy import delete, update
 from sqlalchemy.orm import Session
 from backend.db.module import ApplicationExtensionInstallation as Installation, ApplicationPermissionGrant
 from backend.db.session import UserSession
-from backend.routes import application_extensions as routes, application_file_transfers as files
+from backend.applications.management import api as routes
+from backend.applications.files import api as files
 from backend.tests.test_application_ui_authority import ui_app, managed_installed, source_subject, source_installed, adopt
 from backend.tests.test_application_file_execution import revoke
 from backend.tests.test_application_authority_management import identity
 from backend.tests.test_application_access import kiosk_enrollment,kiosk_claim
-from backend.utils.db_utils import get_db
-from three_mm_runtime.application_file_executor import ApplicationFileExecutor
+from backend.storage.sessions import get_db
+from components.system_runtime.application_file_executor import ApplicationFileExecutor
 
 pytestmark = [pytest.mark.skipif(os.name != 'posix', reason='Actual POSIX runtime'), pytest.mark.parametrize('ui_app', ['files'], indirect=True)]
 
@@ -192,7 +193,7 @@ def test_revocation_between_stream_chunks_stops_remaining_bytes(environment):
 
 
 def test_current_private_grant_cannot_publish_or_transform_with_human_permission(environment):
-    from backend.services import application_consent as consent
+    from backend.applications.management import consent
     s=environment
     metadata=upload(s,b'hello')
     preview=consent.preview(s.manager,1,actor_token=s.token,request_id=identity())
@@ -205,7 +206,7 @@ def test_current_private_grant_cannot_publish_or_transform_with_human_permission
 
 
 def test_initial_consent_leaves_public_and_image_processing_unselected(ui_app):
-    from backend.services import application_consent as consent
+    from backend.applications.management import consent
     s=ui_app
     preview=consent.preview(s.manager,1,actor_token=s.token,request_id=identity())
     assert 'storage:private_files_publish' in preview['scopes']

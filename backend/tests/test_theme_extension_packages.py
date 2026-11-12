@@ -7,8 +7,8 @@ import zipfile
 import pytest
 from pydantic import ValidationError
 
-from backend.services.module_packages import ModulePackageError, validate_module_package
-from three_mm_protocol import ThemeExtensionV1
+from backend.artifacts.packages import ModulePackageError, validate_module_package
+from packages.protocol import ThemeExtensionV1
 
 
 def definition():

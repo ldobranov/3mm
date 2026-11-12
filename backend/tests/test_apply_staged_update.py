@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.services.update_staging import StagedUpdate
+from backend.system.updates.staging import StagedUpdate
 from deployment import apply_staged_update as worker
 from deployment.deployment_contract import CONTRACT_PATH, LEGACY_REQUIRED_FILES
 from backend.tests.test_update_staging import write_release_archive

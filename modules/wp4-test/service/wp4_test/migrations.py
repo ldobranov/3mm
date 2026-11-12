@@ -1,5 +1,5 @@
 """Only this application's legacy bootstrap schema; not scoped SQL acceptance."""
-from three_mm_application_sdk import ApplicationMigration
+from packages.application_sdk import ApplicationMigration
 
 
 def get_migrations():

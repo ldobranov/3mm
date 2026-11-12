@@ -13,12 +13,12 @@ from backend.db.application_authority_grant import ApplicationAuthorityAction as
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.session import UserSession
-from backend.services import application_authority_management as authority
-from backend.services import application_relational_lifecycle as lifecycle
-from backend.services import application_relational_preparation_recovery as coordinator
-from backend.services.application_authority_keys import AuthorityReviewKeyError
-from backend.services.application_policy_reviews import PolicyReviewStoreError
-from backend.services.application_relational_admin_worker import dispatch
+from backend.applications.authority import management as authority
+from backend.applications.relational import lifecycle
+from backend.applications.relational import preparation_recovery as coordinator
+from backend.applications.authority.keys import AuthorityReviewKeyError
+from backend.applications.authority.policy_reviews import PolicyReviewStoreError
+from backend.applications.relational.admin_worker import dispatch
 from backend.tests.test_application_relational_installation import (
     ROOT_ONLY,
     absent_paths,
@@ -33,21 +33,21 @@ from backend.tests.test_application_relational_installation import (
     source_subject,
     stopped,
 )
-from three_mm_application_sdk.relational_preparation_recovery_wire import (
+from packages.application_sdk.relational_preparation_recovery_wire import (
     _EmptyPreparationRecoveryTicket,
 )
-from three_mm_application_sdk.relational_wire import (
+from packages.application_sdk.relational_wire import (
     _RelationalMigrationPreparationTicket,
     _RelationalPreparationTicket,
     canonical,
 )
-from three_mm_runtime import application_relational_preparation as preparation
-from three_mm_runtime import application_relational_preparation_recovery as helper
-from three_mm_runtime.application_activation import (
+from components.system_runtime import application_relational_preparation as preparation
+from components.system_runtime import application_relational_preparation_recovery as helper
+from components.system_runtime.application_activation import (
     ApplicationActivationError,
     _require_no_pending_rollback,
 )
-from three_mm_runtime.application_relational_preparation_recovery_control import (
+from components.system_runtime.application_relational_preparation_recovery_control import (
     preparation_recovery_request,
     recover_installed_preparation,
 )
@@ -80,7 +80,7 @@ def sources(state):
         actor_token=state.token,
         transport_secret=b"t" * 32,
     )
-    from three_mm_application_sdk.relational_wire import sign_metadata
+    from packages.application_sdk.relational_wire import sign_metadata
 
     receipt = sign_metadata(
         b"t" * 32,

@@ -20,13 +20,13 @@ from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.module import (
     ModulePackage,
 )
-from backend.services import application_local_sessions as local
-from backend.services.application_authority_management import AuthorityManagementError
-from backend.services.device_capability_registry import (
+from backend.applications.sessions import local
+from backend.applications.authority.management import AuthorityManagementError
+from backend.devices.capabilities.registry import (
     capability_catalog,
     registered_capabilities,
 )
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_session_authority import (
     SCOPE,
     checkpoint_app,
@@ -39,8 +39,8 @@ from backend.tests.test_application_session_authority import (
     source_installed,
     source_subject,
 )
-from three_mm_protocol.device_capabilities import CapabilityProviderReportV1
-from three_mm_runtime.tests.test_session_worker import wheel
+from packages.protocol.device_capabilities import CapabilityProviderReportV1
+from components.system_runtime.tests.test_session_worker import wheel
 
 
 @pytest.fixture
@@ -197,7 +197,7 @@ def test_agent_cannot_register_core_session_provider_type():
 
 
 def test_short_key_contention_waits_only_before_admission(local_app):
-    from backend.services.application_authority_keys import CoreReviewKeyStore
+    from backend.applications.authority.keys import CoreReviewKeyStore
 
     s = local_app
     identity = s.keys.provision()

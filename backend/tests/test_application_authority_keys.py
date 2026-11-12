@@ -22,8 +22,8 @@ from sqlalchemy import create_engine, event, update
 
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.installation_identity import CoreInstallationIdentity
-from backend.services import application_authority_keys as keys
-from backend.services.application_authority_context import _canonical_bytes
+from backend.applications.authority import keys
+from backend.applications.authority.context import _canonical_bytes
 
 
 CORE_ID = "inst_" + "1" * 32
@@ -161,7 +161,7 @@ def test_invalid_configuration_is_bounded_and_errors_are_redacted(invalid):
 
 
 def test_foreign_principal_constructed_model_and_cycles_cannot_bypass_validation():
-    from backend.services.application_authority_context import AuthorityPrincipal
+    from backend.applications.authority.context import AuthorityPrincipal
 
     for principal in ({**PRINCIPAL, "core_installation_id": "inst_" + "9" * 32},
             {**PRINCIPAL, "extra": "PASSWORD_PRIVATE"},

@@ -10,6 +10,8 @@ export const sessionResource = () => ({
   contract: { contract_version: 1, access_modes: ['read', 'write'], control_actions: ['resize', 'signal'] },
 })
 export const sessionScope = 'session:console:open'
+export const hostSessionAccount = () => ({ resource_profile: 'host_account_session_v1' as const,
+  account: '3mm-terminal' as const, uid: 993, gid: 993, home: '/var/lib/3mm-terminal' as const, policy_sha256: 'f'.repeat(64) })
 export const sessionStatus = () => ({ installation_id: 7, mode: 'enforced', installation_status: 'active', installation_enabled: true,
   artifact_sha256: 'a'.repeat(64), scopes: [sessionScope], native_reviews: [{ native_review_id: '1'.repeat(32), revision: '2'.repeat(32) }],
   grant_state: 'active', grant_record_revision: '3'.repeat(32), grant_effective: false, isolation_proven: false,

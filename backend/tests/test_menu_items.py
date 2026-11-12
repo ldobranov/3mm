@@ -1,7 +1,7 @@
 import pytest
 from fastapi import HTTPException
 
-from backend.routes.settings import _validated_menu_items
+from backend.settings.api import _validated_menu_items
 
 
 def test_menu_items_accept_supported_audiences_and_legacy_items() -> None:

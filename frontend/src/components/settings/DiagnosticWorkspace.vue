@@ -7,7 +7,7 @@
     </div>
     <p v-if="error" class="workspace-error" role="alert">{{ error }}</p>
     <p v-if="loading" role="status">{{ t('diagnostics.loading', 'Checking device…') }}</p>
-    <RecentHttpFailures @trace="traceFilter = $event" />
+    <DiagnosticCases :producer-snapshot="imported ? mergedSnapshot : undefined" :recording-active="active || busy" @trace="traceFilter = $event" @record="recordAttempt" />
     <div class="component-grid">
       <article v-for="item in components" :key="item.component" class="component-card">
         <div><strong>{{ componentName(item.component) }}</strong><span class="ui-badge" :class="{ 'workspace-warning': item.health !== 'ready' }">{{ healthName(item.health) }}</span></div>
@@ -28,7 +28,7 @@
     </div>
     <form class="session-form" @submit.prevent="start">
       <label>{{ t('diagnostics.workspace.profile', 'Profile') }}<select v-model="profile" :disabled="active || busy"><option value="diagnostic">{{ t('diagnostics.workspace.diagnostic', 'Diagnostic session') }}</option><option value="development">{{ t('diagnostics.workspace.development', 'Development') }}</option></select></label>
-      <label>{{ t('diagnostics.workspace.ttl', 'Duration') }}<select v-model.number="ttl" :disabled="active || busy"><option v-for="seconds in [60, 300, 600, 1800]" :key="seconds" :value="seconds">{{ seconds / 60 }} min</option></select></label>
+      <label>{{ t('diagnostics.workspace.ttl', 'Duration') }}<select v-model.number="ttl" :disabled="active || busy"><option v-for="seconds in [60, 120, 300, 600, 1800]" :key="seconds" :value="seconds">{{ seconds / 60 }} min</option></select></label>
       <label>{{ t('diagnostics.workspace.operation', 'Operation') }}<select v-model="operation" :disabled="active || busy"><option value="">{{ t('diagnostics.workspace.allOperations', 'All supported operations') }}</option><option v-for="value in operations" :key="value" :value="value">{{ value }}</option></select></label>
       <label>{{ t('diagnostics.workspace.instance', 'Instance ID (optional)') }}<input v-model.trim="instance" pattern="[0-9a-f]{24}" maxlength="24" :disabled="active || busy" autocomplete="off" /></label>
       <div class="session-actions"><button type="submit" class="ui-button ui-button--primary" :disabled="active || busy">{{ t('diagnostics.workspace.start', 'Start recording') }}</button>
@@ -58,7 +58,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
-import RecentHttpFailures from './RecentHttpFailures.vue'
+import DiagnosticCases from './DiagnosticCases.vue'
 const { t } = useI18n()
 type Component = { component: string; version?: string; build_id: string | null; loaded_build_id?: string; health: string; reason: string }
 type Session = { session_id: string | null; active: boolean; remaining_seconds: number; records: number; dropped: Record<string,number>; scope?: { profile: string; operation: string | null; instance_id: string | null } }
@@ -92,6 +92,7 @@ async function refresh() {
 }
 async function change(action:()=>Promise<any>) { busy.value=true;error.value='';++generation;let failed=false;try{const response=await action();if(!disposed)applySession(response.data)}catch{failed=true}finally{if(!disposed){busy.value=false;await refresh();if(failed)failure()}} }
 async function start(){await change(()=>http.post('/api/v1/diagnostics/session',{ttl_seconds:ttl.value,profile:profile.value,operation:operation.value || null,instance_id:instance.value || null}))}
+async function recordAttempt(value:string){if(active.value || busy.value)return;ttl.value=120;instance.value='';operation.value=operations.value.includes(value)?value:'';await start()}
 async function stop(){await change(()=>http.delete('/api/v1/diagnostics/session'))}
 async function download(){busy.value=true;error.value='';try{const response=await http.get('/api/v1/diagnostics/session/records',{responseType:'blob'});if(disposed)return;const url=URL.createObjectURL(new Blob([response.data],{type:'application/x-ndjson'}));try{const anchor=document.createElement('a');anchor.href=url;anchor.download='3mm-operation-records.ndjson';anchor.click()}finally{URL.revokeObjectURL(url)}}catch{if(!disposed)failure()}finally{if(!disposed)busy.value=false}}
 function saveMerged(){if(!mergedSnapshot.value)return;const url=URL.createObjectURL(new Blob([JSON.stringify(mergedSnapshot.value,null,2)],{type:'application/json'}));try{const anchor=document.createElement('a');anchor.href=url;anchor.download='3mm-merged-diagnostics.json';anchor.click()}finally{URL.revokeObjectURL(url)}}

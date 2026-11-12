@@ -8,8 +8,8 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
-from backend.services.module_packages import validate_module_package, MAX_PACKAGE_BYTES
-from three_mm_protocol.diagnostic_snapshot import read_regular
+from backend.artifacts.packages import validate_module_package, MAX_PACKAGE_BYTES
+from packages.protocol.diagnostic_snapshot import read_regular
 
 
 class DevelopmentError(ValueError): pass
@@ -115,7 +115,7 @@ def main():
             preview_project(args.project,frontend=args.frontend,port=args.port)
             return
         if args.action=='schemas':
-            from three_mm_protocol.extension_schemas import extension_schema_catalog
+            from packages.protocol.extension_schemas import extension_schema_catalog
             print(json.dumps(extension_schema_catalog(),ensure_ascii=False,sort_keys=True))
             return
         if args.action=='catalog':
@@ -225,7 +225,7 @@ def main():
         elif args.action=='trace-stop':result=json.loads(client.request('DELETE','/api/v1/diagnostics/session'))
         elif args.action=='trace-export':
             data=client.request('GET','/api/v1/diagnostics/session/records')
-            from three_mm_protocol.diagnostic_snapshot import read_export
+            from packages.protocol.diagnostic_snapshot import read_export
             read_export(data)
             with args.output.open('xb') as stream:stream.write(data)
             result={'status':'exported'}

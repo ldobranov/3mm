@@ -5,13 +5,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from backend.services.interactive_sessions import (
+from backend.sessions.broker import (
     EchoSessionProvider,
     InteractiveSessionError,
     LocalSessionManager,
     SessionTicketStore,
 )
-from three_mm_protocol.interactive_session import (
+from packages.protocol.interactive_session import (
     MAX_SESSION_PAYLOAD_BYTES,
     SessionOpenRequestV1,
 )
@@ -292,7 +292,7 @@ def test_close_twice_fails():
 
 
 def test_terminal_sessions_are_pruned():
-    from backend.services.interactive_sessions import MAX_RETAINED_TERMINAL_SESSIONS
+    from backend.sessions.broker import MAX_RETAINED_TERMINAL_SESSIONS
 
     manager = LocalSessionManager(max_sessions=4)
     manager.register_provider(EchoSessionProvider())
@@ -309,7 +309,7 @@ def test_terminal_sessions_are_pruned():
 
 
 def test_ticket_store_bounds_seen_tombstones():
-    from backend.services.interactive_sessions import MAX_SEEN_TICKETS
+    from backend.sessions.broker import MAX_SEEN_TICKETS
 
     store = SessionTicketStore(ttl_seconds=300)
     for _ in range(MAX_SEEN_TICKETS + 50):

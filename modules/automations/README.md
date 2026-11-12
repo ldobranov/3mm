@@ -2,7 +2,7 @@
 
 The former Core proposal/planning, budget/usage, revision, simulation, deployment
 and editor sources/tests are preserved under `source/legacy/`, using original
-paths. Shared provider clients live only in `libraries/three_mm_ai`. Original file
+paths. Shared provider clients live only in `libraries/ai_clients`. Original file
 paths and hashes are recorded in `../product-source-map.json`.
 
 These are product sources for a future SDK application, not a runnable package,

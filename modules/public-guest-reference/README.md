@@ -17,7 +17,7 @@ New-Item -ItemType Directory -Force .runtime/cap10 | Out-Null
 Run the real transport and token checks in the non-root Linux development lab:
 
 ```sh
-python -m pytest -q backend/tests/test_public_form_guests.py backend/tests/test_application_public_forms.py three_mm_public_web/tests/test_server.py
+python -m pytest -q backend/tests/test_public_form_guests.py backend/tests/test_application_public_forms.py components/public_web/tests/test_server.py
 ```
 
 This build does not install the example or enable the listener. For a disposable

@@ -9,14 +9,14 @@ from fastapi import FastAPI, WebSocket
 from starlette.testclient import TestClient
 
 from agent.session_transport import AgentSessionHost
-from backend.routes.interactive_sessions import router as interactive_sessions_router
-from backend.services import interactive_session_agent as agent_module
-from backend.services import interactive_session_gateway as gateway_module
-from backend.services.interactive_session_agent import (
+from backend.sessions.api import router as interactive_sessions_router
+from backend.sessions import agent as agent_module
+from backend.sessions import gateway as gateway_module
+from backend.sessions.agent import (
     AgentSessionError,
     DeviceTicketStore,
 )
-from three_mm_protocol.interactive_session import (
+from packages.protocol.interactive_session import (
     decode_session_frame,
     encode_session_frame,
 )

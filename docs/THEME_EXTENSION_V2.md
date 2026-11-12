@@ -50,7 +50,7 @@ Minimal `theme-extension.json`:
 
 `design` follows [Design API 2](THEME_DESIGN_API_V2.md): closed semantic colors,
 bounded measurements, approved variants, null/default inheritance and contrast.
-Backend/browser share `three_mm_protocol/theme_design_defaults.json`. No arbitrary
+Backend/browser share `packages/protocol/theme_design_defaults.json`. No arbitrary
 CSS, HTML, JS, Vue templates, handlers, imports or URLs.
 
 ## Asset declarations and validation

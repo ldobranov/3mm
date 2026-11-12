@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from backend.services import application_authority_management as authority
-from backend.services.application_relational_upgrade_admin import inspect_upgrade_source
+from backend.applications.authority import management as authority
+from backend.applications.relational.upgrade_admin import inspect_upgrade_source
 from backend.tests import test_application_relational_upgrade_rollback as rollback_cases
 from backend.tests.test_application_relational_preparation import (
     ROOT_ONLY,
@@ -20,13 +20,13 @@ from backend.tests.test_application_relational_preparation import (
     source_subject,
     stopped,
 )
-from three_mm_application_sdk.relational_upgrade_wire import (
+from packages.application_sdk.relational_upgrade_wire import (
     _RelationalUpgradeRollbackTicket,
 )
-from three_mm_application_sdk.relational_wire import verify_metadata
-from three_mm_runtime import application_database_snapshot as snapshots
-from three_mm_runtime import application_relational_upgrade as upgrade_helper
-from three_mm_runtime import application_relational_upgrade_restore as restore_helper
+from packages.application_sdk.relational_wire import verify_metadata
+from components.system_runtime import application_database_snapshot as snapshots
+from components.system_runtime import application_relational_upgrade as upgrade_helper
+from components.system_runtime import application_relational_upgrade_restore as restore_helper
 
 pytestmark = [
     ROOT_ONLY,
@@ -316,7 +316,7 @@ def test_old_source_clock_is_history_not_replayed_execution_authority(
     monkeypatch.setattr(authority, "_clock", lambda: (state.failed["boot_id"], now))
     # The fresh signed request alone gets a fresh deadline. Root shares that
     # host clock, without editing the historical signed source ticket.
-    from three_mm_runtime import application_relational_preparation as preparation
+    from components.system_runtime import application_relational_preparation as preparation
 
     monkeypatch.setattr(preparation, "_clock", lambda: (state.failed["boot_id"], now))
     ticket = issue(state)

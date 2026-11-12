@@ -12,13 +12,13 @@ from sqlalchemy.orm import Session
 from backend.db.base import Base
 from backend.db.application_authority_grant import ApplicationAuthorityGrant as Grant, ApplicationNativeReview as Native
 from backend.db.module import ApplicationExtensionInstallation as Installation, ModulePackage
-from backend.services import application_consent as consent
-from backend.services.application_authority_management import AuthorityManagementError, _load, effect_admission
-from backend.services.application_authority_keys import AuthorityReviewKeyError
-from backend.services.application_authority_sources import _Unavailable
-from backend.services.module_packages import validate_module_package
+from backend.applications.management import consent
+from backend.applications.authority.management import AuthorityManagementError, _load, effect_admission
+from backend.applications.authority.keys import AuthorityReviewKeyError
+from backend.applications.authority.sources import _Unavailable
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_authority_management import installed, source_subject, source_installed, identity
-from three_mm_protocol.tests.test_application_composition import query_contract
+from packages.protocol.tests.test_application_composition import query_contract
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Real M20 seals/key ownership/flock')
 SCOPE = 'query:directory:read'
@@ -218,8 +218,8 @@ def test_consumer_revocation_and_conflicting_request_do_not_restore_authority(pa
 def test_existing_admin_http_consent_accepts_exact_query_scope_not_replacement_authority(pair):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
-    from backend.routes.application_authority import router
-    from backend.utils.db_utils import get_db
+    from backend.applications.management.access_api import router
+    from backend.storage.sessions import get_db
 
     s = pair
     app = FastAPI(); app.include_router(router)

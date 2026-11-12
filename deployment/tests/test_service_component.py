@@ -49,8 +49,147 @@ def test_native_service_is_reproducible_and_contains_no_core(role):
     assert parsed==metadata and parsed['binding']['contracts']==component.CONTRACTS[role]
     with zipfile.ZipFile(io.BytesIO(files['service.pyz'])) as archive:
         assert not any(n.startswith(('backend/','deployment/')) for n in archive.namelist())
-        if role=='agent':assert not any(n.startswith('three_mm_application_sdk/') for n in archive.namelist())
+        if role!='session-relay':
+            assert {'packages/__init__.py','packages/platform_wire/__init__.py',
+                    'packages/protocol/__init__.py',component.PROTOCOL_ASSET} <= set(archive.namelist())
+            assert archive.read(component.PROTOCOL_ASSET)==(ROOT/component.PROTOCOL_ASSET).read_bytes()
+        else:
+            assert not any(n.startswith('packages/') for n in archive.namelist())
+        assert not any(n.startswith('three_mm_protocol/') for n in archive.namelist())
+        assert not any(n.startswith('three_mm_public_web/') for n in archive.namelist())
+        assert not any(n.startswith('three_mm_provisioning/') for n in archive.namelist())
+        runtime_names={'__init__.py','component_identity.py'}
+        if role=='agent':runtime_names.add('session_output.py')
+        elif role=='session-worker':runtime_names.add('session_worker.py')
+        elif role=='host-session-worker':runtime_names.update({'session_worker.py','host_session_worker.py','host_session_policy.py'})
+        elif role=='session-relay':runtime_names.add('session_relay.py')
+        elif role=='session-node':runtime_names.update({'session_worker.py','session_worker_client.py',
+            'session_node.py','session_link.py','session_link_config.py'})
+        expected_components={'components/__init__.py', *('components/system_runtime/' + name for name in runtime_names)}
+        if role=='public-web':expected_components.update(component.PUBLIC_WEB_SOURCES)
+        assert {n for n in archive.namelist() if n.startswith('components/')} == expected_components
+        assert not any(n.startswith('three_mm_runtime/') for n in archive.namelist())
+        package_roots={'packages/platform_wire','packages/protocol'}
+        if role in {'session-worker','host-session-worker','session-node'}:
+            package_roots.add('packages/application_sdk')
+            assert {n for n in archive.namelist() if n.startswith('packages/application_sdk/')} == {
+                path.relative_to(ROOT).as_posix() for path in (ROOT/'packages/application_sdk').glob('*.py')}
+        else:
+            assert not any(n.startswith('packages/application_sdk/') for n in archive.namelist())
+        if role=='agent':
+            package_roots.add('packages/provisioning')
+            assert {n for n in archive.namelist() if n.startswith('packages/provisioning/')} == {
+                path.relative_to(ROOT).as_posix() for path in (ROOT/'packages/provisioning').glob('*.py')}
+        else:
+            assert not any(n.startswith('packages/provisioning/') for n in archive.namelist())
+        assert all(n=='packages/__init__.py' or n==component.PROTOCOL_ASSET
+                   or Path(n).parent.as_posix() in package_roots and n.endswith('.py')
+                   for n in archive.namelist() if n.startswith('packages/'))
+        assert not any(n.startswith('three_mm_application_sdk/') for n in archive.namelist())
     assert not any('sqlalchemy' in n.lower() for n in files)
+
+
+@pytest.mark.parametrize('change',[
+    *('missing:'+name for name in sorted(component.PUBLIC_WEB_SOURCES)),
+    'components/admin_web/server.py','components/public_web_other/server.py','components/setup/main.py',
+    'components/public_web/unreviewed.py',
+    'missing:components/system_runtime/__init__.py',
+    'missing:components/system_runtime/component_identity.py',
+    'components/system_runtime/update_helper.py','components/system_runtime/tests/leaked.py',
+    'components/system_runtime_other/__init__.py','three_mm_runtime/__init__.py',
+])
+def test_native_public_web_requires_exact_component_closure_before_staging(tmp_path,change):
+    blob,_=artifacts('public-web')[0]
+    metadata,files=component.validate_artifact(blob,digest(blob),'public-web')
+    with zipfile.ZipFile(io.BytesIO(files['service.pyz'])) as archive:
+        code={name:archive.read(name) for name in metadata['binding']['sources']}
+    if change.startswith('missing:'):del code[change.removeprefix('missing:')]
+    else:code[change]=b'# unexpected component source\n'
+    metadata['binding']['sources']={name:digest(value) for name,value in code.items()}
+    metadata['build_id']=digest(component._json(metadata['binding']))
+    identity={'component':'public-web','build_id':metadata['build_id'],'contracts':component.CONTRACTS['public-web']}
+    output=io.BytesIO()
+    with zipfile.ZipFile(output,'w') as archive:
+        for name,value in {**code,'component-build.json':component._json(identity)}.items():
+            entry=zipfile.ZipInfo(name);entry.create_system=3;entry.external_attr=0o100444<<16
+            archive.writestr(entry,value)
+    files['service.pyz']=output.getvalue()
+    metadata['files']={name:digest(value) for name,value in files.items()}
+    bad=component._archive(metadata,files)
+    store=component.ServiceStore('public-web',tmp_path/'public-web',tmp_path/'updates')
+    with pytest.raises(ValueError,match='binding'):store.stage(bad,digest(bad))
+    assert store.target('current') is None and not list(store.releases.iterdir())
+
+
+@pytest.mark.parametrize('change',[
+    'missing_asset','packages/protocol/private.json','packages/protocol/tests/leaked.py',
+    'packages/unrelated/__init__.py','three_mm_protocol/__init__.py',
+    'missing_provisioning_init','packages/provisioning/private.json',
+    'packages/provisioning/tests/leaked.py','packages/provisioning_other/__init__.py',
+    'packages/provisioning/unrelated/leaked.py',
+    'packages/application_sdk/__init__.py',
+    'missing_runtime_parent','missing_runtime_init','components/system_runtime/update_helper.py',
+    'components/system_runtime/tests/leaked.py','components/system_runtime_other/__init__.py',
+    'three_mm_runtime/__init__.py',
+])
+def test_native_agent_rejects_missing_asset_and_extra_package_sources_before_staging(tmp_path,change):
+    blob,_=artifacts('agent')[0]
+    metadata,files=component.validate_artifact(blob,digest(blob),'agent')
+    with zipfile.ZipFile(io.BytesIO(files['service.pyz'])) as archive:
+        code={name:archive.read(name) for name in metadata['binding']['sources']}
+    if change=='missing_asset':del code[component.PROTOCOL_ASSET]
+    elif change=='missing_provisioning_init':del code['packages/provisioning/__init__.py']
+    elif change=='missing_runtime_parent':del code['components/__init__.py']
+    elif change=='missing_runtime_init':del code['components/system_runtime/__init__.py']
+    else:code[change]=b'{}' if change.endswith('.json') else b'# unexpected package input\n'
+    metadata['binding']['sources']={name:digest(value) for name,value in code.items()}
+    metadata['build_id']=digest(component._json(metadata['binding']))
+    identity={'component':'agent','build_id':metadata['build_id'],'contracts':component.CONTRACTS['agent']}
+    output=io.BytesIO()
+    with zipfile.ZipFile(output,'w') as archive:
+        for name,value in {**code,'component-build.json':component._json(identity)}.items():
+            entry=zipfile.ZipInfo(name);entry.create_system=3;entry.external_attr=0o100444<<16
+            archive.writestr(entry,value)
+    files['service.pyz']=output.getvalue()
+    metadata['files']={name:digest(value) for name,value in files.items()}
+    bad=component._archive(metadata,files)
+    store=component.ServiceStore('agent',tmp_path/'agent',tmp_path/'updates')
+    with pytest.raises(ValueError,match='binding'):store.stage(bad,digest(bad))
+    assert store.target('current') is None and not list(store.releases.iterdir())
+
+
+@pytest.mark.parametrize('role',['session-worker','host-session-worker','session-node'])
+@pytest.mark.parametrize('change',[
+    'missing_sdk_init','packages/application_sdk/private.json',
+    'packages/application_sdk/tests/leaked.py','packages/application_sdk_other/__init__.py',
+    'three_mm_application_sdk/__init__.py',
+    'missing_runtime_parent','missing_runtime_init','components/system_runtime/update_helper.py',
+    'components/system_runtime/tests/leaked.py','components/system_runtime_other/__init__.py',
+    'three_mm_runtime/__init__.py',
+])
+def test_native_session_requires_exact_sdk_closure_before_staging(tmp_path,role,change):
+    blob,_=artifacts(role)[0]
+    metadata,files=component.validate_artifact(blob,digest(blob),role)
+    with zipfile.ZipFile(io.BytesIO(files['service.pyz'])) as archive:
+        code={name:archive.read(name) for name in metadata['binding']['sources']}
+    if change=='missing_sdk_init':del code['packages/application_sdk/__init__.py']
+    elif change=='missing_runtime_parent':del code['components/__init__.py']
+    elif change=='missing_runtime_init':del code['components/system_runtime/__init__.py']
+    else:code[change]=b'{}' if change.endswith('.json') else b'# unexpected SDK source\n'
+    metadata['binding']['sources']={name:digest(value) for name,value in code.items()}
+    metadata['build_id']=digest(component._json(metadata['binding']))
+    identity={'component':role,'build_id':metadata['build_id'],'contracts':component.CONTRACTS[role]}
+    output=io.BytesIO()
+    with zipfile.ZipFile(output,'w') as archive:
+        for name,value in {**code,'component-build.json':component._json(identity)}.items():
+            entry=zipfile.ZipInfo(name);entry.create_system=3;entry.external_attr=0o100444<<16
+            archive.writestr(entry,value)
+    files['service.pyz']=output.getvalue()
+    metadata['files']={name:digest(value) for name,value in files.items()}
+    bad=component._archive(metadata,files)
+    store=component.ServiceStore(role,tmp_path/role,tmp_path/'updates')
+    with pytest.raises(ValueError,match='binding'):store.stage(bad,digest(bad))
+    assert store.target('current') is None and not list(store.releases.iterdir())
 
 
 @pytest.mark.parametrize('role',component.ROLES)
@@ -70,6 +209,72 @@ def test_foreign_contract_target_digest_and_modified_payload_cannot_stage(role):
         bad=component._archive(parsed,files)
         with pytest.raises(ValueError):store.stage(bad,digest(bad))
         assert store.target('current') is None
+
+
+@pytest.mark.parametrize('change', [
+    'missing:components/system_runtime/host_session_worker.py',
+    'missing:components/system_runtime/host_session_policy.py',
+    'missing:components/system_runtime/session_worker.py',
+    'components/system_runtime/connector_execute.py',
+])
+def test_host_session_worker_artifact_requires_its_complete_separate_source_closure(tmp_path, change):
+    role = 'host-session-worker'
+    blob, _ = artifacts(role)[0]
+    metadata, files = component.validate_artifact(blob, digest(blob), role)
+    with zipfile.ZipFile(io.BytesIO(files['service.pyz'])) as archive:
+        code = {name: archive.read(name) for name in metadata['binding']['sources']}
+    if change.startswith('missing:'):
+        del code[change.removeprefix('missing:')]
+    else:
+        code[change] = b'# unexpected service source\n'
+    metadata['binding']['sources'] = {name: digest(value) for name, value in code.items()}
+    metadata['build_id'] = digest(component._json(metadata['binding']))
+    identity = {'component': role, 'build_id': metadata['build_id'], 'contracts': component.CONTRACTS[role]}
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, 'w') as archive:
+        for name, value in {**code, 'component-build.json': component._json(identity)}.items():
+            entry = zipfile.ZipInfo(name); entry.create_system = 3; entry.external_attr = 0o100444 << 16
+            archive.writestr(entry, value)
+    files['service.pyz'] = output.getvalue()
+    metadata['files'] = {name: digest(value) for name, value in files.items()}
+    changed = component._archive(metadata, files)
+    store = component.ServiceStore(role, tmp_path/'component', tmp_path/'updates')
+    with pytest.raises(ValueError, match='binding'):
+        store.stage(changed, digest(changed))
+    assert store.target('current') is None and not list(store.releases.iterdir())
+
+
+def test_host_session_worker_immutable_update_rollback_preserves_data_policy_and_core(tmp_path):
+    a, b = artifacts('host-session-worker')
+    store = component.ServiceStore('host-session-worker', tmp_path/'component', tmp_path/'updates')
+    old = store.bootstrap(a[0], digest(a[0]))
+    home = tmp_path/'terminal-home'; home.mkdir(); data = home/'note'; data.write_text('owned data')
+    policy = tmp_path/'host-sessions.json'; policy.write_text('{"schema_version":1,"enabled":false}')
+    class Control:
+        running = True
+        def __init__(self): self.calls = []; self.fail_build = None
+        def active(self): return self.running
+        def stop(self): self.calls.append('stop'); self.running = False
+        def start(self): self.calls.append('start'); self.running = True
+    control = Control()
+    core = {'pid': 117, 'generation': {'boot': 'same'}}
+    def health(identifier):
+        assert control.running and store.metadata(identifier)['build_id'] == identifier
+        if identifier == control.fail_build: raise ValueError('Candidate readiness fault')
+        return {'core_pid': core['pid'], 'core_process_generation': core['generation']}
+    store.activate(b[0], digest(b[0]), control=control, health=health, fingerprint=lambda: core)
+    assert store.target('current') == b[1]['build_id'] and store.target('previous') == old
+    store.rollback(control=control, health=health, fingerprint=lambda: core)
+    assert store.target('current') == old
+    control.fail_build = b[1]['build_id']
+    with pytest.raises(ValueError, match='readiness fault'):
+        store.activate(b[0], digest(b[0]), control=control, health=health, fingerprint=lambda: core)
+    assert store.target('current') == old and store.pending() is None and control.running
+    assert data.read_text() == 'owned data' and policy.read_text() == '{"schema_version":1,"enabled":false}'
+    control.running = False; before = list(control.calls)
+    with pytest.raises(ValueError, match='active component'):
+        store.activate(b[0], digest(b[0]), control=control, health=health, fingerprint=lambda: core)
+    assert control.calls == before and store.target('current') == old
 
 
 class Control:

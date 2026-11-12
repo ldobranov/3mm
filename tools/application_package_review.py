@@ -4,9 +4,9 @@ import json
 import zipfile
 import zlib
 
-from backend.services.module_packages import MAX_PACKAGE_BYTES, validate_module_package
+from backend.artifacts.packages import MAX_PACKAGE_BYTES, validate_module_package
 from backend.version import core_version
-from three_mm_protocol.diagnostic_snapshot import read_regular
+from packages.protocol.diagnostic_snapshot import read_regular
 
 
 class PackageReviewError(ValueError):

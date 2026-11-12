@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Menu from './Menu.vue'
 
+const branding = vi.hoisted(() => ({ logo: '/product-default.svg' }))
 vi.mock('@/utils/dynamic-http', () => ({ default: { get: vi.fn(async (url: string) => ({ data:
   url.startsWith('/menu/read') ? { items: [{ id: 1, is_active: true, items: [
     { path: '/removed-product', label: 'Retired page' },
@@ -13,12 +14,24 @@ vi.mock('@/utils/dynamic-http', () => ({ default: { get: vi.fn(async (url: strin
   ] }] } : [] })) } }))
 vi.mock('@/utils/i18n', () => ({ useI18n: () => ({ currentLanguage: ref('en'), t: (_key: string, fallback: string) => fallback,
   setLanguage: vi.fn(), setPreviewLanguage: vi.fn() }) }))
-vi.mock('@/stores/settings', () => ({ useSettingsStore: () => ({ headerSettings: {}, loadSettings: vi.fn(async () => {}) }) }))
+vi.mock('@/stores/settings', () => ({ useSettingsStore: () => ({ headerSettings: {}, get brandingLogo() { return branding.logo }, loadSettings: vi.fn(async () => {}) }) }))
 vi.mock('@/utils/language-api', () => ({ readAvailableLanguages: vi.fn(async () => ['en']) }))
 vi.mock('@/router', () => ({ reloadCompiledUiRoutes: vi.fn(async () => {}) }))
 
 afterEach(() => localStorage.clear())
 describe('navigation follows the current route registry', () => {
+  it('uses resolved product or saved branding in the legacy header too', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: [
+      { path: '/:pathMatch(.*)*', component: { render: () => null } },
+    ] })
+    for (const logo of ['/product-default.svg', '/uploads/settings/saved.svg']) {
+      branding.logo = logo
+      const wrapper = mount(Menu, { props: { custom: false }, global: { plugins: [router], stubs: { ThemeToggle: true } } })
+      await flushPromises()
+      expect(wrapper.get('.navbar-brand img').attributes('src')).toBe(logo)
+      wrapper.unmount()
+    }
+  })
   it.each(['admin', 'registered', 'guest'])('filters retired routes and keeps audiences for %s', async (role) => {
     if (role !== 'guest') { localStorage.setItem('authToken', 'test'); localStorage.setItem('role', role) }
     const page = { render: () => null }

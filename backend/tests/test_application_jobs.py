@@ -5,10 +5,10 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import select
 from backend.db.module import ApplicationJobState as State
-from backend.services.module_packages import ModulePackageError, validate_module_package
-from backend.services import application_extensions as gateway
+from backend.artifacts.packages import ModulePackageError, validate_module_package
+from backend.applications.runtime import gateway
 from backend.tests.test_module_packages import application_definition, application_package
-from three_mm_runtime.application_transport import DispatchPhase
+from components.system_runtime.application_transport import DispatchPhase
 
 
 @pytest.mark.parametrize("scheduled", [False, True])
@@ -35,7 +35,7 @@ def test_direct_gateway_cannot_dispatch_historical_job(monkeypatch, mode):
 
 def test_resolution_requires_admin_confirmation_and_stopped_application(monkeypatch, tmp_path):
     from backend.tests.test_application_access import environment as access_environment, headers
-    from backend.routes.application_operations import router
+    from backend.applications.operations_api import router
     from backend.db.audit_log import AuditLog
     client, db, engine, admin, operator, app, package, admin_token, user_token = access_environment(monkeypatch, tmp_path)
     client.app.include_router(router)

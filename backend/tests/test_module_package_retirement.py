@@ -21,13 +21,13 @@ from backend.db.device import Device
 from backend.db.module_reference import ModulePackageRetainedReference
 from backend.db.module import ApplicationExtensionInstallation, ModuleInstallation, ModulePackage
 from backend.db.user import User
-from backend.routes import modules
-from backend.services.module_packages import validate_module_package
+from backend.artifacts import api as modules
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_module_packages import (
     application_package, compiled_ui_definition, compiled_ui_package,
 )
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
 from datetime import UTC, datetime
 
 

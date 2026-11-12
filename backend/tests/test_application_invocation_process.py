@@ -16,14 +16,14 @@ from backend.tests.test_application_health_process import (
     health_stack,identity_app,managed_installed,source_subject,source_installed,checkpoint_app,
     core_stack,activate,activate_identity_grant,wait_for,
 )
-from backend.utils.jwt_utils import create_access_token
+from backend.accounts.tokens import create_access_token
 
 pytestmark=pytest.mark.skipif(os.name!='posix',reason='Real Unix processes and descriptor transfer')
 
 
 @pytest.fixture
 def health_core(identity_app,monkeypatch,request):
-    from backend.services import application_invocation_relay as relay
+    from backend.applications.runtime import invocations as relay
     from backend.tests.test_module_packages import application_definition
     from backend.tests.test_application_identity_authority import store_identity_package
     import backend.tests.test_application_health_process as peer
@@ -53,11 +53,14 @@ def invoked(health_stack):
     with s.state.engine.begin() as db:module=db.scalar(select(ApplicationExtensionInstallation.module_id).where(ApplicationExtensionInstallation.id==1))
     def post(audience='administrator',operation='approve',headers=None,key='explicit-0001',body=None):
         segment='' if audience=='administrator' else '/'+audience
-        url=s.url()+f'/api/v1/application-extensions/{module}{segment}/operations/{operation}'
+        path=f'/api/v1/application-extensions/{module}{segment}/operations/{operation}'
         data=json.dumps(body or {'payload':{},'idempotency_key':key}).encode()
-        request=urllib.request.Request(url,data=data,headers={**((s.operator if audience=='operator' else s.admin) if headers is None else headers),'Content-Type':'application/json'})
+        request_headers={**((s.operator if audience=='operator' else s.admin) if headers is None else headers),'Content-Type':'application/json'}
         try:
-            with urllib.request.urlopen(request,timeout=3) as response:return response.status,json.load(response)
+            # The saturation case deliberately admits a 5 s Runtime budget.
+            # Share the fixture's longer outer watchdog and owned failure dump;
+            # the test's explicit post-release latency assertions stay intact.
+            return s.http(path,headers=request_headers,data=data)
         except urllib.error.HTTPError as error:return error.code,json.load(error)
     s.invoke=post;s.operator={'Authorization':'Bearer '+s.state.user_token}
     # This fixture explicitly adds the reference's human operation declarations.

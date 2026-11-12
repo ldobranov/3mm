@@ -8,13 +8,13 @@ import pytest
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 from backend.db.module import ApplicationExtensionInstallation as Installation
-from backend.services import application_files as service
+from backend.applications.files import authority as service
 from backend.tests.test_application_file_execution import (
     file_app, managed_installed, source_subject, source_installed, native, decide,
     identity, execute, revoke, status,
 )
-from three_mm_runtime.application_file_executor import ApplicationFileExecutor
-from three_mm_application_sdk.tests.test_media import request
+from components.system_runtime.application_file_executor import ApplicationFileExecutor
+from packages.application_sdk.tests.test_media import request
 
 pytestmark = [pytest.mark.skipif(os.name != 'posix', reason='Actual POSIX authority and worker'),
     pytest.mark.parametrize('file_app', [dict(file_contract_version=2, max_file_bytes=2*1024*1024,
@@ -94,10 +94,10 @@ def test_lost_finalize_ack_is_status_only_and_keeps_committed_data(file_app, mon
 
 def test_public_python_sdk_uses_signed_gateway_and_host_selected_profile(file_app,monkeypatch):
     import backend.database
-    from backend.services.application_platform import ApplicationPlatformServer
-    from three_mm_platform_wire import COMPATIBILITY_ACTIONS
-    from three_mm_application_sdk import ApplicationPlatformClient, ApplicationScopedMediaStorage, ApplicationFileStorageError
-    from three_mm_runtime.application_host import _private_file_adapter
+    from backend.applications.runtime.platform import ApplicationPlatformServer
+    from packages.platform_wire import COMPATIBILITY_ACTIONS
+    from packages.application_sdk import ApplicationPlatformClient, ApplicationScopedMediaStorage, ApplicationFileStorageError
+    from components.system_runtime.application_host import _private_file_adapter
     s=file_app;grant(s)
     monkeypatch.setattr(backend.database,'SessionLocal',lambda:Session(s.engine))
     keys=s.runtime.parent/'keys';keys.mkdir()

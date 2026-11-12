@@ -20,7 +20,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ApplicationHostError, useApplicationHost, type ApplicationPayload } from '@3mm/application-ui/v1'
+import { ApplicationHostError, useApplicationHost, type ApplicationPayload } from '@platform/application-ui/v1'
 
 const host = useApplicationHost()
 const ready = ref(false)

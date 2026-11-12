@@ -13,15 +13,15 @@ from backend.tests.test_hardware_profile_installation import native  # noqa: F40
 from backend.tests.test_hardware_provider_templates import preparation  # noqa: F401
 from backend.tests.test_module_lifecycle_idempotency import lifecycle, DEVICE_ID  # noqa: F401
 from agent.tests.test_character_display import builder  # noqa: F401
-from backend.services.hardware_provider_templates import (
+from backend.devices.modules.templates import (
     prepare_provider, provider_templates, sources, package_bytes,
 )
-from backend.services.module_packages import validate_module_package
-from three_mm_protocol.gpio_input import GpioInputProfileV1, INPUT_FEATURE
-from three_mm_protocol.gpio_input_package import manifest as input_manifest
-from three_mm_protocol.hardware_templates import TEMPLATE_FILENAME
-from three_mm_protocol.hardware_profiles import HARDWARE_PROFILE_FEATURE
-from three_mm_protocol.node_features import MANDATORY_NODE_FEATURES
+from backend.artifacts.packages import validate_module_package
+from packages.protocol.gpio_input import GpioInputProfileV1, INPUT_FEATURE
+from packages.protocol.gpio_input_package import manifest as input_manifest
+from packages.protocol.hardware_templates import TEMPLATE_FILENAME
+from packages.protocol.hardware_profiles import HARDWARE_PROFILE_FEATURE
+from packages.protocol.node_features import MANDATORY_NODE_FEATURES
 
 PATH = f'/api/v1/modules/devices/{DEVICE_ID}/hardware-profiles'
 TEMPLATE = 'gpio-input.gpiod'
@@ -46,7 +46,7 @@ def advertise(ctx):
 
 
 def test_input_template_requires_advertised_handler_and_cannot_prepare_on_old_agent(native, tmp_path, monkeypatch):
-    from backend.routes import modules
+    from backend.artifacts import api as modules
     ctx = native
     monkeypatch.setattr(modules, 'get_settings', lambda: SimpleNamespace(backend=SimpleNamespace(uploads_dir=tmp_path)))
     identity = template_source().identity

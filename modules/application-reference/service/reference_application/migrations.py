@@ -1,6 +1,6 @@
 """Forward-only storage migrations for the neutral reference application."""
 
-from three_mm_application_sdk import ApplicationMigration
+from packages.application_sdk import ApplicationMigration
 
 
 def _revision_0001(connection):

@@ -4,7 +4,7 @@ import pytest
 
 from agent.config import AgentSettings
 from agent.hardware import HardwareProfile
-from three_mm_protocol import AgentRole
+from packages.protocol import AgentRole
 
 
 def test_agent_settings_are_environment_driven(monkeypatch, tmp_path):

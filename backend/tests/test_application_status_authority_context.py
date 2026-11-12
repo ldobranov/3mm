@@ -6,7 +6,7 @@ import hashlib
 
 import pytest
 
-from backend.services.application_authority_context import (
+from backend.applications.authority.context import (
     AuthorityReviewContextV8,
     AuthoritySelectionV7,
     AuthoritySelectionV8,
@@ -14,7 +14,7 @@ from backend.services.application_authority_context import (
     _parse,
     review_authority_context,
 )
-from backend.services.application_authority_policy import (
+from backend.applications.authority.policy import (
     PolicySubjectV8,
     evaluate_authority_policy,
 )

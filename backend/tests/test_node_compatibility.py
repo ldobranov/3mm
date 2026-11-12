@@ -13,14 +13,14 @@ from backend.tests.test_mock_embedded_protocol import (
     approve,
     core,
 )  # noqa: F401
-from three_mm_protocol.node_security import NODE_MESSAGE_BYTES
+from packages.protocol.node_security import NODE_MESSAGE_BYTES
 
 
 def test_legacy_linux_wire_and_firmware_provider_share_updated_core(
     core, monkeypatch, tmp_path
 ):
     from backend.tests import test_mock_embedded_protocol as reference
-    from backend.services.device_runtime_features import runtime_features_snapshot
+    from backend.devices.features.service import runtime_features_snapshot
 
     original = reference.CorePublisher
 

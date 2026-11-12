@@ -2,6 +2,7 @@ import axios from 'axios';
 import type { AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 import { getToken, refreshToken, clearAuth } from '@/utils/auth';
 import { getBackendUrl, invalidateRuntimeConfig, setBackendOverride, clearBackendOverride } from './runtime-config';
+import { recordBrowserFailure } from './diagnostic-client';
 
 // Custom JSON stringify that preserves Unicode characters
 function stringifyPreserveUnicode(obj: any): string {
@@ -124,6 +125,7 @@ function setupInterceptors(http: any) {
   http.interceptors.response.use(
     (res: AxiosResponse) => res,
     async (error: AxiosError) => {
+      recordBrowserFailure(error);
       const status = error?.response?.status;
       const original = error.config as AxiosConfig;
 
@@ -201,13 +203,6 @@ export default {
       // console.log('Dynamic HTTP POST response:', result);
       return result;
     } catch (error: any) {
-      console.error('Dynamic HTTP POST error:', error);
-      console.error('Error details:', {
-        message: error.message,
-        code: error.code,
-        status: error.response?.status,
-        url: error.config?.url
-      });
       throw error;
     }
   },

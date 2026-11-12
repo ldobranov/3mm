@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { UiButton, UiField, UiForm, UiSurface } from '@3mm/ui/v1'
-import { ApplicationHostError, useApplicationHost, type ApplicationPayload } from '@3mm/application-ui/v1'
+import { UiButton, UiField, UiForm, UiSurface } from '@platform/ui/v1'
+import { ApplicationHostError, useApplicationHost, type ApplicationPayload } from '@platform/application-ui/v1'
 import { createApplicationClient } from './client.generated'
 
 const host = useApplicationHost()

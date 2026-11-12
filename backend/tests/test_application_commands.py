@@ -1,4 +1,4 @@
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 import sqlite3
@@ -9,11 +9,11 @@ from backend.tests.test_module_packages import application_package, application_
 from backend.db.device import Device, DeviceCommand, DevicePlatformState
 from backend.db.module import ModulePackage, ModuleInstallation
 from backend.db.application_command import ApplicationCommandEpoch, ApplicationCommandRequest
-from backend.services.application_commands import submit_command, command_status, authorize_execution, invalidate_commands
-from backend.services.device_commands import deliver_next_command, command_envelope, DeviceCommandError
-from backend.services.passage import validate_passage, passage_delivery_allowed
+from backend.applications.commands.broker import submit_command, command_status, authorize_execution, invalidate_commands
+from backend.devices.commands.queue import deliver_next_command, command_envelope, DeviceCommandError
+from backend.applications.commands.passage import validate_passage, passage_delivery_allowed
 from agent.physical_command_journal import PhysicalCommandJournal
-from three_mm_protocol.passage import PassageEventV1
+from packages.protocol.passage import PassageEventV1
 
 
 @pytest.fixture
@@ -55,7 +55,7 @@ def test_signed_platform_command_transport(setup, monkeypatch, tmp_path):
     import hashlib
     import time
     import backend.database
-    from backend.services.application_platform import ApplicationPlatformServer
+    from backend.applications.runtime.platform import ApplicationPlatformServer
     s = setup
     server = ApplicationPlatformServer(tmp_path / 'unused.sock', tmp_path, allowed_actions=COMPATIBILITY_ACTIONS)
     secret = b's' * 32
@@ -122,9 +122,9 @@ def test_broker_to_durable_agent_and_correlated_sensor(setup, tmp_path):
 
 
 def test_late_agent_completion_is_visible_by_original_lookup_without_reauthorizing(setup):
-    from backend.services.application_commands import command_lookup
-    from backend.services.device_commands import record_command_result
-    from three_mm_protocol import AgentCommandResult
+    from backend.applications.commands.broker import command_lookup
+    from backend.devices.commands.queue import record_command_result
+    from packages.protocol import AgentCommandResult
     s = setup
     submitted = submit_command(s.db, s.app, payload())
     command = deliver_next_command(s.db, device=s.devices[0])

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readAuthorityPlan, readAuthorityStatus } from './authority-management'
-import { sessionModuleId, sessionOwner, sessionPlan, sessionScope, sessionStatus } from './authority-sessions.fixtures'
+import { hostSessionAccount, sessionModuleId, sessionOwner, sessionPlan, sessionScope, sessionStatus } from './authority-sessions.fixtures'
 
 describe('M20 session review DTO boundary', () => {
   it('keeps all exact requests visible with empty or selected scopes', () => {
@@ -10,6 +10,34 @@ describe('M20 session review DTO boundary', () => {
       expect(plan.resources.sessions).toHaveLength(1)
       expect(plan.scopes).toEqual(scopes)
     }
+  })
+  it('accepts only the explicit host-account profile without changing isolated session resources', () => {
+    const status = readAuthorityStatus(sessionStatus())
+    const isolated = sessionPlan() as any
+    isolated.resources.sessions[0].host_account = null
+    expect(readAuthorityPlan(isolated, status, sessionModuleId).resources.sessions![0]!.host_account).toBeNull()
+    const host = sessionPlan() as any
+    host.resources.sessions[0].declaration.provider_id = sessionModuleId
+    host.resources.sessions[0].host_account = hostSessionAccount()
+    expect(readAuthorityPlan(host, status, sessionModuleId).resources.sessions![0]!.host_account).toEqual(hostSessionAccount())
+  })
+  it.each([
+    { account: 'root' }, { account: 'raspberry' }, { uid: 0 }, { gid: 0 }, { uid: true }, { uid: '993' },
+    { gid: -1 }, { uid: 1.5 }, { uid: 4294967295 }, { home: '/root' }, { policy_sha256: 'invalid' },
+    { resource_profile: 'isolated_session_v1' }, { executable: '/bin/sh' },
+  ])('refuses invalid host-account policy metadata %j', changed => {
+    const host = sessionPlan() as any
+    host.resources.sessions[0].declaration.provider_id = sessionModuleId
+    host.resources.sessions[0].host_account = { ...hostSessionAccount(), ...changed }
+    expect(() => readAuthorityPlan(host, readAuthorityStatus(sessionStatus()), sessionModuleId)).toThrow()
+  })
+  it('refuses incomplete host metadata and a host account for a different provider', () => {
+    const host = sessionPlan() as any
+    host.resources.sessions[0].host_account = hostSessionAccount()
+    expect(() => readAuthorityPlan(host, readAuthorityStatus(sessionStatus()), sessionModuleId)).toThrow()
+    host.resources.sessions[0].declaration.provider_id = sessionModuleId
+    delete host.resources.sessions[0].host_account.policy_sha256
+    expect(() => readAuthorityPlan(host, readAuthorityStatus(sessionStatus()), sessionModuleId)).toThrow()
   })
   it.each(['missing', 'extra', 'owner', 'artifact', 'control', 'profile', 'options', 'device', 'permission', 'duplicate'])('rejects %s resource mismatch', kind => {
     const plan = sessionPlan() as any, resource = plan.resources.sessions[0]

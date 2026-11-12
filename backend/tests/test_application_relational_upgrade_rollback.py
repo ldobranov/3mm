@@ -14,9 +14,9 @@ from backend.db.application_authority_grant import ApplicationAuthorityAction as
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.session import UserSession
-from backend.services import application_authority_management as authority
-from backend.services import application_relational_upgrade_confirmation as published
-from backend.services import application_relational_upgrade_rollback as coordinator
+from backend.applications.authority import management as authority
+from backend.applications.relational import upgrade_confirmation as published
+from backend.applications.relational import upgrade_rollback as coordinator
 from backend.tests import test_application_relational_upgrade as upgrade_cases
 from backend.tests.test_application_relational_preparation import (
     ROOT_ONLY,
@@ -34,19 +34,19 @@ from backend.tests.test_application_relational_upgrade_confirmation import (
     REFUSALS,
     image,
 )
-from three_mm_application_sdk.files import ApplicationFileStorage
-from three_mm_application_sdk.relational_upgrade_wire import (
+from packages.application_sdk.files import ApplicationFileStorage
+from packages.application_sdk.relational_upgrade_wire import (
     _RelationalUpgradeRollbackTicket,
     _RelationalUpgradeTicket,
 )
-from three_mm_application_sdk.relational_wire import (
+from packages.application_sdk.relational_wire import (
     canonical,
     prepared_lifecycle,
     sign_metadata,
 )
-from three_mm_runtime import application_relational_upgrade as upgrade_helper
-from three_mm_runtime import application_relational_upgrade_rollback as helper
-from three_mm_runtime.application_relational_session import _prepared
+from components.system_runtime import application_relational_upgrade as upgrade_helper
+from components.system_runtime import application_relational_upgrade_rollback as helper
+from components.system_runtime.application_relational_session import _prepared
 
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="Actual POSIX authority/worker"),

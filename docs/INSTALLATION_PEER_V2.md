@@ -46,7 +46,7 @@ Capability discovery is not identity pinning or authorization.
 
 ## Exact shared schemas and local API
 
-Schemas live in `three_mm_protocol/installation_peer_v2.py`. Models forbid
+Schemas live in `packages/protocol/installation_peer_v2.py`. Models forbid
 unknown fields; versions, generations and revisions reject boolean/coerced
 numbers. Existing consent, projection, identity and proof models remain v1.
 

@@ -59,7 +59,7 @@ def main():
     # Structural Core validation before delivering the artifact. No installation.
     import sys
     sys.path.insert(0, str(ROOT.parents[1]))
-    from backend.services.module_packages import validate_module_package
+    from backend.artifacts.packages import validate_module_package
     validate_module_package(payload)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_bytes(payload)

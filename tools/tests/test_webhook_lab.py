@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 import pytest
 
 from tools import webhook_lab as lab
-from three_mm_protocol.public_webhooks import WebhookRejected
+from packages.protocol.public_webhooks import WebhookRejected
 
 
 AUDIENCE = "89abcdef0123456789abcdef01234567"

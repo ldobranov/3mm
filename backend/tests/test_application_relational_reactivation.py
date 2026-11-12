@@ -20,10 +20,10 @@ from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.module import ModulePackage
 from backend.db.session import UserSession
-from backend.services import application_authority_management as authority
-from backend.services import application_relational_reactivation as coordinator
-from backend.services.application_extensions import ApplicationGatewayError
-from backend.services.application_policy_reviews import PolicyReviewStoreError
+from backend.applications.authority import management as authority
+from backend.applications.relational import reactivation as coordinator
+from backend.applications.runtime.gateway import ApplicationGatewayError
+from backend.applications.authority.policy_reviews import PolicyReviewStoreError
 from backend.tests.test_application_relational_activation import (
     ProcessSupervisor,
     checkpoint,
@@ -71,8 +71,8 @@ from backend.tests.test_application_relational_preparation import (
     stopped,
 )
 from backend.tests.test_application_relational_runtime import invoke
-from three_mm_application_sdk import ApplicationStorage
-from three_mm_application_sdk.relational_wire import (
+from packages.application_sdk import ApplicationStorage
+from packages.application_sdk.relational_wire import (
     _preparation_ticket,
     _RelationalActivationRecoveryTicket,
     _RelationalActivationTicket,
@@ -81,8 +81,8 @@ from three_mm_application_sdk.relational_wire import (
     sign_metadata,
     verify_metadata,
 )
-from three_mm_runtime import application_relational_activation as helper
-from three_mm_runtime.application_relational_preparation import (
+from components.system_runtime import application_relational_activation as helper
+from components.system_runtime.application_relational_preparation import (
     RelationalPreparationError,
 )
 

@@ -20,7 +20,7 @@ LEGACY_REQUIRED_FILES = frozenset(
     {
         ".3mm-release.json",
         "backend/requirements.txt",
-        "backend/services/update_staging.py",
+        "backend/system/updates/staging.py",
         "deployment/apply_staged_update.py",
         INSTALLER_PATH,
         "deployment/migrate_database.py",
@@ -31,7 +31,7 @@ LEGACY_REQUIRED_FILES = frozenset(
         "deployment/systemd/3mm-update-helper.service",
         "deployment/systemd/3mm-web.service",
         "frontend/dist/index.html",
-        "three_mm_runtime/update_helper.py",
+        "components/system_runtime/update_helper.py",
     }
 )
 
@@ -119,7 +119,7 @@ def validate_platform_runtime_contract(data: bytes):
         value=json.loads(data)
     except (ValueError,UnicodeError) as error:
         raise DeploymentContractError("Platform Runtime contract is invalid") from error
-    from three_mm_platform_wire import AUTHORITY_CONTRACT, RUNTIME_ACTIONS
+    from packages.platform_wire import AUTHORITY_CONTRACT, RUNTIME_ACTIONS
     if (not isinstance(value,dict) or type(value.get("schema_version")) is not int
             or type(value.get("authority_contract")) is not int
             or value!={"schema_version":1,"authority_contract":AUTHORITY_CONTRACT,

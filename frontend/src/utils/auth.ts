@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getBackendUrl } from './runtime-config';
+import { clearBrowserDiagnostics } from './diagnostic-client';
 
 export function getToken(): string {
   return localStorage.getItem('authToken') || '';
@@ -8,6 +9,7 @@ export function setToken(t: string) {
   localStorage.setItem('authToken', t);
 }
 export function clearAuth() {
+  clearBrowserDiagnostics();
   localStorage.removeItem('authToken');
   localStorage.removeItem('role');
   localStorage.removeItem('username');

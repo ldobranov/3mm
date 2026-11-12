@@ -8,10 +8,10 @@ combines a central Core, a persistent device Agent, provisioning and reviewed
 applications through common capability contracts and SDKs. Builder, dashboards
 and other product features live in optional source packages/libraries.
 
-> **Project status:** Development prototype (pre-1.0). This source prepares **Core 0.3.10**:
-> the clean-install administrator fix, read-only application-host resource
-> reporting and a local webhook pilot. The [changelog](CHANGELOG.md#0310---2026-11-06)
-> describes the scope. Bulgarian pack 1.0.6 remains unchanged.
+> **Project status:** Development prototype (pre-1.0). Published **Core 0.3.11**
+> is the accepted baseline; the current source-layout cleanup is not a new release.
+> The [changelog](CHANGELOG.md) describes the published scope.
+> Bulgarian pack 1.0.6 retains its independent version.
 > It builds on the accepted
 > Core stabilization, Standalone/Hub/Node setup and Wi-Fi/AP recovery, bounded
 > diagnostics, independent optional runtimes and manifest-v2 language extensions.
@@ -23,7 +23,7 @@ and other product features live in optional source packages/libraries.
 > Host/root administration, public Cloud, full remote Terminal UI and whole
 > M21/WP5 isolation remain separate work. Terminal 1.0.3 is an independent package.
 > Native application approval permits Linux code execution and is **not a sandbox**.
-> The [0.3.10 release notes](docs/RELEASE_NOTES_0.3.10.md) describe upgrades,
+> The [0.3.11 release notes](docs/RELEASE_NOTES_0.3.11.md) describe upgrades,
 > independent components and owner device trials. Preserve database/key backups;
 > populated history can refuse downgrade, and an older Core pointer alone does
 > not restore the previous database or independent component versions.
@@ -84,7 +84,7 @@ and other product features live in optional source packages/libraries.
   lifecycle/recovery changes fence new effects without replaying uncertain work.
   Application event publication has content-bound durable receipts; declarations
   alone grant nothing. User roles and application resource rights remain separate.
-- **Public application UI host (test Beta)** — `@3mm/application-ui/v1` exposes
+- **Public application UI host (test Beta)** — `@platform/application-ui/v1` exposes
   fresh `getInfo()`, module-bound `invoke()` and additive optional `sessions`.
   Source/build/entrypoint and
   audience stay bound; the host exposes no token, private store or general HTTP
@@ -136,10 +136,11 @@ and other product features live in optional source packages/libraries.
   Extensions; select an enabled version or built-in appearance in Settings.
   Invalid or disabled packages fall back safely; temporary network failures retain
   the last verified theme. Existing custom settings remain.
-- **Shared extension UI** — `@3mm/ui/v1` exposes the same native Surface,
+- **Shared extension UI** — `@platform/ui/v1` exposes the same native Surface,
   Button and Dialog primitives used by Core. Reviewed compiled UI can inherit
   the current theme without private Core imports, copied styles or a second Vue
-  runtime. Application SDK 1.3 and existing Vue-only packages remain compatible.
+  runtime. The source namespace is product-neutral; existing packages using the
+  former import IDs must be rebuilt and reviewed before a future deployment.
 - **Optional product sources** — Builder, Automations, Dashboards and legacy
   content/CRUD sources and historical data are preserved outside live Core.
   Adapting or completing them as independently installed products is separate work.
@@ -182,6 +183,76 @@ and data contracts are discovered from validated package metadata. The Agent
 is the hardware boundary; browser code and generated extensions do not access
 devices directly.
 
+The administrative static web host lives in `components/admin_web/` and starts
+with `python -m components.admin_web`. It serves the unchanged `frontend/dist/`
+artifact; the Vue frontend remains in `frontend/`. The installed unit is still
+`3mm-web.service`. Source component names describe responsibilities, not the
+product brand. See the [service layout](deployment/systemd/README.md).
+
+Shared wire envelopes live in `packages/platform_wire/`; validated protocol
+models and their theme defaults live in `packages/protocol/`. These are source
+namespaces, not new service or database identities. Current native packages
+include explicit minimal file lists, not every component or shared package.
+Provisioning lives in `packages/provisioning/`, and the public application SDK
+is in `packages/application_sdk/`. Administrative Web, Public Web, Setup,
+Platform Runtime and privileged system workers each own a subtree under
+`components/`. Optional AI clients and CRUD helpers stay in
+`libraries/{ai_clients,crud}`; they are not Core dependencies or release payloads.
+
+This prototype source reorganization changes Python and public UI import names;
+there are no old-name adapters. Rebuild current application packages against the
+new source before deploying it, then use the normal exact-build review. Existing
+approvals are not transferred to different code. Independent application source
+repositories and already installed devices are not changed by this cleanup.
+
+Cosmetic defaults are centralized in `config_templates/product.json`: product
+name, default page/header text, setup labels, logo and favicon. Saved localized
+site/header settings and selected theme assets still take precedence. Development
+defaults are in `config_templates/development.json`; existing environment and
+explicit configuration overrides remain available. Changing presentation does
+not rename installed service/path IDs, module IDs, SQL tables, signing domains
+or the trusted update repository.
+
+Core source is grouped by responsibility. HTTP handlers live beside the domain
+they serve, rather than in separate flat `routes/`, `services/` and `utils/` trees:
+
+```text
+backend/
+  accounts/       users, login sessions, roles and human access
+  applications/   management, authority, runtime, resources, commands,
+                  connectors, events, tasks, relational data, files,
+                  public web, delegations, kiosks, queries and sessions
+  appearance/     theme packages, assets and customization
+  artifacts/      package inspection, compiled UI and provenance
+  devices/        registry, pairing, capabilities, commands, telemetry and updates
+  installation/   installation identity and verified peer relationships
+  localization/   data-only language packages and translations
+  sessions/       shared interactive-session transport and execution adapters
+  settings/       installation settings and their existing CRUD helpers
+  storage/        engine/session helpers and public asset storage
+  system/         control, recovery, diagnostics, audit, backups and updates
+  db/             shared ORM registration; persisted identities stay unchanged
+  alembic/        explicit schema migrations and retained recovery history
+components/       independently packaged service entrypoints and system workers
+packages/         shared protocol, wire, provisioning and public application SDK
+frontend/         administrative Vue interface and separate extension compiler
+libraries/        optional application-owned AI and CRUD helpers
+modules/          independently reviewed examples and extension packages
+deployment/       immutable artifact, installer, health and rollback tooling
+tools/            local development, application authoring and verification
+config_templates/ development defaults and cosmetic product metadata
+docs/             current guides; obsolete material is marked under archive/
+```
+
+`backend/main.py` still composes routers. Privileged workers stay behind the
+existing helper; grouping source does not grant hardware access or change HTTP
+contracts, saved settings or database models. Package parents are inert, and
+independently delivered components use explicit minimal inventories rather than
+importing all of Core. Local caches and retained cleanup artifacts belong under
+`.runtime/`; existing user data, development environments and IDE settings are not
+deleted by source cleanup. The root keeps the main README, changelog, version,
+project configuration and install/deploy entrypoints.
+
 ## Technology
 
 - Python and FastAPI (release CI: Python 3.13; local beta.55 checks: Python 3.12)
@@ -203,7 +274,7 @@ On Linux, macOS or WSL, start Core and the development frontend from the
 repository root:
 
 ```bash
-./dev.sh
+./tools/dev/start.sh
 ```
 
 The launcher creates `backend/.venv`, starts Core on
@@ -235,11 +306,21 @@ pnpm run dev
 
 ### Quality checks
 
-From the repository root:
+From the repository root, first prepare the development dependencies (the Linux
+launcher installs runtime dependencies only):
+
+```bash
+backend/.venv/bin/python -m pip install -r backend/requirements-dev.txt
+pnpm --dir frontend install --frozen-lockfile
+npm ci --prefix frontend/compiler --no-audit --no-fund
+```
+
+Then run the applicable groups from [Development checks](docs/DEVELOPMENT_CHECKS.md):
 
 ```bash
 backend/.venv/bin/python -m pytest -q
-backend/.venv/bin/python -m pytest -q deployment/tests three_mm_application_sdk/tests
+backend/.venv/bin/python -m pytest -q deployment/tests packages/application_sdk/tests
+backend/.venv/bin/python -m pytest -q tools/tests
 pnpm --dir frontend run test:unit -- --run
 pnpm --dir frontend run type-check
 pnpm --dir frontend run build-only
@@ -270,7 +351,7 @@ The Agent listens on `127.0.0.1:8890` by default:
 - `/api/v1/agent/hello`
 - `/api/v1/agent/inventory`
 
-Use `./dev-agents.sh` to start two independent mock devices.
+Use `./tools/dev/agents.sh` to start two independent mock devices.
 
 ## Raspberry Pi
 
@@ -560,7 +641,7 @@ Since beta.43, DashboardList, Extensions, Settings and Display Editor use the
 shared semantic controls. The Display Editor is a palette/canvas/properties
 workspace with sequential mobile sections and local canvas scrolling. Dynamic
 widgets/editors, owner checks, API payloads and unsaved drafts remain supported.
-`@3mm/ui/v1` is the separate [public extension UI contract](docs/EXTENSION_UI_V1.md),
+`@platform/ui/v1` is the separate [public extension UI contract](docs/EXTENSION_UI_V1.md),
 not a new Application SDK version. The optional UI-only reference source is in
 `modules/ui-reference`; build/upload its ZIP separately. It is not auto-installed.
 Extended live restart, rollback and portable-theme recovery checks remain separate.
@@ -569,7 +650,7 @@ Beta.43 also preserves explicit frontend origins and custom allowed browser
 origins on console/UI upgrades, adding localhost/127.0.0.1 on ports 80/8080.
 Invalid/wildcard policies fail before services stop; full-profile activation
 checks local browser CORS as well as readiness. See the
-[installation guide](INSTALLATION_GUIDE.md). Node policy remains unchanged.
+[installation guide](docs/INSTALLATION_GUIDE.md). Node policy remains unchanged.
 
 ## Documentation
 
@@ -607,9 +688,10 @@ checks local browser CORS as well as readiness. See the
 | [Embedded Nodes extension plan](docs/EMBEDDED_NODES_EXTENSION_PLAN.md) | Deferred firmware/extension work outside Core |
 | [Runtime extension v1](docs/RUNTIME_EXTENSION_V1.md) | Declarative extension contract |
 | [Compiled extension v1](docs/COMPILED_EXTENSION_V1.md) | Reviewed Vue compilation boundary |
-| [Application development / CAP21](modules/application-starter/README.md) | Create a distinct project, preview its UI scenarios, check/build and review current contracts; no automatic installation |
+| [Application development](docs/APPLICATION_DEVELOPMENT.md) | Current developer and AI workflow: public imports, owned data, rights, UI, checks and separate installation approval |
+| [Official Note starter / CAP21](modules/application-starter/README.md) | Create a distinct project, preview scenarios and check/build an exact package |
 | [Application extension v1 plan](docs/APPLICATION_EXTENSION_V1_PLAN.md) | Planned trusted business-service and integration boundary |
-| [Extension Platform v2 plan](EXTENSION_PLATFORM_V2_CORE_PLAN.md) | Milestone 20 scope, accepted WP4 and other remaining work packages |
+| [Extension Platform v2 plan](docs/EXTENSION_PLATFORM_V2_CORE_PLAN.md) | Milestone 20 scope, accepted WP4 and other remaining work packages |
 | [Extension Platform test Beta](docs/EXTENSION_PLATFORM_V2_BETA_ACCEPTANCE.md) | beta.54 scope, retained recovery evidence and bounded live smoke checks |
 | [M21 interactive sessions](docs/M21_CORE_INTERACTIVE_SESSIONS_PLAN.md) | Common session contract, scoped opt-in local profile and remaining remote/live gates |
 | [Local Terminal trial](docs/M21_LOCAL_TERMINAL_TEST.md) | beta.55 / Terminal 1.0.2 setup, separate M20 grants and installed-VM acceptance |

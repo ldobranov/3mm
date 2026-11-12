@@ -3,8 +3,8 @@ import os
 import pytest
 from sqlalchemy import event
 
-from backend.services.application_resource_discovery import discover_resources
-from backend.services.application_authority_management import AuthorityManagementError
+from backend.applications.resources.discovery import discover_resources
+from backend.applications.authority.management import AuthorityManagementError
 from backend.tests.test_application_media_routes import environment, revoke
 from backend.tests.test_application_ui_authority import ui_app, managed_installed, source_subject, source_installed
 
@@ -18,7 +18,7 @@ def observe(s, scopes):
 
 @pytest.mark.parametrize('provider', ['ready', 'unavailable', 'unknown'])
 def test_file_provider_readiness_is_separate_from_its_optional_image_dependency(environment, monkeypatch, provider):
-    from three_mm_application_sdk import media_provider
+    from packages.application_sdk import media_provider
     s = environment; monkeypatch.setattr(media_provider, 'probe_provider', lambda:provider)
     writes = []
     def trace(_connection, _cursor, statement, *_args):
@@ -35,7 +35,7 @@ def test_file_provider_readiness_is_separate_from_its_optional_image_dependency(
 
 
 def test_no_file_or_media_probe_when_service_access_is_revoked(environment, monkeypatch):
-    import backend.services.application_resource_discovery as resource
+    import backend.applications.resources.discovery as resource
     s = environment; revoke(s)
     def forbidden(*args, **kwargs): pytest.fail('Unapproved scope reached the runtime')
     monkeypatch.setattr(resource, '_file_observation', forbidden)
@@ -44,7 +44,7 @@ def test_no_file_or_media_probe_when_service_access_is_revoked(environment, monk
 
 
 def test_revocation_during_probe_does_not_return_prior_resource_metadata(environment, monkeypatch):
-    import backend.services.application_resource_discovery as resource
+    import backend.applications.resources.discovery as resource
     s = environment; original = resource._file_observation
     def changed(*args, **kwargs):
         result = original(*args, **kwargs); revoke(s); return result

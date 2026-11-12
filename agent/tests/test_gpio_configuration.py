@@ -15,7 +15,7 @@ from agent.hardware import HardwareProfile, MockDigitalGpioDriver
 from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
 from agent.modules.gpio import GPIO_ENTRYPOINT
 from agent.physical_command_journal import PhysicalCommandFailure, PhysicalCommandJournal
-from three_mm_protocol import AgentCommand, ModuleManifestV2
+from packages.protocol import AgentCommand, ModuleManifestV2
 
 
 class RecordingDriver(MockDigitalGpioDriver):

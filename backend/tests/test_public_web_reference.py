@@ -6,9 +6,9 @@ from pathlib import Path
 import zipfile
 import io
 
-from backend.services.module_packages import validate_module_package
-from three_mm_application_sdk import ApplicationContext, ApplicationStorage, OperationContext
-from three_mm_protocol import ApplicationPublicHttpResponseV1
+from backend.artifacts.packages import validate_module_package
+from packages.application_sdk import ApplicationContext, ApplicationStorage, OperationContext
+from packages.protocol import ApplicationPublicHttpResponseV1
 
 
 REFERENCE_ROOT = Path(__file__).parents[2] / "modules" / "public-web-reference"

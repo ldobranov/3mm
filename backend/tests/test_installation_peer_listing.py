@@ -21,14 +21,14 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Session
 
-from backend.services import installation_peers as peers
-from backend.services.installation_peer_listing import public_peer_records
-from three_mm_protocol.installation_peer import (
+from backend.installation import peers
+from backend.installation.peer_listing import public_peer_records
+from packages.protocol.installation_peer import (
     PeerEnrollmentStartV1,
     ProjectionConsentV1,
 )
-from three_mm_protocol.installation_peer_v2 import enrollment_metadata, peer_model
-from three_mm_protocol.tests.test_installation_identity import (
+from packages.protocol.installation_peer_v2 import enrollment_metadata, peer_model
+from packages.protocol.tests.test_installation_identity import (
     identity_and_key,
     proof_request,
 )

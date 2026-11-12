@@ -1,6 +1,6 @@
 """Reference provider contract, outside Core. No claim of physical GPIO support."""
 
-from three_mm_protocol.capability_contracts import CapabilityContractV1
+from packages.protocol.capability_contracts import CapabilityContractV1
 
 
 def object_schema(properties, required=()):

@@ -12,12 +12,12 @@ from sqlalchemy.orm import Session
 
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.session import UserSession
-from backend.services import application_authority_management as authority
-from backend.services import application_relational as transactions
-from backend.services import application_relational_activation as activation
-from backend.services import application_relational_upgrade as coordinator
-from backend.services.application_authority_keys import AuthorityReviewKeyError
-from backend.services.application_policy_reviews import PolicyReviewStoreError
+from backend.applications.authority import management as authority
+from backend.applications.relational import authority as transactions
+from backend.applications.relational import activation
+from backend.applications.relational import upgrade as coordinator
+from backend.applications.authority.keys import AuthorityReviewKeyError
+from backend.applications.authority.policy_reviews import PolicyReviewStoreError
 from backend.tests.test_application_relational_admission import (
     admit,
     commit,
@@ -45,25 +45,25 @@ from backend.tests.test_application_relational_preparation import (
     source_subject,
     stopped,
 )
-from three_mm_application_sdk.files import ApplicationFileStorage
-from three_mm_application_sdk.relational_receipts import _RelationalReceiptStore
-from three_mm_application_sdk.relational_upgrade_receipts import (
+from packages.application_sdk.files import ApplicationFileStorage
+from packages.application_sdk.relational_receipts import _RelationalReceiptStore
+from packages.application_sdk.relational_upgrade_receipts import (
     validate_upgrade_history,
 )
-from three_mm_application_sdk.relational_upgrade_wire import (
+from packages.application_sdk.relational_upgrade_wire import (
     _RelationalUpgradeTicket,
     upgraded_lifecycle,
 )
-from three_mm_application_sdk.relational_wire import (
+from packages.application_sdk.relational_wire import (
     _RelationalMigrationPreparationTicket,
     canonical,
     sign_metadata,
 )
-from three_mm_runtime import application_relational_upgrade as helper
-from three_mm_runtime.application_relational_migrations import (
+from components.system_runtime import application_relational_upgrade as helper
+from components.system_runtime.application_relational_migrations import (
     MigrationWorkerUnconfirmed,
 )
-from three_mm_runtime.application_relational_session import _prepared
+from components.system_runtime.application_relational_session import _prepared
 
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="Actual POSIX authority/worker"),
@@ -430,7 +430,7 @@ def test_real_intermediate_commit_rolls_back_data_and_protected_metadata(upgrada
         state,
         """import json, os, sqlite3
 from pathlib import Path
-from three_mm_application_sdk import ApplicationMigration
+from packages.application_sdk import ApplicationMigration
 def first(db):
     raise RuntimeError('Existing prefix must not run')
 def second(db):
@@ -644,7 +644,7 @@ def test_second_real_upgrade_preserves_old_schema_receipts_without_prefix_replay
     candidate(
         state,
         """import os
-from three_mm_application_sdk import ApplicationMigration
+from packages.application_sdk import ApplicationMigration
 def applied(db):
     raise RuntimeError('Applied schema prefix must not execute again')
 def third(db):

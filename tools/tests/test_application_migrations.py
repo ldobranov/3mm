@@ -8,12 +8,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 from tools import application_migrations as migrations
 from tools import application_project as project
 
 STARTER = Path(__file__).resolve().parents[2] / 'modules/application-starter'
-MULTI_STEP = '''from three_mm_application_sdk import ApplicationMigration
+MULTI_STEP = '''from packages.application_sdk import ApplicationMigration
 
 def first(connection):
     connection.execute('CREATE TABLE notes (value TEXT NOT NULL)')
@@ -124,7 +124,7 @@ def get_migrations():
 
 
 def test_migration_failure_uses_real_sdk_rollback_and_retains_previous_revision_and_data(source, tmp_path):
-    from three_mm_application_sdk import ApplicationStorage
+    from packages.application_sdk import ApplicationStorage
     import zipfile
     import io
 
@@ -191,7 +191,7 @@ def test_worker_cannot_report_success_with_invalid_or_missing_result(source, tmp
 
 
 def test_worker_declared_migration_budget_is_finite(source, tmp_path):
-    code = ('from three_mm_application_sdk import ApplicationMigration\n'
+    code = ('from packages.application_sdk import ApplicationMigration\n'
         'def get_migrations():\n    return [ApplicationMigration(str(i), lambda c: None) for i in range(33)]\n')
     blob, validated = package(source, code, target='0')
     with pytest.raises(project.ProjectCheckError):

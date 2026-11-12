@@ -40,7 +40,7 @@ Canonical checks:
 
 ```bash
 backend/.venv/bin/python -m pytest -q
-backend/.venv/bin/python -m pytest -q deployment/tests three_mm_application_sdk/tests
+backend/.venv/bin/python -m pytest -q deployment/tests packages/application_sdk/tests
 pnpm --dir frontend run test:unit -- --run
 pnpm --dir frontend run type-check
 pnpm --dir frontend run build-only

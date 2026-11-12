@@ -15,8 +15,8 @@
         :style="{ color: settingsStore.headerSettings.textColor }"
       >
         <img
-          v-if="settingsStore.headerSettings.logoUrl"
-          :src="settingsStore.headerSettings.logoUrl"
+          v-if="settingsStore.brandingLogo"
+          :src="settingsStore.brandingLogo"
           alt="Logo"
           class="me-2"
           style="max-height: 40px;"

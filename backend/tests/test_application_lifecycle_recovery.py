@@ -8,11 +8,11 @@ from sqlalchemy.orm import Session
 
 from backend.db.audit_log import AuditLog
 from backend.db.module import ApplicationEventCursor, ApplicationExtensionInstallation, ApplicationJobState, ModulePackage
-from backend.routes import application_extensions as routes
-from backend.services.authority_metadata import read_application_authority, read_authority_guard
+from backend.applications.management import api as routes
+from backend.applications.authority.metadata import read_application_authority, read_authority_guard
 from backend.tests.test_application_lifecycle_authority import lifecycle, request, snapshot  # noqa: F401
-from backend.utils.jwt_utils import create_access_token
-from three_mm_runtime.update_helper_client import UpdateHelperError
+from backend.accounts.tokens import create_access_token
+from components.system_runtime.update_helper_client import UpdateHelperError
 
 
 CONFIRMED = {"confirmed_external_outcome_reviewed": True}

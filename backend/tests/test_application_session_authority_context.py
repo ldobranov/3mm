@@ -4,14 +4,14 @@ import copy
 
 import pytest
 
-from backend.services.application_authority_context import (
+from backend.applications.authority.context import (
     AuthorityReviewContextV10,
     _parse,
     review_authority_context,
 )
-from backend.services.application_authority_policy import evaluate_authority_policy
+from backend.applications.authority.policy import evaluate_authority_policy
 from backend.tests.test_application_authority_policy import inputs
-from three_mm_protocol.tests.test_application_sessions import binding
+from packages.protocol.tests.test_application_sessions import binding
 
 
 def session_inputs():

@@ -3,7 +3,7 @@ import importlib.util
 import io
 from pathlib import Path
 import zipfile
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 
 
 def builder():
@@ -25,7 +25,7 @@ def test_neutral_consumer_is_deterministic_and_uses_only_public_contracts():
     assert app.routes[0].private_files.publish_permission=='files_publish'
     with zipfile.ZipFile(io.BytesIO(blob)) as archive:
         source=archive.read('source/frontend/Files.vue').decode()
-        assert "'@3mm/application-ui/v1'" in source and "'@3mm/ui/v1'" in source
+        assert "'@platform/application-ui/v1'" in source and "'@platform/ui/v1'" in source
         assert 'fetch(' not in source and 'axios' not in source and '/api/' not in source
         assert 'files.uploadStatus' in source and 'files.finalize' in source and 'files.revokeLink' in source
         assert hashlib.sha256(archive.read(app.service.artifact)).hexdigest()==app.service.artifact_sha256

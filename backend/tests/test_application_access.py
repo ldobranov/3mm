@@ -25,17 +25,18 @@ from backend.db.module import (
 )
 from backend.db.user import User
 from backend.db.session import UserSession
-from backend.routes import application_extensions, modules
-from backend.routes.application_extensions import router as application_router
-from backend.routes.modules import router as module_router
-from backend.services import application_extensions as gateway
-from backend.services import compiled_ui
-from backend.services.compiled_ui import compile_ui_package
-from backend.services.module_packages import validate_module_package
+from backend.applications.management import api as application_extensions
+from backend.artifacts import api as modules
+from backend.applications.management.api import router as application_router
+from backend.artifacts.api import router as module_router
+from backend.applications.runtime import gateway
+from backend.artifacts import compiled_ui
+from backend.artifacts.compiled_ui import compile_ui_package
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_module_packages import application_definition, application_package
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
-from three_mm_runtime.application_activation import application_instance_id
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
+from components.system_runtime.application_activation import application_instance_id
 
 
 class ReadyClient:
@@ -121,7 +122,7 @@ def environment(monkeypatch, tmp_path, blob=None):
     app = FastAPI()
     app.include_router(application_router)
     app.include_router(module_router)
-    from backend.routes.auth_refresh import router as refresh_router
+    from backend.accounts.sessions.refresh import router as refresh_router
     app.include_router(refresh_router, prefix="/api")
     app.dependency_overrides[get_db] = lambda: db
     client = TestClient(app)
@@ -135,7 +136,7 @@ def environment(monkeypatch, tmp_path, blob=None):
     admin_session.token = admin_token; operator_session.token = operator_token; db.commit()
     if os.name=='posix':
         from backend.db.installation_identity import CoreInstallationIdentity
-        from backend.services import application_authority_management as authority
+        from backend.applications.authority import management as authority
         public=Ed25519PrivateKey.generate().public_key().public_bytes(serialization.Encoding.Raw,serialization.PublicFormat.Raw)
         db.add(CoreInstallationIdentity(singleton_id=1,installation_id='inst_'+'5'*32,identity_version=1,key_generation=1,
             key_id=hashlib.sha256(public).hexdigest(),public_key=base64.b64encode(public).decode(),encrypted_private_key='unused',created_at=datetime.now(UTC)))

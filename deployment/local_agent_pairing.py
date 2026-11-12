@@ -17,11 +17,11 @@ from agent.core_client import DeviceCredential, DeviceCredentialStore
 from agent.identity import AgentIdentity, AgentIdentityStore
 from backend.db.device import Device, DeviceCredential as StoredDeviceCredential
 from backend.db.installation_identity import CoreInstallationIdentity
-from backend.services.device_registry import as_utc
-from three_mm_protocol.device_authority import AuthorityBinding, DeviceAuthorityStore
-from three_mm_protocol.installation_identity import InstallationIdentityV1
+from backend.devices.registry.online import as_utc
+from packages.protocol.device_authority import AuthorityBinding, DeviceAuthorityStore
+from packages.protocol.installation_identity import InstallationIdentityV1
 from backend.db.user import User
-from backend.services.device_pairing import (
+from backend.devices.pairing.service import (
     approve_pairing_request,
     claim_pairing_code,
     complete_pairing_request,
@@ -29,8 +29,8 @@ from backend.services.device_pairing import (
     recover_device_credential,
     DeviceCredentialRevocationError,
 )
-from three_mm_protocol import PROTOCOL_VERSION, AgentRole
-from three_mm_provisioning import (
+from packages.protocol import PROTOCOL_VERSION, AgentRole
+from packages.provisioning import (
     FileProvisioningStore,
     ProvisioningState,
 )

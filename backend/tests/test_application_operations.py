@@ -10,9 +10,9 @@ from backend.db.base import Base
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
 from backend.db.user import User
-from backend.routes.application_operations import router
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
+from backend.applications.operations_api import router
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
 
 
 def test_application_secrets_are_admin_only_and_never_return_plaintext(

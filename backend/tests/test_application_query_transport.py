@@ -19,12 +19,12 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.db.module import ApplicationExtensionInstallation as Installation
-from backend.services.application_platform import CoreRuntimeAuthorityServer
-from backend.services.application_query_transport import QueryBroker
+from backend.applications.runtime.platform import CoreRuntimeAuthorityServer
+from backend.applications.queries.transport import QueryBroker
 from backend.tests.test_application_composition_authority import (
     pair, installed, source_subject, source_installed, approve, grant, identity, SCOPE,
 )
-from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+from packages.application_sdk import ApplicationPlatformClient, ApplicationPlatformError
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Real POSIX FD/peer/process transport')
 
@@ -44,7 +44,7 @@ class QueryService:
 
 
 def host_process(metadata, root, key, seen, release):
-    from three_mm_runtime.application_host import _serve_requests
+    from components.system_runtime.application_host import _serve_requests
     _serve_requests(metadata, Path(root), key, QueryService(seen, release), None)
 
 
@@ -85,7 +85,7 @@ def stack(pair, monkeypatch):
         try:
             host.start(); wait_socket(path, host)
             core.start()
-            runtime = subprocess.Popen([sys.executable, '-m', 'three_mm_platform_runtime',
+            runtime = subprocess.Popen([sys.executable, '-m', 'components.platform_runtime',
                 '--socket', str(root/'runtime.sock'), '--authority-socket', str(core.socket_path),
                 '--core-uid', str(os.getuid())], close_fds=True)
             wait_socket(root/'runtime.sock', runtime)
@@ -192,7 +192,7 @@ def test_hanging_provider_deadline_leaves_core_available_and_does_not_retry(stac
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(x.client.query, 'directory', arguments={'reference': 'pause'})
         x.seen.get(timeout=3)
-        from three_mm_platform_runtime.server import probe_runtime
+        from components.platform_runtime.server import probe_runtime
         assert probe_runtime(x.root/'runtime.sock', expected_uid=os.getuid(), require_queries=True)['ready']
         assert x.core.active_connections == 0
         with pytest.raises(ApplicationPlatformError): future.result(timeout=7)
@@ -233,8 +233,8 @@ def test_completion_is_one_use_runtime_generation_bound_and_capacity_is_bounded(
 
 def test_absent_query_feature_preserves_general_runtime_health_but_never_query_readiness(tmp_path):
     import threading
-    from three_mm_platform_runtime.server import probe_runtime
-    from three_mm_platform_wire import read_frame
+    from components.platform_runtime.server import probe_runtime
+    from packages.platform_wire import read_frame
     # An older, healthy immutable Runtime may be selected by independent rollback.
     # Its general health is NOT evidence for the newly optional query feature.
     with tempfile.TemporaryDirectory(prefix='3mm-q-probe-', dir='/tmp') as directory:
@@ -260,7 +260,7 @@ def test_absent_query_feature_preserves_general_runtime_health_but_never_query_r
 
 @pytest.mark.parametrize('fault', ['signature', 'request-id', 'expired', 'provider-error', 'schema', 'oversized', 'wire-version'])
 def test_authenticated_result_boundary_refuses_invalid_provider_envelopes(stack, fault):
-    from three_mm_runtime.application_transport import read_message, sign_message
+    from components.system_runtime.application_transport import read_message, sign_message
     x = stack
     request = dict(version=1, request_id='platform_'+identity(), timestamp=int(time.time()),
         instance_id='b'*24, action='query.request', signature='not-used-by-internal-admission',

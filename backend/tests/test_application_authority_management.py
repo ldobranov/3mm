@@ -1,6 +1,6 @@
 from backend.tests.connector_helpers import execute_connector_request
 """Real sealed authority, real logins and existing brokers; no live device I/O."""
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 from datetime import UTC, datetime, timedelta
 import io
@@ -23,15 +23,15 @@ from backend.db.device import Device, DeviceCapabilityProvider, DeviceCommand, D
 from backend.db.module import ApplicationExtensionInstallation as Installation, ModulePackage, ApplicationSecretReference
 from backend.db.session import UserSession
 from backend.db.user import User
-from backend.services import application_authority_management as service
-from backend.services.application_commands import submit_command, authorize_execution, command_lookup
-from backend.services.application_connectors import ApplicationConnectorError
-from backend.services.device_commands import deliver_next_command
-from backend.services.device_capability_registry import capability_catalog
-from backend.services.module_packages import validate_module_package
+from backend.applications.authority import management as service
+from backend.applications.commands.broker import submit_command, authorize_execution, command_lookup
+from backend.applications.connectors.broker import ApplicationConnectorError
+from backend.devices.commands.queue import deliver_next_command
+from backend.devices.capabilities.registry import capability_catalog
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_authority_subjects import installed as source_subject, source_installed
 from backend.tests.test_application_authority_sources import PRIVATE
-from backend.utils.jwt_utils import create_access_token
+from backend.accounts.tokens import create_access_token
 
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Requires real POSIX Core key ownership/locking')
@@ -294,8 +294,8 @@ def test_native_revocation_invalidates_active_permissions(installed):
 def test_administrator_api_real_sessions_review_apply_and_revoke(installed):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
-    from backend.routes.application_authority import router
-    from backend.utils.db_utils import get_db
+    from backend.applications.management.access_api import router
+    from backend.storage.sessions import get_db
     s = installed
     app = FastAPI()
     app.include_router(router)
@@ -358,7 +358,7 @@ def test_concurrent_apply_is_one_durable_grant(installed):
 
 
 def test_no_new_artifact_or_configuration_can_reuse_native_activation(installed):
-    from backend.services.authority_metadata import read_authority_guard
+    from backend.applications.authority.metadata import read_authority_guard
     s = installed
     activate_grant(s)
     with Session(s.engine) as db:
@@ -376,7 +376,7 @@ def test_unsupported_signed_platform_actions_never_fall_back_to_legacy(installed
     import hashlib
     import hmac
     import time
-    from backend.services.application_platform import ApplicationPlatformServer
+    from backend.applications.runtime.platform import ApplicationPlatformServer
     s = installed
     activate_grant(s)
     server = ApplicationPlatformServer(tmp_path / 'unused.sock', tmp_path, allowed_actions=COMPATIBILITY_ACTIONS)
@@ -420,7 +420,7 @@ def test_revoke_committed_between_preflight_and_admission_wins(installed, monkey
 
 
 def test_current_core_policy_adapter_revision_invalidates_old_grants(installed, monkeypatch):
-    from backend.services import application_authority_policy as policy
+    from backend.applications.authority import policy
     s = installed
     activate_grant(s)
     monkeypatch.setattr(policy, 'POLICY_ADAPTER_REVISION', policy.POLICY_ADAPTER_REVISION + 1)
@@ -452,11 +452,11 @@ def test_administrator_can_recover_reviews_after_offline_rollback_without_adopti
     from pathlib import Path
     from backend.db.audit_log import AuditLog
     from backend.db.module import ApplicationPermissionGrant
-    from backend.routes.application_authority import router
-    from backend.routes.application_extensions import router as lifecycle
-    from backend.utils.db_utils import get_db
+    from backend.applications.management.access_api import router
+    from backend.applications.management.api import router as lifecycle
+    from backend.storage.sessions import get_db
     from deployment.authority_recovery import fence_recovered_authority
-    from three_mm_runtime.update_helper_client import UpdateHelperClient
+    from components.system_runtime.update_helper_client import UpdateHelperClient
 
     s = installed
     ApplicationPermissionGrant.__table__.create(s.engine, checkfirst=True)
@@ -540,9 +540,9 @@ def test_administrator_can_recover_reviews_after_offline_rollback_without_adopti
 def test_actual_lifecycle_gate_reenables_same_artifact_with_saved_consent(installed, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
-    from backend.routes.application_extensions import router
-    from backend.utils.db_utils import get_db
-    from three_mm_runtime.update_helper_client import UpdateHelperClient
+    from backend.applications.management.api import router
+    from backend.storage.sessions import get_db
+    from components.system_runtime.update_helper_client import UpdateHelperClient
     s = installed
     activate_grant(s)
     app = FastAPI()
@@ -580,8 +580,8 @@ def test_actual_lifecycle_gate_reenables_same_artifact_with_saved_consent(instal
 def test_administrator_status_redacts_storage_and_corrupt_record_errors(installed, monkeypatch, failure):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
-    from backend.routes.application_authority import router
-    from backend.utils.db_utils import get_db
+    from backend.applications.management.access_api import router
+    from backend.storage.sessions import get_db
     s = installed
     app = FastAPI()
     app.include_router(router)
@@ -605,7 +605,7 @@ def test_local_key_cli_checks_actual_login_and_never_grants_permissions(installe
     import sys
     from backend import database
     from backend.db.audit_log import AuditLog
-    from backend.services import application_authority_admin as admin
+    from backend.applications.authority import admin
     s = installed
     before = s.keys.identity()
     monkeypatch.setattr(admin, 'configured_manager', lambda _engine: s.manager)

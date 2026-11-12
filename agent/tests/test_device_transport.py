@@ -7,7 +7,7 @@ import pytest
 
 from agent.core_client import DeviceCredential
 from agent.device_transport import HttpDeviceTransport, HttpRejected, HttpTransportError
-from three_mm_protocol.fleet_pairing import NodeEnrollmentRequest
+from packages.protocol.fleet_pairing import NodeEnrollmentRequest
 
 
 def enrollment():
@@ -124,7 +124,7 @@ def test_expired_execution_budget_does_not_dispatch_after_proving_authority(monk
 def test_provider_reads_and_acknowledgements_reject_foreign_identity(monkeypatch, field):
     from datetime import UTC, datetime
     from agent.hardware.identifier import MockIdentifierAdapter
-    from three_mm_protocol.device_capabilities import CapabilityProviderSnapshotV2
+    from packages.protocol.device_capabilities import CapabilityProviderSnapshotV2
     from pathlib import Path
     transport,_=enrollment()
     declaration=MockIdentifierAdapter(Path('/unused')).provider_declaration()

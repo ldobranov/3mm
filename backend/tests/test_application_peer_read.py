@@ -1,5 +1,5 @@
 """Complete exact read path using installed ZIPs, sealed grants and signed IPC."""
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 import copy
 import json
@@ -16,9 +16,9 @@ from backend.db.application_authority_grant import ApplicationAuthorityGrant as 
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.installation_peer import InstallationPeerOutbound as Peer
 from backend.db.module import ApplicationExtensionInstallation as Installation
-from backend.services import application_peer_read as service
-from backend.services import installation_identity as identity_service
-from backend.services.application_platform import ApplicationPlatformServer
+from backend.applications.runtime import peers as service
+from backend.installation import identity as identity_service
+from backend.applications.runtime.platform import ApplicationPlatformServer
 from backend.tests.test_application_peer_read_authority import (
     peer_app,
     checkpoint_app,
@@ -36,7 +36,7 @@ from backend.tests.test_application_peer_read_authority import (
     READ,
     PRIVATE,
 )
-from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+from packages.application_sdk import ApplicationPlatformClient, ApplicationPlatformError
 
 
 pytestmark = pytest.mark.skipif(
@@ -45,7 +45,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_resource_view_observes_exact_local_peer_metadata(peer_app):
-    from backend.services.application_resource_discovery import discover_resources
+    from backend.applications.resources.discovery import discover_resources
     s = peer_app
     adopt(s)
     row = discover_resources(s.engine,1,'a'*24,[READ])['resources'][0]

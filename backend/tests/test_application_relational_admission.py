@@ -3,7 +3,7 @@
 The fixture supplies the future protected host context directly. No public
 transport route or production relational activation is enabled by these tests.
 """
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 import dataclasses
 import hashlib
@@ -20,8 +20,8 @@ from sqlalchemy.orm import Session
 from backend.db.application_authority_grant import ApplicationAuthorityAction as Action
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
-from backend.services import application_authority_management as authority
-from backend.services import application_relational as service
+from backend.applications.authority import management as authority
+from backend.applications.relational import authority as service
 from backend.tests.test_application_authority_management import identity
 from backend.tests.test_application_authority_management import (
     installed as managed_installed,
@@ -32,17 +32,17 @@ from backend.tests.test_application_authority_subjects import (
 )
 from backend.tests.test_application_authority_subjects import source_installed
 from backend.tests.test_application_relational_review_api import store_package
-from three_mm_application_sdk import ApplicationMigration, ApplicationStorage
-from three_mm_application_sdk.relational_receipts import _prepare_receipt_metadata
-from three_mm_application_sdk.relational_wire import (
+from packages.application_sdk import ApplicationMigration, ApplicationStorage
+from packages.application_sdk.relational_receipts import _prepare_receipt_metadata
+from packages.application_sdk.relational_wire import (
     accept_permit,
     canonical,
     permit_digest,
     sign_metadata,
     verify_metadata,
 )
-from three_mm_application_sdk.scoped_relational import ApplicationScopedStorage
-from three_mm_protocol.tests.test_application_relational_storage import (
+from packages.application_sdk.scoped_relational import ApplicationScopedStorage
+from packages.protocol.tests.test_application_relational_storage import (
     relational_request,
 )
 
@@ -361,7 +361,7 @@ def test_revoke_committed_while_archive_preparation_runs_wins(admitted, monkeypa
 def test_unfinished_host_dependency_is_not_exposed_to_application_gateway(
     admitted, action
 ):
-    from backend.services.application_platform import ApplicationPlatformServer
+    from backend.applications.runtime.platform import ApplicationPlatformServer
 
     server = ApplicationPlatformServer(
         admitted.root / "platform.sock", admitted.root / "keys"

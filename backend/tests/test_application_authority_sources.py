@@ -27,14 +27,14 @@ from backend.db.module import (
     ApplicationConnectorBinding, ApplicationExtensionInstallation,
     ApplicationSecretReference, ModuleInstallation, ModulePackage,
 )
-from backend.services import application_authority_sources as sources
-from backend.services.authority_metadata import (
+from backend.applications.authority import sources
+from backend.applications.authority.metadata import (
     authority_transaction, read_connector_authority, read_device_control,
 )
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_authority_review import with_commands
 from backend.tests.test_module_packages import application_package
-from three_mm_protocol.node_features import MANDATORY_NODE_FEATURES
+from packages.protocol.node_features import MANDATORY_NODE_FEATURES
 
 
 NOW = datetime.now(UTC)

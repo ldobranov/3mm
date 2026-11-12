@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from backend.services import compiled_ui
-from backend.services.compiled_ui_provenance import read_asset, UiBuildEvidenceError
-from backend.services.module_packages import validate_module_package
+from backend.artifacts import compiled_ui
+from backend.artifacts.provenance import read_asset, UiBuildEvidenceError
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_compiled_ui import fake_compiler, package
 
 

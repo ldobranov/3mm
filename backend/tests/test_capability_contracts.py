@@ -36,16 +36,16 @@ from backend.db.module import (
     ApplicationExtensionInstallation,
 )
 from backend.db.application_command import ApplicationCommandRequest
-from backend.services.device_pairing import credential_secret_hash
-from backend.services.device_capability_registry import registered_capabilities
-from backend.services.module_packages import validate_module_package
-from backend.services.device_commands import (
+from backend.devices.pairing.service import credential_secret_hash
+from backend.devices.capabilities.registry import registered_capabilities
+from backend.artifacts.packages import validate_module_package
+from backend.devices.commands.queue import (
     command_envelope,
     deliver_next_command,
     queue_command,
     DeviceCommandError,
 )
-from backend.services.application_commands import submit_command, authorize_execution
+from backend.applications.commands.broker import submit_command, authorize_execution
 from backend.tests.test_mock_embedded_protocol import (
     core,
     approve,
@@ -58,12 +58,12 @@ from backend.tests.test_module_packages import (
 )
 from examples.mock_embedded.client import MockEmbeddedClient, CAPABILITY, CHANNEL
 from examples.mock_embedded.contracts import control_contract
-from three_mm_protocol import AgentCommand
-from three_mm_protocol.capability_contracts import (
+from packages.protocol import AgentCommand
+from packages.protocol.capability_contracts import (
     CONTRACT_FEATURE,
     CapabilityContractError,
 )
-from three_mm_protocol.node_security import NODE_MESSAGE_BYTES, validate_command_payload
+from packages.protocol.node_security import NODE_MESSAGE_BYTES, validate_command_payload
 
 
 def versioned_package():

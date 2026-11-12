@@ -14,11 +14,11 @@ import time
 from urllib.request import urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from three_mm_runtime.node_update_helper import (
+from components.system_runtime.node_update_helper import (
     AGENT_DATA, CURRENT_ROOT, SOCKET_PATH, MAX_REQUEST_BYTES, NodeUpdateError, NodeUpdateStore,
     inspect_prepared_archive, read_small, trusted_path,
 )
-from three_mm_runtime.node_update_trust import verify_node_update_authorization
+from components.system_runtime.node_update_trust import verify_node_update_authorization
 
 
 def snapshot_agent_state(agent_data):

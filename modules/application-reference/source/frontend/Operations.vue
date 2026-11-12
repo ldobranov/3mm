@@ -14,7 +14,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useApplicationHost } from '@3mm/application-ui/v1'
+import { useApplicationHost } from '@platform/application-ui/v1'
 
 const host = useApplicationHost()
 const recordId = ref('')

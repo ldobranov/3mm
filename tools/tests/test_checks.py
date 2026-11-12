@@ -29,30 +29,89 @@ class SelectionTests(unittest.TestCase):
                 self.assertTrue(plan.frontend)
 
     def test_source_changes_keep_python_integration_coverage(self):
-        plan = checks.select_checks(["agent/device_transport.py"])
-        self.assertIn("agent/tests", plan.python)
-        self.assertIn("backend/tests", plan.python)
-        self.assertIn("deployment/tests", plan.python)
-        self.assertEqual(plan.python, checks.PYTHON_SUITES)
-        self.assertFalse(plan.frontend)
+        for path in ("agent/device_transport.py", "components/admin_web/server.py",
+                     "components/public_web/server.py", "components/platform_runtime/server.py",
+                     "packages/provisioning/models.py", "components/setup/main.py",
+                     "packages/application_sdk/platform.py", "components/system_runtime/update_helper.py"):
+            with self.subTest(path=path):
+                plan = checks.select_checks([path])
+                self.assertIn("agent/tests", plan.python)
+                self.assertIn("backend/tests", plan.python)
+                self.assertIn("deployment/tests", plan.python)
+                self.assertIn("components/admin_web/tests", plan.python)
+                self.assertIn("components/public_web/tests", plan.python)
+                self.assertIn("components/setup/tests", plan.python)
+                self.assertIn("packages/provisioning/tests", plan.python)
+                self.assertNotIn("three_mm_provisioning/tests", plan.python)
+                self.assertNotIn("three_mm_public_web/tests", plan.python)
+                self.assertNotIn("three_mm_web/tests", plan.python)
+                self.assertNotIn("setup_service/tests", plan.python)
+                self.assertNotIn("three_mm_application_sdk/tests", plan.python)
+                self.assertIn("packages/application_sdk/tests", plan.python)
+                self.assertEqual(plan.python, checks.PYTHON_SUITES)
+                self.assertFalse(plan.frontend)
 
     def test_shared_contracts_keep_every_python_suite(self):
         for root in checks.PYTHON_ROOTS:
             with self.subTest(root=root):
                 self.assertEqual(checks.select_checks([f"{root}/contract.py"]).python, checks.PYTHON_SUITES)
 
+    def test_shared_wire_expands_python_and_unknown_packages_still_expand_every_group(self):
+        for path in ('packages/platform_wire/__init__.py', 'packages/platform_wire/task_time.py'):
+            with self.subTest(path=path):
+                plan = checks.select_checks([path])
+                self.assertEqual(plan.python, checks.PYTHON_SUITES)
+                self.assertFalse(plan.frontend or plan.tooling)
+        for path in ('packages/__init__.py', 'packages/future/module.py',
+                     'packages/platform_wire_other/module.py', 'packages/provisioning_other/models.py',
+                     'packages/application_sdk_other/platform.py'):
+            with self.subTest(path=path):
+                plan = checks.select_checks([path])
+                self.assertEqual(plan.python, checks.PYTHON_SUITES)
+                self.assertTrue(plan.frontend and plan.tooling)
+
     def test_test_only_change_selects_its_suite(self):
         self.assertEqual(checks.select_checks(["backend/tests/test_application_access.py"]).python,
                          ("backend/tests",))
+        self.assertEqual(checks.select_checks(["components/admin_web/tests/test_server.py"]).python,
+                         ("components/admin_web/tests",))
+        self.assertEqual(checks.select_checks(["components/public_web/tests/test_server.py"]).python,
+                         ("components/public_web/tests",))
+        self.assertEqual(checks.select_checks(["components/setup/tests/test_api.py"]).python,
+                         ("components/setup/tests",))
+        self.assertEqual(checks.select_checks(["components/system_runtime/tests/test_update_helper.py"]).python,
+                         ("components/system_runtime/tests",))
+        self.assertEqual(checks.select_checks(["packages/protocol/tests/test_models.py"]).python,
+                         ("packages/protocol/tests",))
+        self.assertEqual(checks.select_checks(["packages/provisioning/tests/test_persistence.py"]).python,
+                         ("packages/provisioning/tests",))
+        self.assertEqual(checks.select_checks(["packages/application_sdk/tests/test_commands.py"]).python,
+                         ("packages/application_sdk/tests",))
+
+    def test_unknown_components_and_shared_parent_keep_full_checks(self):
+        for path in ("components/future/service.py", "components/admin_web_other/server.py",
+                     "components/public_web_other/server.py",
+                     "components/platform_runtime_other/server.py",
+                     "components/setup_other/main.py",
+                     "components/system_runtime_other/update_helper.py",
+                     "components/__init__.py"):
+            with self.subTest(path=path):
+                plan = checks.select_checks([path])
+                self.assertEqual(plan.python, checks.PYTHON_SUITES)
+                self.assertTrue(plan.frontend and plan.tooling)
 
     def test_fixtures_migrations_and_dependency_changes_expand_checks(self):
         for path in ("backend/tests/conftest.py", "backend/migrations/versions/change.py",
-                     "backend/requirements.txt"):
+                     "backend/requirements.txt", "components/admin_web/tests/conftest.py",
+                     "components/public_web/tests/conftest.py",
+                     "components/setup/tests/conftest.py",
+                     "packages/protocol/tests/conftest.py", "packages/protocol/models.py",
+                     "packages/provisioning/tests/conftest.py", "packages/application_sdk/tests/conftest.py"):
             with self.subTest(path=path):
                 self.assertEqual(checks.select_checks([path]).python, checks.PYTHON_SUITES)
 
     def test_combined_changes_preserve_both_families(self):
-        plan = checks.select_checks(["frontend/src/App.vue", "backend/services/application_access.py"])
+        plan = checks.select_checks(["frontend/src/App.vue", "backend/applications/authority/access.py"])
         self.assertTrue(plan.frontend)
         self.assertIn("backend/tests", plan.python)
 
@@ -68,7 +127,7 @@ class SelectionTests(unittest.TestCase):
         commands = checks.commands(checks.full_plan('full'), 'python', 'python')
         self.assertEqual(len(commands), 2)
         self.assertNotIn('deployment/tests', commands[0][1])
-        self.assertEqual(commands[1][1][4:], ['deployment/tests', 'three_mm_application_sdk/tests'])
+        self.assertEqual(commands[1][1][4:], ['deployment/tests', 'packages/application_sdk/tests'])
 
 
 class GitAndExecutionTests(unittest.TestCase):

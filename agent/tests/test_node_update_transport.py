@@ -7,7 +7,7 @@ from agent.node_update_transport import (
     NodeUpdateTransport,
     NodeUpdateTransportError,
 )
-from three_mm_protocol.node_updates import (
+from packages.protocol.node_updates import (
     NodeUpdatePrepareRequest,
     NodeUpdatePreparedArtifact,
 )

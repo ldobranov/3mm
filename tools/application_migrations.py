@@ -30,7 +30,7 @@ _LAUNCHER = ('import sys; sys.path.insert(0, sys.argv[1]); '
 
 
 def _plan(factory, expected_revisions=None):
-    from three_mm_application_sdk import ApplicationMigration
+    from packages.application_sdk import ApplicationMigration
 
     migrations = factory()
     if (not isinstance(migrations, (list, tuple)) or not 1 <= len(migrations) <= MAX_MIGRATIONS
@@ -64,7 +64,7 @@ class _InjectedFailure(RuntimeError):
 
 
 def _rollback(migrations, index, work):
-    from three_mm_application_sdk import ApplicationMigration, ApplicationStorage
+    from packages.application_sdk import ApplicationMigration, ApplicationStorage
 
     storage = ApplicationStorage(work / f'rollback-{index:02d}')
     if index:
@@ -102,7 +102,7 @@ def _rollback(migrations, index, work):
 
 
 def _exercise(wheel, entrypoint, target, work):
-    from three_mm_application_sdk import ApplicationStorage
+    from packages.application_sdk import ApplicationStorage
 
     module, attribute = entrypoint.split(':', 1)
     sys.path.insert(0, str(wheel))

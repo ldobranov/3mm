@@ -48,16 +48,19 @@ def test_actual_socket_activated_pty_sandbox_and_owned_cleanup():
 
     try:
         for package in (
-            "three_mm_runtime",
-            "three_mm_protocol",
-            "three_mm_application_sdk",
-            "three_mm_provisioning",
+            "components/system_runtime",
+            "packages/protocol",
+            "packages/platform_wire",
+            "packages/application_sdk",
+            "packages/provisioning",
         ):
             shutil.copytree(
                 ROOT / package,
                 directory / package,
                 ignore=shutil.ignore_patterns("__pycache__"),
             )
+        shutil.copyfile(ROOT / "packages/__init__.py", directory / "packages/__init__.py")
+        shutil.copyfile(ROOT / "components/__init__.py", directory / "components/__init__.py")
         unit = (ROOT / "deployment/systemd/3mm-session-worker@.service").read_text()
         unit = unit.replace(
             "WorkingDirectory=/opt/3mm/current", "WorkingDirectory=" + str(directory)
@@ -90,7 +93,7 @@ def test_actual_socket_activated_pty_sandbox_and_owned_cleanup():
             """
 import asyncio, json, os, sys
 from pathlib import Path
-from three_mm_runtime import session_worker_client as ipc
+from components.system_runtime import session_worker_client as ipc
 
 async def main():
     ipc.SOCKET_PATH = Path(sys.argv[1])
@@ -165,8 +168,7 @@ asyncio.run(asyncio.wait_for(main(),25))
         for package in (
             "backend",
             "agent",
-            "three_mm_public_web",
-            "three_mm_web",
+            "components",
             "deployment",
         ):
             shutil.copytree(

@@ -14,7 +14,7 @@ from agent.node_update_client import (
     NodeUpdateClient,
     NodeUpdateHelperError,
 )
-from three_mm_protocol.node_updates import (
+from packages.protocol.node_updates import (
     NodeUpdatePrepareRequest,
     NodeUpdatePreparedArtifact,
 )

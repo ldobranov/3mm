@@ -16,18 +16,18 @@ from backend.db.device import (
     DeviceEvent,
     DeviceState,
 )
-from backend.services.device_runtime_features import replace_runtime_features
+from backend.devices.features.service import replace_runtime_features
 from backend.tests.test_mock_embedded_protocol import (
     ORIGIN,
     MockEmbeddedClient,
     approve,
     core,
 )  # noqa: F401
-from backend.utils.device_auth import require_device
-from backend.utils.device_body_limit import DeviceBodyLimitMiddleware
-from three_mm_protocol import DeviceEventV1, DeviceRuntimeFeaturesReportV1
-from three_mm_protocol.node_features import MANDATORY_NODE_FEATURES
-from three_mm_protocol.node_security import NODE_MESSAGE_BYTES
+from backend.devices.auth import require_device
+from backend.devices.body_limit import DeviceBodyLimitMiddleware
+from packages.protocol import DeviceEventV1, DeviceRuntimeFeaturesReportV1
+from packages.protocol.node_features import MANDATORY_NODE_FEATURES
+from packages.protocol.node_security import NODE_MESSAGE_BYTES
 
 
 @pytest.mark.parametrize("headers", [[], [(b"content-length", b"1")]])
@@ -252,23 +252,22 @@ def test_runtime_feature_service_rejects_another_device_identity(core, tmp_path)
 def test_neutral_contracts_have_no_runtime_driver_or_fleet_imports():
     root = Path(__file__).resolve().parents[2]
     files = [
-        "three_mm_protocol/device_inventory.py",
-        "three_mm_protocol/device_capabilities.py",
-        "three_mm_protocol/node_features.py",
-        "three_mm_protocol/node_security.py",
-        "three_mm_protocol/device_platform.py",
-        "three_mm_protocol/device_authority.py",
-        "three_mm_protocol/capability_contracts.py",
-        "three_mm_protocol/capability_availability.py",
-        "backend/services/device_capability_registry.py",
-        "backend/services/device_runtime_features.py",
-        "backend/services/device_platform.py",
+        "packages/protocol/device_inventory.py",
+        "packages/protocol/device_capabilities.py",
+        "packages/protocol/node_features.py",
+        "packages/protocol/node_security.py",
+        "packages/protocol/device_platform.py",
+        "packages/protocol/device_authority.py",
+        "packages/protocol/capability_contracts.py",
+        "packages/protocol/capability_availability.py",
+        "backend/devices/capabilities/registry.py",
+        "backend/devices/features/service.py",
+        "backend/devices/platform/service.py",
         "examples/mock_embedded/client.py",
     ]
     forbidden = {
         "agent",
         "three_mm_runtime",
-        "three_mm_provisioning",
         "gpiozero",
         "lgpio",
         "RPi",
@@ -283,7 +282,10 @@ def test_neutral_contracts_have_no_runtime_driver_or_fleet_imports():
             elif isinstance(item, ast.ImportFrom):
                 imports = [item.module or ""]
             assert not any(
-                set(module.split(".")) & forbidden for module in imports
+                set(module.split(".")) & forbidden
+                or module == "components.system_runtime" or module.startswith("components.system_runtime.")
+                or module == "packages.provisioning" or module.startswith("packages.provisioning.")
+                for module in imports
             ), filename
     main = ast.parse((root / "backend/main.py").read_text(encoding="utf-8"))
     assert any(

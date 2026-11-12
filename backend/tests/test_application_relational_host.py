@@ -19,9 +19,9 @@ from sqlalchemy.orm import Session
 from backend.db.application_authority_grant import ApplicationAuthorityAction as Action
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
-from backend.services import application_authority_management as authority
-from backend.services import application_relational as core
-from backend.services.application_authority_sources import _configuration
+from backend.applications.authority import management as authority
+from backend.applications.relational import authority as core
+from backend.applications.authority.sources import _configuration
 from backend.tests.test_application_authority_management import (
     identity,
 )
@@ -38,15 +38,15 @@ from backend.tests.test_application_authority_subjects import (
     source_installed,
 )
 from backend.tests.test_application_relational_admission import SECRET, admitted, apply
-from three_mm_application_sdk.relational_wire import (
+from packages.application_sdk.relational_wire import (
     accept_permit,
     canonical,
     permit_digest,
     sign_metadata,
 )
-from three_mm_application_sdk.scoped_relational import ApplicationScopedStorage
-from three_mm_runtime import application_relational_session as runtime
-from three_mm_runtime.tests.test_application_relational_session import make_prepared
+from packages.application_sdk.scoped_relational import ApplicationScopedStorage
+from components.system_runtime import application_relational_session as runtime
+from components.system_runtime.tests.test_application_relational_session import make_prepared
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix", reason="POSIX Core keys/host metadata"
@@ -298,7 +298,7 @@ def test_real_unix_host_core_permit_atomic_business_outbox_receipt_and_lost_ack(
         receipts=state.receipts,
         complete=complete,
     )
-    from three_mm_application_sdk.scoped_relational import (
+    from packages.application_sdk.scoped_relational import (
         ApplicationRelationalExecutionUnconfirmed,
     )
 

@@ -8,11 +8,11 @@ from sqlalchemy.orm import Session
 import backend.database  # noqa: F401
 from backend.db.base import Base
 from backend.db.device import Device, DeviceCommand
-from backend.services.device_commands import (
+from backend.devices.commands.queue import (
     DeviceCommandError, deliver_next_command, queue_command, record_command_result,
 )
 from backend.tests.test_device_commands import DEVICE_ID, _seed_authority
-from three_mm_protocol import AgentCommandResult
+from packages.protocol import AgentCommandResult
 
 
 @pytest.fixture

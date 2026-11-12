@@ -32,8 +32,8 @@ from typing import TYPE_CHECKING, Mapping
 if TYPE_CHECKING:
     # The minimal Node ships Agent + protocol, not the Core application SDK.
     # This protocol is used only in postponed annotations, never at runtime.
-    from three_mm_application_sdk.session import SessionProvider
-from three_mm_protocol.interactive_session import (
+    from packages.application_sdk.session import SessionProvider
+from packages.protocol.interactive_session import (
     SessionControlV1,
     SessionOpenAcceptanceV1,
     SessionOpenRequestV1,
@@ -190,7 +190,7 @@ class AgentSessionHost:
         does not derive rights from session IDs or provider metadata. This is
         not registered on production WebSockets by adding this method.
         """
-        from three_mm_runtime.session_output import (
+        from components.system_runtime.session_output import (
             SessionOutputCleanupError,
             pump_session_output,
         )

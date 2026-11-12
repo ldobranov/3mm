@@ -7,7 +7,7 @@ import sys
 
 import pytest
 
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 from tools import application_scaffold as scaffold
 from tools.application_project import ProjectCheckError, build_package, configuration, inputs
 
@@ -38,6 +38,11 @@ def test_generated_identity_is_complete_and_actual_package_validates(tmp_path):
     assert '/own-note' in guide and 'org.example.own-note' in guide
     assert 'PATH_TO_PROJECT' in guide and 'not a hostile-code sandbox' in guide
     assert 'modules/application-starter --output' not in guide
+    assert (destination/'AGENTS.md').read_bytes() == (scaffold.TEMPLATE/'AGENTS.md').read_bytes()
+    import io
+    import zipfile
+    with zipfile.ZipFile(io.BytesIO(build_package(destination))) as archive:
+        assert 'AGENTS.md' not in archive.namelist()
     assert not list(tmp_path.glob('.3mm-new-*'))
 
 

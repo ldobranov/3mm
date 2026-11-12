@@ -13,11 +13,11 @@ from sqlalchemy.orm import Session
 
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.device import DeviceCommand
-from backend.services import application_authority_management as authority
-from backend.services import application_resource_providers
-from backend.services.application_authority_keys import AuthorityReviewKeyError, KEY_NAME
-from backend.services.application_command_discovery import discover_selected_command
-from backend.services.application_resource_discovery import discover_resources
+from backend.applications.authority import management as authority
+from backend.applications.resources import providers as application_resource_providers
+from backend.applications.authority.keys import AuthorityReviewKeyError, KEY_NAME
+from backend.applications.commands.discovery import discover_selected_command
+from backend.applications.resources.discovery import discover_resources
 from backend.tests.test_application_ui_authority import (
     ui_app, managed_installed, source_subject, source_installed, adopt, identity,
 )

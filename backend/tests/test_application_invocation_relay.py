@@ -9,11 +9,11 @@ import pytest
 from sqlalchemy import event, update
 
 from backend.tests.test_application_health_probe import health_db, connector_db
-from backend.services import application_invocation_relay as relay
-from backend.services.application_extensions import ApplicationGatewayError
+from backend.applications.runtime import invocations as relay
+from backend.applications.runtime.gateway import ApplicationGatewayError
 from backend.db.module import ApplicationExtensionInstallation as Installation
-from three_mm_runtime.application_transport import sign_message
-from three_mm_runtime.application_transport import DispatchPhase
+from components.system_runtime.application_transport import sign_message
+from components.system_runtime.application_transport import DispatchPhase
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Linux Runtime account admission')
 
@@ -99,7 +99,7 @@ def test_enforced_relay_without_key_boundary_fails_before_prepare_or_dispatch(he
 
 
 def test_relational_metadata_is_prepared_once_outside_policy_transactions(health_db, monkeypatch):
-    from backend.services import application_relational
+    from backend.applications.relational import authority as application_relational
     db, app, package, settings = health_db
     metadata, sent = [], []
     original = relay._prepare

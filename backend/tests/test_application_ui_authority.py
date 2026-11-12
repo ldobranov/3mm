@@ -3,7 +3,7 @@
 Real Linux files/keys/DB guards and two signed Unix boundaries. The in-test
 service uses only the public SDK; no live VM, helper, Agent or hardware changes.
 """
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 import json
 import os
@@ -27,21 +27,23 @@ from backend.db.base import Base
 from backend.db.device import DeviceCommand
 from backend.db.application_authority_grant import ApplicationAuthorityGrant
 from backend.db.module import ApplicationExtensionInstallation as Installation, ApplicationPermissionGrant, ModulePackage
-from backend.routes import application_extensions as routes, modules
-from backend.services import application_authority_management as authority, compiled_ui
-from backend.services.application_authority_policy import evaluate_authority_policy
-from backend.services.application_platform import ApplicationPlatformServer
-from backend.services.module_packages import validate_module_package
+from backend.applications.management import api as routes
+from backend.artifacts import api as modules
+from backend.applications.authority import management as authority
+from backend.artifacts import compiled_ui
+from backend.applications.authority.policy import evaluate_authority_policy
+from backend.applications.runtime.platform import ApplicationPlatformServer
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_authority_management import (
     identity, installed as managed_installed, source_subject, source_installed, decide, command,
 )
-from backend.services.application_commands import submit_command
+from backend.applications.commands.broker import submit_command
 from backend.tests.test_application_authority_policy import inputs
 from backend.tests.test_application_access import fake_compiler
 from backend.tests.test_module_packages import application_definition, application_package
-from backend.utils.db_utils import get_db
-from three_mm_application_sdk import ApplicationPlatformClient
-from three_mm_runtime.application_transport import read_message, send_message, sign_message, verify_message
+from backend.storage.sessions import get_db
+from packages.application_sdk import ApplicationPlatformClient
+from components.system_runtime.application_transport import read_message, send_message, sign_message, verify_message
 
 
 def test_ui_policy_needs_both_build_pin_and_separate_reviewed_profile():
@@ -68,7 +70,7 @@ def ui_app(managed_installed, monkeypatch, request):
     original = application_definition()
     definition.update(routes=original['routes'], permissions=original['permissions'])
     if getattr(request, 'param', None) == 'files':
-        from three_mm_application_sdk.tests.test_media import declaration
+        from packages.application_sdk.tests.test_media import declaration
         definition['service']['sdk_version'] = '1.3'
         definition['operations'].append({'operation_id':'kiosk_probe','kind':'query','audiences':['kiosk'],'idempotency':'forbidden'})
         definition['storage']['private_files'] = declaration().model_dump(mode='json')
@@ -172,7 +174,7 @@ def test_concurrent_ui_code_reads_share_the_key_lease_and_keep_revocation(ui_app
 @posix
 @pytest.mark.parametrize('change', ['native_revoked', 'incarnation', 'recovery', 'package', 'tampered_grant', 'tampered_native'])
 def test_reused_code_never_reuses_native_authorization(ui_app, change):
-    from backend.services.application_code_scope import code_verification_scope
+    from backend.artifacts.code_scope import code_verification_scope
     from backend.db.authority import CoreAuthorityGuard
     s = ui_app; reviewed = adopt(s)
     with code_verification_scope():
@@ -243,7 +245,7 @@ def test_active_ui_grants_refuse_changed_build_or_lifecycle_before_effect(ui_app
 
 @posix
 def test_local_ui_inspection_and_explicit_code_review_never_approve_rights(ui_app, monkeypatch, capsys):
-    from backend.services import application_authority_admin as admin
+    from backend.applications.authority import admin
     s = ui_app
     monkeypatch.setattr(admin, 'configured_manager', lambda _engine: s.manager)
     monkeypatch.setattr(backend.database, 'engine', s.engine)
@@ -349,7 +351,7 @@ def test_human_ui_and_service_resource_grants_are_independent_over_actual_ipc(ui
                 loads = []
                 original_load = compiled_ui._load_artifact
                 def counted_load(*args, **kwargs):
-                    from backend.services.application_code_scope import _current
+                    from backend.artifacts.code_scope import _current
                     loads.append(_current.get() is not None)
                     return original_load(*args, **kwargs)
                 with monkeypatch.context() as local:

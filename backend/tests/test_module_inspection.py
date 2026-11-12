@@ -23,16 +23,16 @@ from backend.db.base import Base
 from backend.db.module import ModulePackage
 from backend.db.session import UserSession
 from backend.db.user import User
-from backend.routes import modules
+from backend.artifacts import api as modules
 from backend.tests.test_module_packages import (
     application_definition, application_manifest, application_package,
     compiled_ui_package, manifest, package, runtime_package,
 )
 from backend.tests.test_theme_extension_packages import package as theme_package
 from backend.tests.test_theme_extension_v2 import v2_package
-from backend.utils.db_utils import get_db
-from backend.utils.auth_dep import require_admin
-from backend.utils.jwt_utils import create_access_token
+from backend.storage.sessions import get_db
+from backend.accounts.dependencies import require_admin
+from backend.accounts.tokens import create_access_token
 
 
 URL = "/api/v1/modules/packages/inspect"

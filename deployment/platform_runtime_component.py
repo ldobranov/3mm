@@ -23,8 +23,8 @@ import venv
 import zipfile
 
 from deployment.component_store import ComponentStore
-from three_mm_platform_wire import AUTHORITY_CONTRACT, peer_identity, process_generation
-from three_mm_platform_runtime.server import probe_runtime
+from packages.platform_wire import AUTHORITY_CONTRACT, peer_identity, process_generation
+from components.platform_runtime.server import probe_runtime
 from deployment.deployment_contract import validate_platform_runtime_contract
 
 UNIT="3mm-platform-runtime.service"
@@ -32,11 +32,12 @@ ROOT=Path("/opt/3mm-platform-runtime")
 STATE=Path("/var/lib/3mm-platform-updates")
 SOCKET=Path("/run/3mm-platform/runtime.sock")
 MAX_ARTIFACT=2*1024*1024
-INPUTS=("three_mm_platform_wire/__init__.py","three_mm_platform_wire/task_time.py",
-        "three_mm_platform_wire/event_delivery.py","three_mm_platform_runtime/__init__.py",
-        "three_mm_platform_runtime/__main__.py","three_mm_platform_runtime/server.py",
-        "three_mm_platform_runtime/public_web.py","three_mm_platform_runtime/events.py","three_mm_platform_runtime/connector_worker.py",
-        "three_mm_platform_runtime/connector_execute.py","three_mm_platform_runtime/responses.py","three_mm_platform_runtime/tasks.py")
+RUNTIME_SOURCES=("components/__init__.py","components/platform_runtime/__init__.py",
+        "components/platform_runtime/__main__.py","components/platform_runtime/server.py",
+        "components/platform_runtime/public_web.py","components/platform_runtime/events.py","components/platform_runtime/connector_worker.py",
+        "components/platform_runtime/connector_execute.py","components/platform_runtime/responses.py","components/platform_runtime/tasks.py")
+INPUTS=("packages/__init__.py","packages/platform_wire/__init__.py","packages/platform_wire/task_time.py",
+        "packages/platform_wire/event_delivery.py",*RUNTIME_SOURCES)
 
 
 def _json(value):return json.dumps(value,sort_keys=True,separators=(",", ":"),allow_nan=False).encode()
@@ -51,7 +52,7 @@ def build_component(source):
         if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(source):
             raise ValueError("Runtime source must be a regular repository file")
         files[name]=path.read_bytes().replace(b"\r\n",b"\n")
-    files["__main__.py"]=files["three_mm_platform_runtime/__main__.py"]
+    files["__main__.py"]=files["components/platform_runtime/__main__.py"]
     build_id=_digest(_json({k:_digest(v) for k,v in files.items()}))
     files["runtime-build.json"]=_json({"build_id":build_id,"authority_contract":AUTHORITY_CONTRACT})
     output=io.BytesIO()
@@ -86,12 +87,14 @@ def validate_metadata(value,code):
         # Validate the immutable release's own file set, not this updater's build
         # inputs. Independent component update/rollback must survive added workers.
         expected=set(archive.namelist())
-        required={"__main__.py", "runtime-build.json", "three_mm_platform_wire/__init__.py",
-            "three_mm_platform_runtime/__init__.py", "three_mm_platform_runtime/__main__.py", "three_mm_platform_runtime/server.py"}
+        required={"__main__.py", "runtime-build.json", "packages/__init__.py", "packages/platform_wire/__init__.py",
+            "components/__init__.py", "components/platform_runtime/__init__.py",
+            "components/platform_runtime/__main__.py", "components/platform_runtime/server.py"}
         def source(name):
             parts=name.split('/')
-            return (len(parts)==2 and parts[0] in {"three_mm_platform_wire","three_mm_platform_runtime"}
-                and re.fullmatch(r"[a-z_][a-z0-9_]*\.py",parts[1]) is not None)
+            return (name in {"packages/__init__.py", "components/__init__.py"}
+                or (len(parts)==3 and parts[:2] in (["components","platform_runtime"],["packages","platform_wire"])
+                    and re.fullmatch(r"[a-z_][a-z0-9_]*\.py",parts[-1]) is not None))
         if (not required<=expected or len(expected)>64 or len(archive.namelist())!=len(expected)
                 or any(name not in {"__main__.py","runtime-build.json"} and not source(name) for name in expected)):
             raise ValueError("Runtime executable payload is invalid")
@@ -222,7 +225,7 @@ def runtime_health(identifier):
 
 def connector_health(identifier):
     import pwd
-    from three_mm_platform_runtime.connector_worker import probe_worker
+    from components.platform_runtime.connector_worker import probe_worker
     uid=pwd.getpwnam("3mm-connectors").pw_uid
     deadline=time.monotonic()+15
     while True:

@@ -1,6 +1,6 @@
 import { buttonTextColor, type StyleSettings, type ThemeMode } from './theme-extension'
 import type { ResolvedHeaderSettings } from './header-settings'
-import defaults from '../../../three_mm_protocol/theme_design_defaults.json'
+import defaults from '../../../packages/protocol/theme_design_defaults.json'
 
 // Design API is independent of device protocol and application SDK versions.
 export const UI_COLOR_KEYS = [

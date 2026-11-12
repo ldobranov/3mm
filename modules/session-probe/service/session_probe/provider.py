@@ -3,7 +3,7 @@ import asyncio
 import json
 import os
 import socket
-from three_mm_application_sdk.session import require_isolated_session_process
+from packages.application_sdk.session import require_isolated_session_process
 
 class Provider:
     provider_id='org.3mm.session-probe'

@@ -17,10 +17,10 @@ from backend.db.application_authority_grant import ApplicationAuthorityAction as
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.session import UserSession
-from backend.services import application_authority_management as authority
-from backend.services import application_relational_lifecycle as coordinator
-from backend.services.application_authority_keys import AuthorityReviewKeyError
-from backend.services.application_policy_reviews import PolicyReviewStoreError
+from backend.applications.authority import management as authority
+from backend.applications.relational import lifecycle as coordinator
+from backend.applications.authority.keys import AuthorityReviewKeyError
+from backend.applications.authority.policy_reviews import PolicyReviewStoreError
 from backend.tests.test_application_authority_management import (
     identity,
 )
@@ -38,25 +38,25 @@ from backend.tests.test_application_authority_subjects import (
 )
 from backend.tests.test_application_relational_admission import apply
 from backend.tests.test_application_relational_review_api import store_package
-from three_mm_application_sdk import ApplicationMigration, ApplicationStorage
-from three_mm_application_sdk.files import ApplicationFileStorage
-from three_mm_application_sdk.relational_wire import (
+from packages.application_sdk import ApplicationMigration, ApplicationStorage
+from packages.application_sdk.files import ApplicationFileStorage
+from packages.application_sdk.relational_wire import (
     _RelationalPreparationTicket,
     canonical,
     prepared_lifecycle,
     sign_metadata,
 )
-from three_mm_protocol.tests.test_application_relational_storage import (
+from packages.protocol.tests.test_application_relational_storage import (
     relational_request,
 )
-from three_mm_runtime import application_lifecycle as locks
-from three_mm_runtime import application_relational_preparation as helper
-from three_mm_runtime.application_activation import (
+from components.system_runtime import application_lifecycle as locks
+from components.system_runtime import application_relational_preparation as helper
+from components.system_runtime.application_activation import (
     ApplicationActivationError,
     activate_application_package,
     application_instance_id,
 )
-from three_mm_runtime.application_relational_session import _prepared
+from components.system_runtime.application_relational_session import _prepared
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix", reason="Actual POSIX Core keys/clock"

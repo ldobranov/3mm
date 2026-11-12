@@ -16,10 +16,10 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from backend.db.module import ApplicationConnectorBinding
-from backend.routes.application_authority import router
+from backend.applications.management.access_api import router
 from backend.tests.test_application_consent import state, installed, source_subject, source_installed, identity
 from backend.tests.test_application_checkpoints import store_checkpoint_package
-from backend.utils.db_utils import get_db
+from backend.storage.sessions import get_db
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Real POSIX authority seals')
 

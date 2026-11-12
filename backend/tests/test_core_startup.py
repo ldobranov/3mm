@@ -1,4 +1,4 @@
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 import asyncio
 from types import SimpleNamespace
 
@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from backend.services.core_components import CoreComponents
+from backend.system.components import CoreComponents
 
 
 @pytest.mark.parametrize("failure", ["construct", "start", "stop"])
@@ -79,9 +79,9 @@ def core(tmp_path,monkeypatch):
     import backend.database as database
     from backend.db.base import Base
     from backend.db.user import User
-    from backend.utils.db_utils import get_db
-    from backend.utils import jwt_utils
-    from backend.utils.jwt_utils import create_access_token
+    from backend.storage.sessions import get_db
+    from backend.accounts import tokens as jwt_utils
+    from backend.accounts.tokens import create_access_token
 
     engine=create_engine('sqlite://',connect_args={'check_same_thread':False},poolclass=StaticPool)
     Base.metadata.create_all(engine)
@@ -148,6 +148,13 @@ def test_real_core_http_stays_administrable_when_an_optional_component_fails(cor
         assert client.get('/health').json()=={'status':'ok'}
         assert client.get('/ready').json()=={'status':'ready'}
         assert client.get('/settings/read').status_code==200
+        assert client.get('/api/v1/network-recovery/status').status_code==401
+        assert client.get('/api/v1/network-recovery/status',headers=core.viewer).status_code==403
+        assert client.get('/api/v1/system-updates/status').status_code==401
+        assert client.get('/api/v1/system-updates/status',headers=core.viewer).status_code==403
+        hardware_path='/api/v1/devices/dev_'+'a'*32+'/hardware-interfaces'
+        assert client.get(hardware_path).status_code==401
+        assert client.get(hardware_path,headers=core.viewer).status_code==403
         assert client.get('/api/v1/diagnostics/components').status_code==401
         assert client.get('/api/v1/diagnostics/components',headers=core.viewer).status_code==403
         response=client.get('/api/v1/diagnostics/components',headers=core.admin)
@@ -164,7 +171,7 @@ def test_missing_sdk_import_is_optional_and_a_failed_shutdown_still_closes_socke
     import builtins
     original=builtins.__import__
     def guarded(name,*args,**kwargs):
-        if name=='backend.services.application_platform': raise ModuleNotFoundError('private-runtime-path')
+        if name=='backend.applications.runtime.platform': raise ModuleNotFoundError('private-runtime-path')
         return original(name,*args,**kwargs)
     monkeypatch.setattr(builtins,'__import__',guarded)
     core.system.fail_stop=True
@@ -253,8 +260,8 @@ def test_core_http_remains_available_when_sdk_connections_are_full(core,monkeypa
     from contextlib import ExitStack
     import socket
     import time
-    from backend.services.application_platform import CoreRuntimeAuthorityServer
-    from three_mm_platform_wire import AUTHORITY_CONNECTIONS as MAX_CONNECTIONS
+    from backend.applications.runtime.platform import CoreRuntimeAuthorityServer
+    from packages.platform_wire import AUTHORITY_CONNECTIONS as MAX_CONNECTIONS
     import os
     server=CoreRuntimeAuthorityServer(core.settings.applications.authority_socket,
         core.settings.applications.key_root,runtime_uid=os.getuid(),group="missing-test-group")

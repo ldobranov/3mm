@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from agent.config import AgentSettings
 from agent.hardware import HardwareProfile
 from agent.main import create_app
-from three_mm_protocol import (
+from packages.protocol import (
     PROTOCOL_VERSION,
     AgentHealth,
     AgentHello,

@@ -7,8 +7,8 @@ from backend import main
 from backend.database import SessionLocal
 from backend.db.user import User
 from backend.main import app
-from backend.utils.auth import hash_password
-from backend.utils.jwt_utils import create_access_token
+from backend.accounts.passwords import hash_password
+from backend.accounts.tokens import create_access_token
 
 
 @pytest.fixture(autouse=True)

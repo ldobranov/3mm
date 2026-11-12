@@ -20,14 +20,14 @@ from backend.db.device import (
     DeviceEvent,
 )
 from backend.db.user import User
-from backend.services.device_pairing import approve_pairing_request
-from backend.services.device_protocol import (
+from backend.devices.pairing.service import approve_pairing_request
+from backend.devices.operations import (
     authenticate_device,
     enroll,
     DeviceOperations,
 )
-from backend.services.device_commands import queue_command, commit_queued_command
-from backend.services.device_capability_registry import has_registered_capability
+from backend.devices.commands.queue import queue_command, commit_queued_command
+from backend.devices.capabilities.registry import has_registered_capability
 from agent.core_client import (
     CorePublisher,
     DeviceCredential,
@@ -35,7 +35,7 @@ from agent.core_client import (
     OutboxStore,
     ReconciliationStore,
 )
-from three_mm_protocol import (
+from packages.protocol import (
     AgentHeartbeat,
     AgentCommandResult,
     AgentReportedState,
@@ -44,8 +44,8 @@ from three_mm_protocol import (
     DeviceEventV1,
     DeviceInventoryV2,
 )
-from three_mm_protocol.fleet_pairing import NodeEnrollmentRequest
-from three_mm_protocol.transport import DeviceProtocolError, DeviceTransportError
+from packages.protocol.fleet_pairing import NodeEnrollmentRequest
+from packages.protocol.transport import DeviceProtocolError, DeviceTransportError
 
 
 class MemoryTransport:
@@ -310,19 +310,27 @@ def test_non_http_adapter_cannot_bypass_identity_or_revocation(node):
 
 def test_common_operations_and_protocol_port_have_no_http_dependencies():
     root = Path(__file__).resolve().parents[2]
+    http_modules = (
+        "fastapi", "requests", "backend.routes", "backend.devices.commands.api",
+        "backend.devices.capabilities.api", "backend.devices.capabilities.state_api",
+        "backend.devices.telemetry",
+        "backend.devices.pairing.api", "backend.devices.platform.api",
+        "backend.devices.updates.api", "backend.devices.updates.delivery_api",
+        "backend.settings.api", "backend.system.audit.api",
+    )
     for file in (
-        root / "backend/services/device_protocol.py",
-        root / "three_mm_protocol/transport.py",
+        root / "backend/devices/operations.py",
+        root / "packages/protocol/transport.py",
     ):
         source = file.read_text()
         for item in ast.walk(ast.parse(source)):
             if isinstance(item, ast.ImportFrom):
-                assert not (item.module or "").startswith(
-                    ("fastapi", "requests", "backend.routes")
-                )
+                module = item.module or ""
+                imported = (module, *(module + "." + alias.name for alias in item.names))
+                assert not any(name.startswith(http_modules) for name in imported)
             if isinstance(item, ast.Import):
                 assert not any(
-                    alias.name.startswith(("fastapi", "requests"))
+                    alias.name.startswith(http_modules)
                     for alias in item.names
                 )
         assert "/api/v1/" not in source

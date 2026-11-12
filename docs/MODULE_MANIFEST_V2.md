@@ -2,7 +2,7 @@
 
 Every new 3mm module package is an immutable ZIP archive with `manifest.json`
 at its root. The strict shared schema is implemented by
-`three_mm_protocol.ModuleManifestV2` and rejects unknown fields.
+`packages.protocol.ModuleManifestV2` and rejects unknown fields.
 
 Required declarations include stable identity and semantic version, target
 runtimes, protocol/runtime/architecture compatibility, capabilities,
@@ -24,11 +24,15 @@ The initial deny-by-default permission policy recognizes `data.read`,
 Stronger OS-level isolation remains required before untrusted generated code is
 supported.
 
+For a new application, follow [Building applications](APPLICATION_DEVELOPMENT.md).
 An `application-extension v1` package declares
 `entrypoints.core = application-extension.json`, a checksum-bound wheel below
 `service/`, and optional `compiled-ui.json` routes. Its application descriptor,
 manifest identity, consumed/provided event capabilities, exact permissions,
 strict configuration keys, secret-reference fields, service artifact and UI
-route entrypoints are validated together. Until the supervised Stage 2 runtime
-exists, the package upload endpoint rejects this otherwise valid format so no
-service or route can be partially activated.
+route entrypoints are validated together. Current Extensions upload validates and
+prepares this format, including compilation of declared UI. Upload is not native
+code approval, resource permission or activation. Configure the inactive
+application, review the exact candidate's current access and then activate through
+the normal admin lifecycle. App code runs in an independently managed host, not
+inside Core's request process.

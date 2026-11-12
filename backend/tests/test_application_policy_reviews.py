@@ -24,11 +24,11 @@ from backend.db.installation_identity import CoreInstallationIdentity
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
 from backend.db.session import UserSession
 from backend.db.user import User
-from backend.services import application_policy_reviews as service
-from backend.services.authority_metadata import read_application_authority, read_authority_guard
+from backend.applications.authority import policy_reviews as service
+from backend.applications.authority.metadata import read_application_authority, read_authority_guard
 from backend.tests.test_application_authority_policy import inputs
 from backend.tests.test_application_authority_context import replace_path
-from backend.utils import jwt_utils
+from backend.accounts import tokens as jwt_utils
 
 
 CORE = "inst_" + "1" * 32

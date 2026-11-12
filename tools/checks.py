@@ -12,15 +12,20 @@ from dataclasses import dataclass
 
 
 PYTHON_SUITES = (
-    "backend/tests", "agent/tests", "three_mm_protocol/tests",
-    "three_mm_provisioning/tests", "three_mm_runtime/tests", "three_mm_web/tests",
-    "three_mm_public_web/tests", "setup_service/tests", "deployment/tests",
-    "three_mm_application_sdk/tests",
-    "libraries/three_mm_ai/tests", "libraries/three_mm_crud/tests",
+    "backend/tests", "agent/tests", "packages/protocol/tests",
+    "packages/provisioning/tests", "components/system_runtime/tests", "components/admin_web/tests",
+    "components/public_web/tests", "components/setup/tests", "deployment/tests",
+    "packages/application_sdk/tests",
+    "libraries/ai_clients/tests", "libraries/crud/tests",
 )
 # Production Python remains one integration group until its consumers are audited.
 # Narrowing it by filenames would guess at authority/runtime/installer dependencies.
 PYTHON_ROOTS = {suite.split("/")[0] for suite in PYTHON_SUITES}
+NESTED_COMPONENTS = {str(PurePosixPath(suite).parent) for suite in PYTHON_SUITES
+                     if suite.startswith("components/")} | {"components/platform_runtime"}
+SHARED_PACKAGES = {"packages/platform_wire"}
+NESTED_PACKAGES = {str(PurePosixPath(suite).parent) for suite in PYTHON_SUITES
+                   if suite.startswith("packages/")}
 DOC_SUFFIXES = {".md", ".rst"}
 
 
@@ -56,12 +61,25 @@ def select_checks(paths: list[str]) -> Plan:
             frontend = True
             reasons.add("frontend changed")
             continue
+        if root == "packages" and any(
+                PurePosixPath(path).is_relative_to(package) for package in SHARED_PACKAGES):
+            selected.update(PYTHON_SUITES)
+            reasons.add("shared platform package changed")
+            continue
+        if root == "packages" and not any(
+                PurePosixPath(path).is_relative_to(package) for package in NESTED_PACKAGES):
+            return full_plan(f"Unmapped input: {path}; use full checks")
+        if root == "components" and not any(
+                PurePosixPath(path).is_relative_to(component) for component in NESTED_COMPONENTS):
+            return full_plan(f"Unmapped input: {path}; use full checks")
         if root in PYTHON_ROOTS:
-            if (suffix == ".py" and len(parts) > 2 and parts[1] == "tests"
+            suite = next((suite for suite in PYTHON_SUITES
+                          if path.startswith(suite + "/")), None)
+            if (suffix == ".py" and suite and (parts[1] == "tests" or root in {"components", "packages"})
                     and PurePosixPath(path).name.startswith("test_")
                     and root != "deployment"):
-                selected.add(f"{root}/tests")
-                reasons.add(f"test-only change: {root}")
+                selected.add(suite)
+                reasons.add(f"test-only change: {PurePosixPath(suite).parent}")
             else:
                 selected.update(PYTHON_SUITES)
                 reasons.add(f"Python integration boundary: {root}")
@@ -103,7 +121,7 @@ def commands(plan: Plan, only: str, python: str) -> list[tuple[str, list[str]]]:
         result.append((".", [python, "-m", "pytest", "-q", "tools/tests"]))
     if plan.python and only in {"all", "python"}:
         # Keep the existing two-process boundary between default and SDK/deployment.
-        extra = {"deployment/tests", "three_mm_application_sdk/tests"}
+        extra = {"deployment/tests", "packages/application_sdk/tests"}
         for group in (tuple(p for p in plan.python if p not in extra),
                       tuple(p for p in plan.python if p in extra)):
             if group:

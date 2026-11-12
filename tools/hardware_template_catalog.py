@@ -8,11 +8,11 @@ import copy
 import json
 from pathlib import Path
 
-from three_mm_protocol.character_display import CharacterDisplayProfileV1
-from three_mm_protocol.character_display_package import manifest as display_manifest
-from three_mm_protocol.gpio_input import GpioInputProfileV1, INPUT_FEATURE, BCM_PINS
-from three_mm_protocol.gpio_input_package import manifest as input_manifest
-from three_mm_protocol.hardware_templates import validate_template
+from packages.protocol.character_display import CharacterDisplayProfileV1
+from packages.protocol.character_display_package import manifest as display_manifest
+from packages.protocol.gpio_input import GpioInputProfileV1, INPUT_FEATURE, BCM_PINS
+from packages.protocol.gpio_input_package import manifest as input_manifest
+from packages.protocol.hardware_templates import validate_template
 
 
 def _text(key, label, default):
@@ -86,8 +86,8 @@ def clock_documents():
     Uploadable data, not another Core driver registry. Existing static profiles
     keep their immutable identities and are never silently upgraded.
     """
-    from three_mm_protocol.character_display_scene import CharacterDisplaySceneProfileV1, SCENE_FEATURE
-    from three_mm_protocol.character_display_package import scene_manifest
+    from packages.protocol.character_display_scene import CharacterDisplaySceneProfileV1, SCENE_FEATURE
+    from packages.protocol.character_display_package import scene_manifest
     for identity, source in documents():
         if not identity.startswith('character-display.'):
             continue
@@ -109,7 +109,7 @@ def clock_documents():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output-root', type=Path, default=Path(__file__).resolve().parents[1]/'backend/provider_templates')
+    parser.add_argument('--output-root', type=Path, default=Path(__file__).resolve().parents[1]/'backend/devices/modules/template_data')
     parser.add_argument('--local-clock', action='store_true', help='Generate separately reviewed clock templates instead of static/input templates')
     args = parser.parse_args()
     args.output_root.mkdir(parents=True, exist_ok=True)

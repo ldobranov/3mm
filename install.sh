@@ -22,6 +22,7 @@ install_profile=full
 network_backend=${THREE_MM_NETWORK_BACKEND:-}
 network_backend_option=
 ap_requested=0
+retry_rolled_back=0
 
 usage() {
   cat <<'EOF'
@@ -37,6 +38,7 @@ Options:
   --channel stable|beta|test  Release channel (default: stable, or inferred from --tag)
   --tag vX.Y.Z[-suffix]      Install one exact published release; explicit channel must match
   --frontend-origin URL      Public HTTP(S) origin; preserves existing URL on update
+  --retry-rolled-back        Explicitly retry a proved, completed component rollback
   -h, --help                 Show this help
 
 Without -ap, fresh installation keeps the current host network. Open
@@ -55,6 +57,10 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -ap|--ap)
       ap_requested=1
+      shift
+      ;;
+    --retry-rolled-back)
+      retry_rolled_back=1
       shift
       ;;
     --network-backend)
@@ -447,6 +453,7 @@ systemd-run \
   --property=RuntimeMaxSec=45min \
   --property=UMask=0022 \
   --setenv=THREE_MM_NETWORK_BACKEND="$network_backend" \
+  --setenv=THREE_MM_RETRY_ROLLED_BACK_TRANSITION="$retry_rolled_back" \
   /usr/bin/bash "$worker" "$stage" "$installer" "$archive" \
   "$release_id" "$frontend_origin" "$artifact_sha256" "$install_profile"
 job_started=1

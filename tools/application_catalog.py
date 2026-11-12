@@ -20,7 +20,7 @@ from tools.application_project import ProjectCheckError, REPOSITORY
 
 SCOPE = 'local pure-Python SQLite application authoring; not runtime support, readiness or authority'
 _UI_SOURCE = 'frontend/src/extension-ui/application-v1.ts'
-_SDK_SOURCE = 'three_mm_application_sdk/__init__.py'
+_SDK_SOURCE = 'packages/application_sdk/__init__.py'
 
 
 def _read_source(relative):
@@ -109,7 +109,7 @@ def _model_sources(model, capture, visited):
 
 
 def _project_catalog(project, source_core_version):
-    from backend.services.module_packages import validate_module_package
+    from backend.artifacts.packages import validate_module_package
     from backend.version import core_version
 
     actual_core_version = core_version()
@@ -133,7 +133,7 @@ def _project_catalog(project, source_core_version):
             raise ProjectCheckError('catalog', 'This catalog requires an application-extension package, not another module type.')
         result = {'source_sha256': source_hash, 'package_sha256': validated.sha256,
             'package_bytes': len(blob),
-            'semantic_validation': {'status': 'passed', 'validator': 'backend.services.module_packages.validate_module_package',
+            'semantic_validation': {'status': 'passed', 'validator': 'backend.artifacts.packages.validate_module_package',
                 'core_version': actual_core_version,
                 'scope': 'package/model/cross-document rules only; no tests, migration execution or installed authority'},
             'review': application_project.declaration_review(validated),
@@ -150,13 +150,13 @@ def _project_catalog(project, source_core_version):
 
 def application_catalog(project: Path | None = None) -> dict:
     """Describe current public declarations and local authoring boundaries only."""
-    from three_mm_application_sdk import SDK_VERSION
-    import three_mm_platform_wire as wire
-    from three_mm_protocol.extension_schemas import extension_schema_catalog
-    from three_mm_protocol.module_manifest import ModuleManifestV2
-    from three_mm_protocol.compiled_extension import CompiledUiExtensionV1
-    from three_mm_protocol.application_extension import ApplicationExtensionV1, ApplicationOperationV1, ApplicationLifecycleV1
-    from three_mm_protocol.application_resources import ResourceObservationV1, ResourceDiscoveryV1
+    from packages.application_sdk import SDK_VERSION
+    import packages.platform_wire as wire
+    from packages.protocol.extension_schemas import extension_schema_catalog
+    from packages.protocol.module_manifest import ModuleManifestV2
+    from packages.protocol.compiled_extension import CompiledUiExtensionV1
+    from packages.protocol.application_extension import ApplicationExtensionV1, ApplicationOperationV1, ApplicationLifecycleV1
+    from packages.protocol.application_resources import ResourceObservationV1, ResourceDiscoveryV1
 
     frozen = {}
     def capture(relative):
@@ -165,9 +165,9 @@ def application_catalog(project: Path | None = None) -> dict:
     try:
         for relative in ('tools/application_catalog.py', 'tools/application_project.py',
                 'tools/application_migrations.py', 'tools/application_client.py', 'tools/application_upgrade.py',
-                'three_mm_protocol/extension_schemas.py',
-                'three_mm_platform_wire/__init__.py', _SDK_SOURCE, _UI_SOURCE,
-                'backend/services/module_packages.py', 'backend/version.py', 'VERSION'):
+                'packages/protocol/extension_schemas.py',
+                'packages/__init__.py', 'packages/platform_wire/__init__.py', _SDK_SOURCE, _UI_SOURCE,
+                'backend/artifacts/packages.py', 'backend/version.py', 'VERSION'):
             capture(relative)
         catalog = extension_schema_catalog()['contracts']
         names = ('module-manifest.v2', 'application-extension.v1', 'compiled-ui.v1')
@@ -189,7 +189,7 @@ def application_catalog(project: Path | None = None) -> dict:
                 'migration_scope': 'disposable current declared prefixes; scoped relational unsupported; not historical-data compatibility'},
             'contracts': contracts,
             'models': {f'{model.__module__}.{model.__name__}': model.model_json_schema(mode='validation') for model in selected[3:]},
-            'validation': {'package_validator': 'backend.services.module_packages.validate_module_package',
+            'validation': {'package_validator': 'backend.artifacts.packages.validate_module_package',
                 'semantic_validator_sources': sorted(set(validators)),
                 'validator_scope': 'model decorator references, not a copied or exhaustive semantic rule set',
                 'meaning': 'schemas are structural; use actual validators/check; no code-trust, grants or installed readiness evaluation'},

@@ -19,12 +19,12 @@ from sqlalchemy.orm import Session
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.device import DeviceCapabilityProvider, DeviceCredential, DeviceRuntimeFeatures
 from backend.db.module import ApplicationConnectorBinding, ApplicationExtensionInstallation, ApplicationSecretReference, ModulePackage
-from backend.services import application_authority_keys as keys
-from backend.services import application_authority_sources as sources
-from backend.services import application_authority_subjects as subjects
-from backend.services.application_authority_policy import evaluate_authority_policy
-from backend.services.authority_metadata import authority_transaction, read_application_authority, read_connector_authority
-from backend.services.module_packages import validate_module_package
+from backend.applications.authority import keys
+from backend.applications.authority import sources
+from backend.applications.authority import subjects
+from backend.applications.authority.policy import evaluate_authority_policy
+from backend.applications.authority.metadata import authority_transaction, read_application_authority, read_connector_authority
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_authority_sources import (
     CONTRACT, DEVICE, PRIVATE, installed as source_installed, replace_archive,
 )

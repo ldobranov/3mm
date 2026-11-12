@@ -6,12 +6,12 @@ import json
 import pytest
 
 from agent.session_transport import AgentSessionHost, AgentSessionTransportError
-from three_mm_application_sdk.session import SessionOutputProvider
-from three_mm_protocol.interactive_session import (
+from packages.application_sdk.session import SessionOutputProvider
+from packages.protocol.interactive_session import (
     decode_session_frame,
     encode_session_frame,
 )
-from three_mm_runtime.session_output import (
+from components.system_runtime.session_output import (
     SessionOutputCleanupError,
     SessionOutputError,
 )

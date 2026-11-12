@@ -205,22 +205,22 @@ checkpoints require a new WP.
 
 ## Authoritative source and regression references
 
-- [Application descriptor](../three_mm_protocol/application_extension.py),
-  [schema catalog](../three_mm_protocol/extension_schemas.py),
-  [protocol/strict-JSON tests](../three_mm_protocol/tests/test_application_checkpoints.py).
-- [Resolved context](../backend/services/application_authority_context.py),
-  [policy subjects](../backend/services/application_authority_subjects.py),
-  [source resolver](../backend/services/application_authority_sources.py),
-  [policy evaluator](../backend/services/application_authority_policy.py).
-- [Review/apply and machine audit](../backend/services/application_authority_management.py),
-  [existing administrator route](../backend/routes/application_authority.py),
+- [Application descriptor](../packages/protocol/application_extension.py),
+  [schema catalog](../packages/protocol/extension_schemas.py),
+  [protocol/strict-JSON tests](../packages/protocol/tests/test_application_checkpoints.py).
+- [Resolved context](../backend/applications/authority/context.py),
+  [policy subjects](../backend/applications/authority/subjects.py),
+  [source resolver](../backend/applications/authority/sources.py),
+  [policy evaluator](../backend/applications/authority/policy.py).
+- [Review/apply and machine audit](../backend/applications/authority/management.py),
+  [existing administrator route](../backend/applications/management/access_api.py),
   [checkpoint context tests](../backend/tests/test_application_checkpoint_authority_context.py),
   [installed authority/API tests](../backend/tests/test_application_checkpoint_authority.py).
-- [Checkpoint engine](../backend/services/application_checkpoints.py),
-  [signed dispatcher](../backend/services/application_platform.py),
-  [existing SDK](../three_mm_application_sdk/__init__.py),
+- [Checkpoint engine](../backend/applications/checkpoints.py),
+  [signed dispatcher](../backend/applications/runtime/platform.py),
+  [existing SDK](../packages/application_sdk/__init__.py),
   [runtime/CAS/socket tests](../backend/tests/test_application_checkpoints.py).
-- [Prepared start-consent compatibility](../backend/services/application_relational_activation.py),
+- [Prepared start-consent compatibility](../backend/applications/relational/activation.py),
   [activation regression](../backend/tests/test_application_relational_activation.py).
 - [Administrator dialog](../frontend/src/components/extensions/ApplicationAuthorityDialog.vue),
   [checkpoint DTO tests](../frontend/src/components/extensions/authority-checkpoints.test.ts),

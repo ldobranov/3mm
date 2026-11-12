@@ -1349,7 +1349,7 @@ fixtures/test isolation, после целият run е повторен усп�
 Оставащите DB lifecycle/platform/frontend и общи acceptance задачи по-горе
 **не** са затворени. Тестовият release не затваря WP4 или Milestone 20.
 
-- [WP4 scope и closure checklist](../EXTENSION_PLATFORM_V2_CORE_PLAN.md#wp4--public-platform-api-sdk-and-authorization).
+- [WP4 scope и closure checklist](EXTENSION_PLATFORM_V2_CORE_PLAN.md#wp4--public-platform-api-sdk-and-authorization).
 - [Public SDK / ApplicationStorage](../three_mm_application_sdk/__init__.py) и
   [storage tests](../three_mm_application_sdk/tests/test_storage.py).
 - [Storage descriptor](../three_mm_protocol/application_extension.py) и

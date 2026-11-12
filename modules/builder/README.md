@@ -2,7 +2,7 @@
 
 The former Core Builder routes, project models, schemas, generator, editor and
 tests are preserved under `source/legacy/`, using their original paths. Shared AI
-clients have one owner at `libraries/three_mm_ai`; see `../product-source-map.json`
+clients have one owner at `libraries/ai_clients`; see `../product-source-map.json`
 for original paths and SHA256 hashes. `source/reference/` preserves the old mixed
 settings component, and `source/legacy/backend/routes/ai_settings.py` its former
 provider settings API fragment.

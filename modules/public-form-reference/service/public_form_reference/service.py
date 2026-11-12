@@ -1,8 +1,8 @@
 """Neutral demo: submit one preset choice without collecting personal data."""
 from uuid import uuid4
 
-from three_mm_application_sdk import ApplicationMigration
-from three_mm_protocol.public_forms import FORM_ID, FORM_REQUEST_ID
+from packages.application_sdk import ApplicationMigration
+from packages.protocol.public_forms import FORM_ID, FORM_REQUEST_ID
 
 CHOICES = ('morning', 'afternoon')
 CAPACITY = 1024

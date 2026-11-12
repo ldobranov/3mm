@@ -13,7 +13,7 @@ from pathlib import Path
 
 from agent.hardware.gpio import DigitalGpioDriver
 from agent.module_runtime import ModuleLifecycleError
-from three_mm_protocol import ModuleManifestV2
+from packages.protocol import ModuleManifestV2
 
 
 GPIO_ENTRYPOINT = "builtin:gpio.digital.v1"

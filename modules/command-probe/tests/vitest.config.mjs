@@ -10,8 +10,8 @@ const { default: vue } = await import(pathToFileURL(requireCore.resolve('@vitejs
 export default defineConfig({
   root, plugins: [vue()], server: { fs: { allow: [root, toolchain] } },
   resolve: { alias: {
-    '@3mm/ui/v1': resolve(toolchain, 'src/extension-ui/v1.ts'),
-    '@3mm/application-ui/v1': resolve(toolchain, 'src/extension-ui/application-v1.ts'),
+    '@platform/ui/v1': resolve(toolchain, 'src/extension-ui/v1.ts'),
+    '@platform/application-ui/v1': resolve(toolchain, 'src/extension-ui/application-v1.ts'),
     vue: resolve(toolchain, 'node_modules/vue/dist/vue.runtime.esm-bundler.js'),
     vitest: resolve(toolchain, 'node_modules/vitest/dist/index.js'),
     '@vue/test-utils': resolve(toolchain, 'node_modules/@vue/test-utils/dist/vue-test-utils.esm-bundler.mjs'),

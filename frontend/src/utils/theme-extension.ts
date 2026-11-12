@@ -1,4 +1,4 @@
-import defaults from '../../../three_mm_protocol/theme_design_defaults.json'
+import defaults from '../../../packages/protocol/theme_design_defaults.json'
 
 // Design API v1 projection only: never turn arbitrary package keys into CSS properties.
 export const COLOR_TOKENS = {

@@ -16,14 +16,14 @@ from backend.db.base import Base
 from backend.db.session import Session as UserSession
 from backend.db.settings import Settings
 from backend.db.user import User
-from backend.routes.auth_refresh import router as refresh_router
-from backend.routes.user import router as user_router
-from backend.services.application_access import resolve_application_principal
-from backend.services.initial_setup import establish_administrator
-from backend.utils import jwt_utils
-from backend.utils.auth import hash_password
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token, decode_token
+from backend.accounts.sessions.refresh import router as refresh_router
+from backend.accounts.users_api import router as user_router
+from backend.applications.authority.access import resolve_application_principal
+from backend.accounts.bootstrap import establish_administrator
+from backend.accounts import tokens as jwt_utils
+from backend.accounts.passwords import hash_password
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token, decode_token
 
 
 @pytest.fixture(autouse=True)
@@ -75,7 +75,7 @@ def test_fresh_setup_admin_can_open_app_and_refresh_session(tmp_path, monkeypatc
     database = tmp_path / "core.db"
     url = f"sqlite:///{database.as_posix()}"
     monkeypatch.setattr("backend.config.get_settings", lambda: SimpleNamespace(database_url=url))
-    monkeypatch.setattr("backend.routes.user.token_blacklist", set())
+    monkeypatch.setattr("backend.accounts.users_api.token_blacklist", set())
     migration = Config()
     migration.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "alembic"))
     command.upgrade(migration, "head")

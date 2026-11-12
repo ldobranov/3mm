@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, useId } from 'vue'
-import { UiButton, UiCollectionEditor, UiEditorForm, UiField, UiRecordPicker } from '@3mm/ui/v1'
+import { UiButton, UiCollectionEditor, UiEditorForm, UiField, UiRecordPicker } from '@platform/ui/v1'
 
 // Two ordinary editing patterns, with in-memory drafts only. No platform/business operations.
 const props = defineProps({ locale: { type: String, default: 'en' } })

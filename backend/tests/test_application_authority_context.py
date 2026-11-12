@@ -11,7 +11,7 @@ import pytest
 import requests
 from sqlalchemy.orm import Session
 
-from backend.services.application_authority_context import (
+from backend.applications.authority.context import (
     FINGERPRINT_DOMAIN,
     MAX_CONTEXT_BYTES,
     AuthorityReviewContextV1,

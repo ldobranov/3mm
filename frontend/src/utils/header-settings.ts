@@ -1,8 +1,9 @@
 import type { SettingRecord } from '@/utils/settings-api'
+import { product } from '@/utils/product'
 
 export const DEFAULT_HEADER_SETTINGS = {
-  siteName: 'Mega Monitor',
-  headerMessage: 'Welcome to Mega Monitor',
+  siteName: product.display_name,
+  headerMessage: product.welcome_message,
   logoUrl: '',
   backgroundColor: '#4CAF50',
   textColor: '#ffffff'

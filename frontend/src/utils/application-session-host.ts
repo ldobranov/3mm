@@ -2,6 +2,7 @@
 import { ApplicationHostError, type ApplicationPayload, type ApplicationSessions,
   type ApplicationSessionTarget, type ApplicationSessionOpen, type ApplicationSessionAcceptance,
 } from '../extension-ui/application-v1'
+import { recordBrowserFailure, type BrowserCause, type BrowserStage } from './diagnostic-client'
 
 const SESSION = /^ses_[a-f0-9]{32}$/
 const ID = /^[a-z][a-z0-9_]{0,95}$/
@@ -41,6 +42,7 @@ function target(value: unknown): ApplicationSessionTarget {
 
 type Pending = { resolve(value?: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }
 type LiveSession = {
+  diagnosticTrace?: string
   socket: WebSocket; id: string; request: ApplicationSessionOpen; seq: number; outSeq: number; closed: boolean
   handlers: Set<{ onData(data: Uint8Array): void; onClosed(reason?: string): void }>
   buffer: Uint8Array[]; bytes: number; pending: Map<string, Pending>
@@ -48,8 +50,9 @@ type LiveSession = {
   inputBytes: number; inputCount: number
 }
 export function createApplicationSessions(context: {
-  request(path: string, body?: unknown): Promise<unknown>; socketUrl(path: string): string
+  request(path: string, body?: unknown): Promise<unknown>; socketUrl(path: string, trace?: string): string
   ui: Record<string, unknown>; live(): void
+  traceId?(value: unknown): string | undefined
 }) {
   const prefix = `/session-host/${encodeURIComponent(String(context.ui.entrypoint_id))}`
   const active = new Map<string, LiveSession>()
@@ -57,13 +60,17 @@ export function createApplicationSessions(context: {
   const spent = new Set<string>()
   let pendingOpens = 0
   let recoveryRequired = false
-  function finish(session: LiveSession, code: 'unconfirmed' | 'disposed' | 'unavailable' = 'unconfirmed') {
+  function finish(session: LiveSession, code: 'unconfirmed' | 'disposed' | 'unavailable' = 'unconfirmed',
+    cause: BrowserCause = 'session_outcome_unconfirmed') {
     if (session.closed) return
     session.closed = true
+    const error = new ApplicationHostError(code)
+    if (code === 'unconfirmed') recordBrowserFailure(error, 'session.stream', { stage: opening.has(session) ? 'session.opening' : 'session.stream',
+      cause, last_passed_stage: opening.has(session) ? 'session.socket' : 'session.opening', trace_id: session.diagnosticTrace, response_observed: true })
     if (code === 'unconfirmed') recoveryRequired = true
     opening.delete(session); active.delete(session.id)
-    clearTimeout(session.opening.timer); session.opening.reject(new ApplicationHostError(code))
-    for (const pending of session.pending.values()) { clearTimeout(pending.timer); pending.reject(new ApplicationHostError(code)) }
+    clearTimeout(session.opening.timer); session.opening.reject(error)
+    for (const pending of session.pending.values()) { clearTimeout(pending.timer); pending.reject(error) }
     session.pending.clear(); session.buffer.length = 0; session.bytes = 0
     try { session.socket.close() } catch { /* Already closed or never connected. */ }
     for (const handler of session.handlers) { try { handler.onClosed(code) } catch { /* Consumer cannot prevent cleanup. */ } }
@@ -82,8 +89,10 @@ export function createApplicationSessions(context: {
   }
   function receive(session: LiveSession, data: unknown) {
     if (session.closed) return
+    let cause: BrowserCause = 'session_outcome_unconfirmed'
     try {
       context.live()
+      cause = 'session_protocol_invalid'
       if (typeof data === 'string') {
         if (encoder.encode(data).length > MAX_FRAME) fail()
         const value = JSON.parse(data)
@@ -114,46 +123,101 @@ export function createApplicationSessions(context: {
         if (!session.handlers.size) {
           if (session.bytes + payload.length > MAX_FRAME) fail()
           session.buffer.push(payload); session.bytes += payload.length
-        } else for (const handler of session.handlers) handler.onData(payload.slice())
+        } else {
+          cause = 'session_callback_failed'
+          for (const handler of session.handlers) handler.onData(payload.slice())
+        }
       }
-    } catch { finish(session) }
+    } catch { finish(session, 'unconfirmed', cause) }
+  }
+  async function readTargets() {
+    context.live()
+    if (!context.ui.built_ui_sha256) {
+      const error = new ApplicationHostError('unavailable')
+      recordBrowserFailure(error, 'session.targets', { stage: 'session.ui', cause: 'ui_build_missing' })
+      throw error
+    }
+    const response = await context.request(`${prefix}?artifact_sha256=${context.ui.artifact_sha256}&built_ui_sha256=${context.ui.built_ui_sha256}`)
+    const trace = context.traceId?.(response)
+    const reject = (cause: BrowserCause, error = new ApplicationHostError('unavailable')): never => {
+      recordBrowserFailure(error, 'session.targets', { stage: 'session.targets.response', cause,
+        last_passed_stage: 'session.targets.request', trace_id: trace, response_observed: true })
+      throw error
+    }
+    if (!object(response) || response.session_host_version !== 1 || !Array.isArray(response.targets) || response.targets.length > 32) return reject('targets_response_invalid')
+    const values = response.targets.map(value => {
+      try { return target(value) } catch (error) { return reject('target_schema_invalid', error as ApplicationHostError) }
+    })
+    if (new Set(values.map(item => item.bindingId)).size !== values.length) reject('target_binding_duplicate')
+    return { values: Object.freeze(values), trace }
   }
   const sessions: ApplicationSessions = Object.freeze<ApplicationSessions>({
     async targets() {
-      context.live()
-      if (!context.ui.built_ui_sha256) fail()
-      const response = await context.request(`${prefix}?artifact_sha256=${context.ui.artifact_sha256}&built_ui_sha256=${context.ui.built_ui_sha256}`)
-      if (!object(response) || response.session_host_version !== 1 || !Array.isArray(response.targets) || response.targets.length > 32) fail()
-      const values = response.targets.map(target)
-      if (new Set(values.map(item => item.bindingId)).size !== values.length) fail()
-      return Object.freeze(values)
+      return (await readTargets()).values
     },
     async resolveTarget(id: string) {
-      const matches = (await sessions.targets()).filter(item => item.bindingId === id || item.deviceId === id)
-      if (matches.length !== 1) fail()
+      const { values, trace } = await readTargets()
+      const matches = values.filter(item => item.bindingId === id || item.deviceId === id)
+      if (matches.length !== 1) {
+        const error = new ApplicationHostError('unavailable')
+        recordBrowserFailure(error, 'session.targets', { stage: 'session.resolve', cause: matches.length ? 'target_ambiguous' : values.length ? 'target_not_found' : 'targets_empty',
+          last_passed_stage: 'session.targets.response', trace_id: trace, response_observed: true })
+        throw error
+      }
       return matches[0]!
     },
     async open(request: ApplicationSessionOpen) {
-      context.live(); bounded(request)
-      if (recoveryRequired) fail('unconfirmed')
-      const copy = structuredClone(request)
-      if (!/^[a-z][a-z0-9_]{0,95}$/.test(copy.request_id) || copy.session_request_version !== 1
-        || spent.has(copy.request_id) || spent.size >= 1024 || active.size + pendingOpens >= 4) fail('invalid_request')
+      context.live()
+      try { bounded(request) } catch (error) {
+        recordBrowserFailure(error, 'session.ticket', { stage: 'session.request', cause: 'session_request_invalid' }); throw error
+      }
+      if (recoveryRequired) {
+        const error = new ApplicationHostError('unconfirmed')
+        recordBrowserFailure(error, 'session.ticket', { stage: 'session.request', cause: 'session_recovery_required' }); throw error
+      }
+      let copy: ApplicationSessionOpen
+      try {
+        copy = structuredClone(request)
+        if (!/^[a-z][a-z0-9_]{0,95}$/.test(copy.request_id) || copy.session_request_version !== 1
+          || spent.has(copy.request_id) || spent.size >= 1024 || active.size + pendingOpens >= 4) fail('invalid_request')
+      } catch (error) {
+        recordBrowserFailure(error, 'session.ticket', { stage: 'session.request', cause: 'session_request_invalid' }); throw error
+      }
       spent.add(copy.request_id) // Reserve before the first async preflight; never replay.
       pendingOpens++
+      let stage: BrowserStage = 'session.targets.request', last: BrowserStage = 'session.request'
+      let trace: string | undefined, responseObserved = false
       try {
-      const matches = (await sessions.targets()).filter(item => item.available && item.deviceId === copy.device_id
+      const targets = await readTargets()
+      trace = targets.trace; responseObserved = true; last = 'session.targets.response'; stage = 'session.request'
+      const matches = targets.values.filter(item => item.available && item.deviceId === copy.device_id
         && item.providerId === copy.provider_id && item.capabilityIds.includes(copy.capability_id) && item.accessMode === copy.access_mode && same(item.options, copy.options))
-      if (matches.length !== 1) fail()
+      if (matches.length !== 1) {
+        const error = new ApplicationHostError('unavailable')
+        recordBrowserFailure(error, 'session.ticket', { stage, cause: 'session_request_mismatch', last_passed_stage: last,
+          trace_id: trace, response_observed: true }); throw error
+      }
+      stage = 'session.ticket.request'; last = 'session.request'; trace = undefined; responseObserved = false
       const issued = await context.request(`${prefix}/ticket`, { ui_context: context.ui, binding_id: matches[0]!.bindingId, request: copy })
+      trace = context.traceId?.(issued); responseObserved = true; stage = 'session.ticket.response'; last = 'session.ticket.request'
       if (!object(issued) || issued.session_host_version !== 1 || issued.request_id !== copy.request_id
         || typeof issued.session_id !== 'string' || !SESSION.test(issued.session_id) || typeof issued.ticket !== 'string'
-        || !/^[A-Za-z0-9_-]{43}$/.test(issued.ticket) || issued.expires_in_seconds !== 15) fail('unconfirmed')
+        || !/^[A-Za-z0-9_-]{43}$/.test(issued.ticket) || issued.expires_in_seconds !== 15) {
+        const error = new ApplicationHostError('unconfirmed')
+        recordBrowserFailure(error, 'session.ticket', { stage, cause: 'ticket_response_invalid', last_passed_stage: last,
+          trace_id: trace, response_observed: true }); throw error
+      }
       context.live()
-      const socket = new WebSocket(context.socketUrl(`${prefix}/ws`))
+      stage = 'session.socket'; last = 'session.ticket.response'
+      const address = context.socketUrl(`${prefix}/ws`, trace)
+      let socket: WebSocket
+      try { socket = new WebSocket(address) } catch (error) {
+        recordBrowserFailure(error, 'session.stream', { stage, cause: 'socket_construction_failed', last_passed_stage: last,
+          trace_id: trace, response_observed: true }); throw error
+      }
       socket.binaryType = 'arraybuffer'
       return await new Promise<ApplicationSessionAcceptance>((resolve, reject) => {
-        const session: LiveSession = { socket, id: issued.session_id as string, request: copy, seq: 0, outSeq: 0, closed: false,
+        const session: LiveSession = { socket, diagnosticTrace: context.traceId?.(issued), id: issued.session_id as string, request: copy, seq: 0, outSeq: 0, closed: false,
           handlers: new Set(), buffer: [], bytes: 0, inputBytes: 0, inputCount: 0, pending: new Map(), write: Promise.resolve(),
           // ARMv6 cold imports have a separate, bounded opening window.
           opening: { resolve: value => resolve(value as ApplicationSessionAcceptance), reject, timer: setTimeout(() => finish(session), 120_000) } }
@@ -170,6 +234,8 @@ export function createApplicationSessions(context: {
         }
       })
       } catch (error) {
+        recordBrowserFailure(error, stage === 'session.targets.request' ? 'session.targets' : stage.startsWith('session.ticket') ? 'session.ticket' : 'session.stream',
+          { stage, last_passed_stage: last, trace_id: trace, response_observed: responseObserved })
         if (error instanceof ApplicationHostError && error.code === 'unconfirmed') recoveryRequired = true
         throw error
       } finally { pendingOpens-- }

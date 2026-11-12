@@ -7,9 +7,9 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from three_mm_protocol import IdentifierScanPayloadV1
-from three_mm_protocol.device_capabilities import CapabilityAdvertisementV1
-from three_mm_protocol.capability_availability import CapabilityHealthV1
+from packages.protocol import IdentifierScanPayloadV1
+from packages.protocol.device_capabilities import CapabilityAdvertisementV1
+from packages.protocol.capability_availability import CapabilityHealthV1
 from agent.capability_providers import AdapterProvider
 
 

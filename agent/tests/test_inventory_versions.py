@@ -6,7 +6,7 @@ from agent.cli import build_parser
 from agent.config import AgentSettings
 from agent.hardware import HardwareProfile
 from agent.main import create_app
-from three_mm_protocol import AgentInventory, DeviceInventoryV2
+from packages.protocol import AgentInventory, DeviceInventoryV2
 
 
 def test_settings_and_cli_keep_legacy_default_and_allow_explicit_schema2(monkeypatch):

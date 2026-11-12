@@ -12,7 +12,7 @@ from pathlib import Path
 import sqlite3
 from typing import Callable
 
-from three_mm_protocol import AgentCommand, AgentCommandResult
+from packages.protocol import AgentCommand, AgentCommandResult
 
 
 class PhysicalCommandFailure(RuntimeError):

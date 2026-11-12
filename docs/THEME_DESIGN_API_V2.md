@@ -7,7 +7,7 @@ ZIP envelope/assets са отделно в [Theme extension v2](THEME_EXTENSION_
 
 ## Версия, default стойности и validation
 
-Defaults: `three_mm_protocol/theme_design_defaults.json`, общ за backend/browser.
+Defaults: `packages/protocol/theme_design_defaults.json`, общ за backend/browser.
 Parser: `frontend/src/utils/ui-design.ts`. Входът е plain JSON object с
 `design_api_version: 2`. Неподдържана версия, неизвестни root/nested fields,
 неправилен тип или стойност извън диапазона отказват целия дизайн. Последният
@@ -74,6 +74,25 @@ Header/Menu настройки. Header Customization редактира текс
 saved` използва header colors от запазеното оформление, ако има такова, иначе
 старите header colors; `theme` използва surface/text на избрания режим. Никой
 вариант не изтрива старите стойности или не сменя преводите и content colors.
+
+### Product defaults и ребрандиране
+
+Общите начални текстове, име, лого и favicon са в
+[`config_templates/product.json`](../config_templates/product.json), отделно от
+дизайна на темата. Frontend build използва тези стойности за title/favicon,
+Header defaults и About; setup използва същия файл за началния екран и EN/BG
+текстовете. Това са продуктови defaults, не втори settings store или редактор.
+Промяната им за нов frontend изисква нов build; cache identity включва този файл.
+
+Запазените локализирани Header текстове остават с предимство. Логото се избира
+последователно от запазеното лого, приложимия theme asset и product default.
+Липсващи или невалидни metadata използват неутрални безопасни текстове и не
+променят настройките, правата или състоянието на устройството.
+
+Ребрандирането на тези текстове **не** преименува SQL таблици, `/opt/3mm`,
+systemd услуги, signing domains, module/provider IDs, API/wire идентификатори или
+update/repository trust. Такава промяна е отделен договор и миграционна задача,
+а не търсене и замяна на името в целия проект.
 
 ## Запазено оформление в Theme Customization
 

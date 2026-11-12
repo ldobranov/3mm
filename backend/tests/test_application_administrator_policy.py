@@ -2,7 +2,7 @@
 from copy import deepcopy
 import pytest
 from backend.tests.test_application_authority_policy import inputs
-from backend.services.application_authority_policy import evaluate_authority_policy
+from backend.applications.authority.policy import evaluate_authority_policy
 
 
 def administrator_inputs():

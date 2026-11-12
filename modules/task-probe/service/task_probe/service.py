@@ -1,7 +1,7 @@
 """Bounded arithmetic result; local attempt journal demonstrates no replay."""
 import time
 import hashlib
-from three_mm_application_sdk import ApplicationPlatformError
+from packages.application_sdk import ApplicationPlatformError
 
 
 class Service:

@@ -4,7 +4,7 @@ The host supplies ApplicationContext.platform. Persist request_id before submit;
 after a lost response use lookup(), never manufacture a replacement request.
 """
 
-from three_mm_application_sdk import ApplicationPlatformClient
+from packages.application_sdk import ApplicationPlatformClient
 
 
 class CommandProbe:

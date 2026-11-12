@@ -4,8 +4,8 @@ import threading
 from types import SimpleNamespace
 
 from agent.core_client import CommandJournal, CorePublisher, DeviceCredential, OutboxStore, ReconciliationStore
-from three_mm_protocol import AgentCommand
-from three_mm_protocol.transport import DeviceTransportError
+from packages.protocol import AgentCommand
+from packages.protocol.transport import DeviceTransportError
 
 
 DEVICE = 'dev_' + 'a' * 32

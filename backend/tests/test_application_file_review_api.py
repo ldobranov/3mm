@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 from backend.db.application_authority_grant import ApplicationAuthorityGrant as Grant
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.session import UserSession
-from backend.routes.application_authority import router
-from backend.services.application_files import ApplicationFileAuthorityError
+from backend.applications.management.access_api import router
+from backend.applications.files.authority import ApplicationFileAuthorityError
 from backend.tests.test_application_authority_sources import PRIVATE
 from backend.tests.test_application_file_execution import (
     execute,
@@ -26,8 +26,8 @@ from backend.tests.test_application_file_execution import (
     source_installed,
     source_subject,
 )
-from backend.utils.db_utils import get_db
-from three_mm_runtime.application_file_executor import ApplicationFileExecutor
+from backend.storage.sessions import get_db
+from components.system_runtime.application_file_executor import ApplicationFileExecutor
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix", reason="Actual POSIX authority keys"

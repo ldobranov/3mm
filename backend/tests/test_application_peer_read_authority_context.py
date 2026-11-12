@@ -12,7 +12,7 @@ import pytest
 import requests
 from sqlalchemy.orm import Session
 
-from backend.services.application_authority_context import (
+from backend.applications.authority.context import (
     AuthorityReviewContextV8,
     AuthorityReviewContextV9,
     AuthoritySelectionV8,
@@ -22,7 +22,7 @@ from backend.services.application_authority_context import (
     _parse_versioned,
     review_authority_context,
 )
-from backend.services.application_authority_policy import (
+from backend.applications.authority.policy import (
     CorePolicyEvidenceV9,
     PolicySubjectV9,
     evaluate_authority_policy,
@@ -48,7 +48,7 @@ from backend.tests.test_installation_peer_read_sources import (
     pair_v2,
     read as read_source,
 )
-from three_mm_protocol.installation_peer_v2 import enrollment_metadata
+from packages.protocol.installation_peer_v2 import enrollment_metadata
 
 
 READ = "peer:receiver:read"

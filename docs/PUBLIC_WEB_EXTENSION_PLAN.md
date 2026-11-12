@@ -35,7 +35,7 @@ namespaces.
 
 ## Baseline
 
-The current `three_mm_web` service is a static SPA server. A missing
+The administrative `components.admin_web` host (`3mm-web.service`) is a static SPA server. A missing
 extensionless path falls back to `frontend/dist/index.html`; a missing resource
 such as an XML file does not. Application Extension v1 already exposes public
 JSON operations through the Core API, but an extension cannot own an ordinary
@@ -349,7 +349,7 @@ authority review key or define production key provisioning.
 The Public Web pilot and a real neighboring form can be checked with:
 
 ```sh
-python -m pytest -q backend/tests/test_application_webhook_admission.py backend/tests/test_application_public_web.py backend/tests/test_application_public_forms.py three_mm_public_web/tests
+python -m pytest -q backend/tests/test_application_webhook_admission.py backend/tests/test_application_public_web.py backend/tests/test_application_public_forms.py components/public_web/tests
 ```
 
 The split-principal test runs only with a disposable Linux root driver and

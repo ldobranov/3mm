@@ -6,10 +6,10 @@ import traceback
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
-from backend.services import application_authority_keys as keys
-from backend.services.application_extensions import ApplicationGatewayError
+from backend.applications.authority import keys
+from backend.applications.runtime.gateway import ApplicationGatewayError
 from backend.tests.test_application_authority_keys import installed
-from three_mm_runtime.application_transport import ApplicationTransportError
+from components.system_runtime.application_transport import ApplicationTransportError
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Real POSIX key resource cleanup')
 PRIVATE = 'Bearer PRIVATE_KEY_TEST_VALUE never expose internal key failure'

@@ -20,9 +20,9 @@ from backend.tests.test_application_relational_production import (
     source_subject,
     stopped,
 )
-from three_mm_application_sdk.relational_wire import canonical
-from three_mm_runtime import application_relational_preparation as preparation
-from three_mm_runtime import update_helper
+from packages.application_sdk.relational_wire import canonical
+from components.system_runtime import application_relational_preparation as preparation
+from components.system_runtime import update_helper
 
 pytestmark = [
     ROOT_ONLY,
@@ -51,7 +51,7 @@ def test_real_core_uid_controls_recovery_and_one_shot_resume(production, monkeyp
             [
                 sys.executable,
                 "-m",
-                "backend.services.application_relational_admin_worker",
+                "backend.applications.relational.admin_worker",
                 "--core-uid",
                 "1202",
                 "--database",
@@ -104,7 +104,7 @@ def test_real_core_uid_controls_recovery_and_one_shot_resume(production, monkeyp
             [
                 sys.executable,
                 "-m",
-                "backend.services.application_authority_admin",
+                "backend.applications.authority.admin",
                 *arguments,
             ],
             input=state.token.encode() + b"\n",

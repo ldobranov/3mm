@@ -1,11 +1,11 @@
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 import os
 import socket
 
 import pytest
 
 from backend.config import ApplicationRuntimeSettings
-from backend.services.application_platform import ApplicationPlatformServer
+from backend.applications.runtime.platform import ApplicationPlatformServer
 
 pytestmark=pytest.mark.skipif(os.name!='posix',reason='Target POSIX Unix socket ownership')
 
@@ -24,7 +24,7 @@ def test_occupied_file_is_preserved_on_failed_start_and_stop(listener):
 
 
 def test_partial_bind_failure_closes_descriptor_and_owned_socket(listener,monkeypatch):
-    import backend.services.application_platform as sdk
+    import backend.applications.runtime.platform as sdk
     def unavailable(*args): raise PermissionError('cannot set socket mode')
     with monkeypatch.context() as patch:
         patch.setattr(sdk.os,'chmod',unavailable)

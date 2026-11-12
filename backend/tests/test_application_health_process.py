@@ -31,7 +31,7 @@ SERVICE=SERVICE.replace("if mode=='signature':response['signature']='0'*64", "if
 
 @pytest.fixture
 def health_core(identity_app,monkeypatch,request):
-    from backend.services import application_health_probe as health
+    from backend.applications.runtime import health
     state=identity_app;activate_identity_grant(state);Base.metadata.create_all(state.engine)
     state.response_relay=True
     prepare=health._prepare

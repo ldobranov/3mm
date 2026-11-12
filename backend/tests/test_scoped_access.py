@@ -5,12 +5,12 @@ from backend.tests.test_application_access import environment, headers
 from backend.db.user import User
 from backend.db.role import Role, Group
 from backend.db.association_tables import role_application_grants
-from backend.routes.access_control import router as access_router
-from backend.utils.jwt_utils import create_access_token
-from backend.services.application_access import (
+from backend.accounts.access.api import router as access_router
+from backend.accounts.tokens import create_access_token
+from backend.applications.authority.access import (
     ApplicationPrincipal, can_access_application_route, can_access_application_operation,
 )
-from three_mm_protocol import ApplicationRouteV1, ApplicationOperationV1
+from packages.protocol import ApplicationRouteV1, ApplicationOperationV1
 
 
 def test_two_groups_live_inheritance_scoping_revocation_and_blocking(monkeypatch, tmp_path):
@@ -56,11 +56,11 @@ def test_two_groups_live_inheritance_scoping_revocation_and_blocking(monkeypatch
         assert client.post(operation, json=request, headers=headers(token)).status_code == 403
         # Removing the installation must not leave grants for a recycled SQLite id.
         assert client.put(grant_path, json={'enabled': True}, headers=admin_headers).status_code == 200
-        from backend.routes import application_extensions
+        from backend.applications.management import api as application_extensions
         monkeypatch.setattr(application_extensions.UpdateHelperClient, 'uninstall_application_extension', lambda *args: None)
         assert client.delete(base, headers=admin_headers).status_code == 200
         assert not db.execute(select(role_application_grants)).all()
-        from backend.routes.user import router as user_router
+        from backend.accounts.users_api import router as user_router
         client.app.include_router(user_router, prefix='/api/user')
         assert client.delete(f'/api/user/delete/{other.id}', headers=admin_headers).status_code == 200
         assert db.get(User, other.id) is None

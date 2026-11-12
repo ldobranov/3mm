@@ -18,7 +18,7 @@ from backend.db.module import (
     ApplicationExtensionInstallation,
     ModulePackage,
 )
-from backend.services.authority_metadata import (
+from backend.applications.authority.metadata import (
     AuthorityMetadataError,
     authority_transaction,
     read_application_authority,

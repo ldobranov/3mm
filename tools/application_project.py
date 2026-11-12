@@ -145,7 +145,7 @@ def build_package(root):
         for node in ast.walk(ast.parse(data)):
             imports = [item.name for item in node.names] if isinstance(node, ast.Import) else (
                 [node.module or ''] if isinstance(node, ast.ImportFrom) and not node.level else [])
-            if any(name.split('.')[0] in {'backend', 'agent', 'tools', 'deployment', 'three_mm_runtime', 'three_mm_platform_runtime'} for name in imports):
+            if any(name.split('.')[0] in {'backend', 'agent', 'tools', 'deployment', 'three_mm_runtime', 'components'} for name in imports):
                 raise ProjectCheckError('imports', 'Service code must use public SDK/protocol imports, not Core internals.')
     dist = f'{package}-{version}.dist-info'
     files[dist+'/METADATA'] = f'Metadata-Version: 2.1\nName: {package.replace("_", "-")}\nVersion: {version}\n'.encode()
@@ -322,8 +322,8 @@ def publish_outputs(root, output, summary, blob):
 
 def check_project(project, output, *, frontend=None, previous_archive=None):
     """Check a frozen local source copy with existing tools. No installs or API calls."""
-    from backend.services.module_packages import validate_module_package
-    from backend.services.compiled_ui import compile_ui_package
+    from backend.artifacts.packages import validate_module_package
+    from backend.artifacts.compiled_ui import compile_ui_package
     from tools.application_migrations import run_packaged_migrations
 
     project = Path(project).absolute()
@@ -377,7 +377,7 @@ def check_project(project, output, *, frontend=None, previous_archive=None):
                 validated = validate_module_package(blob)
                 from backend.version import core_version
                 summary['semantic_validation'] = {
-                    'validator': 'backend.services.module_packages.validate_module_package',
+                    'validator': 'backend.artifacts.packages.validate_module_package',
                     'status': 'passed', 'core_version': core_version(),
                     'scope': 'package, model and cross-document rules; not installed authority'}
                 summary['review'] = declaration_review(validated)
@@ -403,8 +403,8 @@ def check_project(project, output, *, frontend=None, previous_archive=None):
                     phase = 'upgrade'
                     if 'upgrade_fixture' not in config:
                         raise ProjectCheckError('upgrade', 'Previous-package checks require an explicit tests/*.py upgrade_fixture.')
-                    from three_mm_protocol.diagnostic_snapshot import read_regular
-                    from backend.services.module_packages import MAX_PACKAGE_BYTES
+                    from packages.protocol.diagnostic_snapshot import read_regular
+                    from backend.artifacts.packages import MAX_PACKAGE_BYTES
                     from tools.application_upgrade import run_packaged_upgrade
                     previous_blob = read_regular(Path(previous_archive), MAX_PACKAGE_BYTES)
                     previous_validated = validate_module_package(previous_blob)
@@ -444,8 +444,8 @@ def check_project(project, output, *, frontend=None, previous_archive=None):
                     'lib': ['ES2022', 'DOM', 'DOM.Iterable'], 'resolveJsonModule': True, 'esModuleInterop': True,
                     'baseUrl': str(snapshot), 'paths': {
                         'vue': [str(frontend/'node_modules/vue')],
-                        '@3mm/ui/v1': [str(frontend/'src/extension-ui/v1.ts')],
-                        '@3mm/application-ui/v1': [str(frontend/'src/extension-ui/application-v1.ts')]}},
+                        '@platform/ui/v1': [str(frontend/'src/extension-ui/v1.ts')],
+                        '@platform/application-ui/v1': [str(frontend/'src/extension-ui/application-v1.ts')]}},
                     'include': [str(snapshot/'source/frontend/**/*.vue'), str(snapshot/'source/frontend/**/*.ts'),
                                 *[str(snapshot/name) for name in config.get('type_tests', [])],
                                 *([str(snapshot/config['preview']['host'])] if 'preview' in config else [])]}), encoding='utf-8')

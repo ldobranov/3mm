@@ -3,9 +3,9 @@ import copy
 
 import pytest
 
-from backend.services.module_packages import ModulePackageError, validate_module_package
+from backend.artifacts.packages import ModulePackageError, validate_module_package
 from backend.tests.test_module_packages import application_definition, application_package, application_manifest
-from three_mm_protocol.tests.test_application_composition import query_contract
+from packages.protocol.tests.test_application_composition import query_contract
 
 
 def provider_definition():

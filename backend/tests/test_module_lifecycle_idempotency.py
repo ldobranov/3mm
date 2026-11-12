@@ -18,13 +18,13 @@ from backend.db.authority import CoreAuthorityGuard
 from backend.db.device import Device, DeviceCommand, DeviceCredential, DevicePlatformState
 from backend.db.module import ModuleInstallation, ModulePackage
 from backend.db.user import User
-from backend.routes.device_commands import submit_command_result
-from backend.routes.modules import router
-from backend.services.module_packages import validate_module_package
-from backend.services.device_pairing import credential_secret_hash
-from backend.utils.auth_dep import require_admin
-from backend.utils.db_utils import get_db
-from three_mm_protocol import AgentCommandResult
+from backend.devices.commands.api import submit_command_result
+from backend.artifacts.api import router
+from backend.artifacts.packages import validate_module_package
+from backend.devices.pairing.service import credential_secret_hash
+from backend.accounts.dependencies import require_admin
+from backend.storage.sessions import get_db
+from packages.protocol import AgentCommandResult
 
 
 DEVICE_ID = "dev_0123456789abcdef0123456789abcdef"

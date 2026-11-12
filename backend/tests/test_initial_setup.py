@@ -3,8 +3,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from backend.services.initial_setup import InitialAdministratorError, establish_administrator
-from backend.utils.auth import hash_password, verify_password
+from backend.accounts.bootstrap import InitialAdministratorError, establish_administrator
+from backend.accounts.passwords import hash_password, verify_password
 
 
 @pytest.fixture

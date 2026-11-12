@@ -10,12 +10,12 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from backend.db.device import DeviceEvent
 from backend.db.module import ApplicationEventDelivery
-from backend.services import application_events as broker
-from backend.services import module_packages
+from backend.applications.events import broker
+from backend.artifacts import packages as module_packages
 from backend.tests.test_application_event_authority import (
     events, core_installed, source_subject, source_installed, activate, event, identity,
 )
-from three_mm_platform_wire import receive_authority_frame, read_frame
+from packages.platform_wire import receive_authority_frame, read_frame
 
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Real POSIX sealed event admission and FD handoff')

@@ -10,9 +10,9 @@ from fastapi.testclient import TestClient
 import pytest
 from sqlalchemy.orm import Session
 
-from backend.routes.application_authority import router
+from backend.applications.management.access_api import router
 from backend.tests.test_application_composition_authority import pair, installed, source_subject, source_installed, identity
-from backend.utils.db_utils import get_db
+from backend.storage.sessions import get_db
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Real M20 package/key fixture')
 

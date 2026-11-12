@@ -3,7 +3,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
-from three_mm_application_sdk import ApplicationContext, ApplicationStorage, OperationContext, ApplicationPlatformError
+from packages.application_sdk import ApplicationContext, ApplicationStorage, OperationContext, ApplicationPlatformError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'service'))
 from starter_app.service import create_service

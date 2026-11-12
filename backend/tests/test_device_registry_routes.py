@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -12,12 +12,13 @@ from backend.db.base import Base
 from backend.db.device import Device, DeviceHeartbeat, DeviceInventorySnapshot
 from backend.db.user import User
 from backend.db.module import ModulePackage, ModuleInstallation
-from backend.routes.device_registry import router
-from backend.services.device_registry import is_device_online
-from backend.utils import jwt_utils
-from backend.utils.auth import hash_password
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
+from backend.devices.registry import api as registry_api
+from backend.devices.registry.api import router
+from backend.devices.registry.online import is_device_online
+from backend.accounts import tokens as jwt_utils
+from backend.accounts.passwords import hash_password
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
 
 
 @pytest.fixture(autouse=True)
@@ -79,6 +80,44 @@ def test_online_policy_uses_heartbeat_window_and_revocation() -> None:
         offline_after=threshold,
         revoked_at=now,
     )
+
+
+@pytest.mark.parametrize("detail", [False, True])
+@pytest.mark.parametrize("fault, expected", [("role", 403), ("blocked", 401), ("token_version", 401)])
+def test_registry_rechecks_current_administrator_before_projection(monkeypatch, detail, fault, expected):
+    client, db, admin_token, _ = make_client()
+    try:
+        device = Device(
+            device_id="dev_0123456789abcdef0123456789abcdef",
+            display_name="Private registered device",
+            role="node",
+            protocol_version="1.0",
+            approved_at=datetime.now(timezone.utc),
+        )
+        db.add(device)
+        db.commit()
+        endpoint = "/api/v1/devices" + ("/" + device.device_id if detail else "")
+        headers = {"Authorization": f"Bearer {admin_token}"}
+        assert client.get(endpoint, headers=headers).status_code == 200
+        admin = db.scalar(select(User).where(User.username == "admin"))
+        if fault == "role":
+            admin.role = "user"
+        elif fault == "blocked":
+            admin.is_blocked = True
+        else:
+            admin.token_version += 1
+        db.commit()
+
+        def forbidden_projection(*args, **kwargs):
+            raise AssertionError("A revoked administrator reached the registry projection")
+
+        monkeypatch.setattr(registry_api, "read_device" if detail else "read_devices", forbidden_projection)
+        response = client.get(endpoint, headers=headers)
+        assert response.status_code == expected, response.text
+        assert not {"items", "device_id", "latest_inventory", "modules"} & response.json().keys()
+    finally:
+        client.close()
+        db.close()
 
 
 def test_admin_lists_latest_real_inventory_and_derived_status() -> None:

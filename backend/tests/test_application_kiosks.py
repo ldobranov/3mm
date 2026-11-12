@@ -10,12 +10,14 @@ from backend.db.module import ApplicationKioskEnrollment as Enrollment,Applicati
 from backend.db.application_authority_grant import ApplicationAuthorityAction as Action
 from backend.db.audit_log import AuditLog
 from backend.db.session import UserSession
-from backend.routes import application_extensions as routes,modules,auth_refresh
-from backend.services import application_kiosks as service
-from backend.services.application_access import resolve_application_principal
+from backend.applications.management import api as routes
+from backend.artifacts import api as modules
+from backend.accounts.sessions import refresh as auth_refresh
+from backend.applications.kiosks import service
+from backend.applications.authority.access import resolve_application_principal
 from backend.tests.test_application_ui_authority import ui_app,managed_installed,source_subject,source_installed,adopt
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import decode_token,create_access_token
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import decode_token,create_access_token
 
 pytestmark=[pytest.mark.skipif(os.name!='posix',reason='Protected Linux Core key'),pytest.mark.parametrize('ui_app',['kiosk'],indirect=True)]
 def rid():return uuid.uuid4().hex

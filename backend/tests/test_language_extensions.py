@@ -15,15 +15,22 @@ from backend.db.base import Base
 from backend.db.user import User
 from backend.db.language_extension import LanguageExtensionInstallation
 from backend.db.module import ModulePackage
-from backend.routes import modules, language_routes
-from backend.services.language_extensions import available_languages, BundledLanguagePackages
-from backend.services.module_packages import ModulePackageError, validate_module_package
-from backend.utils import jwt_utils
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
+from backend.artifacts import api as modules
+from backend.localization import api as language_routes
+from backend.localization.packages import available_languages, BundledLanguagePackages
+from backend.artifacts.packages import ModulePackageError, validate_module_package
+from backend.accounts import tokens as jwt_utils
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
 
 ROOT=Path(__file__).resolve().parents[2]
 BASE='/api/v1/modules/languages'
+
+def test_default_bundled_directory_resolves_the_current_repository():
+    seed = BundledLanguagePackages(None, None)
+    assert seed.root == ROOT / 'modules'
+    assert (seed.root / 'language-bg' / 'language-extension.json').is_file()
+
 
 def package(*, version='1.0.0', code='de', extra=None, values=None):
     module_id='org.example.language.'+code

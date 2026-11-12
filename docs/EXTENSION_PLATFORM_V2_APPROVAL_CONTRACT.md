@@ -22,12 +22,12 @@ existing adapters and cannot be forced through a fake application installation.
 - Existing [human grants](../backend/db/module.py) (`ApplicationPermissionGrant`)
   assign application permissions to users. They are **not** service resource grants
   and must not be renamed or repurposed. Human/terminal access remains independent.
-- The [command epoch and one-use permit](../backend/services/application_commands.py)
+- The [command epoch and one-use permit](../backend/applications/commands/broker.py)
   already fence physical commands. A future application authority generation must
   integrate with them, not introduce a competing command queue or bypass permits.
   The current command epoch does not already cover connectors, events or storage.
-- [Connector bindings](../backend/services/application_connectors.py) and
-  [secret references](../backend/services/application_secrets.py) already belong to
+- [Connector bindings](../backend/applications/connectors/broker.py) and
+  [secret references](../backend/applications/connectors/secrets.py) already belong to
   an installation. Rotation increments `ApplicationSecretReference.version`;
   reuse that actual version, ownership and revocation state, not a secret hash
   or an invented client-supplied credential generation.

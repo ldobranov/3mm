@@ -7,10 +7,10 @@ from sqlalchemy import select
 from backend.db.audit_log import AuditLog
 from backend.db.device import Device
 from backend.db.user import User
-from backend.routes import hardware_interfaces as routes
+from backend.devices import hardware_interfaces as routes
 from backend.tests.test_system_control_routes import make_client
-from three_mm_runtime.update_helper_client import UpdateHelperError
-from backend.utils import jwt_utils
+from components.system_runtime.update_helper_client import UpdateHelperError
+from backend.accounts import tokens as jwt_utils
 
 DEVICE = 'dev_'+'a'*32
 PATH = '/api/v1/devices/'+DEVICE+'/hardware-interfaces'
@@ -57,6 +57,25 @@ def test_all_hardware_routes_require_a_current_administrator(api):
     assert calls == []
 
 
+@pytest.mark.parametrize('suffix', ['', '/i2c/enable', '/restart'])
+@pytest.mark.parametrize('revocation', ['demoted', 'blocked', 'token_version'])
+def test_current_admin_revocation_prevents_helper_and_success_audit(api, suffix, revocation):
+    client, db, admin, _, calls = api
+    user = db.get(User, 1)
+    if revocation == 'demoted':
+        user.role = 'user'
+    elif revocation == 'blocked':
+        user.is_blocked = True
+    else:
+        user.token_version += 1
+    db.commit()
+    response = (client.post(PATH+suffix, headers=admin, json=payload(suffix == '/restart'))
+                if suffix else client.get(PATH, headers=admin))
+    assert response.status_code == (403 if revocation == 'demoted' else 401)
+    assert calls == []
+    assert db.scalars(select(AuditLog)).first() is None
+
+
 def test_inspection_enable_and_restart_are_separate_and_audited(api):
     client, db, admin, _, calls = api
     assert client.get(PATH, headers=admin).status_code == 200
@@ -78,13 +97,16 @@ def test_wrong_confirmation_unknown_fields_and_revoked_device_do_not_reach_helpe
     assert calls == []
 
 
-def test_helper_loss_reports_unconfirmed_without_retry_or_reboot(api, monkeypatch):
+@pytest.mark.parametrize('restarting', [False, True])
+def test_helper_loss_reports_unconfirmed_without_retry_or_reboot(api, monkeypatch, restarting):
     client, db, admin, _, calls = api
     class Helper:
         def __init__(self, *_): pass
         def enable_i2c(self, *args, **kwargs):
             calls.append('one'); raise UpdateHelperError('lost response')
+        restart_after_i2c = enable_i2c
     monkeypatch.setattr(routes, 'UpdateHelperClient', Helper)
-    response = client.post(PATH+'/i2c/enable', headers=admin, json=payload())
+    response = client.post(PATH+('/restart' if restarting else '/i2c/enable'),
+                           headers=admin, json=payload(restarting))
     assert response.status_code == 409 and 'do not resend' in response.json()['detail']
     assert calls == ['one'] and db.scalars(select(AuditLog)).all() == []

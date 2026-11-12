@@ -11,12 +11,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from backend.tests.test_migration_history import _alembic, _head_revision
 from backend.tests.test_core_product_extraction import seed, table
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_compiled_ui import package
 from backend.db.module_reference import ModulePackageRetainedReference
-from backend.routes import modules
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
+from backend.artifacts import api as modules
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
 
 ARCHIVES = ('retired_displays','retired_widgets','retired_role_dashboard_grants',
     'retired_dashboard_permissions','retired_dashboard_role_permissions','retired_dashboard_group_permissions')

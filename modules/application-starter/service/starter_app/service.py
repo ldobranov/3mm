@@ -2,7 +2,7 @@
 import json
 import re
 
-from three_mm_application_sdk import ApplicationPlatformError
+from packages.application_sdk import ApplicationPlatformError
 
 
 def request_id(value):

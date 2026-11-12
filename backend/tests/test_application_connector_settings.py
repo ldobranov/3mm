@@ -17,16 +17,16 @@ from backend.db.audit_log import AuditLog
 from backend.db.module import ApplicationExtensionInstallation as Installation, ApplicationConnectorBinding as Binding, ApplicationSecretReference as Secret, ModulePackage
 from backend.db.session import UserSession
 from backend.db.user import User
-from backend.routes.application_connector_settings import router
-from backend.services import application_connector_settings as service
-from backend.services import application_authority_management as authority
-from backend.services import application_authority_sources as sources
-from backend.services.application_consent import preview as consent_preview
-from backend.services.application_secrets import decrypt_secret_reference, ApplicationSecretError
-from backend.services.module_packages import validate_module_package
+from backend.applications.management.connector_api import router
+from backend.applications.management import connector_settings as service
+from backend.applications.authority import management as authority
+from backend.applications.authority import sources
+from backend.applications.management.consent import preview as consent_preview
+from backend.applications.connectors.secrets import decrypt_secret_reference, ApplicationSecretError
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_authority_management import installed as managed, source_subject, source_installed, identity, activate_grant, connector
-from backend.utils.jwt_utils import create_access_token
-from backend.utils.db_utils import get_db
+from backend.accounts.tokens import create_access_token
+from backend.storage.sessions import get_db
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Real Core-owned seals and logins')
 PASSWORD = 'DO_NOT_DISCLOSE_CONNECTOR_PASSWORD'
@@ -47,7 +47,7 @@ def repack(s, authentication='basic', *, relational=False, multiple=False, crede
         definition['connectors'].append({**connector, 'connector_id': 'other_api',
             'destination_config_key': 'OTHER_URL', 'credential_ref_config_key': 'OTHER_CREDENTIAL'})
     if relational:
-        from three_mm_protocol.tests.test_application_relational_storage import relational_request
+        from packages.protocol.tests.test_application_relational_storage import relational_request
         definition['service']['sdk_version'] = '1.3'
         definition['storage']['relational'] = relational_request()
     if optional:
@@ -209,7 +209,7 @@ def test_stale_snapshot_and_concurrent_same_id_have_one_effect(fresh):
         for future in futures:
             try: results.append(future.result())
             except Exception as error:
-                from backend.services.application_authority_keys import AuthorityReviewKeyError
+                from backend.applications.authority.keys import AuthorityReviewKeyError
                 assert isinstance(error, AuthorityReviewKeyError)
     assert results and all(r == results[0] for r in results)
     assert service.outcome(s.manager, s.validated.sha256, request.request_id, s.token) == results[0]
@@ -301,14 +301,14 @@ def test_http_save_and_outcome_are_scoped_atomic_and_do_not_execute_the_applicat
     assert rejected.status_code == 422 and rejected.json()['detail']['code'] == 'invalid_request'
     assert PASSWORD not in rejected.text and 'private-password' not in rejected.text
     assert counts(s) == (1, 1, 1)
-    from backend.routes.modules import router as module_router
+    from backend.artifacts.api import router as module_router
     http.app.include_router(module_router)
     catalog = http.get('/api/v1/modules/packages', headers=headers)
     assert catalog.status_code == 200 and catalog.json()[0]['has_connector_settings'] is True
 
 
 def test_own_sqlite_bootstrap_and_existing_registration_keep_sealed_provenance(fresh):
-    from backend.services.application_relational_registration import register_relational_package
+    from backend.applications.relational.registration import register_relational_package
     s = fresh
     repack(s, relational=True, optional=True)
     registered = register_relational_package(s.manager, package_id=1, artifact_sha256=s.validated.sha256,
@@ -436,7 +436,7 @@ def test_other_installation_cannot_select_or_rotate_the_credential(fresh):
 
 
 def test_session_expiry_at_the_final_commit_check_rolls_back_the_entire_setup(fresh, monkeypatch):
-    from backend.services.application_policy_reviews import PolicyReviewStoreError
+    from backend.applications.authority.policy_reviews import PolicyReviewStoreError
     s = fresh
     original = service.create_secret_reference
     def expires_during_write(*args, **kwargs):
@@ -454,7 +454,7 @@ def test_receipts_survive_token_refresh_but_not_a_different_login_or_incarnation
     from datetime import UTC, datetime, timedelta
     s = fresh
     result, request = save(s)
-    from backend.utils.jwt_utils import decode_token
+    from backend.accounts.tokens import decode_token
     refreshed = create_access_token('1', {'sid': 1, 'token_version': 0, 'jti': decode_token(s.token)['jti'], 'test_refresh': identity()})
     other_login = create_access_token('1', {'sid': 9, 'token_version': 0})
     with Session(s.engine) as db, db.begin():

@@ -1,4 +1,4 @@
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 from datetime import UTC, datetime
 import socket
 
@@ -10,8 +10,8 @@ from sqlalchemy.pool import StaticPool
 
 from backend.db.base import Base
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
-from backend.services.application_platform import ApplicationPlatformServer
-from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+from backend.applications.runtime.platform import ApplicationPlatformServer
+from packages.application_sdk import ApplicationPlatformClient, ApplicationPlatformError
 
 
 pytestmark = pytest.mark.skipif(

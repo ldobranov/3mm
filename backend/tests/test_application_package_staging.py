@@ -21,13 +21,15 @@ from backend.db.module import ApplicationExtensionInstallation as Installation, 
 from backend.db.application_task import ApplicationTaskRun
 from backend.db.session import UserSession
 from backend.db.user import User
-from backend.routes import application_extensions as routes, application_authority, modules
-from backend.services import compiled_ui
-from backend.services.application_package_staging import registration_id
-from backend.services.module_packages import validate_module_package
+from backend.applications.management import api as routes
+from backend.applications.management import access_api as application_authority
+from backend.artifacts import api as modules
+from backend.artifacts import compiled_ui
+from backend.applications.management.staging import registration_id
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_ui_authority import ui_app, managed_installed, source_subject, source_installed
 from backend.tests.test_application_authority_management import identity
-from backend.utils.db_utils import get_db
+from backend.storage.sessions import get_db
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Real protected Core seals and SQLite authority locks')
 
@@ -107,8 +109,8 @@ def approve(s):
 
 def stage_body(s, **overrides):
     status = s.manager.inspect(1)
-    return dict(request_id=identity(), expected_artifact_sha256=status['artifact_sha256'],
-        expected_revision=status['grant_record_revision'], configuration={}, **overrides)
+    return {**dict(request_id=identity(), expected_artifact_sha256=status['artifact_sha256'],
+        expected_revision=status['grant_record_revision'], configuration={}), **overrides}
 
 
 @pytest.mark.parametrize("initial", ["recovery_required", "disabled"])
@@ -149,9 +151,9 @@ def test_first_activation_recovery_restores_review_not_execution(staged, monkeyp
 
 @pytest.mark.parametrize('approved_device', [False, True])
 def test_complete_inert_device_choice_before_consent(staged, approved_device):
-    from backend.services import application_authority_management as authority
-    from backend.services import application_authority_sources as sources
-    from backend.services import application_configuration_provenance as provenance
+    from backend.applications.authority import management as authority
+    from backend.applications.authority import sources
+    from backend.applications.management import provenance
 
     s = staged
     with s.manager.keys.locked() as key, Session(s.engine) as db, db.begin():
@@ -231,6 +233,152 @@ def test_optional_missing_provider_can_be_staged_consented_and_activated(staged)
     assert 'connector:business_api' not in reviewed['scopes']
     post(s, s.base+'/packages/'+target.sha256+'/activate')
     assert s.manager.inspect(1)['grant_effective']
+
+
+def optional_candidate(s):
+    def declaration(value):
+        value['service']['sdk_version'] = '1.3'
+        value['optional_resources'] = ['command:pulse', 'connector:business_api']
+    target = add_version(s, '1.0.7', declaration)
+    post(s, s.base+'/packages/'+target.sha256+'/stage', stage_body(s))
+    return target
+
+
+@pytest.mark.parametrize('previously_activated', [False, True])
+@pytest.mark.parametrize('first_registration', ['staged', 'connector'])
+def test_same_package_optional_selection_prepares_exact_configuration_without_reviving_consent(staged, previously_activated, first_registration):
+    s = staged
+    target = optional_candidate(s)
+    from backend.applications.management import provenance
+    if first_registration == 'connector':
+        from backend.applications.authority import management as authority
+        # The first connector setup has its own immutable proof, no package
+        # staging marker and no previous version. Optional selection must work
+        # here too, without changing the old proof's previous-package binding.
+        with s.manager.keys.locked() as key, Session(s.engine) as db, db.begin():
+            app = db.get(Installation, 1)
+            db.delete(db.get(Action, registration_id(db, 1, target.id, target.sha256)))
+            app.previous_package_id = None
+            db.flush()
+            pin = SimpleNamespace(module_package_id=target.id, version='1.0.7', sha256=target.sha256)
+            marker = provenance.registration_id(db, 1)
+            authority._save(db, key, 'action', Action(request_id=marker, installation_id=1),
+                authority._envelope('action', marker, 1, 'connector_registered_not_started',
+                    {'operation': 'connector_first_registration',
+                     'binding': provenance._binding(db, key, 1, pin, target.package)}))
+    approve(s)
+    activate = s.base+'/packages/'+target.sha256+'/activate'
+    if previously_activated:
+        post(s, activate)
+        post(s, s.base+'/'+s.module_id+'/disable')
+    data = s.root/'application-owned.txt'
+    data.write_text('retained business records')
+    with Session(s.engine) as db:
+        app = db.get(Installation, 1)
+        retained = (app.instance_id, app.authority_incarnation, app.previous_package_id)
+        marker = (provenance.registration_id(db, 1) if first_registration == 'connector'
+                  else registration_id(db, 1, target.id, target.sha256))
+        original_proof = tuple(db.execute(select(*Action.__table__.c).where(Action.request_id == marker)).one())
+        device = db.scalar(select(routes.Device.device_id))
+    before_calls = list(s.calls)
+    # Returning to the originally approved empty selection must not revive its
+    # old grant; every changed configuration gets a fresh execution epoch.
+    for selected in ({'TARGET_DEVICE_ID': device}, {}, {'TARGET_DEVICE_ID': device}):
+        post(s, s.base+'/packages/'+target.sha256+'/stage', stage_body(s, configuration=selected))
+        assert s.calls == before_calls
+        status = s.manager.inspect(1)
+        assert status['review_available'] and not status['access_saved'] and not status['grant_effective']
+        post(s, activate, status=409)
+        assert s.calls == before_calls
+        with Session(s.engine) as db:
+            app = db.get(Installation, 1)
+            assert app.configuration.get('TARGET_DEVICE_ID') == selected.get('TARGET_DEVICE_ID')
+            assert app.status == 'disabled' and not app.enabled and app.active_version is None
+            assert (app.instance_id, app.authority_incarnation, app.previous_package_id) == retained
+            assert tuple(db.execute(select(*Action.__table__.c).where(Action.request_id == marker)).one()) == original_proof
+    assert data.read_text() == 'retained business records'
+    approve(s)
+    post(s, activate)
+    assert s.manager.inspect(1)['grant_effective'] and data.read_text() == 'retained business records'
+
+
+def test_same_package_configuration_request_replay_is_historical_and_changed_payload_is_refused(staged):
+    s = staged
+    target = optional_candidate(s)
+    with Session(s.engine) as db:
+        device = db.scalar(select(routes.Device.device_id))
+    path = s.base+'/packages/'+target.sha256+'/stage'
+    body = stage_body(s, configuration={'TARGET_DEVICE_ID': device})
+    first = post(s, path, body)
+    with Session(s.engine) as db:
+        before = tuple(db.scalars(select(Action.request_id).order_by(Action.request_id)))
+        epoch = db.get(Installation, 1).authority_epoch
+    replay = post(s, path, body)
+    assert replay['historical'] and replay['replayed']
+    assert {key: replay[key] for key in first} == first
+    post(s, path, {**body, 'configuration': {}}, status=409)
+    with Session(s.engine) as db:
+        assert tuple(db.scalars(select(Action.request_id).order_by(Action.request_id))) == before
+        assert db.get(Installation, 1).authority_epoch == epoch
+    assert s.calls == []
+
+
+@pytest.mark.parametrize('fault', ['missing', 'tampered', 'missing_transition'])
+def test_same_package_configuration_never_repairs_missing_or_tampered_provenance(staged, fault):
+    s = staged
+    target = optional_candidate(s)
+    path = s.base+'/packages/'+target.sha256+'/stage'
+    if fault == 'missing_transition':
+        with Session(s.engine) as db:
+            device = db.scalar(select(routes.Device.device_id))
+        post(s, path, stage_body(s, configuration={'TARGET_DEVICE_ID': device}))
+    body = stage_body(s, configuration={})
+    with Session(s.engine) as db, db.begin():
+        marker = registration_id(db, 1, target.id, target.sha256)
+        if fault == 'missing_transition':
+            transitions = list(db.scalars(select(Action).where(Action.installation_id == 1)))
+            for row in transitions:
+                if json.loads(row.payload).get('state') == 'configuration_prepared_not_started':
+                    db.delete(row)
+        elif fault == 'missing':
+            db.delete(db.get(Action, marker))
+        else:
+            db.get(Action, marker).payload = '{}'
+    with Session(s.engine) as db:
+        original = tuple(db.execute(select(*Installation.__table__.c)).one())
+        proofs = tuple(db.execute(select(*Action.__table__.c).order_by(Action.request_id)))
+    post(s, path, body, status=409)
+    with Session(s.engine) as db:
+        assert tuple(db.execute(select(*Installation.__table__.c)).one()) == original
+        assert tuple(db.execute(select(*Action.__table__.c).order_by(Action.request_id))) == proofs
+    assert s.calls == []
+
+
+@pytest.mark.parametrize('fault', ['active', 'revision', 'artifact', 'nonadmin', 'revoked', 'blocked', 'device', 'bad_grant'])
+def test_same_package_configuration_requires_current_actor_stopped_state_and_review(staged, fault):
+    s = staged
+    target = optional_candidate(s)
+    approve(s)
+    body = stage_body(s, configuration={})
+    headers = s.headers
+    if fault == 'revision': body['expected_revision'] = 'f'*32
+    if fault == 'artifact': body['expected_artifact_sha256'] = 'f'*64
+    if fault == 'nonadmin': headers = {'Authorization': 'Bearer '+s.user_token}
+    if fault == 'device': body['configuration'] = {'TARGET_DEVICE_ID': 'dev_'+'f'*32}
+    with Session(s.engine) as db, db.begin():
+        if fault == 'active': db.execute(update(Installation).values(status='active', enabled=True))
+        if fault == 'revoked': db.execute(update(UserSession).where(UserSession.id == 1).values(is_active=False))
+        if fault == 'blocked': db.execute(update(User).where(User.id == 1).values(is_blocked=True))
+        if fault == 'bad_grant': db.get(Grant, 1).payload = '{}'
+    with Session(s.engine) as db:
+        before = tuple(db.execute(select(*Installation.__table__.c)).one())
+        proofs = tuple(db.execute(select(*Action.__table__.c).order_by(Action.request_id)))
+    response = s.http.post(s.base+'/packages/'+target.sha256+'/stage', json=body, headers=headers)
+    assert response.status_code in {401, 403, 409}, response.text
+    with Session(s.engine) as db:
+        assert tuple(db.execute(select(*Installation.__table__.c)).one()) == before
+        assert tuple(db.execute(select(*Action.__table__.c).order_by(Action.request_id))) == proofs
+    assert s.calls == []
 
 
 @pytest.mark.parametrize('required', [True, False])
@@ -370,7 +518,7 @@ def test_unknown_execution_prevents_preparation_without_losing_its_evidence(stag
 
 
 def test_relational_candidate_keeps_its_dedicated_prepared_migration_boundary(staged):
-    from three_mm_protocol.tests.test_application_relational_storage import relational_request
+    from packages.protocol.tests.test_application_relational_storage import relational_request
     s = staged
     def change(definition):
         definition['service']['sdk_version'] = '1.3'

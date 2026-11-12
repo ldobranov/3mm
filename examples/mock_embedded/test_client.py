@@ -9,7 +9,7 @@ import pytest
 import requests
 
 from examples.mock_embedded.client import CAPABILITY, CHANNEL, MockEmbeddedClient
-from three_mm_protocol import AgentCommand
+from packages.protocol import AgentCommand
 
 
 def command(node, **changes):

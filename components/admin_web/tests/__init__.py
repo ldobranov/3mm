@@ -1,0 +1,1 @@
+"""Administrative web host checks."""

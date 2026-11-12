@@ -25,9 +25,9 @@ from backend.db.base import Base
 from backend.db.device import Device, DeviceHeartbeat, DeviceInventorySnapshot
 from backend.db.installation_identity import CoreInstallationIdentity
 from backend.db.installation_peer import InstallationPeerOutbound
-from backend.services import installation_identity as identity_service
-from backend.services import installation_projection as projection
-from backend.services.installation_status_binding import read_existing_status_binding
+from backend.installation import identity as identity_service
+from backend.installation import projection
+from backend.installation.status_binding import read_existing_status_binding
 
 
 NOW = datetime(2026, 10, 16, 12, 0, 0, tzinfo=UTC)

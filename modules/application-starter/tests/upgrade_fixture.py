@@ -4,7 +4,7 @@ These assertions are domain evidence, not installed Core authority or universal
 data preservation. The runner imports each service from its exact wheel in a
 separate process. Never seed real/personal data here.
 """
-from three_mm_application_sdk import OperationContext
+from packages.application_sdk import OperationContext
 
 
 def seed(application):

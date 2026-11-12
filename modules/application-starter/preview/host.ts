@@ -1,6 +1,6 @@
 // Project-owned UI simulation. Never import the real Core transport or credentials.
 import { ApplicationHostError, type ApplicationHost, type ApplicationHostInfo,
-  type ApplicationPayload, type ApplicationPresentationInfo } from '@3mm/application-ui/v1'
+  type ApplicationPayload, type ApplicationPresentationInfo } from '@platform/application-ui/v1'
 
 export function createPreview(info: ApplicationHostInfo) {
   const scenarios = [

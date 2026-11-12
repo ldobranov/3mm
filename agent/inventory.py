@@ -10,12 +10,12 @@ from pathlib import Path
 
 from agent.hardware import HardwareInventoryDriver, LinuxHardwareDriver
 from agent import __version__
-from three_mm_protocol import AgentInventory
-from three_mm_protocol.device_inventory import (
+from packages.protocol import AgentInventory
+from packages.protocol.device_inventory import (
     DeviceInventoryV2,
     upgrade_agent_inventory,
 )
-from three_mm_provisioning import (
+from packages.provisioning import (
     NetworkInspectionError,
     NetworkManagerReadOnlyAdapter,
 )

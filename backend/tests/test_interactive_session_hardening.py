@@ -5,17 +5,17 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from backend.services.interactive_session_gateway import (
+from backend.sessions.gateway import (
     SessionGateway,
     SessionGatewayError,
 )
-from backend.services.interactive_sessions import (
+from backend.sessions.broker import (
     EchoSessionProvider,
     InteractiveSessionError,
     LocalSessionManager,
     SessionTicketStore,
 )
-from three_mm_protocol.interactive_session import (
+from packages.protocol.interactive_session import (
     MAX_SESSION_PAYLOAD_BYTES,
     SessionOpenRequestV1,
     decode_session_frame,
@@ -65,7 +65,7 @@ def test_many_concurrent_opens_respect_limit():
 
 
 def test_ticket_store_survives_high_volume():
-    from backend.services.interactive_sessions import MAX_SEEN_TICKETS
+    from backend.sessions.broker import MAX_SEEN_TICKETS
 
     store = SessionTicketStore(ttl_seconds=300)
     for _ in range(MAX_SEEN_TICKETS + 500):

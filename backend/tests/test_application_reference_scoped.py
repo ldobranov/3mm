@@ -3,7 +3,7 @@
 Local disposable Core/device-role/provider fixtures, NOT live Hub/Node transport,
 Root/systemd isolation or portable recovery acceptance.
 """
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 import io
 import json
@@ -27,19 +27,20 @@ from backend.config import ApplicationRuntimeSettings
 from backend.db.base import Base
 from backend.db.device import Device, DeviceCapabilityProvider, DeviceCapabilityHealth, DeviceCommand
 from backend.db.module import ApplicationExtensionInstallation as Installation, ApplicationKioskTerminal, ModulePackage
-from backend.routes import application_extensions as routes
-from backend.services import application_authority_management as authority, compiled_ui
-from backend.services.application_platform import ApplicationPlatformServer
-from backend.services.device_capability_registry import capability_catalog
-from backend.services.module_packages import validate_module_package
+from backend.applications.management import api as routes
+from backend.applications.authority import management as authority
+from backend.artifacts import compiled_ui
+from backend.applications.runtime.platform import ApplicationPlatformServer
+from backend.devices.capabilities.registry import capability_catalog
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_access import fake_compiler,kiosk_enrollment,kiosk_claim
 from backend.tests.test_application_authority_management import (
     installed as managed_installed, source_subject, source_installed, identity, decide,
 )
 from backend.tests.test_application_reference import _builder_module, REFERENCE_ROOT
-from backend.utils.db_utils import get_db
-from three_mm_application_sdk import ApplicationPlatformClient
-from three_mm_runtime.application_transport import ApplicationServiceClient, ApplicationTransportError
+from backend.storage.sessions import get_db
+from packages.application_sdk import ApplicationPlatformClient
+from components.system_runtime.application_transport import ApplicationServiceClient, ApplicationTransportError
 
 
 def specification():
@@ -67,7 +68,7 @@ def test_same_reference_scoped_package_is_deterministic_and_explicit():
     with zipfile.ZipFile(io.BytesIO(blob)) as archive:
         assert 'source/frontend/Capability.vue' in archive.namelist()
         source = archive.read('source/frontend/Capability.vue').decode()
-        assert '@3mm/application-ui/v1' in source
+        assert '@platform/application-ui/v1' in source
         assert 'fetch(' not in source and 'localStorage' not in source
     legacy = _builder_module().build_package('dev_' + '3' * 32, 'http://127.0.0.1:9911')
     assert validate_module_package(legacy).manifest.version == '1.0.1'
@@ -201,7 +202,7 @@ def test_delivered_reference_ui_sdk_authority_and_lifecycle(managed_installed, m
         processes = []
 
         def start_host():
-            process = subprocess.Popen([sys.executable, '-m', 'three_mm_runtime.application_host',
+            process = subprocess.Popen([sys.executable, '-m', 'components.system_runtime.application_host',
                 '--instance', 'a' * 24, '--root', str(app_root), '--key-root', str(key_root)],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             processes.append(process)

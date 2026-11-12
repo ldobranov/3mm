@@ -4,18 +4,18 @@ import copy
 
 import pytest
 
-from backend.services.application_authority_context import (
+from backend.applications.authority.context import (
     AuthorityReviewContextV5,
     AuthoritySelectionV4,
     AuthoritySelectionV5,
     _parse,
     review_authority_context,
 )
-from backend.services.application_authority_policy import evaluate_authority_policy
+from backend.applications.authority.policy import evaluate_authority_policy
 from backend.tests.test_application_authority_context import context, replace_path
 from backend.tests.test_application_authority_policy import inputs as command_inputs
-from three_mm_protocol.tests.test_application_private_files import file_request
-from three_mm_protocol.tests.test_application_relational_storage import (
+from packages.protocol.tests.test_application_private_files import file_request
+from packages.protocol.tests.test_application_relational_storage import (
     relational_request,
 )
 

@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import create_engine
 from starlette.websockets import WebSocketDisconnect
 
-from backend.services.application_session_runtimes import (
+from backend.applications.sessions.runtimes import (
     ReviewedSessionRuntime, SessionRuntimeDirectory,
     configure_session_runtimes, session_runtimes,
 )
@@ -18,7 +18,7 @@ from backend.tests.test_application_browser_sessions import (
     ORIGIN, browser_app, connect, issue,
     checkpoint_app, managed_installed, session_app, source_installed, source_subject,
 )
-from three_mm_protocol.interactive_session import decode_session_frame
+from packages.protocol.interactive_session import decode_session_frame
 
 
 RESOURCE = {
@@ -87,7 +87,7 @@ def test_exact_source_selection_has_no_order_or_local_fallback():
 @pytest.mark.parametrize('available', [True, False])
 def test_resource_view_observes_session_directory_without_constructing_executor(session_app, available):
     from backend.tests.test_application_session_authority import activate, SCOPE
-    from backend.services.application_resource_discovery import discover_resources
+    from backend.applications.resources.discovery import discover_resources
     from backend.db.module import ApplicationExtensionInstallation
     from sqlalchemy.orm import Session
     s = session_app
@@ -107,7 +107,7 @@ def test_optional_session_absence_and_later_appearance_do_not_auto_grant(session
     from backend.tests.test_application_session_authority import SCOPE
     from backend.db.device import DeviceCapabilityProvider
     from backend.db.module import ApplicationExtensionInstallation
-    from backend.services.application_authority_management import AuthorityManagementError
+    from backend.applications.authority.management import AuthorityManagementError
     from sqlalchemy import update
     from sqlalchemy.orm import Session
     s = session_app

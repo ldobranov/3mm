@@ -14,9 +14,9 @@ from backend.db.device import (
     DeviceHeartbeat,
     DeviceInventorySnapshot,
 )
-from backend.routes.device_ingest import router
-from backend.services.device_pairing import credential_secret_hash
-from backend.utils.db_utils import get_db
+from backend.devices.telemetry.ingest_api import router
+from backend.devices.pairing.service import credential_secret_hash
+from backend.storage.sessions import get_db
 
 DEVICE_ID = "dev_0123456789abcdef0123456789abcdef"
 CREDENTIAL_ID = "cred_0123456789abcdef0123456789abcdef"

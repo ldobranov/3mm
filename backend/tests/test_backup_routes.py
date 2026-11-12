@@ -9,12 +9,12 @@ from sqlalchemy.pool import StaticPool
 import backend.database  # noqa: F401
 from backend.db.base import Base
 from backend.db.user import User
-from backend.routes.backups import router
-from backend.services.backups import BackupCatalogResponse, BackupPreviewResponse
-from backend.utils import jwt_utils
-from backend.utils.auth import hash_password
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
+from backend.system.backups.api import router
+from backend.system.backups.service import BackupCatalogResponse, BackupPreviewResponse
+from backend.accounts import tokens as jwt_utils
+from backend.accounts.passwords import hash_password
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
 from deployment.portable_backup import PORTABLE_MAGIC
 
 
@@ -34,7 +34,7 @@ def isolated_backup_settings(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
             max_import_bytes=1024 * 1024,
         ),
     )
-    monkeypatch.setattr("backend.routes.backups.get_settings", lambda: settings)
+    monkeypatch.setattr("backend.system.backups.api.get_settings", lambda: settings)
 
 
 def _client() -> tuple[TestClient, Session, str, str]:
@@ -73,7 +73,7 @@ def _client() -> tuple[TestClient, Session, str, str]:
 def test_backup_preview_is_admin_only(monkeypatch: pytest.MonkeyPatch) -> None:
     client, db, admin_token, viewer_token = _client()
     monkeypatch.setattr(
-        "backend.routes.backups.build_backup_preview",
+        "backend.system.backups.api.build_backup_preview",
         lambda _settings: BackupPreviewResponse(
             ready=False,
             manifest=None,
@@ -129,13 +129,13 @@ def test_backup_preview_uses_privileged_helper_when_available(
         issues=(),
     )
     requested = []
-    monkeypatch.setattr("backend.routes.backups.get_settings", lambda: settings)
+    monkeypatch.setattr("backend.system.backups.api.get_settings", lambda: settings)
     monkeypatch.setattr(
-        "backend.routes.backups.build_backup_preview",
+        "backend.system.backups.api.build_backup_preview",
         lambda _settings: pytest.fail("protected state must be read by the helper"),
     )
     monkeypatch.setattr(
-        "three_mm_runtime.update_helper_client.UpdateHelperClient.request_backup_preview",
+        "components.system_runtime.update_helper_client.UpdateHelperClient.request_backup_preview",
         lambda _client, user_id: requested.append(user_id)
         or preview.model_dump(mode="json"),
     )
@@ -156,7 +156,7 @@ def test_backup_preview_uses_privileged_helper_when_available(
 def test_backup_catalog_is_admin_only(monkeypatch: pytest.MonkeyPatch) -> None:
     client, db, admin_token, viewer_token = _client()
     monkeypatch.setattr(
-        "backend.routes.backups.list_backup_catalog",
+        "backend.system.backups.api.list_backup_catalog",
         lambda _path: BackupCatalogResponse(retention_count=5),
     )
     try:
@@ -181,7 +181,7 @@ def test_backup_creation_requires_admin_and_exact_confirmation(
     client, db, admin_token, viewer_token = _client()
     requested = []
     monkeypatch.setattr(
-        "three_mm_runtime.update_helper_client.UpdateHelperClient.request_backup",
+        "components.system_runtime.update_helper_client.UpdateHelperClient.request_backup",
         lambda _client, user_id: requested.append(user_id),
     )
     try:
@@ -219,7 +219,7 @@ def test_restore_requires_exact_backup_id_confirmation(
     client, db, admin_token, _viewer_token = _client()
     requested = []
     monkeypatch.setattr(
-        "three_mm_runtime.update_helper_client.UpdateHelperClient.request_restore",
+        "components.system_runtime.update_helper_client.UpdateHelperClient.request_restore",
         lambda _client, backup_id, user_id: requested.append((backup_id, user_id)),
     )
     backup_id = "bkp_20260828T120000Z_0123abcd"
@@ -261,9 +261,9 @@ def test_portable_export_is_admin_only_and_downloads_once(
         backups=SimpleNamespace(storage_dir=storage),
         updates=SimpleNamespace(helper_socket=tmp_path / "helper.sock"),
     )
-    monkeypatch.setattr("backend.routes.backups.get_settings", lambda: settings)
+    monkeypatch.setattr("backend.system.backups.api.get_settings", lambda: settings)
     monkeypatch.setattr(
-        "three_mm_runtime.update_helper_client.UpdateHelperClient.request_portable_export",
+        "components.system_runtime.update_helper_client.UpdateHelperClient.request_portable_export",
         lambda _client, selected, _passphrase, _user_id: {
             "ok": True,
             "status": "ready",
@@ -313,14 +313,14 @@ def test_portable_restore_upload_is_bounded_and_queued(
         ),
         updates=SimpleNamespace(helper_socket=tmp_path / "helper.sock"),
     )
-    monkeypatch.setattr("backend.routes.backups.get_settings", lambda: settings)
+    monkeypatch.setattr("backend.system.backups.api.get_settings", lambda: settings)
 
     def queue_restore(_client, upload_id, _passphrase, _user_id):
         (import_dir / f"{upload_id}.3mmrecovery").unlink()
         return backup_id
 
     monkeypatch.setattr(
-        "three_mm_runtime.update_helper_client.UpdateHelperClient.request_portable_restore",
+        "components.system_runtime.update_helper_client.UpdateHelperClient.request_portable_restore",
         queue_restore,
     )
     try:

@@ -8,8 +8,8 @@ import pytest
 from sqlalchemy.orm import Session
 
 from backend.db.module import ApplicationExtensionInstallation as Installation
-from backend.services import application_authority_management as authority
-from backend.services import application_relational_lifecycle as coordinator
+from backend.applications.authority import management as authority
+from backend.applications.relational import lifecycle as coordinator
 from backend.tests.test_application_relational_migrations import candidate, script
 from backend.tests.test_application_relational_namespace import (
     ROOT_ONLY,
@@ -21,18 +21,18 @@ from backend.tests.test_application_relational_namespace import (
     source_subject,
     stopped,
 )
-from three_mm_application_sdk.relational_wire import (
+from packages.application_sdk.relational_wire import (
     canonical,
     prepared_lifecycle,
     sign_metadata,
 )
-from three_mm_runtime import application_relational_installation as helper
-from three_mm_runtime import application_relational_namespace as namespace
-from three_mm_runtime.application_activation import (
+from components.system_runtime import application_relational_installation as helper
+from components.system_runtime import application_relational_namespace as namespace
+from components.system_runtime.application_activation import (
     ApplicationActivationError,
     _require_no_pending_rollback,
 )
-from three_mm_runtime.application_relational_session import _prepared
+from components.system_runtime.application_relational_session import _prepared
 
 pytestmark = [
     ROOT_ONLY,
@@ -224,8 +224,8 @@ def test_lost_namespace_finish_ack_never_runs_or_reissues_migrations(initial):
 def test_real_partial_handoff_quarantine_then_fresh_install_uses_new_key(
     initial, monkeypatch
 ):
-    from backend.services import application_relational_namespace_recovery as recovery
-    from three_mm_runtime.application_relational_namespace_recovery import (
+    from backend.applications.relational import namespace_recovery as recovery
+    from components.system_runtime.application_relational_namespace_recovery import (
         reconcile_empty_relational_namespace,
     )
 

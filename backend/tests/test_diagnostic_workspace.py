@@ -1,21 +1,21 @@
 import json
 import pytest
 from backend.tests.test_diagnostics import _client, use_test_jwt_secret
-from three_mm_protocol.diagnostics import DiagnosticSession
-from backend.services import diagnostic_workspace as workspace
+from packages.protocol.diagnostics import DiagnosticSession
+from backend.system.diagnostics import workspace
 
 
 @pytest.fixture
 def environment(monkeypatch):
     client,db,admin,viewer=_client();session=DiagnosticSession('core','1.0')
-    monkeypatch.setattr('backend.routes.diagnostics.core_diagnostics',session)
+    monkeypatch.setattr('backend.system.diagnostics.api.core_diagnostics',session)
     yield client,db,{'Authorization':'Bearer '+admin},{'Authorization':'Bearer '+viewer},session
     db.close()
 
 
 def test_workspace_and_merge_require_current_admin_and_scope_is_closed(environment,monkeypatch):
     client,db,admin,viewer,session=environment;seen=[]
-    monkeypatch.setattr('backend.routes.diagnostics.observe',lambda *a:seen.append(True) or {'components':[]})
+    monkeypatch.setattr('backend.system.diagnostics.api.observe',lambda *a:seen.append(True) or {'components':[]})
     for method,path in [('GET','/workspace'),('GET','/timeline'),('POST','/timeline/merge')]:
         assert client.request(method,'/api/v1/diagnostics'+path).status_code==401
         assert client.request(method,'/api/v1/diagnostics'+path,headers=viewer).status_code==403
@@ -57,7 +57,7 @@ def test_busy_or_failed_collector_returns_explicit_unknown_without_waiting(monke
 
 
 def test_collector_import_slot_refuses_instead_of_queuing_core_work(environment):
-    from backend.routes.diagnostics import _merge_lock
+    from backend.system.diagnostics.api import _merge_lock
     client,db,admin,viewer,session=environment
     with _merge_lock:
         assert client.post('/api/v1/diagnostics/timeline/merge',headers=admin,content=b'{}').status_code==409

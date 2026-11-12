@@ -8,8 +8,8 @@ import pytest
 from agent.core_client import CommandJournal, DeviceCredentialStore, ReconciliationState
 from agent.tests.test_node_security import command
 from agent.tests.test_runtime_features import publisher, response
-from three_mm_protocol import AgentCommandResult, AgentInventory
-from three_mm_protocol.node_security import NODE_MESSAGE_BYTES
+from packages.protocol import AgentCommandResult, AgentInventory
+from packages.protocol.node_security import NODE_MESSAGE_BYTES
 
 
 def test_invalid_historical_receipt_is_not_a_cache_miss_or_global_startup_failure(

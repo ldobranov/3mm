@@ -10,7 +10,7 @@ from backend.scripts.bootstrap_admin import (
     create_initial_admin,
     prompt_for_admin,
 )
-from backend.utils.auth import verify_password
+from backend.accounts.passwords import verify_password
 
 
 @pytest.fixture

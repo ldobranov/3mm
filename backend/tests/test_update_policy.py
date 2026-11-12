@@ -7,12 +7,12 @@ from pathlib import Path
 import pytest
 
 from backend.config import UpdateCatalogSettings
-from backend.services.system_updates import (
+from backend.system.updates.releases import (
     CurrentRelease,
     UpdateCatalogError,
     UpdateCheckResponse,
 )
-from backend.services.update_policy import (
+from backend.system.updates.policy import (
     SystemUpdateCheckManager,
     UpdatePolicyError,
     UpdatePolicyRequest,

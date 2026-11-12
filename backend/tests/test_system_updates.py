@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from backend.config import UpdateCatalogSettings
-from backend.services.system_updates import (
+from backend.system.updates.releases import (
     UpdateCatalogNotFound,
     check_update_catalog,
     read_local_update_status,
@@ -83,7 +83,7 @@ def make_settings(metadata_file: Path) -> UpdateCatalogSettings:
 
 
 def test_armv6_hub_catalog_uses_its_own_manifest(tmp_path, monkeypatch):
-    monkeypatch.setattr("backend.services.system_updates.platform.machine", lambda: "armv6l")
+    monkeypatch.setattr("backend.system.updates.releases.platform.machine", lambda: "armv6l")
     metadata = tmp_path / "current.json"
     write_release_metadata(metadata, version="1.0.0")
     release, manifest = catalog_payloads()
@@ -139,7 +139,7 @@ def test_valid_manifest_reports_an_available_update(
     release, manifest = catalog_payloads()
     responses = iter([release, manifest])
     monkeypatch.setattr(
-        "backend.services.system_updates.platform.machine", lambda: "aarch64"
+        "backend.system.updates.releases.platform.machine", lambda: "aarch64"
     )
 
     response = check_update_catalog(
@@ -195,7 +195,7 @@ def test_beta_channel_selects_a_matching_prerelease(
     responses = iter([[release], manifest])
     requested_urls: list[str] = []
     monkeypatch.setattr(
-        "backend.services.system_updates.platform.machine", lambda: "aarch64"
+        "backend.system.updates.releases.platform.machine", lambda: "aarch64"
     )
 
     def fetch(url: str, _timeout: int) -> object:
@@ -248,7 +248,7 @@ def test_matching_commit_reports_up_to_date(
     release, manifest = catalog_payloads()
     responses = iter([release, manifest])
     monkeypatch.setattr(
-        "backend.services.system_updates.platform.machine", lambda: "aarch64"
+        "backend.system.updates.releases.platform.machine", lambda: "aarch64"
     )
 
     response = check_update_catalog(
@@ -271,7 +271,7 @@ def test_same_or_older_published_version_cannot_be_offered_as_an_update(
     release, manifest = catalog_payloads()
     responses = iter([release, manifest])
     monkeypatch.setattr(
-        "backend.services.system_updates.platform.machine", lambda: "aarch64"
+        "backend.system.updates.releases.platform.machine", lambda: "aarch64"
     )
 
     response = check_update_catalog(
@@ -291,7 +291,7 @@ def test_stable_release_is_newer_than_an_installed_prerelease(
     release, manifest = catalog_payloads()
     responses = iter([release, manifest])
     monkeypatch.setattr(
-        "backend.services.system_updates.platform.machine", lambda: "aarch64"
+        "backend.system.updates.releases.platform.machine", lambda: "aarch64"
     )
 
     response = check_update_catalog(

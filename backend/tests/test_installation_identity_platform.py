@@ -1,4 +1,4 @@
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 import hashlib
 import json
 import time
@@ -13,19 +13,19 @@ from sqlalchemy.orm import sessionmaker
 from backend.db.base import Base
 from backend.db.installation_identity import CoreInstallationIdentity
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
-from backend.services.application_platform import ApplicationPlatformServer
-from backend.services.module_packages import validate_module_package
+from backend.applications.runtime.platform import ApplicationPlatformServer
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_module_packages import (
     application_definition,
     application_manifest,
     application_package,
 )
-from three_mm_application_sdk import (
+from packages.application_sdk import (
     ApplicationPlatformClient,
     ApplicationPlatformError,
     verify_installation_proof,
 )
-from three_mm_protocol.tests.test_installation_identity import proof_request
+from packages.protocol.tests.test_installation_identity import proof_request
 
 
 @pytest.fixture
@@ -88,7 +88,7 @@ def test_two_extension_instances_share_whole_core_identity(platform):
     db.commit()
     second = server._dispatch(db, installation, {"action": "installation.identity.get"})
     assert second == first
-    from three_mm_application_sdk import SDK_VERSION
+    from packages.application_sdk import SDK_VERSION
     assert first["sdk_version"] == SDK_VERSION
     assert set(first["identity"]) == {
         "identity_version",
@@ -175,11 +175,11 @@ def test_signed_sdk_read_and_proof_use_existing_authenticated_boundary(
             return result
 
     monkeypatch.setattr(
-        "three_mm_application_sdk.socket.socket", lambda *_args: ClientSocket()
+        "packages.application_sdk.socket.socket", lambda *_args: ClientSocket()
     )
     # Windows has no AF_UNIX in this runtime; this test exercises envelopes with
     # an in-memory socket, not a claim of Unix-socket availability on Windows.
-    monkeypatch.setattr("three_mm_application_sdk.socket.AF_UNIX", 1, raising=False)
+    monkeypatch.setattr("packages.application_sdk.socket.AF_UNIX", 1, raising=False)
     client = ApplicationPlatformClient(
         server.socket_path, installation.instance_id, secret
     )

@@ -24,14 +24,15 @@ from backend.db.module import ApplicationExtensionInstallation as Installation, 
 from backend.db.session import UserSession
 from backend.db.user import User
 from backend.db.audit_log import AuditLog
-from backend.routes import application_extensions as routes, auth_refresh
-from backend.services import application_delegations as service
-from backend.services.application_platform import ApplicationPlatformServer
+from backend.applications.management import api as routes
+from backend.accounts.sessions import refresh as auth_refresh
+from backend.applications.delegations import service
+from backend.applications.runtime.platform import ApplicationPlatformServer
 from backend.tests.test_application_ui_authority import ui_app, managed_installed, source_subject, source_installed, adopt
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token, decode_token
-from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
-from three_mm_platform_runtime.responses import ApplicationResponses
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token, decode_token
+from packages.application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+from components.platform_runtime.responses import ApplicationResponses
 
 pytestmark = [pytest.mark.skipif(os.name != 'posix', reason='Real Linux signed Unix IPC'),
     pytest.mark.parametrize('ui_app', ['delegations'], indirect=True)]
@@ -58,7 +59,7 @@ def stack(ui_app, monkeypatch):
         # A separate process runs the production host/SDK, not a mocked handler.
         code = '''import json,sys,time
 from pathlib import Path
-from three_mm_runtime.application_host import _serve_requests
+from components.system_runtime.application_host import _serve_requests
 r=Path(sys.argv[1])
 class Service:
  def handle(self,op,payload,context):

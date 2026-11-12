@@ -11,7 +11,7 @@ import zipfile
 
 import pytest
 from deployment.platform_runtime_component import (
-    INPUTS,RuntimeStore,build_component,validate_artifact,MAX_ARTIFACT,
+    INPUTS,RUNTIME_SOURCES,RuntimeStore,build_component,validate_artifact,validate_metadata,MAX_ARTIFACT,
 )
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -30,8 +30,17 @@ def test_immutable_runtime_file_sets_can_evolve_without_breaking_independent_rol
     original=component.INPUTS
     monkeypatch.setattr(component,'INPUTS',tuple(name for name in original if not name.endswith('/task_time.py')))
     old=build_component(ROOT)
-    monkeypatch.setattr(component,'INPUTS',original)
-    new=build_component(ROOT)
+    source=tmp_path/'new-source'
+    for name in original:
+        target=source/name;target.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(ROOT/name,target)
+    extra='components/platform_runtime/future_worker.py'
+    (source/extra).write_text('"""A newer optional stdlib-only worker."""\n')
+    # A later updater can ship another worker without requiring it in a valid
+    # earlier immutable artifact. Both current input declarations evolve here.
+    monkeypatch.setattr(component,'RUNTIME_SOURCES',(*component.RUNTIME_SOURCES,extra))
+    monkeypatch.setattr(component,'INPUTS',(*original,extra))
+    new=build_component(source)
     assert old[1]['build_id']!=new[1]['build_id']
     store=RuntimeStore(tmp_path/'component',tmp_path/'journal');control=Control()
     store.activate(old[0],digest(old[0]),control=control,health=health,fingerprint=fingerprint)
@@ -45,6 +54,8 @@ def test_self_describing_runtime_still_rejects_core_payload_and_missing_entrypoi
     original=component.INPUTS
     monkeypatch.setattr(component,'INPUTS',(*original,'backend/main.py'))
     with pytest.raises(ValueError,match='payload'):build_component(ROOT)
+    monkeypatch.setattr(component,'INPUTS',tuple(name for name in original if name!='packages/__init__.py'))
+    with pytest.raises(ValueError,match='payload'):build_component(ROOT)
     monkeypatch.setattr(component,'INPUTS',tuple(name for name in original if not name.endswith('/server.py')))
     with pytest.raises(ValueError,match='payload'):build_component(ROOT)
 
@@ -54,7 +65,7 @@ def variant(tmp_path,name):
     for file in INPUTS:
         target=source/file;target.parent.mkdir(parents=True,exist_ok=True)
         shutil.copyfile(ROOT/file,target)
-    with (source/'three_mm_platform_runtime/server.py').open('a') as stream:stream.write('\n# '+name+'\n')
+    with (source/'components/platform_runtime/server.py').open('a') as stream:stream.write('\n# '+name+'\n')
     return build_component(source)
 
 
@@ -66,9 +77,44 @@ def test_component_is_deterministic_stdlib_only_and_has_no_core_payload():
     first,metadata=build_component(ROOT);assert first==build_component(ROOT)[0]
     parsed,code=validate_artifact(first,digest(first));assert parsed==metadata
     with zipfile.ZipFile(io.BytesIO(code)) as archive:
-        assert not any(n.startswith(('backend/','three_mm_application_sdk/','three_mm_runtime/')) for n in archive.namelist())
+        assert not any(n.startswith(('backend/','packages/application_sdk/','three_mm_application_sdk/','components/system_runtime/')) for n in archive.namelist())
         assert set(archive.namelist())==set(INPUTS)|{'__main__.py','runtime-build.json'}
-        assert 'three_mm_platform_wire/event_delivery.py' in archive.namelist()
+        assert 'packages/platform_wire/event_delivery.py' in archive.namelist()
+        assert 'packages/__init__.py' in archive.namelist()
+        assert not any(n.startswith('three_mm_platform_wire/') for n in archive.namelist())
+        assert {name for name in archive.namelist() if name.startswith('components/')} == set(RUNTIME_SOURCES)
+        assert not any(name.startswith(('packages/protocol/', 'packages/application_sdk/', 'three_mm_platform_runtime/')) for name in archive.namelist())
+
+
+@pytest.mark.parametrize('change', [
+    'components/__init__.py', 'components/platform_runtime/__init__.py',
+    'components/platform_runtime/__main__.py', 'components/platform_runtime/server.py',
+    'components/admin_web/server.py', 'components/public_web/server.py', 'components/setup/main.py',
+    'components/platform_runtime_other/server.py', 'packages/protocol/__init__.py',
+    'components/system_runtime/__init__.py','components/system_runtime/update_helper.py',
+    'packages/application_sdk/__init__.py', 'backend/main.py', 'three_mm_platform_runtime/server.py'])
+def test_valid_container_cannot_hide_a_missing_runtime_or_unrelated_component(change):
+    """Recompute every digest so failure must come from the source boundary."""
+    import deployment.platform_runtime_component as component
+    blob, metadata = build_component(ROOT)
+    _, code = validate_artifact(blob, digest(blob))
+    with zipfile.ZipFile(io.BytesIO(code)) as archive:
+        sources = {name: archive.read(name) for name in archive.namelist() if name != 'runtime-build.json'}
+    if change in RUNTIME_SOURCES:
+        del sources[change]
+    else:
+        sources[change] = b'# unrelated source\n'
+    build_id = digest(component._json({name: digest(value) for name, value in sources.items()}))
+    identity = {'build_id': build_id, 'authority_contract': component.AUTHORITY_CONTRACT}
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, 'w') as archive:
+        for name, value in {**sources, 'runtime-build.json': component._json(identity)}.items():
+            entry = zipfile.ZipInfo(name); entry.create_system = 3; entry.external_attr = 0o100644 << 16
+            archive.writestr(entry, value)
+    code = output.getvalue()
+    metadata = {**metadata, 'build_id': build_id, 'runtime_sha256': digest(code), 'runtime_bytes': len(code)}
+    with pytest.raises(ValueError, match='payload'):
+        validate_metadata(metadata, code)
 
 
 @pytest.mark.skipif(os.name!='posix',reason='Target-owned Unix environment')
@@ -77,8 +123,22 @@ def test_staged_runtime_has_its_own_environment_without_core_dependencies(tmp_pa
     blob,metadata=artifacts[0];identifier=store.stage(blob,digest(blob))
     python=store.releases/identifier/'.venv/bin/python'
     assert 'include-system-site-packages = false' in python.parent.parent.joinpath('pyvenv.cfg').read_text()
-    result=subprocess.run([str(python),'-I',str(store.releases/identifier/'runtime.pyz'),'--help'],capture_output=True,text=True,timeout=10)
-    assert result.returncode==0 and '--authority-socket' in result.stdout
+    executable = store.releases/identifier/'runtime.pyz'
+    for arguments, option in [(['--help'], '--authority-socket'),
+            (['--connector-worker', '--help'], '--socket'),
+            (['--task-worker', '--help'], '--readiness-socket')]:
+        result=subprocess.run([str(python),'-I',str(executable),*arguments],capture_output=True,text=True,timeout=10)
+        assert result.returncode==0 and option in result.stdout, result.stderr
+    isolated = """import importlib,importlib.util,sys
+sys.path.insert(0,sys.argv[1])
+for name in ('server','public_web','events','responses','tasks','connector_worker','connector_execute'):
+    module=importlib.import_module('components.platform_runtime.'+name)
+    assert sys.argv[1] in module.__file__
+for name in ('components.admin_web','components.public_web','components.system_runtime','backend','three_mm_platform_runtime','packages.protocol','packages.application_sdk'):
+    assert importlib.util.find_spec(name) is None,name
+"""
+    result=subprocess.run([str(python),'-I','-c',isolated,str(executable)],capture_output=True,text=True,timeout=10)
+    assert result.returncode==0,result.stderr
     result=subprocess.run([str(python),'-I','-c','import pydantic'],capture_output=True,timeout=5)
     assert result.returncode!=0
     assert store.stage(blob,digest(blob))==identifier

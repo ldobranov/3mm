@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>__PRODUCT_TITLE__</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --body-bg: #fff; --card-bg: #fff; --panel-bg: #f8fafc;
+        --text: #222; --muted: #666; --border: #d1d5db;
+        --primary: #007bff; --header-bg: #4caf50; --header-text: #fff; --radius: 8px;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--body-bg); color: var(--text); }
+      header { padding: .9rem max(1rem, calc((100% - 38rem) / 2)); background: var(--header-bg); color: var(--header-text); font-weight: 750; }
+      main { width: min(100% - 1.5rem, 38rem); margin: 0 auto; padding: 1.5rem 0 2.5rem; }
+      h1 { margin: 0 0 .35rem; font-size: clamp(1.6rem, 7vw, 2rem); }
+      .intro { margin: 0 0 1.25rem; color: var(--muted); }
+      form { display: grid; gap: 1rem; padding: clamp(1rem, 4vw, 1.5rem); border: 1px solid var(--border); border-radius: var(--radius); background: var(--card-bg); }
+      label { display: grid; gap: .4rem; min-width: 0; font-size: .9rem; font-weight: 650; }
+      input, select, button { width: 100%; min-width: 0; padding: .72rem .8rem; border: 1px solid var(--border); border-radius: max(4px, calc(var(--radius) * .65)); background: var(--card-bg); color: var(--text); font: inherit; }
+      input:focus, select:focus, button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+      button { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 700; cursor: pointer; }
+      button:disabled { opacity: .6; cursor: wait; }
+      .network-picker { display: grid; gap: .55rem; padding: .75rem; border-radius: var(--radius); background: var(--panel-bg); }
+      .network-toolbar { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+      .network-toolbar strong { font-size: .9rem; }
+      .scan-button { width: auto; padding: .45rem .7rem; background: transparent; color: var(--primary); }
+      .network-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; }
+      .network-option { display: flex; justify-content: space-between; gap: .5rem; padding: .55rem .65rem; overflow: hidden; background: var(--card-bg); color: var(--text); border-color: var(--border); font-size: .82rem; font-weight: 600; text-align: left; }
+      .network-option span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .network-option span:last-child { flex: 0 0 auto; color: var(--muted); font-size: .75rem; }
+      .network-note, #status { min-height: 1.25rem; margin: 0; color: var(--muted); font-size: .82rem; }
+      #status[data-error="true"] { color: #dc2626; }
+      @media (max-width: 420px) {
+        main { width: min(100% - 1rem, 38rem); padding-top: 1rem; }
+        .network-list { grid-template-columns: 1fr; }
+      }
+    [hidden] { display:none !important; } fieldset { border:0; padding:0; margin:0; display:grid; gap:1rem; min-width:0; } .secondary { background:var(--panel-bg); color:var(--text); border-color:var(--border); } #status { display:block; margin-top:1rem; overflow-wrap:anywhere; } </style>
+  </head>
+  <body>
+    <header>__PRODUCT_HEADER__</header>
+    <main>
+      <select id="language" aria-label="Language"><option value="en">English</option><option value="bg">Български</option></select>
+      <h1 data-text="title">Set up this device</h1>
+      <p class="intro" data-text="intro">Choose a role and how this device connects.</p>
+      <form id="setup-form" hidden>
+        <p id="notice" class="network-note"></p>
+        <label><span data-text="role">Device role</span><select name="role"><option value="standalone">Standalone</option><option value="hub">Hub</option><option value="node">Node</option></select></label>
+        <p id="role-note" class="network-note"></p>
+        <label><span data-text="device">Device name</span><input name="device_name" value="3mm-device" maxlength="63" pattern="[A-Za-z0-9][A-Za-z0-9-]*" required></label>
+        <label><span data-text="locale">Device locale</span><input name="locale" value="en-US" maxlength="35" required></label>
+        <label id="hub-field" hidden><span data-text="hub">Hub address</span><input name="hub_endpoint" type="url" placeholder="https://hub.local"></label>
+        <label><span data-text="network">Network choice</span><select name="network_mode"><option value="preserve" data-text="preserve">Keep the operating system's connection</option><option value="wifi" data-text="wifi">Manage a Wi-Fi connection</option><option value="local" data-text="local">Local operation without a network</option></select></label>
+        <p class="network-note" data-text="networkHelp">Keeping the connection leaves it under operating-system control.</p>
+        <fieldset id="wifi-fields" hidden disabled>
+          <label><span data-text="adapter">Wi-Fi adapter</span><select name="network_interface" required></select></label>
+          <div class="network-picker"><button type="button" id="scan-networks" class="secondary" data-text="scan">Find networks</button><div id="network-list" class="network-list"></div></div>
+          <label><span data-text="ssid">Network name</span><input name="network_name" maxlength="32" required autocomplete="off"></label>
+          <label><span data-text="passphrase">Wi-Fi password (WPA/WPA2 Personal)</span><input name="passphrase" type="password" minlength="8" maxlength="63" required autocomplete="new-password"></label>
+        </fieldset>
+        <fieldset id="admin-fields">
+          <p class="network-note" data-text="adminHelp">Create the first administrator. If one already exists, enter that administrator's current credentials. Existing passwords are preserved.</p>
+          <label><span data-text="admin">Administrator username</span><input name="administrator_name" value="admin" maxlength="64" required autocomplete="username"></label>
+          <label><span data-text="email">Administrator email</span><input name="administrator_email" type="email" maxlength="254" required autocomplete="username"></label>
+          <label><span data-text="password">Administrator password</span><input name="administrator_password" type="password" maxlength="256" required autocomplete="new-password"></label>
+        </fieldset>
+        <button type="submit" data-text="apply">Save setup</button>
+        <button id="finish" type="button" class="secondary" hidden data-text="finish">Close recovery without changing settings</button>
+      </form>
+      <output id="status" aria-live="polite"></output>
+    </main>
+    <script>
+      const readOnly = __READ_ONLY__;
+      const productLabels = __PRODUCT_LABELS__;
+      const $ = (value) => document.querySelector(value);
+      const form = $('#setup-form'), status = $('#status');
+      const field = (name) => form.elements.namedItem(name);
+      let caps = null, saved = {}, busy = false;
+      let language = navigator.language.startsWith('bg') ? 'bg' : 'en';
+      const messages = {
+        en: {title:'Set up this device',intro:'Choose a role and how this device connects.',role:'Device role',device:'Device name',locale:'Device locale',hub:'Hub address',network:'Network choice',preserve:'Keep the operating system’s connection',wifi:'Manage a Wi-Fi connection',local:'Local operation without a network',networkHelp:'Keeping the connection leaves it under operating-system control.',adapter:'Wi-Fi adapter',scan:'Find networks',ssid:'Network name',passphrase:'Wi-Fi password (WPA/WPA2 Personal)',adminHelp:'Create the first administrator. If one already exists, enter that administrator’s current credentials. Existing passwords are preserved.',admin:'Administrator username',email:'Administrator email',password:'Administrator password',apply:'Save setup',finish:'Close recovery without changing settings',host:'Managed Wi-Fi is unavailable. Existing host networking can be preserved.',managed:'A managed Wi-Fi adapter is available. Wi-Fi changes may briefly interrupt this page.',recovery:'Network recovery: the saved role, device identity and administrator are fixed. Local services remain running.',pending:'A previous attempt needs reconciliation. Reconnect and use Close recovery to check its outcome.',node:'Node connects to a Hub. Saving its address does not pair or approve this device.',standalone:'Standalone runs Core and local workloads. It can also work without a network.',hubRole:'Hub runs Core and accepts approved Nodes.',applying:'Applying and checking setup…',success:'Setup saved. Reopen the application at the current device address.',awaiting:'Node settings saved. Hub enrollment is awaiting pairing and approval.',closed:'Recovery closed. Saved settings are preserved.',interrupted:'Connection interrupted. The result is unconfirmed. Reconnect and check setup before retrying.',unavailable:'Setup is not active on this device.',invalid:'Setup was rejected. Check the fields, administrator credentials and selected adapter.',completeAction:'Finish setup',complete:'Setup is saved. Finish setup to activate the selected services.',failed:'Setup could not finish. The previous configuration is retained until the attempt is resolved.',readonly:'Local status only. Changes are disabled.',noNetworks:'No networks found. Enter the name manually.'},
+        bg: {title:'Настройка на устройството',intro:'Избери роля и начин на свързване.',role:'Роля на устройството',device:'Име на устройството',locale:'Език на устройството',hub:'Адрес на Hub',network:'Мрежова връзка',preserve:'Запази връзката на операционната система',wifi:'Управление на Wi-Fi връзка',local:'Локална работа без мрежа',networkHelp:'Запазената връзка остава под управлението на операционната система.',adapter:'Wi-Fi адаптер',scan:'Намери мрежи',ssid:'Име на мрежата',passphrase:'Wi-Fi парола (WPA/WPA2 Personal)',adminHelp:'Създай първия администратор. Ако вече има такъв, въведи неговите текущи данни. Съществуващите пароли се запазват.',admin:'Потребителско име на администратора',email:'Имейл на администратора',password:'Парола на администратора',apply:'Запази настройката',finish:'Затвори възстановяването без промени',host:'Управляван Wi-Fi не е наличен. Може да се запази мрежовата връзка на системата.',managed:'Има наличен Wi-Fi адаптер. Промяната на връзката може временно да прекъсне тази страница.',recovery:'Възстановяване на мрежата: ролята, идентичността и администраторът са запазени. Локалните услуги продължават да работят.',pending:'Предишен опит изисква проверка. Свържи се отново и използвай затварянето на възстановяването, за да се провери резултатът.',node:'Node се свързва с Hub. Запазването на адреса не сдвоява и не одобрява устройството.',standalone:'Standalone изпълнява Core и локалните задачи. Може да работи и без мрежа.',hubRole:'Hub изпълнява Core и приема одобрени Nodes.',applying:'Настройката се прилага и проверява…',success:'Настройката е запазена. Отвори приложението на текущия адрес на устройството.',awaiting:'Настройката на Node е запазена. Очаква се сдвояване и одобрение от Hub.',closed:'Възстановяването е затворено. Записаните настройки са запазени.',interrupted:'Връзката прекъсна. Резултатът не е потвърден. Свържи се отново и провери настройката преди нов опит.',unavailable:'Режимът за настройка не е активен на това устройство.',invalid:'Настройката е отхвърлена. Провери полетата, данните на администратора и адаптера.',completeAction:'Завърши настройката',complete:'Настройката е запазена. Завърши, за да се активират избраните услуги.',failed:'Настройката не завърши. Предишната конфигурация се запазва до изясняване на резултата.',readonly:'Само локален статус. Промените са изключени.',noNetworks:'Няма намерени мрежи. Въведи името ръчно.'}
+      };
+      for (const locale of ['en', 'bg']) Object.assign(messages[locale], productLabels[locale]);
+      const text = (key) => messages[language][key];
+      function show(key, error=false) { status.textContent=text(key); status.dataset.error=String(error); }
+      function translate() {
+        document.documentElement.lang=language; $('#language').value=language;
+        document.querySelectorAll('[data-text]').forEach(el => el.textContent=text(el.dataset.text));
+        if(caps) updateChoices();
+      }
+      $('#language').addEventListener('change', event => {language=event.target.value; translate();});
+      async function api(path, body) {
+        const response=await fetch('/api/v1/setup/'+path, {method:body===undefined?'GET':'POST',
+          headers:{'Content-Type':'application/json'}, body:body===undefined?undefined:JSON.stringify(body)});
+        if(!response.ok) { const error=new Error('request_failed'); error.status=response.status; throw error; }
+        return response.json();
+      }
+      function updateChoices() {
+        const node=field('role').value==='node', recovery=caps.recovery;
+        $('#hub-field').hidden=!node; field('hub_endpoint').required=node&&!recovery;
+        $('#admin-fields').hidden=node||recovery; $('#admin-fields').disabled=node||recovery;
+        field('network_mode').querySelector('[value="local"]').disabled=field('role').value!=='standalone';
+        if(field('network_mode').value==='local'&&field('role').value!=='standalone') field('network_mode').value='preserve';
+        const wifi=field('network_mode').value==='wifi';
+        $('#wifi-fields').hidden=!wifi; $('#wifi-fields').disabled=!wifi;
+        $('#role-note').textContent=text(node?'node':field('role').value==='hub'?'hubRole':'standalone');
+        $('#notice').textContent=text(caps.pending?'pending':caps.complete?'complete':recovery?'recovery':caps.interfaces.length?'managed':'host');
+        $('#finish').hidden=!(recovery||caps.pending||caps.complete);
+        $('#finish').textContent=text(recovery?'finish':'completeAction');
+        form.querySelector('[type="submit"]').disabled=caps.pending||caps.complete||readOnly;
+      }
+      async function loadSetup() {
+        try {
+          caps=await api('capabilities'); saved=await api('prefill');
+          for(const name of ['role','locale','device_name','administrator_name','hub_endpoint']) {
+            if(saved[name]) field(name).value=saved[name];
+            field(name).disabled=caps.recovery;
+          }
+          for(const option of field('role').options) option.disabled=!caps.roles.includes(option.value);
+          if(!caps.roles.includes(field('role').value)) field('role').value=caps.roles[0];
+          field('network_mode').querySelector('[value="wifi"]').disabled=!caps.network_modes.includes('wifi');
+          field('network_interface').replaceChildren(...caps.interfaces.map(item=>new Option(item.name,item.name)));
+          form.hidden=false; status.textContent=''; updateChoices();
+        } catch(error) { show(error.status===403?'unavailable':'failed',true); }
+      }
+      field('role').addEventListener('change',updateChoices); field('network_mode').addEventListener('change',updateChoices);
+      $('#scan-networks').addEventListener('click',async()=>{
+        try {
+          const result=await api('networks'); $('#network-list').replaceChildren();
+          for(const item of result.items) {
+            const button=document.createElement('button'); button.type='button'; button.className='network-option';
+            button.textContent=item.network_name+' · '+item.signal+'%'; button.onclick=()=>field('network_name').value=item.network_name;
+            $('#network-list').append(button);
+          }
+          if(!result.items.length) show('noNetworks');
+        } catch(error) {show(error.status===403?'unavailable':'failed',true);}
+      });
+      async function submit(path, values) {
+        if(busy) return; busy=true; form.querySelectorAll('button').forEach(button=>button.disabled=true); show('applying');
+        try { const result=await api(path,values); form.hidden=true; show(path==='finish'?'closed':result.enrollment==='awaiting_pairing'?'awaiting':'success'); }
+        catch(error) {if(error.status===403) form.hidden=true; show(error.status===403?'unavailable':error.status===409||error.status===422?'invalid':error.status?'failed':'interrupted',true);}
+        finally {busy=false; form.querySelectorAll('button').forEach(button=>button.disabled=false); updateChoices();}
+      }
+      form.addEventListener('submit',event=>{
+        event.preventDefault(); const values={};
+        for(const name of ['role','locale','device_name','administrator_name']) values[name]=field(name).value;
+        values.network_mode=field('network_mode').value;
+        if(values.role==='node') values.hub_endpoint=field('hub_endpoint').value||(caps.recovery?null:'');
+        if(values.network_mode==='wifi') for(const name of ['network_interface','network_name','passphrase']) values[name]=field(name).value;
+        if(values.role!=='node'&&!caps.recovery) for(const name of ['administrator_email','administrator_password']) values[name]=field(name).value;
+        submit('configure',values);
+      });
+      $('#finish').addEventListener('click',()=>submit('finish',{}));
+      async function loadTheme() {
+        try { const theme=await (await fetch('/api/v1/setup/theme')).json();
+          const properties={'body-bg':'body_bg','card-bg':'card_bg','panel-bg':'panel_bg',text:'text_primary',muted:'text_secondary',border:'border',primary:'primary','header-bg':'header_bg','header-text':'header_text'};
+          for(const [name,key] of Object.entries(properties)) document.documentElement.style.setProperty('--'+name,theme[key]);
+          document.documentElement.style.setProperty('--radius',theme.border_radius+'px'); document.documentElement.style.colorScheme=theme.mode;
+        } catch(_) {}
+      }
+      translate(); loadTheme();
+      if(readOnly) show('readonly');
+      else loadSetup();
+    </script>
+  </body>
+</html>

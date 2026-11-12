@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { ApplicationHostError, applicationHostKey } from '@3mm/application-ui/v1'
+import { ApplicationHostError, applicationHostKey } from '@platform/application-ui/v1'
 import Notes from '../source/frontend/Notes.vue'
 
 const wrappers: ReturnType<typeof mount>[] = []

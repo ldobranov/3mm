@@ -15,30 +15,30 @@ from backend.db.device import (
     Device, DeviceCapabilityProvider, DeviceCapabilityState, DeviceCommand,
     DeviceCredential, DevicePlatformState, DeviceState,
 )
-from backend.routes.device_capabilities import router as provider_router
-from backend.routes.device_runtime_features import router as runtime_router
-from backend.services.authority_metadata import (
+from backend.devices.capabilities.api import router as provider_router
+from backend.devices.features.api import router as runtime_router
+from backend.applications.authority.metadata import (
     AuthorityMetadataError, read_authority_guard, read_device_control,
 )
-from backend.services.device_capability_registry import (
+from backend.devices.capabilities.registry import (
     CapabilityRegistryError, configure_provider, registered_capabilities,
     replace_provider, report_availability, set_provider_enabled,
 )
-from backend.services.device_pairing import credential_secret_hash
-from backend.services.device_protocol import DeviceOperations, authenticate_device
-from backend.services.device_runtime_features import replace_runtime_features
+from backend.devices.pairing.service import credential_secret_hash
+from backend.devices.operations import DeviceOperations, authenticate_device
+from backend.devices.features.service import replace_runtime_features
 from backend.tests.test_device_pairing_authority import db, DEVICE_ID  # noqa: F401
-from backend.utils.db_utils import get_db
-from three_mm_protocol.capability_availability import (
+from backend.storage.sessions import get_db
+from packages.protocol.capability_availability import (
     CapabilityAvailabilityReportV1, CapabilityConfigurationV1, declaration_digest,
 )
-from three_mm_protocol.device_capabilities import (
+from packages.protocol.device_capabilities import (
     CapabilityProviderReportV1, CapabilityProviderReportV2,
 )
-from three_mm_protocol.node_features import (
+from packages.protocol.node_features import (
     DeviceRuntimeFeaturesReportV1, MANDATORY_NODE_FEATURES,
 )
-from three_mm_protocol.transport import DeviceProtocolError
+from packages.protocol.transport import DeviceProtocolError
 
 
 PROVIDER = "example.runtime"

@@ -1,5 +1,5 @@
 """Real installed/reviewed checkpoint grants and CAS, never live VM state."""
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -17,9 +17,9 @@ from backend.db.application_authority_grant import ApplicationAuthorityAction as
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.module import ApplicationSyncCheckpoint as Checkpoint
-from backend.services import application_authority_management as authority
-from backend.services.application_checkpoints import _bounded_value, execute_checkpoint
-from backend.services.application_platform import ApplicationPlatformServer
+from backend.applications.authority import management as authority
+from backend.applications.checkpoints import _bounded_value, execute_checkpoint
+from backend.applications.runtime.platform import ApplicationPlatformServer
 from backend.tests.test_application_authority_management import (
     identity,
     installed as managed_installed,
@@ -33,7 +33,7 @@ from backend.tests.test_application_authority_subjects import (
     installed as source_subject,
 )
 from backend.tests.test_application_authority_subjects import source_installed
-from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+from packages.application_sdk import ApplicationPlatformClient, ApplicationPlatformError
 
 
 posix = pytest.mark.skipif(

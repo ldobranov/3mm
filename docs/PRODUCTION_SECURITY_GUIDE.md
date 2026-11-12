@@ -11,8 +11,8 @@ port, generate any certificate or alter the installer.
 
 | Listener | Process | Reachability today |
 | --- | --- | --- |
-| `80` | `three_mm_web` (alias port) | LAN IP and `<hostname>.local` via mDNS |
-| `8080` | `three_mm_web` | LAN compatibility listener |
+| `80` | `components.admin_web` (alias port) | LAN IP and `<hostname>.local` via mDNS |
+| `8080` | `components.admin_web` | LAN compatibility listener |
 | `8887` | `three_mm_core` API (uvicorn) | development/HTTP boundary |
 | `8890` | local Agent | loopback only |
 | `8895` | Setup AP captive portal | temporary local open network only |
@@ -32,7 +32,7 @@ and provider keys must never cross an untrusted network in plaintext.
 
 **Verified facts (from the current code):**
 
-- `three_mm_web` (ports 80/8080) serves the static SPA, its hashed assets,
+- `components.admin_web` (ports 80/8080) serves the static SPA, its hashed assets,
   `/uploads/*` and the static `/runtime-config.json` file. It does **not** proxy
   the API.
 - The shipped Core service binds `0.0.0.0:8887` (uvicorn `backend.main:app`),

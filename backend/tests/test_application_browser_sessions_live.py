@@ -23,7 +23,7 @@ from backend.tests.test_application_browser_sessions import (
     source_installed,
     source_subject,
 )
-from three_mm_protocol.interactive_session import (
+from packages.protocol.interactive_session import (
     decode_session_frame,
     encode_session_frame,
 )

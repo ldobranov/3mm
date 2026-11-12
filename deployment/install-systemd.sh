@@ -112,6 +112,7 @@ runtime_services=(
   3mm-web.service
   3mm-public-web.socket
   3mm-session-worker.socket
+  3mm-host-session-worker.socket
   3mm-setup.service
   3mm-setup-local.service
   3mm-setup-ap.service
@@ -125,6 +126,7 @@ installed_units=(
   "${always_on_services[@]}"
   3mm-application-extension@.service
   3mm-session-worker@.service
+  3mm-host-session-worker@.service
   3mm-public-web.service
 )
 if [[ $install_profile == node ]]; then
@@ -138,6 +140,7 @@ saved_rollback_link=0
 rollback_link_updated=0
 release_created=0
 mutation_started=0
+component_transition_prepared=0
 database_backup_created=0
 environment_backup_created=0
 agent_environment_backup_created=0
@@ -181,6 +184,7 @@ stop_runtime_services() {
   if [[ $install_profile == full ]]; then
     patterns+=('3mm-application-extension@*.service')
     patterns+=('3mm-session-worker@*.service')
+    patterns+=('3mm-host-session-worker@*.service')
   fi
   # A clean host has no installed units. Enumerate actual units instead of
   # treating systemctl stop's NOTINSTALLED response as a runtime stop failure.
@@ -208,6 +212,12 @@ install_units() {
   local unit
   for unit in "${installed_units[@]}"; do
     if [[ ! -f $source_release/deployment/systemd/$unit ]]; then
+      if [[ ( $unit == 3mm-host-session-worker.socket || $unit == 3mm-host-session-worker@.service ) && $require_update_helper == 0 ]]; then
+        systemctl disable --now 3mm-host-session-worker.socket >/dev/null 2>&1 || true
+        systemctl stop '3mm-host-session-worker@*.service' >/dev/null 2>&1 || true
+        rm -f -- "/etc/systemd/system/$unit"
+        continue
+      fi
       if [[ ( $unit == 3mm-session-worker.socket || $unit == 3mm-session-worker@.service ) && $require_update_helper == 0 ]]; then
         systemctl disable --now 3mm-session-worker.socket >/dev/null 2>&1 || true
         systemctl stop '3mm-session-worker@*.service' >/dev/null 2>&1 || true
@@ -322,6 +332,8 @@ verify_endpoint() {
 }
 
 verify_runtime() {
+  local source_release=${1:-${release_dir:-}}
+  local python_path
   local active_count=0
   local pair service endpoint
   local checks=(
@@ -352,8 +364,9 @@ verify_runtime() {
       fail "Core role has no active independent platform Runtime."
       return 1
     fi
-    PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" \
-      -m deployment.platform_runtime_component probe || return 1
+    python_path=$(release_python "$source_release") || return 1
+    PYTHONPATH="$source_release" "$python_path" \
+      "$source_release/deployment/platform_runtime_component.py" probe || return 1
   fi
   if [[ $active_count -eq 0 ]]; then
     echo "Runtime planner did not activate an application or setup service." >&2
@@ -378,19 +391,42 @@ verify_frontend_access() {
 
 activate_runtime() {
   local source_release=$1
-  local python_path
+  local python_path activation_path
   python_path=$(release_python "$source_release") || return 1
+  # Rollback executes the selected immutable release's own launcher. A previous
+  # published release can predate the neutral source layout; never substitute
+  # the failed candidate's planner or add import adapters to the running Core.
+  if [[ -f $source_release/components/system_runtime/activate.py ]]; then
+    activation_path=$source_release/components/system_runtime/activate.py
+  elif [[ -f $source_release/three_mm_runtime/activate.py ]]; then
+    activation_path=$source_release/three_mm_runtime/activate.py
+  else
+    fail "Selected release has no supported runtime activation entrypoint."
+    return 1
+  fi
   AI_SETTINGS_MASTER_KEY="${ai_master_key:-}" PYTHONPATH="$source_release" \
-    "$python_path" -m three_mm_runtime.activate || return 1
+    "$python_path" "$activation_path" || return 1
   # Do not accept a healthy Web/Core while the required Agent is restarting.
-  PYTHONPATH="$source_release" "$python_path" -m three_mm_runtime.activate --check-active || return 1
-  verify_runtime
+  PYTHONPATH="$source_release" "$python_path" "$activation_path" --check-active || return 1
+  verify_runtime "$source_release"
 }
 
 restore_runtime_units() {
   local unit
   # A rollback release may predate the optional session boundary. Never try to
   # resurrect its socket against an older Core after removing the new units.
+  if [[ ! -f /etc/systemd/system/3mm-host-session-worker.socket ]]; then
+    local retained_host=()
+    for unit in "${previous_enabled_units[@]}"; do
+      [[ $unit == 3mm-host-session-worker.socket ]] || retained_host+=("$unit")
+    done
+    previous_enabled_units=("${retained_host[@]}")
+    retained_host=()
+    for unit in "${previous_active_units[@]}"; do
+      [[ $unit == 3mm-host-session-worker.socket ]] || retained_host+=("$unit")
+    done
+    previous_active_units=("${retained_host[@]}")
+  fi
   if [[ ! -f /etc/systemd/system/3mm-session-worker.socket ]]; then
     local retained=()
     for unit in "${previous_enabled_units[@]}"; do
@@ -414,7 +450,7 @@ restore_runtime_units() {
     for unit in "${previous_active_units[@]}"; do
       systemctl is-active --quiet "$unit" || return 1
     done
-    verify_runtime
+    verify_runtime "$previous_release"
   else
     activate_runtime "$previous_release"
   fi
@@ -501,6 +537,20 @@ PY
   return 0
 }
 
+component_transition() {
+  local operation=$1
+  local arguments=("$operation" --source "$release_dir" --profile "$install_profile")
+  if [[ -n $previous_release ]]; then
+    arguments+=(--previous-source "$previous_release")
+  fi
+  if [[ $operation == prepare && ${THREE_MM_RETRY_ROLLED_BACK_TRANSITION:-0} == 1 ]]; then
+    arguments+=(--retry-rolled-back)
+  fi
+  # fd9 is inherited: the helper attests and reuses this same release lock.
+  PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" \
+    "$release_dir/deployment/component_transition.py" "${arguments[@]}"
+}
+
 rollback() {
   local exit_code=$?
   trap - ERR
@@ -525,6 +575,12 @@ rollback() {
       echo "Rollback environment restore failed; services remain stopped and recovery state is preserved." >&2
       exit "$exit_code"
     fi
+    if [[ ${component_transition_prepared:-0} -eq 1 ]]; then
+      if ! component_transition restore; then
+        echo "Component pointer recovery is unconfirmed; services remain stopped and the transition journal is preserved." >&2
+        exit "$exit_code"
+      fi
+    fi
     if [[ -n $previous_release && -d $previous_release ]]; then
       ln -sfnT "$previous_release" "$current_link"
       if [[ $rollback_link_updated -eq 1 ]]; then
@@ -546,6 +602,12 @@ rollback() {
         systemctl --no-pager --full status '3mm-application-extension@*.service' >&2 || true
         echo "Rollback restored Core, but active application services are not healthy." >&2
       }
+      if [[ ${component_transition_prepared:-0} -eq 1 ]]; then
+        component_transition resume || {
+          echo "Previous component readiness is unconfirmed; the transition journal is preserved." >&2
+          exit "$exit_code"
+        }
+      fi
     elif [[ $install_profile == node ]]; then
       # Failed first install: do not leave enabled units or a dangling current link.
       systemctl disable --now "${installed_units[@]}" >/dev/null 2>&1 || true
@@ -557,6 +619,15 @@ rollback() {
         rm -f -- "$current_link"
       fi
       systemctl daemon-reload
+    fi
+    if [[ -z $previous_release && ${component_transition_prepared:-0} -eq 1 ]]; then
+      # A failed first install has no previous Core to resume. The helper proves
+      # the original pairs and absence of originally active components before
+      # marking this completed rollback eligible for an explicit later retry.
+      component_transition resume || {
+        echo "First-install component recovery is unconfirmed; its transition journal is preserved." >&2
+        exit "$exit_code"
+      }
     fi
   fi
 
@@ -691,15 +762,278 @@ tar -xzf "$release_archive" -C "$release_dir" \
 required_files=(
   frontend/dist/index.html
   backend/requirements.txt
-  backend/services/update_staging.py
-  backend/services/application_public_web.py
-  backend/services/application_public_web_transport.py
+  backend/applications/commands/__init__.py
+  backend/applications/commands/broker.py
+  backend/applications/commands/discovery.py
+  backend/applications/commands/passage.py
+  backend/applications/commands/rebinding.py
+  backend/applications/connectors/__init__.py
+  backend/applications/connectors/broker.py
+  backend/applications/connectors/secrets.py
+  backend/applications/connectors/transport.py
+  backend/applications/events/__init__.py
+  backend/applications/events/api.py
+  backend/applications/events/broker.py
+  backend/applications/events/publication.py
+  backend/applications/operations_api.py
+  backend/applications/resources/__init__.py
+  backend/applications/resources/discovery.py
+  backend/applications/resources/providers.py
+  backend/applications/runtime/__init__.py
+  backend/applications/runtime/gateway.py
+  backend/applications/runtime/health.py
+  backend/applications/runtime/identity.py
+  backend/applications/runtime/invocations.py
+  backend/applications/runtime/peers.py
+  backend/applications/runtime/platform.py
+  backend/applications/runtime/responses.py
+  backend/applications/runtime/status.py
+  backend/applications/runtime/status_probe.py
+  backend/applications/sessions/__init__.py
+  backend/applications/sessions/api.py
+  backend/applications/sessions/authority.py
+  backend/applications/sessions/browser.py
+  backend/applications/sessions/local.py
+  backend/applications/sessions/remote.py
+  backend/applications/sessions/runtimes.py
+  backend/applications/tasks/__init__.py
+  backend/applications/tasks/api.py
+  backend/applications/tasks/broker.py
+  backend/applications/tasks/schedules.py
+  backend/sessions/__init__.py
+  backend/sessions/acceptance.py
+  backend/sessions/agent.py
+  backend/sessions/api.py
+  backend/sessions/broker.py
+  backend/sessions/discovery.py
+  backend/sessions/gateway.py
+  backend/sessions/transport.py
+  backend/applications/relational/__init__.py
+  backend/applications/relational/activation.py
+  backend/applications/relational/activation_recovery.py
+  backend/applications/relational/admin_worker.py
+  backend/applications/relational/authority.py
+  backend/applications/relational/boot.py
+  backend/applications/relational/candidate.py
+  backend/applications/relational/lifecycle.py
+  backend/applications/relational/namespace_recovery.py
+  backend/applications/relational/preparation_recovery.py
+  backend/applications/relational/reactivation.py
+  backend/applications/relational/recovery.py
+  backend/applications/relational/recovery_confirmation.py
+  backend/applications/relational/registration.py
+  backend/applications/relational/startup.py
+  backend/applications/relational/upgrade.py
+  backend/applications/relational/upgrade_admin.py
+  backend/applications/relational/upgrade_cli.py
+  backend/applications/relational/upgrade_confirmation.py
+  backend/applications/relational/upgrade_rollback.py
+  backend/devices/pairing/__init__.py
+  backend/devices/pairing/api.py
+  backend/devices/pairing/enrollment.py
+  backend/devices/pairing/service.py
+  backend/devices/platform/__init__.py
+  backend/devices/platform/api.py
+  backend/devices/platform/service.py
+  backend/devices/updates/__init__.py
+  backend/devices/updates/api.py
+  backend/devices/updates/approval.py
+  backend/devices/updates/catalog.py
+  backend/devices/updates/delivery.py
+  backend/devices/updates/delivery_api.py
+  backend/devices/updates/execution.py
+  backend/settings/__init__.py
+  backend/settings/api.py
+  backend/settings/crud.py
+  backend/system/audit/__init__.py
+  backend/system/audit/api.py
+  backend/system/audit/retention.py
+  backend/accounts/bootstrap.py
+  backend/applications/authority/__init__.py
+  backend/applications/authority/access.py
+  backend/applications/authority/admin.py
+  backend/applications/authority/composition.py
+  backend/applications/authority/context.py
+  backend/applications/authority/inspection.py
+  backend/applications/authority/keys.py
+  backend/applications/authority/management.py
+  backend/applications/authority/metadata.py
+  backend/applications/authority/policy.py
+  backend/applications/authority/policy_reviews.py
+  backend/applications/authority/review.py
+  backend/applications/authority/sources.py
+  backend/applications/authority/subjects.py
+  backend/applications/authority/tasks.py
+  backend/devices/modules/template_data/character-display.mock.json
+  backend/devices/modules/template_data/character-display.pcf8574-2row.json
+  backend/devices/modules/template_data/character-display.pcf8574-4row.json
+  backend/devices/modules/template_data/gpio-input.gpiod.json
+  backend/devices/modules/template_data/gpio-input.mock.json
+  backend/devices/modules/templates.py
+  backend/devices/telemetry/__init__.py
+  backend/devices/telemetry/events_api.py
+  backend/devices/telemetry/ingest_api.py
+  backend/devices/telemetry/state_api.py
+  backend/installation/__init__.py
+  backend/installation/api.py
+  backend/installation/identity.py
+  backend/installation/peer_listing.py
+  backend/installation/peer_read_sources.py
+  backend/installation/peers.py
+  backend/installation/projection.py
+  backend/installation/session_tls.py
+  backend/installation/status_binding.py
+  backend/localization/service.py
+  backend/storage/__init__.py
+  backend/storage/engine.py
+  backend/storage/public_assets.py
+  backend/storage/sessions.py
+  backend/system/components.py
+  backend/artifacts/__init__.py
+  backend/artifacts/api.py
+  backend/artifacts/packages.py
+  backend/artifacts/inspection.py
+  backend/artifacts/code_scope.py
+  backend/artifacts/compiled_ui.py
+  backend/artifacts/provenance.py
+  backend/appearance/__init__.py
+  backend/appearance/api.py
+  backend/appearance/packages.py
+  backend/appearance/customization.py
+  backend/appearance/assets.py
+  backend/accounts/__init__.py
+  backend/accounts/passwords.py
+  backend/accounts/tokens.py
+  backend/accounts/dependencies.py
+  backend/accounts/users_api.py
+  backend/accounts/access/__init__.py
+  backend/accounts/access/api.py
+  backend/accounts/access/sources.py
+  backend/accounts/access/groups_api.py
+  backend/accounts/access/roles_api.py
+  backend/accounts/access/permissions_api.py
+  backend/accounts/sessions/__init__.py
+  backend/accounts/sessions/api.py
+  backend/accounts/sessions/refresh.py
+  backend/accounts/sessions/policy.py
+  backend/system/updates/__init__.py
+  backend/system/updates/api.py
+  backend/system/updates/releases.py
+  backend/system/updates/policy.py
+  backend/system/updates/staging.py
+  backend/system/updates/platform_runtime.py
+  backend/system/updates/components_api.py
+  backend/system/updates/components.py
+  backend/applications/checkpoints.py
+  backend/applications/delegations/__init__.py
+  backend/applications/delegations/api.py
+  backend/applications/delegations/service.py
+  backend/applications/files/__init__.py
+  backend/applications/files/api.py
+  backend/applications/files/authority.py
+  backend/applications/files/transfers.py
+  backend/applications/kiosks/__init__.py
+  backend/applications/kiosks/api.py
+  backend/applications/kiosks/service.py
+  backend/applications/public_web/__init__.py
+  backend/applications/public_web/guests.py
+  backend/applications/public_web/webhook_admission.py
+  backend/applications/queries/__init__.py
+  backend/applications/queries/configuration.py
+  backend/applications/queries/transport.py
+  backend/applications/public_web/routes.py
+  backend/applications/public_web/transport.py
+  packages/__init__.py
+  packages/platform_wire/__init__.py
+  packages/platform_wire/event_delivery.py
+  packages/platform_wire/task_time.py
+  packages/protocol/__init__.py
+  packages/protocol/theme_design_defaults.json
+  backend/devices/__init__.py
+  backend/devices/operations.py
+  backend/devices/authority.py
+  backend/devices/auth.py
+  backend/devices/http.py
+  backend/devices/body_limit.py
+  backend/devices/commands/__init__.py
+  backend/devices/commands/api.py
+  backend/devices/commands/queue.py
+  backend/devices/commands/notifier.py
+  backend/devices/capabilities/__init__.py
+  backend/devices/capabilities/api.py
+  backend/devices/capabilities/state_api.py
+  backend/devices/capabilities/registry.py
+  backend/devices/hardware_interfaces.py
+  backend/devices/features/__init__.py
+  backend/devices/features/api.py
+  backend/devices/features/service.py
+  backend/devices/modules/__init__.py
+  backend/devices/modules/lifecycle.py
+  backend/devices/modules/authority.py
+  backend/devices/registry/__init__.py
+  backend/devices/registry/api.py
+  backend/devices/registry/read.py
+  backend/devices/registry/online.py
+  backend/localization/__init__.py
+  backend/localization/api.py
+  backend/localization/packages.py
+  backend/applications/__init__.py
+  backend/applications/management/__init__.py
+  backend/applications/management/configuration.py
+  backend/applications/management/requirements.py
+  backend/applications/management/staging.py
+  backend/applications/management/provenance.py
+  backend/applications/management/api.py
+  backend/applications/management/access_api.py
+  backend/applications/management/connector_api.py
+  backend/applications/management/ui_admin_api.py
+  backend/applications/management/lifecycle.py
+  backend/applications/management/consent.py
+  backend/applications/management/lifecycle_consent.py
+  backend/applications/management/connector_settings.py
+  backend/system/__init__.py
+  backend/system/backups/__init__.py
+  backend/system/backups/api.py
+  backend/system/backups/service.py
+  backend/system/control.py
+  backend/system/diagnostics/__init__.py
+  backend/system/diagnostics/api.py
+  backend/system/diagnostics/failures.py
+  backend/system/diagnostics/operations.py
+  backend/system/diagnostics/workspace.py
+  backend/system/diagnostics/bundle.py
+  backend/system/diagnostics/alerts.py
+  backend/system/network_recovery/__init__.py
+  backend/system/network_recovery/api.py
+  backend/system/network_recovery/service.py
+  components/__init__.py
+  components/admin_web/__init__.py
+  components/admin_web/__main__.py
+  components/admin_web/server.py
+  components/system_runtime/__init__.py
+  components/system_runtime/activate.py
+  components/system_runtime/services.py
+  components/system_runtime/install_profile.py
+  config_templates/product.json
+  components/setup/__init__.py
+  components/setup/__main__.py
+  components/setup/captive_portal.py
+  components/setup/cli.py
+  components/setup/config.py
+  components/setup/main.py
+  components/setup/product.py
+  components/setup/provision.py
+  components/setup/schemas.py
+  components/setup/requirements.txt
+  components/setup/static/setup.html
   deployment/apply_staged_update.py
+  deployment/component_transition.py
   deployment/bootstrap-local-agent.py
   deployment/create_backup.py
   deployment/local_agent_pairing.py
   deployment/portable_backup.py
   deployment/prepare_backup_storage.py
+  deployment/prepare_host_sessions.py
   deployment/backup_compatibility.py
   deployment/restore_backup.py
   deployment/restore_application_extensions.py
@@ -719,36 +1053,64 @@ required_files=(
   deployment/systemd/3mm-application-extension@.service
   deployment/systemd/3mm-session-worker.socket
   deployment/systemd/3mm-session-worker@.service
-  three_mm_runtime/session_worker.py
-  three_mm_runtime/session_worker_client.py
-  three_mm_runtime/update_helper.py
-  three_mm_runtime/platform_runtime_updates.py
-  backend/services/platform_runtime_updates.py
-  three_mm_runtime/application_activation.py
-  three_mm_runtime/application_host.py
-  three_mm_runtime/application_transport.py
-  three_mm_public_web/__init__.py
-  three_mm_public_web/__main__.py
-  three_mm_public_web/server.py
-  three_mm_application_sdk/__init__.py
-  three_mm_runtime/network_recovery.py
-  three_mm_provisioning/network_recovery.py
-  three_mm_runtime/install_bootstrap.py
+  deployment/systemd/3mm-host-session-worker.socket
+  deployment/systemd/3mm-host-session-worker@.service
+  components/system_runtime/session_worker.py
+  components/system_runtime/session_worker_client.py
+  components/system_runtime/host_session_worker.py
+  components/system_runtime/host_session_policy.py
+  components/system_runtime/update_helper.py
+  components/system_runtime/platform_runtime_updates.py
+  components/platform_runtime/__init__.py
+  components/platform_runtime/__main__.py
+  components/platform_runtime/server.py
+  components/platform_runtime/public_web.py
+  components/platform_runtime/events.py
+  components/platform_runtime/responses.py
+  components/platform_runtime/connector_worker.py
+  components/platform_runtime/connector_execute.py
+  components/platform_runtime/tasks.py
+  components/system_runtime/application_activation.py
+  components/system_runtime/application_host.py
+  components/system_runtime/application_transport.py
+  components/public_web/__init__.py
+  components/public_web/__main__.py
+  components/public_web/server.py
+  components/public_web/webhook_pilot.py
+  packages/application_sdk/__init__.py
+  components/system_runtime/network_recovery.py
+  packages/provisioning/__init__.py
+  packages/provisioning/network_recovery.py
+  packages/provisioning/network_helper.py
+  packages/provisioning/setup_access_point.py
+  components/system_runtime/install_bootstrap.py
 )
 if [[ $install_profile == node ]]; then
   required_files=(
-    agent/requirements.txt setup_service/requirements.txt
+    agent/requirements.txt components/__init__.py
+    components/system_runtime/__init__.py
+    components/setup/__init__.py components/setup/__main__.py
+    components/setup/captive_portal.py components/setup/cli.py components/setup/config.py
+    components/setup/main.py components/setup/product.py components/setup/provision.py
+    components/setup/schemas.py components/setup/requirements.txt
+    config_templates/product.json
+    packages/__init__.py packages/platform_wire/__init__.py
+    packages/platform_wire/event_delivery.py packages/platform_wire/task_time.py
+    packages/protocol/__init__.py packages/protocol/theme_design_defaults.json
+    packages/provisioning/__init__.py packages/provisioning/network_recovery.py
     .3mm-install-profile .3mm-release.json deployment/node-wheels/provenance.json
     deployment/node-requirements.txt deployment/node_preflight.py
-    three_mm_runtime/install_profile.py three_mm_runtime/activate.py
-    three_mm_runtime/install_bootstrap.py
-    three_mm_runtime/node_recovery.py three_mm_runtime/network_recovery.py
-    three_mm_runtime/node_update_helper.py deployment/apply_node_update.py
-    three_mm_runtime/node_update_trust.py deployment/trust_node_update_hub.py
-    three_mm_protocol/node_updates.py agent/node_update_client.py
+    deployment/component_transition.py
+    components/system_runtime/install_profile.py components/system_runtime/activate.py
+    components/system_runtime/services.py
+    components/system_runtime/install_bootstrap.py
+    components/system_runtime/node_recovery.py components/system_runtime/network_recovery.py
+    components/system_runtime/node_update_helper.py deployment/apply_node_update.py
+    components/system_runtime/node_update_trust.py deployment/trust_node_update_hub.py
+    packages/protocol/node_updates.py agent/node_update_client.py
     agent/node_update_execution.py
-    three_mm_provisioning/network_helper.py three_mm_provisioning/setup_access_point.py
-    setup_service/static/setup.html deployment/systemd/3mm-captive-portal-dnsmasq.conf
+    packages/provisioning/network_helper.py packages/provisioning/setup_access_point.py
+    components/setup/static/setup.html deployment/systemd/3mm-captive-portal-dnsmasq.conf
   )
   for unit in "${installed_units[@]}"; do
     required_files+=("deployment/systemd/$unit")
@@ -801,7 +1163,7 @@ if [[ $install_profile == node ]]; then
   "$release_dir/.venv/bin/python" -m pip check
   "$release_dir/.venv/bin/python" "$release_dir/deployment/node_preflight.py"
   PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" -c \
-    'from pathlib import Path; from three_mm_provisioning import FileProvisioningStore; from three_mm_runtime.install_profile import InstallProfile, validate_profile_role; s = FileProvisioningStore(Path("/var/lib/3mm/provisioning")).load(); validate_profile_role(InstallProfile.NODE, s.role if s else None)'
+    'from pathlib import Path; from packages.provisioning import FileProvisioningStore; from components.system_runtime.install_profile import InstallProfile, validate_profile_role; s = FileProvisioningStore(Path("/var/lib/3mm/provisioning")).load(); validate_profile_role(InstallProfile.NODE, s.role if s else None)'
 else
 "$release_dir/.venv/bin/python" -m pip install \
   --disable-pip-version-check \
@@ -834,7 +1196,7 @@ if [[ $install_profile == full ]]; then
     "$database" "$environment_file" "$ai_master_key_file" <<'PY'
 import sys
 from pathlib import Path
-from backend.services.installation_identity import InstallationIdentityError, select_installer_master_key
+from backend.installation.identity import InstallationIdentityError, select_installer_master_key
 
 try:
     key = select_installer_master_key(*map(Path, sys.argv[1:]))
@@ -844,8 +1206,11 @@ print(key)
 PY
   )
 fi
-PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" -m three_mm_runtime.install_bootstrap \
+PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" -m components.system_runtime.install_bootstrap \
   --profile "$install_profile" --check-only
+log "Preparing the coordinated immutable component transition"
+component_transition prepare
+component_transition_prepared=1
 log "Stopping services and backing up persistent state"
 for unit in "${runtime_services[@]}"; do
   if systemctl is-active --quiet "$unit"; then previous_active_units+=("$unit"); fi
@@ -999,6 +1364,9 @@ else
 fi
 install -d -o root -g root -m 0755 /etc/NetworkManager/dnsmasq-shared.d
 
+log "Switching the reviewed component pointer set while services are stopped"
+component_transition switch
+
 log "Preparing the independent Agent environment"
 # Only Agent configuration enters its own environment; never Core DB/signing keys.
 install -d -o root -g 3mm -m 0750 /etc/3mm-agent
@@ -1025,6 +1393,13 @@ PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" \
   -m deployment.service_component public-web bootstrap --source "$release_dir"
 PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" \
   -m deployment.service_component session-worker bootstrap --source "$release_dir"
+# Fixed-account host sessions remain explicitly disabled by their root policy.
+# This only provisions the independent artifact, never application rights or a
+# listening socket; existing explicit policy is validated and preserved.
+PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" \
+  -m deployment.prepare_host_sessions
+PYTHONPATH="$release_dir" "$release_dir/.venv/bin/python" \
+  -m deployment.service_component host-session-worker bootstrap --source "$release_dir"
 fi
 install_units "$release_dir"
 if [[ $install_profile == full ]]; then
@@ -1042,7 +1417,7 @@ fi
 
 log "Preparing the persistent runtime journal"
 runuser -u 3mm -- env PYTHONPATH="$release_dir" \
-  "$release_dir/.venv/bin/python" -m three_mm_runtime.install_bootstrap --profile "$install_profile"
+  "$release_dir/.venv/bin/python" -m components.system_runtime.install_bootstrap --profile "$install_profile"
 
 log "Activating release atomically"
 ln -sfnT "$release_dir" "$current_link"
@@ -1062,6 +1437,8 @@ else
   restart_always_on_services
   start_active_application_services "$release_dir"
 fi
+log "Verifying the transitioned active components"
+component_transition verify
 if [[ $test_fail_after_health == 1 ]]; then
   fail "Injected post-health deployment failure for rollback acceptance."
 fi
@@ -1070,7 +1447,8 @@ if [[ -n $previous_release && $previous_release != "$release_dir" ]]; then
   rollback_link_updated=1
 fi
 
-log "Deployment succeeded"
 rm -f -- "$release_archive"
-systemctl --no-pager --full status "${runtime_services[@]}" "${always_on_services[@]}" 2>/dev/null || true
+component_transition commit
 trap - ERR
+log "Deployment succeeded"
+systemctl --no-pager --full status "${runtime_services[@]}" "${always_on_services[@]}" 2>/dev/null || true

@@ -1,4 +1,4 @@
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -7,10 +7,10 @@ from sqlalchemy import select
 
 from backend.tests.test_application_commands import setup, payload
 from backend.db.device import DeviceCommand
-from backend.services import application_commands as broker
-from backend.services.device_commands import DeviceCommandError, command_envelope
-from three_mm_protocol.application_commands import ApplicationCommandSubmitV1
-from three_mm_application_sdk import ApplicationPlatformClient
+from backend.applications.commands import broker
+from backend.devices.commands.queue import DeviceCommandError, command_envelope
+from packages.protocol.application_commands import ApplicationCommandSubmitV1
+from packages.application_sdk import ApplicationPlatformClient
 from agent.physical_command_journal import PhysicalCommandJournal
 
 
@@ -141,7 +141,7 @@ def test_signed_lookup_allows_disabled_history_but_not_submit(setup, monkeypatch
     import time
     import backend.database
     from sqlalchemy.orm import sessionmaker
-    from backend.services.application_platform import ApplicationPlatformServer
+    from backend.applications.runtime.platform import ApplicationPlatformServer
     s = setup
     submitted = broker.submit_command(s.db, s.app, payload())
     s.app.enabled = False

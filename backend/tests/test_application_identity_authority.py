@@ -15,10 +15,10 @@ from backend.db.authority import CoreAuthorityGuard
 from backend.db.installation_identity import CoreInstallationIdentity
 from backend.db.installation_peer import InstallationPeerOutbound
 from backend.db.module import ApplicationExtensionInstallation as Installation
-from backend.services import application_authority_management as management
-from backend.services.application_authority_sources import _read_snapshot
-from backend.services.application_authority_subjects import resolve_installed_policy_subject
-from backend.routes.application_authority import router
+from backend.applications.authority import management
+from backend.applications.authority.sources import _read_snapshot
+from backend.applications.authority.subjects import resolve_installed_policy_subject
+from backend.applications.management.access_api import router
 from backend.tests.test_application_authority_management import identity, native, decide
 from backend.tests.test_application_authority_management import installed as managed_installed
 from backend.tests.test_application_authority_subjects import installed as source_subject
@@ -26,9 +26,9 @@ from backend.tests.test_application_authority_subjects import source_installed
 from backend.tests.test_application_checkpoint_authority import (
     checkpoint_app, store_checkpoint_package,
 )
-from backend.utils.db_utils import get_db
-from three_mm_protocol.tests.test_application_private_files import file_request
-from three_mm_protocol.tests.test_application_relational_storage import relational_request
+from backend.storage.sessions import get_db
+from packages.protocol.tests.test_application_private_files import file_request
+from packages.protocol.tests.test_application_relational_storage import relational_request
 
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Real POSIX Core review keys")

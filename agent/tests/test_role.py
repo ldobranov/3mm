@@ -4,16 +4,16 @@ from fastapi.testclient import TestClient
 from agent.config import AgentSettings
 from agent.main import create_app
 from agent.role import AgentRoleResolver
-from setup_service.main import create_app as create_setup_app
-from three_mm_protocol import AgentRole
-from three_mm_provisioning import (
+from components.setup.main import create_app as create_setup_app
+from packages.protocol import AgentRole
+from packages.provisioning import (
     FileProvisioningStore,
     MemoryProvisioningStore,
     ProvisioningSnapshot,
     ProvisioningState,
     ProvisioningStoreError,
 )
-from three_mm_provisioning.mock_network import MockNetworkAdapter
+from packages.provisioning.mock_network import MockNetworkAdapter
 
 
 def _provisioned(role: AgentRole) -> ProvisioningSnapshot:
@@ -82,7 +82,7 @@ def test_setup_service_role_is_consumed_by_agent(tmp_path):
     from sqlalchemy import create_engine
 
     from backend.db.user import User
-    from setup_service.config import SetupSettings
+    from components.setup.config import SetupSettings
 
     provisioning_store = FileProvisioningStore(tmp_path / "setup")
     setup_settings=SetupSettings(data_dir=tmp_path/"setup",core_database_path=tmp_path/"core.db")

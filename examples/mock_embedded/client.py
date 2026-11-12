@@ -17,10 +17,10 @@ from uuid import uuid4
 
 import requests
 import subprocess
-from three_mm_protocol.device_platform import challenge, DevicePlatformSnapshotV1
-from three_mm_protocol.device_authority import DeviceAuthorityStore, sync_directory
+from packages.protocol.device_platform import challenge, DevicePlatformSnapshotV1
+from packages.protocol.device_authority import DeviceAuthorityStore, sync_directory
 
-from three_mm_protocol import (
+from packages.protocol import (
     AgentCommand,
     AgentCommandResult,
     AgentHeartbeat,
@@ -35,11 +35,11 @@ from three_mm_protocol import (
     DeviceRuntimeFeaturesReportV1,
     DeviceRuntimeFeaturesSnapshotV1,
 )
-from three_mm_protocol.node_features import MANDATORY_NODE_FEATURES
-from three_mm_protocol.capability_contracts import CONTRACT_FEATURE, CapabilityContractError, validate_value
-from three_mm_protocol.device_capabilities import CapabilityProviderReportV2, CapabilityProviderSnapshotV2
-from three_mm_protocol.capability_availability import AVAILABILITY_FEATURE, CapabilityAvailabilityReportV1, declaration_digest
-from three_mm_protocol.fleet_pairing import (
+from packages.protocol.node_features import MANDATORY_NODE_FEATURES
+from packages.protocol.capability_contracts import CONTRACT_FEATURE, CapabilityContractError, validate_value
+from packages.protocol.device_capabilities import CapabilityProviderReportV2, CapabilityProviderSnapshotV2
+from packages.protocol.capability_availability import AVAILABILITY_FEATURE, CapabilityAvailabilityReportV1, declaration_digest
+from packages.protocol.fleet_pairing import (
     NodeEnrollmentRequest,
     NodeEnrollmentResponse,
 )

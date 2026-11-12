@@ -17,17 +17,17 @@ from sqlalchemy import select, update, func
 from sqlalchemy.orm import Session
 from backend.db.module import ApplicationExtensionInstallation as Installation, ModulePackage
 from backend.db.application_task import ApplicationTaskRun as Run
-from backend.services.module_packages import validate_module_package
-from backend.services import application_tasks as tasks
-from backend.services.application_tasks import claim_task, dispatch_task, finish_task
+from backend.artifacts.packages import validate_module_package
+from backend.applications.tasks import broker as tasks
+from backend.applications.tasks.broker import claim_task, dispatch_task, finish_task
 from backend.tests.test_application_command_discovery import installed, source_subject, source_installed, vertical, identity
 from backend.tests.test_application_consent import preview, allow
 from backend.config import ApplicationRuntimeSettings
 from examples.task_probe import TaskProbe
-from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
-from three_mm_runtime.application_activation import _application_metadata
-from three_mm_runtime.application_transport import ApplicationServiceClient, ApplicationTransportError
-from three_mm_platform_runtime.tasks import TaskWorker
+from packages.application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+from components.system_runtime.application_activation import _application_metadata
+from components.system_runtime.application_transport import ApplicationServiceClient, ApplicationTransportError
+from components.platform_runtime.tasks import TaskWorker
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Real Unix peers, sealed authority and processes")
 REPO = Path(__file__).resolve().parents[2]
@@ -71,7 +71,7 @@ def task_state(vertical, tmp_path, request, native_task_host):
     if command_mode:
         from sqlalchemy import delete
         from backend.db.device import Device,DeviceCapabilityProvider,DeviceCapabilityHealth
-        from backend.services.device_capability_registry import capability_catalog
+        from backend.devices.capabilities.registry import capability_catalog
         spec=importlib.util.spec_from_file_location("digital_builder",REPO/"modules/digital-output/build_package.py")
         output=importlib.util.module_from_spec(spec);spec.loader.exec_module(output)
         s.output_blob=output.build_package(versioned=True)
@@ -138,7 +138,7 @@ def task_state(vertical, tmp_path, request, native_task_host):
 
 def test_resource_observation_uses_native_host_and_live_worker_without_scheduling_a_task(task_state, monkeypatch):
     import backend.config as config
-    from backend.services import application_resource_providers as providers
+    from backend.applications.resources import providers
     s = task_state
     settings = config.get_settings()
     monkeypatch.setattr(config, 'get_settings', lambda:settings.model_copy(update={'applications':
@@ -200,8 +200,8 @@ def wait_schedule(s,key,condition,seconds=16):
 
 
 def tick_current(s, body, *, due=None):
-    from backend.services.application_task_schedules import tick_schedule,poll_schedules
-    from three_mm_platform_wire.task_time import latest_occurrence
+    from backend.applications.tasks.schedules import tick_schedule,poll_schedules
+    from packages.platform_wire.task_time import latest_occurrence
     plan=next(p for p in poll_schedules(s.engine) if p["schedule_id"]==body["schedule_id"])
     candidate=due or latest_occurrence(plan["rule"],plan["start_at"],plan["end_at"],tasks.now())
     return tick_schedule(s.engine,schedule_id=plan["schedule_id"],request_hash=plan["request_hash"],due_at=candidate.isoformat())
@@ -323,8 +323,8 @@ def test_task_command_uses_real_mock_agent_and_cannot_bypass_or_replay(task_stat
     from agent.physical_command_journal import PhysicalCommandJournal
     from backend.db.device import Device,DeviceCommand
     from backend.db.application_command import ApplicationCommandRequest
-    from backend.services.application_commands import authorize_execution
-    from backend.services.device_commands import deliver_next_command,command_envelope,record_command_result
+    from backend.applications.commands.broker import authorize_execution
+    from backend.devices.commands.queue import deliver_next_command,command_envelope,record_command_result
     with pytest.raises(ApplicationPlatformError):
         s.sdk.submit_command("output",request_id=identity(),arguments={"channel":"gpio.output.1","value":True},ttl_seconds=5)
     with pytest.raises(ApplicationPlatformError):
@@ -370,8 +370,8 @@ def test_task_command_uses_real_mock_agent_and_cannot_bypass_or_replay(task_stat
 def test_task_grant_and_live_lease_are_rechecked_at_physical_permit(task_state):
     s=task_state
     from backend.db.device import Device
-    from backend.services.application_commands import authorize_execution
-    from backend.services.device_commands import deliver_next_command
+    from backend.applications.commands.broker import authorize_execution
+    from backend.devices.commands.queue import deliver_next_command
     key,accepted,command_id=start_output_task(s)
     with Session(s.engine) as db:
         command=deliver_next_command(db,device=db.get(Device,1));assert command.command_id==command_id
@@ -386,8 +386,8 @@ def test_task_grant_and_live_lease_are_rechecked_at_physical_permit(task_state):
 def test_unconfirmed_physical_result_blocks_later_periodic_effects(task_state):
     s=task_state
     from backend.db.device import Device,DeviceCommand
-    from backend.services.application_commands import authorize_execution
-    from backend.services.device_commands import deliver_next_command
+    from backend.applications.commands.broker import authorize_execution
+    from backend.devices.commands.queue import deliver_next_command
     key,_,command_id=start_output_task(s)
     with Session(s.engine) as db:
         device=db.get(Device,1);assert deliver_next_command(db,device=device).command_id==command_id
@@ -422,7 +422,7 @@ def test_unresolved_task_cannot_be_forgotten_by_uninstall(task_state):
     worker=s.start_worker();wait(s,key,("running",))
     worker.kill();worker.wait(timeout=3)
     from fastapi import HTTPException
-    from backend.routes.application_extensions import _require_no_unresolved_tasks
+    from backend.applications.management.api import _require_no_unresolved_tasks
     with Session(s.engine) as db,tasks._write(db):
         with pytest.raises(HTTPException) as error:_require_no_unresolved_tasks(db,1)
         assert error.value.status_code==409
@@ -463,9 +463,9 @@ def test_task_package_staging_is_admin_stopped_cas_bound_and_preserves_results(t
         assert app.authority_incarnation==original_incarnation and app.authority_mode=='review_required'
         assert app.active_version is None and not app.enabled
     assert s.task_probe.lookup(old_key)['result']=={'total':5050}
-    from backend.services.authority_metadata import read_authority_guard
+    from backend.applications.authority.metadata import read_authority_guard
     with Session(s.engine) as db:guard=read_authority_guard(db)
-    from backend.services.application_authority_management import AuthorityManagementError
+    from backend.applications.authority.management import AuthorityManagementError
     with pytest.raises(AuthorityManagementError):
         with s.manager.native_activation(1,target.sha256,{},guard):pass
     # Fresh artifact-specific approval is saved while stopped, before activation.
@@ -475,7 +475,7 @@ def test_task_package_staging_is_admin_stopped_cas_bound_and_preserves_results(t
     with s.manager.native_activation(1,target.sha256,{},guard) as lease:
         assert lease is not None
     assert attempts(s)==1 and all(process.poll() is not None for process in s.processes)
-    from backend.services.application_package_staging import registration_id
+    from backend.applications.management.staging import registration_id
     from backend.db.application_authority_grant import ApplicationAuthorityAction
     with Session(s.engine) as db,db.begin():
         package=db.scalar(select(ModulePackage).where(ModulePackage.sha256==target.sha256))

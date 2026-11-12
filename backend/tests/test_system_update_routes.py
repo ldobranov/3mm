@@ -9,22 +9,22 @@ import backend.database  # noqa: F401 - register complete model metadata
 from backend.db.audit_log import AuditLog
 from backend.db.base import Base
 from backend.db.user import User
-from backend.routes.system_updates import router
-from backend.services.system_updates import (
+from backend.system.updates.api import router
+from backend.system.updates.releases import (
     CurrentRelease,
     UpdateCheckResponse,
 )
-from backend.services.update_policy import UpdatePolicy, UpdatePolicyStatus
-from backend.services.update_staging import (
+from backend.system.updates.policy import UpdatePolicy, UpdatePolicyStatus
+from backend.system.updates.staging import (
     PreflightCheck,
     StagedUpdate,
     StagedUpdateResponse,
     UpdateOperationStatus,
 )
-from backend.utils import jwt_utils
-from backend.utils.auth import hash_password
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
+from backend.accounts import tokens as jwt_utils
+from backend.accounts.passwords import hash_password
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
 
 
 @pytest.fixture(autouse=True)
@@ -87,7 +87,7 @@ def test_update_status_requires_an_administrator(
 ) -> None:
     client, db, admin_token, viewer_token = make_client()
     monkeypatch.setattr(
-        "backend.routes.system_updates.read_local_update_status",
+        "backend.system.updates.api.read_local_update_status",
         lambda _settings: response_payload(),
     )
     try:
@@ -122,7 +122,7 @@ def test_update_check_is_read_only_and_admin_only(
         return response_payload("no_release")
 
     monkeypatch.setattr(
-        "backend.routes.system_updates.check_and_cache_update_catalog", check
+        "backend.system.updates.api.check_and_cache_update_catalog", check
     )
     try:
         assert (
@@ -163,14 +163,14 @@ def test_update_policy_is_admin_only_and_changes_are_audited(
         within_maintenance_window=False,
     )
     monkeypatch.setattr(
-        "backend.routes.system_updates.read_update_policy", lambda _settings: original
+        "backend.system.updates.api.read_update_policy", lambda _settings: original
     )
     monkeypatch.setattr(
-        "backend.routes.system_updates.save_update_policy",
+        "backend.system.updates.api.save_update_policy",
         lambda _settings, _payload: saved,
     )
     monkeypatch.setattr(
-        "backend.routes.system_updates.read_update_policy_status",
+        "backend.system.updates.api.read_update_policy_status",
         lambda _settings: status_response,
     )
     payload = saved.model_dump(exclude={"schema_version"})
@@ -228,7 +228,7 @@ def test_stage_is_admin_only_and_records_a_reviewable_audit(
 ) -> None:
     client, db, admin_token, viewer_token = make_client()
     monkeypatch.setattr(
-        "backend.routes.system_updates.stage_latest_update",
+        "backend.system.updates.api.stage_latest_update",
         lambda *_arguments, **_kwargs: staged_response(),
     )
     try:
@@ -270,7 +270,7 @@ def test_apply_requires_admin_and_passes_only_the_explicit_approval(
             requested_by_user_id=requested_by_user_id,
         )
 
-    monkeypatch.setattr("backend.routes.system_updates.approve_staged_update", approve)
+    monkeypatch.setattr("backend.system.updates.api.approve_staged_update", approve)
     payload = {
         "release_id": "v1.2.0",
         "approval_nonce": "d" * 64,

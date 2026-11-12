@@ -137,7 +137,7 @@ def test_resume_without_successful_stop_is_refused(monkeypatch):
 
 
 def test_real_backup_status_reports_application_resume_failure(tmp_path, monkeypatch):
-    from backend.services.backups import read_backup_operation_status
+    from backend.system.backups.service import read_backup_operation_status
     from backend.tests.test_backup_preview import _settings
 
     systemd(monkeypatch, f"{APP} loaded active running Test\n", inactive_after_start=APP)

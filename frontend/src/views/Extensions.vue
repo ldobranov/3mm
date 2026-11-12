@@ -235,6 +235,11 @@
         <p v-else-if="configurationTarget && needsPackagePreparation(configurationTarget.extension, configurationTarget.sha256)" class="ui-help">
           {{ versionLabel('reviewFirst') }}
         </p>
+        <p v-else-if="configurationNeedsPreparation" class="ui-help">
+          {{ configurationRequiresStop ? versionLabel('stopFirst') : currentLanguage.startsWith('bg')
+            ? 'Запази избраните ресурси преди новия преглед на достъпа. Приложението няма да стартира.'
+            : 'Save the resource selection before a fresh access review. This does not start the application.' }}
+        </p>
         <div v-for="(field, index) in configurationFields" :key="field.key" class="ui-field configuration-field">
           <label :for="`application-config-${field.key}`">{{ field.label }}</label>
           <select
@@ -260,6 +265,9 @@
           {{ t('extensions.noDevicesAvailable', 'No active managed devices are available.') }}
         </div>
         <div v-if="configurationError" class="error-message" role="alert">{{ configurationError }}</div>
+        <p v-if="configurationNeedsRefresh" class="ui-help">
+          {{ currentLanguage.startsWith('bg') ? 'Затвори и отвори настройките отново, за да прочетеш текущото състояние. Подготовката няма да се повтори автоматично.' : 'Close and reopen configuration to read the current state. Preparation is not repeated automatically.' }}
+        </p>
       </div>
       <template #actions>
         <UiButton :disabled="configurationSaving" @click="cancelApplicationConfiguration">
@@ -272,6 +280,8 @@
               ? (currentLanguage.startsWith('bg') ? 'Запази устройството' : 'Save device selection')
             : configurationTarget && needsPackagePreparation(configurationTarget.extension, configurationTarget.sha256)
               ? versionLabel('prepare')
+            : configurationNeedsPreparation
+              ? (currentLanguage.startsWith('bg') ? 'Запази избраните ресурси' : 'Save resource selection')
               : t('extensions.installApplication', 'Install and activate') }}
         </UiButton>
       </template>
@@ -480,14 +490,25 @@ const showConfigurationModal = ref(false);
 const configurationFields = ref<ApplicationConfigurationField[]>([]);
 const configurationDevices = ref<ApplicationConfigurationDevice[]>([]);
 const configurationValues = ref<Record<string, string>>({});
+const configurationOriginalValues = ref<Record<string, string>>({});
 const configurationTarget = ref<{ extension: Extension; sha256: string; missingDeviceKeys: string[] } | null>(null);
 const configurationSaving = ref(false);
 const configurationError = ref('');
+const configurationNeedsRefresh = ref(false);
+
+const configurationNeedsPreparation = computed(() => {
+  const target = configurationTarget.value;
+  return Boolean(target?.extension.is_installed && target.sha256 === target.extension.package_sha256
+    && configurationFields.value.some(field =>
+      configurationValues.value[field.key] !== configurationOriginalValues.value[field.key]));
+});
+const configurationRequiresStop = computed(() => configurationNeedsPreparation.value
+  && (configurationTarget.value?.extension.is_enabled || configurationTarget.value?.extension.status !== 'disabled'));
 
 const isAdmin = computed(() => (localStorage.getItem('role') || '') === 'admin');
 
 const canSaveApplicationConfiguration = computed(() =>
-  configurationFields.value.every(field =>
+  !configurationNeedsRefresh.value && !configurationRequiresStop.value && configurationFields.value.every(field =>
     field.kind === 'application_query'
       ? !!field.export_key && field.choices?.some(choice => `${choice.instance_id}/${choice.export_id}` === configurationValues.value[field.key]) === true
       : !field.required || Boolean(configurationValues.value[field.key]),
@@ -553,8 +574,8 @@ const needsPackagePreparation = (extension: Extension, sha256 = applicationPacka
   && Boolean(sha256 && sha256 !== extension.package_sha256);
 
 const applyApplicationPackage = async (extension: Extension, sha256: string,
-  configuration?: Record<string, string>): Promise<boolean> => {
-  if (!needsPackagePreparation(extension, sha256)) {
+  configuration?: Record<string, string>, prepareConfiguration = false): Promise<boolean> => {
+  if (!needsPackagePreparation(extension, sha256) && !prepareConfiguration) {
     if (configuration) await http.post(`/api/v1/application-extensions/packages/${sha256}/activate`, { configuration });
     else await http.post(`/api/v1/application-extensions/packages/${sha256}/activate`);
     await openApplicationAccessIfNeeded(extension);
@@ -565,7 +586,7 @@ const applyApplicationPackage = async (extension: Extension, sha256: string,
   const status = readAuthorityStatus(data);
   if (status.artifact_sha256 !== extension.package_sha256 || status.installation_enabled
     || status.installation_status !== 'disabled' || status.grant_state === 'unavailable') {
-    throw new Error('Refresh the application’s current access and stopped state before preparing a version.');
+    throw new Error('Refresh the application’s current access and stopped state before preparing this selection.');
   }
   await http.post(`/api/v1/application-extensions/packages/${sha256}/stage`, {
     request_id: authorityRequestId(), expected_artifact_sha256: status.artifact_sha256,
@@ -622,8 +643,10 @@ const activateApplicationPackage = async (
     fields.map(field => [field.key, field.kind === 'application_query'
       ? field.value && field.export_value ? `${field.value}/${field.export_value}` : '' : field.value || '']),
   );
+  configurationOriginalValues.value = { ...configurationValues.value };
   configurationTarget.value = { extension, sha256, missingDeviceKeys };
   configurationError.value = '';
+  configurationNeedsRefresh.value = false;
   showConfigurationModal.value = true;
   return false;
 };
@@ -635,7 +658,9 @@ const cancelApplicationConfiguration = () => {
   configurationFields.value = [];
   configurationDevices.value = [];
   configurationValues.value = {};
+  configurationOriginalValues.value = {};
   configurationError.value = '';
+  configurationNeedsRefresh.value = false;
 };
 
 const confirmApplicationConfiguration = async () => {
@@ -660,7 +685,8 @@ const confirmApplicationConfiguration = async () => {
         complete_device_configuration: true, configuration,
       }, { timeout: 12000 });
     }
-    const activated = !completing && await applyApplicationPackage(target.extension, target.sha256, configuration);
+    const activated = !completing && await applyApplicationPackage(target.extension, target.sha256,
+      configuration, configurationNeedsPreparation.value);
     configurationSaving.value = false;
     cancelApplicationConfiguration();
     await getCompiledUiCatalog(true);
@@ -670,6 +696,7 @@ const confirmApplicationConfiguration = async () => {
       authorityTarget.value = { moduleId: target.extension.id.replace('application:', ''), name: target.extension.name };
     } else if (activated) await openApplicationAccessIfNeeded(target.extension);
   } catch (error) {
+    configurationNeedsRefresh.value = true;
     configurationError.value = errorMessage(
       error,
       t('extensions.versionError', 'Could not activate the selected version.'),

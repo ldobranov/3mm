@@ -12,12 +12,12 @@ from backend.db.device import Device, DeviceCommand, DeviceRuntimeFeatures
 from backend.db.module import ApplicationExtensionInstallation as Installation, ModulePackage
 from backend.db.session import UserSession
 from backend.db.user import User
-from backend.routes.application_extensions import router
-from backend.services.module_packages import validate_module_package
+from backend.applications.management.api import router
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_ui_authority import ui_app, adopt
 from backend.tests.test_application_authority_management import installed as managed_installed
 from backend.tests.test_application_authority_subjects import installed as source_subject, source_installed
-from backend.utils.db_utils import get_db
+from backend.storage.sessions import get_db
 
 pytestmark=[pytest.mark.skipif(os.name!='posix',reason='Real native approval keys'),
     pytest.mark.parametrize('ui_app',['administration_actions'],indirect=True)]
@@ -135,11 +135,11 @@ def test_actual_mock_agent_install_switch_on_off_and_disable(actions,tmp_path):
     from agent.module_runtime import AgentModuleRuntime
     from agent.modules.gpio import GPIO_ENTRYPOINT,gpio_runtime_handler
     from backend.db.device import DeviceCapabilityProvider,DeviceCapabilityHealth
-    from backend.services.device_commands import deliver_next_command,record_command_result
-    from backend.services.device_capability_registry import capability_catalog,report_availability
-    from backend.services.device_protocol import DeviceOperations
-    from three_mm_protocol import AgentCommandResult,CapabilityStateReportV1
-    from three_mm_protocol.capability_availability import CapabilityAvailabilityReportV1
+    from backend.devices.commands.queue import deliver_next_command,record_command_result
+    from backend.devices.capabilities.registry import capability_catalog,report_availability
+    from backend.devices.operations import DeviceOperations
+    from packages.protocol import AgentCommandResult,CapabilityStateReportV1
+    from packages.protocol.capability_availability import CapabilityAvailabilityReportV1
     s=actions
     spec=importlib.util.spec_from_file_location('real_output_builder',Path('modules/digital-output/build_package.py'))
     builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
@@ -206,7 +206,7 @@ def test_actual_mock_agent_install_switch_on_off_and_disable(actions,tmp_path):
 
 def test_provider_episode_change_before_dispatch_never_moves_the_command(actions):
     from backend.db.device import DevicePlatformState
-    from backend.services.device_commands import deliver_next_command
+    from backend.devices.commands.queue import deliver_next_command
     s=actions
     offer=next(c for c in s.client.get(s.base+'/devices/'+s.device_id+'/capabilities',params=s.params,headers=s.auth).json() if c['registered'])
     action,schema=next(iter(offer['contract']['actions'].items()))

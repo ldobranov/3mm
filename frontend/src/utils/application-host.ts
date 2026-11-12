@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { applicationDiagnosticOperation, inheritBrowserFailure, recordBrowserFailure, serverTrace, type BrowserFailureDetail } from './diagnostic-client'
 import { defineComponent, h, onBeforeUnmount, provide, watch, type Component } from 'vue'
 import { i18n } from './i18n'
 import { getBackendUrl } from './runtime-config'
@@ -20,6 +21,11 @@ import { createApplicationAccess } from './application-access-host'
 const identifier = /^[a-z][a-z0-9_]{0,63}$/
 const isObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
+function rejectHost(code: ApplicationHostErrorCode, detail: BrowserFailureDetail): never {
+  const error = new ApplicationHostError(code)
+  recordBrowserFailure(error, detail.stage === 'session.socket' ? 'session.stream' : 'application.request', detail)
+  throw error
+}
 
 function copyPayload(payload: ApplicationPayload): ApplicationPayload {
   let nodes = 0
@@ -48,7 +54,7 @@ export function createApplicationHost(pkg: CompiledUiPackage, entrypoint: Compil
   if (!/^[a-z0-9]+(?:[.-][a-z0-9]+)+$/.test(binding.module)
       || !/^[a-f0-9]{64}$/.test(binding.hash) || (binding.build !== undefined && !/^[a-f0-9]{64}$/.test(binding.build)) || !identifier.test(binding.entrypoint)
       || !['public', 'kiosk', 'operator', 'administrator'].includes(binding.audience || '')) {
-    throw new ApplicationHostError('invalid_request')
+    rejectHost('invalid_request', { stage: 'host.binding', cause: 'host_binding_invalid' })
   }
   const prefix = `/api/v1/application-extensions/${encodeURIComponent(binding.module)}`
   let disposed = false
@@ -70,6 +76,7 @@ export function createApplicationHost(pkg: CompiledUiPackage, entrypoint: Compil
     },
   })
   type RequestIdentity = { base: string; token: string }
+  const responseTraces = new WeakMap<object, string>()
   async function request(path: string, data?: unknown, identity?: RequestIdentity): Promise<unknown> {
     live()
     const controller = new AbortController()
@@ -91,56 +98,69 @@ export function createApplicationHost(pkg: CompiledUiPackage, entrypoint: Compil
         timeout: 35_000, signal: controller.signal, withCredentials: false,
       })
       live()
+      const trace = serverTrace({ response })
+      if (trace && response.data !== null && typeof response.data === 'object') responseTraces.set(response.data, trace)
       return response.data
     } catch (error) {
       live()
+      const operation = applicationDiagnosticOperation(path)
+      recordBrowserFailure(error, operation, { stage: operation === 'session.targets' ? 'session.targets.request'
+        : operation === 'session.ticket' ? 'session.ticket.request' : 'host.request' })
+      const traceId = serverTrace(error)
+      const wrap = (code: ApplicationHostErrorCode) => inheritBrowserFailure(error, new ApplicationHostError(code, traceId))
       if (error instanceof ApplicationHostError) throw error
-      if (error instanceof KioskError) throw new ApplicationHostError(error.code === 'denied' ? 'access_denied' : 'unavailable')
+      if (error instanceof KioskError) throw wrap(error.code === 'denied' ? 'access_denied' : 'unavailable')
       const status = axios.isAxiosError(error) ? error.response?.status : undefined
-      if (status === 401 || status === 403) throw new ApplicationHostError('access_denied')
+      if (status === 401 || status === 403) throw wrap('access_denied')
       const fileCode = axios.isAxiosError(error) ? error.response?.data?.detail?.code : undefined
       if (path.startsWith('/files/') && ['conflict','quota','expired','checksum','provider_unavailable','transform_failed','recovery_required'].includes(fileCode)) {
-        throw new ApplicationHostError(fileCode as ApplicationHostErrorCode)
+        throw wrap(fileCode as ApplicationHostErrorCode)
       }
-      if (status === 404 && data === undefined) throw new ApplicationHostError('not_found')
+      if (status === 404 && data === undefined) throw wrap('not_found')
       // A failed POST may have executed. Never infer rollback or replay it.
-      throw new ApplicationHostError(data === undefined ? 'unavailable' : 'unconfirmed')
+      throw wrap(data === undefined ? 'unavailable' : 'unconfirmed')
     } finally { pending.delete(controller) }
   }
   async function loadInfo(identity: RequestIdentity): Promise<ApplicationHostInfo> {
     const value = await request(`/ui-host/${encodeURIComponent(binding.entrypoint)}?artifact_sha256=${binding.hash}${binding.build === undefined ? '' : `&built_ui_sha256=${binding.build}`}`, undefined, identity)
+    const trace = value !== null && typeof value === 'object' ? responseTraces.get(value) : undefined
+    const detail = { trace_id: trace, response_observed: true, last_passed_stage: 'host.request' as const }
     if (!isObject(value) || value.host_version !== 1 || value.module_id !== binding.module
         || value.active_version !== binding.version || value.artifact_sha256 !== binding.hash
         || value.built_ui_sha256 !== binding.build
-        || value.entrypoint_id !== binding.entrypoint || value.audience !== binding.audience
-        || !isObject(value.features) || value.features.operations !== true
-        || value.features.resource_authority !== 'separate' || value.features.browser_isolation !== false
-        || !Array.isArray(value.operations) || value.operations.length > 256) {
-      throw new ApplicationHostError('unavailable')
+        || value.entrypoint_id !== binding.entrypoint || value.audience !== binding.audience) {
+      rejectHost('unavailable', { ...detail, stage: 'host.response', cause: 'host_response_mismatch' })
+    }
+    if (!isObject(value.features) || value.features.operations !== true
+        || value.features.resource_authority !== 'separate' || value.features.browser_isolation !== false) {
+      rejectHost('unavailable', { ...detail, stage: 'host.features', cause: 'host_features_invalid', last_passed_stage: 'host.response' })
     }
     const ids = new Set<string>()
     const reads = value.features.administration_reads ?? []
     if (!Array.isArray(reads) || reads.length > 7 || new Set(reads).size !== reads.length
         || reads.some(read => !['devices.list', 'devices.detail', 'modules.list', 'capabilities.list', 'capabilities.state', 'commands.get', 'resources.inspect'].includes(read))
-        || (reads.length > 0 && binding.audience !== 'administrator')) throw new ApplicationHostError('unavailable')
+        || (reads.length > 0 && binding.audience !== 'administrator')) rejectHost('unavailable', { ...detail, stage: 'host.features', cause: 'host_features_invalid', last_passed_stage: 'host.response' })
     const actions = value.features.administration_actions ?? []
     if (!Array.isArray(actions) || actions.length > 3 || new Set(actions).size !== actions.length
         || actions.some(action => !['modules.install', 'modules.disable', 'capabilities.invoke'].includes(action))
-        || (actions.length > 0 && binding.audience !== 'administrator')) throw new ApplicationHostError('unavailable')
+        || (actions.length > 0 && binding.audience !== 'administrator')) rejectHost('unavailable', { ...detail, stage: 'host.features', cause: 'host_features_invalid', last_passed_stage: 'host.response' })
+    if (!Array.isArray(value.operations) || value.operations.length > 256) {
+      rejectHost('unavailable', { ...detail, stage: 'host.operations', cause: 'host_operations_invalid', last_passed_stage: 'host.features' })
+    }
     const operations = value.operations.map((operation) => {
       if (!isObject(operation) || typeof operation.operation_id !== 'string'
           || !identifier.test(operation.operation_id)
           || ids.has(operation.operation_id)
           || !['query', 'command'].includes(String(operation.kind))
           || operation.idempotency !== (operation.kind === 'query' ? 'forbidden' : 'required')) {
-        throw new ApplicationHostError('unavailable')
+        rejectHost('unavailable', { ...detail, stage: 'host.operations', cause: 'host_operations_invalid', last_passed_stage: 'host.features' })
       }
       ids.add(operation.operation_id)
       return Object.freeze({ operation_id: operation.operation_id, kind: operation.kind,
         idempotency: operation.idempotency })
     })
     // Reconstruct only public fields; unexpected server fields cannot leak tokens.
-    return Object.freeze({ host_version: 1, module_id: binding.module, active_version: binding.version,
+    const result = Object.freeze({ host_version: 1, module_id: binding.module, active_version: binding.version,
       artifact_sha256: binding.hash, entrypoint_id: binding.entrypoint, audience: binding.audience!,
       ...(binding.build === undefined ? {} : { built_ui_sha256: binding.build }),
       features: Object.freeze({ operations: true, resource_authority: 'separate', browser_isolation: false,
@@ -149,6 +169,8 @@ export function createApplicationHost(pkg: CompiledUiPackage, entrypoint: Compil
         administration_actions: Object.freeze(actions) as readonly ApplicationAdministrationAction[] }),
       operations: Object.freeze(operations),
     }) as ApplicationHostInfo
+    if (trace) responseTraces.set(result, trace)
+    return result
   }
   let infoFlight: RequestIdentity & { promise: Promise<ApplicationHostInfo> } | undefined
   async function infoIdentity() {
@@ -164,8 +186,10 @@ export function createApplicationHost(pkg: CompiledUiPackage, entrypoint: Compil
     if (infoFlight?.base === identity.base && infoFlight.token === identity.token) return infoFlight.promise
     const promise = loadInfo(identity).then(async result => {
       const current = await infoIdentity()
-      if (identity.base !== current.base) throw new ApplicationHostError('unavailable')
-      if (identity.token !== current.token) throw new ApplicationHostError('access_denied')
+      const detail = { stage: 'host.identity' as const, cause: 'host_identity_changed' as const, last_passed_stage: 'host.operations' as const,
+        trace_id: responseTraces.get(result), response_observed: true }
+      if (identity.base !== current.base) rejectHost('unavailable', detail)
+      if (identity.token !== current.token) rejectHost('access_denied', detail)
       return result
     })
     const flight = { ...identity, promise }
@@ -175,11 +199,17 @@ export function createApplicationHost(pkg: CompiledUiPackage, entrypoint: Compil
   }
   const ui = Object.freeze({ host_version: 1, entrypoint_id: binding.entrypoint, artifact_sha256: binding.hash,
     ...(binding.build === undefined ? {} : { built_ui_sha256: binding.build }) })
-  const sessionHost = createApplicationSessions({ request, live, ui, socketUrl(path) {
+  const sessionHost = createApplicationSessions({ request, live, ui,
+    traceId(value) { return value !== null && typeof value === 'object' ? responseTraces.get(value) : undefined }, socketUrl(path, trace) {
     live()
-    if (!backend || !['operator', 'administrator'].includes(binding.audience || '')) throw new ApplicationHostError('access_denied')
-    const url = new URL(`${backend}${prefix}${path}`, location.href)
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new ApplicationHostError('unavailable')
+    const detail = { stage: 'session.socket' as const, last_passed_stage: 'session.ticket.response' as const, trace_id: trace, response_observed: true }
+    if (!backend) rejectHost('access_denied', { ...detail, cause: 'socket_backend_unset' })
+    if (!['operator', 'administrator'].includes(binding.audience || '')) rejectHost('access_denied', { ...detail, cause: 'socket_audience_denied' })
+    let url: URL
+    try { url = new URL(`${backend}${prefix}${path}`, location.href) } catch (error) {
+      recordBrowserFailure(error, 'session.stream', { ...detail, cause: 'socket_url_invalid' }); throw error
+    }
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) rejectHost('unavailable', { ...detail, cause: 'socket_url_invalid' })
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     return url.href
   } })

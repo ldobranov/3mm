@@ -14,7 +14,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.json"
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config_templates" / "development.json"
 DEFAULT_DATABASE_PATH = PROJECT_ROOT / "backend" / "data" / "3mm.db"
 DEFAULT_UPLOADS_PATH = PROJECT_ROOT / "uploads"
 

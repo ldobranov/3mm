@@ -268,7 +268,7 @@ authority rows or force-dropping the new schema. Preserve failed recovery eviden
 
 ## References
 
-- [M20 plan and remaining closure gates](../EXTENSION_PLATFORM_V2_CORE_PLAN.md)
+- [M20 plan and remaining closure gates](EXTENSION_PLATFORM_V2_CORE_PLAN.md)
 - [Public contracts](EXTENSION_PLATFORM_V2_PUBLIC_CONTRACTS.md)
 - [Local review-key administration](EXTENSION_PLATFORM_V2_REVIEW_KEYS.md)
 - [Authority apply](EXTENSION_PLATFORM_V2_AUTHORITY_APPLY.md)

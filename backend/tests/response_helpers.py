@@ -4,9 +4,9 @@ Retain each existing test's service mock or actual signed peer. Only emulate the
 Runtime return channel; Core still executes fresh admission and result checking.
 """
 import time
-from backend.services import application_invocation_relay as relay
-from backend.services import application_extensions as gateway
-from three_mm_runtime.application_transport import sign_message
+from backend.applications.runtime import invocations as relay
+from backend.applications.runtime import gateway
+from components.system_runtime.application_transport import sign_message
 
 
 def install_response_transport(monkeypatch):

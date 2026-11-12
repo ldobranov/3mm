@@ -10,7 +10,7 @@ from backend.db.audit_log import AuditLog
 from backend.db.menu import Menu
 from backend.db.module import ModulePackage
 from backend.db.settings import Settings
-from backend.services.theme_customization import customization_key
+from backend.appearance.customization import customization_key
 from backend.tests.test_theme_extension_lifecycle import BASE, runtime, upload
 from backend.tests.test_theme_extension_v2 import install_v2
 

@@ -1,6 +1,6 @@
 import pytest
 
-from backend.services.application_configuration import (
+from backend.applications.management.configuration import (
     ApplicationConfigurationError,
     device_configuration_keys,
     resolve_application_configuration,
@@ -8,7 +8,7 @@ from backend.services.application_configuration import (
     require_available_device_bindings,
 )
 from backend.tests.test_module_packages import application_definition
-from three_mm_protocol import ApplicationExtensionV1
+from packages.protocol import ApplicationExtensionV1
 
 
 DEVICE_ID = "dev_0123456789abcdef0123456789abcdef"

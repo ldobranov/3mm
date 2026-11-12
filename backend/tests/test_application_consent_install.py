@@ -4,8 +4,8 @@ from sqlalchemy import select
 from backend.db.application_authority_grant import ApplicationAuthorityGrant as Grant, ApplicationNativeReview as Native
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.installation_peer import InstallationPeerOutbound
-from backend.services.application_authority_management import lock_compatibility_admission
-from backend.routes import application_extensions as routes
+from backend.applications.authority.management import lock_compatibility_admission
+from backend.applications.management import api as routes
 from backend.tests.test_application_lifecycle_authority import lifecycle, request
 import pytest
 

@@ -11,7 +11,7 @@ import pytest
 import agent.hardware.character_display as native
 from agent.hardware.character_display import NativeCharacterDisplay
 from agent.module_runtime import AgentModuleRuntime
-from three_mm_protocol.character_display import CharacterDisplayProfileV1
+from packages.protocol.character_display import CharacterDisplayProfileV1
 
 
 @pytest.mark.parametrize('reaped', [False, True])

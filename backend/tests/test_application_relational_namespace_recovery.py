@@ -17,10 +17,10 @@ from backend.db.application_authority_grant import ApplicationAuthorityAction as
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
 from backend.db.session import UserSession
-from backend.services import application_authority_management as authority
-from backend.services import application_relational_namespace_recovery as coordinator
-from backend.services.application_authority_keys import AuthorityReviewKeyError
-from backend.services.application_policy_reviews import PolicyReviewStoreError
+from backend.applications.authority import management as authority
+from backend.applications.relational import namespace_recovery as coordinator
+from backend.applications.authority.keys import AuthorityReviewKeyError
+from backend.applications.authority.policy_reviews import PolicyReviewStoreError
 from backend.tests.test_application_relational_namespace import (
     ROOT_ONLY,
     SECRET,
@@ -37,16 +37,16 @@ from backend.tests.test_application_relational_namespace import (
     source_subject,
     stopped,
 )
-from three_mm_application_sdk.relational_wire import (
+from packages.application_sdk.relational_wire import (
     _RelationalNamespacePreparationTicket,
     canonical,
     prepared_lifecycle,
     sign_metadata,
 )
-from three_mm_runtime import application_lifecycle as locks
-from three_mm_runtime import application_relational_namespace as creation
-from three_mm_runtime import application_relational_namespace_recovery as helper
-from three_mm_runtime.application_activation import (
+from components.system_runtime import application_lifecycle as locks
+from components.system_runtime import application_relational_namespace as creation
+from components.system_runtime import application_relational_namespace_recovery as helper
+from components.system_runtime.application_activation import (
     ApplicationActivationError,
     _require_no_pending_rollback,
 )
@@ -262,7 +262,7 @@ def test_known_empty_partial_bootstrap_is_quarantined_preserved_then_explicit_fr
     assert action(state, source)["state"] == "execution_unconfirmed"
     fresh_secret = b"n" * 32
     fresh = namespace_ticket(state, transport_secret=fresh_secret)
-    from backend.services.application_relational_lifecycle import preparation_checkpoint
+    from backend.applications.relational.lifecycle import preparation_checkpoint
 
     create(
         state,

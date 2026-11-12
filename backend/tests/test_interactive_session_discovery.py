@@ -9,8 +9,8 @@ from sqlalchemy.pool import StaticPool
 
 from backend.db.base import Base
 from backend.db.device import Device, DeviceCapabilityProvider, DeviceHeartbeat
-from backend.services.interactive_session_discovery import build_session_discovery
-from three_mm_protocol.interactive_session import SessionTargetV1
+from backend.sessions.discovery import build_session_discovery
+from packages.protocol.interactive_session import SessionTargetV1
 
 DEVICE_ONLINE = "dev_" + "1" * 32
 DEVICE_OFFLINE = "dev_" + "2" * 32

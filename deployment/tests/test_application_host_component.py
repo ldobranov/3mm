@@ -20,7 +20,7 @@ import zipfile
 import pytest
 
 from deployment import application_host_component as component
-from three_mm_runtime.application_transport import ApplicationServiceClient
+from components.system_runtime.application_transport import ApplicationServiceClient
 from backend.tests.test_platform_runtime_process import (
     stack, identity_app, managed_installed, source_subject, source_installed,
     checkpoint_app, activate_identity_grant, identity, activate,
@@ -43,7 +43,7 @@ def artifacts(tmp_path_factory):
         source=tmp_path_factory.mktemp('host-source-'+label)
         for name in [*component.inputs(SOURCE),'deployment/application-host-contract.json','deployment/application-host-requirements.txt']:
             target=source/name;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(SOURCE/name,target)
-        path=source/'three_mm_runtime/application_host.py';text=path.read_text()+'\n# '+label+'\n'
+        path=source/'components/system_runtime/application_host.py';text=path.read_text()+'\n# '+label+'\n'
         if broken:text=text.replace('def main() -> None:', 'def main() -> None:\n    raise RuntimeError("injected unhealthy host")')
         path.write_text(text)
         results.append(component.build_component(source))
@@ -54,7 +54,20 @@ def test_native_artifact_is_reproducible_minimal_and_core_free(artifacts,tmp_pat
     blob,metadata=artifacts[0]
     assert component.build_component(SOURCE)[0]==blob
     assert len(metadata['binding']['dependencies'])==8
-    assert not any(n.startswith(('backend/','three_mm_provisioning/')) for n in metadata['binding']['sources'])
+    assert not any(n.startswith(('backend/','packages/provisioning/')) for n in metadata['binding']['sources'])
+    assert {n for n in metadata['binding']['sources'] if n.startswith('components/')} == {
+        'components/__init__.py', *('components/system_runtime/' + name for name in component.RUNTIME_FILES)}
+    assert not any(n.startswith('three_mm_runtime/') for n in metadata['binding']['sources'])
+    assert {'packages/__init__.py', 'packages/platform_wire/__init__.py',
+            'packages/protocol/__init__.py', 'packages/application_sdk/__init__.py',
+            component.PROTOCOL_ASSET} <= metadata['binding']['sources'].keys()
+    assert not any(n.startswith('three_mm_protocol/') for n in metadata['binding']['sources'])
+    assert all(n == 'packages/__init__.py' or n == component.PROTOCOL_ASSET
+               or Path(n).parent.as_posix() in {'packages/platform_wire', 'packages/protocol', 'packages/application_sdk'} and n.endswith('.py')
+               for n in metadata['binding']['sources'] if n.startswith('packages/'))
+    _, files = component.validate_artifact(blob, digest(blob))
+    with zipfile.ZipFile(io.BytesIO(files['host.pyz'])) as archive:
+        assert archive.read(component.PROTOCOL_ASSET) == (SOURCE/component.PROTOCOL_ASSET).read_bytes()
     store=component.HostStore(tmp_path/'default',tmp_path/'updates',tmp_path/'releases')
     build=store.bootstrap(blob,digest(blob))
     result=subprocess.run([str(store.root/'current/.venv/bin/python'),'-I',str(store.root/'current/host.pyz'),'--component-info'],
@@ -68,8 +81,10 @@ def test_native_artifact_is_reproducible_minimal_and_core_free(artifacts,tmp_pat
     code = (
         'import sys,time,importlib.util; '
         f'sys.path[:0]=[{str(native/"host.pyz")!r},{str(native/"vendor")!r}]; '
-        'from three_mm_runtime.application_host import _operation_failure; '
-        'from three_mm_application_sdk import ApplicationPlatformError; '
+        'from components.system_runtime.application_host import _operation_failure; '
+        'from packages.application_sdk import ApplicationPlatformError; '
+        'from packages.protocol.theme_extension_v2 import DESIGN_DEFAULTS, validate_design; '
+        'assert validate_design(DESIGN_DEFAULTS)==DESIGN_DEFAULTS; '
         'detail=_operation_failure(ApplicationPlatformError("PRIVATE",reason="operation_denied"),'
         '"application.host_handler",time.monotonic()); '
         'assert detail["reason"]=="host_sdk_operation_denied"; '
@@ -79,6 +94,43 @@ def test_native_artifact_is_reproducible_minimal_and_core_free(artifacts,tmp_pat
     classified = subprocess.run([str(native/'.venv/bin/python'), '-I', '-c', code],
         cwd=tmp_path, env={'PATH': '/usr/bin:/bin'}, capture_output=True, text=True, timeout=10)
     assert classified.returncode == 0, classified.stderr
+
+
+@pytest.mark.parametrize('change', [
+    'missing_asset', 'packages/protocol/private.json', 'packages/protocol/tests/leaked.py',
+    'packages/unrelated/__init__.py', 'three_mm_protocol/__init__.py',
+    'missing_sdk_init', 'packages/application_sdk/private.json',
+    'packages/application_sdk/tests/leaked.py', 'packages/application_sdk_other/__init__.py',
+    'three_mm_application_sdk/__init__.py',
+    'missing_runtime_parent','missing_runtime_init','components/system_runtime/update_helper.py',
+    'components/system_runtime/tests/leaked.py','components/system_runtime_other/__init__.py',
+    'three_mm_runtime/__init__.py',
+])
+def test_native_host_rejects_missing_asset_and_extra_package_sources_before_staging(artifacts,tmp_path,change):
+    blob,_=artifacts[0]
+    metadata,files=component.validate_artifact(blob,digest(blob))
+    with zipfile.ZipFile(io.BytesIO(files['host.pyz'])) as archive:
+        code={name:archive.read(name) for name in metadata['binding']['sources']}
+    if change=='missing_asset':del code[component.PROTOCOL_ASSET]
+    elif change=='missing_sdk_init':del code['packages/application_sdk/__init__.py']
+    elif change=='missing_runtime_parent':del code['components/__init__.py']
+    elif change=='missing_runtime_init':del code['components/system_runtime/__init__.py']
+    else:code[change]=b'{}' if change.endswith('.json') else b'# unexpected package input\n'
+    metadata['binding']['sources']={name:digest(value) for name,value in code.items()}
+    metadata['build_id']=digest(component._json(metadata['binding']))
+    identity={'build_id':metadata['build_id'],'host_contract':component.HOST_CONTRACT,
+              'authority_contract':component.AUTHORITY_CONTRACT}
+    output=io.BytesIO()
+    with zipfile.ZipFile(output,'w') as archive:
+        for name,value in {**code,'host-build.json':component._json(identity)}.items():
+            entry=zipfile.ZipInfo(name);entry.create_system=3;entry.external_attr=0o100444<<16
+            archive.writestr(entry,value)
+    files['host.pyz']=output.getvalue()
+    metadata['files']={name:digest(value) for name,value in files.items()}
+    bad=component._archive(metadata,files)
+    store=component.HostStore(tmp_path/'host',tmp_path/'updates',tmp_path/'releases')
+    with pytest.raises(ValueError,match='unsupported'):store.stage(bad,digest(bad))
+    assert store.target('current') is None and not list(store.releases.iterdir())
 
 
 @pytest.mark.parametrize('image_provider', [False, True])
@@ -91,7 +143,7 @@ def test_resource_probe_from_packaged_host_keeps_codecs_out_of_parent(tmp_path, 
     code = (
         'import sys,importlib.util; '
         f'sys.path[:0]=[{str(root/"host.pyz")!r},{str(root/"vendor")!r}]; '
-        'from three_mm_application_sdk.media_provider import probe_provider; '
+        'from packages.application_sdk.media_provider import probe_provider; '
         f'assert probe_provider()=={"ready" if image_provider else "unavailable"!r}; '
         'assert "PIL" not in sys.modules; '
         'assert importlib.util.find_spec("backend") is None'
@@ -131,7 +183,7 @@ def make_application(base,instance,uid,gid):
     with zipfile.ZipFile(release/'service.whl','w') as wheel:
         wheel.writestr(package+'/__init__.py','')
         wheel.writestr(package+'/service.py',"""import importlib.util,os
-from three_mm_application_sdk import ApplicationMigration
+from packages.application_sdk import ApplicationMigration
 
 def migrations():
     return [ApplicationMigration('0001',lambda db:db.execute('CREATE TABLE records (value TEXT)'))]
@@ -354,8 +406,8 @@ def test_host_metadata_deadline_is_absolute_under_trickled_response(tmp_path,mon
 
 def test_prepared_start_binds_a_host_before_systemd_and_missing_default_never_starts(artifacts,tmp_path,monkeypatch):
     from types import SimpleNamespace
-    from three_mm_runtime.application_relational_activation import PreparedServiceSupervisor
-    import three_mm_runtime.application_activation as activation
+    from components.system_runtime.application_relational_activation import PreparedServiceSupervisor
+    import components.system_runtime.application_activation as activation
     root=tmp_path/'hosts';default=component.HostStore(root/'default',root/'updates/default',root/'releases')
     blob,metadata=artifacts[0];default.bootstrap(blob,digest(blob))
     calls=[]

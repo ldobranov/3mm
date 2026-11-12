@@ -8,7 +8,7 @@ It does not close M20 as a whole, WP5 or M21.
 
 ## Criteria and evidence
 
-The criteria remain those in the [Core plan's WP4 section](../EXTENSION_PLATFORM_V2_CORE_PLAN.md#wp4--public-platform-api-sdk-and-authorization).
+The criteria remain those in the [Core plan's WP4 section](EXTENSION_PLATFORM_V2_CORE_PLAN.md#wp4--public-platform-api-sdk-and-authorization).
 No criterion is removed by this reconciliation. Missing features must be reported
 and refused, never implicitly supported by a declaration or compatibility path.
 

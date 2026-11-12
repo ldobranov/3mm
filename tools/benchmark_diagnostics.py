@@ -79,6 +79,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seconds", type=int, default=15)
     parser.add_argument("--module", type=Path,
-                        default=Path(__file__).resolve().parents[1] / "three_mm_protocol/diagnostics.py")
+                        default=Path(__file__).resolve().parents[1] / "packages/protocol/diagnostics.py")
     args = parser.parse_args()
     print(json.dumps(measure(args.module.read_bytes(), args.seconds), indent=2))

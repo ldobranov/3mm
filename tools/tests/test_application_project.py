@@ -10,7 +10,7 @@ import zipfile
 import pytest
 
 from tools import application_project as project
-from backend.services.module_packages import validate_module_package
+from backend.artifacts.packages import validate_module_package
 
 ROOT = Path(__file__).resolve().parents[2]
 STARTER = ROOT/'modules/application-starter'
@@ -60,9 +60,15 @@ def test_required_denial_scenarios_cannot_be_omitted(source):
         project.configuration(source)
 
 
-def test_private_runtime_import_is_an_authoring_error(source):
+@pytest.mark.parametrize('statement', [
+    'from backend.artifacts import packages',
+    'from components.platform_runtime import server',
+    'import components.platform_runtime.server',
+    'from components import platform_runtime',
+])
+def test_private_runtime_import_is_an_authoring_error(source, statement):
     path = source/'service/starter_app/service.py'
-    path.write_text('from backend.services import module_packages\n')
+    path.write_text(statement+'\n')
     with pytest.raises(project.ProjectCheckError, match='public SDK'):
         project.build_package(source)
 
@@ -92,7 +98,7 @@ def fake_pipeline(monkeypatch, tmp_path, *, skipped=False, missing=False, change
         if changed:
             (cwd/'source/frontend/Notes.vue').write_text('changed by check')
     monkeypatch.setattr(project, 'run_check', run)
-    from backend.services import compiled_ui
+    from backend.artifacts import compiled_ui
     def compile_(*_):
         path = tmp_path/'compiler-result'
         path.mkdir(exist_ok=True)
@@ -198,7 +204,7 @@ def test_check_cli_needs_no_server_or_credentials(monkeypatch, capsys, tmp_path)
 
 def test_compiler_failure_reports_its_phase_without_echoing_private_error(source, tmp_path, monkeypatch):
     frontend, _ = fake_pipeline(monkeypatch, tmp_path)
-    from backend.services import compiled_ui
+    from backend.artifacts import compiled_ui
     def fail(*_):
         raise RuntimeError('private compiler content must stay local')
     monkeypatch.setattr(compiled_ui, 'compile_ui_package', fail)

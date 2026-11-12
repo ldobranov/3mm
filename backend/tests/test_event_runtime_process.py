@@ -24,7 +24,7 @@ from backend.tests.test_application_event_authority import (
 )
 from backend.tests.test_platform_runtime_process import core_stack, activate
 from backend.tests.test_application_public_web_transport import SERVICE, wait_for
-from three_mm_platform_runtime.server import probe_runtime
+from components.platform_runtime.server import probe_runtime
 
 pytestmark=pytest.mark.skipif(sys.platform!='linux',reason='Real Linux processes/FD ownership')
 SOURCE=Path(__file__).resolve().parents[2]
@@ -66,7 +66,7 @@ def wait_for_event(s, predicate, *, phase, seconds=5):
 
 @pytest.fixture
 def event_core(event_granted,monkeypatch,request):
-    from backend.services import application_events as broker
+    from backend.applications.events import broker
     state=event_granted
     monkeypatch.setattr(broker,'_send_event_invocation',state.event_sender)
     definition=state.validated.application_extension.model_dump(mode='json')
@@ -177,7 +177,7 @@ def test_bad_or_blocked_handler_is_bounded_and_core_stays_administrable(event_st
 
 @pytest.mark.parametrize('event_core',['locked_parent_claim'],indirect=True)
 def test_forked_core_has_an_independent_event_claim_lock_and_pool(event_stack):
-    from backend.services import application_events as broker
+    from backend.applications.events import broker
     s=event_stack;before=s.command('fingerprint')
     assert broker._claim_lock.locked()
     s.enqueue('fork')
@@ -283,8 +283,8 @@ def test_cold_runtime_with_pending_blocked_handler_reports_worker_readiness(even
 
 def test_event_feature_probe_refuses_core_without_delivery_support(tmp_path):
     import threading
-    from three_mm_platform_runtime.server import probe_core
-    from three_mm_platform_wire import receive_authority_frame
+    from components.platform_runtime.server import probe_core
+    from packages.platform_wire import receive_authority_frame
     path=tmp_path/'old.sock'
     with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as listener:
         listener.bind(str(path));listener.listen(1)

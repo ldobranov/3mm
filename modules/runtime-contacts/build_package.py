@@ -6,14 +6,14 @@ import argparse,base64,csv,hashlib,io,json,sys,zipfile
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parent
-LIBRARY=ROOT.parents[1]/'libraries/three_mm_crud'
+LIBRARY=ROOT.parents[1]/'libraries/crud'
 VERSION='1.0.0'
 MODULE_ID='org.3mm.contacts'
 
 def descriptors():
     sys.path.insert(0,str(LIBRARY))
     try:
-        from three_mm_crud.descriptors import obj,declarations,storage_declaration
+        from application_crud.descriptors import obj,declarations,storage_declaration
     finally:sys.path.remove(str(LIBRARY))
     definition=json.loads((ROOT/'crud.json').read_text())
     permissions,operations=declarations(definition)
@@ -47,7 +47,7 @@ def build_package():
     files={'contacts_app/'+p.name:p.read_bytes().replace(b'\r\n',b'\n') for p in (ROOT/'service/contacts_app').glob('*.py')}
     definition=json.loads((ROOT/'crud.json').read_text())
     files['contacts_app/definition.py']=('DEFINITION = '+repr(definition)+'\n').encode()
-    files.update({'three_mm_crud/'+p.name:p.read_bytes().replace(b'\r\n',b'\n') for p in (LIBRARY/'three_mm_crud').glob('*.py')})
+    files.update({'application_crud/'+p.name:p.read_bytes().replace(b'\r\n',b'\n') for p in (LIBRARY/'application_crud').glob('*.py')})
     dist=f'contacts_app-{VERSION}.dist-info'
     files[dist+'/METADATA']=f'Metadata-Version: 2.1\nName: contacts-app\nVersion: {VERSION}\n'.encode()
     files[dist+'/WHEEL']=b'Wheel-Version: 1.0\nGenerator: 3mm\nRoot-Is-Purelib: true\nTag: py3-none-any\n'

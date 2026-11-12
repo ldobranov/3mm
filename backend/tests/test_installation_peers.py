@@ -1,4 +1,4 @@
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from importlib import import_module
@@ -28,25 +28,25 @@ from backend.db.installation_peer import (
 )
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
 from backend.db.user import User
-from backend.routes.installation_peers import router
-from backend.services import installation_peers as peers
-from backend.services.application_platform import ApplicationPlatformServer
-from backend.services.installation_identity import installation_identity
-from backend.services.installation_projection import installation_projection
-from backend.services.module_packages import validate_module_package, ModulePackageError
+from backend.installation.api import router
+from backend.installation import peers
+from backend.applications.runtime.platform import ApplicationPlatformServer
+from backend.installation.identity import installation_identity
+from backend.installation.projection import installation_projection
+from backend.artifacts.packages import validate_module_package, ModulePackageError
 from backend.tests.test_module_packages import (
     application_definition,
     application_manifest,
     application_package,
 )
-from backend.utils.db_utils import get_db
-from backend.utils.auth_dep import require_admin, require_user
-from backend.utils.device_auth import require_device
+from backend.storage.sessions import get_db
+from backend.accounts.dependencies import require_admin, require_user
+from backend.devices.auth import require_device
 from deployment.installation_peer_recovery import quarantine_restored_installation_peers
-from three_mm_application_sdk import OperationContext
-from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
-from three_mm_protocol.installation_identity import InstallationProofRequestV1
-from three_mm_protocol.installation_peer import (
+from packages.application_sdk import OperationContext
+from packages.application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+from packages.protocol.installation_identity import InstallationProofRequestV1
+from packages.protocol.installation_peer import (
     PeerEnrollmentCompleteV1,
     PeerRequestV1,
     PEER_PREFIX,
@@ -409,7 +409,7 @@ def test_expired_sender_challenge_denies_first_completion(pair):
     with Session(pair.sender.engine) as db:
         start = db.get(InstallationPeerOutbound, pair.sender.link_id).start_request
     response = pair.transport(ORIGIN, PEER_PREFIX + "/enrollments/start", start)
-    from backend.services.installation_identity import prove_installation_identity
+    from backend.installation.identity import prove_installation_identity
 
     with Session(pair.sender.engine) as db:
         proof = prove_installation_identity(db, response["sender_challenge"])
@@ -568,7 +568,7 @@ def test_consent_projection_unknowns_source_times_selection_and_no_secrets(pair)
         result = installation_projection(db, app, pair.sender.link_id).model_dump(
             mode="json"
         )
-        from three_mm_application_sdk import SDK_VERSION
+        from packages.application_sdk import SDK_VERSION
         assert result["summary"]["sdk_version"]["value"] == SDK_VERSION
         assert [node["device_id"] for node in result["nodes"]] == [NODE]
         fields = result["nodes"][0]["fields"]
@@ -751,7 +751,7 @@ def test_concurrent_proof_completion_consumes_once(pair):
     with Session(pair.sender.engine) as db:
         start = db.get(InstallationPeerOutbound, pair.sender.link_id).start_request
     response = pair.transport(ORIGIN, PEER_PREFIX + "/enrollments/start", start)
-    from backend.services.installation_identity import prove_installation_identity
+    from backend.installation.identity import prove_installation_identity
 
     with Session(pair.sender.engine) as db:
         proof = prove_installation_identity(db, response["sender_challenge"])
@@ -920,9 +920,9 @@ def test_signed_sdk_projection_list_and_withdrawal_use_platform_boundary(
             return result
 
     monkeypatch.setattr(
-        "three_mm_application_sdk.socket.socket", lambda *_args: ClientSocket()
+        "packages.application_sdk.socket.socket", lambda *_args: ClientSocket()
     )
-    monkeypatch.setattr("three_mm_application_sdk.socket.AF_UNIX", 1, raising=False)
+    monkeypatch.setattr("packages.application_sdk.socket.AF_UNIX", 1, raising=False)
     client = ApplicationPlatformClient(server.socket_path, instance_id, secret)
     projection = client.get_installation_status(pair.sender.link_id)
     assert projection["installation_id"] == pair.sender.identity.installation_id
@@ -943,7 +943,7 @@ def test_same_installation_id_different_key_requires_explicit_review(pair):
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     from cryptography.hazmat.primitives import serialization
     import hashlib
-    from three_mm_protocol.installation_peer import (
+    from packages.protocol.installation_peer import (
         PeerEnrollmentStartV1,
         enrollment_start_bytes,
     )

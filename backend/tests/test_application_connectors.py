@@ -15,19 +15,19 @@ from backend.db.module import (
     ApplicationExtensionInstallation,
     ModulePackage,
 )
-from backend.services.application_connectors import (
+from backend.applications.connectors.broker import (
     ApplicationConnectorError,
     bind_application_connector,
     prepare_application_connector_binding,
 )
-from backend.services.application_secrets import (
+from backend.applications.connectors.secrets import (
     create_secret_reference,
     decrypt_secret_reference,
     rotate_secret_reference,
     read_secret_authority,
 )
-from backend.services.authority_metadata import authority_transaction, read_application_authority
-from three_mm_protocol import ApplicationExtensionV1
+from backend.applications.authority.metadata import authority_transaction, read_application_authority
+from packages.protocol import ApplicationExtensionV1
 
 
 def definition() -> ApplicationExtensionV1:
@@ -47,7 +47,7 @@ def definition() -> ApplicationExtensionV1:
 @pytest.fixture
 def connector_db(monkeypatch):
     monkeypatch.setenv("AI_SETTINGS_MASTER_KEY", Fernet.generate_key().decode())
-    monkeypatch.setattr("backend.services.application_connectors.load_application_definition", lambda _package: definition())
+    monkeypatch.setattr("backend.applications.connectors.broker.load_application_definition", lambda _package: definition())
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
     db = Session(engine)

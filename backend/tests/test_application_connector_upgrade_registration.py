@@ -9,11 +9,11 @@ from sqlalchemy.orm import Session
 
 from backend.db.application_authority_grant import ApplicationAuthorityAction as Action
 from backend.db.module import ModulePackage
-from backend.routes.application_extensions import StageApplicationPackageRequest
-from backend.services import application_consent as consent
-from backend.services import application_configuration_provenance as provenance
-from backend.services.application_package_staging import stage_application_package, registration_id
-from backend.services.module_packages import validate_module_package
+from backend.applications.management.api import StageApplicationPackageRequest
+from backend.applications.management import consent
+from backend.applications.management import provenance
+from backend.applications.management.staging import stage_application_package, registration_id
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_connector_settings import (
     fresh, managed, source_subject, source_installed, repack, save, inspect, identity,
 )

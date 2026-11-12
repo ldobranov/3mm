@@ -10,10 +10,10 @@ import sys
 # Support direct execution from a source checkout without installing Core.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from three_mm_protocol.character_display import CharacterDisplayProfileV1
-from three_mm_protocol.character_display_package import build_package, manifest
-from three_mm_protocol.character_display_package import build_scene_package, scene_manifest
-from three_mm_protocol.character_display_scene import CharacterDisplaySceneProfileV1
+from packages.protocol.character_display import CharacterDisplayProfileV1
+from packages.protocol.character_display_package import build_package, manifest
+from packages.protocol.character_display_package import build_scene_package, scene_manifest
+from packages.protocol.character_display_scene import CharacterDisplaySceneProfileV1
 
 
 def main() -> None:

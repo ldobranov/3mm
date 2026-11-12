@@ -45,7 +45,7 @@ without a fresh public-network download.
 
 ## Implemented Stage 1 boundary
 
-- `three_mm_protocol/node_updates.py`: strict versioned metadata, explicit
+- `packages/protocol/node_updates.py`: strict versioned metadata, explicit
   confirmation, exact device/release/archive identity and an aware-UTC bounded
   handoff deadline (at most 120 seconds). No caller-controlled path or command.
 - `agent/node_update_client.py`: bounded AF_UNIX request/status client. It does

@@ -77,3 +77,13 @@
 - For visual redesign, read `docs/FRONTEND_REDESIGN.md` on demand. Preserve behavior
   and inspect affected layouts/themes in addition to relevant checks. Do not run a
   frontend build for unrelated backend/documentation work.
+
+## Application authoring
+
+- For building an application, start with `docs/APPLICATION_DEVELOPMENT.md`,
+  then the project's own `AGENTS.md`, README and `development.json`.
+- Use `tools.extension_dev` and the current public contracts; keep application
+  logic out of Core/Agent. The official starter carries instructions into new
+  projects. Historical plans and old imports are not the current authoring API.
+- Do not modify independently maintained sibling applications without explicit
+  scope. Local preview/check/build does not authorize upload, grants or activation.

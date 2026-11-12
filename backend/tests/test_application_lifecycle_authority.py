@@ -24,19 +24,19 @@ from backend.db.module import (
     ModulePackage,
 )
 from backend.db.user import User
-from backend.routes import application_extensions as routes
-from backend.routes.application_operations import router as operations_router
-from backend.services.authority_metadata import (
+from backend.applications.management import api as routes
+from backend.applications.operations_api import router as operations_router
+from backend.applications.authority.metadata import (
     AuthorityMetadataError, authority_transaction, read_application_authority,
     read_authority_guard,
 )
-from backend.services.application_secrets import create_secret_reference
-from backend.services.module_packages import validate_module_package
+from backend.applications.connectors.secrets import create_secret_reference
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_module_packages import application_package
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
-from three_mm_runtime.update_helper_client import UpdateHelperError
-from three_mm_runtime import update_helper_client
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
+from components.system_runtime.update_helper_client import UpdateHelperError
+from components.system_runtime import update_helper_client
 
 
 _REAL_HELPER_ACTIVATION = routes.UpdateHelperClient.activate_application_extension
@@ -448,7 +448,7 @@ def test_invalid_helper_response_never_activates(lifecycle, monkeypatch, result)
 
 
 def test_pending_candidate_reserves_routes_but_is_not_publicly_dispatched(lifecycle, monkeypatch):
-    from backend.services import application_public_web as public_web
+    from backend.applications.public_web import routes as public_web
     from backend.tests.test_application_public_web import definition
 
     s = lifecycle
@@ -468,7 +468,7 @@ def test_pending_candidate_reserves_routes_but_is_not_publicly_dispatched(lifecy
 
 
 def test_activation_rechecks_a_concurrent_webhook_reservation_before_helper(lifecycle, monkeypatch):
-    from backend.services import application_public_web as public_web
+    from backend.applications.public_web import routes as public_web
     from backend.tests.test_application_public_web import definition, webhook_definition
 
     s = lifecycle

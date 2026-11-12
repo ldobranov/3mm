@@ -15,20 +15,20 @@ from backend.db.device import (
     DeviceState,
 )
 from backend.db.module import ModuleInstallation, ModulePackage
-from backend.services.device_capability_registry import (
+from backend.devices.capabilities.registry import (
     registered_capabilities,
     replace_provider,
 )
-from backend.services.device_runtime_features import (
+from backend.devices.features.service import (
     replace_runtime_features,
     runtime_features_snapshot,
 )
-from three_mm_protocol.node_features import (
+from packages.protocol.node_features import (
     DeviceRuntimeFeaturesReportV1,
     MANDATORY_NODE_FEATURES,
 )
 from backend.tests.test_migration_history import _alembic
-from three_mm_protocol import CapabilityProviderReportV1
+from packages.protocol import CapabilityProviderReportV1
 
 
 def test_provider_migration_is_additive_and_reversible(monkeypatch):

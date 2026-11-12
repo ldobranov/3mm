@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 import json
 
-from three_mm_runtime.application_activation import activate_application_package
+from components.system_runtime.application_activation import activate_application_package
 from deployment.authority_recovery import fence_recovered_authority
 
 

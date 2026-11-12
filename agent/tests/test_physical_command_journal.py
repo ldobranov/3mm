@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 import pytest
 from agent.physical_command_journal import PhysicalCommandJournal
-from three_mm_protocol import AgentCommand
+from packages.protocol import AgentCommand
 
 
 def command():
@@ -52,7 +52,7 @@ def test_expiry_after_authorization_and_offline_never_invoke(tmp_path):
 
 
 def test_argument_schema_rejects_ignored_or_ambiguous_constraints():
-    from three_mm_protocol.application_commands import validate_argument_schema
+    from packages.protocol.application_commands import validate_argument_schema
     for field in (
         {'type': 'boolean', 'minimum': 0},
         {'type': 'boolean', 'enum': [0]},

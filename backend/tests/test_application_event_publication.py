@@ -1,5 +1,5 @@
 """Real installed publication grants and signed SDK transport, not live data."""
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 
 from datetime import UTC, datetime
 from concurrent.futures import ThreadPoolExecutor
@@ -19,17 +19,17 @@ from backend.db.base import Base
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.device import DeviceEvent, Device
 from backend.db.module import ApplicationExtensionInstallation as Installation, ModulePackage, ApplicationEventDelivery
-from backend.services import application_authority_management as authority
-from backend.services.application_event_publication import publish_application_event
-from backend.services.application_platform import ApplicationPlatformServer
-from backend.services.device_protocol import DeviceOperations
-from backend.services.module_packages import validate_module_package
+from backend.applications.authority import management as authority
+from backend.applications.events.publication import publish_application_event
+from backend.applications.runtime.platform import ApplicationPlatformServer
+from backend.devices.operations import DeviceOperations
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_authority_management import (
     installed as core_installed, source_subject, source_installed, native, decide, identity,
 )
-from three_mm_application_sdk import ApplicationPlatformClient, ApplicationPlatformError
-from three_mm_protocol import DeviceEventV1
-from three_mm_protocol.transport import DeviceProtocolError
+from packages.application_sdk import ApplicationPlatformClient, ApplicationPlatformError
+from packages.protocol import DeviceEventV1
+from packages.protocol.transport import DeviceProtocolError
 
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Real POSIX review key ownership and socket required')
@@ -88,7 +88,7 @@ def activate(s):
 
 
 def test_resource_view_observes_core_journal_without_publishing(publications):
-    from backend.services.application_resource_discovery import discover_resources
+    from backend.applications.resources.discovery import discover_resources
     s = publications
     activate(s)
     before = count(s)
@@ -154,7 +154,7 @@ def test_one_common_journal_owned_receipt_and_no_device_or_consumer_inference(pu
         assert receipt['producer']['application_installation_id'] == '1'
         assert row.authority_epoch == db.get(Installation, 1).authority_epoch
         assert db.scalar(select(func.count()).select_from(ApplicationEventDelivery)) == 0
-        from backend.services.application_events import enqueue_application_event
+        from backend.applications.events.broker import enqueue_application_event
         from backend.config import ApplicationRuntimeSettings
         enqueue_application_event(db, row, ApplicationRuntimeSettings())
         assert db.scalar(select(func.count()).select_from(ApplicationEventDelivery)) == 0
@@ -329,7 +329,7 @@ def test_real_offline_restore_fence_preserves_receipt_without_reopening_publicat
 
 @pytest.mark.parametrize('changed_content', [False, True])
 def test_concurrent_same_id_has_one_record_and_never_a_foreign_content_receipt(publications, monkeypatch, changed_content):
-    import backend.services.application_event_publication as publication_service
+    import backend.applications.events.publication as publication_service
     s = publications
     activate(s)
     body = request()

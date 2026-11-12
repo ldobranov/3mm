@@ -12,9 +12,9 @@ from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import requests
-from three_mm_protocol.node_updates import NodeUpdateApprovalKey
-from three_mm_runtime.node_update_trust import pin_approval_key
-from three_mm_runtime.node_update_helper import AGENT_DATA, read_small
+from packages.protocol.node_updates import NodeUpdateApprovalKey
+from components.system_runtime.node_update_trust import pin_approval_key
+from components.system_runtime.node_update_helper import AGENT_DATA, read_small
 
 KEY_ENDPOINT = "/api/v1/devices/node-updates/approval-key"
 

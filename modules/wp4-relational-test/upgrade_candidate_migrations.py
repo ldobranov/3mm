@@ -4,7 +4,7 @@ Only the explicit non-root upgrade worker may call this migration. Existing
 probe_writes, SDK history and outbox are untouched. No code runs on import.
 """
 
-from three_mm_application_sdk import ApplicationMigration
+from packages.application_sdk import ApplicationMigration
 
 
 def applied_prefix(connection):

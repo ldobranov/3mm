@@ -7,8 +7,8 @@ import requests
 from agent.core_client import CommandJournal, CorePublisher, DeviceCredential, OutboxStore, ReconciliationStore
 from agent.node_update_client import NodeUpdateHelperError
 from agent.node_update_execution import NodeUpdateExecution
-from three_mm_protocol import AgentCommand
-from three_mm_protocol.node_updates import NodeUpdateApplyRequest, NodeUpdateAuthorization, NodeUpdateOperation, NodeUpdateSupport
+from packages.protocol import AgentCommand
+from packages.protocol.node_updates import NodeUpdateApplyRequest, NodeUpdateAuthorization, NodeUpdateOperation, NodeUpdateSupport
 
 DEVICE = "dev_" + "a" * 32
 

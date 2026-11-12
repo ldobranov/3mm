@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { useApplicationHost } from '@3mm/application-ui/v1'
-import { UiSurface, UiButton, UiState } from '@3mm/ui/v1'
+import { useApplicationHost } from '@platform/application-ui/v1'
+import { UiSurface, UiButton, UiState } from '@platform/ui/v1'
 
 const files=useApplicationHost().files, selected=ref(null), fileId=ref('sample'), busy=ref(false), message=ref(''), items=ref([]), next=ref(null)
 const key='3mm.file-probe.upload.v1', upload=ref(null), progress=ref(0), share=ref(null), preview=ref(null)

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from backend.config import UpdateCatalogSettings
-from backend.services.node_update_delivery import (
+from backend.devices.updates.delivery import (
     NodeDeliveryError,
     open_node_delivery,
     stage_node_delivery,

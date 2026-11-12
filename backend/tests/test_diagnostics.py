@@ -15,18 +15,18 @@ import backend.database  # noqa: F401
 from backend.config import AppSettings, BackendSettings, BackupSettings, UpdateCatalogSettings
 from backend.db.base import Base
 from backend.db.user import User
-from backend.routes.diagnostics import router
-from backend.services.diagnostics import (
+from backend.system.diagnostics.api import router
+from backend.system.diagnostics.bundle import (
     DiagnosticBundle,
     DiagnosticCheck,
     build_diagnostic_bundle,
     redact_diagnostic_data,
     serialize_diagnostic_bundle,
 )
-from backend.utils import jwt_utils
-from backend.utils.auth import hash_password
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
+from backend.accounts import tokens as jwt_utils
+from backend.accounts.passwords import hash_password
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
 
 
 def _settings(tmp_path: Path) -> AppSettings:
@@ -127,7 +127,7 @@ def _bundle() -> DiagnosticBundle:
 
 def test_diagnostic_bundle_download_is_admin_only(monkeypatch: pytest.MonkeyPatch) -> None:
     client, db, admin_token, viewer_token = _client()
-    monkeypatch.setattr("backend.routes.diagnostics.build_diagnostic_bundle", lambda _settings: _bundle())
+    monkeypatch.setattr("backend.system.diagnostics.api.build_diagnostic_bundle", lambda _settings: _bundle())
     try:
         assert client.get("/api/v1/diagnostics/bundle").status_code == 401
         assert client.get(
@@ -146,7 +146,7 @@ def test_diagnostic_bundle_download_is_admin_only(monkeypatch: pytest.MonkeyPatc
 
 
 def test_operational_alerts_are_admin_only_and_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    from backend.services.operational_alerts import OperationalAlert, OperationalAlertSummary
+    from backend.system.diagnostics.alerts import OperationalAlert, OperationalAlertSummary
 
     client, db, admin_token, viewer_token = _client()
     probes = []
@@ -157,7 +157,7 @@ def test_operational_alerts_are_admin_only_and_read_only(monkeypatch: pytest.Mon
             alerts=(OperationalAlert(severity="warning", code="storage.low_free_space",
                                      message="Backup storage is below the configured minimum free threshold"),),
         )
-    monkeypatch.setattr("backend.routes.diagnostics.build_operational_alert_summary", summary)
+    monkeypatch.setattr("backend.system.diagnostics.api.build_operational_alert_summary", summary)
     try:
         assert client.get("/api/v1/diagnostics/alerts").status_code == 401
         assert client.get(
@@ -178,12 +178,12 @@ def test_operational_alerts_are_admin_only_and_read_only(monkeypatch: pytest.Mon
 
 
 def test_operation_sessions_are_admin_only_bounded_and_separate_from_bundle(monkeypatch):
-    from three_mm_protocol.diagnostics import DiagnosticSession
+    from packages.protocol.diagnostics import DiagnosticSession
 
     client, db, admin_token, viewer_token = _client()
     session = DiagnosticSession("core", "1.0")
-    monkeypatch.setattr("backend.routes.diagnostics.core_diagnostics", session)
-    monkeypatch.setattr("backend.routes.diagnostics.build_diagnostic_bundle", lambda _settings: _bundle())
+    monkeypatch.setattr("backend.system.diagnostics.api.core_diagnostics", session)
+    monkeypatch.setattr("backend.system.diagnostics.api.build_diagnostic_bundle", lambda _settings: _bundle())
     admin = {"Authorization": f"Bearer {admin_token}"}
     try:
         for method, path, body in (
@@ -219,8 +219,8 @@ def test_operation_sessions_are_admin_only_bounded_and_separate_from_bundle(monk
 
 
 def test_disconnected_export_releases_optional_snapshot():
-    from backend.routes.diagnostics import DiagnosticRecordsResponse
-    from three_mm_protocol.diagnostics import DiagnosticSession
+    from backend.system.diagnostics.api import DiagnosticRecordsResponse
+    from packages.protocol.diagnostics import DiagnosticSession
 
     session = DiagnosticSession("core", "1.0")
     session.start()

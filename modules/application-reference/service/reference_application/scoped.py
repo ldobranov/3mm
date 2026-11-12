@@ -1,6 +1,6 @@
 """Mock capability acceptance using public SDK only; no business SQL or jobs."""
 
-from three_mm_application_sdk import ApplicationContext, ApplicationMigration, OperationContext
+from packages.application_sdk import ApplicationContext, ApplicationMigration, OperationContext
 
 
 def get_migrations():

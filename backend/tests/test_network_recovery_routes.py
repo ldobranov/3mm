@@ -13,14 +13,14 @@ from backend.config import NetworkRecoverySettings
 from backend.db.audit_log import AuditLog
 from backend.db.base import Base
 from backend.db.user import User
-from backend.routes import network_recovery
-from backend.routes.network_recovery import router
-from backend.services import network_recovery as recovery_service
-from backend.utils import jwt_utils
-from backend.utils.auth import hash_password
-from backend.utils.db_utils import get_db
-from backend.utils.jwt_utils import create_access_token
-from three_mm_provisioning.recovery_access_point import read_status
+from backend.system.network_recovery import api as network_recovery
+from backend.system.network_recovery.api import router
+from backend.system.network_recovery import service as recovery_service
+from backend.accounts import tokens as jwt_utils
+from backend.accounts.passwords import hash_password
+from backend.storage.sessions import get_db
+from backend.accounts.tokens import create_access_token
+from packages.provisioning.recovery_access_point import read_status
 
 
 @pytest.fixture(autouse=True)

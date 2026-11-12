@@ -103,13 +103,17 @@ deliberately refuses execution: this is an upgrade over the prepared 1.0.0/0001
 fixture, **not a fresh-install package**. Factory/service operations and bounds
 are unchanged. Nothing is uploaded, trusted, approved or started by building it.
 
-Candidate ZIP SHA-256:
+Historical candidate ZIP SHA-256, before the neutral SDK source-layout cleanup:
 `8358fdccc644d299aacef7af1cc80cef3d34df86ff1fa8de5bea6d0d21ed727c`.
-The default builder still produces the exact existing 1.0.0 ZIP:
+The historical default 1.0.0 ZIP was:
 `e3afeeba492b1eb30351ebbf8229c27fa1337ccd940f575bba9b96f2f09157d0`.
-The candidate source is outside the original service-file glob, so adding it
-does not silently republish an immutable 1.0.0 artifact. Both wheel RECORDs and
-deterministic ZIP identities are covered by build-only regression tests.
+Current source uses `packages.application_sdk`; rebuilding therefore changes
+the wheel and ZIP bytes, not those accepted historical artifacts. Use the
+builder's printed digest for a new exact code review. The candidate source
+remains outside the baseline service-file glob. Build-only regressions pin the
+current baseline, reproduce the historical ZIP by reversing only its two SDK
+import spellings in disposable inert inputs, and check deterministic variants
+and both wheel RECORDs. No compatibility import adapter is installed.
 
 ## Separate human consent and one-use journal
 

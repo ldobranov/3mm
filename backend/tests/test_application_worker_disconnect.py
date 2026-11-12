@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from starlette.websockets import WebSocketDisconnect
 
 from backend.db.audit_log import AuditLog
-from backend.services.application_session_runtimes import ReviewedSessionRuntime
+from backend.applications.sessions.runtimes import ReviewedSessionRuntime
 from backend.tests.test_application_browser_sessions import (
     browser_app,
     checkpoint_app,
@@ -25,13 +25,13 @@ from backend.tests.test_application_browser_sessions import (
     source_subject,
 )
 from backend.tests.test_application_session_authority import CAPABILITY, PROVIDER
-from three_mm_protocol.interactive_session import (
+from packages.protocol.interactive_session import (
     decode_session_frame,
     encode_session_frame,
 )
-from three_mm_runtime.session_worker import serve
-from three_mm_runtime.session_worker_client import SandboxedSessionProvider
-from three_mm_runtime.tests.test_session_worker import wheel
+from components.system_runtime.session_worker import serve
+from components.system_runtime.session_worker_client import SandboxedSessionProvider
+from components.system_runtime.tests.test_session_worker import wheel
 
 
 @pytest.mark.parametrize(
@@ -51,7 +51,7 @@ def test_worker_stream_and_disconnect_require_confirmed_cleanup(
     if not crash:
         # Force the real browser pump to request more output while the prior
         # worker reply is visible to Core but its send task has not returned.
-        import three_mm_runtime.session_worker as worker
+        import components.system_runtime.session_worker as worker
 
         original_write, original_read = worker.write_packet, worker.read_packet
         release_reply = None

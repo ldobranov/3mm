@@ -6,9 +6,9 @@ import pytest
 
 from agent.module_runtime import AgentModuleRuntime, ModuleLifecycleError
 from agent.modules.character_display_scene import CharacterDisplaySceneService, character_display_scene_handler
-from three_mm_protocol.character_display_scene import CharacterDisplaySceneProfileV1, SCENE_ENTRYPOINT
-from three_mm_protocol.character_display_package import build_scene_package
-from three_mm_protocol.capability_contracts import validate_value
+from packages.protocol.character_display_scene import CharacterDisplaySceneProfileV1, SCENE_ENTRYPOINT
+from packages.protocol.character_display_package import build_scene_package
+from packages.protocol.capability_contracts import validate_value
 
 
 class Clock:

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from three_mm_protocol.automation import AutomationDefinitionV1
+from packages.protocol.automation import AutomationDefinitionV1
 
 
 class StoredAutomation(BaseModel):

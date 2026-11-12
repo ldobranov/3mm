@@ -10,15 +10,15 @@ import backend.database  # noqa: F401 - register the complete model graph
 from backend.config import ApplicationRuntimeSettings
 from backend.db.base import Base
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
-from backend.services import application_public_web as public_web
-from backend.services.application_public_web import ApplicationPublicWebError
+from backend.applications.public_web import routes as public_web
+from backend.applications.public_web.routes import ApplicationPublicWebError
 from backend.tests.test_module_packages import application_definition
-from three_mm_protocol import (
+from packages.protocol import (
     ApplicationExtensionV1,
     public_http_request_schema_v1,
     public_http_response_schema_v1,
 )
-from three_mm_protocol.application_extension import ApplicationPublicWebhookV1
+from packages.protocol.application_extension import ApplicationPublicWebhookV1
 
 
 # Test composition of the separated route admission and response-validation

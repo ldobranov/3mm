@@ -151,4 +151,4 @@ reduces unnecessary private-column reads without enabling scoped peer operations
 
 Related: [identity read](EXTENSION_PLATFORM_V2_IDENTITY_READ.md),
 [authority administration](EXTENSION_PLATFORM_V2_AUTHORITY_APPLY.md),
-[WP4 plan and remaining gates](../EXTENSION_PLATFORM_V2_CORE_PLAN.md#wp4--public-platform-api-sdk-and-authorization).
+[WP4 plan and remaining gates](EXTENSION_PLATFORM_V2_CORE_PLAN.md#wp4--public-platform-api-sdk-and-authorization).

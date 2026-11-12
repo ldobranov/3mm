@@ -10,11 +10,11 @@ import pytest
 import requests
 from sqlalchemy.orm import Session
 
-from backend.services.application_authority_context import (
+from backend.applications.authority.context import (
     _parse,
     review_authority_context,
 )
-from backend.services.application_authority_policy import (
+from backend.applications.authority.policy import (
     CorePolicyEvidenceV1,
     PolicySubjectV1,
     evaluate_authority_policy,
@@ -302,7 +302,7 @@ def test_policy_resource_collection_order_is_not_authority():
 
 
 def test_implemented_adapter_semantics_version_is_part_of_policy_identity(monkeypatch):
-    from backend.services import application_authority_policy as service
+    from backend.applications.authority import policy as service
 
     subject, evidence = inputs()
     original = evaluate_authority_policy(subject, evidence).policy.policy_revision

@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from backend.services.application_relational_admin_worker import dispatch
+from backend.applications.relational.admin_worker import dispatch
 from backend.tests.test_application_relational_installation import (
     ROOT_ONLY,
     absent_paths,
@@ -26,13 +26,13 @@ from backend.tests.test_application_relational_installation import (
     source_subject,
     stopped,
 )
-from three_mm_application_sdk.relational_wire import canonical
-from three_mm_runtime import update_helper
-from three_mm_runtime.application_relational_control import (
+from packages.application_sdk.relational_wire import canonical
+from components.system_runtime import update_helper
+from components.system_runtime.application_relational_control import (
     CoreMetadataClient,
     preparation_request,
 )
-from three_mm_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
+from components.system_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix", reason="Actual local helper/Core credentials"
@@ -86,7 +86,7 @@ def production(initial, tmp_path, monkeypatch):
             [
                 sys.executable,
                 "-m",
-                "backend.services.application_relational_admin_worker",
+                "backend.applications.relational.admin_worker",
                 "--core-uid",
                 "1202",
                 "--database",
@@ -101,7 +101,7 @@ def production(initial, tmp_path, monkeypatch):
 
     state.metadata = CoreMetadataClient(core_uid=1202, database=database, runner=runner)
     monkeypatch.setattr(
-        "three_mm_runtime.application_relational_control.CoreMetadataClient",
+        "components.system_runtime.application_relational_control.CoreMetadataClient",
         lambda **kw: state.metadata,
     )
     monkeypatch.setattr(
@@ -110,7 +110,7 @@ def production(initial, tmp_path, monkeypatch):
         lambda user, group: (1200, 1201) if user == "3mm-app" else (1202, 1203),
     )
     # Only disposable unit I/O is doubled; no live systemd unit is touched.
-    from three_mm_runtime.application_activation import SystemdApplicationSupervisor
+    from components.system_runtime.application_activation import SystemdApplicationSupervisor
 
     monkeypatch.setattr(
         SystemdApplicationSupervisor,
@@ -299,7 +299,7 @@ def test_core_worker_cannot_be_invoked_as_root_even_with_an_admin_token(producti
         [
             sys.executable,
             "-m",
-            "backend.services.application_relational_admin_worker",
+            "backend.applications.relational.admin_worker",
             "--core-uid",
             "1202",
             "--database",
@@ -435,7 +435,7 @@ def test_actual_core_admin_cli_unix_peer_and_metadata_worker_prepare_without_ena
             [
                 sys.executable,
                 "-m",
-                "backend.services.application_authority_admin",
+                "backend.applications.authority.admin",
                 "prepare-relational",
                 "--installation-id",
                 "1",

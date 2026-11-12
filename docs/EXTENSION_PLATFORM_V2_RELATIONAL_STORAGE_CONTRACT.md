@@ -265,14 +265,14 @@ not inferred from Python version; no installer dependency change is made here.
 
 ## Проверени source точки
 
-- [Storage SDK](../three_mm_application_sdk/__init__.py) и
-  [migrations/outbox tests](../three_mm_application_sdk/tests/test_storage.py).
-- [Storage descriptor](../three_mm_protocol/application_extension.py),
-  [host startup](../three_mm_runtime/application_host.py),
-  [activation DB/file rollback](../three_mm_runtime/application_activation.py).
-- [Installed authority resolver](../backend/services/application_authority_sources.py),
-  [authority management](../backend/services/application_authority_management.py) и
-  [signed platform dispatcher](../backend/services/application_platform.py).
+- [Storage SDK](../packages/application_sdk/__init__.py) и
+  [migrations/outbox tests](../packages/application_sdk/tests/test_storage.py).
+- [Storage descriptor](../packages/protocol/application_extension.py),
+  [host startup](../components/system_runtime/application_host.py),
+  [activation DB/file rollback](../components/system_runtime/application_activation.py).
+- [Installed authority resolver](../backend/applications/authority/sources.py),
+  [authority management](../backend/applications/authority/management.py) и
+  [signed platform dispatcher](../backend/applications/runtime/platform.py).
 - [Private files](EXTENSION_PLATFORM_V2_PRIVATE_FILES.md): отделен ресурс и limits.
 - [SQLite authorizer](https://www.sqlite.org/c3ref/set_authorizer.html): connection
   SQL restriction, не отмяна на Core grant при вече compiled statement.
@@ -291,9 +291,9 @@ not inferred from Python version; no installer dependency change is made here.
   отказва relational metadata преди import, migrations, SQLite или file worker.
   Няма падане към стария writable SQLite adapter.
 
-Тестовете са в [protocol declarations](../three_mm_protocol/tests/test_application_relational_storage.py),
+Тестовете са в [protocol declarations](../packages/protocol/tests/test_application_relational_storage.py),
 [ZIP/review/installed denials](../backend/tests/test_application_relational_declarations.py)
-и [activation/host guards](../three_mm_runtime/tests/test_application_relational_gate.py).
+и [activation/host guards](../components/system_runtime/tests/test_application_relational_gate.py).
 Проверка: **303 passed** под Linux — трите нови файла и целевите съществуващи
 protocol/package/review/authority-management/activation/file-host/SDK storage
 проверки. Това не е пълният release suite или live Standalone/Hub acceptance.
@@ -340,7 +340,7 @@ SQL executor или DB model/migration; legacy own DB runtime е непроме�
 
 ## Трета стъпка — вътрешен bounded SQLite engine, без runtime включване
 
-[ApplicationScopedStorage](../three_mm_application_sdk/scoped_relational.py) е
+[ApplicationScopedStorage](../packages/application_sdk/scoped_relational.py) е
 вътрешна реализация, не top-level SDK export или избран host adapter. Няма нов
 Core SQL endpoint, migration или application receipt table. Старият
 `ApplicationStorage` и позициите на `ApplicationContext` са непроменени.
@@ -386,7 +386,7 @@ Core SQL endpoint, migration или application receipt table. Старият
   да не се представя доказано незапочнала операция като изгубен write result.
   Това не спира package-created threads, raw sockets или произволен Python I/O — WP5.
 
-Тестове: [реален SQLite engine](../three_mm_application_sdk/tests/test_scoped_relational.py),
+Тестове: [реален SQLite engine](../packages/application_sdk/tests/test_scoped_relational.py),
 с legacy-prepared disposable DB и explicit admission test double. Тестовата
 подготовка през стария migration helper **не е** production lifecycle authority.
 Загубен резултат след действителен commit се симулира без повторение на callback.
@@ -411,7 +411,7 @@ generic relational effect admission и `native_activation` остават бло
 
 ## Четвърта стъпка — вътрешен Core admission journal и atomic own-DB receipts
 
-[Core coordinator](../backend/services/application_relational.py) използва
+[Core coordinator](../backend/applications/relational/authority.py) използва
 действителния installed ZIP resolver и `_require_grant`, Core key → authority
 guard → application fence. Artifact/configuration/native trust/grant/epoch се
 проверяват отново за всяка транзакция. ZIP I/O е преди leases; application SQL,
@@ -421,7 +421,7 @@ parameters, business values и physical paths не се изпращат на Co
   преди връщането. Повторен transaction ID винаги отказва нов permit, дори при
   същото съдържание. Lookup връща само исторически outcome, никога permit. Липсващ
   journal/completion остава `execution_unconfirmed`, не доказателство за rollback.
-- Вътрешният [closed wire format](../three_mm_application_sdk/relational_wire.py)
+- Вътрешният [closed wire format](../packages/application_sdk/relational_wire.py)
   подписва purpose-separated admission/receipt/lineage metadata с instance
   transport key. Permit обвързва exact profile и sealed subject digest,
   grant revision/epoch, instance, runtime nonce, DB lineage и recovery/boot
@@ -433,7 +433,7 @@ parameters, business values и physical paths не се изпращат на Co
   останалите административни записи. При запълване отказва нов admission, без
   изтриване или eviction на uncertain evidence. В тази стъпка няма автоматичен
   GC/retention policy. Read admission също е durable metadata, не business write.
-- [Receipt store](../three_mm_application_sdk/relational_receipts.py) добавя
+- [Receipt store](../packages/application_sdk/relational_receipts.py) добавя
   forward SDK metadata v1: `three_mm_relational_lineage` и
   `three_mm_relational_commits`. Подготовката изисква вече започната отделна
   lifecycle transaction; не започва/commit-ва сама, не се извиква от стария
@@ -474,8 +474,8 @@ lineage: protected restore/rollback **трябва** да сменя lineage/epo
 recovery трябва изрично да координира rekey/историческо evidence, без self-repair.
 
 Тестове: [actual sealed Core grants/admission](../backend/tests/test_application_relational_admission.py),
-[SQLite receipts](../three_mm_application_sdk/tests/test_relational_receipts.py) и
-[closed wire/signatures](../three_mm_application_sdk/tests/test_relational_wire.py).
+[SQLite receipts](../packages/application_sdk/tests/test_relational_receipts.py) и
+[closed wire/signatures](../packages/application_sdk/tests/test_relational_wire.py).
 Core fixture използва реални ZIPs/native attestations/admin approve/apply, не
 SQL-inserted grants; verified host context се подава директно **само в fixture**.
 Integrated test свързва Core permit → verifier → SQLite business/outbox/receipt
@@ -499,7 +499,7 @@ existing signed private-file execution. След финалните suspend-awar
 
 ## Пета стъпка — prepared-host сесия и реален Unix metadata resolver
 
-[Host session reader](../three_mm_runtime/application_relational_session.py)
+[Host session reader](../components/system_runtime/application_relational_session.py)
 чете fixed `relational.json` от root-protected instance, **не** от application
 configuration/manifest или `data`. Това е вътрешна част за следващия lifecycle
 coordinator; текущият production installer **не публикува** такъв запис и няма
@@ -553,7 +553,7 @@ fixed metadata JSON codec; owner/subject digests, изведени от Core, з
 fingerprints или SDK **1.3**. HMAC/purpose separation и root ownership не са
 hostile native Python isolation; mutable namespace races/raw I/O остават WP5.
 
-Тестове: [real Unix session/readiness](../three_mm_runtime/tests/test_application_relational_session.py)
+Тестове: [real Unix session/readiness](../components/system_runtime/tests/test_application_relational_session.py)
 и [actual installed grants + Core resolver + own SQLite](../backend/tests/test_application_relational_host.py).
 Fixture подготвя DB/receipt tables/lifecycle record изрично и използва actual ZIP,
 native attestation и admin approve/apply. Unix socket, metadata signatures, Core
@@ -581,7 +581,7 @@ release; SDK остава **1.3**, Core версията е непроменен
 
 ## Следваща lifecycle част — проверен SQLite preimage и migration rollback
 
-[Database snapshot helper](../three_mm_runtime/application_database_snapshot.py)
+[Database snapshot helper](../components/system_runtime/application_database_snapshot.py)
 е свързан със **съществуващия** activation DB/files checkpoint. Няма втори
 activation coordinator, нов restore endpoint или application maintenance flag.
 
@@ -616,7 +616,7 @@ SDK dispatch остават задължителният остатък. Snapsho
 Activation/host gates остават блокирани за relational декларации; SDK **1.3**
 и Core версията са непроменени. Няма live restore, deployment или release.
 
-Тестове: [database evidence и activation migration rollback](../three_mm_runtime/tests/test_application_database_snapshot.py).
+Тестове: [database evidence и activation migration rollback](../components/system_runtime/tests/test_application_database_snapshot.py).
 Финална целева проверка: **301 passed** под Ubuntu/WSL, root disposable fixtures,
 Python **3.14.4**, SQLite **3.46.1**. Включва existing activation/private-files
 rollback, relational guards, prepared-host/Core admission и SDK engine/receipts/
@@ -626,8 +626,8 @@ release suite или live Standalone/Hub acceptance. Няма commit/push/releas
 
 ## Следваща lifecycle част — initial preparation на съществуваща точна схема
 
-[Private Core coordinator](../backend/services/application_relational_lifecycle.py)
-и [protected helper](../three_mm_runtime/application_relational_preparation.py)
+[Private Core coordinator](../backend/applications/relational/lifecycle.py)
+и [protected helper](../components/system_runtime/application_relational_preparation.py)
 доказват ограничен initial adoption поток. Това **не е** публична install/SDK/
 helper операция и не е разрешение за production relational runtime.
 
@@ -698,7 +698,7 @@ Python **3.14.4**, SQLite **3.46.1**. Първите 21 preparation теста �
 
 ## Initial schema / forward business migrations — отделен non-root worker
 
-[Core coordinator](../backend/services/application_relational_lifecycle.py) добавя
+[Core coordinator](../backend/applications/relational/lifecycle.py) добавя
 отделно `issue_migrated_schema_preparation`, с изрично потвърждение за изпълнение
 на **точния migration code**, не само за SDK metadata. Използва текущите local
 admin/session/native review/installed ZIP/exact grants и същия sealed Action
@@ -708,14 +708,14 @@ journal. Няма нов public HTTP/helper/platform endpoint или SDK export.
   на fixed worker policy. Metadata-only ticket не може да се преобразува в
   migration authority; replay, чужда/изтекла/отнета authority или променен worker
   profile отказва. Begin се записва преди стартирането на процеса.
-- [Preparation helper](../three_mm_runtime/application_relational_preparation.py)
+- [Preparation helper](../components/system_runtime/application_relational_preparation.py)
   запазва release/runtime locks, confirmed service stop, проверения DB/files
   preimage и exact wheel bytes. Може да подготви първа схема при **доказана липса
   на DB в вече създаден own namespace**, или forward legacy schema преди първо
   relational adoption. Това не създава instance/service account/key и не е
   завършен production first install. Вече prepared DB/частични receipt metadata
   все още отказват и изискват отделна upgrade/recovery реализация.
-- [Migration worker](../three_mm_runtime/application_relational_migrations.py)
+- [Migration worker](../components/system_runtime/application_relational_migrations.py)
   е реален отделен POSIX процес с exact non-root application UID/GID, без
   supplementary groups, inherited credentials/env/Core tokens или transport key.
   Exact wheel imports и migration factory/callback са само там; service factory
@@ -765,8 +765,8 @@ frontend build или live Standalone/Hub тест.
 
 ## Explicit recovery — приемане на проверен published candidate
 
-[Private Core recovery](../backend/services/application_relational_recovery.py) и
-[root helper](../three_mm_runtime/application_relational_recovery.py) реализират
+[Private Core recovery](../backend/applications/relational/recovery.py) и
+[root helper](../components/system_runtime/application_relational_recovery.py) реализират
 **един ограничен recovery избор**: приемане на точната подготвена база след
 успешна публикация, включително изгубен preparation finish ACK преди/след Core
 commit. Това не е general backup restore, избор на произволен snapshot, prepared
@@ -833,8 +833,8 @@ commit, push или промени по работеща инсталация.
 
 ## Interrupted recovery — explicit readonly confirmation
 
-[Private Core coordinator](../backend/services/application_relational_recovery_confirmation.py)
-и [root helper](../three_mm_runtime/application_relational_recovery_confirmation.py)
+[Private Core coordinator](../backend/applications/relational/recovery_confirmation.py)
+и [root helper](../components/system_runtime/application_relational_recovery_confirmation.py)
 приключват **вече напълно публикуван** accept-candidate recovery, когато finish
 request/response е изгубен преди или след Core commit. Това не повтаря fixed SDK
 SQL, не връща snapshot, не сменя отново lineage/key и не пуска package code.

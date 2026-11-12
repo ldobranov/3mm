@@ -1,5 +1,5 @@
 """Real signed current SDK contract, overload, recovery and no replay."""
-from three_mm_platform_wire import COMPATIBILITY_ACTIONS
+from packages.platform_wire import COMPATIBILITY_ACTIONS
 from contextlib import ExitStack
 import os
 from pathlib import Path
@@ -13,15 +13,15 @@ from sqlalchemy import update
 from sqlalchemy.orm import sessionmaker
 
 import backend.database
-import three_mm_application_sdk as sdk
+import packages.application_sdk as sdk
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation
-from backend.services import application_platform as platform
+from backend.applications.runtime import platform
 from backend.tests.test_application_identity_read import (
     identity_app, activate_identity_grant, managed_installed, source_subject,
     source_installed, checkpoint_app, identity,
 )
-from three_mm_protocol.platform_transport import MAX_CONNECTIONS, SCOPED_ACTIONS
+from packages.protocol.platform_transport import MAX_CONNECTIONS, SCOPED_ACTIONS
 
 pytestmark=pytest.mark.skipif(os.name!="posix",reason="Real POSIX authority and Unix listener")
 
@@ -213,7 +213,7 @@ def test_sdk_rejects_malformed_signed_response_without_retry(boundary,monkeypatc
     calls=[]
     def damaged(connection,deadline):
         import hashlib,hmac
-        from three_mm_protocol.platform_transport import canonical
+        from packages.protocol.platform_transport import canonical
         response=original(connection,deadline)
         calls.append(response["request_id"])
         if damage=="signature": response["signature"]="0"*64
@@ -234,7 +234,7 @@ def test_sdk_rejects_malformed_signed_response_without_retry(boundary,monkeypatc
 
 def test_boot_transport_preserves_original_unix_peer_and_exact_success_envelope(boundary,monkeypatch):
     _,server,client=boundary
-    import backend.services.application_relational_startup as startup
+    import backend.applications.relational.startup as startup
     observed=[]
     def admit(db,installation_id,nonce,*,transport_secret,runtime_root,peer_credentials):
         assert peer_credentials==(os.getpid(),os.geteuid(),os.getegid())

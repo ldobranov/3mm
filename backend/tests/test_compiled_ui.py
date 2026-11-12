@@ -13,11 +13,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from backend.db.module import ModulePackage
-from backend.routes.modules import router
-from backend.services import compiled_ui
-from backend.services.compiled_ui import CompiledUiBuildError, compile_ui_package
-from backend.services.module_packages import validate_module_package
-from backend.utils.db_utils import get_db
+from backend.artifacts.api import router
+from backend.artifacts import compiled_ui
+from backend.artifacts.compiled_ui import CompiledUiBuildError, compile_ui_package
+from backend.artifacts.packages import validate_module_package
+from backend.storage.sessions import get_db
 
 
 def package(source: str = "<template><time>12:34:56</time></template>") -> bytes:
@@ -93,7 +93,12 @@ def test_compiler_publishes_content_addressed_artifact_atomically(monkeypatch, t
     assert Path(calls[0][3]).parent.parent == artifact.path.parent
 
 
-@pytest.mark.parametrize("imported", ["@/stores/auth", "@/components/ui/UiButton.vue", "@3mm/ui/v2", "@3mm/ui/v1/context", "@3mm/application-ui/v2", "@3mm/application-ui/v1/internal", "reka-ui"])
+@pytest.mark.parametrize("imported", [
+    "@/stores/auth", "@/components/ui/UiButton.vue", "@platform/ui/v2",
+    "@platform/ui/v1/context", "@platform/application-ui/v2",
+    "@platform/application-ui/v1/internal", "@3mm/ui/v1",
+    "@3mm/application-ui/v1", "reka-ui",
+])
 def test_compiler_rejects_non_allowlisted_import_before_execution(monkeypatch, tmp_path, imported):
     blob = package(
         f"<script setup>import value from '{imported}'</script><template>{{{{ value }}}}</template>"
@@ -112,7 +117,7 @@ def test_compiler_rejects_non_allowlisted_import_before_execution(monkeypatch, t
 
 def test_compiler_accepts_the_exact_public_ui_contract(monkeypatch, tmp_path):
     blob = package(
-        '<script setup>import { UiSurface, UiButton } from "@3mm/ui/v1"</script>'
+        '<script setup>import { UiSurface, UiButton } from "@platform/ui/v1"</script>'
         '<template><UiSurface><UiButton>Local action</UiButton></UiSurface></template>'
     )
     calls = []
@@ -124,7 +129,7 @@ def test_compiler_accepts_the_exact_public_ui_contract(monkeypatch, tmp_path):
 
 def test_compiler_accepts_public_application_host_without_private_imports(monkeypatch, tmp_path):
     blob = package(
-        '<script setup>import { useApplicationHost } from "@3mm/application-ui/v1"; '
+        '<script setup>import { useApplicationHost } from "@platform/application-ui/v1"; '
         'const host = useApplicationHost()</script><template>Reference</template>'
     )
     calls = []

@@ -4,7 +4,8 @@ import { useThemeStore } from '@/stores/theme'
 import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
 import { readSettings, upsertSettings } from '@/utils/settings-api'
-import { resolveHeaderSettings } from '@/utils/header-settings'
+import { DEFAULT_HEADER_SETTINGS, resolveHeaderSettings, type ResolvedHeaderSettings } from '@/utils/header-settings'
+import { product } from '@/utils/product'
 import { getToken } from '@/utils/auth'
 import { BUILTIN_STYLES, resolveThemeStyle, readThemeProjection } from '@/utils/theme-extension'
 import { adaptLegacyUi, builtinUiDesign, buttonHoverBackground, parseUiDesign, uiDesignVariables, type UiDesign } from '@/utils/ui-design'
@@ -171,13 +172,10 @@ export const useSettingsStore = defineStore('settings', () => {
   ]
 
   // Header settings
-  const headerSettings = reactive({
-    siteName: 'Mega Monitor',
-    headerMessage: 'Welcome to Mega Monitor',
-    logoUrl: '',
-    backgroundColor: '#4CAF50',
-    textColor: '#ffffff'
-  })
+  const headerSettings = reactive<ResolvedHeaderSettings>({ ...DEFAULT_HEADER_SETTINGS })
+  watch(() => headerSettings.siteName, value => {
+    if (typeof document !== 'undefined') document.title = value || product.display_name
+  }, { immediate: true })
 
   // One built-in Design API palette. Retired light_*/dark_* settings are not
   // another default and are never imported into it or erased automatically.
@@ -207,7 +205,7 @@ export const useSettingsStore = defineStore('settings', () => {
     textColor: effectivePreferences.value.header_text_color,
   } : headerSettings)
   const brandingLogo = computed(() => headerSettings.logoUrl ||
-    (!appearanceRecovery.value && !previewDesign.value ? (packagePreview.value ? packagePreview.value.assets : themeAssets.value)?.logos[themeStore.theme] || '' : ''))
+    (!appearanceRecovery.value && !previewDesign.value ? (packagePreview.value ? packagePreview.value.assets : themeAssets.value)?.logos[themeStore.theme] || '' : '') || product.default_logo_url)
 
   const loading = ref(false)
   const error = ref('')

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from backend.config import AppSettings, BackendSettings, BackupSettings
-from backend.services.backups import (
+from backend.system.backups.service import (
     build_backup_preview,
     list_backup_catalog,
     read_backup_operation_status,

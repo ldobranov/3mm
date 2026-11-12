@@ -4,7 +4,7 @@ from sqlalchemy import select
 from backend.db.audit_log import AuditLog
 from backend.db.user import User
 from backend.tests.test_system_update_routes import make_client, use_test_jwt_secret  # noqa: F401
-from three_mm_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
+from components.system_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
 
 BASE = '/api/v1/system-updates/runtime'
 
@@ -24,7 +24,7 @@ def api(monkeypatch):
         calls.append(payload)
         return payload['request_id']
     monkeypatch.setattr(UpdateHelperClient, 'platform_runtime_operation', operation)
-    monkeypatch.setattr('backend.routes.system_updates.ensure_apply_is_allowed', lambda *_a, **_kw: None)
+    monkeypatch.setattr('backend.system.updates.api.ensure_apply_is_allowed', lambda *_a, **_kw: None)
     try:
         yield client, db, {'Authorization': 'Bearer '+token}, {'Authorization': 'Bearer '+viewer}, calls
     finally:
@@ -71,9 +71,9 @@ def test_apply_requires_exact_confirmation_and_separate_policy_approval(api, mon
     assert client.post(BASE+'/apply', headers=admin, json=payload).status_code == 422
     assert not calls
     payload['confirmation'] = 'UPDATE RUNTIME '+'c'*64
-    from backend.services.update_policy import UpdatePolicyError
+    from backend.system.updates.policy import UpdatePolicyError
     def deny(*args, **kwargs): raise UpdatePolicyError('Outside maintenance window')
-    monkeypatch.setattr('backend.routes.system_updates.ensure_apply_is_allowed', deny)
+    monkeypatch.setattr('backend.system.updates.api.ensure_apply_is_allowed', deny)
     assert client.post(BASE+'/apply', headers=admin, json=payload).status_code == 409
     assert not calls
 

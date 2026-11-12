@@ -6,11 +6,11 @@ import hashlib
 
 import pytest
 
-from backend.services.application_authority_context import (
+from backend.applications.authority.context import (
     AuthorityReviewContextV7, AuthoritySelectionV6, AuthoritySelectionV7, ResolvedIdentityScope,
     _parse, review_authority_context,
 )
-from backend.services.application_authority_policy import PolicySubjectV7, evaluate_authority_policy
+from backend.applications.authority.policy import PolicySubjectV7, evaluate_authority_policy
 from backend.tests.test_application_authority_context import context, replace_path
 from backend.tests.test_application_authority_policy import inputs as command_inputs
 from backend.tests.test_application_checkpoint_authority_context import inputs as checkpoint_inputs

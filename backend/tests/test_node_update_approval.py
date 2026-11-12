@@ -9,15 +9,15 @@ from sqlalchemy import select
 from backend.db.device import Device, DeviceCapabilityState, DeviceCommand, DeviceCredential, DeviceEvent, DeviceHeartbeat, DeviceState
 from backend.db.device import DevicePlatformState
 from backend.db.authority import CoreAuthorityGuard
-from backend.routes.device_commands import router as command_router
-from backend.services.device_pairing import credential_secret_hash
-from backend.services.device_commands import DeviceCommandError, queue_command
-from backend.services.device_capability_registry import replace_provider
-from backend.services.node_update_approval import NodeApprovalError, approval_key_path, public_approval_key
+from backend.devices.commands.api import router as command_router
+from backend.devices.pairing.service import credential_secret_hash
+from backend.devices.commands.queue import DeviceCommandError, queue_command
+from backend.devices.capabilities.registry import replace_provider
+from backend.devices.updates.approval import NodeApprovalError, approval_key_path, public_approval_key
 from backend.tests.test_node_updates_route import DATA, DEVICE_ID, SHA, TAG, make_client
-from backend.utils import jwt_utils
-from three_mm_protocol.node_updates import NodeUpdateAuthorization, canonical_node_update_authorization
-from three_mm_protocol import CapabilityProviderReportV1
+from backend.accounts import tokens as jwt_utils
+from packages.protocol.node_updates import NodeUpdateAuthorization, canonical_node_update_authorization
+from packages.protocol import CapabilityProviderReportV1
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setattr(jwt_utils, "SECRET_KEY", "test-only-key-with-at-least-32-bytes")
     client, db, engine, admin_token, viewer_token = make_client(tmp_path, monkeypatch)
     client.app.include_router(command_router)
-    from backend.routes.node_updates import get_settings
+    from backend.devices.updates.api import get_settings
     settings = get_settings()
     settings.updates.policy_file = tmp_path / "durable" / "update-policy.json"
     device = db.scalar(select(Device).where(Device.device_id == DEVICE_ID))
@@ -59,10 +59,10 @@ def setup(tmp_path, monkeypatch):
 
 def test_node_web_apply_requires_current_maintenance_approval(setup, monkeypatch):
     client, db, device, settings, headers, viewer, operation = setup
-    from backend.services.update_policy import UpdatePolicyError
+    from backend.system.updates.policy import UpdatePolicyError
     def allowed(_settings, *, maintenance_override):
         if not maintenance_override: raise UpdatePolicyError('Outside maintenance window')
-    monkeypatch.setattr('backend.routes.node_updates.ensure_apply_is_allowed', allowed)
+    monkeypatch.setattr('backend.devices.updates.api.ensure_apply_is_allowed', allowed)
     url = f'/api/v1/devices/{DEVICE_ID}/node-updates/{operation}/apply'
     assert client.post(url,headers=headers,json={'confirmed_install':True}).status_code==409
     assert db.scalar(select(DeviceCommand).where(DeviceCommand.command_type=='agent.update.apply')) is None
@@ -217,7 +217,7 @@ def test_apply_preconditions_fail_closed(setup, failure, monkeypatch):
         db.scalar(select(DeviceHeartbeat)).received_at = datetime.now(UTC) - timedelta(minutes=3)
     elif failure in {"missing_output", "active_output", "stale_output"}:
         monkeypatch.setattr(
-            "backend.services.node_update_execution.has_registered_capability",
+            "backend.devices.updates.execution.has_registered_capability",
             lambda *_args: True,
         )
 
@@ -290,7 +290,7 @@ def test_malformed_approval_identity_is_not_silently_replaced(setup):
 def test_public_approval_key_works_through_actual_core_app_without_login(setup):
     from fastapi.testclient import TestClient
     from backend.main import app
-    from backend.utils.db_utils import get_db
+    from backend.storage.sessions import get_db
     _client, db, _device, settings, _headers, _viewer, _op = setup
     previous = app.dependency_overrides.get(get_db)
     app.dependency_overrides[get_db] = lambda: db

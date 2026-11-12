@@ -20,19 +20,19 @@ from backend.db.module import (
     ApplicationConnectorBinding, ApplicationExtensionInstallation as Installation,
     ModuleInstallation, ModulePackage,
 )
-from backend.services import application_authority_management as authority
-from backend.services import application_consent as consent
-from backend.services.application_authority_keys import AuthorityReviewKeyError
-from backend.services.authority_metadata import read_authority_guard
-from backend.services.device_capability_registry import capability_catalog
-from backend.services.module_packages import validate_module_package
+from backend.applications.authority import management as authority
+from backend.applications.management import consent
+from backend.applications.authority.keys import AuthorityReviewKeyError
+from backend.applications.authority.metadata import read_authority_guard
+from backend.devices.capabilities.registry import capability_catalog
+from backend.artifacts.packages import validate_module_package
 from backend.tests.test_application_authority_management import identity, installed, source_subject, source_installed
 from backend.tests.test_application_checkpoint_authority import store_checkpoint_package
 from backend.tests.test_application_consent import allow, preview, read, state
 from backend.tests.test_application_authority_sources import DEVICE
-from three_mm_protocol.character_display import CharacterDisplayProfileV1
-from three_mm_protocol.gpio_input import GpioInputProfileV1, INPUT_EVENT, MAX_MONOTONIC_NS
-from three_mm_protocol import character_display_package, gpio_input_package
+from packages.protocol.character_display import CharacterDisplayProfileV1
+from packages.protocol.gpio_input import GpioInputProfileV1, INPUT_EVENT, MAX_MONOTONIC_NS
+from packages.protocol import character_display_package, gpio_input_package
 
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Real protected Core seals and SQLite authority locks")

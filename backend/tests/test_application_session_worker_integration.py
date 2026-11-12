@@ -14,7 +14,7 @@ from sqlalchemy import delete
 from starlette.websockets import WebSocketDisconnect
 
 from backend.db.module import ApplicationPermissionGrant
-from backend.services.application_session_runtimes import ReviewedSessionRuntime
+from backend.applications.sessions.runtimes import ReviewedSessionRuntime
 from backend.tests.test_application_browser_sessions import (
     browser_app,
     checkpoint_app,
@@ -26,11 +26,11 @@ from backend.tests.test_application_browser_sessions import (
     source_subject,
 )
 from backend.tests.test_application_session_authority import CAPABILITY, PROVIDER
-from three_mm_protocol.interactive_session import (
+from packages.protocol.interactive_session import (
     decode_session_frame,
     encode_session_frame,
 )
-from three_mm_runtime import session_worker_client as ipc
+from components.system_runtime import session_worker_client as ipc
 
 pytestmark = pytest.mark.skipif(
     os.getenv("THREE_MM_TEST_SESSION_SOCKET") is None,
