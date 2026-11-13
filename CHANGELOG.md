@@ -6,6 +6,38 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.12] - 2026-11-13
+
+### Changed
+
+- Organize Core by domain and move shared Python code and independently updated
+  components into neutral `packages/` and `components/` paths. Current imports,
+  tooling, application examples and release inventories follow that structure.
+- Remove scoped obsolete source paths and development artifacts from the product
+  tree. Existing application packages require adaptation to the current SDK
+  imports; this prototype release does not provide old-import adapters.
+
+### Added
+
+- A coordinated installer transition for independent component artifacts, with
+  verified candidates, exact original pin pairs and protected rollback evidence.
+  Compatible pins, application data, rights and disabled hosts are preserved.
+- Bounded diagnostic cases for interactive-session startup, dispatch and input
+  acknowledgement, without recording terminal content or credentials.
+
+### Fixed
+
+- Use the selected immutable release's interpreter, activation file and readiness
+  probe during installation and rollback. Full and Node packages verify the
+  necessary installer and component-transition source closure.
+- Keep blocking interactive-session authority phases off Core's event loop and
+  finish database snapshots before notification waits, retaining current-access,
+  cancellation and revocation checks.
+
+For the one-time source-layout transition from 0.3.11, use the verified console
+bootstrap after publication. Older web/Node OTA validators intentionally refuse
+the new layout; do not bypass them. See `docs/INSTALLATION_GUIDE.md`.
+
 ## [0.3.10] - 2026-11-06
 
 Carries forward all changes prepared for the unpublished 0.3.9 tag.

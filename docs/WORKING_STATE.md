@@ -1,6 +1,6 @@
 # Current working state
 
-Updated: 2026-11-12. Start here; follow linked details only as needed.
+Updated: 2026-11-13. Start here; follow linked details only as needed.
 
 ## Product direction: extension marketplace
 
@@ -11,6 +11,23 @@ Updated: 2026-11-12. Start here; follow linked details only as needed.
   designed; this product direction does not authorize implementation now.
 
 ## Active task and next result
+
+- **Core 0.3.12 release, 2026-11-13, owner authorized.** Main push CI
+  [43315178219](https://github.com/ldobranov/3mm/actions/runs/43315178219)
+  completed successfully for neutral-layout commit
+  `a7a0bcae9c6d82307543ddb10f843378ef80275f`. Published Stable remains 0.3.11;
+  0.3.12 was verified free. Prepare only VERSION, changelog, release notes and
+  this handoff, preserving the independent simplification-plan edit. Runtime
+  source and dependency inputs are unchanged: reuse the recorded local gates
+  and green main CI. Three targeted release metadata/workflow/dependency checks
+  passed with disposable Windows data; this is not a new POSIX acceptance run.
+  Push release preparation, require successful main CI for
+  that exact commit, then create/push its annotated v0.3.12 tag. Never tag the
+  preparation before CI completes. No application publication, deployment,
+  reset or rights changes. C5 and installed transition acceptance remain
+  separate; the one-time verified console bootstrap boundary is documented in
+  the release notes and installation guide. Publication outcome is reported in
+  this chat; preparation alone is not a published release.
 
 - **Neutral Core integration checkpoint, 2026-11-12, local checks complete.**
   Owner requests installer/updater audit, managed component transition, reviewed
