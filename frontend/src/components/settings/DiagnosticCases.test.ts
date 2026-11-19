@@ -15,7 +15,7 @@ const payload = () => ({ schema_version: 1, status: 'ready', generated_at: '2026
   failure_history: { dropped: { rate: 0 } }, coverage: [{ boundary: 'browser', status: 'not_collected' }],
   limitations: ['History is bounded.'] })
 const views: ReturnType<typeof mount>[] = []
-function view() { const wrapper = mount(Cases); views.push(wrapper); return wrapper }
+function view(recordableOperations = ['session.ticket']) { const wrapper = mount(Cases, {props: {recordableOperations}}); views.push(wrapper); return wrapper }
 beforeEach(() => { vi.clearAllMocks(); clearBrowserDiagnostics(); http.get.mockResolvedValue({ data: payload() }) })
 afterEach(() => { views.splice(0).forEach(wrapper => wrapper.unmount()); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 it('collects useful 403 evidence through a read-only API without polling or opening a session', async () => {
@@ -28,7 +28,7 @@ it('collects useful 403 evidence through a read-only API without polling or open
   await wrapper.find('.case-reference').trigger('click')
   expect(wrapper.emitted('trace')).toEqual([[trace]])
   await wrapper.findAll('button').find(button => button.text().includes('Record next user'))!.trigger('click')
-  expect(wrapper.emitted('record')).toEqual([['session.ticket']])
+  expect(wrapper.emitted('record')).toEqual([['session.ticket', null]])
   expect(http.post).not.toHaveBeenCalled()
 })
 it('includes safe browser-before-Core observations without calling them server receipts', async () => {
@@ -37,6 +37,13 @@ it('includes safe browser-before-Core observations without calling them server r
   expect(wrapper.text()).toContain('Browser observation only')
   expect(wrapper.text()).toContain('does not establish DNS failure')
   expect(wrapper.text()).not.toContain('SECRET')
+})
+it('does not offer an unfiltered recording when the failed operation cannot be recorded', async () => {
+  const wrapper = view([]); await flushPromises()
+  expect(wrapper.text()).toContain('unfinished session')
+  expect(wrapper.text()).toContain('latest occurrence')
+  expect(wrapper.text()).not.toContain('Record next user attempt')
+  expect(http.post).not.toHaveBeenCalled()
 })
 it('shows a handled Core refusal without calling HTTP200 a successful session or changing access', async () => {
   const data = payload()

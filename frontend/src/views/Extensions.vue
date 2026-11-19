@@ -140,6 +140,10 @@
                    {{ t('extensions.runtimeDataPreserved', 'Data is preserved when disabled') }}
                  </span>
                  <div class="extension-action-buttons">
+                   <UiButton v-if="isAdmin && ext.source === 'application' && ext.is_installed"
+                     :disabled="operationBusy !== null" @click="limitsTarget = ext">
+                     {{ t('applicationLimits.title', 'Resource limits') }}
+                   </UiButton>
                    <UiButton v-if="isAdmin && ext.can_manage && requiresApplicationRecovery(ext)"
                      class="application-recovery-btn" :disabled="operationBusy !== null" @click="recoveryTarget = ext">
                      {{ recoveryLabel('action') }}
@@ -208,6 +212,9 @@
       </div>
     </section>
 
+    <ApplicationLimitsDialog v-if="isAdmin && limitsTarget" :key="limitsTarget.id"
+      :module-id="limitsTarget.id.slice('application:'.length)" :name="limitsTarget.name"
+      @close="limitsTarget = null" />
     <ApplicationAuthorityDialog v-if="isAdmin && authorityTarget" :key="authorityTarget.moduleId"
       :module-id="authorityTarget.moduleId" :name="authorityTarget.name"
       @close="authorityTarget = null" @changed="loadExtensions" @review-recovery-required="reviewRecovery?.refresh()" />
@@ -340,6 +347,7 @@
 
 <script setup lang="ts">
 import ApplicationRecoveryDialog from '@/components/extensions/ApplicationRecoveryDialog.vue';
+import ApplicationLimitsDialog from '@/components/extensions/ApplicationLimitsDialog.vue';
 import AgentModulesInventory from '@/components/AgentModulesInventory.vue';
 import { interruptedLifecycleStatuses, useRecoveryLabels } from '@/components/extensions/recovery-labels';
 import { ref, onMounted, watch, computed } from 'vue';
@@ -370,6 +378,7 @@ const themeStore = useThemeStore();
 const router = useRouter();
 const label = useUiLabels();
 const authorityLabel = useAuthorityLabels();
+const limitsTarget = ref<Extension | null>(null);
 const authorityTarget = ref<{ moduleId: string; name: string } | null>(null);
 const reviewRecovery = ref<InstanceType<typeof ApplicationReviewRecovery> | null>(null);
 const commandResourceLabel = useCommandResourceLabels();
@@ -447,6 +456,15 @@ interface RetainedApplicationData {
   module_id: string;
   instance_id: string;
   name: string;
+}
+
+function verifiedRetainedItem(item: unknown): item is RetainedApplicationData {
+  if (!item || typeof item !== 'object') return false;
+  const row = item as Partial<RetainedApplicationData>;
+  return typeof row.module_id === 'string' && row.module_id.length <= 160 &&
+    /^[a-z0-9]+(?:[.-][a-z0-9]+)+$/.test(row.module_id) &&
+    typeof row.instance_id === 'string' && /^[0-9a-f]{24}$/.test(row.instance_id) &&
+    typeof row.name === 'string' && row.name.length > 0;
 }
 
 interface ApplicationConfigurationField {
@@ -816,9 +834,15 @@ const loadExtensions = async () => {
     const applicationInstallations = Array.isArray(applicationInstallationsResponse.data)
       ? applicationInstallationsResponse.data as ApplicationInstallation[]
       : [];
-    retainedApplicationData.value = Array.isArray(retainedDataResponse.data) ? retainedDataResponse.data : [];
-    retainedDataError.value = retainedDataResponse.unavailable
-      ? t('extensions.preservedApplicationDataUnavailable', 'Preserved application data could not be loaded. Refresh to try again.') : '';
+    const retained = retainedDataResponse.data;
+    const readable = !retainedDataResponse.unavailable && typeof retained?.review_required === 'boolean' &&
+      Array.isArray(retained.items);
+    retainedApplicationData.value = readable ? retained.items.filter(verifiedRetainedItem) : [];
+    retainedDataError.value = !isAdmin.value ? '' : !readable
+      ? t('extensions.preservedApplicationDataUnavailable', 'Preserved application data could not be loaded. Refresh to try again.')
+      : retained.review_required || retainedApplicationData.value.length !== retained.items.length
+        ? t('extensions.preservedDataNeedsReview', 'Some preserved data could not be matched to an application. It has not been erased. Only verified records are shown.')
+        : '';
     const applications = buildApplicationExtensions(modulePackages, applicationInstallations);
     const applicationModuleIds = new Set(applications.map(extension =>
       extension.id.replace('application:', ''),

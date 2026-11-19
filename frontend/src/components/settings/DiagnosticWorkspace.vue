@@ -7,7 +7,8 @@
     </div>
     <p v-if="error" class="workspace-error" role="alert">{{ error }}</p>
     <p v-if="loading" role="status">{{ t('diagnostics.loading', 'Checking device…') }}</p>
-    <DiagnosticCases :producer-snapshot="imported ? mergedSnapshot : undefined" :recording-active="active || busy" @trace="traceFilter = $event" @record="recordAttempt" />
+    <DiagnosticCases :producer-snapshot="imported ? mergedSnapshot : undefined" :recording-active="active || busy" :recordable-operations="operations" @trace="traceFilter = $event" @record="recordAttempt" />
+    <StorageContentionSample />
     <div class="component-grid">
       <article v-for="item in components" :key="item.component" class="component-card">
         <div><strong>{{ componentName(item.component) }}</strong><span class="ui-badge" :class="{ 'workspace-warning': item.health !== 'ready' }">{{ healthName(item.health) }}</span></div>
@@ -59,6 +60,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
 import DiagnosticCases from './DiagnosticCases.vue'
+import StorageContentionSample from './StorageContentionSample.vue'
 const { t } = useI18n()
 type Component = { component: string; version?: string; build_id: string | null; loaded_build_id?: string; health: string; reason: string }
 type Session = { session_id: string | null; active: boolean; remaining_seconds: number; records: number; dropped: Record<string,number>; scope?: { profile: string; operation: string | null; instance_id: string | null } }
@@ -92,7 +94,12 @@ async function refresh() {
 }
 async function change(action:()=>Promise<any>) { busy.value=true;error.value='';++generation;let failed=false;try{const response=await action();if(!disposed)applySession(response.data)}catch{failed=true}finally{if(!disposed){busy.value=false;await refresh();if(failed)failure()}} }
 async function start(){await change(()=>http.post('/api/v1/diagnostics/session',{ttl_seconds:ttl.value,profile:profile.value,operation:operation.value || null,instance_id:instance.value || null}))}
-async function recordAttempt(value:string){if(active.value || busy.value)return;ttl.value=120;instance.value='';operation.value=operations.value.includes(value)?value:'';await start()}
+async function recordAttempt(value:string, caseInstance:string|null){
+  if(active.value || busy.value || !value || !operations.value.includes(value))return
+  const scope = caseInstance ?? instance.value
+  if(scope && !/^[0-9a-f]{24}$/.test(scope))return
+  ttl.value=120;profile.value='diagnostic';instance.value=scope;operation.value=value;await start()
+}
 async function stop(){await change(()=>http.delete('/api/v1/diagnostics/session'))}
 async function download(){busy.value=true;error.value='';try{const response=await http.get('/api/v1/diagnostics/session/records',{responseType:'blob'});if(disposed)return;const url=URL.createObjectURL(new Blob([response.data],{type:'application/x-ndjson'}));try{const anchor=document.createElement('a');anchor.href=url;anchor.download='3mm-operation-records.ndjson';anchor.click()}finally{URL.revokeObjectURL(url)}}catch{if(!disposed)failure()}finally{if(!disposed)busy.value=false}}
 function saveMerged(){if(!mergedSnapshot.value)return;const url=URL.createObjectURL(new Blob([JSON.stringify(mergedSnapshot.value,null,2)],{type:'application/json'}));try{const anchor=document.createElement('a');anchor.href=url;anchor.download='3mm-merged-diagnostics.json';anchor.click()}finally{URL.revokeObjectURL(url)}}

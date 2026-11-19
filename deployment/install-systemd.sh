@@ -554,11 +554,14 @@ component_transition() {
 rollback() {
   local exit_code=$?
   trap - ERR
+  # ERR is inherited by command substitutions. Only the top-level installer
+  # owns release cleanup and rollback; propagate the original failure to it.
+  if (( BASH_SUBSHELL > 0 )); then exit "$exit_code"; fi
   set +e
   echo >&2
-  echo "Deployment failed; restoring ${previous_release:-the previous system state}." >&2
 
   if [[ $mutation_started -eq 1 ]]; then
+    echo "Deployment failed; restoring ${previous_release:-the previous system state}." >&2
     if ! stop_runtime_services; then
       echo "Rollback could not stop runtime; state preserved for manual recovery." >&2
       exit "$exit_code"
@@ -629,6 +632,8 @@ rollback() {
         exit "$exit_code"
       }
     fi
+  else
+    echo "Preflight failed before stopping services; the active release was not switched." >&2
   fi
 
   if [[ $release_created -eq 1 && -d $release_dir ]]; then
@@ -1002,6 +1007,7 @@ required_files=(
   backend/system/diagnostics/operations.py
   backend/system/diagnostics/workspace.py
   backend/system/diagnostics/bundle.py
+  deployment/service_resources.py
   backend/system/diagnostics/alerts.py
   backend/system/network_recovery/__init__.py
   backend/system/network_recovery/api.py
@@ -1099,7 +1105,7 @@ if [[ $install_profile == node ]]; then
     packages/protocol/__init__.py packages/protocol/theme_design_defaults.json
     packages/provisioning/__init__.py packages/provisioning/network_recovery.py
     .3mm-install-profile .3mm-release.json deployment/node-wheels/provenance.json
-    deployment/node-requirements.txt deployment/node_preflight.py
+    deployment/node-requirements.txt deployment/node_preflight.py deployment/service_resources.py
     deployment/component_transition.py
     components/system_runtime/install_profile.py components/system_runtime/activate.py
     components/system_runtime/services.py

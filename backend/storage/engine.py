@@ -8,3 +8,11 @@ engine = create_engine(
     if DATABASE_URL.startswith("sqlite")
     else {},
 )
+
+# A missing optional observation facility must not prevent login or Core startup.
+try:
+    from backend.storage.contention import write_observer
+    write_observer.install(engine)
+except Exception:
+    import logging
+    logging.getLogger(__name__).warning("Optional SQLite write observation is unavailable")

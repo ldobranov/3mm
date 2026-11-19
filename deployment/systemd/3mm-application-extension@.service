@@ -24,6 +24,11 @@ PrivateTmp=true
 PrivateDevices=true
 PrivateNetwork=true
 ProtectSystem=strict
+# Rebuild the two Core-owned trees in this unit's mount namespace. The shared
+# service group is not authority to browse other apps, keys, or Core backups.
+TemporaryFileSystem=/var/lib/3mm:ro /etc/3mm:ro
+BindReadOnlyPaths=/var/lib/3mm/application-extensions/%i /etc/3mm/application-extensions/%i.key
+BindPaths=/var/lib/3mm/application-extensions/%i/data /var/lib/3mm/application-extensions/%i/run
 ReadWritePaths=/var/lib/3mm/application-extensions/%i/data /var/lib/3mm/application-extensions/%i/run
 ProtectHome=true
 ProtectKernelTunables=true
@@ -32,7 +37,7 @@ ProtectControlGroups=true
 RestrictSUIDSGID=true
 RestrictAddressFamilies=AF_UNIX
 LockPersonality=true
-InaccessiblePaths=/opt/3mm /etc/3mm/3mm.env /var/lib/3mm/core
+InaccessiblePaths=/opt/3mm
 MemoryMax=256M
 TasksMax=64
 CPUQuota=100%

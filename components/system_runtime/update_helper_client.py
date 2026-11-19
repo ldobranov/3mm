@@ -126,10 +126,10 @@ class UpdateHelperClient:
             }
         )
 
-    def request_backup_preview(self, requested_by_user_id: int) -> dict[str, object]:
+    def request_backup_preview(self, requested_by_user_id: int, *, summary: bool = False) -> dict[str, object]:
         result = self._request(
             {
-                "action": "preview_backup",
+                "action": "preview_backup_summary" if summary else "preview_backup",
                 "requested_by_user_id": requested_by_user_id,
             },
             expected_status="inspected",

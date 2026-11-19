@@ -12,11 +12,9 @@ vi.mock('@/utils/i18n', async () => {
   const bg = (await import('../../../../modules/language-bg/language-extension.json')).default.frontend
   return { useI18n: () => ({ t: (key: string, fallback: string) => {
     const source = locale.language === 'bg' ? bg : en
-    const messages: Record<string, Record<string, string>> = {
-      packageInspection: source.packageInspection, authorityReview: source.authorityReview,
-    }
-    const [namespace, name] = key.split('.')
-    return messages[namespace]?.[name] || fallback
+    const value = key.split('.').reduce<unknown>((parent, name) =>
+      parent && typeof parent === 'object' ? (parent as Record<string, unknown>)[name] : undefined, source)
+    return typeof value === 'string' ? value : fallback
   } }) }
 })
 import PackageInspection from './PackageInspection.vue'
@@ -118,6 +116,27 @@ describe('Read-only package inspection', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('New file')
     expect(wrapper.text()).not.toContain('Stale file')
+  })
+
+  it('shows declared privacy controls without granting or invoking them, then clears them on file change', async () => {
+    locale.language = 'bg'
+    http.post.mockResolvedValueOnce({ data: { ...result(), data_practices: {
+      contains_personal_data: true, classifications: ['private'], schema_revision: '0002',
+      retention: 'until_explicit_erasure', operations: [
+        { purpose: 'erasure', operation_id: 'erase_record', audiences: ['administrator'], required_permission: 'privacy_manage' },
+      ],
+    } } })
+    const wrapper = view()
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    const privacy = wrapper.findAll('details').find(el => el.text().includes('erase_record'))!
+    expect(privacy.text()).toContain(bulgarian.packageInspection.data.explicit)
+    expect(privacy.text()).toContain(bulgarian.packageInspection.data.boundary)
+    expect(privacy.text()).toContain('privacy_manage')
+    expect(privacy.find('button, a, input').exists()).toBe(false)
+    await wrapper.setProps({ file: new File(['other'], 'other.zip') })
+    expect(wrapper.text()).not.toContain('erase_record')
+    expect(http.post).toHaveBeenCalledTimes(1)
   })
 
   it('requires a file and respects upload-in-progress disabling', async () => {

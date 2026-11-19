@@ -179,7 +179,11 @@ def test_application_extensions_run_as_a_separate_network_isolated_identity() ->
         "/var/lib/3mm/application-extensions/%i/run"
     )
     assert "PartOf" not in unit and "Requires" not in unit
-    assert "/var/lib/3mm/core" in unit["InaccessiblePaths"]
+    assert "/opt/3mm" in unit["InaccessiblePaths"]
+    assert set(unit["TemporaryFileSystem"].split()) == {"/var/lib/3mm:ro", "/etc/3mm:ro"}
+    assert set(unit["BindReadOnlyPaths"].split()) == {
+        "/var/lib/3mm/application-extensions/%i", "/etc/3mm/application-extensions/%i.key"}
+    assert unit["BindPaths"] == unit["ReadWritePaths"]
     assert "EnvironmentFile" not in unit
     assert unit["MemoryMax"]=="256M"
 
@@ -196,6 +200,19 @@ def test_runtime_socket_directories_are_narrowly_owned() -> None:
         assert "RuntimeDirectory" not in _directives(UNITS[name])
     assert network_helper["RuntimeDirectory"] == "3mm"
     assert network_helper["RuntimeDirectoryPreserve"] == "yes"
+
+
+def test_public_web_listener_can_start_before_normal_boot_services() -> None:
+    listener = _directives(PUBLIC_WEB_SOCKET)
+    assert listener["WantedBy"] == "sockets.target"
+    # sockets.target precedes basic.target; ordinary 3mm services start after it.
+    late_units = {p.name for p in SYSTEMD_DIR.glob("3mm-*.service")} | {
+        "basic.target", "multi-user.target", "network.target", "network-online.target",
+    }
+    assert late_units.isdisjoint(listener.get("After", "").split())
+    # The worker, not the listening socket, is ordered after its backends.
+    worker_after = _directives(PUBLIC_WEB_SERVICE)["After"].split()
+    assert {"3mm-core.service", "3mm-platform-runtime.service"} <= set(worker_after)
 
 
 def test_public_web_is_socket_activated_without_core_state_or_secret_environment() -> None:

@@ -55,6 +55,12 @@ def test_global_catalog_is_deterministic_source_derived_and_not_a_runtime_invent
     assert 'no retry' in first['ui_host']['invoke_semantics']
     assert 'runtime support' in first['scope'] and 'not runtime support' in first['scope']
     assert 'execution_profiles' not in first['contracts']['application-extension.v1']
+    profiles = first['service_profiles']
+    assert profiles['full_application']['configured_not_measured'] and profiles['node_agent']['configured_not_measured']
+    assert profiles['full_application']['private_network'] and not profiles['node_agent']['private_network']
+    assert profiles['full_application']['restrict_address_families'] == ['AF_UNIX']
+    assert profiles['node_agent']['start_burst'] == 3 and profiles['full_application']['start_burst'] == 5
+    assert 'whole-disk quota unsupported' in profiles['application_boundaries']['storage']
 
 
 def test_all_source_hashes_identify_exact_read_sources_without_personal_paths():
@@ -83,6 +89,9 @@ def test_project_catalog_uses_real_semantic_validator_and_exact_full_declaration
     assert result['package_bytes'] == len(blob)
     assert result['semantic_validation']['core_version'] == (catalog.REPOSITORY / 'VERSION').read_text().strip()
     assert result['application_declarations'] == validated.application_extension.model_dump(mode='json', exclude_none=True)
+    budgets = result['resource_budgets']
+    assert budgets['operation_seconds'] == {op.operation_id: op.timeout_seconds for op in validated.application_extension.operations}
+    assert budgets['private_files'] is None and budgets['connectors'] == {}
     assert result['review'] == application_project.declaration_review(validated)
     assert result['lifecycle'] == ApplicationLifecycleV1().model_dump(mode='json')
     assert result['authoring_check_support']['check'] == 'not_run'

@@ -3,9 +3,10 @@
 import os
 import re
 import uuid
+from threading import Lock
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Response, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from sqlalchemy.orm import Session
@@ -21,13 +22,15 @@ from backend.system.backups.service import (
     list_backup_catalog,
     read_backup_operation_status,
 )
-from backend.accounts.dependencies import require_admin
+from backend.accounts.dependencies import require_admin, require_user
+from backend.system.backups.readiness import BackupReadiness, OperatorReadiness, summarize_backup
 from backend.storage.sessions import get_db
 from components.system_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
 from deployment.portable_backup import PORTABLE_MAGIC, remove_export
 
 
 router = APIRouter(prefix="/api/v1/backups", tags=["backups"])
+_preview_slot = Lock()
 
 
 class BackupCreateRequest(BaseModel):
@@ -74,19 +77,12 @@ def backup_catalog(
 
 @router.get("/preview", response_model=BackupPreviewResponse)
 def backup_preview(
+    response: Response,
     admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+    authorization: str | None = Header(default=None),
 ) -> BackupPreviewResponse:
-    settings = get_settings()
-    if not settings.updates.helper_socket.exists():
-        return build_backup_preview(settings)
-    try:
-        preview = UpdateHelperClient(
-            settings.updates.helper_socket,
-            timeout_seconds=30,
-        ).request_backup_preview(admin.id)
-    except UpdateHelperError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return BackupPreviewResponse.model_validate(preview)
+    return _observe_backup(response, admin.id, db, authorization, summary=False)
 
 
 @router.get("/operation", response_model=BackupOperationStatus)
@@ -96,6 +92,43 @@ def backup_operation(
     return read_backup_operation_status(
         get_settings().backups.storage_dir / "status.json"
     )
+
+
+@router.get("/readiness", response_model=OperatorReadiness)
+def backup_readiness(response: Response, admin: User = Depends(require_admin), db: Session = Depends(get_db),
+                     authorization: str | None = Header(default=None)) -> OperatorReadiness:
+    """Explicit preflight: no backup, state change or per-file manifest download."""
+    observation = _observe_backup(response, admin.id, db, authorization, summary=True)
+    try:
+        support = observation.shareable()
+    except ValueError:
+        # Optional export must not prevent the administrator from seeing an
+        # actual inventory, even if an independent helper adds a new code.
+        support = None
+    return OperatorReadiness(**observation.model_dump(), support_summary=support)
+
+
+def _observe_backup(response, user_id, db, authorization, *, summary):
+    db.rollback()
+    if not _preview_slot.acquire(blocking=False):
+        raise HTTPException(status_code=429,detail="Another backup check is in progress")
+    try:
+        settings = get_settings()
+        if settings.updates.helper_socket.exists():
+            try:
+                client = UpdateHelperClient(settings.updates.helper_socket, timeout_seconds=30)
+                result = (BackupReadiness.model_validate(client.request_backup_preview(user_id, summary=True)) if summary
+                          else BackupPreviewResponse.model_validate(client.request_backup_preview(user_id)))
+            except (UpdateHelperError, ValueError):
+                raise HTTPException(status_code=503, detail="Backup readiness could not be confirmed") from None
+        else:
+            preview = build_backup_preview(settings)
+            result = summarize_backup(preview, settings.database_url) if summary else preview
+        require_admin(require_user(authorization, db), db)
+        response.headers['Cache-Control'] = 'no-store'
+        return result
+    finally:
+        _preview_slot.release()
 
 
 @router.post("", response_model=BackupQueued, status_code=status.HTTP_202_ACCEPTED)

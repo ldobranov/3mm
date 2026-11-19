@@ -63,6 +63,22 @@ def test_lock_contention_drops_optional_metadata_without_waiting():
     assert store.snapshot()['records'] == [] and store.snapshot()['dropped']['busy'] == 1
 
 
+def test_ambiguously_bound_request_is_never_in_an_application_snapshot():
+    store = failures.RecentHttpFailures()
+    app = FastAPI()
+    app.add_middleware(failures.HttpFailureMiddleware, store=store)
+    instance, generation, digest = 'a'*24, 'b'*32, 'c'*64
+    @app.get('/mixed')
+    def mixed():
+        for code in (digest, 'd'*64, digest):
+            failures.note_instance(instance, incarnation=generation, artifact=code)
+        raise HTTPException(409)
+    assert TestClient(app).get('/mixed').status_code == 409
+    assert len(store.snapshot()['records']) == 1
+    for code in (digest, 'd'*64):
+        assert store.application_snapshot(instance, generation, code)['records'] == []
+
+
 @pytest.mark.parametrize('changes', [
     {'handled_refusal': 'true'}, {'details': []}, {'phase': 'unknown'},
     {'phase': 'execution_unconfirmed'}, {'method': 'POST'}, {'status': 201},

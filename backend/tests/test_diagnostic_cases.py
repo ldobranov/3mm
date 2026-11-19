@@ -165,6 +165,22 @@ def test_unknown_or_partial_evidence_is_not_a_success_or_a_replay_instruction():
     assert not any(value['actions_performed'].values())
 
 
+def test_exact_lookup_does_not_attribute_another_attempts_timing_or_spans():
+    from tools.diagnostics import explain
+    store = failures.RecentHttpFailures()
+    first, last = ['invoke_' + c * 32 for c in 'ab']
+    route = '/{module_id}/operator/operations/{operation_id}'
+    for trace, ms in [(first, 7), (last, 95)]:
+        store.record(trace_id=trace, method='POST', route=route, status=409, duration_ms=ms)
+    records = [{'trace_id': trace} for trace in (first, last)]
+    result = build_cases(store.snapshot(), {'records': records}, {'probe_status': 'complete'}, trace_id=first)
+    item, = result['cases']
+    assert item['operation'] == 'application.invoke' and item['case_id'] == first
+    assert item['timing_trace_id'] == last and item['evidence']['duration_ms'] == 95
+    assert item['trace_records'] == [{'trace_id': first}]
+    assert explain(result)['cases'][0]['timing_trace_id'] == last
+
+
 def test_cases_and_export_require_current_admin_and_use_same_bounded_evidence(monkeypatch):
     from backend.system.diagnostics import api
     store = failures.RecentHttpFailures()

@@ -205,7 +205,7 @@ class ApplicationBrowserSessions:
         )
         if route.audience not in {"operator", "administrator"}:
             raise SessionAuthorityError("Session route audience is unavailable")
-        note_instance(installation.instance_id)
+        note_instance(installation.instance_id, incarnation=installation.authority_incarnation, artifact=package.sha256)
         return installation.id
 
     def _release(self, admitted):

@@ -29,6 +29,21 @@ def _service_ids() -> tuple[int, int]:
     return pwd.getpwnam("3mm-app").pw_uid, grp.getgrnam("3mm-app").gr_gid
 
 
+def _restore_catalog_locations(connection: sqlite3.Connection, upload_root: Path) -> None:
+    """Package locations belong to this installation, not the source computer.
+
+    Rebind catalog metadata only. Opening/activating code still requires its
+    normal identity and SHA-256 check. A damaged inactive digest gets no file
+    target (the package directory itself cannot be used as a ZIP).
+    """
+    root = str(upload_root.resolve())
+    location = """CASE WHEN typeof(sha256)='text' AND length(sha256)=64
+                           AND length(CAST(sha256 AS BLOB))=64 AND sha256 NOT GLOB '*[^0-9a-f]*'
+                      THEN :prefix || sha256 || '.zip' ELSE :directory END"""
+    connection.execute(f"UPDATE module_packages SET file_path={location} WHERE file_path IS NOT ({location})",
+                       {"prefix": os.path.join(root, ""), "directory": root})
+
+
 def restore_application_extensions(
     database: Path = DATABASE,
     *,
@@ -45,14 +60,19 @@ def restore_application_extensions(
         rows = list(
             connection.execute(
                 """
-                SELECT i.module_id, i.configuration, p.version, p.sha256
+                SELECT i.module_id, i.configuration, p.module_id AS package_module_id, p.version, p.sha256
                 FROM application_extension_installations AS i
-                JOIN module_packages AS p ON p.id = i.module_package_id
+                LEFT JOIN module_packages AS p ON p.id = i.module_package_id
                 WHERE i.enabled = 1 AND i.status = 'active'
                 ORDER BY i.module_id
                 """
             )
         )
+        # A direct recovery or rollback must not silently skip a dangling active
+        # installation and then disable its unit as "not desired".
+        if any(row["package_module_id"] != row["module_id"] or not isinstance(row["sha256"], str)
+               or not re.fullmatch(r"[a-f0-9]{64}", row["sha256"]) for row in rows):
+            raise RuntimeError("An active application has no matching recoverable package")
         uid, gid = service_ids or _service_ids()
         desired: set[str] = set()
         restored: list[str] = []
@@ -105,6 +125,9 @@ def restore_application_extensions(
             restored.append(activated.module_id)
             # No SQLite write transaction across the next external activation.
             connection.commit()
+        # Includes staged and disabled versions; do not enable or grant them.
+        _restore_catalog_locations(connection, upload_root)
+        connection.commit()
     finally:
         connection.close()
 

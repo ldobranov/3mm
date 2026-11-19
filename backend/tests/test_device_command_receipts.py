@@ -75,3 +75,24 @@ def test_late_receipt_cannot_cross_device_identity(attempt):
         record_command_result(db, device=device, result=result)
     db.rollback()
     assert db.get(DeviceCommand, command.id).result is None
+
+
+@pytest.mark.parametrize('kind,reason,attempts,has_time,wrong_device', [
+    ('capability.invoke', 'restore_unconfirmed', 0, False, False),
+    ('capability.invoke', 'restore_unconfirmed', 0, True, False),
+    ('capability.invoke', 'restore_unconfirmed', 1, False, False),
+    ('capability.invoke', 'another_reason', 1, True, False),
+    ('agent.refresh_inventory', 'restore_unconfirmed', 1, True, False),
+    ('capability.invoke', 'restore_unconfirmed', 1, True, True),
+])
+def test_unknown_receipt_without_matching_fenced_delivery_is_refused(attempt, kind, reason, attempts, has_time, wrong_device):
+    db, device, command, now = attempt
+    command.command_type, command.status, command.error = kind, 'unknown', reason
+    command.delivery_attempts, command.delivered_at = attempts, now if has_time else None
+    db.commit()
+    receipt = AgentCommandResult(command_id=command.command_id, device_id='dev_'+'f'*32 if wrong_device else DEVICE_ID,
+                                 status='succeeded', completed_at=now)
+    with pytest.raises(DeviceCommandError):
+        record_command_result(db, device=device, result=receipt)
+    db.refresh(command)
+    assert command.status == 'unknown' and command.result is None and command.completed_at is None

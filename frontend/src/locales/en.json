@@ -61,7 +61,18 @@
     "override": "I explicitly approve installation outside the maintenance window.",
     "close": "Close",
     "confirm": "Confirm once",
-    "state": { "queued": "Queued", "preparing": "Preparing", "prepared": "Prepared", "failed": "Failed", "expired": "Expired", "accepted": "Accepted", "running": "Running", "succeeded": "Succeeded", "rolled_back": "Previous release restored", "unknown": "Unconfirmed" }
+    "state": {
+      "queued": "Queued",
+      "preparing": "Preparing",
+      "prepared": "Prepared",
+      "failed": "Failed",
+      "expired": "Expired",
+      "accepted": "Accepted",
+      "running": "Running",
+      "succeeded": "Succeeded",
+      "rolled_back": "Previous release restored",
+      "unknown": "Unconfirmed"
+    }
   },
   "componentUpdates": {
     "refused": "Not accepted; no update was scheduled. Refresh and review the current state.",
@@ -218,6 +229,21 @@
     "notChecked": "Approved grants, device availability/contracts, stored connector bindings and credential rotations, publisher/signature trust, dependencies and OS/browser isolation are not checked."
   },
   "packageInspection": {
+    "data": {
+      "title": "How the application says it handles data",
+      "personal": "The package declares that it stores personal data.",
+      "noPersonal": "The package declares that it does not store personal data.",
+      "classification": "Data classification",
+      "schema": "Declared database revision",
+      "retention": "Retention",
+      "explicit": "Until explicitly erased",
+      "job": "Managed by an application job",
+      "notDeclared": "Not declared",
+      "exportOp": "Export operation",
+      "erasureOp": "Erasure operation",
+      "retentionOp": "Retention job",
+      "boundary": "These are declarations, not verified behavior or grants. Inspection does not export or erase anything. Local erasure does not remove downloaded backups or external copies."
+    },
     "title": "Package inspection",
     "inspect": "Inspect package",
     "help": "Read-only review of manifest-v2 ZIP packages. No installation or code execution; legacy packages are not supported here.",
@@ -305,6 +331,134 @@
       "saved": "Session duration saved"
     }
   },
+  "applicationLimits": {
+    "peerReceipt": {
+      "find": "Find current report IDs",
+      "empty": "No current recorded report for this application. This is not a delivery history.",
+      "choose": "Select a report",
+      "pick": "Current report references",
+      "limited": "Showing up to 16 references. You can also enter the original IDs below.",
+      "title": "Check an outgoing peer report",
+      "help": "Use the original IDs. This reads the local delivery record; it does not contact the other installation or resend the report.",
+      "link": "Link ID",
+      "report": "Report ID",
+      "check": "Check receipt",
+      "checking": "Checking…",
+      "save": "Save receipt check",
+      "not_observed_in_scope": "No matching record in the current slot. An older report may have been replaced; this does not prove non-delivery.",
+      "outcome_unconfirmed": "The original report was recorded, but no acknowledgement is stored. Do not assume it failed.",
+      "acknowledged": "This installation recorded the acknowledgement for that report. This is not a current connection check.",
+      "unavailable": "The stored receipt could not be verified.",
+      "failed": "Could not read the local receipt. Nothing was sent.",
+      "nextPage": "Next report IDs",
+      "noMore": "No further current records. Use Find current report IDs to check again from the start."
+    },
+    "support": {
+      "save": "Save app diagnostics",
+      "trace": "Trace a specific task or device command",
+      "record": "Core record:",
+      "workStates": {
+        "notFound": "No matching record in this scope. This does not prove non-execution.",
+        "unavailable": "Unavailable.",
+        "queued": "Queued.",
+        "running": "Running.",
+        "succeeded": "Reported success.",
+        "failed": "Reported failure.",
+        "expired": "Expired.",
+        "cancelled": "Cancelled.",
+        "unknown": "Outcome unknown.",
+        "resolved": "Marked resolved.",
+        "delivered": "Delivered; the outcome is not yet confirmed."
+      },
+      "reference": "Task or command ID (optional)",
+      "refHelp": "Use an ID from the task or command history to include its recorded state in the download. This does not repeat it.",
+      "invalid": "Use task_ or cmd_ followed by the 32 lowercase hexadecimal characters, or leave the field empty.",
+      "saved": "Downloaded a fresh service reading and recent failures matched to this package. No application data or logs are included.",
+      "partial": "Downloaded a partial report. Some observations were unavailable.",
+      "failed": "Could not download diagnostics for this application. No action was repeated.",
+      "boundaries": {
+        "no_dispatch_record": "Core has no dispatch record for this task.",
+        "dispatch_recorded": "Core recorded dispatch, but not use of the start permit.",
+        "start_permit_consumed": "The worker used its start permit. That alone does not prove it finished.",
+        "inconsistent": "The stored start and dispatch records disagree."
+      },
+      "noQueueTime": "Queue time was not measured.",
+      "notDeviceTime": "This is not device execution time.",
+      "offers": "Delivery attempts recorded by Core:",
+      "queueTime": "From queuing to the latest offer, approximately:"
+    },
+    "title": "Resource limits",
+    "scope": "Limits for this service. A stricter visible group limit is shown below the service value. Group capacity is shared, not reserved. 100% CPU equals one logical processor.",
+    "hierarchy": {
+      "parent": "Shared group ceiling",
+      "noCap": "No cap found in visible groups",
+      "incomplete": "Could not verify the entire hierarchy; a lower limit may apply"
+    },
+    "policy": {
+      "title": "More limits and restart settings",
+      "fds": "Open files per main process (soft / hard)",
+      "unlimited": "Unlimited",
+      "starts": "Allowed starts / time window",
+      "delay": "Wait before automatic restart",
+      "stop": "Service stop timeout",
+      "network": "Configured direct network access",
+      "local": "Private network; local Unix sockets only",
+      "notVerified": "Local-only policy not verified",
+      "scope": "Open-file limits are read from the running process. Restart, shutdown and network settings come from the service manager; they do not grant access to connectors."
+    },
+    "usage": {
+      "title": "Usage at last check",
+      "memory": "RAM in use",
+      "tasks": "Tasks in use (including threads)"
+    },
+    "service": {
+      "title": "Application service",
+      "state": "Current state",
+      "result": "Last reported result",
+      "restarts": "Automatic restarts",
+      "hint": "This is the current restart counter, not a history. A running service does not by itself confirm that the application works.",
+      "states": {
+        "active": "Running",
+        "stopped": "Stopped",
+        "starting": "Starting",
+        "stopping": "Stopping",
+        "restarting": "Restarting automatically",
+        "failed": "Failed"
+      },
+      "results": {
+        "success": "No failure reported",
+        "resources": "System resource or service setup error",
+        "protocol": "Service startup protocol failed",
+        "timeout": "Time limit exceeded",
+        "exit-code": "Process exited with an error",
+        "signal": "Terminated by a signal",
+        "core-dump": "Process crashed (core dump)",
+        "watchdog": "Service stopped responding to its watchdog",
+        "start-limit-hit": "Too many starts in a short time",
+        "oom-kill": "Process killed due to memory pressure",
+        "exit-condition": "Start condition was not met",
+        "other": "Other result"
+      }
+    },
+    "memory": "RAM",
+    "cpu": "CPU quota",
+    "tasks": "Tasks (including threads)",
+    "reading": "Reading limits from the device…",
+    "checked": "Last checked",
+    "notSet": "No limit set at this level",
+    "unavailable": "Could not verify",
+    "noController": "Controller unavailable on this host",
+    "notRunning": "The service is not running. There are no live limits to show.",
+    "restarting": "The service is restarting. Refresh once it is running.",
+    "noUnit": "No system service was found for this installation.",
+    "notInstalled": "The application is no longer installed.",
+    "unsupported": "This host does not expose the required Linux resource controls.",
+    "changed": "The installation or its service changed. Refresh for a new reading.",
+    "busy": "Another resource check is in progress. Try again shortly.",
+    "denied": "Administrator access is required.",
+    "close": "Close",
+    "refresh": "Refresh"
+  },
   "systemControl": {
     "navigation": "Device control",
     "title": "Device control",
@@ -323,6 +477,28 @@
     "actionFailed": "The system action could not be started."
   },
   "backups": {
+    "saveSummary": "Save check summary",
+    "notices": {
+      "state": {
+        "application_separate_preparation": "The archive can preserve the data. Automatic full restore will refuse to proceed because an active app needs separate preparation.",
+        "application_profile_unverified": "Could not verify every active app’s restore profile during this check. A backup is not proof that all apps will restart."
+      }
+    },
+    "unchecked": "Backup readiness has not been checked",
+    "catalogUnknown": "Saved backup catalog not confirmed.",
+    "check": "Check readiness",
+    "checking": "Checking…",
+    "onDemand": "Checking reads the files to estimate the backup. It only runs when you ask.",
+    "appInventory": "Application data included in this check",
+    "inventoryScope": "Current data files only. This check does not create an archive or verify a restore.",
+    "noAppFiles": "No application-owned files in this inventory.",
+    "unlisted": "Additional application files not itemized:",
+    "footprint": {
+      "installed": "Installed",
+      "retained": "Retained after uninstall",
+      "unmatched": "No matching catalog entry",
+      "unavailable": "Catalog identity unavailable"
+    },
     "navigation": "Backup and recovery",
     "title": "Backup and recovery",
     "description": "Create encrypted local backups and restore this Standalone device to an earlier state.",
@@ -365,6 +541,35 @@
     "passwordMismatch": "The recovery passwords do not match."
   },
   "diagnostics": {
+    "storageSample": {
+      "title": "Who is writing to the Core database?",
+      "help": "Measure five seconds of new Core connections. No queries, values or identities are recorded.",
+      "wait": "Measuring…",
+      "start": "Measure for 5 seconds",
+      "export": "Save measurement",
+      "empty": "No eligible writes were observed in this measurement.",
+      "limited": "Some observations were dropped.",
+      "transactions": "transactions; longest observed",
+      "open": "open at end:",
+      "limit": "Older connections and other processes are not measured. This is not proof of who blocked an earlier request.",
+      "cooldown": "A measurement is running or just finished. Wait a moment before measuring again.",
+      "failure": "No current measurement is available.",
+      "sources": {
+        "accounts": "Accounts",
+        "application_tasks": "Application tasks",
+        "application_events": "Application events",
+        "application_commands": "Application commands",
+        "applications": "Applications",
+        "devices": "Devices",
+        "installation": "Installation",
+        "packages": "Packages",
+        "system": "System",
+        "other": "Other Core work"
+      }
+    },
+    "cases": {
+      "latestTiming": "Time and duration of the latest occurrence:"
+    },
     "navigation": "Diagnostics",
     "title": "Support diagnostics",
     "description": "Review safe device checks and download a redacted JSON bundle for troubleshooting.",
@@ -734,5 +939,8 @@
   },
   "languagePackages": {
     "kind": "Language"
+  },
+  "extensions": {
+    "preservedDataNeedsReview": "Some preserved data could not be matched to an application. It has not been erased. Only verified records are shown."
   }
 }

@@ -47,7 +47,13 @@ platform checkout; pass its path and, where needed, `--frontend PATH_TO_FRONTEND
 
 `catalog` inspects real current schemas and validated declarations without running
 application code or contacting a device. With no project argument it describes
-public contracts, source identities and tooling limits. Inspect only relevant
+public contracts, source identities and tooling limits. `service_profiles`
+shows the Full application and minimal Node Agent defaults from their actual
+unit files; these are not measured limits. With a project, `project.resource_budgets`
+lists declared operation/task deadlines, task queue bounds, connector caps and
+optional SDK storage bounds. Missing storage declarations grant nothing.
+For installed measurements see the [resource profile contract](../deployment/systemd/README.md#resource-profile-contract).
+Inspect only relevant
 contract sources after this entry point; do not load the entire historical plan.
 
 ## Project files and supported imports
@@ -106,6 +112,22 @@ never create a replacement ID to replay an uncertain change.
 Classify personal data and define retention/export/erasure and quotas before
 using the example for real users. Test retained data and receipts across upgrades.
 The starter's shared demonstration note is not a personal-data policy.
+
+For a package that declares personal data, **Extensions → Inspect package**
+and the local check report (`review.data_practices`) identify the exact
+export, erasure and retention declarations and their human permissions. This
+is not consent, a subject lookup or evidence that a handler works. Keep the
+business operations in the application. Exercise them on disposable data:
+
+- Give two test subjects distinct records. An authorized export for one must
+  not include fields or records belonging to the other.
+- Deny an account without the declared authority, and repeat after revocation;
+  the failed operation must neither disclose data nor partially erase it.
+- Run the reviewed erasure once and read its receipt with the same original
+  request ID after a lost response. Verify the other subject is unaffected.
+- Test the retention boundary on both sides of its cutoff, or document that
+  data stays until explicit erasure. State which downloaded backups, prior
+  exports and external copies are outside the local handler's reach.
 
 ## Keep permissions and resources separate
 

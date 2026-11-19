@@ -85,6 +85,8 @@ def test_inspects_existing_types_without_catalog_changes(api, builder, kind, des
     assert result["trust"] == {"publisher": "not_verified", "signature": "not_verified"}
     assert result["dependency_resolution"] == "not_resolved"
     assert result["permission_approval"] == "not_evaluated"
+    if kind != "application":
+        assert result["data_practices"] is None
     assert result["compatibility"]["protocol"] == "matched"
     assert result["compatibility"]["target_device"] == "not_checked"
     assert result["compatibility"]["agent"] == "not_checked"
@@ -180,6 +182,32 @@ def test_body_is_bounded_even_without_content_length_and_multipart_is_not_parsed
     response = api.client.post(URL, files={"package": ("review.zip", package())},
                                headers={"Authorization": api.headers()["Authorization"]})
     assert response.status_code == 415
+
+
+def test_personal_data_review_joins_only_declared_controls_and_never_confers_access(api):
+    definition = application_definition()
+    definition["storage"].update(contains_personal_data=True, export_operation_id="export_one",
+                                 erasure_operation_id="erase_one", retention_policy="until_explicit_erasure")
+    definition["operations"].extend([
+        {"operation_id":"export_one", "kind":"command", "audiences":["administrator"], "idempotency":"required"},
+        {"operation_id":"erase_one", "kind":"command", "audiences":["operator","administrator"],
+         "required_permission":"records_manage", "idempotency":"required"},
+    ])
+    blob = application_package(definition=definition)
+    anonymous = api.client.post(URL, content=blob, headers={"Content-Type":"application/zip"})
+    assert anonymous.status_code == 401 and "erase_one" not in anonymous.text
+    response = api.client.post(URL, content=blob, headers=api.headers())
+    assert response.status_code == 200, response.text
+    inspected = response.json()
+    review = inspected["data_practices"]
+    assert inspected["sha256"] == hashlib.sha256(blob).hexdigest() and inspected["permission_approval"] == "not_evaluated"
+    assert review["source"] == "package_declaration" and review["retention"] == "until_explicit_erasure"
+    assert review["contains_personal_data"] and review["external_copies"] == "not_erased_by_local_action"
+    assert [(o["purpose"], o["operation_id"], o["audiences"], o["required_permission"]) for o in review["operations"]] == [
+        ("export", "export_one", ["administrator"], None),
+        ("erasure", "erase_one", ["operator", "administrator"], "records_manage"),
+    ]
+    assert api.db.query(ModulePackage).count() == 0
 
 
 def test_inspection_does_not_write_flush_build_spawn_or_extract(api, monkeypatch):

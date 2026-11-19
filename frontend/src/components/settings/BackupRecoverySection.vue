@@ -2,7 +2,7 @@
   <SettingsSection :title="t('backups.title', 'Backup and recovery')">
     <div class="backup-heading">
       <p>{{ t('backups.description', 'Create encrypted local backups and restore this Standalone device to an earlier state.') }}</p>
-      <button type="button" class="ui-button" :disabled="loading" @click="refreshAll">
+      <button type="button" class="ui-button" :disabled="loading || checking || !!actionBusy" @click="refreshAll">
         <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
         {{ loading ? t('backups.refreshing', 'Refreshing…') : t('backups.refresh', 'Refresh') }}
       </button>
@@ -13,20 +13,38 @@
 
     <article class="preview-card">
       <div class="preview-status">
-        <span class="status-dot" aria-hidden="true" :class="preview?.ready ? 'ready' : 'blocked'"></span>
+        <span class="status-dot" aria-hidden="true" :class="!preview ? 'unchecked' : preview.ready ? 'ready' : 'blocked'"></span>
         <div>
-          <strong>{{ preview?.ready ? t('backups.ready', 'Ready to back up') : t('backups.notReady', 'Backup is not ready') }}</strong>
+          <strong>{{ !preview ? t('backups.unchecked', 'Backup readiness has not been checked') : preview.ready ? t('backups.ready', 'Ready to back up') : t('backups.notReady', 'Backup is not ready') }}</strong>
           <small v-if="operation">{{ operationLabel }}</small>
         </div>
       </div>
-      <dl class="backup-metrics">
+      <dl v-if="preview" class="backup-metrics">
         <div><dt>{{ t('backups.estimatedSize', 'Estimated size') }}</dt><dd>{{ formatBytes(preview?.estimated_backup_bytes) }}</dd></div>
         <div><dt>{{ t('backups.availableSpace', 'Free space') }}</dt><dd>{{ formatBytes(preview?.available_bytes) }}</dd></div>
         <div><dt>{{ t('backups.files', 'Files') }}</dt><dd>{{ preview?.entry_count ?? '—' }}</dd></div>
       </dl>
       <ul v-if="preview?.issues.length" class="issue-list">
-        <li v-for="issue in preview.issues" :key="`${issue.code}-${issue.message}`">{{ issue.message }}</li>
+        <li v-for="issue in preview.issues" :key="`${issue.severity}-${issue.code}`">{{ t('backups.notices.' + issue.code, issue.message) }}<template v-if="issue.occurrences > 1"> · ×{{ issue.occurrences }}</template></li>
       </ul>
+      <details v-if="preview?.inventory === 'available'" class="inventory">
+        <summary>{{ t('backups.appInventory', 'Application data included in this check') }}</summary>
+        <p>{{ t('backups.inventoryScope', 'Current data files only. This check does not create an archive or verify a restore.') }}</p>
+        <p v-if="!preview.applications.length">{{ t('backups.noAppFiles', 'No application-owned files in this inventory.') }}</p>
+        <ul v-else><li v-for="row in preview.applications" :key="row.instance_id">
+          <strong>{{ row.module_id || row.instance_id }}</strong><template v-if="row.package_version"> · {{ row.package_version }}</template>
+          · {{ t('backups.footprint.' + row.catalog_state, row.catalog_state) }} · {{ row.files }} {{ t('backups.files', 'Files') }} · {{ formatBytes(row.size_bytes) }}
+        </li></ul>
+        <p v-if="preview.unlisted_application_files">{{ t('backups.unlisted', 'Additional application files not itemized:') }} {{ preview.unlisted_application_files }}</p>
+      </details>
+      <p v-if="!preview" class="ui-help">{{ t('backups.onDemand', 'Checking reads the files to estimate the backup. It only runs when you ask.') }}</p>
+      <button type="button" class="ui-button" :disabled="controlsBusy" @click="checkReadiness">
+        {{ checking ? t('backups.checking', 'Checking…') : t('backups.check', 'Check readiness') }}
+      </button>
+      <button v-if="preview?.support_summary?.kind === 'backup_inventory_check'" type="button" class="ui-button"
+        :disabled="controlsBusy" @click="saveSummary">
+        {{ t('backups.saveSummary','Save check summary') }}
+      </button>
       <button type="button" class="ui-button ui-button--primary" :disabled="!preview?.ready || controlsBusy" @click="createBackup">
         {{ actionBusy === 'create' ? t('backups.starting', 'Starting…') : t('backups.create', 'Create backup') }}
       </button>
@@ -58,13 +76,14 @@
         <h4>{{ t('backups.savedTitle', 'Saved backups') }}</h4>
         <p>{{ t('backups.retention', 'The five newest backups are kept automatically on this device.') }}</p>
       </div>
-      <span class="count-badge ui-badge">{{ catalog.length }} / {{ retentionCount }}</span>
+      <span class="count-badge ui-badge">{{ catalogKnown ? catalog.length : '—' }} / {{ retentionCount }}</span>
     </div>
     <ul v-if="catalogIssues.length" class="issue-list">
       <li v-for="issue in catalogIssues" :key="`${issue.code}-${issue.message}`">{{ issue.message }}</li>
     </ul>
 
-    <div v-if="!catalog.length" class="empty-state">
+    <p v-if="!catalogKnown" class="ui-help">{{ t('backups.catalogUnknown', 'Saved backup catalog not confirmed.') }}</p>
+    <div v-else-if="!catalog.length" class="empty-state">
       <i class="bi bi-archive" aria-hidden="true"></i>
       {{ t('backups.empty', 'No local backups yet.') }}
     </div>
@@ -91,18 +110,25 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import { useI18n } from '@/utils/i18n'
+import { saveDiagnosticJson } from '@/utils/save-diagnostic-json'
 import http from '@/utils/dynamic-http'
 
-type PreviewIssue = { severity: 'warning' | 'error'; code: string; message: string }
+type PreviewIssue = { severity: 'warning' | 'error'; code: string; message: string; occurrences: number }
 type BackupPreview = {
+  support_summary?: {kind:string;schema_version:number;scope:string;archive_verified:boolean;ready_to_capture:boolean;
+    inventory:string;file_count:number|null;listed_application_groups:number|null;unlisted_application_files:number|null;
+    issues:{code:string;severity:string;occurrences:number}[]} | null
   ready: boolean
   entry_count: number
   estimated_backup_bytes: number
   available_bytes: number
   issues: PreviewIssue[]
+  inventory: 'available' | 'not_available'
+  applications: {instance_id:string;module_id?:string|null;package_version?:string|null;catalog_state:string;files:number;size_bytes:number}[]
+  unlisted_application_files: number | null
 }
 type CatalogItem = {
   backup_id: string
@@ -115,8 +141,12 @@ type Operation = { state: string; message: string; backup_id?: string | null }
 
 const { t } = useI18n()
 const loading = ref(false)
+const checking = ref(false)
+const props = withDefaults(defineProps<{active?:boolean}>(),{active:true})
+const reads = new AbortController()
 const preview = ref<BackupPreview | null>(null)
 const catalog = ref<CatalogItem[]>([])
+const catalogKnown = ref(false)
 const catalogIssues = ref<PreviewIssue[]>([])
 const retentionCount = ref(5)
 const operation = ref<Operation | null>(null)
@@ -124,7 +154,8 @@ const actionBusy = ref<string | null>(null)
 const message = ref('')
 const errorMessage = ref('')
 const restoreFileInput = ref<HTMLInputElement | null>(null)
-const controlsBusy = computed(() => !!actionBusy.value || ['creating', 'restoring'].includes(operation.value?.state || ''))
+const controlsBusy = computed(() => !!actionBusy.value || checking.value || loading.value || !operation.value ||
+  ['creating', 'restoring'].includes(operation.value.state))
 
 const operationLabel = computed(() => {
   const labels: Record<string, string> = {
@@ -160,27 +191,69 @@ function detail(error: any) {
 }
 
 async function refreshAll() {
+  if (loading.value || checking.value || actionBusy.value) return
   loading.value = true
+  preview.value = null
   errorMessage.value = ''
   try {
-    const [previewResponse, catalogResponse, operationResponse] = await Promise.all([
-      http.get('/api/v1/backups/preview'),
-      http.get('/api/v1/backups'),
-      http.get('/api/v1/backups/operation'),
+    const [catalogResponse, operationResponse] = await Promise.allSettled([
+      http.get('/api/v1/backups', { signal: reads.signal }),
+      http.get('/api/v1/backups/operation', { signal: reads.signal }),
     ])
-    preview.value = previewResponse.data
-    catalog.value = catalogResponse.data.items || []
-    catalogIssues.value = catalogResponse.data.issues || []
-    retentionCount.value = catalogResponse.data.retention_count || 5
-    operation.value = operationResponse.data
+    if (reads.signal.aborted) return
+    catalogKnown.value = catalogResponse.status === 'fulfilled' && Array.isArray(catalogResponse.value.data?.items)
+    if (catalogKnown.value && catalogResponse.status === 'fulfilled') {
+      catalog.value = catalogResponse.value.data.items
+      catalogIssues.value = catalogResponse.value.data.issues || []
+      retentionCount.value = catalogResponse.value.data.retention_count || 5
+    } else { catalog.value = []; catalogIssues.value = [] }
+    const op = operationResponse.status === 'fulfilled' ? operationResponse.value.data : null
+    operation.value = ['idle','creating','restoring','completed','rolled_back','failed'].includes(op?.state) ? op : null
+    if (!operation.value || !catalogKnown.value) errorMessage.value = t('backups.loadFailed', 'Backup information could not be loaded.')
   } catch (error: any) {
-    errorMessage.value = detail(error)
+    if (!reads.signal.aborted) errorMessage.value = detail(error)
   } finally {
     loading.value = false
   }
 }
 
+function saveSummary() {
+  const snapshot = preview.value?.support_summary
+  if (!props.active || controlsBusy.value || !snapshot || snapshot.schema_version !== 1 ||
+      snapshot.kind !== 'backup_inventory_check' || snapshot.scope !== 'capture_preflight_only' ||
+      snapshot.archive_verified !== false || typeof snapshot.ready_to_capture !== 'boolean' ||
+      !['available','not_available'].includes(snapshot.inventory) || !Array.isArray(snapshot.issues) ||
+      snapshot.issues.length > 36 || snapshot.issues.some(i => !i || typeof i.code !== 'string' ||
+        !/^(other|(compatibility|state|storage)\.[a-z_]{1,48})$/.test(i.code) ||
+        !['error','warning'].includes(i.severity) || !Number.isSafeInteger(i.occurrences) || i.occurrences < 1) ||
+      [snapshot.file_count,snapshot.listed_application_groups,snapshot.unlisted_application_files]
+        .some(n => n !== null && (!Number.isSafeInteger(n) || n < 0))) return
+  // Use the protected Core's allowlisted support view, not the page response.
+  // The last observation is exported locally; no fresh scan or restore action.
+  saveDiagnosticJson({
+    schema_version:1,kind:snapshot.kind,scope:snapshot.scope,archive_verified:false,
+    ready_to_capture:snapshot.ready_to_capture,inventory:snapshot.inventory,file_count:snapshot.file_count,
+    listed_application_groups:snapshot.listed_application_groups,unlisted_application_files:snapshot.unlisted_application_files,
+    issues:snapshot.issues.map(({severity, code, occurrences}) => ({severity,code,occurrences})),
+  }, 'backup-readiness.json')
+}
+
+async function checkReadiness() {
+  if (controlsBusy.value) return
+  checking.value = true; preview.value = null; errorMessage.value = ''
+  try {
+    const {data} = await http.get('/api/v1/backups/readiness', {signal: reads.signal, timeout: 35000})
+    if (reads.signal.aborted) return
+    if (data?.schema_version !== 1 || typeof data.ready !== 'boolean' || !Array.isArray(data.issues)
+      || !Array.isArray(data.applications) || data.applications.length > 32) throw new Error()
+    preview.value = data
+  } catch (error) {
+    if (!reads.signal.aborted) errorMessage.value = detail(error)
+  } finally { checking.value = false }
+}
+
 async function createBackup() {
+  if (!preview.value?.ready || controlsBusy.value) return
   const phrase = 'CREATE BACKUP'
   const entered = prompt(t('backups.createConfirm', 'Type CREATE BACKUP to create an encrypted local backup.'), '')
   if (entered !== phrase) return
@@ -189,6 +262,7 @@ async function createBackup() {
   errorMessage.value = ''
   try {
     await http.post('/api/v1/backups', { confirmation: phrase })
+    preview.value = null
     message.value = t('backups.createQueued', 'Backup started. The application may be unavailable briefly; refresh after it returns.')
   } catch (error: any) {
     errorMessage.value = detail(error)
@@ -290,7 +364,9 @@ async function restoreFromFile(event: Event) {
   }
 }
 
-onMounted(refreshAll)
+let opened = false
+watch(() => props.active, active => { if (active && !opened) { opened = true; void refreshAll() } }, {immediate:true})
+onBeforeUnmount(() => reads.abort())
 </script>
 
 <style scoped>
@@ -306,6 +382,9 @@ onMounted(refreshAll)
 .preview-status small, .backup-copy span, .backup-copy small { display: block; }
 .status-dot { flex: 0 0 .7rem; height: .7rem; border-radius: 50%; background: var(--ui-danger); }
 .status-dot.ready { background: var(--ui-success); }
+.status-dot.unchecked { background: var(--ui-text-secondary); }
+.inventory { margin: 1rem 0; overflow-wrap: anywhere; }
+.inventory ul { padding-inline-start: 1.25rem; }
 .backup-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: calc(var(--ui-space) * 3); margin: calc(var(--ui-space) * 4) 0; }
 .backup-metrics div { padding: calc(var(--ui-space) * 3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); background: var(--ui-surface); }
 .backup-metrics dt { color: var(--ui-text-secondary); font-size: .85em; }

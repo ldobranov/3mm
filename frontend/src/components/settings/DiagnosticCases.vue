@@ -23,9 +23,9 @@
           <dt>{{ t('diagnostics.cases.next', 'Next read-only check') }}</dt><dd>{{ t('diagnostics.next.' + item.next_check, item.next_check_help) }}</dd>
         </dl>
         <div class="case-actions"><button type="button" class="case-reference" @click="$emit('trace', item.case_id)">{{ item.case_id }}</button>
-          <button type="button" class="ui-button ui-button--secondary" :disabled="recordingActive" @click="$emit('record', item.operation || '')">{{ t('diagnostics.cases.record', 'Record next user attempt (2 min)') }}</button></div>
+          <button v-if="item.operation && recordableOperations?.includes(item.operation)" type="button" class="ui-button ui-button--secondary" :disabled="recordingActive" @click="$emit('record', item.operation, item.evidence.instance_id ?? null)">{{ t('diagnostics.cases.record', 'Record next user attempt (2 min)') }}</button></div>
         <details><summary>{{ t('diagnostics.cases.evidence', 'Evidence and retained request identifiers') }}</summary>
-          <p>{{ new Date(item.evidence.timestamp * 1000).toLocaleString() }} · {{ item.evidence.duration_ms }} ms · {{ item.trace_records.length }} {{ t('diagnostics.cases.traceRecords', 'detailed stage records') }}</p>
+          <p><span v-if="item.evidence.occurrences > 1">{{ t('diagnostics.cases.latestTiming', 'Time and duration of the latest occurrence:') }} </span>{{ new Date(item.evidence.timestamp * 1000).toLocaleString() }} · {{ item.evidence.duration_ms }} ms · {{ item.trace_records.length }} {{ t('diagnostics.cases.traceRecords', 'detailed stage records') }}</p>
           <button v-for="id in item.evidence.trace_ids" :key="id" type="button" class="case-reference" @click="$emit('trace', id)">{{ id }}</button>
           <p>{{ t('diagnostics.cases.traceLimit', 'A repeated group retains its count and the latest 8 request identifiers. Earlier identifiers may no longer be available.') }}</p>
         </details>
@@ -53,16 +53,17 @@
 </template>
 
 <script setup lang="ts">
+import { saveDiagnosticJson } from '@/utils/save-diagnostic-json'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
 import { BROWSER_CAUSES, browserDiagnosticSnapshot } from '@/utils/diagnostic-client'
 const { t } = useI18n()
-defineEmits<{ trace: [id: string]; record: [operation: string] }>()
-const props = defineProps<{ producerSnapshot?: unknown; recordingActive?: boolean }>()
+defineEmits<{ trace: [id: string]; record: [operation: string, instance: string | null] }>()
+const props = defineProps<{ producerSnapshot?: unknown; recordingActive?: boolean; recordableOperations?: string[] }>()
 type Case = { case_id: string; summary: string; next_check: string; next_check_help: string;
   operation: string | null; execution: string; trace_records: unknown[];
-  evidence: { trace_ids: string[]; occurrences: number; timestamp: number; duration_ms: number;
+  evidence: { trace_ids: string[]; instance_id?: string | null; occurrences: number; timestamp: number; duration_ms: number;
     method: string; route: string; reason: string; stage: string; status: number | null; transport: string; handled_refusal?: boolean } }
 type Snapshot = { schema_version: number; generated_at: string; status: string; cases: Case[];
   failure_history: { dropped?: Record<string, number> }; limitations: string[];
@@ -104,9 +105,7 @@ function download() {
   const value = props.producerSnapshot ? { ...snapshot.value, producer_snapshot: props.producerSnapshot,
     coverage: snapshot.value.coverage.map(item => item.boundary === 'remote_producers'
       ? { ...item, status: 'explicitly_imported_unverified_snapshot' } : item) } : snapshot.value
-  const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }))
-  try { const link = document.createElement('a'); link.href = url; link.download = 'diagnostic-cases.json'; link.click() }
-  finally { URL.revokeObjectURL(url) }
+  saveDiagnosticJson(value, 'diagnostic-cases.json')
 }
 onMounted(() => { void collect() })
 onUnmounted(() => { disposed = true })

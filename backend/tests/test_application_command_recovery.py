@@ -18,6 +18,37 @@ def lookup(s, request_id='request-1'):
     return broker.command_lookup(s.db, s.app, {'request_id': request_id, 'binding_id': 'gate'})
 
 
+@pytest.mark.parametrize('operation', ['lookup', 'poll'])
+def test_inactive_history_does_not_extend_live_command_work(setup, operation):
+    from backend.db.application_command import ApplicationCommandRequest
+    from backend.devices.commands.queue import deliver_next_command
+
+    s = setup
+    ids = [f'cmd_history_{i}' for i in range(3000)]
+    expires = datetime.now(UTC) + timedelta(hours=1)
+    s.db.execute(DeviceCommand.__table__.insert(), [
+        dict(command_id=key, device_id=s.devices[0].id, idempotency_key=key,
+             status='succeeded', command_type=broker.COMMAND_TYPE, expires_at=expires,
+             payload={'binding_id': 'gate'}) for key in ids])
+    s.db.execute(ApplicationCommandRequest.__table__.insert(), [
+        dict(command_id=key, installation_id=s.app.id, generation='a'*32,
+             package_id=s.app.module_package_id) for key in ids])
+    s.db.commit()
+    # SQLite VM instructions, not wall time: a scan of thousands of finished
+    # commands exceeds this budget even on a fast machine with a warm cache.
+    driver = s.db.connection().connection.driver_connection
+    ticks = []
+    driver.set_progress_handler(lambda: ticks.append(1) or 0, 100)
+    try:
+        if operation == 'lookup':
+            assert lookup(s, 'never-submitted') == {'status': 'not_found'}
+        else:
+            assert deliver_next_command(s.db, device=s.devices[0]) is None
+    finally:
+        driver.set_progress_handler(None, 0)
+    assert len(ticks) < 50
+
+
 def test_absolute_deadline_replay_conflict_and_agent_expiry(setup, monkeypatch, tmp_path):
     s = setup
     now = datetime.now(UTC)

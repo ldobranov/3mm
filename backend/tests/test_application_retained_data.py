@@ -73,11 +73,11 @@ def package(s,module=MODULE):
 
 def test_catalog_and_erasure_work_after_last_package_is_gone(retained):
     s=retained;keep(s)
-    assert s.client.get(BASE+'/retained-data',headers=s.admin).json()==[{'module_id':MODULE,'instance_id':INSTANCE,'name':'Retained app'}]
+    assert s.client.get(BASE+'/retained-data',headers=s.admin).json()=={'items':[{'module_id':MODULE,'instance_id':INSTANCE,'name':'Retained app'}], 'review_required':False}
     response=s.client.delete(BASE+'/'+MODULE+'/data',headers=s.admin)
     assert response.status_code==200,response.text
     assert s.calls[0]['instance']==INSTANCE
-    assert s.client.get(BASE+'/retained-data',headers=s.admin).json()==[]
+    assert s.client.get(BASE+'/retained-data',headers=s.admin).json()=={'items':[], 'review_required':False}
     with Session(s.engine) as db:
         assert db.get(ApplicationRetainedData,MODULE) is None
         assert db.scalar(select(AuditLog.action))=='APPLICATION_EXTENSION_DATA_ERASED'
@@ -96,7 +96,26 @@ def test_existing_package_fallback_first_persists_a_durable_cleanup_identity(ret
     with Session(s.engine) as db,db.begin():
         assert db.get(ApplicationRetainedData,MODULE).name=='Old app'
         db.delete(db.scalar(select(ModulePackage)))
-    assert s.client.get(BASE+'/retained-data',headers=s.admin).json()==[{'module_id':MODULE,'instance_id':canonical,'name':'Old app'}]
+    assert s.client.get(BASE+'/retained-data',headers=s.admin).json()['items']==[{'module_id':MODULE,'instance_id':canonical,'name':'Old app'}]
+
+
+def test_one_unverified_record_does_not_hide_another_owner_or_become_a_cleanup_target(retained):
+    s = retained
+    keep(s)
+    keep(s, module="org.example.unverified", instance="z"*24, name="private unverified label")
+    keep(s, module="invalid", instance="c"*24, name="another private label")
+    response = s.client.get(BASE + '/retained-data', headers=s.admin)
+    assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
+    assert response.json() == {"review_required": True, "items":[
+        {"module_id": MODULE, "instance_id": INSTANCE, "name": "Retained app"}]}
+    assert "private" not in response.text and "unverified" not in response.text
+    assert s.client.delete(BASE + "/org.example.unverified/data", headers=s.admin).status_code == 409
+    assert not s.calls
+    assert s.client.delete(BASE + "/" + MODULE + "/data", headers=s.admin).status_code == 200
+    assert [item["instance"] for item in s.calls] == [INSTANCE]
+    assert s.client.get(BASE + '/retained-data', headers=s.admin).json() == {"review_required": True, "items":[]}
+    with Session(s.engine) as db:
+        assert {r.module_id for r in db.scalars(select(ApplicationRetainedData))} == {"org.example.unverified", "invalid"}
 
 
 def test_failed_erase_keeps_record_and_commits_revision_fence(retained):
@@ -118,7 +137,7 @@ def test_installed_owner_hides_retained_entry_and_blocks_erase(retained,conflict
     with Session(s.engine) as db,db.begin():
         db.add(ApplicationExtensionInstallation(module_id=MODULE if conflict=='module' else 'org.example.other',module_package_id=pid,
             instance_id=INSTANCE if conflict=='instance' else 'c'*24,status='recovery_required',enabled=False,socket_path='pending'))
-    assert s.client.get(BASE+'/retained-data',headers=s.admin).json()==[]
+    assert s.client.get(BASE+'/retained-data',headers=s.admin).json()['items']==[]
     assert s.client.delete(BASE+'/'+MODULE+'/data',headers=s.admin).status_code==409
     assert not s.calls
 
@@ -146,7 +165,7 @@ def test_retained_data_requires_admin_and_known_valid_identity(retained):
     assert s.client.delete(BASE+'/'+MODULE+'/data',headers=s.user).status_code==403
     assert s.client.delete(BASE+'/org.example.unknown/data',headers=s.admin).status_code==404
     assert s.client.delete(BASE+'/invalid/data',headers=s.admin).status_code==422
-    assert s.client.get(BASE+'/retained-data',headers=s.admin).json()[0]['name']==MODULE
+    assert s.client.get(BASE+'/retained-data',headers=s.admin).json()['items'][0]['name']==MODULE
     assert not s.calls
 
 

@@ -11,7 +11,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Callable, Literal, Sequence
 
 
 MINIMUM_PYTHON = (3, 10)
@@ -98,10 +98,9 @@ def _command_output(command: Sequence[str], runner: CommandRunner) -> tuple[bool
     return result.returncode == 0, output
 
 
-def _memory_controller_check() -> PreflightCheck:
-    # The bootstrap extracts this script alone. Keep the kernel probe read-only
-    # and dependency-free; root availability is not a per-service limit proof.
-    name = 'resources.cgroup-memory'
+def inspect_cgroup_memory() -> tuple[Literal['available', 'absent', 'unknown'], str]:
+    """Observe only the visible Linux cgroup v2 root, never an application's limit."""
+    # Shared with Core diagnostics; bootstrap still extracts just this stdlib-only script.
     try:
         with CGROUP_CONTROLLERS.open('rb') as stream:
             raw = stream.read(1025)
@@ -109,16 +108,13 @@ def _memory_controller_check() -> PreflightCheck:
         if len(raw) > 1024 or any(re.fullmatch(r'[a-z][a-z0-9_]*', item) is None for item in controllers):
             raise ValueError('Invalid cgroup controller list')
     except (OSError, ValueError):
-        return PreflightCheck(name, False,
-            'cgroup v2 memory availability could not be verified; do not assume service RAM limits are enforced.',
-            required=False)
+        return 'unknown', ('cgroup v2 memory availability could not be verified; '
+                           'do not assume service RAM limits are enforced.')
     if 'memory' not in controllers:
-        return PreflightCheck(name, False,
-            'cgroup v2 memory controller is unavailable at the host root; configured service RAM limits are not enforced through cgroup v2.',
-            required=False)
-    return PreflightCheck(name, True,
-        'Memory controller is available at the cgroup v2 root; individual service RAM limits were not verified.',
-        required=False)
+        return 'absent', ('cgroup v2 memory controller is unavailable at the host root; '
+                          'configured service RAM limits are not enforced through cgroup v2.')
+    return 'available', ('Memory controller is available at the cgroup v2 root; '
+                         'individual service RAM limits were not verified.')
 
 
 def inspect_host(
@@ -162,7 +158,8 @@ def inspect_host(
         )
     )
     if resolved_system == 'Linux':
-        checks.append(_memory_controller_check())
+        state, detail = inspect_cgroup_memory()
+        checks.append(PreflightCheck('resources.cgroup-memory', state == 'available', detail, required=False))
 
     commands: dict[str, str | None] = {}
     for command in (*REQUIRED_COMMANDS, *(("nmcli",) if network_backend == "network-manager" else ())):

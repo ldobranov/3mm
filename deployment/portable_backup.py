@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
 import io
 import os
+import stat
 import tarfile
 import tempfile
 import uuid
@@ -181,38 +183,47 @@ def create_portable_export(
     )
 
 
-def _decrypt_portable(source_path: Path, passphrase: str, destination: Path) -> None:
-    size = source_path.stat().st_size
+@contextmanager
+def open_portable_source(path: Path, max_archive_bytes: int):
+    """Pin the selected regular input for inspection; never unlink a caller's file."""
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("Portable recovery upload is unavailable")
+    flags = os.O_RDONLY | getattr(os,"O_NOFOLLOW",0) | getattr(os,"O_NONBLOCK",0) | getattr(os,"O_BINARY",0)
+    with os.fdopen(os.open(path, flags), "rb") as source:
+        info = os.fstat(source.fileno())
+        if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= max_archive_bytes + 1024 * 1024:
+            raise ValueError("Portable recovery upload size is invalid")
+        yield source, info.st_size
+        after = os.fstat(source.fileno())
+        if (after.st_size,after.st_mtime_ns) != (info.st_size,info.st_mtime_ns):
+            raise ValueError("Portable recovery file changed during verification")
+
+
+def _decrypt_portable(source, size: int, passphrase: str, destination: Path) -> None:
     header_size = len(PORTABLE_MAGIC) + SALT_BYTES + NONCE_BYTES
     if size <= header_size + TAG_BYTES:
         raise ValueError("Portable recovery file is truncated")
-    with source_path.open("rb") as source:
-        if source.read(len(PORTABLE_MAGIC)) != PORTABLE_MAGIC:
-            raise ValueError("Portable recovery file header is invalid")
-        salt = source.read(SALT_BYTES)
-        nonce = source.read(NONCE_BYTES)
-        source.seek(-TAG_BYTES, os.SEEK_END)
-        tag = source.read(TAG_BYTES)
-        remaining = size - header_size - TAG_BYTES
-        source.seek(header_size)
-        decryptor = Cipher(
-            algorithms.AES(_derive_key(passphrase, salt)),
-            modes.GCM(nonce, tag),
-        ).decryptor()
-        with destination.open("xb") as target:
-            os.chmod(destination, 0o600)
-            try:
-                while remaining:
-                    block = source.read(min(1024 * 1024, remaining))
-                    if not block:
-                        raise ValueError("Portable recovery file is truncated")
-                    remaining -= len(block)
-                    target.write(decryptor.update(block))
-                target.write(decryptor.finalize())
-            except InvalidTag as exc:
-                raise ValueError(
-                    "Portable recovery password or file is invalid"
-                ) from exc
+    if source.read(len(PORTABLE_MAGIC)) != PORTABLE_MAGIC:
+        raise ValueError("Portable recovery file header is invalid")
+    salt = source.read(SALT_BYTES)
+    nonce = source.read(NONCE_BYTES)
+    source.seek(size - TAG_BYTES)
+    tag = source.read(TAG_BYTES)
+    remaining = size - header_size - TAG_BYTES
+    source.seek(header_size)
+    decryptor = Cipher(algorithms.AES(_derive_key(passphrase, salt)), modes.GCM(nonce, tag)).decryptor()
+    with destination.open("xb") as target:
+        os.chmod(destination, 0o600)
+        try:
+            while remaining:
+                block = source.read(min(1024 * 1024, remaining))
+                if not block:
+                    raise ValueError("Portable recovery file is truncated")
+                remaining -= len(block)
+                target.write(decryptor.update(block))
+            target.write(decryptor.finalize())
+        except InvalidTag as exc:
+            raise ValueError("Portable recovery password or file is invalid") from exc
 
 
 def _extract_bundle(
@@ -222,13 +233,13 @@ def _extract_bundle(
     max_archive_bytes: int,
 ) -> tuple[PortableMetadata, bytes, Path]:
     with tarfile.open(bundle_path, mode="r:") as bundle:
-        members = bundle.getmembers()
-        by_name = {member.name: member for member in members}
-        if len(by_name) != len(members) or set(by_name) != {
-            "bundle.json",
-            "recovery.key",
-            "backup.3mmbak",
-        }:
+        expected = {"bundle.json", "recovery.key", "backup.3mmbak"}
+        by_name = {}
+        for member in bundle:
+            if member.name not in expected or member.name in by_name:
+                raise ValueError("Portable recovery contents are invalid")
+            by_name[member.name] = member
+        if set(by_name) != expected:
             raise ValueError("Portable recovery contents are invalid")
         metadata_member = by_name["bundle.json"]
         key_member = by_name["recovery.key"]
@@ -266,6 +277,18 @@ def _extract_bundle(
     return metadata, recovery_key, archive
 
 
+def stage_portable_envelopes(source, size, passphrase, work, *, max_archive_bytes):
+    """Authenticate both envelopes in a private, caller-owned temporary directory."""
+    decrypted_bundle = work / "bundle.tar"
+    _decrypt_portable(source, size, passphrase, decrypted_bundle)
+    metadata, recovery_key, imported = _extract_bundle(decrypted_bundle, work, max_archive_bytes=max_archive_bytes)
+    decrypted_bundle.unlink()
+    plaintext = work / "archive.tar"
+    _decrypt_archive_with_key(imported, recovery_key, plaintext)
+    imported.unlink()
+    return metadata.backup_id, plaintext
+
+
 def import_portable_backup(
     upload: Path,
     backup_root: Path,
@@ -282,27 +305,16 @@ def import_portable_backup(
     try:
         with tempfile.TemporaryDirectory(prefix=".portable-import-") as temporary:
             work = Path(temporary)
-            decrypted_bundle = work / "bundle.tar"
-            _decrypt_portable(upload, passphrase, decrypted_bundle)
-            metadata, recovery_key, imported_archive = _extract_bundle(
-                decrypted_bundle,
-                work,
-                max_archive_bytes=max_archive_bytes,
-            )
-            plaintext = work / "archive.tar"
+            with open_portable_source(upload, max_archive_bytes) as (source,size):
+                backup_id, plaintext = stage_portable_envelopes(source, size, passphrase, work, max_archive_bytes=max_archive_bytes)
             staging = work / "staging"
             staging.mkdir(mode=0o700)
-            _decrypt_archive_with_key(imported_archive, recovery_key, plaintext)
-            manifest = _validate_and_stage(
-                plaintext,
-                staging,
-                metadata.backup_id,
-            )
+            manifest = _validate_and_stage(plaintext, staging, backup_id)
             existing = next(
                 (
                     item
                     for item in list_backup_catalog(backup_root).items
-                    if item.backup_id == metadata.backup_id
+                    if item.backup_id == backup_id
                 ),
                 None,
             )

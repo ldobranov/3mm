@@ -6,6 +6,7 @@ import base64
 import hashlib
 import os
 import sqlite3
+import time
 import uuid
 from contextlib import closing
 from datetime import UTC, datetime
@@ -160,9 +161,11 @@ def _decode_identity(
     return identity, private
 
 
-def _stored_identity_row(database: Path) -> SimpleNamespace | None:
-    with closing(sqlite3.connect(f"{database.resolve().as_uri()}?mode=ro", uri=True)) as connection:
+def _stored_identity_row(database: Path, *, timeout: float = 5.0) -> SimpleNamespace | None:
+    with closing(sqlite3.connect(f"{database.resolve().as_uri()}?mode=ro", uri=True, timeout=timeout)) as connection:
         connection.row_factory = sqlite3.Row
+        # Table discovery and the binding must describe the same snapshot.
+        connection.execute("BEGIN")
         if not connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='core_installation_identity'"
         ).fetchone():
@@ -202,10 +205,36 @@ def _configured_master_key(host_config: Path) -> str | None:
     return keys[0] if keys else None
 
 
+_INSTALL_IDENTITY_READ_SECONDS = 15.0
+_INSTALL_IDENTITY_ATTEMPT_SECONDS = 2.0
+
+
+def _installer_identity_row(database: Path) -> SimpleNamespace | None:
+    """Only the pre-stop, read-only proof can wait for a live SQLite writer."""
+    deadline = time.monotonic() + _INSTALL_IDENTITY_READ_SECONDS
+    while True:
+        remaining = max(0.0, deadline - time.monotonic())
+        try:
+            return _stored_identity_row(database, timeout=min(_INSTALL_IDENTITY_ATTEMPT_SECONDS, remaining))
+        except sqlite3.Error as exc:
+            code = getattr(exc, "sqlite_errorcode", 0) & 0xff
+            if code not in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+                raise InstallationIdentityError(
+                    "Cannot read the existing Core identity database; no key was selected"
+                ) from exc
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise InstallationIdentityError(
+                    "Core identity database is busy during preflight; services and keys are unchanged"
+                ) from exc
+            time.sleep(min(0.15, remaining))
+
+
 def select_installer_master_key(database: Path, host_config: Path, legacy_file: Path) -> str:
     """Keep Core's persisted key, including when restore left a stale legacy file."""
+    # Do not follow a dangling identity database into the first-install path.
+    row = _installer_identity_row(database) if database.exists() or database.is_symlink() else None
     try:
-        row = _stored_identity_row(database) if database.exists() else None
         key = (_configured_master_key(host_config)
                if host_config.exists() or host_config.is_symlink() else None)
         if key is None and (legacy_file.exists() or legacy_file.is_symlink()):

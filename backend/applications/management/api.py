@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import re
+import sys
 import uuid
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Lock
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
@@ -53,6 +55,7 @@ from backend.applications.management.configuration import (
 )
 from backend.artifacts.packages import ModulePackageError
 from backend.artifacts.code_scope import code_verification_scope
+from deployment import service_resources as application_resources
 from backend.system.diagnostics.operations import authority_diagnostic_scope, authority_failure_span
 from backend.system.diagnostics.failures import current_trace_id, note_dispatch
 from backend.applications.management.requirements import (
@@ -92,6 +95,7 @@ router = APIRouter(
     prefix="/api/v1/application-extensions",
     tags=["application-extensions"],
 )
+_resource_probe = Lock()
 
 
 class ApplicationInstallationResponse(BaseModel):
@@ -301,7 +305,9 @@ def _user_from_claims(db: Session, claims: dict) -> User:
 
 async def _invoke_http(db, module_id, operation_id, request, audience, authorization=None):
     from backend.applications.runtime.invocations import InvocationSpec, invoke_with_relay
-    correlation_id=uuid.uuid4().hex
+    # Core minted the HTTP trace. Keep the app's support reference the same as
+    # the caller's; the transport nonce and caller's idempotency key stay separate.
+    correlation_id = current_trace_id(None) or ('invoke_' + uuid.uuid4().hex)
     def admit(*, check_ui=True):
         installation=_installation(db,module_id);package=_active_package(db,installation)
         principal=(ApplicationPrincipal(kind="anonymous") if audience=="public"
@@ -400,8 +406,12 @@ def _ui_route(package, binding, principal, permission_ids, audience=None, *, db=
     return definition, route
 
 
+def _valid_retained_module_id(module_id):
+    return type(module_id) is str and len(module_id) <= 160 and re.fullmatch(MODULE_ID_PATTERN, module_id) is not None
+
+
 def _retained_identity(module_id):
-    if type(module_id) is not str or len(module_id) > 160 or re.fullmatch(MODULE_ID_PATTERN, module_id) is None:
+    if not _valid_retained_module_id(module_id):
         raise HTTPException(422, "Application identity is invalid")
     return application_instance_id(module_id)
 
@@ -436,18 +446,92 @@ def _require_uninstalled_data(db, module_id, instance_id):
 
 
 @router.get("/retained-data")
-def list_retained_application_data(_admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+def list_retained_application_data(response: Response, _admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "no-store"
     rows = db.scalars(select(ApplicationRetainedData).where(~select(ApplicationExtensionInstallation.id).where(or_(
         ApplicationExtensionInstallation.module_id == ApplicationRetainedData.module_id,
         ApplicationExtensionInstallation.instance_id == ApplicationRetainedData.instance_id,
     )).exists()).order_by(ApplicationRetainedData.name, ApplicationRetainedData.module_id))
     result = []
+    needs_review = False
     for row in rows:
-        _retained_identity(row.module_id)
-        if type(row.instance_id) is not str or re.fullmatch(r"[0-9a-f]{24}", row.instance_id) is None:
-            raise HTTPException(409, "Application retained data identity is invalid")
+        if (not _valid_retained_module_id(row.module_id) or type(row.instance_id) is not str
+                or re.fullmatch(r"[0-9a-f]{24}", row.instance_id) is None):
+            # Do not expose an unverified cleanup target or guess its owner.
+            # Other applications' independently verified rows remain usable.
+            needs_review = True
+            continue
         result.append({"module_id": row.module_id, "instance_id": row.instance_id, "name": row.name or row.module_id})
-    return result
+    return {"items": result, "review_required": needs_review}
+
+
+@router.get("/{module_id}/resource-limits")
+def application_resource_limits(module_id: str, response: Response,
+                                _admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """An on-demand observation of this installed application's local service, not its manifest."""
+    response.headers["Cache-Control"] = "no-store"
+    return _service_observation(module_id, db, support=False)
+
+
+@router.get("/{module_id}/support-snapshot")
+def application_support(module_id: str, response: Response, _admin: User = Depends(require_admin), db: Session = Depends(get_db),
+                        authorization: str | None = Header(default=None), reference: str | None = None):
+    """One read, no recorder activation, no application call and no global collection."""
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Content-Disposition"] = 'attachment; filename="application-support.json"'
+    from backend.system.diagnostics.catalog import WORK_ID
+    if reference is not None and not WORK_ID.fullmatch(reference):
+        raise HTTPException(400, "Expected a generated task or device command reference")
+    report = _service_observation(module_id, db, support=True, reference=reference)
+    # A single signed-in read can span a manager timeout. Verify the original
+    # login is still current before releasing the export, not a cached role.
+    require_admin(require_user(authorization, db), db)
+    return report
+
+
+def _service_observation(module_id, db, *, support, reference=None):
+    from backend.system.diagnostics.cases import application_support_snapshot
+    from backend.system.diagnostics.failures import observation_revision, recent_http_failures
+    model = ApplicationExtensionInstallation
+    identity = select(model.instance_id, model.id, model.authority_incarnation, model.module_package_id)
+    if support:
+        identity = identity.add_columns(model.module_id, ModulePackage.version.label('package_version'),
+                                        ModulePackage.sha256).outerjoin(ModulePackage, (
+            (model.module_package_id == ModulePackage.id) & (model.module_id == ModulePackage.module_id)))
+    identity = identity.where(
+        model.module_id == module_id
+    )
+    before = db.execute(identity).one_or_none()
+    if before is None:
+        raise HTTPException(404, "Application extension was not found")
+    instance = before.instance_id
+    if not isinstance(instance, str) or not application_resources.INSTANCE.fullmatch(instance):
+        raise HTTPException(409, "Application instance identity is unavailable")
+    if support and not observation_revision(instance, before.authority_incarnation, before.sha256):
+        raise HTTPException(409, "Application package identity is unavailable")
+    db.rollback()  # Do not hold an authentication/catalog transaction while waiting on systemd.
+    if not _resource_probe.acquire(blocking=False):
+        raise HTTPException(429, "Resource observation is busy")
+    try:
+        report = application_resources.collect(instance) if sys.platform == 'linux' else {'state': 'unsupported', 'reason': 'linux_required'}
+        if support:
+            report = application_support_snapshot(before, report, recent_http_failures)
+            if reference is not None:
+                from backend.system.diagnostics.work_refs import observe_work
+                from sqlalchemy.exc import SQLAlchemyError
+                try:
+                    report['work'] = observe_work(db, before, reference)
+                except SQLAlchemyError:
+                    report['work'] = {'reference': reference, 'status': 'unavailable'}
+                finally:
+                    db.rollback()  # Fresh catalog and login check even after a failed optional read.
+                if report['work']['status'] == 'unavailable':
+                    report['status'] = 'partial'
+        if db.execute(identity).one_or_none() != before:
+            raise HTTPException(409, "Application installation changed during observation")
+        return report
+    finally:
+        _resource_probe.release()
 
 
 @router.get("/{module_id}/ui-host/{entrypoint_id}")

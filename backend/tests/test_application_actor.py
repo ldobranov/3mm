@@ -46,6 +46,8 @@ def test_platform_admin_needs_an_explicit_business_permission_on_operator_path(a
 
 def test_server_context_keeps_the_real_actor_and_declared_permissions(app, monkeypatch):
     client, db, _, admin, user, installation, package, _, token = app
+    from backend.system.diagnostics.failures import HttpFailureMiddleware
+    client.app.add_middleware(HttpFailureMiddleware)
     for name in ("records_manage", "obsolete_permission"):
         db.add(ApplicationPermissionGrant(application_installation_id=installation.id,
             user_id=user.id, permission_id=name))
@@ -60,10 +62,14 @@ def test_server_context_keeps_the_real_actor_and_declared_permissions(app, monke
     base = f"/api/v1/application-extensions/{package.module_id}"
     claimed = dict(user_id=admin.id, permission_ids=["all_business_data"],
         actor={"kind": "user", "platform_administrator": True})
-    result = client.post(base + "/operator/operations/approve", headers=headers(token),
+    claimed_trace = 'invoke_' + 'f' * 32
+    result = client.post(base + "/operator/operations/approve",
+        headers={**headers(token), 'X-3mm-Trace-Id': claimed_trace},
         json=dict(payload=claimed, idempotency_key="actor-payload-test"))
     assert result.status_code == 200, result.text
     payload, context = received[0]
+    assert context.correlation_id == result.headers['x-3mm-trace-id'] != claimed_trace
+    assert context.idempotency_key == 'actor-payload-test'
     assert payload == claimed  # Business input is never trusted identity metadata.
     assert context.actor.user_id == user.id and not context.actor.platform_administrator
     assert context.permission_ids == ("records_manage",)

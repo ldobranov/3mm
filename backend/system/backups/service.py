@@ -9,6 +9,7 @@ import platform
 import re
 import shutil
 import sqlite3
+import tempfile
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -19,6 +20,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from agent.identity import AgentIdentity
 from backend.config import AppSettings, PROJECT_ROOT
+from backend.system.backups.application_packages import ApplicationRecoveryError, review_capture_profiles, validate_recovery_packages
 from backend.installation.identity import InstallationIdentityError, validate_identity_backup
 from packages.protocol import (
     PROTOCOL_VERSION,
@@ -128,6 +130,14 @@ def _database_path(database_url: str) -> Path:
     return Path(database_url.removeprefix("sqlite:///"))
 
 
+def single_database_revision(connection: sqlite3.Connection) -> str:
+    """A Standalone archive carries one exact migration head, not an arbitrary first row."""
+    rows = connection.execute("SELECT version_num FROM alembic_version LIMIT 2").fetchall()
+    if len(rows) != 1 or not isinstance(rows[0][0], str) or not rows[0][0].strip():
+        raise ValueError("Core database migration revision is missing or ambiguous")
+    return rows[0][0]
+
+
 def _read_database_revision(path: Path) -> str:
     if not path.is_file():
         raise ValueError("Core database is missing")
@@ -135,15 +145,13 @@ def _read_database_revision(path: Path) -> str:
     connection = None
     try:
         connection = sqlite3.connect(uri, uri=True)
-        row = connection.execute("SELECT version_num FROM alembic_version").fetchone()
+        connection.execute("PRAGMA trusted_schema=OFF")
+        return single_database_revision(connection)
     except sqlite3.Error as exc:
         raise ValueError("Core database migration revision cannot be read") from exc
     finally:
         if connection is not None:
             connection.close()
-    if row is None or not isinstance(row[0], str) or not row[0].strip():
-        raise ValueError("Core database migration revision is missing")
-    return row[0].strip()
 
 
 def _read_device_context(settings: AppSettings) -> tuple[str, str]:
@@ -471,33 +479,30 @@ def _backup_sources(
     return tuple(sources)
 
 
-def resolve_backup_entry(settings: AppSettings, entry: BackupEntryV1) -> Path:
-    database_path = _database_path(settings.database_url)
-    for source in _backup_sources(settings, database_path):
-        if source.area != entry.area:
-            continue
-        prefix = PurePosixPath(source.logical_path)
-        entry_path = PurePosixPath(entry.path)
-        if source.source.is_file() and entry_path == prefix:
-            return source.source
-        if not source.source.is_dir():
-            continue
-        if source.logical_path:
-            try:
-                relative = entry_path.relative_to(prefix)
-            except ValueError:
+class BackupEntryResolver:
+    """Index allowlisted roots once per archive, never cache a resolved file."""
+    def __init__(self, settings: AppSettings):
+        self.roots = {(src.area, PurePosixPath(src.logical_path)): src.source
+                      for src in _backup_sources(settings, _database_path(settings.database_url))}
+
+    def resolve(self, entry: BackupEntryV1) -> Path:
+        logical = PurePosixPath(entry.path)
+        for prefix in (logical, *logical.parents):
+            root = self.roots.get((entry.area, prefix))
+            if root is None:
                 continue
-        else:
-            relative = entry_path
-        target = source.source.joinpath(*relative.parts)
-        try:
-            target.resolve(strict=True).relative_to(source.source.resolve(strict=True))
-        except (OSError, ValueError) as exc:
-            raise ValueError("Backup entry escaped its allowlisted source") from exc
-        if target.is_symlink() or not target.is_file():
-            raise ValueError("Backup entry is no longer a regular file")
-        return target
-    raise ValueError("Backup entry is not part of the allowlisted state inventory")
+            if root.is_symlink() or entry.area == 'applications' and (
+                    root.parent.is_symlink() or root.parent.parent.is_symlink()):
+                raise ValueError("Backup source identity changed")
+            target = root
+            for part in logical.relative_to(prefix).parts:
+                target = target / part
+                if target.is_symlink():
+                    raise ValueError("Backup source identity changed")
+            if not target.is_file():
+                raise ValueError("Backup entry is no longer a regular file")
+            return target
+        raise ValueError("Backup entry is not part of the allowlisted state inventory")
 
 
 def write_backup_operation_status(
@@ -540,12 +545,19 @@ def write_backup_catalog_item(
 ) -> Path:
     storage_dir.mkdir(parents=True, exist_ok=True, mode=0o750)
     path = _catalog_metadata_path(storage_dir, item.backup_id)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(item.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    os.chmod(temporary, 0o640)
-    if owner is not None:
-        os.chown(temporary, *owner)
-    os.replace(temporary, path)
+    fd, name = tempfile.mkstemp(dir=storage_dir, prefix='.backup-catalog-',suffix='.tmp')
+    temporary = Path(name)
+    try:
+        with os.fdopen(fd, 'w',encoding='utf-8') as target:
+            target.write(item.model_dump_json(indent=2) + "\n")
+            os.chmod(temporary, 0o640)
+            if owner is not None:
+                os.chown(temporary, *owner)
+            target.flush()
+            os.fsync(target.fileno())
+        os.link(temporary,path)  # Both create and import publish a new, immutable catalog entry.
+    finally:
+        temporary.unlink(missing_ok=True)
     return path
 
 
@@ -616,6 +628,7 @@ def build_backup_preview(
     *,
     now: datetime | None = None,
     disk_usage: Callable[[Path], DiskUsage] = shutil.disk_usage,
+    review_reactivation: bool = True,
 ) -> BackupPreviewResponse:
     """Inspect backup readiness without creating directories or changing state."""
     issues: list[BackupPreviewIssue] = []
@@ -689,6 +702,22 @@ def build_backup_preview(
                     message=str(exc),
                 )
             )
+
+        if database_revision is not None:
+            try:
+                packages = validate_recovery_packages(database_path, database_revision, tuple(entries))
+                if review_reactivation and packages:
+                    separate, unknown = review_capture_profiles(packages, settings.backend.uploads_dir)
+                    if separate:
+                        issues.append(BackupPreviewIssue(severity="warning", code="state.application_separate_preparation",
+                            message="An active application requires separate preparation. The archive can preserve its data, but an automatic full Standalone restore will be refused."))
+                    if unknown:
+                        issues.append(BackupPreviewIssue(severity="warning", code="state.application_profile_unverified",
+                            message="The bounded readiness check could not verify the restore profile of every active application."))
+            except ApplicationRecoveryError as exc:
+                issues.append(BackupPreviewIssue(
+                    severity="error", code=exc.preview_code, message=str(exc),
+                ))
 
     entries.sort(key=lambda entry: (entry.area, entry.path))
     estimated_bytes = sum(entry.size_bytes for entry in entries)

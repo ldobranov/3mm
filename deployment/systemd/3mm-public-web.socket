@@ -1,6 +1,5 @@
 [Unit]
 Description=3mm public web listener
-After=3mm-core.service
 Conflicts=3mm-setup.service
 
 [Socket]

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from backend.applications.authority.inspection import InspectionAuthorityReview
 from backend.artifacts.packages import ValidatedModulePackage
-from packages.protocol import ModuleManifestV2
+from packages.protocol import ApplicationExtensionV1, ModuleManifestV2
 
 
 class InspectionCatalog(BaseModel):
@@ -32,6 +32,42 @@ class InspectionTrust(BaseModel):
     signature: Literal["not_verified"] = "not_verified"
 
 
+class DeclaredDataOperation(BaseModel):
+    purpose: Literal["export", "erasure", "retention"]
+    operation_id: str
+    kind: str
+    audiences: tuple[str, ...]
+    required_permission: str | None
+
+
+class ApplicationDataPractices(BaseModel):
+    source: Literal["package_declaration"] = "package_declaration"
+    contains_personal_data: bool
+    classifications: tuple[str, ...]
+    schema_revision: str
+    retention: Literal["until_explicit_erasure", "application_job", "not_declared"]
+    operations: tuple[DeclaredDataOperation, ...]
+    external_copies: Literal["not_erased_by_local_action"] = "not_erased_by_local_action"
+
+
+def declared_data_practices(application: ApplicationExtensionV1) -> ApplicationDataPractices:
+    """Join validated declarations by exact IDs. No subject lookup, grant or lifecycle action."""
+    storage = application.storage
+    by_id = {op.operation_id: op for op in application.operations}
+    controls = []
+    for purpose, key in (("export", storage.export_operation_id), ("erasure", storage.erasure_operation_id),
+                         ("retention", storage.retention_operation_id)):
+        if key is not None:
+            op = by_id[key]  # reference integrity checked by the v2 package reader
+            controls.append(DeclaredDataOperation(purpose=purpose, operation_id=key, kind=op.kind,
+                                                  audiences=op.audiences, required_permission=op.required_permission))
+    return ApplicationDataPractices(
+        contains_personal_data=storage.contains_personal_data, classifications=storage.classifications,
+        schema_revision=storage.schema_revision, operations=tuple(controls),
+        retention=storage.retention_policy or ("application_job" if storage.retention_operation_id else "not_declared"),
+    )
+
+
 class PackageInspectionResponse(BaseModel):
     inspection_version: Literal[1] = 1
     module_id: str
@@ -49,6 +85,7 @@ class PackageInspectionResponse(BaseModel):
     trust: InspectionTrust = InspectionTrust()
     permission_approval: Literal["not_evaluated"] = "not_evaluated"
     authority_review: InspectionAuthorityReview | None = None
+    data_practices: ApplicationDataPractices | None = None
 
 
 def describe_module_package(
@@ -92,6 +129,8 @@ def describe_module_package(
         package_kind=kind,
         manifest=package.manifest,
         descriptors=descriptors,
+        data_practices=(declared_data_practices(package.application_extension)
+                        if package.application_extension is not None else None),
         catalog=InspectionCatalog(status=status, existing_sha256=existing_sha256),
         compatibility=InspectionCompatibility(
             core="matched" if "core" in package.manifest.runtimes else "not_checked",

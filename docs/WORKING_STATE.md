@@ -12,6 +12,15 @@ Updated: 2026-11-13. Start here; follow linked details only as needed.
 
 ## Active task and next result
 
+- **CAP19 accepted for trusted-LAN Standalone / Full on Raspberry Pi aarch64
+  (2026-11-19).** Admin diagnostics, package and backup checks, owner-run
+  restore on a fresh card, application data, and original command receipts
+  are verified. No replay or new rights. The proposed Core 0.3.13 candidate
+  uses the restored device's checked source; factory reset, independently
+  developed applications, external data erasure, and separately provisioned
+  relational applications are not accepted by this result. Release evidence
+  is separate from physical acceptance. See [release scope](RELEASE_NOTES_0.3.13.md).
+
 - **Core 0.3.12 release, 2026-11-13, owner authorized.** Main push CI
   [43315178219](https://github.com/ldobranov/3mm/actions/runs/43315178219)
   completed successfully for neutral-layout commit

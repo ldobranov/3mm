@@ -1,6 +1,6 @@
 """Administrator-only redacted diagnostics API."""
 
-from fastapi import APIRouter, Depends, HTTPException, Response, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
@@ -40,6 +40,28 @@ import json
 router = APIRouter(prefix="/api/v1/diagnostics", tags=["diagnostics"])
 _merge_lock = threading.Lock()
 _case_lock = threading.Lock()
+
+
+@router.post("/storage-sample")
+async def storage_sample(response: Response, admin: User = Depends(require_admin), db: Session = Depends(get_db),
+                         authorization: str | None = Header(default=None)):
+    """Explicit bounded observation, without holding the observer's own auth transaction."""
+    from backend.accounts.dependencies import require_user
+    from backend.storage.contention import ObservationBusy, write_observer
+    user_id = admin.id
+    db.rollback()
+    try:
+        result = await run_in_threadpool(write_observer.observe)
+    except ObservationBusy as exc:
+        raise HTTPException(429, "A database sample is in progress or cooling down",
+                            headers={"Retry-After": str(exc.retry_after)}) from None
+    except RuntimeError:
+        raise HTTPException(503, "Database write observation unavailable") from None
+    current = require_admin(require_user(authorization, db), db)
+    if current.id != user_id:
+        raise HTTPException(403, "Administrator access changed")
+    response.headers["Cache-Control"] = "no-store"
+    return result
 
 
 def _case_snapshot(settings, lifecycle, trace_id):

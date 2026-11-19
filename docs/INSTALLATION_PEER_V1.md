@@ -22,6 +22,31 @@ construct an alternative transport or use a human/kiosk/Agent token for it.
 
 ## Consent and trust flow
 
+**Operator lookup (current Core).** In **Extensions → Resource limits → Check
+an outgoing peer report**, choose **Find current report IDs** or enter the two
+original IDs. Choosing a row does not send anything. **Check receipt** reads
+one matching local journal slot, even while the receiver is offline. The
+administrator routes are GET-only, under
+`/api/v1/installation-peers/applications/{module_id}/outbound`: `report-references`
+lists up to 16 current reference pairs, and `{link_id}/reports/{report_id}`
+reads one outcome. Neither route traverses the network or invokes an application.
+**Next report IDs** reads the next bounded page, strictly after the last link
+shown (`?after=peer_…`). New pages reevaluate the current local scope: a
+revoked link disappears, and a new link inserted earlier in the order can be
+seen by starting again. This is a live view, not a frozen delivery history.
+
+- **Acknowledged:** the exact sender-side slot contains the expected acknowledgement.
+  This is not a current connection test or proof that a business workflow finished.
+- **Unconfirmed:** the sender recorded the original report, but has no durable
+  acknowledgement. The remote side may already have received it.
+- **Not observed in scope:** no matching slot for the active app and link. This
+  includes replaced references and consent withdrawal; absence is not proof of loss.
+- **Unavailable:** the stored identity or acknowledgement could not be verified.
+
+This is not a history, a new SDK permission, a retry button or a remote admin
+channel. The downloadable observation contains opaque references and the
+bounded outcome only, never the report, destination, credential or business data.
+
 1. A local Core administrator selects an HTTPS origin, independently pinned
    central installation identity, target application module ID, summary fields
    and explicit Node IDs/fields. Core stores a durable outgoing `link_id`.

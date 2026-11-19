@@ -155,6 +155,42 @@ def create_outbound(
     )
 
 
+@router.get("/applications/{module_id}/outbound/report-references")
+def local_report_references(module_id: str, response: Response, after: str | None = None, _admin=Depends(require_admin),
+                            db: Session = Depends(get_db)):
+    """Discover only the current local references; no pairing, destination list or report payload."""
+    from sqlalchemy.exc import SQLAlchemyError
+    from backend.installation.report_receipts import current_references, valid_owner
+    response.headers["Cache-Control"] = "no-store"
+    if not valid_owner(module_id):
+        raise HTTPException(400, "Expected an application ID", headers={"Cache-Control": "no-store"})
+    try:
+        return current_references(db, module_id, after)
+    except ValueError:
+        raise HTTPException(400, "Expected an original link ID as the page cursor",
+                            headers={"Cache-Control": "no-store"}) from None
+    except SQLAlchemyError:
+        raise HTTPException(503, "Local peer report references are unavailable",
+                            headers={"Cache-Control": "no-store"}) from None
+
+
+@router.get("/applications/{module_id}/outbound/{link_id}/reports/{report_id}")
+def local_report_outcome(module_id: str, link_id: str, report_id: str, response: Response,
+                         _admin=Depends(require_admin), db: Session = Depends(get_db)):
+    """Administrator-only journal read; neither contacts the peer nor submits work."""
+    from sqlalchemy.exc import SQLAlchemyError
+    from backend.installation.report_receipts import identifiers, observe_report
+    response.headers["Cache-Control"] = "no-store"
+    if not identifiers(module_id, link_id, report_id):
+        raise HTTPException(400, "Expected an application, original link and original report ID",
+                            headers={"Cache-Control": "no-store"})
+    try:
+        return observe_report(db, module_id, link_id, report_id)
+    except SQLAlchemyError:
+        raise HTTPException(503, "Local peer report observation is unavailable",
+                            headers={"Cache-Control":"no-store"}) from None
+
+
 @router.post("/applications/{module_id}/inbound/{binding_id}/approve")
 def approve_peer(
     module_id: str,

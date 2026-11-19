@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import hashlib
 import json
 import uuid
-from sqlalchemy import select, update, func
+from sqlalchemy import func, or_, select, update
 from backend.db.application_command import ApplicationCommandEpoch, ApplicationCommandRequest
 from backend.db.device import Device, DeviceCommand
 from backend.db.module import ApplicationExtensionInstallation, ModulePackage
@@ -15,6 +15,10 @@ from backend.devices.features.service import command_is_supported, lock_device
 from packages.protocol.application_commands import ApplicationCommandLookupV1, ApplicationCommandSubmitV1
 
 COMMAND_TYPE = 'application.capability.invoke'
+
+
+def _request_key(installation_id, device_id, request_id):
+    return 'app:' + hashlib.sha256(f'{installation_id}:{device_id}:{request_id}'.encode()).hexdigest()
 
 
 def current_authority(record):
@@ -98,7 +102,7 @@ def _submit_command(db, installation, request, admission, *, task_run_id=None):
     if epoch is None:
         epoch = ApplicationCommandEpoch(installation_id=installation.id, generation=uuid.uuid4().hex)
         db.add(epoch); db.flush()
-    identity = hashlib.sha256(f'{installation.id}:{device.device_id}:{request.request_id}'.encode()).hexdigest()
+    key = _request_key(installation.id, device.device_id, request.request_id)
     if (task_run_id is not None and previous['status'] != 'found'
             and db.scalar(select(func.count()).select_from(ApplicationCommandRequest)
                 .where(ApplicationCommandRequest.task_run_id == task_run_id)) >= 8):
@@ -110,7 +114,7 @@ def _submit_command(db, installation, request, admission, *, task_run_id=None):
     if request.not_after is not None:
         command_payload['not_after'] = request.not_after.isoformat()
     command = queue_command(db, device=device, command_type=COMMAND_TYPE, payload=command_payload,
-        idempotency_key='app:' + identity, ttl_seconds=request.ttl_seconds, not_after=request.not_after)
+        idempotency_key=key, ttl_seconds=request.ttl_seconds, not_after=request.not_after)
     record = db.get(ApplicationCommandRequest, command.command_id)
     if record is None:
         record = ApplicationCommandRequest(command_id=command.command_id, installation_id=installation.id,
@@ -156,18 +160,23 @@ def command_lookup(db, installation, payload):
     if installation is None or installation.id is None:
         raise ValueError('Application installation is unavailable')
     with db.no_autoflush:
-        rows = db.execute(select(ApplicationCommandRequest, DeviceCommand.idempotency_key, Device.device_id)
-            .join(DeviceCommand, DeviceCommand.command_id == ApplicationCommandRequest.command_id)
-            .join(Device, Device.id == DeviceCommand.device_id)
-            .where(ApplicationCommandRequest.installation_id == installation.id,
-                DeviceCommand.command_type == COMMAND_TYPE,
-                DeviceCommand.payload['binding_id'].as_string() == request.binding_id)
-            .execution_options(yield_per=100))
+        # The original target may have been revoked or rebound. Generate one key
+        # per registered device, not one hash per historical command, and probe
+        # the existing unique (device_id, idempotency_key) index.
+        owner = installation.id
         matches = []
-        for record, key, device_id in rows:
-            identity = hashlib.sha256(f'{installation.id}:{device_id}:{request.request_id}'.encode()).hexdigest()
-            if key == 'app:' + identity:
-                matches.append(record)
+        with db.execute(select(Device.id, Device.device_id).execution_options(yield_per=64)) as devices:
+            for batch in devices.partitions(64):
+                keys = or_(*((DeviceCommand.device_id == pk) &
+                    (DeviceCommand.idempotency_key == _request_key(owner, device_id, request.request_id))
+                    for pk, device_id in batch))
+                originals = select(DeviceCommand.command_id).where(keys,
+                    DeviceCommand.command_type == COMMAND_TYPE,
+                    DeviceCommand.payload['binding_id'].as_string() == request.binding_id)
+                matches.extend(db.scalars(select(ApplicationCommandRequest)
+                    .where(ApplicationCommandRequest.installation_id == owner,
+                        ApplicationCommandRequest.command_id.in_(originals))
+                    .limit(2)))
                 if len(matches) > 1:
                     raise ValueError('Command lookup is ambiguous across original target devices; manual review is required')
         if not matches:

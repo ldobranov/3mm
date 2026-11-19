@@ -24,8 +24,10 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from agent.identity import AgentIdentity
 from backend.config import AppSettings
 from backend.installation.identity import validate_identity_backup
+from backend.system.backups.application_packages import ApplicationRecoveryError, validate_recovery_packages
 from backend.system.backups.service import (
     BackupOperationStatus,
+    single_database_revision,
     validate_application_backup_inventory,
     validate_application_backup_state,
     write_backup_operation_status,
@@ -38,7 +40,7 @@ from deployment.create_backup import (
     production_settings,
 )
 from deployment.release_smoke import ReleaseEndpoints, SmokeFailure, verify_release
-from deployment.backup_compatibility import validate_release_path
+from deployment.backup_compatibility import BackupCompatibilityError, validate_release_path
 from deployment.installation_peer_recovery import quarantine_restored_installation_peers
 from deployment.authority_recovery import fence_recovered_authority
 from packages.protocol import PROTOCOL_VERSION, BackupManifestV1
@@ -226,7 +228,7 @@ def _decrypt_archive(archive: Path, key_file: Path, destination: Path) -> None:
     _decrypt_archive_with_key(archive, key, destination)
 
 
-def _validate_compatibility(manifest: BackupManifestV1) -> None:
+def _validate_compatibility(manifest: BackupManifestV1, target_architecture: str) -> None:
     current_version = (
         (Path(__file__).resolve().parents[1] / "VERSION")
         .read_text(encoding="utf-8")
@@ -238,9 +240,26 @@ def _validate_compatibility(manifest: BackupManifestV1) -> None:
         compatibility.database_revision, Path(__file__).resolve().parents[1],
     )
     if compatibility.protocol_version != PROTOCOL_VERSION:
-        raise ValueError("Backup protocol version is not supported")
-    if compatibility.architecture != (platform.machine() or "unknown"):
-        raise ValueError("Backup architecture does not match this device")
+        raise BackupCompatibilityError("Backup protocol version is not supported")
+    if compatibility.architecture != target_architecture:
+        raise BackupCompatibilityError("Backup architecture does not match this device")
+
+
+class RestoreStateError(ValueError):
+    """Closed operator messages for authenticated backup state; no exception text or paths."""
+
+    reasons = {
+        "restore_core_database_invalid": "Restored Core database integrity could not be verified",
+        "restore_core_revision_invalid": "Restored database revision does not match the single manifest revision",
+        "restore_device_state_invalid": "Backup device identity or provisioning state is invalid",
+        "restore_device_identity_mismatch": "Backup Agent identity does not match its manifest",
+        "restore_role_invalid": "Backup is not a provisioned Standalone device",
+        "restore_payload_checksum_failed": "Backup payload checksum failed",
+    }
+
+    def __init__(self, code: str):
+        super().__init__(self.reasons[code])
+        self.restore_code = code
 
 
 def _validate_database(path: Path, expected_revision: str) -> None:
@@ -248,19 +267,22 @@ def _validate_database(path: Path, expected_revision: str) -> None:
     connection = None
     try:
         connection = sqlite3.connect(uri, uri=True)
+        connection.execute("PRAGMA query_only=ON")
+        connection.execute("PRAGMA trusted_schema=OFF")
         integrity = connection.execute("PRAGMA integrity_check").fetchone()
-        revision = connection.execute(
-            "SELECT version_num FROM alembic_version"
-        ).fetchone()
+        if integrity != ("ok",):
+            raise RestoreStateError("restore_core_database_invalid")
+        try:
+            revision = single_database_revision(connection)
+        except (ValueError, sqlite3.Error) as exc:
+            raise RestoreStateError("restore_core_revision_invalid") from exc
     except sqlite3.Error as exc:
-        raise ValueError("Restored database cannot be validated") from exc
+        raise RestoreStateError("restore_core_database_invalid") from exc
     finally:
         if connection is not None:
             connection.close()
-    if integrity != ("ok",):
-        raise ValueError("Restored database integrity check failed")
-    if revision is None or revision[0] != expected_revision:
-        raise ValueError("Restored database revision does not match the manifest")
+    if revision != expected_revision:
+        raise RestoreStateError("restore_core_revision_invalid")
 
 
 def _validate_identity_and_role(payload: Path, manifest: BackupManifestV1) -> None:
@@ -274,15 +296,15 @@ def _validate_identity_and_role(payload: Path, manifest: BackupManifestV1) -> No
             )
         )
     except Exception as exc:
-        raise ValueError("Backup identity or provisioning state is invalid") from exc
+        raise RestoreStateError("restore_device_state_invalid") from exc
     if identity.device_id != manifest.device_id:
-        raise ValueError("Backup Agent identity does not match its manifest")
+        raise RestoreStateError("restore_device_identity_mismatch")
     if (
         snapshot.state is not ProvisioningState.PROVISIONED
         or snapshot.role is None
         or snapshot.role.value != "standalone"
     ):
-        raise ValueError("Backup is not a provisioned Standalone device")
+        raise RestoreStateError("restore_role_invalid")
 
 
 def _validate_and_stage(
@@ -290,10 +312,21 @@ def _validate_and_stage(
     staging: Path,
     expected_backup_id: str,
 ) -> BackupManifestV1:
+    # Restore and import have no override: always check the actual host.
+    return _stage_for_target(decrypted, staging, expected_backup_id, platform.machine() or "unknown")
+
+
+def _stage_for_target(decrypted: Path, staging: Path, expected_backup_id: str,
+                      target_architecture: str, *, entry_budget: int | None = None,
+                      payload_budget: int | None = None) -> BackupManifestV1:
+    """Validate authenticated bytes in private staging; never operate on live state."""
     with tarfile.open(decrypted, mode="r:") as archive:
-        members = archive.getmembers()
-        by_name = {member.name: member for member in members}
-        if len(by_name) != len(members) or "manifest.json" not in by_name:
+        by_name = {}
+        for member in archive:
+            if (member.name in by_name or entry_budget is not None and len(by_name) >= entry_budget + 1):
+                raise ValueError("Backup archive index is invalid")
+            by_name[member.name] = member
+        if "manifest.json" not in by_name:
             raise ValueError("Backup archive index is invalid")
         manifest_member = by_name["manifest.json"]
         if not manifest_member.isfile() or manifest_member.size > 8 * 1024 * 1024:
@@ -304,7 +337,9 @@ def _validate_and_stage(
         manifest = BackupManifestV1.model_validate_json(manifest_file.read())
         if manifest.backup_id != expected_backup_id:
             raise ValueError("Backup ID does not match the selected archive")
-        _validate_compatibility(manifest)
+        _validate_compatibility(manifest, target_architecture)
+        if payload_budget is not None and manifest.total_size_bytes > payload_budget:
+            raise ValueError("Backup payload exceeds the verification budget")
         validate_application_backup_inventory(manifest.entries)
 
         expected = {
@@ -330,12 +365,16 @@ def _validate_and_stage(
                     digest.update(block)
                     target.write(block)
             if digest.hexdigest() != entry.sha256:
-                raise ValueError("Backup payload checksum failed")
+                raise RestoreStateError("restore_payload_checksum_failed")
 
     validate_application_backup_state(staging / "payload/applications")
     _validate_database(
         staging / "payload/core/3mm.db",
         manifest.compatibility.database_revision,
+    )
+    validate_recovery_packages(
+        staging / "payload/core/3mm.db", manifest.compatibility.database_revision,
+        manifest.entries, staged_payload=staging / "payload",
     )
     _validate_identity_and_role(staging / "payload", manifest)
     validate_identity_backup(
@@ -574,17 +613,19 @@ def restore_backup(
                 apply_ownership=apply_ownership,
                 application_service_ids=application_service_ids,
             )
-        except Exception:
+        except Exception as exc:
             write_backup_operation_status(
                 status_path,
                 BackupOperationStatus(
                     state="failed",
-                    message="Backup validation failed before persistent state changed",
+                    message=(str(exc) if isinstance(exc, (ApplicationRecoveryError, RestoreStateError))
+                             else "Backup validation failed before persistent state changed"),
                     requested_by_user_id=requested_by_user_id,
                     backup_id=backup_id,
                     started_at=started_at,
                     completed_at=datetime.now(UTC),
-                    error_code="restore_validation_failed",
+                    error_code=(exc.restore_code if isinstance(exc, (ApplicationRecoveryError, RestoreStateError))
+                                else "restore_validation_failed"),
                 ),
                 owner=status_owner,
             )

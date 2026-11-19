@@ -112,6 +112,7 @@ describe('Extensions management workflow', () => {
     http.get.mockImplementation((url: string) => Promise.resolve({data:
       url === '/api/v1/modules/packages' ? [{module_id:'org.3mm.clock',version:'1.2.0',sha256:'a'.repeat(64),manifest:{name:'Clock',entrypoints:{core:'application-extension.json'}}}]
       : url === '/api/v1/application-extensions' ? [{module_id:'org.3mm.clock',active_version:'1.2.0',status:'active',enabled:true}]
+      : url === '/api/v1/application-extensions/retained-data' ? {items:[], review_required:false}
       : []}))
     http.post.mockResolvedValue({ data: {} })
     http.patch.mockResolvedValue({ data: {} })
@@ -850,8 +851,8 @@ describe('Extensions management workflow', () => {
       url === '/api/v1/modules/packages' && packagePresent
         ? [{ module_id: moduleId, version: '1.0.0', sha256: 'e'.repeat(64),
           manifest: { name: 'Retired application', entrypoints: { core: 'application-extension.json' } } }]
-        : url === '/api/v1/application-extensions/retained-data' && dataPresent
-          ? [{ module_id: moduleId, instance_id: '1'.repeat(24), name: 'Retired application' }]
+        : url === '/api/v1/application-extensions/retained-data'
+          ? {items: dataPresent ? [{ module_id: moduleId, instance_id: '1'.repeat(24), name: 'Retired application' }] : [], review_required:false}
           : [],
     }))
     http.delete.mockImplementation(async (url: string) => {
@@ -878,7 +879,7 @@ describe('Extensions management workflow', () => {
   it('keeps retained data available after erasure fails', async () => {
     http.get.mockImplementation((url: string) => Promise.resolve({ data:
       url === '/api/v1/application-extensions/retained-data'
-        ? [{ module_id: 'org.example.retired', instance_id: '1'.repeat(24), name: 'Retired application' }] : [],
+        ? {items:[{ module_id: 'org.example.retired', instance_id: '1'.repeat(24), name: 'Retired application' }], review_required:false} : [],
     }))
     http.delete.mockRejectedValue({ response: { status: 409, data: { detail: 'Runtime stop is unconfirmed' } } })
     const wrapper = await mountView()
@@ -895,6 +896,23 @@ describe('Extensions management workflow', () => {
     const wrapper = await mountView()
     expect(wrapper.text()).toContain('Clock')
     expect(wrapper.text()).toContain('Preserved application data could not be loaded')
+    expect(http.delete).not.toHaveBeenCalled()
+  })
+
+  it('keeps verified data and the rest of Extensions usable when another cleanup identity needs review', async () => {
+    const original = http.get.getMockImplementation()!
+    http.get.mockImplementation((url: string, ...args: unknown[]) => url === '/api/v1/application-extensions/retained-data'
+      ? Promise.resolve({data:{review_required:true,items:[
+        {module_id:'org.example.safe',instance_id:'3'.repeat(24),name:'Verified retained data'},
+        {module_id:'invalid',instance_id:'unverified',name:'Unverified private label'},
+      ]}}) : original(url,...args))
+    const wrapper = await mountView()
+    const section = wrapper.get('.retained-data-section')
+    expect(section.get('[role=alert]').text()).toContain('Only verified records are shown')
+    expect(section.get('.retained-data-row').text()).toContain('Verified retained data')
+    expect(section.findAll('button')).toHaveLength(1)
+    expect(section.text()).not.toContain('Unverified private label')
+    expect(wrapper.text()).toContain('Clock')
     expect(http.delete).not.toHaveBeenCalled()
   })
 

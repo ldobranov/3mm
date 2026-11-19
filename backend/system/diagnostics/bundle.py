@@ -18,6 +18,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from backend.config import AppSettings, PROJECT_ROOT
 from backend.system.backups.service import read_backup_operation_status
+from deployment.first_boot_preflight import inspect_cgroup_memory
 from packages.protocol import PROTOCOL_VERSION
 
 
@@ -219,6 +220,17 @@ def build_diagnostic_bundle(
     database_check, database_revision = _database_check(settings.database_url)
     agent_check, agent_metadata = agent_health()
     checks = [database_check, agent_check]
+    system = _system_metadata()
+    if system["operating_system"] == "Linux":
+        controller, summary = inspect_cgroup_memory()
+        system["cgroup_v2_memory_controller"] = controller
+        checks.append(DiagnosticCheck(
+            name="resources.cgroup-memory",
+            status="ok" if controller == "available" else "warning",
+            summary=summary,
+        ))
+    else:
+        system["cgroup_v2_memory_controller"] = "not_applicable" if system["operating_system"] else "unknown"
 
     storage: dict[str, int] = {}
     try:
@@ -246,7 +258,7 @@ def build_diagnostic_bundle(
     bundle = DiagnosticBundle(
         generated_at=generated_at,
         application=application,
-        system=_system_metadata(),
+        system=system,
         storage=storage,
         operations=operations,
         checks=tuple(checks),

@@ -8,8 +8,10 @@ import hashlib
 import io
 import os
 import re
+import stat
 import subprocess
 import tarfile
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, Sequence
@@ -23,7 +25,7 @@ from backend.system.backups.service import (
     build_backup_preview,
     checksum_file,
     prune_backup_catalog,
-    resolve_backup_entry,
+    BackupEntryResolver,
     validate_application_backup_state,
     write_backup_catalog_item,
     write_backup_operation_status,
@@ -186,11 +188,40 @@ def production_settings(backup_root: Path = BACKUP_ROOT) -> AppSettings:
     )
 
 
+class _DigestingReader:
+    def __init__(self, stream):
+        self.stream = stream
+        self.digest = hashlib.sha256()
+
+    def read(self, size):
+        data = self.stream.read(size)
+        self.digest.update(data)
+        return data
+
+
+def _add_verified_entry(archive, entry, path):
+    info = tarfile.TarInfo(f"payload/{entry.area}/{entry.path}")
+    info.size, info.mode = entry.size_bytes, 0o600
+    fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0) | getattr(os, 'O_BINARY', 0))
+    with os.fdopen(fd, 'rb') as stream:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_size != entry.size_bytes:
+            raise ValueError("State changed after backup preflight")
+        reader = _DigestingReader(stream)
+        archive.addfile(info, reader)
+        after = path.stat(follow_symlinks=False)
+        if ((before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) !=
+                (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+                or reader.digest.hexdigest() != entry.sha256):
+            raise ValueError("State changed after backup preflight")
+
+
 def _write_archive(path: Path, key: bytes, settings: AppSettings, preview) -> None:
-    temporary = path.with_suffix(".tmp")
+    sources = BackupEntryResolver(settings)
+    fd, temporary_name = tempfile.mkstemp(dir=path.parent, prefix='.backup-', suffix='.tmp')
+    temporary = Path(temporary_name)
     try:
-        with temporary.open("xb") as raw:
-            os.chmod(temporary, 0o600)
+        with os.fdopen(fd, "wb") as raw:
             encrypted = EncryptingWriter(raw, key)
             with tarfile.open(
                 fileobj=encrypted, mode="w|", format=tarfile.PAX_FORMAT
@@ -203,17 +234,12 @@ def _write_archive(path: Path, key: bytes, settings: AppSettings, preview) -> No
                 manifest_info.mode = 0o600
                 archive.addfile(manifest_info, io.BytesIO(manifest_data))
                 for entry in preview.manifest.entries:
-                    source = resolve_backup_entry(settings, entry)
-                    size, digest = checksum_file(source)
-                    if size != entry.size_bytes or digest != entry.sha256:
-                        raise ValueError("State changed after backup preflight")
-                    info = tarfile.TarInfo(f"payload/{entry.area}/{entry.path}")
-                    info.size = size
-                    info.mode = 0o600
-                    with source.open("rb") as content:
-                        archive.addfile(info, content)
+                    _add_verified_entry(archive, entry, sources.resolve(entry))
             encrypted.finalize()
-        os.replace(temporary, path)
+            raw.flush()
+            os.fsync(raw.fileno())
+        # Publish the verified bytes atomically, never replace an earlier backup.
+        os.link(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -270,13 +296,18 @@ def create_backup(
         )
         service_controller.stop(RUNTIME_SERVICES)
         stopped = True
-        preview = build_backup_preview(settings)
+        # Recheck recovery-critical inventory; the optional operator advisory
+        # is not a capture gate and must not prolong a service outage.
+        preview = build_backup_preview(settings, review_reactivation=False)
         if not preview.ready or preview.manifest is None:
             raise ValueError("Backup preflight failed after services were quiesced")
         key = _load_or_create_key(key_file)
         archive_name = f"{preview.manifest.backup_id}.3mmbak"
-        archive_path = backup_root / archive_name
-        _write_archive(archive_path, key, settings, preview)
+        destination = backup_root / archive_name
+        if (backup_root / f"{preview.manifest.backup_id}.metadata.json").exists():
+            raise FileExistsError("Backup catalog identifier is already in use")
+        _write_archive(destination, key, settings, preview)
+        archive_path = destination  # Only our successfully published archive may be cleaned up.
         archive_size, archive_sha256 = checksum_file(archive_path)
         metadata_path = write_backup_catalog_item(
             backup_root,

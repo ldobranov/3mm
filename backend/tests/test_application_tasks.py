@@ -487,14 +487,20 @@ def test_task_package_staging_is_admin_stopped_cas_bound_and_preserves_results(t
 
 
 def test_real_delayed_result_progress_restart_and_no_replay(task_state):
+    from backend.system.diagnostics.work_refs import observe_work
     s = task_state
     key, accepted = schedule(s, pause_ms=250, delay=.4)
+    def boundary():
+        with Session(s.engine) as db:
+            return observe_work(db, db.get(Installation,1), accepted['task_run_id'])['start_boundary']
     assert accepted["status"] == "queued" and accepted["result"] is None and attempts(s) == 0
+    assert boundary() == 'no_dispatch_record'
     worker = s.start_worker()
     observed = wait(s, key, ("running",))
     assert observed["result"] is None
     result = wait(s, key)
     assert result["result"] == {"total": 5050} and result["progress"] == 100 and attempts(s) == 1
+    assert boundary() == 'start_permit_consumed'
     worker.terminate(); worker.wait(timeout=3)
     s.host.terminate(); s.host.wait(timeout=3)
     s.server.stop(); s.server.start()

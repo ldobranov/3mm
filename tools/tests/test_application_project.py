@@ -144,6 +144,9 @@ def test_success_has_exact_package_review_and_never_overwrites(source, tmp_path,
     assert binding['target_device_config_key'] == 'RESOURCE_DEVICE_ID'
     assert binding['capability_id'] == 'gpio.digital.control' and binding['contract_version'] == '1.0'
     assert result['review']['storage']['schema_revision'] == '0001'
+    privacy = result['review']['data_practices']
+    assert privacy['source'] == 'package_declaration' and not privacy['contains_personal_data']
+    assert not privacy['operations'] and privacy['retention'] == 'not_declared'
     assert result['semantic_validation']['status'] == 'passed'
     assert result['migrations']['status'] == 'passed'
     assert result['migrations']['target_revision'] == result['review']['storage']['schema_revision']

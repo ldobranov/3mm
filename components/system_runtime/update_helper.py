@@ -890,6 +890,7 @@ def _handle_request(
             action
             not in {
                 "preview_backup",
+                "preview_backup_summary",
                 "start_network_setup",
                 "restart_device",
                 "factory_reset",
@@ -901,9 +902,14 @@ def _handle_request(
         ):
             return {"ok": False, "error": "invalid_request"}
 
-        if action == "preview_backup":
+        if action in {"preview_backup", "preview_backup_summary"}:
             try:
-                preview = build_backup_preview(production_settings(backup_root))
+                settings = production_settings(backup_root)
+                preview = build_backup_preview(settings)
+                if action == "preview_backup_summary":
+                    # Keep the file-by-file inventory inside the existing protected reader.
+                    from backend.system.backups.readiness import summarize_backup
+                    preview = summarize_backup(preview, settings.database_url)
             except Exception:
                 LOGGER.exception("Backup preview failed")
                 return {"ok": False, "error": "backup_preview_failed"}

@@ -22,7 +22,9 @@ Core domain logic does not learn concrete hardware or extension names.
 | Files and credentials | [Activation](../components/system_runtime/application_activation.py) prepares directories `0750`, transport keys/metadata `0640`; the [host](../components/system_runtime/application_host.py) creates service sockets `0660`, with the common service group; foreign readability/impersonation must be tested, not assumed prevented |
 | Browser integration | Existing compiled UI shares Core's origin/runtime; it is reviewed native integration, not an isolated untrusted frontend |
 
-The service unit has no explicit per-instance MemoryMax/CPUQuota/TasksMax policy.
+At the time of this design the service unit had no explicit per-instance
+MemoryMax/CPUQuota/TasksMax policy. For the current unit limits, per-instance
+mounts, their scope and verification see the [CAP20 resource profile](../deployment/systemd/README.md#resource-profile-contract).
 OS defaults and operation deadlines are not measured per-extension exhaustion
 protection. The platform socket has a timestamp check, not a global durable nonce
 ledger; each mutating action needs its own proven idempotency/replay boundary.

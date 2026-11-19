@@ -28,6 +28,102 @@ The API is restricted to administrators:
 The Settings page uses the authenticated API client, so diagnostic data is not
 placed in a public URL or browser navigation history.
 
+For an unconfirmed outgoing installation report, use the [local receipt
+lookup](INSTALLATION_PEER_V1.md#consent-and-trust-flow). The command
+`python -m tools.diagnostics explain peer-report.json` explains the saved observation
+offline using fixed labels. A missing record is not evidence that the receiver
+never acted; this command and the admin lookup never send the report again.
+
+### Can this host enforce application RAM limits? (CAP20)
+
+In **Settings → Support diagnostics**, look for `resources.cgroup-memory` on
+Linux. The first-boot installer and this check read the same kernel data.
+The downloaded JSON includes `system.cgroup_v2_memory_controller`:
+
+- `available`: the visible cgroup v2 root offers the memory controller.
+  This does **not** mean any particular application has a finite limit.
+- `absent`: the controller list was read, but it does not include memory.
+  Do not rely on a configured application RAM limit through cgroup v2.
+- `unknown`: the observation could not be made. This is not evidence of
+  enforcement, or of unlimited memory.
+- `not_applicable`: the host is not Linux; no cgroup check was made.
+
+A warning does not change Core readiness or the device's boot configuration.
+For one installed application, open **Extensions → its card → Resource
+limits** as an administrator. Opening the dialog or choosing **Refresh**
+reads the local service's RAM cap, CPU quota (100% = one logical CPU)
+and task cap (including threads). A separate section shows the current memory
+and task counters for the same service. A missing counter is not zero. CPU
+is a quota, not a utilization estimate; there is no sampling loop.
+“No limit set at this level” does not rule out a stricter parent group.
+A smaller visible parent ceiling is shown separately. That capacity is shared
+with siblings, not guaranteed to this app. A partial hierarchy is labelled as
+such. **More limits and restart settings** shows the running main process's
+soft/hard open-file limits, and the manager's start budget, delays and network
+policy. Configuration is not proof of a connector grant or of a running process.
+If the service is stopped or changes during the reading, no old limits are
+shown. A disabled application is not started to obtain a measurement.
+When the service can be identified consistently, the same reading also shows
+its state, last result and current automatic restart count, even if it is
+stopped or has no measurable limits. A missing count is unknown, not zero.
+An out-of-memory result does not establish that the application's own RAM cap
+was reached. A running service is not an application health check.
+
+The same on-demand observation is available at
+`GET /api/v1/application-extensions/{module_id}/resource-limits`; no SSH
+or application permission grant is needed for the administrator. The
+[command-line report](../deployment/systemd/README.md#read-an-application-hosts-supervision-and-resource-limits-cap20)
+uses the same collector, including on a minimal Node (Agent-only mode).
+
+### Troubleshoot one application without collecting other applications
+
+In **Extensions → Resource limits → Save app diagnostics**, an administrator
+can download one fresh service reading plus recent Core refusals that were
+bound to this installation generation and package. It also works for a stopped
+service. The file is generated on demand, not stored on the device. There is
+no polling, restart, application call, permission change or new recording.
+The endpoint is `GET /api/v1/application-extensions/{module_id}/support-snapshot`.
+Optionally paste one generated task or device command ID before downloading
+(`?reference=task_…` or `cmd_…`). This is a primary-key read, not a search
+of the device, not a replay and not a new grant. A task reports its journal
+state and progress for the exact installation generation and package. A command
+reports its queue state for the same owner, package and current command epoch;
+only a verified link to a task or a retained correlated sensor event is shown.
+The sensor need not be the command target. No payload, raw result, lease,
+device name or sensor identifier is selected. A foreign, expired-scope or
+absent reference gives the same “not found in scope” answer. A reported
+successful command alone is not independent proof of a physical outcome.
+New support records also show the number of recorded offers and the approximate
+whole seconds from queuing to the **latest** offer. On redelivery this includes
+the earlier wait; it is not a first-offer or device-execution time. Missing or
+inconsistent clocks produce an unknown interval, not zero. Core deliberately
+does not subtract a device-reported completion time from its own clock. A task
+shows the last recorded boundary (dispatch, or consumption of its one-use start
+permit); a permit alone is not a successful result. Older saved summaries
+remain readable without supplying timing that was never recorded.
+An installation change or lost admin access discards the download. A busy failure
+ring or unavailable service observation is labelled partial. Empty history does
+not establish health. Unbound failures, other versions, browser memory,
+application data/logs and global history are deliberately excluded.
+
+Open the JSON directly or use `python -m tools.diagnostics explain application-support.json`
+(add `--json` for automation). The offline reader uses the same fixed Core case
+catalog and never executes imported text. An ordinary managed HTTP application
+operation now receives the same `OperationContext.correlation_id` as the
+server-generated `X-3mm-Trace-Id`. It is a support reference, not an
+idempotency key, transport nonce, permission, or evidence of execution.
+For a group of repeated refusals the timestamp and duration belong only to
+`timing_trace_id` (the latest occurrence), even when looking up an earlier ID.
+
+For a database error during sign-in, **Support diagnostics → Diagnostic cases**
+and the recent HTTP failures export identify whether it happened while reading
+the account or session settings, writing the session, or writing the audit.
+A busy/locked database is reported only when the driver supplies that code;
+read-only, full, open and I/O errors are separate. Unknown causes stay unknown.
+The sign-in response stays generic and nothing retries automatically. An audit
+write error can follow a committed session; it is not proof of a failed password
+check. No SQL text, parameters, account identifiers or tokens enter this record.
+
 ## Diagnostic cases: one workflow for people and tools
 
 Settings → Support diagnostics → **Diagnostic cases** collects the current
@@ -318,3 +414,54 @@ review acceptance. A separate current scoped SDK read succeeds then remains deni
 after revocation while diagnostics is active. Read-only restored-host readiness is
 observed before explicit outcome review. See WORKING_STATE.md for exact source,
 artifacts and targeted evidence; installed/ARM/ARMv6/full-CI acceptance remains P6.
+## A login says storage is busy
+
+A genuine SQLite busy/locked result during login returns **503** with
+`Retry-After: 2`. It is not a wrong-password response. Session creation and
+its login audit entry commit together; the server does not retry the login or
+return a token after a failed commit. Copy the request ID to inspect the stage
+of that specific request. Other database errors are not labelled busy.
+
+To look at **current** activity, open the administrator's operation diagnostics
+and choose **Who is writing to the Core database? → Measure for 5 seconds**.
+Only an explicit request starts observation; the page never polls. Core releases
+the administrator's read transaction during the measurement, checks access again
+before returning the result, and allows only one observation plus a 30-second
+cooldown. A busy/unavailable measurement is different from a completed one with
+no observations. **Save measurement** exports the fixed counters for
+`python -m tools.diagnostics explain core-database-sample.json --json`.
+
+The duration starts at the first successful ORM write or explicit
+`BEGIN IMMEDIATE` on a **newly opened connection** to Core's main SQLite engine;
+it ends at the commit/rollback request or the sample boundary. Repeated writes
+in that transaction count once. SQL text, parameters, data, accounts, paths and
+request IDs are not collected. An already open connection, untyped raw write,
+another process, a failed lock attempt or time spent inside the final commit
+may be invisible. A long observation is a lead for investigation, **not** the
+proven owner of a previous lock or a reason to stop/restart a service.
+
+## Which backup check was performed?
+
+**Settings → Backup and recovery → Check readiness → Save check summary**
+exports the last observation's fixed reasons and counts. It does not export
+the archive, the administrator's per-app inventory or the original issue text.
+Use `python -m tools.diagnostics explain backup-readiness.json` to distinguish
+a blocked capture from a warning about automatic application reactivation.
+
+A `portable_recovery_check` is a different observation: an operator checked
+the bytes of a chosen portable file against the intended Core release and
+architecture in [private offline staging](BACKUP_AND_RESTORE.md#checking-an-exported-file-without-importing-it).
+The same reader accepts its JSON and regenerates guidance from fixed reason
+codes. Treat both as unsigned observations; neither proves that the replacement
+device has booted or that a restored app has been activated. Do not send a
+recovery password, portable backup or raw manifest to explain these results.
+
+## Preserved application data
+
+In **Extensions → Preserved application data**, a review warning means at
+least one stored cleanup identity could not be verified. The panel still
+lists other verified, uninstalled owners. It never guesses the unknown owner
+or offers that record as an erase target. A failed request is different from
+a successful empty inventory. Listing or refreshing never erases anything;
+permanent removal of a verified row still requires separate confirmation.
+Local removal does not delete previously exported files or backups.

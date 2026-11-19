@@ -479,10 +479,12 @@ class CoreFixture:
         ) as client:
             return client.request(method, self.origin + path, headers=headers, **kwargs)
 
-    def restart(self):
+    def restart(self, *, while_offline=None):
         self.core.terminate()
         self.core.wait(timeout=10)
         self.processes.remove(self.core)
+        if while_offline is not None:
+            while_offline()
         self.core = self.spawn(
             [
                 "backend.tests.test_installation_peer_https",
@@ -691,9 +693,20 @@ def test_two_cores_verified_https_and_real_application_sockets(tmp_path):
             with pytest.raises(ApplicationPlatformError) as rejected:
                 sender.sdk.report_installation_status(link, report_id=report_id)
             assert rejected.value.reason == "operation_failed"
-            receiver.restart()
+            receipt_path = f"/api/v1/installation-peers/applications/{MODULE}/outbound/{link}/reports/{report_id}"
+            def read_receipt(expected):
+                response = sender.http("GET", receipt_path, admin=True)
+                assert response.status_code == 200 and response.headers["Cache-Control"] == "no-store"
+                assert response.json() == {
+                    "schema_version": 1, "kind": "peer_report_observation", "source": "local_outbound_slot",
+                    "module_id": MODULE, "link_id": link, "report_id": report_id, "state": expected,
+                    "automatic_replay_allowed": False,
+                }
+            receiver.restart(while_offline=lambda: read_receipt("outcome_unconfirmed"))
             accepted = sender.sdk.report_installation_status(link, report_id=report_id)
             assert accepted["status"] == "accepted"
+            read_receipt("acknowledged")
+            assert sender.http("GET", receipt_path).status_code == 401
             assert (
                 sender.sdk.report_installation_status(link, report_id=report_id)
                 == accepted
@@ -804,6 +817,7 @@ def test_two_cores_verified_https_and_real_application_sockets(tmp_path):
                 sender.sdk.rotate_installation_peer(link)
             assert rejected.value.reason == "operation_failed"
             sender.sdk.revoke_installation_peer(link, direction="outbound")
+            read_receipt("not_observed_in_scope")
             with pytest.raises(ApplicationPlatformError) as rejected:
                 sender.sdk.get_installation_status(link)
             assert rejected.value.reason == "operation_denied"

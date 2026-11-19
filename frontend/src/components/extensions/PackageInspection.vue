@@ -25,6 +25,13 @@ interface Inspection {
   catalog: { status: 'new' | 'exact_artifact' | 'version_conflict'; existing_sha256: string | null }
   compatibility: { core: 'matched' | 'not_checked'; core_version: string }
   authority_review?: AuthorityInspection | null
+  data_practices?: {
+    contains_personal_data: boolean
+    classifications: string[]
+    schema_revision: string
+    retention: 'until_explicit_erasure' | 'application_job' | 'not_declared'
+    operations: {purpose: 'export' | 'erasure' | 'retention'; operation_id: string; audiences: string[]; required_permission: string | null}[]
+  } | null
 }
 const inspection = ref<Inspection | null>(null)
 const busy = ref(false)
@@ -113,6 +120,26 @@ const inspect = async () => {
       </dl>
       <p class="inspection-notice">{{ t('packageInspection.warning', 'Publisher and signature are not verified. Dependencies and conflicts are declared, not resolved. Inspection is not approval and does not guarantee installation; uploading remains a separate action.') }}</p>
       <AuthorityReview v-if="inspection.package_kind === 'application'" :value="inspection.authority_review" />
+      <details v-if="inspection.data_practices">
+        <summary>{{ t('packageInspection.data.title', 'How the application says it handles data') }}</summary>
+        <p>{{ inspection.data_practices.contains_personal_data
+          ? t('packageInspection.data.personal', 'The package declares that it stores personal data.')
+          : t('packageInspection.data.noPersonal', 'The package declares that it does not store personal data.') }}</p>
+        <dl class="inspection-facts">
+          <div><dt>{{ t('packageInspection.data.classification', 'Data classification') }}</dt><dd>{{ inspection.data_practices.classifications.join(', ') || '—' }}</dd></div>
+          <div><dt>{{ t('packageInspection.data.schema', 'Declared database revision') }}</dt><dd>{{ inspection.data_practices.schema_revision }}</dd></div>
+          <div><dt>{{ t('packageInspection.data.retention', 'Retention') }}</dt>
+            <dd v-if="inspection.data_practices.retention === 'until_explicit_erasure'">{{ t('packageInspection.data.explicit', 'Until explicitly erased') }}</dd>
+            <dd v-else-if="inspection.data_practices.retention === 'application_job'">{{ t('packageInspection.data.job', 'Managed by an application job') }}</dd>
+            <dd v-else>{{ t('packageInspection.data.notDeclared', 'Not declared') }}</dd>
+          </div>
+          <div v-for="op in inspection.data_practices.operations" :key="op.purpose">
+            <dt>{{ t('packageInspection.data.' + op.purpose + 'Op', op.purpose) }}</dt>
+            <dd><code>{{ op.operation_id }}</code> · {{ op.audiences.join(', ') }}<template v-if="op.required_permission"> · <code>{{ op.required_permission }}</code></template></dd>
+          </div>
+        </dl>
+        <p class="ui-help">{{ t('packageInspection.data.boundary', 'These are declarations, not verified behavior or grants. Inspection does not export or erase anything. Local erasure does not remove downloaded backups or external copies.') }}</p>
+      </details>
       <details>
         <summary>{{ t('packageInspection.declarations', 'All declarations, configuration and runtime descriptors') }}</summary>
         <pre>{{ JSON.stringify({ manifest: inspection.manifest, descriptors: inspection.descriptors }, null, 2) }}</pre>

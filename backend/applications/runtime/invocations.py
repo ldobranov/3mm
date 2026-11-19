@@ -1,6 +1,6 @@
 """Current Core operation admission and completion around a response-only Runtime wait."""
 from backend.system.diagnostics.operations import core_diagnostics, authority_diagnostic_scope, authority_failure_span
-from backend.system.diagnostics.failures import current_trace_id, note_failure, note_dispatch
+from backend.system.diagnostics.failures import current_trace_id, note_failure, note_dispatch, note_instance
 from packages.protocol.diagnostics import DiagnosticSpan, validated_host_failure
 from dataclasses import dataclass, replace
 from contextlib import contextmanager
@@ -168,6 +168,8 @@ def begin_invocation(db, settings, admit, boundary=None):
         with _policy_transaction(db,boundary,request_id=identifier):
             first=admit()
             trace.instance_id=first.installation.instance_id
+            note_instance(first.installation.instance_id, incarnation=first.installation.authority_incarnation,
+                          artifact=first.package.sha256)
             if boundary is None and first.installation.authority_mode != 'compatibility':
                 raise ApplicationGatewayError('Current invocation requires an authority boundary',
                     phase=DispatchPhase.NOT_DISPATCHED, diagnostic_reason='authority_unavailable')

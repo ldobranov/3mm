@@ -113,6 +113,13 @@ assert validate_design(DESIGN_DEFAULTS) == DESIGN_DEFAULTS
         capture_output=True, text=True, timeout=20)
     assert result.returncode == 0, result.stderr
     assert '--read-only' in result.stdout and '--recovery-captive-port' in result.stdout
+    # Support diagnostics also work from the minimal artifact without site
+    # packages, Core, SDK, the repo root, an installed Agent or any privilege.
+    result = subprocess.run([sys.executable, '-I', '-S',
+        str(extracted / 'deployment/service_resources.py'), '--help'],
+        cwd=tmp_path, capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert '--node-agent' in result.stdout
     (wheels / name).write_bytes(b'changed')
     with pytest.raises(ValueError, match='checksum'):
         build(ROOT, wheels, tmp_path / 'third', **args)

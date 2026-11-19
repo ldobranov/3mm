@@ -115,7 +115,7 @@
         </div>
 
         <div v-if="isAdmin" v-show="activeSection === 'backups'" id="backup-settings" class="settings-anchor">
-          <BackupRecoverySection />
+          <BackupRecoverySection :active="activeSection === 'backups'" />
         </div>
 
         <div v-if="isAdmin" v-show="activeSection === 'diagnostics'" id="diagnostic-settings" class="settings-anchor">

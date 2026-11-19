@@ -582,6 +582,26 @@ def test_wired_preflight_and_gpio_group_precede_runtime_mutation():
     assert SCRIPT.index('--profile "$install_profile" --check-only') < SCRIPT.index('mutation_started=1')
 
 
+def test_preflight_substitution_failure_is_cleaned_up_once_without_stopping_installed_services():
+    result = run('''
+set -Eeuo pipefail
+mutation_started=0
+release_created=0
+environment_tmp=''
+release_archive=/test/rejected-archive
+rm() { echo "removed reviewed temporary archive" >&2; }
+stop_runtime_services() { echo 'forbidden service stop' >&2; }
+''' + section('rollback() {', 'if [[ -L $current_link ]]; then') + '''
+trap rollback ERR
+selected=$(false)
+echo 'forbidden activation'
+''')
+    assert result.returncode == 1 and 'forbidden' not in result.stderr + result.stdout
+    assert result.stderr.count('before stopping services') == 1
+    assert result.stderr.count('removed reviewed temporary archive') == 1
+    assert 'restoring' not in result.stderr
+
+
 def test_rollback_restores_actual_previous_units_without_replanning_setup():
     result = run('''
 runtime_services=(3mm-core.service 3mm-web.service 3mm-agent.service 3mm-setup.service)

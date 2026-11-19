@@ -127,10 +127,10 @@ PROVIDER_TEMPLATE_FILES = ("backend/devices/modules/templates.py",) + tuple(
     ("character-display.mock", "character-display.pcf8574-2row", "character-display.pcf8574-4row",
      "gpio-input.gpiod", "gpio-input.mock"))
 STORAGE_FILES = tuple("backend/storage/" + name + ".py" for name in
-    ("__init__", "engine", "sessions", "public_assets")) + (
+    ("__init__", "engine", "contention", "observation_format", "sessions", "public_assets")) + (
     "backend/system/components.py", "backend/accounts/bootstrap.py", "backend/localization/service.py")
 DIAGNOSTIC_FILES = tuple("backend/system/diagnostics/" + name + ".py"
-                         for name in ("__init__", "api", "failures", "operations", "workspace", "bundle", "alerts"))
+                         for name in ("__init__", "api", "cases", "catalog", "failures", "operations", "work_refs", "workspace", "bundle", "alerts"))
 PRODUCT_FILES = (
     "config_templates/product.json",
     "components/setup/product.py",
@@ -149,7 +149,7 @@ PROVISIONING_FILES = ("packages/provisioning/__init__.py", "packages/provisionin
 SYSTEM_UPDATE_FILES = tuple("backend/system/updates/" + name + ".py" for name in (
     "__init__", "api", "releases", "policy", "staging", "platform_runtime", "components_api", "components"))
 BACKUP_FILES = tuple("backend/system/backups/" + name + ".py"
-                     for name in ("__init__", "api", "service"))
+                     for name in ("__init__", "api", "application_packages", "readiness", "service"))
 REQUIRED_SOURCE_FILES = {
     "config_templates/product.json": Path("config_templates/product.json").read_bytes(),
     "VERSION": b"1.2.0\n",
@@ -706,6 +706,7 @@ backup_app = FastAPI()
 backup_app.include_router(backups_api.router)
 expected_backups = {
     "/api/v1/backups": {"get", "post"}, "/api/v1/backups/preview": {"get"},
+    "/api/v1/backups/readiness": {"get"},
     "/api/v1/backups/operation": {"get"}, "/api/v1/backups/restore": {"post"},
     "/api/v1/backups/{backup_id}/export": {"post"},
     "/api/v1/backups/exports/{export_id}": {"get"},

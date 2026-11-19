@@ -4,9 +4,18 @@ const http=vi.hoisted(()=>({get:vi.fn(),post:vi.fn(),delete:vi.fn()}))
 vi.mock('@/utils/dynamic-http',()=>({default:http}))
 vi.mock('@/utils/i18n',()=>({useI18n:()=>({t:(_key:string,fallback:string)=>fallback})}))
 import Workspace from './DiagnosticWorkspace.vue'
+import Cases from './DiagnosticCases.vue'
 const state=(active=false)=>({session_id:active?'a'.repeat(32):null,active,remaining_seconds:active?60:0,records:0,dropped:{full:0,rate:0,invalid:0,busy:0},scope:{profile:'diagnostic',operation:null,instance_id:null}})
 let current=state(),wrappers:ReturnType<typeof mount>[]=[]
 function mountView(){const wrapper=mount(Workspace);wrappers.push(wrapper);return wrapper}
+it.each([null,'c'.repeat(24)])('records the next case without widening an instance filter (%s)', async caseInstance => {
+  const view=mountView();await flushPromises()
+  await view.find('input[pattern]').setValue('b'.repeat(24))
+  view.getComponent(Cases).vm.$emit('record','checkpoint.get',caseInstance)
+  await flushPromises()
+  expect(http.post).toHaveBeenCalledWith('/api/v1/diagnostics/session',{
+    ttl_seconds:120,profile:'diagnostic',operation:'checkpoint.get',instance_id:caseInstance ?? 'b'.repeat(24)})
+})
 beforeEach(()=>{vi.clearAllMocks();current=state();http.get.mockImplementation(async(url:string)=>({data:url.endsWith('/workspace')?{components:[{component:'agent',build_id:'a'.repeat(64),health:'unknown',reason:'passive_metadata'}],operations:['checkpoint.get'],core_services:{components:{}}}:url.endsWith('/session')?current:url.endsWith('/failures')?{status:'ready',records:[],dropped:{}}:{records:[],missing_components:['runtime'],truncated:false}}));http.post.mockImplementation(async()=>{current=state(true);return{data:current}});http.delete.mockImplementation(async()=>{current=state();return{data:current}})})
 afterEach(()=>{wrappers.forEach(w=>w.unmount());wrappers=[];vi.useRealTimers();vi.unstubAllGlobals()})
 it('shows unknown health, missing producers and starts an explicitly scoped session',async()=>{const wrapper=mountView();await flushPromises();expect(wrapper.text()).toContain('Not observed');expect(wrapper.text()).toContain('No trace export from:');const selects=wrapper.findAll('select');await selects[0].setValue('development');await selects[2].setValue('checkpoint.get');await wrapper.find('input[pattern]').setValue('b'.repeat(24));await wrapper.find('form').trigger('submit');await flushPromises();expect(http.post).toHaveBeenCalledWith('/api/v1/diagnostics/session',{ttl_seconds:600,profile:'development',operation:'checkpoint.get',instance_id:'b'.repeat(24)});expect(wrapper.text()).toContain('Diagnostic session active');const stop=wrapper.findAll('button').find(b=>b.text()==='Stop now')!;await stop.trigger('click');await flushPromises();expect(http.delete).toHaveBeenCalledWith('/api/v1/diagnostics/session');expect(wrapper.text()).toContain('Normal mode')})

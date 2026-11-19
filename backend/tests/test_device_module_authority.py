@@ -290,6 +290,39 @@ def test_http_acknowledges_expired_delivered_receipt_without_activating_module(l
     assert authority(ctx) == before
 
 
+@pytest.mark.parametrize('kind', ['application.capability.invoke', 'capability.invoke'])
+def test_restored_delivered_receipt_is_acked_without_lifting_the_fence(lifecycle, kind):
+    from deployment.authority_recovery import _physical_fences
+
+    ctx = lifecycle
+    sent = datetime.now(UTC) - timedelta(hours=1)
+    command_id = 'cmd_' + 'd' * 32
+    ctx.db.add(DeviceCommand(device_id=ctx.device.id, command_id=command_id, command_type=kind,
+        payload={}, idempotency_key='original', status='delivered', delivered_at=sent, delivery_attempts=1,
+        expires_at=sent + timedelta(seconds=5), result={'prior_evidence': True}))
+    ctx.db.commit()
+    with ctx.db.get_bind().begin() as connection:
+        _physical_fences(connection.connection.driver_connection, {'device_commands'})
+    before = authority(ctx)
+    app = FastAPI()
+    app.include_router(command_router)
+    app.dependency_overrides[get_db] = lambda: ctx.db
+    path = f'/api/v1/devices/{DEVICE_ID}/commands/{command_id}/result'
+    headers = {'Authorization': 'Device cred_lifecycle:test-secret'}
+    first = AgentCommandResult(command_id=command_id, device_id=DEVICE_ID, status='failed',
+        completed_at=sent + timedelta(seconds=1), output={'execution_state': 'unknown'}).model_dump(mode='json')
+    with TestClient(app) as client:
+        for body in (first, first, {**first, 'status': 'succeeded', 'output': {}}):
+            reply = client.post(path, json=body, headers=headers)
+            assert reply.status_code == 200, reply.text
+            record = reply.json()
+            assert (record['status'], record['error'], record['completed_at']) == ('unknown', 'restore_unconfirmed', None)
+            assert record['result'] == {'prior_evidence': True, 'recovery_receipt': first}
+    assert authority(ctx) == before
+    assert deliver_next_command(ctx.db, device=ctx.device) is None
+    assert ctx.db.scalar(select(DeviceCommand.delivery_attempts)) == 1
+
+
 @pytest.mark.parametrize("operation", ["install", "disable"])
 def test_admin_audit_is_part_of_the_same_transaction(lifecycle, operation):
     ctx = lifecycle

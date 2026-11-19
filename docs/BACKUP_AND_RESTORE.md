@@ -51,6 +51,53 @@ of a live database is not an accepted snapshot.
   application restore;
 - `/etc/machine-id`, SSH host/user keys and general Raspberry Pi OS settings.
 
+## Checking readiness
+
+**Settings → Backup and recovery** initially reads only the local catalog and
+operation status, not file contents. **Check readiness** is an explicit
+administrator read (`GET /api/v1/backups/readiness`). The browser receives
+totals and grouped issues, not private filenames, file hashes or raw errors.
+It lists at most 32 application data namespaces, with file counts, sizes and
+current catalog matches; extra files are counted separately. Without a valid
+manifest the inventory is unavailable, not empty. Installed/retained labels
+and the selected package version describe the current catalog, not an inferred
+database schema or successful restore. No application is started by this check.
+
+After **Check readiness**, **Save check summary** saves the last result locally;
+it does not scan the Pi again. For support, share that small JSON rather than a
+recovery file. The summary contains only issue codes/counts, inventory totals
+and whether capture was ready. It contains no filenames, application names,
+account IDs, free-space readings or keys. Refresh clears that observation.
+Read it offline with `python -m tools.diagnostics explain backup-readiness.json`.
+
+For every enabled, active application, preflight checks the catalog's package
+owner, active version, instance, checksum-addressed ZIP and nonempty application
+database. During restore (also during portable import) the staged ZIP is validated
+without running its code. Its declared schema revision must match the SDK ledger
+in an intact staged database. A committed SQLite WAL is included when checking
+the revision; a temporary copy protects the archived bytes. Missing packages
+and mismatched/corrupt active databases are reported before any service is stopped.
+Disabled and retained data are not an instruction to start an application.
+The separately prepared relational profile is not reconstructed by ordinary
+Standalone activation. A full archive can preserve its data, but if it requests
+automatic reactivation of such an application, portable import/restore refuses
+before stopping services. It never substitutes a different storage mode or
+recreates a grant. **Check readiness** now warns about that limitation before
+creating an archive. It examines only declarations for current active packages,
+using the original content hashes, after closing the catalog connection. The
+advisory covers at most 32 packages / 24 MiB of package input and up to 256 KiB
+per declaration; anything not verified is reported as such. Disabled packages
+and retained data are not inspected as startup requests. Advisory work does
+not run while services are stopped for capture. A positive inventory check is
+not an activation rehearsal; private staging still performs the full restore checks.
+
+The full manifest remains an explicit, separate administrator interface.
+Creation rechecks the files after services are quiesced. The encrypted writer
+verifies the bytes as they enter the archive; a changing file aborts publication.
+On the supported local Linux filesystem an existing archive or catalog entry
+is never replaced on an ID collision. Local retention or erasure does not
+delete portable recovery files previously downloaded elsewhere.
+
 ## Secret boundary
 
 The first full-device backup necessarily contains password hashes, provider
@@ -66,6 +113,72 @@ key inside a second AES-256-GCM envelope derived from an administrator-chosen
 password with scrypt. The password is never stored. The portable file must be
 kept away from the device together with its password; losing either makes it
 unrecoverable, while disclosure of both exposes all backed-up secrets.
+
+### Checking an exported file without importing it
+
+On a trusted Linux workstation, use a checkout of the **Core release you intend
+to restore to** and its normal Python dependencies. No running 3mm services,
+administrator login, original SD card, device key or network access are needed.
+For example, for a 64-bit Raspberry Pi target:
+
+```sh
+python -m tools.recovery_check saved.3mmrecovery --target-architecture aarch64
+```
+
+Enter the export password at the hidden terminal prompt, **not** in a command,
+environment variable or diagnostic attachment. Use the architecture of the
+intended installation (e.g. `armv6l` on a 32-bit Zero W); otherwise the check
+uses the workstation architecture. `--json` returns a short result with a
+fixed reason and next check on failure. No filenames, keys, application
+contents or identifiers appear in it. The same offline diagnostics reader can
+explain this JSON; it distinguishes checking an actual recovery file from a
+capture-readiness snapshot. Neither is a signed attestation or boot test.
+
+Once both envelopes authenticate, the checker distinguishes a file checksum
+mismatch, an unreadable Core database, a missing/ambiguous or inconsistent
+database revision, and a device identity or role mismatch. A wrong password and
+an unauthenticated envelope intentionally share one reason. Keep the original
+file; try another export rather than rewriting the archive or its database.
+
+This authenticates both encryption layers, compares the archive's inventory
+and every file checksum, and runs the restore validator for the specified
+release/architecture, including database, identity and active package/schema
+checks. It never imports into a catalog, creates a device key, stops services,
+executes an application, replaces data or changes rights. A valid result
+means **the file passed staging**, not that a different machine has enough
+space, its services will start, or a physical restore has passed.
+
+For the source-level end-to-end rehearsal,
+`backend/tests/test_recovery_native_note.py` runs the official Note package,
+saves a revision, exports it, detaches the source installation, then imports and
+restores into a separate Linux directory with a new key. A newly started native
+host reads both the original note and its save receipt. Core also resolves the
+active package from the **destination** upload directory. A fresh normal login
+in the rehearsal checks the operator's stored read permission and rejects a
+write; no new application approval is issued. This is not a physical Raspberry
+Pi boot or a browser test with anyone's real account.
+A second rehearsal starts with different data on the destination, refuses the
+final health check after the candidate serves the imported note, and checks
+that the restarted previous instance serves only its pre-restore note and
+receipt. The recorded result must be `rolled_back`, never `completed`.
+The opt-in [user-systemd rehearsal](DEVELOPMENT_CHECKS.md#small-handoff) starts
+the app through the actual local user manager. Installed system services and
+their production permissions are outside that test.
+
+Recovery rebuilds catalog locations from the destination upload directory
+and the stored SHA-256, including disabled and staged versions. A location
+is not proof of a valid file: normal package verification still applies.
+Missing or damaged inactive packages are not enabled, downloaded or granted
+access. Restore does not read a package through a path from the old machine.
+
+Use a private, trusted Linux filesystem for temporary plaintext
+(`--scratch /path/to/trusted-directory`); not a network share or a Windows
+mount passing through Linux. Normal completion or failure removes the private
+temporary directory, without touching the selected file. This is not secure
+wiping; after power loss there may be a leftover `recovery-check-*` directory.
+This operator profile accepts an inner archive up to 512 MiB and 32,768 payload
+entries. It requires temporary free space of at least five times the input size
+plus 64 MiB. A size limit or “not verified” is not proof that a file was erased.
 
 ## Local recovery boundary
 
@@ -126,7 +239,8 @@ oversized uploads fail before persistent state is changed.
 
 ## Administrator workflow
 
-1. Open **Settings → Backup and recovery** and create a local backup.
+1. Open **Settings → Backup and recovery**, select **Check readiness**, then
+   **Create backup** and approve its exact confirmation.
 2. Select **Download**, enter a separate recovery password twice and save the
    resulting `.3mmrecovery` file away from the Raspberry Pi.
 3. After a clean installation of the compatible 3mm version, open the same

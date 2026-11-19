@@ -6,7 +6,9 @@ authority recovery fences are real.
 """
 
 import errno
+import sqlite3
 import subprocess
+import threading
 from pathlib import Path
 
 import pytest
@@ -195,6 +197,48 @@ def test_installer_accepts_legacy_key_only_without_configured_key_and_generates_
     initialize_identity(database, fresh, monkeypatch)
     legacy_key.write_text(fresh + '\n')
     assert identity.select_installer_master_key(database, environment, legacy_key) == fresh
+
+
+@pytest.mark.parametrize("release_lock", [True, False])
+def test_installer_busy_preflight_keeps_live_key_and_never_writes_the_database(tmp_path, monkeypatch, release_lock):
+    database, environment, legacy = [tmp_path / n for n in ("core.db", "core.env", "legacy.key")]
+    key = Fernet.generate_key().decode()
+    initialize_identity(database, key, monkeypatch)
+    environment.write_text(f"AI_SETTINGS_MASTER_KEY={key}\n")
+    before = database.read_bytes()
+    monkeypatch.setattr(identity, "_INSTALL_IDENTITY_READ_SECONDS", 1.8 if release_lock else .22)
+    monkeypatch.setattr(identity, "_INSTALL_IDENTITY_ATTEMPT_SECONDS", .04)
+    locked = threading.Event()
+    release = threading.Event()
+    def hold():
+        with sqlite3.connect(database) as conn:
+            conn.execute("BEGIN EXCLUSIVE")
+            locked.set()
+            release.wait(.32 if release_lock else 5)
+            conn.rollback()
+    worker = threading.Thread(target=hold)
+    worker.start()
+    try:
+        assert locked.wait(2)
+        if release_lock:
+            assert identity.select_installer_master_key(database, environment, legacy) == key
+        else:
+            with pytest.raises(identity.InstallationIdentityError, match="database is busy") as error:
+                identity.select_installer_master_key(database, environment, legacy)
+            assert key not in str(error.value) and str(database) not in str(error.value)
+    finally:
+        release.set()
+        worker.join(3)
+    assert not worker.is_alive() and not legacy.exists()
+    assert database.read_bytes() == before and environment.read_text() == f"AI_SETTINGS_MASTER_KEY={key}\n"
+
+
+def test_installer_damaged_identity_store_is_not_busy_or_first_install(tmp_path):
+    db = tmp_path / "core.db"
+    db.write_bytes(b"not a sqlite database" * 12)
+    with pytest.raises(identity.InstallationIdentityError, match="Cannot read the existing Core identity database"):
+        identity.select_installer_master_key(db, tmp_path / 'core.env', tmp_path / 'legacy.key')
+    assert db.read_bytes() == b"not a sqlite database" * 12
 
 
 @pytest.mark.parametrize("failure", ["readonly_journal", "readonly_pointers", "child_environment", "rollback_key"])

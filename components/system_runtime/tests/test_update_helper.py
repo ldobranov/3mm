@@ -419,11 +419,13 @@ def test_backup_request_schedules_only_the_fixed_encrypted_worker(
     assert command[-2:] == ("--requested-by-user-id", "7")
 
 
+@pytest.mark.parametrize('action',['preview_backup','preview_backup_summary'])
 def test_backup_preview_reads_protected_state_inside_the_helper(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    action,
 ) -> None:
-    settings = object()
+    settings = SimpleNamespace(database_url='sqlite:///:memory:')
     preview = BackupPreviewResponse(
         ready=True,
         manifest=None,
@@ -445,7 +447,7 @@ def test_backup_preview_reads_protected_state_inside_the_helper(
     )
 
     response = update_helper._handle_request(
-        {"action": "preview_backup", "requested_by_user_id": 7},
+        {"action": action, "requested_by_user_id": 7},
         stage_root=tmp_path / "stage",
         state_root=tmp_path / "state",
         allowlist=tmp_path / "allowlist.json",
@@ -457,6 +459,9 @@ def test_backup_preview_reads_protected_state_inside_the_helper(
     assert response["preview"]["ready"] is True
     assert response["preview"]["entry_count"] == 7
     assert captured == [settings]
+    if action == 'preview_backup_summary':
+        assert 'manifest' not in response['preview'] and 'storage_path' not in response['preview']
+        assert response['preview']['inventory'] == 'not_available'
 
 
 def test_restore_request_rejects_paths_and_schedules_fixed_worker(

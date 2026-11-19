@@ -6,7 +6,9 @@ import os
 import shutil
 import sqlite3
 import stat
+import sys
 import tarfile
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -21,7 +23,7 @@ from deployment import restore_application_extensions as reconstruction
 from deployment import restore_backup as recovery
 from deployment.create_backup import create_backup, encrypt_file
 from deployment.portable_backup import create_portable_export, import_portable_backup
-from packages.application_sdk import ApplicationFileLimits, ApplicationFileStorage
+from packages.application_sdk import ApplicationFileLimits, ApplicationFileStorage, ApplicationMigration, ApplicationStorage
 from packages.protocol import BackupEntryV1, BackupManifestV1
 from components.system_runtime.application_activation import (
     activate_application_package,
@@ -153,6 +155,8 @@ def test_local_restore_preserves_sdk_files_and_rolls_back_failed_health(
 
 def _seed_installation(settings):
     """Minimal fake-runtime Core DB, deliberately not Alembic migration evidence."""
+    _data(settings).mkdir(parents=True, exist_ok=True)
+    ApplicationStorage(_data(settings)).migrate([ApplicationMigration("0001", lambda _: None)], "0001")
     blob = service_package()
     digest = hashlib.sha256(blob).hexdigest()
     packages = settings.backend.uploads_dir / "modules"
@@ -163,6 +167,7 @@ def _seed_installation(settings):
             ("module_id", "TEXT"),
             ("module_package_id", "INTEGER"),
             ("instance_id", "TEXT"),
+            ("active_version", "TEXT"),
             ("socket_path", "TEXT"),
             ("health_checked_at", "TEXT"),
             ("error", "TEXT"),
@@ -171,16 +176,16 @@ def _seed_installation(settings):
                 f"ALTER TABLE application_extension_installations ADD COLUMN {name} {kind}"
             )
         db.execute(
-            "CREATE TABLE module_packages(id INTEGER PRIMARY KEY, module_id TEXT, version TEXT, sha256 TEXT)"
+            "CREATE TABLE module_packages(id INTEGER PRIMARY KEY, module_id TEXT, version TEXT, sha256 TEXT, file_path TEXT)"
         )
         db.execute(
-            "INSERT INTO module_packages VALUES(1, ?, '1.0.0', ?)", (MODULE_ID, digest)
+            "INSERT INTO module_packages VALUES(1, ?, '1.0.0', ?, 'former-installation/archive.zip')", (MODULE_ID, digest)
         )
         db.execute(
             """INSERT INTO application_extension_installations(
             id, authority_incarnation, authority_epoch, authority_mode,
-            configuration, status, enabled, module_id, module_package_id, instance_id, socket_path)
-            VALUES(1, ?, ?, 'compatibility', ?, 'active', 1, ?, 1, ?, 'old.sock')""",
+            configuration, status, enabled, module_id, module_package_id, instance_id, socket_path, active_version)
+            VALUES(1, ?, ?, 'compatibility', ?, 'active', 1, ?, 1, ?, 'old.sock', '1.0.0')""",
             (
                 "b" * 32,
                 "c" * 32,
@@ -191,6 +196,198 @@ def _seed_installation(settings):
         )
 
 
+@pytest.mark.parametrize("damage", ["missing_file", "dangling_catalog", "wrong_bytes", "version",
+                                   "foreign_package", "foreign_instance", "mislabeled_zip"])
+def test_unrecoverable_active_package_is_rejected_before_service_stop(tmp_path, monkeypatch, damage):
+    from backend.system.backups import service
+    settings = _settings(tmp_path)
+    _seed_installation(settings)
+    _files(settings).put("logo", b"live private data", expected_sha256=None)
+    package, = (settings.backend.uploads_dir / "modules").iterdir()
+    with sqlite3.connect(tmp_path / "core/3mm.db") as db:
+        if damage == "missing_file":
+            package.unlink()
+        elif damage == "wrong_bytes":
+            package.write_bytes(b"A different file under a legitimate content address")
+        elif damage == "dangling_catalog":
+            db.execute("DELETE FROM module_packages")
+        elif damage == "version":
+            db.execute("UPDATE application_extension_installations SET active_version='2.0.0'")
+        elif damage == "foreign_package":
+            db.execute("UPDATE module_packages SET module_id='org.example.other'")
+        elif damage == "foreign_instance":
+            db.execute("UPDATE application_extension_installations SET instance_id=?", ("d"*24,))
+        elif damage == "mislabeled_zip":
+            # Plausible, internally consistent journal, but the ZIP belongs to a different app.
+            other = "org.example.other"
+            db.execute("UPDATE module_packages SET module_id=?", (other,))
+            db.execute("UPDATE application_extension_installations SET module_id=?,instance_id=?",
+                       (other, application_instance_id(other)))
+            shutil.copytree(_data(settings), settings.backups.application_extensions_dir / application_instance_id(other) / "data")
+    preflight = build_backup_preview(settings)
+    assert preflight.ready == (damage == "mislabeled_zip")  # capture can preserve bytes even when reactivation is unverified
+    if damage == "mislabeled_zip":
+        assert any(i.code == "state.application_profile_unverified" and i.severity == "warning" for i in preflight.issues)
+    assert ("state.application_package_invalid" in {i.code for i in preflight.issues}) == (not preflight.ready)
+    with monkeypatch.context() as legacy:
+        # Produce a real encrypted archive as an earlier writer would have. Restore uses the real checks.
+        legacy.setattr(service, "validate_recovery_packages", lambda *_: None)
+        backup, key = _backup(settings, tmp_path)
+    controller = Controller()
+    with pytest.raises(ValueError, match="application"):
+        _restore(settings, tmp_path, backup.backup_id, key, controller)
+    status = read_backup_operation_status(settings.backups.storage_dir / "status.json")
+    assert status.error_code == "restore_application_package_invalid"
+    assert not controller.calls and _files(settings).get("logo").content == b"live private data"
+    assert not list(settings.backups.storage_dir.glob(".rollback-*"))
+
+
+def test_standalone_recovery_refuses_separately_prepared_relational_profile_before_stop(tmp_path):
+    from runpy import run_path
+    settings = _settings(tmp_path)
+    _seed_installation(settings)
+    builder = run_path(str(Path(__file__).resolve().parents[2] / "modules/runtime-contacts/build_package.py"))
+    blob = builder["build_package"]()
+    digest = hashlib.sha256(blob).hexdigest()
+    name, version = builder["MODULE_ID"], builder["VERSION"]
+    instance = application_instance_id(name)
+    (settings.backend.uploads_dir / "modules" / f"{digest}.zip").write_bytes(blob)
+    shutil.copytree(_data(settings), settings.backups.application_extensions_dir / instance / "data")
+    with sqlite3.connect(tmp_path / "core/3mm.db") as db:
+        db.execute("UPDATE module_packages SET module_id=?,version=?,sha256=?", (name, version, digest))
+        db.execute("UPDATE application_extension_installations SET module_id=?,active_version=?,instance_id=?",
+                   (name, version, instance))
+    from backend.system.backups.readiness import summarize_backup
+    preview = build_backup_preview(settings)
+    assert preview.ready, "separate preparation does not prevent capturing data"
+    notice, = [i for i in summarize_backup(preview, settings.database_url).issues
+               if i.code == "state.application_separate_preparation"]
+    assert notice.severity == "warning" and "full Standalone restore" in notice.message
+    assert str(tmp_path) not in notice.message
+    backup, key = _backup(settings, tmp_path)
+    if sys.platform == "linux":
+        from tools.recovery_check import verify_portable
+        from platform import machine
+        export = create_portable_export(settings.backups.storage_dir,key,backup.backup_id,"fixture-passphrase")
+        verdict = verify_portable(export.path,"fixture-passphrase",target_architecture=machine())
+        assert verdict['reason'] == 'restore_application_profile_unavailable'
+        assert export.path.is_file() and verdict['service_activation_tested'] is False
+    controller = Controller()
+    with pytest.raises(ValueError, match="relational application"):
+        _restore(settings, tmp_path, backup.backup_id, key, controller)
+    assert not controller.calls
+    assert read_backup_operation_status(settings.backups.storage_dir / "status.json").error_code == "restore_application_profile_unavailable"
+
+
+def test_capture_profile_advisory_is_bounded_and_does_not_hold_the_core_catalog(tmp_path, monkeypatch):
+    from backend.system.backups import application_packages as profiles, service
+    settings = _settings(tmp_path)
+    _seed_installation(settings)
+    real = profiles.review_capture_profiles
+    def inspect(packages, uploads):
+        # An exclusive catalog writer can enter while app declarations are inspected.
+        with sqlite3.connect(tmp_path / "core/3mm.db", timeout=0) as db:
+            db.execute("BEGIN EXCLUSIVE")
+            db.rollback()
+        assert len(packages) == 1
+        assert real(packages, uploads) == (0, 0)
+        monkeypatch.setattr(profiles, "MAX_PROFILE_READ_BYTES", packages[0].size - 1)
+        return real(packages, uploads)
+    monkeypatch.setattr(service, "review_capture_profiles", inspect)
+    preview = build_backup_preview(settings)
+    assert preview.ready and any(i.code == "state.application_profile_unverified" for i in preview.issues)
+    assert not any(i.code == "state.application_separate_preparation" for i in preview.issues)
+    with sqlite3.connect(tmp_path / "core/3mm.db") as db:
+        db.execute("UPDATE application_extension_installations SET enabled=0,status='disabled'")
+    monkeypatch.setattr(service, "review_capture_profiles", lambda *_: pytest.fail("retained or disabled is not an active profile"))
+    assert build_backup_preview(settings).ready
+
+
+def test_capture_profile_review_reads_only_the_exact_declaration_and_reports_uncertainty(tmp_path, monkeypatch):
+    from backend.system.backups import application_packages as profiles
+    import zipfile
+    settings = _settings(tmp_path)
+    _seed_installation(settings)
+    path, = (settings.backend.uploads_dir / "modules").iterdir()
+    with zipfile.ZipFile(path) as archive:
+        import json
+        manifest = json.loads(archive.read("manifest.json"))
+    item = profiles.CapturePackage(MODULE_ID, manifest["version"], path.stem, path.stat().st_size)
+    seen = []
+    original = zipfile.ZipFile.open
+    def opening(archive, member, *args, **kwargs):
+        seen.append(member.filename if isinstance(member, zipfile.ZipInfo) else member)
+        return original(archive, member, *args, **kwargs)
+    monkeypatch.setattr(zipfile.ZipFile, "open", opening)
+    assert profiles.review_capture_profiles((item,), settings.backend.uploads_dir) == (0,0)
+    assert seen == ["application-extension.json"]  # do not inspect wheels or run package code
+    monkeypatch.setattr(profiles, "MAX_PROFILE_DEFINITION_BYTES", 1)
+    assert profiles.review_capture_profiles((item,), settings.backend.uploads_dir) == (0,1) and len(seen) == 1
+    original_bytes = path.read_bytes()
+    path.write_bytes(bytes(len(original_bytes)))
+    assert profiles.review_capture_profiles((item,), settings.backend.uploads_dir) == (0,1) and len(seen) == 1
+
+
+@pytest.mark.parametrize("damage", ["absent", "corrupt", "other_revision", "missing_ledger"])
+def test_missing_or_unusable_active_database_is_not_replaced_by_a_fresh_one(tmp_path, monkeypatch, damage):
+    from backend.system.backups import service
+    settings = _settings(tmp_path)
+    _seed_installation(settings)
+    database = _data(settings) / "state.sqlite3"
+    if damage == "absent":
+        database.unlink()
+    elif damage == "corrupt":
+        database.write_bytes(b"not an SQLite file")
+    else:
+        with sqlite3.connect(database) as db:
+            db.execute("DROP TABLE three_mm_schema_migrations" if damage == "missing_ledger" else
+                       "UPDATE three_mm_schema_migrations SET revision='other'")
+    if damage == "absent":
+        assert "state.application_schema_invalid" in {i.code for i in build_backup_preview(settings).issues}
+    with monkeypatch.context() as legacy:
+        legacy.setattr(service, "validate_recovery_packages", lambda *_: None)
+        backup, key = _backup(settings, tmp_path)
+    controller = Controller()
+    with pytest.raises(ValueError, match="database"):
+        _restore(settings, tmp_path, backup.backup_id, key, controller)
+    assert read_backup_operation_status(settings.backups.storage_dir / "status.json").error_code == "restore_application_schema_invalid"
+    assert not controller.calls and not list(settings.backups.storage_dir.glob(".rollback-*"))
+
+
+def test_staging_checks_committed_wal_schema_without_altering_archive_payload(tmp_path):
+    from backend.system.backups.application_packages import _check_staged_schema
+    live = tmp_path / "source.db"
+    staged = tmp_path / "data"; staged.mkdir()
+    name = "state.sqlite3"
+    with sqlite3.connect(live) as db:
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA wal_autocheckpoint=0")
+        db.execute("CREATE TABLE three_mm_schema_migrations(revision TEXT PRIMARY KEY)")
+        db.execute("INSERT INTO three_mm_schema_migrations VALUES('0002')")
+        db.commit()
+        for suffix in ("", "-wal"):
+            shutil.copyfile(str(live) + suffix, staged / (name + suffix))
+    before = {p.name: p.read_bytes() for p in staged.iterdir()}
+    _check_staged_schema(staged / name, "0002", tmp_path)
+    assert {p.name: p.read_bytes() for p in staged.iterdir()} == before
+
+
+def test_disabled_application_is_not_requested_for_reactivation(tmp_path):
+    settings = _settings(tmp_path)
+    _seed_installation(settings)
+    with sqlite3.connect(tmp_path / "core/3mm.db") as db:
+        db.execute("UPDATE application_extension_installations SET enabled=0, status='disabled'")
+    package, = (settings.backend.uploads_dir / "modules").iterdir()
+    package.unlink()
+    _files(settings).put("logo", b"kept until erase", expected_sha256=None)
+    backup, key = _backup(settings, tmp_path)
+    controller = Controller()
+    assert _restore(settings, tmp_path, backup.backup_id, key, controller).state == "completed"
+    assert _files(settings).get("logo").content == b"kept until erase"
+    with sqlite3.connect(tmp_path / "core/3mm.db") as db:
+        assert db.execute("SELECT enabled FROM application_extension_installations").fetchone() == (0,)
+
+
 def test_downloaded_backup_recovers_after_original_key_and_state_are_lost(
     tmp_path, monkeypatch
 ):
@@ -199,7 +396,7 @@ def test_downloaded_backup_recovers_after_original_key_and_state_are_lost(
     source = _settings(original)
     _seed_installation(source)
     _files(source).put("logo", b"portable-private", expected_sha256=None)
-    with sqlite3.connect(_data(source) / "state.sqlite3") as db:
+    with closing(sqlite3.connect(_data(source) / "state.sqlite3")) as db, db:
         db.execute("CREATE TABLE sample(value TEXT)")
         db.execute("INSERT INTO sample VALUES('saved-state')")
     instance = _data(source).parent

@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.13] - 2026-11-19
+
+- Check application package and schema recoverability before backup/restore.
+  Resolve restored packages in the destination catalog. A protected interface
+  can require fresh approval even when its data has been recovered.
+- Improve administrator diagnostics for a selected application, original work
+  references, database contention and backup readiness. Exports omit private
+  application contents and credentials.
+- Avoid scanning historical commands while holding the database writer. Accept
+  the original receipt for a proven pre-restore delivery as evidence only:
+  the physical outcome stays unknown and the command is not sent again.
+- Fix service ordering so the optional Public Web listener does not prevent
+  Core from starting at boot. Include the reviewed application resource-limit
+  panel already verified on the Standalone Pi.
+
+See [release notes and scope](docs/RELEASE_NOTES_0.3.13.md).
+
 ## [0.3.12] - 2026-11-13
 
 ### Changed

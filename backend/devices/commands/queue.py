@@ -254,12 +254,12 @@ def _deliver_next_command(db, *, device, mutation, now, delivery_lease_seconds):
         select(DeviceCommand)
         .where(
             DeviceCommand.device_id == device.id,
+            # Keep both live statuses on the composite index. A disjunction
+            # over statuses alone can scan a device's entire completed history.
+            DeviceCommand.status.in_(("queued", "delivered")),
             or_(
                 DeviceCommand.status == "queued",
-                (
-                    (DeviceCommand.status == "delivered")
-                    & (DeviceCommand.delivered_at <= lease_expired_at)
-                ),
+                DeviceCommand.delivered_at <= lease_expired_at,
             ),
             DeviceCommand.expires_at > delivered_at,
         )
@@ -334,6 +334,19 @@ def _record_command_result(db, *, device, result, mutation):
         # Repair only the old two-commit gap from the persisted first receipt;
         # conflicting retries cannot change it or a newer installation episode.
         _update_module_receipt(db, device, command, mutation, source="agent_result")
+        return command
+    if command.status == "unknown":
+        # Recovery quarantines dispatched physical work. Acknowledge its first
+        # receipt as evidence only, never as completion in the new generation.
+        if not (command.error == "restore_unconfirmed"
+                and command.command_type in {"capability.invoke", "application.capability.invoke"}
+                and command.delivered_at is not None and (command.delivery_attempts or 0) > 0):
+            raise DeviceCommandError("No matching restored delivery for this receipt")
+        evidence = command.result if command.result is not None else {}
+        if not isinstance(evidence, dict):
+            raise DeviceCommandError("Stored command evidence requires review")
+        if "recovery_receipt" not in evidence:
+            command.result = {**evidence, "recovery_receipt": result.model_dump(mode="json")}
         return command
     # Expiry stops dispatch, not reception of an already delivered attempt's
     # durable receipt. Acknowledge the first late receipt without promoting it

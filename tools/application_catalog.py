@@ -1,11 +1,12 @@
 """Source-derived application authoring catalog, never installed authority.
 
-Only public models/SDK sources and developer tooling are loaded. Application
+Only platform-owned sources/templates and developer tooling are loaded. Application
 packages, migration callbacks and tests are inspected as bytes, never imported.
 """
 from __future__ import annotations
 
 import ast
+import configparser
 import hashlib
 import inspect
 import json
@@ -21,6 +22,42 @@ from tools.application_project import ProjectCheckError, REPOSITORY
 SCOPE = 'local pure-Python SQLite application authoring; not runtime support, readiness or authority'
 _UI_SOURCE = 'frontend/src/extension-ui/application-v1.ts'
 _SDK_SOURCE = 'packages/application_sdk/__init__.py'
+
+
+def _unit_budget(capture, filename):
+    """Read the standard profile, never a claimed measurement or a caller's unit."""
+    source = 'deployment/systemd/' + filename
+    config = configparser.ConfigParser(interpolation=None)
+    config.optionxform = str
+    config.read_string(capture(source).decode('utf-8-sig'))
+    unit, service = config['Unit'], config['Service']
+    return {'source': source, 'configured_not_measured': True,
+        'cpu': service['CPUQuota'], 'memory': service['MemoryMax'],
+        'tasks_including_threads': service['TasksMax'], 'per_process_fds': service['LimitNOFILE'],
+        'shutdown': service['TimeoutStopSec'], 'restart': service['Restart'],
+        'restart_delay': service['RestartSec'], 'start_burst': int(unit['StartLimitBurst']),
+        'start_window': unit['StartLimitIntervalSec'],
+        'private_network': service.getboolean('PrivateNetwork', fallback=False),
+        'restrict_address_families': service.get('RestrictAddressFamilies', '').split()}
+
+
+def _resource_budgets(definition):
+    """Validated declarations only; sharing a UID is not storage isolation or a disk quota."""
+    def bounds(model, keys):
+        return {k: getattr(model, k) for k in keys if hasattr(model, k)} if model else None
+    return {
+        'applies_to': 'declared SDK interfaces only; no grants or installed limits inferred',
+        'service_seconds': bounds(definition.service, ('startup_timeout_seconds', 'shutdown_timeout_seconds')),
+        'operation_seconds': {op.operation_id: op.timeout_seconds for op in definition.operations},
+        'task_admission': {task.task_id: bounds(task, ('max_pending','max_delay_seconds','max_runtime_seconds'))
+                           for task in definition.tasks},
+        'connectors': {c.connector_id: bounds(c, ('timeout_seconds','max_request_bytes','max_response_bytes'))
+                       for c in definition.connectors},
+        'private_files': bounds(definition.storage.private_files, ('max_total_bytes','max_file_bytes','max_files',
+                                                                  'max_staging_bytes','max_uploads')),
+        'relational': bounds(definition.storage.relational, ('max_database_bytes','auxiliary_pause_bytes',
+                                                            'max_transaction_ms','max_busy_ms')),
+    }
 
 
 def _read_source(relative):
@@ -137,6 +174,7 @@ def _project_catalog(project, source_core_version):
                 'core_version': actual_core_version,
                 'scope': 'package/model/cross-document rules only; no tests, migration execution or installed authority'},
             'review': application_project.declaration_review(validated),
+            'resource_budgets': _resource_budgets(definition),
             'application_declarations': definition.model_dump(mode='json', exclude_none=True),
             'lifecycle': definition.lifecycle.model_dump(mode='json'),
             'authoring_check_support': {'profile': 'pure_python_sqlite', 'check': 'not_run',
@@ -187,6 +225,20 @@ def application_catalog(project: Path | None = None) -> dict:
                 'migration_limits': {name: getattr(application_migrations, name) for name in
                     ('TIMEOUT_SECONDS', 'MAX_MIGRATIONS', 'MAX_DATABASE_BYTES', 'MAX_DUMP_BYTES')},
                 'migration_scope': 'disposable current declared prefixes; scoped relational unsupported; not historical-data compatibility'},
+            'service_profiles': {
+                'full_application': _unit_budget(capture, '3mm-application-extension@.service'),
+                'node_agent': _unit_budget(capture, '3mm-agent.service'),
+                'application_boundaries': {
+                    'cpu': 'os_enforced_if_cgroup_controller_applies',
+                    'ram': 'os_enforced_if_cgroup_controller_applies',
+                    'processes_and_threads': 'os_enforced_if_cgroup_controller_applies',
+                    'file_descriptors': 'os_enforced_per_process',
+                    'concurrency': 'sdk_cooperative_or_broker_admission; no aggregate native concurrency budget',
+                    'time': 'sdk_cooperative_operation_deadlines; systemd stop timeout is separate',
+                    'network': 'os_network_policy_for_host; approved connectors have separate broker limits',
+                    'storage': 'sdk_cooperative_or_broker_bounds_on_declared_interfaces; whole-disk quota unsupported',
+                },
+                'scope': 'shipped unit defaults, not measured, may vary by host, controller or override; Node does not host applications'},
             'contracts': contracts,
             'models': {f'{model.__module__}.{model.__name__}': model.model_json_schema(mode='validation') for model in selected[3:]},
             'validation': {'package_validator': 'backend.artifacts.packages.validate_module_package',
@@ -206,5 +258,5 @@ def application_catalog(project: Path | None = None) -> dict:
         return result
     except ProjectCheckError:
         raise
-    except (OSError, ValueError, KeyError, StopIteration, TypeError, SyntaxError) as failure:
+    except (OSError, ValueError, KeyError, StopIteration, TypeError, SyntaxError, configparser.Error) as failure:
         raise ProjectCheckError('catalog', 'Catalog source or project declarations could not be validated; inspect the current source.') from failure

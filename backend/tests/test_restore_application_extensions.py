@@ -6,8 +6,8 @@ from deployment import restore_application_extensions as restore_module
 from backend.tests.test_authority_recovery import add_metadata
 
 
-@pytest.mark.parametrize("second_enabled", [False, True])
-def test_restore_reactivates_only_enabled_application_packages(monkeypatch, tmp_path, second_enabled):
+@pytest.mark.parametrize(("second_enabled", "dangling"), [(False, False), (True, False), (True, True)])
+def test_restore_reactivates_only_enabled_application_packages(monkeypatch, tmp_path, second_enabled, dangling):
     database = tmp_path / "3mm.db"
     with sqlite3.connect(database) as connection:
         connection.executescript(
@@ -16,7 +16,8 @@ def test_restore_reactivates_only_enabled_application_packages(monkeypatch, tmp_
                 id INTEGER PRIMARY KEY,
                 module_id TEXT NOT NULL,
                 version TEXT NOT NULL,
-                sha256 TEXT NOT NULL
+                sha256 TEXT NOT NULL,
+                file_path TEXT NOT NULL DEFAULT 'former-installation/archive.zip'
             );
             CREATE TABLE application_extension_installations (
                 module_id TEXT PRIMARY KEY,
@@ -32,11 +33,11 @@ def test_restore_reactivates_only_enabled_application_packages(monkeypatch, tmp_
             """
         )
         connection.execute(
-            "INSERT INTO module_packages VALUES (1, ?, ?, ?)",
+            "INSERT INTO module_packages (id,module_id,version,sha256) VALUES (1, ?, ?, ?)",
             ("org.3mm.active", "1.0.0", "a" * 64),
         )
         connection.execute(
-            "INSERT INTO module_packages VALUES (2, ?, ?, ?)",
+            "INSERT INTO module_packages (id,module_id,version,sha256) VALUES (2, ?, ?, ?)",
             ("org.3mm.disabled", "1.0.0", "b" * 64),
         )
         connection.execute(
@@ -58,9 +59,12 @@ def test_restore_reactivates_only_enabled_application_packages(monkeypatch, tmp_
             """,
             ("org.3mm.disabled", "1" * 24, "disabled.sock"),
         )
+        connection.execute("INSERT INTO module_packages(id,module_id,version,sha256) VALUES(3,'org.example.staged','1','bad')")
         add_metadata(connection, applications_exist=True)
         if second_enabled:
             connection.execute("UPDATE application_extension_installations SET status='active', enabled=1 WHERE module_id='org.3mm.disabled'")
+        if dangling:
+            connection.execute("DELETE FROM module_packages WHERE id=2")
 
     captured = []
 
@@ -86,6 +90,12 @@ def test_restore_reactivates_only_enabled_application_packages(monkeypatch, tmp_
     monkeypatch.setattr(restore_module, "activate_application_package", activate)
     monkeypatch.setattr(restore_module, "WANTS_ROOT", tmp_path / "wants")
     upload_root = tmp_path / "uploads"
+    if dangling:
+        with pytest.raises(RuntimeError, match="no matching recoverable package"):
+            restore_module.restore_application_extensions(database, upload_root=upload_root,
+                application_root=tmp_path / "apps", key_root=tmp_path / "keys", service_ids=(1200, 1201))
+        assert not captured
+        return
 
     restored = restore_module.restore_application_extensions(
         database,
@@ -100,6 +110,8 @@ def test_restore_reactivates_only_enabled_application_packages(monkeypatch, tmp_
     assert captured[0][2]["service_uid"] == 1200
     assert captured[0][2]["configuration"] == {"READER_DEVICE_ID": "dev_11111111111111111111111111111111"}
     with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT file_path FROM module_packages ORDER BY id").fetchall() == [
+            (str(upload_root / ("a"*64 + ".zip")),), (str(upload_root / ("b"*64 + ".zip")),), (str(upload_root),)]
         row = connection.execute(
             "SELECT instance_id, socket_path, error FROM application_extension_installations WHERE module_id = ?",
             ("org.3mm.active",),

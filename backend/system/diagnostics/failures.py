@@ -2,14 +2,16 @@
 from collections import deque
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+import hashlib
 import json
 import math
 import re
+import sqlite3
 import threading
 import time
 import uuid
 
-from packages.protocol.diagnostics import REASONS, STAGES
+from backend.system.diagnostics.catalog import CASE_REASONS as _REASONS, CASE_STAGES as _STAGES
 
 
 TRACE_HEADER = b'x-3mm-trace-id'
@@ -17,8 +19,13 @@ _TRACE = re.compile(r'invoke_[0-9a-f]{32}\Z')
 _ROUTE = re.compile(r'/[A-Za-z0-9_./{}:-]{0,255}\Z')
 _METHODS = {'GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'}
 _PHASES = {'unknown': 0, 'not_dispatched': 1, 'execution_unconfirmed': 2, 'completed': 3}
-_REASONS = REASONS | {'unclassified_conflict', 'server_error', 'client_refused'}
-_STAGES = set(STAGES) | {'http.response'}
+# Local management diagnostics; these are not SDK/application-host wire labels.
+_DB_FAILURES = {
+    sqlite3.SQLITE_CONSTRAINT: 'database_constraint',
+    sqlite3.SQLITE_BUSY: 'database_busy', sqlite3.SQLITE_LOCKED: 'database_busy',
+    sqlite3.SQLITE_READONLY: 'database_read_only', sqlite3.SQLITE_FULL: 'database_full',
+    sqlite3.SQLITE_CANTOPEN: 'database_cannot_open', sqlite3.SQLITE_IOERR: 'database_io_error',
+}
 _current = ContextVar('core_http_failure', default=None)
 
 
@@ -29,6 +36,8 @@ class _RequestState:
     details: list = field(default_factory=list)
     active: bool = True
     instance_id: str | None = None
+    artifact_binding: tuple[str, str] | None = None
+    ambiguous_instance: bool = False
     handled_refusal: bool = False
     lock: object = field(default_factory=threading.Lock, repr=False)
 
@@ -51,6 +60,15 @@ def note_failure(stage, reason):
             state.details.append((stage, reason))
     finally:
         state.lock.release()
+
+
+def note_database_error(stage, driver_error):
+    """Never inspect the statement, parameters or message, including for other drivers."""
+    code = getattr(driver_error, 'sqlite_errorcode', None) if isinstance(driver_error, sqlite3.Error) else None
+    reason = _DB_FAILURES.get(code & 0xff) if type(code) is int else None
+    reason = reason or 'database_operation_failed'
+    note_failure(stage, reason)
+    return reason
 
 
 def note_dispatch(phase):
@@ -89,16 +107,34 @@ def note_handled_refusal(stage, reason):
         state.lock.release()
 
 
-def note_instance(instance_id):
-    """Only a verified Core installation may supply this non-secret identity."""
+def observation_revision(instance_id, incarnation, artifact):
+    """Not an authority token. Only equal for the same installation generation and package."""
+    if (type(instance_id) is not str or not re.fullmatch(r'[0-9a-f]{24}', instance_id)
+            or type(incarnation) is not str or not re.fullmatch(r'[0-9a-f]{32}', incarnation)
+            or type(artifact) is not str or not re.fullmatch(r'[0-9a-f]{64}', artifact)):
+        return None
+    return hashlib.sha256(f'app-case-v1:{instance_id}:{incarnation}:{artifact}'.encode('ascii')).hexdigest()
+
+
+def note_instance(instance_id, *, incarnation=None, artifact=None):
+    """Only trusted Core admission can bind a request to an instance and its code."""
     state = _current.get()
     if state is None or type(instance_id) is not str or not re.fullmatch(r'[0-9a-f]{24}', instance_id):
         return
     if not state.lock.acquire(blocking=False):
         return
     try:
-        if state.active:
-            state.instance_id = instance_id
+        if state.active and not state.ambiguous_instance:
+            binding = (incarnation, artifact) if incarnation and artifact else None
+            if (state.instance_id not in (None, instance_id) or
+                    (binding and state.artifact_binding and binding != state.artifact_binding)):
+                # A request which traverses two identities belongs in global support
+                # only. A later observation cannot silently attribute it to either.
+                state.ambiguous_instance = True
+                state.instance_id = state.artifact_binding = None
+            else:
+                state.instance_id = instance_id
+                state.artifact_binding = binding or state.artifact_binding
     finally:
         state.lock.release()
 
@@ -128,7 +164,7 @@ class RecentHttpFailures:
             self._bytes -= size
             self._drop('expired')
 
-    def record(self, *, trace_id, method, route, status, duration_ms, phase='unknown', details=(), transport='http', instance_id=None, handled_refusal=False):
+    def record(self, *, trace_id, method, route, status, duration_ms, phase='unknown', details=(), transport='http', instance_id=None, handled_refusal=False, application_revision=None):
         if (type(trace_id) is not str or not _TRACE.fullmatch(trace_id) or
                 type(method) is not str or method not in _METHODS or
                 type(route) is not str or route != '[unmatched]' and not _ROUTE.fullmatch(route) or
@@ -145,6 +181,10 @@ class RecentHttpFailures:
             self._drop('invalid')
             return
         if instance_id is not None and (type(instance_id) is not str or not re.fullmatch(r'[0-9a-f]{24}', instance_id)):
+            self._drop('invalid')
+            return
+        if application_revision is not None and (instance_id is None or type(application_revision) is not str
+                                                or not re.fullmatch(r'[0-9a-f]{64}', application_revision)):
             self._drop('invalid')
             return
         if any(type(item) not in (list, tuple) or len(item) != 2 or
@@ -177,8 +217,10 @@ class RecentHttpFailures:
                 details=[dict(stage=stage, reason=reason) for stage, reason in details])
             if handled_refusal:
                 value['handled_refusal'] = True  # HTTP success, not successful resource admission.
+            if application_revision is not None:
+                value['application_revision'] = application_revision
             fingerprint = (method, route, status, stage, reason, phase, transport, instance_id,
-                           tuple(tuple(item) for item in details))
+                           application_revision, tuple(tuple(item) for item in details))
             previous = None
             for item in reversed(self._records):
                 if now - item[0] > self.COALESCE_SECONDS:
@@ -186,7 +228,7 @@ class RecentHttpFailures:
                 row = item[2]
                 if fingerprint == (row['method'], row['route'], row['status'], row['stage'],
                                    row['reason'], row['phase'], row['transport'], row['instance_id'],
-                                   tuple((d['stage'], d['reason']) for d in row['details'])):
+                                   row.get('application_revision'), tuple((d['stage'], d['reason']) for d in row['details'])):
                     previous = item
                     break
             value.update(occurrences=1, first_timestamp=value['timestamp'], trace_ids=[trace_id])
@@ -213,17 +255,30 @@ class RecentHttpFailures:
             self._lock.release()
 
     def snapshot(self):
+        return self._snapshot(None)
+
+    def application_snapshot(self, instance_id, incarnation, artifact):
+        revision = observation_revision(instance_id, incarnation, artifact)
+        if revision is None:
+            raise ValueError('Verified installation binding required')
+        return self._snapshot(revision)
+
+    def _snapshot(self, revision):
         if not self._lock.acquire(blocking=False):
             return dict(schema_version=1, status='busy', records=[])
         try:
             self._expire(self._clock())
+            records = [{**value, 'trace_ids': list(value['trace_ids']), 'details': [dict(item) for item in value['details']]}
+                       for _, _, value in reversed(self._records)
+                       if revision is None or value.get('application_revision') == revision]
+            if revision is not None:
+                return dict(status='ready', retention_seconds=self.RETENTION_SECONDS,
+                            scope='matched_installation_and_package_only', records=records)
             return dict(schema_version=2, status='ready', scope='core_process_memory', process_id=self.process_id,
                 retention_seconds=self.RETENTION_SECONDS, max_records=self.MAX_RECORDS,
                 coalesce_seconds=self.COALESCE_SECONDS, max_retained_traces_per_group=8,
                 max_bytes=self.MAX_BYTES, buffer_bytes=self._bytes, dropped=dict(self._dropped),
-                records=[{**value, 'trace_ids': list(value['trace_ids']),
-                          'details': [dict(item) for item in value['details']]}
-                         for _, _, value in reversed(self._records)])
+                records=records)
         finally:
             self._lock.release()
 
@@ -266,11 +321,12 @@ class HttpFailureMiddleware:
             # A failure after a 200 has started is NOT relabelled as an HTTP500.
             observed = status if status is not None else 500 if raised else None
             try:
-                details, phase, instance_id, handled = (), 'unknown', None, False
+                details, phase, instance_id, binding, handled = (), 'unknown', None, None, False
                 if state.lock.acquire(blocking=False):
                     try:
                         details, phase = tuple(state.details), state.phase
                         instance_id, handled = state.instance_id, state.handled_refusal
+                        binding = state.artifact_binding
                         state.active = False
                     finally:
                         state.lock.release()
@@ -281,7 +337,8 @@ class HttpFailureMiddleware:
                         route = '[unmatched]'
                     self.store.record(trace_id=state.trace_id, method=scope.get('method'), route=route,
                         status=observed, duration_ms=(time.monotonic() - started) * 1000,
-                        phase=phase, details=details, instance_id=instance_id, handled_refusal=handled)
+                        phase=phase, details=details, instance_id=instance_id, handled_refusal=handled,
+                        application_revision=observation_revision(instance_id, *binding) if binding else None)
             except Exception:
                 pass  # A failed optional recorder cannot fail a Core request.
             finally:

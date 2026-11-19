@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from backend.storage.sessions import get_db
+from backend.system.diagnostics.failures import note_database_error
 from backend.accounts.passwords import hash_password, verify_password
 from backend.accounts.tokens import decode_token, create_access_token
 from backend.db.user import User, UserSchema
@@ -117,6 +118,7 @@ def login_user(
     db: Session = Depends(get_db),
     user_agent: str = Header(None, alias="User-Agent")
 ):
+    stage = 'login.account_read'
     try:
         logger.debug("User login requested")
         if not payload.email or not payload.password:
@@ -141,6 +143,7 @@ def login_user(
             }
         
         # Create session record
+        stage = 'login.session_policy'
         session = UserSession(
             user_id=db_user.id,
             token=f"pending-{secrets.token_urlsafe(32)}",
@@ -148,6 +151,7 @@ def login_user(
             expires_at=datetime.utcnow() + timedelta(hours=get_session_duration_hours(db)),
             **device_info
         )
+        stage = 'login.session_write'
         db.add(session)
         db.flush()
 
@@ -160,9 +164,10 @@ def login_user(
             "token_version": db_user.token_version,
         })
         session.token = token
-        db.commit()
-        
-        # Create audit log for login
+
+        # A successful login has both a tracked session and its audit record.
+        # Commit once: a failed audit must never leave an undisclosed live token.
+        stage = 'login.audit_write'
         audit_log = AuditLog(
             user_id=db_user.id,
             action="LOGIN",
@@ -176,7 +181,18 @@ def login_user(
         return {"message": "Login successful", "token": token}
     except HTTPException:
         raise
+    except (OperationalError, IntegrityError) as e:
+        reason = note_database_error(stage, e.orig)
+        db.rollback()
+        # Stage and allowlisted reason belong to the protected diagnostic case.
+        # Authentication logs carry only a literal event and exception type.
+        logger.error("User login failed (%s)", type(e).__name__)
+        if reason == "database_busy":
+            raise HTTPException(503, "Login temporarily unavailable: storage is busy",
+                                headers={"Retry-After": "2"}) from None
+        raise HTTPException(status_code=500, detail="Internal Server Error") from None
     except Exception as e:
+        db.rollback()
         logger.error("User login failed (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal Server Error")
 

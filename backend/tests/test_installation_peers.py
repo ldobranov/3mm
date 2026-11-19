@@ -842,6 +842,171 @@ def test_report_loss_preserves_snapshot_and_report_id_and_cached_receipt(pair):
     )
 
 
+def test_local_receipt_lost_response_restart_and_consent_change_never_dispatch(pair, monkeypatch):
+    from backend.installation.report_receipts import current_references, observe_report
+
+    activate_pair(pair)
+    link = pair.sender.link_id
+    report = "report_" + "b" * 32
+    def read(owner=MODULE, ref=report):
+        with Session(pair.sender.engine) as db:
+            return observe_report(db, owner, link, ref)
+
+    assert read()["state"] == "not_observed_in_scope"
+    def lose(origin, path, payload):
+        pair.transport(origin, path, payload)
+        raise peers.InstallationPeerError("lost response")
+    with pytest.raises(peers.InstallationPeerError, match="lost response"):
+        sender_call(pair, peers.report_outbound, report, transport=lose)
+    monkeypatch.setattr(peers, "peer_http", lambda *_: pytest.fail("An observation must not send"))
+    calls = len(pair.captured)
+    pair.sender.engine.dispose()
+    queries = []
+    def collect(_conn, _cursor, sql, *_args):
+        queries.append(sql.lower())
+    event.listen(pair.sender.engine, "before_cursor_execute", collect)
+    try:
+        initial = read()
+        assert initial == dict(schema_version=1, kind="peer_report_observation", source="local_outbound_slot",
+                               module_id=MODULE, link_id=link, report_id=report, state="outcome_unconfirmed",
+                               automatic_replay_allowed=False)
+        assert len(queries) == 1 and queries[0].startswith("select")
+        assert not any(name in queries[0] for name in ("private_key", "report_projection", "credential", ".origin"))
+    finally:
+        event.remove(pair.sender.engine, "before_cursor_execute", collect)
+    assert len(pair.captured) == calls
+    with Session(pair.sender.engine) as db:
+        assert current_references(db, MODULE) == {"module_id":MODULE, "limited":False,
+                                                 "references":[{"link_id":link, "report_id":report}]}
+        assert current_references(db, "org.example.other")["references"] == []
+    assert read(owner="org.example.other")["state"] == read(ref="report_" + "1"*32)["state"] == "not_observed_in_scope"
+    # The normal sender is explicitly called by this test; the observer has no sender.
+    ack = sender_call(pair, peers.report_outbound, report, transport=pair.transport)
+    assert ack["status"] == "accepted" and read()["state"] == "acknowledged"
+    with Session(pair.sender.engine) as db:
+        app = db.scalar(select(ApplicationExtensionInstallation))
+        peers.update_consent(db, app, link, {"summary_fields": ["core_version"]}, 1, user_id=1)
+    assert read()["state"] == "not_observed_in_scope"
+    with Session(pair.sender.engine) as db:
+        assert not current_references(db, MODULE)["references"]
+
+
+def test_local_receipt_fences_replaced_app_inactive_link_and_untrusted_cache(pair):
+    from backend.installation.report_receipts import observe_report
+    from sqlalchemy import text
+    import json
+
+    activate_pair(pair)
+    link, report = pair.sender.link_id, "report_" + "e"*32
+    ack = sender_call(pair, peers.report_outbound, report)
+    with Session(pair.sender.engine) as db:
+        row = db.get(InstallationPeerOutbound, link)
+        app = db.scalar(select(ApplicationExtensionInstallation))
+        def state():
+            return observe_report(db, MODULE, link, report)["state"]
+        app.enabled = False
+        db.flush()
+        assert state() == "not_observed_in_scope"
+        app.enabled, app.instance_id = True, "f"*24
+        db.flush()
+        assert state() == "not_observed_in_scope"
+        app.instance_id, row.state = row.application_instance_id, "revoked"
+        db.flush()
+        assert state() == "not_observed_in_scope"
+        row.state = "active"
+        original = row.sender_identity
+        row.sender_identity = {**original, "installation_id":original["installation_id"] + "x"*800}
+        db.flush()
+        assert state() == "unavailable"
+        row.sender_identity = original
+        db.flush()
+        assert state() == "acknowledged"
+        for damaged in (json.dumps({**ack, "private":"x"*1024}), json.dumps({**ack,"report_id":"other"}),
+                        json.dumps(ack).replace('{"', '{"status":"accepted","', 1), "[]", '"secret"'):
+            db.execute(text("UPDATE installation_peer_outbound SET report_result=:data WHERE link_id=:link"),
+                       {"data":damaged, "link":link})
+            assert state() == "unavailable"
+
+
+def test_current_references_are_bounded_no_payload_and_no_incidental_writes(pair):
+    from backend.installation.report_receipts import current_references, LIST_LIMIT
+    from sqlalchemy import insert
+    with Session(pair.sender.engine) as db:
+        source = db.execute(select(InstallationPeerOutbound.__table__)).mappings().one()
+        for n in range(LIST_LIMIT + 4):
+            fields = dict(source)
+            fields.update(link_id="peer_" + format(n,"032x"), report_id="report_" + format(n,"032x"),
+                          state="active", report_projection={"private":"do not load"}, report_result={"private":"do not load"})
+            db.execute(insert(InstallationPeerOutbound.__table__).values(**fields))
+        # Older damaged slots sort first but must not consume a complete page.
+        for n in range(LIST_LIMIT):
+            fields = dict(source,link_id="bad__" + format(n,"032x"),report_id="report_"+"1"*32,state="active")
+            db.execute(insert(InstallationPeerOutbound.__table__).values(**fields))
+        db.commit()
+        statements = []
+        def log(_conn, _cursor, sql, *_args):
+            statements.append(sql.lower())
+        event.listen(pair.sender.engine,"before_cursor_execute",log)
+        try:
+            db.add(User(username="unsaved",email="unsaved@example.invalid",role="user"))
+            value = current_references(db, MODULE)
+        finally:
+            event.remove(pair.sender.engine,"before_cursor_execute",log)
+        assert len(statements) == 1 and statements[0].startswith("select")
+        assert not any(k in statements[0] for k in ("report_projection","report_result","credential",".origin"))
+        assert value["limited"] and value["references"] == [
+            {"link_id":"peer_" + format(n,"032x"),"report_id":"report_" + format(n,"032x")} for n in range(LIST_LIMIT)]
+        db.rollback()
+        cursor = value["references"][-1]["link_id"]
+        db.get(InstallationPeerOutbound, "peer_"+format(LIST_LIMIT,"032x")).state = "revoked"
+        db.commit()
+        remaining = current_references(db, MODULE, after=cursor)
+        assert not remaining["limited"] and remaining["references"] == [
+            {"link_id":"peer_"+format(n,"032x"),"report_id":"report_"+format(n,"032x")}
+            for n in range(LIST_LIMIT+1,LIST_LIMIT+4)]
+        assert not current_references(db, MODULE, after=remaining["references"][-1]["link_id"])["references"]
+
+
+def test_report_observation_route_requires_current_human_admin(monkeypatch):
+    from backend.accounts import tokens
+    from backend.tests.test_backup_routes import _client
+    from sqlalchemy.exc import OperationalError
+    monkeypatch.setattr(tokens, "SECRET_KEY", "test-only-key-with-at-least-32-bytes")
+    client, db, admin, viewer = _client()
+    client.app.include_router(router)
+    path = ("/api/v1/installation-peers/applications/" + MODULE + "/outbound/peer_" +
+            "0"*32 + "/reports/report_" + "0"*32)
+    auth = {"Authorization": "Bearer " + admin}
+    try:
+        assert client.get(path).status_code == 401
+        assert client.get(path, headers={"Authorization": "Bearer " + viewer}).status_code == 403
+        discover = path.split("/outbound/")[0] + "/outbound/report-references"
+        assert client.get(discover).status_code == 401
+        assert client.get(discover, headers={"Authorization":"Bearer " + viewer}).status_code == 403
+        assert client.get(discover, headers=auth).json() == {"module_id":MODULE,"limited":False,"references":[]}
+        invalid_page = client.get(discover, headers=auth, params={"after":"not-a-public-reference"})
+        assert invalid_page.status_code == 400 and "not-a-public-reference" not in invalid_page.text
+        assert invalid_page.headers["Cache-Control"]=="no-store"
+        result = client.get(path, headers=auth)
+        assert result.status_code == 200 and result.headers["Cache-Control"] == "no-store"
+        assert result.json()["state"] == "not_observed_in_scope"
+        invalid = client.get(path + "private", headers=auth)
+        assert invalid.status_code == 400 and "private" not in invalid.text
+        def unavailable(*args):
+            raise OperationalError("private sql", None, Exception("private data"))
+        monkeypatch.setattr("backend.installation.report_receipts.observe_report", unavailable)
+        failed = client.get(path, headers=auth)
+        assert failed.status_code == 503 and failed.headers["Cache-Control"] == "no-store" and "private" not in failed.text
+        db.scalar(select(User).where(User.username == "admin")).token_version += 1
+        db.commit()
+        assert client.get(path, headers=auth).status_code == 401
+        assert client.get(discover, headers=auth).status_code == 401
+        assert client.get(discover, headers=auth, params={"after":"peer_"+"3"*32}).status_code == 401
+    finally:
+        client.close()
+        db.close()
+
+
 def test_consent_field_withdrawal_filters_before_serialization_and_clears_pending_snapshot(
     pair,
 ):

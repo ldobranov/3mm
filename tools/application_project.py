@@ -212,6 +212,7 @@ def read_junit(path, stage):
 
 def declaration_review(validated):
     """Describe authoritative validated declarations, never infer installed grants."""
+    from backend.artifacts.inspection import declared_data_practices
     definition = validated.application_extension
     manifest = validated.manifest
     bindings = ('command_bindings', 'session_bindings', 'query_dependencies',
@@ -236,6 +237,7 @@ def declaration_review(validated):
         'platform_requirements': [item.model_dump(mode='json') for item in definition.platform_requirements],
         'platform_permissions': list(definition.platform_permissions),
         'storage': definition.storage.model_dump(mode='json', exclude_none=True),
+        'data_practices': declared_data_practices(definition).model_dump(mode='json'),
         'configuration_required': manifest.configuration_schema.get('required', []),
         'configuration_schema': manifest.configuration_schema,
     }
