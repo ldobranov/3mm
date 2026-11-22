@@ -441,58 +441,51 @@ def test_preflight_is_rechecked_under_the_guard(lifecycle, monkeypatch, change):
 
 
 def test_real_connections_serialize_duplicate_install_and_keep_guard_first(lifecycle):
+    from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+
     ctx = lifecycle
     package_sha = ctx.package.sha256
     ctx.db.rollback()
     engine = ctx.db.get_bind()
-    held, attempted, release, done = (threading.Event() for _ in range(4))
-    results, writes = [], []
+    attempted, role = Future(), threading.local()
+    retry = None
+    writes = []
+
+    def install(name):
+        role.name = name
+        with Session(engine) as db:
+            return modules.install_module(package_sha, DEVICE_ID, _admin=SimpleNamespace(id=1),
+                db=db, idempotency_key="same-request").command_id
 
     def capture(_conn, _cursor, sql, _params, _context, _many):
-        name = threading.current_thread().name
-        if name not in {"module-first", "module-retry"}:
+        nonlocal retry
+        name = getattr(role, "name", None)
+        if name is None:
             return
         if sql.startswith(("UPDATE", "INSERT", "DELETE")):
             writes.append((name, sql))
         if name == "module-retry" and sql.startswith("UPDATE core_authority_guard"):
-            attempted.set()
+            attempted.set_result(None)
         if name == "module-first" and sql.startswith("INSERT INTO device_events"):
-            held.set()
-            if not release.wait(3):
-                raise RuntimeError("test synchronization timed out")
+            # Start the contender only while the first real transaction owns
+            # the guard. If it fails before its UPDATE, surface its exception.
+            assert retry is None, "Unexpected second install event"
+            retry = pool.submit(install, "module-retry")
+            ready, _ = wait((attempted, retry), timeout=10, return_when=FIRST_COMPLETED)
+            if retry in ready:
+                pytest.fail(f"Retry finished before the first commit: {retry.result()}")
+            assert attempted in ready, "Retry did not reach the authority guard UPDATE"
+            if wait((retry,), timeout=.05).done:
+                pytest.fail(f"Retry did not block behind the held guard: {retry.result()}")
 
-    def run():
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        event.listen(engine, "before_cursor_execute", capture)
         try:
-            with Session(engine) as db:
-                result = modules.install_module(package_sha, DEVICE_ID, _admin=SimpleNamespace(id=1),
-                                                db=db, idempotency_key="same-request")
-                results.append(result.command_id)
-        except BaseException as error:
-            results.append(error)
+            first = install("module-first")  # Early errors propagate directly to pytest.
+            assert retry is not None, "First install returned without inserting its event"
+            assert isinstance(first, str) and retry.result(timeout=5) == first
         finally:
-            if threading.current_thread().name == "module-retry":
-                done.set()
-
-    first = threading.Thread(target=run, name="module-first")
-    second = threading.Thread(target=run, name="module-retry")
-    event.listen(engine, "before_cursor_execute", capture)
-    try:
-        first.start()
-        assert held.wait(3)
-        second.start()
-        assert attempted.wait(3)
-        assert not done.wait(0.05)
-        release.set()
-        first.join(4)
-        second.join(4)
-    finally:
-        release.set()
-        for thread in (first, second):
-            if thread.ident is not None:
-                thread.join(4)
-        event.remove(engine, "before_cursor_execute", capture)
-    assert not first.is_alive() and not second.is_alive()
-    assert len(results) == 2 and isinstance(results[0], str) and results[0] == results[1]
+            event.remove(engine, "before_cursor_execute", capture)
     for name in ("module-first", "module-retry"):
         assert next(sql for writer, sql in writes if writer == name).startswith("UPDATE core_authority_guard")
     assert read_authority_guard(ctx.db).revision == 2

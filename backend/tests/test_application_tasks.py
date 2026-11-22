@@ -593,17 +593,53 @@ def test_deadline_and_pending_budget_do_not_dispatch(task_state, monkeypatch):
     assert attempts(s) == 0
 
 
-def test_worker_loss_stays_unknown_and_requires_stopped_admin_reconciliation(task_state):
+def test_worker_loss_stays_unknown_and_requires_stopped_admin_reconciliation(task_state, monkeypatch):
+    from concurrent.futures import Future
+    from concurrent.futures import wait as wait_futures
+    from pwd import getpwuid
+    from backend.applications.resources.providers import observe
+
     s = task_state
-    key, accepted = schedule(s, pause_ms=1500)
-    worker = s.start_worker()
-    deadline = time.monotonic() + 5
-    while s.task_probe.lookup(key)["progress"] != 50:
-        assert time.monotonic() < deadline
-        time.sleep(.03)
-    worker.kill(); worker.wait(timeout=3)
+    probe_settings = s.settings.model_copy(update={"task_worker_socket": s.runtime_socket.parent / "task.sock",
+        "runtime_user": getpwuid(os.geteuid()).pw_name})
+
+    def ready_worker():
+        process = s.start_worker()
+        deadline = time.monotonic() + 10
+        while observe("task", probe_settings) != "ready":
+            assert process.poll() is None, process.stderr.read().decode(errors="replace")
+            assert time.monotonic() < deadline, "Worker did not answer its readiness probe"
+            time.sleep(.03)
+        return process
+
+    key, interrupted = identity(), Future()
+    worker = ready_worker()
+    record_progress = tasks.progress_task
+
+    # Interrupt the real process after Core commits progress but before the
+    # handler receives its reply. No timing window or synthetic task state.
+    def interrupt_after_progress(db, installation, payload):
+        try:
+            result = record_progress(db, installation, payload)
+            assert (result["request_id"], result["status"], result["progress"]) == (key, "running", 50)
+            assert worker.poll() is None, "Worker exited before the interruption"
+            worker.kill()
+        except Exception as exc:
+            interrupted.set_exception(exc)
+            raise
+        interrupted.set_result(result["task_run_id"])
+        return result
+
+    with monkeypatch.context() as patch:
+        patch.setattr(tasks, "progress_task", interrupt_after_progress)
+        _, accepted = schedule(s, request_id=key)
+        if not wait_futures((interrupted,), timeout=10).done:
+            state = s.task_probe.lookup(key)
+            pytest.fail(f"No committed progress: task={state['status']}, error={state['error_code']}, worker={worker.poll()}")
+        assert interrupted.result() == accepted["task_run_id"]
+    worker.wait(timeout=3)
     assert wait(s, key, ("unknown",), seconds=4)["result"] is None
-    s.start_worker(); time.sleep(.3)
+    ready_worker()
     assert attempts(s) == 1
     # Simulate the existing lifecycle's positive stopped result after actually
     # stopping this native process; no fake "cancelled" execution is claimed.
