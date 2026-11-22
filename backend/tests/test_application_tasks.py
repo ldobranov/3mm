@@ -593,11 +593,12 @@ def test_deadline_and_pending_budget_do_not_dispatch(task_state, monkeypatch):
     assert attempts(s) == 0
 
 
-def test_worker_loss_stays_unknown_and_requires_stopped_admin_reconciliation(task_state, monkeypatch):
+def test_worker_loss_stays_unknown_and_requires_stopped_admin_reconciliation(task_state, monkeypatch, capsys):
     from concurrent.futures import Future
     from concurrent.futures import wait as wait_futures
     from pwd import getpwuid
     from backend.applications.resources.providers import observe
+    from backend.tests.task_progress_timing import observe_progress
 
     s = task_state
     probe_settings = s.settings.model_copy(update={"task_worker_socket": s.runtime_socket.parent / "task.sock",
@@ -616,6 +617,7 @@ def test_worker_loss_stays_unknown_and_requires_stopped_admin_reconciliation(tas
     worker = ready_worker()
     record_progress = tasks.progress_task
     permit = {}
+    phase_ms = {}
     real_start = tasks.start_task
 
     def observe_start(*args, **kwargs):
@@ -628,7 +630,8 @@ def test_worker_loss_stays_unknown_and_requires_stopped_admin_reconciliation(tas
     def interrupt_after_progress(db, installation, payload):
         arrived = time.monotonic()
         try:
-            result = record_progress(db, installation, payload)
+            with measure():
+                result = record_progress(db, installation, payload)
             assert (result["request_id"], result["status"], result["progress"]) == (key, "running", 50)
             assert worker.poll() is None, "Worker exited before the interruption"
             worker.kill()
@@ -640,13 +643,14 @@ def test_worker_loss_stays_unknown_and_requires_stopped_admin_reconciliation(tas
                 and str(inner) == "Task execution lease is not current" else type(inner).__name__)
             elapsed = round((arrived - permit["at"]) * 1000) if "at" in permit else None
             exc.add_note(f"progress refusal: inner={reason}, lease_ms_at_start={permit.get('remaining_ms')}, "
-                         f"start_to_progress_ms={elapsed}, progress_check_ms={round((time.monotonic()-arrived)*1000)}")
+                         f"start_to_progress_ms={elapsed}, progress_check_ms={round((time.monotonic()-arrived)*1000)}, "
+                         f"progress_phases_ms={phase_ms}")
             interrupted.set_exception(exc)
             raise
         interrupted.set_result(result["task_run_id"])
         return result
 
-    with monkeypatch.context() as patch:
+    with monkeypatch.context() as patch, observe_progress(patch, s.engine, phase_ms) as measure:
         patch.setattr(tasks, "start_task", observe_start)
         patch.setattr(tasks, "progress_task", interrupt_after_progress)
         _, accepted = schedule(s, request_id=key)
@@ -654,6 +658,8 @@ def test_worker_loss_stays_unknown_and_requires_stopped_admin_reconciliation(tas
             state = s.task_probe.lookup(key)
             pytest.fail(f"No committed progress: task={state['status']}, error={state['error_code']}, worker={worker.poll()}")
         assert interrupted.result() == accepted["task_run_id"]
+        with capsys.disabled():
+            print(f"\nCommitted worker progress (ms, inclusive): {phase_ms}", flush=True)
     worker.wait(timeout=3)
     assert wait(s, key, ("unknown",), seconds=4)["result"] is None
     ready_worker()
