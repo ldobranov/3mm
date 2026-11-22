@@ -1,6 +1,7 @@
 """Actual Core HTTP/admission process + independently updated Runtime processes."""
 from contextlib import contextmanager
 import faulthandler
+import gc
 import hashlib
 import io
 import json
@@ -78,6 +79,12 @@ def _prepare_forked_app_routes(app):
 
 
 def _serve_core(state,base,runtime_uid,core_uid,core_gid,pipe):
+    # This short-lived fixture forks pytest; an installed Core starts a fresh
+    # interpreter. A full collection of pytest's inherited object graph can
+    # otherwise stall all Core threads during the first request. Freeze only
+    # in the child, before creating the server. Its own cycles are still GC'd.
+    gc.freeze()
+    gc.enable()
     # The controller may request evidence after its outer HTTP watchdog. Keep
     # this file within the disposable fixture and never signal another process.
     trace_file = (base/'core-threads.log').open('w')

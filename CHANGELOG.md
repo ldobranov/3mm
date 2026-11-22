@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
-## [0.3.15] - 2026-11-23
+## [0.3.16] - 2026-11-23
 
 - Close CAP16 for reviewed status reports between two installations. Sender
   and receiver consent are separate; reconnect preserves the original
@@ -16,8 +16,8 @@ pre-1.0.
   Ordinary updates preserve existing users.
 - If a SQLite migration refuses an upgrade or downgrade, the database keeps
   its starting schema, data and revision, even across several migration steps.
-- See [release notes and rollback limits](docs/RELEASE_NOTES_0.3.15.md).
-  The v0.3.14 candidate tag was not published as a release.
+- See [release notes and rollback limits](docs/RELEASE_NOTES_0.3.16.md).
+  The v0.3.14 and v0.3.15 candidate tags were not published as releases.
 
 ## [0.3.13] - 2026-11-19
 

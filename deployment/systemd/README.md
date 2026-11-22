@@ -222,7 +222,7 @@ opting in; the existing isolated worker is unchanged.
 
 For a clean Full deployment, [first-boot Setup](../../docs/RASPBERRY_PI_FIRST_BOOT.md#4-complete-setup-from-a-phone)
 creates the first administrator using the credentials supplied there. Updates do
-not recreate the account or reset a password. In 0.3.15 Factory reset also
+not recreate the account or reset a password. In 0.3.16 Factory reset also
 returns to Setup without creating a development administrator. Follow the
 [reset precautions](../../docs/DEVICE_ADMINISTRATION.md) for 0.3.12–0.3.13.
 

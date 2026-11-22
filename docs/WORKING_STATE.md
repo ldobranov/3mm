@@ -12,6 +12,18 @@ Updated: 2026-11-23. Start here; follow linked details only as needed.
 
 ## Active task and next result
 
+- **Core 0.3.16 release correction (2026-11-23).** In the 0.3.15 tagged
+  [release job](https://github.com/ldobranov/3mm/actions/runs/45080035073),
+  the application saw exactly one command and Core returned 409 after
+  3,698.7 ms. Admission took 2,681 ms; the actual reply deadline took
+  1,001 ms. The diagnostic stack caught garbage collection in the forked
+  test controller while the request thread was reloading the account.
+  The installed Core is a fresh interpreter. Freeze the inherited pytest
+  heap only on entry to the disposable test child; new child objects still
+  use normal garbage collection. Do not change production, admission,
+  permissions, the runtime reply deadline or the end-to-end assertion.
+  The unshipped 0.3.14 and 0.3.15 tags remain immutable.
+
 - **Core 0.3.15 candidate (2026-11-23).** Preserve the unpublished 0.3.14
   tag. Its second release run returned the expected 409 after 3.953 s in
   the same hung-application test. Separately the full invocation file passed

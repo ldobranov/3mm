@@ -1,5 +1,7 @@
-"""The process fixture must not inherit a vanished parent thread's route lock."""
+"""The test Core starts with its own runtime state, as an installed Core does."""
+import gc
 import os
+import weakref
 
 import pytest
 
@@ -10,6 +12,35 @@ from backend.tests.test_platform_runtime_process import (
 
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Actual forked Core fixture')
+
+
+def test_forked_core_collects_its_cycles_not_the_controllers(identity_app, monkeypatch):
+    from backend.tests import test_platform_runtime_process as driver
+
+    class Cycle:
+        def __init__(self):
+            self.peer = self
+
+    parent_objects = [Cycle()]
+    inherited = weakref.ref(parent_objects[0])
+    prepare = driver._prepare_forked_app_routes
+
+    def probe(app):
+        parent_objects.clear()  # This is the child's copy.
+        local = Cycle()
+        local_ref = weakref.ref(local)
+        del local
+        gc.collect()
+        assert inherited() is not None, 'test Core collected the controller heap'
+        assert gc.isenabled() and local_ref() is None, 'test Core cannot collect its own garbage'
+        prepare(app)
+
+    monkeypatch.setattr(driver, '_prepare_forked_app_routes', probe)
+    with core_stack(identity_app, monkeypatch) as stack:
+        assert stack.http()[0] == 200
+    parent_objects.clear()
+    gc.collect()
+    assert inherited() is None, 'starting a test Core froze the parent process'
 
 
 def test_forked_core_rebuilds_only_derived_router_caches(identity_app, monkeypatch):
