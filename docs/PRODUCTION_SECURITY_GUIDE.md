@@ -189,16 +189,19 @@ only path once a device is reachable from an untrusted network.
 
 Current behavior:
 
-- A brand-new empty database receives the initial login `admin@example.com` with
-  password `admin`. An update never recreates the account or resets an existing
-  password.
-- The password must be changed from **Profile** immediately after first login.
+- **Clean Full installation or Factory reset with 0.3.14:** Setup creates the administrator using the
+  username, email and password chosen on the trusted LAN. An update does not
+  recreate this account or reset its password.
+- **Factory reset in 0.3.12–0.3.13:** the older reset worker can seed a development
+  administrator with a publicly known password. Keep the device isolated until
+  you have followed the [reset precautions](DEVICE_ADMINISTRATION.md).
 
 Required operator sequence before any production use:
 
-1. Sign in and change the initial password **before** exposing the device.
-2. Create a named administrator, verify its login, then retire the Beta placeholder
-   `admin@example.com`. Never remove the only administrator or your recovery path.
+1. Choose a unique administrator password in Full Setup and verify the login.
+   On older reset media, replace the development password **before** exposure.
+2. If retiring a development or shared account, first verify that a named local
+   administrator can sign in. Never remove the only administrator or recovery path.
 3. Create named operator accounts with the least role (`operator`/`user`) needed;
    do not share a single administrator account for daily use.
 4. Keep at least one local administrator account that is not tied to a cloud or

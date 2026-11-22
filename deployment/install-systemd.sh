@@ -790,6 +790,7 @@ required_files=(
   backend/applications/runtime/identity.py
   backend/applications/runtime/invocations.py
   backend/applications/runtime/peers.py
+  backend/applications/runtime/peer_reports.py
   backend/applications/runtime/platform.py
   backend/applications/runtime/responses.py
   backend/applications/runtime/status.py
@@ -884,6 +885,8 @@ required_files=(
   backend/installation/identity.py
   backend/installation/peer_listing.py
   backend/installation/peer_read_sources.py
+  backend/installation/sender_consent.py
+  backend/alembic/versions/c1a9e0d46b32_peer_sender_consent.py
   backend/installation/peers.py
   backend/installation/projection.py
   backend/installation/session_tls.py
@@ -1084,6 +1087,7 @@ required_files=(
   components/public_web/server.py
   components/public_web/webhook_pilot.py
   packages/application_sdk/__init__.py
+  packages/application_sdk/peer_outbox.py
   components/system_runtime/network_recovery.py
   packages/provisioning/__init__.py
   packages/provisioning/network_recovery.py

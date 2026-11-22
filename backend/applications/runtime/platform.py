@@ -373,6 +373,13 @@ class ApplicationPlatformServer:
         if action == 'installation.peers.read':
             from backend.applications.runtime.peers import read_application_peer
             return read_application_peer(db, installation, request)
+        if action == 'installation.peers.report' and mode != 'compatibility':
+            from backend.applications.runtime.peer_reports import send_reviewed_report
+            from backend.installation.peers import LocalPeerConsentWithdrawn
+            try:
+                return send_reviewed_report(db, installation, request)
+            except LocalPeerConsentWithdrawn:
+                raise ValueError("Local peer sending permission is unavailable") from None
         if mode != 'compatibility' and action == 'installation.identity.get':
             from backend.applications.runtime.identity import read_application_identity
             return read_application_identity(db, installation, request, diagnostics=self.diagnostics)
@@ -476,7 +483,12 @@ class ApplicationPlatformServer:
             if action == "installation.peers.revoke":
                 return peers.revoke_peer(db, installation, str(request.get("peer_id", "")), request.get("direction"))
             if action == "installation.peers.report":
-                return peers.report_outbound(db, installation, str(request.get("link_id", "")), str(request.get("report_id", "")))
+                try:
+                    return peers.report_outbound(db, installation, str(request.get("link_id", "")), str(request.get("report_id", "")))
+                except peers.LocalPeerConsentWithdrawn:
+                    # Only a local refusal for this app's own link. An ambiguous
+                    # transport failure must not be presented as a denied report.
+                    raise ValueError("Local peer consent has been withdrawn") from None
             projection = installation_projection(db, installation, str(request.get("link_id", "")))
             db.commit()
             return projection.model_dump(mode="json")

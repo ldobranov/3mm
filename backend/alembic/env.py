@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
@@ -83,13 +84,19 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata,
-            include_object=include_object,
-        )
-
-        with context.begin_transaction():
-            context.run_migrations()
+        sqlite = connection.dialect.name == "sqlite"
+        with connection.begin() if sqlite else nullcontext():
+            # sqlite3's legacy transaction mode does not begin on DDL. Let one
+            # real transaction own both the schema and all revision stamps: a
+            # later refusal must also undo earlier steps in the same invocation.
+            if sqlite and not connection.connection.driver_connection.in_transaction:
+                connection.exec_driver_sql("BEGIN")
+            context.configure(
+                connection=connection, target_metadata=target_metadata,
+                include_object=include_object,
+            )
+            with context.begin_transaction():
+                context.run_migrations()
 
 
 if context.is_offline_mode():

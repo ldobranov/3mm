@@ -60,7 +60,7 @@ ORIGIN = "https://center.test"
 NODE = "dev_" + "a" * 32
 
 
-def peer_package():
+def peer_package(*, peer_version=1):
     definition = application_definition(
         platform_permissions=[
             "installation.peers.receive",
@@ -69,10 +69,11 @@ def peer_package():
             "installation.status.read",
         ]
     )
-    definition["service"]["sdk_version"] = "1.2"
+    definition["service"]["sdk_version"] = "1.3" if peer_version == 2 else "1.2"
     definition["peer_receiver"] = {
         "bootstrap_operation_id": "peer_enroll",
         "report_operation_id": "peer_report",
+        **({"peer_version": 2} if peer_version == 2 else {}),
     }
     for operation_id, audience, properties in (
         (
@@ -82,6 +83,7 @@ def peer_package():
                 "binding_id": {"type": "string"},
                 "installation_identity": {"type": "object"},
                 "requested_scopes": {"type": "array"},
+                **({"enrollment_metadata": {"type": "object"}} if peer_version == 2 else {}),
             },
         ),
         ("peer_report", "installation_peer", {"projection": {"type": "object"}}),

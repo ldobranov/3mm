@@ -331,6 +331,26 @@
       "saved": "Session duration saved"
     }
   },
+  "outgoingReports": {
+    "title": "Outgoing status reports", "help": "Allow this exact application package to send only the selected fields to this receiver. An approval does not itself send a report.",
+    "check": "Check active report links", "empty": "No active v2 report links for this application.", "review": "Review link",
+    "destination": "Destination and receiving application", "identity": "Receiving installation and key", "package": "Sending package (SHA-256)",
+    "contact": "Last contact (no live probe)", "online": "Reached recently", "offline": "Recently unreachable", "stale": "Older than two minutes", "unknown": "Not confirmed",
+    "checkpoint": "Last sample", "no_sample": "No sample yet", "acknowledged": "Acknowledged", "unconfirmed": "Unconfirmed",
+    "allow": "Allow sending these fields", "withdraw": "Withdraw sending permission", "saved": "Sending permission saved.",
+    "withdrawn": "Sending permission withdrawn. A report already sent cannot be recalled.", "unavailable": "This link could not be reviewed.",
+    "uncertain": "The change was not confirmed. Read the current link before making another decision."
+  },
+  "incomingReports": {
+    "title": "Incoming status reports", "help": "Approve only a sender you recognize. This lets this application receive the listed status fields. It does not grant remote control.",
+    "check": "Check pending requests", "empty": "No verified requests are waiting for this application.",
+    "limited": "Showing the first 32 requests by expiry.", "review": "Review sender", "approve": "Allow these reports",
+    "sender": "Sending installation", "key": "Sender key ID", "intent": "Sender’s request reference",
+    "summary": "Installation fields", "devices": "Selected devices", "fields": "Fields for each device",
+    "expires": "Approve before", "none": "None", "expired": "This request expired. Check pending requests again.",
+    "approved": "Approval saved for the reviewed selection.", "unavailable": "Could not read the pending requests.",
+    "unconfirmed": "Approval was not confirmed. Check the current requests before another decision."
+  },
   "applicationLimits": {
     "peerReceipt": {
       "find": "Find current report IDs",

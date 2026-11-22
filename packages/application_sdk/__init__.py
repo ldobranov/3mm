@@ -346,6 +346,20 @@ class ApplicationPlatformClient:
         """Core projects approved fields; no caller-supplied report/config payload."""
         return self._call("installation.peers.report", {"link_id": link_id, "report_id": report_id})
 
+    def reviewed_status_checkpoint(self, binding_id: str) -> dict[str, object]:
+        """Read the local cursor and current sending approval. Never contacts the receiver."""
+        return self._call("installation.peers.report", {"binding_id": binding_id, "inspect": True})
+
+    def send_reviewed_status(self, binding_id: str, *, report_id: str, sequence: int, approval: str) -> dict[str, object]:
+        """Send a Core-built status sample. Persist and reuse the same ID AND sequence after uncertainty."""
+        import re
+        if (type(binding_id) is not str or not re.fullmatch(r"[a-z][a-z0-9_]{0,95}", binding_id)
+                or type(report_id) is not str or not re.fullmatch(r"report_[0-9a-f]{32}", report_id)
+                or type(approval) is not str or not re.fullmatch(r"[0-9a-f]{64}", approval)
+                or type(sequence) is not int or not 0 < sequence < 2**53):
+            raise ValueError("Invalid outbound status request")
+        return self._call("installation.peers.report", {"binding_id": binding_id, "report_id": report_id, "sequence": sequence, "approval": approval})
+
     def discover_command(self, binding_id: str) -> dict[str, object]:
         """Observe only a granted selection and its bounded public contract.
 

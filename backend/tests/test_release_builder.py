@@ -264,8 +264,10 @@ RELATIONAL_RELEASE_FILES = (
 )
 REQUIRED_SOURCE_FILES[CONTRACT_PATH] = json.dumps(TARGET_CONTRACT).encode()
 for migration in ("4f29a071b819_application_result_tasks", "5a30b182c920_application_task_schedules",
-        "6b41c293da31_retire_builder_automations", "7c52d3a4eb42_retire_dashboards", "8d63e4b5fc53_retire_declarative_crud", "9e74f5c60d64_retire_legacy_content", "af85a6d71e75_user_subject_ids", "b096b7e82f86_kiosk_incarnations"):
+        "6b41c293da31_retire_builder_automations", "7c52d3a4eb42_retire_dashboards", "8d63e4b5fc53_retire_declarative_crud", "9e74f5c60d64_retire_legacy_content", "af85a6d71e75_user_subject_ids", "b096b7e82f86_kiosk_incarnations", "c1a9e0d46b32_peer_sender_consent"):
     REQUIRED_SOURCE_FILES[f"backend/alembic/versions/{migration}.py"] = b"# migration fixture\n"
+for sender_file in ("backend/installation/sender_consent.py", "backend/applications/runtime/peer_reports.py"):
+    REQUIRED_SOURCE_FILES[sender_file] = b"# sender fixture\n"
 REQUIRED_SOURCE_FILES["packages/protocol/ui_metadata.py"] = b"# shared UI metadata fixture\n"
 REQUIRED_SOURCE_FILES["backend/db/language_extension.py"] = b"# language projection fixture\n"
 REQUIRED_SOURCE_FILES["backend/db/menu.py"] = b"# navigation fixture\n"
@@ -1243,7 +1245,7 @@ def test_source_only_products_and_optional_libraries_are_excluded_from_release(t
 
 
 @pytest.mark.parametrize("migration", ["4f29a071b819_application_result_tasks",
-    "5a30b182c920_application_task_schedules", "6b41c293da31_retire_builder_automations", "7c52d3a4eb42_retire_dashboards", "8d63e4b5fc53_retire_declarative_crud", "9e74f5c60d64_retire_legacy_content", "af85a6d71e75_user_subject_ids", "b096b7e82f86_kiosk_incarnations"])
+    "5a30b182c920_application_task_schedules", "6b41c293da31_retire_builder_automations", "7c52d3a4eb42_retire_dashboards", "8d63e4b5fc53_retire_declarative_crud", "9e74f5c60d64_retire_legacy_content", "af85a6d71e75_user_subject_ids", "b096b7e82f86_kiosk_incarnations", "c1a9e0d46b32_peer_sender_consent"])
 def test_release_requires_current_schema_chain(tmp_path, migration):
     files = dict(REQUIRED_SOURCE_FILES)
     files.pop(f"backend/alembic/versions/{migration}.py")

@@ -9,7 +9,7 @@ from sqlalchemy.schema import CreateTable
 
 from backend.db.device import DeviceEvent
 from backend.tests.test_authority_metadata_migration import seed
-from backend.tests.test_migration_history import _alembic, _head_revision
+from backend.tests.test_migration_history import _alembic, _head_revision, _sqlite_snapshot
 
 
 def test_device_journal_ids_backlog_cursor_and_legacy_writer_preserved(tmp_path):
@@ -50,11 +50,14 @@ def test_application_history_blocks_downgrade_before_any_ddl(tmp_path):
             authority_epoch='a' * 32, event_id='evt_app', event_type='example.event.v1', payload={},
             occurred_at=datetime.now(UTC)))
     engine.dispose()
-    with pytest.raises(subprocess.CalledProcessError):
+    before = _sqlite_snapshot(tmp_path / 'history.db')
+    with pytest.raises(subprocess.CalledProcessError) as refused:
         _alembic(url, 'downgrade', 'ebc34af102b3')
+    assert 'Application event history exists' in refused.value.stderr
+    assert _sqlite_snapshot(tmp_path / 'history.db') == before
     engine = create_engine(url)
     with engine.connect() as db:
-        assert db.scalar(text('SELECT version_num FROM alembic_version')) == 'fcd45b0213c4'
+        assert db.scalar(text('SELECT version_num FROM alembic_version')) == _head_revision()
         assert db.scalar(text('SELECT event_id FROM device_events')) == 'evt_app'
     engine.dispose()
 
@@ -80,11 +83,14 @@ def test_used_authority_fence_blocks_multi_revision_downgrade_before_journal_ddl
     with engine.begin() as db:
         db.execute(text('UPDATE core_authority_guard SET revision=2 WHERE singleton_id=1'))
     engine.dispose()
-    with pytest.raises(subprocess.CalledProcessError):
+    before = _sqlite_snapshot(tmp_path / 'fenced.db')
+    with pytest.raises(subprocess.CalledProcessError) as refused:
         _alembic(url, 'downgrade', 'base')
+    assert 'Used authority metadata requires verified recovery' in refused.value.stderr
+    assert _sqlite_snapshot(tmp_path / 'fenced.db') == before
     engine = create_engine(url)
     with engine.connect() as db:
-        assert db.scalar(text('SELECT version_num FROM alembic_version')) == 'fcd45b0213c4'
+        assert db.scalar(text('SELECT version_num FROM alembic_version')) == _head_revision()
     assert 'publication_receipt' in {item['name'] for item in inspect(engine).get_columns('device_events')}
     engine.dispose()
 
@@ -110,8 +116,10 @@ def test_complete_precreated_schema_requires_actual_constraint_and_legacy_defaul
                 index.create(db)
     engine.dispose()
     if damage:
+        before = _sqlite_snapshot(tmp_path / 'precreated.db')
         with pytest.raises(subprocess.CalledProcessError):
             _alembic(url, 'upgrade', 'head')
+        assert _sqlite_snapshot(tmp_path / 'precreated.db') == before
     else:
         _alembic(url, 'upgrade', 'head')
     engine = create_engine(url)

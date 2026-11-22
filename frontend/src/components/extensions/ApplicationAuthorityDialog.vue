@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiDialog from '@/components/ui/UiDialog.vue'
+import IncomingReportRequests from './IncomingReportRequests.vue'
+import OutgoingReportApproval from './OutgoingReportApproval.vue'
 import http from '@/utils/dynamic-http'
 import { useAuthorityLabels, type AuthorityLabel } from './authority-labels'
 import { authorityRequestId, readAuthorityStatus, type AuthorityStatus } from './authority-management'
@@ -228,6 +230,8 @@ onMounted(refresh)
           <p class="ui-help authority-artifact">{{ label('digest') }} <code>{{ preview.artifact_sha256 }}</code></p>
         </details>
       </template>
+      <IncomingReportRequests v-if="!confirmRevoke" :key="moduleId" :module-id="moduleId" />
+      <OutgoingReportApproval v-if="!confirmRevoke" :key="'sender:' + moduleId" :module-id="moduleId" />
       <section v-if="confirmRevoke" class="authority-revoke ui-stack" role="region" :aria-label="label('revokeTitle')">
         <h3>{{ label('revokeTitle') }}</h3><p>{{ label('revokeHelp') }}</p>
       </section>

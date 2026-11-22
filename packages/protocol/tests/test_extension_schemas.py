@@ -205,7 +205,7 @@ def test_execution_profiles_report_missing_features_without_grant_or_sandbox_cla
     assert support["session_providers"]["remote_or_root_access"] is False
     assert support["session_providers"]["grants_permission"] is False
     assert set(scoped["unsupported_features"]) == {
-        "installation.identity.prove", "peer_mutations", "unfiltered_peer_listing",
+        "installation.identity.prove", "peer_mutations_except_reviewed_outbound_status_report", "unfiltered_peer_listing",
         "peer_receiver", "jobs", "public_http_routes", "compiled_ui_resource_authority",
         "arbitrary_capability_provides", "relational_with_peer_bindings",
     }

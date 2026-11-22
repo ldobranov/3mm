@@ -1,6 +1,6 @@
 # Current working state
 
-Updated: 2026-11-13. Start here; follow linked details only as needed.
+Updated: 2026-11-22. Start here; follow linked details only as needed.
 
 ## Product direction: extension marketplace
 
@@ -11,6 +11,42 @@ Updated: 2026-11-13. Start here; follow linked details only as needed.
   designed; this product direction does not authorize implementation now.
 
 ## Active task and next result
+
+- **Core 0.3.14 — approved release scope (2026-11-22).** CAP16 is closed for
+  reviewed status reports. Full Setup owns first-account creation after reset.
+  A refused SQLite migration must leave the starting schema, data and revision
+  unchanged. Compare the complete logical database before/after refusal,
+  including event queues and authority history. Rehearse the packaged update
+  from published 0.3.13, installer rollback and reset/Setup/first login in a
+  separate Full installation. No changes on the owner's Pi. Publish only after
+  green main CI on the exact release commit.
+
+- **CAP16 closed for reviewed v2 status reports; deployed on rasp-3mm, 2026-11-20.**
+  The owner accepted this report-only scope on 2026-11-21. The successful
+  rollout below already contains it; no repeat deployment was needed.
+  Both sites can now review the peer independently. A scoped sender must have
+  the exact local projection grant **and** the separate sending approval.
+  Its application-owned queue keeps order, sequence, original ID and approval
+  across restarts. Core does not turn a missing reply into success. A verified
+  HTTPS retry reached the receiver twice with the same identity and produced
+  **one durable effect**. Withdrawal and credential rotation invalidate old
+  work. The opt-in Linux exchange and migration/rollback group passed (42).
+  The frozen rollout candidate `local-5f88f73be4c83daaceca7b24` passed
+  **1,377 Linux checks (4 skipped), 982 Web tests, type check and build**.
+  Verification is in the candidate's `checks.json` under
+  `.runtime/cap16-reviewed-1120/bundles/`; the 42 are not an additional
+  count for the final package.
+  See [accepted contract and operator steps](INSTALLATION_PEER_V2.md#reviewed-status-report-exchange-cap16).
+  Scope is reviewed status reports, not arbitrary remote commands or a
+  general application data-sync engine. The normal rollout finished ready;
+  a separate device smoke check confirmed Core, Agent identity/inventory,
+  admin Web, both review routes and refusal of anonymous access. Database
+  revision `c1a9e0d46b32`; same boot, Agent build, application host pins,
+  package hashes and enabled state. Monitor 0.8.4 and Terminal 1.0.5 services
+  both active. No new peer link, grant or remote report on the Pi. Device
+  evidence: `.runtime/cap16-reviewed-1120/after.json`. Three optional imaging
+  checks and one isolated root-driver check were skipped in the Linux gate.
+  This is a local deployment, not a new public release.
 
 - **CAP19 accepted for trusted-LAN Standalone / Full on Raspberry Pi aarch64
   (2026-11-19).** Admin diagnostics, package and backup checks, owner-run

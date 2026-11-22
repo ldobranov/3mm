@@ -86,6 +86,9 @@ def test_retained_data_never_restores_old_grants_on_downgrade(retired):
     assert {name:rows(engine,name) for name in ARCHIVES}==snapshots
     with engine.connect() as connection:
         assert connection.exec_driver_sql('SELECT version_num FROM alembic_version').scalar()==_head_revision()
+    # The version stamp alone is not enough: the DDL from the first
+    # attempted downgrade must also have rolled back.
+    _alembic(url, 'check')
 
 
 def test_reference_inspection_and_retirement_are_admin_only_without_product_imports(retired):

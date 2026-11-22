@@ -56,6 +56,11 @@ class InstallationPeerOutbound(Base):
     report_id = Column(String(39), nullable=True)
     report_projection = Column(JSON, nullable=True)
     report_result = Column(JSON, nullable=True)
+    # No implicit sending permission on migration or first enrollment.
+    send_approval = Column(String(88), nullable=True)
+    send_revision = Column(Integer, nullable=False, default=1, server_default="1")
+    report_sequence = Column(Integer, nullable=False, default=0, server_default="0")
+    report_contact = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False)
 

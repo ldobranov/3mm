@@ -8,7 +8,7 @@ from datetime import datetime, UTC
 
 import pytest
 import sqlalchemy as sa
-from backend.tests.test_migration_history import _alembic
+from backend.tests.test_migration_history import _alembic, _head_revision
 
 PRODUCTS = ("extension_projects", "extension_project_files", "extension_project_builds",
     "automation_proposals", "automation_revisions", "automation_audit_events",
@@ -96,7 +96,7 @@ def test_recovery_refuses_to_overwrite_current_settings(retired):
     assert snapshot(engine, "retired_ai_settings") == before["settings"][:2]
     assert not set(PRODUCTS) & set(sa.inspect(engine).get_table_names())
     with engine.connect() as connection:
-        assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == ("b096b7e82f86" if target=="head" else "6b41c293da31")
+        assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == (_head_revision() if target=="head" else target)
         assert connection.exec_driver_sql("SELECT value FROM settings WHERE id=81").scalar() == "keep"
 
 

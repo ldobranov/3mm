@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from backend.db.user import User
-from backend.tests.test_migration_history import _alembic
+from backend.tests.test_migration_history import _alembic, _head_revision, _sqlite_snapshot
 
 
 def test_populated_upgrade_preserves_account_session_and_grants(tmp_path):
@@ -34,13 +34,15 @@ def test_populated_upgrade_preserves_account_session_and_grants(tmp_path):
         db.add(User(id=10,username='duplicate',subject_id=rows[0][1]))
         with pytest.raises(IntegrityError): db.commit()
         db.rollback()
+    before = _sqlite_snapshot(tmp_path / 'subjects.db')
     with pytest.raises(subprocess.CalledProcessError) as blocked:
         _alembic(url,'downgrade','9e74f5c60d64')
     assert 'Stable user subjects' in blocked.value.stderr
+    assert _sqlite_snapshot(tmp_path / 'subjects.db') == before
     with engine.connect() as db:
         assert db.execute(text("SELECT hashed_password,role,token_version FROM users WHERE id=7")).one()==('password-hash','admin',4)
         assert db.execute(text('SELECT user_id,token FROM sessions')).one()==(7,'unchanged-token')
         assert db.execute(text('SELECT subject_id FROM users WHERE id=7')).scalar()==rows[0][1]
-        assert db.execute(text('SELECT version_num FROM alembic_version')).scalar()=='b096b7e82f86'
+        assert db.execute(text('SELECT version_num FROM alembic_version')).scalar()==_head_revision()
     _alembic(url,'upgrade','head'); _alembic(url,'check')
     engine.dispose()

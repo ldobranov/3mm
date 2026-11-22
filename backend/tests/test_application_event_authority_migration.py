@@ -5,7 +5,7 @@ import subprocess
 import pytest
 from sqlalchemy import create_engine, text
 
-from backend.tests.test_migration_history import _alembic
+from backend.tests.test_migration_history import _alembic, _head_revision, _sqlite_snapshot
 from backend.tests.test_authority_metadata_migration import seed
 
 
@@ -31,10 +31,13 @@ def test_event_queue_preserved_without_grant_backfill_and_pin_blocks_downgrade(t
     with engine.begin() as db:
         db.execute(text("UPDATE application_event_deliveries SET authority_epoch=:epoch"), {'epoch': 'f' * 32})
     engine.dispose()
-    with pytest.raises(subprocess.CalledProcessError):
+    before = _sqlite_snapshot(tmp_path / 'event-migration.db')
+    with pytest.raises(subprocess.CalledProcessError) as refused:
         _alembic(url, 'downgrade', 'dab239e0f1a2')
+    assert 'Enforced authority history requires verified recovery' in refused.value.stderr
+    assert _sqlite_snapshot(tmp_path / 'event-migration.db') == before
     engine = create_engine(url)
     with engine.connect() as db:
-        assert db.scalar(text('SELECT version_num FROM alembic_version')) == 'fcd45b0213c4'
+        assert db.scalar(text('SELECT version_num FROM alembic_version')) == _head_revision()
         assert db.scalar(text('SELECT authority_epoch FROM application_event_deliveries')) == 'f' * 32
     engine.dispose()

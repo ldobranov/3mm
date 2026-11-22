@@ -1,7 +1,9 @@
 import pytest
 import os
+import sqlite3
 import subprocess
 import sys
+from contextlib import closing
 from pathlib import Path
 
 from sqlalchemy import create_engine, inspect, text
@@ -18,6 +20,12 @@ def _head_revision() -> str:
     config = Config(str(ALEMBIC_CONFIG))
     config.set_main_option('script_location', str(REPOSITORY_ROOT / 'backend/alembic'))
     return ScriptDirectory.from_config(config).get_current_head()
+
+
+def _sqlite_snapshot(path: Path) -> tuple[str, ...]:
+    """Read the entire logical schema and data, including the revision stamp."""
+    with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as db:
+        return tuple(db.iterdump())
 
 
 def _alembic(database_url: str, *arguments: str) -> subprocess.CompletedProcess[str]:

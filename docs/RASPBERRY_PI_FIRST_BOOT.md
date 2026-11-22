@@ -182,21 +182,16 @@ On managed setup success the access point is removed, the saved Wi-Fi profile
 becomes active, and Core, Web and Agent replace the setup services. On failure the
 network change is rolled back and setup mode remains available.
 
-The current **Administrator name** field remains provisioning metadata and does
-not select the application login. During Beta, the immutable installer creates
-the documented test administrator only when the user table is initially empty.
+On clean Standalone media the form asks for **Administrator username**,
+**Administrator email** and **Administrator password**. Choose a unique password
+and select **Save setup**. If an administrator already exists, use their current
+username, email and password; Setup will not change the account.
 
-## 5. Sign in with the Beta/test administrator
+## 5. Sign in to the administration panel
 
-Open `http://<hostname>.local/` or `http://<device-ip>/` and use:
-
-- email: `admin@example.com`
-- password: `admin`
-
-Change the password from **Profile** after signing in. This short default is for
-the current Beta/test flow, not the production security model. It is created
-only for a brand-new empty database; upgrades do not recreate it, replace an
-existing administrator or reset a password.
+Open `http://<device-ip>/user/login` from the trusted LAN (or use the hostname
+if mDNS works). Sign in with the **email and password from Setup**, not the Linux
+SSH account. There is no preset administrator on a clean installation.
 
 If an older installation has no administrator, create one interactively:
 
@@ -302,8 +297,9 @@ Administrators can open **Settings → Device Control** after provisioning.
 
 Factory reset is not an SD-card erase. The last verified NetworkManager Wi-Fi
 profile remains available as a connection rollback until setup successfully
-applies a replacement. During the current Beta, the empty application database
-receives the documented test administrator again.
+applies a replacement. In 0.3.14 reset leaves no users: complete Full Setup
+and sign in with your chosen email and password. For resets on 0.3.12–0.3.13
+follow the older-version precautions below.
 
 See [DEVICE_ADMINISTRATION.md](DEVICE_ADMINISTRATION.md) for confirmations,
 authorization and the complete reset boundary.

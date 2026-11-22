@@ -111,12 +111,12 @@ def test_reset_fences_fresh_database_before_any_activation(tmp_path, monkeypatch
             calls.append("stop")
         elif any(str(value).endswith("migrate_database.py") for value in arguments):
             calls.append("migrate")
-        elif "backend.scripts.bootstrap_admin" in arguments:
-            calls.append("bootstrap")
         elif "components.system_runtime.activate" in arguments:
             calls.append("activate")
-        else:
+        elif arguments == ("/usr/bin/systemctl", "try-restart", "3mm-update-helper.service"):
             calls.append("refresh-helper")
+        else:
+            pytest.fail(f"Unexpected reset command: {arguments!r}")
 
     monkeypatch.setattr(reset, "fence_recovered_authority", fence)
     if fence_fails:
@@ -125,4 +125,4 @@ def test_reset_fences_fresh_database_before_any_activation(tmp_path, monkeypatch
         assert calls == ["stop", "remove-state", "remove-keys", "prepare", "migrate", "fence"]
     else:
         reset.perform_factory_reset(release=tmp_path / "release", state_root=tmp_path, runner=SimpleNamespace(run=run))
-        assert calls == ["stop", "remove-state", "remove-keys", "prepare", "migrate", "fence", "bootstrap", "activate", "refresh-helper"]
+        assert calls == ["stop", "remove-state", "remove-keys", "prepare", "migrate", "fence", "activate", "refresh-helper"]

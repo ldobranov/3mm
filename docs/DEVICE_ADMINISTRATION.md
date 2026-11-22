@@ -62,11 +62,23 @@ It preserves:
   connection succeeds.
 
 After clearing state, the worker recreates the required private directories,
-migrates a fresh database and activates first-boot setup. Join the open
-`3mm Setup XXXX` network and provision the device again. During Beta, the empty
-database receives `admin@example.com` / `admin`; change that password after
-sign-in.
+migrates a fresh database and activates Setup. Reconnect on the existing LAN
+for host-managed networking, or through the setup AP if managed Wi-Fi was
+selected and the AP is available.
 
+**After reset with Core 0.3.14:** use Full Setup
+on a trusted network to choose the first administrator's name, email and
+password. No administrator is created by reset itself. Sign in with the
+account you just created.
+
+**Published 0.3.12 and 0.3.13:** their reset worker can create a development
+administrator. For a fresh recovery, use a clean OS card, run Full Setup on
+a trusted LAN, then restore from file. If you already reset one of these
+versions, keep it on the trusted LAN and change the development account's
+password in **Profile** before wider access. See the
+[0.3.13 release precaution](RELEASE_NOTES_0.3.13.md).
+
+Do not use reset to recover a lost login or as a substitute for backup/restore.
 Factory reset is intentionally not an operating-system reinstall or secure
 media wipe. Use a fresh OS image when the entire device, system accounts or
 storage contents must be replaced.

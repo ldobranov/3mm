@@ -41,6 +41,7 @@ from packages.application_sdk import ApplicationMigration
 def get_migrations():
     def create(connection):
         connection.execute("CREATE TABLE receipts (operation TEXT, binding TEXT, key TEXT, audience TEXT, actor TEXT, payload TEXT, PRIMARY KEY(operation, binding, key))")
+        connection.execute("CREATE TABLE report_calls (binding TEXT, key TEXT)")
     return [ApplicationMigration("0001", create)]
 
 def create_service(application):
@@ -55,6 +56,8 @@ def create_service(application):
             assert context.audience == ("installation_bootstrap" if operation == "peer_enroll" else "installation_peer")
             actor = {"installation_id": machine.installation_id, "generation": machine.generation, "scopes": list(machine.scopes)}
             with application.storage.transaction() as connection:
+                if operation == "peer_report":
+                    connection.execute("INSERT INTO report_calls VALUES (?, ?)", (machine.binding_id, context.idempotency_key))
                 connection.execute("INSERT OR IGNORE INTO receipts VALUES (?, ?, ?, ?, ?, ?)",
                     (operation, machine.binding_id, context.idempotency_key, context.audience, json.dumps(actor), json.dumps(payload)))
             return {}
@@ -144,7 +147,9 @@ def fixture_package(root):
     from backend.tests.test_installation_peers import peer_package
     from backend.artifacts.packages import validate_module_package
 
-    original, definition, manifest = peer_package()
+    original, definition, manifest = peer_package(
+        peer_version=int(os.environ["PEER_FIXTURE_WIRE_VERSION"])
+    )
     wheel_buffer = io.BytesIO()
     with zipfile.ZipFile(wheel_buffer, "w") as archive:
         archive.writestr("peer_fixture.py", SERVICE)
@@ -538,6 +543,11 @@ class CoreFixture:
             connection.row_factory = sqlite3.Row
             return [dict(row) for row in connection.execute("SELECT * FROM receipts")]
 
+    def report_calls(self):
+        # Count handler invocations independently of the app's idempotent receipts.
+        with sqlite3.connect(self.root / "apps" / INSTANCE / "data" / "state.sqlite3") as db:
+            return db.execute("SELECT binding, key FROM report_calls ORDER BY rowid").fetchall()
+
 
 @pytest.mark.parametrize(
     "module_id",
@@ -596,13 +606,42 @@ def signed_request(sender, row, path, payload, *, expired=False):
     ).model_dump(mode="json")
 
 
-@pytest.mark.skipif(
+@contextmanager
+def running_core_pair(root, diagnostics, *, peer_version=1):
+    from cryptography.fernet import Fernet
+
+    create_test_certificate(root)
+    sender, receiver = (
+        CoreFixture(root / side, root / "ca.pem",
+                    Fernet.generate_key().decode(), secrets.token_hex(32))
+        for side in ("s", "r")
+    )
+    try:
+        for core in (sender, receiver):
+            core.env["PEER_FIXTURE_WIRE_VERSION"] = str(peer_version)
+        sender.start()
+        receiver.start()
+        yield sender, receiver
+    finally:
+        for core in (sender, receiver):
+            core.close()
+            for name in ("core", "host"):
+                log = core.root / (name + ".log")
+                if log.is_file():
+                    (diagnostics / (core.root.name + "-" + name + ".log")).write_bytes(
+                        log.read_bytes()
+                    )
+
+
+linux_peer_lab = pytest.mark.skipif(
     os.name != "posix" or os.getenv("THREE_MM_RUN_PEER_HTTPS_TEST") != "1",
     reason="Opt-in Linux HTTPS/Unix-socket acceptance",
 )
+
+
+@linux_peer_lab
 def test_two_cores_verified_https_and_real_application_sockets(tmp_path):
     import httpx
-    from cryptography.fernet import Fernet
     from packages.application_sdk import ApplicationPlatformError
     from packages.protocol.installation_peer import PEER_PREFIX
 
@@ -613,13 +652,7 @@ def test_two_cores_verified_https_and_real_application_sockets(tmp_path):
     with tempfile.TemporaryDirectory(prefix="3mm-peer-") as directory:
         root = Path(directory)
         os.chmod(root, 0o700)
-        create_test_certificate(root)
-        master_key, jwt_key = Fernet.generate_key().decode(), secrets.token_hex(32)
-        sender = CoreFixture(root / "s", root / "ca.pem", master_key, jwt_key)
-        receiver = CoreFixture(root / "r", root / "ca.pem", master_key, jwt_key)
-        try:
-            sender.start()
-            receiver.start()
+        with running_core_pair(root, tmp_path) as (sender, receiver):
             identity_path = PEER_PREFIX + "/identity"
             with httpx.Client(verify=True, trust_env=False) as untrusted:
                 with pytest.raises(httpx.ConnectError):
@@ -669,6 +702,9 @@ def test_two_cores_verified_https_and_real_application_sockets(tmp_path):
             pending = sender.sdk.enroll_installation_peer(link)
             assert pending["state"] == "pending"
             binding = pending["remote_binding_id"]
+            assert receiver.http("GET", base + "/incoming-report-requests", admin=True).json() == {
+                "module_id": MODULE, "requests": [], "limited": False,
+            }  # Legacy requests lack the v2 disclosure and cannot be reviewed here.
             assert (
                 len(receiver.receipts()) == 1
             )  # Bootstrap retry deduplicated by actual service.
@@ -702,7 +738,20 @@ def test_two_cores_verified_https_and_real_application_sockets(tmp_path):
                     "module_id": MODULE, "link_id": link, "report_id": report_id, "state": expected,
                     "automatic_replay_allowed": False,
                 }
-            receiver.restart(while_offline=lambda: read_receipt("outcome_unconfirmed"))
+            def while_receiver_is_down():
+                # Lose BOTH Core processes after receiver commit and before ACK.
+                # The first operator may return with neither identifier handy.
+                # The surviving application must not create a new report on boot.
+                sender.restart()
+                listing = sender.http("GET", f"/api/v1/installation-peers/applications/{MODULE}/outbound/report-references", admin=True)
+                assert listing.status_code == 200 and listing.headers["Cache-Control"] == "no-store"
+                assert listing.json() == {"module_id": MODULE, "limited": False,
+                                          "references": [{"link_id": link, "report_id": report_id}]}
+                read_receipt("outcome_unconfirmed")
+                assert [record["key"] for record in receiver.receipts()
+                        if record["operation"] == "peer_report"] == [report_id]
+
+            receiver.restart(while_offline=while_receiver_is_down)
             accepted = sender.sdk.report_installation_status(link, report_id=report_id)
             assert accepted["status"] == "accepted"
             read_receipt("acknowledged")
@@ -818,6 +867,10 @@ def test_two_cores_verified_https_and_real_application_sockets(tmp_path):
             assert rejected.value.reason == "operation_failed"
             sender.sdk.revoke_installation_peer(link, direction="outbound")
             read_receipt("not_observed_in_scope")
+            sender.restart()
+            read_receipt("not_observed_in_scope")
+            references = sender.http("GET", f"/api/v1/installation-peers/applications/{MODULE}/outbound/report-references", admin=True)
+            assert references.status_code == 200 and references.json()["references"] == []
             with pytest.raises(ApplicationPlatformError) as rejected:
                 sender.sdk.get_installation_status(link)
             assert rejected.value.reason == "operation_denied"
@@ -827,17 +880,197 @@ def test_two_cores_verified_https_and_real_application_sockets(tmp_path):
             print(
                 "      lost responses + restart, persistent replay rejection, rotation, expiry, revoke."
             )
-        finally:
-            sender.close()
-            receiver.close()
-            # Keep only diagnostic logs on failure; no databases or private keys.
-            for core in (sender, receiver):
-                for name in ("core", "host"):
-                    source = core.root / (name + ".log")
-                    if source.is_file():
-                        (tmp_path / (core.root.name + "-" + name + ".log")).write_bytes(
-                            source.read_bytes()
-                        )
+
+
+@linux_peer_lab
+def test_offline_revocation_does_not_complete_an_unconfirmed_report(tmp_path):
+    import tempfile
+    from packages.application_sdk import ApplicationPlatformError
+    from packages.protocol.installation_peer import PEER_PREFIX
+
+    with tempfile.TemporaryDirectory(prefix="3mm-peer-") as directory, running_core_pair(
+        Path(directory), tmp_path
+    ) as (sender, receiver):
+        outbound = f"/api/v1/installation-peers/applications/{MODULE}/outbound"
+        identity = receiver.http("GET", PEER_PREFIX + "/identity").json()["identity"]
+        created = sender.http("POST", outbound, admin=True, json={
+            "origin": receiver.origin, "receiver_identity": identity, "target_module_id": MODULE,
+            "consent": {"summary_fields": ["core_version"], "node_ids": [], "node_fields": []},
+        })
+        assert created.status_code == 201
+        link = created.json()["link_id"]
+        pending = sender.sdk.enroll_installation_peer(link)
+        assert pending["state"] == "pending"
+        binding = pending["remote_binding_id"]
+        receiver.sdk.approve_installation_peer(binding, expected_generation=1)
+        assert sender.sdk.enroll_installation_peer(link)["state"] == "active"
+
+        original = "report_" + uuid.uuid4().hex
+
+        def remote_reports():
+            assert receiver.report_calls() == [(binding, original)]
+            return [r["key"] for r in receiver.receipts() if r["operation"] == "peer_report"]
+
+        def observation():
+            response = sender.http("GET", f"{outbound}/{link}/reports/{original}", admin=True)
+            assert response.status_code == 200
+            data = response.json()
+            assert data["report_id"] == original and data["automatic_replay_allowed"] is False
+            return data["state"]
+
+        (receiver.root / "drop-report").touch()
+        with pytest.raises(ApplicationPlatformError) as lost:
+            sender.sdk.report_installation_status(link, report_id=original)
+        assert lost.value.reason == "operation_failed"
+        assert remote_reports() == [original] and observation() == "outcome_unconfirmed"
+
+        def withdraw_inbound():
+            result = receiver.sdk.revoke_installation_peer(binding, direction="inbound")
+            assert result["state"] == "revoked"
+
+        sender.restart(while_offline=withdraw_inbound)
+        assert observation() == "outcome_unconfirmed"
+        # A real same-ID continuation now needs access on the receiver; it must
+        # not obtain a cached ACK from before the withdrawal or dispatch again.
+        with pytest.raises(ApplicationPlatformError) as denied:
+            sender.sdk.report_installation_status(link, report_id=original)
+        assert denied.value.reason == "operation_failed"
+        assert remote_reports() == [original] and observation() == "outcome_unconfirmed"
+
+        def withdraw_outbound():
+            result = sender.sdk.revoke_installation_peer(link, direction="outbound")
+            assert result["state"] == "revoked"
+            assert observation() == "not_observed_in_scope"
+
+        receiver.restart(while_offline=withdraw_outbound)
+        sender.restart()
+        assert observation() == "not_observed_in_scope"
+        refs = sender.http("GET", outbound + "/report-references", admin=True)
+        assert refs.status_code == 200 and refs.json()["references"] == []
+        for report_id in (original, "report_" + uuid.uuid4().hex):
+            with pytest.raises(ApplicationPlatformError) as denied:
+                sender.sdk.report_installation_status(link, report_id=report_id)
+            assert denied.value.reason == "operation_denied"
+        assert receiver.row("installation_peer_inbound", "binding_id", binding)["state"] == "revoked"
+        assert remote_reports() == [original]
+
+
+@linux_peer_lab
+def test_two_cores_v2_report_requires_review_of_the_current_field_selection(tmp_path):
+    import tempfile
+    from packages.application_sdk import ApplicationPlatformError
+    from packages.protocol.installation_peer import PEER_PREFIX
+
+    with tempfile.TemporaryDirectory(prefix="3mm-peer-") as directory, running_core_pair(
+        Path(directory), tmp_path, peer_version=2
+    ) as (sender, receiver):
+        api = f"/api/v1/installation-peers/applications/{MODULE}"
+        identity = receiver.http("GET", PEER_PREFIX + "/identity").json()["identity"]
+        first = {"summary_fields": ["core_version"], "node_ids": [], "node_fields": []}
+        second = {**first, "summary_fields": ["sdk_version"]}
+        created = sender.http("POST", api + "/outbound/v2", json={
+            "origin": receiver.origin, "receiver_identity": identity, "target_module_id": MODULE,
+            "application_intent": "fixture_report_review", "consent": first,
+        }, admin=True)
+        assert created.status_code == 201
+        link = created.json()["link_id"]
+        report1, report2 = ("report_" + uuid.uuid4().hex for _ in range(2))
+        requests = api + "/incoming-report-requests"
+        assert receiver.http("GET", requests).status_code == 401
+
+        def pending_review():
+            pending = sender.sdk.enroll_installation_peer(link)
+            assert pending["state"] == "pending"
+            [review] = receiver.sdk.list_installation_peers()["inbound"]
+            assert review["binding_id"] == pending["remote_binding_id"]
+            assert review["verified_metadata"] == pending["enrollment_metadata"]
+            response = receiver.http("GET", requests, admin=True)
+            assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
+            [card] = response.json()["requests"]
+            meta = review["verified_metadata"]
+            with receiver.database() as db:
+                artifact, incarnation = db.execute(
+                    "SELECT p.sha256, i.authority_incarnation FROM application_extension_installations i "
+                    "JOIN module_packages p ON i.module_package_id=p.id WHERE i.module_id=?", (MODULE,)
+                ).fetchone()
+            assert card == {
+                "receiver_artifact": artifact, "receiver_incarnation": incarnation,
+                "sender_id": review["sender_identity"]["installation_id"],
+                "sender_key_id": review["sender_identity"]["key_id"],
+                "binding_id": review["binding_id"], "generation": review["generation"],
+                "intent": meta["application_intent"], "consent": meta["consent"],
+                "metadata_hash": meta["metadata_hash"], "consent_revision": meta["consent_revision"],
+                "expires_at": review["approval_expires_at"],
+            }
+            return {**review, "receiver_artifact": artifact, "receiver_incarnation": incarnation}
+
+        def decision(review, *, admin=True):
+            metadata = review["verified_metadata"]
+            return receiver.http("POST", requests + "/" + review["binding_id"] + "/approve", admin=admin, json={
+                "expected_generation": review["generation"], "expected_metadata_revision": metadata["consent_revision"],
+                "expected_metadata_hash": metadata["metadata_hash"],
+                "expected_receiver_artifact": review["receiver_artifact"],
+                "expected_receiver_incarnation": review["receiver_incarnation"],
+            })
+
+        def approve(review):
+            result = decision(review)
+            assert result.status_code == 204 and not result.content
+            assert receiver.http("GET", requests, admin=True).json()["requests"] == []
+            assert sender.sdk.enroll_installation_peer(link)["state"] == "active"
+            url = api + "/outbound/" + link + "/sender-approval"
+            sender_view = sender.http("GET", url, admin=True).json()
+            assert sender_view["review"]["metadata"] == review["verified_metadata"]
+            assert sender_view["approved"] is False
+            with pytest.raises(ApplicationPlatformError):
+                sender.sdk.report_installation_status(link, report_id=report2)
+            decision_body = {"expected_review_hash": sender_view["review_hash"], "allow": True}
+            assert sender.http("POST", url, json=decision_body).status_code == 401
+            assert sender.http("POST", url, json=decision_body, admin=True).status_code == 204
+            assert sender.http("POST", url, json=decision_body, admin=True).status_code == 409
+
+        original = pending_review()
+        assert decision(original, admin=False).status_code == 401
+        assert decision({**original, "receiver_artifact": "f" * 64}).status_code == 409
+        assert decision({**original, "receiver_incarnation": "f" * 32}).status_code == 409
+        with pytest.raises(ApplicationPlatformError):
+            sender.sdk.report_installation_status(link, report_id=report1)
+        assert not receiver.report_calls()
+        approve(original)
+        assert sender.sdk.report_installation_status(link, report_id=report1)["report_id"] == report1
+        changed = sender.http("PUT", api + f"/outbound/{link}/consent", json={
+            "consent": second, "expected_revision": 1,
+        }, admin=True)
+        assert changed.status_code == 200 and changed.json()["state"] == "new"
+        updated = pending_review()
+        assert updated["binding_id"] == original["binding_id"]
+        assert updated["verified_metadata"]["consent_revision"] == 2
+        receiver.restart()
+        assert decision(original).status_code == 409
+        with pytest.raises(ApplicationPlatformError):
+            sender.sdk.report_installation_status(link, report_id=report2)
+        assert receiver.report_calls() == [(original["binding_id"], report1)]
+        approve(updated)
+        assert sender.sdk.report_installation_status(link, report_id=report2)["status"] == "accepted"
+        received = {r["key"]: json.loads(r["payload"])["projection"] for r in receiver.receipts()
+                    if r["operation"] == "peer_report"}
+        assert set(received) == {report1, report2}
+        assert list(received[report1]["summary"]) == ["core_version"]
+        assert list(received[report2]["summary"]) == ["sdk_version"]
+        assert received[report2]["consent_revision"] == 2
+        url = api + "/outbound/" + link + "/sender-approval"
+        current = sender.http("GET", url, admin=True).json()
+        assert current["sequence"] == 2 and current["checkpoint"] == "acknowledged"
+        def withdraw_while_offline():
+            assert sender.http("POST", url, admin=True, json={
+                "expected_review_hash": current["review_hash"], "allow": False,
+            }).status_code == 204
+            sender.restart()
+        receiver.restart(while_offline=withdraw_while_offline)
+        with pytest.raises(ApplicationPlatformError) as rejected:
+            sender.sdk.report_installation_status(link, report_id=report2)
+        assert rejected.value.reason == "operation_denied"
+        assert len(receiver.report_calls()) == 2
 
 
 if __name__ == "__main__":

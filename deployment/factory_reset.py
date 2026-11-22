@@ -171,21 +171,7 @@ def perform_factory_reset(
         )
     )
     fence_recovered_authority(state_root / "core/3mm.db", reason="factory_reset")
-    command_runner.run(
-        (
-            "/usr/sbin/runuser",
-            "-u",
-            "3mm",
-            "--",
-            "/usr/bin/env",
-            environment[0],
-            f"PYTHONPATH={release}",
-            str(python),
-            "-m",
-            "backend.scripts.bootstrap_admin",
-            "--create-development-default-if-empty",
-        )
-    )
+    # Leave the first administrator to Full Setup, just as on a clean installation.
     command_runner.run(
         (
             "/usr/bin/env",

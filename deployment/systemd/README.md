@@ -220,11 +220,11 @@ Installation does not enable its socket or approve access. Follow the
 [local host-account session guide](../../docs/HOST_ACCOUNT_SESSIONS.md) before
 opting in; the existing isolated worker is unchanged.
 
-On the first deployment of a brand-new empty database, the Beta/test installer
-creates `admin@example.com` with password `admin`. It does this only when the
-database did not exist before deployment and the user table is empty. Updates
-therefore do not recreate the account, replace an administrator or reset a
-password. Change the default immediately from **Profile**.
+For a clean Full deployment, [first-boot Setup](../../docs/RASPBERRY_PI_FIRST_BOOT.md#4-complete-setup-from-a-phone)
+creates the first administrator using the credentials supplied there. Updates do
+not recreate the account or reset a password. In 0.3.14 Factory reset also
+returns to Setup without creating a development administrator. Follow the
+[reset precautions](../../docs/DEVICE_ADMINISTRATION.md) for 0.3.12–0.3.13.
 
 For an older installation without an administrator, create one interactively.
 The command reads the password without echoing it and runs with the same

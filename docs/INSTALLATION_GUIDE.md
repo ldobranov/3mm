@@ -28,10 +28,11 @@ Git is not required on the Raspberry Pi.
 The default `full` profile installs Core, the prebuilt Web interface and the local
 Agent. It supports `aarch64`, `armv7l`, `x86_64` and the ARMv6 profile below.
 
-For the current Beta/test installation, a brand-new empty database receives
-the initial login `admin@example.com` with password `admin`. Change it from
-**Profile** after signing in. An update never recreates the account or resets
-an existing password.
+On a clean Full installation, Setup creates the administrator from the username,
+email and password you enter. There is no preinstalled login. If an administrator
+already exists, Setup requires their current credentials; it does not replace
+their password. In 0.3.14 Factory reset also returns to Setup with no users.
+For reset devices on 0.3.12–0.3.13 see the [precautions](DEVICE_ADMINISTRATION.md).
 
 ## Preserve the current network, or explicitly choose setup AP
 

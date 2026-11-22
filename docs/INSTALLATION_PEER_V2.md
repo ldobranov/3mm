@@ -139,6 +139,22 @@ approval is still valid for v1, but fails for v2. Metadata CAS is checked even
 for an already-active approval retry. Stale/partial reviews cannot approve
 different data. Human/public payloads cannot invent verified metadata.
 
+**Review from the receiving installation's admin panel.** Open **Extensions →
+Application access** on the intended receiving application, expand **Incoming
+status reports**, then choose **Check pending requests**. This reads the local
+database only. It lists up to 32 unexpired v2 requests whose sender completed
+the proof; it does not discover or contact installations. Select a sender and
+compare its installation/key IDs, intent, summary fields, exact device IDs,
+device fields and deadline with the intended exchange. **Allow these reports**
+approves exactly that request. It does not send a report or give an application
+permission to export data. The browser receives no machine credential.
+
+The admin decision also checks the receiving package digest and authority
+incarnation observed during review. A change to these or to the reviewed
+request requires a new check. If the response is lost, check the current
+requests instead of repeating the decision; absence alone does not prove the
+previous attempt succeeded.
+
 ## Consent changes, delivery and recovery
 
 The existing authenticated consent update API uses `expected_revision`.
@@ -163,8 +179,10 @@ credential generation is invalidated when the new consent enrollment arrives,
 or when the receiver revokes it. Retention/visibility leases for previously
 received data remain receiving-application policy, not a Core guarantee.
 
-No database model/schema changes are needed: v2 lives in existing peer JSON
-columns created by Alembic `526ab1c2d3e4`. Legacy records remain v1. Full/portable
+The enrollment metadata lives in the peer JSON columns introduced by Alembic
+`526ab1c2d3e4`. Separate sender consent/checkpoints use revision
+`c1a9e0d46b32`; an upgrade does **not** approve any existing sender.
+Legacy records remain v1. Full/portable
 restore keeps metadata for audit but quarantines both trust directions, removes
 credentials/caches, advances fences and clears nonces; no restored approval
 automatically activates. Revoke/reopen and new proof/approval remain explicit.
@@ -183,12 +201,68 @@ Combined targeted/regression run: **154 passed** in 88.78 seconds. Five added
 malformed-credential cases passed separately in 2.17 seconds. Existing
 deprecation and duplicate-ZIP fixture warnings remain; no live data were used.
 
-These are local Windows tests with in-process HTTPS handlers and in-memory
-socket boundaries, **not** a new real TLS/Linux/public-ingress acceptance.
-The separate v1 Linux acceptance documented in
-[INSTALLATION_PEER_V1.md](INSTALLATION_PEER_V1.md) does not verify v2.
+The above run used in-process HTTPS handlers. The opt-in Linux test in
+`backend/tests/test_installation_peer_https.py` now also runs **two actual Core
+processes over verified loopback HTTPS**, with independent databases and the
+SDK/host sockets. The v2 case reviews the first selection in the admin API,
+delivers only that selection, changes the fields, restarts the receiver and
+rejects the old decision. Only the newly approved fields are delivered after
+fresh review. This verifies the v2 status-report exchange, **not** public
+ingress or a new sending privilege for scoped application peer bindings.
 
 The consuming extension still needs intent issuance/expiry/reuse rules, exact
 Owner review, organization mapping, durable report deduplication, retry/rotation
 schedule and scope-limited visibility. This Core addition alone does not finish
 CM3 activation or connect a live cloud installation.
+
+## Reviewed status-report exchange (CAP16)
+
+This profile sends only Core's selected status fields. It is not a generic
+message channel, a command executor, or distributed synchronization. The two
+installation administrators make independent decisions:
+
+1. On the sender prepare the SDK 1.3 application. Declare outbound peer
+   bindings with the single operation `report`, plus the existing enroll,
+   report and local status-read permissions. Do not mix read/report bindings.
+   Create a v2 link using the pinned receiving identity, exact HTTPS origin,
+   target, intent and field selection. Set the returned link ID in the
+   binding's declared configuration key. Review the local status projection
+   through Application access and activate the app.
+2. The sender administrator uses `POST .../outbound/{link_id}/enroll`.
+   On the receiver use **Extensions → Application access → Incoming status
+   reports** to check the sender and fields and approve the pending request.
+   Call enroll again on the sender to collect the active credential. The
+   administrator routes are relative to
+   `/api/v1/installation-peers/applications/{module_id}`.
+3. On the sender open **Application access → Outgoing status reports**.
+   Read the link, check the destination, package and selection, and explicitly
+   allow sending. Neither reading the card nor approving the receiver grants
+   permission to send. Withdraw it here even if the other Core is offline.
+   To rotate an active credential use `POST .../outbound/{link_id}/rotate`
+   with the reviewed `expected_generation`; review sending again afterwards.
+
+For an app-owned queue use `packages.application_sdk.peer_outbox`.
+Call `create` in the application's database migration. Get the local
+`client.reviewed_status_checkpoint(binding_id)` and `enqueue(db, checkpoint)`
+in a write transaction; commit it. Send the oldest `next_intent(db, binding_id)`
+**outside** the transaction via `intent.send(client)`. Only
+`acknowledge(db, intent, result)` in a new write transaction advances the
+cursor. Backpressure is explicit: at most 32 queued intents per binding and
+128 in total. The queue contains IDs, order and approval, not arbitrary data.
+Core freezes the approved status sample at first submission, not at enqueue.
+
+If an acknowledgement is lost, keep the original ID, sequence and approval.
+Core holds one unresolved sample per link; receiving applications must commit
+their own deduplication record together with their business effect. A retry
+can reach their handler twice. No background worker retries by itself. A
+withdrawal, changed selection, generation or package invalidates the previous
+permission: never replace the approval on queued work. If an unresolved
+old sample cannot be continued under its original approval, explicitly retire
+the old link and review a new one; this does not undo a possible remote effect.
+Queue cleanup is an explicit owner decision, never an acknowledgement.
+
+The local checkpoint distinguishes no sample, unconfirmed and acknowledged.
+Contact is separate: recent success is online, a definite connection refusal
+or no route is offline, a dated observation older than 120 seconds is stale,
+and an ambiguous or missing observation is unknown. Reading either does not
+probe the network or authorize a send.

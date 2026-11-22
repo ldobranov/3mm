@@ -316,6 +316,137 @@ def test_real_installed_source_v9_approve_is_not_apply_and_sealed_grant_is_not_r
     assert state.manager.inspect(1)["grant_effective"] is True
 
 
+@pytest.mark.skipif(os.environ.get("THREE_MM_RUN_PEER_HTTPS_TEST") != "1",
+                    reason="Opt-in HTTPS and real Unix sockets")
+@pytest.mark.parametrize("peer_app", [(2, False)], indirect=True)
+def test_scoped_sender_to_live_https_receiver(peer_app, monkeypatch):
+    import certifi
+    import secrets
+    import sqlite3
+    from packages.application_sdk import peer_outbox
+    import backend.database
+    from cryptography.fernet import Fernet
+    from cryptography.hazmat.primitives.serialization import PrivateFormat, NoEncryption
+    from backend.installation import peers
+    from backend.installation.sender_consent import review as sender_review
+    from backend.tests.test_installation_peer_https import CoreFixture, create_test_certificate, MODULE
+    from packages.protocol.installation_peer import PEER_PREFIX
+
+    state = peer_app
+    definition = state.validated.application_extension.model_dump(mode="json")
+    definition["peer_bindings"][0]["operations"] = ["report"]
+    definition["platform_permissions"] = ["installation.peers.enroll", "installation.peers.report", "installation.status.read"]
+    manifest = state.validated.manifest.model_dump(mode="json")
+    manifest["permissions"] = list(dict.fromkeys([*manifest["permissions"], *definition["platform_permissions"]]))
+    store_checkpoint_package(state, definition, manifest)
+    Base.metadata.create_all(state.engine)
+    with state.engine.begin() as db:
+        db.execute(update(Peer).values(state="revoked"))
+        db.execute(update(CoreInstallationIdentity).values(encrypted_private_key=Fernet(os.environ["AI_SETTINGS_MASTER_KEY"].encode()).encrypt(
+            state.signer.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())).decode()))
+        db.execute(update(Installation).values(enabled=False, status="disabled"))
+    monkeypatch.setattr(backend.database, "SessionLocal", sessionmaker(bind=state.engine))
+    with tempfile.TemporaryDirectory(prefix="sr-", dir="/tmp") as directory:
+        root = Path(directory)
+        create_test_certificate(root)
+        monkeypatch.setattr(certifi, "where", lambda: str(root / "ca.pem"))
+        receiver = CoreFixture(root / "receiver", root / "ca.pem", Fernet.generate_key().decode(), secrets.token_hex(32))
+        receiver.env["PEER_FIXTURE_WIRE_VERSION"] = "2"
+        secret = secrets.token_bytes(32)
+        (root / ("a"*24 + ".key")).write_bytes(secret)
+        server = ApplicationPlatformServer(root / "local.sock", root, group="missing-fixture-group")
+        try:
+            receiver.start()
+            remote = receiver.http("GET", PEER_PREFIX + "/identity").json()["identity"]
+            with Session(state.engine) as db:
+                app = db.get(Installation, 1)
+                link = peers.create_outbound(db, app, origin=receiver.origin, receiver_identity=remote,
+                    target_module_id=MODULE, consent={"summary_fields":["core_version"]}, user_id=1,
+                    peer_version=2, application_intent="scoped_report")["link_id"]
+                app.configuration = {**app.configuration, "PEER_LINK":link}
+                db.commit()
+            adopt(state)
+            with Session(state.engine) as db:
+                app = db.get(Installation, 1)
+                assert peers.enroll_outbound(db, app, link, report_operator=True)["state"] == "pending"
+            [pending] = receiver.sdk.list_installation_peers()["inbound"]
+            meta = pending["verified_metadata"]
+            receiver.sdk.approve_installation_peer(pending["binding_id"], expected_generation=pending["generation"],
+                expected_metadata_revision=meta["consent_revision"], expected_metadata_hash=meta["metadata_hash"])
+            with Session(state.engine) as db:
+                app = db.get(Installation, 1)
+                assert peers.enroll_outbound(db, app, link, report_operator=True)["state"] == "active"
+            server.start()
+            client = ApplicationPlatformClient(server.socket_path, "a"*24, secret)
+            first, second = ("report_"+secrets.token_hex(16) for _ in range(2))
+            approval = "0"*64
+            def send(report=first, sequence=1, binding="remote_link"):
+                return client.send_reviewed_status(binding, report_id=report, sequence=sequence, approval=approval)
+            def decide_send(allow):
+                with Session(state.engine) as db:
+                    app = db.get(Installation, 1)
+                    card = sender_review(db, app, link)
+                    sender_review(db, app, link, expected=card["review_hash"], user_id=1,
+                                  decision="allow" if allow else "withdraw")
+            with pytest.raises(ApplicationPlatformError): send()
+            assert not receiver.report_calls()
+            decide_send(True)
+            cursor = client.reviewed_status_checkpoint("remote_link")
+            assert cursor["sequence"] == 0 and cursor["checkpoint"] == "no_sample" and cursor["contact"] == "unknown"
+            approval = cursor["approval"]
+            queue = root / "owned-queue.db"
+            with sqlite3.connect(queue) as store:
+                peer_outbox.create(store)
+                store.execute("BEGIN IMMEDIATE")
+                intents = [peer_outbox.enqueue(store, cursor) for _ in range(2)]
+            first, second = (i.report_id for i in intents)
+            def offline_attempt():
+                with pytest.raises(ApplicationPlatformError) as failed: intents[0].send(client)
+                offline_state = client.reviewed_status_checkpoint("remote_link")
+                assert offline_state["contact"] == "offline", (failed.value.reason, offline_state)
+            receiver.restart(while_offline=offline_attempt)
+            with pytest.raises(ApplicationPlatformError): send(binding="other")
+            with pytest.raises(ApplicationPlatformError): client.report_installation_status(link, report_id=first)
+            (receiver.root / "drop-report").touch()
+            with pytest.raises(ApplicationPlatformError): intents[0].send(client)
+            with pytest.raises(ApplicationPlatformError): send(second, 2)
+            assert receiver.report_calls() == [(pending["binding_id"], first)]
+            receiver.restart()
+            with sqlite3.connect(queue) as store:
+                head = peer_outbox.next_intent(store, "remote_link")
+                result = head.send(client)
+                store.execute("BEGIN IMMEDIATE")
+                peer_outbox.acknowledge(store, head, result)
+                assert peer_outbox.next_intent(store, "remote_link") == intents[1]
+            assert send(second, 2)["status"] == "accepted"
+            assert client.reviewed_status_checkpoint("remote_link")["contact"] == "online"
+            with pytest.raises(ApplicationPlatformError): send()
+            receiver.restart(while_offline=lambda: decide_send(False))
+            with pytest.raises(ApplicationPlatformError): send(second, 2)
+            decide_send(True)
+            with pytest.raises(ApplicationPlatformError): send(second, 2)
+            assert client.reviewed_status_checkpoint("remote_link")["approval"] != approval
+            with pytest.raises(ApplicationPlatformError):
+                client.send_reviewed_status("remote_link", report_id=second, sequence=2,
+                    approval=client.reviewed_status_checkpoint("remote_link")["approval"])
+            with Session(state.engine) as db:
+                app = db.get(Installation, 1)
+                generation = sender_review(db, app, link)["review"]["credential_generation"]
+                with pytest.raises(peers.InstallationPeerError):
+                    peers.rotate_outbound(db, app, link, report_operator=True, expected_generation=generation+1)
+                db.rollback()
+                peers.rotate_outbound(db, app, link, report_operator=True, expected_generation=generation)
+                assert not sender_review(db, app, link)["approved"]
+            with pytest.raises(ApplicationPlatformError): client.reviewed_status_checkpoint("remote_link")
+            # Transport is at-least-once. The handler sees the original identity on retry;
+            # its transactional idempotency record is the exactly-once application effect.
+            assert receiver.report_calls() == [(pending["binding_id"], r) for r in (first, first, second)]
+            assert sorted(r["key"] for r in receiver.receipts() if r["operation"] == "peer_report") == sorted([first, second])
+        finally:
+            server.stop()
+            receiver.close()
+
+
 def test_first_adoption_requires_actual_disabled_state(peer_app):
     state = peer_app
     plan = decide(state, review(state), "approve")

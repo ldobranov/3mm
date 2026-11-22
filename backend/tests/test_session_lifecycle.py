@@ -19,11 +19,14 @@ from backend.db.user import User
 from backend.accounts.sessions.refresh import router as refresh_router
 from backend.accounts.users_api import router as user_router
 from backend.applications.authority.access import resolve_application_principal
-from backend.accounts.bootstrap import establish_administrator
 from backend.accounts import tokens as jwt_utils
 from backend.accounts.passwords import hash_password
 from backend.storage.sessions import get_db
 from backend.accounts.tokens import create_access_token, decode_token
+from components.setup.config import SetupSettings
+from components.setup.main import create_app as create_setup_app
+from deployment.authority_recovery import fence_recovered_authority
+from packages.provisioning.mock_network import MockNetworkAdapter
 
 
 @pytest.fixture(autouse=True)
@@ -71,7 +74,8 @@ def login(client: TestClient, email: str, password: str) -> str:
     return response.json()["token"]
 
 
-def test_fresh_setup_admin_can_open_app_and_refresh_session(tmp_path, monkeypatch):
+@pytest.mark.parametrize("after_reset", [False, True], ids=["clean-install", "factory-reset"])
+def test_fresh_setup_admin_can_open_app_and_refresh_session(tmp_path, monkeypatch, after_reset):
     database = tmp_path / "core.db"
     url = f"sqlite:///{database.as_posix()}"
     monkeypatch.setattr("backend.config.get_settings", lambda: SimpleNamespace(database_url=url))
@@ -79,7 +83,8 @@ def test_fresh_setup_admin_can_open_app_and_refresh_session(tmp_path, monkeypatc
     migration = Config()
     migration.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "alembic"))
     command.upgrade(migration, "head")
-    establish_administrator(database, "owner", "owner@example.com", "test-first-boot-password")
+    if after_reset:
+        fence_recovered_authority(database, reason="factory_reset")
 
     engine = create_engine(url)
     app = FastAPI()
@@ -99,6 +104,28 @@ def test_fresh_setup_admin_can_open_app_and_refresh_session(tmp_path, monkeypatc
 
     try:
         with TestClient(app) as client:
+            development_login = {"email": "admin@example.com", "password": "admin"}
+            with Session(engine) as db:
+                assert db.query(User).count() == 0
+            assert client.post("/api/user/login", json=development_login).status_code in (400, 401, 404)
+            setup = create_setup_app(
+                network=MockNetworkAdapter(),
+                settings=SetupSettings(
+                    data_dir=tmp_path / "provisioning", core_database_path=database,
+                ),
+                capability_provider=lambda: [],
+            )
+            with TestClient(setup) as portal:
+                configured = portal.post("/api/v1/setup/configure", json={
+                    "role": "standalone", "network_mode": "preserve", "locale": "en-US",
+                    "device_name": "test-device", "administrator_name": "owner",
+                    "administrator_email": "owner@example.com",
+                    "administrator_password": "test-first-boot-password",
+                })
+                assert configured.status_code == 200, configured.text
+            with Session(engine) as db:
+                assert db.query(User).one().email == "owner@example.com"
+            assert client.post("/api/user/login", json=development_login).status_code in (400, 401, 404)
             token = login(client, "owner@example.com", "test-first-boot-password")
             headers = {"Authorization": f"Bearer {token}"}
             first = client.get("/test-application-actor", headers=headers)

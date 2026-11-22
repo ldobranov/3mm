@@ -2,7 +2,7 @@
 import subprocess
 import pytest
 from sqlalchemy import create_engine,text
-from backend.tests.test_migration_history import _alembic
+from backend.tests.test_migration_history import _alembic, _head_revision, _sqlite_snapshot
 
 
 def test_legacy_kiosk_rows_are_preserved_without_automatic_adoption(tmp_path):
@@ -18,9 +18,11 @@ def test_legacy_kiosk_rows_are_preserved_without_automatic_adoption(tmp_path):
     with engine.connect() as db:
         assert db.execute(text('SELECT credential_hash,enabled,installation_incarnation FROM application_kiosk_terminals')).one()==('old-credential-hash',1,None)
         assert db.execute(text('SELECT code_hash,installation_incarnation FROM application_kiosk_enrollments')).one()==('old-code-hash',None)
+    before = _sqlite_snapshot(tmp_path / 'kiosks.db')
     with pytest.raises(subprocess.CalledProcessError) as blocked:_alembic(url,'downgrade','af85a6d71e75')
     assert 'kiosk identities' in blocked.value.stderr
-    with engine.connect() as db:assert db.execute(text('SELECT version_num FROM alembic_version')).scalar()=='b096b7e82f86'
+    assert _sqlite_snapshot(tmp_path / 'kiosks.db') == before
+    with engine.connect() as db:assert db.execute(text('SELECT version_num FROM alembic_version')).scalar()==_head_revision()
     engine.dispose()
 
 

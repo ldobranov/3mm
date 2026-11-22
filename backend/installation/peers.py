@@ -113,6 +113,14 @@ class InstallationPeerError(RuntimeError):
     pass
 
 
+class LocalPeerConsentWithdrawn(InstallationPeerError):
+    """The calling application owns this outgoing link, but its consent is revoked."""
+
+
+class PeerUnreachable(InstallationPeerError):
+    """The transport observed an unreachable/refused endpoint, not missing consent."""
+
+
 def _deny(message="Installation peer request is unavailable or not authorized"):
     raise InstallationPeerError(message)
 
@@ -150,13 +158,14 @@ def _audit(
     )
 
 
-def _application(db, module_id, *, permission=None, receiver=False):
+def _application(db, module_id, *, permission=None, receiver=False, report_operator=False, allow_stopped=False):
     application = db.scalar(
         select(ApplicationExtensionInstallation)
         .where(ApplicationExtensionInstallation.module_id == module_id)
         .execution_options(populate_existing=True)
     )
-    if application is None or not application.enabled or application.status != "active":
+    if application is None or not ((application.enabled and application.status == "active") or
+            (allow_stopped and not application.enabled and application.status == "disabled")):
         _deny("Application installation is not active")
     package = db.get(ModulePackage, application.module_package_id)
     if (
@@ -166,7 +175,8 @@ def _application(db, module_id, *, permission=None, receiver=False):
     ):
         _deny("Application package is unavailable")
     definition = load_application_definition(package)
-    if definition.peer_bindings:
+    from backend.installation.sender_consent import report_profile
+    if definition.peer_bindings and not (report_operator and report_profile(definition)):
         # Opting into narrower declarations must never inherit the broad legacy
         # helper, including inbound machine callbacks and resumable network work.
         _deny("Scoped peer binding runtime is not implemented")
@@ -243,15 +253,16 @@ def _live_inbound(db, row):
     return application, package, definition
 
 
-def _live_outbound(db, row, application):
+def _live_outbound(db, row, application, *, report_operator=False):
     if (
         row.module_id != application.module_id
         or row.application_instance_id != application.instance_id
-        or row.state == "revoked"
     ):
-        _deny("Local peer consent is unavailable or withdrawn")
+        _deny()
+    if row.state == "revoked":
+        raise LocalPeerConsentWithdrawn("Local peer consent is unavailable or withdrawn")
     current, _, definition = _application(
-        db, application.module_id, permission="installation.peers.enroll"
+        db, application.module_id, permission="installation.peers.enroll", report_operator=report_operator
     )
     identity, _ = _load_or_create(db)
     if (
@@ -281,7 +292,9 @@ def create_outbound(
     application_intent=None,
 ):
     _, _, definition = _application(
-        db, application.module_id, permission="installation.peers.enroll"
+        db, application.module_id, permission="installation.peers.enroll",
+        report_operator=(peer_version == 2 and user_id is not None),
+        allow_stopped=(peer_version == 2 and user_id is not None),
     )
     peer_model(PeerEnrollmentStartV1, peer_version)
     if peer_version == 2 and definition.service.sdk_version != "1.3":
@@ -628,12 +641,15 @@ def approve_inbound(
     now=None,
     expected_metadata_revision=None,
     expected_metadata_hash=None,
+    expected_receiver=None,
 ):
     now = now or datetime.now(UTC)
     if type(expected_generation) is not int or expected_generation < 1:
         _deny("Expected generation is invalid")
     row = _lock(db, InstallationPeerInbound, binding_id)
-    _live_inbound(db, row)
+    current, package, _ = _live_inbound(db, row)
+    if expected_receiver is not None and expected_receiver != (package.sha256, current.authority_incarnation):
+        _deny("The receiving application changed; review the current request")
     if (
         row.module_id != application.module_id
         or row.application_instance_id != application.instance_id
@@ -699,6 +715,7 @@ def revoke_peer(db, application, peer_id, direction, *, user_id=None):
             row.credential = None
         else:
             row.consent_revision += 1
+            row.send_approval = None
             row.credential = None
             row.rotation_request = None
             row.report_id = row.report_projection = row.report_result = None
@@ -716,7 +733,7 @@ def revoke_peer(db, application, peer_id, direction, *, user_id=None):
 
 def update_consent(db, application, link_id, consent, expected_revision, *, user_id):
     row = _lock(db, InstallationPeerOutbound, link_id)
-    _live_outbound(db, row, application)
+    _live_outbound(db, row, application, report_operator=user_id is not None and _version(row) == 2)
     if type(expected_revision) is not int or row.consent_revision != expected_revision:
         _deny("Local consent revision changed")
     selection = ProjectionConsentV1.model_validate(consent)
@@ -738,6 +755,7 @@ def update_consent(db, application, link_id, consent, expected_revision, *, user
             return result
     row.consent = selection.model_dump(mode="json")
     row.consent_revision += 1
+    row.send_approval = None
     row.report_id = row.report_projection = row.report_result = None
     row.updated_at = datetime.now(UTC)
     if previous is not None:
@@ -825,6 +843,7 @@ def invalidate_application_peers(db, module_id):
             report_id=None,
             report_projection=None,
             report_result=None,
+            send_approval=None,
             consent_revision=InstallationPeerOutbound.consent_revision + 1,
             updated_at=now,
         )
@@ -887,6 +906,40 @@ def list_peers(db, application):
             _outbound_public_status(row, row.credential_expires_at) for row in outgoing
         ],
     }
+
+
+def pending_report_reviews(db, application):
+    """Operator view of completed v2 proofs for this installed receiver only."""
+    items = []
+    if not application.enabled or application.status != "active":
+        return {"module_id": application.module_id, "requests": items, "limited": False}
+    c = InstallationPeerInbound.__table__.c
+    rows = db.execute(select(c.binding_id, c.generation, c.sender_identity, c.start_request,
+                             c.approval_expires_at).where(
+        c.module_id == application.module_id, c.application_instance_id == application.instance_id,
+        c.state == "pending", func.length(c.completed_digest) == 64,
+        c.approval_expires_at > datetime.now(UTC), c.start_request["peer_version"].as_integer() == 2,
+    ).order_by(c.approval_expires_at, c.binding_id).limit(33)).all()
+    if not rows:
+        return {"module_id": application.module_id, "requests": items, "limited": False}
+    _, package, definition = _application(db, application.module_id, receiver=True)
+    if definition.peer_receiver.peer_version != 2:
+        _deny("The receiving application no longer accepts this request")
+    for row in rows[:32]:
+        start = parse_peer(PeerEnrollmentStartV1, row.start_request, version=2)
+        if (start.target_module_id != application.module_id
+                or start.sender.model_dump(mode="json") != row.sender_identity):
+            _deny("Report request no longer matches this application")
+        metadata = start.enrollment_metadata
+        items.append({
+            "binding_id": row.binding_id, "generation": row.generation,
+            "receiver_artifact": package.sha256, "receiver_incarnation": application.authority_incarnation,
+            "sender_id": start.sender.installation_id, "sender_key_id": start.sender.key_id,
+            "intent": metadata.application_intent, "consent": metadata.consent.model_dump(mode="json"),
+            "consent_revision": metadata.consent_revision, "metadata_hash": metadata.metadata_hash,
+            "expires_at": as_utc(row.approval_expires_at).isoformat(),
+        })
+    return {"module_id": application.module_id, "requests": items, "limited": len(rows) > 32}
 
 
 def _prepare_bootstrap_callback(db, binding_id):
@@ -1155,6 +1208,16 @@ def peer_http(origin, path, payload):
                     if len(content) > PEER_MAX_BYTES:
                         _deny("Peer response exceeds its limit")
     except httpx.HTTPError as exc:
+        import errno
+        pending, visited = [exc], set()
+        while pending:
+            cause = pending.pop()
+            if id(cause) in visited:
+                continue
+            visited.add(id(cause))
+            if isinstance(cause, OSError) and cause.errno in {errno.ECONNREFUSED, errno.EHOSTUNREACH, errno.ENETUNREACH}:
+                raise PeerUnreachable("The report endpoint was unreachable") from exc
+            pending.extend(e for e in (cause.__cause__, cause.__context__, *cause.args) if isinstance(e, BaseException))
         raise InstallationPeerError(
             "Peer transport failed; resume the same durable request"
         ) from exc
@@ -1170,16 +1233,32 @@ def peer_http(origin, path, payload):
 
 
 def _save_outbound(
-    db, application, link_id, revision, *, expected_report_id=None, **changes
+    db, application, link_id, revision, *, expected_report_id=None, expected_sequence=None,
+    report_operator=False, send_hash=None, **changes
 ):
     # Reload after network I/O, then CAS. Revoke always fences delayed responses.
     db.rollback()
-    _application(db, application.module_id, permission="installation.peers.enroll")
+    app, package, definition = _application(db, application.module_id, permission="installation.peers.enroll",
+                                            report_operator=report_operator)
     current = _lock(db, InstallationPeerOutbound, link_id)
+    if send_hash is not None:
+        from backend.installation.sender_consent import snapshot, approved, digest
+        try:
+            view = snapshot(db, app, package, definition, current)
+            matches = digest(view) == send_hash and approved(db, current, view)
+        except (ValueError, RuntimeError):
+            matches = False
+        if not matches:
+            _deny("Sender approval changed while the report was in flight")
     if current.state == "active" and changes.get("state") in {"new", "pending"}:
         _deny("A delayed enrollment response cannot downgrade an active peer")
     if expected_report_id is not None and current.report_id != expected_report_id:
         _deny("A delayed report response cannot replace a newer sample receipt")
+    if expected_sequence is not None and current.report_sequence != expected_sequence:
+        _deny("A delayed response cannot replace a newer report checkpoint")
+    if expected_report_id is not None and current.report_result and "report_result" not in changes:
+        db.commit()
+        return  # Another attempt already durably acknowledged this exact sample.
     proposed = changes.get("credential")
     if (
         proposed
@@ -1204,10 +1283,12 @@ def _save_outbound(
     db.commit()
 
 
-def enroll_outbound(db, application, link_id, *, transport=None):
+def enroll_outbound(db, application, link_id, *, transport=None, report_operator=False):
     transport = transport or peer_http
     row = _lock(db, InstallationPeerOutbound, link_id)
-    _live_outbound(db, row, application)
+    _live_outbound(db, row, application, report_operator=report_operator)
+    if report_operator and _version(row) != 2:
+        _deny("Only reviewed v2 report links are managed here")
     revision = row.consent_revision
     version, metadata, prefix = _version(row), _metadata(row), _prefix(row)
     origin, receiver, sender, target = (
@@ -1273,12 +1354,13 @@ def enroll_outbound(db, application, link_id, *, transport=None):
             application,
             link_id,
             revision,
+            report_operator=report_operator,
             complete_request=complete.model_dump(mode="json"),
             remote_binding_id=response.binding_id,
             state="pending",
         )
     row = _lock(db, InstallationPeerOutbound, link_id)
-    _live_outbound(db, row, application)
+    _live_outbound(db, row, application, report_operator=report_operator)
     if row.consent_revision != revision:
         _deny("Local peer consent changed while enrollment was in flight")
     complete = dict(row.complete_request)
@@ -1307,6 +1389,7 @@ def enroll_outbound(db, application, link_id, *, transport=None):
         application,
         link_id,
         revision,
+        report_operator=report_operator,
         state=result.state,
         credential=(
             result.credential.model_dump(mode="json") if result.credential else None
@@ -1346,11 +1429,14 @@ def signed_outbound_request(db, row, path, payload):
     )
 
 
-def rotate_outbound(db, application, link_id, *, transport=None):
+def rotate_outbound(db, application, link_id, *, transport=None, report_operator=False, expected_generation=None):
     row = _lock(db, InstallationPeerOutbound, link_id)
-    _live_outbound(db, row, application)
+    _live_outbound(db, row, application, report_operator=report_operator)
     if row.state != "active":
         _deny("Peer is not active")
+    if report_operator and (_version(row) != 2 or not row.credential
+                            or row.credential["claims"]["generation"] != expected_generation):
+        _deny("The report credential changed; read its generation again")
     version, metadata, prefix = _version(row), _metadata(row), _prefix(row)
     revision, origin, receiver, sender, target = (
         row.consent_revision,
@@ -1395,21 +1481,40 @@ def rotate_outbound(db, application, link_id, *, transport=None):
         revision,
         credential=result.credential.model_dump(mode="json"),
         rotation_request=None,
+        report_operator=report_operator,
     )
     return outbound_status(db.get(InstallationPeerOutbound, link_id))
 
 
-def report_outbound(db, application, link_id, report_id, *, transport=None):
-    _application(db, application.module_id, permission="installation.peers.report")
-    _application(db, application.module_id, permission="installation.status.read")
+def _prepare_outbound_report(db, application, link_id, report_id, *, binding=None, sequence=None, expected_approval=None):
+    app, package, definition = _application(db, application.module_id, permission="installation.peers.report",
+                                            report_operator=binding is not None)
+    if "installation.status.read" not in definition.platform_permissions:
+        _deny()
     row = _lock(db, InstallationPeerOutbound, link_id)
-    _live_outbound(db, row, application)
+    _live_outbound(db, row, application, report_operator=binding is not None)
     if row.state != "active":
         _deny("Peer is not active")
+    send_hash = None
+    if _version(row) == 2:
+        from backend.installation.sender_consent import snapshot, approved, digest
+        view = snapshot(db, app, package, definition, row)
+        if binding != view["binding_id"] or not approved(db, row, view):
+            raise LocalPeerConsentWithdrawn("Exact local permission to send this report is required")
+        send_hash = digest(view)
+        if binding is not None and send_hash != expected_approval:
+            raise LocalPeerConsentWithdrawn("Queued approval is no longer current")
+        if row.report_id == report_id and (row.report_contact or {}).get("approval") != send_hash:
+            raise LocalPeerConsentWithdrawn("This original report belongs to an earlier approval")
+    elif binding is not None:
+        _deny("Scoped reports require peer v2")
+    if binding is not None and (type(sequence) is not int or sequence < 1 or sequence >= 2**53 or
+            sequence != row.report_sequence + (0 if row.report_id == report_id else 1)):
+        _deny("The report sequence changed")
     if row.report_id == report_id and row.report_result:
         result = dict(row.report_result)
         db.commit()
-        return result
+        return result, None
     if row.report_id and row.report_result is None and row.report_id != report_id:
         _deny("Finish the outstanding report before starting another sample")
     projection = (
@@ -1421,21 +1526,39 @@ def report_outbound(db, application, link_id, report_id, *, transport=None):
     metadata = _metadata(row)
     if metadata is not None:
         _verify_projection(projection, metadata)
+    if row.report_id != report_id:
+        row.report_sequence += 1
+        if send_hash is not None:
+            row.report_contact = {"approval": send_hash, "revision": row.consent_revision, "state": "unknown"}
     row.report_id = report_id
     row.report_projection = projection.model_dump(mode="json")
     row.report_result = None
     request = signed_outbound_request(
         db, row, _prefix(row) + "/report", report.model_dump(mode="json")
     )
-    revision, origin = row.consent_revision, row.origin
+    revision, origin, admitted_sequence = row.consent_revision, row.origin, row.report_sequence
     db.commit()
-    result = (transport or peer_http)(
-        origin, request.path, request.model_dump(mode="json")
-    )
+    return None, (origin, request, projection.installation_id, revision, send_hash, admitted_sequence)
+
+
+def _deliver_prepared(db, application, link_id, report_id, prepared, *, transport=None, scoped=False):
+    cached, work = prepared
+    if work is None:
+        return cached
+    origin, request, installation_id, revision, send_hash, admitted_sequence = work
+    try:
+        result = (transport or peer_http)(origin, request.path, request.model_dump(mode="json"))
+    except InstallationPeerError as exc:
+        if send_hash is not None:
+            _save_outbound(db, application, link_id, revision, expected_report_id=report_id,
+                send_hash=send_hash, report_operator=scoped, expected_sequence=admitted_sequence,
+                report_contact={"at": datetime.now(UTC).isoformat(), "revision": revision, "approval": send_hash,
+                                "state": "offline" if isinstance(exc, PeerUnreachable) else "unknown"})
+        raise
     if result != {
         "status": "accepted",
         "report_id": report_id,
-        "installation_id": projection.installation_id,
+        "installation_id": installation_id,
     }:
         _deny("Reporting acknowledgement is invalid")
     _save_outbound(
@@ -1444,6 +1567,13 @@ def report_outbound(db, application, link_id, report_id, *, transport=None):
         link_id,
         revision,
         expected_report_id=report_id,
+        send_hash=send_hash, report_operator=scoped, expected_sequence=admitted_sequence,
+        report_contact={"at": datetime.now(UTC).isoformat(), "revision": revision, "approval": send_hash, "state": "online"},
         report_result=result,
     )
     return result
+
+
+def report_outbound(db, application, link_id, report_id, *, transport=None):
+    prepared = _prepare_outbound_report(db, application, link_id, report_id)
+    return _deliver_prepared(db, application, link_id, report_id, prepared, transport=transport)

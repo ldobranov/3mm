@@ -34,6 +34,19 @@ reads one outcome. Neither route traverses the network or invokes an application
 shown (`?after=peer_…`). New pages reevaluate the current local scope: a
 revoked link disappears, and a new link inserted earlier in the order can be
 seen by starting again. This is a live view, not a frozen delivery history.
+The isolated HTTPS rehearsal restarts the sender while the receiver is offline
+after a lost ACK. The restarted sender rediscovers the original IDs and reports
+the unconfirmed local outcome; neither lookup creates another remote receipt.
+After explicit revocation another sender restart does not restore visibility.
+
+Withdrawing access while the other installation is offline does not require
+contact with it. If the receiver withdraws access after receiving a report
+but before its acknowledgement arrives, the sender may still show **Unconfirmed**.
+Reconnecting does not restore consent or turn that entry into an acknowledgement.
+If the sender also withdraws its local consent, the entry leaves its current
+view. A subsequent SDK send on that application's own revoked link returns
+`operation_denied`. That refusal concerns the **new attempt**, not whether
+the earlier report arrived. Do not generate a replacement report ID to resolve it.
 
 - **Acknowledged:** the exact sender-side slot contains the expected acknowledgement.
   This is not a current connection test or proof that a business workflow finished.

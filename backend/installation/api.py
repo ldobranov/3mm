@@ -12,7 +12,7 @@ from backend.accounts.dependencies import require_admin
 from backend.storage.sessions import get_db
 from packages.protocol.installation_identity import InstallationIdentityV1
 from packages.protocol.installation_peer import PEER_MAX_BYTES, ProjectionConsentV1
-from packages.protocol.installation_peer_v2 import PeerOutboundConsentRequestV2
+from packages.protocol.installation_peer_v2 import PeerApprovalReviewV2, PeerOutboundConsentRequestV2
 from packages.protocol.module_manifest import MODULE_ID_PATTERN
 from sqlalchemy import select
 
@@ -40,6 +40,18 @@ class GenerationRequest(BaseModel):
 class MetadataReviewRequest(GenerationRequest):
     expected_metadata_revision: int | None = Field(default=None, ge=1)
     expected_metadata_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+
+class IncomingReportDecision(PeerApprovalReviewV2):
+    expected_receiver_artifact: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_receiver_incarnation: str = Field(pattern=r"^[0-9a-f]{32}$")
+
+
+class SenderDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    expected_review_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    # Allow and withdrawal use the same exact displayed snapshot.
+    allow: bool
 
 
 class ConsentUpdateRequest(BaseModel):
@@ -230,6 +242,67 @@ def create_outbound_v2(
         peer_version=2,
         user_id=admin.id,
     )
+
+
+@router.post("/applications/{module_id}/outbound/{link_id}/enroll")
+def enroll_report_link(module_id: str, link_id: str, _admin=Depends(require_admin), db: Session = Depends(get_db)):
+    return _run(peers.enroll_outbound, db, _application(db, module_id), link_id, report_operator=True)
+
+
+@router.get("/applications/{module_id}/outbound/{link_id}/sender-approval")
+def sender_review(module_id: str, link_id: str, response: Response, _admin=Depends(require_admin),
+                  db: Session = Depends(get_db)):
+    from backend.installation.sender_consent import review
+    response.headers["Cache-Control"] = "no-store"
+    return _run(review, db, _application(db, module_id), link_id)
+
+
+@router.post("/applications/{module_id}/outbound/{link_id}/rotate")
+def rotate_report_link(module_id: str, link_id: str, request: GenerationRequest, _admin=Depends(require_admin),
+                       db: Session = Depends(get_db)):
+    return _run(peers.rotate_outbound, db, _application(db, module_id), link_id,
+                expected_generation=request.expected_generation, report_operator=True)
+
+
+@router.get("/applications/{module_id}/sender-links")
+def sender_links(module_id: str, response: Response, _admin=Depends(require_admin), db: Session = Depends(get_db)):
+    from backend.db.installation_peer import InstallationPeerOutbound as Link
+    app = _application(db, module_id)
+    response.headers["Cache-Control"] = "no-store"
+    ids = db.scalars(select(Link.link_id).where(Link.module_id == module_id,
+        Link.application_instance_id == app.instance_id, Link.state == "active",
+        Link.start_request["peer_version"].as_integer() == 2).order_by(Link.link_id).limit(32)).all()
+    return {"module_id": module_id, "links": ids}
+
+
+@router.post("/applications/{module_id}/outbound/{link_id}/sender-approval", status_code=204, response_class=Response)
+def sender_decision(module_id: str, link_id: str, request: SenderDecision, admin=Depends(require_admin),
+                    db: Session = Depends(get_db)):
+    from backend.installation.sender_consent import review
+    _run(review, db, _application(db, module_id), link_id, user_id=admin.id,
+         expected=request.expected_review_hash, decision="allow" if request.allow else "withdraw")
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/applications/{module_id}/incoming-report-requests")
+def incoming_report_requests(module_id: str, response: Response, _admin=Depends(require_admin),
+                             db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "no-store"
+    return _run(peers.pending_report_reviews, db, _application(db, module_id))
+
+
+@router.post("/applications/{module_id}/incoming-report-requests/{binding_id}/approve",
+             status_code=204, response_class=Response)
+def approve_incoming_report(module_id: str, binding_id: str, request: IncomingReportDecision,
+                            admin=Depends(require_admin), db: Session = Depends(get_db)):
+    # This is the same human decision as the established v2 approval. The
+    # browser needs a receipt, not the machine credential or report contents.
+    _run(peers.approve_inbound, db, _application(db, module_id), binding_id,
+         request.expected_generation, user_id=admin.id,
+         expected_metadata_revision=request.expected_metadata_revision,
+         expected_metadata_hash=request.expected_metadata_hash,
+         expected_receiver=(request.expected_receiver_artifact, request.expected_receiver_incarnation))
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
 
 @router.put("/applications/{module_id}/outbound/{link_id}/consent")

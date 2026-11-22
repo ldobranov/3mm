@@ -87,11 +87,24 @@ def test_used_state_cannot_be_destructively_downgraded(tmp_path, retained):
             db.execute(text("UPDATE application_extension_installations SET authority_mode='enforced' WHERE id=1"))
     before = snapshot(engine)
     engine.dispose()
-    with pytest.raises(subprocess.CalledProcessError):
+    reason = ('Authority history exists' if retained == 'history' else
+              'Used authority metadata requires verified recovery')
+    with pytest.raises(subprocess.CalledProcessError) as refused:
         _alembic(url, 'downgrade', PREVIOUS)
+    assert reason in refused.value.stderr
     engine = create_engine(url)
-    # Later retained-data/task revisions may remove their EMPTY catalogs before the
-    # authority downgrade reaches this historical guard. No owned data is lost.
+    # A refusal across multiple revisions leaves everything, including empty
+    # catalogs, at the exact starting schema. Check more than the version stamp.
+    assert snapshot(engine) == before
+    with engine.connect() as db:
+        assert db.scalar(text('SELECT version_num FROM alembic_version')) == REVISION
+    _alembic(url, 'check')
+    # A deliberately selected, reachable intermediate revision still works.
+    # Starting from that boundary must hit the same historical guard.
+    _alembic(url, 'downgrade', 'fcd45b0213c4')
+    with pytest.raises(subprocess.CalledProcessError) as refused:
+        _alembic(url, 'downgrade', PREVIOUS)
+    assert reason in refused.value.stderr
     assert before["application_retained_data"] == []
     assert before["application_task_runs"] == []
     assert before["application_task_schedules"] == []
@@ -103,7 +116,7 @@ def test_used_state_cannot_be_destructively_downgraded(tmp_path, retained):
     assert snapshot(engine) == expected
     assert "application_retained_data" not in inspect(engine).get_table_names()
     with engine.connect() as db:
-        # Later reversible revisions complete; authority history stops at its guard.
+        # The explicitly selected boundary, not a partially completed downgrade.
         assert db.scalar(text('SELECT version_num FROM alembic_version')) == 'fcd45b0213c4'
     engine.dispose()
 

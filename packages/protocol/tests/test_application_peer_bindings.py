@@ -280,9 +280,11 @@ def test_catalog_advertises_only_exact_outbound_read_and_explicitly_denies_fallb
     assert set(request["required"]) == set(peer_request())
     assert schema["properties"]["peer_bindings"]["maxItems"] == 32
     support = entry["declaration_support"]["peer_bindings"]
-    assert support["runtime_authority"] == "reviewed_native_scoped_outbound_read"
+    assert support["runtime_authority"] == "reviewed_native_scoped_outbound"
     assert support["runtime_directions"] == ["outbound"]
-    assert support["runtime_operations"] == ["read"]
+    assert support["runtime_operations"] == ["read", "report"]
+    assert support["report_profile"]["peer_version"] == 2
+    assert "exact_sender_approval" in support["report_profile"]["requires"]
     assert support["sdk_method"] == "read_installation_peer"
     assert support["relational_combination"] == "unsupported"
     assert support["compatibility_fallback"] == "blocked"

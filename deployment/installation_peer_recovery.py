@@ -27,6 +27,8 @@ def quarantine_restored_installation_peers(database: Path) -> None:
                 (now,),
             )
         if "installation_peer_outbound" in tables:
+            if any(row[1] == "send_approval" for row in connection.execute("PRAGMA table_info(installation_peer_outbound)")):
+                connection.execute("UPDATE installation_peer_outbound SET send_approval=NULL, send_revision=send_revision+1")
             connection.execute(
                 "UPDATE installation_peer_outbound SET state='revoked', credential=NULL, complete_request=NULL, rotation_request=NULL, report_id=NULL, report_projection=NULL, report_result=NULL, consent_revision=consent_revision+1, updated_at=?",
                 (now,),

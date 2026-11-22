@@ -545,7 +545,12 @@ def _resolve(db, installation_id, pin, package, *, registration_key=None, propos
         and all(item.direction == "outbound" and item.operations == ("read",)
             for item in app.peer_bindings)
     )
-    peer_permissions = {"installation.peers.enroll"} if peer_read_profile else set()
+    from backend.installation.sender_consent import report_profile
+    # The v8 selection covers local projection only. Export has its own
+    # administrator-signed per-package/link decision, checked at dispatch.
+    peer_report_profile = report_profile(app)
+    peer_permissions = ({"installation.peers.enroll", "installation.peers.report"} if peer_report_profile
+                        else {"installation.peers.enroll"} if peer_read_profile else set())
     if peer_read_profile:
         from backend.installation.peer_read_sources import read_configured_peer_sources
 
@@ -612,7 +617,7 @@ def _resolve(db, installation_id, pin, package, *, registration_key=None, propos
             or set(package.manifest.capabilities.provides) - (emitted if publication_complete else set()) - {item.capability_id for item in app.session_providers}
             or (emitted or "events.publish" in package.manifest.permissions) and not publication_complete):
         pending.append(SourceIssue(reason="unsupported_scope_family"))
-    if (app.peer_bindings and not peer_read_profile or app.peer_receiver is not None
+    if (app.peer_bindings and not (peer_read_profile or peer_report_profile) or app.peer_receiver is not None
             or any(permission.startswith("installation.peers.") and permission not in peer_permissions
                 for permission in app.platform_permissions)):
         pending.append(SourceIssue(reason="peer_authority_unresolved"))

@@ -55,23 +55,7 @@ def pair_v2(request, monkeypatch):
     original = legacy.peer_package
 
     def package_v2():
-        _, definition, manifest = original()
-        definition["service"]["sdk_version"] = "1.3"
-        definition["peer_receiver"]["peer_version"] = 2
-        bootstrap = next(
-            item
-            for item in definition["operations"]
-            if item["operation_id"] == "peer_enroll"
-        )
-        bootstrap["input_schema"]["properties"]["enrollment_metadata"] = {
-            "type": "object"
-        }
-        bootstrap["input_schema"]["required"].append("enrollment_metadata")
-        return (
-            application_package(definition=definition, manifest_value=manifest),
-            definition,
-            manifest,
-        )
+        return original(peer_version=2)
 
     monkeypatch.setattr(legacy, "peer_package", package_v2)
     fixture = request.getfixturevalue("pair")
@@ -119,10 +103,19 @@ def approve(fixture, review=None):
         )
 
 
+def allow_send(fixture):
+    from backend.installation.sender_consent import review
+    with Session(fixture.sender.engine) as db:
+        app = db.scalar(select(ApplicationExtensionInstallation))
+        current = review(db, app, fixture.sender.link_id)
+        review(db, app, fixture.sender.link_id, expected=current["review_hash"], decision="allow", user_id=1)
+
+
 def activate(fixture):
     assert sender_call(fixture, peers.enroll_outbound)["state"] == "pending"
     result = approve(fixture)
     assert sender_call(fixture, peers.enroll_outbound)["state"] == "active"
+    allow_send(fixture)
     return result
 
 
@@ -175,6 +168,9 @@ def test_metadata_verified_before_review_and_bound_into_credential_and_report(pa
     assert credential["claims"]["credential_version"] == 2
     assert credential["claims"]["enrollment_metadata"] == metadata
     sender_call(pair_v2, peers.enroll_outbound)
+    with pytest.raises(peers.LocalPeerConsentWithdrawn):
+        sender_call(pair_v2, peers.report_outbound, "report_" + "1" * 32)
+    allow_send(pair_v2)
     assert (
         sender_call(pair_v2, peers.report_outbound, "report_" + "1" * 32)["status"]
         == "accepted"
@@ -321,6 +317,9 @@ def test_any_changed_consent_stops_reports_and_requires_fresh_approval(
     )
     approve(pair_v2)
     sender_call(pair_v2, peers.enroll_outbound)
+    with pytest.raises(peers.LocalPeerConsentWithdrawn):
+        sender_call(pair_v2, peers.report_outbound, "report_" + "3" * 32)
+    allow_send(pair_v2)
     assert (
         sender_call(pair_v2, peers.report_outbound, "report_" + "3" * 32)["status"]
         == "accepted"

@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.14] - 2026-11-22
+
+- Close CAP16 for reviewed status reports between two installations. Sender
+  and receiver consent are separate; reconnect preserves the original
+  delivery identity and does not restore withdrawn access.
+- After Factory reset on Full installations, Setup creates the administrator
+  chosen by the owner. Reset itself no longer seeds a development account.
+  Ordinary updates preserve existing users.
+- If a SQLite migration refuses an upgrade or downgrade, the database keeps
+  its starting schema, data and revision, even across several migration steps.
+- See [release notes and rollback limits](docs/RELEASE_NOTES_0.3.14.md).
+
 ## [0.3.13] - 2026-11-19
 
 - Check application package and schema recoverability before backup/restore.

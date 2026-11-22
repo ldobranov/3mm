@@ -123,7 +123,7 @@ def status_database(tmp_path):
     )
     with engine.begin() as connection:
         connection.execute(
-            insert(CoreInstallationIdentity.__table__).values(
+            insert(public.tables[CoreInstallationIdentity.__tablename__]).values(
                 singleton_id=1,
                 created_at=NOW,
                 **{
@@ -134,7 +134,9 @@ def status_database(tmp_path):
             )
         )
         connection.execute(
-            insert(InstallationPeerOutbound.__table__).values(
+            # Seed the public projection itself. Private ORM insert defaults
+            # must not widen this deliberately restricted test database.
+            insert(public.tables[InstallationPeerOutbound.__tablename__]).values(
                 link_id=LINK,
                 module_id=MODULE,
                 application_instance_id=INSTANCE,

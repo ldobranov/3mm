@@ -24,7 +24,7 @@ SCOPED_ACTIONS = frozenset({
     "connector.request", "event.publish", "files.execute", "files.status",
     "relational.admit", "relational.complete", "relational.status",
     "relational.boot.startup", "checkpoint.get", "checkpoint.put",
-    "installation.identity.get", "installation.status.get", "installation.peers.read",
+    "installation.identity.get", "installation.status.get", "installation.peers.read", "installation.peers.report",
     "delegation.execute", "delegation.lookup", "query.request",
 })
 COMPATIBILITY_ACTIONS = (SCOPED_ACTIONS - {'query.request'}) | frozenset({
