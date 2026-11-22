@@ -1,8 +1,12 @@
 """Real HTTP human/kiosk response delegation, revocation and no replay."""
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import replace
 import json
+import multiprocessing
 import os
+import signal
+import threading
 import time
 import urllib.request
 import urllib.error
@@ -19,6 +23,41 @@ from backend.tests.test_application_health_process import (
 from backend.accounts.tokens import create_access_token
 
 pytestmark=pytest.mark.skipif(os.name!='posix',reason='Real Unix processes and descriptor transfer')
+
+
+def observe_reply_phases(relay, monkeypatch):
+    # Forked Core and the parent share Linux's monotonic clock. Fixed stamps
+    # only: no polling, DB writes, real command payload or permission changes.
+    names = ('admission', 'dispatch', 'reply')
+    ticks = multiprocessing.RawArray('q', 2 * len(names))
+
+    @contextmanager
+    def phase(index):
+        ticks[2 * index] = time.monotonic_ns()
+        try:
+            yield
+        finally:
+            ticks[2 * index + 1] = time.monotonic_ns()
+
+    def wrap(name, index):
+        original = getattr(relay, name)
+        def timed(*args, **kwargs):
+            with phase(index):
+                return original(*args, **kwargs)
+        monkeypatch.setattr(relay, name, timed)
+
+    wrap('begin_invocation', 0)  # Includes dispatch; not additive.
+    wrap('_send', 1)
+    receive = relay.ResponseWaiter.receive
+    async def timed_receive(waiter):
+        with phase(2):
+            return await receive(waiter)
+    monkeypatch.setattr(relay.ResponseWaiter, 'receive', timed_receive)
+
+    def snapshot(start):
+        return {name: [round((value-start)/1_000_000, 1) if value else None
+                       for value in ticks[2*i:2*i+2]] for i, name in enumerate(names)}
+    return snapshot
 
 
 @pytest.fixture
@@ -42,7 +81,11 @@ def health_core(identity_app,monkeypatch,request):
             time.sleep(2.15)  # Longer than the real response-handoff budget.
         return result
     monkeypatch.setattr(relay,'_prepare',short)
-    with core_stack(state,monkeypatch) as s:yield s
+    observe = (observe_reply_phases(relay, monkeypatch)
+               if request.node.originalname == 'test_command_reply_failure_is_bounded_and_does_not_replay' else None)
+    with core_stack(state,monkeypatch) as s:
+        s.reply_phases = observe
+        yield s
 
 
 @pytest.fixture
@@ -96,10 +139,30 @@ def test_concurrent_slow_admission_reserves_only_when_ready_to_dispatch(invoked)
 
 @pytest.mark.parametrize('mode',['hang','trickle','signature','request_id','size','failure'])
 def test_command_reply_failure_is_bounded_and_does_not_replay(invoked,mode):
-    s=invoked;(s.health_root/'mode').write_text(mode);start=time.monotonic()
-    assert s.invoke()[0]==409
-    assert time.monotonic()-start<2 and len(s.seen())==1
-    assert s.seen()[0]['context']['idempotency_key']=='explicit-0001'
+    s=invoked;(s.health_root/'mode').write_text(mode)
+    # If this is slow, sample the fixture-owned Core while it is still slow.
+    # SIGUSR2 is handled by its test-only faulthandler, not by installed Core.
+    def sample():
+        if s.core.is_alive():
+            try:
+                os.kill(s.core.pid,signal.SIGUSR2)
+            except ProcessLookupError:
+                pass  # The request/health assertions still report the exit.
+    timer=threading.Timer(1.6,sample)
+    timer.start()
+    try:
+        start=time.monotonic_ns()
+        status=s.invoke()[0]
+        elapsed=time.monotonic_ns()-start
+    finally:
+        timer.cancel()
+        timer.join()
+    seen=s.seen()
+    assert status==409 and len(seen)==1
+    assert seen[0]['context']['idempotency_key']=='explicit-0001'
+    assert elapsed<2_000_000_000, (
+        f'Elapsed {elapsed/1e6:.1f} ms; Core entry/exit relative to HTTP (ms): '
+        f'{s.reply_phases(start)}\n{(s.base/"core-threads.log").read_text(errors="replace")[-24576:]}')
     assert s.http('/api/v1/diagnostics/components',headers=s.admin)[0]==200
 
 

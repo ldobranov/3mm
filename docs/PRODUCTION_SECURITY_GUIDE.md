@@ -189,7 +189,7 @@ only path once a device is reachable from an untrusted network.
 
 Current behavior:
 
-- **Clean Full installation or Factory reset with 0.3.14:** Setup creates the administrator using the
+- **Clean Full installation or Factory reset with 0.3.15:** Setup creates the administrator using the
   username, email and password chosen on the trusted LAN. An update does not
   recreate this account or reset its password.
 - **Factory reset in 0.3.12–0.3.13:** the older reset worker can seed a development

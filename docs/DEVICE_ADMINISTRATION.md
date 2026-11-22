@@ -66,7 +66,7 @@ migrates a fresh database and activates Setup. Reconnect on the existing LAN
 for host-managed networking, or through the setup AP if managed Wi-Fi was
 selected and the AP is available.
 
-**After reset with Core 0.3.14:** use Full Setup
+**After reset with Core 0.3.15:** use Full Setup
 on a trusted network to choose the first administrator's name, email and
 password. No administrator is created by reset itself. Sign in with the
 account you just created.

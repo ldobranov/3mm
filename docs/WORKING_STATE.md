@@ -1,6 +1,6 @@
 # Current working state
 
-Updated: 2026-11-22. Start here; follow linked details only as needed.
+Updated: 2026-11-23. Start here; follow linked details only as needed.
 
 ## Product direction: extension marketplace
 
@@ -11,6 +11,17 @@ Updated: 2026-11-22. Start here; follow linked details only as needed.
   designed; this product direction does not authorize implementation now.
 
 ## Active task and next result
+
+- **Core 0.3.15 candidate (2026-11-23).** Preserve the unpublished 0.3.14
+  tag. Its second release run returned the expected 409 after 3.953 s in
+  the same hung-application test. Separately the full invocation file passed
+  (14 tests), as did the matching backend prefix (1,410 passed, four skips).
+  In that prefix the command was sent by +60 ms, the reply wait ended at
+  +1,062 ms and HTTP returned by +1,065 ms. The release-runner delay is not
+  explained by these local timings. Keep the two-second end-to-end limit;
+  collect phase stamps and the disposable Core's stack during a slow call.
+  The candidate retains the 0.3.13 update, rollback and reset acceptance gates.
+  No production application or device changes.
 
 - **Core 0.3.14 — approved release scope (2026-11-22).** CAP16 is closed for
   reviewed status reports. Full Setup owns first-account creation after reset.

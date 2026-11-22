@@ -297,7 +297,7 @@ Administrators can open **Settings → Device Control** after provisioning.
 
 Factory reset is not an SD-card erase. The last verified NetworkManager Wi-Fi
 profile remains available as a connection rollback until setup successfully
-applies a replacement. In 0.3.14 reset leaves no users: complete Full Setup
+applies a replacement. In 0.3.15 reset leaves no users: complete Full Setup
 and sign in with your chosen email and password. For resets on 0.3.12–0.3.13
 follow the older-version precautions below.
 

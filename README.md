@@ -464,7 +464,7 @@ Use `--tag` for a reproducible exact release, for example by appending
 requested only by `sudo` and is never a command argument or repository value.
 
 Create the first administrator in Full Setup on a trusted LAN. Sign in with
-the email and password you chose. Core 0.3.14 Factory reset also starts
+the email and password you chose. Core 0.3.15 Factory reset also starts
 without a preset administrator; ordinary updates preserve existing accounts.
 See the [0.3.12–0.3.13 reset precautions](docs/DEVICE_ADMINISTRATION.md).
 
