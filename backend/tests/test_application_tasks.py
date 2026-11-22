@@ -615,22 +615,39 @@ def test_worker_loss_stays_unknown_and_requires_stopped_admin_reconciliation(tas
     key, interrupted = identity(), Future()
     worker = ready_worker()
     record_progress = tasks.progress_task
+    permit = {}
+    real_start = tasks.start_task
+
+    def observe_start(*args, **kwargs):
+        receipt = real_start(*args, **kwargs)
+        permit.update(at=time.monotonic(), remaining_ms=round(receipt["lease_remaining_seconds"] * 1000))
+        return receipt
 
     # Interrupt the real process after Core commits progress but before the
     # handler receives its reply. No timing window or synthetic task state.
     def interrupt_after_progress(db, installation, payload):
+        arrived = time.monotonic()
         try:
             result = record_progress(db, installation, payload)
             assert (result["request_id"], result["status"], result["progress"]) == (key, "running", 50)
             assert worker.poll() is None, "Worker exited before the interruption"
             worker.kill()
         except Exception as exc:
+            # Admission intentionally masks errors for callers. Report only timing
+            # and a fixed category in pytest, never tokens, payloads or grant data.
+            inner = exc.__context__
+            reason = ("execution_lease_not_current" if isinstance(inner, ValueError)
+                and str(inner) == "Task execution lease is not current" else type(inner).__name__)
+            elapsed = round((arrived - permit["at"]) * 1000) if "at" in permit else None
+            exc.add_note(f"progress refusal: inner={reason}, lease_ms_at_start={permit.get('remaining_ms')}, "
+                         f"start_to_progress_ms={elapsed}, progress_check_ms={round((time.monotonic()-arrived)*1000)}")
             interrupted.set_exception(exc)
             raise
         interrupted.set_result(result["task_run_id"])
         return result
 
     with monkeypatch.context() as patch:
+        patch.setattr(tasks, "start_task", observe_start)
         patch.setattr(tasks, "progress_task", interrupt_after_progress)
         _, accepted = schedule(s, request_id=key)
         if not wait_futures((interrupted,), timeout=10).done:
