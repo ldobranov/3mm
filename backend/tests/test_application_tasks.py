@@ -597,8 +597,9 @@ def test_worker_loss_stays_unknown_and_requires_stopped_admin_reconciliation(tas
     from concurrent.futures import Future
     from concurrent.futures import wait as wait_futures
     from pwd import getpwuid
+    from sqlalchemy import event
     from backend.applications.resources.providers import observe
-    from backend.tests.task_progress_timing import observe_progress
+    from backend.tests.task_progress_timing import WorkerTimeline, observe_progress
 
     s = task_state
     probe_settings = s.settings.model_copy(update={"task_worker_socket": s.runtime_socket.parent / "task.sock",
@@ -618,6 +619,7 @@ def test_worker_loss_stays_unknown_and_requires_stopped_admin_reconciliation(tas
     record_progress = tasks.progress_task
     permit = {}
     phase_ms = {}
+    timeline = WorkerTimeline()
     real_start = tasks.start_task
 
     def observe_start(*args, **kwargs):
@@ -629,6 +631,9 @@ def test_worker_loss_stays_unknown_and_requires_stopped_admin_reconciliation(tas
     # handler receives its reply. No timing window or synthetic task state.
     def interrupt_after_progress(db, installation, payload):
         arrived = time.monotonic()
+        def committed(session):
+            timeline.mark("progress_committed")
+        event.listen(db, "after_commit", committed)
         try:
             with measure():
                 result = record_progress(db, installation, payload)
@@ -644,22 +649,30 @@ def test_worker_loss_stays_unknown_and_requires_stopped_admin_reconciliation(tas
             elapsed = round((arrived - permit["at"]) * 1000) if "at" in permit else None
             exc.add_note(f"progress refusal: inner={reason}, lease_ms_at_start={permit.get('remaining_ms')}, "
                          f"start_to_progress_ms={elapsed}, progress_check_ms={round((time.monotonic()-arrived)*1000)}, "
-                         f"progress_phases_ms={phase_ms}")
+                         f"progress_phases_ms={phase_ms}, worker_trace={timeline.snapshot()}")
             interrupted.set_exception(exc)
             raise
+        finally:
+            event.remove(db, "after_commit", committed)
         interrupted.set_result(result["task_run_id"])
         return result
 
-    with monkeypatch.context() as patch, observe_progress(patch, s.engine, phase_ms) as measure:
-        patch.setattr(tasks, "start_task", observe_start)
-        patch.setattr(tasks, "progress_task", interrupt_after_progress)
+    with monkeypatch.context() as patch, observe_progress(patch, s.engine, phase_ms, timeline) as measure:
+        patch.setattr(tasks, "submit_task", timeline.track(tasks.submit_task, "submit_received", "submit_accepted"))
+        patch.setattr(tasks, "dispatch_task", timeline.track(tasks.dispatch_task, "dispatch_received", "dispatch_committed"))
+        patch.setattr(tasks, "start_task", timeline.track(observe_start, "start_received", "start_permitted"))
+        patch.setattr(tasks, "progress_task", timeline.track(interrupt_after_progress, "progress_received", "observer_returned"))
         _, accepted = schedule(s, request_id=key)
         if not wait_futures((interrupted,), timeout=10).done:
-            state = s.task_probe.lookup(key)
-            pytest.fail(f"No committed progress: task={state['status']}, error={state['error_code']}, worker={worker.poll()}")
+            # Do not query Core on timeout: the very request under observation may
+            # be holding the resource needed to answer that second call.
+            pytest.fail(f"Progress observation timed out: worker_trace={timeline.snapshot()}, worker={worker.poll()}")
         assert interrupted.result() == accepted["task_run_id"]
+        trace = timeline.snapshot()
+        assert {"submit_accepted", "dispatch_committed", "start_permitted", "progress_received",
+                "progress_committed"} <= trace["events_ms"].keys(), trace
         with capsys.disabled():
-            print(f"\nCommitted worker progress (ms, inclusive): {phase_ms}", flush=True)
+            print(f"\nCommitted worker progress (ms, inclusive): {phase_ms}; worker_trace={trace}", flush=True)
     worker.wait(timeout=3)
     assert wait(s, key, ("unknown",), seconds=4)["result"] is None
     ready_worker()

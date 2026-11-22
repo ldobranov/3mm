@@ -18,8 +18,61 @@ from backend.applications.authority.keys import CoreReviewKeyStore
 from backend.applications.tasks import broker
 
 
+class WorkerTimeline:
+    """One test, one task. Never hold the observation lock while calling Core."""
+
+    def __init__(self):
+        self._origin = time.monotonic()
+        self._lock = threading.Lock()
+        self._local = threading.local()
+        self._events = {}
+        self._active = {}
+
+    def mark(self, name):
+        with self._lock:
+            self._events.setdefault(name, round((time.monotonic() - self._origin) * 1000))
+
+    def track(self, fn, entered, returned):
+        @wraps(fn)
+        def wrapped(*args, **kwargs):
+            self._local.stage = entered
+            self.mark(entered)
+            try:
+                result = fn(*args, **kwargs)
+            except Exception:
+                self.mark(entered + "_raised")
+                raise
+            else:
+                self.mark(returned)
+                return result
+            finally:
+                self._local.stage = None
+        return wrapped
+
+    def begin_phase(self, label):
+        stage = getattr(self._local, "stage", None)
+        if stage is not None:
+            token = object()
+            with self._lock:
+                self._active[token] = (stage, label, time.monotonic())
+            return token
+
+    def end_phase(self, token):
+        if token is not None:
+            with self._lock:
+                self._active.pop(token, None)
+
+    def snapshot(self):
+        with self._lock:
+            now = time.monotonic()
+            return {"last": next(reversed(self._events), "none"), "elapsed_ms": round((now - self._origin) * 1000),
+                    "events_ms": dict(self._events),
+                    "active_ms": [(stage, label, round((now - at) * 1000))
+                                  for stage, label, at in self._active.values()]}
+
+
 @contextmanager
-def observe_progress(patch, engine, totals):
+def observe_progress(patch, engine, totals, timeline):
     """Attach before scheduling; time selected boundaries, not every function call."""
     handler = None
     sql_started = gc_started = 0
@@ -30,19 +83,23 @@ def observe_progress(patch, engine, totals):
         original = getattr(owner, name)
         @wraps(original)
         def timed(*args, **kwargs):
-            if threading.get_ident() != handler:
+            token = timeline.begin_phase(label)
+            measuring = threading.get_ident() == handler
+            if token is None and not measuring:
                 return original(*args, **kwargs)
             start = time.perf_counter_ns()
             try:
                 result = original(*args, **kwargs)
-                if label == "lease":
+                if measuring and label == "lease":
                     state, reason = result
                     totals["lease_result"] = (reason if reason in {
                         "authority_changed", "execution_unconfirmed", "not_dispatched", "deadline_exceeded",
                     } else "running" if state == "running" else "not_running")
                 return result
             finally:
-                elapsed[label] = elapsed.get(label, 0) + time.perf_counter_ns() - start
+                timeline.end_phase(token)
+                if measuring:
+                    elapsed[label] = elapsed.get(label, 0) + time.perf_counter_ns() - start
         patch.setattr(owner, name, timed)
 
     manager = management.ApplicationAuthorityManager
@@ -59,21 +116,34 @@ def observe_progress(patch, engine, totals):
     @contextmanager
     def key_lease(store, *, read_only):
         start = time.perf_counter_ns()
-        with original_key(store, read_only=read_only) as key:
-            if threading.get_ident() == handler:
-                elapsed["review_key"] = time.perf_counter_ns() - start
-            yield key
+        token = timeline.begin_phase("review_key")
+        try:
+            with original_key(store, read_only=read_only) as key:
+                timeline.end_phase(token)
+                token = None
+                if threading.get_ident() == handler:
+                    elapsed["review_key"] = time.perf_counter_ns() - start
+                yield key
+        finally:
+            timeline.end_phase(token)
     patch.setattr(CoreReviewKeyStore, "_locked", key_lease)
 
     def before_sql(conn, cursor, statement, params, context, many):
         nonlocal sql_started
+        label = "guard_sql" if statement.startswith("UPDATE core_authority_guard ") else "other_sql"
+        context._worker_test_phase = timeline.begin_phase(label)
         if threading.get_ident() == handler:
             sql_started = time.perf_counter_ns()
 
     def after_sql(conn, cursor, statement, params, context, many):
+        # A worker poll may already have entered SQL when the listeners attach.
+        timeline.end_phase(getattr(context, "_worker_test_phase", None))
         if threading.get_ident() == handler:
             phase = "guard_sql" if statement.startswith("UPDATE core_authority_guard ") else "other_sql"
             elapsed[phase] += time.perf_counter_ns() - sql_started
+
+    def sql_error(error):
+        timeline.end_phase(getattr(error.execution_context, "_worker_test_phase", None))
 
     def collection(phase, info):
         nonlocal gc_started, gc_time
@@ -101,10 +171,12 @@ def observe_progress(patch, engine, totals):
 
     event.listen(engine, "before_cursor_execute", before_sql)
     event.listen(engine, "after_cursor_execute", after_sql)
+    event.listen(engine, "handle_error", sql_error)
     gc.callbacks.append(collection)
     try:
         yield measure
     finally:
         gc.callbacks.remove(collection)
+        event.remove(engine, "handle_error", sql_error)
         event.remove(engine, "after_cursor_execute", after_sql)
         event.remove(engine, "before_cursor_execute", before_sql)
