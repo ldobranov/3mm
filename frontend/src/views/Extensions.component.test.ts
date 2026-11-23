@@ -214,9 +214,10 @@ describe('Extensions management workflow', () => {
       expect(wrapper.findAll('.extension-card').filter(card => !card.text().includes('Reference application'))
         .every(card => !card.find('.authority-manage-btn').exists())).toBe(true)
       if (visible) {
-        http.post.mockRejectedValueOnce({ response: { status: 409, data: { detail: { code: 'authority_unavailable' } } } })
+        http.get.mockRejectedValueOnce({ response: { status: 409, data: { detail: { code: 'authority_unavailable' } } } })
         await wrapper.get('.authority-manage-btn').trigger('click'); await flushPromises()
-        expect(http.post).toHaveBeenCalledWith('/api/v1/application-extensions/org.example.reference/authority/consent/preview', expect.objectContaining({ request_id: expect.any(String) }), { timeout: 12000 })
+        expect(http.get).toHaveBeenCalledWith('/api/v1/application-extensions/org.example.reference/authority', { timeout: 12000 })
+        expect(http.post).not.toHaveBeenCalled()
         expect(wrapper.get('dialog h2').text()).toBe('Application access')
       }
       expect(http.post.mock.calls.some(([url]) => url.endsWith('/consent/allow'))).toBe(false)

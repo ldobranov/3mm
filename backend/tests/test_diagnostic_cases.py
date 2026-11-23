@@ -181,6 +181,30 @@ def test_exact_lookup_does_not_attribute_another_attempts_timing_or_spans():
     assert explain(result)['cases'][0]['timing_trace_id'] == last
 
 
+def test_clear_history_requires_current_admin_and_cannot_replay_against_new_failures(monkeypatch):
+    from backend.system.diagnostics import api
+    ring = failures.RecentHttpFailures()
+    monkeypatch.setattr(api, 'recent_http_failures', ring)
+    def refuse(char):
+        ring.record(trace_id='invoke_' + char * 32, method='GET', route='/fixture', status=500, duration_ms=3)
+    refuse('a')
+    http, db, admin, viewer = _client()
+    path = '/api/v1/diagnostics/cases/history'
+    header = lambda token: {'Authorization': 'Bearer ' + token}
+    try:
+        args = {'history_id': ring.snapshot()['history_id']}
+        assert http.delete(path, params=args).status_code == 401
+        assert http.delete(path, params=args, headers=header(viewer)).status_code == 403
+        assert len(ring.snapshot()['records']) == 1
+        assert http.delete(path, params=args, headers=header(admin)).json() == {'status':'cleared'}
+        assert ring.snapshot()['records'] == []
+        refuse('b')
+        assert http.delete(path, params=args, headers=header(admin)).status_code == 409
+        assert ring.snapshot()['records'][0]['trace_id'] == 'invoke_'+'b'*32
+    finally:
+        http.close(); db.close()
+
+
 def test_cases_and_export_require_current_admin_and_use_same_bounded_evidence(monkeypatch):
     from backend.system.diagnostics import api
     store = failures.RecentHttpFailures()

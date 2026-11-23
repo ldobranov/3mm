@@ -2,13 +2,14 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from backend.db.device import Device
 from backend.storage.sessions import get_db
 from backend.devices.auth import require_device
+from backend.devices.diagnostic_steps import device_step
 from backend.devices.operations import DeviceOperations
 from backend.devices.http import call
 from packages.protocol import AgentHeartbeat, AgentInventory, DeviceInventoryV2
@@ -38,13 +39,18 @@ def submit_heartbeat(
     device_id: Annotated[str, Path(pattern=r"^dev_[0-9a-f]{32}$")],
     device: Device = Depends(require_device),
     db: Session = Depends(get_db),
+    authorization: str | None = Header(default=None),
 ) -> HeartbeatAcceptedResponse:
-    if device.device_id != device_id or payload.device_id != device_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Device identity mismatch",
-        )
-    call(DeviceOperations(db, device).heartbeat, payload)
+    with device_step('device.identity_match'):
+        if device.device_id != device_id or payload.device_id != device_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Device identity mismatch",
+            )
+    with device_step('device.heartbeat_write'):
+        # require_device already verified this header, including the secret.
+        credential_id = (authorization or "").removeprefix("Device ").strip().partition(":")[0]
+        call(DeviceOperations(db, device, credential_id=credential_id).heartbeat, payload)
     return HeartbeatAcceptedResponse()
 
 

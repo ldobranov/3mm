@@ -10,7 +10,7 @@ import { authorityRequestId, readAuthorityStatus, type AuthorityStatus } from '.
 import { readConsentPreview, readConsentResult, type ApplicationConsentPreview } from './application-consent'
 import { useRecoveryLabels } from './recovery-labels'
 
-const props = defineProps<{ moduleId: string; name: string }>()
+const props = defineProps<{ moduleId: string; name: string; inspectFirst?: boolean }>()
 const emit = defineEmits<{ close: []; changed: []; reviewRecoveryRequired: [] }>()
 const label = useAuthorityLabels()
 const recoveryLabel = useRecoveryLabels()
@@ -19,6 +19,7 @@ const preview = ref<ApplicationConsentPreview | null>(null)
 const status = ref<AuthorityStatus | null>(null)
 const selected = ref<string[]>([]), selectedUser = ref<string[]>([])
 const busy = ref(false), confirmRevoke = ref(false)
+const viewing = ref(!!props.inspectFirst)
 const error = ref<AuthorityLabel | 'keyRecoveryRequired' | null>(null), notice = ref<AuthorityLabel | null>(null)
 const now = ref(Date.now())
 let deadline = 0, generation = 0
@@ -52,6 +53,12 @@ function failure(cause: unknown, mutation = false): AuthorityLabel | 'keyRecover
   return response?.status === 409 ? 'consentStale' : 'consentUnavailable'
 }
 async function load(current: number) {
+  if (viewing.value) {
+    preview.value = null; status.value = null
+    const result = await http.get(base, { timeout: 12000 })
+    if (current === generation) status.value = readAuthorityStatus(result.data)
+    return
+  }
   const started = Date.now()
   const response = await http.post(base + '/consent/preview', { request_id: authorityRequestId() }, { timeout: 12000 })
   const value = readConsentPreview(response.data, props.moduleId)
@@ -93,6 +100,7 @@ async function allow() {
     notice.value = 'consentSaved'; emit('changed')
     // Fresh server selection survives future disable/enable and dialog reloads.
     preview.value = null; status.value = null
+    viewing.value = !!props.inspectFirst
     await load(current)
   } catch (cause) {
     if (current === generation) { preview.value = null; status.value = null; error.value = saved ? 'consentUnavailable' : failure(cause, true) }
@@ -107,7 +115,9 @@ async function revoke() {
       expected_revision: status.value.grant_record_revision }, { timeout: 12000 })
     if (current !== generation) return
     if (response.data?.state !== 'revoked' || response.data.historical || response.data.replayed) throw new Error('Unconfirmed revocation')
-    confirmRevoke.value = false; notice.value = 'revoked'; emit('changed'); await load(current)
+    confirmRevoke.value = false; notice.value = 'revoked'; emit('changed')
+    viewing.value = !!props.inspectFirst
+    await load(current)
   } catch (cause) {
     if (current === generation) { preview.value = null; status.value = null; error.value = failure(cause, true) }
   } finally { if (current === generation) busy.value = false }
@@ -148,16 +158,22 @@ function sourceReason(reason: string) {
   return label(reasons[reason] || 'sourceUnavailable')
 }
 onMounted(refresh)
+function prepareChanges() {
+  if (busy.value || !viewing.value) return
+  viewing.value = false
+  void refresh()
+}
 </script>
 
 <template>
   <UiDialog :open="true" class="authority-dialog" :title="label('manage')" :close-label="label('close')" @update:open="!$event && close()">
     <div class="authority-body ui-stack" :aria-busy="busy">
-      <div><h3>{{ name }}</h3><p class="ui-help">{{ label('consentHelp') }}</p></div>
+      <div><h3>{{ name }}</h3><p class="ui-help">{{ label(viewing ? 'viewAccess' : 'consentHelp') }}</p></div>
       <p class="authority-native">{{ label('consentNative') }}</p>
       <p v-if="error" class="authority-error" role="alert">{{ error === 'keyRecoveryRequired' ? recoveryLabel(error) : label(error) }}</p>
       <p v-if="notice" class="authority-notice" role="status">{{ label(notice) }}</p>
       <p v-if="busy" class="ui-help" role="status">{{ label('consentLoading') }}</p>
+      <p v-if="viewing && status" class="authority-status" role="status">{{ label(status.mode === 'compatibility' ? 'compatAccess' : status.grant_effective ? 'effective' : status.grant_state === 'unavailable' ? 'statusOnly' : 'stale') }}</p>
       <template v-if="preview">
         <p class="authority-status" role="status">{{ label(savedLabel) }}</p>
         <p v-if="runtimeUnavailable" class="ui-help authority-runtime">{{ label('consentRuntime') }}</p>
@@ -230,8 +246,8 @@ onMounted(refresh)
           <p class="ui-help authority-artifact">{{ label('digest') }} <code>{{ preview.artifact_sha256 }}</code></p>
         </details>
       </template>
-      <IncomingReportRequests v-if="!confirmRevoke" :key="moduleId" :module-id="moduleId" />
-      <OutgoingReportApproval v-if="!confirmRevoke" :key="'sender:' + moduleId" :module-id="moduleId" />
+      <IncomingReportRequests v-if="!viewing && !confirmRevoke" :key="moduleId" :module-id="moduleId" />
+      <OutgoingReportApproval v-if="!viewing && !confirmRevoke" :key="'sender:' + moduleId" :module-id="moduleId" />
       <section v-if="confirmRevoke" class="authority-revoke ui-stack" role="region" :aria-label="label('revokeTitle')">
         <h3>{{ label('revokeTitle') }}</h3><p>{{ label('revokeHelp') }}</p>
       </section>
@@ -243,9 +259,10 @@ onMounted(refresh)
         <UiButton variant="danger" :disabled="!canRevoke" @click="revoke">{{ label('confirmRevoke') }}</UiButton>
       </template>
       <template v-else>
-        <UiButton :disabled="busy" @click="refresh">{{ label('refresh') }}</UiButton>
-        <UiButton v-if="canRevoke" variant="danger" @click="confirmRevoke = true">{{ label('revoke') }}</UiButton>
-        <UiButton variant="primary" :disabled="!canAllow" :loading="busy" @click="allow">{{ label('consentAllow') }}</UiButton>
+        <UiButton :disabled="busy" @click="refresh">{{ label(viewing ? 'refresh' : 'prepareAgain') }}</UiButton>
+        <UiButton v-if="!viewing && canRevoke" variant="danger" @click="confirmRevoke = true">{{ label('revoke') }}</UiButton>
+        <UiButton v-if="viewing" variant="primary" :disabled="busy" @click="prepareChanges">{{ label('prepareChanges') }}</UiButton>
+        <UiButton v-else variant="primary" :disabled="!canAllow" :loading="busy" @click="allow">{{ label('consentAllow') }}</UiButton>
       </template>
     </template>
   </UiDialog>

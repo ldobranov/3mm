@@ -58,7 +58,7 @@ describe('peer permissions in one consent', () => {
     const wrapper = await open()
     expect((choices(wrapper)[0]!.element as HTMLInputElement).checked).toBe(false)
     expect((choices(wrapper)[1]!.element as HTMLInputElement).checked).toBe(true)
-    await click(wrapper, 'Refresh status')
+    await click(wrapper, 'Prepare a new review')
     expect((choices(wrapper)[0]!.element as HTMLInputElement).checked).toBe(false)
     expect(http.post.mock.calls.every(call => String(call[0]).endsWith('/consent/preview'))).toBe(true)
   })

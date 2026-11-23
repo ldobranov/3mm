@@ -13,7 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from backend.system.diagnostics.catalog import CASE_REASONS, CASE_STAGES, checked_work_record, explain_case
+from backend.system.diagnostics.catalog import CASE_REASONS, CASE_STAGES, DEVICE_STAGES, checked_work_record, explain_case
 from backend.storage.observation_format import checked_sample
 from packages.protocol.diagnostic_snapshot import decode, read_regular
 
@@ -181,6 +181,13 @@ def explain(value):
         result.append({'case_id': trace, 'timing_trace_id': timing_trace, 'stage': stage, 'reason': reason, 'execution': phase,
                        'http_status': status, 'handled_refusal': handled,
                        **explain_case(stage, reason), 'automatic_replay_allowed': False})
+        if 'failed_step_ms' in row:
+            last, elapsed, total = row.get('last_passed_stage'), row['failed_step_ms'], row.get('duration_ms')
+            if (stage not in DEVICE_STAGES or last is not None and (type(last) is not str or last not in DEVICE_STAGES)
+                    or any(type(n) not in (int, float) or not 0 <= n <= 86400000 for n in (elapsed, total))
+                    or elapsed > total or timing_trace is None):
+                raise ValueError('Invalid device step observation.')
+            result[-1].update(last_passed_stage=last, failed_step_ms=elapsed, duration_ms=total)
     summary = {'schema_version': 1, 'status': value['status'], 'cases': result,
             'browser_cases': explain_browser(value.get('browser')),
             'browser': 'separate_untrusted_observations_present' if 'browser' in value else 'not_collected',
@@ -258,11 +265,17 @@ def main(argv=None):
                               + (f"Queued to latest offer: about {seconds} s." if seconds is not None
                                  else "Queued to latest offer: not measured.")
                               + " This is not device or physical execution time.")
+                        if 'permit_claimed' in delivery:
+                            print('Core recorded a one-use execution permit claim. Physical execution is not confirmed by this record.'
+                                  if delivery['permit_claimed'] else 'No one-use execution permit claim is recorded for this command.')
                 for case in result['cases']:
                     print(f"{case['case_id']} | {case['stage']} | {case['reason']}")
                     print(case['summary'])
                     if case['timing_trace_id'] is not None and case['timing_trace_id'] != case['case_id']:
                         print('The group timestamp and duration belong to its latest request, not this request.')
+                    if 'failed_step_ms' in case:
+                        print(f"Latest request: {case['failed_step_ms']} ms in failing step / {case['duration_ms']} ms total. "
+                              f"Last passed: {case['last_passed_stage'] or 'not observed'}.")
                     if case['handled_refusal']:
                         print('HTTP200 returned a discovery response; a resource check was refused, not a successful session opening.')
                     print('Next check: ' + case['next_check_help'])

@@ -105,13 +105,13 @@
         </div>
 
         <div v-show="activeSection === 'network'" id="network-settings" class="settings-anchor">
-          <NetworkConfigurationSection
+          <NetworkConfigurationSection v-if="visitedSections.has('network')"
             @config-updated="onNetworkConfigUpdated"
           />
         </div>
 
         <div v-if="isAdmin" v-show="activeSection === 'system'" id="system-settings" class="settings-anchor">
-          <SystemControlSection />
+          <SystemControlSection v-if="visitedSections.has('system')" />
         </div>
 
         <div v-if="isAdmin" v-show="activeSection === 'backups'" id="backup-settings" class="settings-anchor">
@@ -119,7 +119,7 @@
         </div>
 
         <div v-if="isAdmin" v-show="activeSection === 'diagnostics'" id="diagnostic-settings" class="settings-anchor">
-          <DiagnosticsSection />
+          <DiagnosticsSection v-if="visitedSections.has('diagnostics')" />
         </div>
       </section>
     </div>
@@ -186,6 +186,10 @@ export default defineComponent({
     // Reactive state
     const availableLanguages = ref<string[]>(['en']);
     const activeSection = ref('application');
+    // Mount device probes only when requested. Keep the mounted panel on
+    // subsequent switches so an in-progress review or recording isn't lost.
+    const visitedSections = reactive(new Set<string>());
+    watch(activeSection, section => visitedSections.add(section), { immediate: true });
     watch(() => route.query.section, section => {
       if (section === 'theme') activeSection.value = 'theme';
     }, { immediate: true });
@@ -636,6 +640,7 @@ export default defineComponent({
       availableLanguages,
       availableMenuRoutes,
       activeSection,
+      visitedSections,
       settingsSections,
       languageSettingsMap,
       currentSiteName,

@@ -197,6 +197,11 @@ def test_application_support_file_cannot_inject_process_text_or_a_foreign_case()
     value['work'] = {**cmd, 'delivery':{'recorded_attempts':2,'queue_to_latest_offer_seconds':19,
                                         'physical_time':'SECRET'}}
     assert diagnostics.explain(value)['work']['delivery'] == {'recorded_attempts':2,'queue_to_latest_offer_seconds':19}
+    for claim in (False, True):
+        value['work']['delivery']['permit_claimed'] = claim
+        assert diagnostics.explain(value)['work']['delivery']['permit_claimed'] is claim
+    value['work']['delivery']['permit_claimed'] = 'PRIVATE_MARKER'
+    with pytest.raises(ValueError): diagnostics.explain(value)
     for attempts, seconds in ((True,0),(0,2),(1,-1),(1,True),(1,10**12)):
         value['work']['delivery'] = {'recorded_attempts':attempts,'queue_to_latest_offer_seconds':seconds}
         with pytest.raises(ValueError): diagnostics.explain(value)

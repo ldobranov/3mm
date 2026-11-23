@@ -25,11 +25,12 @@ describe('Service resource report', () => {
     await d.get('input').setValue(id)
     get.mockResolvedValueOnce({data:{kind:'application_support',schema_version:1,status:'ready',cases:[],
       application:{module_id:'org.example.sample'},work:{reference:id,status:'found',recorded_state:'delivered',
-        delivery:{recorded_attempts:2,queue_to_latest_offer_seconds:24}}}})
+        delivery:{recorded_attempts:2,queue_to_latest_offer_seconds:24,permit_claimed:false}}}})
     await d.findAll('button').find(b => b.text() === 'Save app diagnostics')!.trigger('click')
     await flushPromises()
     expect(d.text()).toContain('24 s.')
     expect(d.text()).toContain('This is not device execution time.')
+    expect(d.text()).toContain('Core has not recorded a one-use permit claim')
     await d.get('input').setValue('task_' + '2'.repeat(32))
     expect(d.text()).not.toContain('24 s.')
     expect(get).toHaveBeenCalledTimes(2)

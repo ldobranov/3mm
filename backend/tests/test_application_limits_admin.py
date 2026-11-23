@@ -145,13 +145,14 @@ def test_support_joins_only_exact_task_command_and_admitted_sensor_event(lifecyc
         return explain(response.json())['work']
     assert s.client.get(path, params={'reference':'not a reference'}, headers=s.auth).status_code == 400 and not probes
     assert reference(cmd) == {'reference':cmd,'status':'found','recorded_state':'succeeded','linked_task':task,'device_event_recorded':True,
-                              'delivery':{'recorded_attempts':2,'queue_to_latest_offer_seconds':23}}
+                              'delivery':{'recorded_attempts':2,'queue_to_latest_offer_seconds':23,'permit_claimed':True}}
     assert reference(task) == {'reference':task,'status':'found','recorded_state':'running','progress':21,'start_boundary':'dispatch_recorded'}
     with Session(s.engine) as db, db.begin():
         db.get(ApplicationTaskRun, task).started=True
+        db.get(ApplicationCommandRequest, cmd).claimed=False
         db.scalar(select(DeviceCommand).where(DeviceCommand.command_id == cmd)).delivered_at=stamp-timedelta(days=1)
     assert reference(task)['start_boundary']=='start_permit_consumed'
-    assert reference(cmd)['delivery']=={'recorded_attempts':2,'queue_to_latest_offer_seconds':None}
+    assert reference(cmd)['delivery']=={'recorded_attempts':2,'queue_to_latest_offer_seconds':None,'permit_claimed':False}
     with Session(s.engine) as db, db.begin():
         db.get(ApplicationTaskRun, task).incarnation = '1'*32
     assert reference(cmd)['linked_task'] is None and reference(task)['status'] == 'not_found_in_scope'

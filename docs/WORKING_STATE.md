@@ -12,6 +12,12 @@ Updated: 2026-11-23. Start here; follow linked details only as needed.
 
 ## Active task and next result
 
+- **Core 0.3.17 maintenance release.** Base: published 0.3.16. Select only
+  the Core/admin fixes and direct regressions from the Pi-verified candidate
+  `local-92252aadd7b12c268871279b`. Rehearse update, installer rollback and
+  a real open browser tab on an isolated Full installation. Release only after
+  successful main CI for the exact commit. CAP21 authoring work is separate.
+
 - **Core 0.3.16 release correction (2026-11-23).** In the 0.3.15 tagged
   [release job](https://github.com/ldobranov/3mm/actions/runs/45080035073),
   the application saw exactly one command and Core returned 409 after

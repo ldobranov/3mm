@@ -107,13 +107,12 @@ def _database_check(database_url: str) -> tuple[DiagnosticCheck, str | None]:
     try:
         path = _database_path(database_url)
         connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
-        integrity = connection.execute("PRAGMA quick_check").fetchone()
-        revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
-        if integrity is None or integrity[0] != "ok":
-            return DiagnosticCheck(name="database", status="error", summary="SQLite quick check failed"), None
+        # The support preview runs on a live system, possibly on a slow SD
+        # card. Scanning every page holds a shared lock against writer commits.
+        revision = connection.execute("SELECT version_num FROM alembic_version LIMIT 1").fetchone()
         if revision is None or not isinstance(revision[0], str):
-            return DiagnosticCheck(name="database", status="warning", summary="SQLite is healthy; migration revision is unavailable"), None
-        return DiagnosticCheck(name="database", status="ok", summary="SQLite quick check passed"), revision[0]
+            return DiagnosticCheck(name="database", status="warning", summary="Core database is readable; migration revision is unavailable"), None
+        return DiagnosticCheck(name="database", status="ok", summary="Core database and migration revision are readable; integrity was not scanned"), revision[0]
     except (OSError, sqlite3.Error, ValueError):
         return DiagnosticCheck(name="database", status="error", summary="SQLite diagnostics are unavailable"), None
     finally:

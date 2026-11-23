@@ -51,6 +51,16 @@ const selectSection = async (wrapper: ReturnType<typeof mount>, id: string) => {
 }
 
 describe('Settings themed workspace compatibility', () => {
+  it('does not start unvisited device or diagnostic panels and keeps visited state', async () => {
+    const view = await mountView()
+    for (const [section, component] of [['network', 'NetworkConfigurationSection'], ['system', 'SystemControlSection'], ['diagnostics', 'DiagnosticsSection']]) {
+      expect(view.findComponent({ name: component }).exists()).toBe(false)
+      await selectSection(view, section)
+      const mountedPanel = view.getComponent({ name: component }).vm
+      await selectSection(view, 'application')
+      expect(view.getComponent({ name: component }).vm).toBe(mountedPanel)
+    }
+  })
   afterEach(() => { mounted.splice(0).forEach(wrapper => wrapper.unmount()); vi.restoreAllMocks() })
   beforeEach(() => {
     vi.clearAllMocks(); localStorage.clear(); localStorage.setItem('role', 'admin'); localStorage.setItem('authToken', 'test-only')

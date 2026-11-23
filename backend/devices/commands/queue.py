@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from backend.db.device import Device, DeviceCommand, DevicePlatformState, DeviceCredential
 from backend.db.module import ModuleInstallation
 from backend.devices.commands.notifier import device_command_notifier
-from backend.devices.authority import device_authority_write
+from backend.devices.authority import device_authority_write, read_bound_device, require_device_authority_session
 from backend.devices.modules.authority import module_control_snapshot, record_module_transition
 from backend.devices.features.service import command_is_supported, lock_device, read_runtime_features
 from packages.protocol import AgentCommand, AgentCommandResult
@@ -160,8 +160,18 @@ def deliver_next_command(
     now: datetime | None = None,
     delivery_lease_seconds: int = 30,
 ) -> DeviceCommand | None:
-    # Module pre-dispatch rejection can change authority. Take the common guard
-    # BEFORE device/command locks, even when the poll ultimately has no work.
+    # A negative observation cannot dispatch, renew or expire anything. The
+    # caller captures its notification revision before polling, so concurrent
+    # enqueues can wake its wait. Never select a command for delivery here.
+    require_device_authority_session(db)
+    pending = db.scalar(select(DeviceCommand.id).where(
+        DeviceCommand.device_id == device.id,
+        DeviceCommand.status.in_(("queued", "delivered")),
+    ).limit(1))
+    if pending is None:
+        require_control_authority(db, read_bound_device(db, device))
+        return None
+    # Even an expired/delivered row requires the original guard-first path.
     with device_authority_write(db, device) as (mutation, current):
         command, recovery_required = _deliver_next_command(
             db, device=current, mutation=mutation, now=now,

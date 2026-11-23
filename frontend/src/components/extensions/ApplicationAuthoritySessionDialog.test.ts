@@ -53,7 +53,7 @@ it('keeps a saved stopped session selection without another Allow request', asyn
   const current = { ...sessionStatus(), installation_enabled: false, installation_status: 'disabled' }
   http.get.mockResolvedValue({ data: current })
   http.post.mockResolvedValue({ data: { ...consentPreview(current, sessionPlan().resources, sessionModuleId), access_saved: true } })
-  await open(); await click('Refresh status')
+  await open(); await click('Prepare a new review')
   expect((choice().element as HTMLInputElement).checked).toBe(true)
   expect(wrapper.text()).toContain('Rights saved, application stopped')
   expect(http.post.mock.calls.every(call => String(call[0]).endsWith('/consent/preview'))).toBe(true)

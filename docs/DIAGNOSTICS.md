@@ -126,7 +126,23 @@ check. No SQL text, parameters, account identifiers or tokens enter this record.
 
 ## Diagnostic cases: one workflow for people and tools
 
-Settings → Support diagnostics → **Diagnostic cases** collects the current
+Settings → Diagnostics opens **Recent problems**. It makes one read, groups the
+retained Core failures by reason and shows the three most frequent descriptions.
+The download is not limited to those three: the same snapshot includes the
+individual requests, missing evidence and separate browser observations. Open
+**Show technical tools** for the case list, recorder, component status and
+optional device health checks. Opening the page does not start a recording.
+
+For Agent heartbeat and authority exchange a classified failure carries the last
+observed successful stage (or null), the failing stage, its elapsed milliseconds
+and the total request duration. These timings belong only to `timing_trace_id`.
+A busy/locked SQLite driver code is evidence of contention, not the identity of
+the writer. Rejected device credentials are not application grants. A signing
+identity error is not proof that Core was booting. Before the HTTP listener is
+available there can be no Core HTTP trace; use a separate startup observation.
+Previously exported generic errors cannot be reclassified retrospectively.
+
+The **Diagnostic cases** view collects the current
 bounded failure history, matching detailed stages and component observations.
 **Save diagnostic bundle** exports the same collected evidence, including this
 page's safe browser observations. An explicitly imported producer timeline is

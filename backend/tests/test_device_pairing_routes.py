@@ -23,8 +23,8 @@ def use_test_jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(jwt_utils, "SECRET_KEY", "test-only-key-with-at-least-32-bytes")
 
 
-def make_client() -> tuple[TestClient, Session, str, str]:
-    engine = create_engine(
+def make_client(engine=None) -> tuple[TestClient, Session, str, str]:
+    engine = engine or create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,

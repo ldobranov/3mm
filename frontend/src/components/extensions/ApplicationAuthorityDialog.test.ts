@@ -107,9 +107,9 @@ afterEach(() => {
   }
   document.body.innerHTML = ''
 })
-async function open() {
+async function open(inspectFirst = false) {
   const wrapper = mount(ApplicationAuthorityDialog, { attachTo: document.body,
-    props: { moduleId: 'org.example.reference', name: 'Reference application' } })
+    props: { moduleId: 'org.example.reference', name: 'Reference application', inspectFirst } })
   mounted.push(wrapper); await flushPromises(); return wrapper
 }
 function button(wrapper: VueWrapper, text: string) {
@@ -118,6 +118,24 @@ function button(wrapper: VueWrapper, text: string) {
   return found
 }
 describe('single explicit application consent', () => {
+  it('only reads current rights on open and refresh; only an explicit change request prepares a review', async () => {
+    const wrapper = await open(true)
+    expect(wrapper.text()).toContain('Current rights are effective')
+    await button(wrapper, 'Refresh status').trigger('click'); await flushPromises()
+    expect(http.get.mock.calls.map(call => call[0])).toEqual([base, base])
+    expect(http.post).not.toHaveBeenCalled()
+    expect(wrapper.findAll('button').map(b => b.text())).not.toContain('Allow access')
+    await button(wrapper, 'Review or change access').trigger('click'); await flushPromises()
+    expect(http.post.mock.calls.map(call => call[0])).toEqual([base + '/consent/preview'])
+  })
+  it('does not fall back to creating a plan on an unavailable status read', async () => {
+    http.get.mockRejectedValueOnce(new Error('offline'))
+    const wrapper = await open(true)
+    expect(wrapper.get('[role="alert"]').text()).toContain('could not be loaded')
+    await button(wrapper, 'Refresh status').trigger('click'); await flushPromises()
+    expect(wrapper.text()).toContain('Current rights are effective')
+    expect(http.post).not.toHaveBeenCalled()
+  })
   it('shows the reviewed host account and risk outside collapsed details before explicit approval', async () => {
     const resource = { ...sessionResource(), host_account: hostSessionAccount() }
     resource.owner.module_id = 'org.example.reference'
@@ -263,7 +281,7 @@ describe('single explicit application consent', () => {
     const wrapper = await open()
     expect(wrapper.text()).toContain('Rights saved, application stopped')
     expect(button(wrapper, 'Allow access').attributes('disabled')).toBeDefined()
-    await button(wrapper, 'Refresh status').trigger('click'); await flushPromises()
+    await button(wrapper, 'Prepare a new review').trigger('click'); await flushPromises()
     expect(wrapper.findAll('.authority-scope-choice input').filter(item => (item.element as HTMLInputElement).checked)).toHaveLength(1)
     expect(http.post.mock.calls.every(call => String(call[0]).endsWith('/consent/preview'))).toBe(true)
   })

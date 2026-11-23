@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) while remaining
 pre-1.0.
 
+## [0.3.17] - 2026-11-23
+
+- Prevent unnecessary database writes during idle Agent command polling and
+  avoid scanning the live database when previewing the diagnostics bundle.
+- Opening Application access now inspects current rights without reserving a
+  change or interfering with a command's one-use execution permit.
+- Diagnostics summarizes recent problems, identifies the failed step of device
+  exchanges and can clear recent error history without erasing receipts or
+  audit records. See the [release notes](docs/RELEASE_NOTES_0.3.17.md).
+
 ## [0.3.16] - 2026-11-23
 
 - Close CAP16 for reviewed status reports between two installations. Sender

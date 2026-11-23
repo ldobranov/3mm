@@ -4,8 +4,18 @@ from packages.protocol.diagnostic_cases import explain_failure as _explain, oper
 from packages.protocol.diagnostics import HOST_FAILURE_STAGES, REASONS, STAGES
 
 # This is the support-export catalog, not a new app SDK or host wire version.
-CATALOG_VERSION = 2
+CATALOG_VERSION = 3
 LOGIN_STAGES = frozenset({'login.account_read', 'login.session_policy', 'login.session_write', 'login.audit_write'})
+DEVICE_STAGES = frozenset({'device.credential_header', 'device.credential', 'device.credential_write', 'device.identity_match',
+                           'device.authority_snapshot', 'device.execution_permit', 'device.notification_wait', 'device.authority_sign',
+                           'device.authority_commit', 'device.heartbeat_write'})
+_DEVICE = {
+    'device_credential_refused': ('Core did not accept the Agent credential.', 'Inspect the current device enrollment and revocation state; do not change application grants.'),
+    'device_identity_mismatch': ('The request did not match the authenticated device.', 'Compare the selected device with its enrollment.'),
+    'device_access_denied': ('The authenticated device operation was refused.', 'Inspect the current device authority without granting access or resending.'),
+    'installation_identity_unavailable': ('Core could not use its installation identity.', 'Inspect installation identity availability and Core readiness. This is not an application permission denial.'),
+    'device_step_unknown': ('Core observed the failing device step but not a supported cause.', 'Inspect this step and the original request time. Duration alone does not identify the cause.'),
+}
 _STORAGE = {
     'database_busy': 'SQLite reported a busy or locked database.',
     'database_read_only': 'SQLite refused a write because the database was read-only.',
@@ -15,8 +25,8 @@ _STORAGE = {
     'database_operation_failed': 'The database operation failed without a more specific supported code.',
     'database_constraint': 'SQLite refused a change because a data constraint was not satisfied.',
 }
-CASE_STAGES = frozenset(STAGES) | LOGIN_STAGES | {'http.response'}
-CASE_REASONS = frozenset(REASONS) | _STORAGE.keys() | {'unclassified_conflict', 'server_error', 'client_refused'}
+CASE_STAGES = frozenset(STAGES) | LOGIN_STAGES | DEVICE_STAGES | {'http.response', 'core.database'}
+CASE_REASONS = frozenset(REASONS) | _STORAGE.keys() | _DEVICE.keys() | {'unclassified_conflict', 'server_error', 'client_refused'}
 WORK_ID = re.compile(r'(task|cmd)_[0-9a-f]{32}\Z')
 WORK_STATES = {
     'task': frozenset({'queued', 'running', 'succeeded', 'failed', 'expired', 'cancelled', 'unknown', 'resolved'}),
@@ -68,10 +78,18 @@ def checked_work_record(record):
                     seconds is not None and (type(seconds) is not int or not 0 <= seconds <= MAX_CLOCK_SECONDS or not attempts)):
                 raise ValueError('Invalid delivery observation')
             result['delivery'] = {'recorded_attempts': attempts, 'queue_to_latest_offer_seconds': seconds}
+            if 'permit_claimed' in delivery:
+                if type(delivery['permit_claimed']) is not bool:
+                    raise ValueError('Invalid command permit observation')
+                result['delivery']['permit_claimed'] = delivery['permit_claimed']
     return result
 
 
 def case_operation(route, stage):
+    if route == '/api/v1/devices/{device_id}/authority-exchange':
+        return 'device.authority_exchange'
+    if route == '/api/v1/devices/{device_id}/heartbeat':
+        return 'device.heartbeat'
     if stage in LOGIN_STAGES or route == '/api/user/login':
         return 'account.login'
     if isinstance(route, str) and any(route.endswith('/{module_id}/' + audience + 'operations/{operation_id}')
@@ -89,6 +107,15 @@ def case_operation(route, stage):
 
 
 def explain_case(stage, reason):
+    if stage == 'core.database' and reason in _STORAGE:
+        return {'summary': _STORAGE[reason], 'next_check': 'inspect_core_storage',
+                'next_check_help': 'Inspect Core storage at the recorded time. The inner step and writer were not identified.'}
+    if reason in _DEVICE:
+        summary, help_text = _DEVICE[reason]
+        return {'summary': summary, 'next_check': 'inspect_' + reason, 'next_check_help': help_text}
+    if stage in DEVICE_STAGES and reason in _STORAGE:
+        return {'summary': _STORAGE[reason], 'next_check': 'inspect_device_storage',
+                'next_check_help': 'Review the device step and storage status. A later writer sample cannot identify a past lock owner.'}
     if stage in LOGIN_STAGES and reason in _STORAGE:
         return {'summary': _STORAGE[reason], 'next_check': 'inspect_login_storage',
                 'next_check_help': ('Review this login stage; if busy errors recur, measure current writers in operation diagnostics. '

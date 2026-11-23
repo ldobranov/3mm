@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from backend.db.device import Device, DeviceCredential, DevicePlatformState
 from backend.applications.authority.metadata import (
-    AuthorityMetadataError, authority_transaction, read_device_control,
+    AuthorityMetadataError, authority_transaction, read_authority_guard, read_device_control,
 )
 from packages.protocol.transport import DeviceProtocolError
 
@@ -36,12 +36,23 @@ def device_authority_write(db, device, *, credential_id=None):
     device_pk, device_id = device.id, device.device_id
     db.rollback()
     with authority_transaction(db) as mutation:
-        current = db.scalar(
-            select(Device)
-            .where(Device.id == device_pk, Device.device_id == device_id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
+        current = _bound_device(db, device_pk, device_id, for_update=True, credential_id=credential_id)
+        yield mutation, current
+
+
+def read_bound_device(db, device):
+    """Validate current metadata without acquiring write authority or dispatching."""
+    require_device_authority_session(db)
+    read_authority_guard(db)
+    return _bound_device(db, device.id, device.device_id)
+
+
+def _bound_device(db, device_pk, device_id, *, for_update=False, credential_id=None):
+    query = select(Device).where(Device.id == device_pk, Device.device_id == device_id)
+    if for_update:
+        query = query.with_for_update()
+    with db.no_autoflush:
+        current = db.scalar(query.execution_options(populate_existing=True))
         if credential_id is not None:
             credential = db.scalar(select(DeviceCredential.id).where(
                 DeviceCredential.device_id == device_pk,
@@ -56,4 +67,4 @@ def device_authority_write(db, device, *, credential_id=None):
         platform = db.get(DevicePlatformState, current.id, populate_existing=True)
         if platform.authority_status != "bound" or platform.lifecycle == "revoked":
             raise AuthorityMetadataError()
-        yield mutation, current
+        return current

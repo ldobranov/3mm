@@ -94,6 +94,35 @@ def test_diagnostic_bundle_contains_health_metadata_but_not_secret_sources(tmp_p
     assert "passwords, provider keys" in content
 
 
+def test_live_database_check_is_independent_of_unrelated_table_size(tmp_path, monkeypatch):
+    from backend.system.diagnostics.bundle import _database_check
+
+    settings = _settings(tmp_path)
+    connect = sqlite3.connect
+    db = connect(tmp_path / "3mm.db")
+    try:
+        db.execute("CREATE TABLE history (id INTEGER PRIMARY KEY, content BLOB)")
+        db.executemany("INSERT INTO history(content) VALUES(zeroblob(1000))", [()] * 2048)
+        db.commit()
+        # A full integrity scan exceeds this modest instruction budget, while
+        # reading the one schema marker must fit regardless of application data.
+        db.set_progress_handler(lambda: 1, 1000)
+        with pytest.raises(sqlite3.OperationalError):
+            db.execute("PRAGMA quick_check").fetchone()
+    finally:
+        db.close()
+
+    def bounded(*args, **kwargs):
+        conn = connect(*args, **kwargs)
+        conn.set_progress_handler(lambda: 1, 1000)
+        return conn
+
+    monkeypatch.setattr(sqlite3, "connect", bounded)
+    check, revision = _database_check(settings.database_url)
+    assert check.status == "ok" and "not scanned" in check.summary
+    assert revision == "18d2e3f4a5b6"
+
+
 @pytest.fixture(autouse=True)
 def use_test_jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(jwt_utils, "SECRET_KEY", "test-only-key-with-at-least-32-bytes")

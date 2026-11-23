@@ -95,6 +95,17 @@ async def diagnostic_cases(request: Request, response: Response,
         _case_lock.release()
 
 
+@router.delete('/cases/history')
+def clear_case_history(response: Response, history_id: str = Query(pattern=r'^[0-9a-f]{32}$'),
+                       _admin: User = Depends(require_admin)):
+    """Forget volatile failure history only. No audit/receipt/recording mutation."""
+    response.headers['Cache-Control'] = 'no-store'
+    outcome = recent_http_failures.clear_history(history_id)
+    if outcome != 'cleared':
+        raise HTTPException(409, 'Diagnostic history changed or is busy; refresh its current state.')
+    return {'status': 'cleared'}
+
+
 @router.get('/cases/export')
 async def export_cases(request: Request,
                        trace_id: str | None = Query(default=None, pattern=r'^(platform|invoke)_[0-9a-f]{32}$'),

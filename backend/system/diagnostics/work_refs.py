@@ -36,7 +36,7 @@ def observe_work(db, installation, reference):
         # Current exact package + command epoch, invalidated at restore/lifecycle boundaries.
         # A reference from another owner/epoch and an unknown reference are indistinguishable.
         query = (select(DeviceCommand.status, DeviceCommand.created_at, DeviceCommand.delivered_at,
-                        DeviceCommand.delivery_attempts, Task.task_run_id, DeviceEvent.id.label('event_record'))
+                        DeviceCommand.delivery_attempts, Request.claimed, Task.task_run_id, DeviceEvent.id.label('event_record'))
                  .select_from(Request)
                  .join(DeviceCommand, DeviceCommand.command_id == Request.command_id)
                  .join(Epoch, and_(Epoch.installation_id == Request.installation_id, Epoch.generation == Request.generation))
@@ -51,7 +51,7 @@ def observe_work(db, installation, reference):
         if row is not None:
             observation.update(status='found', recorded_state=row.status, linked_task=row.task_run_id,
                                device_event_recorded=row.event_record is not None,
-                               delivery={'recorded_attempts': row.delivery_attempts,
+                               delivery={'recorded_attempts': row.delivery_attempts, 'permit_claimed': row.claimed,
                                          'queue_to_latest_offer_seconds': _queue_seconds(
                                              row.created_at, row.delivered_at, row.delivery_attempts)})
     try:

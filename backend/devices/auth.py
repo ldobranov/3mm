@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.device import Device
 from backend.devices.operations import authenticate_device
+from backend.devices.diagnostic_steps import device_step
 from backend.devices.http import call
 from backend.storage.sessions import get_db
 
@@ -23,11 +24,12 @@ def require_device(
     authorization: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_db),
 ) -> Device:
-    if not authorization or len(authorization) > 1024 or not authorization.startswith("Device "):
-        raise _unauthorized()
-    presented = authorization.removeprefix("Device ").strip()
-    credential_id, separator, secret = presented.partition(":")
-    if not separator or not credential_id or not secret:
-        raise _unauthorized()
+    with device_step('device.credential_header'):
+        if not authorization or len(authorization) > 1024 or not authorization.startswith("Device "):
+            raise _unauthorized()
+        presented = authorization.removeprefix("Device ").strip()
+        credential_id, separator, secret = presented.partition(":")
+        if not separator or not credential_id or not secret:
+            raise _unauthorized()
 
     return call(authenticate_device, db, credential_id, secret)

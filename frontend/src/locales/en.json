@@ -404,6 +404,8 @@
       },
       "noQueueTime": "Queue time was not measured.",
       "notDeviceTime": "This is not device execution time.",
+      "permitClaimed": "Core recorded a one-use permit claim. This does not confirm a physical action.",
+      "permitUnclaimed": "Core has not recorded a one-use permit claim for this command.",
       "offers": "Delivery attempts recorded by Core:",
       "queueTime": "From queuing to the latest offer, approximately:"
     },
@@ -561,6 +563,18 @@
     "passwordMismatch": "The recovery passwords do not match."
   },
   "diagnostics": {
+    "simple": {
+      "title": "Recent problems", "intro": "Check what was observed in the last 15 minutes. Save the report if you need help.",
+      "refresh": "Check again", "save": "Download report",
+      "clear": "Clear history", "confirmClear": "Yes, clear history", "cancel": "Cancel",
+      "clearHelp": "Clear recent Core errors and observations in this browser tab? New errors will still appear. Audit records and recordings are kept.",
+      "clearFailed": "Clearing was not confirmed. Check again before trying to clear history.",
+      "count": "Recorded Core failures:", "full": "The download includes all retained cases and their request identifiers.",
+      "partial": "Some checks did not return a result. This report is incomplete.",
+      "none": "No recent Core failure was retained. This is not a health guarantee.",
+      "browser": "Separate browser observations:", "stepTime": "Time in failed step",
+      "advanced": "Show technical tools", "hide": "Hide technical tools", "health": "Device health checks"
+    },
     "storageSample": {
       "title": "Who is writing to the Core database?",
       "help": "Measure five seconds of new Core connections. No queries, values or identities are recorded.",
@@ -588,6 +602,7 @@
       }
     },
     "cases": {
+      "olderTiming": "Timing and the last passed check were not retained for this request.",
       "latestTiming": "Time and duration of the latest occurrence:"
     },
     "navigation": "Diagnostics",

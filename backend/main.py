@@ -13,6 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
+import sqlite3
 from starlette.middleware.base import BaseHTTPMiddleware
 
 import backend.db.association_tables  # noqa: F401 - Import to ensure tables are created
@@ -57,7 +59,7 @@ from backend.system.network_recovery.api import router as network_recovery_route
 from backend.devices.updates.api import router as node_updates_router
 from backend.system.updates.policy import system_update_check_manager
 from backend.system.components import CoreComponents
-from backend.system.diagnostics.failures import HttpFailureMiddleware
+from backend.system.diagnostics.failures import HttpFailureMiddleware, note_database_error
 
 # Import all route routers
 from backend.settings.api import router as settings_router
@@ -147,9 +149,13 @@ class CustomErrorHandlerMiddleware(BaseHTTPMiddleware):
                 content={"error": "Validation Error", "details": exc.errors()},
             )
         except Exception as exc:
+            if isinstance(exc, (DBAPIError, sqlite3.Error)):
+                # The inner observed stage stays first. On other routes retain
+                # the driver code, never the SQL, parameters or exception text.
+                note_database_error('core.database', exc.orig if isinstance(exc, DBAPIError) else exc)
             return UnicodeJSONResponse(
                 status_code=500,
-                content={"error": "Internal Server Error", "details": str(exc)},
+                content={"error": "Internal Server Error"},
             )
 
 

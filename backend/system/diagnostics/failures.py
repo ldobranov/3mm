@@ -11,7 +11,7 @@ import threading
 import time
 import uuid
 
-from backend.system.diagnostics.catalog import CASE_REASONS as _REASONS, CASE_STAGES as _STAGES
+from backend.system.diagnostics.catalog import CASE_REASONS as _REASONS, CASE_STAGES as _STAGES, DEVICE_STAGES
 
 
 TRACE_HEADER = b'x-3mm-trace-id'
@@ -39,6 +39,8 @@ class _RequestState:
     artifact_binding: tuple[str, str] | None = None
     ambiguous_instance: bool = False
     handled_refusal: bool = False
+    last_passed: str | None = None
+    step_timing: tuple | None = None
     lock: object = field(default_factory=threading.Lock, repr=False)
 
 
@@ -62,13 +64,33 @@ def note_failure(stage, reason):
         state.lock.release()
 
 
-def note_database_error(stage, driver_error):
+def database_reason(driver_error):
     """Never inspect the statement, parameters or message, including for other drivers."""
     code = getattr(driver_error, 'sqlite_errorcode', None) if isinstance(driver_error, sqlite3.Error) else None
     reason = _DB_FAILURES.get(code & 0xff) if type(code) is int else None
-    reason = reason or 'database_operation_failed'
+    return reason or 'database_operation_failed'
+
+
+def note_database_error(stage, driver_error):
+    reason = database_reason(driver_error)
     note_failure(stage, reason)
     return reason
+
+
+def finish_device_step(stage, started, reason=None):
+    state = _current.get()
+    if state is None or stage not in DEVICE_STAGES or not state.lock.acquire(blocking=False):
+        return
+    try:
+        if not state.active:
+            return
+        if reason is None:
+            state.last_passed = stage
+        elif not state.details and reason in _REASONS:
+            state.details.append((stage, reason))
+            state.step_timing = (state.last_passed, round((time.monotonic() - started) * 1000, 3))
+    finally:
+        state.lock.release()
 
 
 def note_dispatch(phase):
@@ -153,6 +175,7 @@ class RecentHttpFailures:
         self._bytes = self._window_count = 0
         self._window = None
         self.process_id = uuid.uuid4().hex
+        self._history_id = uuid.uuid4().hex
         self._dropped = dict.fromkeys(('rate', 'busy', 'invalid', 'evicted', 'expired'), 0)
 
     def _drop(self, kind):
@@ -164,7 +187,7 @@ class RecentHttpFailures:
             self._bytes -= size
             self._drop('expired')
 
-    def record(self, *, trace_id, method, route, status, duration_ms, phase='unknown', details=(), transport='http', instance_id=None, handled_refusal=False, application_revision=None):
+    def record(self, *, trace_id, method, route, status, duration_ms, phase='unknown', details=(), transport='http', instance_id=None, handled_refusal=False, application_revision=None, step_timing=None):
         if (type(trace_id) is not str or not _TRACE.fullmatch(trace_id) or
                 type(method) is not str or method not in _METHODS or
                 type(route) is not str or route != '[unmatched]' and not _ROUTE.fullmatch(route) or
@@ -217,6 +240,10 @@ class RecentHttpFailures:
                 details=[dict(stage=stage, reason=reason) for stage, reason in details])
             if handled_refusal:
                 value['handled_refusal'] = True  # HTTP success, not successful resource admission.
+            if (stage in DEVICE_STAGES and type(step_timing) is tuple and len(step_timing) == 2
+                    and (step_timing[0] is None or type(step_timing[0]) is str and step_timing[0] in DEVICE_STAGES)
+                    and type(step_timing[1]) in (int, float) and 0 <= step_timing[1] <= duration_ms):
+                value.update(last_passed_stage=step_timing[0], failed_step_ms=step_timing[1])
             if application_revision is not None:
                 value['application_revision'] = application_revision
             fingerprint = (method, route, status, stage, reason, phase, transport, instance_id,
@@ -257,6 +284,22 @@ class RecentHttpFailures:
     def snapshot(self):
         return self._snapshot(None)
 
+    def clear_history(self, history_id):
+        """Clear only recent HTTP metadata, once for this observed history epoch."""
+        if not self._lock.acquire(blocking=False):
+            return 'busy'
+        try:
+            if history_id != self._history_id:
+                return 'changed'
+            self._records.clear()
+            self._bytes = 0
+            self._dropped = dict.fromkeys(self._dropped, 0)
+            self._history_id = uuid.uuid4().hex
+            # Keep the rate window: clearing history must not bypass collection limits.
+            return 'cleared'
+        finally:
+            self._lock.release()
+
     def application_snapshot(self, instance_id, incarnation, artifact):
         revision = observation_revision(instance_id, incarnation, artifact)
         if revision is None:
@@ -274,7 +317,7 @@ class RecentHttpFailures:
             if revision is not None:
                 return dict(status='ready', retention_seconds=self.RETENTION_SECONDS,
                             scope='matched_installation_and_package_only', records=records)
-            return dict(schema_version=2, status='ready', scope='core_process_memory', process_id=self.process_id,
+            return dict(schema_version=2, status='ready', scope='core_process_memory', process_id=self.process_id, history_id=self._history_id,
                 retention_seconds=self.RETENTION_SECONDS, max_records=self.MAX_RECORDS,
                 coalesce_seconds=self.COALESCE_SECONDS, max_retained_traces_per_group=8,
                 max_bytes=self.MAX_BYTES, buffer_bytes=self._bytes, dropped=dict(self._dropped),
@@ -321,12 +364,13 @@ class HttpFailureMiddleware:
             # A failure after a 200 has started is NOT relabelled as an HTTP500.
             observed = status if status is not None else 500 if raised else None
             try:
-                details, phase, instance_id, binding, handled = (), 'unknown', None, None, False
+                details, phase, instance_id, binding, handled, step_timing = (), 'unknown', None, None, False, None
                 if state.lock.acquire(blocking=False):
                     try:
                         details, phase = tuple(state.details), state.phase
                         instance_id, handled = state.instance_id, state.handled_refusal
                         binding = state.artifact_binding
+                        step_timing = state.step_timing
                         state.active = False
                     finally:
                         state.lock.release()
@@ -337,7 +381,7 @@ class HttpFailureMiddleware:
                         route = '[unmatched]'
                     self.store.record(trace_id=state.trace_id, method=scope.get('method'), route=route,
                         status=observed, duration_ms=(time.monotonic() - started) * 1000,
-                        phase=phase, details=details, instance_id=instance_id, handled_refusal=handled,
+                        phase=phase, details=details, instance_id=instance_id, handled_refusal=handled, step_timing=step_timing,
                         application_revision=observation_revision(instance_id, *binding) if binding else None)
             except Exception:
                 pass  # A failed optional recorder cannot fail a Core request.

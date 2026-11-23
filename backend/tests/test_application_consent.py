@@ -51,6 +51,67 @@ def read(s, kind, model, identifier):
         return _load(db, key, kind, db.get(model, identifier), identifier)
 
 
+@pytest.mark.parametrize('editing', [False, True], ids=['view-status', 'prepare-consent'])
+def test_open_access_and_in_flight_one_use_permit(state, monkeypatch, editing):
+    """Overlap the actual browse/prepare and command paths, not two synthetic flocks."""
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event, get_ident
+    from backend.applications.authority.management import AuthorityAdmissionUnavailable
+    from backend.applications.commands import broker
+    from backend.db.application_command import ApplicationCommandRequest
+    from backend.db.device import Device
+    from backend.devices.commands.queue import deliver_next_command
+    from backend.tests.test_application_authority_management import activate_grant, command
+    s = state
+    activate_grant(s)
+    with Session(s.engine) as db:
+        broker.submit_command(db, db.get(Installation, 1), command())
+        original_id = deliver_next_command(db, device=db.get(Device, 1)).command_id
+        plans_before = len(db.scalars(select(Plan.plan_id)).all())
+    inspecting, release, admitted = Event(), Event(), Event()
+    observer = []
+    subject, original_permit = s.manager._subject, broker._authorize_execution
+    def overlap(*args, **kwargs):
+        if observer == [get_ident()]:
+            inspecting.set()
+            assert release.wait(10), 'fixture did not release the access read'
+        return subject(*args, **kwargs)
+    def claim(*args, **kwargs):
+        admitted.set()
+        return original_permit(*args, **kwargs)
+    def access():
+        observer.append(get_ident())
+        return preview(s) if editing else s.manager.inspect(1)
+    def permit():
+        with Session(s.engine) as db:
+            return broker.authorize_execution(db, db.get(Device, 1), original_id)
+    monkeypatch.setattr(s.manager, '_subject', overlap)
+    monkeypatch.setattr(broker, '_authorize_execution', claim)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        view = pool.submit(access)
+        try:
+            assert inspecting.wait(10)
+            result = pool.submit(permit)
+            if editing:
+                with pytest.raises(AuthorityAdmissionUnavailable) as denied:
+                    result.result(timeout=5)
+                assert denied.value.reason == 'key_busy' and not admitted.is_set()
+            else:
+                assert admitted.wait(5), 'read-only status unexpectedly fenced command admission'
+        finally:
+            release.set()
+        observed = view.result(timeout=10)
+        if editing:
+            assert observed['preview_id']
+        else:
+            assert observed['grant_effective'] and result.result(timeout=10)['authorized']
+            with pytest.raises(ValueError):
+                permit()  # A second claim must not succeed after the overlap.
+    with Session(s.engine) as db:
+        assert db.get(ApplicationCommandRequest, original_id).claimed is (not editing)
+        assert len(db.scalars(select(Plan.plan_id)).all()) == plans_before + int(editing)
+
+
 def test_preview_is_default_selected_but_never_trust_or_resource_approval(state):
     s=state
     reviewed=preview(s)

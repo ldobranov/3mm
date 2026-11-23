@@ -110,6 +110,9 @@ async function saveSupport() {
             detail = label('support.offers') + ' ' + n + '. ' +
               (s === null ? label('support.noQueueTime') : label('support.queueTime') + ' ' + s + ' s.') +
               ' ' + label('support.notDeviceTime')
+            if (typeof work.delivery.permit_claimed === 'boolean') {
+              detail += ' ' + label(work.delivery.permit_claimed ? 'support.permitClaimed' : 'support.permitUnclaimed')
+            }
           }
         }
       }

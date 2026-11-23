@@ -1,6 +1,7 @@
 import asyncio
 import threading
 import time
+import pytest
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Response
@@ -11,6 +12,7 @@ from packages.protocol import AgentCommand, AgentCommandResult
 import backend.database  # noqa: F401
 from backend.db.base import Base
 from backend.db.authority import CoreAuthorityGuard
+from backend.applications.authority.metadata import AuthorityMetadataError
 from backend.db.device import Device, DeviceCommand, DevicePlatformState
 from backend.devices.commands.api import next_command
 from backend.devices.commands.queue import (
@@ -31,6 +33,30 @@ DEVICE_ID = "dev_0123456789abcdef0123456789abcdef"
 def _seed_authority(db, device):
     db.add_all([CoreAuthorityGuard(singleton_id=1), DevicePlatformState(device_id=device.id)])
     db.commit()
+
+
+def test_empty_command_poll_preserves_dirty_work_and_requires_existing_authority():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    try:
+        with Session(engine) as db:
+            device = Device(device_id=DEVICE_ID, display_name="test-pi", role="node",
+                            protocol_version="1.0", approved_at=datetime.now(timezone.utc))
+            db.add(device)
+            db.commit()
+            _seed_authority(db, device)
+            device.display_name = "not yet saved"
+            with pytest.raises(AuthorityMetadataError):
+                deliver_next_command(db, device=device)
+            assert device in db.dirty and device.display_name == "not yet saved"
+            db.rollback()
+            db.delete(db.get(CoreAuthorityGuard, 1))
+            db.commit()
+            with pytest.raises(AuthorityMetadataError):
+                deliver_next_command(db, device=device)
+            assert db.get(CoreAuthorityGuard, 1) is None
+    finally:
+        engine.dispose()
 
 
 def test_command_lifecycle_and_idempotent_queueing() -> None:

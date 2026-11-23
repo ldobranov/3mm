@@ -8,7 +8,7 @@ vi.mock('@/utils/i18n', () => ({
   useI18n: () => ({ t: (_key: string, fallback: string) => fallback }),
 }))
 
-import DiagnosticsSection from './DiagnosticsSection.vue'
+import DiagnosticsSection from './DiagnosticHealth.vue'
 
 describe('Support diagnostics settings', () => {
   beforeEach(() => {

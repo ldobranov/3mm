@@ -2,6 +2,9 @@ import { useI18n } from '@/utils/i18n'
 
 const en = {
   manage: 'Application access', title: 'Application resource access', close: 'Close', refresh: 'Refresh status',
+  viewAccess: 'Viewing current access does not prepare or change permissions.',
+  prepareChanges: 'Review or change access',
+  prepareAgain: 'Prepare a new review',
   consentHelp: 'Choose access for this application and your own account. You can change it later.',
   consentNative: 'This application runs native code on this device. Allow packages you trust.',
   consentAllow: 'Allow access', consentDetails: 'Permissions and details', consentLoading: 'Loading application access…',

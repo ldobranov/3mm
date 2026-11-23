@@ -8,7 +8,7 @@ The existing queue, registry, state and application contracts remain authoritati
 import hmac
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from backend.db.device import (
     Device,
@@ -20,6 +20,7 @@ from backend.db.device import (
     DeviceCapabilityState,
 )
 from backend.devices.pairing.service import credential_secret_hash
+from backend.devices.diagnostic_steps import device_step
 from backend.applications.authority.metadata import AuthorityMetadataError
 from backend.devices.pairing.enrollment import (
     enroll_node,
@@ -57,6 +58,15 @@ from packages.protocol.transport import DeviceProtocolError
 
 
 def authenticate_device(db, credential_id: str, secret: str) -> Device:
+    with device_step('device.credential'):
+        device = _verify_credential(db, credential_id, secret)
+        # Release the authentication read before the operation. An activity
+        # timestamp must never turn authorization or an idle poll into a write.
+        db.commit()
+    return device
+
+
+def _verify_credential(db, credential_id, secret):
     if not credential_id or not secret or len(credential_id) + len(secret) > 1024:
         raise DeviceProtocolError("Invalid device credential", kind="unauthorized")
     credential = db.scalar(
@@ -80,8 +90,6 @@ def authenticate_device(db, credential_id: str, secret: str) -> Device:
         )
     ):
         raise DeviceProtocolError("Invalid device credential", kind="unauthorized")
-    credential.last_used_at = datetime.now(UTC)
-    db.commit()
     return device
 
 
@@ -153,6 +161,18 @@ class DeviceOperations:
 
     def heartbeat(self, report):
         self.own(report.device_id)
+        if self.credential_id is not None:
+            # Record liveness against the exact authenticated credential in the
+            # same commit as the heartbeat. No extra transaction or cached grant.
+            matched = self.db.execute(update(DeviceCredential).where(
+                DeviceCredential.device_id == self.device.id,
+                DeviceCredential.credential_id == self.credential_id,
+                DeviceCredential.revoked_at.is_(None),
+                DeviceCredential.device.has(Device.revoked_at.is_(None) & Device.approved_at.is_not(None)),
+            ).values(last_used_at=datetime.now(UTC)), execution_options={"synchronize_session": False})
+            if matched.rowcount != 1:
+                self.db.rollback()
+                raise DeviceProtocolError("Invalid device credential", kind="unauthorized")
         self.db.add(
             DeviceHeartbeat(
                 device_id=self.device.id,

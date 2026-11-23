@@ -20,6 +20,7 @@ from backend.devices.commands.notifier import device_command_notifier
 from backend.accounts.dependencies import require_admin
 from backend.storage.sessions import get_db
 from backend.devices.auth import require_device
+from backend.devices.diagnostic_steps import device_step
 from backend.devices.http import call, database_phase
 from packages.protocol.device_platform import (
     AuthorityChallengeV1,
@@ -58,29 +59,33 @@ async def exchange(
     def snapshot(*, after_wait=False):
         # This Session is used sequentially, never concurrently. SQLite lock
         # waits/signing must not freeze unrelated WebSocket input/output.
-        if after_wait:
-            db.rollback()
-            db.refresh(device)
-        if device_id != device.device_id or payload.device_id != device_id:
-            raise HTTPException(403, "Device identity mismatch")
-        device_pk = device.id
-        revision = device_command_notifier.revision(device_pk)
-        result = _signed_call(management_payload, db, device, payload)
-        if (not after_wait and payload.operation == "command"
-                and result["command"] is None and wait_seconds):
-            # Capture plain IDs before rollback expires ORM attributes. No DB
-            # reader/writer remains across the asynchronous notification wait.
-            db.rollback()
-            return device_pk, revision, None
-        proof = _signed_call(sign_authority, db, payload, result)
-        db.commit()
+        with device_step('device.identity_match'):
+            if after_wait:
+                db.rollback()
+                db.refresh(device)
+            if device_id != device.device_id or payload.device_id != device_id:
+                raise HTTPException(403, "Device identity mismatch")
+        with device_step('device.execution_permit' if payload.operation == 'execution_permit' else 'device.authority_snapshot'):
+            device_pk = device.id
+            revision = device_command_notifier.revision(device_pk)
+            result = _signed_call(management_payload, db, device, payload)
+            if (not after_wait and payload.operation == "command"
+                    and result["command"] is None and wait_seconds):
+                # Release the DB before notification and recheck authority after waiting.
+                db.rollback()
+                return device_pk, revision, None
+        with device_step('device.authority_sign'):
+            proof = _signed_call(sign_authority, db, payload, result)
+        with device_step('device.authority_commit'):
+            db.commit()
         return device_pk, revision, proof
 
     device_pk, revision, proof = await database_phase(snapshot)
     if proof is None:
-        await device_command_notifier.wait(
-            device_pk, after=revision, timeout=wait_seconds
-        )
+        with device_step('device.notification_wait'):
+            await device_command_notifier.wait(
+                device_pk, after=revision, timeout=wait_seconds
+            )
         # Recheck revocation after the wait; old principals never bypass release.
         _, _, proof = await database_phase(snapshot, after_wait=True)
     return proof

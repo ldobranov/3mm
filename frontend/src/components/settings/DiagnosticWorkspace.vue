@@ -1,5 +1,12 @@
 <template>
-  <section class="debug-workspace" aria-labelledby="debug-workspace-title">
+  <section class="debug-workspace" aria-labelledby="diagnostic-cases-title">
+    <DiagnosticCases :compact="!advanced" :producer-snapshot="imported ? mergedSnapshot : undefined" :recording-active="active || busy" :recordable-operations="operations" @trace="traceFilter = $event" @record="recordAttempt" />
+    <button type="button" class="ui-button ui-button--secondary" :aria-expanded="advanced" aria-controls="diagnostic-tools" @click="toggleAdvanced">{{ advanced ? t('diagnostics.simple.hide', 'Hide technical tools') : t('diagnostics.simple.advanced', 'Show technical tools') }}</button>
+    <div v-if="advanced" id="diagnostic-tools">
+    <details @toggle="healthOpen = ($event.currentTarget as HTMLDetailsElement).open">
+      <summary>{{ t('diagnostics.simple.health', 'Device health checks') }}</summary>
+      <DiagnosticHealth v-if="healthOpen" />
+    </details>
     <div class="workspace-heading">
       <div><h3 id="debug-workspace-title">{{ t('diagnostics.workspace.title', 'Operation diagnostics') }}</h3>
         <p>{{ t('diagnostics.workspace.help', 'Trace a selected operation for a limited time. Diagnostics do not change execution permissions.') }}</p></div>
@@ -7,7 +14,6 @@
     </div>
     <p v-if="error" class="workspace-error" role="alert">{{ error }}</p>
     <p v-if="loading" role="status">{{ t('diagnostics.loading', 'Checking device…') }}</p>
-    <DiagnosticCases :producer-snapshot="imported ? mergedSnapshot : undefined" :recording-active="active || busy" :recordable-operations="operations" @trace="traceFilter = $event" @record="recordAttempt" />
     <StorageContentionSample />
     <div class="component-grid">
       <article v-for="item in components" :key="item.component" class="component-card">
@@ -52,14 +58,16 @@
         <tbody><tr v-for="(item,index) in filtered" :key="index"><td>{{ new Date(item.timestamp * 1000).toLocaleTimeString() }}</td><td>{{ componentName(item.component) }}<small v-if="item.source === 'imported'">{{ t('diagnostics.workspace.importedLabel', 'Imported') }}</small></td><td>{{ item.operation }}<small>{{ item.span_id }}</small></td><td>{{ item.result }}<small>{{ item.reason }}</small></td><td>{{ item.duration_ms }}</td><td><button class="trace-link" @click="traceFilter = item.trace_id">{{ item.trace_id }}</button></td></tr></tbody></table>
       <p v-else>{{ t('diagnostics.workspace.empty', 'No matching records. Start a session and perform the selected operation.') }}</p>
     </div>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
 import DiagnosticCases from './DiagnosticCases.vue'
+import DiagnosticHealth from './DiagnosticHealth.vue'
 import StorageContentionSample from './StorageContentionSample.vue'
 const { t } = useI18n()
 type Component = { component: string; version?: string; build_id: string | null; loaded_build_id?: string; health: string; reason: string }
@@ -72,6 +80,17 @@ const producerSessions = ref<{component:string;records:number;dropped:Record<str
 const mergedSnapshot = ref<any>(null)
 const traceFilter = ref(''), error = ref(''), busy = ref(false), loading = ref(false), remaining = ref(0), truncated = ref(false), imported = ref(false)
 const active = computed(() => !!session.value?.active && remaining.value > 0)
+const advanced = ref(false), healthOpen = ref(false)
+function toggleAdvanced() {
+  advanced.value = !advanced.value
+  if (advanced.value) {
+    void refresh()
+    timer=setInterval(()=>{remaining.value=Math.max(0,Math.ceil((expiryAt-Date.now())/1000))},1000)
+  } else {
+    healthOpen.value = false
+    clearInterval(timer)
+  }
+}
 const dropped = computed(() => Object.values(session.value?.dropped || {}).reduce((a,b) => a+b,0))
 const filtered = computed(() => rows.value.filter(row => !traceFilter.value || row.trace_id.includes(traceFilter.value)))
 let expiryAt = 0, generation = 0, disposed = false, timer: ReturnType<typeof setInterval> | undefined
@@ -104,12 +123,12 @@ async function stop(){await change(()=>http.delete('/api/v1/diagnostics/session'
 async function download(){busy.value=true;error.value='';try{const response=await http.get('/api/v1/diagnostics/session/records',{responseType:'blob'});if(disposed)return;const url=URL.createObjectURL(new Blob([response.data],{type:'application/x-ndjson'}));try{const anchor=document.createElement('a');anchor.href=url;anchor.download='3mm-operation-records.ndjson';anchor.click()}finally{URL.revokeObjectURL(url)}}catch{if(!disposed)failure()}finally{if(!disposed)busy.value=false}}
 function saveMerged(){if(!mergedSnapshot.value)return;const url=URL.createObjectURL(new Blob([JSON.stringify(mergedSnapshot.value,null,2)],{type:'application/json'}));try{const anchor=document.createElement('a');anchor.href=url;anchor.download='3mm-merged-diagnostics.json';anchor.click()}finally{URL.revokeObjectURL(url)}}
 async function importRecords(event:Event){const input=event.target as HTMLInputElement;const file=input.files?.[0];if(!file)return;input.value='';if(file.size>4*1024*1024){error.value=t('diagnostics.workspace.tooLarge','Export exceeds the 4 MiB import limit.');return}busy.value=true;error.value='';const current=++generation;try{const response=await http.post('/api/v1/diagnostics/timeline/merge',await file.text(),{headers:{'Content-Type':'application/x-ndjson'}});if(!disposed && current===generation){applyTimeline(response.data);imported.value=true}}catch{if(!disposed)failure()}finally{if(!disposed)busy.value=false}}
-onMounted(()=>{void refresh();timer=setInterval(()=>{remaining.value=Math.max(0,Math.ceil((expiryAt-Date.now())/1000))},1000)})
 onUnmounted(()=>{disposed=true;++generation;if(timer)clearInterval(timer)})
 </script>
 
 <style scoped>
-.debug-workspace { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--ui-border); }
+.debug-workspace { min-width:0; }
+#diagnostic-tools {margin-top:1rem} #diagnostic-tools>details {margin:1rem 0} summary {cursor:pointer}
 .workspace-heading,.timeline-heading { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
 h3,h4,p { margin:0 0 .6rem; } h3 { font-size:1.1rem; } h4 { font-size:1rem; }
 .workspace-heading p,.workspace-note,small { color:var(--ui-text-muted); }

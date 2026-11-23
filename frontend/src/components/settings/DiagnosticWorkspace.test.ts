@@ -7,7 +7,15 @@ import Workspace from './DiagnosticWorkspace.vue'
 import Cases from './DiagnosticCases.vue'
 const state=(active=false)=>({session_id:active?'a'.repeat(32):null,active,remaining_seconds:active?60:0,records:0,dropped:{full:0,rate:0,invalid:0,busy:0},scope:{profile:'diagnostic',operation:null,instance_id:null}})
 let current=state(),wrappers:ReturnType<typeof mount>[]=[]
-function mountView(){const wrapper=mount(Workspace);wrappers.push(wrapper);return wrapper}
+function mountView(advanced=true){const wrapper=mount(Workspace);wrappers.push(wrapper);if(advanced)void wrapper.get('button[aria-controls="diagnostic-tools"]').trigger('click');return wrapper}
+it('opens with a single read, no automatic recording, raw identifiers or expert panels',async()=>{
+  const wrapper=mountView(false);await flushPromises()
+  expect(http.get).toHaveBeenCalledExactlyOnceWith('/api/v1/diagnostics/cases')
+  expect(wrapper.text()).toContain('Recent problems')
+  expect(wrapper.find('form').exists()).toBe(false)
+  expect(wrapper.find('.case-filter').exists()).toBe(false)
+  expect(http.post).not.toHaveBeenCalled()
+})
 it.each([null,'c'.repeat(24)])('records the next case without widening an instance filter (%s)', async caseInstance => {
   const view=mountView();await flushPromises()
   await view.find('input[pattern]').setValue('b'.repeat(24))
@@ -20,7 +28,7 @@ beforeEach(()=>{vi.clearAllMocks();current=state();http.get.mockImplementation(a
 afterEach(()=>{wrappers.forEach(w=>w.unmount());wrappers=[];vi.useRealTimers();vi.unstubAllGlobals()})
 it('shows unknown health, missing producers and starts an explicitly scoped session',async()=>{const wrapper=mountView();await flushPromises();expect(wrapper.text()).toContain('Not observed');expect(wrapper.text()).toContain('No trace export from:');const selects=wrapper.findAll('select');await selects[0].setValue('development');await selects[2].setValue('checkpoint.get');await wrapper.find('input[pattern]').setValue('b'.repeat(24));await wrapper.find('form').trigger('submit');await flushPromises();expect(http.post).toHaveBeenCalledWith('/api/v1/diagnostics/session',{ttl_seconds:600,profile:'development',operation:'checkpoint.get',instance_id:'b'.repeat(24)});expect(wrapper.text()).toContain('Diagnostic session active');const stop=wrapper.findAll('button').find(b=>b.text()==='Stop now')!;await stop.trigger('click');await flushPromises();expect(http.delete).toHaveBeenCalledWith('/api/v1/diagnostics/session');expect(wrapper.text()).toContain('Normal mode')})
 it('expires the display without restarting a diagnostic session',async()=>{vi.useFakeTimers();current=state(true);const wrapper=mountView();await flushPromises();await vi.advanceTimersByTimeAsync(61000);expect(wrapper.text()).toContain('Normal mode');expect(http.post).not.toHaveBeenCalled()})
-it('retains a fixed error after a refused control request without echoing backend text',async()=>{http.post.mockRejectedValue({response:{data:{detail:'password=secret'}}});const wrapper=mountView();await flushPromises();await wrapper.find('form').trigger('submit');await flushPromises();expect(wrapper.find('[role="alert"]').text()).toContain('Diagnostics are unavailable');expect(wrapper.text()).not.toContain('password=secret')})
+it('retains a fixed error after a refused control request without echoing backend text',async()=>{http.post.mockRejectedValue({response:{data:{detail:'password=secret'}}});const wrapper=mountView();await flushPromises();await wrapper.find('form').trigger('submit');await flushPromises();expect(wrapper.get('#diagnostic-tools [role="alert"]').text()).toContain('Diagnostics are unavailable');expect(wrapper.text()).not.toContain('password=secret')})
 it('bounds imports before reading and sending them',async()=>{const wrapper=mountView();await flushPromises();const input=wrapper.find('input[type=file]');Object.defineProperty(input.element,'files',{value:[{size:4*1024*1024+1,text:vi.fn()}]});await input.trigger('change');await flushPromises();expect(wrapper.text()).toContain('4 MiB import limit');expect(http.post).not.toHaveBeenCalled()})
 it('ignores a late refresh after unmounting',async()=>{let resolve:(v:any)=>void=()=>{};http.get.mockImplementation(()=>new Promise(r=>{resolve=r}));const wrapper=mountView();wrapper.unmount();resolve({data:{records:[{reason:'late'}]}});await flushPromises();expect(http.post).not.toHaveBeenCalled()})
 

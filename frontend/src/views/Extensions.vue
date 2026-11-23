@@ -158,7 +158,7 @@
                    </UiButton>
                    <UiButton v-if="isAdmin && ext.source === 'application' && ext.is_installed && ext.can_manage"
                      class="authority-manage-btn" :disabled="operationBusy !== null"
-                     @click="authorityTarget = { moduleId: ext.id.replace('application:', ''), name: ext.name }">
+                     @click="authorityTarget = { moduleId: ext.id.replace('application:', ''), name: ext.name, inspectFirst: true }">
                      <i class="bi bi-shield-check" aria-hidden="true"></i>{{ authorityLabel('manage') }}
                    </UiButton>
                    <UiButton v-if="isAdmin && ext.source === 'application' && ext.is_installed && ext.can_manage && applicationPackageSha(ext, ext.version)"
@@ -216,7 +216,7 @@
       :module-id="limitsTarget.id.slice('application:'.length)" :name="limitsTarget.name"
       @close="limitsTarget = null" />
     <ApplicationAuthorityDialog v-if="isAdmin && authorityTarget" :key="authorityTarget.moduleId"
-      :module-id="authorityTarget.moduleId" :name="authorityTarget.name"
+      :module-id="authorityTarget.moduleId" :name="authorityTarget.name" :inspect-first="authorityTarget.inspectFirst"
       @close="authorityTarget = null" @changed="loadExtensions" @review-recovery-required="reviewRecovery?.refresh()" />
     <ApplicationRecoveryDialog v-if="isAdmin && recoveryTarget" :key="recoveryTarget.id"
       :module-id="recoveryTarget.id.replace('application:', '')" :name="recoveryTarget.name"
@@ -379,7 +379,7 @@ const router = useRouter();
 const label = useUiLabels();
 const authorityLabel = useAuthorityLabels();
 const limitsTarget = ref<Extension | null>(null);
-const authorityTarget = ref<{ moduleId: string; name: string } | null>(null);
+const authorityTarget = ref<{ moduleId: string; name: string; inspectFirst?: boolean } | null>(null);
 const reviewRecovery = ref<InstanceType<typeof ApplicationReviewRecovery> | null>(null);
 const commandResourceLabel = useCommandResourceLabels();
 const commandResourceTarget = ref<{ moduleId: string; name: string; packageSha: string } | null>(null);
