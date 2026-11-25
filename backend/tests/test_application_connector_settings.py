@@ -32,7 +32,7 @@ pytestmark = pytest.mark.skipif(os.name != 'posix', reason='Real Core-owned seal
 PASSWORD = 'DO_NOT_DISCLOSE_CONNECTOR_PASSWORD'
 
 
-def repack(s, authentication='basic', *, relational=False, multiple=False, credential_pattern=None, optional=False):
+def repack(s, authentication='basic', *, relational=False, multiple=False, credential_pattern=None, optional=False, default_origin=None):
     manifest = s.validated.manifest.model_dump(mode='json')
     definition = s.validated.application_extension.model_dump(mode='json')
     definition['command_bindings'] = []
@@ -65,6 +65,8 @@ def repack(s, authentication='basic', *, relational=False, multiple=False, crede
         required += ['OTHER_URL', 'OTHER_CREDENTIAL']
     manifest.update(configuration_schema={'type': 'object', 'properties': properties,
         'required': required, 'additionalProperties': False}, configuration_defaults={'NOTE': 'preserve me'})
+    if default_origin is not None:
+        manifest['configuration_defaults']['API_URL'] = default_origin
     output = io.BytesIO()
     with zipfile.ZipFile(s.archive) as previous, zipfile.ZipFile(output, 'w') as archive:
         archive.writestr('manifest.json', json.dumps(manifest))
@@ -141,12 +143,27 @@ def test_first_setup_is_atomic_inert_and_credentials_never_escape(fresh, authent
     assert 'connector:business_api' in preview['scopes']
 
 
+@pytest.mark.parametrize('origin,expected', [
+    ('https://api.example.test/', 'https://api.example.test'),
+    ('https://user:password@api.example.test', None),
+    ('https://api.example.test/?secret=hidden', None),
+    (None, None),
+])
+def test_suggestion_is_only_a_plain_origin_and_never_creates_a_binding(fresh, origin, expected):
+    repack(fresh, default_origin=origin)
+    state = inspect(fresh)['connectors'][0]
+    assert state['suggested_origin'] == expected and state['destination_origin'] is None
+    assert state['state'] == 'unconfigured' and state['authority'] == 'not_granted'
+    assert counts(fresh) == (0, 0, 0)
+
+
 def test_inert_partial_multiple_connectors_and_configuration_provenance(fresh):
     s = fresh
     repack(s, multiple=True)
     result, _ = save(s)
-    with pytest.raises(authority.AuthorityManagementError):
+    with pytest.raises(authority.ConnectorSetupRequired) as refusal:
         consent_preview(s.manager, 1, actor_token=s.token, request_id=identity())
+    assert (refusal.value.connector_id, refusal.value.artifact_sha256) == ('other_api', s.validated.sha256)
     save(s, connector='other_api')
     preview = consent_preview(s.manager, 1, actor_token=s.token, request_id=identity())
     assert {'connector:business_api', 'connector:other_api'} <= set(preview['scopes'])

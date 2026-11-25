@@ -45,6 +45,19 @@ async function draft(wrapper: ReturnType<typeof mount>) {
 }
 
 describe('Core-owned connector settings', () => {
+  it('opens the named connector with an editable suggestion, without saving or granting', async () => {
+    const data = connectorSettings()
+    client.inspect.mockResolvedValue({ ...data, connectors: [...data.connectors,
+      { ...data.connectors[0], connector_id: 'quotes', suggested_origin: 'https://prices.example' }] })
+    const wrapper = mount(Dialog, { props: { packageSha: settingsSha, name: 'Quotes', initialConnector: 'quotes' } })
+    wrappers.push(wrapper); await flushPromises()
+    expect((wrapper.get('.connector-origin').element as HTMLInputElement).value).toBe('https://prices.example')
+    expect(wrapper.text()).toContain('Check it before saving')
+    await wrapper.get('.connector-origin').setValue('https://chosen.example')
+    await wrapper.findAll('button').find(b => b.text() === 'Back to access review')!.trigger('click')
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    expect(client.save).not.toHaveBeenCalled()
+  })
   it('cancel and initial reads do not create credentials, configure or contact the service', async () => {
     const wrapper = await render(); await draft(wrapper)
     await wrapper.findAll('button').find(b => b.text() === 'Close')!.trigger('click')

@@ -6,10 +6,10 @@ import { authorityRequestId } from './authority-management'
 import { createConnectorSettingsClient, ConnectorSettingsError, type ConnectorSettings, type ConnectorSave, type ConnectorOutcome } from './connector-settings'
 import { useConnectorSettingsLabels } from './connector-settings-labels'
 
-const props = defineProps<{ packageSha: string; name: string }>()
+const props = defineProps<{ packageSha: string; name: string; initialConnector?: string }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
 const label = useConnectorSettingsLabels(), client = createConnectorSettingsClient(props.packageSha)
-const data = ref<ConnectorSettings | null>(null), connectorId = ref(''), origin = ref(''), mode = ref('create'), secretRef = ref('')
+const data = ref<ConnectorSettings | null>(null), connectorId = ref(props.initialConnector ?? ''), origin = ref(''), mode = ref('create'), secretRef = ref('')
 const credentialLabel = ref(''), username = ref(''), password = ref(''), header = ref('X-API-Key')
 const action = ref<ConnectorSave['action']>('save'), confirmed = ref(false), busy = ref(false), message = ref(''), applied = ref(false)
 const pending = ref<string | null>(null)
@@ -35,7 +35,7 @@ const errorLabel = computed(() => errorLabels[message.value as keyof typeof erro
 function clearCredential() { username.value = ''; password.value = ''; credentialLabel.value = ''; header.value = 'X-API-Key' }
 function choose() {
   clearCredential(); action.value = 'save'; confirmed.value = false; applied.value = false
-  origin.value = connector.value?.destination_origin ?? ''
+  origin.value = connector.value?.destination_origin ?? connector.value?.suggested_origin ?? ''
   secretRef.value = connector.value?.credential?.revoked ? '' : connector.value?.credential?.secret_ref ?? ''
   mode.value = secretRef.value ? 'existing' : 'create'
 }
@@ -176,6 +176,7 @@ onBeforeUnmount(() => { disposed = true; clearCredential() })
           <template v-if="action === 'save'">
             <label class="ui-field">{{ label('origin') }}
               <input v-model="origin" class="ui-control connector-origin" type="url" :disabled="busy" required placeholder="https://example.com" />
+              <small v-if="!connector.destination_origin && connector.suggested_origin && origin === connector.suggested_origin">{{ label('suggestion') }}</small>
             </label>
             <template v-if="connector.authentication !== 'none'">
               <label class="ui-field">{{ label('credential') }}
@@ -227,7 +228,7 @@ onBeforeUnmount(() => { disposed = true; clearCredential() })
       <p v-else-if="data">{{ label('empty') }}</p>
     </div>
     <template #actions>
-      <UiButton :disabled="busy" @click="close">{{ label('close') }}</UiButton>
+      <UiButton :disabled="busy" @click="close">{{ label(initialConnector ? 'review' : 'close') }}</UiButton>
       <UiButton v-if="!pending" :disabled="busy" @click="refresh">{{ label('refresh') }}</UiButton>
     </template>
   </UiDialog>

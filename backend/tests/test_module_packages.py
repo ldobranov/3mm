@@ -478,36 +478,25 @@ def test_application_package_requires_declared_secret_safe_configuration():
         )
 
 
-@pytest.mark.asyncio
-async def test_application_package_upload_is_staged_without_automatic_activation(monkeypatch, tmp_path):
+def test_application_package_upload_is_staged_without_automatic_activation(monkeypatch, tmp_path):
+    from fastapi import UploadFile
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
     from backend.artifacts import api as modules
-
-    class Upload:
-        async def read(self, _limit):
-            return application_package()
-
-    class DB:
-        def __init__(self):
-            self.record = None
-
-        def add(self, record):
-            self.record = record
-
-        def commit(self):
-            pass
+    from backend.db.base import Base
+    from backend.db.module import ApplicationExtensionInstallation, ModulePackage
 
     settings = type("Settings", (), {"backend": type("Backend", (), {"uploads_dir": tmp_path})()})()
     monkeypatch.setattr(modules, "get_settings", lambda: settings)
     monkeypatch.setattr(modules, "compile_ui_package", lambda *_args: None)
-    monkeypatch.setattr(
-        modules,
-        "ModulePackage",
-        lambda **values: type("PackageRecord", (), values)(),
-    )
-    db = DB()
-
-    result = await modules.upload_package(Upload(), object(), db)
-
-    assert result.module_id == "org.3mm.workflow-reference"
-    assert db.record is result
-    assert not hasattr(result, "enabled")
+    engine = create_engine("sqlite:///" + str(tmp_path / "catalog.db"))
+    try:
+        Base.metadata.create_all(engine)
+        with Session(engine) as db:
+            result = modules.upload_package(UploadFile(io.BytesIO(application_package())), object(), db)
+            assert result.module_id == "org.3mm.workflow-reference"
+        with Session(engine) as reader:
+            assert reader.scalars(select(ModulePackage.module_id)).all() == ["org.3mm.workflow-reference"]
+            assert reader.scalar(select(ApplicationExtensionInstallation.id)) is None
+    finally:
+        engine.dispose()

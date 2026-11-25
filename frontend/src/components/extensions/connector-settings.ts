@@ -7,6 +7,7 @@ export interface ConnectorState {
   connector_id: string; artifact_sha256: string; snapshot: string
   authentication: 'none' | 'basic' | 'bearer' | 'api_key'
   allowed_schemes: readonly string[]; path_prefix: string; destination_origin: string | null
+  suggested_origin?: string | null
   credential: null | { secret_ref: string; label: string; version: number; revoked: boolean }
   affected_connector_ids: readonly string[]; reasons: readonly string[]
   state: 'unconfigured' | 'configured' | 'disabled' | 'unavailable'
@@ -47,12 +48,14 @@ function state(v: unknown, sha: string): ConnectorState {
       || v.allowed_schemes.some(s => !['http', 'https'].includes(s)) || typeof v.path_prefix !== 'string'
       || !strings(v.affected_connector_ids) || !strings(v.reasons)
       || (v.destination_origin !== null && typeof v.destination_origin !== 'string')
+      || (v.suggested_origin != null && (typeof v.suggested_origin !== 'string' || v.suggested_origin.length > 512))
       || !['none','basic','bearer','api_key'].includes(String(v.authentication))
       || !['unconfigured','configured','disabled','unavailable'].includes(String(v.state))
       || !['not_granted','granted','stale'].includes(String(v.authority))) fail()
   return { connector_id: v.connector_id, artifact_sha256: sha, snapshot: v.snapshot,
     authentication: v.authentication as ConnectorState['authentication'], allowed_schemes: [...v.allowed_schemes],
     path_prefix: v.path_prefix, destination_origin: v.destination_origin as string | null,
+    suggested_origin: v.suggested_origin as string | null | undefined,
     credential: v.credential === null ? null : credential(v.credential), affected_connector_ids: [...v.affected_connector_ids],
     reasons: [...v.reasons], state: v.state as ConnectorState['state'], authority: v.authority as ConnectorState['authority'] }
 }

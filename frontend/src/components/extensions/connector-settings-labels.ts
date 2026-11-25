@@ -1,6 +1,9 @@
 import { useI18n } from '@/utils/i18n'
 
 const en = {
+  missing: 'Set up this connection before reviewing access:', configure: 'Set up connection',
+  suggestion: 'Suggested service address. Check it before saving. Saving does not grant access.',
+  review: 'Back to access review', openApp: 'Open',
   title: 'Application settings', connector: 'Connector', origin: 'Service address', path: 'Allowed path',
   help: 'Configure the connection in Core. Saving does not contact the service or start the application.',
   access: 'Saving requires fresh access approval. If the application is running, switch it off, review Application access, then activate it again.',
@@ -20,6 +23,9 @@ const en = {
   empty: 'This package has no connector settings.',
 } as const
 const bg: Record<keyof typeof en, string> = {
+  missing: 'Преди да прегледате правата, настройте връзката:', configure: 'Настройте връзката',
+  suggestion: 'Предложен адрес на услугата. Проверете го преди запис. Записът не дава права.',
+  review: 'Обратно към правата', openApp: 'Отвори',
   title: 'Настройки на приложението', connector: 'Връзка', origin: 'Адрес на услугата', path: 'Разрешен път',
   help: 'Настройвате връзката в Core. Записът не се свързва с услугата и не стартира приложението.',
   access: 'Записът изисква ново одобрение на правата. Ако приложението работи, изключете го, прегледайте правата и го активирайте отново.',

@@ -139,6 +139,17 @@ describe('Extensions management workflow', () => {
       wrapper.get('agent-modules-inventory-stub').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  it.each([
+    ['administrator', '/readings', 'a', '/readings'], ['operator', '/readings', 'b', null],
+    ['kiosk', '/readings', 'a', null], ['administrator', '//other.test', 'a', null],
+  ])('offers only a current, local, browser-accessible route (%s %s %s)', async (audience, route, digest, expected) => {
+    compiledUi.getCatalog.mockResolvedValue([{ module_id: 'org.3mm.clock', version: '1.2.0', source_sha256: digest!.repeat(64),
+      entrypoints: [{kind:'route', route, application_audience:audience, navigation:false}] }])
+    const wrapper = await mountView()
+    const link = wrapper.find('a.application-open')
+    expect(link.exists() ? link.attributes('href') : null).toBe(expected)
+  })
+
   it('offers explicit review recovery independently of the app list, with read-only recovery after a lost reply', async () => {
     const base = '/api/v1/application-extensions/authority/review-key-recovery'
     const ticket = { expected_key_id: 'review_' + 'a'.repeat(32), expected_generation: 'b'.repeat(32) }

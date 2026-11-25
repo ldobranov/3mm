@@ -6,6 +6,7 @@ import argparse
 import os
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
 from pathlib import Path, PurePosixPath
 from threading import Thread
 from typing import Sequence
@@ -59,8 +60,24 @@ class SPARequestHandler(SimpleHTTPRequestHandler):
 
         route = PurePosixPath(urlsplit(self.path).path)
         requested_file = Path(self.translate_path(self.path))
-        if not requested_file.exists() and route.suffix == "":
-            self.path = "/index.html"
+        root = Path(self.directory)
+        if requested_file in (root, root / "index.html") or (
+            not requested_file.exists() and route.suffix == ""
+        ):
+            # The same URL selects a different shell after update *or rollback*.
+            # Old clients can send a newer If-Modified-Since than the current kit.
+            # Do not date-validate this small document or leave it in browser caches.
+            try:
+                entry = (root / "index.html").read_bytes()
+            except OSError:
+                self.send_error(404, "Interface not found")
+                return None
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(entry)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return BytesIO(entry)
         return super().send_head()
 
 

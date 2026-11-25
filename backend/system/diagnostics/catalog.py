@@ -25,8 +25,33 @@ _STORAGE = {
     'database_operation_failed': 'The database operation failed without a more specific supported code.',
     'database_constraint': 'SQLite refused a change because a data constraint was not satisfied.',
 }
-CASE_STAGES = frozenset(STAGES) | LOGIN_STAGES | DEVICE_STAGES | {'http.response', 'core.database'}
-CASE_REASONS = frozenset(REASONS) | _STORAGE.keys() | _DEVICE.keys() | {'unclassified_conflict', 'server_error', 'client_refused'}
+_UI_BUILD = {
+    'compiler_entry_unreadable': ('Core could not read the installed UI compiler. Compilation did not start.',
+                                  'Check the installed toolchain and its file access before changing the application package.'),
+    'compiler_process_error': ('The operating system reported an error running the UI compiler.',
+                               'Check that the installed UI compiler and its runtime are accessible. This is not an application permission denial.'),
+    'compiler_timeout': ('The UI compiler did not finish within its time limit.',
+                         'Check device load and compare with the same package in the authoring environment.'),
+    'compiler_unsuccessful_exit': ('The UI compiler exited unsuccessfully.',
+                                   'Check this package with the local authoring tool and inspect its build log. The exit status alone does not identify a source defect.'),
+    'compiler_output_invalid': ('The UI compiler reported success but its interface files could not be validated.',
+                                'Check the generated entrypoint index and referenced files for this package and compiler. Do not change application permissions.'),
+    'compiler_unknown': ('The UI compiler failed without a recognized process result.',
+                         'Compare the exact package and toolchain with the local authoring check.'),
+}
+_PACKAGE_STORE = {
+    ('package.admission', 'package_store_busy'): (
+        'Core is already storing a package. This request did not start package processing.',
+        'Check the catalog after the current operation finishes. This refusal does not describe its outcome.'),
+    ('package.catalog_check', 'package_version_conflict'): (
+        'This module version is already registered with different contents. The candidate was not built.',
+        'Inspect the registered package. Use a new version for changed contents.'),
+    ('package.catalog_commit', 'package_version_conflict'): (
+        'Different contents are already registered for this module version. The candidate was not registered.',
+        'Inspect the registered package. A registration conflict does not mean compilation was skipped.'),
+}
+CASE_STAGES = frozenset(STAGES) | LOGIN_STAGES | DEVICE_STAGES | {'http.response', 'core.database', 'package.ui_compile'} | {s for s, _ in _PACKAGE_STORE}
+CASE_REASONS = frozenset(REASONS) | _STORAGE.keys() | _DEVICE.keys() | _UI_BUILD.keys() | {'unclassified_conflict', 'server_error', 'client_refused'} | {r for _, r in _PACKAGE_STORE}
 WORK_ID = re.compile(r'(task|cmd)_[0-9a-f]{32}\Z')
 WORK_STATES = {
     'task': frozenset({'queued', 'running', 'succeeded', 'failed', 'expired', 'cancelled', 'unknown', 'resolved'}),
@@ -86,6 +111,10 @@ def checked_work_record(record):
 
 
 def case_operation(route, stage):
+    if stage == 'package.ui_compile':
+        return 'package.ui_build'
+    if stage in {'package.admission', 'package.catalog_check', 'package.catalog_commit'}:
+        return 'package.store'
     if route == '/api/v1/devices/{device_id}/authority-exchange':
         return 'device.authority_exchange'
     if route == '/api/v1/devices/{device_id}/heartbeat':
@@ -106,7 +135,17 @@ def case_operation(route, stage):
     return None
 
 
+def compiler_case_reason(reason):
+    return reason if type(reason) is str and reason in _UI_BUILD else 'compiler_unknown'
+
+
 def explain_case(stage, reason):
+    if (stage, reason) in _PACKAGE_STORE:
+        summary, help_text = _PACKAGE_STORE[stage, reason]
+        return {'summary': summary, 'next_check': 'inspect_package_catalog', 'next_check_help': help_text}
+    if stage == 'package.ui_compile' and reason in _UI_BUILD:
+        summary, help_text = _UI_BUILD[reason]
+        return {'summary': summary, 'next_check': 'inspect_ui_build', 'next_check_help': help_text}
     if stage == 'core.database' and reason in _STORAGE:
         return {'summary': _STORAGE[reason], 'next_check': 'inspect_core_storage',
                 'next_check_help': 'Inspect Core storage at the recorded time. The inner step and writer were not identified.'}

@@ -33,7 +33,7 @@ from backend.db.application_authority_grant import (
 )
 from backend.db.audit_log import AuditLog
 from backend.db.authority import CoreAuthorityGuard, new_authority_generation
-from backend.db.module import ApplicationExtensionInstallation
+from backend.db.module import ApplicationExtensionInstallation, ApplicationConnectorBinding
 from backend.applications.authority.context import (
     AuthorityReviewContextV1, AuthorityReviewContextV2, AuthoritySelectionV1, AuthoritySelectionV2,
     AuthorityReviewContextV3, AuthoritySelectionV3,
@@ -82,6 +82,14 @@ class AuthorityManagementError(Exception):
     def __init__(self, reason="authority_unavailable"):
         self.reason = reason
         super().__init__("Application authority unavailable: " + reason)
+
+
+class ConnectorSetupRequired(AuthorityManagementError):
+    """Actionable only on an authenticated preview, never an approval."""
+    def __init__(self, connector_id, artifact_sha256):
+        super().__init__('connector_setup_required')
+        self.connector_id = connector_id
+        self.artifact_sha256 = artifact_sha256
 
 
 class AuthorityAdmissionUnavailable(ValueError):
@@ -303,7 +311,28 @@ class ApplicationAuthorityManager:
                 proposed_configuration=proposed_configuration)
             result = _compose(db, installation_id, *prepared, key,
                 proposed_configuration=proposed_configuration, queries=queries)
-        except (AuthorityManagementError, _Unavailable):
+        except _Unavailable as exc:
+            if diagnostics is not None:
+                definition = prepared.package.application_extension
+                if exc.issue.reason == 'connector_binding_unavailable':
+                    for connector in definition.connectors:
+                        if exc.issue.scope == f'connector:{connector.connector_id}':
+                            raise ConnectorSetupRequired(connector.connector_id, prepared.pin.sha256) from None
+                elif exc.issue.reason == 'configuration_unresolved' and exc.issue.scope is None and definition.connectors:
+                    # A partial first setup can fail schema validation before
+                    # resource resolution. Name a prerequisite only if both its
+                    # required field and its binding are demonstrably absent.
+                    config = db.scalar(select(ApplicationExtensionInstallation.configuration).where(
+                        ApplicationExtensionInstallation.id == installation_id))
+                    bound = set(db.scalars(select(ApplicationConnectorBinding.connector_id).where(
+                        ApplicationConnectorBinding.application_installation_id == installation_id)))
+                    for c in definition.connectors:
+                        if (isinstance(config, dict) and c.connector_id not in bound
+                                and f'connector:{c.connector_id}' not in definition.optional_resources
+                                and any(k and k not in config for k in (c.destination_config_key, c.credential_ref_config_key))):
+                            raise ConnectorSetupRequired(c.connector_id, prepared.pin.sha256) from None
+            raise AuthorityManagementError('unsupported_authority') from None
+        except AuthorityManagementError:
             raise AuthorityManagementError('unsupported_authority') from None
         subject = result.subject
         if subject is not None and subject.has_executable_frontend and prepared.built_ui_sha256:

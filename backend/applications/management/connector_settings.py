@@ -194,11 +194,23 @@ def _inspection(manager, db, key, prepared, app):
                     or secret['authentication'] != declaration.authentication
                     or configuration.get(declaration.credential_ref_config_key) != secret['secret_ref']):
                 reasons.append('connector_credential_unavailable')
+        suggested_origin = None
+        if binding is None:
+            candidate = configuration.get(declaration.destination_config_key)
+            # Share only a plain service origin, never a stored configuration
+            # object, URL with credentials, path, query, or opaque secret.
+            if isinstance(candidate, str) and len(candidate) <= 512 and re.fullmatch(
+                    r'https?://[a-zA-Z0-9.\[\]:_-]+/?', candidate):
+                try:
+                    suggested_origin = validate_destination_origin(candidate, declaration.allowed_schemes)
+                except (ValueError, ApplicationConnectorError):
+                    pass
         affected = sorted(b['connector_id'] for b in bindings if secret and b['secret_id'] == secret['id'])
         states.append(dict(connector_id=declaration.connector_id, artifact_sha256=prepared.sha256,
             snapshot=snapshot, authentication=declaration.authentication,
             allowed_schemes=list(declaration.allowed_schemes), path_prefix=declaration.path_prefix,
             destination_origin=binding['origin'] if binding else None,
+            suggested_origin=suggested_origin,
             credential=None if secret is None else {k: secret[k] for k in ('secret_ref', 'label', 'version', 'revoked')},
             affected_connector_ids=affected, reasons=reasons,
             state='unconfigured' if binding is None else 'disabled' if not binding['enabled'] else 'unavailable' if reasons else 'configured',

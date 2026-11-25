@@ -29,6 +29,18 @@ class CompiledUiBuildError(RuntimeError):
     pass
 
 
+class CompiledUiProcessError(CompiledUiBuildError):
+    """A typed compiler failure; free-form detail belongs in the local build log."""
+
+    def __init__(self, reason: str, detail: str):
+        super().__init__(detail)
+        self.reason = reason
+
+
+class _InvalidOutputIndex(CompiledUiBuildError):
+    """Missing/inconsistent compiler output, distinct from an OS access error."""
+
+
 @dataclass(frozen=True, slots=True)
 class CompiledUiArtifact:
     module_id: str
@@ -78,11 +90,8 @@ def _load_artifact(path: Path, validated: ValidatedModulePackage) -> CompiledUiA
         raise CompiledUiBuildError("Compiled UI build evidence is unavailable") from exc
     try:
         metadata = json.loads((path / "artifact.json").read_text(encoding="utf-8"))
-        index = json.loads((path / "entrypoints.json").read_text(encoding="utf-8"))
-        entries = index["entries"]
-        styles = tuple(index.get("styles", []))
-    except (OSError, KeyError, json.JSONDecodeError, TypeError) as exc:
-        raise CompiledUiBuildError("compiled UI artifact index is invalid") from exc
+    except (OSError, ValueError, RecursionError) as exc:
+        raise CompiledUiBuildError("compiled UI artifact identity is unreadable") from exc
 
     if metadata != {
         "module_id": validated.manifest.module_id,
@@ -91,20 +100,31 @@ def _load_artifact(path: Path, validated: ValidatedModulePackage) -> CompiledUiA
     }:
         raise CompiledUiBuildError("compiled UI artifact identity does not match its source package")
 
-    expected_ids = {item.entrypoint_id for item in validated.compiled_ui.entrypoints}
-    if set(entries) != expected_ids:
-        raise CompiledUiBuildError("compiled UI artifact entrypoints do not match the source contract")
+    try:
+        index = json.loads((path / "entrypoints.json").read_text(encoding="utf-8"))
+    except (FileNotFoundError, NotADirectoryError, ValueError, RecursionError) as exc:
+        raise _InvalidOutputIndex("compiled UI artifact index is invalid") from exc
+    except OSError as exc:
+        raise CompiledUiBuildError("compiled UI artifact index could not be read") from exc
+    entries = index.get("entries") if isinstance(index, dict) else None
+    if not isinstance(entries, dict) or set(entries) != {item.entrypoint_id for item in validated.compiled_ui.entrypoints}:
+        raise _InvalidOutputIndex("compiled UI artifact entrypoints do not match the source contract")
+    styles = index.get("styles", [])
+    if not isinstance(styles, list):
+        raise _InvalidOutputIndex("compiled UI artifact styles list is invalid")
     for relative in [*entries.values(), *styles]:
+        if not isinstance(relative, str) or not relative or "\x00" in relative:
+            raise _InvalidOutputIndex("compiled UI artifact references an invalid output file")
         target = (path / relative).resolve()
         if path.resolve() not in target.parents or not target.is_file():
-            raise CompiledUiBuildError("compiled UI artifact references an invalid output file")
+            raise _InvalidOutputIndex("compiled UI artifact references an invalid output file")
     return CompiledUiArtifact(
         module_id=validated.manifest.module_id,
         version=validated.manifest.version,
         source_sha256=validated.sha256,
         path=path,
         entrypoints=entries,
-        styles=styles,
+        styles=tuple(styles),
         built_ui_sha256=built_ui_sha256,
     )
 
@@ -114,13 +134,15 @@ def compile_ui_package(
     validated: ValidatedModulePackage,
     *,
     timeout_seconds: int | None = None,
+    artifacts_dir: Path | None = None,
+    compiler_script: Path | None = None,
 ) -> CompiledUiArtifact:
     if validated.compiled_ui is None:
         raise CompiledUiBuildError("module package does not contain compiled UI source")
     if timeout_seconds is None:
         timeout_seconds = 300 if platform.machine() == "armv6l" else 90
 
-    root = compiled_artifacts_dir().resolve()
+    root = (artifacts_dir if artifacts_dir is not None else compiled_artifacts_dir()).resolve()
     destination = (
         root
         / validated.manifest.module_id
@@ -145,8 +167,11 @@ def compile_ui_package(
             archive.extractall(workspace)
 
         _validate_source_imports(workspace)
-        compiler = _compiler_script()
-        compiler_sha256 = hashlib.sha256(compiler.read_bytes()).hexdigest()
+        compiler = compiler_script.resolve() if compiler_script is not None else _compiler_script()
+        try:
+            compiler_sha256 = hashlib.sha256(compiler.read_bytes()).hexdigest()
+        except OSError as exc:
+            raise CompiledUiProcessError("compiler_entry_unreadable", "The UI compiler entry file could not be read.") from exc
         command = [
             _compiler_node(),
             str(compiler),
@@ -184,12 +209,16 @@ def compile_ui_package(
                 timeout=timeout_seconds,
                 check=False,
             )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise CompiledUiBuildError(f"compiled UI toolchain failed: {exc}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise CompiledUiProcessError("compiler_timeout", f"compiled UI toolchain failed: {exc}") from exc
+        except OSError as exc:
+            raise CompiledUiProcessError("compiler_process_error", f"compiled UI toolchain failed: {exc}") from exc
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "compiler failed").strip()
-            raise CompiledUiBuildError(f"compiled UI build failed: {detail[-2000:]}")
+            raise CompiledUiProcessError("compiler_unsuccessful_exit", f"compiled UI build failed: {detail[-2000:]}")
 
+        if not output.is_dir():
+            raise CompiledUiProcessError("compiler_output_invalid", "The UI compiler returned success without its output directory.")
         (output / "compiled-ui.json").write_text(
             json.dumps(validated.compiled_ui.model_dump(mode="json"), indent=2) + "\n",
             encoding="utf-8",
@@ -213,7 +242,12 @@ def compile_ui_package(
             record_build(output, validated, compiler_sha256)
         except (UiBuildEvidenceError, OSError, ValueError) as exc:
             raise CompiledUiBuildError("Compiled UI build evidence could not be recorded") from exc
-        _load_artifact(output, validated)
+        try:
+            _load_artifact(output, validated)
+        except _InvalidOutputIndex as exc:
+            # Only a fresh process result is evidence about this compiler run.
+            # A damaged cache hit must not be reported as successful compilation.
+            raise CompiledUiProcessError("compiler_output_invalid", str(exc)) from exc
         try:
             output.rename(destination)
         except FileExistsError:

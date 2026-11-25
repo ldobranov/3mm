@@ -177,6 +177,16 @@ Before publication, the public bootstrap cannot install this working tree. Use
 the development deployment procedure below only when a device deployment has
 been explicitly agreed.
 
+## If a browser tab still shows the old panel
+
+After the installer confirms an update or rollback, reload the admin page
+normally (F5). Firefox can keep a page it previously cached from **0.3.17**
+without contacting the device, even on F5. For that tab, keep the device
+address and open the same page with a fresh query in the address bar, e.g.
+`/monitor?check-update` instead of `/monitor`. Do not run the update again
+or change application permissions to refresh the panel. Once a page is served
+by the corrected web server it is not cached; versioned scripts still are.
+
 ## Installed layout
 
 ```text

@@ -9,9 +9,12 @@ import { useAuthorityLabels, type AuthorityLabel } from './authority-labels'
 import { authorityRequestId, readAuthorityStatus, type AuthorityStatus } from './authority-management'
 import { readConsentPreview, readConsentResult, type ApplicationConsentPreview } from './application-consent'
 import { useRecoveryLabels } from './recovery-labels'
+import { useConnectorSettingsLabels } from './connector-settings-labels'
 
 const props = defineProps<{ moduleId: string; name: string; inspectFirst?: boolean }>()
-const emit = defineEmits<{ close: []; changed: []; reviewRecoveryRequired: [] }>()
+const emit = defineEmits<{ close: []; changed: []; reviewRecoveryRequired: []; configureConnection: [id: string, sha: string] }>()
+const connectorLabel = useConnectorSettingsLabels()
+const missingConnection = ref<{ id: string; sha: string } | null>(null)
 const label = useAuthorityLabels()
 const recoveryLabel = useRecoveryLabels()
 const base = `/api/v1/application-extensions/${encodeURIComponent(props.moduleId)}/authority`
@@ -79,9 +82,20 @@ async function load(current: number) {
 async function refresh() {
   if (busy.value) return
   busy.value = true; error.value = null; notice.value = null; confirmRevoke.value = false
+  missingConnection.value = null
   const current = generation
   try { await load(current) }
-  catch (cause) { if (current === generation) { preview.value = null; status.value = null; error.value = failure(cause) } }
+  catch (cause) {
+    if (current !== generation) return
+    preview.value = null; status.value = null
+    const response = (cause as { response?: { status?: number; data?: { detail?: Record<string, unknown> } } })?.response
+    const d = response?.data?.detail
+    if (!viewing.value && response?.status === 409 && d?.code === 'connector_setup_required'
+        && typeof d.connector_id === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(d.connector_id)
+        && typeof d.artifact_sha256 === 'string' && /^[0-9a-f]{64}$/.test(d.artifact_sha256)) {
+      missingConnection.value = { id: d.connector_id, sha: d.artifact_sha256 }
+    } else error.value = failure(cause)
+  }
   finally { if (current === generation) busy.value = false }
 }
 async function allow() {
@@ -170,6 +184,10 @@ function prepareChanges() {
     <div class="authority-body ui-stack" :aria-busy="busy">
       <div><h3>{{ name }}</h3><p class="ui-help">{{ label(viewing ? 'viewAccess' : 'consentHelp') }}</p></div>
       <p class="authority-native">{{ label('consentNative') }}</p>
+      <section v-if="missingConnection" class="ui-section ui-stack">
+        <p role="status">{{ connectorLabel('missing') }} <strong>{{ missingConnection.id }}</strong></p>
+        <UiButton class="setup-missing-connection" :disabled="busy" @click="emit('configureConnection', missingConnection.id, missingConnection.sha)">{{ connectorLabel('configure') }}</UiButton>
+      </section>
       <p v-if="error" class="authority-error" role="alert">{{ error === 'keyRecoveryRequired' ? recoveryLabel(error) : label(error) }}</p>
       <p v-if="notice" class="authority-notice" role="status">{{ label(notice) }}</p>
       <p v-if="busy" class="ui-help" role="status">{{ label('consentLoading') }}</p>

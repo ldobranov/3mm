@@ -176,6 +176,9 @@ def preview_package_consent(module_id: str, request: ConsentPreviewRequest, resp
     def prepare(manager):
         try:
             return preview(manager, identifier, actor_token=token, **request.model_dump())
+        except authority.ConnectorSetupRequired as exc:
+            raise HTTPException(409, {'code': exc.reason, 'connector_id': exc.connector_id,
+                'artifact_sha256': exc.artifact_sha256}, headers={'Cache-Control': 'no-store'}) from None
         except AuthorityReviewKeyError:
             if manager.keys.local_recovery_status()['state'] == 'recovery_required':
                 raise AuthorityManagementError('review_key_recovery_required') from None

@@ -140,6 +140,9 @@
                    {{ t('extensions.runtimeDataPreserved', 'Data is preserved when disabled') }}
                  </span>
                  <div class="extension-action-buttons">
+                   <a v-if="ext.open_path" class="ui-button ui-button--primary application-open" :href="ext.open_path">
+                     {{ connectorLabel('openApp') }}
+                   </a>
                    <UiButton v-if="isAdmin && ext.source === 'application' && ext.is_installed"
                      :disabled="operationBusy !== null" @click="limitsTarget = ext">
                      {{ t('applicationLimits.title', 'Resource limits') }}
@@ -217,7 +220,8 @@
       @close="limitsTarget = null" />
     <ApplicationAuthorityDialog v-if="isAdmin && authorityTarget" :key="authorityTarget.moduleId"
       :module-id="authorityTarget.moduleId" :name="authorityTarget.name" :inspect-first="authorityTarget.inspectFirst"
-      @close="authorityTarget = null" @changed="loadExtensions" @review-recovery-required="reviewRecovery?.refresh()" />
+      @close="authorityTarget = null" @changed="loadExtensions" @review-recovery-required="reviewRecovery?.refresh()"
+      @configure-connection="openMissingConnection" />
     <ApplicationRecoveryDialog v-if="isAdmin && recoveryTarget" :key="recoveryTarget.id"
       :module-id="recoveryTarget.id.replace('application:', '')" :name="recoveryTarget.name"
       @close="recoveryTarget = null" @recovered="applicationRecovered" />
@@ -226,8 +230,8 @@
       :module-id="commandResourceTarget.moduleId" :name="commandResourceTarget.name" :package-sha="commandResourceTarget.packageSha"
       @close="commandResourceTarget = null" @changed="loadExtensions" />
     <ApplicationConnectorSettingsDialog v-if="isAdmin && connectorSettingsTarget" :key="connectorSettingsTarget.packageSha"
-      :package-sha="connectorSettingsTarget.packageSha" :name="connectorSettingsTarget.name"
-      @close="connectorSettingsTarget = null" @changed="loadExtensions" />
+      :package-sha="connectorSettingsTarget.packageSha" :name="connectorSettingsTarget.name" :initial-connector="connectorSettingsTarget.connector"
+      @close="closeConnectorSettings" @changed="loadExtensions" />
 
     <!-- Application installation configuration -->
     <UiDialog v-if="showConfigurationModal" :open="showConfigurationModal"
@@ -383,7 +387,18 @@ const authorityTarget = ref<{ moduleId: string; name: string; inspectFirst?: boo
 const reviewRecovery = ref<InstanceType<typeof ApplicationReviewRecovery> | null>(null);
 const commandResourceLabel = useCommandResourceLabels();
 const commandResourceTarget = ref<{ moduleId: string; name: string; packageSha: string } | null>(null);
-const connectorSettingsTarget = ref<{ name: string; packageSha: string } | null>(null);
+const connectorSettingsTarget = ref<{ name: string; packageSha: string; connector?: string; reviewModule?: string } | null>(null);
+function openMissingConnection(id: string, sha: string) {
+  const target = authorityTarget.value;
+  if (!target || !isAdmin.value) return;
+  connectorSettingsTarget.value = { name: target.name, packageSha: sha, connector: id, reviewModule: target.moduleId };
+  authorityTarget.value = null;
+}
+function closeConnectorSettings() {
+  const target = connectorSettingsTarget.value;
+  connectorSettingsTarget.value = null;
+  if (target?.reviewModule && isAdmin.value) authorityTarget.value = { moduleId: target.reviewModule, name: target.name };
+}
 const connectorLabel = useConnectorSettingsLabels();
 const kioskLabel = useKioskLabels();
 const kioskTarget = ref<Extension | null>(null);
@@ -411,6 +426,7 @@ interface Extension {
   can_manage: boolean;
   available_versions: string[];
   package_sha256?: string | null;
+  open_path?: string;
   recovery_preparation_required?: boolean;
   package_sha256_by_version?: Record<string, string>;
   is_installed: boolean;
@@ -844,6 +860,17 @@ const loadExtensions = async () => {
         ? t('extensions.preservedDataNeedsReview', 'Some preserved data could not be matched to an application. It has not been erased. Only verified records are shown.')
         : '';
     const applications = buildApplicationExtensions(modulePackages, applicationInstallations);
+    // Use the current user's filtered catalog, not routes from an uploaded ZIP
+    // or a previously selected version. Navigation visibility is independent.
+    for (const app of applications) {
+      if (!app.is_enabled || app.status !== 'active' || !app.package_sha256) continue;
+      const pkg = compiledPackages.find(p => 'application:' + p.module_id === app.id &&
+        p.source_sha256 === app.package_sha256 && p.version === app.version);
+      const routes = pkg?.entrypoints.filter(e => e.kind === 'route' && e.route &&
+        /^\/[a-z0-9][a-z0-9/_-]*$/.test(e.route));
+      app.open_path = ['administrator', 'operator', 'public'].map(audience =>
+        routes?.find(e => e.application_audience === audience)?.route).find(Boolean) ?? undefined;
+    }
     const applicationModuleIds = new Set(applications.map(extension =>
       extension.id.replace('application:', ''),
     ));

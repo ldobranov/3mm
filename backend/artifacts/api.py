@@ -3,8 +3,10 @@ import hashlib
 import json
 import re
 import shutil
+import threading
 import zipfile
 import zlib
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Literal
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Response, UploadFile
@@ -35,6 +37,7 @@ from backend.applications.authority.inspection import (
 from backend.version import core_version
 from backend.artifacts.compiled_ui import (
     CompiledUiBuildError,
+    CompiledUiProcessError,
     compile_ui_package,
     compiled_artifacts_dir,
     load_compiled_ui_artifact,
@@ -256,38 +259,86 @@ async def inspect_package(
     return result
 
 
+_store_slot = threading.Lock()
+
+
+def _catalog_refusal(status, stage, reason):
+    from backend.system.diagnostics.catalog import explain_case
+    from backend.system.diagnostics.failures import note_failure
+    try:
+        note_failure(stage, reason)
+    except Exception:
+        pass  # Recording is optional; it cannot change the refusal.
+    return HTTPException(status, explain_case(stage, reason)['summary'])
+
+
+@contextmanager
+def _package_store_slot():
+    # Per Core process. No queue and no automatic replay. The DB unique
+    # constraint remains authoritative across processes.
+    if not _store_slot.acquire(blocking=False):
+        raise _catalog_refusal(503, 'package.admission', 'package_store_busy')
+    try:
+        yield
+    finally:
+        _store_slot.release()
+
+
 @router.post("/packages",response_model=PackageResponse)
-async def upload_package(package:UploadFile=File(...),_admin:User=Depends(require_admin),db:Session=Depends(get_db),expected_kind:Literal["theme"]|None=None):
-    blob=await package.read(10*1024*1024+1)
-    try: validated=validate_module_package(blob)
-    except ModulePackageError as exc: raise HTTPException(422,str(exc)) from exc
-    if expected_kind == "theme" and validated.theme_extension is None:
-        raise HTTPException(422, "Choose a theme-extension v1 package")
-    return _store_package(blob, validated, db)
+def upload_package(package:UploadFile=File(...),_admin:User=Depends(require_admin),db:Session=Depends(get_db),expected_kind:Literal["theme"]|None=None):
+    # A synchronous FastAPI handler runs in a worker: validation, compiler wait
+    # and filesystem operations cannot monopolize the ASGI event loop.
+    with _package_store_slot():
+        blob = package.file.read(MAX_PACKAGE_BYTES + 1)
+        try: validated=validate_module_package(blob)
+        except ModulePackageError as exc: raise HTTPException(422,str(exc)) from exc
+        if expected_kind == "theme" and validated.theme_extension is None:
+            raise HTTPException(422, "Choose a theme-extension v1 package")
+        return _store_package(blob, validated, db)
 
 
 def _store_package(blob, validated, db):
     """One immutable catalog path for uploads and inert built-in preparation."""
+    by_version = (ModulePackage.module_id == validated.manifest.module_id,
+                  ModulePackage.version == validated.manifest.version)
+    # End this read before starting the compiler. An exact match still goes
+    # through artifact verification; a known collision must not build anything.
+    with Session(db.get_bind()) as lookup:
+        registered = lookup.scalar(select(ModulePackage.sha256).where(*by_version))
+    if registered is not None and registered != validated.sha256:
+        raise _catalog_refusal(409, 'package.catalog_check', 'package_version_conflict')
     root=get_settings().backend.uploads_dir.resolve()/"modules"; root.mkdir(parents=True,exist_ok=True)
     path=root/f"{validated.sha256}.zip"
-    package_created = not path.exists()
-    if package_created: path.write_bytes(blob)
     if validated.compiled_ui is not None:
         try:
             compile_ui_package(blob, validated)
         except CompiledUiBuildError as exc:
-            if package_created:
-                path.unlink(missing_ok=True)
+            if isinstance(exc, CompiledUiProcessError):
+                from backend.system.diagnostics.catalog import compiler_case_reason, explain_case
+                from backend.system.diagnostics.failures import note_failure
+                stage, reason = 'package.ui_compile', compiler_case_reason(exc.reason)
+                try:
+                    note_failure(stage, reason)
+                except Exception:
+                    pass  # An optional observation cannot change the upload outcome.
+                # Compiler output can contain arbitrary source text or host paths.
+                # The admin response and support case share only the fixed explanation.
+                status = 503 if reason in {'compiler_entry_unreadable', 'compiler_output_invalid'} else 422
+                raise HTTPException(status, explain_case(stage, reason)['summary']) from None
             raise HTTPException(422, str(exc)) from exc
+    package_created = not path.exists()
+    if package_created: path.write_bytes(blob)
     record=ModulePackage(module_id=validated.manifest.module_id,version=validated.manifest.version,manifest=validated.manifest.model_dump(mode="json"),sha256=validated.sha256,size_bytes=validated.size_bytes,file_path=str(path),registrations=[x.model_dump(mode="json") for x in validated.manifest.registrations])
     db.add(record)
     try: db.commit()
     except IntegrityError:
-        db.rollback(); record=db.scalar(select(ModulePackage).where(ModulePackage.module_id==validated.manifest.module_id,ModulePackage.version==validated.manifest.version))
+        db.rollback(); record=db.scalar(select(ModulePackage).where(*by_version))
         if record is None or record.sha256 != validated.sha256:
             if package_created:
                 path.unlink(missing_ok=True)
-            raise HTTPException(409,"published module versions are immutable")
+            if record is not None:
+                raise _catalog_refusal(409, 'package.catalog_commit', 'package_version_conflict') from None
+            raise HTTPException(409, 'Package registration could not be confirmed; inspect the catalog.') from None
     record.has_connector_settings = bool(validated.application_extension and validated.application_extension.connectors)
     record.has_kiosk_interface = bool(validated.application_extension and any(r.audience=='kiosk' for r in validated.application_extension.routes) and any('kiosk' in op.audiences for op in validated.application_extension.operations))
     return record
@@ -540,7 +591,8 @@ def prepare_hardware_provider(device_id: str, body: HardwareProviderPreparation,
     profile = hardware_profile(validated.manifest)
     if profile is None:
         raise HTTPException(422, 'Template does not declare a hardware profile')
-    package = _store_package(blob, validated, db)
+    with _package_store_slot():
+        package = _store_package(blob, validated, db)
     return {'device_id': device_id, 'package_sha256': package.sha256,
             'profile_sha256': profile.profile_sha256, 'activation': 'not_requested'}
 

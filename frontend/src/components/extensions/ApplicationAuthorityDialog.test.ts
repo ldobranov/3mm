@@ -118,6 +118,18 @@ function button(wrapper: VueWrapper, text: string) {
   return found
 }
 describe('single explicit application consent', () => {
+  it('offers the exact failed prerequisite without granting access or retrying', async () => {
+    const sha = 'a'.repeat(64)
+    http.post.mockRejectedValueOnce({ response: { status: 409, data: { detail: {
+      code: 'connector_setup_required', connector_id: 'quotes', artifact_sha256: sha,
+    } } } })
+    const wrapper = await open()
+    expect(wrapper.text()).toContain('quotes')
+    expect(button(wrapper, 'Allow access').attributes('disabled')).toBeDefined()
+    await button(wrapper, 'Set up connection').trigger('click')
+    expect(wrapper.emitted('configureConnection')).toEqual([['quotes', sha]])
+    expect(http.post.mock.calls.map(call => call[0])).toEqual([base + '/consent/preview'])
+  })
   it('only reads current rights on open and refresh; only an explicit change request prepares a review', async () => {
     const wrapper = await open(true)
     expect(wrapper.text()).toContain('Current rights are effective')

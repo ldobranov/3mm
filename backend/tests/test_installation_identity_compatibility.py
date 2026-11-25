@@ -80,23 +80,20 @@ def test_identity_permissions_must_match_both_manifests():
         validate_module_package(application_package(definition=definition))
 
 
-@pytest.mark.asyncio
-async def test_upload_and_reload_preserve_exact_compatibility_rejection(
+def test_upload_and_reload_preserve_exact_compatibility_rejection(
     monkeypatch, tmp_path
 ):
     from backend.artifacts import api as modules
+    from fastapi import UploadFile
+    from io import BytesIO
 
     blob = identity_package()
     monkeypatch.setattr(module_packages, "actual_core_version", lambda: "0.2.0")
 
-    class Upload:
-        async def read(self, _limit):
-            return blob
-
     with pytest.raises(
         HTTPException, match="incompatible Core runtime version"
     ) as error:
-        await modules.upload_package(Upload(), object(), None)
+        modules.upload_package(UploadFile(BytesIO(blob)), object(), None)
     assert error.value.status_code == 422
     path = tmp_path / "module.zip"
     path.write_bytes(blob)

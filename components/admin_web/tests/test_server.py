@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from contextlib import contextmanager
 from pathlib import Path
 from threading import Thread
@@ -46,6 +47,39 @@ def test_history_route_falls_back_to_index(artifact: Path) -> None:
 
         assert response.status == 200
         assert "3mm" in response.read().decode()
+
+
+@pytest.mark.parametrize("route", ["/", "/index.html", "/extensions?tab=active", "/app/screen/"])
+def test_entry_follows_installed_release_even_when_rolling_back(artifact: Path, route: str) -> None:
+    entry = artifact / "index.html"
+    # Validator from a previously cached, newer release (including legacy clients).
+    headers = {"If-Modified-Since": "Wed, 25 Nov 2026 12:00:00 GMT"}
+    with _server(artifact) as base_url:
+        for html, timestamp in [(b"new admin", 1_790_000_000), (b"old admin", 1_780_000_000)]:
+            entry.write_bytes(html)
+            os.utime(entry, (timestamp, timestamp))
+            for method in ("GET", "HEAD"):
+                request = Request(base_url + route, headers=headers, method=method)
+                with urlopen(request, timeout=2) as response:
+                    assert response.status == 200
+                    assert response.headers["Cache-Control"] == "no-store"
+                    assert response.headers["Last-Modified"] is None
+                    assert int(response.headers["Content-Length"]) == len(html)
+                    assert response.read() == (html if method == "GET" else b"")
+
+
+def test_versioned_asset_still_supports_conditional_get(artifact: Path) -> None:
+    assets = artifact / "assets"
+    assets.mkdir()
+    (assets / "main-a1b2.js").write_bytes(b"versioned")
+    with _server(artifact) as base_url:
+        url = base_url + "/assets/main-a1b2.js"
+        with urlopen(url, timeout=2) as response:
+            modified = response.headers["Last-Modified"]
+            assert modified and response.headers["Cache-Control"] != "no-store"
+        with pytest.raises(HTTPError) as cached:
+            urlopen(Request(url, headers={"If-Modified-Since": modified}), timeout=2)
+        assert cached.value.code == 304
 
 
 @pytest.mark.parametrize('path', ['/generate_204', '/hotspot-detect.html', '/connecttest.txt', '/ncsi.txt', '/'])
