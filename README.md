@@ -8,44 +8,32 @@ combines a central Core, a persistent device Agent, provisioning and reviewed
 applications through common capability contracts and SDKs. Builder, dashboards
 and other product features live in optional source packages/libraries.
 
-> **Project status:** Development prototype (pre-1.0). Published **Core 0.3.11**
-> is the accepted baseline; the current source-layout cleanup is not a new release.
-> The [changelog](CHANGELOG.md) describes the published scope.
-> Bulgarian pack 1.0.6 retains its independent version.
-> It builds on the accepted
-> Core stabilization, Standalone/Hub/Node setup and Wi-Fi/AP recovery, bounded
-> diagnostics, independent optional runtimes and manifest-v2 language extensions.
-> Application access uses one administrator approval with expandable resource
-> details; confirmed stop/start preserves unchanged consent. Failed installation
-> and retained-data cleanup remain accessible through the normal lifecycle.
-> The common session platform includes actual Node execution and a local encrypted
-> relay. The accepted Linux profile is a restricted temporary workspace.
-> Host/root administration, public Cloud, full remote Terminal UI and whole
-> M21/WP5 isolation remain separate work. Terminal 1.0.3 is an independent package.
-> Native application approval permits Linux code execution and is **not a sandbox**.
-> The [0.3.11 release notes](docs/RELEASE_NOTES_0.3.11.md) describe upgrades,
-> independent components and owner device trials. Preserve database/key backups;
-> populated history can refuse downgrade, and an older Core pointer alone does
-> not restore the previous database or independent component versions.
-> [M20/WP4 acceptance](docs/EXTENSION_PLATFORM_V2_WP4_FINAL_ACCEPTANCE.md) and
-> [current evidence](docs/WORKING_STATE.md) state the tested boundaries.
-> Device Protocol 1.0 and Application SDK 1.3 retain independent version numbers.
->
-> **CAP13 in 0.3.2:** the local read-only, one-hop application-query vertical is
-> implemented and locally checked, including exact provider selection, M20 browser
-> consent and SDK/Runtime execution with fresh result fencing. This is not part of
-> 0.3.1 and is not completion of all CAP13. It needs coordinated current Core,
-> Platform Runtime and application-host/SDK components plus normal release gates.
-> Commands, user delegation, recursive/remote composition and scoped-relational
-> query providers remain outside this profile. See [CAP13 contract and limits](docs/CORE_SIMPLIFICATION_PLAN.md#cap13-композиция-между-приложения)
-> and its [0.3.2 changelog](CHANGELOG.md#032---2026-10-28).
-> CI runs automatically on branch pushes. An immutable version tag runs all
-> Release checks and reproducible builds; assets appear only after successful
-> publication. Device trials are separate from publication. The release badge
-> above links to the currently published version. A version without a prerelease
-> suffix selects the Stable update channel; it does not imply production maturity.
-> The [capability foundation plan](docs/CORE_SIMPLIFICATION_PLAN.md) describes
-> future contracts and cleanup; its full capability catalog is not implemented.
+**Pilot release:** [Core 0.3.18](https://github.com/ldobranov/3mm/releases/tag/v0.3.18).
+The physical clean-install evidence below is for [0.3.12](docs/RELEASE_NOTES_0.3.12.md):
+Standalone on a 64-bit Raspberry Pi (`aarch64`) on a trusted LAN. Clean
+installation passed; the owner confirmed restart and access checks, restore on
+separate media, and the 0.3.11 → 0.3.12 upgrade and rollback. This is a pre-1.0
+release, not a claim of Internet-facing readiness. Automatic pairing, remote
+Agents and Zero W were outside this acceptance. Native application approval
+allows Linux code to run; it is **not a sandbox**.
+
+## Start here: one Raspberry Pi
+
+1. **Install:** Follow the [Raspberry Pi installation guide](docs/INSTALLATION_GUIDE.md).
+   The default keeps your existing Ethernet or Wi-Fi connection; it does not
+   start a setup access point.
+2. **Set up:** On the same trusted LAN open `http://<device-IP>:8895/setup`,
+   select **Standalone** and **Keep the operating system's connection**, and
+   enter your administrator username, email and password. After Setup finishes,
+   open `http://<device-IP>/user/login` and sign in with that email and password.
+3. **Protect your data:** In **Settings → Backup and recovery**, create a backup
+   and download a password-protected recovery file. Keep it off the Pi: a local
+   backup on the SD card cannot recover a lost card. See [restore from file](docs/BACKUP_AND_RESTORE.md#administrator-workflow).
+
+**Already on 0.3.11?** Use the [one-time console upgrade](docs/INSTALLATION_GUIDE.md#one-time-upgrade-to-the-neutral-source-layout),
+not the old web updater. Factory reset is neither an upgrade nor a restore.
+Starting with 0.3.16, reset returns to Setup without creating a development
+administrator; see the [reset precautions for 0.3.12–0.3.13](docs/DEVICE_ADMINISTRATION.md).
 
 ## What works
 
@@ -441,12 +429,14 @@ an update; preserve evidence rather than repeating a failed operation blindly.
 For a reproducible manual full-profile update, select an exact published release:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | sudo bash -s -- --tag v0.3.7
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/v0.3.18/install.sh | sudo bash -s -- --tag v0.3.18
 ```
 
 Update the Zero over SSH with the Node bootstrap command above and add
-`--tag v0.3.7` to select the same release, or use the reviewed remote Agent
-update control when its trust and target requirements are met. Provisioned
+`--tag v0.3.18` to select the same release. Crossing the 0.3.11 source-layout
+boundary requires the [console procedure](docs/INSTALLATION_GUIDE.md#one-time-upgrade-to-the-neutral-source-layout),
+not the old Node OTA validator. On compatible versions, use the reviewed remote
+Agent update control when its trust and target requirements are met. Provisioned
 upgrades preserve identity and pairing; do not use Master reset to update.
 Updating a Fleet application ZIP alone does not update Core or the Zero Agent.
 Follow the
@@ -460,13 +450,11 @@ The new Node check reports the latest release and confirmed Hub OTA history;
 manual upgrades without that history remain unknown, not automatically up to date.
 
 Use `--tag` for a reproducible exact release, for example by appending
-`-s -- --tag v0.3.7` after `sudo bash`. The Raspberry host password is
+`-s -- --tag v0.3.18` after `sudo bash`. The Raspberry host password is
 requested only by `sudo` and is never a command argument or repository value.
 
-Create the first administrator in Full Setup on a trusted LAN. Sign in with
-the email and password you chose. Core 0.3.16 Factory reset also starts
-without a preset administrator; ordinary updates preserve existing accounts.
-See the [0.3.12–0.3.13 reset precautions](docs/DEVICE_ADMINISTRATION.md).
+On a clean Full installation, create the administrator in Setup as described
+above. An update preserves existing users and passwords.
 
 The tested deployment uses an immutable layout:
 
@@ -527,11 +515,8 @@ the same kit observes its existing job. Failed or uncertain jobs require status/
 inspection and are never automatically replayed. Completion is
 `3mm update succeeded`; the installer's earlier message alone is insufficient.
 
-Wired-only Linux/VM installer corrections are included since beta.35: absent first-boot
-state initializes Standalone without a Wi-Fi AP, required service groups are
-created, and upgrade rollback restores the previously active services. They take
-effect through the published release assets; see
-[VM installer behavior and remaining live checks](docs/INSTALLER_VM_RECOVERY.md).
+On wired-only hosts, fresh Setup is available over the LAN; the operator chooses
+the role. See [wired-only installation](docs/INSTALLATION_GUIDE.md#wired-only-linux-and-ubuntu-under-windows-wsl).
 
 On a provisioned device, open the application at `http://<device-ip>/` or
 `http://<hostname>.local/`. Port `8080` remains available for compatibility.

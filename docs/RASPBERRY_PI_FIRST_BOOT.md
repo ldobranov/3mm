@@ -1,13 +1,12 @@
 # Raspberry Pi installation and first boot
 
-Status: the standard bootstrap selects Stable and retains the existing LAN.
-The earlier explicit setup-AP flow was physically validated on the Raspberry Pi
-3B+ baseline; that evidence is not a new clean-media acceptance of these defaults.
+For a new pilot installation use 0.3.18. The physical clean-media check documented
+below used 0.3.12, Standalone on Raspberry Pi aarch64 with the existing LAN.
+Managed setup Wi-Fi (`-ap`) is an alternative, not a prerequisite.
 
 This guide installs one Raspberry Pi as a 3mm Standalone device. It deliberately
 keeps Raspberry, Wi-Fi and user-selected passwords out of commands, files and
-Git. Password prompts must be answered interactively. The public `admin` Beta
-login described below is a disposable test default, not a secret.
+Git. Enter your chosen administrator credentials in the local Setup form.
 
 ## Validated baseline
 
@@ -85,9 +84,12 @@ short form for choosing `network-manager`, not a reset command.
 To pin an exact published release:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | \
-  sudo bash -s -- --tag v0.3.7
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/v0.3.18/install.sh | \
+  sudo bash -s -- --tag v0.3.18
 ```
+
+On clean media, continue with [Complete setup from a phone](#4-complete-setup-from-a-phone).
+The development update section below is not part of first installation.
 
 ## 3. Local development updates
 
@@ -304,15 +306,11 @@ follow the older-version precautions below.
 See [DEVICE_ADMINISTRATION.md](DEVICE_ADMINISTRATION.md) for confirmations,
 authorization and the complete reset boundary.
 
-## Current acceptance boundary
+## Physical acceptance evidence (0.3.12)
 
-The host/release preflight, one-command installation, Wi-Fi-only handoff to the
-open setup AP, captive setup and return to the Standalone runtime have been
-verified on a clean SD card on the physical Pi 3B+. Restart is implemented and
-physically tested. Factory reset, setup-AP return across reboot, phone setup and
-the fresh Standalone login are also physically accepted. Local Agent pairing on
-an external Core remains part of the future Hub/Node milestone.
-
-Node setup is also not yet claimed as complete. The portal persists the selected
-Hub address, but external-Hub credential bootstrap is not yet a single first-boot
-flow. Use the Standalone path for the current Milestone 10 physical acceptance.
+The published 0.3.12 Full archive was installed on clean aarch64 media. After
+Standalone setup, Core, Web and Agent passed the release smoke check. The owner
+confirmed operation after restart and access denial, backup/restore to separate
+media, and the installed 0.3.11 → 0.3.12 upgrade and rollback scenarios.
+Automatic pairing, remote Agents and Zero W were not part of this acceptance;
+see [working state](WORKING_STATE.md) for the scope.

@@ -13,9 +13,9 @@ port, generate any certificate or alter the installer.
 | --- | --- | --- |
 | `80` | `components.admin_web` (alias port) | LAN IP and `<hostname>.local` via mDNS |
 | `8080` | `components.admin_web` | LAN compatibility listener |
-| `8887` | `three_mm_core` API (uvicorn) | development/HTTP boundary |
+| `8887` | Core API (uvicorn) | development/HTTP boundary |
 | `8890` | local Agent | loopback only |
-| `8895` | Setup AP captive portal | temporary local open network only |
+| `8895` | Setup portal | existing LAN during host-managed setup, or the temporary setup AP when explicitly selected |
 
 The current transport is plain HTTP. It is a **trusted-LAN beta bootstrap**, not a
 public-ingress security boundary. Several contracts already state this:

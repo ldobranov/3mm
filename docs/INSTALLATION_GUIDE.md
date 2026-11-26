@@ -44,6 +44,12 @@ Finish initial setup from another device on the same LAN:
 http://<device-LAN-IP>:8895/setup
 ```
 
+For the accepted Raspberry Pi aarch64 profile, choose **Standalone** and
+**Keep the operating system’s connection**. Set the administrator credentials
+and choose **Save setup**. When setup completes, open
+`http://<device-LAN-IP>/user/login` and use the email and password you entered.
+Both pages use HTTP; complete setup on a trusted LAN, not via Internet port forwarding.
+
 To explicitly choose NetworkManager-managed Wi-Fi/AP setup on fresh media:
 
 ```bash
@@ -93,11 +99,11 @@ longer than installations on a Pi 3 or newer.
 
 ## Installer options
 
-Pin an exact published release:
+For a fresh pilot installation, pin both the bootstrap and the release:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/main/install.sh | \
-  sudo bash -s -- --tag v0.3.11
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/v0.3.18/install.sh | \
+  sudo bash -s -- --tag v0.3.18
 ```
 
 Select a channel explicitly:
@@ -139,9 +145,20 @@ the verified console bootstrap for this one transition on either profile; do
 not try to force the neutral archive through an old Node OTA operation. This
 does not disable normal signed Node updates after the transition.
 
-After the neutral-layout release is published, cross this boundary through the
-verified bootstrap/console installer, not the old web updater. The target
-installer coordinates the existing Agent, Runtime/connector worker and
+For a Standalone Full installation, first save a
+[portable recovery file](BACKUP_AND_RESTORE.md#administrator-workflow) off the Pi.
+Only for a device still on 0.3.11, run the following on the device instead of
+using its old web updater. For a minimal Node append `--profile node`; keep
+the existing installation profile. Do not downgrade a newer installation.
+
+```bash
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/v0.3.12/install.sh | \
+  sudo bash -s -- --tag v0.3.12
+```
+
+Follow the journal command printed by the
+bootstrap until installation finishes; returning to the shell is not success.
+The target installer coordinates the existing Agent, Runtime/connector worker and
 application-host artifacts under the same installation lock. It proves old
 artifacts through the previous immutable release, stages verified replacements,
 and preserves already-compatible pins. The Node profile transitions only Agent.
@@ -173,9 +190,16 @@ It is not an instruction to erase the SD card, reset setup, alter rights or
 modify immutable releases. Do not bypass component verification to force an
 upgrade.
 
-Before publication, the public bootstrap cannot install this working tree. Use
-the development deployment procedure below only when a device deployment has
-been explicitly agreed.
+After a successful Standalone update, sign in again and check that your
+applications and their data are present. If the installer reports rollback,
+inspect the journal and the restored version before considering a retry.
+
+On a Full update the installer proves the existing installation identity
+before it stops services. A busy live SQLite database gets a bounded read-only
+wait (up to 15 seconds). A busy database, unreadable database, and unusable
+recovery key are different failures. None authorizes creating a replacement
+key or switching releases. A preflight refusal is not a completed rollback:
+check the active release and its services; do not repeatedly submit the same job.
 
 ## If a browser tab still shows the old panel
 
