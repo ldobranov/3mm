@@ -83,5 +83,11 @@ inside the platform repository.
   means no historical-upgrade proof. Unsupported profiles need separate checks.
 - Report changed behavior, executed/reused checks, exact artifact identity and
   remaining limits. Local trusted-code tests are not isolation or live acceptance.
+  For a live refusal keep the original request/command ID. Use the platform
+  guide's “When the installed app refuses an operation”; do not resend a
+  command or prepare an approval to discover what happened.
+  After an installer rollback, check package identity, data and effective
+  approval separately. Do not convert restored user permissions into a new
+  application approval.
   Upload/configuration, exact-code consent and activation remain separate owner
   actions in the admin panel. Do not perform them unless explicitly requested.

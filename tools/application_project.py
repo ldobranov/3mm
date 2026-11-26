@@ -63,6 +63,8 @@ def configuration(root):
         file, function = node.split('::')
         if file not in value['python_tests'] or not re.fullmatch('test_[a-z0-9_]+', function):
             raise ProjectCheckError('project', 'Scenarios must name tests in python_tests.')
+    if len(set(value['scenarios'].values())) != len(SCENARIOS):
+        raise ProjectCheckError('project', 'Each denial scenario must have a distinct test.')
     if 'preview' in value:
         preview = value['preview']
         if (type(preview) is not dict or set(preview) != {'entrypoint_id', 'host'}
@@ -127,17 +129,18 @@ def write_member(archive, name, data):
     archive.writestr(info, data)
 
 
-def build_package(root):
-    """Standard pure-Python wheel + manifest-v2 ZIP; no application code import."""
-    project = configuration(root)
-    source = inputs(root)
-    manifest, application, ui = [json.loads(source[name]) for name in
-        ('manifest.json', 'application-extension.json', 'compiled-ui.json')]
-    package = project['python_package']
-    version = manifest['version']
-    prefix = 'service/' + package + '/'
-    files = {name.removeprefix('service/'): data for name, data in source.items()
-             if name.startswith(prefix) and name.endswith('.py')}
+def build_service_wheel(package, version, sources):
+    """One reproducible pure-Python service wheel for UI and worker-only source projects."""
+    if (type(package) is not str or not re.fullmatch('[a-z][a-z0-9_]{0,63}', package) or type(version) is not str
+            or not re.fullmatch(r'[0-9][a-zA-Z0-9.+_-]{0,63}', version) or not 1 <= len(sources) <= 128):
+        raise ProjectCheckError('build', 'Invalid wheel identity or source count.')
+    files = {}
+    for name, data in sources.items():
+        if (type(name) is not str or not name.startswith(package + '/') or not name.endswith('.py')
+                or '\\' in name or any(s in ('', '.', '..') for s in name.split('/'))
+                or type(data) is not bytes or len(data) > 1024 * 1024):
+            raise ProjectCheckError('build', 'Invalid service wheel member.')
+        files[name] = data
     if package + '/__init__.py' not in files:
         raise ProjectCheckError('build', 'The service needs a Python package with __init__.py.')
     for data in files.values():
@@ -160,15 +163,29 @@ def build_package(root):
     with zipfile.ZipFile(wheel, 'w') as archive:
         for name, data in sorted(files.items()):
             write_member(archive, name, data)
+    return wheel.getvalue()
+
+
+def build_package(root):
+    """Standard pure-Python wheel + manifest-v2 ZIP; no application code import."""
+    project = configuration(root)
+    source = inputs(root)
+    manifest, application, ui = [json.loads(source[name]) for name in
+        ('manifest.json', 'application-extension.json', 'compiled-ui.json')]
+    package = project['python_package']
+    version = manifest['version']
+    prefix = 'service/' + package + '/'
+    wheel = build_service_wheel(package, version, {name.removeprefix('service/'): data for name, data in source.items()
+                                                 if name.startswith(prefix) and name.endswith('.py')})
     expected_artifact = f'service/{package}-{version}-py3-none-any.whl'
     if application['service']['artifact'] != expected_artifact:
         raise ProjectCheckError('build', 'The service artifact must match the project package and version.')
-    application['service']['artifact_sha256'] = hashlib.sha256(wheel.getvalue()).hexdigest()
+    application['service']['artifact_sha256'] = hashlib.sha256(wheel).hexdigest()
     result = io.BytesIO()
     with zipfile.ZipFile(result, 'w') as archive:
         for name, value in [('manifest.json', manifest), ('application-extension.json', application), ('compiled-ui.json', ui)]:
             write_member(archive, name, (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2)+'\n').encode())
-        write_member(archive, expected_artifact, wheel.getvalue())
+        write_member(archive, expected_artifact, wheel)
         for name, data in sorted(source.items()):
             if name.startswith('source/frontend/'):
                 write_member(archive, name, data)
@@ -183,6 +200,37 @@ def run_check(command, *, cwd, environment, stage, log, timeout=180):
         raise ProjectCheckError(stage, 'Check could not complete; verify the existing local toolchain.') from error
     if result.returncode:
         raise ProjectCheckError(stage, 'Check failed. See the local check log; no package was published.')
+
+
+def _scenario_statuses(declared, status):
+    return {name: {'test': node, 'status': status} for name, node in declared.items()}
+
+
+def scenario_observations(declared, path):
+    """Describe only declared project checks, including when pytest exits nonzero.
+
+    Never publish assertion messages, stdout, or unrelated test identities.
+    This does not validate a live permission or claim a provider was contacted.
+    """
+    statuses = _scenario_statuses(declared, 'not_observed')
+    try:
+        if path.stat().st_size > 4 * 1024 * 1024:
+            return statuses
+        root = ET.parse(path).getroot()
+    except (OSError, ET.ParseError):
+        return statuses
+    if root.tag not in {'testsuite', 'testsuites'}:
+        return statuses
+    for info in statuses.values():
+        file, function = info['test'].split('::')
+        classname = file.removesuffix('.py').replace('/', '.')
+        matches = [c for c in root.iter('testcase') if c.get('classname') == classname and c.get('name') == function]
+        if len(matches) == 1:
+            tags = {child.tag for child in matches[0]}
+            info['status'] = ('failed' if tags & {'failure', 'error'} else 'skipped' if 'skipped' in tags else 'passed')
+        elif matches:
+            info['status'] = 'ambiguous'
+    return statuses
 
 
 def read_junit(path, stage):
@@ -325,7 +373,7 @@ def publish_outputs(root, output, summary, blob):
 def check_project(project, output, *, frontend=None, previous_archive=None):
     """Check a frozen local source copy with existing tools. No installs or API calls."""
     from backend.artifacts.packages import validate_module_package
-    from backend.artifacts.compiled_ui import compile_ui_package
+    from backend.artifacts.compiled_ui import CompiledUiProcessError, compile_ui_package
     from tools.application_migrations import run_packaged_migrations
 
     project = Path(project).absolute()
@@ -353,16 +401,26 @@ def check_project(project, output, *, frontend=None, previous_archive=None):
                 if project.is_symlink() or not project.is_dir():
                     raise ProjectCheckError('project', 'Select a regular application project directory.')
                 config = configuration(project)
+                # A build or migration may stop the pipeline before pytest
+                # starts. Distinguish unattempted checks from missing results.
+                summary['scenario_scope'] = 'local_project_tests_only'
+                summary['scenario_checks'] = _scenario_statuses(config['scenarios'], 'not_run')
                 source = inputs(project)
                 source_hash = fingerprint(source)
                 summary['source_sha256'] = source_hash
+                # An explicitly selected toolchain must also compile the final UI.
+                # The default launch environment can still configure the installed compiler.
+                selected_frontend = frontend is not None
                 frontend = Path(frontend or REPOSITORY/'frontend').resolve()
+                compiler_script = frontend/'compiler/compile-ui-extension.mjs' if selected_frontend else None
                 node = os.getenv('COMPILED_UI_NODE') or shutil.which('node')
                 vitest = frontend/'node_modules/vitest/vitest.mjs'
                 typescript = frontend/'node_modules/vue-tsc/bin/vue-tsc.js'
                 phase = 'toolchain'
                 if not node or not vitest.is_file() or not typescript.is_file():
                     raise ProjectCheckError('toolchain', 'Existing Node, Vitest and vue-tsc dependencies are required; nothing was installed.')
+                if compiler_script is not None and not compiler_script.is_file():
+                    raise ProjectCheckError('toolchain', 'The selected frontend does not contain the UI compiler; nothing was installed.')
                 snapshot = root/'source'
                 for name, data in source.items():
                     target = snapshot/name
@@ -418,17 +476,17 @@ def check_project(project, output, *, frontend=None, previous_archive=None):
                         root=root, environment=environment, log=log)
                     summary['stages'].append('previous_package_upgrade')
                 phase = 'python'
-                run_check([sys.executable, '-m', 'pytest', '-q', '-p', 'no:cacheprovider', '--strict-markers',
-                           '--rootdir='+str(snapshot),
-                           *config['python_tests'], '--basetemp='+str(root/'pytest'), '--junitxml='+str(root/'python.xml')],
-                    cwd=snapshot, environment=environment, stage='python', log=log)
+                try:
+                    run_check([sys.executable, '-m', 'pytest', '-q', '-p', 'no:cacheprovider', '--strict-markers',
+                               '--rootdir='+str(snapshot),
+                               *config['python_tests'], '--basetemp='+str(root/'pytest'), '--junitxml='+str(root/'python.xml')],
+                        cwd=snapshot, environment=environment, stage='python', log=log)
+                finally:
+                    summary['scenario_checks'] = scenario_observations(config['scenarios'], root/'python.xml')
                 cases = read_junit(root/'python.xml', 'python')
                 phase = 'scenarios'
-                for scenario, node_id in config['scenarios'].items():
-                    file, function = node_id.split('::')
-                    classname = file.removesuffix('.py').replace('/', '.')
-                    if not any(c.get('classname') == classname and c.get('name') == function for c in cases):
-                        raise ProjectCheckError('scenarios', 'A required denial scenario did not execute.')
+                if any(item['status'] != 'passed' for item in summary['scenario_checks'].values()):
+                    raise ProjectCheckError('scenarios', 'A required denial scenario has no unique passing result.')
                 summary.update(python_passed=len(cases), scenarios={name: 'passed' for name in sorted(SCENARIOS)},
                                scenarios_level='project tests; not live Core authority conformance')
                 summary['stages'].append('python_and_denial_scenarios')
@@ -455,17 +513,10 @@ def check_project(project, output, *, frontend=None, previous_archive=None):
                     cwd=snapshot, environment=environment, stage='typecheck', log=log)
                 summary['stages'].append('ui_typecheck')
                 phase = 'ui_compilation'
-                previous = os.environ.get('COMPILED_UI_ARTIFACTS_DIR')
-                os.environ['COMPILED_UI_ARTIFACTS_DIR'] = str(root/'compiled')
-                try:
-                    artifact = compile_ui_package(blob, validated)
-                    summary['built_ui_sha256'] = artifact.built_ui_sha256
-                    summary['environment']['ui_toolchain'] = json.loads((artifact.path/'build-toolchain.json').read_text())
-                finally:
-                    if previous is None:
-                        os.environ.pop('COMPILED_UI_ARTIFACTS_DIR', None)
-                    else:
-                        os.environ['COMPILED_UI_ARTIFACTS_DIR'] = previous
+                artifact = compile_ui_package(blob, validated, artifacts_dir=root/'compiled',
+                                              compiler_script=compiler_script)
+                summary['built_ui_sha256'] = artifact.built_ui_sha256
+                summary['environment']['ui_toolchain'] = json.loads((artifact.path/'build-toolchain.json').read_text())
                 summary['stages'].append('actual_ui_compilation')
                 phase = 'source'
                 if fingerprint(inputs(project)) != source_hash or fingerprint(inputs(snapshot)) != source_hash:
@@ -479,6 +530,16 @@ def check_project(project, output, *, frontend=None, previous_archive=None):
                 traceback.print_exc(file=log)
                 summary.update(stage=phase, message='Package validation failed.' if phase == 'package_validation'
                                else 'Check could not complete. See the local check log.', error_type=type(error).__name__)
+                if phase == 'ui_compilation' and isinstance(error, CompiledUiProcessError):
+                    reasons = {
+                        'compiler_entry_unreadable': 'The selected UI compiler entry file could not be read. Check the local toolchain before changing the application.',
+                        'compiler_process_error': 'The OS reported a compiler process error. Check Node and access in the selected environment.',
+                        'compiler_timeout': 'The UI compiler exceeded its time limit. Check the local build log before retrying.',
+                        'compiler_unsuccessful_exit': 'The UI compiler exited unsuccessfully. Inspect its local log; this alone does not identify a source or toolchain defect.',
+                        'compiler_output_invalid': 'The UI compiler reported success but its interface files could not be validated. Check the entrypoint index and referenced files in the local build log.',
+                    }
+                    if error.reason in reasons:
+                        summary.update(failure_code=error.reason, message=reasons[error.reason])
                 from pydantic import ValidationError
                 cause = error if isinstance(error, ValidationError) else error.__cause__
                 if isinstance(cause, ValidationError):

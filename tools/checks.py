@@ -16,7 +16,7 @@ PYTHON_SUITES = (
     "packages/provisioning/tests", "components/system_runtime/tests", "components/admin_web/tests",
     "components/public_web/tests", "components/setup/tests", "deployment/tests",
     "packages/application_sdk/tests",
-    "libraries/ai_clients/tests", "libraries/crud/tests",
+    "libraries/ai_clients/tests", "libraries/crud/tests", "libraries/data_tools/tests",
 )
 # Production Python remains one integration group until its consumers are audited.
 # Narrowing it by filenames would guess at authority/runtime/installer dependencies.
@@ -27,6 +27,8 @@ SHARED_PACKAGES = {"packages/platform_wire"}
 NESTED_PACKAGES = {str(PurePosixPath(suite).parent) for suite in PYTHON_SUITES
                    if suite.startswith("packages/")}
 DOC_SUFFIXES = {".md", ".rst"}
+# The authoring index reads these headings as inputs, not just as prose.
+AUTHORING_GUIDES = frozenset({"modules/application-starter/README.md", "libraries/data_tools/README.md"})
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,10 @@ def select_checks(paths: list[str]) -> Plan:
             return full_plan("Unrecognized path: use full checks")
         root = parts[0]
         suffix = PurePosixPath(path).suffix.lower()
+        if path in AUTHORING_GUIDES:
+            tooling = True
+            reasons.add("authoring reference guide changed")
+            continue
         # Executable examples and config files inside docs are NOT documentation.
         if suffix in DOC_SUFFIXES or path in {"LICENSE", "LICENSE.txt", "COPYING"}:
             continue

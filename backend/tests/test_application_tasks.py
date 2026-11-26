@@ -56,9 +56,15 @@ def load_builder():
 @pytest.fixture
 def task_state(vertical, tmp_path, request, native_task_host):
     s = vertical
-    s.builder = load_builder(); command_mode=getattr(request,"param",None)=="commands"
-    blob = s.builder.build_package(with_command=command_mode)
-    assert s.builder.build_package(with_command=command_mode) == blob
+    variant = getattr(request, "param", None)
+    s.builder = load_builder(); command_mode = variant == "commands"
+    if callable(variant):
+        blob, scopes = variant()
+        assert variant() == (blob, scopes)
+    else:
+        blob = s.builder.build_package(with_command=command_mode)
+        assert s.builder.build_package(with_command=command_mode) == blob
+        scopes = ["command:output", "task:switch_output"] if command_mode else ["task:calculate"]
     s.validated = validate_module_package(blob)
     s.archive = s.root / "modules" / (s.validated.sha256 + ".zip"); s.archive.write_bytes(blob)
     s.configuration = {"OUTPUT_DEVICE_ID":"dev_"+"3"*32} if command_mode else {}
@@ -86,7 +92,6 @@ def task_state(vertical, tmp_path, request, native_task_host):
                 observed_at=datetime.now(UTC),expires_at=datetime.now(UTC)+timedelta(minutes=5),report={
                     "declaration_digest":offer.declaration_digest,"capabilities":[{"capability_id":offer.capability_id,"healthy":True}]}))
     consent = preview(s)
-    scopes=["command:output","task:switch_output"] if command_mode else ["task:calculate"]
     assert consent["scopes"] == scopes
     allow(s, consent, scopes=scopes)
     s.task_probe = TaskProbe(s.sdk)
@@ -134,6 +139,216 @@ def task_state(vertical, tmp_path, request, native_task_host):
     s.host = host()
     s.settings = ApplicationRuntimeSettings(key_root=s.runtime_socket.parent)
     yield s
+
+
+def _report_reference():
+    from runpy import run_path
+    builder = run_path(str(REPO / "libraries/data_tools/examples/report_task/build_reference.py"))
+    return builder["build_package"](), ["task:render_table"]
+
+
+def _notice_worker_reference():
+    """Disposable assembly only: no production app gets a task or a new grant."""
+    from runpy import run_path
+    example = REPO / "libraries/data_tools/examples/report_task"
+    builder = run_path(str(example / "build_reference.py"))
+    sources, manifest, descriptor = builder["reference_parts"]()
+    for member, path in (("notice_integration.py", example / "notice_integration.py"),
+                         ("data_tools/inbox.py", example.parents[1] / "application_data_tools/inbox.py")):
+        sources["report_example/" + member] = path.read_bytes().replace(b"\r\n", b"\n")
+    sources["report_example/notice_worker.py"] = b"""from packages.application_sdk import ApplicationMigration
+from .migrations import get_migrations as base
+from .notice_integration import migrate, migrate_retry_windows, run_delivery_task
+from .service import Service
+
+def get_migrations():
+    return [*base(), ApplicationMigration("0002", migrate), ApplicationMigration("0003", migrate_retry_windows)]
+
+class Probe(Service):
+    def handle(self, operation_id, payload, context):
+        if operation_id == "deliver_notice":
+            return run_delivery_task(self.app, payload, context)
+        return super().handle(operation_id, payload, context)
+
+def create_service(application):
+    return Probe(application)
+"""
+    notice = "deliver_notice"
+    manifest["module_id"] = descriptor["module_id"] = "org.example.notice-probe"
+    descriptor["service"]["entrypoint"] = "report_example.notice_worker:create_service"
+    descriptor["storage"].update(schema_revision="0003", migration_entrypoint="report_example.notice_worker:get_migrations")
+    descriptor["tasks"][0].update(task_id=notice, handler_operation_id=notice)
+    descriptor["operations"][1].update(operation_id=notice, output_schema=builder["obj"]({"state": {"type": "string", "maxLength": 24,
+        "enum": ["not_scheduled", "waiting", "deferred", "expired", "not_eligible", "not_subscribed", "recorded", "limited"]}}))
+    return builder["pack"](sources, manifest, descriptor), ["task:" + notice]
+
+
+@pytest.mark.parametrize("task_state", [_notice_worker_reference], indirect=True)
+def test_native_delayed_inbox_delivery_rechecks_consent_after_scheduling(task_state, monkeypatch):
+    from runpy import run_path
+    s = task_state
+    lib = REPO / "libraries/data_tools"
+    monkeypatch.syspath_prepend(str(lib))
+    inbox = run_path(str(lib / "examples/report_task/notice_integration.py"))
+    path = s.instance / "data/state.sqlite3"
+    refs = {owner: uuid.uuid4().hex for owner in ("approved", "opted-out", "revoked")}
+    subs = {}
+    def audience(name):
+        return lambda db: inbox["Audience"](name, 1)
+    with sqlite3.connect(path) as db:
+        db.execute("BEGIN IMMEDIATE")
+        for owner, ref in refs.items():
+            db.execute("INSERT INTO report_subjects VALUES(?,1,1,1)", (owner,))
+            db.execute("INSERT INTO report_requests(ref,subject_ref,access_revision,data_revision) VALUES(?,?,1,1)", (ref, owner))
+            subs[owner] = inbox["INBOX"].set_preference(db,audience(owner),inbox["TOPIC"],True,expected=None)["revision"]
+            assert inbox["remember"](db,current_audience=audience(owner),ref=ref,now=int(time.time())) == "waiting"
+            # The render is accepted separately. Only the completed synthetic report's marker matters here.
+            db.execute("UPDATE report_requests SET original_run=?,sha256=? WHERE ref=?", (uuid.uuid4().hex,"a"*64,ref))
+    due = datetime.now(UTC) + timedelta(seconds=1)
+    originals = {}
+    for owner, ref in refs.items():
+        key = originals[owner] = identity()
+        result = s.sdk.submit_task("deliver_notice",request_id=key,payload={"report_ref":ref},
+                                   due_at=due,not_after=due+timedelta(seconds=25))
+        assert result["status"] == "queued"
+    with sqlite3.connect(path) as db:
+        db.execute("BEGIN IMMEDIATE")
+        assert db.execute("SELECT count(*) FROM inbox_entries").fetchone()[0] == 0
+        inbox["INBOX"].set_preference(db,audience("opted-out"),inbox["TOPIC"],False,expected=subs["opted-out"])
+        db.execute("UPDATE report_subjects SET allowed=0,access_revision=2 WHERE subject_ref='revoked'")
+    worker = s.start_worker()
+    for owner, state in (("approved","recorded"),("opted-out","not_subscribed"),("revoked","not_eligible")):
+        deadline = time.monotonic()+40
+        while True:
+            row = s.sdk.lookup_task("deliver_notice",request_id=originals[owner])
+            if row["status"] not in ("queued","running"):
+                break
+            assert worker.poll() is None and time.monotonic()<deadline, row
+            time.sleep(.12)
+        assert (row["status"],row["result"]) == ("succeeded",{"state":state})
+        assert s.sdk.lookup_task("deliver_notice",request_id=originals[owner])["result"] == {"state":state}
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT recipient,resource_ref FROM inbox_entries").fetchall() == [("approved",refs["approved"])]
+        assert db.execute("SELECT subject,attempts FROM report_notices ORDER BY subject").fetchall() == [
+            ("approved",1),("opted-out",0),("revoked",0)]
+
+
+@pytest.mark.parametrize("task_state", [_notice_worker_reference], indirect=True)
+def test_original_deferred_notice_gets_one_bounded_real_retry_window(task_state, monkeypatch):
+    """Local rate limit clears; admission ACK lost; observe original only; no second publication."""
+    from runpy import run_path
+    from packages.application_sdk import ApplicationStorage
+    s = task_state
+    lib = REPO / "libraries/data_tools"
+    monkeypatch.syspath_prepend(str(lib))
+    n = run_path(str(lib / "examples/report_task/notice_integration.py"))
+    storage = ApplicationStorage(s.instance/"data")
+    current = lambda db: n["Audience"]("probe",1)
+    ref = uuid.uuid4().hex
+    at = int(time.time())-59  # authenticated fixture history, not a clock override in the worker
+    with storage.transaction() as db:
+        db.execute("INSERT INTO report_subjects VALUES('probe',1,1,1)")
+        db.execute("INSERT INTO report_requests(ref,subject_ref,access_revision,data_revision) VALUES(?,'probe',1,1)",(ref,))
+        token = n["INBOX"].set_preference(db,current,n["TOPIC"],True,expected=None)["revision"]
+        assert n["remember"](db,current_audience=current,ref=ref,now=at) == "waiting"
+        assert n["claim_retry_window"](db,current_audience=current,ref=ref,now=at) is None
+        for _ in range(n["INBOX"].limits.per_minute):
+            assert n["INBOX"].publish(db,current,topic=n["TOPIC"],consent=token,event_ref=uuid.uuid4().hex,
+                resource_ref=uuid.uuid4().hex,now=at,available=at,expires=at+900) == "available"
+        db.execute("UPDATE report_requests SET original_run=?,sha256=? WHERE ref=?", (uuid.uuid4().hex,"b"*64,ref))
+        assert n["deliver_original"](db,ref,now=at) == "deferred"
+    with storage.transaction() as db:
+        plan = n["claim_retry_window"](db,current_audience=current,ref=ref,now=int(time.time()))
+        assert plan["max_occurrences"] == 2 and plan["payload"] == {"report_ref":ref}
+    s.sdk.create_task_schedule(**plan)  # reply deliberately unused by the caller
+    with storage.transaction() as db:
+        common = dict(current_audience=current,ref=ref,now=int(time.time()))
+        assert n["claim_retry_window"](db,**common) is None
+        original = n["retry_lookup_key"](db,**common)
+    assert original == plan["request_id"]
+    worker = s.start_worker()
+    deadline = time.monotonic()+25
+    while True:
+        observed = s.sdk.lookup_task_schedule("deliver_notice",request_id=original)
+        if observed["last_request_id"]:
+            run = s.sdk.lookup_task("deliver_notice",request_id=observed["last_request_id"])
+            if run["status"] not in ("queued","running"):
+                break
+        assert worker.poll() is None and time.monotonic() < deadline, observed
+        time.sleep(.1)
+    assert observed["admitted"] == 1 and run["result"] == {"state":"recorded"} and run["status"] == "succeeded"
+    with storage.transaction() as db:
+        assert n["read_status"](db,current_audience=current,ref=ref,now=int(time.time()))["attempts"] == 2
+        assert db.execute("SELECT count(*) FROM inbox_entries WHERE event_ref=?",(ref,)).fetchone()[0] == 1
+        assert n["deliver_original"](db,ref,now=int(time.time())) == "recorded"
+        n["INBOX"].set_preference(db,current,n["TOPIC"],False,expected=token)
+        assert n["retry_lookup_key"](db,current_audience=current,ref=ref,now=int(time.time())) is None
+
+
+@pytest.mark.parametrize("task_state", [_report_reference], indirect=True)
+def test_scoped_printable_table_stays_in_app_while_real_worker_returns_only_a_receipt(task_state, monkeypatch):
+    s = task_state
+    path = s.instance / "data/state.sqlite3"
+    alpha, revoked = uuid.uuid4().hex, uuid.uuid4().hex
+    # Only the app-side test client imports this optional source library.
+    # The real packaged host/worker and platform SDK do not get inbox access.
+    from runpy import run_path
+    monkeypatch.syspath_prepend(str(REPO/"libraries/data_tools"))
+    n = run_path(str(REPO/"libraries/data_tools/examples/report_task/notice_integration.py"))
+    def current(name):
+        def resolve(db):
+            row = db.execute("SELECT access_revision FROM report_subjects WHERE allowed=1 AND subject_ref=?", (name,)).fetchone()
+            return n["Audience"](name, row[0]) if row else None
+        return resolve
+    with sqlite3.connect(path) as db:
+        db.execute("BEGIN IMMEDIATE")
+        n["migrate"](db)
+        db.executemany("INSERT INTO report_subjects VALUES(?,?,?,?)", [("alpha",1,1,1),("beta",1,1,1)])
+        db.executemany("INSERT INTO report_items VALUES(?,?,?,?)",
+                       [("alpha",1,"Reviewed <label>",7),("beta",1,"Other subject private",15)])
+        db.executemany("INSERT INTO report_requests(ref,subject_ref,access_revision,data_revision) VALUES(?,?,1,1)",
+                       [(alpha,"alpha"),(revoked,"beta")])
+        for name, ref in (("alpha",alpha),("beta",revoked)):
+            n["INBOX"].set_preference(db,current(name),n["TOPIC"],True,expected=None)
+            assert n["remember"](db,current_audience=current(name),ref=ref,now=10) == "waiting"
+    worker = s.start_worker()
+    def submit(reference):
+        key = identity()
+        due = datetime.now(UTC) + timedelta(seconds=.3)
+        s.sdk.submit_task("render_table", request_id=key, payload={"report_ref":reference},
+                          due_at=due, not_after=due + timedelta(seconds=9))
+        return key
+    def lookup(key):
+        limit = time.monotonic() + 14
+        while True:
+            result = s.sdk.lookup_task("render_table", request_id=key)
+            if result["status"] not in ("queued", "running"):
+                return result
+            assert worker.poll() is None and time.monotonic() < limit, result
+            time.sleep(.08)
+    key = submit(alpha)
+    first = lookup(key)
+    assert first["status"] == "succeeded", first
+    with sqlite3.connect(path) as db:
+        content, original = db.execute("SELECT content,original_run FROM report_requests WHERE ref=?", (alpha,)).fetchone()
+        assert b"Reviewed &lt;label&gt;" in content and b"Other subject" not in content
+        assert first["result"] == {"rows":1,"size_bytes":len(content),"sha256":hashlib.sha256(content).hexdigest()}
+        assert lookup(key)["result"] == first["result"]  # lost response: observe only the same run
+        db.execute("UPDATE report_subjects SET allowed=0, access_revision=2 WHERE subject_ref='beta'")
+    assert lookup(submit(alpha))["status"] == "failed"  # different task cannot take over a reviewed intent
+    assert lookup(submit(revoked))["status"] == "failed"
+    with sqlite3.connect(path) as db:
+        db.execute("BEGIN IMMEDIATE")
+        assert db.execute("SELECT content,original_run FROM report_requests WHERE ref=?", (revoked,)).fetchone() == (None,None)
+        assert db.execute("SELECT content,original_run FROM report_requests WHERE ref=?", (alpha,)).fetchone() == (content,original)
+        assert n["deliver_original"](db,alpha,now=20) == "recorded"
+        assert n["deliver_original"](db,revoked,now=20) == "not_eligible"
+    with sqlite3.connect(path) as db:
+        db.execute("BEGIN IMMEDIATE")
+        assert n["deliver_original"](db,alpha,now=21) == "recorded"
+        item, = n["INBOX"].page(db,current("alpha"),now=21)["items"]
+        assert item == {"id":item["id"],"topic":"report.ready","resource_ref":alpha,"available":20,"state":"unread"}
+        assert db.execute("SELECT count(*) FROM inbox_entries").fetchone()[0] == 1
 
 
 def test_resource_observation_uses_native_host_and_live_worker_without_scheduling_a_task(task_state, monkeypatch):

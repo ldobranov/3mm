@@ -3,6 +3,26 @@
 Choose checks from changed behavior and its consumers. Repeating a passed check
 without changed inputs is not additional progress. A commit is not a release.
 
+## Authoring reference check
+
+To exercise the official data references in a separate Linux directory, pack
+the working source and use the archive path printed by the first command.
+Run the second command as an ordinary Linux user in a checkout. It requires
+an already verified environment matching those dependencies and Python version:
+
+```bash
+python -m tools.dev_lab pack --with-libraries
+python -m tools.dev_lab run --archive /path/to/source.tar --profile app-authoring-references --reuse-env-only
+```
+
+The profile checks the authoring index, library behavior and a real packaged
+report/notification worker (including permission withdrawal and deferred
+delivery). Its result directory contains the source and dependency identifiers,
+test log and JUnit XML. It does not install apps, grant access on a device,
+or contact the Pi; it is not a replacement for a particular app's UI/build or
+hardware acceptance. Without the matching environment it stops before installing
+anything. Omitting `--reuse-env-only` opts into the ordinary dependency setup.
+
 ## Local work
 
 | Change | Local checks |
@@ -13,6 +33,10 @@ without changed inputs is not additional progress. A commit is not a release.
 | Auth, SDK/API, runtime | Affected integration, compatibility, denial/revocation |
 | Schema or installer | Relevant migration/upgrade/rollback checks |
 | Broad integration/release | Full applicable suites; retain release gates |
+
+The two project guides read by the authoring example index are also tool
+inputs. Editing one selects the authoring/tool checks and invalidates that
+cached result, without scheduling Core runtime or frontend checks for prose.
 
 Main frontend dependency edits must keep both `package-lock.json` and
 `pnpm-lock.yaml` consistent with `package.json`. The deployment preparation's npm
@@ -93,9 +117,9 @@ runtime. Default snapshots still omit libraries; private/generated/path guards
 remain enforced. Do not skip consumer checks or install an optional library into
 Core to compensate for a missing snapshot input.
 
-The Python integration group includes optional `libraries/ai_clients/tests` and
-`libraries/crud/tests`; their source-path setup is test-only and does not
-install either library into Core. CRUD renderer tests use the existing frontend
+The Python integration group includes optional `libraries/ai_clients/tests`,
+`libraries/crud/tests` and `libraries/data_tools/tests`; their source-path setup
+is test-only and does not install these libraries into Core. CRUD renderer tests use the existing frontend
 toolchain with `vitest run --config libraries/crud/tests/vitest.config.mjs`.
 Empty `.3mm-source-only` markers in individual `modules/<name>` or
 `libraries/<name>` directories exclude preserved product/optional source from
@@ -183,6 +207,17 @@ service-component artifact/update/probe path; include affected Agent checks and
 `deployment/tests/test_service_component.py` when validating its delivery.
 
 ## Small handoff
+
+For the optional native Note recovery rehearsal, run
+`TEST_NATIVE_NOTE_USER_SYSTEMD=1 python -m pytest -q backend/tests/test_recovery_native_note.py`
+on a **disposable Linux workstation**, as a non-root user with a running
+user-service manager and the matching locked UI compiler described above.
+The protected case checks the real compiled build and a fresh review at the
+destination; it uses fixture accounts and no physical resources. The test creates randomly named, short-lived user
+services for the example app only, uses private temporary state and test
+keys, and checks both successful restore and rollback. The default test run
+uses separate native subprocesses instead. Neither variant restarts the
+system services on an installed device or tests login via the browser.
 
 For CAP11's optional image profile, install
 `deployment/application-media-requirements.txt` in a disposable Linux test

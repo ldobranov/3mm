@@ -82,6 +82,9 @@ def main():
     commands.add_parser('schemas',help='Export current public structural schemas; not semantic approval')
     catalog=commands.add_parser('catalog',help='Export current authoring contracts, or validate project declarations; no execution or installation')
     catalog.add_argument('project',type=Path,nargs='?',help='Optional local source project; never imports application code')
+    examples=commands.add_parser('examples',help='Find local examples, guides and tests; no code execution, installation or login')
+    examples.add_argument('example_id',nargs='?',help='One example ID from the list; not an application path')
+    examples.add_argument('--json',action='store_true',help='Machine-readable source locations and availability')
     compare=commands.add_parser('compare',help='Review declaration changes between two local ZIPs for the same application')
     compare.add_argument('previous',type=Path)
     compare.add_argument('candidate',type=Path)
@@ -117,6 +120,27 @@ def main():
         if args.action=='schemas':
             from packages.protocol.extension_schemas import extension_schema_catalog
             print(json.dumps(extension_schema_catalog(),ensure_ascii=False,sort_keys=True))
+            return
+        if args.action=='examples':
+            from tools.application_examples import example_catalog
+            from tools.application_project import ProjectCheckError
+            try:
+                result=example_catalog(args.example_id)
+            except ProjectCheckError as error:
+                print(json.dumps({'status':'failed','stage':'examples','message':str(error)}) if args.json else str(error))
+                raise SystemExit(1) from None
+            if args.json:
+                print(json.dumps(result,ensure_ascii=False,sort_keys=True))
+            else:
+                print('Local authoring examples. No tests, installation or approval performed.')
+                for example in result['examples']:
+                    print(f"{example['id']} [{example['state']}]: {example['title']}")
+                    if args.example_id:
+                        print(f"  Guide: {example['guide']} — {example['heading']}")
+                        print('  Source: ' + ', '.join(example['sources']))
+                        print('  Tests: ' + ', '.join(example['test_files']))
+            if args.example_id and result['examples'][0]['state'] != 'present':
+                raise SystemExit(1)
             return
         if args.action=='catalog':
             from tools.application_catalog import application_catalog
@@ -197,7 +221,6 @@ def main():
                     if 'generated_client' in result:
                         print('Generated client: current')
                     print('Previous package upgrade: '+result.get('upgrade',{}).get('status','not_requested'))
-                    print('Project scenarios: missing permission, revoked access, unavailable provider - passed')
                     print('Package SHA256: '+package['sha256'])
                     print('Package: '+package['path'])
                     print('Human permissions to review: '+', '.join(result['review']['human_permissions']))
@@ -210,6 +233,8 @@ def main():
                         print('Package: '+result['package']['path'])
                     for issue in result.get('issues',[]):
                         print('  '+'.'.join(str(part) for part in issue['path'])+': '+issue['code'])
+                for name, check in sorted(result.get('scenario_checks', {}).items()):
+                    print(f"Project scenario {name}: {check['status']} ({check['test']})")
                 print('No installation, grants or live-device acceptance. Local tests are not native-code isolation.')
                 if 'report' in result:print('Report: '+result['report'])
                 if 'log' in result:print('Local check log: '+result['log'])

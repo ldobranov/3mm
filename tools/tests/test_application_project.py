@@ -32,6 +32,24 @@ def change_config(root, change):
     (root/'development.json').write_text(json.dumps(value))
 
 
+def test_report_separates_failed_skipped_and_unobserved_without_raw_assertions(tmp_path):
+    path = tmp_path/'pytest.xml'
+    path.write_text('<testsuite><testcase classname="tests.check" name="test_missing"><failure>SECRET</failure></testcase>'
+                    '<testcase classname="tests.check" name="test_revoked"><skipped/></testcase></testsuite>')
+    declared = {name: 'tests/check.py::test_' + suffix for name, suffix in
+                [('missing_permission', 'missing'), ('revoked_access', 'revoked'), ('provider_unavailable', 'provider')]}
+    observations = project.scenario_observations(declared, path)
+    assert {key: v['status'] for key, v in observations.items()} == {
+        'missing_permission': 'failed', 'revoked_access': 'skipped', 'provider_unavailable': 'not_observed'}
+    assert 'SECRET' not in json.dumps(observations)
+
+
+def test_one_passing_test_cannot_be_counted_as_three_scenarios(source):
+    change_config(source, lambda cfg: cfg['scenarios'].update(revoked_access=cfg['scenarios']['missing_permission']))
+    with pytest.raises(project.ProjectCheckError, match='distinct'):
+        project.configuration(source)
+
+
 def test_standard_package_is_reproducible_validated_and_excludes_tests(source):
     blob = project.build_package(source)
     assert blob == project.build_package(source)
@@ -75,7 +93,8 @@ def test_private_runtime_import_is_an_authoring_error(source, statement):
 
 def fake_pipeline(monkeypatch, tmp_path, *, skipped=False, missing=False, changed=False, fail_stage=None):
     frontend = tmp_path/'frontend'
-    for name in ['node_modules/vitest/vitest.mjs', 'node_modules/vue-tsc/bin/vue-tsc.js']:
+    for name in ['node_modules/vitest/vitest.mjs', 'node_modules/vue-tsc/bin/vue-tsc.js',
+                 'compiler/compile-ui-extension.mjs']:
         target = frontend/name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text('fixture')
@@ -99,7 +118,9 @@ def fake_pipeline(monkeypatch, tmp_path, *, skipped=False, missing=False, change
             (cwd/'source/frontend/Notes.vue').write_text('changed by check')
     monkeypatch.setattr(project, 'run_check', run)
     from backend.artifacts import compiled_ui
-    def compile_(*_):
+    def compile_(*_, artifacts_dir, compiler_script):
+        assert compiler_script == frontend/'compiler/compile-ui-extension.mjs'
+        assert artifacts_dir.name == 'compiled' and artifacts_dir.parent.name.startswith('.3mm-application-check-')
         path = tmp_path/'compiler-result'
         path.mkdir(exist_ok=True)
         (path/'build-toolchain.json').write_text('{}')
@@ -176,6 +197,9 @@ def test_packaged_migration_refusal_stops_before_project_tests_and_zip(source, t
     output = tmp_path/'migration-failure.zip'
     result = project.check_project(source, output, frontend=frontend)
     assert result['status'] == 'failed' and result['stage'] == 'migrations'
+    assert result['scenario_scope'] == 'local_project_tests_only'
+    assert {k: v['status'] for k, v in result['scenario_checks'].items()} == {
+        'missing_permission': 'not_run', 'revoked_access': 'not_run', 'provider_unavailable': 'not_run'}
     assert calls == [] and not output.exists() and result['package_publication'] == 'not_published'
     assert result['review']['storage']['schema_revision'] == '0001'
     assert json.loads(output.with_suffix('.report.json').read_text())['stage'] == 'migrations'
@@ -208,13 +232,67 @@ def test_check_cli_needs_no_server_or_credentials(monkeypatch, capsys, tmp_path)
 def test_compiler_failure_reports_its_phase_without_echoing_private_error(source, tmp_path, monkeypatch):
     frontend, _ = fake_pipeline(monkeypatch, tmp_path)
     from backend.artifacts import compiled_ui
-    def fail(*_):
+    def fail(*_args, **_kwargs):
         raise RuntimeError('private compiler content must stay local')
     monkeypatch.setattr(compiled_ui, 'compile_ui_package', fail)
     result = project.check_project(source, tmp_path/'failed.zip', frontend=frontend)
     assert result['stage'] == 'ui_compilation' and result['status'] == 'failed'
+    assert {v['status'] for v in result['scenario_checks'].values()} == {'passed'}
     assert 'private compiler content' not in json.dumps(result)
     assert not (tmp_path/'failed.zip').exists()
+
+
+def test_selected_frontend_cannot_fall_back_to_an_unrelated_compiler(source, tmp_path, monkeypatch):
+    frontend, calls = fake_pipeline(monkeypatch, tmp_path)
+    (frontend/'compiler/compile-ui-extension.mjs').unlink()
+    from backend.artifacts import compiled_ui
+    default_compiler = Path(compiled_ui.__file__).parents[2]/'frontend/compiler/compile-ui-extension.mjs'
+    monkeypatch.setenv('COMPILED_UI_COMPILER_SCRIPT', str(default_compiler))
+    output = tmp_path/'wrong-compiler.zip'
+    result = project.check_project(source, output, frontend=frontend)
+    assert result['stage'] == 'toolchain' and result['status'] == 'failed'
+    assert 'UI compiler' in result['message'] and not output.exists() and not calls
+    assert all(row['status'] == 'not_run' for row in result['scenario_checks'].values())
+
+
+@pytest.mark.parametrize('event,code', [('timeout','compiler_timeout'), ('os_error','compiler_process_error'),
+                                        ('unreadable','compiler_entry_unreadable'),
+                                        ('no_output','compiler_output_invalid'),
+                                        ('exit','compiler_unsuccessful_exit')])
+def test_final_compiler_refusal_distinguishes_observed_process_boundary_without_its_output(source, tmp_path, monkeypatch, event, code):
+    import subprocess
+    from backend.artifacts import compiled_ui
+    real_compiler = compiled_ui.compile_ui_package
+    frontend, _ = fake_pipeline(monkeypatch, tmp_path)
+    monkeypatch.setattr(compiled_ui, 'compile_ui_package', real_compiler)
+    if event == 'unreadable':
+        original_read = Path.read_bytes
+        def read(path):
+            if path == frontend/'compiler/compile-ui-extension.mjs':
+                raise PermissionError('private-compiler-path')
+            return original_read(path)
+        monkeypatch.setattr(Path, 'read_bytes', read)
+    def refusal(command, **kwargs):
+        if event == 'unreadable':
+            pytest.fail('No process should start with an unreadable entry file')
+        if event == 'timeout':
+            raise subprocess.TimeoutExpired('private-compiler-path', 90)
+        if event == 'os_error':
+            raise OSError('private-compiler-path')
+        if event == 'no_output':
+            return subprocess.CompletedProcess(command, 0, 'private-compiler-path', '')
+        return subprocess.CompletedProcess(command, 1, '', 'private-compiler-path')
+    monkeypatch.setattr(compiled_ui.subprocess, 'run', refusal)
+    output = tmp_path/'refused.zip'
+    result = project.check_project(source, output, frontend=frontend)
+    assert result['status'] == 'failed' and result['stage'] == 'ui_compilation'
+    assert result['failure_code'] == code and result['message'] != 'Check could not complete. See the local check log.'
+    assert 'private-compiler-path' not in json.dumps(result) and not output.exists()
+    log = output.with_suffix('.checks.log').read_text()
+    expected_log = {'unreadable': 'compiler entry file could not be read',
+                    'no_output': 'without its output directory'}
+    assert expected_log.get(event, 'private-compiler-path') in log
+    assert all(row['status']=='passed' for row in result['scenario_checks'].values())
 
 
 @pytest.mark.parametrize('stage', ['python', 'ui'])

@@ -11,6 +11,15 @@ Its [project instructions](../modules/application-starter/AGENTS.md) are copied
 by `init` for developers and coding assistants. Existing projects do not receive
 template changes automatically.
 
+From the platform checkout, run `python -m tools.extension_dev examples` to
+find a starting point for a UI, import/export, scoped search, report task or
+opt-in inbox. `python -m tools.extension_dev examples inbox --json` returns
+the matching guide, source and test paths with hashes. “Present” means the
+reference files are in this checkout, not that the tests ran or any permission
+was granted. A named example missing from a trimmed checkout exits nonzero.
+For reproducible evidence from the optional table/search/report/inbox references,
+see the [Linux authoring reference check](DEVELOPMENT_CHECKS.md#authoring-reference-check).
+
 ## Agree on the application boundary
 
 Before implementation, establish the module ID, route, purpose and acceptance
@@ -137,6 +146,26 @@ A visible route, declared permission, selected device or administrator label is
 not proof that all three are satisfied. Service and Core checks remain required;
 disabled controls alone do not enforce access.
 
+For application-owned tabular import/export, the
+optional [data tools](../libraries/data_tools/README.md) bind reviewed bytes to
+their exact column schema and validate before mutation. Keep subject filtering,
+current permission, SDK transaction and durable request receipts in the app.
+The same optional library supports a current-access, partitioned search index
+and a printable table. The worker-only packaging example keeps the report in
+the app database, sends only a small receipt to Core, and rechecks access
+before publication. None of these helpers grants file, network or task access.
+
+For a personal “report ready” message, see the [opt-in inbox](../libraries/data_tools/README.md#opt-in-in-app-notifications).
+It lives in your app, uses current recipient access, and records at most one
+notice for the original intent. Listing notices is read-only. It does not send
+email, grant access to the report or add a poll to Core.
+For temporary inbox limits the example can hand one bounded retry schedule
+to the existing task API. Commit its original ID first; recover by lookup,
+never by submitting a replacement. A successful task is not a read receipt.
+Its `export_metadata` helper supplies only the current recipient's retained
+notification metadata to a separately authorized personal export; it is not
+a whole-application export or a general diagnostics attachment.
+
 Declare optional resources explicitly. Own-data operations must remain usable
 when an unrelated optional provider is absent, disabled or unapproved. Resolve
 current resources through SDK discovery, not hostnames, hardcoded device IDs,
@@ -157,6 +186,14 @@ and `UiButton`; use `UiEditorForm`, `UiTable` and `UiCollectionEditor` when need
 Use `UiRecordPicker` in single-selection mode for one record and multiple mode
 only for a real collection. A small fixed choice need not become a searchable
 multi-select. Inspect component props/examples instead of guessing their API.
+
+Opening a page must not create a command, reserve a resource or prepare an approval. A button
+labelled **Refresh status** should perform status reads only. If preparing a
+change records an intent or takes an exclusive lock, give it a separate explicit
+action. In the component test, open the page, refresh, and simulate a failed
+read: assert **zero mutation calls** in all three paths. Then request the
+change explicitly and assert that it prepares just one intent; allowing the
+change is still a separate action where the contract requires it.
 
 Read locale from `host.presentation`; subscribe and unsubscribe without
 remounting the editor or losing drafts. Use theme tokens and scoped styles,
@@ -182,6 +219,10 @@ service or installed authorization. Adapt those scenarios to the real domain.
 Node 22 and the existing locked frontend/compiler dependencies must be available;
 the command does not install or download them. Follow
 [development checks](DEVELOPMENT_CHECKS.md) when preparing that toolchain.
+If you use `--frontend PATH`, select the complete platform frontend for the
+current OS. The same directory supplies Vitest, type checking and the final
+UI compiler. A missing compiler is a toolchain error, not permission to fall
+back to another checkout or to publish a partly checked package.
 
 ```powershell
 python -m tools.extension_dev check .runtime/my-note --output .runtime/my-note-1.zip
@@ -193,6 +234,34 @@ scenarios, UI tests, strict types and the actual UI compiler. It writes a new
 ZIP, report and log **outside** the application project. Use a fresh output name;
 existing files are never overwritten. A failure or skipped required scenario is
 not a pass. Inspect the reported stage instead of weakening a check.
+
+The report's `scenario_checks` maps each missing-permission, revoked-access
+and unavailable-provider scenario to a distinct declared test and its observed
+result. A failed Python run can still show which scenarios passed, failed,
+were skipped or were not observed. If an earlier build or migration step stops
+the check after the project configuration is validated, the declared scenarios
+say `not_run`; a Python check with no matching result says `not_observed`.
+Neither is a permission denial. These are local project tests, not live
+Core grants or proof of physical execution. The shareable scenario entries
+do not include assertion output; the accompanying test log is local.
+A final UI compiler failure can also carry a fixed `failure_code`: an unreadable
+installed compiler file, an OS process error, a measured timeout, an unsuccessful
+exit, or `compiler_output_invalid` when the compiler returned success but its
+interface files could not be validated. For the last case, check the entrypoint
+index and the files it references; exit code zero is not proof of a usable build.
+The report omits compiler output. Inspect the local check log; neither exit
+status alone establishes a defect in the application's source.
+
+On a Core with package-build diagnostics, a compilation failure returns a short
+explanation. If the installed compiler entry file cannot be read, Core returns
+HTTP 503 and does not register the package or retain a new ZIP.
+Compilation did not start; check the installation before editing or resending
+the app. A fresh build with an invalid output index also returns 503, but
+explicitly reports that compilation ran. Damage to an already cached build is
+not evidence of a new compiler run. Diagnostics records the observed fresh
+compiler outcome under `package.ui_compile`, with the original request ID. The
+report does not contain the compiler's output. Check the exact ZIP in the local
+authoring environment for more detail; no new grant or automatic upload is needed.
 
 For an update, preserve the exact previous ZIP, use a newer independent
 application version, adapt `tests/upgrade_fixture.py`, regenerate the client and:
@@ -239,6 +308,52 @@ Record local versus live evidence separately. A preview or build pass does not
 prove a physical effect. Deployment, granting rights, hardware writes, Git push
 and release publication each need their own requested scope. Keep credentials,
 tokens, personal data and private device details out of source and shared logs.
+
+### Accept an update of the application itself
+
+Keep the previous ZIP and its digest. Use the **same** candidate ZIP that
+passed `check --previous-archive`: compare its report digest with the digest
+in **Extensions → Inspect package**. A matching version label is not enough.
+
+1. Save a known test record through the old version. Note the route, value and
+   revision. If the candidate is rejected during compilation, check that the
+   old route still reads that record after a full reload. Do not uninstall.
+2. Upload the checked candidate. Upload alone should leave the old version
+   running. Stop the app explicitly, prepare the new version, review that
+   exact package's access, then activate it. The route need not be available
+   while the app is stopped.
+3. Reload the original route. Confirm the **new** interface is served and
+   reads the **old** record. Edit it once, reload, and check the new revision.
+4. If the old app supports the current data schema, test returning to the
+   retained ZIP through the same stop, prepare, review and activate steps.
+   Verify the old interface reads the **latest** edit. This changes the app
+   version; it does not restore a database snapshot or reverse migrations.
+   For incompatible schemas, use the application's migration/recovery plan.
+
+### When the installed app refuses an operation
+
+Keep the original identifiers and inspect before trying again. A signed-in
+administrator can use **Extensions → Resource limits → Save app diagnostics**
+with the original `cmd_…` or `task_…` for just that installation. A command
+offered to a device, a claimed permit and an execution receipt are different
+observations. A missing field is not a negative result.
+
+For an HTTP failure, save **Settings → Diagnostics → Download report** before
+clearing history. If you have the original `invoke_…` or `platform_…` ID,
+run `python -m tools.diagnostics explain diagnostic-cases.json --trace-id ORIGINAL_ID --json`
+in the platform checkout. This reads the saved file only. Report the failed
+step, recorded cause and what remains unknown; don't infer a grant refusal
+from a timeout or an unrecorded step. See [diagnostic evidence and limits](DIAGNOSTICS.md).
+
+If an app disappears after an installer rollback, distinguish its **installed
+package**, **saved data**, **account permissions** and **effective application
+approval**. Restoring the Core database invalidates previously issued execution
+approvals. An unchanged ZIP or a checked account permission is not proof that
+the old approval still applies. Check the installation and its read-only
+**Application access** status first. Do not automatically prepare a grant,
+reinstall the package, change its version, or replay the last save. A normal
+successful **Core** update is a separate test: an unchanged approved app should still read its
+original data from the open tab, without asking for new access.
 
 ## Contract references
 

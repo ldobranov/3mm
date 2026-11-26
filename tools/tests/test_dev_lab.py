@@ -267,6 +267,17 @@ class DevLabTests(unittest.TestCase):
         self.assertEqual(marker.read_text(), "existing")
         self.assertFalse((destination / "backend").exists())
 
+    def test_reuse_only_does_not_prepare_or_fetch_a_missing_environment(self):
+        root = self.root / "source"
+        (root / "backend").mkdir(parents=True)
+        for name in ("requirements.txt", "requirements-dev.txt"):
+            (root / "backend" / name).write_text("# disposable")
+        with mock.patch.object(Path, "home", return_value=self.root / "user"), \
+                mock.patch.object(dev_lab.subprocess, "run", side_effect=AssertionError("no installer")), \
+                self.assertRaisesRegex(ValueError, "no dependencies were installed"):
+            dev_lab.environment(root, self.root, {}, False, reuse_only=True)
+        self.assertFalse((self.root / "user").exists())
+
     def test_environment_does_not_inherit_production_paths_or_credentials(self):
         with mock.patch.dict(dev_lab.os.environ, {
             "DATABASE_URL": "sqlite:////var/lib/3mm/live.db", "AI_SETTINGS_MASTER_KEY": "private",

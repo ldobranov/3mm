@@ -84,7 +84,9 @@ def production_file(name):
 
 
 def validation_inputs(inputs):
-    return {name: value for name, value in inputs.items() if not name.endswith('.md') and not name.startswith('docs/')}
+    from tools.checks import AUTHORING_GUIDES
+    return {name: value for name, value in inputs.items()
+            if name in AUTHORING_GUIDES or (not name.endswith('.md') and not name.startswith('docs/'))}
 
 
 @contextmanager

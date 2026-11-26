@@ -39,6 +39,13 @@ LOCAL_DATA_FILES = frozenset({"backend/prices.json", "backend/output.json"})
 MANIFEST = ".dev-lab-manifest.json"
 MAX_SOURCE_BYTES = 128 * 1024 * 1024
 PROFILES = {
+    "app-authoring-references": (
+        "tools/tests/test_application_examples.py",
+        "libraries/data_tools/tests",
+        "backend/tests/test_application_tasks.py::test_scoped_printable_table_stays_in_app_while_real_worker_returns_only_a_receipt",
+        "backend/tests/test_application_tasks.py::test_native_delayed_inbox_delivery_rechecks_consent_after_scheduling",
+        "backend/tests/test_application_tasks.py::test_original_deferred_notice_gets_one_bounded_real_retry_window",
+    ),
     "cap14-display-geometry": (
         "packages/protocol/tests/test_character_display.py",
         "packages/protocol/tests/test_hardware_profiles.py",
@@ -490,11 +497,13 @@ def lab_environment(run: Path) -> dict[str, str]:
     return env
 
 
-def environment(source: Path, run: Path, env: dict, fresh: bool) -> tuple[Path, bool, str]:
+def environment(source: Path, run: Path, env: dict, fresh: bool, *, reuse_only: bool = False) -> tuple[Path, bool, str]:
     requirements = b"".join((source / "backend" / name).read_bytes()
                             for name in ("requirements.txt", "requirements-dev.txt"))
     key = digest(requirements + sys.version.encode() + platform.machine().encode())
     cache = Path.home() / ".cache" / "3mm-dev-lab" / "envs"
+    if reuse_only and (fresh or not (cache / key / "ready.json").is_file()):
+        raise ValueError("A matching verified dependency environment is required; no dependencies were installed")
     cache.mkdir(parents=True, exist_ok=True)
     location = cache / key
     if fresh:
@@ -525,7 +534,7 @@ def environment(source: Path, run: Path, env: dict, fresh: bool) -> tuple[Path, 
     return python, reused, digest(frozen)
 
 
-def run_lab(archive: Path, profile: str, fresh: bool = False) -> int:
+def run_lab(archive: Path, profile: str, fresh: bool = False, *, reuse_only: bool = False) -> int:
     if sys.platform != "linux" or os.geteuid() == 0:
         raise ValueError("Run the lab as an unprivileged Linux user")
     started = time.monotonic()
@@ -533,10 +542,12 @@ def run_lab(archive: Path, profile: str, fresh: bool = False) -> int:
     print(f"Lab: {run}", flush=True)
     source = run / "src"
     manifest = unpack(archive, source)
+    if profile == "app-authoring-references" and not (source / "libraries/data_tools/tests").is_dir():
+        raise ValueError("Authoring references need optional source: pack again with --with-libraries")
     env = lab_environment(run)
     env["PYTHONPATH"] = str(source)
     print("Preparing/verifying the isolated dependency environment...", flush=True)
-    python, reused, freeze = environment(source, run, env, fresh)
+    python, reused, freeze = environment(source, run, env, fresh, reuse_only=reuse_only)
     preparation = time.monotonic() - started
     command = [str(python), "-m", "pytest", "-q", "--tb=short", "--disable-warnings",
                "-p", "pytest_asyncio.plugin", *PROFILES[profile],
@@ -570,12 +581,18 @@ def main() -> int:
     run = commands.add_parser("run")
     run.add_argument("--archive", type=Path, required=True)
     run.add_argument("--profile", choices=PROFILES, default="p0")
-    run.add_argument("--fresh-env", action="store_true")
+    env_options = run.add_mutually_exclusive_group()
+    env_options.add_argument("--fresh-env", action="store_true")
+    env_options.add_argument("--reuse-env-only", action="store_true",
+                             help="Require the matching, verified dependency cache; never install or download missing dependencies.")
     args = parser.parse_args()
     if args.command == "pack":
         pack(Path(__file__).resolve().parents[1], with_frontend=args.with_frontend, with_libraries=args.with_libraries)
         return 0
-    return run_lab(args.archive, args.profile, args.fresh_env)
+    try:
+        return run_lab(args.archive, args.profile, args.fresh_env, reuse_only=args.reuse_env_only)
+    except ValueError as error:
+        parser.exit(1, f"Lab stopped: {error}\n")
 
 
 if __name__ == "__main__":
