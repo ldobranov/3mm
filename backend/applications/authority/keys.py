@@ -379,16 +379,33 @@ class CoreReviewKeyStore:
             active = True
 
             @_key_errors()
-            def replace(db, *, expected_key_id, expected_generation):
+            def replace(db, *, expected_key_id, expected_generation, remember_choices=None):
                 if not active or db.get_bind().engine is not self._engine or not db.in_transaction():
                     raise AuthorityReviewKeyError()
                 binding = self._binding_in(db)
-                old = _read_record(directory).identity
-                if (old.key_id != expected_key_id or binding.recovery_generation != expected_generation
-                        or old.binding.core_installation_id != binding.core_installation_id
-                        or old.binding == binding):
+                old = _read_record(directory)
+                if (old.identity.key_id != expected_key_id or binding.recovery_generation != expected_generation
+                        or old.identity.binding.core_installation_id != binding.core_installation_id
+                        or old.identity.binding == binding):
                     raise AuthorityReviewKeyError()
                 record = _new_record(binding)
+                if remember_choices is not None:
+                    # Historical verification is restricted to this one operation,
+                    # record kind and former generation. Never lease the old key.
+                    def verify_prior_grant(session, kind, payload, key_id, digest):
+                        if (session is not db or not new.active or kind != 'grant'
+                                or key_id != old.identity.key_id or not isinstance(digest, str)
+                                or not hmac.compare_digest(digest, _record_digest(old, 'grant', payload))):
+                            raise AuthorityReviewKeyError()
+                        subject = payload['data']['subject']['binding']
+                        if (subject['recovery_generation'] != old.identity.binding.recovery_generation
+                                or subject['principal']['core_installation_id'] != binding.core_installation_id):
+                            raise AuthorityReviewKeyError()
+                    new = _LockedKey(self._engine, record)
+                    try:
+                        remember_choices(db, verify_prior_grant, new, expected_key_id)
+                    finally:
+                        new.active = False
                 _write_record(directory, record)
                 return record.identity
 
@@ -469,6 +486,12 @@ class CoreReviewKeyStore:
                 adapter.active = False
 
 
+def _record_digest(record, kind, payload):
+    return hmac.new(record.secret, b"3mm:m20:sealed-authority:v1\x00" +
+        _canonical_bytes({"kind": kind, "key_id": record.identity.key_id, "payload": payload},
+            schema_paths=_record_schema_paths(kind, payload, ('payload',))), hashlib.sha256).hexdigest()
+
+
 class _LockedKey:
     def __init__(self, engine, record, *, read_only=False):
         self.engine, self._record, self.active = engine, record, True
@@ -518,10 +541,7 @@ class _LockedKey:
         if kind not in {"native", "plan", "grant", "action", "operation_delegation"}:
             raise AuthorityReviewKeyError()
         key_id = self._record.identity.key_id
-        digest = hmac.new(self._record.secret, b"3mm:m20:sealed-authority:v1\x00" +
-            _canonical_bytes({"kind": kind, "key_id": key_id, "payload": payload},
-                schema_paths=_record_schema_paths(kind, payload, ('payload',))), hashlib.sha256).hexdigest()
-        return key_id, digest
+        return key_id, _record_digest(self._record, kind, payload)
 
     def verify(self, db, kind, payload, key_id, digest):
         expected_id, expected = self._signature(db, kind, payload)

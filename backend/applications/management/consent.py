@@ -5,6 +5,7 @@ or resources. Allow rechecks the current actor, package, resources and preview i
 one key/authority transaction; it never starts a service or claims isolation.
 """
 import hashlib
+import json
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -60,9 +61,9 @@ def _human_grants(db, installation_id, actor_id):
         ApplicationPermissionGrant.user_id == actor_id)))
 
 
-def _saved_selection(manager, db, key, installation_id, subject):
+def _saved_selection(manager, db, key, row, installation_id, subject):
     try:
-        value = authority._load(db, key, "grant", db.get(Grant, installation_id), installation_id)
+        value = authority._load(db, key, "grant", row, installation_id)
         if value["state"] != "active":
             return None
         data = value["data"]
@@ -74,6 +75,62 @@ def _saved_selection(manager, db, key, installation_id, subject):
         return data
     except (authority.AuthorityManagementError, AuthorityReviewKeyError, ValueError, TypeError, KeyError, AttributeError):
         return None
+
+
+def _choice_digest(row):
+    # Bind the hint to the *unchanged* historical row, not just its scope names.
+    return hashlib.sha256(b'3mm:review-choices:v1\0' + _canonical_bytes(
+        [row.installation_id, row.revision, row.key_id, row.seal,
+         hashlib.sha256(row.payload.encode()).hexdigest()])).hexdigest()
+
+
+def remember_review_choices(db, verify_prior_grant, key, previous_key_id):
+    """Mark verified historical consent for display only. Never re-seal a grant."""
+    rows = select(Grant).join(ApplicationExtensionInstallation,
+        ApplicationExtensionInstallation.id == Grant.installation_id).where(Grant.key_id == previous_key_id,
+        ApplicationExtensionInstallation.authority_mode == 'enforced').execution_options(yield_per=16)
+    for row in db.scalars(rows):
+        try:
+            value = authority._verified_record(db, verify_prior_grant, 'grant', row, row.installation_id)
+            if (value['state'] != 'active' or value['data'].get('consent_kind') != KIND
+                    or value['data']['grant_revision'] != row.revision):
+                continue
+        except (authority.AuthorityManagementError, ValueError, TypeError, KeyError, AttributeError, RecursionError):
+            continue  # Corrupt or obsolete history cannot prevent key recovery.
+        digest = _choice_digest(row)
+        identifier = digest[:32]
+        if db.get(Plan, identifier) is None:
+            marker = authority._envelope('plan', identifier, row.installation_id, 'review_choices_only',
+                {'grant_sha256': digest})
+            authority._save(db, key, 'plan', Plan(plan_id=identifier, installation_id=row.installation_id), marker)
+
+
+def _recovered_connectors(db, key, row, subject):
+    """Hints for the same connector, origin, credential and exact package.
+
+    The rollback fence regenerates binding_revision, even for an unchanged
+    destination. Ignore only that counter for display, never for execution.
+    Other resource types require a fresh explicit selection after key loss.
+    """
+    try:
+        digest = _choice_digest(row)
+        hint = authority._load(db, key, 'plan', db.get(Plan, digest[:32]), digest[:32])
+        if (hint['installation_id'] != row.installation_id or hint['state'] != 'review_choices_only'
+                or hint['data'] != {'grant_sha256': digest}):
+            return []
+        data = json.loads(row.payload)['data']
+        old = authority._parse(getattr(authority, 'PolicySubjectV' + str(data['subject']['subject_version'])), data['subject'])
+        if old.binding.principal != subject.binding.principal or old.binding.candidate != subject.binding.candidate:
+            return []
+        previous = {item.declaration.connector_id: item for item in old.connectors}
+        def destination(item):
+            return item.model_dump(exclude={'stored': {'binding_revision'}})
+        return [f'connector:{cid}' for item in subject.connectors
+            if (cid := item.declaration.connector_id) in previous
+            and f'connector:{cid}' in data['selection']['scopes']
+            and destination(item) == destination(previous[cid])]
+    except (authority.AuthorityManagementError, ValueError, TypeError, KeyError, AttributeError, RecursionError):
+        return []
 
 
 def _fingerprint(data):
@@ -92,14 +149,23 @@ def preview(manager, installation_id, *, actor_token, request_id):
         subject = manager._subject(db, key, installation_id, prepared, diagnostics=unavailable)
         permissions = _permissions(prepared)
         current_human = _human_grants(db, installation_id, actor[0])
-        saved = _saved_selection(manager, db, key, installation_id, subject)
+        installation = db.get(ApplicationExtensionInstallation, installation_id)
+        prior = db.get(Grant, installation_id)
+        saved = _saved_selection(manager, db, key, prior, installation_id, subject)
         scopes = sorted(authority._subject_scopes(subject))
-        selected = [scope for scope in saved['selection']['scopes'] if scope in scopes
-            and authority.optional_scope_current(subject, {'data':saved}, scope)] if saved else [scope for scope in scopes
-            if scope not in {'storage:private_files_publish', 'storage:private_files_transform'}
-            and scope not in subject.optional_resources and not scope.startswith('query:')]
+        if saved is not None:
+            selected = [scope for scope in saved['selection']['scopes'] if scope in scopes
+                and authority.optional_scope_current(subject, {'data':saved}, scope)]
+        elif prior is not None or installation.authority_mode == 'enforced':
+            selected = (_recovered_connectors(db, key, prior, subject) if prior is not None
+                and installation.authority_mode == 'enforced' and prior.key_id != subject.binding.configuration.key_id else [])
+        else:
+            selected = [scope for scope in scopes
+                if scope not in {'storage:private_files_publish', 'storage:private_files_transform'}
+                and scope not in subject.optional_resources and not scope.startswith('query:')]
         known_permissions = [item["permission_id"] for item in permissions]
-        user_saved = bool(current_human) or bool(saved and saved.get("actor_user_id") == actor[0])
+        user_saved = (bool(current_human) or bool(saved and saved.get("actor_user_id") == actor[0])
+            or (saved is None and (prior is not None or installation.authority_mode == 'enforced')))
         selected_human = [item for item in current_human if item in known_permissions] if user_saved else known_permissions
         boot, now = authority._clock()
         identifier = authority.new_authority_generation()
@@ -112,7 +178,6 @@ def preview(manager, installation_id, *, actor_token, request_id):
         data["fingerprint"] = fingerprint
         value = authority._envelope("plan", identifier, installation_id, "consent_preview", data)
         authority._save(db, key, "plan", Plan(plan_id=identifier, installation_id=installation_id), value)
-        installation = db.get(ApplicationExtensionInstallation, installation_id)
         access_saved = saved is not None
         if access_saved and installation.active_version is None:
             # A recovered/unactivated candidate cannot renew an obsolete grant

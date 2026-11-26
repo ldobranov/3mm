@@ -13,6 +13,7 @@ from backend.db.application_authority_grant import ApplicationAuthorityPlan as P
 from backend.db.audit_log import AuditLog
 from backend.db.authority import CoreAuthorityGuard
 from backend.db.module import ApplicationExtensionInstallation as Installation, ApplicationPermissionGrant
+from backend.db.module import ApplicationConnectorBinding, ApplicationSecretReference
 from backend.db.session import UserSession
 from backend.db.user import User
 from backend.applications.management.access_api import router
@@ -179,6 +180,91 @@ def test_empty_selection_is_saved_code_consent_and_does_not_default_back_to_all(
     assert read(s,"grant",Grant,1)["data"]["selection"]["scopes"]==[]
     fresh=preview(s)
     assert fresh["access_saved"] is True and fresh["selected_scopes"]==[]
+
+
+@pytest.mark.parametrize('case', ['unchanged', 'empty', 'different_credential', 'different_origin',
+                                 'bad_old_seal', 'bad_hint', 'changed_history', 'changed_incarnation', 'no_hint'])
+def test_rollback_preview_is_only_a_hint_for_verified_unchanged_choices(state, case):
+    from pathlib import Path
+    from deployment.authority_recovery import fence_recovered_authority
+    from backend.tests.test_application_checkpoint_authority import store_checkpoint_package
+    s = state
+    connector = 'connector:business_api'
+    definition = s.validated.application_extension.model_dump(mode='json')
+    definition['connectors'].append({**definition['connectors'][0], 'connector_id':'other_api'})
+    store_checkpoint_package(s, definition)
+    with Session(s.engine) as db, db.begin():
+        db.add(ApplicationConnectorBinding(application_installation_id=1, connector_id='other_api',
+            destination_origin=s.configuration['BUSINESS_API_URL'], secret_reference_id=1, enabled=True))
+    allow(s, preview(s), scopes=[] if case == 'empty' else [connector])
+    fence_recovered_authority(Path(s.engine.url.database), reason='deployment_rollback')
+    if case == 'bad_old_seal':
+        with s.engine.begin() as db:
+            db.execute(update(Grant).values(seal='0'*64))
+    status = s.manager.keys.local_recovery_status()
+    with pytest.raises(AuthorityReviewKeyError):
+        preview(s)
+    if case == 'no_hint':  # e.g. recovered with an earlier release
+        s.manager.keys.recover(expected_key_id=status['expected_key_id'])
+    else:
+        s.manager.recover_local_review_key(actor_token=s.token, expected_key_id=status['expected_key_id'],
+            expected_generation=status['expected_generation'])
+    with Session(s.engine) as db, db.begin():
+        if case == 'different_credential':
+            db.execute(update(ApplicationSecretReference).values(version=ApplicationSecretReference.version + 1))
+        if case == 'different_origin':
+            new_origin = 'https://changed.example.test'
+            db.execute(update(Installation).values(configuration={**s.configuration, 'BUSINESS_API_URL': new_origin}))
+            db.execute(update(ApplicationConnectorBinding).values(destination_origin=new_origin))
+        if case == 'bad_hint':
+            marker = db.get(Plan, consent._choice_digest(db.get(Grant, 1))[:32])
+            marker.seal = '0'*64
+        if case == 'changed_history':
+            db.execute(update(Grant).values(revision=Grant.revision + 1))
+        if case == 'changed_incarnation':
+            db.execute(update(Installation).values(authority_incarnation=identity()))
+        grant = db.get(Grant, 1)
+        evidence = (grant.payload, grant.seal, grant.revision)
+    reviewed = preview(s)
+    assert reviewed['scopes'] == ['command:pulse', connector, 'connector:other_api']
+    assert reviewed['selected_scopes'] == ([connector] if case == 'unchanged' else [])
+    assert not reviewed['access_saved'] and not s.manager.inspect(1)['grant_effective']
+    with Session(s.engine) as db:
+        row = db.get(Grant, 1)
+        assert (row.payload, row.seal, row.revision) == evidence
+    if case == 'unchanged':
+        # A hint has no approval/activation path of its own.
+        hint = read(s, 'plan', Plan, consent._choice_digest(row)[:32])
+        with pytest.raises(AuthorityManagementError):
+            allow(s, reviewed, preview_id=hint['record_id'], expected_revision=hint['revision'])
+        with pytest.raises(AuthorityManagementError):
+            s.manager.decide(1, actor_token=s.token, request_id=identity(), plan_id=hint['record_id'],
+                expected_revision=hint['revision'], fingerprint=reviewed['fingerprint'], decision='apply')
+        assert not s.manager.inspect(1)['grant_effective']
+        assert allow(s, reviewed)['effective']
+
+
+@pytest.mark.parametrize('damage', ['missing', 'unverifiable'])
+def test_damaged_enforced_grant_cannot_propose_new_user_permissions(ui_app, damage):
+    s = ui_app
+    allow(s, preview(s), scopes=[], user_permissions=[])
+    with s.engine.begin() as db:
+        if damage == 'missing':
+            db.execute(Grant.__table__.delete().where(Grant.installation_id == 1))
+        else:
+            db.execute(update(Grant).where(Grant.installation_id == 1).values(seal='0'*64))
+    if damage == 'missing':
+        # Enforced mode without its required grant cannot compose a subject.
+        with pytest.raises(AuthorityManagementError, match='unsupported_authority'):
+            preview(s)
+        with Session(s.engine) as db:
+            assert db.get(Grant, 1) is None
+            assert db.scalar(select(ApplicationPermissionGrant.id)) is None
+        return
+    viewed = preview(s)
+    assert viewed['user_permissions'] and not viewed['selected_user_permissions']
+    assert not viewed['selected_scopes'] and not viewed['access_saved']
+    assert not s.manager.inspect(1)['grant_effective']
 
 
 def test_web_lifecycle_recovery_requires_fresh_consent_without_losing_choices(state, monkeypatch, tmp_path):
@@ -357,7 +443,7 @@ def test_revoked_consent_is_not_reported_as_saved_and_preview_audit_has_no_raw_r
     saved=allow(s,preview(s),scopes=[])
     s.manager.revoke(1,actor_token=s.token,request_id=identity(),expected_revision=saved["grant_record_revision"])
     fresh=preview(s)
-    assert fresh["access_saved"] is False and fresh["selected_scopes"]==fresh["scopes"]
+    assert fresh["access_saved"] is False and fresh["selected_scopes"]==[]
     with Session(s.engine) as db:
         for event in db.scalars(select(AuditLog).where(AuditLog.action=="APPLICATION_AUTHORITY_CONSENT_PREVIEW")):
             assert "resources" not in event.changes

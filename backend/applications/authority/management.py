@@ -156,6 +156,10 @@ def _save(db, key, kind, row, data):
 
 
 def _load(db, key, kind, row, record_id):
+    return _verified_record(db, key.verify, kind, row, record_id)
+
+
+def _verified_record(db, verify, kind, row, record_id):
     if row is None:
         raise AuthorityManagementError("record_unavailable")
     # Reuse strict duplicate-key/size handling before authenticating stored JSON.
@@ -164,7 +168,7 @@ def _load(db, key, kind, row, record_id):
         raise AuthorityManagementError("record_unavailable")
     value = json.loads(row.payload, object_pairs_hook=_unique_object)
     value = _bounded_json(value, schema_paths=_record_schema_paths(kind, value))
-    key.verify(db, kind, value, row.key_id, row.seal)
+    verify(db, kind, value, row.key_id, row.seal)
     if (set(value) != {"version", "kind", "record_id", "installation_id", "revision", "state", "data"}
             or type(value["version"]) is not int or value["version"] != 1 or value["kind"] != kind
             or value["record_id"] != str(record_id) or value["installation_id"] != row.installation_id):
@@ -269,10 +273,12 @@ class _UiTrustSnapshot:
 class ApplicationAuthorityManager:
     def recover_local_review_key(self, *, actor_token, expected_key_id, expected_generation):
         """Recover review infrastructure only; do not repair or adopt any old seal."""
+        from backend.applications.management.consent import remember_review_choices
         try:
             with self.keys.local_recovery_writer() as replace, Session(self.engine) as db, authority_transaction(db) as mutation:
                 actor = _actor(db, actor_token)
-                key = replace(db, expected_key_id=expected_key_id, expected_generation=expected_generation)
+                key = replace(db, expected_key_id=expected_key_id, expected_generation=expected_generation,
+                    remember_choices=remember_review_choices)
                 db.add(AuditLog(user_id=actor[0], action='APPLICATION_AUTHORITY_KEY',
                     entity_type='core_authority', changes={'key_id': key.key_id,
                         'operation': 'recover-key-web', 'permission_approval': 'not_evaluated'}))
@@ -639,7 +645,8 @@ class ApplicationAuthorityManager:
     def _current_plan(self, db, key, installation_id, prepared, plan_id, expected_revision, fingerprint):
         row = db.get(Plan, _identifier(plan_id), populate_existing=True)
         plan = _load(db, key, "plan", row, plan_id)
-        if plan["installation_id"] != installation_id or plan["revision"] != _identifier(expected_revision):
+        if (plan["state"] == "review_choices_only" or plan["installation_id"] != installation_id
+                or plan["revision"] != _identifier(expected_revision)):
             raise AuthorityManagementError("stale_review")
         subject = self._subject(db, key, installation_id, prepared)
         if (_canonical_bytes(plan["data"]["subject"], schema_paths=_subject_schema_paths(plan['data']['subject']))
