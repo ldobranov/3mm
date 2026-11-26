@@ -156,13 +156,16 @@ def install_fixture(settings, host, blob, validated, *, reader):
         engine.dispose()
 
 
-def check_operator_access(engine, owner, *, can_read):
-    """A fresh normal login and actual Core routes against the restored DB, no grant or dispatch."""
+def check_operator_access(engine, owner, *, expected, settings, monkeypatch):
+    """Normal operator -> Core -> response Runtime -> recovered host; no new grants."""
+    import pwd
+    from threading import Thread
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from backend.accounts.users_api import router as accounts
     from backend.applications.management.api import router as applications
     from backend.storage.sessions import get_db
+    from components.platform_runtime.responses import ApplicationResponses
 
     def database():
         with Session(engine) as db:
@@ -172,7 +175,19 @@ def check_operator_access(engine, owner, *, can_read):
     app.include_router(applications)
     app.dependency_overrides[get_db] = database
     base = "/api/v1/application-extensions/" + owner
-    with TestClient(app) as client:
+    runtime = ApplicationResponses(settings.applications.application_response_socket,
+                                   settings.applications.authority_socket, core_uid=os.getuid())
+    # Use the real FD relay on a short, private Unix socket. Its peer check uses
+    # the current fixture UID; no installed helper or privileged unit is used.
+    settings.applications.runtime_user = pwd.getpwuid(os.getuid()).pw_name
+    monkeypatch.setattr("backend.applications.management.api.get_settings", lambda: settings)
+    with ExitStack() as stack:
+        runtime.start()
+        worker = Thread(target=runtime.serve_forever, daemon=True)
+        worker.start()
+        stack.callback(worker.join, 5)
+        stack.callback(runtime.close)
+        client = stack.enter_context(TestClient(app))
         assert client.get(base + "/access").status_code == 401
         login = client.post("/api/user/login", json={"email":"recovery@example.test","password":"rehearsal-only-login"})
         assert login.status_code == 200
@@ -180,21 +195,92 @@ def check_operator_access(engine, owner, *, can_read):
         response = client.get(base + "/access",headers=headers)
         assert response.status_code == 200 and response.headers["cache-control"] == "no-store", response.status_code
         data = response.json()
-        assert data["permission_ids"] == (["note_read"] if can_read else [])
-        assert ("note" in data["allowed_route_ids"]) == can_read and not data["platform_administrator"]
+        assert data["permission_ids"] == (["note_read"] if expected is not None else [])
+        assert ("note" in data["allowed_route_ids"]) == (expected is not None) and not data["platform_administrator"]
+        read = base + "/operator/operations/read_note"
+        response = client.post(read, headers=headers, json={"payload":{}})
+        if expected is not None:
+            assert response.status_code == 200, response.text
+            assert response.json() == expected
+        else:
+            assert response.status_code == 403
         assert client.post(base + "/operator/operations/save_note",headers=headers,json={
             "payload":{"text":"must not be saved","revision":1},"idempotency_key":"6"*32}).status_code == 403
         assert client.post("/api/user/logout",headers=headers).status_code == 200
         assert client.get(base + "/access",headers=headers).status_code in (401,403)
+        assert client.post(read, headers=headers, json={"payload":{}}).status_code in (401,403)
 
 
-@pytest.mark.parametrize("fail_candidate", [False, True], ids=["fresh-install", "rollback"])
-@pytest.mark.parametrize("host_factory", [LocalService, pytest.param(LocalUserService,
-    marks=pytest.mark.skipif(os.environ.get("TEST_NATIVE_NOTE_USER_SYSTEMD") != "1",
-                             reason="Explicit disposable Linux user-manager rehearsal only"))],
-    ids=["subprocess","user-systemd"])
+def review_fixture_package(settings, *, before_export):
+    """Exercise real package consent on private lab state only, with a fresh admin login."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from backend.accounts.users_api import router as accounts
+    from backend.applications.authority.management import configured_manager
+    from backend.applications.management import consent
+    from backend.artifacts.compiled_ui import application_ui_artifact, CompiledUiBuildError
+    from backend.installation.identity import installation_identity
+    from backend.storage.sessions import get_db
+    engine = create_engine(settings.backend.database_url)
+    def database():
+        with Session(engine) as db:
+            yield db
+    try:
+        if before_export:
+            with Session(engine) as db:
+                installation_identity(db)
+                db.add(User(username="fixture-admin", email="admin@example.test", role="admin",
+                            hashed_password=hash_password("fixture-only-password")))
+                db.commit()
+        app = FastAPI()
+        app.include_router(accounts,prefix="/api/user")
+        app.dependency_overrides[get_db] = database
+        manager = configured_manager(engine)
+        with Session(engine) as db:
+            installed = db.query(ApplicationExtensionInstallation).one()
+            installation_id = installed.id
+            reviewed_package = load_application_package(db.get(ModulePackage, installed.module_package_id))
+            if not before_export:
+                with pytest.raises(CompiledUiBuildError, match="code trust is unavailable"):
+                    application_ui_artifact(db, installed, reviewed_package)
+        if not before_export:
+            status = manager.inspect(installation_id)
+            assert status["mode"] == "enforced" and status["grant_revision"] is not None
+            assert not status["grant_effective"]  # health and archived approval do not authorize
+        with TestClient(app) as http:
+            login = http.post("/api/user/login",json={"email":"admin@example.test","password":"fixture-only-password"})
+            assert login.status_code == 200
+            token = login.json()["token"]
+            reviewed = consent.preview(manager,installation_id,actor_token=token,request_id=uuid.uuid4().hex)
+            # Note's only broker resource is optional and unselected. Native/UI
+            # code review is still bound to the exact package and compiled bytes.
+            assert reviewed["selected_scopes"] == []
+            granted = consent.allow(manager,installation_id,actor_token=token,request_id=uuid.uuid4().hex,
+                preview_id=reviewed["preview_id"],expected_revision=reviewed["revision"],fingerprint=reviewed["fingerprint"],
+                scopes=reviewed["selected_scopes"],user_permissions=[],accept_native_code=True)
+            assert granted["saved"] and manager.inspect(installation_id)["grant_effective"]
+            with Session(engine) as db:
+                assert application_ui_artifact(db, db.get(ApplicationExtensionInstallation, installation_id),
+                                               reviewed_package).built_ui_sha256
+            assert http.post("/api/user/logout",headers={"Authorization":"Bearer "+token}).status_code == 200
+            return granted["grant_record_revision"]
+    finally:
+        engine.dispose()
+
+
+USER_MANAGER = pytest.mark.skipif(os.environ.get("TEST_NATIVE_NOTE_USER_SYSTEMD") != "1",
+                                   reason="Explicit disposable Linux user-manager rehearsal only")
+
+
+@pytest.mark.parametrize(("host_factory","fail_candidate","protected"), [
+    pytest.param(LocalService,False,False,id="subprocess-fresh-install"),
+    pytest.param(LocalService,True,False,id="subprocess-rollback"),
+    pytest.param(LocalUserService,False,False,id="user-systemd-fresh-install",marks=USER_MANAGER),
+    pytest.param(LocalUserService,True,False,id="user-systemd-rollback",marks=USER_MANAGER),
+    pytest.param(LocalService,False,True,id="protected-ui-fresh-review"),
+])
 def test_portable_roundtrip_reads_original_note_and_save_receipt_through_new_process(
-        native_task_host, monkeypatch, fail_candidate, host_factory):
+        native_task_host, monkeypatch, fail_candidate, host_factory, protected):
     # Short, private roots keep AF_UNIX path length independent of checkout/pytest paths.
     with tempfile.TemporaryDirectory(prefix="nr-", dir="/tmp") as work, ExitStack() as cleanup:
         folder = Path(work)
@@ -222,6 +308,17 @@ def test_portable_roundtrip_reads_original_note_and_save_receipt_through_new_pro
         owner = validated.manifest.module_id
         monkeypatch.setattr("backend.accounts.tokens.SECRET_KEY", "local-recovery-test-only-key-at-least-32-bytes")
         instance, original_epoch = install_fixture(current, source_host, blob, validated, reader=True)
+        if protected:
+            from cryptography.fernet import Fernet
+            from backend.artifacts.compiled_ui import compile_ui_package, load_compiled_ui_artifact
+            master = Fernet.generate_key().decode()
+            monkeypatch.setenv("AI_SETTINGS_MASTER_KEY",master)
+            current.backups.host_config_file.write_text("AI_SETTINGS_MASTER_KEY="+master+"\n")
+            monkeypatch.setenv("THREE_MM_AUTHORITY_REVIEW_KEY_DIR",str(source/"authority-review"))
+            monkeypatch.setenv("COMPILED_UI_ARTIFACTS_DIR",str(current.backups.compiled_artifacts_dir))
+            ui = compile_ui_package(blob,validated)
+            assert ui.built_ui_sha256 and ui.entrypoints
+            original_grant = review_fixture_package(current,before_export=True)
         original_key = (source_host.keys/(instance+".key")).read_bytes()
         # Normal signed host interface with a synthetic test actor, not a
         # claim about the restored Web user's access or the HTTP admission layer.
@@ -249,7 +346,11 @@ def test_portable_roundtrip_reads_original_note_and_save_receipt_through_new_pro
         # expected location. Do not erase user files or touch any live service.
         source.rename(folder/"detached-source")
         current = dest_settings
-        assert verify_portable(copy,"rehearsal-only-password",target_architecture=os.uname().machine)["state"]=="validated"
+        verified = verify_portable(copy,"rehearsal-only-password",target_architecture=os.uname().machine,
+                                   check_interfaces=True)
+        assert verified["state"] == "validated"
+        assert verified["application_access_followup"] == ("fresh_review_needed" if protected else "none_observed")
+        assert verified["interface_builds"] == ("builds_matched" if protected else "build_attention")
         new_key = dest/"keys/backup.key"
         imported = import_portable_backup(copy,current.backups.storage_dir,new_key,"rehearsal-only-password",
                                           max_archive_bytes=32*1024*1024)
@@ -306,7 +407,19 @@ def test_portable_roundtrip_reads_original_note_and_save_receipt_through_new_pro
                 active_package = db.get(ModulePackage, restored.module_package_id)
                 assert load_application_package(active_package).sha256 == validated.sha256
                 assert Path(active_package.file_path) == current.backend.uploads_dir / "modules" / (validated.sha256 + ".zip")
-            check_operator_access(engine, owner, can_read=not fail_candidate)
+            current.applications.root = fresh_host.root
+            current.applications.key_root = fresh_host.keys
+            current.applications.application_response_socket = folder/"response.sock"
+            current.applications.authority_socket = folder/"unused-authority.sock"
+            if protected:
+                monkeypatch.setenv("THREE_MM_AUTHORITY_REVIEW_KEY_DIR",str(dest/"authority-review"))
+                monkeypatch.setenv("COMPILED_UI_ARTIFACTS_DIR",str(current.backups.compiled_artifacts_dir))
+                restored_ui = load_compiled_ui_artifact(validated)
+                assert restored_ui.path.is_relative_to(dest) and restored_ui.built_ui_sha256 == ui.built_ui_sha256
+                assert not (dest/"authority-review").exists()  # never transplant the review key
+                assert review_fixture_package(current,before_export=False) != original_grant
+            check_operator_access(engine, owner, expected=None if fail_candidate else saved,
+                                  settings=current, monkeypatch=monkeypatch)
             assert fresh_host.client(instance).invoke("read_note",{},actor) == (previous if fail_candidate else saved)
         finally:
             engine.dispose()

@@ -148,15 +148,39 @@ executes an application, replaces data or changes rights. A valid result
 means **the file passed staging**, not that a different machine has enough
 space, its services will start, or a physical restore has passed.
 
+The offline checker also reports whether the staged catalog contains active
+apps that require protected package review. This is a follow-up for the owner,
+not a failed backup or a grant: after an actual restore, inspect the selected
+package in **Extensions → Application access** and review its required access
+on the destination. A recovery generation does not revive old approvals.
+For a stale review key use the [review-key recovery procedure](EXTENSION_PLATFORM_V2_AUTHORITY_APPLY.md);
+do not copy an old key to make approvals work. No names, permissions or key
+material are returned by the check. If a historical or unreadable review
+schema prevents this advisory, the result says “not checked,” not “no review.”
+
+On the workstation, add `--check-interfaces` to see whether the build inventories
+of active compiled interfaces are also present and match the archived packages.
+This optional pass reads up to eight active packages and 64 MiB of package/build
+inputs. It does not run the compiler, load JavaScript, or grant trust. Missing
+build evidence is reported separately from a valid data archive; an exhausted
+budget means “not checked.” Neither matching hashes nor a healthy app process
+prove that the UI is approved or renders in your browser.
+
 For the source-level end-to-end rehearsal,
 `backend/tests/test_recovery_native_note.py` runs the official Note package,
 saves a revision, exports it, detaches the source installation, then imports and
 restores into a separate Linux directory with a new key. A newly started native
 host reads both the original note and its save receipt. Core also resolves the
 active package from the **destination** upload directory. A fresh normal login
-in the rehearsal checks the operator's stored read permission and rejects a
-write; no new application approval is issued. This is not a physical Raspberry
-Pi boot or a browser test with anyone's real account.
+in the rehearsal reads the actual saved note through the normal operator
+route and response Runtime, rejects a write, and refuses the same read after
+logout. This first scenario uses the fixture's compatibility profile, with no
+new approvals. A separate protected scenario compiles Note, approves its exact
+code before creating the archive and transfers it without the original review
+key. The restored UI has the same build digest, but Core refuses its code
+until an administrator reviews and approves the exact package again. Its
+optional hardware is never selected. These are not a physical Raspberry Pi
+boot or browser tests with anyone's real account.
 A second rehearsal starts with different data on the destination, refuses the
 final health check after the candidate serves the imported note, and checks
 that the restarted previous instance serves only its pre-restore note and

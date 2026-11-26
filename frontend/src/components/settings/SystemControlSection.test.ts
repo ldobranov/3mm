@@ -30,6 +30,7 @@ describe('System control settings', () => {
   })
 
   it('requires the exact factory-reset phrase before queuing the reset', async () => {
+    http.post.mockResolvedValueOnce({ status: 202, data: { status: 'queued', action: 'factory_reset' } })
     const wrapper = mount(SystemControlSection)
     await wrapper.findAll('button')[1].trigger('click')
     await flushPromises()
@@ -38,6 +39,7 @@ describe('System control settings', () => {
     expect(http.post).toHaveBeenCalledWith('/api/v1/system-control/factory-reset', {
       confirmation: 'FACTORY RESET',
     })
+    expect(wrapper.get('[role="status"]').text()).toContain('Reset requested')
   })
 
   it('does not restart when the confirmation is cancelled', async () => {
@@ -46,6 +48,31 @@ describe('System control settings', () => {
     await wrapper.findAll('button')[0].trigger('click')
     expect(http.post).not.toHaveBeenCalled()
     expect(wrapper.findAll('button').every(button => !button.attributes('disabled'))).toBe(true)
+  })
+
+  it.each(['lost reply', 'wrong receipt'])('does not offer a second reset on %s', async scenario => {
+    if (scenario === 'lost reply') http.post.mockRejectedValueOnce(new Error('disconnected'))
+    else http.post.mockResolvedValueOnce({ status: 202, data: { status: 'queued', action: 'restart' } })
+    const wrapper = mount(SystemControlSection)
+    const reset = wrapper.findAll('button')[1]
+    await reset.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="status"]').text()).toContain('Reset was not confirmed')
+    expect(wrapper.get('details').element.open).toBe(true)
+    expect(reset.element.disabled).toBe(true)
+    await reset.trigger('click')
+    expect(http.post).toHaveBeenCalledTimes(1)
+  })
+
+  it('distinguishes an explicit refusal from a lost reply', async () => {
+    http.post.mockRejectedValueOnce({ response: { status: 403, data: { detail: 'Not permitted' } } })
+    const wrapper = mount(SystemControlSection)
+    const reset = wrapper.findAll('button')[1]
+    await reset.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="status"]').text()).toBe('Not permitted')
+    expect(reset.element.disabled).toBe(false)
+    expect(http.post).toHaveBeenCalledTimes(1)
   })
 
   it.each([null, 'factory reset'])('does not reset with a cancelled or incorrect phrase (%s)', async phrase => {

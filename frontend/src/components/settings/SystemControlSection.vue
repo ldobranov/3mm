@@ -25,7 +25,15 @@
         <div class="control-icon danger-icon" aria-hidden="true"><i class="bi bi-exclamation-triangle"></i></div>
         <div class="control-copy">
           <strong>{{ t('systemControl.factoryTitle', 'Factory reset') }}</strong>
-          <p>{{ t('systemControl.factoryHelp', 'Permanently deletes users, settings, extensions, dashboards, Agent identity and provisioning data, then starts the setup Wi-Fi.') }}</p>
+          <p>{{ t('systemControl.resetDataWarning', 'Erases users, settings, installed applications and the Agent identity. If you need this data, download a recovery file to another device first.') }}</p>
+          <details :open="busy !== null && busy !== 'restart'">
+            <summary>{{ t('systemControl.resetReconnect', 'How to reconnect after reset') }}</summary>
+            <p>{{ t('systemControl.resetLan', 'On your usual network, use the Pi’s LAN IP in this address:') }}
+              <code>http://&lt;IP&gt;:8895/setup</code></p>
+            <p>{{ t('systemControl.resetAp', 'Only if setup Wi-Fi was configured and appears: join “3mm Setup XXXX”, then open') }}
+              <code>http://10.42.0.1:8895/setup</code>.</p>
+            <p>{{ t('systemControl.resetFirstLogin', 'Create your administrator account in Setup, then sign in with its email and password.') }}</p>
+          </details>
         </div>
         <button
           type="button"
@@ -51,7 +59,7 @@ import { useI18n } from '@/utils/i18n'
 import http from '@/utils/dynamic-http'
 
 const { t } = useI18n()
-const busy = ref<'restart' | 'factory' | null>(null)
+const busy = ref<'restart' | 'factory' | 'resetQueued' | 'resetUnknown' | null>(null)
 const message = ref('')
 const messageKind = ref<'success' | 'error'>('success')
 
@@ -70,6 +78,13 @@ async function restartDevice() {
   }
 }
 
+function showUnconfirmedReset(detail?: unknown) {
+  busy.value = 'resetUnknown'
+  messageKind.value = 'error'
+  const guidance = t('systemControl.resetUnconfirmed', 'Reset was not confirmed. Check for Setup first. If you verify that no reset is pending, reload this page before trying again.')
+  message.value = typeof detail === 'string' && detail ? `${detail} — ${guidance}` : guidance
+}
+
 async function factoryReset() {
   const phrase = 'FACTORY RESET'
   const entered = prompt(
@@ -80,13 +95,25 @@ async function factoryReset() {
   busy.value = 'factory'
   message.value = ''
   try {
-    await http.post('/api/v1/system-control/factory-reset', { confirmation: phrase })
+    const response = await http.post('/api/v1/system-control/factory-reset', { confirmation: phrase })
+    if (response.status !== 202 || response.data?.status !== 'queued' || response.data?.action !== 'factory_reset') {
+      showUnconfirmedReset()
+      return
+    }
+    busy.value = 'resetQueued'
     messageKind.value = 'success'
-    message.value = t('systemControl.factoryQueued', 'Factory reset requested. Connect to the open 3mm Setup Wi-Fi to configure the device again.')
+    message.value = t('systemControl.resetAccepted', 'Reset requested. When Setup is ready, reconnect using the instructions above.')
   } catch (error: any) {
     messageKind.value = 'error'
-    message.value = error?.response?.data?.detail || t('systemControl.actionFailed', 'The system action could not be started.')
-    busy.value = null
+    const status = error?.response?.status
+    const detail = error?.response?.data?.detail
+    if ([401, 403, 422].includes(status)) {
+      message.value = typeof detail === 'string' ? detail : t('systemControl.actionFailed', 'The system action could not be started.')
+      busy.value = null
+    } else {
+      // A lost reply (including one from the privileged helper) can follow a queued reset.
+      showUnconfirmedReset(detail)
+    }
   }
 }
 </script>
