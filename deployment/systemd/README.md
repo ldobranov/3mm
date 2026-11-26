@@ -37,7 +37,9 @@ python -m components.admin_web --host 127.0.0.1 --port 8080 --directory frontend
 
 This listener does not build the frontend or proxy the Core API.
 
-The public-web socket listens only on loopback port 8081. It starts the
+The public-web socket listens only on loopback port 8081. It must be ready
+before `sockets.target`, so it cannot wait for Core. Only the on-demand
+worker is ordered after Core and Platform Runtime. The socket starts the
 unprivileged `3mm-public-web.service` only when a request arrives; the process
 exits again after an idle window. Core exposes only the bounded public gateway
 at `/run/3mm-public-web/core.sock`; systemd owns the containing runtime directory
@@ -86,18 +88,33 @@ and does not restart an app that was already stopped or failed.
 
 ### Read an application host's supervision and resource limits (CAP20)
 
-From a source checkout on the Linux host, run the read-only report for one
+In the admin panel, open **Extensions → installed application → Resource limits**.
+It reads only that service when opened or refreshed. For the same observation
+from a source checkout on the Linux host, run the read-only report for one
 known application instance, using its 24-character lowercase hex instance ID:
 
 ```sh
 python3 -m tools.application_resource_report INSTANCE_ID
 ```
 
+On the installed system no checkout is necessary:
+
+```sh
+# Full (Standalone/Hub): replace INSTANCE_ID with the actual installation ID.
+python3 -I /opt/3mm/current/deployment/service_resources.py INSTANCE_ID
+# Minimal Node: the Agent is the workload. No Core or application host required.
+python3 -I /opt/3mm/current/deployment/service_resources.py --node-agent
+```
+
 The report reads `cpu.max`, `memory.max` and `pids.max` from that active
 service's cgroup v2 directory. It rechecks the unit invocation and cgroup
 identity before returning the sample. `os_enforced` means a finite value was
 read from the kernel. `not_set_here` means the unit has no limit at this level;
-parent cgroups may impose stricter limits. `unavailable` is not evidence of
+parent cgroups may impose stricter limits. `hierarchy_limits` gives the
+smallest observed ceiling up to the visible mount root (at most 16 ancestors);
+a lower parent value is shared, not a reservation or available headroom.
+Incomplete observations are marked even when a finite ceiling is known.
+`unavailable` is not evidence of
 either a finite or an unlimited resource. The report distinguishes a controller
 absent at the host root from a missing limit file on the service. See the [Linux cgroup v2
 documentation](https://docs.kernel.org/admin-guide/cgroup-v2.html) for the
@@ -113,8 +130,35 @@ that an application is healthy. The exit status still describes the cgroup
 sample: a stopped or failed host has supervision data but no live limits.
 
 This is an observation of the current unit, not a sizing recommendation or a
-test under load. FD, storage and network limits are not measured by this tool.
+test under load. `main_process_fds` reads the running main process's soft/hard
+open-file pair only if its process group matches the selected unit. A stopped
+unit has no live pair. `service_policy` is the manager's **configuration**;
+it does not inspect network traffic, storage contents or connector grants.
 It does not read app data, change limits, invoke applications or restart services.
+
+#### Resource profile contract
+
+| Boundary | What the standard Full application host actually bounds |
+| --- | --- |
+| CPU, RAM, processes/threads | OS cgroup bandwidth, maximum bytes, and total tasks, respectively, **when supported by the running kernel**. No minimum reservation. |
+| Open files | OS soft and hard limits per process. A child has its own table; there is no aggregate file-descriptor quota for the entire application. |
+| Concurrency | One ordinary host request is served at a time. Declared task admission and queue depth are broker bounds; they do not limit all threads created by reviewed native code. |
+| Time | Operation and task deadlines apply to the SDK/broker exchange. A timeout is not evidence that a side effect or native process stopped. The service manager's shutdown timeout is a different OS policy. |
+| Network | The standard unit has a private network and local Unix sockets. A connector request still needs its own grant and broker limits. A Node Agent needs network access; the Full application policy does not apply to it. |
+| Storage | The SDK/private-files broker and scoped SQLite enforce their declared interface limits. They do not provide an OS disk quota for arbitrary native writes in the application's own writable directory. |
+
+In the standard application mount namespace, the instance can read its own
+release and transport key, write its own data/run directories and communicate
+with the broker. The surrounding Core state/config trees are masked, so they do
+not normally expose Core data or another application's key, data or socket.
+This is a reviewed-native profile with a shared Linux principal, **not** an
+untrusted-code or same-origin browser sandbox. See the systemd documentation on
+[file system namespacing](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#File%20System%20Namespacing).
+Changes to the unit template take effect for a process only on its next start.
+
+Developers can inspect the shipped defaults and the exact project's cooperative
+budgets before installation via the [authoring catalog](../../docs/APPLICATION_DEVELOPMENT.md).
+Neither a valid project declaration nor a configured unit is a live observation.
 
 The setup portal remains unprivileged and talks through a root-owned Unix
 socket to a narrowly scoped NetworkManager helper. The open `3mm Setup XXXX`
