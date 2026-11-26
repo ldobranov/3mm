@@ -6,21 +6,44 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import sqlite3
 import stat
 import sys
 import tarfile
 import tempfile
 import warnings
+from contextlib import closing
+from itertools import count
 
 from backend.installation.identity import InstallationIdentityError
 from backend.system.backups.application_packages import ApplicationRecoveryError
 from deployment.backup_compatibility import BackupCompatibilityError
 from deployment.portable_backup import open_portable_source, stage_portable_envelopes
 from deployment.restore_backup import RestoreStateError, _stage_for_target
-from tools.recovery_result import GUIDANCE, MAX_ENTRIES, MAX_INNER_BYTES, SCOPE, SUPPORTED_ARCHITECTURES, result as _result
+from tools.recovery_result import ACCESS_FOLLOWUP, INTERFACE_FOLLOWUP, GUIDANCE, MAX_ENTRIES, MAX_INNER_BYTES, SCOPE, SUPPORTED_ARCHITECTURES, result as _result
 
 
 SPACE_RESERVE = 64 * 1024 * 1024
+
+
+def _application_access_followup(staging):
+    """Advisory only, after successful validation. Never open keys or grant tables."""
+    database = staging / "payload/core/3mm.db"
+    try:
+        with closing(sqlite3.connect(database.as_uri()+"?mode=ro", uri=True, timeout=0.2)) as db:
+            db.execute("PRAGMA trusted_schema=OFF")
+            db.execute("PRAGMA query_only=ON")
+            db.set_progress_handler(lambda steps=count(): next(steps) >= 256, 1000)
+            if db.execute("SELECT type FROM sqlite_schema WHERE name='application_extension_installations'").fetchone() != ("table",):
+                return "not_checked"
+            # No names, IDs, permissions, rows or private configuration are exported.
+            # Prefer a positive observation even if older/unknown modes coexist.
+            modes = db.execute("""SELECT max(CASE WHEN authority_mode IN ('enforced','review_required') THEN 2
+                                               WHEN authority_mode='compatibility' THEN 0 ELSE 1 END)
+                                  FROM application_extension_installations WHERE enabled=1 AND status='active'""").fetchone()[0]
+            return "fresh_review_needed" if modes == 2 else "not_checked" if modes == 1 else "none_observed"
+    except (sqlite3.Error, ValueError, OSError):
+        return "not_checked"
 
 
 def _private_scratch_parent(scratch):
@@ -36,7 +59,8 @@ def _private_scratch_parent(scratch):
     return parent
 
 
-def verify_portable(path: Path, passphrase: str, *, target_architecture: str, scratch: Path | None = None):
+def verify_portable(path: Path, passphrase: str, *, target_architecture: str, scratch: Path | None = None,
+                    check_interfaces: bool = False):
     """No device, catalog, network, local backup key, systemd or live service dependency.
 
     Only explicit staging uses disk. The source is opened read-only and never
@@ -68,7 +92,11 @@ def verify_portable(path: Path, passphrase: str, *, target_architecture: str, sc
                 staging.mkdir(mode=0o700)
                 manifest = _stage_for_target(plaintext, staging, backup_id, arch,
                     entry_budget=MAX_ENTRIES, payload_budget=min(MAX_INNER_BYTES,size))
-                result = _result(arch,entry_count=len(manifest.entries),payload_size_bytes=manifest.total_size_bytes)
+                result = _result(arch,entry_count=len(manifest.entries),payload_size_bytes=manifest.total_size_bytes,
+                                 application_access_followup=_application_access_followup(staging))
+                if check_interfaces:
+                    from tools.recovery_interfaces import observe
+                    result["interface_builds"] = observe(staging,manifest.entries)
                 phase = "storage_error"
         return result
     except (ApplicationRecoveryError, RestoreStateError) as exc:
@@ -90,6 +118,8 @@ def main(argv=None):
                         help="intended restore machine (default: current machine); the verifier never contacts it")
     parser.add_argument("--scratch",type=Path,help="existing trusted Linux filesystem for private transient plaintext")
     parser.add_argument("--json",action="store_true",help="print bounded metadata and fixed reason codes only")
+    parser.add_argument("--check-interfaces",action="store_true",
+                        help="also check existing compiled interface inventories; never compiles or approves code")
     args = parser.parse_args(argv)
     if sys.platform != "linux" or args.target_architecture not in SUPPORTED_ARCHITECTURES:
         result = _result(args.target_architecture,issue="linux_required" if sys.platform!="linux" else "target_not_supported")
@@ -102,13 +132,16 @@ def main(argv=None):
         except (getpass.GetPassWarning,EOFError,KeyboardInterrupt,OSError):
             result = _result(args.target_architecture,issue="password_prompt_unavailable")
         else:
-            result = verify_portable(args.file,password,target_architecture=args.target_architecture,scratch=args.scratch)
+            result = verify_portable(args.file,password,target_architecture=args.target_architecture,scratch=args.scratch,
+                                     check_interfaces=args.check_interfaces)
             del password
     if args.json:
         print(json.dumps(result,ensure_ascii=True))
     elif result["state"]=="validated":
         print(f"Archive validated for {result['target_architecture']}: {result['entry_count']} entries. "
               "No device, activation, restore or boot was tested.")
+        print(ACCESS_FOLLOWUP[result["application_access_followup"]])
+        if "interface_builds" in result: print(INTERFACE_FOLLOWUP[result["interface_builds"]])
     else:
         print(f"Not verified ({result['reason']}). {result['next_check']}")
     return 0 if result["state"]=="validated" else 1

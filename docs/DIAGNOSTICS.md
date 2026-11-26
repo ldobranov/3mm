@@ -9,12 +9,12 @@ Included information is deliberately narrow:
 - installed version, release metadata and shared protocol version;
 - operating system, architecture, Python version, CPU count, load and memory;
 - total, used and free storage;
-- SQLite integrity and migration revision;
+- live database readability and migration revision (a bounded read, not a full integrity scan);
 - loopback Agent health and a one-way device fingerprint;
 - latest non-secret backup operation state.
 
 The generator does not read environment values, NetworkManager profiles,
-application logs, database rows, uploaded files, extension payloads or backup
+application logs, application data rows, uploaded files, extension payloads or backup
 contents. Password, passphrase, secret, token, API-key, credential,
 authorization, cookie and private-key fields are recursively replaced with
 `[REDACTED]`. Common inline bearer, assignment and URL-userinfo forms are also
@@ -27,6 +27,30 @@ The API is restricted to administrators:
 
 The Settings page uses the authenticated API client, so diagnostic data is not
 placed in a public URL or browser navigation history.
+
+In a download from a Core with CAP21 package-build diagnostics,
+`package.ui_compile` identifies the UI build step of a package upload. The reason
+distinguishes an unreadable compiler entry file (the process did not start),
+an operating-system error running it, a timeout, and a nonzero exit. A nonzero
+exit alone does not prove an application bug. `compiler_output_invalid` means
+a fresh compiler process returned success, but its interface files failed
+validation. It is not reported merely because a cached build is damaged.
+The download includes no
+application source, compiler output or host paths. Check the exact ZIP with the
+local [authoring tools](APPLICATION_DEVELOPMENT.md) before requesting another upload.
+
+A `package.store` case describes catalog registration, not installation or
+activation. The admin response and the offline decoder distinguish three refusals:
+
+| Stage | Response | What the evidence establishes |
+| --- | --- | --- |
+| `package.admission` | 503, `package_store_busy` | This Core process is processing another package; the rejected request was not queued. Read the catalog after the active request finishes. |
+| `package.catalog_check` | 409, `package_version_conflict` | The same module and version already had different contents before compilation. The candidate was not built or registered. |
+| `package.catalog_commit` | 409, `package_version_conflict` | A competing publication won before this registration finished. The candidate was not registered; compilation may already have happened. |
+
+For changed contents, choose a new version. An exact re-upload still verifies
+the compiled files. No refusal automatically replays the upload, grants access,
+or changes the active application.
 
 For an unconfirmed outgoing installation report, use the [local receipt
 lookup](INSTALLATION_PEER_V1.md#consent-and-trust-flow). The command
@@ -87,8 +111,11 @@ Optionally paste one generated task or device command ID before downloading
 (`?reference=task_…` or `cmd_…`). This is a primary-key read, not a search
 of the device, not a replay and not a new grant. A task reports its journal
 state and progress for the exact installation generation and package. A command
-reports its queue state for the same owner, package and current command epoch;
-only a verified link to a task or a retained correlated sensor event is shown.
+reports its queue state for the same owner, package and current command epoch.
+When the support record includes `delivery.permit_claimed`, it says whether
+Core has recorded a one-use permit claim for that exact command, **not** whether
+the device acted. Older exports omit the field; missing is not false.
+Only a verified link to a task or a retained correlated sensor event is shown.
 The sensor need not be the command target. No payload, raw result, lease,
 device name or sensor identifier is selected. A foreign, expired-scope or
 absent reference gives the same “not found in scope” answer. A reported
@@ -107,13 +134,60 @@ not establish health. Unbound failures, other versions, browser memory,
 application data/logs and global history are deliberately excluded.
 
 Open the JSON directly or use `python -m tools.diagnostics explain application-support.json`
-(add `--json` for automation). The offline reader uses the same fixed Core case
+(add `--json` for automation). For a captured running application, the reader
+separates its own CPU/RAM/task limits, the lowest visible ceiling (possibly
+shared with other services), and RAM/tasks in use at the time of capture.
+An incomplete hierarchy cannot establish the host's final limit. A missing
+RAM measurement is not zero; CPU quota is not CPU usage. Earlier reports
+without measurements remain readable. No second query to the device is made.
+To read **one** application's current evidence instead of saving a global
+bundle, use the same workstation tool with a trusted HTTPS Core or local tunnel:
+
+```sh
+python -m tools.diagnostics application --url http://127.0.0.1:8887 --module-id org.example.meter --json
+```
+
+Optionally pass `--reference` with the original task/command ID. The reader
+prompts privately for a current administrator token, performs one GET, checks
+the returned owner and reference, and prints a bounded explanation. It does not
+create a file, retry a refusal, follow redirects, start a service or grant rights.
+The offline reader uses the same fixed Core case
 catalog and never executes imported text. An ordinary managed HTTP application
 operation now receives the same `OperationContext.correlation_id` as the
 server-generated `X-3mm-Trace-Id`. It is a support reference, not an
 idempotency key, transport nonce, permission, or evidence of execution.
 For a group of repeated refusals the timestamp and duration belong only to
 `timing_trace_id` (the latest occurrence), even when looking up an earlier ID.
+The offline explanation only emits device step durations and last-passed
+stage for that exact request. For an older retained member it returns
+`step_timing_scope: not_retained_for_this_request` and the latest request ID
+as a reference, without the other request's timing values. The technical
+panel also withholds those values when filtering on an exact older ID.
+To look up an original request after Core's history expires, use
+`python -m tools.diagnostics explain diagnostic-cases.json --trace-id <original-id> --json`
+on a previously saved full report. This reads the file only. It distinguishes
+a Core failure, a detailed trace without a failure, and a browser-only
+observation; an absent ID does not establish what happened.
+
+**Clear history** is an explicit administrator action, not a repair. Save a
+report first if you need the evidence. Confirming clears the current Core
+process's recent failures and this tab's browser observations; it does not
+delete audit records, detailed recordings, command receipts or saved files.
+New failures continue to be collected. Compare observations across real
+traffic after a deployment; an empty history after a restart, clear or expiry
+is not evidence that the original fault was fixed.
+
+For two full downloads use `python -m tools.diagnostics compare before.json
+after.json --json` (one command). It shows the retained counts for each
+recorded step and cause in each report separately. It counts **new**
+occurrences only for the same Core process and history, with no change to loss
+counters. When every retained group has coherent Core timestamps, first and last
+observation times are also shown. Their span is not downtime, and does not say
+that startup caused a failure. No retained cases or incomplete times give no
+span. The comparison excludes browser-only observations. Old formats
+without a clear-history identifier, a restart, a clear
+or expired observations do not produce a numerical improvement. Verify real
+successful traffic separately. No connection to the device is needed.
 
 For a database error during sign-in, **Support diagnostics → Diagnostic cases**
 and the recent HTTP failures export identify whether it happened while reading
@@ -136,24 +210,48 @@ optional device health checks. Opening the page does not start a recording.
 For Agent heartbeat and authority exchange a classified failure carries the last
 observed successful stage (or null), the failing stage, its elapsed milliseconds
 and the total request duration. These timings belong only to `timing_trace_id`.
+Device credentials are verified for each call, including after an idle period;
+empty polls do not update an activity timestamp. HTTP heartbeat receipt and
+the presented credential's activity timestamp commit together. Historical
+`device.credential_write` cases still describe older builds.
 A busy/locked SQLite driver code is evidence of contention, not the identity of
 the writer. Rejected device credentials are not application grants. A signing
 identity error is not proof that Core was booting. Before the HTTP listener is
 available there can be no Core HTTP trace; use a separate startup observation.
 Previously exported generic errors cannot be reclassified retrospectively.
 
+To verify a contention fix, save the failing report, note when the new Core
+becomes ready, and observe one full 15-minute window of normal Agent traffic.
+Check that real authority exchanges returned 200, heartbeats returned 202 and
+ordinary admin reads succeeded during that window. Check the report's loss
+counters and whether the history changed; do not clear it as part of the
+verification. The support health preview checks database readability, not
+integrity: it does not scan the live database while the Agent is writing.
+
+For a 409 on `device.execution_permit`, distinguish a refusal to issue that
+particular permit from the outcome of the original command. `review_key_busy`
+means admission could not acquire the review key; `database_busy` means the
+SQLite driver actually reported contention. Neither says a grant was revoked,
+identifies the holder of a past lock, or justifies repeating a physical action.
+Use the original command's recorded permit claim and Agent receipt when
+available. If they are missing, leave the physical result unconfirmed.
+Opening or refreshing **Application access** for an installed application now
+reads its current status. **Review or change access** explicitly prepares a
+consent plan; only the editing view offers **Prepare a new review**. A plan
+alone neither grants access nor starts the application.
+
 The **Diagnostic cases** view collects the current
 bounded failure history, matching detailed stages and component observations.
-**Save diagnostic bundle** exports the same collected evidence, including this
+**Download report** exports the same collected evidence, including this
 page's safe browser observations. An explicitly imported producer timeline is
 included as a separate unverified snapshot; it is never represented as live or
 authenticated provider state. Collection is read-only: it does not invoke an
 application, open a terminal, grant access, reconnect, restart or replay an action.
 
 The always-on Core ring observes router-template HTTP **4xx and 5xx** failures,
-not just conflicts/server errors. It retains at most100 groups /128KiB for15min
-since the group's last observation, at most10 events/s. Identical failures within
-30s coalesce into a count, first/latest time and the latest8 request identifiers;
+not just conflicts/server errors. It retains at most 100 groups / 128 KiB for 15 min
+since the group's last observation, at most 10 events/s. Identical failures within
+30 s coalesce into a count, first/latest time and the latest 8 request identifiers;
 different causes, phases and verified application instances stay separate.
 Eviction, expiry, invalid inputs and contention are counted. A new Core process
 has a different history identity and an empty ring. No disk spool is introduced.
@@ -255,7 +353,18 @@ python -m tools.diagnostics explain diagnostic-cases.json --json
 
 The standard-library CLI refuses redirects, HTTP to non-loopback hosts, URL
 credentials, oversized/invalid input and existing output files. It performs one
-GET without automatic retries. Offline explanations use the closed local catalog,
+GET without automatic retries. Both online commands check the base address and
+selection before asking for the token. Collection rejects an unrelated report
+or a different original request without creating the output file.
+The reader shows failure cases and retained detailed records separately. A
+request with one detailed record and no recorded failure is not a missing
+request, and neither observation proves that an application or device acted.
+The resulting file is published only when complete; an existing file is never
+replaced. On a Linux filesystem with Unix permissions the new file is owner-only.
+Use your own protected folder on Windows, where directory permissions apply.
+Collect only from a Core installation you trust. The saved case file preserves
+the server's report; the collector does not redact arbitrary third-party JSON.
+Offline explanations use the closed local catalog,
 not instructions or descriptions supplied by an imported file. Exported snapshots
 are evidence, not instructions to execute commands or change rights.
 

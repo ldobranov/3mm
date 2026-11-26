@@ -27,6 +27,17 @@ GUIDANCE = {
 }
 MAX_INNER_BYTES = 512 * 1024 * 1024
 MAX_ENTRIES = 32_768
+ACCESS_FOLLOWUP = {
+    "fresh_review_needed": "Protected applications are active in the archive. On the destination review the exact package and approve its required access again; the archived grants do not grant fresh authority.",
+    "none_observed": "No active application in protected review mode was observed. This is not a verification of human permissions or application access.",
+    "not_checked": "Application review mode could not be determined. Check Application access on the destination; do not assume old approvals will work.",
+}
+INTERFACE_FOLLOWUP = {
+    "builds_matched": "The archived build inventory matched the active UI packages checked. This is not browser readiness or approval.",
+    "no_active_ui_observed": "No active compiled UI package was observed in the checked catalog.",
+    "build_attention": "An active interface has missing or inconsistent build evidence. Keep the original archive and verify the exact package and interface on the destination before use.",
+    "not_checked": "Interface build evidence could not be checked within the workstation limits. Do not assume interface availability.",
+}
 
 
 def result(arch, *, issue=None, **counts):
@@ -59,4 +70,15 @@ def checked_result(value):
     if (arch is None or value.get("state")!="validated" or type(n) is not int or not 1<=n<=MAX_ENTRIES or
             type(size) is not int or not 0<size<=MAX_INNER_BYTES):
         raise ValueError("Invalid archive check counts")
-    return result(arch,entry_count=n,payload_size_bytes=size)
+    counts = dict(entry_count=n,payload_size_bytes=size)
+    if "application_access_followup" in value:
+        followup = value["application_access_followup"]
+        if type(followup) is not str or followup not in ACCESS_FOLLOWUP:
+            raise ValueError("Invalid application access observation")
+        counts["application_access_followup"] = followup
+    if "interface_builds" in value:
+        state = value["interface_builds"]
+        if type(state) is not str or state not in INTERFACE_FOLLOWUP:
+            raise ValueError("Invalid interface observation")
+        counts["interface_builds"] = state
+    return result(arch,**counts)

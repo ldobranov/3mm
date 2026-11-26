@@ -104,9 +104,66 @@ def test_real_archive_validates_from_export_only_and_never_changes_source_files(
     result=check.verify_portable(source,PASSWORD,target_architecture=platform.machine(),scratch=scratch)
     assert result==dict(schema_version=1,kind="portable_recovery_check",scope=check.SCOPE,
         state="validated",service_activation_tested=False,target_architecture=platform.machine(),
-        entry_count=result["entry_count"],payload_size_bytes=result["payload_size_bytes"])
+        entry_count=result["entry_count"],payload_size_bytes=result["payload_size_bytes"],application_access_followup="none_observed")
     assert result["entry_count"]>=8 and result["payload_size_bytes"]>=1024
     assert fingerprint(root)==original and not list(scratch.iterdir())
+
+
+def test_protected_app_is_a_followup_not_a_failed_archive_or_an_export_of_grants(tmp_path, capsys):
+    from tools import diagnostics
+    settings=_settings(tmp_path)
+    _seed_installation(settings)
+    database=settings.backups.agent_data_dir.parent/'core/3mm.db'
+    with sqlite3.connect(database) as db:
+        db.execute("UPDATE application_extension_installations SET authority_mode='enforced'")
+    backup,key=_backup(settings,tmp_path)
+    export=portable_backup.create_portable_export(settings.backups.storage_dir,key,backup.backup_id,PASSWORD)
+    before=fingerprint(tmp_path)
+    result=check.verify_portable(export.path,PASSWORD,target_architecture=platform.machine())
+    assert result['state']=='validated' and result['application_access_followup']=='fresh_review_needed'
+    assert fingerprint(tmp_path)==before and 'module_id' not in json.dumps(result)
+    saved=tmp_path/'result.json'
+    result['next_check']='untrusted private content'
+    saved.write_text(json.dumps(result))
+    assert diagnostics.main(['explain',str(saved)])==0
+    text=capsys.readouterr().out
+    assert 'exact package' in text and 'untrusted private content' not in text
+    result['application_access_followup']='arbitrary private instructions'
+    saved.write_text(json.dumps(result))
+    assert diagnostics.main(['explain',str(saved)])==1
+    captured=capsys.readouterr()
+    assert 'arbitrary private instructions' not in captured.out+captured.err
+
+
+def test_unknown_review_schema_is_not_reported_as_no_review_or_created(tmp_path):
+    db_path=tmp_path/'payload/core/3mm.db'
+    db_path.parent.mkdir(parents=True)
+    assert check._application_access_followup(tmp_path)=='not_checked' and not db_path.exists()
+    with sqlite3.connect(db_path) as db:
+        db.execute("CREATE TABLE application_extension_installations(enabled,status,authority_mode)")
+        db.executemany("INSERT INTO application_extension_installations VALUES(?,?,?)",
+                       [(0,'disabled','enforced'),(1,'active','future-or-corrupt')])
+    assert check._application_access_followup(tmp_path)=='not_checked'
+    with sqlite3.connect(db_path) as db:
+        db.execute("DELETE FROM application_extension_installations WHERE enabled=1")
+    assert check._application_access_followup(tmp_path)=='none_observed'
+
+
+def test_interface_check_honors_limits_and_never_implies_an_existing_build(sample, monkeypatch, capsys):
+    from tools import diagnostics, recovery_interfaces
+    _, scratch, source = sample
+    monkeypatch.setattr(check.getpass, "getpass", lambda _: PASSWORD)
+    args = [str(source),"--scratch",str(scratch),"--check-interfaces","--json"]
+    assert check.main(args) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["state"] == "validated" and result["interface_builds"] == "no_active_ui_observed"
+    monkeypatch.setattr(recovery_interfaces, "MAX_ACTIVE", 0)
+    assert check.main(args) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["state"] == "validated" and result["interface_builds"] == "not_checked"
+    assert diagnostics.explain(result)["interface_builds"] == "not_checked"
+    with pytest.raises(ValueError):
+        diagnostics.explain({**result,"interface_builds":"untrusted text"})
 
 
 @pytest.mark.parametrize("case,reason",[
