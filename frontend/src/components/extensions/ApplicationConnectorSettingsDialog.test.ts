@@ -108,6 +108,54 @@ describe('Core-owned connector settings', () => {
     expect(client.save).toHaveBeenCalledOnce()
     expect(sessionStorage.length).toBe(0)
   })
+  it('keeps an applied receipt when the following settings read fails; Refresh only reads', async () => {
+    const wrapper = await render()
+    await draft(wrapper)
+    client.inspect.mockRejectedValueOnce(new ConnectorSettingsError('unavailable'))
+    client.save.mockImplementation(async (_id, body) => ({
+      request_id: body.request_id, status: 'applied', state: connectorSettings().connectors[0],
+    }))
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(wrapper.get('.connector-saved').text()).toContain('Saved')
+    expect(wrapper.get('[role="alert"]').text()).toContain('refresh')
+    expect(wrapper.find('form').exists()).toBe(false) // stale settings cannot be resubmitted
+    expect(wrapper.find('.connector-pending').exists()).toBe(false)
+    expect(wrapper.emitted('changed')).toHaveLength(1)
+    expect(client.outcome).not.toHaveBeenCalled()
+    client.inspect.mockRejectedValueOnce(new ConnectorSettingsError('unavailable'))
+    await wrapper.findAll('button').find(b => b.text() === 'Refresh')!.trigger('click'); await flushPromises()
+    expect(wrapper.get('.connector-saved').text()).toContain('Saved')
+    expect(wrapper.find('form').exists()).toBe(false)
+    await wrapper.findAll('button').find(b => b.text() === 'Refresh')!.trigger('click'); await flushPromises()
+    expect(wrapper.find('form').exists()).toBe(true)
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    expect(client.inspect).toHaveBeenCalledTimes(4)
+    expect(client.save).toHaveBeenCalledOnce()
+  })
+  it('keeps a verified result and fences new saves if the browser cannot remove its receipt', async () => {
+    client.save.mockImplementation(async (_id, body) => ({
+      request_id: body.request_id, status: 'applied', state: connectorSettings().connectors[0],
+    }))
+    const wrapper = await render(); await draft(wrapper)
+    const storage = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('storage unavailable') })
+    try {
+      await wrapper.get('form').trigger('submit'); await flushPromises()
+      expect(wrapper.get('.connector-saved').text()).toContain('Saved')
+      expect(wrapper.get('[role="alert"]').text()).toContain('New saves are disabled')
+      expect(wrapper.find('.connector-pending').exists()).toBe(false)
+      await draft(wrapper); await wrapper.get('form').trigger('submit'); await flushPromises()
+      expect(client.save).toHaveBeenCalledOnce()
+      expect(client.outcome).not.toHaveBeenCalled()
+    } finally { storage.mockRestore() }
+    wrapper.unmount()
+    const requestId = client.save.mock.calls[0][1].request_id
+    client.outcome.mockResolvedValue({ request_id: requestId, status: 'applied', state: connectorSettings().connectors[0] })
+    const reopened = await render()
+    expect(client.outcome).toHaveBeenCalledExactlyOnceWith(requestId)
+    expect(reopened.get('.connector-saved').text()).toContain('Saved')
+    expect(client.save).toHaveBeenCalledOnce()
+    expect(sessionStorage.length).toBe(0)
+  })
   it('checks an existing receipt after conflict before allowing any new action', async () => {
     client.save.mockRejectedValue(new ConnectorSettingsError('conflict'))
     client.outcome.mockImplementation(async request_id => ({ request_id, status: 'applied', state: connectorSettings().connectors[0] }))

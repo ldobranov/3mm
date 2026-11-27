@@ -47,7 +47,22 @@ async function load() {
   choose()
 }
 function persistPending() { sessionStorage.setItem(pendingKey, JSON.stringify({ request_id: pending.value, rejected: rejected.value })) }
-function clearPending() { sessionStorage.removeItem(pendingKey); pending.value = null; rejected.value = null }
+function clearPending() {
+  // A known result remains known even if the browser stops allowing storage.
+  // A leftover identity can only trigger a read on reopen. Fence new writes.
+  try { sessionStorage.removeItem(pendingKey) } catch { storageFault.value = true }
+  pending.value = null; rejected.value = null
+}
+async function readSettings() {
+  try { await load() }
+  catch (error) {
+    if (!disposed) {
+      const denied = error instanceof ConnectorSettingsError && error.code === 'access_denied'
+      if (denied) { data.value = null; clearCredential() }
+      message.value = denied ? 'access_denied' : 'unavailable'
+    }
+  }
+}
 async function applyOutcome(result: ConnectorOutcome) {
   if (disposed) return
   if (result.status === 'unknown') {
@@ -61,9 +76,11 @@ async function applyOutcome(result: ConnectorOutcome) {
     return
   }
   clearPending(); clearCredential(); action.value = 'save'; confirmed.value = false
+  data.value = null; applied.value = true; message.value = ''
   emit('changed')
-  await load()
-  if (!disposed) { applied.value = true; message.value = '' }
+  // The receipt confirms the write; a separate read cannot invalidate it.
+  await readSettings()
+  if (!disposed) applied.value = true
 }
 async function check() {
   if (!pending.value || busy.value) return
@@ -75,9 +92,8 @@ async function check() {
 async function refresh() {
   if (pending.value) { await check(); return }
   if (busy.value) return
-  busy.value = true; message.value = ''; applied.value = false
-  try { await load() }
-  catch (error) { if (!disposed) message.value = error instanceof ConnectorSettingsError ? error.code : 'unavailable' }
+  busy.value = true; message.value = ''
+  try { await readSettings() }
   finally { if (!disposed) busy.value = false }
 }
 function changeAction(next: 'rotate' | 'revoke') {
@@ -112,7 +128,7 @@ async function save() {
     persistPending()
   } catch {
     pending.value = null; storageFault.value = true
-    busy.value = false; message.value = 'unavailable'; return
+    busy.value = false; return
   }
   clearCredential()
   try { await applyOutcome(await client.save(current.connector_id, request)) }
@@ -143,10 +159,9 @@ onMounted(async () => {
         || !(record.rejected === null || ['access_denied', 'invalid_request', 'conflict', 'unavailable', 'stop_required'].includes(record.rejected))) throw new Error()
       pending.value = record.request_id; rejected.value = record.rejected
     }
-  } catch { storageFault.value = true; message.value = 'unavailable' }
+  } catch { storageFault.value = true }
   if (pending.value) await check()
   else await refresh()
-  if (storageFault.value) message.value = 'unavailable'
 })
 onBeforeUnmount(() => { disposed = true; clearCredential() })
 </script>
@@ -159,6 +174,7 @@ onBeforeUnmount(() => { disposed = true; clearCredential() })
       <p v-if="busy" role="status">{{ label('loading') }}</p>
       <p v-if="message" class="connector-error" role="alert">{{ label(errorLabel) }}</p>
       <p v-if="applied" class="connector-saved" role="status">{{ label('applied') }}</p>
+      <p v-if="storageFault" class="connector-error" role="alert">{{ label('storage') }}</p>
       <section v-if="pending" class="ui-section ui-stack connector-pending" role="status">
         <p>{{ label('uncertain') }}</p><p>{{ label('request') }}: <code>{{ pending }}</code></p>
         <UiButton :disabled="busy" @click="check">{{ label('check') }}</UiButton>
