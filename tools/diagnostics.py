@@ -18,7 +18,7 @@ import warnings
 
 from backend.system.diagnostics.catalog import CASE_REASONS, CASE_STAGES, DEVICE_STAGES, WORK_ID, checked_work_record, explain_case
 from backend.storage.observation_format import checked_sample
-from packages.protocol.diagnostic_snapshot import decode, read_regular
+from packages.protocol.diagnostic_snapshot import DIGEST, ROOTS, decode, read_regular
 
 MAX_BYTES = 4 * 1024 * 1024
 TRACE = re.compile(r'(?:invoke|platform)_[0-9a-f]{32}\Z')
@@ -205,6 +205,28 @@ def parse_bundle(blob):
     return value
 
 
+def _different_component_builds(sample):
+    """Return only unambiguous, bounded identities from an imported observation."""
+    if (type(sample) is not dict or type(sample.get('schema_version')) is not int
+            or sample['schema_version'] != 1 or sample.get('probe_status') != 'complete'):
+        return []
+    rows = sample.get('components')
+    if type(rows) is not list or len(rows) > len(ROOTS) + 1:
+        return []
+    result = []
+    for role in ('platform-runtime', 'agent', 'public-web'):
+        matches = [row for row in rows if type(row) is dict and row.get('component') == role]
+        if len(matches) != 1:
+            continue
+        row, = matches
+        selected, running = row.get('build_id'), row.get('loaded_build_id')
+        if (row.get('reason') == 'build_mismatch' and row.get('health') == 'unknown'
+                and all(type(s) is str and DIGEST.fullmatch(s) for s in (selected, running))
+                and selected != running):
+            result.append({'component': role, 'selected': selected, 'running': running})
+    return result
+
+
 def _application_observation(value):
     """An imported support file is untrusted. Rebuild only allowlisted observations."""
     from deployment.service_resources import SERVICE_RESULTS
@@ -309,6 +331,10 @@ def explain(value):
             raise ValueError('The retained evidence does not match the Core case selection.')
         summary['selection'] = {'trace_id': original, 'result': selection['result'],
                                 'failure_cases': len(result), 'detailed_records': len(records)}
+        if original is None:
+            builds = _different_component_builds(value.get('observations'))
+            if builds:
+                summary['component_build_differences'] = builds
     if value.get('kind') == 'application_support':
         summary['application'] = _application_observation(value)
         if 'work' in value:
@@ -322,6 +348,8 @@ def explain_saved_request(value, trace_id):
             or 'kind' in value or not isinstance(value.get('selection'), dict)):
         raise ValueError('Use a Core case export and an exact Core request identifier.')
     result = explain(value)
+    # A snapshot at collection time is not evidence about this request.
+    result.pop('component_build_differences', None)
     original = result['selection']['trace_id']
     if original not in (None, trace_id):
         raise ValueError('This export was collected for a different request.')
@@ -440,6 +468,9 @@ def main(argv=None):
                 print(result['limitation'])
             else:
                 print('Diagnostic cases: ' + result['status'])
+                for item in result.get('component_build_differences', []):
+                    print(f"{item['component']}: selected {item['selected']} | running {item['running']}. "
+                          "Observed at collection time; this does not establish why a particular request failed.")
                 if 'selection' in result:
                     selected = result['selection']
                     print(f"Core evidence ({selected['trace_id'] or 'all retained requests'}): "

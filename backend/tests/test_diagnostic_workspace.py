@@ -71,3 +71,23 @@ def test_busy_observer_does_not_read_any_component_files(monkeypatch):
     with workspace._PROBE:
         result=workspace.observe(AppSettings(),{})
     assert result['probe_status']=='busy' and all(row['health']=='unknown' for row in result['components'][1:])
+
+
+def test_observation_distinguishes_a_different_running_build_from_no_response(monkeypatch):
+    from backend.config import AppSettings
+    selected, running = 'a' * 64, 'b' * 64
+    reply = {'component':'agent','pid':123,'build_id':running}
+    monkeypatch.setattr(workspace, 'component_inventory', lambda: [
+        {'component':'agent','build_id':selected,'state':'installed','health':'unknown','reason':'passive_metadata'}])
+    monkeypatch.setattr(workspace, '_http_identity', lambda *args, **kwargs: reply)
+    def observe():
+        return workspace.observe(AppSettings(), {})['components'][1]
+    row = observe()
+    assert (row['health'], row['reason'], row['build_id'], row.get('loaded_build_id')) == (
+        'unknown', 'build_mismatch', selected, running)
+    reply['build_id'] = selected
+    assert observe()['reason'] == 'live_probe'
+    reply['build_id'] = 'not component metadata'
+    row = observe()
+    assert row['reason'] == 'probe_unavailable' and 'loaded_build_id' not in row
+    assert 'not component metadata' not in json.dumps(row)

@@ -389,6 +389,13 @@ running version and live Runtime/Agent/public responses are distinct from passiv
 installed pins. Connector/application-host/session process health stays **not
 observed** until independently checked; a listener or installed artifact is not
 provider readiness. A busy/unavailable observer is explicit. Refresh is manual.
+Opening technical tools while this tab is already collecting the case report
+uses that same live observation. **Refresh observations** requests a new one;
+no results are cached across tabs or logins. If the installed pin and a valid
+live build differ, the card shows both. A difference can be transient during
+an update. The offline `explain` command shows these pairs in a full report
+(`component_build_differences` in JSON), separately from request failures.
+Missing or malformed pairs are not proof that the builds match.
 The screen supports current themes, mobile layout and the Bulgarian language
 extension; English remains the recovery base.
 

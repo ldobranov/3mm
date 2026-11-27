@@ -14,6 +14,44 @@ def bundle():
     }]}
 
 
+def test_saved_component_builds_are_context_not_a_request_failure(tmp_path, capsys):
+    selected, running = '1' * 64, '2' * 64
+    v = bundle()
+    v['cases'][0]['evidence']['trace_id'] = v['cases'][0]['case_id']
+    row = {'component':'agent','reason':'build_mismatch','health':'unknown','build_id':selected,
+           'loaded_build_id':running,'extra':'PRIVATE_MARKER'}
+    v['observations'] = {'schema_version':1,'probe_status':'complete','components':[row]}
+    path = tmp_path / 'report.json'
+    path.write_text(json.dumps(v))
+    assert diagnostics.main(['explain', str(path), '--json']) == 0
+    out = capsys.readouterr().out
+    assert 'PRIVATE_MARKER' not in out and 'UNTRUSTED' not in out
+    differences = json.loads(out)['component_build_differences']
+    assert differences == [{'component':'agent','selected':selected,'running':running}]
+    assert diagnostics.main(['explain', str(path)]) == 0
+    assert 'does not establish why a particular request failed' in capsys.readouterr().out
+    assert 'component_build_differences' not in diagnostics.explain_saved_request(v, v['cases'][0]['case_id'])
+
+
+@pytest.mark.parametrize('change', ['busy','duplicate','too_many','unknown_role','invalid_digest','same_build','not_live'])
+def test_unverified_component_builds_do_not_hide_root_case_or_leak_labels(change):
+    v = bundle()
+    row = {'component':'agent','health':'unknown','reason':'build_mismatch',
+           'build_id':'a'*64,'loaded_build_id':'b'*64}
+    obs = {'schema_version':1,'probe_status':'complete','components':[row]}
+    v['observations'] = obs
+    if change == 'busy': obs['probe_status']='busy'
+    if change == 'duplicate': obs['components'].append(dict(row,reason='live_probe'))
+    if change == 'too_many': obs['components'] += [{}]*8
+    if change == 'unknown_role': row['component']=['PRIVATE_MARKER']
+    if change == 'invalid_digest': row['loaded_build_id']='PRIVATE_MARKER'
+    if change == 'same_build': row['loaded_build_id']=row['build_id']
+    if change == 'not_live': row['health']='unavailable'
+    result = diagnostics.explain(v)
+    assert 'component_build_differences' not in result and 'PRIVATE_MARKER' not in repr(result)
+    assert result['cases'][0]['case_id'] == v['cases'][0]['case_id']
+
+
 def test_selected_attempt_never_inherits_another_attempts_step_time(tmp_path, capsys):
     from backend.system.diagnostics.cases import build_cases
     from backend.system.diagnostics.failures import RecentHttpFailures

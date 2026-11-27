@@ -1,6 +1,6 @@
 <template>
   <section class="debug-workspace" aria-labelledby="diagnostic-cases-title">
-    <DiagnosticCases :compact="!advanced" :producer-snapshot="imported ? mergedSnapshot : undefined" :recording-active="active || busy" :recordable-operations="operations" @trace="traceFilter = $event" @record="recordAttempt" />
+    <DiagnosticCases ref="casePanel" :compact="!advanced" :producer-snapshot="imported ? mergedSnapshot : undefined" :recording-active="active || busy" :recordable-operations="operations" @trace="traceFilter = $event" @record="recordAttempt" />
     <button type="button" class="ui-button ui-button--secondary" :aria-expanded="advanced" aria-controls="diagnostic-tools" @click="toggleAdvanced">{{ advanced ? t('diagnostics.simple.hide', 'Hide technical tools') : t('diagnostics.simple.advanced', 'Show technical tools') }}</button>
     <div v-if="advanced" id="diagnostic-tools">
     <details @toggle="healthOpen = ($event.currentTarget as HTMLDetailsElement).open">
@@ -10,15 +10,19 @@
     <div class="workspace-heading">
       <div><h3 id="debug-workspace-title">{{ t('diagnostics.workspace.title', 'Operation diagnostics') }}</h3>
         <p>{{ t('diagnostics.workspace.help', 'Trace a selected operation for a limited time. Diagnostics do not change execution permissions.') }}</p></div>
-      <button class="ui-button ui-button--secondary" :disabled="busy || loading" @click="refresh">{{ t('diagnostics.workspace.refresh', 'Refresh observations') }}</button>
+      <button class="ui-button ui-button--secondary" :disabled="busy || loading" @click="refresh()">{{ t('diagnostics.workspace.refresh', 'Refresh observations') }}</button>
     </div>
     <p v-if="error" class="workspace-error" role="alert">{{ error }}</p>
     <p v-if="loading" role="status">{{ t('diagnostics.loading', 'Checking device…') }}</p>
     <StorageContentionSample />
     <div class="component-grid">
       <article v-for="item in components" :key="item.component" class="component-card">
-        <div><strong>{{ componentName(item.component) }}</strong><span class="ui-badge" :class="{ 'workspace-warning': item.health !== 'ready' }">{{ healthName(item.health) }}</span></div>
-        <code v-if="item.version">{{ item.version }}</code>
+        <div><strong>{{ componentName(item.component) }}</strong><span class="ui-badge" :class="{ 'workspace-warning': item.health !== 'ready' }">{{ item.reason === 'build_mismatch' ? t('diagnostics.workspace.differentBuild', 'Different build') : healthName(item.health) }}</span></div>
+        <template v-if="item.reason === 'build_mismatch' && item.build_id && item.loaded_build_id">
+          <small>{{ t('diagnostics.workspace.selectedBuild', 'Selected build') }}: <code :title="item.build_id">{{ item.build_id.slice(0, 12) }}</code></small>
+          <small>{{ t('diagnostics.workspace.runningBuild', 'Running build') }}: <code :title="item.loaded_build_id">{{ item.loaded_build_id.slice(0, 12) }}</code></small>
+        </template>
+        <code v-else-if="item.version">{{ item.version }}</code>
         <code v-else-if="item.loaded_build_id || item.build_id" :title="item.loaded_build_id || item.build_id || undefined">{{ (item.loaded_build_id || item.build_id || '').slice(0, 12) }}</code>
         <small v-else>{{ t('diagnostics.workspace.noVersion', 'Version unavailable') }}</small>
         <small>{{ reasonName(item.reason) }}</small>
@@ -81,10 +85,11 @@ const mergedSnapshot = ref<any>(null)
 const traceFilter = ref(''), error = ref(''), busy = ref(false), loading = ref(false), remaining = ref(0), truncated = ref(false), imported = ref(false)
 const active = computed(() => !!session.value?.active && remaining.value > 0)
 const advanced = ref(false), healthOpen = ref(false)
+const casePanel = ref<InstanceType<typeof DiagnosticCases> | null>(null)
 function toggleAdvanced() {
   advanced.value = !advanced.value
   if (advanced.value) {
-    void refresh()
+    void refresh(true)
     timer=setInterval(()=>{remaining.value=Math.max(0,Math.ceil((expiryAt-Date.now())/1000))},1000)
   } else {
     healthOpen.value = false
@@ -96,13 +101,20 @@ const filtered = computed(() => rows.value.filter(row => !traceFilter.value || r
 let expiryAt = 0, generation = 0, disposed = false, timer: ReturnType<typeof setInterval> | undefined
 function componentName(value:string) { return t('diagnostics.components.' + value, ({core:'Core',sdk:'SDK',runtime:'Platform Runtime','platform-runtime':'Platform Runtime','connector-worker':'Connector worker',agent:'Agent',setup:'Setup','application-host':'Application host','public-web':'Public HTTP','session-worker':'Session worker'} as Record<string,string>)[value] || value) }
 function healthName(value:string) { return t('diagnostics.workspace.health.'+value, ({ready:'Ready',unavailable:'Unavailable',unknown:'Not observed'} as Record<string,string>)[value] || 'Not observed') }
-function reasonName(value:string) { return t('diagnostics.workspace.reason.'+value, ({collector_busy:'Another observation is in progress; refresh shortly',core_management:'Management API responding',live_probe:'Live component response',passive_metadata:'Installed; process health has not been observed',metadata_unavailable:'Installed metadata is unavailable',probe_unavailable:'No confirmed component response'} as Record<string,string>)[value] || 'Observation unavailable') }
+function reasonName(value:string) { return t('diagnostics.workspace.reason.'+value, ({collector_busy:'Another observation is in progress; refresh shortly',core_management:'Management API responding',live_probe:'Live component response',passive_metadata:'Installed; process health has not been observed',metadata_unavailable:'Installed metadata is unavailable',probe_unavailable:'No confirmed component response',build_mismatch:'The process answered with a different build. Check again after the update finishes.'} as Record<string,string>)[value] || 'Observation unavailable') }
 function failure() { error.value = t('diagnostics.workspace.failed','Diagnostics are unavailable. Check your access and refresh observations.') }
 function applySession(value:Session) { session.value=value;remaining.value=Math.max(0,value.remaining_seconds || 0);expiryAt=Date.now()+remaining.value*1000;if(value.active && value.scope){profile.value=value.scope.profile;operation.value=value.scope.operation || '';instance.value=value.scope.instance_id || ''} }
 function applyTimeline(data:any) { mergedSnapshot.value=data;producerSessions.value=Array.isArray(data.sessions)?data.sessions.filter((value:any)=>value.source==='imported'):[];rows.value=Array.isArray(data.records)?data.records:[];missing.value=Array.isArray(data.missing_components)?data.missing_components:[];truncated.value=!!data.truncated }
-async function refresh() {
+async function refresh(joinCaseRead = false) {
   const current=++generation;loading.value=true;error.value=''
-  const results=await Promise.allSettled([http.get('/api/v1/diagnostics/workspace'),http.get('/api/v1/diagnostics/session'),http.get('/api/v1/diagnostics/timeline')])
+  const shared = joinCaseRead ? casePanel.value?.pendingObservation() : undefined
+  const readWorkspace = () => http.get('/api/v1/diagnostics/workspace')
+  const observation = shared ? shared.then(sample => {
+    if (sample) return sample
+    if (disposed || current !== generation || !advanced.value) throw new Error()
+    return readWorkspace()
+  }) : readWorkspace()
+  const results=await Promise.allSettled([observation,http.get('/api/v1/diagnostics/session'),http.get('/api/v1/diagnostics/timeline')])
   if(disposed || current!==generation)return
   const [workspace,state,timeline]=results
   if(workspace.status==='fulfilled'){components.value=Array.isArray(workspace.value.data.components)?workspace.value.data.components:[];coreServices.value=workspace.value.data.core_services?.components || {};operations.value=workspace.value.data.operations || []}

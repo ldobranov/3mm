@@ -674,6 +674,9 @@
       "empty": "No matching records. Start a session and perform the selected operation.",
       "failed": "Diagnostics are unavailable. Check your access and refresh observations.",
       "tooLarge": "Export exceeds the 4 MiB import limit.",
+      "differentBuild": "Different build",
+      "selectedBuild": "Selected build",
+      "runningBuild": "Running build",
       "health": {
         "ready": "Ready",
         "unavailable": "Unavailable",
@@ -684,6 +687,7 @@
         "passive_metadata": "Installed; process health has not been observed",
         "metadata_unavailable": "Installed metadata is unavailable",
         "probe_unavailable": "No confirmed component response",
+        "build_mismatch": "The process answered with a different build. Check again after the update finishes.",
         "core_management": "Management API responding",
         "collector_busy": "Another observation is in progress; refresh shortly"
       },

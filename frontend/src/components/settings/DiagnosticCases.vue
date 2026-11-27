@@ -96,6 +96,17 @@ type Snapshot = { schema_version: number; generated_at: string; status: string; 
   coverage: { boundary: string; status: string }[]; browser?: ReturnType<typeof browserDiagnosticSnapshot> }
 const snapshot = ref<Snapshot | null>(null), loading = ref(false), error = ref(false), filter = ref('')
 let disposed = false
+let pendingRead: ReturnType<typeof http.get> | null = null
+function pendingObservation() {
+  // Reuse only a live read on this page, never an old report or an imported file.
+  return pendingRead?.then(({ data }) => {
+    const sample = data?.observations
+    return !disposed && data?.schema_version === 1 && sample?.schema_version === 1
+      && sample.probe_status === 'complete' && Array.isArray(sample.components) && Array.isArray(sample.operations)
+      ? { data: sample } : null
+  })
+}
+defineExpose({ pendingObservation })
 const confirmClear = ref(false), clearFailed = ref(false)
 const canClear = computed(() => !!snapshot.value?.failure_history.history_id && !clearFailed.value
   && (!!snapshot.value.cases.length || !!snapshot.value.browser?.records.length))
@@ -133,7 +144,8 @@ async function collect() {
   if (loading.value) return
   loading.value = true; error.value = false
   try {
-    const { data } = await http.get('/api/v1/diagnostics/cases')
+    pendingRead = http.get('/api/v1/diagnostics/cases')
+    const { data } = await pendingRead
     if (disposed) return
     if (data?.schema_version !== 1 || !['ready', 'partial'].includes(data.status)
       || !Array.isArray(data.cases) || data.cases.length > 100 || !Array.isArray(data.coverage)) throw new Error()
@@ -143,7 +155,7 @@ async function collect() {
     snapshot.value = { ...data, browser, coverage: data.coverage.map((item: { boundary: string; status: string }) =>
       item.boundary === 'browser' ? { ...item, status: 'collected_untrusted_page_memory' } : item) }
   } catch { if (!disposed) error.value = true }
-  finally { if (!disposed) loading.value = false }
+  finally { pendingRead = null; if (!disposed) loading.value = false }
 }
 async function clearHistory() {
   const id = snapshot.value?.failure_history.history_id

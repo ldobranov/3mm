@@ -44,8 +44,12 @@ def observe(settings, lifecycle):
                     if value.get('component')!=role or type(value.get('pid')) is not int or value['pid']<=0: raise ValueError('Invalid component identity')
                     build=value.get('build_id')
                 if type(build) is not str or not DIGEST.fullmatch(build): raise ValueError('Invalid loaded build')
-                if row['build_id'] is not None and row['build_id']!=build: raise ValueError('Component pin mismatch')
-                row.update(health='ready',reason='live_probe',loaded_build_id=build)
+                if row['build_id'] is not None and row['build_id']!=build:
+                    # Pin and process are observed separately during updates.
+                    # The process answered; readiness of the selected build is unknown.
+                    row.update(health='unknown',reason='build_mismatch',loaded_build_id=build)
+                else:
+                    row.update(health='ready',reason='live_probe',loaded_build_id=build)
             except (OSError,ValueError,KeyError,ImportError,TypeError,RecursionError):
                 row.update(health='unavailable',reason='probe_unavailable')
         return result

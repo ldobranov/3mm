@@ -16,6 +16,59 @@ it('opens with a single read, no automatic recording, raw identifiers or expert 
   expect(wrapper.find('.case-filter').exists()).toBe(false)
   expect(http.post).not.toHaveBeenCalled()
 })
+it('opening tools shares the in-flight case observation; an explicit refresh takes a new one',async()=>{
+  const existing=http.get.getMockImplementation()!
+  let finish!: (report:unknown)=>void
+  const reply=new Promise(resolve=>{finish=resolve})
+  http.get.mockImplementation((url:string)=>url.endsWith('/cases')?reply:existing(url))
+  const wrapper=mountView(false);await flushPromises()
+  await wrapper.get('button[aria-controls="diagnostic-tools"]').trigger('click')
+  const workspaceReads=()=>http.get.mock.calls.filter(([url])=>url.endsWith('/workspace')).length
+  expect(workspaceReads()).toBe(0)
+  const observed={schema_version:1,probe_status:'complete',components:[{component:'agent',version:'observed-first',
+    build_id:null,health:'ready',reason:'live_probe'}],core_services:{components:{}},operations:[]}
+  finish({data:{schema_version:1,generated_at:'2026-11-27T10:00:00Z',status:'ready',cases:[],coverage:[],
+    failure_history:{},limitations:[],observations:observed}})
+  await flushPromises()
+  expect(wrapper.get('.component-card').text()).toContain('observed-first')
+  expect(workspaceReads()).toBe(0)
+  await wrapper.get('.workspace-heading button').trigger('click');await flushPromises()
+  expect(workspaceReads()).toBe(1)
+  expect(wrapper.get('.component-card').text()).not.toContain('observed-first')
+  expect(http.post).not.toHaveBeenCalled()
+})
+it.each(['refused','left page'])('does not start another observation when the shared read is %s',async(reason)=>{
+  const base=http.get.getMockImplementation()!
+  let finish!: (v:unknown)=>void, fail!: (error:Error)=>void
+  const pending=new Promise((resolve,reject)=>{finish=resolve;fail=reject})
+  http.get.mockImplementation((url:string)=>url.endsWith('/cases')?pending:base(url))
+  const view=mountView(false);await flushPromises()
+  await view.get('button[aria-controls="diagnostic-tools"]').trigger('click')
+  if(reason==='refused') fail(new Error('denied'))
+  else { view.unmount(); finish({data:{}}) }
+  await flushPromises()
+  expect(http.get).not.toHaveBeenCalledWith('/api/v1/diagnostics/workspace')
+  if(reason==='refused')expect(view.text()).toContain('Diagnostics are unavailable')
+  expect(http.post).not.toHaveBeenCalled()
+})
+it('shows both validated builds only in technical tools, without treating a mismatch as a missing response',async()=>{
+  const existing=http.get.getMockImplementation()!
+  const selected='a'.repeat(64),running='b'.repeat(64)
+  http.get.mockImplementation(async(url:string)=>url.endsWith('/workspace')?{data:{components:[
+    {component:'agent',build_id:selected,loaded_build_id:running,health:'unknown',reason:'build_mismatch'}
+  ],core_services:{components:{}},operations:[]}}:existing(url))
+  const wrapper=mountView(false);await flushPromises()
+  expect(wrapper.text()).not.toContain(selected.slice(0,12))
+  await wrapper.get('button[aria-controls="diagnostic-tools"]').trigger('click');await flushPromises()
+  const card=wrapper.get('.component-card')
+  expect(card.text()).toContain('Different build')
+  expect(card.text()).toContain('Selected build')
+  expect(card.text()).toContain('Running build')
+  expect(card.findAll('code').map(x=>[x.text(),x.attributes('title')])).toEqual([
+    [selected.slice(0,12),selected],[running.slice(0,12),running]])
+  expect(card.text()).not.toContain('No confirmed component response')
+  expect(http.post).not.toHaveBeenCalled()
+})
 it.each([null,'c'.repeat(24)])('records the next case without widening an instance filter (%s)', async caseInstance => {
   const view=mountView();await flushPromises()
   await view.find('input[pattern]').setValue('b'.repeat(24))
