@@ -152,6 +152,14 @@ log() {
   printf '\n==> %s\n' "$1"
 }
 
+# Writable staging copies are disposable; a read-only input is also valid.
+# Cleanup must never change an installation outcome or start rollback.
+discard_input_archive() {
+  if ! rm -f -- "$release_archive"; then
+    echo "Warning: could not remove the input archive; leaving it in place." >&2
+  fi
+}
+
 fail() {
   echo "$1" >&2
   return 1
@@ -642,7 +650,7 @@ rollback() {
   if [[ -n $environment_tmp ]]; then
     rm -f -- "$environment_tmp" "${environment_tmp}.next"
   fi
-  rm -f -- "$release_archive"
+  discard_input_archive
   exit "$exit_code"
 }
 
@@ -1457,8 +1465,8 @@ if [[ -n $previous_release && $previous_release != "$release_dir" ]]; then
   rollback_link_updated=1
 fi
 
-rm -f -- "$release_archive"
 component_transition commit
 trap - ERR
+discard_input_archive
 log "Deployment succeeded"
 systemctl --no-pager --full status "${runtime_services[@]}" "${always_on_services[@]}" 2>/dev/null || true

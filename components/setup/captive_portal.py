@@ -7,7 +7,7 @@ import errno
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
-from typing import Iterator
+from typing import Callable, Iterator
 from urllib.parse import urlparse
 
 AP_ADDRESS = "10.42.0.1"
@@ -31,6 +31,7 @@ class _CaptivePortalRedirectHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     setup_url = ""
     recovery_only = False
+    login_handoff: Callable[[], bool] = staticmethod(lambda: False)
 
     def do_GET(self) -> None:  # noqa: N802 - inherited HTTP handler API
         self._redirect()
@@ -41,6 +42,30 @@ class _CaptivePortalRedirectHandler(BaseHTTPRequestHandler):
     def _redirect(self) -> None:
         target = recovery_setup_url(self.connection.getsockname()[0]) if self.recovery_only else self.setup_url
         if target is None:
+            if self.path == "/user/login" and self.login_handoff():
+                # The local Setup process still owns port 80. Never serve a
+                # password form here; this page only waits for admin_web.
+                from components.setup.product import load_product_metadata, render_setup_page
+                template = Path(__file__).with_name("static").joinpath("setup.html").read_text(encoding="utf-8")
+                page = render_setup_page(template, load_product_metadata(), read_only=True, handoff_only=True).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Referrer-Policy", "no-referrer")
+                self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; "
+                                 "style-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'")
+                self.send_header("Content-Length", str(len(page)))
+                self.end_headers()
+                if self.command != "HEAD":
+                    self.wfile.write(page)
+                return
+            if self.command == "HEAD" and self.path == "/.well-known/3mm-admin-ready":
+                self.send_response(503)
+                self.send_header("Content-Length", "0")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                return
             self.send_error(404)
             return
         self.send_response(302)
@@ -73,11 +98,13 @@ def captive_portal_redirect(
     *,
     recovery_only: bool = False,
     optional: bool = False,
+    login_handoff: Callable[[], bool] = lambda: False,
 ) -> Iterator[ThreadingHTTPServer | None]:
     """Serve redirects while the setup API remains available on its own port."""
 
     handler = _handler_for(setup_url)
     handler.recovery_only = recovery_only
+    handler.login_handoff = staticmethod(login_handoff)
     try:
         server = ThreadingHTTPServer((host, port), handler)
     except OSError as exc:

@@ -35,6 +35,45 @@ def quiescence_function():
     return section('stop_runtime_services() {', 'install_units() {')
 
 
+def rollback_function():
+    return (section('discard_input_archive() {', 'fail() {')
+            + section('rollback() {', 'if [[ -L $current_link ]]; then'))
+
+
+@pytest.mark.parametrize('commit_ok,discard_ok', [(True, False), (True, True), (False, True)])
+def test_input_cleanup_is_not_an_installation_outcome(commit_ok, discard_ok):
+    # Exercise the real end of the installer for both profiles, without touching
+    # a service, input archive or release pointer. A real commit failure still rolls back.
+    finish = SCRIPT[SCRIPT.index('log "Verifying the transitioned active components"'):]
+    result = run(section('log() {', 'fail() {') + f"""
+release_archive='reviewed kit.tar.gz'
+previous_release=''
+release_dir='/unused/local-release'
+test_fail_after_health=0
+runtime_services=(core)
+always_on_services=(helper)
+trap 'echo ROLLBACK; exit 68' ERR
+component_transition() {{
+  echo "transition:$1"
+  if [[ $1 == commit ]]; then return {0 if commit_ok else 1}; fi
+}}
+rm() {{
+  [[ $# == 3 && $1 == -f && $2 == -- && $3 == "$release_archive" ]] || exit 69
+  echo DISCARD
+  return {0 if discard_ok else 1}
+}}
+systemctl() {{ :; }}
+""" + finish)
+    if not commit_ok:
+        assert result.returncode == 68 and 'ROLLBACK' in result.stdout
+        assert 'Deployment succeeded' not in result.stdout
+    else:
+        assert result.returncode == 0, result.stderr
+        assert 'Deployment succeeded' in result.stdout and 'ROLLBACK' not in result.stdout
+        assert result.stdout.count('DISCARD') == 1
+        assert ('leaving it in place' in result.stderr) == (not discard_ok)
+
+
 @pytest.mark.parametrize('profile,listing', [
     ('full', ''),
     ('node', ''),
@@ -582,23 +621,24 @@ def test_wired_preflight_and_gpio_group_precede_runtime_mutation():
     assert SCRIPT.index('--profile "$install_profile" --check-only') < SCRIPT.index('mutation_started=1')
 
 
-def test_preflight_substitution_failure_is_cleaned_up_once_without_stopping_installed_services():
-    result = run('''
+@pytest.mark.parametrize('can_discard', [True, False])
+def test_preflight_substitution_failure_is_cleaned_up_once_without_stopping_installed_services(can_discard):
+    result = run('rm() { echo "discard attempted" >&2; return '+('0' if can_discard else '3')+'; }\n'+'''
 set -Eeuo pipefail
 mutation_started=0
 release_created=0
 environment_tmp=''
 release_archive=/test/rejected-archive
-rm() { echo "removed reviewed temporary archive" >&2; }
 stop_runtime_services() { echo 'forbidden service stop' >&2; }
-''' + section('rollback() {', 'if [[ -L $current_link ]]; then') + '''
+''' + rollback_function() + '''
 trap rollback ERR
 selected=$(false)
 echo 'forbidden activation'
 ''')
     assert result.returncode == 1 and 'forbidden' not in result.stderr + result.stdout
     assert result.stderr.count('before stopping services') == 1
-    assert result.stderr.count('removed reviewed temporary archive') == 1
+    assert result.stderr.count('discard attempted') == 1
+    assert ('leaving it in place' in result.stderr) == (not can_discard)
     assert 'restoring' not in result.stderr
 
 
@@ -663,7 +703,7 @@ restart_always_on_services() { echo restart-recovery; }
 activate_runtime() { echo verify-previous-runtime; }
 restore_runtime_units() { activate_runtime "$previous_release"; }
 rm() { printf 'remove %s\\n' "$*"; }
-''' + quiescence_function() + section('rollback() {', 'if [[ -L $current_link ]]; then') + '''
+''' + quiescence_function() + rollback_function() + '''
 trap rollback ERR
 false
 ''')
@@ -733,7 +773,7 @@ restart_always_on_services() { echo restart-helper; }
 restore_runtime_units() { echo restart-runtime; }
 start_active_application_services() { echo restart-apps; }
 rm() { echo cleanup; }
-''' + quiescence_function() + section('rollback() {', 'if [[ -L $current_link ]]; then') + '''
+''' + quiescence_function() + rollback_function() + '''
 trap rollback ERR
 false
 ''')

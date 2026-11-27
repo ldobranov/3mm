@@ -2,9 +2,10 @@ import asyncio
 import json
 import logging
 import os
+import stat
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.routing import iter_route_contexts
 from backend.accounts.dependencies import guard_user_session
 from backend.devices.body_limit import DeviceBodyLimitMiddleware
@@ -174,9 +175,23 @@ app.add_middleware(
     expose_headers=["Authorization-Token", "X-Content-SHA256", "X-Chunk-SHA256", "X-3mm-Trace-Id"],
 )
 
-# Mount static files for uploads
-uploads_dir = get_asset_storage(app_settings).directory(create=True)
-app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
+class PublicAssetFiles(StaticFiles):
+    """A missing optional store must not keep the management API from booting."""
+
+    async def check_config(self) -> None:
+        # Called on the first asset request, not at import. Starlette retries
+        # this check after a failure; a later upload can create the directory.
+        try:
+            info = await asyncio.to_thread(os.stat, self.directory)
+        except FileNotFoundError:
+            raise HTTPException(404) from None
+        except OSError:
+            raise HTTPException(503, "Public assets unavailable") from None
+        if not stat.S_ISDIR(info.st_mode):
+            raise HTTPException(503, "Public assets unavailable")
+
+
+app.mount("/uploads", PublicAssetFiles(directory=get_asset_storage(app_settings).root, check_dir=False), name="uploads")
 
 
 @app.get("/health", tags=["system"])
@@ -192,13 +207,6 @@ def readiness():
     finally:
         db.close()
     return {"status": "ready"}
-
-
-# Add logging for static file requests
-@app.middleware("http")
-async def log_static_requests(request, call_next):
-    response = await call_next(request)
-    return response
 
 
 app.include_router(settings_router)

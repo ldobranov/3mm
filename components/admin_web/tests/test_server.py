@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import socket
 from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 from typing import Iterator
@@ -47,6 +49,88 @@ def test_history_route_falls_back_to_index(artifact: Path) -> None:
 
         assert response.status == 200
         assert "3mm" in response.read().decode()
+
+
+@pytest.fixture
+def sign_in_core(monkeypatch):
+    state = {"status": 200, "body": b'{"status":"ready"}', "requests": []}
+
+    class Readiness(BaseHTTPRequestHandler):
+        def do_GET(self):
+            state["requests"].append((self.path, self.headers.get("Cookie"), self.headers.get("Authorization")))
+            self.send_response(state["status"])
+            self.end_headers()
+            self.wfile.write(state["body"])
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), Readiness) as core:
+        monkeypatch.setattr("components.admin_web.server._CORE_PORT", core.server_port, raising=False)
+        thread = Thread(target=core.serve_forever, daemon=True)
+        thread.start()
+        try:
+            yield state
+        finally:
+            core.shutdown()
+            thread.join(timeout=2)
+
+
+def test_handoff_probes_only_the_read_only_marker(artifact: Path, sign_in_core) -> None:
+    with _server(artifact) as base_url:
+        origin = {"Origin": "http://127.0.0.1:8895"}
+        with urlopen(Request(base_url + "/.well-known/3mm-admin-ready", method="HEAD", headers=origin), timeout=2) as marker:
+            assert marker.status == 204 and marker.read() == b""
+            assert marker.headers["Cache-Control"] == "no-store"
+            assert marker.headers["Access-Control-Allow-Origin"] == "*"
+            assert "Access-Control-Allow-Credentials" not in marker.headers
+        with urlopen(Request(base_url + "/user/login", headers=origin), timeout=2) as page:
+            assert page.status == 200 and 'Access-Control-Allow-Origin' not in page.headers
+
+
+def test_handoff_waits_for_the_login_document_not_just_a_listening_port(tmp_path: Path, sign_in_core) -> None:
+    with _server(tmp_path) as base_url:
+        marker = Request(base_url + "/.well-known/3mm-admin-ready", method="HEAD")
+        entry = tmp_path / "index.html"
+        for contents in (None, b""):
+            if contents is not None:
+                entry.write_bytes(contents)
+            with pytest.raises(HTTPError) as failure:
+                urlopen(marker, timeout=2)
+            with failure.value as response:
+                assert response.code == 503 and response.read() == b""
+                assert response.headers["Cache-Control"] == "no-store"
+                assert response.headers["Access-Control-Allow-Origin"] == "*"
+        entry.write_text("<h1>Sign in</h1>", encoding="utf-8")
+        with urlopen(marker, timeout=2) as ready:
+            assert ready.status == 204
+        with urlopen(base_url + "/user/login", timeout=2) as login:
+            assert b"Sign in" in login.read()
+        assert sign_in_core["requests"] == [("/ready", None, None)]
+
+
+def test_open_login_form_is_not_a_ready_sign_in_service(artifact, sign_in_core):
+    with _server(artifact) as base:
+        marker = Request(base + "/.well-known/3mm-admin-ready", method="HEAD",
+                         headers={"Cookie": "example=unused", "Authorization": "example"})
+        assert urlopen(base + "/user/login", timeout=2).status == 200
+        assert not sign_in_core["requests"]
+        for status, body in ((503, b""), (302, b""), (200, b"not ready"), (200, b" " * 180)):
+            sign_in_core.update(status=status, body=body)
+            with pytest.raises(HTTPError) as failure:
+                urlopen(marker, timeout=2)
+            assert failure.value.code == 503 and failure.value.headers["Cache-Control"] == "no-store"
+        sign_in_core.update(status=200, body=b'{"status":"ready"}')
+        with urlopen(marker, timeout=2) as response:
+            assert response.status == 204
+        assert sign_in_core["requests"] == [("/ready", None, None)] * 5
+
+
+def test_cold_core_listener_does_not_release_setup(artifact, monkeypatch):
+    with socket.socket() as reserved, _server(artifact) as base:
+        reserved.bind(("127.0.0.1", 0))  # Not yet listening: the real cold-start race.
+        monkeypatch.setattr("components.admin_web.server._CORE_PORT", reserved.getsockname()[1], raising=False)
+        with pytest.raises(HTTPError) as failure:
+            urlopen(Request(base + "/.well-known/3mm-admin-ready", method="HEAD"), timeout=2)
+        assert failure.value.code == 503
+        assert urlopen(base + "/user/login", timeout=2).status == 200
 
 
 @pytest.mark.parametrize("route", ["/", "/index.html", "/extensions?tab=active", "/app/screen/"])

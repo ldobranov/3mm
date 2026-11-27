@@ -10,7 +10,7 @@ const script = html.split('<script>')[1].split('</script>')[0]
   .replace('__PRODUCT_LABELS__', () => JSON.stringify(product.setup.labels))
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setTimeout(resolve, 0)) }
 
-async function portal(options: { recovery?: boolean; wifi?: boolean; fail?: boolean; inactive?: boolean; language?: string; saved?: Record<string, string> } = {}) {
+async function portal(options: { handoffOnly?: boolean; recovery?: boolean; wifi?: boolean; fail?: boolean; inactive?: boolean; language?: string; saved?: Record<string, string> } = {}) {
   const dom = new JSDOM(html, { url: 'http://device.local:8895/setup', runScripts: 'outside-only' })
   if (options.language) Object.defineProperty(dom.window.navigator, 'language', { value: options.language })
   const requests: Array<{ path: string; init: RequestInit }> = []
@@ -22,11 +22,11 @@ async function portal(options: { recovery?: boolean; wifi?: boolean; fail?: bool
     const responses: Record<string, unknown> = {
       capabilities: { roles: ['standalone', 'hub', 'node'], network_modes: ['preserve', 'local', ...(options.wifi ? ['wifi'] : [])],
         interfaces: options.wifi ? [{ name: 'wlp2s0', access_point: false }] : [], recovery: options.recovery, pending: false },
-      prefill: options.saved || {}, theme: {}, configure: { enrollment: null }, finish: {}, networks: { items: [] },
+      prefill: options.saved || {}, theme: {}, configure: { role: 'standalone', enrollment: null }, finish: {}, networks: { items: [] },
     }
     return { ok: true, json: async () => responses[path] } as Response
   }
-  dom.window.eval(script)
+  dom.window.eval(script.replace('__HANDOFF_ONLY__', String(!!options.handoffOnly)))
   await settle()
   const form = dom.window.document.querySelector<HTMLFormElement>('#setup-form')!
   const field = (name: string) => form.elements.namedItem(name) as HTMLInputElement
@@ -34,6 +34,14 @@ async function portal(options: { recovery?: boolean; wifi?: boolean; fail?: bool
 }
 
 describe('Setup portal', () => {
+  it('offers only a credentialless readiness check while the admin site starts', async () => {
+    const page = await portal({ handoffOnly: true })
+    try {
+      expect(page.dom.window.document.querySelector('form')).toBeNull()
+      expect(page.requests).toHaveLength(1)
+      expect(page.requests[0]).toMatchObject({path:'3mm-admin-ready',init:{method:'HEAD',credentials:'omit',redirect:'error',cache:'no-store'}})
+    } finally { page.dom.window.close() }
+  })
   it('opens directly without a code, preserves the host network and sends no stale Wi-Fi secrets', async () => {
     const page = await portal()
     expect(page.dom.window.location.hash).toBe('')

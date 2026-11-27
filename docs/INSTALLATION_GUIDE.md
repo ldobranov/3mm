@@ -5,6 +5,87 @@ It does not clone the repository or build the frontend on the device. Limited
 ARMv6 dependency compilation may be necessary; passwords are not written to
 command arguments.
 
+## Standalone pilot: Core 0.3.19 to a Monitor quote
+
+For the pilot use Debian 13 (Trixie) with systemd, a working Internet connection and a trusted LAN.
+Use a local account that can run `sudo`. You need two items: the
+[public Core 0.3.19 release](https://github.com/ldobranov/3mm/releases/tag/v0.3.19)
+and, separately, the Monitor ZIP from the pilot organizer. No checkout or build is needed.
+Do not use the Node profile for this walkthrough: it has no admin panel.
+
+The Full profile needs Node.js 20 or newer. Stock Ubuntu 24.04 supplies Node.js 18:
+the 0.3.19 installer stops at `runtime.node` before Setup there. Do not skip this check.
+On a minimal Debian 13 image, first run the following **in a root shell** to install the
+tools used by the public installer from the distribution repositories:
+
+<!-- pilot-os-tools -->
+```bash
+apt-get update && apt-get install -y ca-certificates wget sudo python3 dbus
+```
+
+On the device, download the installer from the exact tag and run it only if the download succeeds:
+
+<!-- pilot-bootstrap -->
+```bash
+wget -O install-3mm-0.3.19.sh https://raw.githubusercontent.com/ldobranov/3mm/v0.3.19/install.sh &&
+  sudo bash install-3mm-0.3.19.sh --tag v0.3.19
+```
+
+The bootstrap checks and downloads the architecture-specific package. It then prints a
+systemd job name: **starting the job is not installation success**. Follow the log command
+it prints and wait for `Deployment succeeded`. If you reconnect later, the service can
+already be gone and the last few log lines can omit the result. Use the exact job name
+printed by your installer in place of `<job.service>`. This reads the entire job's journal:
+
+```bash
+sudo journalctl -u '<job.service>' --no-pager -o cat -g 'Deployment succeeded|Preflight failed|Deployment failed;|Failed with result'
+```
+
+No matching line is **not** a confirmed failure. Read the same job without `-g` and
+its pattern to see progress or the first error; do not start a second install. Once
+installation succeeds, use the device's Ethernet or Wi-Fi
+address (shown by `hostname -I`) in place of `<device-IP>`. From a browser on that LAN,
+open `http://<device-IP>:8895/setup`, choose **Standalone** and **Keep the operating
+system’s connection**, set the device name and administrator credentials, and **Save setup**.
+Finish Setup if prompted. Open `http://<device-IP>/user/login` and sign in with the
+administrator **email** and password you just set. If this address briefly shows **404**
+immediately after saving Setup, wait a few seconds and reload the same login URL.
+Do not repeat Setup. If the page loads but sign-in cannot connect, check
+`systemctl status 3mm-core.service 3mm-web.service`. On public 0.3.19, the web
+page and the login service can become available at different times.
+Do not forward these HTTP ports to the Internet.
+
+### Install Monitor and check the first quote
+
+1. On the computer with the browser, obtain `3mm-crypto-monitor-0.8.4.zip` **from the pilot
+   organizer**. This native application is a separate handoff, not a Core release asset.
+   Verify its SHA-256 with `sha256sum 3mm-crypto-monitor-0.8.4.zip` on Linux or
+   `Get-FileHash -Algorithm SHA256 .\3mm-crypto-monitor-0.8.4.zip` in PowerShell.
+   Expected: `02ba896c934ae0629b0609ab28e146e33e882cb3996afce812e87a5451252a1e`.
+   If the ZIP is missing or does not match, stop and ask the organizer for the correct file.
+2. Open **Extensions**. A clean database intentionally has no initial menu.
+   If a link is offered in the **Devices** page itself, choose it. On public 0.3.19
+   open `http://<device-IP>/extensions` in the same signed-in browser if no link is shown.
+   Choose the ZIP and **Upload Extension**. On the **3mm Crypto Monitor**
+   card, select version **0.8.4** and **Install and activate**. If asked for **Display Device Id**,
+   select your local Standalone device by name, even for this browser-only pilot.
+   Leave the optional button device unset. This selects a device; it does not give hardware access.
+3. Continue in the access review if it opens automatically. Otherwise open the card’s
+   **Application access → Review or change access**. If a named connection
+   needs setup, use **Set up connection**, verify the suggested service address, **Save connection**
+   and **Back to access review**. Version 0.8.4 declares both `coinbase`
+   (`https://api.coinbase.com`) and `coingecko` (`https://api.coingecko.com`).
+   Both addresses must be configured. Saving the CoinGecko address does **not** grant its use.
+4. Expand **Permissions and details**. Under application permissions select **only Coinbase**
+   (`connector:coinbase`); uncheck CoinGecko and leave display/button and other permissions off.
+   Under your account select **only** `monitor_configure`. Verify these two selections before
+   **Allow access**. Close the dialog; if the reviewed version is inactive, activate it on the card.
+5. On the active card choose **Open**. Leave Monitor open until a fresh **BTC / USD** price
+   appears; on the clean Debian pilot the first sample arrived about 48 seconds after approval.
+   A blank or stale value, or just an **Active** badge, is not a successful quote.
+   If there is no fresh result, check that Coinbase is reachable and inspect **Settings →
+   Diagnostics**. Do not enable CoinGecko or hardware permissions to troubleshoot this browser pilot.
+
 ## One-command Raspberry Pi installation
 
 On a supported Raspberry Pi OS or Debian installation with systemd and a working
@@ -99,12 +180,8 @@ longer than installations on a Pi 3 or newer.
 
 ## Installer options
 
-For a fresh pilot installation, pin both the bootstrap and the release:
-
-```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/v0.3.18/install.sh | \
-  sudo bash -s -- --tag v0.3.18
-```
+For the exact 0.3.19 pilot command, see the
+[Standalone walkthrough](#standalone-pilot-core-0319-to-a-monitor-quote) above.
 
 Select a channel explicitly:
 

@@ -3,6 +3,7 @@
     <div class="extension-header">
       <h1>{{ t('mainServer.title', 'Devices') }}</h1>
       <p>{{ t('mainServer.description', 'Pair, inspect and manage devices') }}</p>
+      <RouterLink :to="{ name: 'Extensions' }">{{ t('extensions.title', 'Extensions') }}</RouterLink>
     </div>
 
     <div class="extension-content">

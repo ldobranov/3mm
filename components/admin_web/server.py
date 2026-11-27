@@ -3,16 +3,44 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from functools import partial
+from http.client import HTTPConnection, HTTPException
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path, PurePosixPath
-from threading import Thread
+from threading import Lock, Thread
 from typing import Sequence
 from urllib.parse import quote, unquote, urlsplit
 
 from components.setup.captive_portal import recovery_setup_url
+
+
+_CORE_PORT = 8887  # Same local Core listener as 3mm-core.service.
+_handoff_probe = Lock()
+
+
+def _core_ready_for_login() -> bool:
+    # Only the explicit Setup handoff probe calls Core. Never use the browser's
+    # Host, headers, proxy settings or credentials to select the destination.
+    if not _handoff_probe.acquire(blocking=False):
+        return False
+    try:
+        connection = HTTPConnection("127.0.0.1", _CORE_PORT, timeout=1)
+        try:
+            connection.request("GET", "/ready")
+            with connection.getresponse() as response:
+                if response.status != 200:
+                    return False
+                payload = response.read(129)
+                return len(payload) <= 128 and json.loads(payload) == {"status": "ready"}
+        except (OSError, HTTPException, ValueError):
+            return False
+        finally:
+            connection.close()
+    finally:
+        _handoff_probe.release()
 
 
 class SPARequestHandler(SimpleHTTPRequestHandler):
@@ -30,6 +58,21 @@ class SPARequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             return None
         decoded_route = unquote(urlsplit(self.path).path)
+        if self.command == "HEAD" and self.path == "/.well-known/3mm-admin-ready":
+            # A fast web listener may serve the form before Core accepts login.
+            try:
+                with (Path(self.directory) / "index.html").open("rb") as entry:
+                    ready = bool(entry.read(1))
+            except OSError:
+                ready = False
+            ready = ready and _core_ready_for_login()
+            self.send_response(204 if ready else 503)
+            if not ready:
+                self.send_header("Content-Length", "0")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return None
         if decoded_route == "/uploads" or decoded_route.startswith("/uploads/"):
             # Public mutable assets live outside the immutable frontend artifact.
             # Never expose directory listings, traversal or symlink targets.

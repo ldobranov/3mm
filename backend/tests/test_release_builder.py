@@ -21,6 +21,7 @@ from deployment.build_release import (
     ReleaseBuildError,
     build_release_assets,
     read_dependencies,
+    read_frontend_payload,
     read_source_payload,
 )
 from deployment.deployment_contract import (
@@ -291,7 +292,9 @@ def write_source_archive(
 
 def write_frontend_dist(path: Path) -> None:
     (path / "assets").mkdir(parents=True)
-    (path / "index.html").write_text('<div id="app"></div>\n', encoding="utf-8")
+    (path / "index.html").write_text(
+        '<div id="app"></div><script type="module" src="/assets/main.js"></script>\n', encoding="utf-8"
+    )
     (path / "assets" / "main.js").write_text("console.log('3mm')\n", encoding="utf-8")
     (path / "runtime-config.json").write_text(
         '{"backend_port":8887}\n', encoding="utf-8"
@@ -1301,6 +1304,45 @@ def test_builder_requires_a_complete_frontend_dist(tmp_path: Path) -> None:
 
     with pytest.raises(ReleaseBuildError, match=r"assets/\*\.js"):
         build(tmp_path)
+
+
+def test_prebuilt_admin_entry_requires_local_startup_assets_but_not_local_links(tmp_path):
+    dist = tmp_path / "dist"
+    write_frontend_dist(dist)
+    asset = next((dist / "assets").glob("*.js")).name
+    html = (f'<script type="module" src="/assets/{asset}"></script>'
+            '<a href="https://docs.example.invalid/">Help</a>'
+            '<link rel="stylesheet" href="/assets/buttons.css?version=1">')
+    index = dist / "index.html"
+    index.write_text(html)
+    with pytest.raises(ReleaseBuildError, match="absent"):
+        read_frontend_payload(dist)
+    (dist / "assets/buttons.css").write_text(".action { display: block }")
+    assert read_frontend_payload(dist)
+    for url in ("https://cdn.example.invalid/buttons.css", "//cdn.example.invalid/buttons.css",
+                "assets/buttons.css"):
+        index.write_text(html.replace("/assets/buttons.css?version=1", url))
+        with pytest.raises(ReleaseBuildError, match="device-local"):
+            read_frontend_payload(dist)
+    index.write_text('<base href="https://cdn.example.invalid/">' + html)
+    with pytest.raises(ReleaseBuildError, match="device root"):
+        read_frontend_payload(dist)
+
+
+@pytest.mark.parametrize("entry,script", [
+    ("", "valid()"),
+    ('<div id="app"></div>', "valid()"),
+    ('<link rel="modulepreload" href="/assets/main.js">', "valid()"),
+    ('<script type="application/json" src="/assets/main.js"></script>', "valid()"),
+    ('<script type="module" src="/assets/main.js"></script>', " \n"),
+])
+def test_prebuilt_admin_must_actually_start_a_nonempty_local_module(tmp_path, entry, script):
+    dist = tmp_path / "dist"
+    write_frontend_dist(dist)
+    (dist / "index.html").write_text(entry, encoding="utf-8")
+    (dist / "assets/main.js").write_text(script, encoding="utf-8")
+    with pytest.raises(ReleaseBuildError, match="startup module"):
+        read_frontend_payload(dist)
 
 
 def test_tracked_release_dependencies_are_strict_and_reviewable() -> None:

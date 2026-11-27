@@ -71,9 +71,11 @@
         <button id="finish" type="button" class="secondary" hidden data-text="finish">Close recovery without changing settings</button>
       </form>
       <output id="status" aria-live="polite"></output>
+      <button id="check-login" type="button" hidden></button>
     </main>
     <script>
       const readOnly = __READ_ONLY__;
+      const handoffOnly = __HANDOFF_ONLY__;
       const productLabels = __PRODUCT_LABELS__;
       const $ = (value) => document.querySelector(value);
       const form = $('#setup-form'), status = $('#status');
@@ -139,9 +141,33 @@
           if(!result.items.length) show('noNetworks');
         } catch(error) {show(error.status===403?'unavailable':'failed',true);}
       });
+      // Setup may disappear between commit and the admin listener taking port 80.
+      // Probe only its public marker, never repeat the setup POST or send credentials.
+      async function openLoginWhenReady() {
+        const login=new URL('/user/login', location.href); login.port='';
+        const check=$('#check-login'); check.hidden=true;
+        status.textContent=language==='bg'?'Настройката е запазена. Изчакване на страницата за вход…':'Setup saved. Waiting for the sign-in page…';
+        const deadline=Date.now()+300000;
+        while(Date.now()<deadline) {
+          try {
+            const response=await fetch(new URL('/.well-known/3mm-admin-ready',login), {
+              method:'HEAD', credentials:'omit', cache:'no-store', redirect:'error', signal:AbortSignal.timeout(3000)});
+            if(response.status===204) { location.replace(login.href); return; }
+          } catch(_) { /* The two services do not own the port at the same time. */ }
+          await new Promise(resolve=>setTimeout(resolve,1500));
+        }
+        status.textContent=language==='bg'?'Входът още не е готов. Не повтаряй настройката.':'Sign-in is not ready yet. Do not repeat Setup.';
+        check.textContent=language==='bg'?'Провери отново':'Check again'; check.hidden=false;
+      }
+      $('#check-login').addEventListener('click',openLoginWhenReady);
       async function submit(path, values) {
         if(busy) return; busy=true; form.querySelectorAll('button').forEach(button=>button.disabled=true); show('applying');
-        try { const result=await api(path,values); form.hidden=true; show(path==='finish'?'closed':result.enrollment==='awaiting_pairing'?'awaiting':'success'); }
+        try { const result=await api(path,values); form.hidden=true; show(path==='finish'?'closed':result.enrollment==='awaiting_pairing'?'awaiting':'success');
+          if (!caps.recovery && ['hub','standalone'].includes(result.role || saved.role) &&
+              (values.network_mode || saved.network_mode)==='preserve' && location.protocol==='http:') {
+            form.reset(); void openLoginWhenReady();
+          }
+        }
         catch(error) {if(error.status===403) form.hidden=true; show(error.status===403?'unavailable':error.status===409||error.status===422?'invalid':error.status?'failed':'interrupted',true);}
         finally {busy=false; form.querySelectorAll('button').forEach(button=>button.disabled=false); updateChoices();}
       }
@@ -162,9 +188,9 @@
           document.documentElement.style.setProperty('--radius',theme.border_radius+'px'); document.documentElement.style.colorScheme=theme.mode;
         } catch(_) {}
       }
-      translate(); loadTheme();
-      if(readOnly) show('readonly');
-      else loadSetup();
+      translate();
+      if(handoffOnly) { form.remove(); $('#language').hidden=true; $('.intro').hidden=true; void openLoginWhenReady(); }
+      else { loadTheme(); if(readOnly) show('readonly'); else loadSetup(); }
     </script>
   </body>
 </html>

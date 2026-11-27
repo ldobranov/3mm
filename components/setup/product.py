@@ -66,7 +66,7 @@ def load_product_metadata(path=None):
         return deepcopy(FALLBACK)
 
 
-def render_setup_page(page, metadata, *, read_only):
+def render_setup_page(page, metadata, *, read_only, handoff_only=False):
     labels = json.dumps(metadata["setup"]["labels"], ensure_ascii=True, allow_nan=False)
     # JSON is embedded in a script element, not HTML: escape its closing-tag
     # alphabet too. Text and attribute positions use normal HTML escaping.
@@ -74,6 +74,7 @@ def render_setup_page(page, metadata, *, read_only):
     values = {"__PRODUCT_TITLE__": html.escape(metadata["setup"]["page_title"]),
               "__PRODUCT_HEADER__": html.escape(metadata["setup"]["header"]),
               "__PRODUCT_LABELS__": labels,
-              "__READ_ONLY__": "true" if read_only else "false"}
-    return re.sub(r"__PRODUCT_TITLE__|__PRODUCT_HEADER__|__PRODUCT_LABELS__|__READ_ONLY__",
+              "__READ_ONLY__": "true" if read_only else "false",
+              "__HANDOFF_ONLY__": "true" if handoff_only else "false"}
+    return re.sub(r"__PRODUCT_TITLE__|__PRODUCT_HEADER__|__PRODUCT_LABELS__|__READ_ONLY__|__HANDOFF_ONLY__",
                   lambda match: values[match[0]], page)

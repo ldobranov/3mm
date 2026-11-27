@@ -8,7 +8,9 @@ combines a central Core, a persistent device Agent, provisioning and reviewed
 applications through common capability contracts and SDKs. Builder, dashboards
 and other product features live in optional source packages/libraries.
 
-**Pilot release:** [Core 0.3.18](https://github.com/ldobranov/3mm/releases/tag/v0.3.18).
+**Pilot release:** [Core 0.3.19](https://github.com/ldobranov/3mm/releases/tag/v0.3.19).
+On clean Debian 13 x86-64, the public release and the separately supplied Monitor
+0.8.4 ZIP were verified from Setup through the first live Coinbase quote.
 The physical clean-install evidence below is for [0.3.12](docs/RELEASE_NOTES_0.3.12.md):
 Standalone on a 64-bit Raspberry Pi (`aarch64`) on a trusted LAN. Clean
 installation passed; the owner confirmed restart and access checks, restore on
@@ -19,14 +21,19 @@ allows Linux code to run; it is **not a sandbox**.
 
 ## Start here: one Raspberry Pi
 
-1. **Install:** Follow the [Raspberry Pi installation guide](docs/INSTALLATION_GUIDE.md).
+1. **Install:** Follow the [0.3.19 pilot walkthrough](docs/INSTALLATION_GUIDE.md#standalone-pilot-core-0319-to-a-monitor-quote).
+   Use a Debian 13–based system for the pilot: the Full profile requires Node.js 20 or newer.
    The default keeps your existing Ethernet or Wi-Fi connection; it does not
    start a setup access point.
 2. **Set up:** On the same trusted LAN open `http://<device-IP>:8895/setup`,
    select **Standalone** and **Keep the operating system's connection**, and
    enter your administrator username, email and password. After Setup finishes,
    open `http://<device-IP>/user/login` and sign in with that email and password.
-3. **Protect your data:** In **Settings → Backup and recovery**, create a backup
+3. **Open your first application:** Get the separate Crypto Monitor 0.8.4 ZIP
+   from the pilot organizer. It is not included in the Core release. Follow the
+   [package check and approval steps](docs/INSTALLATION_GUIDE.md#install-monitor-and-check-the-first-quote)
+   to display BTC/USD in the browser with only Coinbase and your `monitor_configure` permission.
+4. **Protect your data:** In **Settings → Backup and recovery**, create a backup
    and download a password-protected recovery file. Keep it off the Pi: a local
    backup on the SD card cannot recover a lost card. See [restore from file](docs/BACKUP_AND_RESTORE.md#administrator-workflow).
 
@@ -429,11 +436,11 @@ an update; preserve evidence rather than repeating a failed operation blindly.
 For a reproducible manual full-profile update, select an exact published release:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/v0.3.18/install.sh | sudo bash -s -- --tag v0.3.18
+wget -qO- https://raw.githubusercontent.com/ldobranov/3mm/v0.3.19/install.sh | sudo bash -s -- --tag v0.3.19
 ```
 
 Update the Zero over SSH with the Node bootstrap command above and add
-`--tag v0.3.18` to select the same release. Crossing the 0.3.11 source-layout
+`--tag v0.3.19` to select the same release. Crossing the 0.3.11 source-layout
 boundary requires the [console procedure](docs/INSTALLATION_GUIDE.md#one-time-upgrade-to-the-neutral-source-layout),
 not the old Node OTA validator. On compatible versions, use the reviewed remote
 Agent update control when its trust and target requirements are met. Provisioned
@@ -450,7 +457,7 @@ The new Node check reports the latest release and confirmed Hub OTA history;
 manual upgrades without that history remain unknown, not automatically up to date.
 
 Use `--tag` for a reproducible exact release, for example by appending
-`-s -- --tag v0.3.18` after `sudo bash`. The Raspberry host password is
+`-s -- --tag v0.3.19` after `sudo bash`. The Raspberry host password is
 requested only by `sudo` and is never a command argument or repository value.
 
 On a clean Full installation, create the administrator in Setup as described

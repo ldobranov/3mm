@@ -209,9 +209,16 @@ def create_app(network=None, store=None, settings=None, recovery_marker=None, *,
                     response = await call_next(request)
         else:
             response = await call_next(request)
+        connect = "'self'"
+        if request.url.path == "/setup" and request.url.scheme == "http":
+            # The same device, default HTTP port, only the read-only web marker.
+            host = request.url.hostname or ""
+            if re.fullmatch(r"[a-zA-Z0-9.-]+", host) or re.fullmatch(r"[a-fA-F0-9:]+", host):
+                authority = f"[{host}]" if ":" in host else host
+                connect += f" http://{authority}/.well-known/3mm-admin-ready"
         response.headers.update({"Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
             "X-Content-Type-Options": "nosniff", "Content-Security-Policy":
-            "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"})
+            f"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src {connect}; frame-ancestors 'none'"})
         return response
 
     @app.exception_handler(RequestValidationError)

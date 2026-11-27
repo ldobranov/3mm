@@ -325,3 +325,36 @@ def test_startup_prepares_included_routes_without_executing_authority_or_handler
         assert client.post("/probe?value=2", headers={"token": "current"}).json() == {"value": 2}
         assert len(schemas) == prepared
         assert authority_calls == [None, "current"] and effects == [2]
+
+
+def test_unavailable_public_assets_do_not_prevent_core_start_or_recovery(tmp_path):
+    """Import the real entry point before any other test has initialized it."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    location = tmp_path / "public-assets"
+    location.write_text("temporarily not a directory", encoding="utf-8")
+    code = """
+import os
+from pathlib import Path
+from fastapi.testclient import TestClient
+from backend.main import app
+from backend.storage.public_assets import AssetStorage
+root = Path(os.environ['UPLOADS_DIR'])
+client = TestClient(app)
+assert client.get('/health').json() == {'status': 'ok'}
+assert client.get('/ready').status_code == 200
+url = '/uploads/settings/logo.png'
+assert client.get(url).status_code == 503
+root.unlink()  # only the disposable test file created above
+assert client.get(url).status_code == 404 and not root.exists()
+assert client.get('/ready').status_code == 200 and not root.exists()
+AssetStorage(root).write_bytes('settings', 'logo.png', b'new logo')
+assert client.get(url).content == b'new logo'
+assert client.head(url).status_code == 200
+"""
+    subprocess.run([sys.executable, "-B", "-c", code], cwd=Path(__file__).resolve().parents[2],
+        env={**os.environ, "UPLOADS_DIR": str(location), "DATABASE_URL": f"sqlite:///{tmp_path / 'core.db'}"},
+        check=True, timeout=60)

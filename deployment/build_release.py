@@ -14,8 +14,10 @@ import tarfile
 import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
 from typing import Iterable
+from urllib.parse import unquote, urlsplit
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -502,6 +504,41 @@ def read_source_payload(source_archive: Path) -> list[PayloadFile]:
     return sorted(payload, key=lambda item: item.name)
 
 
+class _FrontendEntry(HTMLParser):
+    """Check the initial admin shell, not extension content or application traffic."""
+
+    def __init__(self, files: dict[str, bytes]) -> None:
+        super().__init__()
+        self.files = files
+        self.has_startup_module = False
+
+    def handle_starttag(self, tag, attributes):
+        attrs = dict(attributes)
+        if tag == "base" and attrs.get("href") not in (None, "/"):
+            raise ReleaseBuildError("Admin entry must use the device root for startup assets")
+        if tag == "script" and "src" in attrs:
+            value = attrs["src"]
+        elif tag == "link":
+            relations = set((attrs.get("rel") or "").lower().split())
+            if not (relations & {"stylesheet", "modulepreload"} or
+                    ("preload" in relations and (attrs.get("as") or "").lower() in {"script", "style", "font"})):
+                return
+            value = attrs.get("href")
+        else:
+            return
+        # The same entry document is served at nested client routes (e.g.
+        # /user/login). Require Vite's root-relative, device-local asset URLs.
+        if not value or not value.startswith("/") or value.startswith("//") or "\\" in value:
+            raise ReleaseBuildError("Admin startup asset must be a device-local, root-relative file")
+        path = unquote(urlsplit(value).path[1:])
+        if path not in self.files:
+            raise ReleaseBuildError("Admin startup asset is absent from the frontend payload")
+        if tag == "script" and (attrs.get("type") or "").strip().lower() == "module":
+            if PurePosixPath(path).suffix not in {".js", ".mjs"} or not self.files[path].strip():
+                raise ReleaseBuildError("Admin startup module must be a nonempty JavaScript file")
+            self.has_startup_module = True
+
+
 def read_frontend_payload(frontend_dist: Path) -> list[PayloadFile]:
     if not frontend_dist.is_dir():
         raise ReleaseBuildError(f"Frontend dist does not exist: {frontend_dist}")
@@ -529,6 +566,15 @@ def read_frontend_payload(frontend_dist: Path) -> list[PayloadFile]:
         if total_size > MAX_TOTAL_BYTES:
             raise ReleaseBuildError("Frontend payload is too large")
         payload.append(PayloadFile(name=name, data=data, mode=0o644))
+    files = {item.name.removeprefix("frontend/dist/"): item.data for item in payload}
+    parser = _FrontendEntry(files)
+    try:
+        parser.feed(files["index.html"].decode("utf-8"))
+        parser.close()
+    except UnicodeDecodeError as exc:
+        raise ReleaseBuildError("Frontend entry is not UTF-8") from exc
+    if not parser.has_startup_module:
+        raise ReleaseBuildError("Frontend entry does not load the admin startup module")
     return payload
 
 

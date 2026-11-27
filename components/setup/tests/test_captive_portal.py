@@ -1,4 +1,5 @@
 import http.client
+from contextlib import closing
 
 import pytest
 
@@ -79,3 +80,22 @@ def test_optional_listener_does_not_take_over_existing_web_port():
         with captive_portal_redirect('127.0.0.1', existing.server_address[1],
                 'http://10.42.0.1:8895/setup', recovery_only=True, optional=True) as duplicate:
             assert duplicate is None
+
+
+def test_only_login_waits_during_confirmed_local_admin_handoff(monkeypatch):
+    readiness = [False]
+    monkeypatch.setattr('components.setup.captive_portal.recovery_setup_url', lambda addr: None)
+    with captive_portal_redirect('127.0.0.1', 0, 'http://10.42.0.1:8895/setup',
+            recovery_only=True, login_handoff=lambda: readiness[0]) as server:
+        def get(path, method='GET'):
+            with closing(http.client.HTTPConnection(*server.server_address, timeout=2)) as conn:
+                conn.request(method, path)
+                response = conn.getresponse()
+                return response.status, response.headers, response.read()
+        assert get('/user/login')[0] == 404
+        readiness[0] = True
+        code, headers, page = get('/user/login')
+        assert code == 200 and headers['Cache-Control'] == 'no-store'
+        assert b'const handoffOnly = true' in page
+        assert get('/extensions')[0] == 404
+        assert get('/.well-known/3mm-admin-ready','HEAD')[0] == 503

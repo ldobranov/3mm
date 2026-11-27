@@ -50,6 +50,12 @@ def main(argv: Sequence[str] | None = None) -> None:
         read_only=arguments.read_only,
         diagnostics=arguments.diagnostics,
     )
+    app = create_app(settings=settings)
+
+    def login_handoff() -> bool:
+        runtime = getattr(app.state, "setup_runtime", None)
+        return bool(runtime and runtime.closed and not runtime.recovery and runtime.role in {"hub", "standalone"})
+
     captive_entrypoint = (
         captive_portal_redirect(
             host=settings.host,
@@ -57,13 +63,14 @@ def main(argv: Sequence[str] | None = None) -> None:
             setup_url=arguments.captive_url,
             recovery_only=arguments.recovery_captive_port is not None,
             optional=arguments.recovery_captive_port is not None,
+            login_handoff=login_handoff,
         )
         if arguments.captive_port is not None or arguments.recovery_captive_port is not None
         else nullcontext()
     )
     with captive_entrypoint:
         uvicorn.run(
-            create_app(settings=settings),
+            app,
             host=settings.host,
             port=settings.port,
             log_level=arguments.log_level,
