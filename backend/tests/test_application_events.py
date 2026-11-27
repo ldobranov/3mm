@@ -522,3 +522,86 @@ def test_paused_subscription_cannot_starve_an_active_head_at_batch_limit(broker_
         ApplicationEventDelivery.application_installation_id==s.installation.id)).status=='acknowledged'
     assert s.db.scalar(select(ApplicationEventDelivery).where(
         ApplicationEventDelivery.application_installation_id==paused.id)).status=='pending'
+
+
+def test_operator_status_reads_one_snapshot_without_mixing_subscriptions(broker_db):
+    from sqlalchemy import event as sql_events
+
+    s = broker_db
+    pkg = ModulePackage(module_id="org.example.second", version="1.0.0", manifest={},
+        sha256="c" * 64, size_bytes=1, file_path="unused", registrations=[])
+    s.db.add(pkg)
+    s.db.flush()
+    second = ApplicationExtensionInstallation(module_id=pkg.module_id, module_package_id=pkg.id,
+        instance_id="2" * 24, active_version=pkg.version, enabled=False, status="disabled", socket_path="unused")
+    s.db.add(second)
+    s.db.flush()
+    expected = {}
+    for i, (app, sub, states) in enumerate([
+        (s.installation, "updates", ("pending", "delivering", "dead_letter", "acknowledged")),
+        (second, "updates", ("dead_letter", "dead_letter")),
+        (second, "empty", ()),
+    ]):
+        cursor = ApplicationEventCursor(application_installation_id=app.id, subscription_id=sub,
+            last_event_id="last_" + str(i), acknowledged_count=10 + i, dead_letter_count=6 + i,
+            dropped_dead_letter_count=2 + i)
+        s.db.add(cursor)
+        for j, state in enumerate(states):
+            ev = add_event(s.db, s.device, f"status{i}{j}x")
+            s.db.add(ApplicationEventDelivery(application_installation_id=app.id,
+                subscription_id=sub, device_event_id=ev.id, status=state))
+        expected[(app.module_id, sub)] = (cursor.last_event_id, 10+i, 6+i, 2+i,
+            states.count("pending") + states.count("delivering"), states.count("dead_letter"))
+    s.db.commit()
+    reads = []
+    engine = s.db.get_bind()
+    def observe(_conn, _cursor, _stmt, _params, context, _many):
+        if context.compiled and context.compiled.statement.is_select:
+            reads.append(1)
+    sql_events.listen(engine, "before_cursor_execute", observe)
+    try:
+        status = application_event_status(s.db)
+    finally:
+        sql_events.remove(engine, "before_cursor_execute", observe)
+    assert [(v["module_id"], v["subscription_id"]) for v in status] == sorted(expected)
+    assert {(v["module_id"], v["subscription_id"]): (v["last_event_id"], v["acknowledged_total"],
+        v["dead_letter_total"], v["dropped_dead_letters_total"], v["backlog"], v["stored_dead_letters"])
+        for v in status} == expected
+    assert len(reads) == 1, "the counters must share one SQLite read snapshot"
+
+
+def test_completion_during_status_read_is_not_half_visible(broker_db):
+    from sqlalchemy import event as sql_events
+
+    s = broker_db
+    engine = s.db.get_bind()
+    with engine.connect() as connection:
+        assert connection.exec_driver_sql("PRAGMA journal_mode=WAL").scalar() == "wal"
+    ev = add_event(s.db, s.device, "snapshot")
+    ident = s.installation.id
+    cursor = ApplicationEventCursor(application_installation_id=ident, subscription_id="updates")
+    delivery = ApplicationEventDelivery(application_installation_id=ident, subscription_id="updates",
+        device_event_id=ev.id, status="delivering")
+    s.db.add_all((cursor, delivery))
+    s.db.flush()
+    cursor_id, delivery_id = cursor.id, delivery.id
+    s.db.commit()
+
+    def completed_on_another_connection(*_):
+        with engine.begin() as writer:
+            writer.execute(update(ApplicationEventCursor).where(ApplicationEventCursor.id == cursor_id)
+                .values(acknowledged_count=1))
+            writer.execute(update(ApplicationEventDelivery).where(ApplicationEventDelivery.id == delivery_id)
+                .values(status="acknowledged"))
+    # SQLite has started serving the operator's first SELECT. Finish delivery
+    # on the other connection before the rest of the status read can proceed.
+    reader = s.db.connection()
+    sql_events.listen(reader, "after_cursor_execute", completed_on_another_connection, once=True)
+    try:
+        before, = application_event_status(s.db)
+    finally:
+        sql_events.remove(reader, "after_cursor_execute", completed_on_another_connection)
+    s.db.rollback()
+    after, = application_event_status(s.db)
+    assert (before["acknowledged_total"], before["backlog"]) == (0, 1)
+    assert (after["acknowledged_total"], after["backlog"]) == (1, 0)

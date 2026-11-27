@@ -297,6 +297,8 @@ paused pending heads do not block eligible heads from other applications.
 Admin `POST /api/v1/application-events/drain` remains admin-only and now returns
 `status: queued`. It clears pending retry delay without executing code, resetting
 attempts or stealing an active lease. Existing status backlog includes delivering.
+Operator backlog and durable cursor counts come from one SQLite read snapshot
+even if a delivery completes while the status is being read.
 
 Initial Core/schema/unit installation requires additive migration **1bf67d2435e6**
 (four nullable delivery fields, preserved queue/history, no reset/backfilled rights).

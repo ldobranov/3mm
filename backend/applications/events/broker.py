@@ -394,49 +394,25 @@ def process_application_event(
 
 
 def application_event_status(db: Session) -> list[dict[str, object]]:
-    rows = db.execute(
-        select(ApplicationEventCursor, ApplicationExtensionInstallation)
-        .join(
-            ApplicationExtensionInstallation,
-            ApplicationExtensionInstallation.id
-            == ApplicationEventCursor.application_installation_id,
-        )
-        .order_by(
-            ApplicationExtensionInstallation.module_id,
-            ApplicationEventCursor.subscription_id,
-        )
-    ).all()
-    result: list[dict[str, object]] = []
-    for cursor, installation in rows:
-        counts = {
-            status: count
-            for status, count in db.execute(
-                select(
-                    ApplicationEventDelivery.status,
-                    func.count(ApplicationEventDelivery.id),
-                )
-                .where(
-                    ApplicationEventDelivery.application_installation_id
-                    == installation.id,
-                    ApplicationEventDelivery.subscription_id
-                    == cursor.subscription_id,
-                )
-                .group_by(ApplicationEventDelivery.status)
-            )
-        }
-        result.append(
-            {
-                "module_id": installation.module_id,
-                "subscription_id": cursor.subscription_id,
-                "last_event_id": cursor.last_event_id,
-                "acknowledged_total": cursor.acknowledged_count,
-                "dead_letter_total": cursor.dead_letter_count,
-                "dropped_dead_letters_total": cursor.dropped_dead_letter_count,
-                "backlog": counts.get("pending", 0) + counts.get("delivering", 0),
-                "stored_dead_letters": counts.get("dead_letter", 0),
-            }
-        )
-    return result
+    cursor, delivery, installation = ApplicationEventCursor, ApplicationEventDelivery, ApplicationExtensionInstallation
+    # One read snapshot: don't mix a cursor from before completion with a
+    # backlog count from after it. The queue index covers the joined statuses.
+    statement = (
+        select(installation.module_id, cursor.subscription_id, cursor.last_event_id,
+               cursor.acknowledged_count.label("acknowledged_total"),
+               cursor.dead_letter_count.label("dead_letter_total"),
+               cursor.dropped_dead_letter_count.label("dropped_dead_letters_total"),
+               func.count(delivery.id).filter(delivery.status.in_(("pending", "delivering"))).label("backlog"),
+               func.count(delivery.id).filter(delivery.status == "dead_letter").label("stored_dead_letters"))
+        .select_from(cursor)
+        .join(installation, installation.id == cursor.application_installation_id)
+        .outerjoin(delivery, (delivery.application_installation_id == cursor.application_installation_id)
+                   & (delivery.subscription_id == cursor.subscription_id)
+                   & delivery.status.in_(("pending", "delivering", "dead_letter")))
+        .group_by(cursor.id, installation.module_id)
+        .order_by(installation.module_id, cursor.subscription_id)
+    )
+    return [dict(row) for row in db.execute(statement).mappings()]
 
 
 # Runtime is an I/O worker. All queue selection, current admission and durable
