@@ -379,6 +379,59 @@ def test_fifo_backlog_and_admin_retry_do_not_steal_inflight_claim(broker_db):
     assert cursor.acknowledged_count==2 and cursor.dead_letter_count==1
 
 
+@pytest.mark.parametrize(("marker_boot", "deadline"), [
+    (None, None), ("this-boot", 999), ("this-boot", 1000),
+    ("previous-boot", 2000), (None, 2000), ("this-boot", None),
+])
+def test_admin_retry_of_already_ready_work_needs_no_writer(broker_db, monkeypatch, marker_boot, deadline):
+    from backend.applications.events import broker
+    monkeypatch.setattr(broker, "_clock", lambda: ("this-boot", 1000))
+    s = broker_db
+    engine = s.db.get_bind()
+    with engine.connect() as setup:
+        assert setup.exec_driver_sql("PRAGMA journal_mode=WAL").scalar() == "wal"
+    enqueue_application_event(s.db, add_event(s.db, s.device, "ready"), s.settings)
+    delivery = row(s)
+    delivery.retry_boot_id, delivery.retry_not_before_ms = marker_boot, deadline
+    s.db.commit()
+    from sqlalchemy import text
+    # A legitimate writer owns the only write slot. Reading the already-ready
+    # queue must still succeed without waiting for or displacing that writer.
+    s.db.execute(text("PRAGMA busy_timeout=0"))
+    with engine.connect() as other:
+        other.exec_driver_sql("BEGIN IMMEDIATE")
+        try:
+            request_application_event_retry(s.db)
+            assert application_event_status(s.db)[0]["backlog"] == 1
+        finally:
+            other.rollback()
+    assert not s.calls and row(s).attempts == 0
+    assert (row(s).retry_boot_id, row(s).retry_not_before_ms) == (marker_boot, deadline)
+
+
+def test_admin_retry_changes_only_pending_rows_that_are_still_waiting(broker_db, monkeypatch):
+    from backend.applications.events import broker
+    monkeypatch.setattr(broker, "_clock", lambda: ("test-boot", 1000))
+    s = broker_db
+    ident = s.installation.id
+    for name, status, deadline in (("ready","pending",None), ("waiting","pending",20000),
+                                   ("expired","pending",1000), ("leased","delivering",5000), ("dead","dead_letter",5000)):
+        ev = add_event(s.db, s.device, name)
+        s.db.add(ApplicationEventDelivery(application_installation_id=ident, subscription_id=name,
+            device_event_id=ev.id, status=status, retry_boot_id='test-boot' if deadline else None,
+            retry_not_before_ms=deadline, updated_at=datetime(2024,1,1,tzinfo=UTC)))
+    s.db.commit()
+    def inspect():
+        return {r.subscription_id:(r.retry_boot_id,r.retry_not_before_ms,r.updated_at) for r in
+                s.db.scalars(select(ApplicationEventDelivery).where(ApplicationEventDelivery.application_installation_id==ident))}
+    before = inspect()
+    request_application_event_retry(s.db)
+    after = inspect()
+    assert after["waiting"][:2] == (None,None)
+    assert all(after[n] == before[n] for n in ("ready","expired","leased","dead"))
+    assert not s.calls
+
+
 @pytest.mark.parametrize('change',['expiry','reboot'])
 def test_lost_response_has_one_durable_attempt_and_fresh_claim_after_expiry(broker_db,monkeypatch,change):
     from backend.applications.events import broker

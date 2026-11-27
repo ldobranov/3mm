@@ -359,8 +359,16 @@ def enqueue_application_event(
 
 def request_application_event_retry(db):
     """Admin wakeup for pending work; never renew an active lease or execute code."""
-    db.execute(update(ApplicationEventDelivery).where(ApplicationEventDelivery.status == "pending")
-               .values(retry_not_before_ms=None, retry_boot_id=None))
+    row = ApplicationEventDelivery
+    marked = (row.status == "pending") & row.retry_not_before_ms.is_not(None) & row.retry_boot_id.is_not(None)
+    # An ordinary ready queue needs neither the host clock nor SQLite's writer.
+    if db.scalar(select(row.id).where(marked).limit(1)) is not None:
+        boot, now = _clock()
+        # A past deadline or a deadline from another boot is already eligible
+        # for claim. Even an UPDATE matching zero rows would need the writer.
+        waiting = (row.status == "pending") & (row.retry_boot_id == boot) & (row.retry_not_before_ms > now)
+        if db.scalar(select(row.id).where(waiting).limit(1)) is not None:
+            db.execute(update(row).where(waiting).values(retry_not_before_ms=None, retry_boot_id=None))
     db.commit()
 
 
