@@ -422,7 +422,8 @@ class _MigrationStorage(ApplicationStorage):
             data, declaration=plan.declaration, schema_revision=plan.schema_revision
         )
 
-    def _connect(self):
+    def _connect(self, *, preserve_journal=False):
+        # Protected workers always preserve the journal of the prepared database.
         remaining = _remaining(self.plan)
         _regular(self.database_path)
         self.scoped._check_auxiliary()

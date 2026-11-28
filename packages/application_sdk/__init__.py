@@ -545,6 +545,33 @@ class ApplicationOutboxItem:
     attempts: int
 
 
+_APPLICATION_DB_BUSY_SECONDS = 30
+
+
+def _enable_application_wal(connection: sqlite3.Connection) -> None:
+    # Two new connections converting a fresh rollback journal can receive
+    # SQLITE_BUSY immediately, even with SQLite's normal busy timeout.
+    # Only retry this idempotent PRAGMA, never a transaction or app callback.
+    deadline = time.monotonic() + _APPLICATION_DB_BUSY_SECONDS
+    shortened = False
+    while True:
+        try:
+            connection.execute("PRAGMA journal_mode = WAL").close()
+            break
+        except sqlite3.OperationalError as exc:
+            left = deadline - time.monotonic()
+            if getattr(exc, "sqlite_errorcode", 0) & 0xff != sqlite3.SQLITE_BUSY or left <= 0:
+                raise
+            time.sleep(min(0.025, left))
+            remaining_ms = int((deadline - time.monotonic()) * 1000)
+            if remaining_ms <= 0:
+                raise
+            connection.execute(f"PRAGMA busy_timeout = {remaining_ms}")
+            shortened = True
+    if shortened:
+        connection.execute(f"PRAGMA busy_timeout = {int(_APPLICATION_DB_BUSY_SECONDS * 1000)}")
+
+
 class ApplicationStorage:
     """Extension-owned SQLite database with forward migrations and outbox."""
 
@@ -552,12 +579,17 @@ class ApplicationStorage:
         self.data_dir = data_dir
         self.database_path = data_dir / "state.sqlite3"
 
-    def _connect(self) -> sqlite3.Connection:
+    def _connect(self, *, preserve_journal: bool = False) -> sqlite3.Connection:
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(self.database_path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = WAL")
+        connection = sqlite3.connect(self.database_path, timeout=_APPLICATION_DB_BUSY_SECONDS)
+        try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            if not preserve_journal:
+                _enable_application_wal(connection)
+        except BaseException:
+            connection.close()
+            raise
         return connection
 
     def migrate(
@@ -575,7 +607,34 @@ class ApplicationStorage:
             raise ValueError("Application migration plan is invalid")
         target_index = revisions.index(target_revision)
         selected = list(migrations[: target_index + 1])
+        additions = {
+            "payload_hash": "TEXT",
+            "remote_idempotency_key": "TEXT",
+            "next_attempt_at": "TEXT",
+            "terminal_result": "TEXT",
+        }
+
+        def applied_count(connection: sqlite3.Connection) -> int:
+            applied = [row[0] for row in connection.execute(
+                "SELECT revision FROM three_mm_schema_migrations ORDER BY rowid"
+            )]
+            if applied != revisions[:len(applied)] or len(applied) > len(selected):
+                raise ValueError("Application database revision is not forward-compatible")
+            return len(applied)
+
+        with closing(self._connect(preserve_journal=True)) as connection:
+            # An ordinary reopen needs no writer reservation. A divergent
+            # application must not acquire new SDK metadata as a side effect.
+            if connection.execute(
+                "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='three_mm_schema_migrations'"
+            ).fetchone() is not None:
+                count = applied_count(connection)
+                if count == len(selected) and additions.keys() <= {
+                    row[1] for row in connection.execute("PRAGMA table_info(three_mm_outbox)")
+                }:
+                    return
         with closing(self._connect()) as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS three_mm_schema_migrations (
@@ -584,6 +643,7 @@ class ApplicationStorage:
                 )
                 """
             )
+            count = applied_count(connection)
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS three_mm_outbox (
@@ -607,29 +667,25 @@ class ApplicationStorage:
                 str(row[1])
                 for row in connection.execute("PRAGMA table_info(three_mm_outbox)")
             }
-            additions = {
-                "payload_hash": "TEXT",
-                "remote_idempotency_key": "TEXT",
-                "next_attempt_at": "TEXT",
-                "terminal_result": "TEXT",
-            }
             for name, declaration in additions.items():
                 if name not in columns:
                     connection.execute(
                         f"ALTER TABLE three_mm_outbox ADD COLUMN {name} {declaration}"
                     )
-            applied = [
-                str(row[0])
-                for row in connection.execute(
-                    "SELECT revision FROM three_mm_schema_migrations ORDER BY rowid"
-                )
-            ]
-        if applied != revisions[: len(applied)] or len(applied) > len(selected):
-            raise ValueError("Application database revision is not forward-compatible")
-        for migration in selected[len(applied) :]:
+            connection.commit()
+        for index in range(count, len(selected)):
             connection = self._connect()
             try:
                 connection.execute("BEGIN IMMEDIATE")
+                # Another starter may have completed this revision while this
+                # connection waited. Check under the same lock as the callback.
+                actual = applied_count(connection)
+                if actual > index:
+                    connection.rollback()
+                    continue
+                if actual != index:
+                    raise ValueError("Application database history changed during migration")
+                migration = selected[index]
                 migration.apply(connection)
                 connection.execute(
                     "INSERT INTO three_mm_schema_migrations(revision) VALUES (?)",
