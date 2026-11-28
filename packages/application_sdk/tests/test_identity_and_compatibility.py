@@ -28,31 +28,29 @@ def test_sdk_rejects_malformed_identity_responses_and_proof_inputs(monkeypatch):
 @pytest.mark.parametrize("fail", [False, True])
 def test_initial_migration_metadata_connection_is_closed(tmp_path, monkeypatch, fail):
     opened = []
+    sqlite_connect = sqlite3.connect
 
     class Connection(sqlite3.Connection):
-        closed = False
-
         def execute(self, statement, *args, **kwargs):
             if fail and statement.startswith("PRAGMA table_info"):
                 raise RuntimeError("fixture metadata failure")
             return super().execute(statement, *args, **kwargs)
 
-        def close(self):
-            self.closed = True
-            super().close()
-
     storage = ApplicationStorage(tmp_path)
 
-    def connect():
-        connection = sqlite3.connect(storage.database_path, factory=Connection)
+    def connect(*args, **kwargs):
+        connection = sqlite_connect(*args, factory=Connection, **kwargs)
         opened.append(connection)
         return connection
 
-    monkeypatch.setattr(storage, "_connect", connect)
+    monkeypatch.setattr(sqlite3, "connect", connect)
     migration = ApplicationMigration("0001", lambda _connection: None)
     if fail:
         with pytest.raises(RuntimeError, match="metadata failure"):
             storage.migrate([migration], "0001")
     else:
         storage.migrate([migration], "0001")
-    assert opened and all(connection.closed for connection in opened)
+    assert opened
+    for connection in opened:
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            connection.execute("SELECT 1")
