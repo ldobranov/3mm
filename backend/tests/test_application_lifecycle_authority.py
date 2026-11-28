@@ -500,19 +500,58 @@ def test_activation_rechecks_a_concurrent_webhook_reservation_before_helper(life
         assert db.scalar(select(AuditLog.id)) is None
 
 
-def test_lifecycle_waiter_rejects_changed_guard_after_other_connection_commits(lifecycle):
+def test_lifecycle_waiter_rejects_changed_guard_after_other_connection_commits(lifecycle, monkeypatch):
     s = lifecycle
     attempted, done = threading.Event(), threading.Event()
     result = []
+    owner = threading.current_thread()
+    lock = threading.Lock()
+    progress = {"request": "not started", "database": "not reached"}
+
+    def mark(**observed):
+        with lock:
+            progress.update(observed)
+
+    def last_observed():
+        with lock:
+            return f"second request: {progress['request']}; database: {progress['database']}"
+
+    def trace_step(name, label):
+        original = getattr(routes, name)
+
+        def traced(*args, **kwargs):
+            mark(request=f"entered {label}")
+            value = original(*args, **kwargs)
+            mark(request=f"returned from {label}")
+            return value
+
+        monkeypatch.setattr(routes, name, traced)
+
+    trace_step("_prepare_lifecycle", "lifecycle preflight")
+    trace_step("prepare_lifecycle_consent", "consent preparation")
 
     def capture(_conn, _cursor, statement, *_args):
-        if statement.startswith("UPDATE core_authority_guard") and threading.current_thread().name != "MainThread":
+        if threading.current_thread() is owner:
+            return
+        if statement.startswith("UPDATE core_authority_guard"):
+            mark(database="guard UPDATE attempted")
             attempted.set()
+        elif statement.startswith("SELECT"):
+            for model in (User, CoreAuthorityGuard, ApplicationExtensionInstallation, ApplicationCommandEpoch):
+                if f"{model.__tablename__}." in statement:
+                    mark(database=f"{model.__tablename__} read attempted")
+                    break
+            else:
+                mark(database="other read attempted")
 
     def disable():
         try:
-            result.append(request(s, "disabling").status_code)
+            mark(request="calling disable over HTTP")
+            status = request(s, "disabling").status_code
+            mark(request=f"HTTP {status} returned")
+            result.append(status)
         except BaseException as exc:
+            mark(request=f"client raised {type(exc).__name__}")
             result.append(exc)
         finally:
             done.set()
@@ -526,8 +565,9 @@ def test_lifecycle_waiter_rejects_changed_guard_after_other_connection_commits(l
             with authority_transaction(db) as authority:
                 authority.advance_application_epoch(expected)
                 thread.start()
-                assert attempted.wait(2) and not done.wait(0.05)
-            assert done.wait(4)
+                assert attempted.wait(2), f"No guard UPDATE observed within 2s; {last_observed()}"
+                assert not done.wait(0.05), f"Waiter finished before owner commit; {last_observed()}"
+            assert done.wait(4), f"Waiter did not finish after owner commit; {last_observed()}"
     finally:
         if thread.ident is not None:
             thread.join(4)
