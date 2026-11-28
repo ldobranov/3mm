@@ -118,6 +118,13 @@ Scope keys за вътрешните v5 review/grant records: `storage:relationa
 | `migrate()` върху runtime context | Отказ; host lifecycle adapter е отделен и не се подава на service factory |
 | Transaction outcome lookup | Само собствен metadata receipt; не SQL/data read или повторно изпълнение |
 
+Двата профила за съхранение сравняват `next_attempt_at` по действителния момент
+с точност до микросекунда. Новите срокове за повторен опит се пазят в UTC.
+Старите стойности от `datetime.isoformat()` се четат без презапис, включително
+при отместване над 14 часа; час без зона се приема за UTC.
+`due_outbox(limit=..., now=...)` прилага лимита след избора на дължимите
+записи. Това е прочит: той не изпраща записи и не променя състоянието им.
+
 Legacy raw connection contract остава за compatibility installations. Scoped
 adapter връща transaction-bound facade с `execute`/`executemany`, bounded cursors
 и обичайните row values, **не произволен raw connection**. Няма `executescript`,

@@ -545,6 +545,46 @@ class ApplicationOutboxItem:
     attempts: int
 
 
+def _outbox_utc(value: datetime) -> datetime:
+    # Existing offset-free scheduler inputs used the UTC clock, not host time.
+    return (value.replace(tzinfo=UTC) if value.utcoffset() is None else value.astimezone(UTC))
+
+
+def _select_due_outbox(connection, execute, now, limit):
+    current = _outbox_utc(now if now is not None else datetime.now(UTC))
+    cutoff = current.replace(tzinfo=None).isoformat()
+
+    def key(stamp):
+        if stamp == cutoff:
+            return (0, current)
+        try:
+            if "+00:00:00." in stamp or "-00:00:00." in stamp:
+                # Python 3.12's fromisoformat drops sub-second-only offsets.
+                fraction = ".%f" if stamp[19:20] == "." else ""
+                instant = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%S" + fraction + "%z")
+            else:
+                instant = datetime.fromisoformat(stamp)
+        except ValueError:
+            return (1, stamp)  # An unreadable deadline is never due.
+        return (0, instant if instant.tzinfo is not None else instant.replace(tzinfo=UTC))
+
+    def compare(left, right):
+        if left == right:
+            return 0
+        a, b = key(left), key(right)
+        return (a > b) - (a < b)
+
+    # Only this lookup's connection gets the fixed comparison. SQLite filters
+    # before LIMIT; the scoped executor still enforces its SQL and row bounds.
+    connection.create_collation("mm_outbox_time", compare)
+    return execute(
+        "SELECT outbox_id,event_type,payload_json,payload_hash,remote_idempotency_key,attempts "
+        "FROM three_mm_outbox WHERE state IN ('pending','retrying') AND "
+        "ifnull(next_attempt_at,?1)<=?1 COLLATE mm_outbox_time ORDER BY created_at,outbox_id LIMIT ?2",
+        (cutoff, limit),
+    ).fetchall()
+
+
 _APPLICATION_DB_BUSY_SECONDS = 30
 
 
@@ -767,7 +807,7 @@ class ApplicationStorage:
                 (
                     state,
                     attempts,
-                    next_attempt_at.isoformat() if next_attempt_at else None,
+                    _outbox_utc(next_attempt_at).isoformat() if next_attempt_at is not None else None,
                     terminal_result,
                     last_error,
                     outbox_id,
@@ -784,20 +824,8 @@ class ApplicationStorage:
     ) -> list[ApplicationOutboxItem]:
         if isinstance(limit, bool) or not 1 <= limit <= 100:
             raise ValueError("Outbox batch limit is invalid")
-        current = (now or datetime.now(UTC)).isoformat()
-        with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT outbox_id, event_type, payload_json, payload_hash,
-                       remote_idempotency_key, attempts
-                FROM three_mm_outbox
-                WHERE state IN ('pending', 'retrying')
-                  AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
-                ORDER BY created_at, outbox_id
-                LIMIT ?
-                """,
-                (current, limit),
-            ).fetchall()
+        with closing(self._connect()) as connection:
+            rows = _select_due_outbox(connection, connection.execute, now, limit)
         items: list[ApplicationOutboxItem] = []
         for row in rows:
             payload_json = str(row[2])

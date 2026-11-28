@@ -20,11 +20,10 @@ import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable, Iterator, Literal
 
-from packages.application_sdk import ApplicationOutboxItem, ApplicationStorage
+from packages.application_sdk import ApplicationOutboxItem, ApplicationStorage, _outbox_utc, _select_due_outbox
 from packages.application_sdk.transaction_guard import relational_transaction_active
 from packages.protocol.application_extension import ApplicationRelationalStorageV1
 
@@ -364,6 +363,10 @@ class _Session:
             # Catching an input-generator error in business code must not commit
             # a partially consumed batch.
             self._fail(error)
+
+    def _read_due_outbox(self, now, limit):
+        self._check()
+        return _select_due_outbox(self.__connection, self.execute, now, limit)
 
     def _outbox_execute(self, sql, parameters):
         if self.mode != "write":
@@ -754,7 +757,7 @@ class ApplicationScopedStorage(ApplicationStorage):
                 (
                     state,
                     attempts,
-                    next_attempt_at.isoformat() if next_attempt_at else None,
+                    _outbox_utc(next_attempt_at).isoformat() if next_attempt_at is not None else None,
                     terminal_result,
                     last_error,
                     outbox_id,
@@ -767,12 +770,7 @@ class ApplicationScopedStorage(ApplicationStorage):
         if type(limit) is not int or not 1 <= limit <= 100:
             raise ValueError("Outbox batch limit is invalid")
         with self.read_transaction() as session:
-            rows = session.execute(
-                "SELECT outbox_id, event_type, payload_json, payload_hash, remote_idempotency_key, attempts "
-                "FROM three_mm_outbox WHERE state IN ('pending', 'retrying') "
-                "AND (next_attempt_at IS NULL OR next_attempt_at <= ?) ORDER BY created_at, outbox_id LIMIT ?",
-                ((now or datetime.now(UTC)).isoformat(), limit),
-            ).fetchall()
+            rows = session._read_due_outbox(now, limit)
             items = []
             for row in rows:
                 payload_json, payload_hash = row[2], row[3]

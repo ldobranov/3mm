@@ -3,6 +3,7 @@
 import dataclasses
 import sqlite3
 import time
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -402,6 +403,55 @@ def test_write_and_outbox_are_atomic_and_helpers_do_not_re_admit(prepared):
     storage.update_outbox("out_1", state="ambiguous", attempts=1)
     assert storage.status()["outbox"] == {"ambiguous": 1}
     assert len(admission.calls) == 5
+
+
+@pytest.mark.parametrize("scoped", [False, True], ids=["ordinary", "admitted"])
+@pytest.mark.parametrize("retained", [False, True], ids=["scheduled", "retained-iso"])
+def test_retry_uses_the_instant_not_the_wall_clock(prepared, scoped, retained):
+    ordinary, admitted, _ = prepared
+    storage = admitted if scoped else ordinary
+    instant = datetime(2026, 11, 27, 23, 59, 59, 999999, UTC)
+    offsets = {
+        "already": (-1, timedelta(hours=15, minutes=30)),
+        "boundary": (0, timedelta(hours=5, minutes=45)),
+        "naive": (0, None),
+        "fractional-offset": (0, timedelta(microseconds=1)),
+        "later": (1, -timedelta(hours=18)),
+    }
+    expected_stamps = {}
+    for key, (micros, offset) in offsets.items():
+        with storage.transaction() as db:
+            storage.enqueue_outbox(db, outbox_id=key, event_type="record.saved",
+                                   payload={"id": key}, idempotency_key=key)
+        utc = instant + timedelta(microseconds=micros)
+        due = utc.replace(tzinfo=None) if offset is None else utc.astimezone(timezone(offset))
+        expected_stamps[key] = (due if retained else utc).isoformat()
+        if retained:
+            # Existing SDK data stored datetime.isoformat(), including its offset.
+            with sqlite3.connect(ordinary.database_path) as db:
+                db.execute("UPDATE three_mm_outbox SET state='retrying',next_attempt_at=? WHERE outbox_id=?",
+                           (due.isoformat(), key))
+        else:
+            storage.update_outbox(key, state="retrying", attempts=1, next_attempt_at=due)
+    for clock in (instant, instant.astimezone(timezone(timedelta(hours=-7))), instant.replace(tzinfo=None)):
+        assert {item.outbox_id for item in storage.due_outbox(now=clock)} == set(offsets) - {"later"}
+    assert {item.outbox_id for item in storage.due_outbox(now=instant + timedelta(microseconds=1))} == set(offsets)
+    with sqlite3.connect(ordinary.database_path) as db:
+        assert dict(db.execute("SELECT outbox_id,next_attempt_at FROM three_mm_outbox")) == expected_stamps
+
+
+def test_due_outbox_keeps_small_read_budget_and_filters_before_limit(prepared):
+    ordinary, _, admission = prepared
+    reader = reopen(prepared, mode="read", max_statement_bytes=256)
+    with ordinary.transaction() as db:
+        for key in ("a-future", "b-pending"):
+            ordinary.enqueue_outbox(db, outbox_id=key, event_type="record.saved",
+                                    payload={"id": key}, idempotency_key=key)
+        db.execute("UPDATE three_mm_outbox SET next_attempt_at='2026-11-29T00:00:00+00:00' "
+                   "WHERE outbox_id='a-future'")
+    now = datetime(2026, 11, 28, tzinfo=UTC)
+    assert [item.outbox_id for item in reader.due_outbox(now=now, limit=1)] == ["b-pending"]
+    assert [call[1] for call in admission.calls] == ["read"]
 
 
 def test_outbox_cannot_accept_foreign_or_closed_session(prepared):
