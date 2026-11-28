@@ -524,6 +524,42 @@ def test_paused_subscription_cannot_starve_an_active_head_at_batch_limit(broker_
         ApplicationEventDelivery.application_installation_id==paused.id)).status=='pending'
 
 
+@pytest.mark.parametrize("waiting", ["live_claim", "current_boot_backoff"])
+def test_waiting_subscription_does_not_consume_the_claim_batch(broker_db, monkeypatch, waiting):
+    from backend.applications.events import broker
+
+    s = broker_db
+    boot, now = "current-boot", 1000
+    monkeypatch.setattr(broker, "_clock", lambda: (boot, now))
+    monkeypatch.setattr(broker, "MAX_DRAIN_BATCH", 1)
+    # A different subscription and its FIFO successor must both remain untouched.
+    blocked = ApplicationEventDelivery(application_installation_id=s.installation.id,
+        subscription_id="waiting", device_event_id=add_event(s.db, s.device, "first").id,
+        status="delivering" if waiting == "live_claim" else "pending", attempts=1)
+    if waiting == "live_claim":
+        blocked.dispatch_id = "b" * 32
+        blocked.dispatch_metadata = {"boot_id": boot, "deadline_ms": now + 40_000}
+    else:
+        blocked.retry_boot_id, blocked.retry_not_before_ms = boot, now + 30_000
+    s.db.add(blocked)
+    behind = ApplicationEventDelivery(application_installation_id=s.installation.id,
+        subscription_id="waiting", device_event_id=add_event(s.db, s.device, "second").id, status="pending")
+    s.db.add(behind)
+    active = add_event(s.db, s.device, "due")
+    enqueue_application_event(s.db, active, s.settings)
+    due = s.db.scalar(select(ApplicationEventDelivery).where(ApplicationEventDelivery.device_event_id == active.id))
+    # An uptime from before a reboot is not a deadline on the current boot.
+    due.retry_boot_id, due.retry_not_before_ms = "previous-boot", 100_000
+    s.db.commit()
+
+    pump(s.db, s.settings)
+    s.db.expire_all()
+    assert due.status == "acknowledged" and due.attempts == 1
+    assert [call[1]["event_id"] for call in s.calls] == [active.event_id]
+    assert blocked.status == ("delivering" if waiting == "live_claim" else "pending")
+    assert blocked.attempts == 1 and behind.status == "pending" and behind.attempts == 0
+
+
 def test_operator_status_reads_one_snapshot_without_mixing_subscriptions(broker_db):
     from sqlalchemy import event as sql_events
 

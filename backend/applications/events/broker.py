@@ -417,7 +417,7 @@ def application_event_status(db: Session) -> list[dict[str, object]]:
 
 # Runtime is an I/O worker. All queue selection, current admission and durable
 # transitions stay here; an opaque dispatch ID grants no application operation.
-def _heads(db):
+def _heads(db, boot, now):
     from sqlalchemy.orm import aliased
     older = aliased(ApplicationEventDelivery)
     row = ApplicationEventDelivery
@@ -426,11 +426,24 @@ def _heads(db):
         older.application_installation_id == row.application_installation_id,
         older.subscription_id == row.subscription_id,
         older.status.in_(queued), older.device_event_id < row.device_event_id).exists()
-    installation=ApplicationExtensionInstallation
-    eligible=(row.status=="delivering") | (installation.enabled.is_(True) & (installation.status=="active"))
+    installation = ApplicationExtensionInstallation
+    # A leased/backed-off head still fences its FIFO successors, but must not
+    # consume a slot in the bounded batch for unrelated subscriptions. Uptime
+    # deadlines are comparable only on the boot that produced them.
+    pending_due = (
+        (row.status == "pending") & installation.enabled.is_(True) & (installation.status == "active")
+        & (row.retry_boot_id.is_distinct_from(boot) | row.retry_not_before_ms.is_(None)
+           | (row.retry_not_before_ms <= now))
+    )
+    lease_boot = row.dispatch_metadata["boot_id"].as_string()
+    lease_end = row.dispatch_metadata["deadline_ms"].as_integer()
+    needs_settlement = (
+        (row.status == "delivering")
+        & (lease_boot.is_distinct_from(boot) | lease_end.is_(None) | (lease_end <= now))
+    )
     return list(db.scalars(select(row).join(installation,
-        installation.id==row.application_installation_id).where(row.status.in_(queued), ~previous, eligible)
-        .order_by(func.coalesce(row.retry_not_before_ms, 0), row.id).limit(MAX_DRAIN_BATCH)))
+        installation.id==row.application_installation_id).where(~previous, pending_due | needs_settlement)
+        .order_by(row.id).limit(MAX_DRAIN_BATCH)))
 
 
 def _settle(db, delivery, event, *, error=None, delay_ms=RETRY_DELAY_MS):
@@ -547,7 +560,7 @@ def claim_event_delivery(db, settings, *, runtime_generation, deadline=None, cal
     if not _claim_lock.acquire(blocking=False): return idle, None
     try:
         boot, now = _clock()
-        for delivery in _heads(db):
+        for delivery in _heads(db, boot, now):
             try:_claim_current(deadline,caller_current)
             except EventClaimExpired:
                 db.rollback();return idle,None
