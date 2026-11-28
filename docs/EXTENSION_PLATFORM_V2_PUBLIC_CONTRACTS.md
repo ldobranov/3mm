@@ -435,6 +435,20 @@ settles its own expired attempt beyond the bounded 100-row status batch. Reusing
 a connector request ID returns its recorded outcome and no body, never another
 HTTP call. These are outcome receipts, not exactly-once remote effects.
 
+An HTTP status line alone is not a complete response. If the peer closes a
+length-delimited response early, the worker discards the partial body, retains
+the observed status, and reports `connection_lost`: a read is retryable, a
+mutation is ambiguous. It sends nothing again. A bodyless HEAD/204 or a
+complete close-delimited response is not treated as truncated.
+
+A complete redirect or 5xx response is not evidence that a mutation did
+not happen: report it as ambiguous, keeping the HTTP status and bounded
+response. Reads retain their retryable classification. A response exceeding
+the size limit exposes no body: reads fail with `response_limit`; writes
+are ambiguous with that same category. Neither case triggers an automatic
+retry or redirect. Look up the original request or consult the provider's
+read-only state before considering another mutation.
+
 Additive migration **2c078e3546f7** adds nullable JSON dispatch metadata, with no
 request bodies/headers/target credentials and no reset/backfilled permission.
 An unresolved new dispatch prevents downgrade before DDL. A rebound connector

@@ -76,10 +76,10 @@ def network_stack(connector_installed,monkeypatch,request):
             if mode[0]=='hang':release.wait(12)
             try:
                 data=b'x'*2048 if mode[0]=='limit' else b'0123456789' if mode[0]=='trickle' else b'{}'
-                status=302 if mode[0]=='redirect' else 201
+                status={'redirect':303,'server_error':503}.get(mode[0],201)
                 self.send_response(status);self.send_header('Content-Type','application/json')
-                self.send_header('Content-Length',str(len(data)));self.send_header('Set-Cookie','private-cookie')
-                if status==302:self.send_header('Location','/api/second-effect')
+                self.send_header('Content-Length',str(len(data) + (9 if mode[0]=='truncated' else 0)));self.send_header('Set-Cookie','private-cookie')
+                if status==303:self.send_header('Location','/api/second-effect')
                 self.end_headers()
                 if mode[0]=='trickle':
                     for byte in data:
@@ -138,13 +138,18 @@ def test_real_http_result_and_duplicate_preserve_core_and_hide_credentials(netwo
     assert s.command('fingerprint')==before and s.http()[0]==200
 
 
-@pytest.mark.parametrize('mode,expected',[('hang','ambiguous'),('trickle','ambiguous'),('limit','failed'),('redirect','retryable')])
-def test_network_deadline_limit_and_redirect_never_replay(network_stack,mode,expected):
+@pytest.mark.parametrize('mode,status,category',[('hang',None,'response_timeout'),('trickle',None,'response_timeout'),
+    ('limit',201,'response_limit'),('redirect',303,None),('server_error',503,None),('truncated',201,'connection_lost')])
+def test_unconfirmed_mutation_preserves_one_effect_and_never_replays(network_stack,mode,status,category):
     s=network_stack;s.mode[0]=mode;rid='connector_'+identity();start=time.monotonic()
     result=s.call_connector(rid)
     assert time.monotonic()-start<4
-    assert result['outcome']==expected
-    assert s.call_connector(rid)['duplicate'] and len(s.seen)==1
+    assert result['outcome']=='ambiguous'
+    if mode not in {'hang','trickle'}:
+        assert (result['http_status'],result['error_category'])==(status,category)
+        assert result['body_base64']==('' if category else 'e30=')
+    duplicate=s.call_connector(rid)
+    assert duplicate['duplicate'] and duplicate['outcome']=='ambiguous' and len(s.seen)==1
     assert s.http()[0]==200
 
 

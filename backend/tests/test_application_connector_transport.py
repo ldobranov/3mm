@@ -173,3 +173,52 @@ def test_network_executor_rejects_an_untrusted_tls_certificate_before_http(tmp_p
             'body_base64':'','headers':{'Authorization':'Basic private'},'timeout_seconds':1,'max_response_bytes':1024})
         assert result['outcome']=='ambiguous' and result['body_base64']=='' and received==[]
     finally:worker.join(timeout=3);listener.close()
+
+
+@pytest.mark.parametrize("method,status,body,advertised,outcome,error", [
+    ("GET", 200, b"{}", 10, "retryable", "connection_lost"),
+    ("POST", 201, b"{}", 10, "ambiguous", "connection_lost"),
+    ("HEAD", 200, b"", 10, "succeeded", None),
+    ("GET", 204, b"", None, "succeeded", None),
+    ("GET", 200, b"{}", None, "succeeded", None),
+    ("GET", 200, b"{}", 2, "succeeded", None),
+    ("POST", 303, b"{}", 2, "ambiguous", None),
+    ("GET", 303, b"{}", 2, "retryable", None),
+    ("PUT", 503, b"{}", 2, "ambiguous", None),
+    ("GET", 503, b"{}", 2, "retryable", None),
+    ("PATCH", 201, b"x"*129, 129, "ambiguous", "response_limit"),
+    ("GET", 200, b"x"*129, 129, "failed", "response_limit"),
+    ("DELETE", 403, b"{}", 2, "rejected", None),
+])
+def test_executor_reports_what_one_http_attempt_proves(method, status, body, advertised, outcome, error):
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from components.platform_runtime.connector_execute import execute
+
+    seen = []
+    class Service(BaseHTTPRequestHandler):
+        def reply(self):
+            seen.append(self.command)
+            self.send_response(status)
+            if status == 303:
+                self.send_header("Location", "/result")
+            if advertised is not None:
+                self.send_header("Content-Length", str(advertised))
+            self.end_headers()
+            self.wfile.write(body)
+        do_GET = do_POST = do_HEAD = do_PUT = do_PATCH = do_DELETE = reply
+        def log_message(self, *_):
+            pass
+
+    with HTTPServer(("127.0.0.1", 0), Service) as server:
+        server.timeout = 3
+        worker = threading.Thread(target=server.handle_request)
+        worker.start()
+        try:
+            result = execute({"method": method, "url": f"http://127.0.0.1:{server.server_port}/sample",
+                "body_base64": "", "headers": {}, "timeout_seconds": 2, "max_response_bytes": 128})
+        finally:
+            worker.join(timeout=4)
+    assert not worker.is_alive() and seen == [method]
+    assert (result["outcome"], result["http_status"]) == (outcome, status)
+    assert result["error_category"] == error
+    assert base64.b64decode(result["body_base64"]) == (body if error is None else b"")
